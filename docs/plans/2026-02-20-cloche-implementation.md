@@ -563,7 +563,8 @@ import (
 
 func TestLexer_SimpleWorkflow(t *testing.T) {
 	input := `workflow "test" {
-  step code(agent) {
+  step code {
+    run = "echo hello"
     results = [success, fail]
   }
   code:success -> done
@@ -578,10 +579,10 @@ func TestLexer_SimpleWorkflow(t *testing.T) {
 		dsl.TokenLBrace,   // {
 		dsl.TokenIdent,    // step
 		dsl.TokenIdent,    // code
-		dsl.TokenLParen,   // (
-		dsl.TokenIdent,    // agent
-		dsl.TokenRParen,   // )
 		dsl.TokenLBrace,   // {
+		dsl.TokenIdent,    // run
+		dsl.TokenEquals,   // =
+		dsl.TokenString,   // "echo hello"
 		dsl.TokenIdent,    // results
 		dsl.TokenEquals,   // =
 		dsl.TokenLBracket, // [
@@ -846,12 +847,12 @@ import (
 
 func TestParser_FullWorkflow(t *testing.T) {
 	input := `workflow "implement-feature" {
-  step code(agent) {
+  step code {
     prompt = file("prompts/implement.md")
     results = [success, fail, retry_with_feedback]
   }
 
-  step check(script) {
+  step check {
     run = "make test && make lint"
     results = [pass, fail]
   }
@@ -887,7 +888,7 @@ func TestParser_FullWorkflow(t *testing.T) {
 
 func TestParser_MinimalWorkflow(t *testing.T) {
 	input := `workflow "simple" {
-  step build(script) {
+  step build {
     run = "make build"
     results = [success, fail]
   }
@@ -910,7 +911,7 @@ func TestParser_SyntaxError(t *testing.T) {
 
 func TestParser_ContainerBlock(t *testing.T) {
 	input := `workflow "test" {
-  step code(agent) {
+  step code {
     prompt = "do something"
     container {
       image = "cloche/agent:latest"
@@ -927,6 +928,54 @@ func TestParser_ContainerBlock(t *testing.T) {
 	code := wf.Steps["code"]
 	assert.Equal(t, "cloche/agent:latest", code.Config["container.image"])
 	assert.Equal(t, "docs.python.org,internal.example.com", code.Config["container.network_allow"])
+}
+
+func TestParser_InfersTypeFromContent(t *testing.T) {
+	input := `workflow "infer" {
+  step build {
+    run = "make build"
+    results = [success]
+  }
+  step code {
+    prompt = "write code"
+    results = [success]
+  }
+  build:success -> code
+  code:success -> done
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+	assert.Equal(t, domain.StepTypeScript, wf.Steps["build"].Type)
+	assert.Equal(t, domain.StepTypeAgent, wf.Steps["code"].Type)
+}
+
+func TestParser_AmbiguousStepType(t *testing.T) {
+	input := `workflow "bad" {
+  step both {
+    run = "make test"
+    prompt = "also a prompt"
+    results = [success]
+  }
+  both:success -> done
+}`
+
+	_, err := dsl.Parse(input)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "both")
+}
+
+func TestParser_NoStepType(t *testing.T) {
+	input := `workflow "bad" {
+  step neither {
+    results = [success]
+  }
+  neither:success -> done
+}`
+
+	_, err := dsl.Parse(input)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "neither")
 }
 ```
 
@@ -1032,26 +1081,12 @@ func (p *Parser) parseStep() (*domain.Step, error) {
 		return nil, fmt.Errorf("expected step name: %w", err)
 	}
 
-	if _, err := p.expect(TokenLParen); err != nil {
-		return nil, err
-	}
-
-	typeTok, err := p.expect(TokenIdent)
-	if err != nil {
-		return nil, fmt.Errorf("expected step type: %w", err)
-	}
-
-	if _, err := p.expect(TokenRParen); err != nil {
-		return nil, err
-	}
-
 	if _, err := p.expect(TokenLBrace); err != nil {
 		return nil, err
 	}
 
 	step := &domain.Step{
 		Name:   nameTok.Literal,
-		Type:   domain.StepType(typeTok.Literal),
 		Config: make(map[string]string),
 	}
 
@@ -1063,6 +1098,20 @@ func (p *Parser) parseStep() (*domain.Step, error) {
 
 	if _, err := p.expect(TokenRBrace); err != nil {
 		return nil, err
+	}
+
+	// Infer step type from content
+	_, hasPrompt := step.Config["prompt"]
+	_, hasRun := step.Config["run"]
+	switch {
+	case hasPrompt && hasRun:
+		return nil, fmt.Errorf("step %q has both 'prompt' and 'run'; must have exactly one", step.Name)
+	case hasPrompt:
+		step.Type = domain.StepTypeAgent
+	case hasRun:
+		step.Type = domain.StepTypeScript
+	default:
+		return nil, fmt.Errorf("step %q has neither 'prompt' nor 'run'; must have exactly one", step.Name)
 	}
 
 	return step, nil
@@ -1988,12 +2037,12 @@ This is the first vertical slice — `cloche-agent` can parse a workflow file an
 `testdata/workflows/simple.cloche`:
 ```
 workflow "simple-build" {
-  step build(script) {
+  step build {
     run = "echo 'building...'"
     results = [success, fail]
   }
 
-  step test(script) {
+  step test {
     run = "echo 'testing...'"
     results = [pass, fail]
   }
@@ -3233,12 +3282,12 @@ func TestSmoke_AgentRunsWorkflowEndToEnd(t *testing.T) {
 	// Write a workflow file to a temp dir
 	dir := t.TempDir()
 	workflowContent := `workflow "smoke-test" {
-  step build(script) {
+  step build {
     run = "echo building && echo 'built' > built.txt"
     results = [success, fail]
   }
 
-  step verify(script) {
+  step verify {
     run = "test -f built.txt"
     results = [pass, fail]
   }

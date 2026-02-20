@@ -86,7 +86,7 @@ The agent is told which workflow to execute at launch. It handles everything els
 
 ```
 workflow "implement-feature" {
-  step code(agent) {
+  step code {
     prompt = file("prompts/implement.md")
     container {
       image = "cloche/agent:latest"
@@ -95,12 +95,12 @@ workflow "implement-feature" {
     results = [success, fail, retry_with_feedback]
   }
 
-  step check(script) {
+  step check {
     run = "make test && make lint"
     results = [pass, fail]
   }
 
-  step review(agent) {
+  step review {
     prompt = file("prompts/review.md")
     input = step.code.output
     results = [approved, changes_requested]
@@ -120,6 +120,7 @@ workflow "implement-feature" {
 
 ### Key Properties
 
+- Step type is inferred from content: `prompt` field → agent step, `run` field → script step.
 - Steps declare which results they can emit. The step decides at runtime which result to report.
 - Wiring is separate from step definitions. This enables runtime injection of new steps
   (the self-evolution feature) — insert a new check between existing steps by rewiring,

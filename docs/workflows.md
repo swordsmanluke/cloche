@@ -7,7 +7,7 @@ Cloche workflows define a directed graph of steps connected by named results.
 | Concept  | Description                                                        |
 |----------|--------------------------------------------------------------------|
 | workflow | A named graph of steps connected by result wiring                  |
-| step     | A unit of work (type: `agent` or `script`)                         |
+| step     | A unit of work (inferred: `prompt` = agent, `run` = script)        |
 | result   | A named outcome reported by a step (e.g. "success", "fail")       |
 | wiring   | Maps a step's result to the next step                              |
 | done     | Built-in terminal step — successful completion                     |
@@ -15,17 +15,22 @@ Cloche workflows define a directed graph of steps connected by named results.
 
 ## Step Types
 
-**agent** — Invokes a coding agent (Claude Code, or any tool conforming to the agent
-adapter interface) with a prompt. The agent works autonomously inside the container.
+Step type is inferred from the fields present in the step body:
 
-**script** — Runs a shell command. Used for tests, linters, validators, or any
-deterministic check.
+**agent** (has `prompt`) — Invokes a coding agent (Claude Code, or any tool conforming
+to the agent adapter interface) with a prompt. The agent works autonomously inside the
+container.
+
+**script** (has `run`) — Runs a shell command. Used for tests, linters, validators, or
+any deterministic check.
+
+A step with both `prompt` and `run`, or neither, is a parse error.
 
 ## DSL Syntax
 
 ```
 workflow "implement-feature" {
-  step code(agent) {
+  step code {
     prompt = file("prompts/implement.md")
     container {
       image = "cloche/agent:latest"
@@ -34,12 +39,12 @@ workflow "implement-feature" {
     results = [success, fail, retry_with_feedback]
   }
 
-  step check(script) {
+  step check {
     run = "make test && make lint"
     results = [pass, fail]
   }
 
-  step review(agent) {
+  step review {
     prompt = file("prompts/review.md")
     input = step.code.output
     results = [approved, changes_requested]
@@ -59,6 +64,9 @@ workflow "implement-feature" {
 ```
 
 ## Key Properties
+
+**Step type is inferred from content.** A `prompt` field makes it an agent step; a `run`
+field makes it a script step.
 
 **Steps declare their possible results.** A step decides at runtime which result to
 report. The graph engine follows the wiring to determine the next step.
