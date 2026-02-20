@@ -126,21 +126,47 @@ func (l *Lexer) skipWhitespaceAndComments() {
 
 func (l *Lexer) readString() string {
 	l.advance() // skip opening quote
-	start := l.pos
+	var buf []rune
 	for l.pos < len(l.input) && l.input[l.pos] != '"' {
-		l.advance()
+		if l.input[l.pos] == '\\' && l.pos+1 < len(l.input) {
+			next := l.input[l.pos+1]
+			switch next {
+			case '"':
+				buf = append(buf, '"')
+			case '\\':
+				buf = append(buf, '\\')
+			case 'n':
+				buf = append(buf, '\n')
+			case 't':
+				buf = append(buf, '\t')
+			default:
+				buf = append(buf, '\\', next)
+			}
+			l.advance()
+			l.advance()
+		} else {
+			buf = append(buf, l.input[l.pos])
+			l.advance()
+		}
 	}
-	result := string(l.input[start:l.pos])
 	if l.pos < len(l.input) {
 		l.advance() // skip closing quote
 	}
-	return result
+	return string(buf)
 }
 
 func (l *Lexer) readIdent() string {
 	start := l.pos
-	for l.pos < len(l.input) && isIdentPart(l.input[l.pos]) {
-		l.advance()
+	for l.pos < len(l.input) {
+		ch := l.input[l.pos]
+		if isIdentPart(ch) {
+			l.advance()
+		} else if ch == '-' && l.peek() != '>' && l.pos+1 < len(l.input) && isIdentPart(l.peek()) {
+			// Allow hyphens mid-ident (e.g. "simple-build") but not before ">" (arrow)
+			l.advance()
+		} else {
+			break
+		}
 	}
 	return string(l.input[start:l.pos])
 }

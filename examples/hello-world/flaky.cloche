@@ -1,0 +1,29 @@
+// A workflow that demonstrates retry behavior.
+// The test step is flaky - it fails the first time and passes on retry.
+workflow "flaky-retry" {
+  step setup {
+    run = "echo Setting up && echo 0 > attempt_count"
+    results = [success, fail]
+  }
+
+  step build {
+    run = "echo Building && echo built > artifact.txt"
+    results = [success, fail]
+  }
+
+  step test {
+    // Increment counter, fail if count < 2 (simulates flaky test)
+    run = "count=$(cat attempt_count) && count=$((count + 1)) && echo $count > attempt_count && echo Test attempt $count && test $count -ge 2"
+    results = [pass, fail]
+  }
+
+  setup:success -> build
+  setup:fail -> abort
+
+  build:success -> test
+  build:fail -> abort
+
+  // On test failure, retry from build
+  test:pass -> done
+  test:fail -> build
+}

@@ -1,0 +1,33 @@
+workflow "hello-world" {
+  step init {
+    run = "echo 'Initializing project...' && mkdir -p src dist"
+    results = [success, fail]
+  }
+
+  step generate {
+    run = "echo '<html><body><h1>Hello from Cloche!</h1></body></html>' > src/index.html && echo 'Generated index.html'"
+    results = [success, fail]
+  }
+
+  step build {
+    run = "cp src/index.html dist/index.html && echo 'Build complete: dist/index.html'"
+    results = [success, fail]
+  }
+
+  step verify {
+    run = "test -f dist/index.html && grep -q 'Cloche' dist/index.html && echo 'Verification passed'"
+    results = [pass, fail]
+  }
+
+  init:success -> generate
+  init:fail -> abort
+
+  generate:success -> build
+  generate:fail -> abort
+
+  build:success -> verify
+  build:fail -> abort
+
+  verify:pass -> done
+  verify:fail -> build
+}

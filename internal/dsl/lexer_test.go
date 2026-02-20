@@ -79,6 +79,22 @@ func TestLexer_Arrow(t *testing.T) {
 	assert.Equal(t, dsl.TokenIdent, tokens[2].Type)
 }
 
+func TestLexer_EscapedStrings(t *testing.T) {
+	input := `"echo \"hello\" world"`
+	lexer := dsl.NewLexer(input)
+	tok := lexer.NextToken()
+	assert.Equal(t, dsl.TokenString, tok.Type)
+	assert.Equal(t, `echo "hello" world`, tok.Literal)
+}
+
+func TestLexer_HyphenatedIdent(t *testing.T) {
+	input := `simple-build`
+	lexer := dsl.NewLexer(input)
+	tok := lexer.NextToken()
+	assert.Equal(t, dsl.TokenIdent, tok.Type)
+	assert.Equal(t, "simple-build", tok.Literal)
+}
+
 func lexAll(l *dsl.Lexer) []dsl.Token {
 	var tokens []dsl.Token
 	for {
