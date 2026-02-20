@@ -1,0 +1,17 @@
+workflow "simple-build" {
+  step build {
+    run = "echo 'building...'"
+    results = [success, fail]
+  }
+
+  step test {
+    run = "echo 'testing...'"
+    results = [pass, fail]
+  }
+
+  build:success -> test
+  build:fail -> abort
+
+  test:pass -> done
+  test:fail -> build
+}

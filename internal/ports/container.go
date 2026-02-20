@@ -11,6 +11,7 @@ type ContainerConfig struct {
 	ProjectDir   string
 	NetworkAllow []string
 	GitRemote    string
+	Cmd          []string // override container command; defaults to ["cloche-agent", WorkflowName]
 }
 
 type ContainerRuntime interface {

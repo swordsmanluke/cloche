@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package cloche.v1;
+
+option go_package = "github.com/cloche-dev/cloche/api/clochepb";
+
+service ClocheService {
+  rpc RunWorkflow(RunWorkflowRequest) returns (RunWorkflowResponse);
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  rpc StreamLogs(StreamLogsRequest) returns (stream LogEntry);
+  rpc StopRun(StopRunRequest) returns (StopRunResponse);
+  rpc ListRuns(ListRunsRequest) returns (ListRunsResponse);
+}
+
+message RunWorkflowRequest {
+  string workflow_name = 1;
+  string project_dir = 2;
+  string image = 3;
+}
+
+message RunWorkflowResponse {
+  string run_id = 1;
+}
+
+message GetStatusRequest {
+  string run_id = 1;
+}
+
+message GetStatusResponse {
+  string run_id = 1;
+  string workflow_name = 2;
+  string state = 3;
+  string current_step = 4;
+  repeated StepExecutionStatus step_executions = 5;
+}
+
+message StepExecutionStatus {
+  string step_name = 1;
+  string result = 2;
+  string started_at = 3;
+  string completed_at = 4;
+}
+
+message StreamLogsRequest {
+  string run_id = 1;
+}
+
+message LogEntry {
+  string type = 1;
+  string step_name = 2;
+  string result = 3;
+  string message = 4;
+  string timestamp = 5;
+}
+
+message StopRunRequest {
+  string run_id = 1;
+}
+
+message StopRunResponse {}
+
+message ListRunsRequest {}
+
+message ListRunsResponse {
+  repeated RunSummary runs = 1;
+}
+
+message RunSummary {
+  string run_id = 1;
+  string workflow_name = 2;
+  string state = 3;
+  string started_at = 4;
+}

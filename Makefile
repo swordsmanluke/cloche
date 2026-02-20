@@ -1,4 +1,4 @@
-.PHONY: build test lint clean
+.PHONY: build test lint clean proto
 
 build:
 	go build -o bin/cloche ./cmd/cloche
@@ -13,6 +13,13 @@ test-short:
 
 lint:
 	go vet ./...
+
+proto:
+	mkdir -p api/clochepb
+	protoc --proto_path=api/proto/cloche/v1 \
+		--go_out=api/clochepb --go_opt=paths=source_relative \
+		--go-grpc_out=api/clochepb --go-grpc_opt=paths=source_relative \
+		api/proto/cloche/v1/cloche.proto
 
 clean:
 	rm -rf bin/
