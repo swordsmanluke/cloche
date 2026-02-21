@@ -73,6 +73,41 @@ func (w *Workflow) Validate() error {
 		}
 	}
 
+	// Validate collects and count their results as wired
+	for _, c := range w.Collects {
+		// Validate target step exists
+		if c.To != StepDone && c.To != StepAbort {
+			if _, ok := w.Steps[c.To]; !ok {
+				return fmt.Errorf("workflow %q: collect target step %q not found", w.Name, c.To)
+			}
+			reachable[c.To] = true
+		}
+
+		for _, cond := range c.Conditions {
+			// Validate condition step exists
+			step, ok := w.Steps[cond.Step]
+			if !ok {
+				return fmt.Errorf("workflow %q: collect references unknown step %q", w.Name, cond.Step)
+			}
+			// Validate condition result is declared
+			found := false
+			for _, r := range step.Results {
+				if r == cond.Result {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return fmt.Errorf("workflow %q: collect references undeclared result %q on step %q", w.Name, cond.Result, cond.Step)
+			}
+			// Mark as wired so the "every result must be wired" check passes
+			if wired[cond.Step] == nil {
+				wired[cond.Step] = make(map[string]bool)
+			}
+			wired[cond.Step][cond.Result] = true
+		}
+	}
+
 	for name, step := range w.Steps {
 		for _, result := range step.Results {
 			if !wired[name][result] {

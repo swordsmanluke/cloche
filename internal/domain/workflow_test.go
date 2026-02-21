@@ -145,3 +145,84 @@ func TestWorkflow_NextSteps_Fanout(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"test", "lint"}, next)
 }
+
+func TestWorkflow_Validate_CollectValid(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "parallel",
+		Steps: map[string]*domain.Step{
+			"code":  {Name: "code", Type: domain.StepTypeAgent, Results: []string{"success"}},
+			"test":  {Name: "test", Type: domain.StepTypeScript, Results: []string{"success", "fail"}},
+			"lint":  {Name: "lint", Type: domain.StepTypeScript, Results: []string{"success", "fail"}},
+			"merge": {Name: "merge", Type: domain.StepTypeScript, Results: []string{"success"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "code", Result: "success", To: "test"},
+			{From: "code", Result: "success", To: "lint"},
+			{From: "test", Result: "fail", To: domain.StepAbort},
+			{From: "lint", Result: "fail", To: domain.StepAbort},
+			{From: "merge", Result: "success", To: domain.StepDone},
+		},
+		Collects: []domain.Collect{
+			{
+				Mode: domain.CollectAll,
+				Conditions: []domain.WireCondition{
+					{Step: "test", Result: "success"},
+					{Step: "lint", Result: "success"},
+				},
+				To: "merge",
+			},
+		},
+		EntryStep: "code",
+	}
+
+	err := wf.Validate()
+	assert.NoError(t, err)
+}
+
+func TestWorkflow_Validate_CollectBadStep(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "bad-collect",
+		Steps: map[string]*domain.Step{
+			"code": {Name: "code", Type: domain.StepTypeAgent, Results: []string{"success"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "code", Result: "success", To: domain.StepDone},
+		},
+		Collects: []domain.Collect{
+			{
+				Mode:       domain.CollectAll,
+				Conditions: []domain.WireCondition{{Step: "nonexistent", Result: "success"}},
+				To:         "code",
+			},
+		},
+		EntryStep: "code",
+	}
+
+	err := wf.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nonexistent")
+}
+
+func TestWorkflow_Validate_CollectBadTarget(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "bad-target",
+		Steps: map[string]*domain.Step{
+			"code": {Name: "code", Type: domain.StepTypeAgent, Results: []string{"success"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "code", Result: "success", To: domain.StepDone},
+		},
+		Collects: []domain.Collect{
+			{
+				Mode:       domain.CollectAll,
+				Conditions: []domain.WireCondition{{Step: "code", Result: "success"}},
+				To:         "nonexistent",
+			},
+		},
+		EntryStep: "code",
+	}
+
+	err := wf.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nonexistent")
+}
