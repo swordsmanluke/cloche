@@ -17,10 +17,11 @@ func TestRun_Lifecycle(t *testing.T) {
 	assert.False(t, run.StartedAt.IsZero())
 
 	run.RecordStepStart("code")
-	assert.Equal(t, "code", run.CurrentStep)
+	assert.Equal(t, []string{"code"}, run.ActiveSteps)
 	assert.Len(t, run.StepExecutions, 1)
 
 	run.RecordStepComplete("code", "success")
+	assert.Empty(t, run.ActiveSteps)
 	assert.Equal(t, "success", run.StepExecutions[0].Result)
 	assert.False(t, run.StepExecutions[0].CompletedAt.IsZero())
 

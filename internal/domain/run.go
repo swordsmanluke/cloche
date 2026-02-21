@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type RunState string
 
@@ -29,7 +32,7 @@ type Run struct {
 	ID             string
 	WorkflowName   string
 	State          RunState
-	CurrentStep    string
+	ActiveSteps    []string
 	StepExecutions []*StepExecution
 	StartedAt      time.Time
 	CompletedAt    time.Time
@@ -49,7 +52,7 @@ func (r *Run) Start() {
 }
 
 func (r *Run) RecordStepStart(stepName string) {
-	r.CurrentStep = stepName
+	r.ActiveSteps = append(r.ActiveSteps, stepName)
 	r.StepExecutions = append(r.StepExecutions, &StepExecution{
 		StepName:  stepName,
 		StartedAt: time.Now(),
@@ -57,6 +60,14 @@ func (r *Run) RecordStepStart(stepName string) {
 }
 
 func (r *Run) RecordStepComplete(stepName, result string) {
+	// Remove from active steps
+	for i, name := range r.ActiveSteps {
+		if name == stepName {
+			r.ActiveSteps = append(r.ActiveSteps[:i], r.ActiveSteps[i+1:]...)
+			break
+		}
+	}
+	// Mark execution complete
 	for i := len(r.StepExecutions) - 1; i >= 0; i-- {
 		if r.StepExecutions[i].StepName == stepName && r.StepExecutions[i].CompletedAt.IsZero() {
 			r.StepExecutions[i].Result = result
@@ -64,6 +75,21 @@ func (r *Run) RecordStepComplete(stepName, result string) {
 			return
 		}
 	}
+}
+
+// ActiveStepsString returns a comma-separated representation of active steps
+// for backward-compatible serialization.
+func (r *Run) ActiveStepsString() string {
+	return strings.Join(r.ActiveSteps, ",")
+}
+
+// SetActiveStepsFromString parses a comma-separated string into ActiveSteps.
+func (r *Run) SetActiveStepsFromString(s string) {
+	if s == "" {
+		r.ActiveSteps = nil
+		return
+	}
+	r.ActiveSteps = strings.Split(s, ",")
 }
 
 func (r *Run) Complete(state RunState) {

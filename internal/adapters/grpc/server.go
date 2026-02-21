@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -209,7 +210,7 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 		RunId:        run.ID,
 		WorkflowName: run.WorkflowName,
 		State:        string(run.State),
-		CurrentStep:  run.CurrentStep,
+		CurrentStep:  strings.Join(run.ActiveSteps, ","),
 	}
 
 	// Load step executions from captures store if available

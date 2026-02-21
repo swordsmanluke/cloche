@@ -38,7 +38,7 @@ func migrate(db *sql.DB) error {
 			id TEXT PRIMARY KEY,
 			workflow_name TEXT NOT NULL,
 			state TEXT NOT NULL,
-			current_step TEXT,
+			active_steps TEXT,
 			started_at TEXT,
 			completed_at TEXT
 		);
@@ -59,9 +59,9 @@ func migrate(db *sql.DB) error {
 
 func (s *Store) CreateRun(ctx context.Context, run *domain.Run) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO runs (id, workflow_name, state, current_step, started_at, completed_at)
+		`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
-		run.ID, run.WorkflowName, string(run.State), run.CurrentStep,
+		run.ID, run.WorkflowName, string(run.State), run.ActiveStepsString(),
 		formatTime(run.StartedAt), formatTime(run.CompletedAt),
 	)
 	return err
@@ -69,11 +69,11 @@ func (s *Store) CreateRun(ctx context.Context, run *domain.Run) error {
 
 func (s *Store) GetRun(ctx context.Context, id string) (*domain.Run, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, workflow_name, state, current_step, started_at, completed_at FROM runs WHERE id = ?`, id)
+		`SELECT id, workflow_name, state, active_steps, started_at, completed_at FROM runs WHERE id = ?`, id)
 
 	run := &domain.Run{}
-	var startedAt, completedAt string
-	err := row.Scan(&run.ID, &run.WorkflowName, &run.State, &run.CurrentStep, &startedAt, &completedAt)
+	var activeSteps, startedAt, completedAt string
+	err := row.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("run %q not found", id)
 	}
@@ -81,6 +81,7 @@ func (s *Store) GetRun(ctx context.Context, id string) (*domain.Run, error) {
 		return nil, err
 	}
 
+	run.SetActiveStepsFromString(activeSteps)
 	run.StartedAt = parseTime(startedAt)
 	run.CompletedAt = parseTime(completedAt)
 	return run, nil
@@ -88,8 +89,8 @@ func (s *Store) GetRun(ctx context.Context, id string) (*domain.Run, error) {
 
 func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE runs SET state = ?, current_step = ?, started_at = ?, completed_at = ? WHERE id = ?`,
-		string(run.State), run.CurrentStep,
+		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ? WHERE id = ?`,
+		string(run.State), run.ActiveStepsString(),
 		formatTime(run.StartedAt), formatTime(run.CompletedAt),
 		run.ID,
 	)
@@ -98,7 +99,7 @@ func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 
 func (s *Store) ListRuns(ctx context.Context) ([]*domain.Run, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, workflow_name, state, current_step, started_at, completed_at FROM runs ORDER BY started_at DESC`)
+		`SELECT id, workflow_name, state, active_steps, started_at, completed_at FROM runs ORDER BY started_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -107,10 +108,11 @@ func (s *Store) ListRuns(ctx context.Context) ([]*domain.Run, error) {
 	var runs []*domain.Run
 	for rows.Next() {
 		run := &domain.Run{}
-		var startedAt, completedAt string
-		if err := rows.Scan(&run.ID, &run.WorkflowName, &run.State, &run.CurrentStep, &startedAt, &completedAt); err != nil {
+		var activeSteps, startedAt, completedAt string
+		if err := rows.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt); err != nil {
 			return nil, err
 		}
+		run.SetActiveStepsFromString(activeSteps)
 		run.StartedAt = parseTime(startedAt)
 		run.CompletedAt = parseTime(completedAt)
 		runs = append(runs, run)

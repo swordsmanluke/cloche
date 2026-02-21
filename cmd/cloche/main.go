@@ -116,7 +116,7 @@ func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string
 	fmt.Printf("Run:      %s\n", resp.RunId)
 	fmt.Printf("Workflow: %s\n", resp.WorkflowName)
 	fmt.Printf("State:    %s\n", resp.State)
-	fmt.Printf("Step:     %s\n", resp.CurrentStep)
+	fmt.Printf("Active:   %s\n", resp.CurrentStep)
 	for _, exec := range resp.StepExecutions {
 		fmt.Printf("  %s: %s (%s -> %s)\n", exec.StepName, exec.Result, exec.StartedAt, exec.CompletedAt)
 	}
