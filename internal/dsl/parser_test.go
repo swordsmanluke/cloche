@@ -141,3 +141,70 @@ func TestParser_NoStepType(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "neither")
 }
+
+func TestParser_CollectAll(t *testing.T) {
+	input := `workflow "parallel" {
+  step code {
+    prompt = "write code"
+    results = [success]
+  }
+  step test {
+    run = "make test"
+    results = [success, fail]
+  }
+  step lint {
+    run = "make lint"
+    results = [success, fail]
+  }
+  step merge {
+    run = "echo merged"
+    results = [success]
+  }
+
+  code:success -> test
+  code:success -> lint
+  test:fail -> abort
+  lint:fail -> abort
+  collect all(test:success, lint:success) -> merge
+  merge:success -> done
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+
+	require.Len(t, wf.Collects, 1)
+	c := wf.Collects[0]
+	assert.Equal(t, domain.CollectAll, c.Mode)
+	assert.Equal(t, "merge", c.To)
+	require.Len(t, c.Conditions, 2)
+	assert.Equal(t, "test", c.Conditions[0].Step)
+	assert.Equal(t, "success", c.Conditions[0].Result)
+	assert.Equal(t, "lint", c.Conditions[1].Step)
+	assert.Equal(t, "success", c.Conditions[1].Result)
+}
+
+func TestParser_CollectAny(t *testing.T) {
+	input := `workflow "race" {
+  step fast {
+    run = "echo fast"
+    results = [success]
+  }
+  step slow {
+    run = "sleep 1 && echo slow"
+    results = [success]
+  }
+  step next {
+    run = "echo next"
+    results = [success]
+  }
+
+  collect any(fast:success, slow:success) -> next
+  next:success -> done
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+
+	require.Len(t, wf.Collects, 1)
+	assert.Equal(t, domain.CollectAny, wf.Collects[0].Mode)
+}

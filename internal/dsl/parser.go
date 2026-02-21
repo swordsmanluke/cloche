@@ -74,6 +74,12 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 			if wf.EntryStep == "" {
 				wf.EntryStep = step.Name
 			}
+		} else if p.current.Type == TokenIdent && p.current.Literal == "collect" {
+			collect, err := p.parseCollect()
+			if err != nil {
+				return nil, err
+			}
+			wf.Collects = append(wf.Collects, collect)
 		} else if p.current.Type == TokenIdent && p.peek.Type == TokenColon {
 			wire, err := p.parseWire()
 			if err != nil {
@@ -306,5 +312,66 @@ func (p *Parser) parseWire() (domain.Wire, error) {
 		From:   fromTok.Literal,
 		Result: resultTok.Literal,
 		To:     toTok.Literal,
+	}, nil
+}
+
+func (p *Parser) parseCollect() (domain.Collect, error) {
+	p.advance() // consume "collect"
+
+	modeTok, err := p.expect(TokenIdent)
+	if err != nil {
+		return domain.Collect{}, fmt.Errorf("expected 'all' or 'any': %w", err)
+	}
+
+	var mode domain.CollectMode
+	switch modeTok.Literal {
+	case "all":
+		mode = domain.CollectAll
+	case "any":
+		mode = domain.CollectAny
+	default:
+		return domain.Collect{}, fmt.Errorf("line %d col %d: expected 'all' or 'any', got %q",
+			modeTok.Line, modeTok.Col, modeTok.Literal)
+	}
+
+	if _, err := p.expect(TokenLParen); err != nil {
+		return domain.Collect{}, err
+	}
+
+	var conditions []domain.WireCondition
+	for p.current.Type != TokenRParen && p.current.Type != TokenEOF {
+		stepTok, err := p.expect(TokenIdent)
+		if err != nil {
+			return domain.Collect{}, fmt.Errorf("expected step name in collect: %w", err)
+		}
+		if _, err := p.expect(TokenColon); err != nil {
+			return domain.Collect{}, err
+		}
+		resultTok, err := p.expect(TokenIdent)
+		if err != nil {
+			return domain.Collect{}, fmt.Errorf("expected result name in collect: %w", err)
+		}
+		conditions = append(conditions, domain.WireCondition{Step: stepTok.Literal, Result: resultTok.Literal})
+		if p.current.Type == TokenComma {
+			p.advance()
+		}
+	}
+
+	if _, err := p.expect(TokenRParen); err != nil {
+		return domain.Collect{}, err
+	}
+	if _, err := p.expect(TokenArrow); err != nil {
+		return domain.Collect{}, err
+	}
+
+	toTok, err := p.expect(TokenIdent)
+	if err != nil {
+		return domain.Collect{}, fmt.Errorf("expected target step: %w", err)
+	}
+
+	return domain.Collect{
+		Mode:       mode,
+		Conditions: conditions,
+		To:         toTok.Literal,
 	}, nil
 }
