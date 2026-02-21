@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/protocol"
 )
 
 type Adapter struct{}
@@ -26,30 +27,27 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 
 	output, err := cmd.CombinedOutput()
 
-	// Write captured output to .cloche/output/<step-name>.log
+	// Extract result marker before writing logs
+	markerResult, cleanOutput, found := protocol.ExtractResult(output)
+
+	// Write cleaned output to log file
 	outputDir := filepath.Join(workDir, ".cloche", "output")
 	if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
-		_ = os.WriteFile(filepath.Join(outputDir, step.Name+".log"), output, 0644)
+		_ = os.WriteFile(filepath.Join(outputDir, step.Name+".log"), cleanOutput, 0644)
 	}
 
 	if err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
-			return resultOrDefault(step.Results, "fail"), nil
+			if found {
+				return markerResult, nil
+			}
+			return "fail", nil
 		}
 		return "", err
 	}
 
-	return resultOrDefault(step.Results, "success"), nil
-}
-
-func resultOrDefault(results []string, name string) string {
-	for _, r := range results {
-		if r == name {
-			return r
-		}
+	if found {
+		return markerResult, nil
 	}
-	if len(results) > 0 {
-		return results[0]
-	}
-	return name
+	return "success", nil
 }
