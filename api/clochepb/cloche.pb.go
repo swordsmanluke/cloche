@@ -26,6 +26,7 @@ type RunWorkflowRequest struct {
 	WorkflowName  string                 `protobuf:"bytes,1,opt,name=workflow_name,json=workflowName,proto3" json:"workflow_name,omitempty"`
 	ProjectDir    string                 `protobuf:"bytes,2,opt,name=project_dir,json=projectDir,proto3" json:"project_dir,omitempty"`
 	Image         string                 `protobuf:"bytes,3,opt,name=image,proto3" json:"image,omitempty"`
+	Prompt        string                 `protobuf:"bytes,4,opt,name=prompt,proto3" json:"prompt,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -77,6 +78,13 @@ func (x *RunWorkflowRequest) GetProjectDir() string {
 func (x *RunWorkflowRequest) GetImage() string {
 	if x != nil {
 		return x.Image
+	}
+	return ""
+}
+
+func (x *RunWorkflowRequest) GetPrompt() string {
+	if x != nil {
+		return x.Prompt
 	}
 	return ""
 }
@@ -665,12 +673,13 @@ var File_cloche_proto protoreflect.FileDescriptor
 
 const file_cloche_proto_rawDesc = "" +
 	"\n" +
-	"\fcloche.proto\x12\tcloche.v1\"p\n" +
+	"\fcloche.proto\x12\tcloche.v1\"\x88\x01\n" +
 	"\x12RunWorkflowRequest\x12#\n" +
 	"\rworkflow_name\x18\x01 \x01(\tR\fworkflowName\x12\x1f\n" +
 	"\vproject_dir\x18\x02 \x01(\tR\n" +
 	"projectDir\x12\x14\n" +
-	"\x05image\x18\x03 \x01(\tR\x05image\",\n" +
+	"\x05image\x18\x03 \x01(\tR\x05image\x12\x16\n" +
+	"\x06prompt\x18\x04 \x01(\tR\x06prompt\",\n" +
 	"\x13RunWorkflowResponse\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\")\n" +
 	"\x10GetStatusRequest\x12\x15\n" +

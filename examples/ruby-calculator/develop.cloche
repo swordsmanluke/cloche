@@ -1,0 +1,34 @@
+workflow "develop" {
+  step implement {
+    prompt = file("prompts/implement.md")
+    results = [success, fail]
+  }
+
+  step test {
+    run = "bundle exec rake test 2>&1"
+    results = [pass, fail]
+  }
+
+  step lint {
+    run = "bundle exec rubocop 2>&1"
+    results = [pass, fail]
+  }
+
+  step fix {
+    prompt = file("prompts/fix.md")
+    max_attempts = "2"
+    results = [fixed, give-up]
+  }
+
+  implement:success -> test
+  implement:fail -> abort
+
+  test:pass -> lint
+  test:fail -> fix
+
+  lint:pass -> done
+  lint:fail -> fix
+
+  fix:fixed -> test
+  fix:give-up -> abort
+}

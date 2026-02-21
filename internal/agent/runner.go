@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/cloche-dev/cloche/internal/adapters/agents/generic"
+	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/engine"
@@ -40,10 +41,15 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	statusWriter := protocol.NewStatusWriter(r.cfg.StatusOutput)
 	genericAdapter := generic.New()
+	promptAdapter := prompt.New()
+	if cmd, ok := os.LookupEnv("CLOCHE_AGENT_COMMAND"); ok {
+		promptAdapter.Command = cmd
+	}
 
 	executor := &stepExecutor{
 		workDir: r.cfg.WorkDir,
 		generic: genericAdapter,
+		prompt:  promptAdapter,
 	}
 
 	eng := engine.New(executor)
@@ -63,6 +69,7 @@ func (r *Runner) Run(ctx context.Context) error {
 type stepExecutor struct {
 	workDir string
 	generic *generic.Adapter
+	prompt  *prompt.Adapter
 }
 
 func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, error) {
@@ -73,7 +80,13 @@ func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, 
 		if _, ok := step.Config["run"]; ok {
 			return e.generic.Execute(ctx, step, e.workDir)
 		}
-		return "", fmt.Errorf("agent step %q requires an agent adapter (not yet implemented for prompt-based steps)", step.Name)
+		if _, ok := step.Config["prompt"]; ok {
+			if cmd := step.Config["agent_command"]; cmd != "" {
+				e.prompt.Command = cmd
+			}
+			return e.prompt.Execute(ctx, step, e.workDir)
+		}
+		return "", fmt.Errorf("agent step %q requires either 'run' or 'prompt' config", step.Name)
 	default:
 		return "", fmt.Errorf("unknown step type: %s", step.Type)
 	}

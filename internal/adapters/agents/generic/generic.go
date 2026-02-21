@@ -2,7 +2,9 @@ package generic
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/cloche-dev/cloche/internal/domain"
 )
@@ -22,7 +24,15 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
 	cmd.Dir = workDir
 
-	if err := cmd.Run(); err != nil {
+	output, err := cmd.CombinedOutput()
+
+	// Write captured output to .cloche/output/<step-name>.log
+	outputDir := filepath.Join(workDir, ".cloche", "output")
+	if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
+		_ = os.WriteFile(filepath.Join(outputDir, step.Name+".log"), output, 0644)
+	}
+
+	if err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
 			return resultOrDefault(step.Results, "fail"), nil
 		}

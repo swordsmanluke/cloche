@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
@@ -49,19 +50,49 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "usage: cloche <command> [args]\n\nCommands:\n  run <workflow>  Launch a workflow run\n  status <run-id> Check run status\n  list            List all runs\n  stop <run-id>   Stop a running workflow\n")
+	fmt.Fprintf(os.Stderr, `usage: cloche <command> [args]
+
+Commands:
+  run --workflow <name> [--prompt "..."]  Launch a workflow run
+  status <run-id>                         Check run status
+  list                                    List all runs
+  stop <run-id>                           Stop a running workflow
+`)
 }
 
 func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
-	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "usage: cloche run <workflow-name>\n")
+	var workflow, prompt string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--workflow":
+			if i+1 < len(args) {
+				i++
+				workflow = args[i]
+			}
+		case "--prompt", "-p":
+			if i+1 < len(args) {
+				i++
+				prompt = args[i]
+			}
+		default:
+			// Support bare positional arg as workflow name for backwards compat
+			if workflow == "" && !strings.HasPrefix(args[i], "-") {
+				workflow = args[i]
+			}
+		}
+	}
+
+	if workflow == "" {
+		fmt.Fprintf(os.Stderr, "usage: cloche run --workflow <name> [--prompt \"...\"]\n")
 		os.Exit(1)
 	}
 
 	cwd, _ := os.Getwd()
 	resp, err := client.RunWorkflow(ctx, &pb.RunWorkflowRequest{
-		WorkflowName: args[0],
+		WorkflowName: workflow,
 		ProjectDir:   cwd,
+		Prompt:       prompt,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

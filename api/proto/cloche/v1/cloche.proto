@@ -16,6 +16,7 @@ message RunWorkflowRequest {
   string workflow_name = 1;
   string project_dir = 2;
   string image = 3;
+  string prompt = 4;
 }
 
 message RunWorkflowResponse {

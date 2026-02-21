@@ -5,11 +5,14 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	adaptgrpc "github.com/cloche-dev/cloche/internal/adapters/grpc"
+	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
+	"github.com/cloche-dev/cloche/internal/ports"
 	"google.golang.org/grpc"
 )
 
@@ -31,7 +34,13 @@ func main() {
 	}
 	defer store.Close()
 
-	srv := adaptgrpc.NewClocheServer(store, nil)
+	runtime, err := initRuntime()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to init runtime: %v\n", err)
+		os.Exit(1)
+	}
+
+	srv := adaptgrpc.NewClocheServerWithCaptures(store, store, runtime)
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterClocheServiceServer(grpcServer, srv)
@@ -53,6 +62,34 @@ func main() {
 	if err := grpcServer.Serve(lis); err != nil {
 		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func initRuntime() (ports.ContainerRuntime, error) {
+	runtimeType := os.Getenv("CLOCHE_RUNTIME")
+	if runtimeType == "" {
+		runtimeType = "local"
+	}
+
+	switch runtimeType {
+	case "local":
+		agentPath := os.Getenv("CLOCHE_AGENT_PATH")
+		if agentPath == "" {
+			// Look for cloche-agent next to this binary
+			exe, err := os.Executable()
+			if err == nil {
+				agentPath = filepath.Join(filepath.Dir(exe), "cloche-agent")
+			} else {
+				agentPath = "cloche-agent"
+			}
+		}
+		return local.NewRuntime(agentPath), nil
+	case "docker":
+		// Import would be: docker.NewRuntime()
+		// For now, return an error until docker is needed
+		return nil, fmt.Errorf("docker runtime: use CLOCHE_RUNTIME=local for local testing")
+	default:
+		return nil, fmt.Errorf("unknown runtime: %s", runtimeType)
 	}
 }
 
