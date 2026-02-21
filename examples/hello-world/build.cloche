@@ -16,7 +16,7 @@ workflow "hello-world" {
 
   step verify {
     run = "test -f dist/index.html && grep -q 'Cloche' dist/index.html && echo 'Verification passed'"
-    results = [pass, fail]
+    results = [success, fail]
   }
 
   init:success -> generate
@@ -28,6 +28,6 @@ workflow "hello-world" {
   build:success -> verify
   build:fail -> abort
 
-  verify:pass -> done
+  verify:success -> done
   verify:fail -> build
 }

@@ -14,7 +14,7 @@ workflow "flaky-retry" {
   step test {
     // Increment counter, fail if count < 2 (simulates flaky test)
     run = "count=$(cat attempt_count) && count=$((count + 1)) && echo $count > attempt_count && echo Test attempt $count && test $count -ge 2"
-    results = [pass, fail]
+    results = [success, fail]
   }
 
   setup:success -> build
@@ -24,6 +24,6 @@ workflow "flaky-retry" {
   build:fail -> abort
 
   // On test failure, retry from build
-  test:pass -> done
+  test:success -> done
   test:fail -> build
 }

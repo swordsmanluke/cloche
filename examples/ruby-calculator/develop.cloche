@@ -6,29 +6,30 @@ workflow "develop" {
 
   step test {
     run = "bundle exec rake test 2>&1"
-    results = [pass, fail]
+    results = [success, fail]
   }
 
   step lint {
     run = "bundle exec rubocop 2>&1"
-    results = [pass, fail]
+    results = [success, fail]
   }
 
   step fix {
     prompt = file("prompts/fix.md")
     max_attempts = "2"
-    results = [fixed, give-up]
+    results = [success, fail, give-up]
   }
 
   implement:success -> test
   implement:fail -> abort
 
-  test:pass -> lint
+  test:success -> lint
   test:fail -> fix
 
-  lint:pass -> done
+  lint:success -> done
   lint:fail -> fix
 
-  fix:fixed -> test
+  fix:success -> test
+  fix:fail -> abort
   fix:give-up -> abort
 }
