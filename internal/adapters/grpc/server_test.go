@@ -76,12 +76,20 @@ func TestServer_RunWorkflow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "hello world", string(promptData))
 
-	// Wait for the background goroutine to finish processing
-	time.Sleep(500 * time.Millisecond)
+	// Poll until the background goroutine finishes processing (up to 5s)
+	var status *pb.GetStatusResponse
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err = srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State == "succeeded" && len(status.StepExecutions) >= 1 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 
 	// Check that the run was tracked and completed
-	status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
-	require.NoError(t, err)
+	require.NotNil(t, status)
 	assert.Equal(t, resp.RunId, status.RunId)
 	assert.Equal(t, "succeeded", status.State)
 	assert.GreaterOrEqual(t, len(status.StepExecutions), 1)
