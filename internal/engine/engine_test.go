@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/cloche-dev/cloche/internal/domain"
@@ -11,11 +12,14 @@ import (
 )
 
 type fakeExecutor struct {
+	mu      sync.Mutex
 	results map[string]string
 	called  []string
 }
 
 func (f *fakeExecutor) Execute(_ context.Context, step *domain.Step) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.called = append(f.called, step.Name)
 	return f.results[step.Name], nil
 }
@@ -119,4 +123,141 @@ func TestEngine_ContextCancellation(t *testing.T) {
 	run, err := eng.Run(ctx, wf)
 	require.Error(t, err)
 	assert.Equal(t, domain.RunStateCancelled, run.State)
+}
+
+func TestEngine_Fanout(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "fanout",
+		Steps: map[string]*domain.Step{
+			"code": {Name: "code", Type: domain.StepTypeAgent, Results: []string{"success"}},
+			"test": {Name: "test", Type: domain.StepTypeScript, Results: []string{"success"}},
+			"lint": {Name: "lint", Type: domain.StepTypeScript, Results: []string{"success"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "code", Result: "success", To: "test"},
+			{From: "code", Result: "success", To: "lint"},
+			{From: "test", Result: "success", To: domain.StepDone},
+			{From: "lint", Result: "success", To: domain.StepDone},
+		},
+		EntryStep: "code",
+	}
+
+	exec := &fakeExecutor{results: map[string]string{
+		"code": "success", "test": "success", "lint": "success",
+	}}
+	eng := engine.New(exec)
+
+	run, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+	// All three steps must have been called
+	exec.mu.Lock()
+	assert.Contains(t, exec.called, "code")
+	assert.Contains(t, exec.called, "test")
+	assert.Contains(t, exec.called, "lint")
+	exec.mu.Unlock()
+}
+
+func TestEngine_CollectAll(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "collect-all",
+		Steps: map[string]*domain.Step{
+			"code":  {Name: "code", Type: domain.StepTypeAgent, Results: []string{"success"}},
+			"test":  {Name: "test", Type: domain.StepTypeScript, Results: []string{"success"}},
+			"lint":  {Name: "lint", Type: domain.StepTypeScript, Results: []string{"success"}},
+			"merge": {Name: "merge", Type: domain.StepTypeScript, Results: []string{"success"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "code", Result: "success", To: "test"},
+			{From: "code", Result: "success", To: "lint"},
+			{From: "merge", Result: "success", To: domain.StepDone},
+		},
+		Collects: []domain.Collect{
+			{
+				Mode: domain.CollectAll,
+				Conditions: []domain.WireCondition{
+					{Step: "test", Result: "success"},
+					{Step: "lint", Result: "success"},
+				},
+				To: "merge",
+			},
+		},
+		EntryStep: "code",
+	}
+
+	exec := &fakeExecutor{results: map[string]string{
+		"code": "success", "test": "success", "lint": "success", "merge": "success",
+	}}
+	eng := engine.New(exec)
+
+	run, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+	exec.mu.Lock()
+	assert.Contains(t, exec.called, "merge")
+	exec.mu.Unlock()
+}
+
+func TestEngine_CollectAny(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "collect-any",
+		Steps: map[string]*domain.Step{
+			"code":  {Name: "code", Type: domain.StepTypeAgent, Results: []string{"success"}},
+			"test":  {Name: "test", Type: domain.StepTypeScript, Results: []string{"success"}},
+			"lint":  {Name: "lint", Type: domain.StepTypeScript, Results: []string{"success"}},
+			"quick": {Name: "quick", Type: domain.StepTypeScript, Results: []string{"success"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "code", Result: "success", To: "test"},
+			{From: "code", Result: "success", To: "lint"},
+			{From: "test", Result: "success", To: domain.StepDone},
+			{From: "lint", Result: "success", To: domain.StepDone},
+			{From: "quick", Result: "success", To: domain.StepDone},
+		},
+		Collects: []domain.Collect{
+			{
+				Mode: domain.CollectAny,
+				Conditions: []domain.WireCondition{
+					{Step: "test", Result: "success"},
+					{Step: "lint", Result: "success"},
+				},
+				To: "quick",
+			},
+		},
+		EntryStep: "code",
+	}
+
+	exec := &fakeExecutor{results: map[string]string{
+		"code": "success", "test": "success", "lint": "success", "quick": "success",
+	}}
+	eng := engine.New(exec)
+
+	run, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+	exec.mu.Lock()
+	assert.Contains(t, exec.called, "quick")
+	exec.mu.Unlock()
+}
+
+func TestEngine_UndeclaredResultAborts(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "undeclared",
+		Steps: map[string]*domain.Step{
+			"code": {Name: "code", Type: domain.StepTypeAgent, Results: []string{"success", "fail"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "code", Result: "success", To: domain.StepDone},
+			{From: "code", Result: "fail", To: domain.StepAbort},
+		},
+		EntryStep: "code",
+	}
+
+	exec := &fakeExecutor{results: map[string]string{"code": "unknown"}}
+	eng := engine.New(exec)
+
+	run, err := eng.Run(context.Background(), wf)
+	require.Error(t, err)
+	assert.Equal(t, domain.RunStateFailed, run.State)
+	assert.Contains(t, err.Error(), "undeclared")
 }

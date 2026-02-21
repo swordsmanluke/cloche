@@ -23,13 +23,13 @@ func TestRunner_ExecutesWorkflowFile(t *testing.T) {
 
   step test {
     run = "echo testing"
-    results = [pass, fail]
+    results = [success, fail]
   }
 
   build:success -> test
   build:fail -> abort
 
-  test:pass -> done
+  test:success -> done
   test:fail -> build
 }`
 	workflowPath := filepath.Join(dir, "simple.cloche")

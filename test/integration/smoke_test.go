@@ -22,13 +22,13 @@ func TestSmoke_AgentRunsWorkflowEndToEnd(t *testing.T) {
 
   step verify {
     run = "test -f built.txt"
-    results = [pass, fail]
+    results = [success, fail]
   }
 
   build:success -> verify
   build:fail -> abort
 
-  verify:pass -> done
+  verify:success -> done
   verify:fail -> abort
 }`
 	workflowPath := dir + "/smoke.cloche"
