@@ -27,10 +27,29 @@ type Wire struct {
 	To     string
 }
 
+type CollectMode string
+
+const (
+	CollectAll CollectMode = "all"
+	CollectAny CollectMode = "any"
+)
+
+type WireCondition struct {
+	Step   string
+	Result string
+}
+
+type Collect struct {
+	Mode       CollectMode
+	Conditions []WireCondition
+	To         string
+}
+
 type Workflow struct {
 	Name      string
 	Steps     map[string]*Step
 	Wiring    []Wire
+	Collects  []Collect
 	EntryStep string
 }
 
