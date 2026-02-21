@@ -59,13 +59,13 @@ func TestPromptAdapter_IncludesFeedback(t *testing.T) {
 	step := &domain.Step{
 		Name:    "fix",
 		Type:    domain.StepTypeAgent,
-		Results: []string{"fixed", "give-up"},
+		Results: []string{"success", "fail", "give-up"},
 		Config:  map[string]string{"prompt": "Fix the code."},
 	}
 
 	result, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "fixed", result)
+	assert.Equal(t, "success", result)
 
 	// Verify feedback was included in the prompt
 	captured, err := os.ReadFile(filepath.Join(dir, "captured_prompt.txt"))
@@ -121,6 +121,51 @@ func TestPromptAdapter_CommandFailure(t *testing.T) {
 	result, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
 	assert.Equal(t, "fail", result)
+}
+
+func TestPromptAdapter_InjectsResultInstructions(t *testing.T) {
+	dir := t.TempDir()
+
+	adapter := &prompt.Adapter{
+		Command: "sh",
+		Args:    []string{"-c", "cat > captured_prompt.txt"},
+	}
+
+	step := &domain.Step{
+		Name:    "analyze",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail", "needs_research"},
+		Config:  map[string]string{"prompt": "Analyze the code."},
+	}
+
+	_, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+
+	captured, err := os.ReadFile(filepath.Join(dir, "captured_prompt.txt"))
+	require.NoError(t, err)
+	assert.Contains(t, string(captured), "CLOCHE_RESULT:success")
+	assert.Contains(t, string(captured), "CLOCHE_RESULT:fail")
+	assert.Contains(t, string(captured), "CLOCHE_RESULT:needs_research")
+}
+
+func TestPromptAdapter_StdoutMarkerSelectsResult(t *testing.T) {
+	dir := t.TempDir()
+
+	adapter := &prompt.Adapter{
+		Command: "sh",
+		Args:    []string{"-c", "cat > /dev/null && echo 'CLOCHE_RESULT:needs_research'"},
+	}
+
+	step := &domain.Step{
+		Name:    "analyze",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail", "needs_research"},
+		Config:  map[string]string{"prompt": "Analyze the code."},
+	}
+
+	result, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "needs_research", result)
 }
 
 func TestPromptAdapter_IncrementsAttemptCount(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/protocol"
 )
 
 type Adapter struct {
@@ -36,7 +37,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		if err == nil {
 			count := readAttemptCount(workDir, step.Name)
 			if count >= max {
-				return resultOrDefault(step.Results, "give-up"), nil
+				return "give-up", nil
 			}
 		}
 	}
@@ -57,14 +58,22 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
-		if _, ok := err.(*exec.ExitError); ok {
-			return resultOrDefault(step.Results, "fail"), nil
+	if runErr := cmd.Run(); runErr != nil {
+		if _, ok := runErr.(*exec.ExitError); ok {
+			markerResult, _, found := protocol.ExtractResult(stdout.Bytes())
+			if found {
+				return markerResult, nil
+			}
+			return "fail", nil
 		}
-		return "", err
+		return "", runErr
 	}
 
-	return resultOrDefault(step.Results, "success"), nil
+	markerResult, _, found := protocol.ExtractResult(stdout.Bytes())
+	if found {
+		return markerResult, nil
+	}
+	return "success", nil
 }
 
 func assemblePrompt(step *domain.Step, workDir string) (string, error) {
@@ -89,6 +98,17 @@ func assemblePrompt(step *domain.Step, workDir string) (string, error) {
 	feedback := readFeedback(workDir)
 	if feedback != "" {
 		parts = append(parts, "## Validation Output\n"+feedback)
+	}
+
+	// 4. Result selection instructions
+	if len(step.Results) > 0 {
+		var resultLines []string
+		resultLines = append(resultLines, "## Result Selection")
+		resultLines = append(resultLines, "When you are finished, output exactly one of the following on its own line:")
+		for _, r := range step.Results {
+			resultLines = append(resultLines, protocol.ResultPrefix+r)
+		}
+		parts = append(parts, strings.Join(resultLines, "\n"))
 	}
 
 	return strings.Join(parts, "\n\n"), nil
@@ -149,16 +169,4 @@ func incrementAttemptCount(workDir, stepName string) {
 	_ = os.MkdirAll(dir, 0755)
 	count := readAttemptCount(workDir, stepName) + 1
 	_ = os.WriteFile(filepath.Join(dir, stepName), []byte(strconv.Itoa(count)), 0644)
-}
-
-func resultOrDefault(results []string, name string) string {
-	for _, r := range results {
-		if r == name {
-			return r
-		}
-	}
-	if len(results) > 0 {
-		return results[0]
-	}
-	return name
 }
