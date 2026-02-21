@@ -90,11 +90,26 @@ func (w *Workflow) Validate() error {
 	return nil
 }
 
-func (w *Workflow) NextStep(stepName, result string) (string, error) {
+// NextSteps returns all target step names wired from the given (stepName, result) pair.
+// Multiple targets indicate fanout — parallel branches launched by the engine.
+func (w *Workflow) NextSteps(stepName, result string) ([]string, error) {
+	var targets []string
 	for _, wire := range w.Wiring {
 		if wire.From == stepName && wire.Result == result {
-			return wire.To, nil
+			targets = append(targets, wire.To)
 		}
 	}
-	return "", fmt.Errorf("workflow %q: no wiring for step %q result %q", w.Name, stepName, result)
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("workflow %q: no wiring for step %q result %q", w.Name, stepName, result)
+	}
+	return targets, nil
+}
+
+// Deprecated: NextStep returns the first target only. Use NextSteps for fanout support.
+func (w *Workflow) NextStep(stepName, result string) (string, error) {
+	targets, err := w.NextSteps(stepName, result)
+	if err != nil {
+		return "", err
+	}
+	return targets[0], nil
 }

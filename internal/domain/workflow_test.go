@@ -97,7 +97,7 @@ func TestWorkflow_Validate_NoEntryStep(t *testing.T) {
 	assert.Contains(t, err.Error(), "entry")
 }
 
-func TestWorkflow_NextStep(t *testing.T) {
+func TestWorkflow_NextSteps(t *testing.T) {
 	wf := &domain.Workflow{
 		Name: "test-workflow",
 		Steps: map[string]*domain.Step{
@@ -111,14 +111,37 @@ func TestWorkflow_NextStep(t *testing.T) {
 		EntryStep: "code",
 	}
 
-	next, err := wf.NextStep("code", "success")
+	next, err := wf.NextSteps("code", "success")
 	require.NoError(t, err)
-	assert.Equal(t, "check", next)
+	assert.Equal(t, []string{"check"}, next)
 
-	next, err = wf.NextStep("check", "pass")
+	next, err = wf.NextSteps("check", "pass")
 	require.NoError(t, err)
-	assert.Equal(t, domain.StepDone, next)
+	assert.Equal(t, []string{domain.StepDone}, next)
 
-	_, err = wf.NextStep("code", "nonexistent")
+	next, err = wf.NextSteps("code", "nonexistent")
 	assert.Error(t, err)
+	assert.Nil(t, next)
+}
+
+func TestWorkflow_NextSteps_Fanout(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "fanout",
+		Steps: map[string]*domain.Step{
+			"code": {Name: "code", Type: domain.StepTypeAgent, Results: []string{"success"}},
+			"test": {Name: "test", Type: domain.StepTypeScript, Results: []string{"pass"}},
+			"lint": {Name: "lint", Type: domain.StepTypeScript, Results: []string{"pass"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "code", Result: "success", To: "test"},
+			{From: "code", Result: "success", To: "lint"},
+			{From: "test", Result: "pass", To: domain.StepDone},
+			{From: "lint", Result: "pass", To: domain.StepDone},
+		},
+		EntryStep: "code",
+	}
+
+	next, err := wf.NextSteps("code", "success")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"test", "lint"}, next)
 }
