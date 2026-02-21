@@ -61,7 +61,7 @@ func TestServer_RunWorkflow(t *testing.T) {
 
 	// Use "sh" as the agent binary so it runs: sh test.cloche
 	rt := local.NewRuntime("sh")
-	srv := server.NewClocheServerWithCaptures(store, store, rt)
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
 
 	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
 		WorkflowName: "test",

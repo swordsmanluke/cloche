@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -27,13 +28,36 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		"--workdir", "/workspace",
 	}
 
+	// Bind-mount project directory into container
+	if cfg.ProjectDir != "" {
+		args = append(args, "-v", cfg.ProjectDir+":/workspace")
+	}
+
+	// Pass ANTHROPIC_API_KEY into container if set
+	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
+		args = append(args, "-e", "ANTHROPIC_API_KEY")
+	}
+
+	// Mount ~/.claude config directory for CLI auth (OAuth session reuse)
+	// Container runs as "agent" user with home /home/agent
+	if home, err := os.UserHomeDir(); err == nil {
+		claudeDir := home + "/.claude"
+		if _, err := os.Stat(claudeDir); err == nil {
+			args = append(args, "-v", claudeDir+":/home/agent/.claude")
+		}
+		claudeJSON := home + "/.claude.json"
+		if _, err := os.Stat(claudeJSON); err == nil {
+			args = append(args, "-v", claudeJSON+":/home/agent/.claude.json:ro")
+		}
+	}
+
 	if len(cfg.NetworkAllow) == 0 {
 		args = append(args, "--network", "none")
 	}
 
 	containerCmd := cfg.Cmd
 	if len(containerCmd) == 0 {
-		containerCmd = []string{"cloche-agent", cfg.WorkflowName}
+		containerCmd = []string{"cloche-agent", cfg.WorkflowName + ".cloche"}
 	}
 
 	args = append(args, cfg.Image)

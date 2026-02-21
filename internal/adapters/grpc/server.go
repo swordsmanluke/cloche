@@ -19,11 +19,12 @@ import (
 
 type ClocheServer struct {
 	pb.UnimplementedClocheServiceServer
-	store     ports.RunStore
-	captures  ports.CaptureStore
-	container ports.ContainerRuntime
-	mu        sync.Mutex
-	runIDs    map[string]string // run_id -> container_id
+	store        ports.RunStore
+	captures     ports.CaptureStore
+	container    ports.ContainerRuntime
+	defaultImage string
+	mu           sync.Mutex
+	runIDs       map[string]string // run_id -> container_id
 }
 
 func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *ClocheServer {
@@ -34,12 +35,13 @@ func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *Cl
 	}
 }
 
-func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureStore, container ports.ContainerRuntime) *ClocheServer {
+func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureStore, container ports.ContainerRuntime, defaultImage string) *ClocheServer {
 	return &ClocheServer{
-		store:     store,
-		captures:  captures,
-		container: container,
-		runIDs:    make(map[string]string),
+		store:        store,
+		captures:     captures,
+		container:    container,
+		defaultImage: defaultImage,
+		runIDs:       make(map[string]string),
 	}
 }
 
@@ -66,11 +68,18 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		return nil, fmt.Errorf("creating run: %w", err)
 	}
 
+	// Resolve image: request-level override, then server default
+	image := req.Image
+	if image == "" {
+		image = s.defaultImage
+	}
+
 	// Start agent process
 	containerID, err := s.container.Start(ctx, ports.ContainerConfig{
-		Image:        req.Image,
+		Image:        image,
 		WorkflowName: req.WorkflowName,
 		ProjectDir:   req.ProjectDir,
+		NetworkAllow: []string{"*"},
 	})
 	if err != nil {
 		run.Complete(domain.RunStateFailed)

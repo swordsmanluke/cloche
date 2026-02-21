@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
+	"github.com/cloche-dev/cloche/internal/adapters/docker"
 	adaptgrpc "github.com/cloche-dev/cloche/internal/adapters/grpc"
 	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
@@ -40,7 +41,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	srv := adaptgrpc.NewClocheServerWithCaptures(store, store, runtime)
+	defaultImage := os.Getenv("CLOCHE_IMAGE")
+	if defaultImage == "" {
+		defaultImage = "cloche-agent:latest"
+	}
+
+	srv := adaptgrpc.NewClocheServerWithCaptures(store, store, runtime, defaultImage)
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterClocheServiceServer(grpcServer, srv)
@@ -85,9 +91,7 @@ func initRuntime() (ports.ContainerRuntime, error) {
 		}
 		return local.NewRuntime(agentPath), nil
 	case "docker":
-		// Import would be: docker.NewRuntime()
-		// For now, return an error until docker is needed
-		return nil, fmt.Errorf("docker runtime: use CLOCHE_RUNTIME=local for local testing")
+		return docker.NewRuntime()
 	default:
 		return nil, fmt.Errorf("unknown runtime: %s", runtimeType)
 	}

@@ -21,7 +21,7 @@ type Adapter struct {
 func New() *Adapter {
 	return &Adapter{
 		Command: "claude",
-		Args:    []string{"-p", "--output-format", "text"},
+		Args:    []string{"-p", "--output-format", "text", "--dangerously-skip-permissions"},
 	}
 }
 

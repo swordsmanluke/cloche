@@ -1,4 +1,4 @@
-.PHONY: build test lint clean proto
+.PHONY: build test lint clean proto docker-build
 
 build:
 	go build -o bin/cloche ./cmd/cloche
@@ -20,6 +20,9 @@ proto:
 		--go_out=api/clochepb --go_opt=paths=source_relative \
 		--go-grpc_out=api/clochepb --go-grpc_opt=paths=source_relative \
 		api/proto/cloche/v1/cloche.proto
+
+docker-build:
+	docker build -t cloche-agent:latest .
 
 clean:
 	rm -rf bin/
