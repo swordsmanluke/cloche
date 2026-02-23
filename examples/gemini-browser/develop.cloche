@@ -1,0 +1,50 @@
+workflow "develop" {
+  step design {
+    prompt = file("prompts/design.md")
+    results = [success, fail]
+  }
+
+  step implement {
+    prompt = file("prompts/implement.md")
+    results = [success, fail]
+  }
+
+  step test {
+    run = "cargo test 2>&1"
+    results = [success, fail]
+  }
+
+  step lint {
+    run = "cargo clippy -- -D warnings 2>&1"
+    results = [success, fail]
+  }
+
+  step fmt {
+    run = "cargo fmt --check 2>&1"
+    results = [success, fail]
+  }
+
+  step fix {
+    prompt = file("prompts/fix.md")
+    max_attempts = "3"
+    results = [success, fail, give-up]
+  }
+
+  design:success -> implement
+  design:fail -> abort
+
+  implement:success -> test
+  implement:fail -> abort
+
+  test:success -> lint
+  test:success -> fmt
+  test:fail -> fix
+
+  lint:fail -> fix
+  fmt:fail -> fix
+  collect all(lint:success, fmt:success) -> done
+
+  fix:success -> test
+  fix:fail -> abort
+  fix:give-up -> abort
+}
