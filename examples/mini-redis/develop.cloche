@@ -1,0 +1,50 @@
+workflow "develop" {
+  step design {
+    prompt = file("prompts/design.md")
+    results = [success, fail]
+  }
+
+  step implement {
+    prompt = file("prompts/implement.md")
+    results = [success, fail]
+  }
+
+  step test {
+    run = "make clean && make test 2>&1"
+    results = [success, fail]
+  }
+
+  step lint {
+    run = "cppcheck --enable=all --error-exitcode=1 --suppress=missingIncludeSystem --suppress=unmatchedSuppression --inline-suppr src/ 2>&1"
+    results = [success, fail]
+  }
+
+  step valgrind {
+    run = "make clean && make test_bin 2>&1 && valgrind --leak-check=full --errors-for-leak-kinds=all --error-exitcode=1 ./test_runner 2>&1"
+    results = [success, fail]
+  }
+
+  step fix {
+    prompt = file("prompts/fix.md")
+    max_attempts = "4"
+    results = [success, fail, give-up]
+  }
+
+  design:success -> implement
+  design:fail -> abort
+
+  implement:success -> test
+  implement:fail -> abort
+
+  test:success -> lint
+  test:success -> valgrind
+  test:fail -> fix
+
+  lint:fail -> fix
+  valgrind:fail -> fix
+  collect all(lint:success, valgrind:success) -> done
+
+  fix:success -> test
+  fix:fail -> abort
+  fix:give-up -> abort
+}
