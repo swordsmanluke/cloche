@@ -51,6 +51,24 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		}
 	}
 
+	// Support extra volume mounts via CLOCHE_EXTRA_MOUNTS (comma-separated host:container pairs)
+	if mounts := os.Getenv("CLOCHE_EXTRA_MOUNTS"); mounts != "" {
+		for _, m := range strings.Split(mounts, ",") {
+			if strings.Contains(m, ":") {
+				args = append(args, "-v", m)
+			}
+		}
+	}
+
+	// Support extra env vars via CLOCHE_EXTRA_ENV (comma-separated KEY=VALUE pairs)
+	if extraEnv := os.Getenv("CLOCHE_EXTRA_ENV"); extraEnv != "" {
+		for _, e := range strings.Split(extraEnv, ",") {
+			if strings.Contains(e, "=") {
+				args = append(args, "-e", e)
+			}
+		}
+	}
+
 	if len(cfg.NetworkAllow) == 0 {
 		args = append(args, "--network", "none")
 	}
