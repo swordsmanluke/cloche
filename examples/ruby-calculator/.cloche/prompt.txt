@@ -1,0 +1,14 @@
+Build a Ruby calculator application that parses and evaluates arithmetic expressions from string input. Requirements:
+
+1. A Calculator class with an evaluate(expression) method that takes a string like "2 + 3 * (4 - 1)" and returns the numeric result as a float
+2. Support operators: +, -, *, / with correct operator precedence (* and / bind tighter than + and -)
+3. Support parentheses for grouping subexpressions
+4. Support integer and decimal numbers, including negative numbers like -5 or -(3+2)
+5. Raise meaningful errors for: mismatched parentheses, division by zero, invalid tokens
+6. Use a recursive descent parser (tokenizer -> parser -> evaluator), not eval()
+7. A Gemfile listing minitest and rubocop as dependencies
+8. A Rakefile with default task running tests
+9. Comprehensive minitest tests covering: basic ops, precedence, nested parens, decimals, negative numbers, whitespace handling, and all error cases
+10. A .rubocop.yml with reasonable defaults
+
+All source files go in lib/, tests in test/.

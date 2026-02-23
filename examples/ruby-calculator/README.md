@@ -80,6 +80,48 @@ implement → test → lint ──────┐
 | quality | success | still clean |
 | **collect all** | **done** | ~4 minutes total |
 
+## Run artifacts
+
+The `.cloche/` directory is created at runtime and contains the full state of
+the workflow run. It's checked in here as documentation of how the run
+progressed.
+
+```
+.cloche/
+  prompt.txt              # The user prompt passed via --prompt
+  output/
+    test.log              # stdout from the test step (final pass)
+    lint.log              # stdout from the lint step (final pass)
+    quality.log           # stdout from the quality step
+  attempt_count/
+    implement             # "1" — implement ran once
+    fix                   # "1" — fix ran once (lint failed, fix succeeded)
+```
+
+`prompt.txt` is the input — the user's request injected into the agent's prompt
+template. The `output/*.log` files are the outputs — captured from each script
+step and fed back to the fix agent when something fails. `attempt_count/` tracks
+how many times each step has been invoked, used to enforce `max_attempts` limits.
+
+The logs here reflect the **final successful pass** (after the fix step resolved
+the lint issues):
+
+**test.log** — 45 tests, 47 assertions, 0 failures:
+```
+Finished in 0.002216s, 20305.9061 runs/s, 21208.3908 assertions/s.
+45 runs, 47 assertions, 0 failures, 0 errors, 0 skips
+```
+
+**lint.log** — clean:
+```
+4 files inspected, no offenses detected
+```
+
+**quality.log** — no diff to score (all files were new/untracked):
+```
+No changes to score.
+```
+
 ## Running locally
 
 ```
