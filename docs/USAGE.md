@@ -301,7 +301,7 @@ The daemon is configured with environment variables:
 |----------|---------|-------------|
 | `CLOCHE_LISTEN` | `unix:///tmp/cloche.sock` | Listen address (unix socket or TCP) |
 | `CLOCHE_DB` | `cloche.db` | SQLite database path |
-| `CLOCHE_RUNTIME` | `local` | `local` (subprocess) or `docker` |
+| `CLOCHE_RUNTIME` | `docker` | `docker` (container) or `local` (subprocess, for dev) |
 | `CLOCHE_IMAGE` | `cloche-agent:latest` | Default Docker image |
 | `CLOCHE_AGENT_PATH` | (auto-detected) | Path to `cloche-agent` binary (local runtime) |
 | `ANTHROPIC_API_KEY` | — | Passed into Docker containers |

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/cloche-dev/cloche/internal/adapters/agents/generic"
 	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
@@ -51,6 +52,10 @@ func (r *Runner) Run(ctx context.Context) error {
 		generic: genericAdapter,
 		prompt:  promptAdapter,
 	}
+
+	// Reset per-run state from any previous run
+	_ = os.RemoveAll(filepath.Join(r.cfg.WorkDir, ".cloche", "attempt_count"))
+	_ = os.RemoveAll(filepath.Join(r.cfg.WorkDir, ".cloche", "output"))
 
 	eng := engine.New(executor)
 	eng.SetStatusHandler(&statusReporter{writer: statusWriter})

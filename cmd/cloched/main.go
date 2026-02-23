@@ -74,7 +74,7 @@ func main() {
 func initRuntime() (ports.ContainerRuntime, error) {
 	runtimeType := os.Getenv("CLOCHE_RUNTIME")
 	if runtimeType == "" {
-		runtimeType = "local"
+		runtimeType = "docker"
 	}
 
 	switch runtimeType {
