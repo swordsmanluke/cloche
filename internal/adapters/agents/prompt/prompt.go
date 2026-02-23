@@ -61,19 +61,23 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	if runErr := cmd.Run(); runErr != nil {
 		if _, ok := runErr.(*exec.ExitError); ok {
 			markerResult, _, found := protocol.ExtractResult(stdout.Bytes())
+			result := "fail"
 			if found {
-				return markerResult, nil
+				result = markerResult
 			}
-			return "fail", nil
+			protocol.AppendHistory(workDir, step.Name, result, true, nil)
+			return result, nil
 		}
 		return "", runErr
 	}
 
 	markerResult, _, found := protocol.ExtractResult(stdout.Bytes())
+	result := "success"
 	if found {
-		return markerResult, nil
+		result = markerResult
 	}
-	return "success", nil
+	protocol.AppendHistory(workDir, step.Name, result, true, nil)
+	return result, nil
 }
 
 func assemblePrompt(step *domain.Step, workDir string) (string, error) {

@@ -55,13 +55,17 @@ func (r *Runner) Run(ctx context.Context) error {
 	eng := engine.New(executor)
 	eng.SetStatusHandler(&statusReporter{writer: statusWriter})
 
+	protocol.AppendHistoryMarker(r.cfg.WorkDir, "workflow:start "+wf.Name)
+
 	run, err := eng.Run(ctx, wf)
 	if err != nil {
+		protocol.AppendHistoryMarker(r.cfg.WorkDir, "workflow:end "+wf.Name+" result:failed")
 		statusWriter.Error("", err.Error())
 		statusWriter.RunCompleted("failed")
 		return err
 	}
 
+	protocol.AppendHistoryMarker(r.cfg.WorkDir, "workflow:end "+wf.Name+" result:"+string(run.State))
 	statusWriter.RunCompleted(string(run.State))
 	return nil
 }

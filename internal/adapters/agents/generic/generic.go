@@ -36,18 +36,24 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		_ = os.WriteFile(filepath.Join(outputDir, step.Name+".log"), cleanOutput, 0644)
 	}
 
+	isAgent := step.Type == domain.StepTypeAgent
+
 	if err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
+			result := "fail"
 			if found {
-				return markerResult, nil
+				result = markerResult
 			}
-			return "fail", nil
+			protocol.AppendHistory(workDir, step.Name, result, isAgent, cleanOutput)
+			return result, nil
 		}
 		return "", err
 	}
 
+	result := "success"
 	if found {
-		return markerResult, nil
+		result = markerResult
 	}
-	return "success", nil
+	protocol.AppendHistory(workDir, step.Name, result, isAgent, cleanOutput)
+	return result, nil
 }
