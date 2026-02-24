@@ -1,2 +1,17 @@
 .env
 bin/
+.cloche/
+
+# Built binaries
+cloche
+cloched
+cloche-agent
+
+# Local state
+*.db
+
+# Example build artifacts
+examples/**/target/
+examples/**/build/
+examples/mini-redis/mini-redis
+examples/mini-redis/test_runner
