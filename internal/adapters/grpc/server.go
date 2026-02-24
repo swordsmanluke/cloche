@@ -132,17 +132,20 @@ func (s *ClocheServer) trackRun(runID, containerID string) {
 			run.RecordStepStart(msg.StepName)
 			if s.captures != nil {
 				_ = s.captures.SaveCapture(ctx, runID, &domain.StepExecution{
-					StepName:  msg.StepName,
-					StartedAt: msg.Timestamp,
+					StepName:   msg.StepName,
+					StartedAt:  msg.Timestamp,
+					PromptText: msg.PromptText,
 				})
 			}
 		case protocol.MsgStepCompleted:
 			run.RecordStepComplete(msg.StepName, msg.Result)
 			if s.captures != nil {
 				_ = s.captures.SaveCapture(ctx, runID, &domain.StepExecution{
-					StepName:    msg.StepName,
-					Result:      msg.Result,
-					CompletedAt: msg.Timestamp,
+					StepName:      msg.StepName,
+					Result:        msg.Result,
+					CompletedAt:   msg.Timestamp,
+					AgentOutput:   msg.AgentOutput,
+					AttemptNumber: msg.AttemptNumber,
 				})
 			}
 		case protocol.MsgRunCompleted:

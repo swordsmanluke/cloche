@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 
 	"github.com/cloche-dev/cloche/internal/adapters/agents/generic"
 	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
@@ -24,11 +25,16 @@ type RunnerConfig struct {
 }
 
 type Runner struct {
-	cfg RunnerConfig
+	cfg      RunnerConfig
+	mu       sync.Mutex
+	captured map[string]prompt.CapturedData
 }
 
 func NewRunner(cfg RunnerConfig) *Runner {
-	return &Runner{cfg: cfg}
+	return &Runner{
+		cfg:      cfg,
+		captured: make(map[string]prompt.CapturedData),
+	}
 }
 
 func (r *Runner) Run(ctx context.Context) error {
@@ -50,6 +56,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 
 	executor := &stepExecutor{
+		runner:  r,
 		workDir: r.cfg.WorkDir,
 		generic: genericAdapter,
 		prompt:  promptAdapter,
@@ -60,7 +67,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	_ = os.RemoveAll(filepath.Join(r.cfg.WorkDir, ".cloche", "output"))
 
 	eng := engine.New(executor)
-	eng.SetStatusHandler(&statusReporter{writer: statusWriter})
+	eng.SetStatusHandler(&statusReporter{writer: statusWriter, runner: r})
 
 	protocol.AppendHistoryMarker(r.cfg.WorkDir, "workflow:start "+wf.Name)
 
@@ -108,6 +115,7 @@ func (r *Runner) pushResults(ctx context.Context, workflowName string) {
 }
 
 type stepExecutor struct {
+	runner  *Runner
 	workDir string
 	generic *generic.Adapter
 	prompt  *prompt.Adapter
@@ -125,6 +133,11 @@ func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, 
 			if cmd := step.Config["agent_command"]; cmd != "" {
 				e.prompt.Command = cmd
 			}
+			e.prompt.OnCapture = func(c prompt.CapturedData) {
+				e.runner.mu.Lock()
+				e.runner.captured[step.Name] = c
+				e.runner.mu.Unlock()
+			}
 			return e.prompt.Execute(ctx, step, e.workDir)
 		}
 		return "", fmt.Errorf("agent step %q requires either 'run' or 'prompt' config", step.Name)
@@ -135,6 +148,7 @@ func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, 
 
 type statusReporter struct {
 	writer *protocol.StatusWriter
+	runner *Runner
 }
 
 func (s *statusReporter) OnStepStart(_ *domain.Run, step *domain.Step) {
@@ -142,7 +156,18 @@ func (s *statusReporter) OnStepStart(_ *domain.Run, step *domain.Step) {
 }
 
 func (s *statusReporter) OnStepComplete(_ *domain.Run, step *domain.Step, result string) {
-	s.writer.StepCompleted(step.Name, result)
+	s.runner.mu.Lock()
+	c, ok := s.runner.captured[step.Name]
+	if ok {
+		delete(s.runner.captured, step.Name)
+	}
+	s.runner.mu.Unlock()
+
+	if ok {
+		s.writer.StepCompletedWithCapture(step.Name, result, c.AgentOutput, c.AttemptNumber)
+	} else {
+		s.writer.StepCompleted(step.Name, result)
+	}
 }
 
 func (s *statusReporter) OnRunComplete(_ *domain.Run) {}
