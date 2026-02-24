@@ -1,0 +1,42 @@
+workflow "develop" {
+  step implement {
+    prompt = file("prompts/implement.md")
+    results = [success, fail]
+  }
+
+  step test {
+    run = "go test ./... 2>&1"
+    results = [success, fail]
+  }
+
+  step vet {
+    run = "go vet ./... 2>&1"
+    results = [success, fail]
+  }
+
+  step build {
+    run = "go build ./cmd/cloche && go build ./cmd/cloched && go build ./cmd/cloche-agent 2>&1"
+    results = [success, fail]
+  }
+
+  step fix {
+    prompt = file("prompts/fix.md")
+    max_attempts = "2"
+    results = [success, fail, give-up]
+  }
+
+  implement:success -> test
+  implement:fail -> abort
+
+  test:success -> vet
+  test:success -> build
+  test:fail -> fix
+
+  vet:fail -> fix
+  build:fail -> fix
+  collect all(vet:success, build:success) -> done
+
+  fix:success -> test
+  fix:fail -> abort
+  fix:give-up -> abort
+}
