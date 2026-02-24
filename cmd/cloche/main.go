@@ -18,6 +18,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Commands that don't need a daemon connection
+	switch os.Args[1] {
+	case "init":
+		cmdInit(os.Args[2:])
+		return
+	}
+
+	// Commands that need a daemon connection
 	addr := os.Getenv("CLOCHE_ADDR")
 	if addr == "" {
 		addr = "unix:///tmp/cloche.sock"
@@ -53,10 +61,11 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `usage: cloche <command> [args]
 
 Commands:
-  run --workflow <name> [--prompt "..."]  Launch a workflow run
-  status <run-id>                         Check run status
-  list                                    List all runs
-  stop <run-id>                           Stop a running workflow
+  init [--workflow <name>] [--image <base>]  Initialize a Cloche project
+  run --workflow <name> [--prompt "..."]     Launch a workflow run
+  status <run-id>                            Check run status
+  list                                       List all runs
+  stop <run-id>                              Stop a running workflow
 `)
 }
 
