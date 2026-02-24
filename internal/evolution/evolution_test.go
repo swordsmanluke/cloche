@@ -234,10 +234,188 @@ func TestAuditLoggerUpdatesKnowledge(t *testing.T) {
 
 // --- LLM Client tests ---
 
+// --- Curator tests ---
+
+func TestCuratorUpdatesPrompt(t *testing.T) {
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "prompts", "implement.md")
+	os.MkdirAll(filepath.Join(dir, "prompts"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
+	os.WriteFile(promptPath, []byte("# Implementation Prompt\n\nWrite good code.\n"), 0644)
+
+	updatedContent := "# Implementation Prompt\n\nWrite good code.\n\n## Learned Rules\n\n- Always sanitize user inputs\n"
+	llm := &fakeLLM{response: updatedContent}
+
+	audit := &AuditLogger{ProjectDir: dir}
+	c := &Curator{LLM: llm, Audit: audit}
+	lesson := &Lesson{
+		ID:              "lesson-001",
+		Category:        "prompt_improvement",
+		Target:          "prompts/implement.md",
+		Insight:         "XSS vulnerabilities in form handlers",
+		SuggestedAction: "Add sanitization rule",
+	}
+
+	change, err := c.Apply(context.Background(), dir, lesson)
+	require.NoError(t, err)
+	assert.Equal(t, "prompt_update", change.Type)
+	assert.Equal(t, "prompts/implement.md", change.File)
+	assert.NotEmpty(t, change.Snapshot)
+
+	content, err := os.ReadFile(promptPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "sanitize user inputs")
+}
+
+// --- Script Generator tests ---
+
+func TestScriptGeneratorCreatesScript(t *testing.T) {
+	dir := t.TempDir()
+
+	llm := &fakeLLM{response: `{"path": "scripts/security-scan.sh", "content": "#!/bin/bash\ngosec ./..."}`}
+	g := &ScriptGenerator{LLM: llm}
+
+	lesson := &Lesson{
+		ID:              "lesson-001",
+		Category:        "new_step",
+		StepType:        "script",
+		Insight:         "No security scanning",
+		SuggestedAction: "Add gosec security scan",
+	}
+
+	result, err := g.Generate(context.Background(), dir, lesson)
+	require.NoError(t, err)
+	assert.Equal(t, "scripts/security-scan.sh", result.Path)
+
+	content, err := os.ReadFile(filepath.Join(dir, "scripts", "security-scan.sh"))
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "gosec")
+
+	info, err := os.Stat(filepath.Join(dir, "scripts", "security-scan.sh"))
+	require.NoError(t, err)
+	assert.NotZero(t, info.Mode()&0111) // executable
+}
+
+// --- LLM Client tests ---
+
 func TestCommandLLMClient(t *testing.T) {
 	c := &CommandLLMClient{Command: "cat", Args: []string{}}
 	result, err := c.Complete(context.Background(), "system", "user prompt")
 	require.NoError(t, err)
 	assert.Contains(t, result, "user prompt")
 	assert.Contains(t, result, "system")
+}
+
+// --- Orchestrator tests ---
+
+// scriptedLLM returns responses in order.
+type scriptedLLM struct {
+	responses []string
+	idx       int
+}
+
+func (s *scriptedLLM) Complete(ctx context.Context, system, user string) (string, error) {
+	resp := s.responses[s.idx]
+	s.idx++
+	return resp, nil
+}
+
+func TestOrchestratorEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+
+	// Set up project structure
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
+	os.MkdirAll(filepath.Join(dir, "prompts"), 0755)
+	os.WriteFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.md"),
+		[]byte("# Knowledge Base: develop\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "prompts", "implement.md"),
+		[]byte("Write good code.\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "develop.cloche"),
+		[]byte(`workflow "develop" {
+  step implement {
+    prompt = file("prompts/implement.md")
+    results = [success, fail]
+  }
+  step test {
+    run = "make test"
+    results = [success, fail]
+  }
+  implement:success -> test
+  test:success -> done
+  test:fail -> abort
+}`), 0644)
+
+	// Fake LLM that returns appropriate responses per stage
+	llm := &scriptedLLM{
+		responses: []string{
+			// Classifier
+			`{"classification": "bug"}`,
+			// Reflector
+			`{"lessons": [{"id": "L001", "category": "prompt_improvement", "target": "prompts/implement.md", "insight": "XSS pattern", "suggested_action": "Add sanitization rule", "evidence": ["run-1"], "confidence": "high"}]}`,
+			// Curator
+			"Write good code.\n\n## Learned Rules\n\n- Always sanitize user inputs\n",
+		},
+	}
+
+	orch := NewOrchestrator(OrchestratorConfig{
+		ProjectDir:    dir,
+		WorkflowName:  "develop",
+		LLM:           llm,
+		MinConfidence: "medium",
+	})
+
+	result, err := orch.Run(context.Background(), "run-1", nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "bug", result.Classification)
+	require.Len(t, result.Changes, 1)
+	assert.Equal(t, "prompt_update", result.Changes[0].Type)
+
+	// Verify prompt was actually updated
+	content, _ := os.ReadFile(filepath.Join(dir, "prompts", "implement.md"))
+	assert.Contains(t, string(content), "sanitize user inputs")
+
+	// Verify audit log was written
+	logContent, _ := os.ReadFile(filepath.Join(dir, ".cloche", "evolution", "log.jsonl"))
+	assert.Contains(t, string(logContent), "prompt_update")
+	assert.Contains(t, string(logContent), "XSS pattern")
+
+	// Verify knowledge base was updated
+	kbContent, _ := os.ReadFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.md"))
+	assert.Contains(t, string(kbContent), "L001")
+}
+
+func TestOrchestratorNoLessons(t *testing.T) {
+	dir := t.TempDir()
+
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
+	os.WriteFile(filepath.Join(dir, "develop.cloche"),
+		[]byte(`workflow "develop" {
+  step s {
+    run = "echo hi"
+    results = [success]
+  }
+  s:success -> done
+}`), 0644)
+
+	llm := &scriptedLLM{
+		responses: []string{
+			// Classifier
+			`{"classification": "feature"}`,
+			// Reflector — no lessons
+			`{"lessons": []}`,
+		},
+	}
+
+	orch := NewOrchestrator(OrchestratorConfig{
+		ProjectDir:    dir,
+		WorkflowName:  "develop",
+		LLM:           llm,
+		MinConfidence: "medium",
+	})
+
+	result, err := orch.Run(context.Background(), "run-1", nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "feature", result.Classification)
+	assert.Empty(t, result.Changes)
 }
