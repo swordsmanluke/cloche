@@ -14,6 +14,7 @@ import (
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/evolution"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/protocol"
 )
@@ -24,6 +25,7 @@ type ClocheServer struct {
 	captures     ports.CaptureStore
 	container    ports.ContainerRuntime
 	defaultImage string
+	evolution    *evolution.Trigger
 	mu           sync.Mutex
 	runIDs       map[string]string // run_id -> container_id
 }
@@ -44,6 +46,11 @@ func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureSto
 		defaultImage: defaultImage,
 		runIDs:       make(map[string]string),
 	}
+}
+
+// SetEvolution attaches an evolution trigger to the server.
+func (s *ClocheServer) SetEvolution(trigger *evolution.Trigger) {
+	s.evolution = trigger
 }
 
 func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
@@ -99,12 +106,12 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	_ = s.store.UpdateRun(ctx, run)
 
 	// Launch background goroutine to track status
-	go s.trackRun(runID, containerID)
+	go s.trackRun(runID, containerID, req.ProjectDir, req.WorkflowName)
 
 	return &pb.RunWorkflowResponse{RunId: runID}, nil
 }
 
-func (s *ClocheServer) trackRun(runID, containerID string) {
+func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName string) {
 	ctx := context.Background()
 
 	// Attach to agent output
@@ -132,17 +139,20 @@ func (s *ClocheServer) trackRun(runID, containerID string) {
 			run.RecordStepStart(msg.StepName)
 			if s.captures != nil {
 				_ = s.captures.SaveCapture(ctx, runID, &domain.StepExecution{
-					StepName:  msg.StepName,
-					StartedAt: msg.Timestamp,
+					StepName:   msg.StepName,
+					StartedAt:  msg.Timestamp,
+					PromptText: msg.PromptText,
 				})
 			}
 		case protocol.MsgStepCompleted:
 			run.RecordStepComplete(msg.StepName, msg.Result)
 			if s.captures != nil {
 				_ = s.captures.SaveCapture(ctx, runID, &domain.StepExecution{
-					StepName:    msg.StepName,
-					Result:      msg.Result,
-					CompletedAt: msg.Timestamp,
+					StepName:      msg.StepName,
+					Result:        msg.Result,
+					CompletedAt:   msg.Timestamp,
+					AgentOutput:   msg.AgentOutput,
+					AttemptNumber: msg.AttemptNumber,
 				})
 			}
 		case protocol.MsgRunCompleted:
@@ -175,6 +185,11 @@ func (s *ClocheServer) trackRun(runID, containerID string) {
 			run.Complete(domain.RunStateFailed)
 		}
 		_ = s.store.UpdateRun(ctx, run)
+	}
+
+	// Fire evolution trigger if configured
+	if s.evolution != nil {
+		s.evolution.Fire(projectDir, workflowName, runID)
 	}
 
 	// Cleanup mapping

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -13,6 +14,8 @@ import (
 	adaptgrpc "github.com/cloche-dev/cloche/internal/adapters/grpc"
 	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
+	"github.com/cloche-dev/cloche/internal/config"
+	"github.com/cloche-dev/cloche/internal/evolution"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"google.golang.org/grpc"
 )
@@ -47,6 +50,12 @@ func main() {
 	}
 
 	srv := adaptgrpc.NewClocheServerWithCaptures(store, store, runtime, defaultImage)
+
+	// Set up evolution trigger
+	evoTrigger := initEvolution(store, store)
+	if evoTrigger != nil {
+		srv.SetEvolution(evoTrigger)
+	}
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterClocheServiceServer(grpcServer, srv)
@@ -95,6 +104,45 @@ func initRuntime() (ports.ContainerRuntime, error) {
 	default:
 		return nil, fmt.Errorf("unknown runtime: %s", runtimeType)
 	}
+}
+
+func initEvolution(evoStore ports.EvolutionStore, capStore ports.CaptureStore) *evolution.Trigger {
+	// Load config from working directory (daemon-level defaults)
+	cfg, err := config.Load(".")
+	if err != nil || !cfg.Evolution.Enabled {
+		return nil
+	}
+
+	llmCmd := os.Getenv("CLOCHE_LLM_COMMAND")
+	if llmCmd == "" {
+		return nil
+	}
+
+	trigger := evolution.NewTrigger(evolution.TriggerConfig{
+		DebounceSeconds: cfg.Evolution.DebounceSeconds,
+		RunFunc: func(projectDir, workflowName, runID string) {
+			// Load per-project config for confidence threshold
+			projCfg, err := config.Load(projectDir)
+			if err != nil {
+				projCfg = cfg // fall back to daemon config
+			}
+
+			llm := &evolution.CommandLLMClient{Command: llmCmd}
+			orch := evolution.NewOrchestrator(evolution.OrchestratorConfig{
+				ProjectDir:    projectDir,
+				WorkflowName:  workflowName,
+				LLM:           llm,
+				MinConfidence: projCfg.Evolution.MinConfidence,
+			})
+
+			ctx := context.Background()
+			if _, err := orch.Run(ctx, runID, evoStore, capStore); err != nil {
+				fmt.Fprintf(os.Stderr, "evolution error for %s/%s: %v\n", projectDir, workflowName, err)
+			}
+		},
+	})
+
+	return trigger
 }
 
 func listen(addr string) (net.Listener, error) {

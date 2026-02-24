@@ -168,6 +168,36 @@ func TestPromptAdapter_StdoutMarkerSelectsResult(t *testing.T) {
 	assert.Equal(t, "needs_research", result)
 }
 
+func TestExecuteCapturesData(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".cloche"), 0755)
+	os.WriteFile(filepath.Join(dir, ".cloche", "prompt.txt"), []byte("user request"), 0644)
+
+	var captured prompt.CapturedData
+	a := &prompt.Adapter{
+		Command: "sh",
+		Args:    []string{"-c", "cat > /dev/null && echo 'agent output'"},
+		OnCapture: func(c prompt.CapturedData) {
+			captured = c
+		},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Build something"},
+	}
+
+	result, err := a.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+	assert.Contains(t, captured.PromptText, "Build something")
+	assert.Contains(t, captured.PromptText, "user request")
+	assert.NotEmpty(t, captured.AgentOutput)
+	assert.Equal(t, 1, captured.AttemptNumber)
+}
+
 func TestPromptAdapter_IncrementsAttemptCount(t *testing.T) {
 	dir := t.TempDir()
 
