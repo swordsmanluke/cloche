@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/cloche-dev/cloche/internal/adapters/agents/generic"
@@ -71,8 +73,38 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 
 	protocol.AppendHistoryMarker(r.cfg.WorkDir, "workflow:end "+wf.Name+" result:"+string(run.State))
+
+	r.pushResults(ctx, wf.Name)
+
 	statusWriter.RunCompleted(string(run.State))
 	return nil
+}
+
+func (r *Runner) pushResults(ctx context.Context, workflowName string) {
+	runID := os.Getenv("CLOCHE_RUN_ID")
+	remote := os.Getenv("CLOCHE_GIT_REMOTE")
+	if runID == "" || remote == "" {
+		return
+	}
+	branch := "cloche/" + runID
+	dir := r.cfg.WorkDir
+
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.name", "cloche"},
+		{"git", "config", "user.email", "cloche@local"},
+		{"git", "add", "-A"},
+		{"git", "commit", "--allow-empty", "-m",
+			fmt.Sprintf("cloche: %s run %s", workflowName, runID)},
+		{"git", "push", remote, "HEAD:refs/heads/" + branch},
+	}
+	for _, args := range cmds {
+		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("pushResults: %v: %s", err, out)
+		}
+	}
 }
 
 type stepExecutor struct {

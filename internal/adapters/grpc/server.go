@@ -80,6 +80,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		Image:        image,
 		WorkflowName: req.WorkflowName,
 		ProjectDir:   req.ProjectDir,
+		RunID:        runID,
 		NetworkAllow: []string{"*"},
 	})
 	if err != nil {

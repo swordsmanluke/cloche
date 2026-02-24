@@ -5,33 +5,77 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 
 	"github.com/cloche-dev/cloche/internal/ports"
 )
 
-type Runtime struct{}
+type Runtime struct {
+	mu         sync.Mutex
+	gitDaemons map[string]*exec.Cmd // containerID -> git daemon process
+}
 
 func NewRuntime() (*Runtime, error) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		return nil, fmt.Errorf("docker not found in PATH: %w", err)
 	}
-	return &Runtime{}, nil
+	return &Runtime{
+		gitDaemons: make(map[string]*exec.Cmd),
+	}, nil
 }
 
 func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string, error) {
-	args := []string{
-		"run", "-d",
-		"--workdir", "/workspace",
+	// 1. Find the git repo root containing the project dir
+	repoRoot, err := gitRepoRoot(cfg.ProjectDir)
+	if err != nil {
+		return "", fmt.Errorf("finding git repo root: %w", err)
 	}
 
-	// Bind-mount project directory into container
-	if cfg.ProjectDir != "" {
-		args = append(args, "-v", cfg.ProjectDir+":/workspace")
+	// Start git daemon to receive pushes from the container
+	gitPort := 9418 + rand.Intn(10000)
+	gitCmd := exec.Command("git", "daemon",
+		"--reuseaddr",
+		"--port="+strconv.Itoa(gitPort),
+		"--base-path="+repoRoot,
+		"--export-all",
+		"--enable=receive-pack",
+		repoRoot,
+	)
+	gitCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := gitCmd.Start(); err != nil {
+		return "", fmt.Errorf("starting git daemon: %w", err)
 	}
+
+	// 2. Build docker create args
+	containerCmd := cfg.Cmd
+	useDefaultCmd := len(containerCmd) == 0
+	if useDefaultCmd {
+		containerCmd = []string{"cloche-agent", cfg.WorkflowName + ".cloche"}
+	}
+
+	args := []string{
+		"create",
+		"--workdir", "/workspace",
+		"--add-host=host.docker.internal:host-gateway",
+	}
+
+	// When using the default command, run as root and wrap with chown + su agent
+	// so the workspace is owned by the agent user. Custom Cmd runs as-is.
+	if useDefaultCmd {
+		args = append(args, "--user", "root")
+	}
+
+	// Pass run ID and git remote into container
+	if cfg.RunID != "" {
+		args = append(args, "-e", "CLOCHE_RUN_ID="+cfg.RunID)
+	}
+	args = append(args, "-e", fmt.Sprintf("CLOCHE_GIT_REMOTE=git://host.docker.internal:%d/", gitPort))
 
 	// Pass ANTHROPIC_API_KEY into container if set
 	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
@@ -69,31 +113,68 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		}
 	}
 
-	if len(cfg.NetworkAllow) == 0 {
-		args = append(args, "--network", "none")
+	// No --network none: agent needs network for git push and API access
+
+	if useDefaultCmd {
+		// Wrap: chown workspace to agent, then exec as agent user
+		wrappedCmd := fmt.Sprintf(
+			"chown -R agent:agent /workspace && exec su agent -s /bin/sh -c %q",
+			strings.Join(containerCmd, " "),
+		)
+		args = append(args, cfg.Image, "sh", "-c", wrappedCmd)
+	} else {
+		args = append(args, cfg.Image)
+		args = append(args, containerCmd...)
 	}
 
-	containerCmd := cfg.Cmd
-	if len(containerCmd) == 0 {
-		containerCmd = []string{"cloche-agent", cfg.WorkflowName + ".cloche"}
-	}
-
-	args = append(args, cfg.Image)
-	args = append(args, containerCmd...)
-
-	cmd := exec.CommandContext(ctx, "docker", args...)
+	// docker create
+	createCmd := exec.CommandContext(ctx, "docker", args...)
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	createCmd.Stdout = &stdout
+	createCmd.Stderr = &stderr
+	if err := createCmd.Run(); err != nil {
+		syscall.Kill(-gitCmd.Process.Pid, syscall.SIGKILL)
+		gitCmd.Wait()
+		return "", fmt.Errorf("creating container: %s: %w", stderr.String(), err)
+	}
+	containerID := strings.TrimSpace(stdout.String())
 
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("starting container: %s: %w", stderr.String(), err)
+	// 3. Copy project files into container (no bind mount)
+	if cfg.ProjectDir != "" {
+		cpCmd := exec.CommandContext(ctx, "docker", "cp", cfg.ProjectDir+"/.", containerID+":/workspace/")
+		var cpStderr bytes.Buffer
+		cpCmd.Stderr = &cpStderr
+		if err := cpCmd.Run(); err != nil {
+			// Cleanup on failure
+			exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
+			gitCmd.Process.Kill()
+			gitCmd.Wait()
+			return "", fmt.Errorf("copying files to container: %s: %w", cpStderr.String(), err)
+		}
 	}
 
-	return strings.TrimSpace(stdout.String()), nil
+	// 4. Start the container
+	startCmd := exec.CommandContext(ctx, "docker", "start", containerID)
+	var startStderr bytes.Buffer
+	startCmd.Stderr = &startStderr
+	if err := startCmd.Run(); err != nil {
+		exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
+		syscall.Kill(-gitCmd.Process.Pid, syscall.SIGKILL)
+		gitCmd.Wait()
+		return "", fmt.Errorf("starting container: %s: %w", startStderr.String(), err)
+	}
+
+	// 5. Track git daemon for cleanup
+	r.mu.Lock()
+	r.gitDaemons[containerID] = gitCmd
+	r.mu.Unlock()
+
+	return containerID, nil
 }
 
 func (r *Runtime) Stop(ctx context.Context, containerID string) error {
+	defer r.cleanup(containerID)
+
 	cmd := exec.CommandContext(ctx, "docker", "stop", containerID)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -119,6 +200,8 @@ func (r *Runtime) AttachOutput(ctx context.Context, containerID string) (io.Read
 }
 
 func (r *Runtime) Wait(ctx context.Context, containerID string) (int, error) {
+	defer r.cleanup(containerID)
+
 	cmd := exec.CommandContext(ctx, "docker", "wait", containerID)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -133,6 +216,27 @@ func (r *Runtime) Wait(ctx context.Context, containerID string) (int, error) {
 		return -1, fmt.Errorf("parsing exit code %q: %w", stdout.String(), err)
 	}
 	return code, nil
+}
+
+func gitRepoRoot(dir string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("not a git repository: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func (r *Runtime) cleanup(containerID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if cmd, ok := r.gitDaemons[containerID]; ok {
+		// Kill the entire process group (git daemon forks child processes)
+		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		cmd.Wait()
+		delete(r.gitDaemons, containerID)
+	}
 }
 
 type cmdReadCloser struct {
