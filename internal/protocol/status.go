@@ -19,11 +19,14 @@ const (
 )
 
 type StatusMessage struct {
-	Type      MessageType `json:"type"`
-	StepName  string      `json:"step_name,omitempty"`
-	Result    string      `json:"result,omitempty"`
-	Message   string      `json:"message,omitempty"`
-	Timestamp time.Time   `json:"timestamp"`
+	Type          MessageType `json:"type"`
+	StepName      string      `json:"step_name,omitempty"`
+	Result        string      `json:"result,omitempty"`
+	Message       string      `json:"message,omitempty"`
+	PromptText    string      `json:"prompt_text,omitempty"`
+	AgentOutput   string      `json:"agent_output,omitempty"`
+	AttemptNumber int         `json:"attempt_number,omitempty"`
+	Timestamp     time.Time   `json:"timestamp"`
 }
 
 type StatusWriter struct {
@@ -53,6 +56,14 @@ func (s *StatusWriter) Log(stepName, message string) {
 
 func (s *StatusWriter) Error(stepName, message string) {
 	s.write(StatusMessage{Type: MsgError, StepName: stepName, Message: message})
+}
+
+func (s *StatusWriter) StepStartedWithPrompt(stepName, promptText string) {
+	s.write(StatusMessage{Type: MsgStepStarted, StepName: stepName, PromptText: promptText})
+}
+
+func (s *StatusWriter) StepCompletedWithCapture(stepName, result, agentOutput string, attempt int) {
+	s.write(StatusMessage{Type: MsgStepCompleted, StepName: stepName, Result: result, AgentOutput: agentOutput, AttemptNumber: attempt})
 }
 
 func (s *StatusWriter) write(msg StatusMessage) {

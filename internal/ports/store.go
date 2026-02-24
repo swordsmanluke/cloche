@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	"github.com/cloche-dev/cloche/internal/domain"
 )
@@ -16,4 +17,21 @@ type RunStore interface {
 type CaptureStore interface {
 	SaveCapture(ctx context.Context, runID string, exec *domain.StepExecution) error
 	GetCaptures(ctx context.Context, runID string) ([]*domain.StepExecution, error)
+}
+
+type EvolutionEntry struct {
+	ID             string
+	ProjectDir     string
+	WorkflowName   string
+	TriggerRunID   string
+	CreatedAt      time.Time
+	Classification string
+	ChangesJSON    string
+	KnowledgeDelta string
+}
+
+type EvolutionStore interface {
+	SaveEvolution(ctx context.Context, entry *EvolutionEntry) error
+	GetLastEvolution(ctx context.Context, projectDir, workflowName string) (*EvolutionEntry, error)
+	ListRunsSince(ctx context.Context, projectDir, workflowName, sinceRunID string) ([]*domain.Run, error)
 }
