@@ -20,8 +20,11 @@ type StepExecution struct {
 	Result      string
 	StartedAt   time.Time
 	CompletedAt time.Time
-	Logs        string
-	GitRef      string // output state
+	Logs          string
+	GitRef        string // output state
+	PromptText    string
+	AgentOutput   string
+	AttemptNumber int
 }
 
 func (e *StepExecution) Duration() time.Duration {
@@ -36,6 +39,7 @@ type Run struct {
 	StepExecutions []*StepExecution
 	StartedAt      time.Time
 	CompletedAt    time.Time
+	ProjectDir     string
 }
 
 func NewRun(id, workflowName string) *Run {

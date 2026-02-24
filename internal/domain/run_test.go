@@ -30,6 +30,24 @@ func TestRun_Lifecycle(t *testing.T) {
 	assert.False(t, run.CompletedAt.IsZero())
 }
 
+func TestRunProjectDir(t *testing.T) {
+	r := domain.NewRun("test-1", "develop")
+	r.ProjectDir = "/home/user/project"
+	assert.Equal(t, "/home/user/project", r.ProjectDir)
+}
+
+func TestStepExecutionCapturedData(t *testing.T) {
+	exec := &domain.StepExecution{
+		StepName:      "implement",
+		PromptText:    "Write a hello world",
+		AgentOutput:   "Here is the code...",
+		AttemptNumber: 2,
+	}
+	assert.Equal(t, "Write a hello world", exec.PromptText)
+	assert.Equal(t, "Here is the code...", exec.AgentOutput)
+	assert.Equal(t, 2, exec.AttemptNumber)
+}
+
 func TestRun_StepExecution_Duration(t *testing.T) {
 	exec := &domain.StepExecution{
 		StepName:    "code",
