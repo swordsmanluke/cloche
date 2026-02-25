@@ -82,18 +82,8 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		args = append(args, "-e", "ANTHROPIC_API_KEY")
 	}
 
-	// Mount ~/.claude config directory for CLI auth (OAuth session reuse)
-	// Container runs as "agent" user with home /home/agent
-	if home, err := os.UserHomeDir(); err == nil {
-		claudeDir := home + "/.claude"
-		if _, err := os.Stat(claudeDir); err == nil {
-			args = append(args, "-v", claudeDir+":/home/agent/.claude")
-		}
-		claudeJSON := home + "/.claude.json"
-		if _, err := os.Stat(claudeJSON); err == nil {
-			args = append(args, "-v", claudeJSON+":/home/agent/.claude.json:ro")
-		}
-	}
+	// Claude auth files are copied (not mounted) after docker create so each
+	// container gets its own copy — avoids concurrent write conflicts.
 
 	// Support extra volume mounts via CLOCHE_EXTRA_MOUNTS (comma-separated host:container pairs)
 	if mounts := os.Getenv("CLOCHE_EXTRA_MOUNTS"); mounts != "" {
@@ -153,7 +143,19 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		}
 	}
 
-	// 4. Start the container
+	// 4. Copy Claude auth files into container (each gets its own copy)
+	if home, err := os.UserHomeDir(); err == nil {
+		claudeDir := home + "/.claude"
+		if _, err := os.Stat(claudeDir); err == nil {
+			exec.CommandContext(ctx, "docker", "cp", claudeDir, containerID+":/home/agent/.claude").Run()
+		}
+		claudeJSON := home + "/.claude.json"
+		if _, err := os.Stat(claudeJSON); err == nil {
+			exec.CommandContext(ctx, "docker", "cp", claudeJSON, containerID+":/home/agent/.claude.json").Run()
+		}
+	}
+
+	// 5. Start the container
 	startCmd := exec.CommandContext(ctx, "docker", "start", containerID)
 	var startStderr bytes.Buffer
 	startCmd.Stderr = &startStderr
