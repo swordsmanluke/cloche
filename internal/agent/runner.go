@@ -96,18 +96,43 @@ func (r *Runner) pushResults(ctx context.Context, workflowName string) {
 	branch := "cloche/" + runID
 	dir := r.cfg.WorkDir
 
-	cmds := [][]string{
-		{"git", "init"},
-		{"git", "config", "user.name", "cloche"},
-		{"git", "config", "user.email", "cloche@local"},
-		{"git", "add", "-A"},
-		{"git", "commit", "--allow-empty", "-m",
-			fmt.Sprintf("cloche: %s run %s", workflowName, runID)},
-		{"git", "push", remote, "HEAD:refs/heads/" + branch},
+	// Try to branch from existing history so result branches share ancestry
+	// with the original repo and diffs are meaningful.
+	hasGit := false
+	check := exec.CommandContext(ctx, "git", "rev-parse", "--git-dir")
+	check.Dir = dir
+	if err := check.Run(); err == nil {
+		hasGit = true
 	}
+
+	var cmds [][]string
+	if hasGit {
+		cmds = [][]string{
+			{"git", "checkout", "-b", branch},
+			{"git", "add", "-A"},
+			{"git", "commit", "--allow-empty", "-m",
+				fmt.Sprintf("cloche: %s run %s", workflowName, runID)},
+			{"git", "push", remote, branch},
+		}
+	} else {
+		// Fallback: agent destroyed .git, create a fresh repo
+		cmds = [][]string{
+			{"git", "init"},
+			{"git", "checkout", "-b", branch},
+			{"git", "add", "-A"},
+			{"git", "commit", "--allow-empty", "-m",
+				fmt.Sprintf("cloche: %s run %s", workflowName, runID)},
+			{"git", "push", remote, branch},
+		}
+	}
+
 	for _, args := range cmds {
 		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=cloche", "GIT_AUTHOR_EMAIL=cloche@local",
+			"GIT_COMMITTER_NAME=cloche", "GIT_COMMITTER_EMAIL=cloche@local",
+		)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			log.Printf("pushResults: %v: %s", err, out)
 		}
