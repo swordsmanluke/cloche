@@ -22,6 +22,8 @@ type RunnerConfig struct {
 	WorkflowPath string
 	WorkDir      string
 	StatusOutput io.Writer
+	RunID        string // Set by cloche-agent; empty disables result push
+	GitRemote    string // git:// URL of the host's git daemon
 }
 
 type Runner struct {
@@ -88,54 +90,37 @@ func (r *Runner) Run(ctx context.Context) error {
 }
 
 func (r *Runner) pushResults(ctx context.Context, workflowName string) {
-	runID := os.Getenv("CLOCHE_RUN_ID")
-	remote := os.Getenv("CLOCHE_GIT_REMOTE")
+	runID := r.cfg.RunID
+	remote := r.cfg.GitRemote
 	if runID == "" || remote == "" {
 		return
 	}
 	branch := "cloche/" + runID
 	dir := r.cfg.WorkDir
 
-	// Try to branch from existing history so result branches share ancestry
-	// with the original repo and diffs are meaningful.
-	hasGit := false
-	check := exec.CommandContext(ctx, "git", "rev-parse", "--git-dir")
-	check.Dir = dir
-	if err := check.Run(); err == nil {
-		hasGit = true
-	}
+	// The agent (e.g. Claude Code) may reinitialize .git during execution,
+	// losing the original history. We recover it by fetching from the host's
+	// git daemon, then use git plumbing (write-tree + commit-tree) to create
+	// a commit whose tree is the current working directory and whose parent
+	// is the original HEAD — without any checkout that would clobber files.
+	msg := fmt.Sprintf("cloche: %s run %s", workflowName, runID)
+	script := fmt.Sprintf(`set -e
+git init
+git add -A
+TREE=$(git write-tree)
+git fetch %s
+COMMIT=$(git commit-tree "$TREE" -p FETCH_HEAD -m %q)
+git push %s "$COMMIT":refs/heads/%s
+`, remote, msg, remote, branch)
 
-	var cmds [][]string
-	if hasGit {
-		cmds = [][]string{
-			{"git", "checkout", "-b", branch},
-			{"git", "add", "-A"},
-			{"git", "commit", "--allow-empty", "-m",
-				fmt.Sprintf("cloche: %s run %s", workflowName, runID)},
-			{"git", "push", remote, branch},
-		}
-	} else {
-		// Fallback: agent destroyed .git, create a fresh repo
-		cmds = [][]string{
-			{"git", "init"},
-			{"git", "checkout", "-b", branch},
-			{"git", "add", "-A"},
-			{"git", "commit", "--allow-empty", "-m",
-				fmt.Sprintf("cloche: %s run %s", workflowName, runID)},
-			{"git", "push", remote, branch},
-		}
-	}
-
-	for _, args := range cmds {
-		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(),
-			"GIT_AUTHOR_NAME=cloche", "GIT_AUTHOR_EMAIL=cloche@local",
-			"GIT_COMMITTER_NAME=cloche", "GIT_COMMITTER_EMAIL=cloche@local",
-		)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			log.Printf("pushResults: %v: %s", err, out)
-		}
+	cmd := exec.CommandContext(ctx, "sh", "-c", script)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=cloche", "GIT_AUTHOR_EMAIL=cloche@local",
+		"GIT_COMMITTER_NAME=cloche", "GIT_COMMITTER_EMAIL=cloche@local",
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("pushResults: %v: %s", err, out)
 	}
 }
 
