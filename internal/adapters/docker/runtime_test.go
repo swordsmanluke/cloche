@@ -43,6 +43,17 @@ func initGitRepo(t *testing.T, dir string) {
 	}
 }
 
+func TestFindFreePort(t *testing.T) {
+	port1, err := docker.FindFreePort()
+	require.NoError(t, err)
+	assert.Greater(t, port1, 0)
+
+	port2, err := docker.FindFreePort()
+	require.NoError(t, err)
+	assert.Greater(t, port2, 0)
+	assert.NotEqual(t, port1, port2, "two calls should return different ports")
+}
+
 func TestDockerRuntime_StartAndStop(t *testing.T) {
 	skipIfNoDocker(t)
 	skipIfNoGit(t)

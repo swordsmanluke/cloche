@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/domain"
@@ -58,8 +59,20 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		return nil, fmt.Errorf("no container runtime configured")
 	}
 
-	// Create run in store
-	runID := domain.GenerateRunID(req.WorkflowName)
+	// Generate a unique run ID, retrying on collision
+	var runID string
+	for attempts := 0; attempts < 10; attempts++ {
+		runID = domain.GenerateRunID(req.WorkflowName)
+		existing, err := s.store.GetRun(ctx, runID)
+		if err != nil {
+			break // ID is free
+		}
+		// Reuse if completed more than 1 hour ago
+		if !existing.CompletedAt.IsZero() && time.Since(existing.CompletedAt) > time.Hour {
+			_ = s.store.DeleteRun(ctx, runID)
+			break
+		}
+	}
 
 	// Write prompt to .cloche/<run-id>/prompt.txt (run-specific to avoid conflicts)
 	if req.Prompt != "" {

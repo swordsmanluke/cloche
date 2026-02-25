@@ -74,6 +74,36 @@ func TestRunStore_GetNotFound(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestStore_DeleteRun(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run and save a capture for it
+	run := domain.NewRun("del-1", "test-workflow")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.SaveCapture(ctx, "del-1", &domain.StepExecution{
+		StepName:  "step1",
+		StartedAt: time.Now(),
+	}))
+
+	// Delete the run
+	err = store.DeleteRun(ctx, "del-1")
+	require.NoError(t, err)
+
+	// Verify run is gone
+	_, err = store.GetRun(ctx, "del-1")
+	assert.Error(t, err)
+
+	// Verify captures are gone
+	caps, err := store.GetCaptures(ctx, "del-1")
+	require.NoError(t, err)
+	assert.Empty(t, caps)
+}
+
 func TestRunProjectDir(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

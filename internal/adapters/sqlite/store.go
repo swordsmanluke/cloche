@@ -127,6 +127,15 @@ func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 	return err
 }
 
+func (s *Store) DeleteRun(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM step_executions WHERE run_id = ?`, id)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `DELETE FROM runs WHERE id = ?`, id)
+	return err
+}
+
 func (s *Store) ListRuns(ctx context.Context) ([]*domain.Run, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir FROM runs ORDER BY started_at DESC`)

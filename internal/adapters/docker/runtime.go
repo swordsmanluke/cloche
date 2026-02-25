@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand"
+	"net"
 	"os"
 	"os/exec"
 	"strconv"
@@ -37,19 +37,30 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		return "", fmt.Errorf("finding git repo root: %w", err)
 	}
 
-	// Start git daemon to receive pushes from the container
-	gitPort := 9418 + rand.Intn(10000)
-	gitCmd := exec.Command("git", "daemon",
-		"--reuseaddr",
-		"--port="+strconv.Itoa(gitPort),
-		"--base-path="+repoRoot,
-		"--export-all",
-		"--enable=receive-pack",
-		repoRoot,
-	)
-	gitCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if err := gitCmd.Start(); err != nil {
-		return "", fmt.Errorf("starting git daemon: %w", err)
+	// Start git daemon to receive pushes from the container.
+	// Use OS-assigned free port with retry to avoid collisions.
+	var gitPort int
+	var gitCmd *exec.Cmd
+	for attempt := 0; attempt < 5; attempt++ {
+		gitPort, err = FindFreePort()
+		if err != nil {
+			return "", fmt.Errorf("finding free port: %w", err)
+		}
+		gitCmd = exec.Command("git", "daemon",
+			"--reuseaddr",
+			"--port="+strconv.Itoa(gitPort),
+			"--base-path="+repoRoot,
+			"--export-all",
+			"--enable=receive-pack",
+			repoRoot,
+		)
+		gitCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		if err := gitCmd.Start(); err == nil {
+			break
+		}
+		if attempt == 4 {
+			return "", fmt.Errorf("starting git daemon after 5 attempts: %w", err)
+		}
 	}
 
 	// 2. Build docker create args
@@ -218,6 +229,17 @@ func (r *Runtime) Wait(ctx context.Context, containerID string) (int, error) {
 		return -1, fmt.Errorf("parsing exit code %q: %w", stdout.String(), err)
 	}
 	return code, nil
+}
+
+// FindFreePort asks the OS for an available TCP port.
+func FindFreePort() (int, error) {
+	lis, err := net.Listen("tcp", ":0")
+	if err != nil {
+		return 0, err
+	}
+	port := lis.Addr().(*net.TCPAddr).Port
+	lis.Close()
+	return port, nil
 }
 
 func gitRepoRoot(dir string) (string, error) {
