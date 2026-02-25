@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/domain"
@@ -60,7 +59,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	}
 
 	// Create run in store
-	runID := fmt.Sprintf("run-%d", time.Now().UnixNano())
+	runID := domain.GenerateRunID(req.WorkflowName)
 
 	// Write prompt to .cloche/<run-id>/prompt.txt (run-specific to avoid conflicts)
 	if req.Prompt != "" {
