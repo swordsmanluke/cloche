@@ -58,9 +58,12 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		return nil, fmt.Errorf("no container runtime configured")
 	}
 
-	// Write prompt to .cloche/prompt.txt if provided
+	// Create run in store
+	runID := fmt.Sprintf("run-%d", time.Now().UnixNano())
+
+	// Write prompt to .cloche/<run-id>/prompt.txt (run-specific to avoid conflicts)
 	if req.Prompt != "" {
-		clocheDir := filepath.Join(req.ProjectDir, ".cloche")
+		clocheDir := filepath.Join(req.ProjectDir, ".cloche", runID)
 		if err := os.MkdirAll(clocheDir, 0755); err != nil {
 			return nil, fmt.Errorf("creating .cloche dir: %w", err)
 		}
@@ -68,9 +71,6 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 			return nil, fmt.Errorf("writing prompt: %w", err)
 		}
 	}
-
-	// Create run in store
-	runID := fmt.Sprintf("run-%d", time.Now().UnixNano())
 	run := domain.NewRun(runID, req.WorkflowName)
 	if err := s.store.CreateRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("creating run: %w", err)

@@ -117,10 +117,10 @@ func assemblePrompt(step *domain.Step, workDir string) (string, error) {
 		parts = append(parts, content)
 	}
 
-	// 2. Read user prompt from .cloche/prompt.txt
-	userPromptPath := filepath.Join(workDir, ".cloche", "prompt.txt")
-	if data, err := os.ReadFile(userPromptPath); err == nil {
-		parts = append(parts, "## User Request\n"+string(data))
+	// 2. Read user prompt from .cloche/<run-id>/prompt.txt (or legacy .cloche/prompt.txt)
+	userPrompt := readUserPrompt(workDir)
+	if userPrompt != "" {
+		parts = append(parts, "## User Request\n"+userPrompt)
 	}
 
 	// 3. Read feedback from .cloche/output/*.log
@@ -191,6 +191,23 @@ func readAttemptCount(workDir, stepName string) int {
 	}
 	n, _ := strconv.Atoi(strings.TrimSpace(string(data)))
 	return n
+}
+
+// readUserPrompt reads the user prompt, preferring .cloche/<run-id>/prompt.txt
+// (set by the daemon for run isolation) and falling back to .cloche/prompt.txt.
+func readUserPrompt(workDir string) string {
+	if runID := os.Getenv("CLOCHE_RUN_ID"); runID != "" {
+		path := filepath.Join(workDir, ".cloche", runID, "prompt.txt")
+		if data, err := os.ReadFile(path); err == nil {
+			return string(data)
+		}
+	}
+	// Fallback for backward compat or local runtime
+	path := filepath.Join(workDir, ".cloche", "prompt.txt")
+	if data, err := os.ReadFile(path); err == nil {
+		return string(data)
+	}
+	return ""
 }
 
 func incrementAttemptCount(workDir, stepName string) {
