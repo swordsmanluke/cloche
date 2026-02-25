@@ -16,6 +16,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	grpclib "google.golang.org/grpc"
 )
 
 func TestServer_ListRuns_Empty(t *testing.T) {
@@ -156,6 +157,98 @@ func TestServer_RunWorkflow_CapturesPromptAndOutput(t *testing.T) {
 	}
 	assert.True(t, foundPrompt, "should find capture with prompt text")
 	assert.True(t, foundOutput, "should find capture with agent output and attempt number")
+}
+
+func TestServer_StreamLogs(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	// Mock agent outputs status messages
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "build", PromptText: "build the thing"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success", AgentOutput: "done building"},
+		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test.cloche"), []byte(script), 0755))
+
+	rt := local.NewRuntime("sh")
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+	})
+	require.NoError(t, err)
+
+	// Poll until the run completes and captures are stored
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State == "succeeded" {
+			captures, _ := store.GetCaptures(context.Background(), resp.RunId)
+			if len(captures) >= 2 {
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Use a mock stream to collect LogEntry messages
+	mock := &mockLogStream{ctx: context.Background()}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: resp.RunId}, mock)
+	require.NoError(t, err)
+
+	// Should have entries: step_started, step_completed, run_completed
+	require.GreaterOrEqual(t, len(mock.entries), 3)
+
+	// Find step_started and step_completed entries
+	var foundStarted, foundCompleted, foundRun bool
+	for _, e := range mock.entries {
+		switch e.Type {
+		case "step_started":
+			if e.StepName == "build" {
+				foundStarted = true
+				assert.Equal(t, "build the thing", e.Message)
+			}
+		case "step_completed":
+			if e.StepName == "build" {
+				foundCompleted = true
+				assert.Equal(t, "success", e.Result)
+				assert.Equal(t, "done building", e.Message)
+			}
+		case "run_completed":
+			foundRun = true
+			assert.Equal(t, "succeeded", e.Result)
+		}
+	}
+	assert.True(t, foundStarted, "should find step_started for build")
+	assert.True(t, foundCompleted, "should find step_completed for build")
+	assert.True(t, foundRun, "should find run_completed")
+}
+
+// mockLogStream implements grpc.ServerStreamingServer[pb.LogEntry] for testing.
+type mockLogStream struct {
+	grpclib.ServerStream
+	ctx     context.Context
+	entries []*pb.LogEntry
+}
+
+func (m *mockLogStream) Send(entry *pb.LogEntry) error {
+	m.entries = append(m.entries, entry)
+	return nil
+}
+
+func (m *mockLogStream) Context() context.Context {
+	return m.ctx
 }
 
 func TestServer_RunWorkflow_NoRuntime(t *testing.T) {

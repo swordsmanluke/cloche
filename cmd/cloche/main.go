@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -47,6 +49,8 @@ func main() {
 		cmdRun(ctx, client, os.Args[2:])
 	case "status":
 		cmdStatus(ctx, client, os.Args[2:])
+	case "logs":
+		cmdLogs(client, os.Args[2:])
 	case "list":
 		cmdList(ctx, client)
 	case "stop":
@@ -64,6 +68,7 @@ Commands:
   init [--workflow <name>] [--image <base>]  Initialize a Cloche project
   run --workflow <name> [--prompt "..."]     Launch a workflow run
   status <run-id>                            Check run status
+  logs <run-id>                              Show step logs for a run
   list                                       List all runs
   stop <run-id>                              Stop a running workflow
 `)
@@ -145,6 +150,48 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient) {
 
 	for _, run := range resp.Runs {
 		fmt.Printf("%s  %-20s  %s  %s\n", run.RunId, run.WorkflowName, run.State, run.StartedAt)
+	}
+}
+
+func cmdLogs(client pb.ClocheServiceClient, args []string) {
+	if len(args) < 1 {
+		fmt.Fprintf(os.Stderr, "usage: cloche logs <run-id>\n")
+		os.Exit(1)
+	}
+
+	// Use background context — log output can be large
+	stream, err := client.StreamLogs(context.Background(), &pb.StreamLogsRequest{RunId: args[0]})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	for {
+		entry, err := stream.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			fmt.Fprintf(os.Stderr, "error reading logs: %v\n", err)
+			os.Exit(1)
+		}
+
+		switch entry.Type {
+		case "step_started":
+			fmt.Printf("--- %s started ---\n", entry.StepName)
+			if entry.Message != "" {
+				fmt.Printf("%s\n", entry.Message)
+			}
+		case "step_completed":
+			fmt.Printf("--- %s: %s ---\n", entry.StepName, entry.Result)
+			if entry.Message != "" {
+				fmt.Printf("%s\n", entry.Message)
+			}
+		case "run_completed":
+			fmt.Printf("\nRun result: %s\n", entry.Result)
+		default:
+			fmt.Printf("[%s] %s: %s\n", entry.Type, entry.StepName, entry.Message)
+		}
 	}
 }
 

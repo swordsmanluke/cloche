@@ -17,6 +17,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/evolution"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/protocol"
+	rpcgrpc "google.golang.org/grpc"
 )
 
 type ClocheServer struct {
@@ -254,6 +255,68 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 	}
 
 	return resp, nil
+}
+
+func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.ServerStreamingServer[pb.LogEntry]) error {
+	ctx := stream.Context()
+
+	// Verify run exists
+	run, err := s.store.GetRun(ctx, req.RunId)
+	if err != nil {
+		return fmt.Errorf("run %q not found: %w", req.RunId, err)
+	}
+
+	if s.captures == nil {
+		return fmt.Errorf("captures store not configured")
+	}
+
+	// Get persisted captures
+	captures, err := s.captures.GetCaptures(ctx, req.RunId)
+	if err != nil {
+		return fmt.Errorf("getting captures: %w", err)
+	}
+
+	for _, exec := range captures {
+		// Captures are stored as separate rows: one for step_started (has PromptText,
+		// no Result) and one for step_completed (has Result and AgentOutput).
+		if exec.Result == "" {
+			// This is a step_started capture
+			entry := &pb.LogEntry{
+				Type:      "step_started",
+				StepName:  exec.StepName,
+				Timestamp: exec.StartedAt.String(),
+				Message:   exec.PromptText,
+			}
+			if err := stream.Send(entry); err != nil {
+				return err
+			}
+		} else {
+			// This is a step_completed capture
+			entry := &pb.LogEntry{
+				Type:      "step_completed",
+				StepName:  exec.StepName,
+				Result:    exec.Result,
+				Timestamp: exec.CompletedAt.String(),
+				Message:   exec.AgentOutput,
+			}
+			if err := stream.Send(entry); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Send run completion entry
+	if run.State != domain.RunStateRunning && run.State != domain.RunStatePending {
+		if err := stream.Send(&pb.LogEntry{
+			Type:      "run_completed",
+			Result:    string(run.State),
+			Timestamp: run.CompletedAt.String(),
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (s *ClocheServer) StopRun(ctx context.Context, req *pb.StopRunRequest) (*pb.StopRunResponse, error) {

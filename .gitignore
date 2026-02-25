@@ -3,9 +3,9 @@ bin/
 .cloche/
 
 # Built binaries
-cloche
-cloched
-cloche-agent
+/cloche
+/cloched
+/cloche-agent
 
 # Local state
 *.db
