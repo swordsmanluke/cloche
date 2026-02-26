@@ -696,6 +696,7 @@ type RunSummary struct {
 	State         string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
 	StartedAt     string                 `protobuf:"bytes,4,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
 	ErrorMessage  string                 `protobuf:"bytes,5,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	ContainerId   string                 `protobuf:"bytes,6,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -765,6 +766,13 @@ func (x *RunSummary) GetErrorMessage() string {
 	return ""
 }
 
+func (x *RunSummary) GetContainerId() string {
+	if x != nil {
+		return x.ContainerId
+	}
+	return ""
+}
+
 var File_cloche_proto protoreflect.FileDescriptor
 
 const file_cloche_proto_rawDesc = "" +
@@ -809,7 +817,7 @@ const file_cloche_proto_rawDesc = "" +
 	"\x10ShutdownResponse\"\x11\n" +
 	"\x0fListRunsRequest\"=\n" +
 	"\x10ListRunsResponse\x12)\n" +
-	"\x04runs\x18\x01 \x03(\v2\x15.cloche.v1.RunSummaryR\x04runs\"\xa2\x01\n" +
+	"\x04runs\x18\x01 \x03(\v2\x15.cloche.v1.RunSummaryR\x04runs\"\xc5\x01\n" +
 	"\n" +
 	"RunSummary\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12#\n" +
@@ -817,7 +825,8 @@ const file_cloche_proto_rawDesc = "" +
 	"\x05state\x18\x03 \x01(\tR\x05state\x12\x1d\n" +
 	"\n" +
 	"started_at\x18\x04 \x01(\tR\tstartedAt\x12#\n" +
-	"\rerror_message\x18\x05 \x01(\tR\ferrorMessage2\xb4\x03\n" +
+	"\rerror_message\x18\x05 \x01(\tR\ferrorMessage\x12!\n" +
+	"\fcontainer_id\x18\x06 \x01(\tR\vcontainerId2\xb4\x03\n" +
 	"\rClocheService\x12L\n" +
 	"\vRunWorkflow\x12\x1d.cloche.v1.RunWorkflowRequest\x1a\x1e.cloche.v1.RunWorkflowResponse\x12F\n" +
 	"\tGetStatus\x12\x1b.cloche.v1.GetStatusRequest\x1a\x1c.cloche.v1.GetStatusResponse\x12A\n" +

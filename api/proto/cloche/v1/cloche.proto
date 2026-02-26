@@ -79,4 +79,5 @@ message RunSummary {
   string state = 3;
   string started_at = 4;
   string error_message = 5;
+  string container_id = 6;
 }

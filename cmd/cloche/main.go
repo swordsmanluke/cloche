@@ -175,7 +175,10 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient) {
 	}
 
 	for _, run := range resp.Runs {
-		line := fmt.Sprintf("%s  %-20s  %s  %s", run.RunId, run.WorkflowName, run.State, run.StartedAt)
+		line := fmt.Sprintf("%s  %-20s  %-10s", run.RunId, run.WorkflowName, run.State)
+		if run.ContainerId != "" {
+			line += "  " + run.ContainerId
+		}
 		if run.ErrorMessage != "" {
 			errMsg := run.ErrorMessage
 			if len(errMsg) > 60 {

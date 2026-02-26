@@ -246,6 +246,7 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 			State:        string(run.State),
 			StartedAt:    run.StartedAt.String(),
 			ErrorMessage: run.ErrorMessage,
+			ContainerId:  run.ContainerID,
 		})
 	}
 	return resp, nil
