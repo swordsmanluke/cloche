@@ -21,6 +21,16 @@ func NewStore(dsn string) (*Store, error) {
 		return nil, fmt.Errorf("opening sqlite: %w", err)
 	}
 
+	// Enable WAL mode for concurrent read/write access
+	db.Exec("PRAGMA journal_mode=WAL")
+
+	// Wait up to 5 seconds when the database is locked instead of failing immediately
+	db.Exec("PRAGMA busy_timeout=5000")
+
+	// Serialize all Go-side access through a single connection so SQLite
+	// never sees concurrent writers (WAL + busy_timeout as defense-in-depth).
+	db.SetMaxOpenConns(1)
+
 	if err := migrate(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrating: %w", err)
@@ -257,6 +267,18 @@ func (s *Store) ListRunsSince(ctx context.Context, projectDir, workflowName, sin
 		runs = append(runs, run)
 	}
 	return runs, rows.Err()
+}
+
+
+func (s *Store) FailPendingRuns(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE runs SET state = 'failed', completed_at = ? WHERE state = 'pending'`,
+		formatTime(time.Now()),
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func formatTime(t time.Time) string {

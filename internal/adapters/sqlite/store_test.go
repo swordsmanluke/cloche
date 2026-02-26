@@ -2,6 +2,9 @@ package sqlite_test
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -217,4 +220,82 @@ func TestGetLastEvolution(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, entry)
 	assert.Equal(t, "evo-1", entry.ID)
+}
+
+func TestStore_ConcurrentWrites(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "concurrent.db")
+	store, err := sqlite.NewStore(dbPath)
+	require.NoError(t, err)
+	defer store.Close()
+
+	const n = 10
+	ctx := context.Background()
+	errs := make([]error, n)
+
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			id := fmt.Sprintf("run-%d", i)
+			run := domain.NewRun(id, "test-workflow")
+			run.Start()
+			if err := store.CreateRun(ctx, run); err != nil {
+				errs[i] = err
+				return
+			}
+			errs[i] = store.SaveCapture(ctx, id, &domain.StepExecution{
+				StepName:  fmt.Sprintf("step-%d", i),
+				StartedAt: time.Now(),
+			})
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		assert.NoError(t, err, "goroutine %d failed", i)
+	}
+
+	runs, err := store.ListRuns(ctx)
+	require.NoError(t, err)
+	assert.Len(t, runs, n)
+}
+
+func TestStore_FailPendingRuns(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create three runs in different states.
+	pending := domain.NewRun("pending-1", "wf")
+	require.NoError(t, store.CreateRun(ctx, pending))
+
+	running := domain.NewRun("running-1", "wf")
+	running.Start()
+	require.NoError(t, store.CreateRun(ctx, running))
+
+	succeeded := domain.NewRun("succeeded-1", "wf")
+	succeeded.Start()
+	succeeded.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, succeeded))
+
+	n, err := store.FailPendingRuns(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
+
+	got, err := store.GetRun(ctx, "pending-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateFailed, got.State)
+	assert.False(t, got.CompletedAt.IsZero(), "completed_at should be set")
+
+	// Running and succeeded runs should be untouched.
+	gotRunning, err := store.GetRun(ctx, "running-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateRunning, gotRunning.State)
+
+	gotSucceeded, err := store.GetRun(ctx, "succeeded-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, gotSucceeded.State)
 }
