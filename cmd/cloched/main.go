@@ -67,6 +67,8 @@ func main() {
 	grpcServer := grpc.NewServer()
 	pb.RegisterClocheServiceServer(grpcServer, srv)
 
+	srv.SetShutdownFunc(func() { grpcServer.GracefulStop() })
+
 	lis, err := listen(listenAddr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to listen on %s: %v\n", listenAddr, err)

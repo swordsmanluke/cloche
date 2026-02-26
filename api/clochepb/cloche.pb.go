@@ -521,6 +521,78 @@ func (*StopRunResponse) Descriptor() ([]byte, []int) {
 	return file_cloche_proto_rawDescGZIP(), []int{8}
 }
 
+type ShutdownRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ShutdownRequest) Reset() {
+	*x = ShutdownRequest{}
+	mi := &file_cloche_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ShutdownRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ShutdownRequest) ProtoMessage() {}
+
+func (x *ShutdownRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ShutdownRequest.ProtoReflect.Descriptor instead.
+func (*ShutdownRequest) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{9}
+}
+
+type ShutdownResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ShutdownResponse) Reset() {
+	*x = ShutdownResponse{}
+	mi := &file_cloche_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ShutdownResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ShutdownResponse) ProtoMessage() {}
+
+func (x *ShutdownResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ShutdownResponse.ProtoReflect.Descriptor instead.
+func (*ShutdownResponse) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{10}
+}
+
 type ListRunsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -529,7 +601,7 @@ type ListRunsRequest struct {
 
 func (x *ListRunsRequest) Reset() {
 	*x = ListRunsRequest{}
-	mi := &file_cloche_proto_msgTypes[9]
+	mi := &file_cloche_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -541,7 +613,7 @@ func (x *ListRunsRequest) String() string {
 func (*ListRunsRequest) ProtoMessage() {}
 
 func (x *ListRunsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cloche_proto_msgTypes[9]
+	mi := &file_cloche_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -554,7 +626,7 @@ func (x *ListRunsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRunsRequest.ProtoReflect.Descriptor instead.
 func (*ListRunsRequest) Descriptor() ([]byte, []int) {
-	return file_cloche_proto_rawDescGZIP(), []int{9}
+	return file_cloche_proto_rawDescGZIP(), []int{11}
 }
 
 type ListRunsResponse struct {
@@ -566,7 +638,7 @@ type ListRunsResponse struct {
 
 func (x *ListRunsResponse) Reset() {
 	*x = ListRunsResponse{}
-	mi := &file_cloche_proto_msgTypes[10]
+	mi := &file_cloche_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -578,7 +650,7 @@ func (x *ListRunsResponse) String() string {
 func (*ListRunsResponse) ProtoMessage() {}
 
 func (x *ListRunsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cloche_proto_msgTypes[10]
+	mi := &file_cloche_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -591,7 +663,7 @@ func (x *ListRunsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRunsResponse.ProtoReflect.Descriptor instead.
 func (*ListRunsResponse) Descriptor() ([]byte, []int) {
-	return file_cloche_proto_rawDescGZIP(), []int{10}
+	return file_cloche_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListRunsResponse) GetRuns() []*RunSummary {
@@ -613,7 +685,7 @@ type RunSummary struct {
 
 func (x *RunSummary) Reset() {
 	*x = RunSummary{}
-	mi := &file_cloche_proto_msgTypes[11]
+	mi := &file_cloche_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -625,7 +697,7 @@ func (x *RunSummary) String() string {
 func (*RunSummary) ProtoMessage() {}
 
 func (x *RunSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_cloche_proto_msgTypes[11]
+	mi := &file_cloche_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -638,7 +710,7 @@ func (x *RunSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunSummary.ProtoReflect.Descriptor instead.
 func (*RunSummary) Descriptor() ([]byte, []int) {
-	return file_cloche_proto_rawDescGZIP(), []int{11}
+	return file_cloche_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RunSummary) GetRunId() string {
@@ -707,6 +779,8 @@ const file_cloche_proto_rawDesc = "" +
 	"\x0eStopRunRequest\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\"\x11\n" +
 	"\x0fStopRunResponse\"\x11\n" +
+	"\x0fShutdownRequest\"\x12\n" +
+	"\x10ShutdownResponse\"\x11\n" +
 	"\x0fListRunsRequest\"=\n" +
 	"\x10ListRunsResponse\x12)\n" +
 	"\x04runs\x18\x01 \x03(\v2\x15.cloche.v1.RunSummaryR\x04runs\"}\n" +
@@ -716,14 +790,15 @@ const file_cloche_proto_rawDesc = "" +
 	"\rworkflow_name\x18\x02 \x01(\tR\fworkflowName\x12\x14\n" +
 	"\x05state\x18\x03 \x01(\tR\x05state\x12\x1d\n" +
 	"\n" +
-	"started_at\x18\x04 \x01(\tR\tstartedAt2\xef\x02\n" +
+	"started_at\x18\x04 \x01(\tR\tstartedAt2\xb4\x03\n" +
 	"\rClocheService\x12L\n" +
 	"\vRunWorkflow\x12\x1d.cloche.v1.RunWorkflowRequest\x1a\x1e.cloche.v1.RunWorkflowResponse\x12F\n" +
 	"\tGetStatus\x12\x1b.cloche.v1.GetStatusRequest\x1a\x1c.cloche.v1.GetStatusResponse\x12A\n" +
 	"\n" +
 	"StreamLogs\x12\x1c.cloche.v1.StreamLogsRequest\x1a\x13.cloche.v1.LogEntry0\x01\x12@\n" +
 	"\aStopRun\x12\x19.cloche.v1.StopRunRequest\x1a\x1a.cloche.v1.StopRunResponse\x12C\n" +
-	"\bListRuns\x12\x1a.cloche.v1.ListRunsRequest\x1a\x1b.cloche.v1.ListRunsResponseB+Z)github.com/cloche-dev/cloche/api/clochepbb\x06proto3"
+	"\bListRuns\x12\x1a.cloche.v1.ListRunsRequest\x1a\x1b.cloche.v1.ListRunsResponse\x12C\n" +
+	"\bShutdown\x12\x1a.cloche.v1.ShutdownRequest\x1a\x1b.cloche.v1.ShutdownResponseB+Z)github.com/cloche-dev/cloche/api/clochepbb\x06proto3"
 
 var (
 	file_cloche_proto_rawDescOnce sync.Once
@@ -737,7 +812,7 @@ func file_cloche_proto_rawDescGZIP() []byte {
 	return file_cloche_proto_rawDescData
 }
 
-var file_cloche_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_cloche_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_cloche_proto_goTypes = []any{
 	(*RunWorkflowRequest)(nil),  // 0: cloche.v1.RunWorkflowRequest
 	(*RunWorkflowResponse)(nil), // 1: cloche.v1.RunWorkflowResponse
@@ -748,25 +823,29 @@ var file_cloche_proto_goTypes = []any{
 	(*LogEntry)(nil),            // 6: cloche.v1.LogEntry
 	(*StopRunRequest)(nil),      // 7: cloche.v1.StopRunRequest
 	(*StopRunResponse)(nil),     // 8: cloche.v1.StopRunResponse
-	(*ListRunsRequest)(nil),     // 9: cloche.v1.ListRunsRequest
-	(*ListRunsResponse)(nil),    // 10: cloche.v1.ListRunsResponse
-	(*RunSummary)(nil),          // 11: cloche.v1.RunSummary
+	(*ShutdownRequest)(nil),     // 9: cloche.v1.ShutdownRequest
+	(*ShutdownResponse)(nil),    // 10: cloche.v1.ShutdownResponse
+	(*ListRunsRequest)(nil),     // 11: cloche.v1.ListRunsRequest
+	(*ListRunsResponse)(nil),    // 12: cloche.v1.ListRunsResponse
+	(*RunSummary)(nil),          // 13: cloche.v1.RunSummary
 }
 var file_cloche_proto_depIdxs = []int32{
 	4,  // 0: cloche.v1.GetStatusResponse.step_executions:type_name -> cloche.v1.StepExecutionStatus
-	11, // 1: cloche.v1.ListRunsResponse.runs:type_name -> cloche.v1.RunSummary
+	13, // 1: cloche.v1.ListRunsResponse.runs:type_name -> cloche.v1.RunSummary
 	0,  // 2: cloche.v1.ClocheService.RunWorkflow:input_type -> cloche.v1.RunWorkflowRequest
 	2,  // 3: cloche.v1.ClocheService.GetStatus:input_type -> cloche.v1.GetStatusRequest
 	5,  // 4: cloche.v1.ClocheService.StreamLogs:input_type -> cloche.v1.StreamLogsRequest
 	7,  // 5: cloche.v1.ClocheService.StopRun:input_type -> cloche.v1.StopRunRequest
-	9,  // 6: cloche.v1.ClocheService.ListRuns:input_type -> cloche.v1.ListRunsRequest
-	1,  // 7: cloche.v1.ClocheService.RunWorkflow:output_type -> cloche.v1.RunWorkflowResponse
-	3,  // 8: cloche.v1.ClocheService.GetStatus:output_type -> cloche.v1.GetStatusResponse
-	6,  // 9: cloche.v1.ClocheService.StreamLogs:output_type -> cloche.v1.LogEntry
-	8,  // 10: cloche.v1.ClocheService.StopRun:output_type -> cloche.v1.StopRunResponse
-	10, // 11: cloche.v1.ClocheService.ListRuns:output_type -> cloche.v1.ListRunsResponse
-	7,  // [7:12] is the sub-list for method output_type
-	2,  // [2:7] is the sub-list for method input_type
+	11, // 6: cloche.v1.ClocheService.ListRuns:input_type -> cloche.v1.ListRunsRequest
+	9,  // 7: cloche.v1.ClocheService.Shutdown:input_type -> cloche.v1.ShutdownRequest
+	1,  // 8: cloche.v1.ClocheService.RunWorkflow:output_type -> cloche.v1.RunWorkflowResponse
+	3,  // 9: cloche.v1.ClocheService.GetStatus:output_type -> cloche.v1.GetStatusResponse
+	6,  // 10: cloche.v1.ClocheService.StreamLogs:output_type -> cloche.v1.LogEntry
+	8,  // 11: cloche.v1.ClocheService.StopRun:output_type -> cloche.v1.StopRunResponse
+	12, // 12: cloche.v1.ClocheService.ListRuns:output_type -> cloche.v1.ListRunsResponse
+	10, // 13: cloche.v1.ClocheService.Shutdown:output_type -> cloche.v1.ShutdownResponse
+	8,  // [8:14] is the sub-list for method output_type
+	2,  // [2:8] is the sub-list for method input_type
 	2,  // [2:2] is the sub-list for extension type_name
 	2,  // [2:2] is the sub-list for extension extendee
 	0,  // [0:2] is the sub-list for field type_name
@@ -783,7 +862,7 @@ func file_cloche_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cloche_proto_rawDesc), len(file_cloche_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

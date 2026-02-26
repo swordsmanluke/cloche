@@ -10,6 +10,7 @@ service ClocheService {
   rpc StreamLogs(StreamLogsRequest) returns (stream LogEntry);
   rpc StopRun(StopRunRequest) returns (StopRunResponse);
   rpc ListRuns(ListRunsRequest) returns (ListRunsResponse);
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
 }
 
 message RunWorkflowRequest {
@@ -59,6 +60,10 @@ message StopRunRequest {
 }
 
 message StopRunResponse {}
+
+message ShutdownRequest {}
+
+message ShutdownResponse {}
 
 message ListRunsRequest {}
 

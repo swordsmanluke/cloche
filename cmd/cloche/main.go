@@ -55,6 +55,8 @@ func main() {
 		cmdList(ctx, client)
 	case "stop":
 		cmdStop(ctx, client, os.Args[2:])
+	case "shutdown":
+		cmdShutdown(ctx, client)
 	default:
 		usage()
 		os.Exit(1)
@@ -71,6 +73,7 @@ Commands:
   logs <run-id>                              Show step logs for a run
   list                                       List all runs
   stop <run-id>                              Stop a running workflow
+  shutdown                                   Shut down the daemon
 `)
 }
 
@@ -207,4 +210,13 @@ func cmdStop(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 		os.Exit(1)
 	}
 	fmt.Printf("Stopped run: %s\n", args[0])
+}
+
+func cmdShutdown(ctx context.Context, client pb.ClocheServiceClient) {
+	_, err := client.Shutdown(ctx, &pb.ShutdownRequest{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Daemon shutting down.")
 }

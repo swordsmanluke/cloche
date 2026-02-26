@@ -27,6 +27,7 @@ type ClocheServer struct {
 	container    ports.ContainerRuntime
 	defaultImage string
 	evolution    *evolution.Trigger
+	shutdownFn   func()
 	mu           sync.Mutex
 	runIDs       map[string]string // run_id -> container_id
 }
@@ -52,6 +53,11 @@ func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureSto
 // SetEvolution attaches an evolution trigger to the server.
 func (s *ClocheServer) SetEvolution(trigger *evolution.Trigger) {
 	s.evolution = trigger
+}
+
+// SetShutdownFunc sets the callback invoked when the Shutdown RPC is called.
+func (s *ClocheServer) SetShutdownFunc(fn func()) {
+	s.shutdownFn = fn
 }
 
 func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
@@ -352,4 +358,12 @@ func (s *ClocheServer) StopRun(ctx context.Context, req *pb.StopRunRequest) (*pb
 	}
 
 	return &pb.StopRunResponse{}, nil
+}
+
+func (s *ClocheServer) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*pb.ShutdownResponse, error) {
+	if s.shutdownFn == nil {
+		return nil, fmt.Errorf("shutdown not configured")
+	}
+	go s.shutdownFn()
+	return &pb.ShutdownResponse{}, nil
 }

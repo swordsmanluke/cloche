@@ -1,6 +1,10 @@
 .env
 bin/
 .cloche/
+.serena/
+
+# Claude Code local settings
+**/.claude/settings.local.json
 
 # Built binaries
 /cloche
@@ -9,6 +13,8 @@ bin/
 
 # Local state
 *.db
+*.db-shm
+*.db-wal
 
 # Example build artifacts
 examples/**/target/

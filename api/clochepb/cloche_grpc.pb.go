@@ -24,6 +24,7 @@ const (
 	ClocheService_StreamLogs_FullMethodName  = "/cloche.v1.ClocheService/StreamLogs"
 	ClocheService_StopRun_FullMethodName     = "/cloche.v1.ClocheService/StopRun"
 	ClocheService_ListRuns_FullMethodName    = "/cloche.v1.ClocheService/ListRuns"
+	ClocheService_Shutdown_FullMethodName    = "/cloche.v1.ClocheService/Shutdown"
 )
 
 // ClocheServiceClient is the client API for ClocheService service.
@@ -35,6 +36,7 @@ type ClocheServiceClient interface {
 	StreamLogs(ctx context.Context, in *StreamLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogEntry], error)
 	StopRun(ctx context.Context, in *StopRunRequest, opts ...grpc.CallOption) (*StopRunResponse, error)
 	ListRuns(ctx context.Context, in *ListRunsRequest, opts ...grpc.CallOption) (*ListRunsResponse, error)
+	Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error)
 }
 
 type clocheServiceClient struct {
@@ -104,6 +106,16 @@ func (c *clocheServiceClient) ListRuns(ctx context.Context, in *ListRunsRequest,
 	return out, nil
 }
 
+func (c *clocheServiceClient) Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ShutdownResponse)
+	err := c.cc.Invoke(ctx, ClocheService_Shutdown_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClocheServiceServer is the server API for ClocheService service.
 // All implementations must embed UnimplementedClocheServiceServer
 // for forward compatibility.
@@ -113,6 +125,7 @@ type ClocheServiceServer interface {
 	StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[LogEntry]) error
 	StopRun(context.Context, *StopRunRequest) (*StopRunResponse, error)
 	ListRuns(context.Context, *ListRunsRequest) (*ListRunsResponse, error)
+	Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error)
 	mustEmbedUnimplementedClocheServiceServer()
 }
 
@@ -137,6 +150,9 @@ func (UnimplementedClocheServiceServer) StopRun(context.Context, *StopRunRequest
 }
 func (UnimplementedClocheServiceServer) ListRuns(context.Context, *ListRunsRequest) (*ListRunsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListRuns not implemented")
+}
+func (UnimplementedClocheServiceServer) Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Shutdown not implemented")
 }
 func (UnimplementedClocheServiceServer) mustEmbedUnimplementedClocheServiceServer() {}
 func (UnimplementedClocheServiceServer) testEmbeddedByValue()                       {}
@@ -242,6 +258,24 @@ func _ClocheService_ListRuns_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClocheService_Shutdown_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShutdownRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).Shutdown(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_Shutdown_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).Shutdown(ctx, req.(*ShutdownRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClocheService_ServiceDesc is the grpc.ServiceDesc for ClocheService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -264,6 +298,10 @@ var ClocheService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListRuns",
 			Handler:    _ClocheService_ListRuns_Handler,
+		},
+		{
+			MethodName: "Shutdown",
+			Handler:    _ClocheService_Shutdown_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

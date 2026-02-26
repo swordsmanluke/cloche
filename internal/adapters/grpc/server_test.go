@@ -251,6 +251,39 @@ func (m *mockLogStream) Context() context.Context {
 	return m.ctx
 }
 
+func TestServer_Shutdown(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, nil)
+
+	called := make(chan struct{}, 1)
+	srv.SetShutdownFunc(func() { called <- struct{}{} })
+
+	resp, err := srv.Shutdown(context.Background(), &pb.ShutdownRequest{})
+	require.NoError(t, err)
+	assert.NotNil(t, resp)
+
+	select {
+	case <-called:
+	case <-time.After(time.Second):
+		t.Fatal("shutdown callback was not called")
+	}
+}
+
+func TestServer_Shutdown_NotConfigured(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, nil)
+
+	_, err = srv.Shutdown(context.Background(), &pb.ShutdownRequest{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "shutdown not configured")
+}
+
 func TestServer_RunWorkflow_NoRuntime(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
