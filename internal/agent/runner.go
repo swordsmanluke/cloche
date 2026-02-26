@@ -113,6 +113,15 @@ func (r *Runner) pushResults(ctx context.Context, workflowName string) {
 	// current working directory and whose parent is the original HEAD.
 	setupScript := `set -e
 git init >&2
+mkdir -p .git/info
+cat > .git/info/exclude << 'EXCLUDE'
+# Cloche: exclude agent tooling noise from result branches
+**/.claude/settings.local.json
+.serena/
+*.db-shm
+*.db-wal
+*.db-journal
+EXCLUDE
 git add -A
 TREE=$(git write-tree)
 git fetch "$1" >&2
