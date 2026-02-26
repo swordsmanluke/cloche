@@ -35,6 +35,7 @@ message GetStatusResponse {
   string current_step = 4;
   repeated StepExecutionStatus step_executions = 5;
   string error_message = 6;
+  string container_id = 7;
 }
 
 message StepExecutionStatus {

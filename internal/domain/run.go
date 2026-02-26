@@ -41,6 +41,7 @@ type Run struct {
 	CompletedAt    time.Time
 	ProjectDir     string
 	ErrorMessage   string
+	ContainerID    string
 }
 
 func NewRun(id, workflowName string) *Run {

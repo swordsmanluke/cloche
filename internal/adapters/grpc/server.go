@@ -138,6 +138,7 @@ func (s *ClocheServer) launchAndTrack(runID, image string, req *pb.RunWorkflowRe
 	run, _ := s.store.GetRun(ctx, runID)
 	if run != nil {
 		run.Start()
+		run.ContainerID = containerID
 		_ = s.store.UpdateRun(ctx, run)
 	}
 
@@ -262,6 +263,7 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 		State:        string(run.State),
 		CurrentStep:  strings.Join(run.ActiveSteps, ","),
 		ErrorMessage: run.ErrorMessage,
+		ContainerId:  run.ContainerID,
 	}
 
 	// Load step executions from captures store if available

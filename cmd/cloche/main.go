@@ -143,13 +143,20 @@ func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string
 		os.Exit(1)
 	}
 
-	fmt.Printf("Run:      %s\n", resp.RunId)
-	fmt.Printf("Workflow: %s\n", resp.WorkflowName)
-	fmt.Printf("State:    %s\n", resp.State)
-	if resp.ErrorMessage != "" {
-		fmt.Printf("Error:    %s\n", resp.ErrorMessage)
+	fmt.Printf("Run:       %s\n", resp.RunId)
+	fmt.Printf("Workflow:  %s\n", resp.WorkflowName)
+	fmt.Printf("State:     %s\n", resp.State)
+	if resp.ContainerId != "" {
+		cid := resp.ContainerId
+		if len(cid) > 12 {
+			cid = cid[:12]
+		}
+		fmt.Printf("Container: %s\n", cid)
 	}
-	fmt.Printf("Active:   %s\n", resp.CurrentStep)
+	if resp.ErrorMessage != "" {
+		fmt.Printf("Error:     %s\n", resp.ErrorMessage)
+	}
+	fmt.Printf("Active:    %s\n", resp.CurrentStep)
 	for _, exec := range resp.StepExecutions {
 		fmt.Printf("  %s: %s (%s -> %s)\n", exec.StepName, exec.Result, exec.StartedAt, exec.CompletedAt)
 	}

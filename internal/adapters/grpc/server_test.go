@@ -251,6 +251,23 @@ func (m *mockLogStream) Context() context.Context {
 	return m.ctx
 }
 
+func TestServer_GetStatus_ContainerID(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	run := domain.NewRun("cid-test", "develop")
+	run.Start()
+	run.ContainerID = "4647e7e70e3fabc123def456"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	srv := server.NewClocheServer(store, nil)
+	resp, err := srv.GetStatus(ctx, &pb.GetStatusRequest{RunId: "cid-test"})
+	require.NoError(t, err)
+	assert.Equal(t, "4647e7e70e3fabc123def456", resp.ContainerId)
+}
+
 func TestServer_Shutdown(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

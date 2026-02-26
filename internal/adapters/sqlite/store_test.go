@@ -222,6 +222,54 @@ func TestGetLastEvolution(t *testing.T) {
 	assert.Equal(t, "evo-1", entry.ID)
 }
 
+func TestRunContainerID(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	run := domain.NewRun("cid-1", "develop")
+	run.Start()
+	run.ContainerID = "4647e7e70e3fabc123def456"
+
+	err = store.CreateRun(ctx, run)
+	require.NoError(t, err)
+
+	got, err := store.GetRun(ctx, "cid-1")
+	require.NoError(t, err)
+	assert.Equal(t, "4647e7e70e3fabc123def456", got.ContainerID)
+
+	// Test update preserves container ID
+	got.ContainerID = "new-container-id"
+	require.NoError(t, store.UpdateRun(ctx, got))
+
+	got2, err := store.GetRun(ctx, "cid-1")
+	require.NoError(t, err)
+	assert.Equal(t, "new-container-id", got2.ContainerID)
+
+	// Test ListRuns includes container ID
+	runs, err := store.ListRuns(ctx)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	assert.Equal(t, "new-container-id", runs[0].ContainerID)
+}
+
+func TestRunContainerID_BackwardCompat(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	// Create a run without setting ContainerID — simulates pre-migration rows
+	run := domain.NewRun("old-1", "develop")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	got, err := store.GetRun(ctx, "old-1")
+	require.NoError(t, err)
+	assert.Equal(t, "", got.ContainerID)
+}
+
 func TestRunErrorMessage(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
