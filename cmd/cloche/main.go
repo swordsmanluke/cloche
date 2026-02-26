@@ -146,6 +146,9 @@ func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string
 	fmt.Printf("Run:      %s\n", resp.RunId)
 	fmt.Printf("Workflow: %s\n", resp.WorkflowName)
 	fmt.Printf("State:    %s\n", resp.State)
+	if resp.ErrorMessage != "" {
+		fmt.Printf("Error:    %s\n", resp.ErrorMessage)
+	}
 	fmt.Printf("Active:   %s\n", resp.CurrentStep)
 	for _, exec := range resp.StepExecutions {
 		fmt.Printf("  %s: %s (%s -> %s)\n", exec.StepName, exec.Result, exec.StartedAt, exec.CompletedAt)
@@ -165,7 +168,15 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient) {
 	}
 
 	for _, run := range resp.Runs {
-		fmt.Printf("%s  %-20s  %s  %s\n", run.RunId, run.WorkflowName, run.State, run.StartedAt)
+		line := fmt.Sprintf("%s  %-20s  %s  %s", run.RunId, run.WorkflowName, run.State, run.StartedAt)
+		if run.ErrorMessage != "" {
+			errMsg := run.ErrorMessage
+			if len(errMsg) > 60 {
+				errMsg = errMsg[:57] + "..."
+			}
+			line += "  " + errMsg
+		}
+		fmt.Println(line)
 	}
 }
 
@@ -205,6 +216,9 @@ func cmdLogs(client pb.ClocheServiceClient, args []string) {
 			}
 		case "run_completed":
 			fmt.Printf("\nRun result: %s\n", entry.Result)
+			if entry.Message != "" {
+				fmt.Printf("Error:      %s\n", entry.Message)
+			}
 		default:
 			fmt.Printf("[%s] %s: %s\n", entry.Type, entry.StepName, entry.Message)
 		}

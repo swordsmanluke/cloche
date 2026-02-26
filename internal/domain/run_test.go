@@ -48,6 +48,15 @@ func TestStepExecutionCapturedData(t *testing.T) {
 	assert.Equal(t, 2, exec.AttemptNumber)
 }
 
+func TestRun_Fail(t *testing.T) {
+	run := domain.NewRun("run-1", "test-workflow")
+	run.Start()
+	run.Fail("container exploded")
+	assert.Equal(t, domain.RunStateFailed, run.State)
+	assert.False(t, run.CompletedAt.IsZero())
+	assert.Equal(t, "container exploded", run.ErrorMessage)
+}
+
 func TestRun_StepExecution_Duration(t *testing.T) {
 	exec := &domain.StepExecution{
 		StepName:    "code",

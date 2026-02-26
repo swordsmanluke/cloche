@@ -40,6 +40,7 @@ type Run struct {
 	StartedAt      time.Time
 	CompletedAt    time.Time
 	ProjectDir     string
+	ErrorMessage   string
 }
 
 func NewRun(id, workflowName string) *Run {
@@ -99,4 +100,10 @@ func (r *Run) SetActiveStepsFromString(s string) {
 func (r *Run) Complete(state RunState) {
 	r.State = state
 	r.CompletedAt = time.Now()
+}
+
+func (r *Run) Fail(msg string) {
+	r.State = RunStateFailed
+	r.CompletedAt = time.Now()
+	r.ErrorMessage = msg
 }

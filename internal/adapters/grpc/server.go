@@ -124,7 +124,7 @@ func (s *ClocheServer) launchAndTrack(runID, image string, req *pb.RunWorkflowRe
 	if err != nil {
 		run, _ := s.store.GetRun(ctx, runID)
 		if run != nil {
-			run.Complete(domain.RunStateFailed)
+			run.Fail(fmt.Sprintf("failed to start container: %v", err))
 			_ = s.store.UpdateRun(ctx, run)
 		}
 		log.Printf("run %s: failed to start container: %v", runID, err)
@@ -215,7 +215,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		if exitCode == 0 {
 			run.Complete(domain.RunStateSucceeded)
 		} else {
-			run.Complete(domain.RunStateFailed)
+			run.Fail(fmt.Sprintf("container exited with code %d", exitCode))
 		}
 		_ = s.store.UpdateRun(ctx, run)
 	}
@@ -244,6 +244,7 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 			WorkflowName: run.WorkflowName,
 			State:        string(run.State),
 			StartedAt:    run.StartedAt.String(),
+			ErrorMessage: run.ErrorMessage,
 		})
 	}
 	return resp, nil
@@ -260,6 +261,7 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 		WorkflowName: run.WorkflowName,
 		State:        string(run.State),
 		CurrentStep:  strings.Join(run.ActiveSteps, ","),
+		ErrorMessage: run.ErrorMessage,
 	}
 
 	// Load step executions from captures store if available
@@ -343,6 +345,7 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 			Type:      "run_completed",
 			Result:    string(run.State),
 			Timestamp: run.CompletedAt.String(),
+			Message:   run.ErrorMessage,
 		}); err != nil {
 			return err
 		}

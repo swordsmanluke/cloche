@@ -75,6 +75,7 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE step_executions ADD COLUMN prompt_text TEXT`,
 		`ALTER TABLE step_executions ADD COLUMN agent_output TEXT`,
 		`ALTER TABLE step_executions ADD COLUMN attempt_number INTEGER DEFAULT 0`,
+		`ALTER TABLE runs ADD COLUMN error_message TEXT`,
 	}
 	for _, stmt := range alterStmts {
 		db.Exec(stmt) // ignore "duplicate column" errors
@@ -99,21 +100,21 @@ func migrate(db *sql.DB) error {
 
 func (s *Store) CreateRun(ctx context.Context, run *domain.Run) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, project_dir)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, project_dir, error_message)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID, run.WorkflowName, string(run.State), run.ActiveStepsString(),
-		formatTime(run.StartedAt), formatTime(run.CompletedAt), run.ProjectDir,
+		formatTime(run.StartedAt), formatTime(run.CompletedAt), run.ProjectDir, run.ErrorMessage,
 	)
 	return err
 }
 
 func (s *Store) GetRun(ctx context.Context, id string) (*domain.Run, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir FROM runs WHERE id = ?`, id)
+		`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,'') FROM runs WHERE id = ?`, id)
 
 	run := &domain.Run{}
 	var activeSteps, startedAt, completedAt string
-	err := row.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir)
+	err := row.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("run %q not found", id)
 	}
@@ -129,10 +130,10 @@ func (s *Store) GetRun(ctx context.Context, id string) (*domain.Run, error) {
 
 func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ? WHERE id = ?`,
+		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ? WHERE id = ?`,
 		string(run.State), run.ActiveStepsString(),
 		formatTime(run.StartedAt), formatTime(run.CompletedAt),
-		run.ID,
+		run.ErrorMessage, run.ID,
 	)
 	return err
 }
@@ -148,7 +149,7 @@ func (s *Store) DeleteRun(ctx context.Context, id string) error {
 
 func (s *Store) ListRuns(ctx context.Context) ([]*domain.Run, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir FROM runs ORDER BY started_at DESC`)
+		`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,'') FROM runs ORDER BY started_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +159,7 @@ func (s *Store) ListRuns(ctx context.Context) ([]*domain.Run, error) {
 	for rows.Next() {
 		run := &domain.Run{}
 		var activeSteps, startedAt, completedAt string
-		if err := rows.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir); err != nil {
+		if err := rows.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage); err != nil {
 			return nil, err
 		}
 		run.SetActiveStepsFromString(activeSteps)
@@ -239,12 +240,12 @@ func (s *Store) ListRunsSince(ctx context.Context, projectDir, workflowName, sin
 
 	if sinceRunID == "" {
 		rows, err = s.db.QueryContext(ctx,
-			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir
+			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,'')
 			 FROM runs WHERE project_dir = ? AND workflow_name = ? ORDER BY started_at ASC`,
 			projectDir, workflowName)
 	} else {
 		rows, err = s.db.QueryContext(ctx,
-			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir
+			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,'')
 			 FROM runs WHERE project_dir = ? AND workflow_name = ? AND started_at > (SELECT started_at FROM runs WHERE id = ?)
 			 ORDER BY started_at ASC`,
 			projectDir, workflowName, sinceRunID)
@@ -258,7 +259,7 @@ func (s *Store) ListRunsSince(ctx context.Context, projectDir, workflowName, sin
 	for rows.Next() {
 		run := &domain.Run{}
 		var activeSteps, startedAt, completedAt string
-		if err := rows.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir); err != nil {
+		if err := rows.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage); err != nil {
 			return nil, err
 		}
 		run.SetActiveStepsFromString(activeSteps)

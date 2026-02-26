@@ -184,6 +184,7 @@ type GetStatusResponse struct {
 	State          string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
 	CurrentStep    string                 `protobuf:"bytes,4,opt,name=current_step,json=currentStep,proto3" json:"current_step,omitempty"`
 	StepExecutions []*StepExecutionStatus `protobuf:"bytes,5,rep,name=step_executions,json=stepExecutions,proto3" json:"step_executions,omitempty"`
+	ErrorMessage   string                 `protobuf:"bytes,6,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -251,6 +252,13 @@ func (x *GetStatusResponse) GetStepExecutions() []*StepExecutionStatus {
 		return x.StepExecutions
 	}
 	return nil
+}
+
+func (x *GetStatusResponse) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
 }
 
 type StepExecutionStatus struct {
@@ -679,6 +687,7 @@ type RunSummary struct {
 	WorkflowName  string                 `protobuf:"bytes,2,opt,name=workflow_name,json=workflowName,proto3" json:"workflow_name,omitempty"`
 	State         string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
 	StartedAt     string                 `protobuf:"bytes,4,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,5,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -741,6 +750,13 @@ func (x *RunSummary) GetStartedAt() string {
 	return ""
 }
 
+func (x *RunSummary) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
 var File_cloche_proto protoreflect.FileDescriptor
 
 const file_cloche_proto_rawDesc = "" +
@@ -755,13 +771,14 @@ const file_cloche_proto_rawDesc = "" +
 	"\x13RunWorkflowResponse\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\")\n" +
 	"\x10GetStatusRequest\x12\x15\n" +
-	"\x06run_id\x18\x01 \x01(\tR\x05runId\"\xd1\x01\n" +
+	"\x06run_id\x18\x01 \x01(\tR\x05runId\"\xf6\x01\n" +
 	"\x11GetStatusResponse\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12#\n" +
 	"\rworkflow_name\x18\x02 \x01(\tR\fworkflowName\x12\x14\n" +
 	"\x05state\x18\x03 \x01(\tR\x05state\x12!\n" +
 	"\fcurrent_step\x18\x04 \x01(\tR\vcurrentStep\x12G\n" +
-	"\x0fstep_executions\x18\x05 \x03(\v2\x1e.cloche.v1.StepExecutionStatusR\x0estepExecutions\"\x8c\x01\n" +
+	"\x0fstep_executions\x18\x05 \x03(\v2\x1e.cloche.v1.StepExecutionStatusR\x0estepExecutions\x12#\n" +
+	"\rerror_message\x18\x06 \x01(\tR\ferrorMessage\"\x8c\x01\n" +
 	"\x13StepExecutionStatus\x12\x1b\n" +
 	"\tstep_name\x18\x01 \x01(\tR\bstepName\x12\x16\n" +
 	"\x06result\x18\x02 \x01(\tR\x06result\x12\x1d\n" +
@@ -783,14 +800,15 @@ const file_cloche_proto_rawDesc = "" +
 	"\x10ShutdownResponse\"\x11\n" +
 	"\x0fListRunsRequest\"=\n" +
 	"\x10ListRunsResponse\x12)\n" +
-	"\x04runs\x18\x01 \x03(\v2\x15.cloche.v1.RunSummaryR\x04runs\"}\n" +
+	"\x04runs\x18\x01 \x03(\v2\x15.cloche.v1.RunSummaryR\x04runs\"\xa2\x01\n" +
 	"\n" +
 	"RunSummary\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12#\n" +
 	"\rworkflow_name\x18\x02 \x01(\tR\fworkflowName\x12\x14\n" +
 	"\x05state\x18\x03 \x01(\tR\x05state\x12\x1d\n" +
 	"\n" +
-	"started_at\x18\x04 \x01(\tR\tstartedAt2\xb4\x03\n" +
+	"started_at\x18\x04 \x01(\tR\tstartedAt\x12#\n" +
+	"\rerror_message\x18\x05 \x01(\tR\ferrorMessage2\xb4\x03\n" +
 	"\rClocheService\x12L\n" +
 	"\vRunWorkflow\x12\x1d.cloche.v1.RunWorkflowRequest\x1a\x1e.cloche.v1.RunWorkflowResponse\x12F\n" +
 	"\tGetStatus\x12\x1b.cloche.v1.GetStatusRequest\x1a\x1c.cloche.v1.GetStatusResponse\x12A\n" +

@@ -222,6 +222,50 @@ func TestGetLastEvolution(t *testing.T) {
 	assert.Equal(t, "evo-1", entry.ID)
 }
 
+func TestRunErrorMessage(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	run := domain.NewRun("err-1", "develop")
+	run.Start()
+	run.Fail("failed to start container: image not found")
+
+	err = store.CreateRun(ctx, run)
+	require.NoError(t, err)
+
+	got, err := store.GetRun(ctx, "err-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateFailed, got.State)
+	assert.Equal(t, "failed to start container: image not found", got.ErrorMessage)
+
+	// Test update preserves error message
+	got.ErrorMessage = "updated error"
+	require.NoError(t, store.UpdateRun(ctx, got))
+
+	got2, err := store.GetRun(ctx, "err-1")
+	require.NoError(t, err)
+	assert.Equal(t, "updated error", got2.ErrorMessage)
+}
+
+func TestRunErrorMessageInList(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	run := domain.NewRun("err-list-1", "develop")
+	run.Start()
+	run.Fail("container crashed")
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	runs, err := store.ListRuns(ctx)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	assert.Equal(t, "container crashed", runs[0].ErrorMessage)
+}
+
 func TestStore_ConcurrentWrites(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "concurrent.db")
 	store, err := sqlite.NewStore(dbPath)
