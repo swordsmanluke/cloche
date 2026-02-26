@@ -101,7 +101,19 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		image = s.defaultImage
 	}
 
-	// Start agent process
+	// Launch container start + tracking in background so the RPC returns immediately.
+	// The run stays in "pending" state until the container is up.
+	go s.launchAndTrack(runID, image, req)
+
+	return &pb.RunWorkflowResponse{RunId: runID}, nil
+}
+
+// launchAndTrack starts the container and then tracks it to completion.
+// It runs in a background goroutine with its own context, independent of the
+// RPC context which may be cancelled after RunWorkflow returns.
+func (s *ClocheServer) launchAndTrack(runID, image string, req *pb.RunWorkflowRequest) {
+	ctx := context.Background()
+
 	containerID, err := s.container.Start(ctx, ports.ContainerConfig{
 		Image:        image,
 		WorkflowName: req.WorkflowName,
@@ -110,24 +122,26 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		NetworkAllow: []string{"*"},
 	})
 	if err != nil {
-		run.Complete(domain.RunStateFailed)
-		_ = s.store.UpdateRun(ctx, run)
-		return nil, fmt.Errorf("starting agent: %w", err)
+		run, _ := s.store.GetRun(ctx, runID)
+		if run != nil {
+			run.Complete(domain.RunStateFailed)
+			_ = s.store.UpdateRun(ctx, run)
+		}
+		log.Printf("run %s: failed to start container: %v", runID, err)
+		return
 	}
 
-	// Track the mapping
 	s.mu.Lock()
 	s.runIDs[runID] = containerID
 	s.mu.Unlock()
 
-	// Mark run as started
-	run.Start()
-	_ = s.store.UpdateRun(ctx, run)
+	run, _ := s.store.GetRun(ctx, runID)
+	if run != nil {
+		run.Start()
+		_ = s.store.UpdateRun(ctx, run)
+	}
 
-	// Launch background goroutine to track status
-	go s.trackRun(runID, containerID, req.ProjectDir, req.WorkflowName)
-
-	return &pb.RunWorkflowResponse{RunId: runID}, nil
+	s.trackRun(runID, containerID, req.ProjectDir, req.WorkflowName)
 }
 
 func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName string) {
