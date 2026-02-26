@@ -51,6 +51,7 @@ type Workflow struct {
 	Wiring    []Wire
 	Collects  []Collect
 	EntryStep string
+	Config    map[string]string // workflow-level config (e.g. "container.image")
 }
 
 func (w *Workflow) Validate() error {

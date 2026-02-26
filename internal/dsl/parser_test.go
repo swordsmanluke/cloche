@@ -94,6 +94,63 @@ func TestParser_ContainerBlock(t *testing.T) {
 	assert.Equal(t, "docs.python.org,internal.example.com", code.Config["container.network_allow"])
 }
 
+func TestParser_WorkflowContainerBlock(t *testing.T) {
+	input := `workflow "with-image" {
+  container {
+    image = "myregistry/myimage:v2"
+  }
+
+  step code {
+    prompt = "write code"
+    results = [success, fail]
+  }
+
+  code:success -> done
+  code:fail -> abort
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+	assert.Equal(t, "with-image", wf.Name)
+	assert.Equal(t, "myregistry/myimage:v2", wf.Config["container.image"])
+}
+
+func TestParser_WorkflowContainerBlockMultipleFields(t *testing.T) {
+	input := `workflow "full-config" {
+  container {
+    image = "myregistry/myimage:v2"
+    memory = "4g"
+  }
+
+  step code {
+    prompt = "write code"
+    results = [success]
+  }
+
+  code:success -> done
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+	assert.Equal(t, "myregistry/myimage:v2", wf.Config["container.image"])
+	assert.Equal(t, "4g", wf.Config["container.memory"])
+}
+
+func TestParser_WorkflowWithoutContainerBlock(t *testing.T) {
+	input := `workflow "no-container" {
+  step code {
+    prompt = "write code"
+    results = [success]
+  }
+
+  code:success -> done
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+	assert.Empty(t, wf.Config["container.image"])
+}
+
 func TestParser_InfersTypeFromContent(t *testing.T) {
 	input := `workflow "infer" {
   step build {

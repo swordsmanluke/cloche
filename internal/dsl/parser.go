@@ -60,8 +60,9 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 	}
 
 	wf := &domain.Workflow{
-		Name:  nameTok.Literal,
-		Steps: make(map[string]*domain.Step),
+		Name:   nameTok.Literal,
+		Steps:  make(map[string]*domain.Step),
+		Config: make(map[string]string),
 	}
 
 	for p.current.Type != TokenRBrace && p.current.Type != TokenEOF {
@@ -80,6 +81,10 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 				return nil, err
 			}
 			wf.Collects = append(wf.Collects, collect)
+		} else if p.current.Type == TokenIdent && p.peek.Type == TokenLBrace {
+			if err := p.parseWorkflowConfig(wf); err != nil {
+				return nil, err
+			}
 		} else if p.current.Type == TokenIdent && p.peek.Type == TokenColon {
 			wire, err := p.parseWire()
 			if err != nil {
@@ -96,6 +101,39 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 	}
 
 	return wf, nil
+}
+
+func (p *Parser) parseWorkflowConfig(wf *domain.Workflow) error {
+	prefix := p.current.Literal // e.g. "container"
+	p.advance()                 // consume prefix ident
+
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return err
+	}
+
+	for p.current.Type != TokenRBrace && p.current.Type != TokenEOF {
+		keyTok, err := p.expect(TokenIdent)
+		if err != nil {
+			return fmt.Errorf("expected field name: %w", err)
+		}
+
+		if _, err := p.expect(TokenEquals); err != nil {
+			return err
+		}
+
+		val, err := p.parseValue()
+		if err != nil {
+			return err
+		}
+
+		wf.Config[prefix+"."+keyTok.Literal] = val
+	}
+
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (p *Parser) parseStep() (*domain.Step, error) {

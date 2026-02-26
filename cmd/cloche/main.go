@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
+	"github.com/cloche-dev/cloche/internal/dsl"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -106,9 +108,20 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	}
 
 	cwd, _ := os.Getwd()
+
+	// Resolve image from workflow file (soft failure — fall back to daemon default)
+	var image string
+	wfPath := filepath.Join(cwd, workflow+".cloche")
+	if data, err := os.ReadFile(wfPath); err == nil {
+		if wf, err := dsl.Parse(string(data)); err == nil {
+			image = wf.Config["container.image"]
+		}
+	}
+
 	resp, err := client.RunWorkflow(ctx, &pb.RunWorkflowRequest{
 		WorkflowName: workflow,
 		ProjectDir:   cwd,
+		Image:        image,
 		Prompt:       prompt,
 	})
 	if err != nil {
