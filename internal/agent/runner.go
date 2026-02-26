@@ -55,6 +55,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	statusWriter := protocol.NewStatusWriter(r.cfg.StatusOutput)
 	genericAdapter := generic.New()
 	promptAdapter := prompt.New()
+	promptAdapter.RunID = r.cfg.RunID
 	if cmd, ok := os.LookupEnv("CLOCHE_AGENT_COMMAND"); ok {
 		promptAdapter.Command = cmd
 	}
@@ -168,17 +169,12 @@ git push "$3" "$COMMIT":refs/heads/"$4"
 	}
 }
 
-// readUserPrompt reads the user prompt from the .cloche directory,
-// preferring .cloche/<runID>/prompt.txt and falling back to .cloche/prompt.txt.
+// readUserPrompt reads the user prompt from .cloche/<runID>/prompt.txt.
 func (r *Runner) readUserPrompt() string {
-	dir := r.cfg.WorkDir
-	if r.cfg.RunID != "" {
-		path := filepath.Join(dir, ".cloche", r.cfg.RunID, "prompt.txt")
-		if data, err := os.ReadFile(path); err == nil {
-			return strings.TrimSpace(string(data))
-		}
+	if r.cfg.RunID == "" {
+		return ""
 	}
-	path := filepath.Join(dir, ".cloche", "prompt.txt")
+	path := filepath.Join(r.cfg.WorkDir, ".cloche", r.cfg.RunID, "prompt.txt")
 	if data, err := os.ReadFile(path); err == nil {
 		return strings.TrimSpace(string(data))
 	}

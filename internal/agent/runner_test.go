@@ -16,9 +16,9 @@ import (
 func TestRunner_CaptureWiredToStatus(t *testing.T) {
 	dir := t.TempDir()
 
-	// Write user prompt
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "prompt.txt"), []byte("build a thing"), 0644))
+	// Write user prompt under run ID
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "test-run"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test-run", "prompt.txt"), []byte("build a thing"), 0644))
 
 	// Create a mock agent script that reads stdin and produces output
 	mockAgent := filepath.Join(dir, "mock-agent.sh")
@@ -42,6 +42,7 @@ func TestRunner_CaptureWiredToStatus(t *testing.T) {
 		WorkflowPath: workflowPath,
 		WorkDir:      dir,
 		StatusOutput: &statusBuf,
+		RunID:        "test-run",
 	})
 
 	err := runner.Run(context.Background())

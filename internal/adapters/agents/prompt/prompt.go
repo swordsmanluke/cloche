@@ -24,6 +24,7 @@ type CapturedData struct {
 type Adapter struct {
 	Command   string
 	Args      []string
+	RunID     string
 	OnCapture func(CapturedData)
 }
 
@@ -55,7 +56,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	incrementAttemptCount(workDir, step.Name)
 
 	// Build the full prompt
-	fullPrompt, err := assemblePrompt(step, workDir)
+	fullPrompt, err := assemblePrompt(step, workDir, a.RunID)
 	if err != nil {
 		return "", fmt.Errorf("assembling prompt: %w", err)
 	}
@@ -105,7 +106,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	return result, nil
 }
 
-func assemblePrompt(step *domain.Step, workDir string) (string, error) {
+func assemblePrompt(step *domain.Step, workDir, runID string) (string, error) {
 	var parts []string
 
 	// 1. Read system template from step config
@@ -117,8 +118,8 @@ func assemblePrompt(step *domain.Step, workDir string) (string, error) {
 		parts = append(parts, content)
 	}
 
-	// 2. Read user prompt from .cloche/<run-id>/prompt.txt (or legacy .cloche/prompt.txt)
-	userPrompt := readUserPrompt(workDir)
+	// 2. Read user prompt from .cloche/<run-id>/prompt.txt
+	userPrompt := readUserPrompt(workDir, runID)
 	if userPrompt != "" {
 		parts = append(parts, "## User Request\n"+userPrompt)
 	}
@@ -193,17 +194,12 @@ func readAttemptCount(workDir, stepName string) int {
 	return n
 }
 
-// readUserPrompt reads the user prompt, preferring .cloche/<run-id>/prompt.txt
-// (set by the daemon for run isolation) and falling back to .cloche/prompt.txt.
-func readUserPrompt(workDir string) string {
-	if runID := os.Getenv("CLOCHE_RUN_ID"); runID != "" {
-		path := filepath.Join(workDir, ".cloche", runID, "prompt.txt")
-		if data, err := os.ReadFile(path); err == nil {
-			return string(data)
-		}
+// readUserPrompt reads the user prompt from .cloche/<run-id>/prompt.txt.
+func readUserPrompt(workDir, runID string) string {
+	if runID == "" {
+		return ""
 	}
-	// Fallback for backward compat or local runtime
-	path := filepath.Join(workDir, ".cloche", "prompt.txt")
+	path := filepath.Join(workDir, ".cloche", runID, "prompt.txt")
 	if data, err := os.ReadFile(path); err == nil {
 		return string(data)
 	}

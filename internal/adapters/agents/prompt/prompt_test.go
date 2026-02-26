@@ -15,14 +15,15 @@ import (
 func TestPromptAdapter_ExecutesCommand(t *testing.T) {
 	dir := t.TempDir()
 
-	// Write a user prompt
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "prompt.txt"), []byte("add a calculator"), 0644))
+	// Write a user prompt under a run ID
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "test-run"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test-run", "prompt.txt"), []byte("add a calculator"), 0644))
 
 	// Use a mock command that writes a file to prove it ran
 	adapter := &prompt.Adapter{
 		Command: "sh",
 		Args:    []string{"-c", "cat > /dev/null && echo 'implemented' > result.txt"},
+		RunID:   "test-run",
 	}
 
 	step := &domain.Step{
@@ -170,13 +171,14 @@ func TestPromptAdapter_StdoutMarkerSelectsResult(t *testing.T) {
 
 func TestExecuteCapturesData(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".cloche"), 0755)
-	os.WriteFile(filepath.Join(dir, ".cloche", "prompt.txt"), []byte("user request"), 0644)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "test-run"), 0755)
+	os.WriteFile(filepath.Join(dir, ".cloche", "test-run", "prompt.txt"), []byte("user request"), 0644)
 
 	var captured prompt.CapturedData
 	a := &prompt.Adapter{
 		Command: "sh",
 		Args:    []string{"-c", "cat > /dev/null && echo 'agent output'"},
+		RunID:   "test-run",
 		OnCapture: func(c prompt.CapturedData) {
 			captured = c
 		},
