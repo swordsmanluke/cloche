@@ -241,6 +241,19 @@ func (r *Runtime) CopyFrom(ctx context.Context, containerID string, srcPath, dst
 	return nil
 }
 
+func (r *Runtime) Logs(ctx context.Context, containerID string) (string, error) {
+	cmd := exec.CommandContext(ctx, "docker", "logs", containerID)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("getting container logs: %s: %w", stderr.String(), err)
+	}
+	// Combine stdout and stderr
+	combined := stdout.String() + stderr.String()
+	return combined, nil
+}
+
 func (r *Runtime) Remove(ctx context.Context, containerID string) error {
 	cmd := exec.CommandContext(ctx, "docker", "rm", containerID)
 	var stderr bytes.Buffer

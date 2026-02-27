@@ -127,6 +127,10 @@ func (r *Runtime) Wait(ctx context.Context, containerID string) (int, error) {
 	}
 }
 
+func (r *Runtime) Logs(ctx context.Context, containerID string) (string, error) {
+	return "", nil
+}
+
 func (r *Runtime) Remove(ctx context.Context, containerID string) error {
 	return nil
 }

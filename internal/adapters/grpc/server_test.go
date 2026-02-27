@@ -249,6 +249,138 @@ func (m *mockLogStream) Context() context.Context {
 	return m.ctx
 }
 
+func TestServer_StreamLogs_FallsBackToContainerLog(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	// Mock agent outputs a step that fails — no per-step output file will exist
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "implement"},
+		{Type: protocol.MsgStepCompleted, StepName: "implement", Result: "fail"},
+		{Type: protocol.MsgRunCompleted, Result: "failed"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test.cloche"), []byte(script), 0755))
+
+	rt := local.NewRuntime("sh")
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+	})
+	require.NoError(t, err)
+
+	// Poll until run completes
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State != "running" && status.State != "pending" {
+			captures, _ := store.GetCaptures(context.Background(), resp.RunId)
+			if len(captures) >= 2 {
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Simulate container.log being written (local runtime Logs() returns empty,
+	// so write it manually to test the StreamLogs fallback path)
+	outputDir := filepath.Join(dir, ".cloche", resp.RunId, "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(outputDir, "container.log"),
+		[]byte("error: compilation failed\ndetailed stack trace here"),
+		0644,
+	))
+
+	// Stream logs and verify the step_completed entry falls back to container.log
+	mock := &mockLogStream{ctx: context.Background()}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: resp.RunId}, mock)
+	require.NoError(t, err)
+
+	var foundCompleted bool
+	for _, e := range mock.entries {
+		if e.Type == "step_completed" && e.StepName == "implement" {
+			foundCompleted = true
+			assert.Equal(t, "fail", e.Result)
+			assert.Contains(t, e.Message, "error: compilation failed")
+			assert.Contains(t, e.Message, "detailed stack trace here")
+		}
+	}
+	assert.True(t, foundCompleted, "should find step_completed with container.log fallback content")
+}
+
+func TestServer_StreamLogs_PrefersStepOutput(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
+		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test.cloche"), []byte(script), 0755))
+
+	rt := local.NewRuntime("sh")
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+	})
+	require.NoError(t, err)
+
+	// Poll until complete
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State == "succeeded" {
+			captures, _ := store.GetCaptures(context.Background(), resp.RunId)
+			if len(captures) >= 2 {
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Write both per-step output AND container.log — per-step should win
+	outputDir := filepath.Join(dir, ".cloche", resp.RunId, "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "build.log"), []byte("step-specific output"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "container.log"), []byte("full container output"), 0644))
+
+	mock := &mockLogStream{ctx: context.Background()}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: resp.RunId}, mock)
+	require.NoError(t, err)
+
+	var foundCompleted bool
+	for _, e := range mock.entries {
+		if e.Type == "step_completed" && e.StepName == "build" {
+			foundCompleted = true
+			assert.Equal(t, "step-specific output", e.Message, "should prefer per-step output over container.log")
+		}
+	}
+	assert.True(t, foundCompleted, "should find step_completed entry")
+}
+
 func TestServer_GetStatus_ContainerID(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

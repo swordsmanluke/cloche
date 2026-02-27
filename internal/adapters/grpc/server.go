@@ -213,6 +213,14 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		}
 	}
 
+	// Capture full container stdout/stderr before the container is removed
+	if logs, logErr := s.container.Logs(ctx, containerID); logErr == nil && logs != "" {
+		containerLogPath := filepath.Join(outputDst, "container.log")
+		if writeErr := os.WriteFile(containerLogPath, []byte(logs), 0644); writeErr != nil {
+			log.Printf("run %s: failed to write container.log: %v", runID, writeErr)
+		}
+	}
+
 	// Ensure run is marked complete
 	run, err := s.store.GetRun(ctx, runID)
 	if err != nil {
@@ -347,11 +355,16 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 				return err
 			}
 		} else {
-			// Read step output from file
+			// Read step output from file, falling back to container.log
 			var output string
 			outputPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", exec.StepName+".log")
-			if data, err := os.ReadFile(outputPath); err == nil {
+			if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
 				output = string(data)
+			} else {
+				containerLogPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", "container.log")
+				if data, err := os.ReadFile(containerLogPath); err == nil {
+					output = string(data)
+				}
 			}
 			entry := &pb.LogEntry{
 				Type:      "step_completed",
