@@ -73,9 +73,6 @@ Do not include any other text.`
 			if caps, ok := data.Captures[run.ID]; ok {
 				for _, cap := range caps {
 					stepInfo := fmt.Sprintf("- Step %s: result=%s", cap.StepName, cap.Result)
-					if cap.AttemptNumber > 1 {
-						stepInfo += fmt.Sprintf(" (attempt %d)", cap.AttemptNumber)
-					}
 					if cap.Logs != "" {
 						stepInfo += "\n  Logs: " + truncate(cap.Logs, 500)
 					}

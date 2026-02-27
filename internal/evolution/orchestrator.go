@@ -55,19 +55,7 @@ func (o *Orchestrator) Run(ctx context.Context, triggerRunID string, evoStore po
 	}
 
 	// Stage 2: Classify the triggering run
-	var runPrompt string
-	if evoStore != nil {
-		// Find the triggering run's prompt from captures
-		if caps, ok := data.Captures[triggerRunID]; ok {
-			for _, cap := range caps {
-				if cap.PromptText != "" {
-					runPrompt = cap.PromptText
-					break
-				}
-			}
-		}
-	}
-	classification, err := o.classifier.Classify(ctx, runPrompt)
+	classification, err := o.classifier.Classify(ctx, "")
 	if err != nil {
 		return nil, fmt.Errorf("classifier: %w", err)
 	}

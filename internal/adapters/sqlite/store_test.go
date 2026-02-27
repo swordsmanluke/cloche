@@ -125,7 +125,7 @@ func TestRunProjectDir(t *testing.T) {
 	assert.Equal(t, "/home/user/project", got.ProjectDir)
 }
 
-func TestCaptureWithPromptAndOutput(t *testing.T) {
+func TestCaptureStepMetadata(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
@@ -136,11 +136,9 @@ func TestCaptureWithPromptAndOutput(t *testing.T) {
 	store.CreateRun(ctx, run)
 
 	exec := &domain.StepExecution{
-		StepName:      "implement",
-		PromptText:    "Write hello world",
-		AgentOutput:   "Here is the code",
-		AttemptNumber: 1,
-		StartedAt:     time.Now(),
+		StepName:  "implement",
+		Result:    "success",
+		StartedAt: time.Now(),
 	}
 	err = store.SaveCapture(ctx, "test-1", exec)
 	require.NoError(t, err)
@@ -148,9 +146,8 @@ func TestCaptureWithPromptAndOutput(t *testing.T) {
 	caps, err := store.GetCaptures(ctx, "test-1")
 	require.NoError(t, err)
 	require.Len(t, caps, 1)
-	assert.Equal(t, "Write hello world", caps[0].PromptText)
-	assert.Equal(t, "Here is the code", caps[0].AgentOutput)
-	assert.Equal(t, 1, caps[0].AttemptNumber)
+	assert.Equal(t, "implement", caps[0].StepName)
+	assert.Equal(t, "success", caps[0].Result)
 }
 
 func TestListRunsSince(t *testing.T) {

@@ -97,17 +97,17 @@ func TestServer_RunWorkflow(t *testing.T) {
 	assert.GreaterOrEqual(t, len(status.StepExecutions), 1)
 }
 
-func TestServer_RunWorkflow_CapturesPromptAndOutput(t *testing.T) {
+func TestServer_RunWorkflow_CapturesStepMetadata(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
 
 	dir := t.TempDir()
 
-	// Mock agent outputs status messages that include prompt text and agent output
+	// Mock agent outputs status messages
 	msgs := []protocol.StatusMessage{
-		{Type: protocol.MsgStepStarted, StepName: "implement", PromptText: "the assembled prompt"},
-		{Type: protocol.MsgStepCompleted, StepName: "implement", Result: "success", AgentOutput: "I wrote the code", AttemptNumber: 1},
+		{Type: protocol.MsgStepStarted, StepName: "implement"},
+		{Type: protocol.MsgStepCompleted, StepName: "implement", Result: "success"},
 		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
 	}
 	script := "#!/bin/sh\n"
@@ -145,18 +145,18 @@ func TestServer_RunWorkflow_CapturesPromptAndOutput(t *testing.T) {
 	// Should have 2 captures: one for step_started, one for step_completed
 	require.GreaterOrEqual(t, len(captures), 2)
 
-	// Check captures directly - the started one has prompt_text, completed has agent_output
-	var foundPrompt, foundOutput bool
+	// Check captures directly - one for step_started, one for step_completed
+	var foundStarted, foundCompleted bool
 	for _, c := range captures {
-		if c.PromptText == "the assembled prompt" {
-			foundPrompt = true
+		if c.StepName == "implement" && c.Result == "" {
+			foundStarted = true
 		}
-		if c.AgentOutput == "I wrote the code" && c.AttemptNumber == 1 {
-			foundOutput = true
+		if c.StepName == "implement" && c.Result == "success" {
+			foundCompleted = true
 		}
 	}
-	assert.True(t, foundPrompt, "should find capture with prompt text")
-	assert.True(t, foundOutput, "should find capture with agent output and attempt number")
+	assert.True(t, foundStarted, "should find capture for step started")
+	assert.True(t, foundCompleted, "should find capture for step completed")
 }
 
 func TestServer_StreamLogs(t *testing.T) {
@@ -168,8 +168,8 @@ func TestServer_StreamLogs(t *testing.T) {
 
 	// Mock agent outputs status messages
 	msgs := []protocol.StatusMessage{
-		{Type: protocol.MsgStepStarted, StepName: "build", PromptText: "build the thing"},
-		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success", AgentOutput: "done building"},
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
 		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
 	}
 	script := "#!/bin/sh\n"
@@ -217,13 +217,11 @@ func TestServer_StreamLogs(t *testing.T) {
 		case "step_started":
 			if e.StepName == "build" {
 				foundStarted = true
-				assert.Equal(t, "build the thing", e.Message)
 			}
 		case "step_completed":
 			if e.StepName == "build" {
 				foundCompleted = true
 				assert.Equal(t, "success", e.Result)
-				assert.Equal(t, "done building", e.Message)
 			}
 		case "run_completed":
 			foundRun = true

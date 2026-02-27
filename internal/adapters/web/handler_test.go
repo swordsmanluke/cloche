@@ -79,13 +79,10 @@ func TestRunDetail_WithCaptures(t *testing.T) {
 
 	ctx := context.Background()
 	require.NoError(t, store.SaveCapture(ctx, "run-detail-1", &domain.StepExecution{
-		StepName:      "implement",
-		Result:        "success",
-		StartedAt:     time.Now().Add(-5 * time.Minute),
-		CompletedAt:   time.Now(),
-		PromptText:    "Write hello world",
-		AgentOutput:   "Here is the code",
-		AttemptNumber: 1,
+		StepName:    "implement",
+		Result:      "success",
+		StartedAt:   time.Now().Add(-5 * time.Minute),
+		CompletedAt: time.Now(),
 	}))
 
 	req := httptest.NewRequest("GET", "/runs/run-detail-1", nil)
@@ -96,8 +93,6 @@ func TestRunDetail_WithCaptures(t *testing.T) {
 	body := w.Body.String()
 	assert.Contains(t, body, "run-detail-1")
 	assert.Contains(t, body, "implement")
-	assert.Contains(t, body, "Write hello world")
-	assert.Contains(t, body, "Here is the code")
 }
 
 func TestRunDetail_NotFound(t *testing.T) {
@@ -140,13 +135,10 @@ func TestAPIRunDetail(t *testing.T) {
 
 	ctx := context.Background()
 	require.NoError(t, store.SaveCapture(ctx, "api-detail-1", &domain.StepExecution{
-		StepName:      "build",
-		Result:        "success",
-		StartedAt:     time.Now().Add(-10 * time.Second),
-		CompletedAt:   time.Now(),
-		PromptText:    "Build the project",
-		AgentOutput:   "Build succeeded",
-		AttemptNumber: 1,
+		StepName:    "build",
+		Result:      "success",
+		StartedAt:   time.Now().Add(-10 * time.Second),
+		CompletedAt: time.Now(),
 	}))
 
 	req := httptest.NewRequest("GET", "/api/runs/api-detail-1", nil)
@@ -161,8 +153,6 @@ func TestAPIRunDetail(t *testing.T) {
 	assert.Equal(t, "running", detail.State)
 	assert.Len(t, detail.Steps, 1)
 	assert.Equal(t, "build", detail.Steps[0].StepName)
-	assert.Equal(t, "Build the project", detail.Steps[0].PromptText)
-	assert.Equal(t, "Build succeeded", detail.Steps[0].AgentOutput)
 	assert.NotEmpty(t, detail.Steps[0].Duration)
 }
 

@@ -25,7 +25,6 @@
             <th>Result</th>
             <th>Started</th>
             <th>Duration</th>
-            <th>Attempt</th>
         </tr>
     </thead>
     <tbody id="steps-body">
@@ -36,29 +35,10 @@
             <td>{{.Result}}</td>
             <td>{{formatTime .StartedAt}}</td>
             <td>{{formatDuration .StartedAt .CompletedAt}}</td>
-            <td>{{.AttemptNumber}}</td>
         </tr>
-        {{if or .PromptText .AgentOutput}}
-        <tr class="detail-row">
-            <td colspan="5">
-                {{if .PromptText}}
-                <details>
-                    <summary>Prompt</summary>
-                    <pre>{{.PromptText}}</pre>
-                </details>
-                {{end}}
-                {{if .AgentOutput}}
-                <details>
-                    <summary>Agent Output</summary>
-                    <pre>{{.AgentOutput}}</pre>
-                </details>
-                {{end}}
-            </td>
-        </tr>
-        {{end}}
         {{end}}
     {{else}}
-        <tr><td colspan="5" class="empty">No step executions recorded.</td></tr>
+        <tr><td colspan="4" class="empty">No step executions recorded.</td></tr>
     {{end}}
     </tbody>
 </table>
@@ -81,7 +61,7 @@
                 }
                 var tbody = document.getElementById('steps-body');
                 if (!data.steps || data.steps.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="empty">No step executions recorded.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="4" class="empty">No step executions recorded.</td></tr>';
                     return;
                 }
                 var html = '';
@@ -92,18 +72,7 @@
                         '<td>' + escapeHtml(s.result) + '</td>' +
                         '<td>' + s.started_at + '</td>' +
                         '<td>' + s.duration + '</td>' +
-                        '<td>' + s.attempt_number + '</td>' +
                         '</tr>';
-                    if (s.prompt_text || s.agent_output) {
-                        html += '<tr class="detail-row"><td colspan="5">';
-                        if (s.prompt_text) {
-                            html += '<details><summary>Prompt</summary><pre>' + escapeHtml(s.prompt_text) + '</pre></details>';
-                        }
-                        if (s.agent_output) {
-                            html += '<details><summary>Agent Output</summary><pre>' + escapeHtml(s.agent_output) + '</pre></details>';
-                        }
-                        html += '</td></tr>';
-                    }
                 }
                 tbody.innerHTML = html;
             })

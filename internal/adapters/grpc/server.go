@@ -91,6 +91,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		}
 	}
 	run := domain.NewRun(runID, req.WorkflowName)
+	run.ProjectDir = req.ProjectDir
 	if err := s.store.CreateRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("creating run: %w", err)
 	}
@@ -173,20 +174,17 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 			run.RecordStepStart(msg.StepName)
 			if s.captures != nil {
 				_ = s.captures.SaveCapture(ctx, runID, &domain.StepExecution{
-					StepName:   msg.StepName,
-					StartedAt:  msg.Timestamp,
-					PromptText: msg.PromptText,
+					StepName:  msg.StepName,
+					StartedAt: msg.Timestamp,
 				})
 			}
 		case protocol.MsgStepCompleted:
 			run.RecordStepComplete(msg.StepName, msg.Result)
 			if s.captures != nil {
 				_ = s.captures.SaveCapture(ctx, runID, &domain.StepExecution{
-					StepName:      msg.StepName,
-					Result:        msg.Result,
-					CompletedAt:   msg.Timestamp,
-					AgentOutput:   msg.AgentOutput,
-					AttemptNumber: msg.AttemptNumber,
+					StepName:    msg.StepName,
+					Result:      msg.Result,
+					CompletedAt: msg.Timestamp,
 				})
 			}
 		case protocol.MsgRunCompleted:
@@ -205,6 +203,14 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	exitCode, err := s.container.Wait(ctx, containerID)
 	if err != nil {
 		log.Printf("error waiting for run %s: %v", runID, err)
+	}
+
+	// Extract step output files from container before it's removed
+	outputDst := filepath.Join(projectDir, ".cloche", runID, "output")
+	if err := os.MkdirAll(outputDst, 0755); err == nil {
+		if cpErr := s.container.CopyFrom(ctx, containerID, "/workspace/.cloche/output/.", outputDst); cpErr != nil {
+			log.Printf("run %s: failed to extract output: %v", runID, cpErr)
+		}
 	}
 
 	// Ensure run is marked complete
@@ -318,27 +324,30 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 	}
 
 	for _, exec := range captures {
-		// Captures are stored as separate rows: one for step_started (has PromptText,
-		// no Result) and one for step_completed (has Result and AgentOutput).
+		// Captures are stored as separate rows: one for step_started (no Result)
+		// and one for step_completed (has Result).
 		if exec.Result == "" {
-			// This is a step_started capture
 			entry := &pb.LogEntry{
 				Type:      "step_started",
 				StepName:  exec.StepName,
 				Timestamp: exec.StartedAt.String(),
-				Message:   exec.PromptText,
 			}
 			if err := stream.Send(entry); err != nil {
 				return err
 			}
 		} else {
-			// This is a step_completed capture
+			// Read step output from file
+			var output string
+			outputPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", exec.StepName+".log")
+			if data, err := os.ReadFile(outputPath); err == nil {
+				output = string(data)
+			}
 			entry := &pb.LogEntry{
 				Type:      "step_completed",
 				StepName:  exec.StepName,
 				Result:    exec.Result,
 				Timestamp: exec.CompletedAt.String(),
-				Message:   exec.AgentOutput,
+				Message:   output,
 			}
 			if err := stream.Send(entry); err != nil {
 				return err

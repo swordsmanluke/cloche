@@ -7,6 +7,8 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/cloche-dev/cloche/internal/domain"
@@ -68,6 +70,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore) (*Handler, er
 	h.mux.HandleFunc("GET /runs/{id}", h.handleRunDetail)
 	h.mux.HandleFunc("GET /api/runs", h.handleAPIRuns)
 	h.mux.HandleFunc("GET /api/runs/{id}", h.handleAPIRunDetail)
+	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
 	h.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
 
 	return h, nil
@@ -135,14 +138,11 @@ type apiRun struct {
 }
 
 type apiStep struct {
-	StepName      string `json:"step_name"`
-	Result        string `json:"result"`
-	StartedAt     string `json:"started_at"`
-	CompletedAt   string `json:"completed_at"`
-	Duration      string `json:"duration"`
-	PromptText    string `json:"prompt_text"`
-	AgentOutput   string `json:"agent_output"`
-	AttemptNumber int    `json:"attempt_number"`
+	StepName    string `json:"step_name"`
+	Result      string `json:"result"`
+	StartedAt   string `json:"started_at"`
+	CompletedAt string `json:"completed_at"`
+	Duration    string `json:"duration"`
 }
 
 type apiRunDetail struct {
@@ -164,14 +164,11 @@ func toAPIRun(r *domain.Run) apiRun {
 
 func toAPIStep(e *domain.StepExecution) apiStep {
 	return apiStep{
-		StepName:      e.StepName,
-		Result:        e.Result,
-		StartedAt:     formatTime(e.StartedAt),
-		CompletedAt:   formatTime(e.CompletedAt),
-		Duration:      formatDuration(e.StartedAt, e.CompletedAt),
-		PromptText:    e.PromptText,
-		AgentOutput:   e.AgentOutput,
-		AttemptNumber: e.AttemptNumber,
+		StepName:    e.StepName,
+		Result:      e.Result,
+		StartedAt:   formatTime(e.StartedAt),
+		CompletedAt: formatTime(e.CompletedAt),
+		Duration:    formatDuration(e.StartedAt, e.CompletedAt),
 	}
 }
 
@@ -217,6 +214,27 @@ func (h *Handler) handleAPIRunDetail(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(detail)
+}
+
+func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	step := r.PathValue("step")
+
+	run, err := h.store.GetRun(r.Context(), id)
+	if err != nil {
+		http.Error(w, "run not found", http.StatusNotFound)
+		return
+	}
+
+	outputPath := filepath.Join(run.ProjectDir, ".cloche", id, "output", step+".log")
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		http.Error(w, "step output not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write(data)
 }
 
 // --- Template helpers ---

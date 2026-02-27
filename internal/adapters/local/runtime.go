@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
@@ -12,10 +13,11 @@ import (
 )
 
 type managedProcess struct {
-	cmd    *exec.Cmd
-	stdout io.ReadCloser
-	done   chan struct{}
-	exit   int
+	cmd        *exec.Cmd
+	stdout     io.ReadCloser
+	done       chan struct{}
+	exit       int
+	projectDir string
 }
 
 type Runtime struct {
@@ -57,9 +59,10 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	r.nextID++
 	id := fmt.Sprintf("local-%d", r.nextID)
 	mp := &managedProcess{
-		cmd:    cmd,
-		stdout: stdout,
-		done:   make(chan struct{}),
+		cmd:        cmd,
+		stdout:     stdout,
+		done:       make(chan struct{}),
+		projectDir: cfg.ProjectDir,
 	}
 	r.processes[id] = mp
 	r.mu.Unlock()
@@ -122,4 +125,31 @@ func (r *Runtime) Wait(ctx context.Context, containerID string) (int, error) {
 	case <-ctx.Done():
 		return -1, ctx.Err()
 	}
+}
+
+func (r *Runtime) CopyFrom(ctx context.Context, containerID string, srcPath, dstPath string) error {
+	r.mu.Lock()
+	mp, ok := r.processes[containerID]
+	r.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("process %q not found", containerID)
+	}
+
+	// In local mode the workspace IS the project dir, so srcPath is relative
+	// to the project directory. Resolve it to an absolute path.
+	src := srcPath
+	if !filepath.IsAbs(srcPath) {
+		src = filepath.Join(mp.projectDir, srcPath)
+	}
+
+	if err := os.MkdirAll(dstPath, 0o755); err != nil {
+		return fmt.Errorf("creating destination dir: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, "cp", "-r", src+"/.", dstPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("copying files: %s: %w", string(out), err)
+	}
+	return nil
 }

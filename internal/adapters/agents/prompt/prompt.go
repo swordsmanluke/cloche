@@ -14,18 +14,10 @@ import (
 	"github.com/cloche-dev/cloche/internal/protocol"
 )
 
-// CapturedData holds data captured during agent step execution.
-type CapturedData struct {
-	PromptText    string
-	AgentOutput   string
-	AttemptNumber int
-}
-
 type Adapter struct {
-	Command   string
-	Args      []string
-	RunID     string
-	OnCapture func(CapturedData)
+	Command string
+	Args    []string
+	RunID   string
 }
 
 func New() *Adapter {
@@ -46,9 +38,6 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		if err == nil {
 			count := readAttemptCount(workDir, step.Name)
 			if count >= max {
-				if a.OnCapture != nil {
-					a.OnCapture(CapturedData{AttemptNumber: count})
-				}
 				return "give-up", nil
 			}
 		}
@@ -77,14 +66,11 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 			if found {
 				result = markerResult
 			}
-			protocol.AppendHistory(workDir, step.Name, result, true, nil)
-			if a.OnCapture != nil {
-				a.OnCapture(CapturedData{
-					PromptText:    fullPrompt,
-					AgentOutput:   stdout.String(),
-					AttemptNumber: readAttemptCount(workDir, step.Name),
-				})
+			outputDir := filepath.Join(workDir, ".cloche", "output")
+			if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
+				_ = os.WriteFile(filepath.Join(outputDir, step.Name+".log"), stdout.Bytes(), 0644)
 			}
+			protocol.AppendHistory(workDir, step.Name, result, true, nil)
 			return result, nil
 		}
 		return "", runErr
@@ -95,14 +81,11 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	if found {
 		result = markerResult
 	}
-	protocol.AppendHistory(workDir, step.Name, result, true, nil)
-	if a.OnCapture != nil {
-		a.OnCapture(CapturedData{
-			PromptText:    fullPrompt,
-			AgentOutput:   stdout.String(),
-			AttemptNumber: readAttemptCount(workDir, step.Name),
-		})
+	outputDir := filepath.Join(workDir, ".cloche", "output")
+	if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
+		_ = os.WriteFile(filepath.Join(outputDir, step.Name+".log"), stdout.Bytes(), 0644)
 	}
+	protocol.AppendHistory(workDir, step.Name, result, true, nil)
 	return result, nil
 }
 

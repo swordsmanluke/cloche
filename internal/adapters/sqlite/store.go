@@ -181,18 +181,18 @@ func (s *Store) ListRuns(ctx context.Context, since time.Time) ([]*domain.Run, e
 
 func (s *Store) SaveCapture(ctx context.Context, runID string, exec *domain.StepExecution) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO step_executions (run_id, step_name, result, started_at, completed_at, logs, git_ref, prompt_text, agent_output, attempt_number)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO step_executions (run_id, step_name, result, started_at, completed_at, logs, git_ref)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		runID, exec.StepName, exec.Result,
 		formatTime(exec.StartedAt), formatTime(exec.CompletedAt),
-		exec.Logs, exec.GitRef, exec.PromptText, exec.AgentOutput, exec.AttemptNumber,
+		exec.Logs, exec.GitRef,
 	)
 	return err
 }
 
 func (s *Store) GetCaptures(ctx context.Context, runID string) ([]*domain.StepExecution, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT step_name, result, started_at, completed_at, COALESCE(logs,''), COALESCE(git_ref,''), COALESCE(prompt_text,''), COALESCE(agent_output,''), COALESCE(attempt_number,0)
+		`SELECT step_name, result, started_at, completed_at, COALESCE(logs,''), COALESCE(git_ref,'')
 		 FROM step_executions WHERE run_id = ? ORDER BY id`, runID)
 	if err != nil {
 		return nil, err
@@ -203,7 +203,7 @@ func (s *Store) GetCaptures(ctx context.Context, runID string) ([]*domain.StepEx
 	for rows.Next() {
 		e := &domain.StepExecution{}
 		var startedAt, completedAt string
-		if err := rows.Scan(&e.StepName, &e.Result, &startedAt, &completedAt, &e.Logs, &e.GitRef, &e.PromptText, &e.AgentOutput, &e.AttemptNumber); err != nil {
+		if err := rows.Scan(&e.StepName, &e.Result, &startedAt, &completedAt, &e.Logs, &e.GitRef); err != nil {
 			return nil, err
 		}
 		e.StartedAt = parseTime(startedAt)

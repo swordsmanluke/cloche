@@ -36,16 +36,13 @@ func TestRunProjectDir(t *testing.T) {
 	assert.Equal(t, "/home/user/project", r.ProjectDir)
 }
 
-func TestStepExecutionCapturedData(t *testing.T) {
+func TestStepExecutionFields(t *testing.T) {
 	exec := &domain.StepExecution{
-		StepName:      "implement",
-		PromptText:    "Write a hello world",
-		AgentOutput:   "Here is the code...",
-		AttemptNumber: 2,
+		StepName: "implement",
+		Result:   "success",
 	}
-	assert.Equal(t, "Write a hello world", exec.PromptText)
-	assert.Equal(t, "Here is the code...", exec.AgentOutput)
-	assert.Equal(t, 2, exec.AttemptNumber)
+	assert.Equal(t, "implement", exec.StepName)
+	assert.Equal(t, "success", exec.Result)
 }
 
 func TestRun_Fail(t *testing.T) {

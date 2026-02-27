@@ -231,6 +231,16 @@ func (r *Runtime) Wait(ctx context.Context, containerID string) (int, error) {
 	return code, nil
 }
 
+func (r *Runtime) CopyFrom(ctx context.Context, containerID string, srcPath, dstPath string) error {
+	cmd := exec.CommandContext(ctx, "docker", "cp", containerID+":"+srcPath, dstPath)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("copying from container: %s: %w", stderr.String(), err)
+	}
+	return nil
+}
+
 // FindFreePort asks the OS for an available TCP port.
 func FindFreePort() (int, error) {
 	lis, err := net.Listen("tcp", ":0")

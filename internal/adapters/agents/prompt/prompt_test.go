@@ -169,19 +169,15 @@ func TestPromptAdapter_StdoutMarkerSelectsResult(t *testing.T) {
 	assert.Equal(t, "needs_research", result)
 }
 
-func TestExecuteCapturesData(t *testing.T) {
+func TestExecuteWritesOutputFile(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".cloche", "test-run"), 0755)
 	os.WriteFile(filepath.Join(dir, ".cloche", "test-run", "prompt.txt"), []byte("user request"), 0644)
 
-	var captured prompt.CapturedData
 	a := &prompt.Adapter{
 		Command: "sh",
 		Args:    []string{"-c", "cat > /dev/null && echo 'agent output'"},
 		RunID:   "test-run",
-		OnCapture: func(c prompt.CapturedData) {
-			captured = c
-		},
 	}
 
 	step := &domain.Step{
@@ -194,10 +190,12 @@ func TestExecuteCapturesData(t *testing.T) {
 	result, err := a.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
-	assert.Contains(t, captured.PromptText, "Build something")
-	assert.Contains(t, captured.PromptText, "user request")
-	assert.NotEmpty(t, captured.AgentOutput)
-	assert.Equal(t, 1, captured.AttemptNumber)
+
+	// Verify output was written to file
+	outputPath := filepath.Join(dir, ".cloche", "output", "implement.log")
+	data, err := os.ReadFile(outputPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "agent output")
 }
 
 func TestPromptAdapter_IncrementsAttemptCount(t *testing.T) {
