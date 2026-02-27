@@ -59,6 +59,12 @@ func (r *Runner) Run(ctx context.Context) error {
 	if cmd, ok := os.LookupEnv("CLOCHE_AGENT_COMMAND"); ok {
 		promptAdapter.Command = cmd
 	}
+	if cmd := wf.Config["container.agent_command"]; cmd != "" {
+		promptAdapter.Command = cmd
+	}
+	if args := wf.Config["container.agent_args"]; args != "" {
+		promptAdapter.Args = strings.Fields(args)
+	}
 
 	executor := &stepExecutor{
 		runner:  r,
@@ -213,6 +219,11 @@ Rules:
 		command = cmd
 	}
 
+	// Only generate LLM commit messages when using Claude
+	if command != "claude" {
+		return "", fmt.Errorf("LLM commit messages only supported with claude")
+	}
+
 	cmd := exec.CommandContext(ctx, command, "-p", "--output-format", "text", "--dangerously-skip-permissions")
 	cmd.Dir = r.cfg.WorkDir
 	cmd.Stdin = strings.NewReader(llmPrompt)
@@ -249,6 +260,9 @@ func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, 
 		if _, ok := step.Config["prompt"]; ok {
 			if cmd := step.Config["agent_command"]; cmd != "" {
 				e.prompt.Command = cmd
+			}
+			if args := step.Config["agent_args"]; args != "" {
+				e.prompt.Args = strings.Fields(args)
 			}
 			e.prompt.OnCapture = func(c prompt.CapturedData) {
 				e.runner.mu.Lock()
