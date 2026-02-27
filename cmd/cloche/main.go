@@ -70,7 +70,8 @@ func usage() {
 
 Commands:
   init [--workflow <name>] [--image <base>]  Initialize a Cloche project
-  run --workflow <name> [--prompt "..."]     Launch a workflow run
+  run --workflow <name> [--prompt "..."] [--keep-container]
+                                             Launch a workflow run
   status <run-id>                            Check run status
   logs <run-id>                              Show step logs for a run
   list [--all]                                List runs (last hour by default)
@@ -81,6 +82,7 @@ Commands:
 
 func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	var workflow, prompt string
+	var keepContainer bool
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -94,6 +96,8 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 				i++
 				prompt = args[i]
 			}
+		case "--keep-container":
+			keepContainer = true
 		default:
 			// Support bare positional arg as workflow name for backwards compat
 			if workflow == "" && !strings.HasPrefix(args[i], "-") {
@@ -119,10 +123,11 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	}
 
 	resp, err := client.RunWorkflow(ctx, &pb.RunWorkflowRequest{
-		WorkflowName: workflow,
-		ProjectDir:   cwd,
-		Image:        image,
-		Prompt:       prompt,
+		WorkflowName:  workflow,
+		ProjectDir:    cwd,
+		Image:         image,
+		Prompt:        prompt,
+		KeepContainer: keepContainer,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

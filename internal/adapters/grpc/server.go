@@ -104,7 +104,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 
 	// Launch container start + tracking in background so the RPC returns immediately.
 	// The run stays in "pending" state until the container is up.
-	go s.launchAndTrack(runID, image, req)
+	go s.launchAndTrack(runID, image, req.KeepContainer, req)
 
 	return &pb.RunWorkflowResponse{RunId: runID}, nil
 }
@@ -112,7 +112,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 // launchAndTrack starts the container and then tracks it to completion.
 // It runs in a background goroutine with its own context, independent of the
 // RPC context which may be cancelled after RunWorkflow returns.
-func (s *ClocheServer) launchAndTrack(runID, image string, req *pb.RunWorkflowRequest) {
+func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, req *pb.RunWorkflowRequest) {
 	ctx := context.Background()
 
 	containerID, err := s.container.Start(ctx, ports.ContainerConfig{
@@ -143,10 +143,10 @@ func (s *ClocheServer) launchAndTrack(runID, image string, req *pb.RunWorkflowRe
 		_ = s.store.UpdateRun(ctx, run)
 	}
 
-	s.trackRun(runID, containerID, req.ProjectDir, req.WorkflowName)
+	s.trackRun(runID, containerID, req.ProjectDir, req.WorkflowName, keepContainer)
 }
 
-func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName string) {
+func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName string, keepContainer bool) {
 	ctx := context.Background()
 
 	// Attach to agent output
@@ -230,6 +230,17 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	// Fire evolution trigger if configured
 	if s.evolution != nil {
 		s.evolution.Fire(projectDir, workflowName, runID)
+	}
+
+	// Auto-remove container unless --keep-container was set
+	if keepContainer {
+		log.Printf("run %s: keeping container %s (--keep-container)", runID, containerID)
+	} else {
+		if err := s.container.Remove(ctx, containerID); err != nil {
+			log.Printf("run %s: failed to remove container %s: %v", runID, containerID, err)
+		} else {
+			log.Printf("run %s: removed container %s", runID, containerID)
+		}
 	}
 
 	// Cleanup mapping

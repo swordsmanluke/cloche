@@ -127,6 +127,10 @@ func (r *Runtime) Wait(ctx context.Context, containerID string) (int, error) {
 	}
 }
 
+func (r *Runtime) Remove(ctx context.Context, containerID string) error {
+	return nil
+}
+
 func (r *Runtime) CopyFrom(ctx context.Context, containerID string, srcPath, dstPath string) error {
 	r.mu.Lock()
 	mp, ok := r.processes[containerID]

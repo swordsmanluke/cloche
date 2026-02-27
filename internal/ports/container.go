@@ -21,4 +21,5 @@ type ContainerRuntime interface {
 	AttachOutput(ctx context.Context, containerID string) (io.ReadCloser, error)
 	Wait(ctx context.Context, containerID string) (exitCode int, err error)
 	CopyFrom(ctx context.Context, containerID string, srcPath, dstPath string) error
+	Remove(ctx context.Context, containerID string) error
 }

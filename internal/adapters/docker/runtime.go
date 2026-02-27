@@ -241,6 +241,16 @@ func (r *Runtime) CopyFrom(ctx context.Context, containerID string, srcPath, dst
 	return nil
 }
 
+func (r *Runtime) Remove(ctx context.Context, containerID string) error {
+	cmd := exec.CommandContext(ctx, "docker", "rm", containerID)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("removing container: %s: %w", stderr.String(), err)
+	}
+	return nil
+}
+
 // FindFreePort asks the OS for an available TCP port.
 func FindFreePort() (int, error) {
 	lis, err := net.Listen("tcp", ":0")

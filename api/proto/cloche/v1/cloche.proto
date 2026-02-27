@@ -18,6 +18,7 @@ message RunWorkflowRequest {
   string project_dir = 2;
   string image = 3;
   string prompt = 4;
+  bool keep_container = 5;
 }
 
 message RunWorkflowResponse {
