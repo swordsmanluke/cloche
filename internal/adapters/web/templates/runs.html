@@ -1,0 +1,76 @@
+{{define "content"}}
+<h1>Runs</h1>
+<table class="runs-table">
+    <thead>
+        <tr>
+            <th>Run ID</th>
+            <th>Workflow</th>
+            <th>State</th>
+            <th>Started</th>
+            <th>Completed</th>
+            <th>Container</th>
+            <th>Error</th>
+        </tr>
+    </thead>
+    <tbody id="runs-body">
+    {{if .Runs}}
+        {{range .Runs}}
+        <tr>
+            <td><a href="/runs/{{.ID}}">{{.ID}}</a></td>
+            <td>{{.WorkflowName}}</td>
+            <td><span class="badge badge-{{stateColor .State}}">{{.State}}</span></td>
+            <td>{{formatTime .StartedAt}}</td>
+            <td>{{formatTime .CompletedAt}}</td>
+            <td class="mono">{{shortContainerID .ContainerID}}</td>
+            <td class="error-cell">{{truncate .ErrorMessage 80}}</td>
+        </tr>
+        {{end}}
+    {{else}}
+        <tr><td colspan="7" class="empty">No runs yet.</td></tr>
+    {{end}}
+    </tbody>
+</table>
+{{end}}
+
+{{define "scripts"}}
+<script>
+(function() {
+    function poll() {
+        fetch('/api/runs')
+            .then(function(r) { return r.json(); })
+            .then(function(runs) {
+                var tbody = document.getElementById('runs-body');
+                if (!runs || runs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty">No runs yet.</td></tr>';
+                    return;
+                }
+                var html = '';
+                for (var i = 0; i < runs.length; i++) {
+                    var r = runs[i];
+                    var cid = r.container_id || '';
+                    if (cid.length > 12) cid = cid.substring(0, 12);
+                    var err = r.error_message || '';
+                    if (err.length > 80) err = err.substring(0, 80) + '...';
+                    html += '<tr>' +
+                        '<td><a href="/runs/' + r.id + '">' + r.id + '</a></td>' +
+                        '<td>' + r.workflow_name + '</td>' +
+                        '<td><span class="badge badge-' + r.state + '">' + r.state + '</span></td>' +
+                        '<td>' + r.started_at + '</td>' +
+                        '<td>' + r.completed_at + '</td>' +
+                        '<td class="mono">' + cid + '</td>' +
+                        '<td class="error-cell">' + escapeHtml(err) + '</td>' +
+                        '</tr>';
+                }
+                tbody.innerHTML = html;
+            })
+            .catch(function() {});
+    }
+    function escapeHtml(s) {
+        var d = document.createElement('div');
+        d.appendChild(document.createTextNode(s));
+        return d.innerHTML;
+    }
+    setInterval(poll, 3000);
+})();
+</script>
+{{end}}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	adaptgrpc "github.com/cloche-dev/cloche/internal/adapters/grpc"
 	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
+	"github.com/cloche-dev/cloche/internal/adapters/web"
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/evolution"
 	"github.com/cloche-dev/cloche/internal/ports"
@@ -75,10 +77,29 @@ func main() {
 		os.Exit(1)
 	}
 
+	var httpServer *http.Server
+	if httpAddr := os.Getenv("CLOCHE_HTTP"); httpAddr != "" {
+		webHandler, err := web.NewHandler(store, store)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to create web handler: %v\n", err)
+			os.Exit(1)
+		}
+		httpServer = &http.Server{Addr: httpAddr, Handler: webHandler}
+		go func() {
+			fmt.Fprintf(os.Stderr, "cloched web dashboard on http://%s\n", httpAddr)
+			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				fmt.Fprintf(os.Stderr, "http server error: %v\n", err)
+			}
+		}()
+	}
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
 		<-sigCh
+		if httpServer != nil {
+			httpServer.Close()
+		}
 		grpcServer.GracefulStop()
 	}()
 

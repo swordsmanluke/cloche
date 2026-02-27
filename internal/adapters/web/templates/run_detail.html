@@ -1,0 +1,121 @@
+{{define "content"}}
+<h1>
+    <a href="/">Runs</a> / {{.Run.ID}}
+    <span class="badge badge-{{stateColor .Run.State}}">{{.Run.State}}</span>
+</h1>
+
+<div class="run-meta">
+    <dl>
+        <dt>Workflow</dt><dd>{{.Run.WorkflowName}}</dd>
+        <dt>Started</dt><dd>{{formatTime .Run.StartedAt}}</dd>
+        <dt>Completed</dt><dd>{{formatTime .Run.CompletedAt}}</dd>
+        <dt>Container</dt><dd class="mono">{{.Run.ContainerID}}</dd>
+    </dl>
+</div>
+
+{{if .Run.ErrorMessage}}
+<div class="error-box">{{.Run.ErrorMessage}}</div>
+{{end}}
+
+<h2>Steps</h2>
+<table class="runs-table">
+    <thead>
+        <tr>
+            <th>Step</th>
+            <th>Result</th>
+            <th>Started</th>
+            <th>Duration</th>
+            <th>Attempt</th>
+        </tr>
+    </thead>
+    <tbody id="steps-body">
+    {{if .Captures}}
+        {{range .Captures}}
+        <tr>
+            <td>{{.StepName}}</td>
+            <td>{{.Result}}</td>
+            <td>{{formatTime .StartedAt}}</td>
+            <td>{{formatDuration .StartedAt .CompletedAt}}</td>
+            <td>{{.AttemptNumber}}</td>
+        </tr>
+        {{if or .PromptText .AgentOutput}}
+        <tr class="detail-row">
+            <td colspan="5">
+                {{if .PromptText}}
+                <details>
+                    <summary>Prompt</summary>
+                    <pre>{{.PromptText}}</pre>
+                </details>
+                {{end}}
+                {{if .AgentOutput}}
+                <details>
+                    <summary>Agent Output</summary>
+                    <pre>{{.AgentOutput}}</pre>
+                </details>
+                {{end}}
+            </td>
+        </tr>
+        {{end}}
+        {{end}}
+    {{else}}
+        <tr><td colspan="5" class="empty">No step executions recorded.</td></tr>
+    {{end}}
+    </tbody>
+</table>
+{{end}}
+
+{{define "scripts"}}
+<script>
+(function() {
+    var runState = '{{.Run.State}}';
+    var runID = '{{.Run.ID}}';
+    if (runState === 'succeeded' || runState === 'failed' || runState === 'cancelled') return;
+
+    function poll() {
+        fetch('/api/runs/' + runID)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.state !== runState) {
+                    location.reload();
+                    return;
+                }
+                var tbody = document.getElementById('steps-body');
+                if (!data.steps || data.steps.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty">No step executions recorded.</td></tr>';
+                    return;
+                }
+                var html = '';
+                for (var i = 0; i < data.steps.length; i++) {
+                    var s = data.steps[i];
+                    html += '<tr>' +
+                        '<td>' + escapeHtml(s.step_name) + '</td>' +
+                        '<td>' + escapeHtml(s.result) + '</td>' +
+                        '<td>' + s.started_at + '</td>' +
+                        '<td>' + s.duration + '</td>' +
+                        '<td>' + s.attempt_number + '</td>' +
+                        '</tr>';
+                    if (s.prompt_text || s.agent_output) {
+                        html += '<tr class="detail-row"><td colspan="5">';
+                        if (s.prompt_text) {
+                            html += '<details><summary>Prompt</summary><pre>' + escapeHtml(s.prompt_text) + '</pre></details>';
+                        }
+                        if (s.agent_output) {
+                            html += '<details><summary>Agent Output</summary><pre>' + escapeHtml(s.agent_output) + '</pre></details>';
+                        }
+                        html += '</td></tr>';
+                    }
+                }
+                tbody.innerHTML = html;
+            })
+            .catch(function() {});
+    }
+    function escapeHtml(s) {
+        if (!s) return '';
+        var d = document.createElement('div');
+        d.appendChild(document.createTextNode(s));
+        return d.innerHTML;
+    }
+    setInterval(poll, 2000);
+})();
+</script>
+{{end}}
