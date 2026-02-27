@@ -23,15 +23,16 @@ import (
 )
 
 func main() {
-	dbPath := os.Getenv("CLOCHE_DB")
-	if dbPath == "" {
-		dbPath = "cloche.db"
+	// Load global config file (~/.config/cloche/config)
+	globalCfg, err := config.LoadGlobal()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to load global config: %v\n", err)
+		defaults := config.Config{}
+		globalCfg = &defaults
 	}
 
-	listenAddr := os.Getenv("CLOCHE_LISTEN")
-	if listenAddr == "" {
-		listenAddr = "unix:///tmp/cloche.sock"
-	}
+	dbPath := envOrConfig("CLOCHE_DB", globalCfg.Daemon.DB, "cloche.db")
+	listenAddr := envOrConfig("CLOCHE_LISTEN", globalCfg.Daemon.Listen, "unix:///tmp/cloche.sock")
 
 	store, err := sqlite.NewStore(dbPath)
 	if err != nil {
@@ -47,21 +48,18 @@ func main() {
 		fmt.Fprintf(os.Stderr, "startup: marked %d stale run(s) as failed\n", n)
 	}
 
-	runtime, err := initRuntime()
+	runtime, err := initRuntime(globalCfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to init runtime: %v\n", err)
 		os.Exit(1)
 	}
 
-	defaultImage := os.Getenv("CLOCHE_IMAGE")
-	if defaultImage == "" {
-		defaultImage = "cloche-agent:latest"
-	}
+	defaultImage := envOrConfig("CLOCHE_IMAGE", globalCfg.Daemon.Image, "cloche-agent:latest")
 
 	srv := adaptgrpc.NewClocheServerWithCaptures(store, store, runtime, defaultImage)
 
 	// Set up evolution trigger
-	evoTrigger := initEvolution(store, store)
+	evoTrigger := initEvolution(globalCfg, store, store)
 	if evoTrigger != nil {
 		srv.SetEvolution(evoTrigger)
 	}
@@ -78,7 +76,7 @@ func main() {
 	}
 
 	var httpServer *http.Server
-	if httpAddr := os.Getenv("CLOCHE_HTTP"); httpAddr != "" {
+	if httpAddr := envOrConfig("CLOCHE_HTTP", globalCfg.Daemon.HTTP, ""); httpAddr != "" {
 		webHandler, err := web.NewHandler(store, store)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to create web handler: %v\n", err)
@@ -110,15 +108,12 @@ func main() {
 	}
 }
 
-func initRuntime() (ports.ContainerRuntime, error) {
-	runtimeType := os.Getenv("CLOCHE_RUNTIME")
-	if runtimeType == "" {
-		runtimeType = "docker"
-	}
+func initRuntime(cfg *config.Config) (ports.ContainerRuntime, error) {
+	runtimeType := envOrConfig("CLOCHE_RUNTIME", cfg.Daemon.Runtime, "docker")
 
 	switch runtimeType {
 	case "local":
-		agentPath := os.Getenv("CLOCHE_AGENT_PATH")
+		agentPath := envOrConfig("CLOCHE_AGENT_PATH", cfg.Daemon.AgentPath, "")
 		if agentPath == "" {
 			// Look for cloche-agent next to this binary
 			exe, err := os.Executable()
@@ -136,14 +131,14 @@ func initRuntime() (ports.ContainerRuntime, error) {
 	}
 }
 
-func initEvolution(evoStore ports.EvolutionStore, capStore ports.CaptureStore) *evolution.Trigger {
+func initEvolution(globalCfg *config.Config, evoStore ports.EvolutionStore, capStore ports.CaptureStore) *evolution.Trigger {
 	// Load config from working directory (daemon-level defaults)
 	cfg, err := config.Load(".")
 	if err != nil || !cfg.Evolution.Enabled {
 		return nil
 	}
 
-	llmCmd := os.Getenv("CLOCHE_LLM_COMMAND")
+	llmCmd := envOrConfig("CLOCHE_LLM_COMMAND", globalCfg.Daemon.LLMCommand, "")
 	if llmCmd == "" {
 		return nil
 	}
@@ -182,4 +177,16 @@ func listen(addr string) (net.Listener, error) {
 		return net.Listen("unix", sockPath)
 	}
 	return net.Listen("tcp", addr)
+}
+
+// envOrConfig returns the env var value if set, otherwise the config file
+// value if non-empty, otherwise the fallback default.
+func envOrConfig(envKey, configVal, fallback string) string {
+	if v := os.Getenv(envKey); v != "" {
+		return v
+	}
+	if configVal != "" {
+		return configVal
+	}
+	return fallback
 }
