@@ -1,4 +1,6 @@
-.PHONY: build test lint clean proto docker-build
+.PHONY: build test lint clean proto docker-build install
+
+PREFIX ?= $(HOME)/.local
 
 build:
 	go build -o bin/cloche ./cmd/cloche
@@ -23,6 +25,22 @@ proto:
 
 docker-build:
 	docker build -t cloche-agent:latest .
+
+install: build docker-build
+	@# Stop running daemon (graceful via CLI, fallback to kill)
+	@echo "==> Stopping cloched..."
+	@cloche shutdown 2>/dev/null || pkill -x cloched 2>/dev/null || true
+	@sleep 1
+	@# Install binaries
+	@mkdir -p $(PREFIX)/bin
+	@echo "==> Installing to $(PREFIX)/bin/"
+	@install bin/cloche bin/cloched bin/cloche-agent $(PREFIX)/bin/
+	@# Restart daemon
+	@echo "==> Starting cloched..."
+	@nohup $(PREFIX)/bin/cloched > /tmp/cloched.log 2>&1 &
+	@sleep 1
+	@pgrep -x cloched > /dev/null && echo "==> cloched running (pid $$(pgrep -x cloched))" || (echo "==> ERROR: cloched failed to start, check /tmp/cloched.log" && exit 1)
+	@echo "==> Done"
 
 clean:
 	rm -rf bin/
