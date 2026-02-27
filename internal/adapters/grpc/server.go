@@ -233,7 +233,11 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 }
 
 func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*pb.ListRunsResponse, error) {
-	runs, err := s.store.ListRuns(ctx)
+	var since time.Time
+	if !req.All {
+		since = time.Now().Add(-1 * time.Hour)
+	}
+	runs, err := s.store.ListRuns(ctx, since)
 	if err != nil {
 		return nil, fmt.Errorf("listing runs: %w", err)
 	}

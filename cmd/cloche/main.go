@@ -54,7 +54,7 @@ func main() {
 	case "logs":
 		cmdLogs(client, os.Args[2:])
 	case "list":
-		cmdList(ctx, client)
+		cmdList(ctx, client, os.Args[2:])
 	case "stop":
 		cmdStop(ctx, client, os.Args[2:])
 	case "shutdown":
@@ -73,7 +73,7 @@ Commands:
   run --workflow <name> [--prompt "..."]     Launch a workflow run
   status <run-id>                            Check run status
   logs <run-id>                              Show step logs for a run
-  list                                       List all runs
+  list [--all]                                List runs (last hour by default)
   stop <run-id>                              Stop a running workflow
   shutdown                                   Shut down the daemon
 `)
@@ -162,8 +162,15 @@ func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string
 	}
 }
 
-func cmdList(ctx context.Context, client pb.ClocheServiceClient) {
-	resp, err := client.ListRuns(ctx, &pb.ListRunsRequest{})
+func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) {
+	var all bool
+	for _, arg := range args {
+		if arg == "--all" {
+			all = true
+		}
+	}
+
+	resp, err := client.ListRuns(ctx, &pb.ListRunsRequest{All: all})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)

@@ -611,6 +611,7 @@ func (*ShutdownResponse) Descriptor() ([]byte, []int) {
 
 type ListRunsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	All           bool                   `protobuf:"varint,1,opt,name=all,proto3" json:"all,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -643,6 +644,13 @@ func (x *ListRunsRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListRunsRequest.ProtoReflect.Descriptor instead.
 func (*ListRunsRequest) Descriptor() ([]byte, []int) {
 	return file_cloche_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ListRunsRequest) GetAll() bool {
+	if x != nil {
+		return x.All
+	}
+	return false
 }
 
 type ListRunsResponse struct {
@@ -814,8 +822,9 @@ const file_cloche_proto_rawDesc = "" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\"\x11\n" +
 	"\x0fStopRunResponse\"\x11\n" +
 	"\x0fShutdownRequest\"\x12\n" +
-	"\x10ShutdownResponse\"\x11\n" +
-	"\x0fListRunsRequest\"=\n" +
+	"\x10ShutdownResponse\"#\n" +
+	"\x0fListRunsRequest\x12\x10\n" +
+	"\x03all\x18\x01 \x01(\bR\x03all\"=\n" +
 	"\x10ListRunsResponse\x12)\n" +
 	"\x04runs\x18\x01 \x03(\v2\x15.cloche.v1.RunSummaryR\x04runs\"\xc5\x01\n" +
 	"\n" +

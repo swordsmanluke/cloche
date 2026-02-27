@@ -148,9 +148,17 @@ func (s *Store) DeleteRun(ctx context.Context, id string) error {
 	return err
 }
 
-func (s *Store) ListRuns(ctx context.Context) ([]*domain.Run, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,'') FROM runs ORDER BY started_at DESC`)
+func (s *Store) ListRuns(ctx context.Context, since time.Time) ([]*domain.Run, error) {
+	var rows *sql.Rows
+	var err error
+	if since.IsZero() {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,'') FROM runs ORDER BY started_at DESC`)
+	} else {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,'') FROM runs WHERE started_at >= ? ORDER BY started_at DESC`,
+			formatTime(since))
+	}
 	if err != nil {
 		return nil, err
 	}

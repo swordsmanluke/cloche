@@ -63,7 +63,7 @@ func TestRunStore_List(t *testing.T) {
 	require.NoError(t, store.CreateRun(ctx, run1))
 	require.NoError(t, store.CreateRun(ctx, run2))
 
-	runs, err := store.ListRuns(ctx)
+	runs, err := store.ListRuns(ctx, time.Time{})
 	require.NoError(t, err)
 	assert.Len(t, runs, 2)
 }
@@ -248,7 +248,7 @@ func TestRunContainerID(t *testing.T) {
 	assert.Equal(t, "new-container-id", got2.ContainerID)
 
 	// Test ListRuns includes container ID
-	runs, err := store.ListRuns(ctx)
+	runs, err := store.ListRuns(ctx, time.Time{})
 	require.NoError(t, err)
 	require.Len(t, runs, 1)
 	assert.Equal(t, "new-container-id", runs[0].ContainerID)
@@ -308,7 +308,7 @@ func TestRunErrorMessageInList(t *testing.T) {
 	run.Fail("container crashed")
 	require.NoError(t, store.CreateRun(ctx, run))
 
-	runs, err := store.ListRuns(ctx)
+	runs, err := store.ListRuns(ctx, time.Time{})
 	require.NoError(t, err)
 	require.Len(t, runs, 1)
 	assert.Equal(t, "container crashed", runs[0].ErrorMessage)
@@ -348,7 +348,7 @@ func TestStore_ConcurrentWrites(t *testing.T) {
 		assert.NoError(t, err, "goroutine %d failed", i)
 	}
 
-	runs, err := store.ListRuns(ctx)
+	runs, err := store.ListRuns(ctx, time.Time{})
 	require.NoError(t, err)
 	assert.Len(t, runs, n)
 }

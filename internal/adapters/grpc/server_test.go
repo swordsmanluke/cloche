@@ -25,7 +25,7 @@ func TestServer_ListRuns_Empty(t *testing.T) {
 	defer store.Close()
 
 	srv := server.NewClocheServer(store, nil)
-	resp, err := srv.ListRuns(context.Background(), &pb.ListRunsRequest{})
+	resp, err := srv.ListRuns(context.Background(), &pb.ListRunsRequest{All: true})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Runs)
 }

@@ -67,7 +67,9 @@ message ShutdownRequest {}
 
 message ShutdownResponse {}
 
-message ListRunsRequest {}
+message ListRunsRequest {
+  bool all = 1;
+}
 
 message ListRunsResponse {
   repeated RunSummary runs = 1;
