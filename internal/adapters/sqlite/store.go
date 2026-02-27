@@ -272,10 +272,12 @@ func (s *Store) ListRunsSince(ctx context.Context, projectDir, workflowName, sin
 }
 
 
-func (s *Store) FailPendingRuns(ctx context.Context) (int64, error) {
+func (s *Store) FailStaleRuns(ctx context.Context) (int64, error) {
+	now := formatTime(time.Now())
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE runs SET state = 'failed', completed_at = ? WHERE state = 'pending'`,
-		formatTime(time.Now()),
+		`UPDATE runs SET state = 'failed', completed_at = ?, error_message = 'daemon restarted while run was active'
+		 WHERE state IN ('pending', 'running')`,
+		now,
 	)
 	if err != nil {
 		return 0, err

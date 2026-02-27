@@ -38,11 +38,11 @@ func main() {
 	}
 	defer store.Close()
 
-	// Sweep stale pending runs from a previous daemon crash.
-	if n, err := store.FailPendingRuns(context.Background()); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: failed to sweep pending runs: %v\n", err)
+	// Sweep stale runs from a previous daemon crash (pending or running with no live goroutine).
+	if n, err := store.FailStaleRuns(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to sweep stale runs: %v\n", err)
 	} else if n > 0 {
-		fmt.Fprintf(os.Stderr, "startup: marked %d stale pending run(s) as failed\n", n)
+		fmt.Fprintf(os.Stderr, "startup: marked %d stale run(s) as failed\n", n)
 	}
 
 	runtime, err := initRuntime()

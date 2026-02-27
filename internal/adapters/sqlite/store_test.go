@@ -353,14 +353,14 @@ func TestStore_ConcurrentWrites(t *testing.T) {
 	assert.Len(t, runs, n)
 }
 
-func TestStore_FailPendingRuns(t *testing.T) {
+func TestStore_FailStaleRuns(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
 
 	ctx := context.Background()
 
-	// Create three runs in different states.
+	// Create runs in different states.
 	pending := domain.NewRun("pending-1", "wf")
 	require.NoError(t, store.CreateRun(ctx, pending))
 
@@ -373,20 +373,23 @@ func TestStore_FailPendingRuns(t *testing.T) {
 	succeeded.Complete(domain.RunStateSucceeded)
 	require.NoError(t, store.CreateRun(ctx, succeeded))
 
-	n, err := store.FailPendingRuns(ctx)
+	n, err := store.FailStaleRuns(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), n)
+	assert.Equal(t, int64(2), n) // both pending and running
 
 	got, err := store.GetRun(ctx, "pending-1")
 	require.NoError(t, err)
 	assert.Equal(t, domain.RunStateFailed, got.State)
 	assert.False(t, got.CompletedAt.IsZero(), "completed_at should be set")
+	assert.Equal(t, "daemon restarted while run was active", got.ErrorMessage)
 
-	// Running and succeeded runs should be untouched.
 	gotRunning, err := store.GetRun(ctx, "running-1")
 	require.NoError(t, err)
-	assert.Equal(t, domain.RunStateRunning, gotRunning.State)
+	assert.Equal(t, domain.RunStateFailed, gotRunning.State)
+	assert.False(t, gotRunning.CompletedAt.IsZero(), "completed_at should be set")
+	assert.Equal(t, "daemon restarted while run was active", gotRunning.ErrorMessage)
 
+	// Succeeded runs should be untouched.
 	gotSucceeded, err := store.GetRun(ctx, "succeeded-1")
 	require.NoError(t, err)
 	assert.Equal(t, domain.RunStateSucceeded, gotSucceeded.State)
