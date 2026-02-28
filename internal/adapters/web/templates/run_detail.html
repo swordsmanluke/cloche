@@ -30,12 +30,17 @@
     <tbody id="steps-body">
     {{if .Captures}}
         {{range .Captures}}
-        <tr>
+        <tr{{if .Result}} class="step-row" data-run-id="{{$.Run.ID}}" data-step="{{.StepName}}"{{end}}>
             <td>{{.StepName}}</td>
-            <td>{{.Result}}</td>
+            <td>{{if .Result}}<span class="badge badge-{{if eq .Result "success"}}succeeded{{else if eq .Result "fail"}}failed{{else}}pending{{end}}">{{.Result}}</span>{{end}}</td>
             <td>{{formatTime .StartedAt}}</td>
             <td>{{formatDuration .StartedAt .CompletedAt}}</td>
         </tr>
+        {{if .Result}}
+        <tr class="output-row" id="output-{{.StepName}}" style="display:none">
+            <td colspan="4"><pre class="step-output">Loading...</pre></td>
+        </tr>
+        {{end}}
         {{end}}
     {{else}}
         <tr><td colspan="4" class="empty">No step executions recorded.</td></tr>
@@ -86,5 +91,31 @@
     }
     setInterval(poll, 2000);
 })();
+
+// Toggle step output rows
+document.addEventListener('click', function(e) {
+    var row = e.target.closest('.step-row');
+    if (!row) return;
+    var step = row.dataset.step;
+    var outputRow = document.getElementById('output-' + step);
+    if (!outputRow) return;
+
+    if (outputRow.style.display === 'none') {
+        outputRow.style.display = '';
+        var pre = outputRow.querySelector('.step-output');
+        if (pre.textContent === 'Loading...') {
+            var runId = row.dataset.runId;
+            fetch('/api/runs/' + runId + '/steps/' + step + '/output')
+                .then(function(r) {
+                    if (!r.ok) return 'No output available.';
+                    return r.text();
+                })
+                .then(function(text) { pre.textContent = text; })
+                .catch(function() { pre.textContent = 'Failed to load output.'; });
+        }
+    } else {
+        outputRow.style.display = 'none';
+    }
+});
 </script>
 {{end}}

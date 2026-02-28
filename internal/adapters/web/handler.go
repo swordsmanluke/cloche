@@ -226,11 +226,18 @@ func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	outputPath := filepath.Join(run.ProjectDir, ".cloche", id, "output", step+".log")
+	outputDir := filepath.Join(run.ProjectDir, ".cloche", id, "output")
+
+	// Try per-step output first, fall back to container.log
+	outputPath := filepath.Join(outputDir, step+".log")
 	data, err := os.ReadFile(outputPath)
-	if err != nil {
-		http.Error(w, "step output not found", http.StatusNotFound)
-		return
+	if err != nil || len(data) == 0 {
+		containerLog := filepath.Join(outputDir, "container.log")
+		data, err = os.ReadFile(containerLog)
+		if err != nil {
+			http.Error(w, "step output not found", http.StatusNotFound)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")

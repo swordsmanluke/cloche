@@ -146,6 +146,21 @@ h2 {
 
 .runs-table tr:hover { background: var(--bg-surface); }
 .detail-row:hover { background: inherit; }
+.step-row { cursor: pointer; }
+.output-row td { padding: 0 !important; }
+.step-output {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    max-height: 500px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0.25rem 0.75rem 0.75rem;
+}
 
 .mono { font-family: var(--mono); font-size: 0.85em; }
 .empty { color: var(--text-muted); text-align: center; padding: 2rem 0; }
