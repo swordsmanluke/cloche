@@ -117,6 +117,60 @@ func (h *Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// stepEntry is a merged view of a step execution for the template.
+type stepEntry struct {
+	Index     int
+	StepName  string
+	Result    string
+	StartedAt time.Time
+	Duration  string
+}
+
+// mergeCaptures collapses started/completed capture pairs into single entries.
+func mergeCaptures(caps []*domain.StepExecution) []stepEntry {
+	var entries []stepEntry
+	// Track pending started rows by step name (LIFO for retries)
+	pending := map[string]*domain.StepExecution{}
+
+	for _, c := range caps {
+		if c.Result == "" {
+			// step_started row
+			pending[c.StepName] = c
+			continue
+		}
+		// step_completed row — merge with pending started if available
+		startedAt := c.StartedAt
+		if started := pending[c.StepName]; started != nil {
+			startedAt = started.StartedAt
+			delete(pending, c.StepName)
+		}
+		entries = append(entries, stepEntry{
+			Index:     len(entries),
+			StepName:  c.StepName,
+			Result:    c.Result,
+			StartedAt: startedAt,
+			Duration:  formatDuration(startedAt, c.CompletedAt),
+		})
+	}
+
+	// Append any started-but-not-completed steps (still running)
+	for _, c := range caps {
+		if c.Result == "" {
+			if _, used := pending[c.StepName]; !used {
+				continue
+			}
+			entries = append(entries, stepEntry{
+				Index:     len(entries),
+				StepName:  c.StepName,
+				StartedAt: c.StartedAt,
+			})
+			delete(pending, c.StepName)
+		}
+	}
+
+	return entries
+}
+
 func (h *Handler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -131,11 +185,13 @@ func (h *Handler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 		caps = nil // non-fatal
 	}
 
+	steps := mergeCaptures(caps)
+
 	data := map[string]any{
-		"Title":    "Run " + run.ID,
-		"Run":      run,
-		"Captures": caps,
-		"Page":     "detail",
+		"Title": "Run " + run.ID,
+		"Run":   run,
+		"Steps": steps,
+		"Page":  "detail",
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.pages["run_detail"].ExecuteTemplate(w, "layout", data); err != nil {
@@ -180,16 +236,6 @@ func toAPIRun(r *domain.Run) apiRun {
 	}
 }
 
-func toAPIStep(e *domain.StepExecution) apiStep {
-	return apiStep{
-		StepName:    e.StepName,
-		Result:      e.Result,
-		StartedAt:   formatTime(e.StartedAt),
-		CompletedAt: formatTime(e.CompletedAt),
-		Duration:    formatDuration(e.StartedAt, e.CompletedAt),
-	}
-}
-
 func (h *Handler) handleAPIRuns(w http.ResponseWriter, r *http.Request) {
 	runs, err := h.store.ListRuns(r.Context(), time.Time{})
 	if err != nil {
@@ -220,9 +266,15 @@ func (h *Handler) handleAPIRunDetail(w http.ResponseWriter, r *http.Request) {
 		caps = nil
 	}
 
-	steps := make([]apiStep, len(caps))
-	for i, c := range caps {
-		steps[i] = toAPIStep(c)
+	merged := mergeCaptures(caps)
+	steps := make([]apiStep, len(merged))
+	for i, e := range merged {
+		steps[i] = apiStep{
+			StepName:  e.StepName,
+			Result:    e.Result,
+			StartedAt: formatTime(e.StartedAt),
+			Duration:  e.Duration,
+		}
 	}
 
 	detail := apiRunDetail{

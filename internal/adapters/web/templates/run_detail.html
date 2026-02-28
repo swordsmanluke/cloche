@@ -28,19 +28,17 @@
         </tr>
     </thead>
     <tbody id="steps-body">
-    {{if .Captures}}
-        {{range .Captures}}
-        <tr{{if .Result}} class="step-row" data-run-id="{{$.Run.ID}}" data-step="{{.StepName}}"{{end}}>
+    {{if .Steps}}
+        {{range .Steps}}
+        <tr class="step-row" data-run-id="{{$.Run.ID}}" data-step="{{.StepName}}" data-index="{{.Index}}">
             <td>{{.StepName}}</td>
-            <td>{{if .Result}}<span class="badge badge-{{if eq .Result "success"}}succeeded{{else if eq .Result "fail"}}failed{{else}}pending{{end}}">{{.Result}}</span>{{end}}</td>
+            <td>{{if .Result}}<span class="badge badge-{{if eq .Result "success"}}succeeded{{else if eq .Result "fail"}}failed{{else}}pending{{end}}">{{.Result}}</span>{{else}}<span class="badge badge-running">running</span>{{end}}</td>
             <td>{{formatTime .StartedAt}}</td>
-            <td>{{formatDuration .StartedAt .CompletedAt}}</td>
+            <td>{{.Duration}}</td>
         </tr>
-        {{if .Result}}
-        <tr class="output-row" id="output-{{.StepName}}" style="display:none">
+        <tr class="output-row" id="output-{{.Index}}" style="display:none">
             <td colspan="4"><pre class="step-output">Loading...</pre></td>
         </tr>
-        {{end}}
         {{end}}
     {{else}}
         <tr><td colspan="4" class="empty">No step executions recorded.</td></tr>
@@ -72,11 +70,21 @@
                 var html = '';
                 for (var i = 0; i < data.steps.length; i++) {
                     var s = data.steps[i];
-                    html += '<tr>' +
+                    var badge = '';
+                    if (s.result) {
+                        var cls = s.result === 'success' ? 'succeeded' : s.result === 'fail' ? 'failed' : 'pending';
+                        badge = '<span class="badge badge-' + cls + '">' + escapeHtml(s.result) + '</span>';
+                    } else {
+                        badge = '<span class="badge badge-running">running</span>';
+                    }
+                    html += '<tr class="step-row" data-run-id="' + escapeHtml(runID) + '" data-step="' + escapeHtml(s.step_name) + '" data-index="' + i + '">' +
                         '<td>' + escapeHtml(s.step_name) + '</td>' +
-                        '<td>' + escapeHtml(s.result) + '</td>' +
+                        '<td>' + badge + '</td>' +
                         '<td>' + s.started_at + '</td>' +
                         '<td>' + s.duration + '</td>' +
+                        '</tr>' +
+                        '<tr class="output-row" id="output-' + i + '" style="display:none">' +
+                        '<td colspan="4"><pre class="step-output">Loading...</pre></td>' +
                         '</tr>';
                 }
                 tbody.innerHTML = html;
@@ -96,8 +104,8 @@
 document.addEventListener('click', function(e) {
     var row = e.target.closest('.step-row');
     if (!row) return;
-    var step = row.dataset.step;
-    var outputRow = document.getElementById('output-' + step);
+    var idx = row.dataset.index;
+    var outputRow = document.getElementById('output-' + idx);
     if (!outputRow) return;
 
     if (outputRow.style.display === 'none') {
@@ -105,6 +113,7 @@ document.addEventListener('click', function(e) {
         var pre = outputRow.querySelector('.step-output');
         if (pre.textContent === 'Loading...') {
             var runId = row.dataset.runId;
+            var step = row.dataset.step;
             fetch('/api/runs/' + runId + '/steps/' + step + '/output')
                 .then(function(r) {
                     if (!r.ok) return 'No output available.';
