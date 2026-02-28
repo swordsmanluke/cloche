@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -15,19 +16,33 @@ import (
 	"github.com/cloche-dev/cloche/internal/ports"
 )
 
+// HandlerOption configures optional Handler dependencies.
+type HandlerOption func(*Handler)
+
+// WithContainerLogger sets the container runtime for fetching live logs.
+func WithContainerLogger(c ContainerLogger) HandlerOption {
+	return func(h *Handler) { h.container = c }
+}
+
 //go:embed templates/*.html static/*
 var content embed.FS
 
 // Handler serves the web dashboard.
+// ContainerLogger can retrieve logs from a container by ID.
+type ContainerLogger interface {
+	Logs(ctx context.Context, containerID string) (string, error)
+}
+
 type Handler struct {
-	store    ports.RunStore
-	captures ports.CaptureStore
-	pages    map[string]*template.Template
-	mux      *http.ServeMux
+	store     ports.RunStore
+	captures  ports.CaptureStore
+	container ContainerLogger
+	pages     map[string]*template.Template
+	mux       *http.ServeMux
 }
 
 // NewHandler creates a web dashboard handler.
-func NewHandler(store ports.RunStore, captures ports.CaptureStore) (*Handler, error) {
+func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...HandlerOption) (*Handler, error) {
 	funcMap := template.FuncMap{
 		"stateColor":       stateColor,
 		"formatTime":       formatTime,
@@ -59,6 +74,9 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore) (*Handler, er
 		captures: captures,
 		pages:    pages,
 		mux:      http.NewServeMux(),
+	}
+	for _, opt := range opts {
+		opt(h)
 	}
 
 	staticFS, err := fs.Sub(content, "static")
@@ -228,20 +246,33 @@ func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 
 	outputDir := filepath.Join(run.ProjectDir, ".cloche", id, "output")
 
-	// Try per-step output first, fall back to container.log
+	// Try per-step output first, fall back to container.log, then live docker logs
 	outputPath := filepath.Join(outputDir, step+".log")
 	data, err := os.ReadFile(outputPath)
-	if err != nil || len(data) == 0 {
-		containerLog := filepath.Join(outputDir, "container.log")
-		data, err = os.ReadFile(containerLog)
-		if err != nil {
-			http.Error(w, "step output not found", http.StatusNotFound)
+	if err == nil && len(data) > 0 {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(data)
+		return
+	}
+
+	containerLog := filepath.Join(outputDir, "container.log")
+	data, err = os.ReadFile(containerLog)
+	if err == nil && len(data) > 0 {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(data)
+		return
+	}
+
+	// Last resort: try live docker logs from still-existing container
+	if h.container != nil && run.ContainerID != "" {
+		if logs, logErr := h.container.Logs(r.Context(), run.ContainerID); logErr == nil && logs != "" {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Write([]byte(logs))
 			return
 		}
 	}
 
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Write(data)
+	http.Error(w, "step output not found", http.StatusNotFound)
 }
 
 // --- Template helpers ---
