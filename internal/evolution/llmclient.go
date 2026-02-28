@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -20,6 +21,14 @@ func (c *CommandLLMClient) Complete(ctx context.Context, systemPrompt, userPromp
 
 	cmd := exec.CommandContext(ctx, c.Command, c.Args...)
 	cmd.Stdin = strings.NewReader(prompt)
+
+	// Strip CLAUDECODE env var so Claude Code doesn't refuse to start
+	// when cloched is running inside a Claude Code session.
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "CLAUDECODE=") {
+			cmd.Env = append(cmd.Env, e)
+		}
+	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
