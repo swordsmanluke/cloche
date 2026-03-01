@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/cloche-dev/cloche/internal/ports"
@@ -144,10 +145,13 @@ func (r *Runtime) CopyFrom(ctx context.Context, containerID string, srcPath, dst
 		return fmt.Errorf("process %q not found", containerID)
 	}
 
-	// In local mode the workspace IS the project dir, so srcPath is relative
-	// to the project directory. Resolve it to an absolute path.
+	// In local mode the workspace IS the project dir. Container-internal
+	// absolute paths (e.g. /workspace/.cloche/output/) are mapped to the
+	// project directory, matching what Docker does via volume mounts.
 	src := srcPath
-	if !filepath.IsAbs(srcPath) {
+	if strings.HasPrefix(srcPath, "/workspace/") || srcPath == "/workspace" {
+		src = filepath.Join(mp.projectDir, strings.TrimPrefix(srcPath, "/workspace"))
+	} else if !filepath.IsAbs(srcPath) {
 		src = filepath.Join(mp.projectDir, srcPath)
 	}
 

@@ -39,6 +39,7 @@ type Run struct {
 	ProjectDir     string
 	ErrorMessage   string
 	ContainerID    string
+	BaseSHA        string // Git HEAD at run start, for result branch creation
 }
 
 func NewRun(id, workflowName string) *Run {
