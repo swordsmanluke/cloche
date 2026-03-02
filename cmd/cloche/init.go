@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 var workflowTemplate = `workflow "%s" {
   step implement {
-    prompt = file("prompts/implement.md")
+    prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
   }
 
@@ -18,7 +19,7 @@ var workflowTemplate = `workflow "%s" {
   }
 
   step fix {
-    prompt = file("prompts/fix.md")
+    prompt = file(".cloche/prompts/fix.md")
     max_attempts = "2"
     results = [success, fail, give-up]
   }
@@ -87,7 +88,8 @@ func cmdInit(args []string) {
 		}
 	}
 
-	workflowFile := workflow + ".cloche"
+	clocheDir := "cloche"
+	workflowFile := filepath.Join(clocheDir, workflow+".cloche")
 
 	// Refuse to overwrite existing workflow
 	if _, err := os.Stat(workflowFile); err == nil {
@@ -95,18 +97,22 @@ func cmdInit(args []string) {
 		os.Exit(1)
 	}
 
-	// Create prompts directory
-	if err := os.MkdirAll("prompts", 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "error creating prompts/: %v\n", err)
+	// Create directories
+	if err := os.MkdirAll(clocheDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "error creating %s/: %v\n", clocheDir, err)
+		os.Exit(1)
+	}
+	if err := os.MkdirAll(filepath.Join(clocheDir, ".cloche", "prompts"), 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "error creating %s: %v\n", filepath.Join(clocheDir, ".cloche", "prompts"), err)
 		os.Exit(1)
 	}
 
 	// Write all files, skipping any that already exist
 	files := []struct{ path, content string }{
 		{workflowFile, fmt.Sprintf(workflowTemplate, workflow)},
-		{"Dockerfile", fmt.Sprintf(dockerfileTemplate, image)},
-		{"prompts/implement.md", implementPrompt},
-		{"prompts/fix.md", fixPrompt},
+		{filepath.Join(clocheDir, "Dockerfile"), fmt.Sprintf(dockerfileTemplate, image)},
+		{filepath.Join(clocheDir, ".cloche", "prompts", "implement.md"), implementPrompt},
+		{filepath.Join(clocheDir, ".cloche", "prompts", "fix.md"), fixPrompt},
 	}
 
 	for _, f := range files {
@@ -121,11 +127,39 @@ func cmdInit(args []string) {
 		fmt.Fprintf(os.Stderr, "  create %s\n", f.path)
 	}
 
+	addGitignoreEntries([]string{"cloche/.cloche/*/", ".gitworktrees/"})
+
 	cwd, _ := os.Getwd()
 	fmt.Fprintf(os.Stderr, "\nInitialized Cloche project in %s\n", filepath.Base(cwd))
 	fmt.Fprintf(os.Stderr, "\nNext steps:\n")
 	fmt.Fprintf(os.Stderr, "  1. Edit %s — change the test command for your project\n", workflowFile)
-	fmt.Fprintf(os.Stderr, "  2. Edit Dockerfile — add your project's dependencies\n")
-	fmt.Fprintf(os.Stderr, "  3. docker build -t cloche-agent .\n")
+	fmt.Fprintf(os.Stderr, "  2. Edit %s — add your project's dependencies\n", filepath.Join(clocheDir, "Dockerfile"))
+	fmt.Fprintf(os.Stderr, "  3. docker build -t cloche-agent -f %s .\n", filepath.Join(clocheDir, "Dockerfile"))
 	fmt.Fprintf(os.Stderr, "  4. cloche run --workflow %s --prompt \"...\"\n", workflow)
+}
+
+func addGitignoreEntries(entries []string) {
+	const gitignore = ".gitignore"
+
+	existing, _ := os.ReadFile(gitignore)
+	content := string(existing)
+
+	var toAdd []string
+	for _, entry := range entries {
+		if !strings.Contains(content, entry) {
+			toAdd = append(toAdd, entry)
+		}
+	}
+	if len(toAdd) == 0 {
+		return
+	}
+
+	if len(content) > 0 && !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	content += strings.Join(toAdd, "\n") + "\n"
+
+	if err := os.WriteFile(gitignore, []byte(content), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not update .gitignore: %v\n", err)
+	}
 }
