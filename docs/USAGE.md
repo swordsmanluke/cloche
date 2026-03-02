@@ -43,11 +43,11 @@ cloche run --workflow develop --prompt "Add user authentication"
 ```
 
 This will:
-1. Write your prompt to `.cloche/prompt.txt`
-2. Start a git daemon on the host to receive results
-3. Create a Docker container and copy your project files in (no bind mounts)
+1. Write your prompt to `.cloche/<run-id>/prompt.txt`
+2. Create a Docker container and copy your entire project into it (no bind mounts)
+3. Apply any override files from `.cloche/overrides/` on top
 4. Start the container, which runs `cloche-agent` to walk the workflow graph
-5. When the workflow finishes, the agent pushes results to a `cloche/<run-id>` branch
+5. When the workflow finishes, the daemon extracts results to a `cloche/<run-id>` branch
 
 ### 4. Monitor progress
 
@@ -82,17 +82,17 @@ git branch -D cloche/<run-id>
 
 Cloche provides **total filesystem isolation** between the host and container:
 
-- **Files in**: `docker cp` copies the project directory into the container.
-  No bind mounts for project files. The container gets a clean copy without
-  `.git` history.
-- **Files out**: The agent does `git init` + `git push` at the end of the
-  workflow, pushing to a `cloche/<run-id>` branch on the host via the `git://`
-  protocol.
+- **Files in**: `docker cp` copies the entire project root into the container at
+  `/workspace/`. No bind mounts for project files. Override files from
+  `.cloche/overrides/` are then copied on top (e.g., a container-specific
+  `CLAUDE.md`). The `.git/` directory is included so agents have git context.
+- **Files out**: When the workflow completes, the daemon extracts results from
+  the container via `docker cp` into a git worktree and commits them to a
+  `cloche/<run-id>` branch.
 - **Auth mounts**: `~/.claude` and `~/.claude.json` are bind-mounted read-only
   for Claude Code OAuth session reuse. `ANTHROPIC_API_KEY` is passed as an
   environment variable.
-- **Network**: Containers have network access (needed for git push and API
-  calls). The previous `--network none` mode is no longer used.
+- **Network**: Containers have network access (needed for API calls).
 
 Your project directory is never modified by the container. All changes live
 on the run branch until you explicitly merge them.
@@ -109,12 +109,12 @@ cloche run --workflow <name> [--prompt "..."]
 
 | Flag | Description |
 |------|-------------|
-| `--workflow <name>` | Workflow name. Resolves to `<name>.cloche` in the project directory. |
-| `--prompt "..."`, `-p` | Inline prompt written to `.cloche/prompt.txt` and injected into agent steps. |
+| `--workflow <name>` | Workflow name. Resolves to `.cloche/<name>.cloche` in the project directory. |
+| `--prompt "..."`, `-p` | Inline prompt written to `.cloche/<run-id>/prompt.txt` and injected into agent steps. |
 
 The current working directory is used as the project directory. It must be
-inside a git repository (Cloche needs the repo root to set up the git daemon
-for result extraction).
+inside a git repository (Cloche needs the repo root for result extraction
+via git worktrees).
 
 ### `cloche status`
 
@@ -146,14 +146,26 @@ cloche stop <run-id>
 
 ## Setting Up a New Project
 
-### 1. Create a workflow file
+### 1. Scaffold the project
 
-Add a `<name>.cloche` file to your project root:
+Run `cloche init` from your project root to create the `.cloche/` directory with
+default workflow, Dockerfile, and prompt templates:
+
+```
+cd my-project
+cloche init
+```
+
+Or create the structure manually:
+
+### 2. Create a workflow file
+
+Add `.cloche/<name>.cloche`:
 
 ```
 workflow "develop" {
   step implement {
-    prompt = file("prompts/implement.md")
+    prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
   }
 
@@ -163,7 +175,7 @@ workflow "develop" {
   }
 
   step fix {
-    prompt = file("prompts/fix.md")
+    prompt = file(".cloche/prompts/fix.md")
     max_attempts = "2"
     results = [success, fail, give-up]
   }
@@ -180,16 +192,16 @@ workflow "develop" {
 }
 ```
 
-### 2. Write prompt templates
+### 3. Write prompt templates
 
-Create a `prompts/` directory with markdown files:
+Create `.cloche/prompts/` with markdown files:
 
-**`prompts/implement.md`** — Instructions for the initial implementation:
+**`.cloche/prompts/implement.md`** — Instructions for the initial implementation:
 ```markdown
 You are working on a project. Implement the following change:
 
 ## User Request
-(Contents of .cloche/prompt.txt will be injected here by the adapter)
+(The user prompt is injected automatically by the agent adapter)
 
 ## Guidelines
 - Follow existing project conventions
@@ -197,7 +209,7 @@ You are working on a project. Implement the following change:
 - Run tests locally before declaring success
 ```
 
-**`prompts/fix.md`** — Instructions for fixing failures:
+**`.cloche/prompts/fix.md`** — Instructions for fixing failures:
 ```markdown
 The previous attempt had failures. Review the output logs in .cloche/output/
 and fix the issues.
@@ -208,7 +220,17 @@ and fix the issues.
 - Run tests again to verify your fix
 ```
 
-### 3. Make sure your project builds in the container
+### 4. Add overrides (optional)
+
+Files in `.cloche/overrides/` are copied on top of `/workspace/` in the
+container. Use this for container-specific configuration:
+
+```
+.cloche/overrides/
+  CLAUDE.md              # Container-specific CLAUDE.md (replaces host version)
+```
+
+### 5. Make sure your project builds in the container
 
 The default `cloche-agent` Docker image is based on `ruby:3.3` with Node.js,
 Python, and git. If your project needs different dependencies, create a custom
@@ -245,7 +267,7 @@ docker build -t my-project-agent .
 CLOCHE_IMAGE=my-project-agent:latest bin/cloched
 ```
 
-### 4. Run it
+### 6. Run it
 
 ```
 cd my-project
@@ -254,7 +276,7 @@ cloche run --workflow develop --prompt "Add feature X"
 
 ## Writing Workflows
 
-Workflow files use the `.cloche` extension and live in the project root. See
+Workflow files use the `.cloche` extension and live in the `.cloche/` directory. See
 [workflows.md](workflows.md) for full DSL reference.
 
 ### Step Types
@@ -263,7 +285,7 @@ Workflow files use the `.cloche` extension and live in the project root. See
 
 ```
 step implement {
-  prompt = file("prompts/implement.md")
+  prompt = file(".cloche/prompts/implement.md")
   results = [success, fail]
 }
 ```
@@ -306,7 +328,7 @@ Limit retries on agent steps. When exhausted, the step returns `give-up`:
 
 ```
 step fix {
-  prompt = file("prompts/fix.md")
+  prompt = file(".cloche/prompts/fix.md")
   max_attempts = "2"
   results = [success, fail, give-up]
 }
@@ -361,25 +383,32 @@ For script steps, if no marker is written, the exit code determines the result:
 When an agent step runs, Cloche assembles a prompt from multiple sources:
 
 1. The step's `prompt` content (inline or from `file()`)
-2. The user prompt from `.cloche/prompt.txt` (set via `--prompt`)
-3. Validation output from `.cloche/output/*.log` (output from previous script steps)
+2. The user prompt from `.cloche/<run-id>/prompt.txt` (set via `--prompt`)
+3. Validation output from `.cloche/<run-id>/output/*.log` (output from previous script steps)
 4. Result selection instructions listing the step's declared results
 
 ## Project Directory Layout
 
 ```
 my-project/
-  develop.cloche            # Workflow file
-  prompts/
-    implement.md            # Prompt templates
-    fix.md
-  .cloche/                  # Created at runtime
-    prompt.txt              # User prompt (from --prompt flag)
-    output/
-      test.log              # Step output logs
-    attempt_count/
-      fix                   # Retry counter for max_attempts
-    history.log             # Step execution log
+├── .cloche/
+│   ├── develop.cloche        # Workflow definition
+│   ├── Dockerfile            # Container image
+│   ├── prompts/
+│   │   ├── implement.md      # Prompt templates
+│   │   └── fix.md
+│   ├── overrides/            # Files copied on top of /workspace/ in container
+│   │   └── CLAUDE.md         # Container-specific CLAUDE.md (optional)
+│   └── <run-id>/             # Runtime state (gitignored)
+│       ├── prompt.txt        # User prompt (from --prompt flag)
+│       ├── output/
+│       │   └── test.log      # Step output logs
+│       ├── attempt_count/
+│       │   └── fix           # Retry counter for max_attempts
+│       └── history.log       # Step execution log
+├── src/                      # Existing project source (untouched)
+├── CLAUDE.md                 # Host CLAUDE.md
+└── .git/
 ```
 
 ## Daemon Configuration

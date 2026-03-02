@@ -32,7 +32,7 @@ func TestEvolutionPipelineIntegration(t *testing.T) {
 			// Classifier
 			`{"classification": "bug"}`,
 			// Reflector
-			`{"lessons": [{"id": "L001", "category": "prompt_improvement", "target": "prompts/implement.md", "insight": "Test insight", "suggested_action": "Add a rule", "evidence": ["run-1"], "confidence": "high"}]}`,
+			`{"lessons": [{"id": "L001", "category": "prompt_improvement", "target": ".cloche/prompts/implement.md", "insight": "Test insight", "suggested_action": "Add a rule", "evidence": ["run-1"], "confidence": "high"}]}`,
 			// Curator
 			"Updated prompt content with new rule.\n",
 		},
@@ -76,7 +76,7 @@ func setupTestProject(t *testing.T, dir string) {
 	dirs := []string{
 		".cloche/evolution/knowledge",
 		".cloche/evolution/snapshots",
-		"prompts",
+		".cloche/prompts",
 	}
 	for _, d := range dirs {
 		require.NoError(t, os.MkdirAll(filepath.Join(dir, d), 0755))
@@ -84,10 +84,10 @@ func setupTestProject(t *testing.T, dir string) {
 
 	files := map[string]string{
 		".cloche/evolution/knowledge/develop.md": "# Knowledge Base: develop\n",
-		"prompts/implement.md":                   "Write good code.\n",
-		"develop.cloche": `workflow "develop" {
+		".cloche/prompts/implement.md":           "Write good code.\n",
+		".cloche/develop.cloche": `workflow "develop" {
   step implement {
-    prompt = file("prompts/implement.md")
+    prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
   }
   step test {

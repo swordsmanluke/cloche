@@ -118,7 +118,7 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 
 	// Resolve image from workflow file (soft failure — fall back to daemon default)
 	var image string
-	wfPath := filepath.Join(cwd, "cloche", workflow+".cloche")
+	wfPath := filepath.Join(cwd, ".cloche", workflow+".cloche")
 	if data, err := os.ReadFile(wfPath); err == nil {
 		if wf, err := dsl.Parse(string(data)); err == nil {
 			image = wf.Config["container.image"]

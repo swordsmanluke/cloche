@@ -31,7 +31,7 @@ A step with both `prompt` and `run`, or neither, is a parse error.
 ```
 workflow "implement-feature" {
   step code {
-    prompt = file("prompts/implement.md")
+    prompt = file(".cloche/prompts/implement.md")
     container {
       image = "cloche/agent:latest"
       network_allow = ["docs.python.org"]
@@ -45,7 +45,7 @@ workflow "implement-feature" {
   }
 
   step review {
-    prompt = file("prompts/review.md")
+    prompt = file(".cloche/prompts/review.md")
     input = step.code.output
     results = [approved, changes_requested]
   }

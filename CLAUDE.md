@@ -40,11 +40,27 @@ internal/
 Steps report named results; wiring maps results to next steps. `done` and `abort` are
 built-in terminals. See `docs/workflows.md` for syntax and semantics.
 
+## Project Layout
+
+Cloche-specific files live in `.cloche/` at the project root:
+
+```
+my-project/
+├── .cloche/
+│   ├── develop.cloche      # Workflow definition
+│   ├── Dockerfile           # Container image
+│   ├── prompts/             # Prompt templates for agent steps
+│   ├── overrides/           # Files copied on top of /workspace/ in container
+│   └── <run-id>/            # Runtime state (gitignored)
+├── src/                     # Existing project source (untouched)
+└── CLAUDE.md
+```
+
 ## Container Model
 
-One container per workflow run (not per step). Files are copied in; git push extracts
-results to host on agent-specific branches. Network is allowlisted. Env vars are the
-image's responsibility.
+One container per workflow run (not per step). The entire project root is copied into the
+container at `/workspace/`, then override files from `.cloche/overrides/` are applied on
+top. Results are extracted to git branches. Network is allowlisted.
 
 ## Agent Support
 

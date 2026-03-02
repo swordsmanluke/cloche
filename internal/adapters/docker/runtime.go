@@ -29,7 +29,7 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	containerCmd := cfg.Cmd
 	useDefaultCmd := len(containerCmd) == 0
 	if useDefaultCmd {
-		containerCmd = []string{"cloche-agent", cfg.WorkflowName + ".cloche"}
+		containerCmd = []string{"cloche-agent", ".cloche/" + cfg.WorkflowName + ".cloche"}
 	}
 
 	args := []string{
@@ -100,13 +100,24 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 
 	// 3. Copy project files into container (no bind mount)
 	if cfg.ProjectDir != "" {
-		cpCmd := exec.CommandContext(ctx, "docker", "cp", filepath.Join(cfg.ProjectDir, "cloche")+"/.", containerID+":/workspace/")
+		cpCmd := exec.CommandContext(ctx, "docker", "cp", cfg.ProjectDir+"/.", containerID+":/workspace/")
 		var cpStderr bytes.Buffer
 		cpCmd.Stderr = &cpStderr
 		if err := cpCmd.Run(); err != nil {
 			// Cleanup on failure
 			exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
 			return "", fmt.Errorf("copying files to container: %s: %w", cpStderr.String(), err)
+		}
+
+		// Apply override files from .cloche/overrides/ on top of workspace
+		overridesDir := filepath.Join(cfg.ProjectDir, ".cloche", "overrides")
+		if _, err := os.Stat(overridesDir); err == nil {
+			overrideCmd := exec.CommandContext(ctx, "docker", "cp", overridesDir+"/.", containerID+":/workspace/")
+			overrideCmd.Stderr = &cpStderr
+			if err := overrideCmd.Run(); err != nil {
+				// Non-fatal: log but don't fail the run
+				fmt.Fprintf(os.Stderr, "warning: copying overrides: %s\n", cpStderr.String())
+			}
 		}
 	}
 

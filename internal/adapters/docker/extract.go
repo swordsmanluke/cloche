@@ -48,12 +48,8 @@ func ExtractResults(ctx context.Context, containerID, projectDir, runID, baseSHA
 		rmCmd.Run()
 	}()
 
-	// 3. Copy temp dir contents into worktree's cloche/ directory
-	clocheInWorktree := filepath.Join(worktreeDir, "cloche")
-	os.RemoveAll(clocheInWorktree)
-	os.MkdirAll(clocheInWorktree, 0755)
-
-	cpLocalCmd := exec.CommandContext(ctx, "cp", "-a", tmpDir+"/.", clocheInWorktree+"/")
+	// 3. Copy temp dir contents into worktree root
+	cpLocalCmd := exec.CommandContext(ctx, "cp", "-a", tmpDir+"/.", worktreeDir+"/")
 	if out, err := cpLocalCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("copying to worktree: %s: %w", out, err)
 	}
@@ -73,7 +69,7 @@ func ExtractResults(ctx context.Context, containerID, projectDir, runID, baseSHA
 		return fmt.Errorf("git checkout -b: %s: %w", out, err)
 	}
 
-	addFilesCmd := exec.CommandContext(ctx, "git", "add", "cloche/")
+	addFilesCmd := exec.CommandContext(ctx, "git", "add", "-A")
 	addFilesCmd.Dir = worktreeDir
 	addFilesCmd.Env = gitEnv
 	if out, err := addFilesCmd.CombinedOutput(); err != nil {

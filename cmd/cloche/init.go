@@ -88,7 +88,7 @@ func cmdInit(args []string) {
 		}
 	}
 
-	clocheDir := "cloche"
+	clocheDir := ".cloche"
 	workflowFile := filepath.Join(clocheDir, workflow+".cloche")
 
 	// Refuse to overwrite existing workflow
@@ -98,21 +98,23 @@ func cmdInit(args []string) {
 	}
 
 	// Create directories
-	if err := os.MkdirAll(clocheDir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "error creating %s/: %v\n", clocheDir, err)
-		os.Exit(1)
-	}
-	if err := os.MkdirAll(filepath.Join(clocheDir, ".cloche", "prompts"), 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "error creating %s: %v\n", filepath.Join(clocheDir, ".cloche", "prompts"), err)
-		os.Exit(1)
+	for _, dir := range []string{
+		clocheDir,
+		filepath.Join(clocheDir, "prompts"),
+		filepath.Join(clocheDir, "overrides"),
+	} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "error creating %s/: %v\n", dir, err)
+			os.Exit(1)
+		}
 	}
 
 	// Write all files, skipping any that already exist
 	files := []struct{ path, content string }{
 		{workflowFile, fmt.Sprintf(workflowTemplate, workflow)},
 		{filepath.Join(clocheDir, "Dockerfile"), fmt.Sprintf(dockerfileTemplate, image)},
-		{filepath.Join(clocheDir, ".cloche", "prompts", "implement.md"), implementPrompt},
-		{filepath.Join(clocheDir, ".cloche", "prompts", "fix.md"), fixPrompt},
+		{filepath.Join(clocheDir, "prompts", "implement.md"), implementPrompt},
+		{filepath.Join(clocheDir, "prompts", "fix.md"), fixPrompt},
 	}
 
 	for _, f := range files {
@@ -127,15 +129,22 @@ func cmdInit(args []string) {
 		fmt.Fprintf(os.Stderr, "  create %s\n", f.path)
 	}
 
-	addGitignoreEntries([]string{"cloche/.cloche/*/", ".gitworktrees/"})
+	addGitignoreEntries([]string{
+		".cloche/*/",
+		"!.cloche/prompts/",
+		"!.cloche/overrides/",
+		"!.cloche/evolution/",
+		".gitworktrees/",
+	})
 
 	cwd, _ := os.Getwd()
 	fmt.Fprintf(os.Stderr, "\nInitialized Cloche project in %s\n", filepath.Base(cwd))
 	fmt.Fprintf(os.Stderr, "\nNext steps:\n")
 	fmt.Fprintf(os.Stderr, "  1. Edit %s — change the test command for your project\n", workflowFile)
 	fmt.Fprintf(os.Stderr, "  2. Edit %s — add your project's dependencies\n", filepath.Join(clocheDir, "Dockerfile"))
-	fmt.Fprintf(os.Stderr, "  3. docker build -t cloche-agent -f %s .\n", filepath.Join(clocheDir, "Dockerfile"))
-	fmt.Fprintf(os.Stderr, "  4. cloche run --workflow %s --prompt \"...\"\n", workflow)
+	fmt.Fprintf(os.Stderr, "  3. Add container-specific overrides to %s/ (e.g. CLAUDE.md)\n", filepath.Join(clocheDir, "overrides"))
+	fmt.Fprintf(os.Stderr, "  4. docker build -t cloche-agent -f %s .\n", filepath.Join(clocheDir, "Dockerfile"))
+	fmt.Fprintf(os.Stderr, "  5. cloche run --workflow %s --prompt \"...\"\n", workflow)
 }
 
 func addGitignoreEntries(entries []string) {

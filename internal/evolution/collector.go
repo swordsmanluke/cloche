@@ -33,7 +33,7 @@ func (c *Collector) Collect(ctx context.Context, evoStore ports.EvolutionStore, 
 	}
 
 	// 2. Read workflow file
-	wfPath := filepath.Join(c.ProjectDir, c.WorkflowName+".cloche")
+	wfPath := filepath.Join(c.ProjectDir, ".cloche", c.WorkflowName+".cloche")
 	if wf, err := os.ReadFile(wfPath); err == nil {
 		data.CurrentWorkflow = string(wf)
 		data.WorkflowPath = wfPath

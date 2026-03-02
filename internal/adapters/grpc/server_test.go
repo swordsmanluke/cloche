@@ -59,7 +59,8 @@ func TestServer_RunWorkflow(t *testing.T) {
 		data, _ := json.Marshal(msg)
 		script += "echo '" + string(data) + "'\n"
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "test.cloche"), []byte(script), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
 
 	// Use "sh" as the agent binary so it runs: sh test.cloche
 	rt := local.NewRuntime("sh")
@@ -74,7 +75,7 @@ func TestServer_RunWorkflow(t *testing.T) {
 	assert.NotEmpty(t, resp.RunId)
 
 	// Verify prompt was written to run-specific path
-	promptData, err := os.ReadFile(filepath.Join(dir, "cloche", ".cloche", resp.RunId, "prompt.txt"))
+	promptData, err := os.ReadFile(filepath.Join(dir, ".cloche", resp.RunId, "prompt.txt"))
 	require.NoError(t, err)
 	assert.Equal(t, "hello world", string(promptData))
 
@@ -115,7 +116,8 @@ func TestServer_RunWorkflow_CapturesStepMetadata(t *testing.T) {
 		data, _ := json.Marshal(msg)
 		script += "echo '" + string(data) + "'\n"
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "capture.cloche"), []byte(script), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "capture.cloche"), []byte(script), 0755))
 
 	rt := local.NewRuntime("sh")
 	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
@@ -177,7 +179,8 @@ func TestServer_StreamLogs(t *testing.T) {
 		data, _ := json.Marshal(msg)
 		script += "echo '" + string(data) + "'\n"
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "test.cloche"), []byte(script), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
 
 	rt := local.NewRuntime("sh")
 	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
@@ -267,7 +270,8 @@ func TestServer_StreamLogs_FallsBackToContainerLog(t *testing.T) {
 		data, _ := json.Marshal(msg)
 		script += "echo '" + string(data) + "'\n"
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "test.cloche"), []byte(script), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
 
 	rt := local.NewRuntime("sh")
 	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
@@ -294,7 +298,7 @@ func TestServer_StreamLogs_FallsBackToContainerLog(t *testing.T) {
 
 	// Simulate container.log being written (local runtime Logs() returns empty,
 	// so write it manually to test the StreamLogs fallback path)
-	outputDir := filepath.Join(dir, "cloche", ".cloche", resp.RunId, "output")
+	outputDir := filepath.Join(dir, ".cloche", resp.RunId, "output")
 	require.NoError(t, os.MkdirAll(outputDir, 0755))
 	require.NoError(t, os.WriteFile(
 		filepath.Join(outputDir, "container.log"),
@@ -336,7 +340,8 @@ func TestServer_StreamLogs_PrefersStepOutput(t *testing.T) {
 		data, _ := json.Marshal(msg)
 		script += "echo '" + string(data) + "'\n"
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "test.cloche"), []byte(script), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
 
 	rt := local.NewRuntime("sh")
 	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
@@ -362,7 +367,7 @@ func TestServer_StreamLogs_PrefersStepOutput(t *testing.T) {
 	}
 
 	// Write both per-step output AND container.log — per-step should win
-	outputDir := filepath.Join(dir, "cloche", ".cloche", resp.RunId, "output")
+	outputDir := filepath.Join(dir, ".cloche", resp.RunId, "output")
 	require.NoError(t, os.MkdirAll(outputDir, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "build.log"), []byte("step-specific output"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "container.log"), []byte("full container output"), 0644))

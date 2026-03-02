@@ -37,7 +37,7 @@ func NewRuntime(agentBinary string) *Runtime {
 
 func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string, error) {
 	// Resolve workflow file path
-	workflowPath := filepath.Join(cfg.ProjectDir, cfg.WorkflowName+".cloche")
+	workflowPath := filepath.Join(cfg.ProjectDir, ".cloche", cfg.WorkflowName+".cloche")
 
 	agentCmd := cfg.Cmd
 	if len(agentCmd) == 0 {

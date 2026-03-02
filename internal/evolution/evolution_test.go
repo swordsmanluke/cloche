@@ -27,15 +27,15 @@ func TestCollectorGathersData(t *testing.T) {
 	dir := t.TempDir()
 
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
-	os.MkdirAll(filepath.Join(dir, "prompts"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0755)
 	os.WriteFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.md"),
 		[]byte("# Knowledge Base\n"), 0644)
-	os.WriteFile(filepath.Join(dir, "prompts", "implement.md"),
+	os.WriteFile(filepath.Join(dir, ".cloche", "prompts", "implement.md"),
 		[]byte("Write good code"), 0644)
-	os.WriteFile(filepath.Join(dir, "develop.cloche"),
+	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
 		[]byte(`workflow "develop" {
   step impl {
-    prompt = file("prompts/implement.md")
+    prompt = file(".cloche/prompts/implement.md")
     results = [success]
   }
   impl:success -> done
@@ -46,8 +46,8 @@ func TestCollectorGathersData(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "# Knowledge Base\n", data.KnowledgeBase)
-	assert.Contains(t, data.CurrentPrompts, "prompts/implement.md")
-	assert.Equal(t, "Write good code", data.CurrentPrompts["prompts/implement.md"])
+	assert.Contains(t, data.CurrentPrompts, ".cloche/prompts/implement.md")
+	assert.Equal(t, "Write good code", data.CurrentPrompts[".cloche/prompts/implement.md"])
 	assert.NotEmpty(t, data.CurrentWorkflow)
 	assert.Equal(t, dir, data.ProjectDir)
 	assert.Equal(t, "develop", data.WorkflowName)
@@ -55,7 +55,8 @@ func TestCollectorGathersData(t *testing.T) {
 
 func TestCollectorNoKnowledgeBase(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "develop.cloche"),
+	os.MkdirAll(filepath.Join(dir, ".cloche"), 0755)
+	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
 		[]byte(`workflow "develop" { step s { run = "echo hi" results = [success] } s:success -> done }`), 0644)
 
 	c := &Collector{ProjectDir: dir, WorkflowName: "develop"}
@@ -65,14 +66,14 @@ func TestCollectorNoKnowledgeBase(t *testing.T) {
 }
 
 func TestExtractPromptFiles(t *testing.T) {
-	workflow := `step impl { prompt = file("prompts/implement.md") }
-step fix { prompt = file("prompts/fix.md") }
+	workflow := `step impl { prompt = file(".cloche/prompts/implement.md") }
+step fix { prompt = file(".cloche/prompts/fix.md") }
 step test { run = "make test" }`
 
 	files := extractPromptFiles(workflow)
 	assert.Len(t, files, 2)
-	assert.Contains(t, files, "prompts/implement.md")
-	assert.Contains(t, files, "prompts/fix.md")
+	assert.Contains(t, files, ".cloche/prompts/implement.md")
+	assert.Contains(t, files, ".cloche/prompts/fix.md")
 }
 
 // --- Classifier tests ---
@@ -111,7 +112,7 @@ func TestReflectorExtractsLessons(t *testing.T) {
 			{
 				"id":               "lesson-001",
 				"category":         "prompt_improvement",
-				"target":           "prompts/implement.md",
+				"target":           ".cloche/prompts/implement.md",
 				"insight":          "Agent produces unsanitized HTML",
 				"suggested_action": "Add sanitization rule",
 				"evidence":         []string{"run-1", "run-2"},
@@ -166,14 +167,14 @@ func TestAuditLoggerAppendsJSONL(t *testing.T) {
 	result1 := &EvolutionResult{
 		ID:           "evo-1",
 		WorkflowName: "develop",
-		Changes:      []Change{{Type: "prompt_update", File: "prompts/impl.md"}},
+		Changes:      []Change{{Type: "prompt_update", File: ".cloche/prompts/impl.md"}},
 	}
 	require.NoError(t, logger.Log(result1))
 
 	result2 := &EvolutionResult{
 		ID:           "evo-2",
 		WorkflowName: "develop",
-		Changes:      []Change{{Type: "add_step", File: "develop.cloche"}},
+		Changes:      []Change{{Type: "add_step", File: ".cloche/develop.cloche"}},
 	}
 	require.NoError(t, logger.Log(result2))
 
@@ -191,11 +192,11 @@ func TestAuditLoggerAppendsJSONL(t *testing.T) {
 func TestAuditLoggerSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
-	os.MkdirAll(filepath.Join(dir, "prompts"), 0755)
-	os.WriteFile(filepath.Join(dir, "prompts", "implement.md"), []byte("original content"), 0644)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0755)
+	os.WriteFile(filepath.Join(dir, ".cloche", "prompts", "implement.md"), []byte("original content"), 0644)
 
 	logger := &AuditLogger{ProjectDir: dir}
-	snapName, err := logger.Snapshot("prompts/implement.md")
+	snapName, err := logger.Snapshot(".cloche/prompts/implement.md")
 	require.NoError(t, err)
 	assert.NotEmpty(t, snapName)
 
@@ -238,8 +239,8 @@ func TestAuditLoggerUpdatesKnowledge(t *testing.T) {
 
 func TestCuratorUpdatesPrompt(t *testing.T) {
 	dir := t.TempDir()
-	promptPath := filepath.Join(dir, "prompts", "implement.md")
-	os.MkdirAll(filepath.Join(dir, "prompts"), 0755)
+	promptPath := filepath.Join(dir, ".cloche", "prompts", "implement.md")
+	os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0755)
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
 	os.WriteFile(promptPath, []byte("# Implementation Prompt\n\nWrite good code.\n"), 0644)
 
@@ -251,7 +252,7 @@ func TestCuratorUpdatesPrompt(t *testing.T) {
 	lesson := &Lesson{
 		ID:              "lesson-001",
 		Category:        "prompt_improvement",
-		Target:          "prompts/implement.md",
+		Target:          ".cloche/prompts/implement.md",
 		Insight:         "XSS vulnerabilities in form handlers",
 		SuggestedAction: "Add sanitization rule",
 	}
@@ -259,7 +260,7 @@ func TestCuratorUpdatesPrompt(t *testing.T) {
 	change, err := c.Apply(context.Background(), dir, lesson)
 	require.NoError(t, err)
 	assert.Equal(t, "prompt_update", change.Type)
-	assert.Equal(t, "prompts/implement.md", change.File)
+	assert.Equal(t, ".cloche/prompts/implement.md", change.File)
 	assert.NotEmpty(t, change.Snapshot)
 
 	content, err := os.ReadFile(promptPath)
@@ -326,15 +327,15 @@ func TestOrchestratorEndToEnd(t *testing.T) {
 	// Set up project structure
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
-	os.MkdirAll(filepath.Join(dir, "prompts"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0755)
 	os.WriteFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.md"),
 		[]byte("# Knowledge Base: develop\n"), 0644)
-	os.WriteFile(filepath.Join(dir, "prompts", "implement.md"),
+	os.WriteFile(filepath.Join(dir, ".cloche", "prompts", "implement.md"),
 		[]byte("Write good code.\n"), 0644)
-	os.WriteFile(filepath.Join(dir, "develop.cloche"),
+	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
 		[]byte(`workflow "develop" {
   step implement {
-    prompt = file("prompts/implement.md")
+    prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
   }
   step test {
@@ -352,7 +353,7 @@ func TestOrchestratorEndToEnd(t *testing.T) {
 			// Classifier
 			`{"classification": "bug"}`,
 			// Reflector
-			`{"lessons": [{"id": "L001", "category": "prompt_improvement", "target": "prompts/implement.md", "insight": "XSS pattern", "suggested_action": "Add sanitization rule", "evidence": ["run-1"], "confidence": "high"}]}`,
+			`{"lessons": [{"id": "L001", "category": "prompt_improvement", "target": ".cloche/prompts/implement.md", "insight": "XSS pattern", "suggested_action": "Add sanitization rule", "evidence": ["run-1"], "confidence": "high"}]}`,
 			// Curator
 			"Write good code.\n\n## Learned Rules\n\n- Always sanitize user inputs\n",
 		},
@@ -372,7 +373,7 @@ func TestOrchestratorEndToEnd(t *testing.T) {
 	assert.Equal(t, "prompt_update", result.Changes[0].Type)
 
 	// Verify prompt was actually updated
-	content, _ := os.ReadFile(filepath.Join(dir, "prompts", "implement.md"))
+	content, _ := os.ReadFile(filepath.Join(dir, ".cloche", "prompts", "implement.md"))
 	assert.Contains(t, string(content), "sanitize user inputs")
 
 	// Verify audit log was written
@@ -389,7 +390,7 @@ func TestOrchestratorNoLessons(t *testing.T) {
 	dir := t.TempDir()
 
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
-	os.WriteFile(filepath.Join(dir, "develop.cloche"),
+	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
 		[]byte(`workflow "develop" {
   step s {
     run = "echo hi"

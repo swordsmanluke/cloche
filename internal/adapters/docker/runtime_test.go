@@ -27,7 +27,7 @@ func TestDockerRuntime_StartAndStop(t *testing.T) {
 	require.NoError(t, err)
 
 	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "cloche"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
 
 	ctx := context.Background()
 	containerID, err := rt.Start(ctx, ports.ContainerConfig{
@@ -51,7 +51,7 @@ func TestDockerRuntime_Wait(t *testing.T) {
 	require.NoError(t, err)
 
 	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "cloche"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
 
 	ctx := context.Background()
 	containerID, err := rt.Start(ctx, ports.ContainerConfig{
@@ -75,9 +75,8 @@ func TestDockerRuntime_FilesPresent(t *testing.T) {
 	require.NoError(t, err)
 
 	dir := t.TempDir()
-	clocheDir := filepath.Join(dir, "cloche")
-	require.NoError(t, os.MkdirAll(clocheDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "testfile.txt"), []byte("hello"), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "testfile.txt"), []byte("hello"), 0644))
 
 	ctx := context.Background()
 	// Run cat on the copied file to verify it exists in container

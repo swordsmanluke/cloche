@@ -84,7 +84,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 
 	// Write prompt to .cloche/<run-id>/prompt.txt (run-specific to avoid conflicts)
 	if req.Prompt != "" {
-		clocheDir := filepath.Join(req.ProjectDir, "cloche", ".cloche", runID)
+		clocheDir := filepath.Join(req.ProjectDir, ".cloche", runID)
 		if err := os.MkdirAll(clocheDir, 0755); err != nil {
 			return nil, fmt.Errorf("creating .cloche dir: %w", err)
 		}
@@ -211,7 +211,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	}
 
 	// Extract step output files from container before it's removed
-	outputDst := filepath.Join(projectDir, "cloche", ".cloche", runID, "output")
+	outputDst := filepath.Join(projectDir, ".cloche", runID, "output")
 	if err := os.MkdirAll(outputDst, 0755); err == nil {
 		if cpErr := s.container.CopyFrom(ctx, containerID, "/workspace/.cloche/output/.", outputDst); cpErr != nil {
 			log.Printf("run %s: failed to extract output: %v", runID, cpErr)
@@ -380,11 +380,11 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 		} else {
 			// Read step output from file, falling back to container.log
 			var output string
-			outputPath := filepath.Join(run.ProjectDir, "cloche", ".cloche", req.RunId, "output", exec.StepName+".log")
+			outputPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", exec.StepName+".log")
 			if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
 				output = string(data)
 			} else {
-				containerLogPath := filepath.Join(run.ProjectDir, "cloche", ".cloche", req.RunId, "output", "container.log")
+				containerLogPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", "container.log")
 				if data, err := os.ReadFile(containerLogPath); err == nil {
 					output = string(data)
 				}
