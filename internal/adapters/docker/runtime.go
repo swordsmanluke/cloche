@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -98,7 +99,7 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 
 	// 3. Copy project files into container (no bind mount)
 	if cfg.ProjectDir != "" {
-		cpCmd := exec.CommandContext(ctx, "docker", "cp", cfg.ProjectDir+"/.", containerID+":/workspace/")
+		cpCmd := exec.CommandContext(ctx, "docker", "cp", filepath.Join(cfg.ProjectDir, "cloche")+"/.", containerID+":/workspace/")
 		var cpStderr bytes.Buffer
 		cpCmd.Stderr = &cpStderr
 		if err := cpCmd.Run(); err != nil {
