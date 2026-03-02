@@ -53,6 +53,8 @@ func main() {
 		cmdStatus(ctx, client, os.Args[2:])
 	case "logs":
 		cmdLogs(client, os.Args[2:])
+	case "poll":
+		cmdPoll(client, os.Args[2:])
 	case "list":
 		cmdList(ctx, client, os.Args[2:])
 	case "stop":
@@ -74,6 +76,7 @@ Commands:
                                              Launch a workflow run
   status <run-id>                            Check run status
   logs <run-id>                              Show step logs for a run
+  poll <run-id>                              Wait for a run to finish
   list [--all]                                List runs (last hour by default)
   stop <run-id>                              Stop a running workflow
   shutdown                                   Shut down the daemon
