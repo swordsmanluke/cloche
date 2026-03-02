@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
+	"github.com/cloche-dev/cloche/internal/adapters/docker"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/evolution"
 	"github.com/cloche-dev/cloche/internal/ports"
@@ -82,7 +84,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 
 	// Write prompt to .cloche/<run-id>/prompt.txt (run-specific to avoid conflicts)
 	if req.Prompt != "" {
-		clocheDir := filepath.Join(req.ProjectDir, ".cloche", runID)
+		clocheDir := filepath.Join(req.ProjectDir, "cloche", ".cloche", runID)
 		if err := os.MkdirAll(clocheDir, 0755); err != nil {
 			return nil, fmt.Errorf("creating .cloche dir: %w", err)
 		}
@@ -115,6 +117,8 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, req *pb.RunWorkflowRequest) {
 	ctx := context.Background()
 
+	baseSHA := gitHEAD(req.ProjectDir)
+
 	containerID, err := s.container.Start(ctx, ports.ContainerConfig{
 		Image:        image,
 		WorkflowName: req.WorkflowName,
@@ -140,6 +144,7 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, r
 	if run != nil {
 		run.Start()
 		run.ContainerID = containerID
+		run.BaseSHA = baseSHA
 		_ = s.store.UpdateRun(ctx, run)
 	}
 
@@ -206,7 +211,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	}
 
 	// Extract step output files from container before it's removed
-	outputDst := filepath.Join(projectDir, ".cloche", runID, "output")
+	outputDst := filepath.Join(projectDir, "cloche", ".cloche", runID, "output")
 	if err := os.MkdirAll(outputDst, 0755); err == nil {
 		if cpErr := s.container.CopyFrom(ctx, containerID, "/workspace/.cloche/output/.", outputDst); cpErr != nil {
 			log.Printf("run %s: failed to extract output: %v", runID, cpErr)
@@ -238,6 +243,14 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	// Fire evolution trigger if configured
 	if s.evolution != nil {
 		s.evolution.Fire(projectDir, workflowName, runID)
+	}
+
+	// Extract results to git branch via worktree
+	run2, _ := s.store.GetRun(ctx, runID)
+	if run2 != nil && run2.BaseSHA != "" {
+		if err := docker.ExtractResults(ctx, containerID, run2.ProjectDir, runID, run2.BaseSHA, workflowName, string(run2.State)); err != nil {
+			log.Printf("run %s: failed to extract results to branch: %v", runID, err)
+		}
 	}
 
 	// Auto-remove container unless --keep-container was set
@@ -367,11 +380,11 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 		} else {
 			// Read step output from file, falling back to container.log
 			var output string
-			outputPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", exec.StepName+".log")
+			outputPath := filepath.Join(run.ProjectDir, "cloche", ".cloche", req.RunId, "output", exec.StepName+".log")
 			if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
 				output = string(data)
 			} else {
-				containerLogPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", "container.log")
+				containerLogPath := filepath.Join(run.ProjectDir, "cloche", ".cloche", req.RunId, "output", "container.log")
 				if data, err := os.ReadFile(containerLogPath); err == nil {
 					output = string(data)
 				}
@@ -433,4 +446,14 @@ func (s *ClocheServer) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*
 	}
 	go s.shutdownFn()
 	return &pb.ShutdownResponse{}, nil
+}
+
+func gitHEAD(dir string) string {
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }

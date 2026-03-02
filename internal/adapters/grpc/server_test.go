@@ -74,7 +74,7 @@ func TestServer_RunWorkflow(t *testing.T) {
 	assert.NotEmpty(t, resp.RunId)
 
 	// Verify prompt was written to run-specific path
-	promptData, err := os.ReadFile(filepath.Join(dir, ".cloche", resp.RunId, "prompt.txt"))
+	promptData, err := os.ReadFile(filepath.Join(dir, "cloche", ".cloche", resp.RunId, "prompt.txt"))
 	require.NoError(t, err)
 	assert.Equal(t, "hello world", string(promptData))
 
@@ -294,7 +294,7 @@ func TestServer_StreamLogs_FallsBackToContainerLog(t *testing.T) {
 
 	// Simulate container.log being written (local runtime Logs() returns empty,
 	// so write it manually to test the StreamLogs fallback path)
-	outputDir := filepath.Join(dir, ".cloche", resp.RunId, "output")
+	outputDir := filepath.Join(dir, "cloche", ".cloche", resp.RunId, "output")
 	require.NoError(t, os.MkdirAll(outputDir, 0755))
 	require.NoError(t, os.WriteFile(
 		filepath.Join(outputDir, "container.log"),
@@ -362,7 +362,7 @@ func TestServer_StreamLogs_PrefersStepOutput(t *testing.T) {
 	}
 
 	// Write both per-step output AND container.log — per-step should win
-	outputDir := filepath.Join(dir, ".cloche", resp.RunId, "output")
+	outputDir := filepath.Join(dir, "cloche", ".cloche", resp.RunId, "output")
 	require.NoError(t, os.MkdirAll(outputDir, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "build.log"), []byte("step-specific output"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "container.log"), []byte("full container output"), 0644))
