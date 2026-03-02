@@ -37,6 +37,8 @@ message GetStatusResponse {
   repeated StepExecutionStatus step_executions = 5;
   string error_message = 6;
   string container_id = 7;
+  bool container_alive = 8;
+  string container_dead_since = 9;
 }
 
 message StepExecutionStatus {
