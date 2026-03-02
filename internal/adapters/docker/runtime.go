@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cloche-dev/cloche/internal/ports"
 )
@@ -206,6 +207,34 @@ func (r *Runtime) Remove(ctx context.Context, containerID string) error {
 		return fmt.Errorf("removing container: %s: %w", stderr.String(), err)
 	}
 	return nil
+}
+
+func (r *Runtime) Inspect(ctx context.Context, containerID string) (*ports.ContainerStatus, error) {
+	cmd := exec.CommandContext(ctx, "docker", "inspect",
+		"--format", "{{.State.Running}} {{.State.ExitCode}} {{.State.FinishedAt}}",
+		containerID)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("inspecting container: %s: %w", stderr.String(), err)
+	}
+
+	parts := strings.SplitN(strings.TrimSpace(stdout.String()), " ", 3)
+	if len(parts) < 3 {
+		return nil, fmt.Errorf("unexpected inspect output: %s", stdout.String())
+	}
+
+	running := parts[0] == "true"
+	exitCode := 0
+	fmt.Sscanf(parts[1], "%d", &exitCode)
+	finishedAt, _ := time.Parse(time.RFC3339Nano, parts[2])
+
+	return &ports.ContainerStatus{
+		Running:    running,
+		ExitCode:   exitCode,
+		FinishedAt: finishedAt,
+	}, nil
 }
 
 type cmdReadCloser struct {

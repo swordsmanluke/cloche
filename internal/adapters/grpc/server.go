@@ -296,6 +296,16 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 		ContainerId:  run.ContainerID,
 	}
 
+	// Check container liveness
+	if run.ContainerID != "" && s.container != nil {
+		if cs, err := s.container.Inspect(ctx, run.ContainerID); err == nil {
+			resp.ContainerAlive = cs.Running
+			if !cs.Running && !cs.FinishedAt.IsZero() {
+				resp.ContainerDeadSince = cs.FinishedAt.Format(time.RFC3339Nano)
+			}
+		}
+	}
+
 	// Load step executions from captures store if available
 	if s.captures != nil {
 		captures, err := s.captures.GetCaptures(ctx, req.RunId)

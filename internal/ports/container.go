@@ -3,7 +3,14 @@ package ports
 import (
 	"context"
 	"io"
+	"time"
 )
+
+type ContainerStatus struct {
+	Running    bool
+	ExitCode   int
+	FinishedAt time.Time
+}
 
 type ContainerConfig struct {
 	Image        string
@@ -22,4 +29,5 @@ type ContainerRuntime interface {
 	CopyFrom(ctx context.Context, containerID string, srcPath, dstPath string) error
 	Logs(ctx context.Context, containerID string) (string, error)
 	Remove(ctx context.Context, containerID string) error
+	Inspect(ctx context.Context, containerID string) (*ContainerStatus, error)
 }
