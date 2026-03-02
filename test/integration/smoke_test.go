@@ -14,6 +14,9 @@ import (
 
 func TestSmoke_AgentRunsWorkflowEndToEnd(t *testing.T) {
 	dir := t.TempDir()
+	clocheDir := dir + "/cloche"
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+
 	workflowContent := `workflow "smoke-test" {
   step build {
     run = "echo building && echo 'built' > built.txt"
@@ -31,13 +34,13 @@ func TestSmoke_AgentRunsWorkflowEndToEnd(t *testing.T) {
   verify:success -> done
   verify:fail -> abort
 }`
-	workflowPath := dir + "/smoke.cloche"
+	workflowPath := clocheDir + "/smoke.cloche"
 	require.NoError(t, os.WriteFile(workflowPath, []byte(workflowContent), 0644))
 
 	var statusBuf bytes.Buffer
 	runner := agent.NewRunner(agent.RunnerConfig{
 		WorkflowPath: workflowPath,
-		WorkDir:      dir,
+		WorkDir:      clocheDir,
 		StatusOutput: &statusBuf,
 	})
 
@@ -62,6 +65,6 @@ func TestSmoke_AgentRunsWorkflowEndToEnd(t *testing.T) {
 	assert.Equal(t, "succeeded", last.Result)
 
 	// Verify the build step actually created the file
-	_, err = os.Stat(dir + "/built.txt")
+	_, err = os.Stat(clocheDir + "/built.txt")
 	assert.NoError(t, err)
 }
