@@ -136,6 +136,10 @@ func (r *Runtime) Remove(ctx context.Context, containerID string) error {
 	return nil
 }
 
+func (r *Runtime) Inspect(ctx context.Context, containerID string) (*ports.ContainerStatus, error) {
+	return &ports.ContainerStatus{Running: false}, nil
+}
+
 func (r *Runtime) CopyFrom(ctx context.Context, containerID string, srcPath, dstPath string) error {
 	r.mu.Lock()
 	mp, ok := r.processes[containerID]
