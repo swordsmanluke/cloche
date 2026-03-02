@@ -20,6 +20,7 @@ func TestCmdInit_DefaultFlags(t *testing.T) {
 		filepath.Join(".cloche", "Dockerfile"),
 		filepath.Join(".cloche", "prompts", "implement.md"),
 		filepath.Join(".cloche", "prompts", "fix.md"),
+		filepath.Join(".cloche", "prompts", "update-docs.md"),
 	} {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			t.Errorf("expected %s to exist", path)
@@ -146,5 +147,8 @@ func TestCmdInit_WorkflowTemplatePromptPaths(t *testing.T) {
 	}
 	if !strings.Contains(content, `file(".cloche/prompts/fix.md")`) {
 		t.Error("workflow template should reference .cloche/prompts/fix.md")
+	}
+	if !strings.Contains(content, `file(".cloche/prompts/update-docs.md")`) {
+		t.Error("workflow template should reference .cloche/prompts/update-docs.md")
 	}
 }

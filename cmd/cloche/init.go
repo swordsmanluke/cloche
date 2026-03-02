@@ -24,13 +24,20 @@ var workflowTemplate = `workflow "%s" {
     results = [success, fail, give-up]
   }
 
+  step update-docs {
+    prompt = file(".cloche/prompts/update-docs.md")
+    results = [success, fail]
+  }
+
   implement:success -> test
   implement:fail -> abort
-  test:success -> done
+  test:success -> update-docs
   test:fail -> fix
   fix:success -> test
   fix:fail -> abort
   fix:give-up -> abort
+  update-docs:success -> done
+  update-docs:fail -> done
 }
 `
 
@@ -67,6 +74,24 @@ Only modify files that need fixing. Do not rewrite the entire project.
 
 ## Validation Output
 (Contents of .cloche/output/*.log will be injected here by the adapter)
+`
+
+var updateDocsPrompt = `Review the CLI source code and update usage documentation to reflect any changes.
+
+## What to check
+1. Read cmd/cloche/main.go and cmd/cloche/init.go to understand the current CLI surface
+2. Compare against docs/USAGE.md
+
+## Sections to keep in sync
+- CLI Reference: subcommands, flags, usage examples
+- Setting Up a New Project: scaffolding steps, workflow template
+- Daemon Configuration: environment variables
+- Build Commands: Makefile targets
+
+## Rules
+- Only modify docs/USAGE.md (and docs/workflows.md if workflow DSL syntax changed)
+- Only make changes when there are actual discrepancies — do not rewrite for style
+- If everything is already accurate, make no changes and report success
 `
 
 func cmdInit(args []string) {
@@ -115,6 +140,7 @@ func cmdInit(args []string) {
 		{filepath.Join(clocheDir, "Dockerfile"), fmt.Sprintf(dockerfileTemplate, image)},
 		{filepath.Join(clocheDir, "prompts", "implement.md"), implementPrompt},
 		{filepath.Join(clocheDir, "prompts", "fix.md"), fixPrompt},
+		{filepath.Join(clocheDir, "prompts", "update-docs.md"), updateDocsPrompt},
 	}
 
 	for _, f := range files {
