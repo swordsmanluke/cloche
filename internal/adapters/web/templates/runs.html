@@ -52,9 +52,9 @@
 
     function filterByProject(dir) {
         if (dir) {
-            window.location.href = '/?project=' + encodeURIComponent(dir);
+            window.location.href = '/runs?project=' + encodeURIComponent(dir);
         } else {
-            window.location.href = '/';
+            window.location.href = '/runs';
         }
     }
     window.filterByProject = filterByProject;
