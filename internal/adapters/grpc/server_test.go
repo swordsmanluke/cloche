@@ -1028,3 +1028,109 @@ func TestServer_StreamLogs_FullLog(t *testing.T) {
 	}
 	assert.True(t, foundFullLog, "should serve full.log as unified log when available")
 }
+
+func TestServer_RunWorkflow_EnqueuesMergeOnSuccess(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
+		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := local.NewRuntime("sh")
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+	srv.SetMergeQueue(store) // Store implements MergeQueueStore too
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+	})
+	require.NoError(t, err)
+
+	// Poll until run completes
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State == "succeeded" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Wait for post-completion processing
+	time.Sleep(500 * time.Millisecond)
+
+	// The merge queue should have an entry for this run
+	entry, err := store.NextPendingMerge(context.Background(), dir)
+	require.NoError(t, err)
+	require.NotNil(t, entry, "successful run should be enqueued in merge queue")
+	assert.Equal(t, resp.RunId, entry.RunID)
+	assert.Equal(t, fmt.Sprintf("cloche/%s", resp.RunId), entry.Branch)
+	assert.Equal(t, dir, entry.Project)
+	assert.Equal(t, "in_progress", entry.Status) // NextPendingMerge marks it in_progress
+}
+
+func TestServer_RunWorkflow_NoMergeEnqueueOnFailure(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "fail"},
+		{Type: protocol.MsgRunCompleted, Result: "failed"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	script += "exit 1\n"
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := &trackingRuntime{Runtime: local.NewRuntime("sh")}
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+	srv.SetMergeQueue(store)
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+	})
+	require.NoError(t, err)
+
+	// Poll until run completes
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State == "failed" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Wait for post-completion processing
+	time.Sleep(500 * time.Millisecond)
+
+	// The merge queue should be empty — failed runs are not enqueued
+	entry, err := store.NextPendingMerge(context.Background(), dir)
+	require.NoError(t, err)
+	assert.Nil(t, entry, "failed run should NOT be enqueued in merge queue")
+	_ = resp
+}

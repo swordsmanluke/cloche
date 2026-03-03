@@ -31,6 +31,7 @@ type ClocheServer struct {
 	store         ports.RunStore
 	captures      ports.CaptureStore
 	logStore      ports.LogStore
+	mergeQueue    ports.MergeQueueStore
 	container     ports.ContainerRuntime
 	defaultImage  string
 	evolution     *evolution.Trigger
@@ -62,6 +63,11 @@ func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureSto
 // SetLogStore attaches a log store to the server for indexing extracted log files.
 func (s *ClocheServer) SetLogStore(ls ports.LogStore) {
 	s.logStore = ls
+}
+
+// SetMergeQueue attaches a merge queue store to the server.
+func (s *ClocheServer) SetMergeQueue(mq ports.MergeQueueStore) {
+	s.mergeQueue = mq
 }
 
 // SetEvolution attaches an evolution trigger to the server.
@@ -298,6 +304,20 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	if run2 != nil && run2.BaseSHA != "" {
 		if err := docker.ExtractResults(ctx, containerID, run2.ProjectDir, runID, run2.BaseSHA, workflowName, string(run2.State)); err != nil {
 			log.Printf("run %s: failed to extract results to branch: %v", runID, err)
+		}
+	}
+
+	// Enqueue successful runs into the merge queue
+	if s.mergeQueue != nil {
+		runForMerge, _ := s.store.GetRun(ctx, runID)
+		if runForMerge != nil && runForMerge.State == domain.RunStateSucceeded {
+			branch := fmt.Sprintf("cloche/%s", runID)
+			_ = s.mergeQueue.EnqueueMerge(ctx, &ports.MergeQueueEntry{
+				RunID:      runID,
+				Branch:     branch,
+				Project:    projectDir,
+				EnqueuedAt: time.Now(),
+			})
 		}
 	}
 
