@@ -196,10 +196,15 @@ Columns: run ID, workflow name, state, container ID (if running), error message 
 Stream step-level logs for a run.
 
 ```
-cloche logs <run-id>
+cloche logs <run-id> [--follow]
 ```
 
-Shows step start/completion events and run results as they happen.
+| Flag | Description |
+|------|-------------|
+| `--follow`, `-f` | Stream live log lines via SSE. Color-coded by type: status (blue), LLM (green), script (default). Exits when the run completes. Connects to the daemon's HTTP endpoint (see `CLOCHE_HTTP` in Client Configuration). |
+
+Without `--follow`, shows step start/completion events and run results.
+With `--follow`, connects to the SSE endpoint and prints log lines in real-time.
 
 ### `cloche poll`
 
@@ -582,7 +587,7 @@ my-project/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLOCHE_ADDR` | `unix:///tmp/cloche.sock` | Daemon address (gRPC) |
-| `CLOCHE_HTTP` | — | Daemon HTTP address for `cloche health` (e.g. `localhost:8080`) |
+| `CLOCHE_HTTP` | `:8080` | Daemon HTTP address (web dashboard, `cloche logs --follow`); set to `off` to disable |
 
 ## Build Commands
 

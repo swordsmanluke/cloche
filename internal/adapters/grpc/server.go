@@ -17,6 +17,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/evolution"
+	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/protocol"
 	rpcgrpc "google.golang.org/grpc"
@@ -30,15 +31,17 @@ type ClocheServer struct {
 	defaultImage string
 	evolution    *evolution.Trigger
 	shutdownFn   func()
+	logBroadcast *logstream.Broadcaster
 	mu           sync.Mutex
 	runIDs       map[string]string // run_id -> container_id
 }
 
 func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *ClocheServer {
 	return &ClocheServer{
-		store:     store,
-		container: container,
-		runIDs:    make(map[string]string),
+		store:        store,
+		container:    container,
+		logBroadcast: logstream.NewBroadcaster(),
+		runIDs:       make(map[string]string),
 	}
 }
 
@@ -48,8 +51,15 @@ func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureSto
 		captures:     captures,
 		container:    container,
 		defaultImage: defaultImage,
+		logBroadcast: logstream.NewBroadcaster(),
 		runIDs:       make(map[string]string),
 	}
+}
+
+// LogBroadcaster returns the server's log broadcaster for sharing with other
+// components (e.g. the web handler for SSE streaming).
+func (s *ClocheServer) LogBroadcaster() *logstream.Broadcaster {
+	return s.logBroadcast
 }
 
 // SetEvolution attaches an evolution trigger to the server.
@@ -174,13 +184,24 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		return
 	}
 
-	// Parse JSON-lines status messages
+	// Parse JSON-lines status messages and broadcast to subscribers
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
+		line := scanner.Text()
 		var msg protocol.StatusMessage
-		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
+		if err := json.Unmarshal([]byte(line), &msg); err != nil {
+			// Non-JSON line — broadcast as raw script output
+			s.logBroadcast.Publish(runID, logstream.LogLine{
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
+				Type:      string(logstream.TypeScript),
+				Content:   line,
+			})
 			continue
 		}
+
+		// Broadcast parsed protocol messages
+		logLine := protocolToLogLine(msg)
+		s.logBroadcast.Publish(runID, logLine)
 
 		run, err := s.store.GetRun(ctx, runID)
 		if err != nil {
@@ -216,6 +237,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		_ = s.store.UpdateRun(ctx, run)
 	}
 	reader.Close()
+	s.logBroadcast.Finish(runID)
 
 	// Wait for process exit
 	exitCode, err := s.container.Wait(ctx, containerID)
@@ -508,6 +530,33 @@ func (s *ClocheServer) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*
 	}
 	go s.shutdownFn()
 	return &pb.ShutdownResponse{}, nil
+}
+
+// protocolToLogLine converts a protocol.StatusMessage to a logstream.LogLine.
+func protocolToLogLine(msg protocol.StatusMessage) logstream.LogLine {
+	ts := msg.Timestamp.UTC().Format(time.RFC3339)
+	if msg.Timestamp.IsZero() {
+		ts = time.Now().UTC().Format(time.RFC3339)
+	}
+
+	switch msg.Type {
+	case protocol.MsgStepStarted:
+		return logstream.LogLine{Timestamp: ts, Type: "status", Content: "step_started: " + msg.StepName}
+	case protocol.MsgStepCompleted:
+		return logstream.LogLine{Timestamp: ts, Type: "status", Content: "step_completed: " + msg.StepName + " -> " + msg.Result}
+	case protocol.MsgRunCompleted:
+		return logstream.LogLine{Timestamp: ts, Type: "status", Content: "run_completed: " + msg.Result}
+	case protocol.MsgLog:
+		typ := "script"
+		if msg.StepName != "" {
+			typ = "llm"
+		}
+		return logstream.LogLine{Timestamp: ts, Type: typ, Content: msg.Message}
+	case protocol.MsgError:
+		return logstream.LogLine{Timestamp: ts, Type: "status", Content: "error: " + msg.Message}
+	default:
+		return logstream.LogLine{Timestamp: ts, Type: "status", Content: msg.Message}
+	}
 }
 
 func gitHEAD(dir string) string {
