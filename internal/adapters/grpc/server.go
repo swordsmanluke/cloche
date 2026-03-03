@@ -467,6 +467,41 @@ func (s *ClocheServer) StopRun(ctx context.Context, req *pb.StopRunRequest) (*pb
 	return &pb.StopRunResponse{}, nil
 }
 
+func (s *ClocheServer) DeleteContainer(ctx context.Context, req *pb.DeleteContainerRequest) (*pb.DeleteContainerResponse, error) {
+	if s.container == nil {
+		return nil, fmt.Errorf("no container runtime configured")
+	}
+
+	id := req.Id
+	if id == "" {
+		return nil, fmt.Errorf("id is required")
+	}
+
+	// Try to resolve as a run ID first
+	containerID := id
+	run, err := s.store.GetRun(ctx, id)
+	if err == nil {
+		// It's a run ID — use the container ID from the run record
+		if run.ContainerID == "" {
+			return nil, fmt.Errorf("run %q has no associated container", id)
+		}
+		containerID = run.ContainerID
+	}
+
+	// Remove the container
+	if err := s.container.Remove(ctx, containerID); err != nil {
+		return nil, fmt.Errorf("removing container: %w", err)
+	}
+
+	// If we resolved a run, clear the container_kept flag
+	if run != nil {
+		run.ContainerKept = false
+		_ = s.store.UpdateRun(ctx, run)
+	}
+
+	return &pb.DeleteContainerResponse{}, nil
+}
+
 func (s *ClocheServer) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*pb.ShutdownResponse, error) {
 	if s.shutdownFn == nil {
 		return nil, fmt.Errorf("shutdown not configured")

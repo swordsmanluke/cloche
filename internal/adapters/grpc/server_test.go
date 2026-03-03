@@ -682,6 +682,97 @@ func TestServer_RunWorkflow_KeepContainerOnSuccess(t *testing.T) {
 	assert.True(t, run.ContainerKept, "ContainerKept should be true with --keep-container")
 }
 
+func TestServer_DeleteContainer_ByRunID(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run with a container ID and container_kept=true
+	run := domain.NewRun("delete-test-run", "develop")
+	run.Start()
+	run.ContainerID = "abc123def456"
+	run.ContainerKept = true
+	run.Complete(domain.RunStateFailed)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	rt := &trackingRuntime{Runtime: local.NewRuntime("sh")}
+	srv := server.NewClocheServer(store, rt)
+
+	resp, err := srv.DeleteContainer(ctx, &pb.DeleteContainerRequest{Id: "delete-test-run"})
+	require.NoError(t, err)
+	assert.NotNil(t, resp)
+
+	// Verify Remove was called
+	assert.Equal(t, int32(1), rt.removeCalled.Load())
+
+	// Verify container_kept was cleared
+	updated, err := store.GetRun(ctx, "delete-test-run")
+	require.NoError(t, err)
+	assert.False(t, updated.ContainerKept)
+}
+
+func TestServer_DeleteContainer_ByContainerID(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	rt := &trackingRuntime{Runtime: local.NewRuntime("sh")}
+	srv := server.NewClocheServer(store, rt)
+
+	// Pass a raw container ID (not a run ID)
+	resp, err := srv.DeleteContainer(ctx, &pb.DeleteContainerRequest{Id: "some-docker-container-id"})
+	require.NoError(t, err)
+	assert.NotNil(t, resp)
+
+	// Remove should still be called with the container ID
+	assert.Equal(t, int32(1), rt.removeCalled.Load())
+}
+
+func TestServer_DeleteContainer_EmptyID(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, &trackingRuntime{Runtime: local.NewRuntime("sh")})
+	_, err = srv.DeleteContainer(context.Background(), &pb.DeleteContainerRequest{Id: ""})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "id is required")
+}
+
+func TestServer_DeleteContainer_NoRuntime(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, nil)
+	_, err = srv.DeleteContainer(context.Background(), &pb.DeleteContainerRequest{Id: "some-id"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no container runtime configured")
+}
+
+func TestServer_DeleteContainer_RunWithNoContainer(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run without a container ID
+	run := domain.NewRun("no-container-run", "develop")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	rt := &trackingRuntime{Runtime: local.NewRuntime("sh")}
+	srv := server.NewClocheServer(store, rt)
+
+	_, err = srv.DeleteContainer(ctx, &pb.DeleteContainerRequest{Id: "no-container-run"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no associated container")
+}
+
 func TestServer_RunWorkflow_EnsureImageFailure(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

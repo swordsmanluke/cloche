@@ -19,12 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ClocheService_RunWorkflow_FullMethodName = "/cloche.v1.ClocheService/RunWorkflow"
-	ClocheService_GetStatus_FullMethodName   = "/cloche.v1.ClocheService/GetStatus"
-	ClocheService_StreamLogs_FullMethodName  = "/cloche.v1.ClocheService/StreamLogs"
-	ClocheService_StopRun_FullMethodName     = "/cloche.v1.ClocheService/StopRun"
-	ClocheService_ListRuns_FullMethodName    = "/cloche.v1.ClocheService/ListRuns"
-	ClocheService_Shutdown_FullMethodName    = "/cloche.v1.ClocheService/Shutdown"
+	ClocheService_RunWorkflow_FullMethodName     = "/cloche.v1.ClocheService/RunWorkflow"
+	ClocheService_GetStatus_FullMethodName       = "/cloche.v1.ClocheService/GetStatus"
+	ClocheService_StreamLogs_FullMethodName      = "/cloche.v1.ClocheService/StreamLogs"
+	ClocheService_StopRun_FullMethodName         = "/cloche.v1.ClocheService/StopRun"
+	ClocheService_ListRuns_FullMethodName        = "/cloche.v1.ClocheService/ListRuns"
+	ClocheService_Shutdown_FullMethodName        = "/cloche.v1.ClocheService/Shutdown"
+	ClocheService_DeleteContainer_FullMethodName = "/cloche.v1.ClocheService/DeleteContainer"
 )
 
 // ClocheServiceClient is the client API for ClocheService service.
@@ -37,6 +38,7 @@ type ClocheServiceClient interface {
 	StopRun(ctx context.Context, in *StopRunRequest, opts ...grpc.CallOption) (*StopRunResponse, error)
 	ListRuns(ctx context.Context, in *ListRunsRequest, opts ...grpc.CallOption) (*ListRunsResponse, error)
 	Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error)
+	DeleteContainer(ctx context.Context, in *DeleteContainerRequest, opts ...grpc.CallOption) (*DeleteContainerResponse, error)
 }
 
 type clocheServiceClient struct {
@@ -116,6 +118,16 @@ func (c *clocheServiceClient) Shutdown(ctx context.Context, in *ShutdownRequest,
 	return out, nil
 }
 
+func (c *clocheServiceClient) DeleteContainer(ctx context.Context, in *DeleteContainerRequest, opts ...grpc.CallOption) (*DeleteContainerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteContainerResponse)
+	err := c.cc.Invoke(ctx, ClocheService_DeleteContainer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClocheServiceServer is the server API for ClocheService service.
 // All implementations must embed UnimplementedClocheServiceServer
 // for forward compatibility.
@@ -126,6 +138,7 @@ type ClocheServiceServer interface {
 	StopRun(context.Context, *StopRunRequest) (*StopRunResponse, error)
 	ListRuns(context.Context, *ListRunsRequest) (*ListRunsResponse, error)
 	Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error)
+	DeleteContainer(context.Context, *DeleteContainerRequest) (*DeleteContainerResponse, error)
 	mustEmbedUnimplementedClocheServiceServer()
 }
 
@@ -153,6 +166,9 @@ func (UnimplementedClocheServiceServer) ListRuns(context.Context, *ListRunsReque
 }
 func (UnimplementedClocheServiceServer) Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Shutdown not implemented")
+}
+func (UnimplementedClocheServiceServer) DeleteContainer(context.Context, *DeleteContainerRequest) (*DeleteContainerResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteContainer not implemented")
 }
 func (UnimplementedClocheServiceServer) mustEmbedUnimplementedClocheServiceServer() {}
 func (UnimplementedClocheServiceServer) testEmbeddedByValue()                       {}
@@ -276,6 +292,24 @@ func _ClocheService_Shutdown_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClocheService_DeleteContainer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteContainerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).DeleteContainer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_DeleteContainer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).DeleteContainer(ctx, req.(*DeleteContainerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClocheService_ServiceDesc is the grpc.ServiceDesc for ClocheService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -302,6 +336,10 @@ var ClocheService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Shutdown",
 			Handler:    _ClocheService_Shutdown_Handler,
+		},
+		{
+			MethodName: "DeleteContainer",
+			Handler:    _ClocheService_DeleteContainer_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
