@@ -98,6 +98,39 @@ image = "custom:latest"
 	assert.Equal(t, "", cfg.Daemon.Listen) // unset stays empty
 }
 
+func TestLoadOrchestrationConfig(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "config"), []byte(`
+[orchestration]
+enabled = true
+tracker = "beads"
+concurrency = 3
+workflow = "build"
+`), 0644)
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.True(t, cfg.Orchestration.Enabled)
+	assert.Equal(t, "beads", cfg.Orchestration.Tracker)
+	assert.Equal(t, 3, cfg.Orchestration.Concurrency)
+	assert.Equal(t, "build", cfg.Orchestration.Workflow)
+}
+
+func TestLoadOrchestrationConfigDefaults(t *testing.T) {
+	dir := t.TempDir()
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	// Defaults: not enabled, beads tracker, concurrency 1, develop workflow
+	assert.False(t, cfg.Orchestration.Enabled)
+	assert.Equal(t, "beads", cfg.Orchestration.Tracker)
+	assert.Equal(t, 1, cfg.Orchestration.Concurrency)
+	assert.Equal(t, "develop", cfg.Orchestration.Workflow)
+}
+
 func TestLoadGlobalFromMissing(t *testing.T) {
 	cfg, err := LoadGlobalFrom("/nonexistent/path/config")
 	require.NoError(t, err)
