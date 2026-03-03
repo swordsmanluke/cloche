@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cloche-dev/cloche/internal/agent"
@@ -307,6 +308,192 @@ func TestRunner_WorkflowLevelFallbackChain(t *testing.T) {
 	last := msgs[len(msgs)-1]
 	assert.Equal(t, protocol.MsgRunCompleted, last.Type)
 	assert.Equal(t, "succeeded", last.Result)
+}
+
+func TestRunner_UnifiedLogScriptSteps(t *testing.T) {
+	dir := t.TempDir()
+	workflowContent := `workflow "log-test" {
+  step build {
+    run = "echo building the project"
+    results = [success, fail]
+  }
+
+  step test {
+    run = "echo running tests"
+    results = [success, fail]
+  }
+
+  build:success -> test
+  build:fail -> abort
+
+  test:success -> done
+  test:fail -> abort
+}`
+	workflowPath := filepath.Join(dir, "log-test.cloche")
+	require.NoError(t, os.WriteFile(workflowPath, []byte(workflowContent), 0644))
+
+	var statusBuf bytes.Buffer
+	runner := agent.NewRunner(agent.RunnerConfig{
+		WorkflowPath: workflowPath,
+		WorkDir:      dir,
+		StatusOutput: &statusBuf,
+	})
+
+	err := runner.Run(context.Background())
+	require.NoError(t, err)
+
+	// Read full.log
+	fullLog, err := os.ReadFile(filepath.Join(dir, ".cloche", "output", "full.log"))
+	require.NoError(t, err)
+
+	logStr := string(fullLog)
+
+	// Verify status entries are present
+	assert.Contains(t, logStr, "[status] step_started: build")
+	assert.Contains(t, logStr, "[status] step_completed: build -> success")
+	assert.Contains(t, logStr, "[status] step_started: test")
+	assert.Contains(t, logStr, "[status] step_completed: test -> success")
+	assert.Contains(t, logStr, "[status] run_completed: succeeded")
+
+	// Verify script output entries
+	assert.Contains(t, logStr, "[script] building the project")
+	assert.Contains(t, logStr, "[script] running tests")
+
+	// Verify chronological order: build started -> build output -> build completed -> test started
+	lines := strings.Split(strings.TrimRight(logStr, "\n"), "\n")
+	var buildStartIdx, buildOutputIdx, buildCompleteIdx, testStartIdx int
+	for i, line := range lines {
+		switch {
+		case strings.Contains(line, "[status] step_started: build"):
+			buildStartIdx = i
+		case strings.Contains(line, "[script] building the project"):
+			buildOutputIdx = i
+		case strings.Contains(line, "[status] step_completed: build -> success"):
+			buildCompleteIdx = i
+		case strings.Contains(line, "[status] step_started: test"):
+			testStartIdx = i
+		}
+	}
+
+	assert.Less(t, buildStartIdx, buildOutputIdx, "build start should be before build output")
+	assert.Less(t, buildOutputIdx, buildCompleteIdx, "build output should be before build complete")
+	assert.Less(t, buildCompleteIdx, testStartIdx, "build complete should be before test start")
+
+	// Verify each line has a timestamp prefix
+	for _, line := range lines {
+		assert.Regexp(t, `^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\] \[(status|script|llm)\] .+`, line,
+			"each line should be timestamped and type-prefixed: %s", line)
+	}
+}
+
+func TestRunner_UnifiedLogLLMStep(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a mock agent script that produces LLM-like output
+	mockAgent := filepath.Join(dir, "mock-agent.sh")
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'Claude: I will implement the feature'\necho 'Claude: Done implementing'\n"), 0755))
+
+	workflowContent := `workflow "llm-log-test" {
+  step implement {
+    agent_command = "` + mockAgent + `"
+    prompt = "Build something."
+    results = [success, fail]
+  }
+
+  implement:success -> done
+  implement:fail -> abort
+}`
+	workflowPath := filepath.Join(dir, "llm-test.cloche")
+	require.NoError(t, os.WriteFile(workflowPath, []byte(workflowContent), 0644))
+
+	var statusBuf bytes.Buffer
+	runner := agent.NewRunner(agent.RunnerConfig{
+		WorkflowPath: workflowPath,
+		WorkDir:      dir,
+		StatusOutput: &statusBuf,
+	})
+
+	err := runner.Run(context.Background())
+	require.NoError(t, err)
+
+	// Verify full.log has LLM output with [llm] prefix
+	fullLog, err := os.ReadFile(filepath.Join(dir, ".cloche", "output", "full.log"))
+	require.NoError(t, err)
+
+	logStr := string(fullLog)
+	assert.Contains(t, logStr, "[llm] Claude: I will implement the feature")
+	assert.Contains(t, logStr, "[llm] Claude: Done implementing")
+	assert.Contains(t, logStr, "[status] step_started: implement")
+	assert.Contains(t, logStr, "[status] step_completed: implement -> success")
+
+	// Verify llm-<step>.log was created
+	llmLog, err := os.ReadFile(filepath.Join(dir, ".cloche", "output", "llm-implement.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(llmLog), "Claude: I will implement the feature")
+
+	// Verify <step>.log still exists (backward compat)
+	stepLog, err := os.ReadFile(filepath.Join(dir, ".cloche", "output", "implement.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(stepLog), "Claude: I will implement the feature")
+}
+
+func TestRunner_UnifiedLogMixedSteps(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a mock agent script
+	mockAgent := filepath.Join(dir, "mock-agent.sh")
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'LLM output here'\n"), 0755))
+
+	workflowContent := `workflow "mixed-test" {
+  step build {
+    run = "echo compiling"
+    results = [success, fail]
+  }
+
+  step implement {
+    agent_command = "` + mockAgent + `"
+    prompt = "Implement the feature."
+    results = [success, fail]
+  }
+
+  build:success -> implement
+  build:fail -> abort
+
+  implement:success -> done
+  implement:fail -> abort
+}`
+	workflowPath := filepath.Join(dir, "mixed.cloche")
+	require.NoError(t, os.WriteFile(workflowPath, []byte(workflowContent), 0644))
+
+	var statusBuf bytes.Buffer
+	runner := agent.NewRunner(agent.RunnerConfig{
+		WorkflowPath: workflowPath,
+		WorkDir:      dir,
+		StatusOutput: &statusBuf,
+	})
+
+	err := runner.Run(context.Background())
+	require.NoError(t, err)
+
+	fullLog, err := os.ReadFile(filepath.Join(dir, ".cloche", "output", "full.log"))
+	require.NoError(t, err)
+
+	logStr := string(fullLog)
+
+	// Script step output tagged as [script]
+	assert.Contains(t, logStr, "[script] compiling")
+	// LLM step output tagged as [llm]
+	assert.Contains(t, logStr, "[llm] LLM output here")
+
+	// Verify both script and LLM per-step files exist
+	_, err = os.Stat(filepath.Join(dir, ".cloche", "output", "build.log"))
+	assert.NoError(t, err, "build.log should exist")
+
+	_, err = os.Stat(filepath.Join(dir, ".cloche", "output", "implement.log"))
+	assert.NoError(t, err, "implement.log should exist")
+
+	_, err = os.Stat(filepath.Join(dir, ".cloche", "output", "llm-implement.log"))
+	assert.NoError(t, err, "llm-implement.log should exist")
 }
 
 func TestRunner_ExecutesWorkflowFile(t *testing.T) {

@@ -516,7 +516,9 @@ my-project/
 │   └── <run-id>/             # Runtime state (gitignored)
 │       ├── prompt.txt        # User prompt (from --prompt flag)
 │       ├── output/
-│       │   └── test.log      # Step output logs
+│       │   ├── full.log      # Unified chronological log (status + script + LLM)
+│       │   ├── test.log      # Per-step script output
+│       │   └── llm-impl.log  # Per-step LLM conversation output
 │       ├── attempt_count/
 │       │   └── fix           # Retry counter for max_attempts
 │       └── history.log       # Step execution log
