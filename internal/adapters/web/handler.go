@@ -25,6 +25,11 @@ func WithContainerLogger(c ContainerLogger) HandlerOption {
 	return func(h *Handler) { h.container = c }
 }
 
+// WithContainerManager sets a full container manager (logs, inspect, remove).
+func WithContainerManager(c ContainerManager) HandlerOption {
+	return func(h *Handler) { h.container = c }
+}
+
 //go:embed templates/*.html static/*
 var content embed.FS
 
@@ -32,6 +37,13 @@ var content embed.FS
 // ContainerLogger can retrieve logs from a container by ID.
 type ContainerLogger interface {
 	Logs(ctx context.Context, containerID string) (string, error)
+}
+
+// ContainerManager extends ContainerLogger with container lifecycle operations.
+type ContainerManager interface {
+	ContainerLogger
+	Remove(ctx context.Context, containerID string) error
+	Inspect(ctx context.Context, containerID string) (*ports.ContainerStatus, error)
 }
 
 type Handler struct {
@@ -91,6 +103,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/runs", h.handleAPIRuns)
 	h.mux.HandleFunc("GET /api/runs/{id}", h.handleAPIRunDetail)
 	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
+	h.mux.HandleFunc("DELETE /api/runs/{id}/container", h.handleAPIDeleteContainer)
 	h.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
 
 	return h, nil
@@ -120,9 +133,18 @@ func (h *Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 	projects, _ := h.store.ListProjects(r.Context())
 	labels := projectLabels(projects)
 
+	// Count retained containers per project
+	containerCounts := map[string]int{}
+	allRuns, _ := h.store.ListRuns(r.Context(), time.Time{})
+	for _, run := range allRuns {
+		if run.ContainerKept {
+			containerCounts[run.ProjectDir]++
+		}
+	}
+
 	var projectList []projectEntry
 	for _, dir := range projects {
-		projectList = append(projectList, projectEntry{Dir: dir, Label: labels[dir]})
+		projectList = append(projectList, projectEntry{Dir: dir, Label: labels[dir], ContainerCount: containerCounts[dir]})
 	}
 	sort.Slice(projectList, func(i, j int) bool {
 		return projectList[i].Label < projectList[j].Label
@@ -211,11 +233,21 @@ func (h *Handler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 
 	steps := mergeCaptures(caps)
 
+	containerAvailable := false
+	if run.ContainerKept && run.ContainerID != "" {
+		if mgr, ok := h.container.(ContainerManager); ok {
+			if _, err := mgr.Inspect(r.Context(), run.ContainerID); err == nil {
+				containerAvailable = true
+			}
+		}
+	}
+
 	data := map[string]any{
-		"Title": "Run " + run.ID,
-		"Run":   run,
-		"Steps": steps,
-		"Page":  "detail",
+		"Title":              "Run " + run.ID,
+		"Run":                run,
+		"Steps":              steps,
+		"Page":               "detail",
+		"ContainerAvailable": containerAvailable,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.pages["run_detail"].ExecuteTemplate(w, "layout", data); err != nil {
@@ -390,6 +422,44 @@ func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "step output not found", http.StatusNotFound)
 }
 
+func (h *Handler) handleAPIDeleteContainer(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	run, err := h.store.GetRun(r.Context(), id)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "run not found"})
+		return
+	}
+
+	mgr, ok := h.container.(ContainerManager)
+	if !ok || run.ContainerID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "container management not available"})
+		return
+	}
+
+	if err := mgr.Remove(r.Context(), run.ContainerID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to remove container: %v", err)})
+		return
+	}
+
+	run.ContainerKept = false
+	if err := h.store.UpdateRun(r.Context(), run); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to update run: %v", err)})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
 // --- Template helpers ---
 
 func stateColor(state domain.RunState) string {
@@ -471,6 +541,7 @@ func projectLabels(dirs []string) map[string]string {
 }
 
 type projectEntry struct {
-	Dir   string
-	Label string
+	Dir            string
+	Label          string
+	ContainerCount int
 }

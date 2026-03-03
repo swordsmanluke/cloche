@@ -240,6 +240,30 @@ details pre {
     cursor: pointer;
 }
 
+/* Buttons */
+.btn {
+    display: inline-block;
+    padding: 0.25em 0.6em;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--font);
+    font-size: 0.8rem;
+    cursor: pointer;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.btn-danger {
+    background: var(--badge-failed-bg);
+    color: var(--badge-failed-text);
+    border-color: var(--error-border);
+}
+
+.btn-danger:hover { opacity: 0.8; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-sm { font-size: 0.75rem; padding: 0.15em 0.45em; }
+
 /* Responsive */
 @media (max-width: 768px) {
     .runs-table { font-size: 0.8rem; }

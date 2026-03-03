@@ -6,7 +6,7 @@
     <select id="project-select" onchange="filterByProject(this.value)">
         <option value="">All projects</option>
         {{range .Projects}}
-        <option value="{{.Dir}}"{{if eq .Dir $.ProjectFilter}} selected{{end}}>{{.Label}}</option>
+        <option value="{{.Dir}}"{{if eq .Dir $.ProjectFilter}} selected{{end}}>{{.Label}}{{if .ContainerCount}} ({{.ContainerCount}} container{{if gt .ContainerCount 1}}s{{end}}){{end}}</option>
         {{end}}
     </select>
 </div>
