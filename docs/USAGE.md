@@ -121,6 +121,26 @@ Creates `.cloche/` with a workflow file, Dockerfile, and prompt templates
 (`implement.md`, `fix.md`, `update-docs.md`). Skips files that already exist.
 Also adds gitignore entries for runtime state directories.
 
+### `cloche health`
+
+Show project health summary based on recent run results.
+
+```
+cloche health
+```
+
+Requires `CLOCHE_HTTP` to be set (e.g. `export CLOCHE_HTTP=localhost:8080`).
+Fetches health data from the daemon's HTTP API (`GET /api/projects`) and
+displays a table with per-project pass/fail counts:
+
+```
+PROJECT          STATUS    PASSED  FAILED  TOTAL
+my-project       green     5       0       5
+other-project    yellow    3       2       5
+```
+
+Status is colored (green/yellow/red) when output is a TTY.
+
 ### `cloche run`
 
 Launch a workflow run.
@@ -548,7 +568,8 @@ my-project/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLOCHE_ADDR` | `unix:///tmp/cloche.sock` | Daemon address |
+| `CLOCHE_ADDR` | `unix:///tmp/cloche.sock` | Daemon address (gRPC) |
+| `CLOCHE_HTTP` | — | Daemon HTTP address for `cloche health` (e.g. `localhost:8080`) |
 
 ## Build Commands
 

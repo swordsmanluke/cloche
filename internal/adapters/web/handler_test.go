@@ -310,9 +310,16 @@ func TestAPIProjects(t *testing.T) {
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 
+	type health struct {
+		Status string `json:"status"`
+		Passed int    `json:"passed"`
+		Failed int    `json:"failed"`
+		Total  int    `json:"total"`
+	}
 	type project struct {
-		Dir   string `json:"dir"`
-		Label string `json:"label"`
+		Dir    string `json:"dir"`
+		Label  string `json:"label"`
+		Health health `json:"health"`
 	}
 	var projects []project
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &projects))
@@ -324,4 +331,72 @@ func TestAPIProjects(t *testing.T) {
 	}
 	assert.Equal(t, "alpha", dirs["/home/user/alpha"])
 	assert.Equal(t, "beta", dirs["/home/user/beta"])
+}
+
+func TestAPIProjects_HealthData(t *testing.T) {
+	h, store := setupHandler(t)
+	// alpha: 3 succeeded, 1 failed → yellow
+	seedRunWithProject(t, store, "h1", "develop", domain.RunStateSucceeded, "/home/user/alpha")
+	seedRunWithProject(t, store, "h2", "develop", domain.RunStateSucceeded, "/home/user/alpha")
+	seedRunWithProject(t, store, "h3", "develop", domain.RunStateFailed, "/home/user/alpha")
+	seedRunWithProject(t, store, "h4", "develop", domain.RunStateSucceeded, "/home/user/alpha")
+
+	// beta: all succeeded → green
+	seedRunWithProject(t, store, "h5", "develop", domain.RunStateSucceeded, "/home/user/beta")
+	seedRunWithProject(t, store, "h6", "develop", domain.RunStateSucceeded, "/home/user/beta")
+
+	req := httptest.NewRequest("GET", "/api/projects", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	type health struct {
+		Status string `json:"status"`
+		Passed int    `json:"passed"`
+		Failed int    `json:"failed"`
+		Total  int    `json:"total"`
+	}
+	type project struct {
+		Dir    string `json:"dir"`
+		Label  string `json:"label"`
+		Health health `json:"health"`
+	}
+	var projects []project
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &projects))
+	assert.Len(t, projects, 2)
+
+	byDir := map[string]project{}
+	for _, p := range projects {
+		byDir[p.Dir] = p
+	}
+
+	alpha := byDir["/home/user/alpha"]
+	assert.Equal(t, "yellow", alpha.Health.Status)
+	assert.Equal(t, 3, alpha.Health.Passed)
+	assert.Equal(t, 1, alpha.Health.Failed)
+	assert.Equal(t, 4, alpha.Health.Total)
+
+	beta := byDir["/home/user/beta"]
+	assert.Equal(t, "green", beta.Health.Status)
+	assert.Equal(t, 2, beta.Health.Passed)
+	assert.Equal(t, 0, beta.Health.Failed)
+	assert.Equal(t, 2, beta.Health.Total)
+}
+
+func TestAPIProjects_HealthNoRuns(t *testing.T) {
+	h, _ := setupHandler(t)
+
+	req := httptest.NewRequest("GET", "/api/projects", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// No projects means empty array
+	type project struct {
+		Dir   string `json:"dir"`
+		Label string `json:"label"`
+	}
+	var projects []project
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &projects))
+	assert.Empty(t, projects)
 }
