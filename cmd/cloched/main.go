@@ -11,13 +11,16 @@ import (
 	"syscall"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
+	"github.com/cloche-dev/cloche/internal/adapters/beads"
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
 	adaptgrpc "github.com/cloche-dev/cloche/internal/adapters/grpc"
 	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/adapters/web"
 	"github.com/cloche-dev/cloche/internal/config"
+	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/evolution"
+	"github.com/cloche-dev/cloche/internal/orchestrator"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"google.golang.org/grpc"
 )
@@ -64,6 +67,20 @@ func main() {
 		srv.SetEvolution(evoTrigger)
 	}
 
+	// Set up orchestrator
+	orch := initOrchestrator(globalCfg, srv)
+	if orch != nil {
+		srv.SetOnRunComplete(func(ctx context.Context, projectDir string, state domain.RunState) {
+			orch.OnRunComplete(ctx, projectDir)
+		})
+		srv.SetOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {
+			if projectDir != "" {
+				return orch.Run(ctx, projectDir)
+			}
+			return orch.TriggerAll(ctx), nil
+		})
+	}
+
 	grpcServer := grpc.NewServer()
 	pb.RegisterClocheServiceServer(grpcServer, srv)
 
@@ -100,6 +117,16 @@ func main() {
 		}
 		grpcServer.GracefulStop()
 	}()
+
+	// Trigger orchestration on startup
+	if orch != nil {
+		go func() {
+			n := orch.TriggerAll(context.Background())
+			if n > 0 {
+				fmt.Fprintf(os.Stderr, "startup: orchestrator dispatched %d run(s)\n", n)
+			}
+		}()
+	}
 
 	fmt.Fprintf(os.Stderr, "cloched listening on %s\n", listenAddr)
 	if err := grpcServer.Serve(lis); err != nil {
@@ -177,6 +204,47 @@ func listen(addr string) (net.Listener, error) {
 		return net.Listen("unix", sockPath)
 	}
 	return net.Listen("tcp", addr)
+}
+
+func initOrchestrator(globalCfg *config.Config, srv *adaptgrpc.ClocheServer) *orchestrator.Orchestrator {
+	// Check if the current working directory has orchestration enabled
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil
+	}
+
+	cfg, err := config.Load(cwd)
+	if err != nil || !cfg.Orchestration.Enabled {
+		return nil
+	}
+
+	llmClient := orchestrator.NewCommandLLMClientFromEnv()
+	promptGen := &orchestrator.LLMPromptGenerator{LLM: llmClient}
+
+	dispatch := func(ctx context.Context, workflowName, projectDir, prompt string) (string, error) {
+		resp, err := srv.RunWorkflow(ctx, &pb.RunWorkflowRequest{
+			WorkflowName: workflowName,
+			ProjectDir:   projectDir,
+			Prompt:       prompt,
+		})
+		if err != nil {
+			return "", err
+		}
+		return resp.RunId, nil
+	}
+
+	orch := orchestrator.New(promptGen, dispatch)
+
+	// Register the current project
+	tracker := beads.NewTracker(cwd)
+	orch.Register(&orchestrator.ProjectConfig{
+		Dir:         cwd,
+		Workflow:    cfg.Orchestration.Workflow,
+		Concurrency: cfg.Orchestration.Concurrency,
+		Tracker:     tracker,
+	})
+
+	return orch
 }
 
 // envOrConfig returns the env var value if set, otherwise the config file
