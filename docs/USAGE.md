@@ -197,6 +197,16 @@ Cancel a running workflow.
 cloche stop <run-id>
 ```
 
+### `cloche delete`
+
+Delete a retained Docker container. Accepts either a Docker container name/ID
+or a Cloche run ID. If given a run ID, the daemon looks up the associated
+container.
+
+```
+cloche delete <container-or-run-id>
+```
+
 ### `cloche shutdown`
 
 Shut down the daemon.

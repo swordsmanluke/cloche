@@ -59,6 +59,8 @@ func main() {
 		cmdList(ctx, client, os.Args[2:])
 	case "stop":
 		cmdStop(ctx, client, os.Args[2:])
+	case "delete":
+		cmdDelete(ctx, client, os.Args[2:])
 	case "shutdown":
 		cmdShutdown(ctx, client)
 	default:
@@ -79,6 +81,7 @@ Commands:
   poll <run-id>                              Wait for a run to finish
   list [--all]                                List runs (last hour by default)
   stop <run-id>                              Stop a running workflow
+  delete <container-or-run-id>               Delete a retained container
   shutdown                                   Shut down the daemon
 `)
 }
@@ -262,6 +265,20 @@ func cmdStop(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 		os.Exit(1)
 	}
 	fmt.Printf("Stopped run: %s\n", args[0])
+}
+
+func cmdDelete(ctx context.Context, client pb.ClocheServiceClient, args []string) {
+	if len(args) < 1 {
+		fmt.Fprintf(os.Stderr, "usage: cloche delete <container-or-run-id>\n")
+		os.Exit(1)
+	}
+
+	_, err := client.DeleteContainer(ctx, &pb.DeleteContainerRequest{Id: args[0]})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Deleted container: %s\n", args[0])
 }
 
 func cmdShutdown(ctx context.Context, client pb.ClocheServiceClient) {
