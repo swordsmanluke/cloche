@@ -497,6 +497,161 @@ func TestStore_FailStaleRuns(t *testing.T) {
 	assert.Equal(t, domain.RunStateSucceeded, gotSucceeded.State)
 }
 
+func TestMergeQueue_EnqueueAndNext(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	// Enqueue two merges for the same project
+	require.NoError(t, store.EnqueueMerge(ctx, &ports.MergeQueueEntry{
+		RunID:      "run-1",
+		Branch:     "cloche/run-1",
+		Project:    "/project-a",
+		EnqueuedAt: now,
+	}))
+	require.NoError(t, store.EnqueueMerge(ctx, &ports.MergeQueueEntry{
+		RunID:      "run-2",
+		Branch:     "cloche/run-2",
+		Project:    "/project-a",
+		EnqueuedAt: now.Add(time.Minute),
+	}))
+
+	// NextPendingMerge returns the oldest pending one and marks it in_progress
+	entry, err := store.NextPendingMerge(ctx, "/project-a")
+	require.NoError(t, err)
+	require.NotNil(t, entry)
+	assert.Equal(t, "run-1", entry.RunID)
+	assert.Equal(t, "cloche/run-1", entry.Branch)
+	assert.Equal(t, "in_progress", entry.Status)
+
+	// While run-1 is in_progress, NextPendingMerge returns nil (serialization)
+	entry2, err := store.NextPendingMerge(ctx, "/project-a")
+	require.NoError(t, err)
+	assert.Nil(t, entry2)
+}
+
+func TestMergeQueue_CompleteThenNext(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	require.NoError(t, store.EnqueueMerge(ctx, &ports.MergeQueueEntry{
+		RunID:      "run-1",
+		Branch:     "cloche/run-1",
+		Project:    "/project-a",
+		EnqueuedAt: now,
+	}))
+	require.NoError(t, store.EnqueueMerge(ctx, &ports.MergeQueueEntry{
+		RunID:      "run-2",
+		Branch:     "cloche/run-2",
+		Project:    "/project-a",
+		EnqueuedAt: now.Add(time.Minute),
+	}))
+
+	// Take the first one
+	entry, err := store.NextPendingMerge(ctx, "/project-a")
+	require.NoError(t, err)
+	require.NotNil(t, entry)
+	assert.Equal(t, "run-1", entry.RunID)
+
+	// Complete it
+	require.NoError(t, store.CompleteMerge(ctx, "run-1"))
+
+	// Now the second one should be available
+	entry2, err := store.NextPendingMerge(ctx, "/project-a")
+	require.NoError(t, err)
+	require.NotNil(t, entry2)
+	assert.Equal(t, "run-2", entry2.RunID)
+}
+
+func TestMergeQueue_FailMerge(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	require.NoError(t, store.EnqueueMerge(ctx, &ports.MergeQueueEntry{
+		RunID:      "run-1",
+		Branch:     "cloche/run-1",
+		Project:    "/project-a",
+		EnqueuedAt: now,
+	}))
+	require.NoError(t, store.EnqueueMerge(ctx, &ports.MergeQueueEntry{
+		RunID:      "run-2",
+		Branch:     "cloche/run-2",
+		Project:    "/project-a",
+		EnqueuedAt: now.Add(time.Minute),
+	}))
+
+	// Take the first and fail it
+	entry, err := store.NextPendingMerge(ctx, "/project-a")
+	require.NoError(t, err)
+	require.NotNil(t, entry)
+	require.NoError(t, store.FailMerge(ctx, "run-1"))
+
+	// Next one should be available after failure
+	entry2, err := store.NextPendingMerge(ctx, "/project-a")
+	require.NoError(t, err)
+	require.NotNil(t, entry2)
+	assert.Equal(t, "run-2", entry2.RunID)
+}
+
+func TestMergeQueue_PerProjectSerialization(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	// Enqueue merges for two different projects
+	require.NoError(t, store.EnqueueMerge(ctx, &ports.MergeQueueEntry{
+		RunID:      "run-a1",
+		Branch:     "cloche/run-a1",
+		Project:    "/project-a",
+		EnqueuedAt: now,
+	}))
+	require.NoError(t, store.EnqueueMerge(ctx, &ports.MergeQueueEntry{
+		RunID:      "run-b1",
+		Branch:     "cloche/run-b1",
+		Project:    "/project-b",
+		EnqueuedAt: now,
+	}))
+
+	// Take one from project-a
+	entryA, err := store.NextPendingMerge(ctx, "/project-a")
+	require.NoError(t, err)
+	require.NotNil(t, entryA)
+	assert.Equal(t, "run-a1", entryA.RunID)
+
+	// Project-b should still be able to dequeue (different project)
+	entryB, err := store.NextPendingMerge(ctx, "/project-b")
+	require.NoError(t, err)
+	require.NotNil(t, entryB)
+	assert.Equal(t, "run-b1", entryB.RunID)
+}
+
+func TestMergeQueue_EmptyQueue(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// No entries — should return nil
+	entry, err := store.NextPendingMerge(ctx, "/project-a")
+	require.NoError(t, err)
+	assert.Nil(t, entry)
+}
+
 func TestLogFiles_SaveAndGet(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

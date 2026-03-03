@@ -38,8 +38,9 @@ container cleanup. Containers are automatically removed after successful
 runs unless `--keep-container` is set. Failed runs always keep their
 container for debugging.
 
-A web dashboard starts automatically on `http://localhost:8080`. Override
-the address with `CLOCHE_HTTP` or disable it with `CLOCHE_HTTP=off`.
+To enable the web dashboard, set `CLOCHE_HTTP` (e.g.
+`CLOCHE_HTTP=:8080 bin/cloched`). The dashboard is not started unless
+this variable is set.
 
 ### 3. Run a workflow
 
@@ -578,7 +579,7 @@ my-project/
 | `CLOCHE_DB` | `cloche.db` | SQLite database path |
 | `CLOCHE_RUNTIME` | `docker` | `docker` (container) or `local` (subprocess, for dev) |
 | `CLOCHE_IMAGE` | `cloche-agent:latest` | Default Docker image |
-| `CLOCHE_HTTP` | `:8080` | HTTP address for the web dashboard. Set to `off` to disable. |
+| `CLOCHE_HTTP` | — | HTTP address for the web dashboard. Not started unless set. |
 | `CLOCHE_AGENT_PATH` | (auto-detected) | Path to `cloche-agent` binary (local runtime) |
 | `CLOCHE_LLM_COMMAND` | — | Command for evolution LLM calls (e.g. `claude`) |
 | `ANTHROPIC_API_KEY` | — | Passed into Docker containers |
@@ -590,7 +591,7 @@ my-project/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLOCHE_ADDR` | `unix:///tmp/cloche.sock` | Daemon address (gRPC) |
-| `CLOCHE_HTTP` | `:8080` | Daemon HTTP address (web dashboard, `cloche logs --follow`); set to `off` to disable |
+| `CLOCHE_HTTP` | `localhost:8080` | Daemon HTTP address (web dashboard, `cloche logs --follow`) |
 
 ## Build Commands
 

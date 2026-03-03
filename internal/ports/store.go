@@ -39,6 +39,22 @@ type LogStore interface {
 	GetLogFileByType(ctx context.Context, runID, fileType string) ([]*LogFileEntry, error)
 }
 
+type MergeQueueEntry struct {
+	RunID       string
+	Branch      string
+	Project     string
+	Status      string // "pending", "in_progress", "completed", "failed"
+	EnqueuedAt  time.Time
+	CompletedAt time.Time
+}
+
+type MergeQueueStore interface {
+	EnqueueMerge(ctx context.Context, entry *MergeQueueEntry) error
+	NextPendingMerge(ctx context.Context, project string) (*MergeQueueEntry, error)
+	CompleteMerge(ctx context.Context, runID string) error
+	FailMerge(ctx context.Context, runID string) error
+}
+
 type EvolutionEntry struct {
 	ID             string
 	ProjectDir     string
