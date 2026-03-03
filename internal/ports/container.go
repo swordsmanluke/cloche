@@ -31,3 +31,10 @@ type ContainerRuntime interface {
 	Remove(ctx context.Context, containerID string) error
 	Inspect(ctx context.Context, containerID string) (*ContainerStatus, error)
 }
+
+// ImageEnsurer is an optional interface that a ContainerRuntime may implement
+// to validate and rebuild container images when the project Dockerfile has
+// changed since the last build.
+type ImageEnsurer interface {
+	EnsureImage(ctx context.Context, projectDir, image string) error
+}
