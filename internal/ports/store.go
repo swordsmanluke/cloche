@@ -22,6 +22,23 @@ type CaptureStore interface {
 	GetCaptures(ctx context.Context, runID string) ([]*domain.StepExecution, error)
 }
 
+type LogFileEntry struct {
+	ID        int64
+	RunID     string
+	StepName  string
+	FileType  string // "full", "script", "llm"
+	FilePath  string
+	FileSize  int64
+	CreatedAt time.Time
+}
+
+type LogStore interface {
+	SaveLogFile(ctx context.Context, entry *LogFileEntry) error
+	GetLogFiles(ctx context.Context, runID string) ([]*LogFileEntry, error)
+	GetLogFilesByStep(ctx context.Context, runID, stepName string) ([]*LogFileEntry, error)
+	GetLogFileByType(ctx context.Context, runID, fileType string) ([]*LogFileEntry, error)
+}
+
 type EvolutionEntry struct {
 	ID             string
 	ProjectDir     string

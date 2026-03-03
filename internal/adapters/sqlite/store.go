@@ -84,6 +84,20 @@ func migrate(db *sql.DB) error {
 		db.Exec(stmt) // ignore "duplicate column" errors
 	}
 
+	_, errLog := db.Exec(`CREATE TABLE IF NOT EXISTS log_files (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		run_id TEXT NOT NULL,
+		step_name TEXT,
+		file_type TEXT NOT NULL,
+		file_path TEXT NOT NULL,
+		file_size INTEGER,
+		created_at TEXT NOT NULL,
+		FOREIGN KEY (run_id) REFERENCES runs(id)
+	)`)
+	if errLog != nil {
+		return errLog
+	}
+
 	_, err2 := db.Exec(`CREATE TABLE IF NOT EXISTS evolution_log (
 		id TEXT PRIMARY KEY,
 		project_dir TEXT NOT NULL,
@@ -270,6 +284,63 @@ func (s *Store) GetCaptures(ctx context.Context, runID string) ([]*domain.StepEx
 		execs = append(execs, e)
 	}
 	return execs, rows.Err()
+}
+
+func (s *Store) SaveLogFile(ctx context.Context, entry *ports.LogFileEntry) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO log_files (run_id, step_name, file_type, file_path, file_size, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		entry.RunID, entry.StepName, entry.FileType, entry.FilePath, entry.FileSize,
+		formatTime(entry.CreatedAt),
+	)
+	return err
+}
+
+func (s *Store) GetLogFiles(ctx context.Context, runID string) ([]*ports.LogFileEntry, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, run_id, COALESCE(step_name,''), file_type, file_path, COALESCE(file_size,0), created_at
+		 FROM log_files WHERE run_id = ? ORDER BY id`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanLogFiles(rows)
+}
+
+func (s *Store) GetLogFilesByStep(ctx context.Context, runID, stepName string) ([]*ports.LogFileEntry, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, run_id, COALESCE(step_name,''), file_type, file_path, COALESCE(file_size,0), created_at
+		 FROM log_files WHERE run_id = ? AND step_name = ? ORDER BY id`, runID, stepName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanLogFiles(rows)
+}
+
+func (s *Store) GetLogFileByType(ctx context.Context, runID, fileType string) ([]*ports.LogFileEntry, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, run_id, COALESCE(step_name,''), file_type, file_path, COALESCE(file_size,0), created_at
+		 FROM log_files WHERE run_id = ? AND file_type = ? ORDER BY id`, runID, fileType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanLogFiles(rows)
+}
+
+func scanLogFiles(rows *sql.Rows) ([]*ports.LogFileEntry, error) {
+	var entries []*ports.LogFileEntry
+	for rows.Next() {
+		e := &ports.LogFileEntry{}
+		var createdAt string
+		if err := rows.Scan(&e.ID, &e.RunID, &e.StepName, &e.FileType, &e.FilePath, &e.FileSize, &createdAt); err != nil {
+			return nil, err
+		}
+		e.CreatedAt = parseTime(createdAt)
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
 }
 
 func (s *Store) SaveEvolution(ctx context.Context, entry *ports.EvolutionEntry) error {

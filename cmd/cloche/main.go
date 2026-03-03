@@ -75,7 +75,8 @@ Commands:
   run --workflow <name> [--prompt "..."] [--keep-container]
                                              Launch a workflow run
   status <run-id>                            Check run status
-  logs <run-id>                              Show step logs for a run
+  logs <run-id> [--step <name>] [--type <full|script|llm>]
+                                             Show logs for a run
   poll <run-id>                              Wait for a run to finish
   list [--all]                                List runs (last hour by default)
   stop <run-id>                              Stop a running workflow
@@ -207,12 +208,34 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 
 func cmdLogs(client pb.ClocheServiceClient, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "usage: cloche logs <run-id>\n")
+		fmt.Fprintf(os.Stderr, "usage: cloche logs <run-id> [--step <name>] [--type <full|script|llm>]\n")
 		os.Exit(1)
 	}
 
+	var stepFilter, typeFilter string
+	runID := args[0]
+
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--step":
+			if i+1 < len(args) {
+				i++
+				stepFilter = args[i]
+			}
+		case "--type":
+			if i+1 < len(args) {
+				i++
+				typeFilter = args[i]
+			}
+		}
+	}
+
 	// Use background context — log output can be large
-	stream, err := client.StreamLogs(context.Background(), &pb.StreamLogsRequest{RunId: args[0]})
+	stream, err := client.StreamLogs(context.Background(), &pb.StreamLogsRequest{
+		RunId:    runID,
+		StepName: stepFilter,
+		LogType:  typeFilter,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -244,8 +267,16 @@ func cmdLogs(client pb.ClocheServiceClient, args []string) {
 			if entry.Message != "" {
 				fmt.Printf("Error:      %s\n", entry.Message)
 			}
+		case "full_log":
+			fmt.Print(entry.Message)
 		default:
-			fmt.Printf("[%s] %s: %s\n", entry.Type, entry.StepName, entry.Message)
+			// Handles filtered log entries like "script_log", "llm_log", "step_log"
+			if entry.StepName != "" {
+				fmt.Printf("--- %s ---\n", entry.StepName)
+			}
+			if entry.Message != "" {
+				fmt.Print(entry.Message)
+			}
 		}
 	}
 }

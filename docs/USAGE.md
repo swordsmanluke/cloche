@@ -170,13 +170,19 @@ Columns: run ID, workflow name, state, container ID (if running), error message 
 
 ### `cloche logs`
 
-Stream step-level logs for a run.
+Show logs for a run.
 
 ```
-cloche logs <run-id>
+cloche logs <run-id> [--step <name>] [--type <full|script|llm>]
 ```
 
-Shows step start/completion events and run results as they happen.
+| Flag | Description |
+|------|-------------|
+| `--step <name>` | Show only logs for the specified step. |
+| `--type <full\|script\|llm>` | Show only logs of the specified type (`full` = unified log, `script` = script output, `llm` = LLM conversation). |
+
+Without flags, shows the unified log (`full.log`) if available, otherwise streams
+step start/completion events and run results.
 
 ### `cloche poll`
 

@@ -496,3 +496,77 @@ func TestStore_FailStaleRuns(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, domain.RunStateSucceeded, gotSucceeded.State)
 }
+
+func TestLogFiles_SaveAndGet(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run first (foreign key)
+	run := domain.NewRun("log-run-1", "develop")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	now := time.Now().Truncate(time.Second)
+
+	// Save log file entries
+	entries := []*ports.LogFileEntry{
+		{RunID: "log-run-1", FileType: "full", FilePath: "/tmp/output/full.log", FileSize: 1024, CreatedAt: now},
+		{RunID: "log-run-1", StepName: "build", FileType: "script", FilePath: "/tmp/output/build.log", FileSize: 512, CreatedAt: now},
+		{RunID: "log-run-1", StepName: "build", FileType: "llm", FilePath: "/tmp/output/llm-build.log", FileSize: 2048, CreatedAt: now},
+		{RunID: "log-run-1", StepName: "test", FileType: "script", FilePath: "/tmp/output/test.log", FileSize: 256, CreatedAt: now},
+	}
+	for _, e := range entries {
+		require.NoError(t, store.SaveLogFile(ctx, e))
+	}
+
+	// GetLogFiles returns all entries for a run
+	all, err := store.GetLogFiles(ctx, "log-run-1")
+	require.NoError(t, err)
+	assert.Len(t, all, 4)
+
+	// GetLogFilesByStep returns entries for a specific step
+	buildLogs, err := store.GetLogFilesByStep(ctx, "log-run-1", "build")
+	require.NoError(t, err)
+	assert.Len(t, buildLogs, 2)
+	for _, lf := range buildLogs {
+		assert.Equal(t, "build", lf.StepName)
+	}
+
+	// GetLogFileByType returns entries of a specific type
+	llmLogs, err := store.GetLogFileByType(ctx, "log-run-1", "llm")
+	require.NoError(t, err)
+	assert.Len(t, llmLogs, 1)
+	assert.Equal(t, "llm", llmLogs[0].FileType)
+	assert.Equal(t, "build", llmLogs[0].StepName)
+
+	// GetLogFileByType for "full"
+	fullLogs, err := store.GetLogFileByType(ctx, "log-run-1", "full")
+	require.NoError(t, err)
+	assert.Len(t, fullLogs, 1)
+	assert.Equal(t, "full", fullLogs[0].FileType)
+	assert.Equal(t, int64(1024), fullLogs[0].FileSize)
+}
+
+func TestLogFiles_EmptyResults(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// No entries yet
+	files, err := store.GetLogFiles(ctx, "nonexistent")
+	require.NoError(t, err)
+	assert.Empty(t, files)
+
+	files, err = store.GetLogFilesByStep(ctx, "nonexistent", "build")
+	require.NoError(t, err)
+	assert.Empty(t, files)
+
+	files, err = store.GetLogFileByType(ctx, "nonexistent", "llm")
+	require.NoError(t, err)
+	assert.Empty(t, files)
+}
