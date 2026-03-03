@@ -423,6 +423,38 @@ func TestListProjects(t *testing.T) {
 	assert.Equal(t, []string{"/home/user/alpha", "/home/user/beta"}, projects)
 }
 
+func TestRunContainerKept(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run with ContainerKept = false (default)
+	run := domain.NewRun("kept-1", "develop")
+	run.Start()
+	run.ContainerID = "abc123"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	got, err := store.GetRun(ctx, "kept-1")
+	require.NoError(t, err)
+	assert.False(t, got.ContainerKept)
+
+	// Update to mark container as kept
+	got.ContainerKept = true
+	require.NoError(t, store.UpdateRun(ctx, got))
+
+	got2, err := store.GetRun(ctx, "kept-1")
+	require.NoError(t, err)
+	assert.True(t, got2.ContainerKept)
+
+	// Verify ListRuns includes ContainerKept
+	runs, err := store.ListRuns(ctx, time.Time{})
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	assert.True(t, runs[0].ContainerKept)
+}
+
 func TestStore_FailStaleRuns(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

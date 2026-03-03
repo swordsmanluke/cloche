@@ -266,9 +266,23 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		}
 	}
 
-	// Auto-remove container unless --keep-container was set
-	if keepContainer {
-		log.Printf("run %s: keeping container %s (--keep-container)", runID, containerID)
+	// Container retention policy:
+	// - Failed runs: always keep the container for debugging
+	// - Successful runs + --keep-container: keep the container
+	// - Successful runs without --keep-container: remove the container
+	runFinal, _ := s.store.GetRun(ctx, runID)
+	runFailed := runFinal != nil && (runFinal.State == domain.RunStateFailed || runFinal.State == domain.RunStateCancelled)
+
+	if keepContainer || runFailed {
+		reason := "--keep-container"
+		if runFailed {
+			reason = "run failed"
+		}
+		log.Printf("run %s: keeping container %s (%s)", runID, containerID, reason)
+		if runFinal != nil {
+			runFinal.ContainerKept = true
+			_ = s.store.UpdateRun(ctx, runFinal)
+		}
 	} else {
 		if err := s.container.Remove(ctx, containerID); err != nil {
 			log.Printf("run %s: failed to remove container %s: %v", runID, containerID, err)

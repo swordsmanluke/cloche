@@ -68,19 +68,6 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	r.processes[id] = mp
 	r.mu.Unlock()
 
-	// Background goroutine to track process exit
-	go func() {
-		err := cmd.Wait()
-		if err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				mp.exit = exitErr.ExitCode()
-			} else {
-				mp.exit = -1
-			}
-		}
-		close(mp.done)
-	}()
-
 	return id, nil
 }
 
@@ -120,9 +107,31 @@ func (r *Runtime) Wait(ctx context.Context, containerID string) (int, error) {
 		return -1, fmt.Errorf("process %q not found", containerID)
 	}
 
+	// Call cmd.Wait() in a goroutine so we can respect context cancellation.
+	// cmd.Wait() must be called AFTER all reads from StdoutPipe are complete,
+	// which is guaranteed since trackRun drains the pipe before calling Wait().
+	type waitResult struct {
+		exit int
+		err  error
+	}
+	ch := make(chan waitResult, 1)
+	go func() {
+		err := mp.cmd.Wait()
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				ch <- waitResult{exit: exitErr.ExitCode()}
+			} else {
+				ch <- waitResult{exit: -1, err: err}
+			}
+		} else {
+			ch <- waitResult{exit: 0}
+		}
+		close(mp.done)
+	}()
+
 	select {
-	case <-mp.done:
-		return mp.exit, nil
+	case res := <-ch:
+		return res.exit, res.err
 	case <-ctx.Done():
 		return -1, ctx.Err()
 	}

@@ -452,6 +452,17 @@ func TestServer_RunWorkflow_NoRuntime(t *testing.T) {
 	assert.Contains(t, err.Error(), "no container runtime configured")
 }
 
+// trackingRuntime wraps a local.Runtime and tracks Remove calls.
+type trackingRuntime struct {
+	*local.Runtime
+	removeCalled atomic.Int32
+}
+
+func (tr *trackingRuntime) Remove(ctx context.Context, containerID string) error {
+	tr.removeCalled.Add(1)
+	return tr.Runtime.Remove(ctx, containerID)
+}
+
 // ensuringRuntime wraps a local.Runtime and implements ImageEnsurer to track calls.
 type ensuringRuntime struct {
 	*local.Runtime
@@ -505,6 +516,170 @@ func TestServer_RunWorkflow_CallsEnsureImage(t *testing.T) {
 	}
 
 	assert.Equal(t, int32(1), rt.ensureCalled.Load(), "EnsureImage should be called once")
+}
+
+func TestServer_RunWorkflow_FailedRunKeepsContainer(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	// Mock agent outputs a failed run and exits with non-zero code
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "fail"},
+		{Type: protocol.MsgRunCompleted, Result: "failed"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	script += "exit 1\n"
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := &trackingRuntime{Runtime: local.NewRuntime("sh")}
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName:  "test",
+		ProjectDir:    dir,
+		KeepContainer: false, // NOT requesting keep, but should still keep on failure
+	})
+	require.NoError(t, err)
+
+	// Poll until the run completes (failed state)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State == "failed" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Wait for post-completion cleanup (container retention logic) to finish
+	time.Sleep(500 * time.Millisecond)
+
+	// Container should NOT have been removed
+	assert.Equal(t, int32(0), rt.removeCalled.Load(), "Remove should not be called for failed runs")
+
+	// ContainerKept should be true in the store
+	run, err := store.GetRun(context.Background(), resp.RunId)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateFailed, run.State)
+	assert.True(t, run.ContainerKept, "ContainerKept should be true for failed runs")
+}
+
+func TestServer_RunWorkflow_SucceededRunRemovesContainer(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	// Mock agent outputs a successful run
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
+		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := &trackingRuntime{Runtime: local.NewRuntime("sh")}
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName:  "test",
+		ProjectDir:    dir,
+		KeepContainer: false,
+	})
+	require.NoError(t, err)
+
+	// Poll until the run completes
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State == "succeeded" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Wait a bit more for the post-completion cleanup to run
+	time.Sleep(200 * time.Millisecond)
+
+	// Container should have been removed
+	assert.Equal(t, int32(1), rt.removeCalled.Load(), "Remove should be called for succeeded runs without --keep-container")
+
+	// ContainerKept should be false
+	run, err := store.GetRun(context.Background(), resp.RunId)
+	require.NoError(t, err)
+	assert.False(t, run.ContainerKept, "ContainerKept should be false for succeeded runs")
+}
+
+func TestServer_RunWorkflow_KeepContainerOnSuccess(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	// Mock agent outputs a successful run
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
+		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := &trackingRuntime{Runtime: local.NewRuntime("sh")}
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName:  "test",
+		ProjectDir:    dir,
+		KeepContainer: true, // --keep-container flag set
+	})
+	require.NoError(t, err)
+
+	// Poll until the run completes
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State == "succeeded" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Wait a bit more for the post-completion cleanup to run
+	time.Sleep(200 * time.Millisecond)
+
+	// Container should NOT have been removed (--keep-container)
+	assert.Equal(t, int32(0), rt.removeCalled.Load(), "Remove should not be called when --keep-container is set")
+
+	// ContainerKept should be true
+	run, err := store.GetRun(context.Background(), resp.RunId)
+	require.NoError(t, err)
+	assert.True(t, run.ContainerKept, "ContainerKept should be true with --keep-container")
 }
 
 func TestServer_RunWorkflow_EnsureImageFailure(t *testing.T) {
