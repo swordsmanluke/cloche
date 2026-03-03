@@ -152,19 +152,6 @@ cloche status <run-id>
 
 Output includes the run state, active steps, and per-step results with timestamps.
 
-### `cloche init`
-
-Scaffold a new Cloche project.
-
-```
-cloche init [--workflow <name>] [--image <base>]
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--workflow <name>` | `develop` | Workflow name. Creates `.cloche/<name>.cloche`. |
-| `--image <base>` | `ubuntu:24.04` | Base image for the generated Dockerfile. |
-
 ### `cloche list`
 
 List runs (last hour by default).
