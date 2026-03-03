@@ -180,6 +180,57 @@ func (s *Store) ListRuns(ctx context.Context, since time.Time) ([]*domain.Run, e
 	return runs, rows.Err()
 }
 
+func (s *Store) ListRunsByProject(ctx context.Context, projectDir string, since time.Time) ([]*domain.Run, error) {
+	var rows *sql.Rows
+	var err error
+	if since.IsZero() {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,'') FROM runs WHERE project_dir = ? ORDER BY started_at DESC`,
+			projectDir)
+	} else {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,'') FROM runs WHERE project_dir = ? AND started_at >= ? ORDER BY started_at DESC`,
+			projectDir, formatTime(since))
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var runs []*domain.Run
+	for rows.Next() {
+		run := &domain.Run{}
+		var activeSteps, startedAt, completedAt string
+		if err := rows.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage, &run.ContainerID, &run.BaseSHA); err != nil {
+			return nil, err
+		}
+		run.SetActiveStepsFromString(activeSteps)
+		run.StartedAt = parseTime(startedAt)
+		run.CompletedAt = parseTime(completedAt)
+		runs = append(runs, run)
+	}
+	return runs, rows.Err()
+}
+
+func (s *Store) ListProjects(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT DISTINCT project_dir FROM runs WHERE project_dir != '' ORDER BY project_dir`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var projects []string
+	for rows.Next() {
+		var dir string
+		if err := rows.Scan(&dir); err != nil {
+			return nil, err
+		}
+		projects = append(projects, dir)
+	}
+	return projects, rows.Err()
+}
+
 func (s *Store) SaveCapture(ctx context.Context, runID string, exec *domain.StepExecution) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO step_executions (run_id, step_name, result, started_at, completed_at, logs, git_ref)

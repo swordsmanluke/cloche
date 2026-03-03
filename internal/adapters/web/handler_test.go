@@ -27,8 +27,14 @@ func setupHandler(t *testing.T) (*Handler, *sqlite.Store) {
 
 func seedRun(t *testing.T, store *sqlite.Store, id, workflow string, state domain.RunState) {
 	t.Helper()
+	seedRunWithProject(t, store, id, workflow, state, "")
+}
+
+func seedRunWithProject(t *testing.T, store *sqlite.Store, id, workflow string, state domain.RunState, projectDir string) {
+	t.Helper()
 	ctx := context.Background()
 	run := domain.NewRun(id, workflow)
+	run.ProjectDir = projectDir
 	if state != domain.RunStatePending {
 		run.Start()
 		run.ContainerID = "abc123def456789"
@@ -201,4 +207,121 @@ func TestHelpers(t *testing.T) {
 		assert.Equal(t, "abc123def456", shortContainerID("abc123def456789abcdef"))
 		assert.Equal(t, "short", shortContainerID("short"))
 	})
+
+	t.Run("projectLabels", func(t *testing.T) {
+		// No conflict: show base name only
+		labels := projectLabels([]string{"/home/user/alpha", "/home/user/beta"})
+		assert.Equal(t, "alpha", labels["/home/user/alpha"])
+		assert.Equal(t, "beta", labels["/home/user/beta"])
+
+		// Conflict: two dirs share the same base name
+		labels = projectLabels([]string{"/home/foo/bar", "/home/baz/bar"})
+		assert.Equal(t, "foo/bar", labels["/home/foo/bar"])
+		assert.Equal(t, "baz/bar", labels["/home/baz/bar"])
+
+		// Mixed: some conflict, some don't
+		labels = projectLabels([]string{"/a/bar", "/b/bar", "/c/unique"})
+		assert.Equal(t, "a/bar", labels["/a/bar"])
+		assert.Equal(t, "b/bar", labels["/b/bar"])
+		assert.Equal(t, "unique", labels["/c/unique"])
+
+		// Empty list
+		labels = projectLabels(nil)
+		assert.Empty(t, labels)
+	})
+}
+
+func TestRunsList_ProjectFilter(t *testing.T) {
+	h, store := setupHandler(t)
+	seedRunWithProject(t, store, "run-a1", "develop", domain.RunStateRunning, "/home/user/alpha")
+	seedRunWithProject(t, store, "run-a2", "develop", domain.RunStateSucceeded, "/home/user/alpha")
+	seedRunWithProject(t, store, "run-b1", "deploy", domain.RunStateRunning, "/home/user/beta")
+
+	// Without filter: all runs shown
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "run-a1")
+	assert.Contains(t, body, "run-b1")
+
+	// With project filter: only matching runs
+	req = httptest.NewRequest("GET", "/?project=/home/user/alpha", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	body = w.Body.String()
+	assert.Contains(t, body, "run-a1")
+	assert.Contains(t, body, "run-a2")
+	assert.NotContains(t, body, "run-b1")
+}
+
+func TestRunsList_ProjectColumn(t *testing.T) {
+	h, store := setupHandler(t)
+	seedRunWithProject(t, store, "run-p1", "develop", domain.RunStateRunning, "/home/user/myproject")
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "myproject")
+	assert.Contains(t, body, "Project")
+}
+
+func TestAPIRuns_ProjectFilter(t *testing.T) {
+	h, store := setupHandler(t)
+	seedRunWithProject(t, store, "api-a1", "develop", domain.RunStateRunning, "/home/user/alpha")
+	seedRunWithProject(t, store, "api-b1", "deploy", domain.RunStateRunning, "/home/user/beta")
+
+	// Without filter: all runs
+	req := httptest.NewRequest("GET", "/api/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var allRuns []apiRun
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &allRuns))
+	assert.Len(t, allRuns, 2)
+
+	// With filter: only matching
+	req = httptest.NewRequest("GET", "/api/runs?project=/home/user/alpha", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var filtered []apiRun
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &filtered))
+	assert.Len(t, filtered, 1)
+	assert.Equal(t, "api-a1", filtered[0].ID)
+	assert.Equal(t, "/home/user/alpha", filtered[0].ProjectDir)
+	assert.Equal(t, "alpha", filtered[0].ProjectLabel)
+}
+
+func TestAPIProjects(t *testing.T) {
+	h, store := setupHandler(t)
+	seedRunWithProject(t, store, "p1", "develop", domain.RunStateRunning, "/home/user/alpha")
+	seedRunWithProject(t, store, "p2", "develop", domain.RunStateRunning, "/home/user/beta")
+	seedRunWithProject(t, store, "p3", "develop", domain.RunStateRunning, "/home/user/alpha")
+
+	req := httptest.NewRequest("GET", "/api/projects", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	type project struct {
+		Dir   string `json:"dir"`
+		Label string `json:"label"`
+	}
+	var projects []project
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &projects))
+	assert.Len(t, projects, 2)
+
+	dirs := map[string]string{}
+	for _, p := range projects {
+		dirs[p.Dir] = p.Label
+	}
+	assert.Equal(t, "alpha", dirs["/home/user/alpha"])
+	assert.Equal(t, "beta", dirs["/home/user/beta"])
 }
