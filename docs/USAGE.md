@@ -535,7 +535,9 @@ my-project/
 | `CLOCHE_DB` | `cloche.db` | SQLite database path |
 | `CLOCHE_RUNTIME` | `docker` | `docker` (container) or `local` (subprocess, for dev) |
 | `CLOCHE_IMAGE` | `cloche-agent:latest` | Default Docker image |
+| `CLOCHE_HTTP` | — | HTTP address for the web dashboard (e.g. `localhost:8080`) |
 | `CLOCHE_AGENT_PATH` | (auto-detected) | Path to `cloche-agent` binary (local runtime) |
+| `CLOCHE_LLM_COMMAND` | — | Command for evolution LLM calls (e.g. `claude`) |
 | `ANTHROPIC_API_KEY` | — | Passed into Docker containers |
 | `CLOCHE_EXTRA_MOUNTS` | — | Extra bind mounts (comma-separated `host:container`) |
 | `CLOCHE_EXTRA_ENV` | — | Extra env vars (comma-separated `KEY=VALUE`) |
