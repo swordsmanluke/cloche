@@ -27,6 +27,9 @@ func main() {
 	case "init":
 		cmdInit(os.Args[2:])
 		return
+	case "health":
+		cmdHealth(os.Args[2:])
+		return
 	}
 
 	// Commands that need a daemon connection
@@ -72,6 +75,7 @@ func usage() {
 
 Commands:
   init [--workflow <name>] [--image <base>]  Initialize a Cloche project
+  health                                   Show project health summary
   run --workflow <name> [--prompt "..."] [--keep-container]
                                              Launch a workflow run
   status <run-id>                            Check run status

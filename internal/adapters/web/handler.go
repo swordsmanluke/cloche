@@ -299,13 +299,38 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 	}
 	labels := projectLabels(projects)
 
+	const healthWindowSize = 5
+
+	type apiHealth struct {
+		Status string `json:"status"`
+		Passed int    `json:"passed"`
+		Failed int    `json:"failed"`
+		Total  int    `json:"total"`
+	}
 	type apiProject struct {
-		Dir   string `json:"dir"`
-		Label string `json:"label"`
+		Dir    string    `json:"dir"`
+		Label  string    `json:"label"`
+		Health apiHealth `json:"health"`
 	}
 	result := make([]apiProject, len(projects))
 	for i, dir := range projects {
-		result[i] = apiProject{Dir: dir, Label: labels[dir]}
+		runs, _ := h.store.ListRunsByProject(r.Context(), dir, time.Time{})
+		// Convert []*domain.Run to []domain.Run for CalculateHealth.
+		runValues := make([]domain.Run, len(runs))
+		for j, rp := range runs {
+			runValues[j] = *rp
+		}
+		health := domain.CalculateHealth(runValues, healthWindowSize)
+		result[i] = apiProject{
+			Dir:   dir,
+			Label: labels[dir],
+			Health: apiHealth{
+				Status: string(health.Status),
+				Passed: health.Passed,
+				Failed: health.Failed,
+				Total:  health.Total,
+			},
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
