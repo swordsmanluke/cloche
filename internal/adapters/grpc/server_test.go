@@ -809,3 +809,222 @@ func TestServer_RunWorkflow_EnsureImageFailure(t *testing.T) {
 	assert.Equal(t, "failed", status.State)
 	assert.Contains(t, status.ErrorMessage, "failed to ensure image")
 }
+
+func TestServer_LogIndexing(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	// Mock agent that outputs status messages and creates output files
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
+		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
+	}
+	script := "#!/bin/sh\n"
+	// Create output directory and files from within the script
+	// Local runtime sets working dir to projectDir, so use relative paths
+	script += "mkdir -p .cloche/output\n"
+	script += "echo 'build script output' > .cloche/output/build.log\n"
+	script += "echo 'build llm output' > .cloche/output/llm-build.log\n"
+	script += "echo 'full unified log' > .cloche/output/full.log\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := local.NewRuntime("sh")
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+	srv.SetLogStore(store)
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+	})
+	require.NoError(t, err)
+
+	// Poll until complete
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State == "succeeded" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Wait for post-completion processing (log indexing happens after run completes)
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify log files were indexed in the store
+	logFiles, err := store.GetLogFiles(context.Background(), resp.RunId)
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, len(logFiles), 3, "should have indexed at least full.log, build.log, llm-build.log")
+
+	// Check that we can find by step name
+	buildLogs, err := store.GetLogFilesByStep(context.Background(), resp.RunId, "build")
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, len(buildLogs), 2, "should have script and llm logs for build step")
+
+	// Check file types
+	var hasScript, hasLLM, hasFull bool
+	for _, lf := range logFiles {
+		switch lf.FileType {
+		case "script":
+			hasScript = true
+		case "llm":
+			hasLLM = true
+		case "full":
+			hasFull = true
+		}
+	}
+	assert.True(t, hasScript, "should have script log")
+	assert.True(t, hasLLM, "should have llm log")
+	assert.True(t, hasFull, "should have full log")
+}
+
+func TestServer_StreamLogs_StepFilter(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	// Mock agent outputs status messages for two steps
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
+		{Type: protocol.MsgStepStarted, StepName: "test"},
+		{Type: protocol.MsgStepCompleted, StepName: "test", Result: "success"},
+		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
+	}
+	script := "#!/bin/sh\n"
+	script += "mkdir -p .cloche/output\n"
+	script += "echo 'build step output' > .cloche/output/build.log\n"
+	script += "echo 'test step output' > .cloche/output/test.log\n"
+	script += "echo 'build llm conversation' > .cloche/output/llm-build.log\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := local.NewRuntime("sh")
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+	srv.SetLogStore(store)
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+	})
+	require.NoError(t, err)
+
+	// Poll until complete
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State == "succeeded" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	// StreamLogs with step filter should return only that step's logs
+	mock := &mockLogStream{ctx: context.Background()}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{
+		RunId:    resp.RunId,
+		StepName: "build",
+	}, mock)
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, len(mock.entries), 1, "should have at least one entry for build step")
+
+	// All entries should be about the build step
+	for _, e := range mock.entries {
+		if e.StepName != "" {
+			assert.Equal(t, "build", e.StepName, "filtered output should only contain build step")
+		}
+	}
+
+	// StreamLogs with type filter
+	mock2 := &mockLogStream{ctx: context.Background()}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{
+		RunId:    resp.RunId,
+		StepName: "build",
+		LogType:  "llm",
+	}, mock2)
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, len(mock2.entries), 1, "should have at least one LLM log entry")
+
+	for _, e := range mock2.entries {
+		if e.Message != "" {
+			assert.Contains(t, e.Message, "llm conversation", "should contain LLM output")
+		}
+	}
+}
+
+func TestServer_StreamLogs_FullLog(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
+		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
+	}
+	script := "#!/bin/sh\n"
+	script += "mkdir -p .cloche/output\n"
+	script += "echo 'unified log content here' > .cloche/output/full.log\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := local.NewRuntime("sh")
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+	})
+	require.NoError(t, err)
+
+	// Poll until complete
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State == "succeeded" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	// StreamLogs with no filters should serve full.log content
+	mock := &mockLogStream{ctx: context.Background()}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: resp.RunId}, mock)
+	require.NoError(t, err)
+
+	// Should have a full_log entry
+	var foundFullLog bool
+	for _, e := range mock.entries {
+		if e.Type == "full_log" {
+			foundFullLog = true
+			assert.Contains(t, e.Message, "unified log content here")
+		}
+	}
+	assert.True(t, foundFullLog, "should serve full.log as unified log when available")
+}

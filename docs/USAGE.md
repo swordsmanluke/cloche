@@ -193,17 +193,20 @@ Columns: run ID, workflow name, state, container ID (if running), error message 
 
 ### `cloche logs`
 
-Stream step-level logs for a run.
+Show logs for a run.
 
 ```
-cloche logs <run-id> [--follow]
+cloche logs <run-id> [--step <name>] [--type <full|script|llm>] [--follow]
 ```
 
 | Flag | Description |
 |------|-------------|
+| `--step <name>` | Show only logs for the specified step. |
+| `--type <full\|script\|llm>` | Show only logs of the specified type (`full` = unified log, `script` = script output, `llm` = LLM conversation). |
 | `--follow`, `-f` | Stream live log lines via SSE. Color-coded by type: status (blue), LLM (green), script (default). Exits when the run completes. Connects to the daemon's HTTP endpoint (see `CLOCHE_HTTP` in Client Configuration). |
 
-Without `--follow`, shows step start/completion events and run results.
+Without flags, shows the unified log (`full.log`) if available, otherwise streams
+step start/completion events and run results.
 With `--follow`, connects to the SSE endpoint and prints log lines in real-time.
 
 ### `cloche poll`

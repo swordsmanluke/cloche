@@ -38,6 +38,11 @@ func WithLogBroadcaster(b *logstream.Broadcaster) HandlerOption {
 	return func(h *Handler) { h.logBroadcast = b }
 }
 
+// WithLogStore sets the log store for indexed log file lookups.
+func WithLogStore(ls ports.LogStore) HandlerOption {
+	return func(h *Handler) { h.logStore = ls }
+}
+
 //go:embed templates/*.html static/*
 var content embed.FS
 
@@ -57,6 +62,7 @@ type ContainerManager interface {
 type Handler struct {
 	store        ports.RunStore
 	captures     ports.CaptureStore
+	logStore     ports.LogStore
 	container    ContainerLogger
 	logBroadcast *logstream.Broadcaster
 	pages        map[string]*template.Template
@@ -506,6 +512,7 @@ func (h *Handler) handleAPIRunDetail(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	step := r.PathValue("step")
+	logType := r.URL.Query().Get("type") // optional: "script", "llm"
 
 	run, err := h.store.GetRun(r.Context(), id)
 	if err != nil {
@@ -513,7 +520,38 @@ func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Try log index first for fast lookup
+	if h.logStore != nil {
+		logFiles, err := h.logStore.GetLogFilesByStep(r.Context(), id, step)
+		if err == nil && len(logFiles) > 0 {
+			// If type filter specified, narrow results
+			for _, lf := range logFiles {
+				if logType != "" && lf.FileType != logType {
+					continue
+				}
+				data, readErr := os.ReadFile(lf.FilePath)
+				if readErr == nil && len(data) > 0 {
+					w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+					w.Write(data)
+					return
+				}
+			}
+		}
+	}
+
 	outputDir := filepath.Join(run.ProjectDir, ".cloche", id, "output")
+
+	// Fall back to file path conventions
+	// If type is "llm", try llm-<step>.log
+	if logType == "llm" {
+		llmPath := filepath.Join(outputDir, "llm-"+step+".log")
+		data, err := os.ReadFile(llmPath)
+		if err == nil && len(data) > 0 {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Write(data)
+			return
+		}
+	}
 
 	// Try per-step output first, fall back to container.log, then live docker logs
 	outputPath := filepath.Join(outputDir, step+".log")

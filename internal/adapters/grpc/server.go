@@ -28,16 +28,17 @@ type OnRunCompleteFunc func(ctx context.Context, projectDir string, state domain
 
 type ClocheServer struct {
 	pb.UnimplementedClocheServiceServer
-	store          ports.RunStore
-	captures       ports.CaptureStore
-	container      ports.ContainerRuntime
-	defaultImage   string
-	evolution      *evolution.Trigger
-	shutdownFn     func()
-	onRunComplete  OnRunCompleteFunc
-	orchestrateFn  func(ctx context.Context, projectDir string) (int, error)
-	mu             sync.Mutex
-	runIDs         map[string]string // run_id -> container_id
+	store         ports.RunStore
+	captures      ports.CaptureStore
+	logStore      ports.LogStore
+	container     ports.ContainerRuntime
+	defaultImage  string
+	evolution     *evolution.Trigger
+	shutdownFn    func()
+	onRunComplete OnRunCompleteFunc
+	orchestrateFn func(ctx context.Context, projectDir string) (int, error)
+	mu            sync.Mutex
+	runIDs        map[string]string // run_id -> container_id
 }
 
 func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *ClocheServer {
@@ -56,6 +57,11 @@ func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureSto
 		defaultImage: defaultImage,
 		runIDs:       make(map[string]string),
 	}
+}
+
+// SetLogStore attaches a log store to the server for indexing extracted log files.
+func (s *ClocheServer) SetLogStore(ls ports.LogStore) {
+	s.logStore = ls
 }
 
 // SetEvolution attaches an evolution trigger to the server.
@@ -255,6 +261,11 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		}
 	}
 
+	// Index extracted log files in the log store
+	if s.logStore != nil {
+		s.indexLogFiles(ctx, runID, outputDst)
+	}
+
 	// Ensure run is marked complete
 	run, err := s.store.GetRun(ctx, runID)
 	if err != nil {
@@ -406,11 +417,39 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 		return fmt.Errorf("run %q not found: %w", req.RunId, err)
 	}
 
+	// If step_name or log_type filter is set, serve content directly from the log index
+	if req.StepName != "" || req.LogType != "" {
+		return s.streamFilteredLogs(ctx, req, run, stream)
+	}
+
 	if s.captures == nil {
 		return fmt.Errorf("captures store not configured")
 	}
 
-	// Get persisted captures
+	// Check for full.log first — if it exists, serve it as the unified log
+	fullLogPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", "full.log")
+	if data, readErr := os.ReadFile(fullLogPath); readErr == nil && len(data) > 0 {
+		if err := stream.Send(&pb.LogEntry{
+			Type:    "full_log",
+			Message: string(data),
+		}); err != nil {
+			return err
+		}
+		// Still send run completion entry
+		if run.State != domain.RunStateRunning && run.State != domain.RunStatePending {
+			if err := stream.Send(&pb.LogEntry{
+				Type:      "run_completed",
+				Result:    string(run.State),
+				Timestamp: run.CompletedAt.String(),
+				Message:   run.ErrorMessage,
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	// Fall back to capture-based streaming
 	captures, err := s.captures.GetCaptures(ctx, req.RunId)
 	if err != nil {
 		return fmt.Errorf("getting captures: %w", err)
@@ -466,6 +505,76 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 	}
 
 	return nil
+}
+
+// streamFilteredLogs serves log content filtered by step name and/or log type.
+// It uses the log index when available, falling back to file path conventions.
+func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLogsRequest, run *domain.Run, stream rpcgrpc.ServerStreamingServer[pb.LogEntry]) error {
+	outputDir := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output")
+
+	// Try log index first
+	if s.logStore != nil {
+		var logFiles []*ports.LogFileEntry
+		var err error
+
+		if req.StepName != "" && req.LogType != "" {
+			// Filter by both step and type
+			logFiles, err = s.logStore.GetLogFilesByStep(ctx, req.RunId, req.StepName)
+			if err == nil {
+				filtered := logFiles[:0]
+				for _, lf := range logFiles {
+					if lf.FileType == req.LogType {
+						filtered = append(filtered, lf)
+					}
+				}
+				logFiles = filtered
+			}
+		} else if req.StepName != "" {
+			logFiles, err = s.logStore.GetLogFilesByStep(ctx, req.RunId, req.StepName)
+		} else {
+			logFiles, err = s.logStore.GetLogFileByType(ctx, req.RunId, req.LogType)
+		}
+
+		if err == nil && len(logFiles) > 0 {
+			for _, lf := range logFiles {
+				data, readErr := os.ReadFile(lf.FilePath)
+				if readErr != nil {
+					continue
+				}
+				if err := stream.Send(&pb.LogEntry{
+					Type:     lf.FileType + "_log",
+					StepName: lf.StepName,
+					Message:  string(data),
+				}); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
+
+	// Fall back to file path conventions
+	if req.StepName != "" {
+		var logPath string
+		switch req.LogType {
+		case "llm":
+			logPath = filepath.Join(outputDir, "llm-"+req.StepName+".log")
+		default:
+			logPath = filepath.Join(outputDir, req.StepName+".log")
+		}
+
+		data, err := os.ReadFile(logPath)
+		if err != nil {
+			return fmt.Errorf("log file not found for step %q: %w", req.StepName, err)
+		}
+		return stream.Send(&pb.LogEntry{
+			Type:     "step_log",
+			StepName: req.StepName,
+			Message:  string(data),
+		})
+	}
+
+	return fmt.Errorf("no log files found matching filter")
 }
 
 func (s *ClocheServer) StopRun(ctx context.Context, req *pb.StopRunRequest) (*pb.StopRunResponse, error) {
@@ -543,6 +652,61 @@ func (s *ClocheServer) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*
 	}
 	go s.shutdownFn()
 	return &pb.ShutdownResponse{}, nil
+}
+
+// indexLogFiles scans the extracted output directory and creates log_files index entries.
+func (s *ClocheServer) indexLogFiles(ctx context.Context, runID, outputDir string) {
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		log.Printf("run %s: failed to read output dir for indexing: %v", runID, err)
+		return
+	}
+
+	now := time.Now()
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".log") {
+			continue
+		}
+
+		var fileType, stepName string
+		base := strings.TrimSuffix(name, ".log")
+
+		switch {
+		case name == "full.log":
+			fileType = "full"
+		case name == "container.log":
+			// container.log is internal, not indexed as a user-facing log type
+			continue
+		case strings.HasPrefix(name, "llm-"):
+			fileType = "llm"
+			stepName = strings.TrimPrefix(base, "llm-")
+		default:
+			fileType = "script"
+			stepName = base
+		}
+
+		info, _ := entry.Info()
+		var fileSize int64
+		if info != nil {
+			fileSize = info.Size()
+		}
+
+		logEntry := &ports.LogFileEntry{
+			RunID:     runID,
+			StepName:  stepName,
+			FileType:  fileType,
+			FilePath:  filepath.Join(outputDir, name),
+			FileSize:  fileSize,
+			CreatedAt: now,
+		}
+		if err := s.logStore.SaveLogFile(ctx, logEntry); err != nil {
+			log.Printf("run %s: failed to index log file %s: %v", runID, name, err)
+		}
+	}
 }
 
 func gitHEAD(dir string) string {

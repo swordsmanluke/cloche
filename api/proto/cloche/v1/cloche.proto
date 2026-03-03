@@ -52,6 +52,8 @@ message StepExecutionStatus {
 
 message StreamLogsRequest {
   string run_id = 1;
+  string step_name = 2;
+  string log_type = 3;
 }
 
 message LogEntry {

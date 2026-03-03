@@ -364,6 +364,8 @@ func (x *StepExecutionStatus) GetCompletedAt() string {
 type StreamLogsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	StepName      string                 `protobuf:"bytes,2,opt,name=step_name,json=stepName,proto3" json:"step_name,omitempty"`
+	LogType       string                 `protobuf:"bytes,3,opt,name=log_type,json=logType,proto3" json:"log_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -401,6 +403,20 @@ func (*StreamLogsRequest) Descriptor() ([]byte, []int) {
 func (x *StreamLogsRequest) GetRunId() string {
 	if x != nil {
 		return x.RunId
+	}
+	return ""
+}
+
+func (x *StreamLogsRequest) GetStepName() string {
+	if x != nil {
+		return x.StepName
+	}
+	return ""
+}
+
+func (x *StreamLogsRequest) GetLogType() string {
+	if x != nil {
+		return x.LogType
 	}
 	return ""
 }
