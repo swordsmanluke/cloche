@@ -33,8 +33,10 @@ bin/cloched
 ```
 
 The daemon listens on a Unix socket at `/tmp/cloche.sock` by default. It
-manages Docker containers, tracks run state in SQLite, and cleans up
-resources when runs complete.
+manages Docker containers, tracks run state in SQLite, and handles
+container cleanup. Containers are automatically removed after successful
+runs unless `--keep-container` is set. Failed runs always keep their
+container for debugging.
 
 ### 3. Run a workflow
 
@@ -131,7 +133,7 @@ cloche run --workflow <name> [--prompt "..."] [--keep-container]
 |------|-------------|
 | `--workflow <name>` | Workflow name. Resolves to `.cloche/<name>.cloche` in the project directory. |
 | `--prompt "..."`, `-p` | Inline prompt written to `.cloche/<run-id>/prompt.txt` and injected into agent steps. |
-| `--keep-container` | Keep the Docker container after the run completes (default: remove). |
+| `--keep-container` | Keep the Docker container even on success (default: remove on success). Failed runs always keep their container for debugging. |
 
 The current working directory is used as the project directory. It must be
 inside a git repository (Cloche needs the repo root for result extraction

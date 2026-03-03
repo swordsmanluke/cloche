@@ -40,6 +40,7 @@ type Run struct {
 	ErrorMessage   string
 	ContainerID    string
 	BaseSHA        string // Git HEAD at run start, for result branch creation
+	ContainerKept  bool   // true when the container was retained after run completion
 }
 
 func NewRun(id, workflowName string) *Run {
