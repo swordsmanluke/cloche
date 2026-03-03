@@ -132,10 +132,10 @@ func (s *Store) GetRun(ctx context.Context, id string) (*domain.Run, error) {
 
 func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ? WHERE id = ?`,
+		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ? WHERE id = ?`,
 		string(run.State), run.ActiveStepsString(),
 		formatTime(run.StartedAt), formatTime(run.CompletedAt),
-		run.ErrorMessage, run.ContainerID, run.ID,
+		run.ErrorMessage, run.ContainerID, run.BaseSHA, run.ID,
 	)
 	return err
 }
@@ -178,6 +178,57 @@ func (s *Store) ListRuns(ctx context.Context, since time.Time) ([]*domain.Run, e
 		runs = append(runs, run)
 	}
 	return runs, rows.Err()
+}
+
+func (s *Store) ListRunsByProject(ctx context.Context, projectDir string, since time.Time) ([]*domain.Run, error) {
+	var rows *sql.Rows
+	var err error
+	if since.IsZero() {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,'') FROM runs WHERE project_dir = ? ORDER BY started_at DESC`,
+			projectDir)
+	} else {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,'') FROM runs WHERE project_dir = ? AND started_at >= ? ORDER BY started_at DESC`,
+			projectDir, formatTime(since))
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var runs []*domain.Run
+	for rows.Next() {
+		run := &domain.Run{}
+		var activeSteps, startedAt, completedAt string
+		if err := rows.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage, &run.ContainerID, &run.BaseSHA); err != nil {
+			return nil, err
+		}
+		run.SetActiveStepsFromString(activeSteps)
+		run.StartedAt = parseTime(startedAt)
+		run.CompletedAt = parseTime(completedAt)
+		runs = append(runs, run)
+	}
+	return runs, rows.Err()
+}
+
+func (s *Store) ListProjects(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT DISTINCT project_dir FROM runs WHERE project_dir != '' ORDER BY project_dir`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var projects []string
+	for rows.Next() {
+		var dir string
+		if err := rows.Scan(&dir); err != nil {
+			return nil, err
+		}
+		projects = append(projects, dir)
+	}
+	return projects, rows.Err()
 }
 
 func (s *Store) SaveCapture(ctx context.Context, runID string, exec *domain.StepExecution) error {

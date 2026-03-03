@@ -13,6 +13,8 @@ type RunStore interface {
 	UpdateRun(ctx context.Context, run *domain.Run) error
 	DeleteRun(ctx context.Context, id string) error
 	ListRuns(ctx context.Context, since time.Time) ([]*domain.Run, error)
+	ListRunsByProject(ctx context.Context, projectDir string, since time.Time) ([]*domain.Run, error)
+	ListProjects(ctx context.Context) ([]string, error)
 }
 
 type CaptureStore interface {

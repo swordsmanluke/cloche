@@ -1,9 +1,21 @@
 {{define "content"}}
 <h1>Runs</h1>
+{{if .Projects}}
+<div class="project-filter">
+    <label for="project-select">Project:</label>
+    <select id="project-select" onchange="filterByProject(this.value)">
+        <option value="">All projects</option>
+        {{range .Projects}}
+        <option value="{{.Dir}}"{{if eq .Dir $.ProjectFilter}} selected{{end}}>{{.Label}}</option>
+        {{end}}
+    </select>
+</div>
+{{end}}
 <table class="runs-table">
     <thead>
         <tr>
             <th>Run ID</th>
+            <th>Project</th>
             <th>Workflow</th>
             <th>State</th>
             <th>Started</th>
@@ -17,6 +29,7 @@
         {{range .Runs}}
         <tr>
             <td><a href="/runs/{{.ID}}">{{.ID}}</a></td>
+            <td>{{index $.ProjectLabels .ProjectDir}}</td>
             <td>{{.WorkflowName}}</td>
             <td><span class="badge badge-{{stateColor .State}}">{{.State}}</span></td>
             <td>{{formatTime .StartedAt}}</td>
@@ -26,7 +39,7 @@
         </tr>
         {{end}}
     {{else}}
-        <tr><td colspan="7" class="empty">No runs yet.</td></tr>
+        <tr><td colspan="8" class="empty">No runs yet.</td></tr>
     {{end}}
     </tbody>
 </table>
@@ -35,13 +48,28 @@
 {{define "scripts"}}
 <script>
 (function() {
+    var currentProject = '{{.ProjectFilter}}';
+
+    function filterByProject(dir) {
+        if (dir) {
+            window.location.href = '/?project=' + encodeURIComponent(dir);
+        } else {
+            window.location.href = '/';
+        }
+    }
+    window.filterByProject = filterByProject;
+
     function poll() {
-        fetch('/api/runs')
+        var url = '/api/runs';
+        if (currentProject) {
+            url += '?project=' + encodeURIComponent(currentProject);
+        }
+        fetch(url)
             .then(function(r) { return r.json(); })
             .then(function(runs) {
                 var tbody = document.getElementById('runs-body');
                 if (!runs || runs.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="empty">No runs yet.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="empty">No runs yet.</td></tr>';
                     return;
                 }
                 var html = '';
@@ -51,8 +79,10 @@
                     if (cid.length > 12) cid = cid.substring(0, 12);
                     var err = r.error_message || '';
                     if (err.length > 80) err = err.substring(0, 80) + '...';
+                    var proj = r.project_label || '';
                     html += '<tr>' +
                         '<td><a href="/runs/' + r.id + '">' + r.id + '</a></td>' +
+                        '<td>' + escapeHtml(proj) + '</td>' +
                         '<td>' + r.workflow_name + '</td>' +
                         '<td><span class="badge badge-' + r.state + '">' + r.state + '</span></td>' +
                         '<td>' + r.started_at + '</td>' +

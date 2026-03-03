@@ -350,6 +350,79 @@ func TestStore_ConcurrentWrites(t *testing.T) {
 	assert.Len(t, runs, n)
 }
 
+func TestListRunsByProject(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create runs for two different projects
+	for i, id := range []string{"proj-a-1", "proj-a-2"} {
+		r := domain.NewRun(id, "develop")
+		r.ProjectDir = "/home/user/project-a"
+		r.StartedAt = time.Now().Add(time.Duration(i) * time.Minute)
+		r.State = domain.RunStateRunning
+		require.NoError(t, store.CreateRun(ctx, r))
+	}
+	rB := domain.NewRun("proj-b-1", "develop")
+	rB.ProjectDir = "/home/user/project-b"
+	rB.StartedAt = time.Now()
+	rB.State = domain.RunStateRunning
+	require.NoError(t, store.CreateRun(ctx, rB))
+
+	// Filter by project-a
+	runs, err := store.ListRunsByProject(ctx, "/home/user/project-a", time.Time{})
+	require.NoError(t, err)
+	assert.Len(t, runs, 2)
+	for _, r := range runs {
+		assert.Equal(t, "/home/user/project-a", r.ProjectDir)
+	}
+
+	// Filter by project-b
+	runs, err = store.ListRunsByProject(ctx, "/home/user/project-b", time.Time{})
+	require.NoError(t, err)
+	assert.Len(t, runs, 1)
+	assert.Equal(t, "proj-b-1", runs[0].ID)
+
+	// Filter by nonexistent project
+	runs, err = store.ListRunsByProject(ctx, "/nonexistent", time.Time{})
+	require.NoError(t, err)
+	assert.Empty(t, runs)
+}
+
+func TestListProjects(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Empty store returns no projects
+	projects, err := store.ListProjects(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, projects)
+
+	// Create runs for different projects
+	for _, tc := range []struct {
+		id, project string
+	}{
+		{"r1", "/home/user/alpha"},
+		{"r2", "/home/user/alpha"},
+		{"r3", "/home/user/beta"},
+		{"r4", ""},
+	} {
+		r := domain.NewRun(tc.id, "develop")
+		r.ProjectDir = tc.project
+		r.State = domain.RunStatePending
+		require.NoError(t, store.CreateRun(ctx, r))
+	}
+
+	projects, err = store.ListProjects(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/home/user/alpha", "/home/user/beta"}, projects)
+}
+
 func TestStore_FailStaleRuns(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

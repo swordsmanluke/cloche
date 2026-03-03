@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/cloche-dev/cloche/internal/domain"
@@ -86,6 +87,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 
 	h.mux.HandleFunc("GET /{$}", h.handleRunsList)
 	h.mux.HandleFunc("GET /runs/{id}", h.handleRunDetail)
+	h.mux.HandleFunc("GET /api/projects", h.handleAPIProjects)
 	h.mux.HandleFunc("GET /api/runs", h.handleAPIRuns)
 	h.mux.HandleFunc("GET /api/runs/{id}", h.handleAPIRunDetail)
 	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
@@ -101,15 +103,37 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // --- HTML handlers ---
 
 func (h *Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
-	runs, err := h.store.ListRuns(r.Context(), time.Time{})
+	projectFilter := r.URL.Query().Get("project")
+
+	var runs []*domain.Run
+	var err error
+	if projectFilter != "" {
+		runs, err = h.store.ListRunsByProject(r.Context(), projectFilter, time.Time{})
+	} else {
+		runs, err = h.store.ListRuns(r.Context(), time.Time{})
+	}
 	if err != nil {
 		http.Error(w, "failed to list runs", http.StatusInternalServerError)
 		return
 	}
 
+	projects, _ := h.store.ListProjects(r.Context())
+	labels := projectLabels(projects)
+
+	var projectList []projectEntry
+	for _, dir := range projects {
+		projectList = append(projectList, projectEntry{Dir: dir, Label: labels[dir]})
+	}
+	sort.Slice(projectList, func(i, j int) bool {
+		return projectList[i].Label < projectList[j].Label
+	})
+
 	data := map[string]any{
-		"Title": "Runs",
-		"Runs":  runs,
+		"Title":         "Runs",
+		"Runs":          runs,
+		"Projects":      projectList,
+		"ProjectFilter": projectFilter,
+		"ProjectLabels": labels,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.pages["runs"].ExecuteTemplate(w, "layout", data); err != nil {
@@ -204,6 +228,8 @@ func (h *Handler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 type apiRun struct {
 	ID           string `json:"id"`
 	WorkflowName string `json:"workflow_name"`
+	ProjectDir   string `json:"project_dir"`
+	ProjectLabel string `json:"project_label"`
 	State        string `json:"state"`
 	StartedAt    string `json:"started_at"`
 	CompletedAt  string `json:"completed_at"`
@@ -224,10 +250,12 @@ type apiRunDetail struct {
 	Steps []apiStep `json:"steps"`
 }
 
-func toAPIRun(r *domain.Run) apiRun {
+func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
 	return apiRun{
 		ID:           r.ID,
 		WorkflowName: r.WorkflowName,
+		ProjectDir:   r.ProjectDir,
+		ProjectLabel: labels[r.ProjectDir],
 		State:        string(r.State),
 		StartedAt:    formatTime(r.StartedAt),
 		CompletedAt:  formatTime(r.CompletedAt),
@@ -237,15 +265,47 @@ func toAPIRun(r *domain.Run) apiRun {
 }
 
 func (h *Handler) handleAPIRuns(w http.ResponseWriter, r *http.Request) {
-	runs, err := h.store.ListRuns(r.Context(), time.Time{})
+	projectFilter := r.URL.Query().Get("project")
+
+	var runs []*domain.Run
+	var err error
+	if projectFilter != "" {
+		runs, err = h.store.ListRunsByProject(r.Context(), projectFilter, time.Time{})
+	} else {
+		runs, err = h.store.ListRuns(r.Context(), time.Time{})
+	}
 	if err != nil {
 		http.Error(w, "failed to list runs", http.StatusInternalServerError)
 		return
 	}
 
+	projects, _ := h.store.ListProjects(r.Context())
+	labels := projectLabels(projects)
+
 	result := make([]apiRun, len(runs))
-	for i, r := range runs {
-		result[i] = toAPIRun(r)
+	for i, run := range runs {
+		result[i] = toAPIRun(run, labels)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
+	projects, err := h.store.ListProjects(r.Context())
+	if err != nil {
+		http.Error(w, "failed to list projects", http.StatusInternalServerError)
+		return
+	}
+	labels := projectLabels(projects)
+
+	type apiProject struct {
+		Dir   string `json:"dir"`
+		Label string `json:"label"`
+	}
+	result := make([]apiProject, len(projects))
+	for i, dir := range projects {
+		result[i] = apiProject{Dir: dir, Label: labels[dir]}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -266,6 +326,9 @@ func (h *Handler) handleAPIRunDetail(w http.ResponseWriter, r *http.Request) {
 		caps = nil
 	}
 
+	projects, _ := h.store.ListProjects(r.Context())
+	labels := projectLabels(projects)
+
 	merged := mergeCaptures(caps)
 	steps := make([]apiStep, len(merged))
 	for i, e := range merged {
@@ -278,7 +341,7 @@ func (h *Handler) handleAPIRunDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	detail := apiRunDetail{
-		apiRun: toAPIRun(run),
+		apiRun: toAPIRun(run, labels),
 		Steps:  steps,
 	}
 
@@ -379,4 +442,35 @@ func shortContainerID(id string) string {
 		return id[:12]
 	}
 	return id
+}
+
+// projectLabels builds a mapping from full project directory paths to short
+// display labels. Each label is the final directory component (e.g.
+// "myproject" from "/home/user/workspace/myproject"). When two projects share
+// the same final name, the parent directory is prepended to disambiguate
+// (e.g. "foo/bar" vs "baz/bar").
+func projectLabels(dirs []string) map[string]string {
+	labels := make(map[string]string, len(dirs))
+	// Group dirs by their base name to detect conflicts.
+	byBase := map[string][]string{}
+	for _, d := range dirs {
+		base := filepath.Base(d)
+		byBase[base] = append(byBase[base], d)
+	}
+	for base, paths := range byBase {
+		if len(paths) == 1 {
+			labels[paths[0]] = base
+		} else {
+			for _, p := range paths {
+				parent := filepath.Base(filepath.Dir(p))
+				labels[p] = parent + "/" + base
+			}
+		}
+	}
+	return labels
+}
+
+type projectEntry struct {
+	Dir   string
+	Label string
 }

@@ -104,13 +104,14 @@ on the run branch until you explicitly merge them.
 Launch a workflow run.
 
 ```
-cloche run --workflow <name> [--prompt "..."]
+cloche run --workflow <name> [--prompt "..."] [--keep-container]
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--workflow <name>` | Workflow name. Resolves to `.cloche/<name>.cloche` in the project directory. |
 | `--prompt "..."`, `-p` | Inline prompt written to `.cloche/<run-id>/prompt.txt` and injected into agent steps. |
+| `--keep-container` | Keep the Docker container after the run finishes (useful for debugging). |
 
 The current working directory is used as the project directory. It must be
 inside a git repository (Cloche needs the repo root for result extraction
@@ -128,13 +129,31 @@ Output includes the run state, active steps, and per-step results with timestamp
 
 ### `cloche list`
 
-List all runs.
+List runs.
 
 ```
-cloche list
+cloche list [--all]
 ```
 
-Columns: run ID, workflow name, state, start time.
+By default, shows runs from the last hour. Use `--all` to show all runs.
+
+Columns: run ID, workflow name, state, and (if present) container ID and error message.
+
+### `cloche logs`
+
+Show step logs for a run. Streams log entries until the run completes.
+
+```
+cloche logs <run-id>
+```
+
+### `cloche poll`
+
+Wait for a run to finish, printing step progress as it happens.
+
+```
+cloche poll <run-id>
+```
 
 ### `cloche stop`
 
@@ -142,6 +161,30 @@ Cancel a running workflow.
 
 ```
 cloche stop <run-id>
+```
+
+### `cloche init`
+
+Scaffold a new Cloche project in the current directory.
+
+```
+cloche init [--workflow <name>] [--image <base>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--workflow <name>` | `develop` | Workflow name for the generated `.cloche/<name>.cloche` file. |
+| `--image <base>` | `ubuntu:24.04` | Base Docker image for the generated Dockerfile. |
+
+Creates `.cloche/` with a workflow file, Dockerfile, and prompt templates.
+Also adds gitignore entries for runtime state directories.
+
+### `cloche shutdown`
+
+Shut down the daemon.
+
+```
+cloche shutdown
 ```
 
 ## Setting Up a New Project
@@ -180,15 +223,23 @@ workflow "develop" {
     results = [success, fail, give-up]
   }
 
+  step update-docs {
+    prompt = file(".cloche/prompts/update-docs.md")
+    results = [success, fail]
+  }
+
   implement:success -> test
   implement:fail -> abort
 
-  test:success -> done
+  test:success -> update-docs
   test:fail -> fix
 
   fix:success -> test
   fix:fail -> abort
   fix:give-up -> abort
+
+  update-docs:success -> done
+  update-docs:fail -> done
 }
 ```
 
@@ -220,6 +271,11 @@ and fix the issues.
 - Run tests again to verify your fix
 ```
 
+**`.cloche/prompts/update-docs.md`** — Instructions for updating documentation after changes:
+```markdown
+Review the CLI source code and update usage documentation to reflect any changes.
+```
+
 ### 4. Add overrides (optional)
 
 Files in `.cloche/overrides/` are copied on top of `/workspace/` in the
@@ -232,8 +288,8 @@ container. Use this for container-specific configuration:
 
 ### 5. Make sure your project builds in the container
 
-The default `cloche-agent` Docker image is based on `ruby:3.3` with Node.js,
-Python, and git. If your project needs different dependencies, create a custom
+The default `cloche-agent` Docker image is based on `ubuntu:24.04` with Node.js
+and git. If your project needs different dependencies, create a custom
 Dockerfile:
 
 ```dockerfile
@@ -396,7 +452,8 @@ my-project/
 │   ├── Dockerfile            # Container image
 │   ├── prompts/
 │   │   ├── implement.md      # Prompt templates
-│   │   └── fix.md
+│   │   ├── fix.md
+│   │   └── update-docs.md
 │   ├── overrides/            # Files copied on top of /workspace/ in container
 │   │   └── CLAUDE.md         # Container-specific CLAUDE.md (optional)
 │   └── <run-id>/             # Runtime state (gitignored)
@@ -439,5 +496,6 @@ make test-short     # Run tests (skip slow ones)
 make lint           # Run go vet
 make proto          # Regenerate gRPC code from protobuf
 make docker-build   # Build the cloche-agent Docker image
+make install        # Build, install to ~/.local/bin/, restart daemon
 make clean          # Remove bin/
 ```
