@@ -14,21 +14,52 @@ import (
 	"github.com/cloche-dev/cloche/internal/protocol"
 )
 
+// defaultAgentArgs maps known agent commands to their default arguments.
+// Commands not in this map receive no default arguments (prompt on stdin only).
+var defaultAgentArgs = map[string][]string{
+	"claude": {"-p", "--output-format", "text", "--dangerously-skip-permissions"},
+}
+
 type Adapter struct {
-	Command string
-	Args    []string
-	RunID   string
+	Commands     []string // ordered fallback chain of agent commands
+	ExplicitArgs []string // if non-nil, overrides default args for all commands
+	RunID        string
 }
 
 func New() *Adapter {
 	return &Adapter{
-		Command: "claude",
-		Args:    []string{"-p", "--output-format", "text", "--dangerously-skip-permissions"},
+		Commands: []string{"claude"},
 	}
 }
 
 func (a *Adapter) Name() string {
 	return "prompt"
+}
+
+// argsFor returns the arguments for the given command. If ExplicitArgs is set,
+// it is used for all commands. Otherwise, known agents get their default args.
+func (a *Adapter) argsFor(command string) []string {
+	if a.ExplicitArgs != nil {
+		return a.ExplicitArgs
+	}
+	if args, ok := defaultAgentArgs[command]; ok {
+		return args
+	}
+	return nil
+}
+
+// ParseCommands splits a comma-separated agent_command string into individual
+// command names, trimming whitespace from each entry.
+func ParseCommands(s string) []string {
+	parts := strings.Split(s, ",")
+	var cmds []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			cmds = append(cmds, p)
+		}
+	}
+	return cmds
 }
 
 func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string) (string, error) {
@@ -50,43 +81,95 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		return "", fmt.Errorf("assembling prompt: %w", err)
 	}
 
-	// Shell out to LLM command
-	cmd := exec.CommandContext(ctx, a.Command, a.Args...)
-	cmd.Dir = workDir
-	cmd.Stdin = strings.NewReader(fullPrompt)
+	// Try each command in the fallback chain
+	var lastResult string
+	var lastStdout []byte
+	var lastErr error
+	ran := false
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	for _, command := range a.Commands {
+		result, stdout, fallbackErr := a.tryCommand(ctx, command, fullPrompt, workDir)
+		lastResult = result
+		lastStdout = stdout
+		lastErr = fallbackErr
 
-	if runErr := cmd.Run(); runErr != nil {
-		if _, ok := runErr.(*exec.ExitError); ok {
-			markerResult, _, found := protocol.ExtractResult(stdout.Bytes())
-			result := "fail"
-			if found {
-				result = markerResult
-			}
-			outputDir := filepath.Join(workDir, ".cloche", "output")
-			if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
-				_ = os.WriteFile(filepath.Join(outputDir, step.Name+".log"), stdout.Bytes(), 0644)
-			}
-			protocol.AppendHistory(workDir, step.Name, result, true, nil)
-			return result, nil
+		if fallbackErr == nil {
+			// Definitive result — agent completed (exit 0 or exit non-zero with marker)
+			break
 		}
-		return "", runErr
+		if stdout != nil {
+			ran = true
+		}
+		// Fallback-eligible — try next command
 	}
 
-	markerResult, _, found := protocol.ExtractResult(stdout.Bytes())
-	result := "success"
-	if found {
-		result = markerResult
+	if lastErr != nil && !ran && lastStdout == nil {
+		// All commands failed to produce any output (e.g., all not found)
+		return "", lastErr
 	}
+
+	result := lastResult
+	if lastErr != nil {
+		// Last command in chain crashed without a result marker
+		result = "fail"
+	}
+
+	// Write output file
 	outputDir := filepath.Join(workDir, ".cloche", "output")
 	if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
-		_ = os.WriteFile(filepath.Join(outputDir, step.Name+".log"), stdout.Bytes(), 0644)
+		_ = os.WriteFile(filepath.Join(outputDir, step.Name+".log"), lastStdout, 0644)
 	}
 	protocol.AppendHistory(workDir, step.Name, result, true, nil)
 	return result, nil
+}
+
+// tryCommand executes a single agent command and returns:
+//   - result: the step result name (e.g. "success", "fail")
+//   - stdout: captured stdout bytes
+//   - fallbackErr: nil if the result is definitive, non-nil if fallback-eligible
+//
+// Fallback-eligible conditions:
+//   - Command not found or failed to start (stdout will be nil)
+//   - Command exited non-zero without a CLOCHE_RESULT marker
+//
+// Definitive (non-fallback) conditions:
+//   - Command exited 0
+//   - Command exited non-zero but produced a CLOCHE_RESULT marker
+func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string, workDir string) (result string, stdout []byte, fallbackErr error) {
+	args := a.argsFor(command)
+	cmd := exec.CommandContext(ctx, command, args...)
+	cmd.Dir = workDir
+	cmd.Stdin = strings.NewReader(prompt)
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	runErr := cmd.Run()
+	stdoutBytes := stdoutBuf.Bytes()
+
+	if runErr != nil {
+		if _, ok := runErr.(*exec.ExitError); !ok {
+			// Command failed to start (not found, permission denied, etc.)
+			return "", nil, fmt.Errorf("command %q failed to start: %w", command, runErr)
+		}
+		// Command ran but exited non-zero
+		markerResult, _, found := protocol.ExtractResult(stdoutBytes)
+		if found {
+			// Agent reported an explicit result — definitive
+			return markerResult, stdoutBytes, nil
+		}
+		// No marker — fallback-eligible
+		return "fail", stdoutBytes, fmt.Errorf("command %q exited with error: %w", command, runErr)
+	}
+
+	// Command succeeded (exit 0)
+	markerResult, _, found := protocol.ExtractResult(stdoutBytes)
+	result = "success"
+	if found {
+		result = markerResult
+	}
+	return result, stdoutBytes, nil
 }
 
 func assemblePrompt(step *domain.Step, workDir, runID string) (string, error) {

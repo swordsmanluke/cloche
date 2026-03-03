@@ -451,7 +451,47 @@ step implement {
 }
 ```
 
+Or at the workflow level via a `container` block:
+
+```
+workflow "develop" {
+  container {
+    agent_command = "gemini"
+  }
+  ...
+}
+```
+
 Or globally via `CLOCHE_AGENT_COMMAND` environment variable.
+
+Priority (highest to lowest): step-level `agent_command`, workflow-level
+`container { agent_command }`, `CLOCHE_AGENT_COMMAND` env var, default (`claude`).
+
+### Agent Fallback Chains
+
+Use a comma-separated list in `agent_command` to configure fallback chains. If
+the first agent errors without reporting a result, the system tries the next:
+
+```
+step implement {
+  prompt = "..."
+  agent_command = "claude,gemini,codex"
+  results = [success, fail]
+}
+```
+
+Fallback rules:
+- **Command not found or failed to start** — fall back to next command
+- **Exit non-zero without `CLOCHE_RESULT` marker** — fall back to next command
+- **Exit non-zero with `CLOCHE_RESULT` marker** — use that result (no fallback)
+- **Exit 0** — use result (no fallback)
+- **All commands fail to start** — step returns an error
+- **Last command crashes without marker** — step returns `fail`
+
+Known agents have default arguments (e.g., Claude gets
+`-p --output-format text --dangerously-skip-permissions`). Other agents receive
+the prompt on stdin with no extra flags. Override with `agent_args` at the step
+or workflow level.
 
 ## Result Protocol
 

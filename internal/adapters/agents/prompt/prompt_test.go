@@ -21,9 +21,9 @@ func TestPromptAdapter_ExecutesCommand(t *testing.T) {
 
 	// Use a mock command that writes a file to prove it ran
 	adapter := &prompt.Adapter{
-		Command: "sh",
-		Args:    []string{"-c", "cat > /dev/null && echo 'implemented' > result.txt"},
-		RunID:   "test-run",
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'implemented' > result.txt"},
+		RunID:        "test-run",
 	}
 
 	step := &domain.Step{
@@ -53,8 +53,8 @@ func TestPromptAdapter_IncludesFeedback(t *testing.T) {
 
 	// Mock command that captures stdin to a file so we can inspect it
 	adapter := &prompt.Adapter{
-		Command: "sh",
-		Args:    []string{"-c", "cat > captured_prompt.txt"},
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt"},
 	}
 
 	step := &domain.Step{
@@ -85,8 +85,8 @@ func TestPromptAdapter_RespectsMaxAttempts(t *testing.T) {
 
 	// Command should NOT be called since max is reached
 	adapter := &prompt.Adapter{
-		Command: "sh",
-		Args:    []string{"-c", "exit 1"}, // would fail if called
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "exit 1"}, // would fail if called
 	}
 
 	step := &domain.Step{
@@ -108,8 +108,8 @@ func TestPromptAdapter_CommandFailure(t *testing.T) {
 	dir := t.TempDir()
 
 	adapter := &prompt.Adapter{
-		Command: "sh",
-		Args:    []string{"-c", "exit 1"},
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "exit 1"},
 	}
 
 	step := &domain.Step{
@@ -128,8 +128,8 @@ func TestPromptAdapter_InjectsResultInstructions(t *testing.T) {
 	dir := t.TempDir()
 
 	adapter := &prompt.Adapter{
-		Command: "sh",
-		Args:    []string{"-c", "cat > captured_prompt.txt"},
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt"},
 	}
 
 	step := &domain.Step{
@@ -153,8 +153,8 @@ func TestPromptAdapter_StdoutMarkerSelectsResult(t *testing.T) {
 	dir := t.TempDir()
 
 	adapter := &prompt.Adapter{
-		Command: "sh",
-		Args:    []string{"-c", "cat > /dev/null && echo 'CLOCHE_RESULT:needs_research'"},
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'CLOCHE_RESULT:needs_research'"},
 	}
 
 	step := &domain.Step{
@@ -175,9 +175,9 @@ func TestExecuteWritesOutputFile(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, ".cloche", "test-run", "prompt.txt"), []byte("user request"), 0644)
 
 	a := &prompt.Adapter{
-		Command: "sh",
-		Args:    []string{"-c", "cat > /dev/null && echo 'agent output'"},
-		RunID:   "test-run",
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output'"},
+		RunID:        "test-run",
 	}
 
 	step := &domain.Step{
@@ -202,8 +202,8 @@ func TestPromptAdapter_IncrementsAttemptCount(t *testing.T) {
 	dir := t.TempDir()
 
 	adapter := &prompt.Adapter{
-		Command: "sh",
-		Args:    []string{"-c", "cat > /dev/null"},
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null"},
 	}
 
 	step := &domain.Step{
@@ -224,4 +224,186 @@ func TestPromptAdapter_IncrementsAttemptCount(t *testing.T) {
 	data, err := os.ReadFile(countPath)
 	require.NoError(t, err)
 	assert.Equal(t, "2", string(data))
+}
+
+// --- Fallback chain tests ---
+
+func TestPromptAdapter_FallbackOnCommandNotFound(t *testing.T) {
+	dir := t.TempDir()
+
+	// First command doesn't exist, second one does
+	adapter := &prompt.Adapter{
+		Commands:     []string{"nonexistent-agent-xyz", "sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'fallback ran'"},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	result, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	// Verify the fallback command's output was captured
+	outputPath := filepath.Join(dir, ".cloche", "output", "implement.log")
+	data, err := os.ReadFile(outputPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "fallback ran")
+}
+
+func TestPromptAdapter_FallbackOnExitErrorNoMarker(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create two scripts: first exits 1 without marker, second succeeds
+	failing := filepath.Join(dir, "failing-agent.sh")
+	require.NoError(t, os.WriteFile(failing, []byte("#!/bin/sh\ncat > /dev/null\nexit 1\n"), 0755))
+
+	succeeding := filepath.Join(dir, "good-agent.sh")
+	require.NoError(t, os.WriteFile(succeeding, []byte("#!/bin/sh\ncat > /dev/null\necho 'good agent output'\n"), 0755))
+
+	adapter := &prompt.Adapter{
+		Commands: []string{failing, succeeding},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	result, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	// Verify the fallback command's output was captured
+	outputPath := filepath.Join(dir, ".cloche", "output", "implement.log")
+	data, err := os.ReadFile(outputPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "good agent output")
+}
+
+func TestPromptAdapter_NoFallbackOnMarkerResult(t *testing.T) {
+	dir := t.TempDir()
+
+	// First command exits 1 but reports a CLOCHE_RESULT marker — should NOT fall back
+	failing := filepath.Join(dir, "reporting-agent.sh")
+	require.NoError(t, os.WriteFile(failing, []byte("#!/bin/sh\ncat > /dev/null\necho 'CLOCHE_RESULT:fail'\nexit 1\n"), 0755))
+
+	shouldNotRun := filepath.Join(dir, "should-not-run.sh")
+	require.NoError(t, os.WriteFile(shouldNotRun, []byte("#!/bin/sh\ncat > /dev/null\necho 'CLOCHE_RESULT:success'\n"), 0755))
+
+	adapter := &prompt.Adapter{
+		Commands: []string{failing, shouldNotRun},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	result, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	// Should use the first agent's result, not fall back
+	assert.Equal(t, "fail", result)
+}
+
+func TestPromptAdapter_AllCommandsFail(t *testing.T) {
+	dir := t.TempDir()
+
+	// All commands don't exist
+	adapter := &prompt.Adapter{
+		Commands: []string{"nonexistent-agent-1", "nonexistent-agent-2"},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	_, err := adapter.Execute(context.Background(), step, dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to start")
+}
+
+func TestPromptAdapter_LastCommandCrashReturnsFailResult(t *testing.T) {
+	dir := t.TempDir()
+
+	// Both commands exit non-zero without marker
+	failing1 := filepath.Join(dir, "failing1.sh")
+	require.NoError(t, os.WriteFile(failing1, []byte("#!/bin/sh\ncat > /dev/null\necho 'crash1'\nexit 1\n"), 0755))
+
+	failing2 := filepath.Join(dir, "failing2.sh")
+	require.NoError(t, os.WriteFile(failing2, []byte("#!/bin/sh\ncat > /dev/null\necho 'crash2'\nexit 1\n"), 0755))
+
+	adapter := &prompt.Adapter{
+		Commands: []string{failing1, failing2},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	result, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "fail", result)
+}
+
+func TestPromptAdapter_SingleCommandPreservesBehavior(t *testing.T) {
+	dir := t.TempDir()
+
+	// Single command, exit 0 — should behave exactly like before
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo hello"},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	result, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+}
+
+func TestPromptAdapter_DefaultArgsForClaude(t *testing.T) {
+	// Verify New() creates an adapter with "claude" as the default command
+	adapter := prompt.New()
+	assert.Equal(t, []string{"claude"}, adapter.Commands)
+	assert.Nil(t, adapter.ExplicitArgs)
+}
+
+func TestParseCommands(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{"claude", []string{"claude"}},
+		{"claude,gemini", []string{"claude", "gemini"}},
+		{"claude, gemini, codex", []string{"claude", "gemini", "codex"}},
+		{" claude , gemini , codex ", []string{"claude", "gemini", "codex"}},
+		{"claude,,gemini", []string{"claude", "gemini"}},
+		{"", nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			result := prompt.ParseCommands(tc.input)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
 }

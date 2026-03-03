@@ -49,13 +49,13 @@ func (r *Runner) Run(ctx context.Context) error {
 	promptAdapter := prompt.New()
 	promptAdapter.RunID = r.cfg.RunID
 	if cmd, ok := os.LookupEnv("CLOCHE_AGENT_COMMAND"); ok {
-		promptAdapter.Command = cmd
+		promptAdapter.Commands = prompt.ParseCommands(cmd)
 	}
 	if cmd := wf.Config["container.agent_command"]; cmd != "" {
-		promptAdapter.Command = cmd
+		promptAdapter.Commands = prompt.ParseCommands(cmd)
 	}
 	if args := wf.Config["container.agent_args"]; args != "" {
-		promptAdapter.Args = strings.Fields(args)
+		promptAdapter.ExplicitArgs = strings.Fields(args)
 	}
 
 	executor := &stepExecutor{
@@ -103,10 +103,10 @@ func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, 
 		}
 		if _, ok := step.Config["prompt"]; ok {
 			if cmd := step.Config["agent_command"]; cmd != "" {
-				e.prompt.Command = cmd
+				e.prompt.Commands = prompt.ParseCommands(cmd)
 			}
 			if args := step.Config["agent_args"]; args != "" {
-				e.prompt.Args = strings.Fields(args)
+				e.prompt.ExplicitArgs = strings.Fields(args)
 			}
 			return e.prompt.Execute(ctx, step, e.workDir)
 		}
