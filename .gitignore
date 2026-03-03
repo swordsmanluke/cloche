@@ -21,3 +21,8 @@ examples/**/target/
 examples/**/build/
 examples/mini-redis/mini-redis
 examples/mini-redis/test_runner
+.cloche/*/
+!.cloche/prompts/
+!.cloche/overrides/
+!.cloche/evolution/
+.gitworktrees/
