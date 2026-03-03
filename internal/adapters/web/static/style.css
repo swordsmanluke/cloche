@@ -240,9 +240,35 @@ details pre {
     cursor: pointer;
 }
 
+/* Log viewer */
+.log-viewer {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    max-height: 600px;
+    overflow: auto;
+    margin-bottom: 1.5rem;
+}
+
+.log-viewer pre {
+    margin: 0;
+    padding: 0.75rem;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.4;
+}
+
+.log-line { display: block; }
+.log-type-status { color: var(--badge-running-text); }
+.log-type-llm { color: var(--badge-succeeded-text); }
+.log-type-script { color: var(--text); }
+
 /* Responsive */
 @media (max-width: 768px) {
     .runs-table { font-size: 0.8rem; }
     .runs-table th, .runs-table td { padding: 0.4rem 0.5rem; }
     .run-meta dl { grid-template-columns: 1fr; }
+    .log-viewer { max-height: 400px; }
 }

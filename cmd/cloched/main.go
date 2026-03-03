@@ -77,7 +77,10 @@ func main() {
 
 	var httpServer *http.Server
 	if httpAddr := envOrConfig("CLOCHE_HTTP", globalCfg.Daemon.HTTP, ""); httpAddr != "" {
-		webHandler, err := web.NewHandler(store, store, web.WithContainerLogger(runtime))
+		webHandler, err := web.NewHandler(store, store,
+			web.WithContainerLogger(runtime),
+			web.WithLogBroadcaster(srv.LogBroadcaster()),
+		)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to create web handler: %v\n", err)
 			os.Exit(1)

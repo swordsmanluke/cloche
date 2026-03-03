@@ -45,6 +45,12 @@
     {{end}}
     </tbody>
 </table>
+
+<h2>
+    Log
+    <span id="log-status" class="badge badge-running" style="font-size:0.7rem; margin-left:0.5rem;">Live</span>
+</h2>
+<div id="log-viewer" class="log-viewer"><pre id="log-content"></pre></div>
 {{end}}
 
 {{define "scripts"}}
@@ -52,52 +58,105 @@
 (function() {
     var runState = '{{.Run.State}}';
     var runID = '{{.Run.ID}}';
-    if (runState === 'succeeded' || runState === 'failed' || runState === 'cancelled') return;
 
-    function poll() {
-        fetch('/api/runs/' + runID)
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.state !== runState) {
-                    location.reload();
-                    return;
-                }
-                var tbody = document.getElementById('steps-body');
-                if (!data.steps || data.steps.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="empty">No step executions recorded.</td></tr>';
-                    return;
-                }
-                var html = '';
-                for (var i = 0; i < data.steps.length; i++) {
-                    var s = data.steps[i];
-                    var badge = '';
-                    if (s.result) {
-                        var cls = s.result === 'success' ? 'succeeded' : s.result === 'fail' ? 'failed' : 'pending';
-                        badge = '<span class="badge badge-' + cls + '">' + escapeHtml(s.result) + '</span>';
-                    } else {
-                        badge = '<span class="badge badge-running">running</span>';
-                    }
-                    html += '<tr class="step-row" data-run-id="' + escapeHtml(runID) + '" data-step="' + escapeHtml(s.step_name) + '" data-index="' + i + '">' +
-                        '<td>' + escapeHtml(s.step_name) + '</td>' +
-                        '<td>' + badge + '</td>' +
-                        '<td>' + s.started_at + '</td>' +
-                        '<td>' + s.duration + '</td>' +
-                        '</tr>' +
-                        '<tr class="output-row" id="output-' + i + '" style="display:none">' +
-                        '<td colspan="4"><pre class="step-output">Loading...</pre></td>' +
-                        '</tr>';
-                }
-                tbody.innerHTML = html;
-            })
-            .catch(function() {});
+    // --- Log Viewer ---
+    var logContent = document.getElementById('log-content');
+    var logViewer = document.getElementById('log-viewer');
+    var logStatus = document.getElementById('log-status');
+    var autoScroll = true;
+
+    // Track scroll position to enable/disable auto-scroll
+    logViewer.addEventListener('scroll', function() {
+        var atBottom = logViewer.scrollHeight - logViewer.scrollTop - logViewer.clientHeight < 40;
+        autoScroll = atBottom;
+    });
+
+    function appendLogLine(line) {
+        var span = document.createElement('span');
+        span.className = 'log-line log-type-' + (line.type || 'script');
+        span.textContent = '[' + line.timestamp + '] [' + line.type + '] ' + line.content + '\n';
+        logContent.appendChild(span);
+        if (autoScroll) {
+            logViewer.scrollTop = logViewer.scrollHeight;
+        }
     }
+
+    function markComplete() {
+        logStatus.textContent = 'Complete';
+        logStatus.className = 'badge badge-succeeded';
+    }
+
+    // Connect to SSE stream
+    var source = new EventSource('/api/runs/' + runID + '/stream');
+    source.onmessage = function(e) {
+        try {
+            var line = JSON.parse(e.data);
+            appendLogLine(line);
+        } catch(err) {}
+    };
+    source.addEventListener('done', function(e) {
+        markComplete();
+        source.close();
+    });
+    source.onerror = function() {
+        markComplete();
+        source.close();
+    };
+
+    // If already complete, mark the badge immediately
+    if (runState === 'succeeded' || runState === 'failed' || runState === 'cancelled') {
+        logStatus.textContent = 'Complete';
+        logStatus.className = 'badge badge-succeeded';
+    }
+
+    // --- Steps Polling (for active runs) ---
+    if (runState !== 'succeeded' && runState !== 'failed' && runState !== 'cancelled') {
+        function poll() {
+            fetch('/api/runs/' + runID)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.state !== runState) {
+                        location.reload();
+                        return;
+                    }
+                    var tbody = document.getElementById('steps-body');
+                    if (!data.steps || data.steps.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4" class="empty">No step executions recorded.</td></tr>';
+                        return;
+                    }
+                    var html = '';
+                    for (var i = 0; i < data.steps.length; i++) {
+                        var s = data.steps[i];
+                        var badge = '';
+                        if (s.result) {
+                            var cls = s.result === 'success' ? 'succeeded' : s.result === 'fail' ? 'failed' : 'pending';
+                            badge = '<span class="badge badge-' + cls + '">' + escapeHtml(s.result) + '</span>';
+                        } else {
+                            badge = '<span class="badge badge-running">running</span>';
+                        }
+                        html += '<tr class="step-row" data-run-id="' + escapeHtml(runID) + '" data-step="' + escapeHtml(s.step_name) + '" data-index="' + i + '">' +
+                            '<td>' + escapeHtml(s.step_name) + '</td>' +
+                            '<td>' + badge + '</td>' +
+                            '<td>' + s.started_at + '</td>' +
+                            '<td>' + s.duration + '</td>' +
+                            '</tr>' +
+                            '<tr class="output-row" id="output-' + i + '" style="display:none">' +
+                            '<td colspan="4"><pre class="step-output">Loading...</pre></td>' +
+                            '</tr>';
+                    }
+                    tbody.innerHTML = html;
+                })
+                .catch(function() {});
+        }
+        setInterval(poll, 2000);
+    }
+
     function escapeHtml(s) {
         if (!s) return '';
         var d = document.createElement('div');
         d.appendChild(document.createTextNode(s));
         return d.innerHTML;
     }
-    setInterval(poll, 2000);
 })();
 
 // Toggle step output rows

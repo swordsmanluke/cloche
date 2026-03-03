@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bufio"
 	"context"
 	"embed"
 	"encoding/json"
@@ -10,10 +11,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"time"
 
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
 )
 
@@ -23,6 +26,11 @@ type HandlerOption func(*Handler)
 // WithContainerLogger sets the container runtime for fetching live logs.
 func WithContainerLogger(c ContainerLogger) HandlerOption {
 	return func(h *Handler) { h.container = c }
+}
+
+// WithLogBroadcaster sets the log broadcaster for SSE streaming.
+func WithLogBroadcaster(b *logstream.Broadcaster) HandlerOption {
+	return func(h *Handler) { h.logBroadcast = b }
 }
 
 //go:embed templates/*.html static/*
@@ -35,11 +43,12 @@ type ContainerLogger interface {
 }
 
 type Handler struct {
-	store     ports.RunStore
-	captures  ports.CaptureStore
-	container ContainerLogger
-	pages     map[string]*template.Template
-	mux       *http.ServeMux
+	store        ports.RunStore
+	captures     ports.CaptureStore
+	container    ContainerLogger
+	logBroadcast *logstream.Broadcaster
+	pages        map[string]*template.Template
+	mux          *http.ServeMux
 }
 
 // NewHandler creates a web dashboard handler.
@@ -91,6 +100,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/runs", h.handleAPIRuns)
 	h.mux.HandleFunc("GET /api/runs/{id}", h.handleAPIRunDetail)
 	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
+	h.mux.HandleFunc("GET /api/runs/{id}/stream", h.handleAPIStream)
 	h.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
 
 	return h, nil
@@ -388,6 +398,109 @@ func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Error(w, "step output not found", http.StatusNotFound)
+}
+
+// handleAPIStream serves an SSE stream of log lines for a run.
+// For active runs, it subscribes to the live broadcaster.
+// For completed runs, it serves the archived full.log then closes.
+func (h *Handler) handleAPIStream(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	run, err := h.store.GetRun(r.Context(), id)
+	if err != nil {
+		http.Error(w, "run not found", http.StatusNotFound)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	isComplete := run.State == domain.RunStateSucceeded ||
+		run.State == domain.RunStateFailed ||
+		run.State == domain.RunStateCancelled
+
+	if isComplete {
+		// Serve archived full.log
+		h.streamFullLog(w, flusher, run)
+		// Send done event
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", string(run.State))
+		flusher.Flush()
+		return
+	}
+
+	// Active run: subscribe to live broadcaster
+	if h.logBroadcast == nil {
+		http.Error(w, "log streaming not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	sub := h.logBroadcast.Subscribe(id)
+	defer h.logBroadcast.Unsubscribe(id, sub)
+
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case line, ok := <-sub.C:
+			if !ok {
+				// Stream finished (run completed)
+				fmt.Fprintf(w, "event: done\ndata: completed\n\n")
+				flusher.Flush()
+				return
+			}
+			data, _ := json.Marshal(line)
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
+}
+
+// logLineRegex parses "[timestamp] [type] content" format from full.log.
+var logLineRegex = regexp.MustCompile(`^\[([^\]]+)\] \[([^\]]+)\] (.*)$`)
+
+// streamFullLog reads the archived full.log file and sends its entries as SSE events.
+func (h *Handler) streamFullLog(w http.ResponseWriter, flusher http.Flusher, run *domain.Run) {
+	logPath := filepath.Join(run.ProjectDir, ".cloche", run.ID, "output", "full.log")
+	f, err := os.Open(logPath)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		text := scanner.Text()
+		line := parseFullLogLine(text)
+		data, _ := json.Marshal(line)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+	}
+}
+
+// parseFullLogLine parses a "[timestamp] [type] content" line into a LogLine.
+func parseFullLogLine(text string) logstream.LogLine {
+	m := logLineRegex.FindStringSubmatch(text)
+	if m == nil {
+		return logstream.LogLine{
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			Type:      "script",
+			Content:   text,
+		}
+	}
+	return logstream.LogLine{
+		Timestamp: m[1],
+		Type:      m[2],
+		Content:   m[3],
+	}
 }
 
 // --- Template helpers ---
