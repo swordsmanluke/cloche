@@ -240,18 +240,129 @@ details pre {
     cursor: pointer;
 }
 
-/* Buttons */
+/* Project cards */
+.project-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+}
+
+.project-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.project-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.project-name {
+    font-weight: 600;
+    font-size: 1.05rem;
+}
+
+/* Health indicator dots */
+.health-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.health-green  { background: #22c55e; }
+.health-yellow { background: #eab308; }
+.health-red    { background: #ef4444; }
+.health-grey   { background: #9ca3af; }
+.health-blue   { background: #3b82f6; animation: pulse 2s infinite; }
+
+/* Project stats */
+.project-stats {
+    display: flex;
+    gap: 1.5rem;
+}
+
+.stat {
+    display: flex;
+    flex-direction: column;
+}
+
+.stat-value {
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* Mini run history dots */
+.run-history {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    min-height: 16px;
+}
+
+.run-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.run-dot-succeeded { background: #22c55e; }
+.run-dot-failed    { background: #ef4444; }
+.run-dot-cancelled { background: #9ca3af; }
+.run-dot-running   { background: #3b82f6; animation: pulse 2s infinite; }
+.run-dot-pending   { background: #eab308; }
+
+/* Action buttons */
+.project-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+}
+
 .btn {
     display: inline-block;
-    padding: 0.25em 0.6em;
-    border: 1px solid var(--border);
+    padding: 0.35em 0.75em;
     border-radius: var(--radius);
     font-family: var(--font);
     font-size: 0.8rem;
+    font-weight: 600;
+    border: 1px solid var(--border);
     cursor: pointer;
-    background: var(--bg);
-    color: var(--text);
+    text-decoration: none;
+    white-space: nowrap;
 }
+
+.btn:hover { text-decoration: none; }
+
+.btn-secondary {
+    background: var(--bg);
+    color: var(--link);
+}
+
+.btn-secondary:hover { background: var(--bg-surface); }
+
+.btn-primary {
+    background: var(--link);
+    color: #fff;
+    border-color: var(--link);
+}
+
+.btn-primary:hover { opacity: 0.9; }
 
 .btn-danger {
     background: var(--badge-failed-bg);
@@ -260,13 +371,18 @@ details pre {
 }
 
 .btn-danger:hover { opacity: 0.8; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-sm { font-size: 0.75rem; padding: 0.15em 0.45em; }
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
 
 /* Responsive */
 @media (max-width: 768px) {
     .runs-table { font-size: 0.8rem; }
     .runs-table th, .runs-table td { padding: 0.4rem 0.5rem; }
     .run-meta dl { grid-template-columns: 1fr; }
+    .project-cards { grid-template-columns: 1fr; }
 }

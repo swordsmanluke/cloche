@@ -38,6 +38,9 @@ container cleanup. Containers are automatically removed after successful
 runs unless `--keep-container` is set. Failed runs always keep their
 container for debugging.
 
+A web dashboard starts automatically on `http://localhost:8080`. Override
+the address with `CLOCHE_HTTP` or disable it with `CLOCHE_HTTP=off`.
+
 ### 3. Run a workflow
 
 From your project directory (must be inside a git repository):
@@ -567,7 +570,7 @@ my-project/
 | `CLOCHE_DB` | `cloche.db` | SQLite database path |
 | `CLOCHE_RUNTIME` | `docker` | `docker` (container) or `local` (subprocess, for dev) |
 | `CLOCHE_IMAGE` | `cloche-agent:latest` | Default Docker image |
-| `CLOCHE_HTTP` | — | HTTP address for the web dashboard (e.g. `localhost:8080`) |
+| `CLOCHE_HTTP` | `:8080` | HTTP address for the web dashboard. Set to `off` to disable. |
 | `CLOCHE_AGENT_PATH` | (auto-detected) | Path to `cloche-agent` binary (local runtime) |
 | `CLOCHE_LLM_COMMAND` | — | Command for evolution LLM calls (e.g. `claude`) |
 | `ANTHROPIC_API_KEY` | — | Passed into Docker containers |

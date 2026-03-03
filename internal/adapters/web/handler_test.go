@@ -85,7 +85,7 @@ func TestRunsList_WithRuns(t *testing.T) {
 	seedRun(t, store, "test-run-1", "develop", domain.RunStateRunning)
 	seedRun(t, store, "test-run-2", "deploy", domain.RunStateSucceeded)
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest("GET", "/runs", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 
@@ -103,7 +103,7 @@ func TestRunsList_WithRuns(t *testing.T) {
 func TestRunsList_Empty(t *testing.T) {
 	h, _ := setupHandler(t)
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest("GET", "/runs", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 
@@ -270,7 +270,7 @@ func TestRunsList_ProjectFilter(t *testing.T) {
 	seedRunWithProject(t, store, "run-b1", "deploy", domain.RunStateRunning, "/home/user/beta")
 
 	// Without filter: all runs shown
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest("GET", "/runs", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -279,7 +279,7 @@ func TestRunsList_ProjectFilter(t *testing.T) {
 	assert.Contains(t, body, "run-b1")
 
 	// With project filter: only matching runs
-	req = httptest.NewRequest("GET", "/?project=/home/user/alpha", nil)
+	req = httptest.NewRequest("GET", "/runs?project=/home/user/alpha", nil)
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -293,7 +293,7 @@ func TestRunsList_ProjectColumn(t *testing.T) {
 	h, store := setupHandler(t)
 	seedRunWithProject(t, store, "run-p1", "develop", domain.RunStateRunning, "/home/user/myproject")
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest("GET", "/runs", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -444,7 +444,7 @@ func TestRunsList_ContainerCount(t *testing.T) {
 	seedRunWithContainer(t, store, mgr, "run-cc2", "develop", "/home/user/alpha", "cid-2", true)
 	seedRunWithContainer(t, store, mgr, "run-cc3", "deploy", "/home/user/beta", "cid-3", false)
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest("GET", "/runs", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 
@@ -460,34 +460,103 @@ func TestAPIProjects(t *testing.T) {
 	h, store := setupHandler(t)
 	seedRunWithProject(t, store, "p1", "develop", domain.RunStateRunning, "/home/user/alpha")
 	seedRunWithProject(t, store, "p2", "develop", domain.RunStateRunning, "/home/user/beta")
-	seedRunWithProject(t, store, "p3", "develop", domain.RunStateRunning, "/home/user/alpha")
+	seedRunWithProject(t, store, "p3", "develop", domain.RunStateSucceeded, "/home/user/alpha")
 
 	req := httptest.NewRequest("GET", "/api/projects", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	type health struct {
+	type apiHealth struct {
 		Status string `json:"status"`
 		Passed int    `json:"passed"`
 		Failed int    `json:"failed"`
 		Total  int    `json:"total"`
 	}
 	type project struct {
-		Dir    string `json:"dir"`
-		Label  string `json:"label"`
-		Health health `json:"health"`
+		Dir         string    `json:"dir"`
+		Label       string    `json:"label"`
+		Health      apiHealth `json:"health"`
+		ActiveCount int       `json:"active_count"`
 	}
 	var projects []project
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &projects))
 	assert.Len(t, projects, 2)
 
-	dirs := map[string]string{}
+	byDir := map[string]project{}
 	for _, p := range projects {
-		dirs[p.Dir] = p.Label
+		byDir[p.Dir] = p
 	}
-	assert.Equal(t, "alpha", dirs["/home/user/alpha"])
-	assert.Equal(t, "beta", dirs["/home/user/beta"])
+	assert.Equal(t, "alpha", byDir["/home/user/alpha"].Label)
+	assert.Equal(t, "beta", byDir["/home/user/beta"].Label)
+	// alpha has 1 running + 1 succeeded = yellow health (mix), 1 active
+	assert.Equal(t, 1, byDir["/home/user/alpha"].ActiveCount)
+	assert.NotEmpty(t, byDir["/home/user/alpha"].Health.Status)
+	// beta has 1 running = blue (all in-progress), 1 active
+	assert.Equal(t, "blue", byDir["/home/user/beta"].Health.Status)
+	assert.Equal(t, 1, byDir["/home/user/beta"].ActiveCount)
+}
+
+func TestProjectOverview_WithProjects(t *testing.T) {
+	h, store := setupHandler(t)
+	seedRunWithProject(t, store, "ov-1", "develop", domain.RunStateSucceeded, "/home/user/alpha")
+	seedRunWithProject(t, store, "ov-2", "develop", domain.RunStateFailed, "/home/user/alpha")
+	seedRunWithProject(t, store, "ov-3", "develop", domain.RunStateRunning, "/home/user/beta")
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
+	body := w.Body.String()
+	// Project cards should be present
+	assert.Contains(t, body, "project-card")
+	assert.Contains(t, body, "alpha")
+	assert.Contains(t, body, "beta")
+	// Health dots
+	assert.Contains(t, body, "health-dot")
+	// Run history dots
+	assert.Contains(t, body, "run-dot")
+	// Quick actions
+	assert.Contains(t, body, "View Runs")
+	assert.Contains(t, body, "Trigger Orchestrator")
+}
+
+func TestProjectOverview_Empty(t *testing.T) {
+	h, _ := setupHandler(t)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "No projects yet")
+}
+
+func TestAPITriggerOrchestrator(t *testing.T) {
+	h, _ := setupHandler(t)
+
+	req := httptest.NewRequest("POST", "/api/projects/myproject/trigger", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusAccepted, w.Code)
+	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
+
+	var result map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+	assert.Equal(t, "accepted", result["status"])
+	assert.Equal(t, "myproject", result["project"])
+}
+
+func TestHealthColor(t *testing.T) {
+	assert.Equal(t, "green", healthColor(domain.HealthGreen))
+	assert.Equal(t, "yellow", healthColor(domain.HealthYellow))
+	assert.Equal(t, "red", healthColor(domain.HealthRed))
+	assert.Equal(t, "blue", healthColor(domain.HealthBlue))
+	assert.Equal(t, "grey", healthColor(domain.HealthGrey))
+	assert.Equal(t, "grey", healthColor("unknown"))
 }
 
 func TestAPIProjects_HealthData(t *testing.T) {

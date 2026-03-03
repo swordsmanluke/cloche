@@ -58,6 +58,7 @@ type Handler struct {
 func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...HandlerOption) (*Handler, error) {
 	funcMap := template.FuncMap{
 		"stateColor":       stateColor,
+		"healthColor":      healthColor,
 		"formatTime":       formatTime,
 		"formatDuration":   formatDuration,
 		"truncate":         truncate,
@@ -70,7 +71,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	}
 
 	pages := map[string]*template.Template{}
-	for _, page := range []string{"runs", "run_detail"} {
+	for _, page := range []string{"projects", "runs", "run_detail"} {
 		clone, err := base.Clone()
 		if err != nil {
 			return nil, fmt.Errorf("clone layout for %s: %w", page, err)
@@ -97,13 +98,15 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 		return nil, fmt.Errorf("static sub-fs: %w", err)
 	}
 
-	h.mux.HandleFunc("GET /{$}", h.handleRunsList)
+	h.mux.HandleFunc("GET /{$}", h.handleProjectOverview)
+	h.mux.HandleFunc("GET /runs", h.handleRunsList)
 	h.mux.HandleFunc("GET /runs/{id}", h.handleRunDetail)
 	h.mux.HandleFunc("GET /api/projects", h.handleAPIProjects)
 	h.mux.HandleFunc("GET /api/runs", h.handleAPIRuns)
 	h.mux.HandleFunc("GET /api/runs/{id}", h.handleAPIRunDetail)
 	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
 	h.mux.HandleFunc("DELETE /api/runs/{id}/container", h.handleAPIDeleteContainer)
+	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
 	h.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
 
 	return h, nil
@@ -114,6 +117,85 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- HTML handlers ---
+
+// projectOverviewEntry holds data for a single project card on the landing page.
+type projectOverviewEntry struct {
+	Dir        string
+	Label      string
+	Health     domain.HealthResult
+	RecentRuns []recentRunDot
+	ActiveCount int
+}
+
+// recentRunDot is a minimal representation of a run for the mini history display.
+type recentRunDot struct {
+	ID    string
+	State string
+}
+
+const healthWindowSize = 10
+
+func (h *Handler) handleProjectOverview(w http.ResponseWriter, r *http.Request) {
+	projects, _ := h.store.ListProjects(r.Context())
+	labels := projectLabels(projects)
+
+	var entries []projectOverviewEntry
+	for _, dir := range projects {
+		runs, err := h.store.ListRunsByProject(r.Context(), dir, time.Time{})
+		if err != nil {
+			continue
+		}
+
+		// Convert []*domain.Run to []domain.Run for CalculateHealth.
+		runValues := make([]domain.Run, len(runs))
+		for i, rr := range runs {
+			runValues[i] = *rr
+		}
+
+		health := domain.CalculateHealth(runValues, healthWindowSize)
+
+		// Take the last N runs for the mini history (most recent first).
+		n := healthWindowSize
+		if n > len(runs) {
+			n = len(runs)
+		}
+		dots := make([]recentRunDot, n)
+		for i := 0; i < n; i++ {
+			dots[i] = recentRunDot{
+				ID:    runs[i].ID,
+				State: string(runs[i].State),
+			}
+		}
+
+		var activeCount int
+		for _, rr := range runs {
+			if rr.State == domain.RunStatePending || rr.State == domain.RunStateRunning {
+				activeCount++
+			}
+		}
+
+		entries = append(entries, projectOverviewEntry{
+			Dir:         dir,
+			Label:       labels[dir],
+			Health:      health,
+			RecentRuns:  dots,
+			ActiveCount: activeCount,
+		})
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Label < entries[j].Label
+	})
+
+	data := map[string]any{
+		"Title":    "Projects",
+		"Projects": entries,
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := h.pages["projects"].ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
 
 func (h *Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 	projectFilter := r.URL.Query().Get("project")
@@ -331,8 +413,6 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 	}
 	labels := projectLabels(projects)
 
-	const healthWindowSize = 5
-
 	type apiHealth struct {
 		Status string `json:"status"`
 		Passed int    `json:"passed"`
@@ -340,19 +420,25 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 		Total  int    `json:"total"`
 	}
 	type apiProject struct {
-		Dir    string    `json:"dir"`
-		Label  string    `json:"label"`
-		Health apiHealth `json:"health"`
+		Dir         string    `json:"dir"`
+		Label       string    `json:"label"`
+		Health      apiHealth `json:"health"`
+		ActiveCount int       `json:"active_count"`
 	}
 	result := make([]apiProject, len(projects))
 	for i, dir := range projects {
 		runs, _ := h.store.ListRunsByProject(r.Context(), dir, time.Time{})
-		// Convert []*domain.Run to []domain.Run for CalculateHealth.
 		runValues := make([]domain.Run, len(runs))
-		for j, rp := range runs {
-			runValues[j] = *rp
+		for j, rr := range runs {
+			runValues[j] = *rr
 		}
 		health := domain.CalculateHealth(runValues, healthWindowSize)
+		var activeCount int
+		for _, rr := range runs {
+			if rr.State == domain.RunStatePending || rr.State == domain.RunStateRunning {
+				activeCount++
+			}
+		}
 		result[i] = apiProject{
 			Dir:   dir,
 			Label: labels[dir],
@@ -362,6 +448,7 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 				Failed: health.Failed,
 				Total:  health.Total,
 			},
+			ActiveCount: activeCount,
 		}
 	}
 
@@ -485,6 +572,15 @@ func (h *Handler) handleAPIDeleteContainer(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+func (h *Handler) handleAPITriggerOrchestrator(w http.ResponseWriter, r *http.Request) {
+	// Placeholder endpoint — orchestrator integration is a separate feature.
+	// Returns 202 Accepted to indicate the request was received.
+	name := r.PathValue("name")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]string{"status": "accepted", "project": name})
+}
+
 // --- Template helpers ---
 
 func stateColor(state domain.RunState) string {
@@ -501,6 +597,21 @@ func stateColor(state domain.RunState) string {
 		return "cancelled"
 	default:
 		return "pending"
+	}
+}
+
+func healthColor(status domain.HealthStatus) string {
+	switch status {
+	case domain.HealthGreen:
+		return "green"
+	case domain.HealthYellow:
+		return "yellow"
+	case domain.HealthRed:
+		return "red"
+	case domain.HealthBlue:
+		return "blue"
+	default:
+		return "grey"
 	}
 }
 

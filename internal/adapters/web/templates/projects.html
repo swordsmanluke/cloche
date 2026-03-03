@@ -1,0 +1,69 @@
+{{define "content"}}
+<h1>Projects</h1>
+{{if .Projects}}
+<div class="project-cards">
+    {{range .Projects}}
+    <div class="project-card">
+        <div class="project-header">
+            <span class="health-dot health-{{healthColor .Health.Status}}" title="{{.Health.Status}}"></span>
+            <span class="project-name">{{.Label}}</span>
+        </div>
+        <div class="project-stats">
+            <div class="stat">
+                <span class="stat-value">{{.Health.Passed}}/{{.Health.Total}}</span>
+                <span class="stat-label">recent passed</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value">{{.ActiveCount}}</span>
+                <span class="stat-label">active</span>
+            </div>
+        </div>
+        <div class="run-history">
+            {{range .RecentRuns}}
+            <span class="run-dot run-dot-{{.State}}" title="{{.ID}}: {{.State}}"></span>
+            {{end}}
+        </div>
+        <div class="project-actions">
+            <a href="/runs?project={{.Dir}}" class="btn btn-secondary">View Runs</a>
+            <button class="btn btn-primary" onclick="triggerOrchestrator('{{.Label}}', '{{.Dir}}')">Trigger Orchestrator</button>
+        </div>
+    </div>
+    {{end}}
+</div>
+{{else}}
+<p class="empty">No projects yet. Start a workflow run to see projects here.</p>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+function triggerOrchestrator(label, dir) {
+    var btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Triggering...';
+    fetch('/api/projects/' + encodeURIComponent(label) + '/trigger', {method: 'POST'})
+        .then(function(r) {
+            if (r.ok) {
+                btn.textContent = 'Triggered';
+                setTimeout(function() {
+                    btn.disabled = false;
+                    btn.textContent = 'Trigger Orchestrator';
+                }, 2000);
+            } else {
+                btn.textContent = 'Failed';
+                setTimeout(function() {
+                    btn.disabled = false;
+                    btn.textContent = 'Trigger Orchestrator';
+                }, 2000);
+            }
+        })
+        .catch(function() {
+            btn.textContent = 'Failed';
+            setTimeout(function() {
+                btn.disabled = false;
+                btn.textContent = 'Trigger Orchestrator';
+            }, 2000);
+        });
+}
+</script>
+{{end}}
