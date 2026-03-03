@@ -68,6 +68,14 @@ func main() {
 		srv.SetEvolution(evoTrigger)
 	}
 
+	// Set up merge agent
+	mergeAgent := initMergeAgent(globalCfg, store)
+	if mergeAgent != nil {
+		srv.SetOnMergeReady(func(ctx context.Context, projectDir string) {
+			mergeAgent.ProcessQueue(ctx, projectDir)
+		})
+	}
+
 	// Set up orchestrator
 	orch := initOrchestrator(globalCfg, srv)
 	if orch != nil {
@@ -246,6 +254,20 @@ func initOrchestrator(globalCfg *config.Config, srv *adaptgrpc.ClocheServer) *or
 	})
 
 	return orch
+}
+
+func initMergeAgent(globalCfg *config.Config, store ports.MergeQueueStore) *orchestrator.MergeAgent {
+	llmCmd := envOrConfig("CLOCHE_LLM_COMMAND", globalCfg.Daemon.LLMCommand, "")
+
+	var llm orchestrator.LLMClient
+	if llmCmd != "" {
+		llm = &orchestrator.CommandLLMClient{Command: llmCmd}
+	}
+
+	return &orchestrator.MergeAgent{
+		LLM:        llm,
+		MergeQueue: store,
+	}
 }
 
 // envOrConfig returns the env var value if set, otherwise the config file

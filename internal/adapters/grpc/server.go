@@ -26,6 +26,9 @@ import (
 // It receives the project directory and the final run state.
 type OnRunCompleteFunc func(ctx context.Context, projectDir string, state domain.RunState)
 
+// MergeFunc is called after a run is enqueued for merge.
+type MergeFunc func(ctx context.Context, projectDir string)
+
 type ClocheServer struct {
 	pb.UnimplementedClocheServiceServer
 	store         ports.RunStore
@@ -37,6 +40,7 @@ type ClocheServer struct {
 	evolution     *evolution.Trigger
 	shutdownFn    func()
 	onRunComplete OnRunCompleteFunc
+	onMergeReady  MergeFunc
 	orchestrateFn func(ctx context.Context, projectDir string) (int, error)
 	mu            sync.Mutex
 	runIDs        map[string]string // run_id -> container_id
@@ -83,6 +87,11 @@ func (s *ClocheServer) SetShutdownFunc(fn func()) {
 // SetOnRunComplete sets a callback invoked after each workflow run completes.
 func (s *ClocheServer) SetOnRunComplete(fn OnRunCompleteFunc) {
 	s.onRunComplete = fn
+}
+
+// SetOnMergeReady sets a callback invoked after a run is enqueued for merge.
+func (s *ClocheServer) SetOnMergeReady(fn MergeFunc) {
+	s.onMergeReady = fn
 }
 
 // SetOrchestrateFunc sets the function invoked by the Orchestrate RPC.
@@ -318,6 +327,11 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 				Project:    projectDir,
 				EnqueuedAt: time.Now(),
 			})
+
+			// Trigger merge agent if configured
+			if s.onMergeReady != nil {
+				go s.onMergeReady(ctx, projectDir)
+			}
 		}
 	}
 
