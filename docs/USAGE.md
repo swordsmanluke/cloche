@@ -104,13 +104,14 @@ on the run branch until you explicitly merge them.
 Launch a workflow run.
 
 ```
-cloche run --workflow <name> [--prompt "..."]
+cloche run --workflow <name> [--prompt "..."] [--keep-container]
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--workflow <name>` | Workflow name. Resolves to `.cloche/<name>.cloche` in the project directory. |
 | `--prompt "..."`, `-p` | Inline prompt written to `.cloche/<run-id>/prompt.txt` and injected into agent steps. |
+| `--keep-container` | Don't remove the Docker container after the run completes. |
 
 The current working directory is used as the project directory. It must be
 inside a git repository (Cloche needs the repo root for result extraction
@@ -128,13 +129,17 @@ Output includes the run state, active steps, and per-step results with timestamp
 
 ### `cloche list`
 
-List all runs.
+List runs (last hour by default).
 
 ```
-cloche list
+cloche list [--all]
 ```
 
-Columns: run ID, workflow name, state, start time.
+| Flag | Description |
+|------|-------------|
+| `--all` | Show all runs, not just the last hour. |
+
+Columns: run ID, workflow name, state, container ID (if running), error message (if any).
 
 ### `cloche stop`
 
@@ -142,6 +147,45 @@ Cancel a running workflow.
 
 ```
 cloche stop <run-id>
+```
+
+### `cloche logs`
+
+Stream step logs for a run.
+
+```
+cloche logs <run-id>
+```
+
+### `cloche poll`
+
+Poll run status until completion. Prints step events and state changes as they
+happen. Exits 0 on success, 1 on failure or if the container dies.
+
+```
+cloche poll <run-id>
+```
+
+### `cloche init`
+
+Initialize a Cloche project in the current directory. Creates the `.cloche/`
+directory with a workflow file, Dockerfile, and prompt templates.
+
+```
+cloche init [--workflow <name>] [--image <base>]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--workflow <name>` | Workflow name (default: `develop`). |
+| `--image <base>` | Base Docker image for the Dockerfile (default: `ubuntu:24.04`). |
+
+### `cloche shutdown`
+
+Shut down the daemon.
+
+```
+cloche shutdown
 ```
 
 ## Setting Up a New Project
@@ -180,15 +224,23 @@ workflow "develop" {
     results = [success, fail, give-up]
   }
 
+  step update-docs {
+    prompt = file(".cloche/prompts/update-docs.md")
+    results = [success, fail]
+  }
+
   implement:success -> test
   implement:fail -> abort
 
-  test:success -> done
+  test:success -> update-docs
   test:fail -> fix
 
   fix:success -> test
   fix:fail -> abort
   fix:give-up -> abort
+
+  update-docs:success -> done
+  update-docs:fail -> done
 }
 ```
 
@@ -232,8 +284,8 @@ container. Use this for container-specific configuration:
 
 ### 5. Make sure your project builds in the container
 
-The default `cloche-agent` Docker image is based on `ruby:3.3` with Node.js,
-Python, and git. If your project needs different dependencies, create a custom
+The default `cloche-agent` Docker image is based on `ubuntu:24.04` with Node.js
+and git. If your project needs different dependencies, create a custom
 Dockerfile:
 
 ```dockerfile
@@ -365,7 +417,47 @@ step implement {
 }
 ```
 
+Or at the workflow level via a `container` block:
+
+```
+workflow "develop" {
+  container {
+    agent_command = "gemini"
+  }
+  ...
+}
+```
+
 Or globally via `CLOCHE_AGENT_COMMAND` environment variable.
+
+Priority (highest to lowest): step-level `agent_command`, workflow-level
+`container { agent_command }`, `CLOCHE_AGENT_COMMAND` env var, default (`claude`).
+
+### Agent Fallback Chains
+
+Use a comma-separated list in `agent_command` to configure fallback chains. If
+the first agent errors without reporting a result, the system tries the next:
+
+```
+step implement {
+  prompt = "..."
+  agent_command = "claude,gemini,codex"
+  results = [success, fail]
+}
+```
+
+Fallback rules:
+- **Command not found or failed to start** — fall back to next command
+- **Exit non-zero without `CLOCHE_RESULT` marker** — fall back to next command
+- **Exit non-zero with `CLOCHE_RESULT` marker** — use that result (no fallback)
+- **Exit 0** — use result (no fallback)
+- **All commands fail to start** — step returns an error
+- **Last command crashes without marker** — step returns `fail`
+
+Known agents have default arguments (e.g., Claude gets
+`-p --output-format text --dangerously-skip-permissions`). Other agents receive
+the prompt on stdin with no extra flags. Override with `agent_args` at the step
+or workflow level.
 
 ## Result Protocol
 
@@ -396,7 +488,8 @@ my-project/
 │   ├── Dockerfile            # Container image
 │   ├── prompts/
 │   │   ├── implement.md      # Prompt templates
-│   │   └── fix.md
+│   │   ├── fix.md
+│   │   └── update-docs.md
 │   ├── overrides/            # Files copied on top of /workspace/ in container
 │   │   └── CLAUDE.md         # Container-specific CLAUDE.md (optional)
 │   └── <run-id>/             # Runtime state (gitignored)
@@ -439,5 +532,6 @@ make test-short     # Run tests (skip slow ones)
 make lint           # Run go vet
 make proto          # Regenerate gRPC code from protobuf
 make docker-build   # Build the cloche-agent Docker image
+make install        # Build, install to ~/.local/bin/, restart daemon
 make clean          # Remove bin/
 ```

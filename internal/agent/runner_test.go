@@ -219,6 +219,96 @@ func TestRunner_StepLevelOverridesWorkflowLevel(t *testing.T) {
 	assert.True(t, found, "should have step_completed message for implement step")
 }
 
+func TestRunner_FallbackChain(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a good agent script
+	goodAgent := filepath.Join(dir, "good-agent.sh")
+	require.NoError(t, os.WriteFile(goodAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'good agent ran'\n"), 0755))
+
+	// Use nonexistent-agent as primary, good-agent as fallback (comma-separated)
+	workflowContent := `workflow "fallback-test" {
+  step implement {
+    agent_command = "nonexistent-agent-xyz,` + goodAgent + `"
+    prompt = "Write some code."
+    results = [success, fail]
+  }
+
+  implement:success -> done
+  implement:fail -> abort
+}`
+	workflowPath := filepath.Join(dir, "fallback.cloche")
+	require.NoError(t, os.WriteFile(workflowPath, []byte(workflowContent), 0644))
+
+	var statusBuf bytes.Buffer
+	runner := agent.NewRunner(agent.RunnerConfig{
+		WorkflowPath: workflowPath,
+		WorkDir:      dir,
+		StatusOutput: &statusBuf,
+	})
+
+	err := runner.Run(context.Background())
+	require.NoError(t, err)
+
+	msgs, err := protocol.ParseStatusStream(statusBuf.Bytes())
+	require.NoError(t, err)
+
+	// Verify the workflow completed successfully via fallback
+	var found bool
+	for _, msg := range msgs {
+		if msg.Type == protocol.MsgStepCompleted && msg.StepName == "implement" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "should have step_completed message for implement step")
+
+	last := msgs[len(msgs)-1]
+	assert.Equal(t, protocol.MsgRunCompleted, last.Type)
+	assert.Equal(t, "succeeded", last.Result)
+}
+
+func TestRunner_WorkflowLevelFallbackChain(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a good agent script
+	goodAgent := filepath.Join(dir, "good-agent.sh")
+	require.NoError(t, os.WriteFile(goodAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'good agent ran'\n"), 0755))
+
+	workflowContent := `workflow "wf-fallback-test" {
+  container {
+    agent_command = "nonexistent-agent-xyz,` + goodAgent + `"
+  }
+
+  step implement {
+    prompt = "Write some code."
+    results = [success, fail]
+  }
+
+  implement:success -> done
+  implement:fail -> abort
+}`
+	workflowPath := filepath.Join(dir, "wf-fallback.cloche")
+	require.NoError(t, os.WriteFile(workflowPath, []byte(workflowContent), 0644))
+
+	var statusBuf bytes.Buffer
+	runner := agent.NewRunner(agent.RunnerConfig{
+		WorkflowPath: workflowPath,
+		WorkDir:      dir,
+		StatusOutput: &statusBuf,
+	})
+
+	err := runner.Run(context.Background())
+	require.NoError(t, err)
+
+	msgs, err := protocol.ParseStatusStream(statusBuf.Bytes())
+	require.NoError(t, err)
+
+	last := msgs[len(msgs)-1]
+	assert.Equal(t, protocol.MsgRunCompleted, last.Type)
+	assert.Equal(t, "succeeded", last.Result)
+}
+
 func TestRunner_ExecutesWorkflowFile(t *testing.T) {
 	dir := t.TempDir()
 	workflowContent := `workflow "simple-build" {
