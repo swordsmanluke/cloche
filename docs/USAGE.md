@@ -238,6 +238,19 @@ container.
 cloche delete <container-or-run-id>
 ```
 
+### `cloche orchestrate`
+
+Dispatch ready workflow runs for the current project. Checks the project's
+issue tracker for unclaimed tasks, generates prompts, and launches runs.
+
+```
+cloche orchestrate
+```
+
+Uses the current working directory as the project directory. Prints "No ready
+work found." if there are no tasks to dispatch, or "Dispatched N run(s)."
+with the count.
+
 ### `cloche shutdown`
 
 Shut down the daemon.
