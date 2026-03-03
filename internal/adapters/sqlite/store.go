@@ -132,10 +132,10 @@ func (s *Store) GetRun(ctx context.Context, id string) (*domain.Run, error) {
 
 func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ? WHERE id = ?`,
+		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ? WHERE id = ?`,
 		string(run.State), run.ActiveStepsString(),
 		formatTime(run.StartedAt), formatTime(run.CompletedAt),
-		run.ErrorMessage, run.ContainerID, run.ID,
+		run.ErrorMessage, run.ContainerID, run.BaseSHA, run.ID,
 	)
 	return err
 }
