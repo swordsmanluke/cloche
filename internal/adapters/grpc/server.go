@@ -117,6 +117,19 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, req *pb.RunWorkflowRequest) {
 	ctx := context.Background()
 
+	// Auto-rebuild image if the project Dockerfile has changed since last build.
+	if ensurer, ok := s.container.(ports.ImageEnsurer); ok {
+		if err := ensurer.EnsureImage(ctx, req.ProjectDir, image); err != nil {
+			run, _ := s.store.GetRun(ctx, runID)
+			if run != nil {
+				run.Fail(fmt.Sprintf("failed to ensure image: %v", err))
+				_ = s.store.UpdateRun(ctx, run)
+			}
+			log.Printf("run %s: failed to ensure image: %v", runID, err)
+			return
+		}
+	}
+
 	baseSHA := gitHEAD(req.ProjectDir)
 
 	containerID, err := s.container.Start(ctx, ports.ContainerConfig{
