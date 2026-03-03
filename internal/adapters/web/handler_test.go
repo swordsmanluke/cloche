@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,9 +11,40 @@ import (
 
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// mockContainerManager implements ContainerManager for testing.
+type mockContainerManager struct {
+	containers map[string]bool // containerID -> exists
+	removed    []string
+}
+
+func newMockContainerManager() *mockContainerManager {
+	return &mockContainerManager{containers: map[string]bool{}}
+}
+
+func (m *mockContainerManager) Logs(_ context.Context, containerID string) (string, error) {
+	return "mock logs", nil
+}
+
+func (m *mockContainerManager) Remove(_ context.Context, containerID string) error {
+	if !m.containers[containerID] {
+		return fmt.Errorf("container %s not found", containerID)
+	}
+	delete(m.containers, containerID)
+	m.removed = append(m.removed, containerID)
+	return nil
+}
+
+func (m *mockContainerManager) Inspect(_ context.Context, containerID string) (*ports.ContainerStatus, error) {
+	if !m.containers[containerID] {
+		return nil, fmt.Errorf("container %s not found", containerID)
+	}
+	return &ports.ContainerStatus{Running: false, ExitCode: 0}, nil
+}
 
 func setupHandler(t *testing.T) (*Handler, *sqlite.Store) {
 	t.Helper()
@@ -297,6 +329,131 @@ func TestAPIRuns_ProjectFilter(t *testing.T) {
 	assert.Equal(t, "api-a1", filtered[0].ID)
 	assert.Equal(t, "/home/user/alpha", filtered[0].ProjectDir)
 	assert.Equal(t, "alpha", filtered[0].ProjectLabel)
+}
+
+func setupHandlerWithContainerManager(t *testing.T) (*Handler, *sqlite.Store, *mockContainerManager) {
+	t.Helper()
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { store.Close() })
+
+	mgr := newMockContainerManager()
+	h, err := NewHandler(store, store, WithContainerManager(mgr))
+	require.NoError(t, err)
+	return h, store, mgr
+}
+
+func seedRunWithContainer(t *testing.T, store *sqlite.Store, mgr *mockContainerManager, id, workflow, projectDir, containerID string, kept bool) {
+	t.Helper()
+	ctx := context.Background()
+	run := domain.NewRun(id, workflow)
+	run.ProjectDir = projectDir
+	run.Start()
+	run.ContainerID = containerID
+	run.ContainerKept = kept
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+	if kept {
+		mgr.containers[containerID] = true
+	}
+}
+
+func TestRunDetail_ContainerAvailable(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+	seedRunWithContainer(t, store, mgr, "run-c1", "develop", "/proj", "cid-1234567890ab", true)
+
+	req := httptest.NewRequest("GET", "/runs/run-c1", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "Container available")
+	assert.Contains(t, body, "delete-container-btn")
+}
+
+func TestRunDetail_ContainerRemoved(t *testing.T) {
+	h, store, _ := setupHandlerWithContainerManager(t)
+
+	ctx := context.Background()
+	run := domain.NewRun("run-c2", "develop")
+	run.ProjectDir = "/proj"
+	run.Start()
+	run.ContainerID = "cid-gone"
+	run.ContainerKept = false
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	req := httptest.NewRequest("GET", "/runs/run-c2", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "Container removed")
+	assert.NotContains(t, body, `id="delete-container-btn"`)
+}
+
+func TestAPIDeleteContainer_Success(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+	seedRunWithContainer(t, store, mgr, "run-del1", "develop", "/proj", "cid-to-delete", true)
+
+	req := httptest.NewRequest("DELETE", "/api/runs/run-del1/container", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "ok", resp["status"])
+
+	// Verify container was removed
+	assert.Contains(t, mgr.removed, "cid-to-delete")
+
+	// Verify run was updated
+	run, err := store.GetRun(context.Background(), "run-del1")
+	require.NoError(t, err)
+	assert.False(t, run.ContainerKept)
+}
+
+func TestAPIDeleteContainer_RunNotFound(t *testing.T) {
+	h, _, _ := setupHandlerWithContainerManager(t)
+
+	req := httptest.NewRequest("DELETE", "/api/runs/nonexistent/container", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestAPIDeleteContainer_NoManager(t *testing.T) {
+	h, store := setupHandler(t) // no container manager
+	seedRun(t, store, "run-noman", "develop", domain.RunStateSucceeded)
+
+	req := httptest.NewRequest("DELETE", "/api/runs/run-noman/container", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestRunsList_ContainerCount(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+	seedRunWithContainer(t, store, mgr, "run-cc1", "develop", "/home/user/alpha", "cid-1", true)
+	seedRunWithContainer(t, store, mgr, "run-cc2", "develop", "/home/user/alpha", "cid-2", true)
+	seedRunWithContainer(t, store, mgr, "run-cc3", "deploy", "/home/user/beta", "cid-3", false)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	// alpha has 2 retained containers
+	assert.Contains(t, body, "2 containers")
+	// beta has 0, so no count should appear
+	assert.NotContains(t, body, "0 container")
 }
 
 func TestAPIProjects(t *testing.T) {

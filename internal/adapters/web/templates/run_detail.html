@@ -10,6 +10,15 @@
         <dt>Started</dt><dd>{{formatTime .Run.StartedAt}}</dd>
         <dt>Completed</dt><dd>{{formatTime .Run.CompletedAt}}</dd>
         <dt>Container</dt><dd class="mono">{{.Run.ContainerID}}</dd>
+        <dt>Container Status</dt>
+        <dd id="container-status">
+            {{if .ContainerAvailable}}
+                <span class="badge badge-succeeded">Container available</span>
+                <button class="btn btn-danger btn-sm" id="delete-container-btn" onclick="deleteContainer('{{.Run.ID}}')">Delete Container</button>
+            {{else}}
+                <span class="badge badge-pending">Container removed</span>
+            {{end}}
+        </dd>
     </dl>
 </div>
 
@@ -100,7 +109,28 @@
     setInterval(poll, 2000);
 })();
 
-// Toggle step output rows
+// Delete container
+    window.deleteContainer = function(runID) {
+        var btn = document.getElementById('delete-container-btn');
+        if (btn) btn.disabled = true;
+        fetch('/api/runs/' + runID + '/container', { method: 'DELETE' })
+            .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+            .then(function(res) {
+                var statusEl = document.getElementById('container-status');
+                if (res.ok) {
+                    statusEl.innerHTML = '<span class="badge badge-pending">Container removed</span>';
+                } else {
+                    if (btn) btn.disabled = false;
+                    alert('Failed to delete container: ' + (res.data.error || 'unknown error'));
+                }
+            })
+            .catch(function() {
+                if (btn) btn.disabled = false;
+                alert('Failed to delete container');
+            });
+    };
+
+    // Toggle step output rows
 document.addEventListener('click', function(e) {
     var row = e.target.closest('.step-row');
     if (!row) return;
