@@ -11,6 +11,9 @@ handles execution, retry logic, and status tracking.
 - Git
 - An `ANTHROPIC_API_KEY` (for agent steps using Claude Code)
 
+For detailed installation options (pre-built binaries, `go install`, Homebrew,
+Docker-based usage), see [INSTALL.md](INSTALL.md).
+
 ## Quick Start
 
 ### 1. Build everything
@@ -111,7 +114,7 @@ cloche run --workflow <name> [--prompt "..."] [--keep-container]
 |------|-------------|
 | `--workflow <name>` | Workflow name. Resolves to `.cloche/<name>.cloche` in the project directory. |
 | `--prompt "..."`, `-p` | Inline prompt written to `.cloche/<run-id>/prompt.txt` and injected into agent steps. |
-| `--keep-container` | Keep the Docker container after the run finishes (useful for debugging). |
+| `--keep-container` | Keep the Docker container after the run completes (useful for debugging). |
 
 The current working directory is used as the project directory. It must be
 inside a git repository (Cloche needs the repo root for result extraction
@@ -127,21 +130,36 @@ cloche status <run-id>
 
 Output includes the run state, active steps, and per-step results with timestamps.
 
+### `cloche init`
+
+Scaffold a new Cloche project.
+
+```
+cloche init [--workflow <name>] [--image <base>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--workflow <name>` | `develop` | Workflow name. Creates `.cloche/<name>.cloche`. |
+| `--image <base>` | `ubuntu:24.04` | Base image for the generated Dockerfile. |
+
 ### `cloche list`
 
-List runs.
+List runs (last hour by default).
 
 ```
 cloche list [--all]
 ```
 
-By default, shows runs from the last hour. Use `--all` to show all runs.
+| Flag | Description |
+|------|-------------|
+| `--all` | Show all runs, not just the last hour. |
 
-Columns: run ID, workflow name, state, and (if present) container ID and error message.
+Columns: run ID, workflow name, state, container ID (if present), error message (if present).
 
 ### `cloche logs`
 
-Show step logs for a run. Streams log entries until the run completes.
+Stream step logs for a run.
 
 ```
 cloche logs <run-id>
@@ -149,11 +167,13 @@ cloche logs <run-id>
 
 ### `cloche poll`
 
-Wait for a run to finish, printing step progress as it happens.
+Wait for a run to finish, printing step events as they happen.
 
 ```
 cloche poll <run-id>
 ```
+
+Exits 0 on success, 1 on failure or if the container dies.
 
 ### `cloche stop`
 
@@ -162,22 +182,6 @@ Cancel a running workflow.
 ```
 cloche stop <run-id>
 ```
-
-### `cloche init`
-
-Scaffold a new Cloche project in the current directory.
-
-```
-cloche init [--workflow <name>] [--image <base>]
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--workflow <name>` | `develop` | Workflow name for the generated `.cloche/<name>.cloche` file. |
-| `--image <base>` | `ubuntu:24.04` | Base Docker image for the generated Dockerfile. |
-
-Creates `.cloche/` with a workflow file, Dockerfile, and prompt templates.
-Also adds gitignore entries for runtime state directories.
 
 ### `cloche shutdown`
 
@@ -271,7 +275,7 @@ and fix the issues.
 - Run tests again to verify your fix
 ```
 
-**`.cloche/prompts/update-docs.md`** — Instructions for updating documentation after changes:
+**`.cloche/prompts/update-docs.md`** — Instructions for keeping docs in sync:
 ```markdown
 Review the CLI source code and update usage documentation to reflect any changes.
 ```
