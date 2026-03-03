@@ -152,19 +152,6 @@ cloche status <run-id>
 
 Output includes the run state, active steps, and per-step results with timestamps.
 
-### `cloche init`
-
-Scaffold a new Cloche project.
-
-```
-cloche init [--workflow <name>] [--image <base>]
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--workflow <name>` | `develop` | Workflow name. Creates `.cloche/<name>.cloche`. |
-| `--image <base>` | `ubuntu:24.04` | Base image for the generated Dockerfile. |
-
 ### `cloche list`
 
 List runs (last hour by default).
@@ -546,7 +533,9 @@ my-project/
 | `CLOCHE_DB` | `cloche.db` | SQLite database path |
 | `CLOCHE_RUNTIME` | `docker` | `docker` (container) or `local` (subprocess, for dev) |
 | `CLOCHE_IMAGE` | `cloche-agent:latest` | Default Docker image |
+| `CLOCHE_HTTP` | — | HTTP address for the web dashboard (e.g. `localhost:8080`) |
 | `CLOCHE_AGENT_PATH` | (auto-detected) | Path to `cloche-agent` binary (local runtime) |
+| `CLOCHE_LLM_COMMAND` | — | Command for evolution LLM calls (e.g. `claude`) |
 | `ANTHROPIC_API_KEY` | — | Passed into Docker containers |
 | `CLOCHE_EXTRA_MOUNTS` | — | Extra bind mounts (comma-separated `host:container`) |
 | `CLOCHE_EXTRA_ENV` | — | Extra env vars (comma-separated `KEY=VALUE`) |
