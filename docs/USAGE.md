@@ -594,7 +594,7 @@ my-project/
 | `CLOCHE_IMAGE` | `cloche-agent:latest` | Default Docker image |
 | `CLOCHE_HTTP` | — | HTTP address for the web dashboard. Not started unless set. |
 | `CLOCHE_AGENT_PATH` | (auto-detected) | Path to `cloche-agent` binary (local runtime) |
-| `CLOCHE_LLM_COMMAND` | — | Command for evolution LLM calls (e.g. `claude`) |
+| `CLOCHE_LLM_COMMAND` | — | Command for LLM calls — evolution and merge conflict resolution (e.g. `claude`) |
 | `ANTHROPIC_API_KEY` | — | Passed into Docker containers |
 | `CLOCHE_EXTRA_MOUNTS` | — | Extra bind mounts (comma-separated `host:container`) |
 | `CLOCHE_EXTRA_ENV` | — | Extra env vars (comma-separated `KEY=VALUE`) |
