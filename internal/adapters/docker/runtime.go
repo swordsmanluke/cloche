@@ -77,12 +77,11 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	// No --network none: agent needs network for git push and API access
 
 	if useDefaultCmd {
-		// Wrap: chown workspace, remove host-side tool configs that cause
-		// the agent to waste time on onboarding, then exec as agent user.
+		// Wrap: chown workspace to agent, then exec as agent user.
 		wrappedCmd := fmt.Sprintf(
 			"chown -R agent:agent /workspace"+
-				" && rm -rf /workspace/.serena"+
-				" && exec su agent -s /bin/sh -c %q",
+				" && chown -R agent:agent /home/agent/.claude /home/agent/.claude.json 2>/dev/null"+
+				"; exec su agent -s /bin/sh -c %q",
 			strings.Join(containerCmd, " "),
 		)
 		args = append(args, cfg.Image, "sh", "-c", wrappedCmd)

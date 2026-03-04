@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,7 +19,7 @@ import (
 // defaultAgentArgs maps known agent commands to their default arguments.
 // Commands not in this map receive no default arguments (prompt on stdin only).
 var defaultAgentArgs = map[string][]string{
-	"claude": {"-p", "--output-format", "text", "--dangerously-skip-permissions"},
+	"claude": {"-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"},
 }
 
 type Adapter struct {
@@ -165,22 +166,50 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 		return "", nil, fmt.Errorf("command %q failed to start: %w", command, err)
 	}
 
-	var stdoutBuf bytes.Buffer
+	// textBuf accumulates extracted text content for result extraction.
+	// rawBuf accumulates raw stdout for the output log file.
+	var textBuf, rawBuf bytes.Buffer
+	// lineBuf accumulates text deltas into lines for streaming.
+	var lineBuf strings.Builder
+
 	scanner := bufio.NewScanner(pipe)
 	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
 	for scanner.Scan() {
-		line := scanner.Text()
-		stdoutBuf.WriteString(line)
-		stdoutBuf.WriteByte('\n')
-		a.StatusWriter.Log(stepName, line)
+		raw := scanner.Bytes()
+		rawBuf.Write(raw)
+		rawBuf.WriteByte('\n')
+
+		text := extractStreamText(raw)
+		if text == "" {
+			continue
+		}
+		textBuf.WriteString(text)
+
+		// Stream complete lines to StatusWriter as they form.
+		lineBuf.WriteString(text)
+		for {
+			s := lineBuf.String()
+			idx := strings.IndexByte(s, '\n')
+			if idx < 0 {
+				break
+			}
+			a.StatusWriter.Log(stepName, s[:idx])
+			lineBuf.Reset()
+			lineBuf.WriteString(s[idx+1:])
+		}
+	}
+	// Flush any remaining partial line.
+	if lineBuf.Len() > 0 {
+		a.StatusWriter.Log(stepName, lineBuf.String())
 	}
 	if scanErr := scanner.Err(); scanErr != nil {
 		a.StatusWriter.Log(stepName, fmt.Sprintf("[scan error: %v]", scanErr))
 	}
 
 	waitErr := cmd.Wait()
-	stdoutBytes := stdoutBuf.Bytes()
-	return a.classifyResult(command, stdoutBytes, waitErr)
+	// Use extracted text for result classification, raw bytes for log file.
+	result, _, fallbackErr = a.classifyResult(command, textBuf.Bytes(), waitErr)
+	return result, rawBuf.Bytes(), fallbackErr
 }
 
 // classifyResult interprets the command's exit status and stdout to determine
@@ -200,12 +229,48 @@ func (a *Adapter) classifyResult(command string, stdoutBytes []byte, runErr erro
 	}
 
 	// Command succeeded (exit 0)
+	if len(bytes.TrimSpace(stdoutBytes)) == 0 {
+		return "fail", stdoutBytes, fmt.Errorf("command %q exited 0 but produced no output (auth/config issue?)", command)
+	}
 	markerResult, _, found := protocol.ExtractResult(stdoutBytes)
 	result := "success"
 	if found {
 		result = markerResult
 	}
 	return result, stdoutBytes, nil
+}
+
+// extractStreamText parses a stream-json line and returns text content.
+// It handles both content_block_delta (text_delta) events for streaming and
+// result events for final output (which contains the CLOCHE_RESULT marker).
+func extractStreamText(line []byte) string {
+	// Fast path: only parse lines that could contain text we care about.
+	if bytes.Contains(line, []byte(`"text_delta"`)) {
+		var event struct {
+			Type  string `json:"type"`
+			Delta struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"delta"`
+		}
+		if json.Unmarshal(line, &event) == nil &&
+			event.Type == "content_block_delta" && event.Delta.Type == "text_delta" {
+			return event.Delta.Text
+		}
+	}
+
+	// Also extract the final result text (contains CLOCHE_RESULT marker).
+	if bytes.Contains(line, []byte(`"result"`)) && bytes.Contains(line, []byte(`"subtype"`)) {
+		var event struct {
+			Type   string `json:"type"`
+			Result string `json:"result"`
+		}
+		if json.Unmarshal(line, &event) == nil && event.Type == "result" {
+			return event.Result
+		}
+	}
+
+	return ""
 }
 
 func assemblePrompt(step *domain.Step, workDir, runID string) (string, error) {
