@@ -49,6 +49,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	genericAdapter := generic.New()
 	promptAdapter := prompt.New()
 	promptAdapter.RunID = r.cfg.RunID
+	promptAdapter.StatusWriter = statusWriter
 	if cmd, ok := os.LookupEnv("CLOCHE_AGENT_COMMAND"); ok {
 		promptAdapter.Commands = prompt.ParseCommands(cmd)
 	}

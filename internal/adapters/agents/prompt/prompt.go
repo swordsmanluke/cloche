@@ -1,6 +1,7 @@
 package prompt
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -24,6 +25,7 @@ type Adapter struct {
 	Commands     []string // ordered fallback chain of agent commands
 	ExplicitArgs []string // if non-nil, overrides default args for all commands
 	RunID        string
+	StatusWriter *protocol.StatusWriter // optional: streams live output lines
 }
 
 func New() *Adapter {
@@ -88,7 +90,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	ran := false
 
 	for _, command := range a.Commands {
-		result, stdout, fallbackErr := a.tryCommand(ctx, command, fullPrompt, workDir)
+		result, stdout, fallbackErr := a.tryCommand(ctx, command, fullPrompt, workDir, step.Name)
 		lastResult = result
 		lastStdout = stdout
 		lastErr = fallbackErr
@@ -135,19 +137,55 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 // Definitive (non-fallback) conditions:
 //   - Command exited 0
 //   - Command exited non-zero but produced a CLOCHE_RESULT marker
-func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string, workDir string) (result string, stdout []byte, fallbackErr error) {
+func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string, workDir string, stepName string) (result string, stdout []byte, fallbackErr error) {
 	args := a.argsFor(command)
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = workDir
 	cmd.Stdin = strings.NewReader(prompt)
 
-	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
+	// If we have a StatusWriter, stream stdout line-by-line; otherwise buffer.
+	if a.StatusWriter == nil {
+		var stdoutBuf, stderrBuf bytes.Buffer
+		cmd.Stdout = &stdoutBuf
+		cmd.Stderr = &stderrBuf
 
-	runErr := cmd.Run()
+		runErr := cmd.Run()
+		stdoutBytes := stdoutBuf.Bytes()
+		return a.classifyResult(command, stdoutBytes, runErr)
+	}
+
+	// Streaming path: pipe stdout through a scanner so we can emit lines live.
+	pipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", nil, fmt.Errorf("command %q stdout pipe: %w", command, err)
+	}
+	cmd.Stderr = nil // discard stderr
+
+	if err := cmd.Start(); err != nil {
+		return "", nil, fmt.Errorf("command %q failed to start: %w", command, err)
+	}
+
+	var stdoutBuf bytes.Buffer
+	scanner := bufio.NewScanner(pipe)
+	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		stdoutBuf.WriteString(line)
+		stdoutBuf.WriteByte('\n')
+		a.StatusWriter.Log(stepName, line)
+	}
+	if scanErr := scanner.Err(); scanErr != nil {
+		a.StatusWriter.Log(stepName, fmt.Sprintf("[scan error: %v]", scanErr))
+	}
+
+	waitErr := cmd.Wait()
 	stdoutBytes := stdoutBuf.Bytes()
+	return a.classifyResult(command, stdoutBytes, waitErr)
+}
 
+// classifyResult interprets the command's exit status and stdout to determine
+// the step result.
+func (a *Adapter) classifyResult(command string, stdoutBytes []byte, runErr error) (string, []byte, error) {
 	if runErr != nil {
 		if _, ok := runErr.(*exec.ExitError); !ok {
 			// Command failed to start (not found, permission denied, etc.)
@@ -156,16 +194,14 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 		// Command ran but exited non-zero
 		markerResult, _, found := protocol.ExtractResult(stdoutBytes)
 		if found {
-			// Agent reported an explicit result — definitive
 			return markerResult, stdoutBytes, nil
 		}
-		// No marker — fallback-eligible
 		return "fail", stdoutBytes, fmt.Errorf("command %q exited with error: %w", command, runErr)
 	}
 
 	// Command succeeded (exit 0)
 	markerResult, _, found := protocol.ExtractResult(stdoutBytes)
-	result = "success"
+	result := "success"
 	if found {
 		result = markerResult
 	}

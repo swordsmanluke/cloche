@@ -17,6 +17,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/evolution"
+	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/protocol"
 	rpcgrpc "google.golang.org/grpc"
@@ -38,6 +39,7 @@ type ClocheServer struct {
 	container     ports.ContainerRuntime
 	defaultImage  string
 	evolution     *evolution.Trigger
+	logBroadcast  *logstream.Broadcaster
 	shutdownFn    func()
 	onRunComplete OnRunCompleteFunc
 	onMergeReady  MergeFunc
@@ -77,6 +79,11 @@ func (s *ClocheServer) SetMergeQueue(mq ports.MergeQueueStore) {
 // SetEvolution attaches an evolution trigger to the server.
 func (s *ClocheServer) SetEvolution(trigger *evolution.Trigger) {
 	s.evolution = trigger
+}
+
+// SetLogBroadcaster attaches a log broadcaster for live-streaming LLM output.
+func (s *ClocheServer) SetLogBroadcaster(b *logstream.Broadcaster) {
+	s.logBroadcast = b
 }
 
 // SetShutdownFunc sets the callback invoked when the Shutdown RPC is called.
@@ -219,6 +226,18 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 			continue
 		}
 
+		// Fast path: log messages don't need store interaction.
+		if msg.Type == protocol.MsgLog {
+			if s.logBroadcast != nil {
+				s.logBroadcast.Publish(runID, logstream.LogLine{
+					Timestamp: msg.Timestamp.Format(time.RFC3339),
+					Type:      "llm",
+					Content:   msg.Message,
+				})
+			}
+			continue
+		}
+
 		run, err := s.store.GetRun(ctx, runID)
 		if err != nil {
 			continue
@@ -253,6 +272,11 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		_ = s.store.UpdateRun(ctx, run)
 	}
 	reader.Close()
+
+	// Signal live-stream subscribers that this run is done.
+	if s.logBroadcast != nil {
+		s.logBroadcast.Finish(runID)
+	}
 
 	// Wait for process exit
 	exitCode, err := s.container.Wait(ctx, containerID)

@@ -17,6 +17,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/adapters/web"
+	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/evolution"
@@ -59,8 +60,11 @@ func main() {
 
 	defaultImage := envOrConfig("CLOCHE_IMAGE", globalCfg.Daemon.Image, "cloche-agent:latest")
 
+	broadcaster := logstream.NewBroadcaster()
+
 	srv := adaptgrpc.NewClocheServerWithCaptures(store, store, runtime, defaultImage)
 	srv.SetLogStore(store)
+	srv.SetLogBroadcaster(broadcaster)
 
 	// Set up evolution trigger
 	evoTrigger := initEvolution(globalCfg, store, store)
@@ -103,7 +107,7 @@ func main() {
 
 	var httpServer *http.Server
 	if httpAddr := envOrConfig("CLOCHE_HTTP", globalCfg.Daemon.HTTP, ""); httpAddr != "" {
-		webHandler, err := web.NewHandler(store, store, web.WithContainerLogger(runtime), web.WithLogStore(store))
+		webHandler, err := web.NewHandler(store, store, web.WithContainerLogger(runtime), web.WithLogStore(store), web.WithLogBroadcaster(broadcaster))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to create web handler: %v\n", err)
 			os.Exit(1)
