@@ -1,6 +1,9 @@
 package domain
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 const (
 	StepDone  = "done"
@@ -124,6 +127,37 @@ func (w *Workflow) Validate() error {
 	}
 
 	return nil
+}
+
+// knownStepConfigKeys lists recognized step-level config keys.
+// Keys with a "container." prefix are also allowed.
+var knownStepConfigKeys = map[string]bool{
+	"prompt":        true,
+	"run":           true,
+	"max_attempts":  true,
+	"timeout":       true,
+	"agent_command": true,
+	"agent_args":    true,
+	"results":       true,
+}
+
+// ValidateConfig checks step config keys against known keys and returns
+// warnings for any unrecognized keys (likely typos).
+func (w *Workflow) ValidateConfig() []string {
+	var warnings []string
+	for name, step := range w.Steps {
+		for key := range step.Config {
+			if knownStepConfigKeys[key] {
+				continue
+			}
+			if strings.HasPrefix(key, "container.") {
+				continue
+			}
+			warnings = append(warnings, fmt.Sprintf(
+				"workflow %q: step %q has unrecognized config key %q", w.Name, name, key))
+		}
+	}
+	return warnings
 }
 
 // NextSteps returns all target step names wired from the given (stepName, result) pair.

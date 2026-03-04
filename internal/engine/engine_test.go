@@ -2,8 +2,10 @@ package engine_test
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/engine"
@@ -260,4 +262,80 @@ func TestEngine_UndeclaredResultAborts(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, domain.RunStateFailed, run.State)
 	assert.Contains(t, err.Error(), "undeclared")
+}
+
+// slowExecutor blocks until the context is cancelled, simulating a hanging agent.
+type slowExecutor struct {
+	mu     sync.Mutex
+	called []string
+}
+
+func (s *slowExecutor) Execute(ctx context.Context, step *domain.Step) (string, error) {
+	s.mu.Lock()
+	s.called = append(s.called, step.Name)
+	s.mu.Unlock()
+	<-ctx.Done()
+	return "", fmt.Errorf("step %q timed out: %w", step.Name, ctx.Err())
+}
+
+func TestEngine_StepTimeout(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "timeout-test",
+		Steps: map[string]*domain.Step{
+			"hang": {
+				Name:    "hang",
+				Type:    domain.StepTypeAgent,
+				Results: []string{"success", "fail"},
+				Config:  map[string]string{"prompt": "do stuff", "timeout": "100ms"},
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: "hang", Result: "success", To: domain.StepDone},
+			{From: "hang", Result: "fail", To: domain.StepAbort},
+		},
+		EntryStep: "hang",
+	}
+
+	exec := &slowExecutor{}
+	eng := engine.New(exec)
+
+	start := time.Now()
+	run, err := eng.Run(context.Background(), wf)
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	assert.Equal(t, domain.RunStateFailed, run.State)
+	assert.Contains(t, err.Error(), "timed out")
+	assert.Less(t, elapsed, 5*time.Second, "timeout should fire quickly, not wait for default 30m")
+}
+
+func TestEngine_StepTimeoutOverridesDefault(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "timeout-override",
+		Steps: map[string]*domain.Step{
+			"hang": {
+				Name:    "hang",
+				Type:    domain.StepTypeAgent,
+				Results: []string{"success", "fail"},
+				Config:  map[string]string{"prompt": "do stuff"}, // no per-step timeout
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: "hang", Result: "success", To: domain.StepDone},
+			{From: "hang", Result: "fail", To: domain.StepAbort},
+		},
+		EntryStep: "hang",
+	}
+
+	exec := &slowExecutor{}
+	eng := engine.New(exec)
+	eng.SetDefaultTimeout(100 * time.Millisecond)
+
+	start := time.Now()
+	run, err := eng.Run(context.Background(), wf)
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	assert.Equal(t, domain.RunStateFailed, run.State)
+	assert.Less(t, elapsed, 5*time.Second, "default timeout should fire quickly")
 }

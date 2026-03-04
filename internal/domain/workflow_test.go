@@ -226,3 +226,61 @@ func TestWorkflow_Validate_CollectBadTarget(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nonexistent")
 }
+
+func TestWorkflow_ValidateConfig_KnownKeys(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "known-keys",
+		Steps: map[string]*domain.Step{
+			"code": {
+				Name:    "code",
+				Results: []string{"success"},
+				Config: map[string]string{
+					"prompt":       "do stuff",
+					"timeout":      "30m",
+					"max_attempts": "3",
+				},
+			},
+		},
+	}
+	warnings := wf.ValidateConfig()
+	assert.Empty(t, warnings)
+}
+
+func TestWorkflow_ValidateConfig_UnknownKey(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "unknown-key",
+		Steps: map[string]*domain.Step{
+			"code": {
+				Name:    "code",
+				Results: []string{"success"},
+				Config: map[string]string{
+					"prompt":  "do stuff",
+					"tiemout": "30m", // typo
+				},
+			},
+		},
+	}
+	warnings := wf.ValidateConfig()
+	require.Len(t, warnings, 1)
+	assert.Contains(t, warnings[0], "tiemout")
+	assert.Contains(t, warnings[0], "unrecognized")
+}
+
+func TestWorkflow_ValidateConfig_ContainerPrefix(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "container-keys",
+		Steps: map[string]*domain.Step{
+			"code": {
+				Name:    "code",
+				Results: []string{"success"},
+				Config: map[string]string{
+					"prompt":           "do stuff",
+					"container.image":  "myimage:v1",
+					"container.memory": "4g",
+				},
+			},
+		},
+	}
+	warnings := wf.ValidateConfig()
+	assert.Empty(t, warnings)
+}

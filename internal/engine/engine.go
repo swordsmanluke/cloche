@@ -3,10 +3,14 @@ package engine
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
+	"time"
 
 	"github.com/cloche-dev/cloche/internal/domain"
 )
+
+const DefaultStepTimeout = 30 * time.Minute
 
 // StepExecutor executes a single step and returns the result name.
 type StepExecutor interface {
@@ -34,16 +38,18 @@ func (noopStatus) OnStepComplete(*domain.Run, *domain.Step, string) {}
 func (noopStatus) OnRunComplete(*domain.Run)                        {}
 
 type Engine struct {
-	executor StepExecutor
-	status   StatusHandler
-	maxSteps int
+	executor       StepExecutor
+	status         StatusHandler
+	maxSteps       int
+	defaultTimeout time.Duration
 }
 
 func New(executor StepExecutor) *Engine {
 	return &Engine{
-		executor: executor,
-		status:   noopStatus{},
-		maxSteps: 1000,
+		executor:       executor,
+		status:         noopStatus{},
+		maxSteps:       1000,
+		defaultTimeout: DefaultStepTimeout,
 	}
 }
 
@@ -53,6 +59,11 @@ func (e *Engine) SetStatusHandler(h StatusHandler) {
 
 func (e *Engine) SetMaxSteps(n int) {
 	e.maxSteps = n
+}
+
+// SetDefaultTimeout sets the default timeout for steps that don't specify one.
+func (e *Engine) SetDefaultTimeout(d time.Duration) {
+	e.defaultTimeout = d
 }
 
 // stepResult is sent from worker goroutines back to the main event loop.
@@ -72,6 +83,9 @@ type collectState struct {
 func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, error) {
 	if err := wf.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid workflow: %w", err)
+	}
+	for _, w := range wf.ValidateConfig() {
+		log.Printf("WARNING: %s", w)
 	}
 
 	run := domain.NewRun(generateRunID(), wf.Name)
@@ -132,7 +146,13 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 		e.status.OnStepStart(run, step)
 
 		go func(s *domain.Step) {
-			result, err := e.executor.Execute(ctx, s)
+			stepCtx := ctx
+			if d := stepTimeout(s, e.defaultTimeout); d > 0 {
+				var cancel context.CancelFunc
+				stepCtx, cancel = context.WithTimeout(ctx, d)
+				defer cancel()
+			}
+			result, err := e.executor.Execute(stepCtx, s)
 			results <- stepResult{stepName: s.Name, result: result, err: err}
 		}(step)
 
@@ -277,4 +297,15 @@ func generateRunID() string {
 	defer runMu.Unlock()
 	runCounter++
 	return fmt.Sprintf("run-%d", runCounter)
+}
+
+// stepTimeout returns the timeout for a step. It checks step.Config["timeout"]
+// first, falling back to the provided default.
+func stepTimeout(step *domain.Step, defaultTimeout time.Duration) time.Duration {
+	if raw, ok := step.Config["timeout"]; ok {
+		if d, err := time.ParseDuration(raw); err == nil {
+			return d
+		}
+	}
+	return defaultTimeout
 }
