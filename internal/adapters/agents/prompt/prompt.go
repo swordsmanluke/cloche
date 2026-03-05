@@ -207,8 +207,13 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 	}
 
 	waitErr := cmd.Wait()
-	// Use extracted text for result classification, raw bytes for log file.
-	result, _, fallbackErr = a.classifyResult(command, textBuf.Bytes(), waitErr)
+	// Prefer extracted text (stream-json) for result classification; fall back
+	// to raw output for non-JSON commands (scripts, non-claude agents).
+	classifyBuf := textBuf.Bytes()
+	if len(bytes.TrimSpace(classifyBuf)) == 0 {
+		classifyBuf = rawBuf.Bytes()
+	}
+	result, _, fallbackErr = a.classifyResult(command, classifyBuf, waitErr)
 	return result, rawBuf.Bytes(), fallbackErr
 }
 

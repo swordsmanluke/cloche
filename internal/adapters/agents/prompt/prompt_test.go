@@ -22,7 +22,7 @@ func TestPromptAdapter_ExecutesCommand(t *testing.T) {
 	// Use a mock command that writes a file to prove it ran
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'implemented' > result.txt"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'implemented' > result.txt && echo ok"},
 		RunID:        "test-run",
 	}
 
@@ -54,7 +54,7 @@ func TestPromptAdapter_IncludesFeedback(t *testing.T) {
 	// Mock command that captures stdin to a file so we can inspect it
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt"},
+		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok"},
 	}
 
 	step := &domain.Step{
@@ -129,7 +129,7 @@ func TestPromptAdapter_InjectsResultInstructions(t *testing.T) {
 
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt"},
+		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok"},
 	}
 
 	step := &domain.Step{
