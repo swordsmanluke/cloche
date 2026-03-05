@@ -21,7 +21,6 @@ message RunWorkflowRequest {
   string image = 3;
   string prompt = 4;
   bool keep_container = 5;
-  string agent_command = 6;
 }
 
 message RunWorkflowResponse {

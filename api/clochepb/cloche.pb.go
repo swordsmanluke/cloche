@@ -28,7 +28,6 @@ type RunWorkflowRequest struct {
 	Image         string                 `protobuf:"bytes,3,opt,name=image,proto3" json:"image,omitempty"`
 	Prompt        string                 `protobuf:"bytes,4,opt,name=prompt,proto3" json:"prompt,omitempty"`
 	KeepContainer bool                   `protobuf:"varint,5,opt,name=keep_container,json=keepContainer,proto3" json:"keep_container,omitempty"`
-	AgentCommand  string                 `protobuf:"bytes,6,opt,name=agent_command,json=agentCommand,proto3" json:"agent_command,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -96,13 +95,6 @@ func (x *RunWorkflowRequest) GetKeepContainer() bool {
 		return x.KeepContainer
 	}
 	return false
-}
-
-func (x *RunWorkflowRequest) GetAgentCommand() string {
-	if x != nil {
-		return x.AgentCommand
-	}
-	return ""
 }
 
 type RunWorkflowResponse struct {

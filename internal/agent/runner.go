@@ -120,9 +120,6 @@ func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, 
 			return result, err
 		}
 		if _, ok := step.Config["prompt"]; ok {
-			// Save original adapter state before per-step overrides
-			origCommands := e.prompt.Commands
-			origArgs := e.prompt.ExplicitArgs
 			if cmd := step.Config["agent_command"]; cmd != "" {
 				e.prompt.Commands = prompt.ParseCommands(cmd)
 			}
@@ -130,9 +127,6 @@ func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, 
 				e.prompt.ExplicitArgs = strings.Fields(args)
 			}
 			result, err := e.prompt.Execute(ctx, step, e.workDir)
-			// Restore original adapter state so per-step overrides don't leak
-			e.prompt.Commands = origCommands
-			e.prompt.ExplicitArgs = origArgs
 			e.copyToLLMLog(step.Name)
 			e.logStepOutput(step.Name, logstream.TypeLLM)
 			return result, err
