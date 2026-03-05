@@ -176,18 +176,12 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, r
 
 	baseSHA := gitHEAD(req.ProjectDir)
 
-	envVars := make(map[string]string)
-	if req.AgentCommand != "" {
-		envVars["CLOCHE_AGENT_COMMAND"] = req.AgentCommand
-	}
-
 	containerID, err := s.container.Start(ctx, ports.ContainerConfig{
 		Image:        image,
 		WorkflowName: req.WorkflowName,
 		ProjectDir:   req.ProjectDir,
 		RunID:        runID,
 		NetworkAllow: []string{"*"},
-		EnvVars:      envVars,
 	})
 	if err != nil {
 		run, _ := s.store.GetRun(ctx, runID)

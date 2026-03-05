@@ -101,13 +101,16 @@ without installing Go.
 
 Build an all-in-one image from the repository:
 
+> **Note:** `Dockerfile.daemon` does not exist yet — this is a planned feature.
+> For now, build and run the daemon on the host using `make install`.
+
 ```
 git clone https://github.com/cloche-dev/cloche.git
 cd cloche
 docker build -t cloche-daemon -f Dockerfile.daemon .
 ```
 
-Or run the daemon from the existing build image:
+Once the image exists, run the daemon:
 
 ```
 docker run -d \
