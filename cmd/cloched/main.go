@@ -107,7 +107,17 @@ func main() {
 
 	var httpServer *http.Server
 	if httpAddr := envOrConfig("CLOCHE_HTTP", globalCfg.Daemon.HTTP, ""); httpAddr != "" {
-		webHandler, err := web.NewHandler(store, store, web.WithContainerLogger(runtime), web.WithLogStore(store), web.WithLogBroadcaster(broadcaster))
+		webOpts := []web.HandlerOption{
+			web.WithContainerLogger(runtime),
+			web.WithLogStore(store),
+			web.WithLogBroadcaster(broadcaster),
+		}
+		if orch != nil {
+			webOpts = append(webOpts, web.WithOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {
+				return orch.Run(ctx, projectDir)
+			}))
+		}
+		webHandler, err := web.NewHandler(store, store, webOpts...)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to create web handler: %v\n", err)
 			os.Exit(1)

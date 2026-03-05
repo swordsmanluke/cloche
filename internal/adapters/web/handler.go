@@ -43,6 +43,11 @@ func WithLogStore(ls ports.LogStore) HandlerOption {
 	return func(h *Handler) { h.logStore = ls }
 }
 
+// WithOrchestrateFunc sets the function called when the orchestrator is triggered.
+func WithOrchestrateFunc(fn func(ctx context.Context, projectDir string) (int, error)) HandlerOption {
+	return func(h *Handler) { h.orchestrateFn = fn }
+}
+
 //go:embed templates/*.html static/*
 var content embed.FS
 
@@ -60,13 +65,14 @@ type ContainerManager interface {
 }
 
 type Handler struct {
-	store        ports.RunStore
-	captures     ports.CaptureStore
-	logStore     ports.LogStore
-	container    ContainerLogger
-	logBroadcast *logstream.Broadcaster
-	pages        map[string]*template.Template
-	mux          *http.ServeMux
+	store         ports.RunStore
+	captures      ports.CaptureStore
+	logStore      ports.LogStore
+	container     ContainerLogger
+	logBroadcast  *logstream.Broadcaster
+	orchestrateFn func(ctx context.Context, projectDir string) (int, error)
+	pages         map[string]*template.Template
+	mux           *http.ServeMux
 }
 
 // NewHandler creates a web dashboard handler.
@@ -621,12 +627,42 @@ func (h *Handler) handleAPIDeleteContainer(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *Handler) handleAPITriggerOrchestrator(w http.ResponseWriter, r *http.Request) {
-	// Placeholder endpoint — orchestrator integration is a separate feature.
-	// Returns 202 Accepted to indicate the request was received.
-	name := r.PathValue("name")
+	label := r.PathValue("name")
+
+	// Resolve label back to project directory via the store.
+	projects, _ := h.store.ListProjects(r.Context())
+	labels := projectLabels(projects)
+	var projectDir string
+	for dir, l := range labels {
+		if l == label {
+			projectDir = dir
+			break
+		}
+	}
+	if projectDir == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "project not found"})
+		return
+	}
+
+	if h.orchestrateFn == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "orchestrator not configured"})
+		return
+	}
+
+	dispatched, err := h.orchestrateFn(r.Context(), projectDir)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]string{"status": "accepted", "project": name})
+	json.NewEncoder(w).Encode(map[string]any{"status": "ok", "project": label, "dispatched": dispatched})
 }
 
 // handleAPIStream serves an SSE stream of log lines for a run.

@@ -44,11 +44,17 @@ function triggerOrchestrator(label, dir) {
     fetch('/api/projects/' + encodeURIComponent(label) + '/trigger', {method: 'POST'})
         .then(function(r) {
             if (r.ok) {
-                btn.textContent = 'Triggered';
-                setTimeout(function() {
-                    btn.disabled = false;
-                    btn.textContent = 'Trigger Orchestrator';
-                }, 2000);
+                r.json().then(function(data) {
+                    if (data.dispatched > 0) {
+                        btn.textContent = 'Dispatched ' + data.dispatched;
+                    } else {
+                        btn.textContent = 'No tasks ready';
+                    }
+                    setTimeout(function() {
+                        btn.disabled = false;
+                        btn.textContent = 'Trigger Orchestrator';
+                    }, 2000);
+                });
             } else {
                 btn.textContent = 'Failed';
                 setTimeout(function() {
