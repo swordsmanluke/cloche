@@ -321,6 +321,32 @@ func mergeCaptures(caps []*domain.StepExecution) []stepEntry {
 	return entries
 }
 
+// containerState inspects the container for a run and returns one of:
+//   - "running"   – container exists and is running
+//   - "stopped"   – container exists, not running, not kept
+//   - "available" – container exists, not running, kept (can be deleted)
+//   - "removed"   – no container ID, no manager, or inspect failed
+func (h *Handler) containerState(ctx context.Context, run *domain.Run) string {
+	if run.ContainerID == "" {
+		return "removed"
+	}
+	mgr, ok := h.container.(ContainerManager)
+	if !ok {
+		return "removed"
+	}
+	status, err := mgr.Inspect(ctx, run.ContainerID)
+	if err != nil {
+		return "removed"
+	}
+	if status.Running {
+		return "running"
+	}
+	if run.ContainerKept {
+		return "available"
+	}
+	return "stopped"
+}
+
 func (h *Handler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -337,21 +363,12 @@ func (h *Handler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 
 	steps := mergeCaptures(caps)
 
-	containerAvailable := false
-	if run.ContainerKept && run.ContainerID != "" {
-		if mgr, ok := h.container.(ContainerManager); ok {
-			if _, err := mgr.Inspect(r.Context(), run.ContainerID); err == nil {
-				containerAvailable = true
-			}
-		}
-	}
-
 	data := map[string]any{
-		"Title":              "Run " + run.ID,
-		"Run":                run,
-		"Steps":              steps,
-		"Page":               "detail",
-		"ContainerAvailable": containerAvailable,
+		"Title":          "Run " + run.ID,
+		"Run":            run,
+		"Steps":          steps,
+		"Page":           "detail",
+		"ContainerState": h.containerState(r.Context(), run),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.pages["run_detail"].ExecuteTemplate(w, "layout", data); err != nil {
@@ -383,7 +400,8 @@ type apiStep struct {
 
 type apiRunDetail struct {
 	apiRun
-	Steps []apiStep `json:"steps"`
+	ContainerState string    `json:"container_state"`
+	Steps          []apiStep `json:"steps"`
 }
 
 func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
@@ -507,8 +525,9 @@ func (h *Handler) handleAPIRunDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	detail := apiRunDetail{
-		apiRun: toAPIRun(run, labels),
-		Steps:  steps,
+		apiRun:         toAPIRun(run, labels),
+		ContainerState: h.containerState(r.Context(), run),
+		Steps:          steps,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

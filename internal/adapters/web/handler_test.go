@@ -19,11 +19,15 @@ import (
 // mockContainerManager implements ContainerManager for testing.
 type mockContainerManager struct {
 	containers map[string]bool // containerID -> exists
+	running    map[string]bool // containerID -> running
 	removed    []string
 }
 
 func newMockContainerManager() *mockContainerManager {
-	return &mockContainerManager{containers: map[string]bool{}}
+	return &mockContainerManager{
+		containers: map[string]bool{},
+		running:    map[string]bool{},
+	}
 }
 
 func (m *mockContainerManager) Logs(_ context.Context, containerID string) (string, error) {
@@ -43,7 +47,7 @@ func (m *mockContainerManager) Inspect(_ context.Context, containerID string) (*
 	if !m.containers[containerID] {
 		return nil, fmt.Errorf("container %s not found", containerID)
 	}
-	return &ports.ContainerStatus{Running: false, ExitCode: 0}, nil
+	return &ports.ContainerStatus{Running: m.running[containerID], ExitCode: 0}, nil
 }
 
 func setupHandler(t *testing.T) (*Handler, *sqlite.Store) {
@@ -358,6 +362,51 @@ func seedRunWithContainer(t *testing.T, store *sqlite.Store, mgr *mockContainerM
 	}
 }
 
+func TestRunDetail_ContainerRunning(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+
+	ctx := context.Background()
+	run := domain.NewRun("run-cr", "develop")
+	run.ProjectDir = "/proj"
+	run.Start()
+	run.ContainerID = "cid-running"
+	require.NoError(t, store.CreateRun(ctx, run))
+	mgr.containers["cid-running"] = true
+	mgr.running["cid-running"] = true
+
+	req := httptest.NewRequest("GET", "/runs/run-cr", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "Container running")
+	assert.Contains(t, body, `badge-running">Container running`)
+}
+
+func TestRunDetail_ContainerStopped(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+
+	ctx := context.Background()
+	run := domain.NewRun("run-cs", "develop")
+	run.ProjectDir = "/proj"
+	run.Start()
+	run.ContainerID = "cid-stopped"
+	run.ContainerKept = false
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+	mgr.containers["cid-stopped"] = true // container exists but not running, not kept
+
+	req := httptest.NewRequest("GET", "/runs/run-cs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "Container stopped")
+	assert.Contains(t, body, `badge-stopped">Container stopped`)
+}
+
 func TestRunDetail_ContainerAvailable(t *testing.T) {
 	h, store, mgr := setupHandlerWithContainerManager(t)
 	seedRunWithContainer(t, store, mgr, "run-c1", "develop", "/proj", "cid-1234567890ab", true)
@@ -369,7 +418,8 @@ func TestRunDetail_ContainerAvailable(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := w.Body.String()
 	assert.Contains(t, body, "Container available")
-	assert.Contains(t, body, "delete-container-btn")
+	assert.Contains(t, body, `badge-succeeded">Container available`)
+	assert.Contains(t, body, `id="delete-container-btn"`)
 }
 
 func TestRunDetail_ContainerRemoved(t *testing.T) {
@@ -383,6 +433,7 @@ func TestRunDetail_ContainerRemoved(t *testing.T) {
 	run.ContainerKept = false
 	run.Complete(domain.RunStateSucceeded)
 	require.NoError(t, store.CreateRun(ctx, run))
+	// container NOT in mock's containers map → Inspect will fail → "removed"
 
 	req := httptest.NewRequest("GET", "/runs/run-c2", nil)
 	w := httptest.NewRecorder()
@@ -391,7 +442,7 @@ func TestRunDetail_ContainerRemoved(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := w.Body.String()
 	assert.Contains(t, body, "Container removed")
-	assert.NotContains(t, body, `id="delete-container-btn"`)
+	assert.Contains(t, body, `badge-pending">Container removed`)
 }
 
 func TestAPIDeleteContainer_Success(t *testing.T) {
@@ -436,6 +487,39 @@ func TestAPIDeleteContainer_NoManager(t *testing.T) {
 	h.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAPIRunDetail_ContainerState(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+
+	// Seed a running container
+	ctx := context.Background()
+	run := domain.NewRun("api-cs1", "develop")
+	run.ProjectDir = "/proj"
+	run.Start()
+	run.ContainerID = "cid-api-running"
+	require.NoError(t, store.CreateRun(ctx, run))
+	mgr.containers["cid-api-running"] = true
+	mgr.running["cid-api-running"] = true
+
+	req := httptest.NewRequest("GET", "/api/runs/api-cs1", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var detail apiRunDetail
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &detail))
+	assert.Equal(t, "running", detail.ContainerState)
+
+	// Now stop it
+	mgr.running["cid-api-running"] = false
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/runs/api-cs1", nil))
+
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &detail))
+	assert.Equal(t, "stopped", detail.ContainerState)
 }
 
 func TestRunsList_ContainerCount(t *testing.T) {

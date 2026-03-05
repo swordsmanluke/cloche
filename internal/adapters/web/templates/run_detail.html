@@ -12,7 +12,11 @@
         <dt>Container</dt><dd class="mono">{{.Run.ContainerID}}</dd>
         <dt>Container Status</dt>
         <dd id="container-status">
-            {{if .ContainerAvailable}}
+            {{if eq .ContainerState "running"}}
+                <span class="badge badge-running">Container running</span>
+            {{else if eq .ContainerState "stopped"}}
+                <span class="badge badge-stopped">Container stopped</span>
+            {{else if eq .ContainerState "available"}}
                 <span class="badge badge-succeeded">Container available</span>
                 <button class="btn btn-danger btn-sm" id="delete-container-btn" onclick="deleteContainer('{{.Run.ID}}')">Delete Container</button>
             {{else}}
@@ -127,6 +131,21 @@
                     if (data.state !== runState) {
                         location.reload();
                         return;
+                    }
+                    // Update container status
+                    var statusEl = document.getElementById('container-status');
+                    if (statusEl && data.container_state) {
+                        var cs = data.container_state;
+                        if (cs === 'running') {
+                            statusEl.innerHTML = '<span class="badge badge-running">Container running</span>';
+                        } else if (cs === 'stopped') {
+                            statusEl.innerHTML = '<span class="badge badge-stopped">Container stopped</span>';
+                        } else if (cs === 'available') {
+                            statusEl.innerHTML = '<span class="badge badge-succeeded">Container available</span>' +
+                                ' <button class="btn btn-danger btn-sm" id="delete-container-btn" onclick="deleteContainer(\'' + escapeHtml(runID) + '\')">Delete Container</button>';
+                        } else {
+                            statusEl.innerHTML = '<span class="badge badge-pending">Container removed</span>';
+                        }
                     }
                     var tbody = document.getElementById('steps-body');
                     if (!data.steps || data.steps.length === 0) {

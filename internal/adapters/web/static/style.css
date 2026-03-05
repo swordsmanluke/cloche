@@ -19,6 +19,8 @@
     --badge-failed-text: #991b1b;
     --badge-cancelled-bg: #f3f4f6;
     --badge-cancelled-text: #4b5563;
+    --badge-stopped-bg: #e5e7eb;
+    --badge-stopped-text: #4b5563;
 
     --error-bg: #fef2f2;
     --error-border: #fca5a5;
@@ -44,6 +46,8 @@
         --badge-failed-text: #fca5a5;
         --badge-cancelled-bg: #374151;
         --badge-cancelled-text: #9ca3af;
+        --badge-stopped-bg: #374151;
+        --badge-stopped-text: #9ca3af;
 
         --error-bg: #450a0a;
         --error-border: #7f1d1d;
@@ -115,6 +119,7 @@ h2 {
 .badge-succeeded { background: var(--badge-succeeded-bg); color: var(--badge-succeeded-text); }
 .badge-failed   { background: var(--badge-failed-bg);   color: var(--badge-failed-text); }
 .badge-cancelled { background: var(--badge-cancelled-bg); color: var(--badge-cancelled-text); }
+.badge-stopped  { background: var(--badge-stopped-bg);  color: var(--badge-stopped-text); }
 
 @keyframes pulse {
     0%, 100% { opacity: 1; }
