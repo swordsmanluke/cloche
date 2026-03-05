@@ -496,6 +496,124 @@ func TestRunner_UnifiedLogMixedSteps(t *testing.T) {
 	assert.NoError(t, err, "llm-implement.log should exist")
 }
 
+func TestRunner_StepOverrideDoesNotLeakToSubsequentSteps(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create two agent scripts
+	workflowAgent := filepath.Join(dir, "workflow-agent.sh")
+	require.NoError(t, os.WriteFile(workflowAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'workflow-agent ran'\n"), 0755))
+
+	stepAgent := filepath.Join(dir, "step-agent.sh")
+	require.NoError(t, os.WriteFile(stepAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'step-agent ran'\n"), 0755))
+
+	// Step 1 overrides agent_command, step 2 should use workflow-level default
+	workflowContent := `workflow "leak-test" {
+  container {
+    agent_command = "` + workflowAgent + `"
+  }
+
+  step step1 {
+    agent_command = "` + stepAgent + `"
+    prompt = "Do step 1."
+    results = [success, fail]
+  }
+
+  step step2 {
+    prompt = "Do step 2."
+    results = [success, fail]
+  }
+
+  step1:success -> step2
+  step1:fail -> abort
+
+  step2:success -> done
+  step2:fail -> abort
+}`
+	workflowPath := filepath.Join(dir, "leak-test.cloche")
+	require.NoError(t, os.WriteFile(workflowPath, []byte(workflowContent), 0644))
+
+	var statusBuf bytes.Buffer
+	runner := agent.NewRunner(agent.RunnerConfig{
+		WorkflowPath: workflowPath,
+		WorkDir:      dir,
+		StatusOutput: &statusBuf,
+	})
+
+	err := runner.Run(context.Background())
+	require.NoError(t, err)
+
+	msgs, err := protocol.ParseStatusStream(statusBuf.Bytes())
+	require.NoError(t, err)
+
+	// Both steps should have completed successfully
+	var step1Done, step2Done bool
+	for _, msg := range msgs {
+		if msg.Type == protocol.MsgStepCompleted {
+			if msg.StepName == "step1" {
+				step1Done = true
+			}
+			if msg.StepName == "step2" {
+				step2Done = true
+			}
+		}
+	}
+	assert.True(t, step1Done, "step1 should complete")
+	assert.True(t, step2Done, "step2 should complete")
+
+	// Verify step2 used the workflow agent (not the step-level override)
+	step2Log, err := os.ReadFile(filepath.Join(dir, ".cloche", "output", "step2.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(step2Log), "workflow-agent ran", "step2 should use workflow-level agent, not leaked step-level override")
+}
+
+func TestRunner_AgentLogsEmitted(t *testing.T) {
+	dir := t.TempDir()
+
+	goodAgent := filepath.Join(dir, "good-agent.sh")
+	require.NoError(t, os.WriteFile(goodAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'agent output'\n"), 0755))
+
+	workflowContent := `workflow "log-test" {
+  step implement {
+    agent_command = "nonexistent-agent-xyz,` + goodAgent + `"
+    prompt = "Write code."
+    results = [success, fail]
+  }
+
+  implement:success -> done
+  implement:fail -> abort
+}`
+	workflowPath := filepath.Join(dir, "log-test.cloche")
+	require.NoError(t, os.WriteFile(workflowPath, []byte(workflowContent), 0644))
+
+	var statusBuf bytes.Buffer
+	runner := agent.NewRunner(agent.RunnerConfig{
+		WorkflowPath: workflowPath,
+		WorkDir:      dir,
+		StatusOutput: &statusBuf,
+	})
+
+	err := runner.Run(context.Background())
+	require.NoError(t, err)
+
+	msgs, err := protocol.ParseStatusStream(statusBuf.Bytes())
+	require.NoError(t, err)
+
+	// Should have log messages about agent attempts
+	var foundTrying, foundFallback bool
+	for _, msg := range msgs {
+		if msg.Type == protocol.MsgLog && msg.StepName == "implement" {
+			if strings.Contains(msg.Message, "[agent] trying nonexistent-agent-xyz") {
+				foundTrying = true
+			}
+			if strings.Contains(msg.Message, "[agent] falling back to") && strings.Contains(msg.Message, "command not found") {
+				foundFallback = true
+			}
+		}
+	}
+	assert.True(t, foundTrying, "should log initial agent attempt")
+	assert.True(t, foundFallback, "should log fallback with reason")
+}
+
 func TestRunner_ExecutesWorkflowFile(t *testing.T) {
 	dir := t.TempDir()
 	workflowContent := `workflow "simple-build" {

@@ -74,6 +74,11 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		}
 	}
 
+	// Pass additional env vars from container config
+	for k, v := range cfg.EnvVars {
+		args = append(args, "-e", k+"="+v)
+	}
+
 	// No --network none: agent needs network for git push and API access
 
 	if useDefaultCmd {

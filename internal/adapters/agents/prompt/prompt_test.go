@@ -1,6 +1,7 @@
 package prompt_test
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -386,6 +388,103 @@ func TestPromptAdapter_DefaultArgsForClaude(t *testing.T) {
 	adapter := prompt.New()
 	assert.Equal(t, []string{"claude"}, adapter.Commands)
 	assert.Nil(t, adapter.ExplicitArgs)
+}
+
+func TestPromptAdapter_DefaultArgsForKnownAgents(t *testing.T) {
+	adapter := prompt.New()
+
+	// claude should have specific default args
+	args := adapter.ArgsForTest("claude")
+	assert.Contains(t, args, "-p")
+	assert.Contains(t, args, "--output-format")
+
+	// gemini, codex, aider should all have entries (even if empty)
+	_ = adapter.ArgsForTest("gemini")
+	_ = adapter.ArgsForTest("codex")
+	_ = adapter.ArgsForTest("aider")
+
+	// Unknown agent should get nil
+	assert.Nil(t, adapter.ArgsForTest("unknown-agent"))
+}
+
+func TestPromptAdapter_LogsAgentAttempt(t *testing.T) {
+	dir := t.TempDir()
+
+	var statusBuf bytes.Buffer
+	sw := protocol.NewStatusWriter(&statusBuf)
+
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok"},
+		StatusWriter: sw,
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	result, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	msgs, err := protocol.ParseStatusStream(statusBuf.Bytes())
+	require.NoError(t, err)
+
+	// Should have a log message about trying the agent
+	var foundTrying bool
+	for _, msg := range msgs {
+		if msg.Type == protocol.MsgLog && msg.StepName == "implement" {
+			if assert.ObjectsAreEqual("[agent] trying sh...", msg.Message) {
+				foundTrying = true
+			}
+		}
+	}
+	assert.True(t, foundTrying, "should log which agent is being tried")
+}
+
+func TestPromptAdapter_LogsFallbackReason(t *testing.T) {
+	dir := t.TempDir()
+
+	var statusBuf bytes.Buffer
+	sw := protocol.NewStatusWriter(&statusBuf)
+
+	adapter := &prompt.Adapter{
+		Commands:     []string{"nonexistent-agent-xyz", "sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok"},
+		StatusWriter: sw,
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	result, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	msgs, err := protocol.ParseStatusStream(statusBuf.Bytes())
+	require.NoError(t, err)
+
+	// Should have log messages for both the initial try and the fallback
+	var foundTrying, foundFallback bool
+	for _, msg := range msgs {
+		if msg.Type == protocol.MsgLog && msg.StepName == "implement" {
+			if msg.Message == "[agent] trying nonexistent-agent-xyz..." {
+				foundTrying = true
+			}
+			if msg.Message == "[agent] falling back to sh (command not found)..." {
+				foundFallback = true
+			}
+		}
+	}
+	assert.True(t, foundTrying, "should log initial agent attempt")
+	assert.True(t, foundFallback, "should log fallback with reason")
 }
 
 func TestParseCommands(t *testing.T) {
