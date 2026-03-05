@@ -20,6 +20,9 @@ import (
 // Commands not in this map receive no default arguments (prompt on stdin only).
 var defaultAgentArgs = map[string][]string{
 	"claude": {"-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"},
+	"gemini": {}, // Gemini CLI reads prompt from stdin by default; no known non-interactive flags yet
+	"codex":  {"--quiet"},
+	"aider":  {"--message-file", "/dev/stdin", "--yes-always", "--no-git"},
 }
 
 type Adapter struct {
@@ -37,6 +40,11 @@ func New() *Adapter {
 
 func (a *Adapter) Name() string {
 	return "prompt"
+}
+
+// ArgsForTest exposes argsFor for testing.
+func (a *Adapter) ArgsForTest(command string) []string {
+	return a.argsFor(command)
 }
 
 // argsFor returns the arguments for the given command. If ExplicitArgs is set,
@@ -90,7 +98,19 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	var lastErr error
 	ran := false
 
-	for _, command := range a.Commands {
+	for i, command := range a.Commands {
+		if a.StatusWriter != nil {
+			if i == 0 {
+				a.StatusWriter.Log(step.Name, fmt.Sprintf("[agent] trying %s...", command))
+			} else {
+				reason := "command failed"
+				if lastStdout == nil {
+					reason = "command not found"
+				}
+				a.StatusWriter.Log(step.Name, fmt.Sprintf("[agent] falling back to %s (%s)...", command, reason))
+			}
+		}
+
 		result, stdout, fallbackErr := a.tryCommand(ctx, command, fullPrompt, workDir, step.Name)
 		lastResult = result
 		lastStdout = stdout

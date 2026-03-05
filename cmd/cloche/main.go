@@ -83,7 +83,7 @@ func usage() {
 Commands:
   init [--workflow <name>] [--image <base>]  Initialize a Cloche project
   health                                   Show project health summary
-  run --workflow <name> [--prompt "..."] [--keep-container]
+  run --workflow <name> [--prompt "..."] [--agent <cmd>] [--keep-container]
                                              Launch a workflow run
   status <run-id>                            Check run status
   logs <run-id> [--step <name>] [--type <full|script|llm>] [--follow]
@@ -98,7 +98,7 @@ Commands:
 }
 
 func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
-	var workflow, prompt string
+	var workflow, prompt, agentCommand string
 	var keepContainer bool
 
 	for i := 0; i < len(args); i++ {
@@ -112,6 +112,11 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 			if i+1 < len(args) {
 				i++
 				prompt = args[i]
+			}
+		case "--agent":
+			if i+1 < len(args) {
+				i++
+				agentCommand = args[i]
 			}
 		case "--keep-container":
 			keepContainer = true
@@ -145,6 +150,7 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 		Image:         image,
 		Prompt:        prompt,
 		KeepContainer: keepContainer,
+		AgentCommand:  agentCommand,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

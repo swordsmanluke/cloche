@@ -18,7 +18,8 @@ type ContainerConfig struct {
 	ProjectDir   string
 	NetworkAllow []string
 	RunID        string
-	Cmd          []string // override container command; defaults to ["cloche-agent", WorkflowName]
+	Cmd          []string          // override container command; defaults to ["cloche-agent", WorkflowName]
+	EnvVars      map[string]string // additional environment variables to set in the container
 }
 
 type ContainerRuntime interface {
