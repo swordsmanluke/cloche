@@ -56,11 +56,15 @@ function triggerOrchestrator(label, dir) {
                     }, 2000);
                 });
             } else {
-                btn.textContent = 'Failed';
+                r.json().then(function(data) {
+                    btn.textContent = 'Failed: ' + (data.error || 'unknown');
+                }).catch(function() {
+                    btn.textContent = 'Failed';
+                });
                 setTimeout(function() {
                     btn.disabled = false;
                     btn.textContent = 'Trigger Orchestrator';
-                }, 2000);
+                }, 4000);
             }
         })
         .catch(function() {
