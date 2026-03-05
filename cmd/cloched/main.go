@@ -73,6 +73,7 @@ func main() {
 	}
 
 	// Set up merge agent
+	srv.SetMergeQueue(store)
 	mergeAgent := initMergeAgent(globalCfg, store)
 	if mergeAgent != nil {
 		srv.SetOnMergeReady(func(ctx context.Context, projectDir string) {
