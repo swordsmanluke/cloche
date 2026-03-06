@@ -41,10 +41,20 @@ var workflowTemplate = `workflow "%s" {
 }
 `
 
-var dockerfileTemplate = `FROM %s
-# Add your project's dependencies here, e.g.:
-# USER root
-# RUN apt-get update && apt-get install -y --no-install-recommends <packages> && rm -rf /var/lib/apt/lists/*
+var dockerfileTemplate = `FROM golang:1.25 AS cloche-builder
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /cloche-agent ./cmd/cloche-agent
+
+FROM %s
+RUN apt-get update && apt-get install -y git nodejs npm && rm -rf /var/lib/apt/lists/*
+RUN npm install -g @anthropic-ai/claude-code
+COPY --from=cloche-builder /cloche-agent /usr/local/bin/cloche-agent
+RUN useradd -m -s /bin/bash agent
+WORKDIR /workspace
+RUN chown agent:agent /workspace
 USER agent
 `
 
@@ -86,7 +96,7 @@ var updateDocsPrompt = `Review the CLI source code and update usage documentatio
 
 func cmdInit(args []string) {
 	workflow := "develop"
-	baseImage := "cloche-base:latest"
+	image := "ubuntu:24.04"
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -95,10 +105,10 @@ func cmdInit(args []string) {
 				i++
 				workflow = args[i]
 			}
-		case "--base-image":
+		case "--image":
 			if i+1 < len(args) {
 				i++
-				baseImage = args[i]
+				image = args[i]
 			}
 		}
 	}
@@ -127,7 +137,7 @@ func cmdInit(args []string) {
 	// Write all files, skipping any that already exist
 	files := []struct{ path, content string }{
 		{workflowFile, fmt.Sprintf(workflowTemplate, workflow)},
-		{filepath.Join(clocheDir, "Dockerfile"), fmt.Sprintf(dockerfileTemplate, baseImage)},
+		{filepath.Join(clocheDir, "Dockerfile"), fmt.Sprintf(dockerfileTemplate, image)},
 		{filepath.Join(clocheDir, "prompts", "implement.md"), implementPrompt},
 		{filepath.Join(clocheDir, "prompts", "fix.md"), fixPrompt},
 		{filepath.Join(clocheDir, "prompts", "update-docs.md"), updateDocsPrompt},
