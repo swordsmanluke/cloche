@@ -3,9 +3,13 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
+	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -346,6 +350,113 @@ func TestOrchestratorInFlightTracking(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 1, orch.InFlight("/test/project"))
+}
+
+func TestOrchestratorRun_HostWorkflowPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+
+	// Write a host.cloche file
+	hostCloche := `workflow "orchestrate" {
+  step prep {
+    run     = "echo hello"
+    results = [success, fail]
+  }
+
+  prep:success -> done
+  prep:fail    -> abort
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	tracker := &mockTracker{
+		tasks: []ports.TrackerTask{
+			{ID: "task-1", Title: "Test Task", Description: "task body"},
+		},
+	}
+	promptGen := &mockPromptGen{response: "should not be called"}
+
+	dispatchCalled := false
+	dispatch := func(ctx context.Context, workflow, projectDir, prompt string) (string, error) {
+		dispatchCalled = true
+		return "run-1", nil
+	}
+
+	parseFunc := func(input string) (*domain.Workflow, error) {
+		return dsl.Parse(input)
+	}
+
+	waiter := &mockRunWaiter{state: domain.RunStateSucceeded}
+	hostRunner := &HostRunner{
+		Dispatch: dispatch,
+		WaitRun:  waiter,
+	}
+
+	orch := New(promptGen, dispatch,
+		WithHostRunner(hostRunner),
+		WithParseHostWorkflow(parseFunc),
+	)
+	orch.Register(&ProjectConfig{
+		Dir:         tmpDir,
+		Workflow:    "develop",
+		Concurrency: 1,
+		Tracker:     tracker,
+	})
+
+	n, err := orch.Run(context.Background(), tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+	assert.Equal(t, []string{"task-1"}, tracker.claimed)
+	// promptGen should NOT have been called (host workflow path used instead)
+	assert.Equal(t, 0, promptGen.calls)
+	// dispatch should NOT have been called directly (host runner handles it)
+	assert.False(t, dispatchCalled)
+}
+
+func TestOrchestratorRun_FallbackWithoutHostCloche(t *testing.T) {
+	tmpDir := t.TempDir()
+	// No host.cloche file — should fall back to promptGen → dispatch path
+
+	tracker := &mockTracker{
+		tasks: []ports.TrackerTask{
+			{ID: "task-1", Title: "Test Task"},
+		},
+	}
+	promptGen := &mockPromptGen{response: "generated prompt"}
+
+	dispatched := false
+	dispatch := func(ctx context.Context, workflow, projectDir, prompt string) (string, error) {
+		dispatched = true
+		return "run-1", nil
+	}
+
+	waiter := &mockRunWaiter{state: domain.RunStateSucceeded}
+	hostRunner := &HostRunner{
+		Dispatch: dispatch,
+		WaitRun:  waiter,
+	}
+
+	parseFunc := func(input string) (*domain.Workflow, error) {
+		return dsl.Parse(input)
+	}
+
+	orch := New(promptGen, dispatch,
+		WithHostRunner(hostRunner),
+		WithParseHostWorkflow(parseFunc),
+	)
+	orch.Register(&ProjectConfig{
+		Dir:         tmpDir,
+		Workflow:    "develop",
+		Concurrency: 1,
+		Tracker:     tracker,
+	})
+
+	n, err := orch.Run(context.Background(), tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+	assert.Equal(t, 1, promptGen.calls)
+	assert.True(t, dispatched)
 }
 
 func TestOrchestratorRun_UsesCorrectWorkflow(t *testing.T) {

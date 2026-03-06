@@ -17,10 +17,11 @@ import (
 	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/adapters/web"
-	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/evolution"
+	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/orchestrator"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"google.golang.org/grpc"
@@ -246,7 +247,16 @@ func initOrchestrator(globalCfg *config.Config, store ports.RunStore, srv *adapt
 		return resp.RunId, nil
 	}
 
-	orch := orchestrator.New(promptGen, dispatch)
+	waiter := &orchestrator.StoreRunWaiter{Store: store}
+	hostRunner := &orchestrator.HostRunner{
+		Dispatch: dispatch,
+		WaitRun:  waiter,
+	}
+
+	orch := orchestrator.New(promptGen, dispatch,
+		orchestrator.WithHostRunner(hostRunner),
+		orchestrator.WithParseHostWorkflow(dsl.Parse),
+	)
 
 	// Collect candidate project directories: cwd + all known projects from the store.
 	candidates := map[string]bool{}

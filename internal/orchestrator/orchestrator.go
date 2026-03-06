@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/cloche-dev/cloche/internal/config"
+	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/ports"
 )
 
@@ -21,23 +24,49 @@ type ProjectConfig struct {
 	Tracker     ports.TaskTracker
 }
 
+// ParseHostWorkflowFunc parses a host.cloche file and returns the named workflow.
+type ParseHostWorkflowFunc func(input string) (*domain.Workflow, error)
+
 // Orchestrator pulls ready tasks and dispatches workflow runs, respecting
 // per-project concurrency limits.
 type Orchestrator struct {
-	promptGen  PromptGenerator
-	dispatch   RunDispatcher
-	mu         sync.Mutex
-	projects   map[string]*ProjectConfig // keyed by Dir
-	inFlight   map[string]int            // keyed by Dir
+	promptGen          PromptGenerator
+	dispatch           RunDispatcher
+	mu                 sync.Mutex
+	projects           map[string]*ProjectConfig // keyed by Dir
+	inFlight           map[string]int            // keyed by Dir
+	hostRunner         *HostRunner
+	parseHostWorkflow  ParseHostWorkflowFunc
 }
 
 // New creates an Orchestrator.
-func New(promptGen PromptGenerator, dispatch RunDispatcher) *Orchestrator {
-	return &Orchestrator{
+func New(promptGen PromptGenerator, dispatch RunDispatcher, opts ...OrchestratorOption) *Orchestrator {
+	o := &Orchestrator{
 		promptGen: promptGen,
 		dispatch:  dispatch,
 		projects:  make(map[string]*ProjectConfig),
 		inFlight:  make(map[string]int),
+	}
+	for _, opt := range opts {
+		opt(o)
+	}
+	return o
+}
+
+// OrchestratorOption configures optional fields on the Orchestrator.
+type OrchestratorOption func(*Orchestrator)
+
+// WithHostRunner sets the HostRunner for host.cloche support.
+func WithHostRunner(hr *HostRunner) OrchestratorOption {
+	return func(o *Orchestrator) {
+		o.hostRunner = hr
+	}
+}
+
+// WithParseHostWorkflow sets the parser function for host.cloche files.
+func WithParseHostWorkflow(fn ParseHostWorkflowFunc) OrchestratorOption {
+	return func(o *Orchestrator) {
+		o.parseHostWorkflow = fn
 	}
 }
 
@@ -94,6 +123,15 @@ func (o *Orchestrator) Run(ctx context.Context, projectDir string) (int, error) 
 		return 0, fmt.Errorf("listing ready tasks: %w", err)
 	}
 
+	// Check if host.cloche exists for this project
+	hostWorkflowPath := filepath.Join(projectDir, ".cloche", "host.cloche")
+	useHostWorkflow := o.hostRunner != nil && o.parseHostWorkflow != nil
+	if useHostWorkflow {
+		if _, err := os.Stat(hostWorkflowPath); os.IsNotExist(err) {
+			useHostWorkflow = false
+		}
+	}
+
 	dispatched := 0
 	for i := 0; i < len(tasks) && dispatched < available; i++ {
 		task := tasks[i]
@@ -103,26 +141,77 @@ func (o *Orchestrator) Run(ctx context.Context, projectDir string) (int, error) 
 			continue
 		}
 
-		prompt, err := o.promptGen.Generate(ctx, task, projectDir)
-		if err != nil {
-			log.Printf("orchestrator: failed to generate prompt for task %s: %v", task.ID, err)
-			_ = pc.Tracker.Fail(ctx, task.ID)
-			continue
+		if useHostWorkflow {
+			// Host workflow path
+			data, err := os.ReadFile(hostWorkflowPath)
+			if err != nil {
+				log.Printf("orchestrator: failed to read host.cloche for task %s: %v", task.ID, err)
+				_ = pc.Tracker.Fail(ctx, task.ID)
+				continue
+			}
+
+			wf, err := o.parseHostWorkflow(string(data))
+			if err != nil {
+				log.Printf("orchestrator: failed to parse host.cloche for task %s: %v", task.ID, err)
+				_ = pc.Tracker.Fail(ctx, task.ID)
+				continue
+			}
+
+			orchRunID := domain.GenerateRunID("orchestrate")
+
+			o.mu.Lock()
+			o.inFlight[projectDir]++
+			o.mu.Unlock()
+
+			hr := &HostRunner{
+				Dispatch:   o.hostRunner.Dispatch,
+				WaitRun:    o.hostRunner.WaitRun,
+				ProjectDir: projectDir,
+			}
+
+			go func(task ports.TrackerTask) {
+				result, err := hr.RunWorkflow(ctx, wf, task, orchRunID)
+				if err != nil {
+					log.Printf("orchestrator: host workflow error for task %s: %v", task.ID, err)
+					_ = pc.Tracker.Fail(ctx, task.ID)
+				} else if result == domain.StepDone {
+					_ = pc.Tracker.Complete(ctx, task.ID)
+				} else {
+					_ = pc.Tracker.Fail(ctx, task.ID)
+				}
+
+				o.mu.Lock()
+				if o.inFlight[projectDir] > 0 {
+					o.inFlight[projectDir]--
+				}
+				o.mu.Unlock()
+			}(task)
+
+			log.Printf("orchestrator: started host workflow %s for task %s in %s", orchRunID, task.ID, projectDir)
+			dispatched++
+		} else {
+			// Fallback: existing promptGen → dispatch path
+			prompt, err := o.promptGen.Generate(ctx, task, projectDir)
+			if err != nil {
+				log.Printf("orchestrator: failed to generate prompt for task %s: %v", task.ID, err)
+				_ = pc.Tracker.Fail(ctx, task.ID)
+				continue
+			}
+
+			runID, err := o.dispatch(ctx, pc.Workflow, projectDir, prompt)
+			if err != nil {
+				log.Printf("orchestrator: failed to dispatch run for task %s: %v", task.ID, err)
+				_ = pc.Tracker.Fail(ctx, task.ID)
+				continue
+			}
+
+			o.mu.Lock()
+			o.inFlight[projectDir]++
+			o.mu.Unlock()
+
+			log.Printf("orchestrator: dispatched run %s for task %s in %s", runID, task.ID, projectDir)
+			dispatched++
 		}
-
-		runID, err := o.dispatch(ctx, pc.Workflow, projectDir, prompt)
-		if err != nil {
-			log.Printf("orchestrator: failed to dispatch run for task %s: %v", task.ID, err)
-			_ = pc.Tracker.Fail(ctx, task.ID)
-			continue
-		}
-
-		o.mu.Lock()
-		o.inFlight[projectDir]++
-		o.mu.Unlock()
-
-		log.Printf("orchestrator: dispatched run %s for task %s in %s", runID, task.ID, projectDir)
-		dispatched++
 	}
 
 	return dispatched, nil

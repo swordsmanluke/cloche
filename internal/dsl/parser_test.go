@@ -240,6 +240,99 @@ func TestParser_CollectAll(t *testing.T) {
 	assert.Equal(t, "success", c.Conditions[1].Result)
 }
 
+func TestParser_WorkflowNameStep(t *testing.T) {
+	input := `workflow "orchestrate" {
+  step prepare-prompt {
+    run     = "bash scripts/prepare.sh"
+    results = [success, fail]
+  }
+
+  step develop {
+    workflow_name = "develop"
+    results       = [success, fail]
+  }
+
+  prepare-prompt:success -> develop
+  prepare-prompt:fail    -> abort
+  develop:success        -> done
+  develop:fail           -> done
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+
+	assert.Equal(t, "orchestrate", wf.Name)
+	assert.Len(t, wf.Steps, 2)
+
+	develop := wf.Steps["develop"]
+	require.NotNil(t, develop)
+	assert.Equal(t, domain.StepTypeWorkflow, develop.Type)
+	assert.Equal(t, "develop", develop.Config["workflow_name"])
+	assert.Equal(t, []string{"success", "fail"}, develop.Results)
+
+	preparePrompt := wf.Steps["prepare-prompt"]
+	require.NotNil(t, preparePrompt)
+	assert.Equal(t, domain.StepTypeScript, preparePrompt.Type)
+}
+
+func TestParser_WorkflowNameWithPromptStep(t *testing.T) {
+	input := `workflow "orch" {
+  step prep {
+    run     = "echo hello"
+    results = [success, fail]
+  }
+
+  step dev {
+    workflow_name = "develop"
+    prompt_step   = "prep"
+    results       = [success, fail]
+  }
+
+  prep:success -> dev
+  prep:fail    -> abort
+  dev:success  -> done
+  dev:fail     -> done
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+
+	dev := wf.Steps["dev"]
+	require.NotNil(t, dev)
+	assert.Equal(t, domain.StepTypeWorkflow, dev.Type)
+	assert.Equal(t, "prep", dev.Config["prompt_step"])
+}
+
+func TestParser_WorkflowNameWithPromptErrors(t *testing.T) {
+	input := `workflow "bad" {
+  step both {
+    workflow_name = "develop"
+    prompt        = "also a prompt"
+    results       = [success]
+  }
+  both:success -> done
+}`
+
+	_, err := dsl.Parse(input)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "multiple")
+}
+
+func TestParser_WorkflowNameWithRunErrors(t *testing.T) {
+	input := `workflow "bad" {
+  step both {
+    workflow_name = "develop"
+    run           = "make test"
+    results       = [success]
+  }
+  both:success -> done
+}`
+
+	_, err := dsl.Parse(input)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "multiple")
+}
+
 func TestParser_CollectAny(t *testing.T) {
 	input := `workflow "race" {
   step fast {

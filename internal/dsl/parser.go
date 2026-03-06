@@ -166,15 +166,32 @@ func (p *Parser) parseStep() (*domain.Step, error) {
 	// Infer step type from content
 	_, hasPrompt := step.Config["prompt"]
 	_, hasRun := step.Config["run"]
+	_, hasWorkflowName := step.Config["workflow_name"]
+
+	count := 0
+	if hasPrompt {
+		count++
+	}
+	if hasRun {
+		count++
+	}
+	if hasWorkflowName {
+		count++
+	}
+
+	if count > 1 {
+		return nil, fmt.Errorf("step %q has multiple of 'prompt', 'run', 'workflow_name'; must have exactly one", step.Name)
+	}
+
 	switch {
-	case hasPrompt && hasRun:
-		return nil, fmt.Errorf("step %q has both 'prompt' and 'run'; must have exactly one", step.Name)
 	case hasPrompt:
 		step.Type = domain.StepTypeAgent
 	case hasRun:
 		step.Type = domain.StepTypeScript
+	case hasWorkflowName:
+		step.Type = domain.StepTypeWorkflow
 	default:
-		return nil, fmt.Errorf("step %q has neither 'prompt' nor 'run'; must have exactly one", step.Name)
+		return nil, fmt.Errorf("step %q has none of 'prompt', 'run', or 'workflow_name'; must have exactly one", step.Name)
 	}
 
 	return step, nil

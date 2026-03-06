@@ -13,8 +13,9 @@ const (
 type StepType string
 
 const (
-	StepTypeAgent  StepType = "agent"
-	StepTypeScript StepType = "script"
+	StepTypeAgent    StepType = "agent"
+	StepTypeScript   StepType = "script"
+	StepTypeWorkflow StepType = "workflow"
 )
 
 type Step struct {
@@ -139,6 +140,8 @@ var knownStepConfigKeys = map[string]bool{
 	"agent_command": true,
 	"agent_args":    true,
 	"results":       true,
+	"workflow_name": true,
+	"prompt_step":   true,
 }
 
 // ValidateConfig checks step config keys against known keys and returns
