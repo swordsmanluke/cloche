@@ -141,6 +141,7 @@ func cmdInit(args []string) {
 		{filepath.Join(clocheDir, "prompts", "implement.md"), implementPrompt},
 		{filepath.Join(clocheDir, "prompts", "fix.md"), fixPrompt},
 		{filepath.Join(clocheDir, "prompts", "update-docs.md"), updateDocsPrompt},
+		{filepath.Join(clocheDir, "version"), "1\n"},
 	}
 
 	for _, f := range files {
