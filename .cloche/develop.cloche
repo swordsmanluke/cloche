@@ -1,3 +1,6 @@
+Here's the updated prompt content:
+
+```
 workflow "develop" {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
@@ -20,6 +23,26 @@ workflow "develop" {
     results = [success, fail]
   }
 
+  step check-vet-build-steps {
+    run = "scripts/check-vet-build-steps.sh"
+    results = [success, fail]
+  }
+
+  step check-vet-build-wiring {
+    run = "scripts/check-vet-build-wiring.sh"
+    results = [success, fail]
+  }
+
+  step check-preflight {
+    run = "scripts/check-preflight.sh"
+    results = [success, fail]
+  }
+
+  step check-orphaned-steps {
+    run = "scripts/check-orphaned-steps.sh"
+    results = [success, fail]
+  }
+
   implement:success -> test
   implement:fail -> abort
   test:success -> update-docs
@@ -29,4 +52,16 @@ workflow "develop" {
   fix:give-up -> abort
   update-docs:success -> done
   update-docs:fail -> done
+  check-vet-build-steps:success -> done
+  check-vet-build-steps:fail -> abort
+  check-vet-build-wiring:success -> done
+  check-vet-build-wiring:fail -> abort
+  check-preflight:success -> done
+  check-preflight:fail -> abort
+  check-orphaned-steps:success -> done
+  check-orphaned-steps:fail -> abort
 }
+
+## Learned Rules
+- Never declare the same step name twice in a workflow definition. Duplicate step blocks (and their associated edges) cause DSL parse errors that prevent the entire workflow from loading, resulting in zero steps executed across all runs. Before adding a new step, verify it does not already exist.
+```
