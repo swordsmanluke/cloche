@@ -10,12 +10,16 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
 )
@@ -48,6 +52,18 @@ func WithOrchestrateFunc(fn func(ctx context.Context, projectDir string) (int, e
 	return func(h *Handler) { h.orchestrateFn = fn }
 }
 
+// OrchestratorController provides per-project orchestrator control.
+type OrchestratorController interface {
+	Status(dir string) (enabled bool, inFlight int, concurrency int)
+	SetEnabled(dir string, enabled bool)
+	SetConcurrency(dir string, concurrency int)
+}
+
+// WithOrchestrator sets the orchestrator controller for project-level control.
+func WithOrchestrator(oc OrchestratorController) HandlerOption {
+	return func(h *Handler) { h.orchestrator = oc }
+}
+
 //go:embed templates/*.html static/*
 var content embed.FS
 
@@ -71,6 +87,7 @@ type Handler struct {
 	container     ContainerLogger
 	logBroadcast  *logstream.Broadcaster
 	orchestrateFn func(ctx context.Context, projectDir string) (int, error)
+	orchestrator  OrchestratorController
 	pages         map[string]*template.Template
 	mux           *http.ServeMux
 }
@@ -92,7 +109,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	}
 
 	pages := map[string]*template.Template{}
-	for _, page := range []string{"projects", "runs", "run_detail"} {
+	for _, page := range []string{"projects", "runs", "run_detail", "project_detail"} {
 		clone, err := base.Clone()
 		if err != nil {
 			return nil, fmt.Errorf("clone layout for %s: %w", page, err)
@@ -122,12 +139,21 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /{$}", h.handleProjectOverview)
 	h.mux.HandleFunc("GET /runs", h.handleRunsList)
 	h.mux.HandleFunc("GET /runs/{id}", h.handleRunDetail)
+	h.mux.HandleFunc("GET /projects/{name}", h.handleProjectDetail)
 	h.mux.HandleFunc("GET /api/projects", h.handleAPIProjects)
 	h.mux.HandleFunc("GET /api/runs", h.handleAPIRuns)
 	h.mux.HandleFunc("GET /api/runs/{id}", h.handleAPIRunDetail)
 	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
 	h.mux.HandleFunc("DELETE /api/runs/{id}/container", h.handleAPIDeleteContainer)
 	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
+	h.mux.HandleFunc("GET /api/projects/{name}/orchestrator", h.handleAPIOrchestratorStatus)
+	h.mux.HandleFunc("POST /api/projects/{name}/orchestrator/start", h.handleAPIOrchestratorStart)
+	h.mux.HandleFunc("POST /api/projects/{name}/orchestrator/stop", h.handleAPIOrchestratorStop)
+	h.mux.HandleFunc("POST /api/projects/{name}/orchestrator/concurrency", h.handleAPIOrchestratorConcurrency)
+	h.mux.HandleFunc("GET /api/projects/{name}/info", h.handleAPIProjectInfo)
+	h.mux.HandleFunc("GET /api/projects/{name}/info/prompt-diff", h.handleAPIPromptDiff)
+	h.mux.HandleFunc("GET /api/projects/{name}/workflows", h.handleAPIWorkflows)
+	h.mux.HandleFunc("GET /api/projects/{name}/workflows/{workflow}/steps/{step}/content", h.handleAPIStepContent)
 	h.mux.HandleFunc("GET /api/runs/{id}/stream", h.handleAPIStream)
 	h.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
 
@@ -785,6 +811,391 @@ func parseFullLogLine(text string) logstream.LogLine {
 		Type:      m[2],
 		Content:   m[3],
 	}
+}
+
+// --- Project detail handlers ---
+
+// resolveProjectDir resolves a project label from the URL to its directory path.
+// Returns (dir, label, ok). Writes a JSON error response if not found.
+func (h *Handler) resolveProjectDir(w http.ResponseWriter, r *http.Request) (string, string, bool) {
+	label := r.PathValue("name")
+	projects, _ := h.store.ListProjects(r.Context())
+	labels := projectLabels(projects)
+	for dir, l := range labels {
+		if l == label {
+			return dir, label, true
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	json.NewEncoder(w).Encode(map[string]string{"error": "project not found"})
+	return "", "", false
+}
+
+func (h *Handler) handleProjectDetail(w http.ResponseWriter, r *http.Request) {
+	dir, label, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+
+	runs, _ := h.store.ListRunsByProject(r.Context(), dir, time.Time{})
+	n := 10
+	if n > len(runs) {
+		n = len(runs)
+	}
+	dots := make([]recentRunDot, n)
+	for i := 0; i < n; i++ {
+		dots[i] = recentRunDot{ID: runs[i].ID, State: string(runs[i].State)}
+	}
+
+	data := map[string]any{
+		"Title":      label,
+		"Label":      label,
+		"Dir":        dir,
+		"RecentRuns": dots,
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := h.pages["project_detail"].ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (h *Handler) handleAPIOrchestratorStatus(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	if h.orchestrator == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"enabled": false, "in_flight": 0, "concurrency": 0})
+		return
+	}
+	enabled, inFlight, concurrency := h.orchestrator.Status(dir)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"enabled":     enabled,
+		"in_flight":   inFlight,
+		"concurrency": concurrency,
+	})
+}
+
+func (h *Handler) handleAPIOrchestratorStart(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	if h.orchestrator == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "orchestrator not configured"})
+		return
+	}
+	h.orchestrator.SetEnabled(dir, true)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (h *Handler) handleAPIOrchestratorStop(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	if h.orchestrator == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "orchestrator not configured"})
+		return
+	}
+	h.orchestrator.SetEnabled(dir, false)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (h *Handler) handleAPIOrchestratorConcurrency(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	if h.orchestrator == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "orchestrator not configured"})
+		return
+	}
+	var body struct {
+		Concurrency int `json:"concurrency"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Concurrency < 1 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "concurrency must be a positive integer"})
+		return
+	}
+	h.orchestrator.SetConcurrency(dir, body.Concurrency)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (h *Handler) handleAPIProjectInfo(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+
+	// Docker image: read FROM line from Dockerfile
+	dockerImage := ""
+	dockerfilePath := filepath.Join(dir, ".cloche", "Dockerfile")
+	if data, err := os.ReadFile(dockerfilePath); err == nil {
+		// Find the last FROM line (final stage)
+		for _, line := range strings.Split(string(data), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(strings.ToUpper(trimmed), "FROM ") {
+				parts := strings.Fields(trimmed)
+				if len(parts) >= 2 {
+					dockerImage = parts[1]
+				}
+			}
+		}
+	}
+
+	// Version
+	version := 0
+	versionPath := filepath.Join(dir, ".cloche", "version")
+	if data, err := os.ReadFile(versionPath); err == nil {
+		if v, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
+			version = v
+		}
+	}
+
+	// Prompt files history
+	type commitEntry struct {
+		SHA     string `json:"sha"`
+		Date    string `json:"date"`
+		Message string `json:"message"`
+	}
+	type promptFile struct {
+		Path    string        `json:"path"`
+		History []commitEntry `json:"history"`
+	}
+
+	var promptFiles []promptFile
+	promptsDir := filepath.Join(dir, ".cloche", "prompts")
+	if entries, err := os.ReadDir(promptsDir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			relPath := filepath.Join(".cloche", "prompts", e.Name())
+			cmd := exec.Command("git", "log", "--follow", "--format=%H %aI %s", "--", relPath)
+			cmd.Dir = dir
+			out, err := cmd.Output()
+			if err != nil {
+				continue
+			}
+			var history []commitEntry
+			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+				if line == "" {
+					continue
+				}
+				parts := strings.SplitN(line, " ", 3)
+				if len(parts) < 3 {
+					continue
+				}
+				// Parse date to short form
+				dateStr := parts[1]
+				if t, err := time.Parse(time.RFC3339, dateStr); err == nil {
+					dateStr = t.Format("2006-01-02")
+				}
+				history = append(history, commitEntry{
+					SHA:     parts[0][:7],
+					Date:    dateStr,
+					Message: parts[2],
+				})
+			}
+			promptFiles = append(promptFiles, promptFile{Path: relPath, History: history})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"docker_image": dockerImage,
+		"version":      version,
+		"prompt_files": promptFiles,
+	})
+}
+
+func (h *Handler) handleAPIPromptDiff(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	file := r.URL.Query().Get("file")
+	sha := r.URL.Query().Get("sha")
+	if file == "" || sha == "" {
+		http.Error(w, "file and sha required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate sha is alphanumeric to prevent injection
+	for _, c := range sha {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			http.Error(w, "invalid sha", http.StatusBadRequest)
+			return
+		}
+	}
+
+	cmd := exec.Command("git", "diff", sha+"^.."+sha, "--", file)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		http.Error(w, "diff not available", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write(out)
+}
+
+func (h *Handler) handleAPIWorkflows(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+
+	clocheDir := filepath.Join(dir, ".cloche")
+	entries, err := os.ReadDir(clocheDir)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]any{})
+		return
+	}
+
+	type apiWire struct {
+		From   string `json:"from"`
+		Result string `json:"result"`
+		To     string `json:"to"`
+	}
+	type apiStepDef struct {
+		Name    string            `json:"name"`
+		Type    string            `json:"type"`
+		Results []string          `json:"results"`
+		Config  map[string]string `json:"config"`
+	}
+	type apiWorkflow struct {
+		Name      string       `json:"name"`
+		File      string       `json:"file"`
+		Steps     []apiStepDef `json:"steps"`
+		Wires     []apiWire    `json:"wires"`
+		EntryStep string       `json:"entry_step"`
+	}
+
+	var workflows []apiWorkflow
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".cloche") || e.Name() == "host.cloche" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(clocheDir, e.Name()))
+		if err != nil {
+			continue
+		}
+		wf, err := dsl.Parse(string(data))
+		if err != nil {
+			continue
+		}
+		var steps []apiStepDef
+		for _, s := range wf.Steps {
+			steps = append(steps, apiStepDef{
+				Name:    s.Name,
+				Type:    string(s.Type),
+				Results: s.Results,
+				Config:  s.Config,
+			})
+		}
+		// Sort steps by name for consistent ordering
+		sort.Slice(steps, func(i, j int) bool { return steps[i].Name < steps[j].Name })
+
+		var wires []apiWire
+		for _, wire := range wf.Wiring {
+			wires = append(wires, apiWire{From: wire.From, Result: wire.Result, To: wire.To})
+		}
+
+		workflows = append(workflows, apiWorkflow{
+			Name:      wf.Name,
+			File:      filepath.Join(".cloche", e.Name()),
+			Steps:     steps,
+			Wires:     wires,
+			EntryStep: wf.EntryStep,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(workflows)
+}
+
+func (h *Handler) handleAPIStepContent(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	workflowName := r.PathValue("workflow")
+	stepName := r.PathValue("step")
+
+	// Find the workflow file
+	clocheDir := filepath.Join(dir, ".cloche")
+	var wf *domain.Workflow
+	entries, _ := os.ReadDir(clocheDir)
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".cloche") || e.Name() == "host.cloche" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(clocheDir, e.Name()))
+		if err != nil {
+			continue
+		}
+		parsed, err := dsl.Parse(string(data))
+		if err != nil {
+			continue
+		}
+		if parsed.Name == workflowName {
+			wf = parsed
+			break
+		}
+	}
+	if wf == nil {
+		http.Error(w, "workflow not found", http.StatusNotFound)
+		return
+	}
+
+	step, ok := wf.Steps[stepName]
+	if !ok {
+		http.Error(w, "step not found", http.StatusNotFound)
+		return
+	}
+
+	// Try to read the referenced file from step config
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+
+	if prompt := step.Config["prompt"]; prompt != "" {
+		data, err := os.ReadFile(filepath.Join(dir, prompt))
+		if err == nil {
+			w.Write(data)
+			return
+		}
+	}
+	if script := step.Config["command"]; script != "" {
+		w.Write([]byte(script))
+		return
+	}
+	if script := step.Config["script"]; script != "" {
+		data, err := os.ReadFile(filepath.Join(dir, script))
+		if err == nil {
+			w.Write(data)
+			return
+		}
+		w.Write([]byte(script))
+		return
+	}
+
+	http.Error(w, "no content available", http.StatusNotFound)
 }
 
 // --- Template helpers ---

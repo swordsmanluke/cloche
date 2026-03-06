@@ -3,6 +3,7 @@ module github.com/cloche-dev/cloche
 go 1.25.3
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/grpc v1.79.1
 	google.golang.org/protobuf v1.36.11
@@ -10,7 +11,6 @@ require (
 )
 
 require (
-	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect

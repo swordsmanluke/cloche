@@ -6,7 +6,7 @@
     <div class="project-card">
         <div class="project-header">
             <span class="health-dot health-{{healthColor .Health.Status}}" title="{{.Health.Status}}"></span>
-            <span class="project-name">{{.Label}}</span>
+            <a href="/projects/{{.Label}}" class="project-name">{{.Label}}</a>
         </div>
         <div class="project-stats">
             <div class="stat">

@@ -118,6 +118,7 @@ func main() {
 			webOpts = append(webOpts, web.WithOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {
 				return orch.Run(ctx, projectDir)
 			}))
+			webOpts = append(webOpts, web.WithOrchestrator(orch))
 		}
 		webHandler, err := web.NewHandler(store, store, webOpts...)
 		if err != nil {

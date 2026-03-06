@@ -1,0 +1,299 @@
+{{define "content"}}
+<h1><a href="/">Projects</a> / {{.Label}}</h1>
+
+<div class="run-history" style="margin-bottom:1rem">
+    {{range .RecentRuns}}
+    <a href="/runs/{{.ID}}"><span class="run-dot run-dot-{{.State}}" title="{{.ID}}: {{.State}}"></span></a>
+    {{end}}
+    <a href="/runs?project={{.Dir}}" class="btn btn-secondary btn-sm" style="margin-left:0.5rem">View all runs</a>
+</div>
+
+<!-- Panel 1: Orchestrator Control -->
+<div class="panel" id="orchestrator-panel">
+    <div class="panel-header">Orchestrator Control</div>
+    <div class="panel-body">
+        <div id="orch-status" class="orch-status">Loading...</div>
+        <div class="orch-controls" style="margin-top:0.75rem;display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+            <button id="orch-toggle" class="btn btn-primary btn-sm" onclick="toggleOrchestrator()">Enable</button>
+            <span style="margin-left:1rem;color:var(--text-muted);font-size:0.85rem">Concurrency:</span>
+            <input type="number" id="orch-concurrency" min="1" max="20" value="1" style="width:60px;padding:0.2em 0.4em;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text);font-size:0.85rem">
+            <button class="btn btn-secondary btn-sm" onclick="applyConcurrency()">Apply</button>
+        </div>
+    </div>
+</div>
+
+<!-- Panel 2: Project Info -->
+<div class="panel" id="info-panel">
+    <div class="panel-header">Project Info</div>
+    <div class="panel-body" id="project-info">Loading...</div>
+</div>
+
+<!-- Panel 3: Workflow View -->
+<div class="panel" id="workflow-panel">
+    <div class="panel-header">Workflows</div>
+    <div class="panel-body">
+        <div id="workflow-tabs" class="tab-bar"></div>
+        <div id="workflow-dag"></div>
+    </div>
+</div>
+
+<!-- Step Drawer -->
+<div class="drawer" id="step-drawer">
+    <div class="drawer-header">
+        <span id="drawer-title"></span>
+        <button class="drawer-close" onclick="closeDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+</div>
+{{end}}
+
+{{define "scripts"}}
+<script>
+var projectLabel = {{.Label}};
+var orchEnabled = false;
+
+function loadOrchestratorStatus() {
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/orchestrator')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            orchEnabled = data.enabled;
+            var statusEl = document.getElementById('orch-status');
+            var toggleBtn = document.getElementById('orch-toggle');
+            var concInput = document.getElementById('orch-concurrency');
+            statusEl.innerHTML = '<span class="badge ' + (data.enabled ? 'badge-succeeded' : 'badge-stopped') + '">' +
+                (data.enabled ? 'Enabled' : 'Disabled') + '</span>' +
+                '&nbsp; In-flight: <strong>' + data.in_flight + '</strong>' +
+                '&nbsp; Concurrency: <strong>' + data.concurrency + '</strong>';
+            toggleBtn.textContent = data.enabled ? 'Disable' : 'Enable';
+            toggleBtn.className = 'btn btn-sm ' + (data.enabled ? 'btn-danger' : 'btn-primary');
+            concInput.value = data.concurrency;
+        });
+}
+
+function toggleOrchestrator() {
+    var action = orchEnabled ? 'stop' : 'start';
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/orchestrator/' + action, {method: 'POST'})
+        .then(function() { loadOrchestratorStatus(); });
+}
+
+function applyConcurrency() {
+    var val = parseInt(document.getElementById('orch-concurrency').value, 10);
+    if (val < 1) return;
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/orchestrator/concurrency', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({concurrency: val})
+    }).then(function() { loadOrchestratorStatus(); });
+}
+
+function loadProjectInfo() {
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/info')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var html = '<dl class="run-meta" style="margin:0">';
+            html += '<dt>Docker Image</dt><dd class="mono">' + (data.docker_image || 'N/A') + '</dd>';
+            html += '<dt>Version</dt><dd>' + (data.version ? 'v' + data.version : 'N/A') + '</dd>';
+            html += '</dl>';
+
+            if (data.prompt_files && data.prompt_files.length > 0) {
+                html += '<h2 style="margin-top:1rem">Prompt Files</h2>';
+                data.prompt_files.forEach(function(pf) {
+                    html += '<details><summary class="mono">' + pf.path + '</summary>';
+                    if (pf.history && pf.history.length > 0) {
+                        html += '<div style="margin:0.5rem 0">';
+                        pf.history.forEach(function(h) {
+                            html += '<div class="prompt-commit" data-file="' + pf.path + '" data-sha="' + h.sha + '" onclick="toggleDiff(this)" style="cursor:pointer;padding:0.25rem 0;font-size:0.85rem">';
+                            html += '<span class="mono" style="color:var(--link)">' + h.sha + '</span> ';
+                            html += '<span style="color:var(--text-muted)">' + h.date + '</span> ';
+                            html += h.message;
+                            html += '</div>';
+                        });
+                        html += '</div>';
+                    } else {
+                        html += '<p style="color:var(--text-muted);font-size:0.85rem">No history</p>';
+                    }
+                    html += '</details>';
+                });
+            }
+
+            document.getElementById('project-info').innerHTML = html;
+        });
+}
+
+function toggleDiff(el) {
+    var existing = el.nextElementSibling;
+    if (existing && existing.classList.contains('diff-block')) {
+        existing.remove();
+        return;
+    }
+    var file = el.getAttribute('data-file');
+    var sha = el.getAttribute('data-sha');
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/info/prompt-diff?file=' + encodeURIComponent(file) + '&sha=' + encodeURIComponent(sha))
+        .then(function(r) { return r.text(); })
+        .then(function(text) {
+            var pre = document.createElement('pre');
+            pre.className = 'diff-block';
+            pre.textContent = text || '(no diff available)';
+            el.parentNode.insertBefore(pre, el.nextSibling);
+        });
+}
+
+var workflowsData = [];
+function loadWorkflows() {
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/workflows')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            workflowsData = data || [];
+            if (workflowsData.length === 0) {
+                document.getElementById('workflow-dag').innerHTML = '<p class="empty">No workflows found</p>';
+                return;
+            }
+            var tabs = document.getElementById('workflow-tabs');
+            if (workflowsData.length > 1) {
+                var html = '';
+                workflowsData.forEach(function(wf, i) {
+                    html += '<button class="tab-btn' + (i === 0 ? ' tab-active' : '') + '" onclick="showWorkflow(' + i + ')">' + wf.name + '</button>';
+                });
+                tabs.innerHTML = html;
+            }
+            showWorkflow(0);
+        });
+}
+
+function showWorkflow(idx) {
+    var btns = document.querySelectorAll('.tab-btn');
+    btns.forEach(function(b, i) { b.classList.toggle('tab-active', i === idx); });
+
+    var wf = workflowsData[idx];
+    var dagEl = document.getElementById('workflow-dag');
+
+    // Build step order via topological sort from entry
+    var ordered = [];
+    var visited = {};
+    function visit(name) {
+        if (visited[name] || name === 'done' || name === 'abort') return;
+        visited[name] = true;
+        ordered.push(name);
+        wf.wires.forEach(function(wire) {
+            if (wire.from === name) visit(wire.to);
+        });
+    }
+    if (wf.entry_step) visit(wf.entry_step);
+    // Add any unvisited steps
+    wf.steps.forEach(function(s) { if (!visited[s.name]) { ordered.push(s.name); visited[s.name] = true; } });
+
+    // Collect terminal targets
+    var terminals = {};
+    wf.wires.forEach(function(wire) {
+        if (wire.to === 'done' || wire.to === 'abort') terminals[wire.to] = true;
+    });
+
+    var stepMap = {};
+    wf.steps.forEach(function(s) { stepMap[s.name] = s; });
+
+    var nodeH = 48, nodeW = 180, gapY = 24, gapX = 40, padTop = 20, padLeft = 30;
+
+    // Assign positions
+    var positions = {};
+    ordered.forEach(function(name, i) {
+        positions[name] = {x: padLeft, y: padTop + i * (nodeH + gapY)};
+    });
+    var termIdx = ordered.length;
+    for (var t in terminals) {
+        positions[t] = {x: padLeft, y: padTop + termIdx * (nodeH + gapY)};
+        termIdx++;
+    }
+
+    var totalH = padTop + termIdx * (nodeH + gapY) + 10;
+    var totalW = padLeft + nodeW + gapX + 80;
+
+    var html = '<svg class="dag-svg" width="' + totalW + '" height="' + totalH + '">';
+    html += '<defs><marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="var(--text-muted)"/></marker></defs>';
+
+    // Draw wires
+    wf.wires.forEach(function(wire) {
+        var from = positions[wire.from];
+        var to = positions[wire.to];
+        if (!from || !to) return;
+        var x1 = from.x + nodeW;
+        var y1 = from.y + nodeH / 2;
+        var x2 = to.x;
+        var y2 = to.y + nodeH / 2;
+        var cx = x1 + gapX / 2;
+        html += '<path d="M' + x1 + ' ' + y1 + ' C' + cx + ' ' + y1 + ' ' + cx + ' ' + y2 + ' ' + x2 + ' ' + y2 + '" class="dag-edge" marker-end="url(#arrowhead)"/>';
+        var lx = (x1 + x2) / 2, ly = (y1 + y2) / 2 - 6;
+        html += '<text x="' + lx + '" y="' + ly + '" class="dag-edge-label">' + wire.result + '</text>';
+    });
+
+    // Draw step nodes
+    ordered.forEach(function(name) {
+        var pos = positions[name];
+        var s = stepMap[name];
+        var icon = s && s.type === 'agent' ? '\u{1F916}' : '\u{1F4DC}';
+        html += '<g class="dag-node" onclick="openDrawer(\'' + wf.name + '\',\'' + name + '\')" style="cursor:pointer">';
+        html += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + nodeW + '" height="' + nodeH + '" class="dag-node-rect"/>';
+        html += '<text x="' + (pos.x + 10) + '" y="' + (pos.y + nodeH / 2 + 5) + '" class="dag-node-text">' + icon + ' ' + name + '</text>';
+        html += '</g>';
+    });
+
+    // Draw terminal nodes
+    for (var t in terminals) {
+        var pos = positions[t];
+        var cls = t === 'done' ? 'dag-terminal-done' : 'dag-terminal-abort';
+        html += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + nodeW + '" height="' + nodeH + '" class="dag-node-rect ' + cls + '" rx="20"/>';
+        html += '<text x="' + (pos.x + nodeW / 2) + '" y="' + (pos.y + nodeH / 2 + 5) + '" class="dag-node-text" text-anchor="middle">' + t + '</text>';
+    }
+
+    html += '</svg>';
+    dagEl.innerHTML = html;
+}
+
+function openDrawer(workflowName, stepName) {
+    var wf = workflowsData.find(function(w) { return w.name === workflowName; });
+    if (!wf) return;
+    var step = wf.steps.find(function(s) { return s.name === stepName; });
+    if (!step) return;
+
+    document.getElementById('drawer-title').textContent = stepName;
+    var body = '<dl class="run-meta">';
+    body += '<dt>Type</dt><dd>' + step.type + '</dd>';
+    body += '<dt>Results</dt><dd>' + (step.results ? step.results.join(', ') : 'none') + '</dd>';
+    if (step.config) {
+        for (var k in step.config) {
+            if (k === 'max_attempts' || k === 'prompt' || k === 'command' || k === 'script') {
+                body += '<dt>' + k + '</dt><dd class="mono">' + step.config[k] + '</dd>';
+            }
+        }
+    }
+    body += '</dl>';
+    body += '<div id="drawer-content"><p style="color:var(--text-muted)">Loading content...</p></div>';
+
+    document.getElementById('drawer-body').innerHTML = body;
+    document.getElementById('step-drawer').classList.add('drawer-open');
+
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/workflows/' + encodeURIComponent(workflowName) + '/steps/' + encodeURIComponent(stepName) + '/content')
+        .then(function(r) { if (r.ok) return r.text(); return ''; })
+        .then(function(text) {
+            var el = document.getElementById('drawer-content');
+            if (text) {
+                el.innerHTML = '<pre>' + text.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</pre>';
+            } else {
+                el.innerHTML = '<p style="color:var(--text-muted)">No content available</p>';
+            }
+        });
+}
+
+function closeDrawer() {
+    document.getElementById('step-drawer').classList.remove('drawer-open');
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeDrawer();
+});
+
+// Load all panels
+loadOrchestratorStatus();
+loadProjectInfo();
+loadWorkflows();
+</script>
+{{end}}
