@@ -59,12 +59,15 @@ cd cloche
 make docker-build
 ```
 
-## Pre-built Release Binaries
+## Pre-built Release Binaries (Planned)
+
+> **Note:** Pre-built release binaries are not yet available. This section
+> describes the planned installation method for when releases are published.
 
 Download pre-built binaries from the
 [GitHub Releases](https://github.com/cloche-dev/cloche/releases) page. Each
-release includes archives for common platforms (Linux amd64, Linux arm64, macOS
-amd64, macOS arm64).
+release will include archives for common platforms (Linux amd64, Linux arm64,
+macOS amd64, macOS arm64).
 
 ```
 # Example: Linux amd64
@@ -73,41 +76,38 @@ tar xzf cloche-linux-amd64.tar.gz
 sudo install cloche cloched cloche-agent /usr/local/bin/
 ```
 
-You still need to build the Docker image. Either clone the repo and run
-`make docker-build`, or pull a pre-built image if one is published:
+You still need to build the Docker image. Clone the repo and run
+`make docker-build`:
 
 ```
-docker pull ghcr.io/cloche-dev/cloche-agent:latest
-docker tag ghcr.io/cloche-dev/cloche-agent:latest cloche-agent:latest
+git clone https://github.com/cloche-dev/cloche.git
+cd cloche
+make docker-build
 ```
 
-## Homebrew (macOS / Linux)
+## Homebrew (macOS / Linux) (Planned)
 
-If a Homebrew tap is published:
+> **Note:** A Homebrew tap is not yet published. This section describes the
+> planned installation method.
 
 ```
 brew tap cloche-dev/tap
 brew install cloche
 ```
 
-This installs all three binaries. You still need the Docker image — the formula
-will print post-install instructions for building or pulling it.
+This will install all three binaries. You will still need the Docker image —
+the formula will print post-install instructions for building or pulling it.
 
-## Docker-Only Usage
+## Docker-Only Usage (Planned)
 
-You can run the Cloche daemon itself inside Docker, avoiding any host
-installation beyond Docker. This is useful for CI environments or trying Cloche
+> **Note:** A dedicated `Dockerfile.daemon` for running the daemon in Docker
+> does not exist yet. This section describes a planned future option.
+
+Running the Cloche daemon inside Docker would avoid any host installation
+beyond Docker itself. This would be useful for CI environments or trying Cloche
 without installing Go.
 
-Build an all-in-one image from the repository:
-
-```
-git clone https://github.com/cloche-dev/cloche.git
-cd cloche
-docker build -t cloche-daemon -f Dockerfile.daemon .
-```
-
-Or run the daemon from the existing build image:
+Once available, usage would look like:
 
 ```
 docker run -d \
@@ -118,7 +118,7 @@ docker run -d \
   cloche-daemon
 ```
 
-Note: Docker-in-Docker requires mounting the Docker socket. The CLI (`cloche`)
+Docker-in-Docker requires mounting the Docker socket. The CLI (`cloche`)
 still needs to be available on the host (or in the same container) to
 communicate with the daemon over the Unix socket.
 
@@ -134,8 +134,8 @@ cloched --help
 # Start the daemon (if not already running)
 cloched &
 
-# Build or pull the agent image
-make docker-build   # or: docker pull ghcr.io/cloche-dev/cloche-agent:latest
+# Build the agent image
+make docker-build
 
 # Run a quick test from any git repository with a .cloche/ directory
 cloche list

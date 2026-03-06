@@ -1,7 +1,6 @@
-.PHONY: build test lint clean proto docker-base docker-build install
+.PHONY: build test lint clean proto docker-build install
 
 PREFIX ?= $(HOME)/.local
-VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo "dev")
 
 build:
 	go build -o bin/cloche ./cmd/cloche
@@ -24,10 +23,7 @@ proto:
 		--go-grpc_out=api/clochepb --go-grpc_opt=paths=source_relative \
 		api/proto/cloche/v1/cloche.proto
 
-docker-base:
-	docker build -t cloche-base:latest -t cloche-base:$(VERSION) -f docker/cloche-base/Dockerfile .
-
-docker-build: docker-base
+docker-build:
 	docker build -t cloche-agent:latest .
 
 install: build docker-build
