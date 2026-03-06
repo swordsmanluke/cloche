@@ -1,4 +1,4 @@
-.PHONY: build test lint clean proto docker-build install
+.PHONY: build test lint clean proto docker-base docker-build install
 
 PREFIX ?= $(HOME)/.local
 

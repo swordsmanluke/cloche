@@ -296,10 +296,12 @@ func assemblePrompt(step *domain.Step, workDir, runID string) (string, error) {
 		parts = append(parts, "## User Request\n"+userPrompt)
 	}
 
-	// 3. Read feedback from .cloche/output/*.log
-	feedback := readFeedback(workDir)
-	if feedback != "" {
-		parts = append(parts, "## Validation Output\n"+feedback)
+	// 3. Read feedback from .cloche/output/*.log (opt-in via step config)
+	if step.Config["feedback"] == "true" {
+		feedback := readFeedback(workDir)
+		if feedback != "" {
+			parts = append(parts, "## Validation Output\n"+feedback)
+		}
 	}
 
 	// 4. Result selection instructions
