@@ -44,7 +44,7 @@ func TestCmdInit_CustomFlags(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--workflow", "build", "--image", "python:3.12"})
+	cmdInit([]string{"--workflow", "build", "--base-image", "python:3.12"})
 
 	if _, err := os.Stat(filepath.Join(".cloche", "build.cloche")); os.IsNotExist(err) {
 		t.Error("expected .cloche/build.cloche to exist")
