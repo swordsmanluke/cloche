@@ -25,7 +25,11 @@ examples/mini-redis/test_runner
 .cloche/*-*-*/
 .cloche/run-*/
 .cloche/attempt_count/
+.cloche/evolution/
 .cloche/history.log
 .cloche/prompt.txt
 .cloche/output/
 .gitworktrees/
+
+# Example projects' runtime state
+examples/*/.cloche/
