@@ -41,20 +41,14 @@ var workflowTemplate = `workflow "%s" {
 }
 `
 
-var dockerfileTemplate = `FROM golang:1.25 AS cloche-builder
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -o /cloche-agent ./cmd/cloche-agent
+var dockerfileTemplate = `FROM %s
+USER root
 
-FROM %s
-RUN apt-get update && apt-get install -y git nodejs npm && rm -rf /var/lib/apt/lists/*
-RUN npm install -g @anthropic-ai/claude-code
-COPY --from=cloche-builder /cloche-agent /usr/local/bin/cloche-agent
-RUN useradd -m -s /bin/bash agent
-WORKDIR /workspace
-RUN chown agent:agent /workspace
+# Add your project's dependencies here.
+# Example:
+#   RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+#   RUN npm install -g @anthropic-ai/claude-code
+
 USER agent
 `
 
@@ -141,7 +135,6 @@ func cmdInit(args []string) {
 		{filepath.Join(clocheDir, "prompts", "implement.md"), implementPrompt},
 		{filepath.Join(clocheDir, "prompts", "fix.md"), fixPrompt},
 		{filepath.Join(clocheDir, "prompts", "update-docs.md"), updateDocsPrompt},
-		{filepath.Join(clocheDir, "version"), "1\n"},
 	}
 
 	for _, f := range files {
