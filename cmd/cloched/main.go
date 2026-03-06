@@ -85,8 +85,8 @@ func main() {
 	// Set up orchestrator
 	orch := initOrchestrator(globalCfg, store, srv)
 	if orch != nil {
-		srv.SetOnRunComplete(func(ctx context.Context, projectDir string, state domain.RunState) {
-			orch.OnRunComplete(ctx, projectDir)
+		srv.SetOnRunComplete(func(ctx context.Context, projectDir string, runID string, state domain.RunState) {
+			orch.OnRunComplete(ctx, projectDir, runID, state)
 		})
 		srv.SetOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {
 			if projectDir != "" {

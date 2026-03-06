@@ -35,6 +35,8 @@ type Orchestrator struct {
 	mu                 sync.Mutex
 	projects           map[string]*ProjectConfig // keyed by Dir
 	inFlight           map[string]int            // keyed by Dir
+	inFlightTasks      map[string]string         // runID -> taskID
+	inFlightTaskSet    map[string]map[string]bool // projectDir -> set of taskIDs in flight
 	hostRunner         *HostRunner
 	parseHostWorkflow  ParseHostWorkflowFunc
 }
@@ -42,10 +44,12 @@ type Orchestrator struct {
 // New creates an Orchestrator.
 func New(promptGen PromptGenerator, dispatch RunDispatcher, opts ...OrchestratorOption) *Orchestrator {
 	o := &Orchestrator{
-		promptGen: promptGen,
-		dispatch:  dispatch,
-		projects:  make(map[string]*ProjectConfig),
-		inFlight:  make(map[string]int),
+		promptGen:       promptGen,
+		dispatch:        dispatch,
+		projects:        make(map[string]*ProjectConfig),
+		inFlight:        make(map[string]int),
+		inFlightTasks:   make(map[string]string),
+		inFlightTaskSet: make(map[string]map[string]bool),
 	}
 	for _, opt := range opts {
 		opt(o)
@@ -101,6 +105,33 @@ func (o *Orchestrator) RegisterFromConfig(projectDir string, tracker ports.TaskT
 	return true
 }
 
+// trackTask records a run-to-task mapping for later completion/failure.
+func (o *Orchestrator) trackTask(projectDir, runID, taskID string) {
+	o.inFlightTasks[runID] = taskID
+	if o.inFlightTaskSet[projectDir] == nil {
+		o.inFlightTaskSet[projectDir] = make(map[string]bool)
+	}
+	o.inFlightTaskSet[projectDir][taskID] = true
+}
+
+// untrackTask removes a run-to-task mapping. Returns the task ID.
+func (o *Orchestrator) untrackTask(projectDir, runID string) string {
+	taskID := o.inFlightTasks[runID]
+	delete(o.inFlightTasks, runID)
+	if taskID != "" && o.inFlightTaskSet[projectDir] != nil {
+		delete(o.inFlightTaskSet[projectDir], taskID)
+	}
+	return taskID
+}
+
+// isTaskInFlight checks if a task already has an active run.
+func (o *Orchestrator) isTaskInFlight(projectDir, taskID string) bool {
+	if set := o.inFlightTaskSet[projectDir]; set != nil {
+		return set[taskID]
+	}
+	return false
+}
+
 // Run performs one orchestration cycle for a single project. It returns the
 // number of runs dispatched.
 func (o *Orchestrator) Run(ctx context.Context, projectDir string) (int, error) {
@@ -136,6 +167,15 @@ func (o *Orchestrator) Run(ctx context.Context, projectDir string) (int, error) 
 	for i := 0; i < len(tasks) && dispatched < available; i++ {
 		task := tasks[i]
 
+		// Skip tasks that already have an in-flight run (dedup)
+		o.mu.Lock()
+		alreadyRunning := o.isTaskInFlight(projectDir, task.ID)
+		o.mu.Unlock()
+		if alreadyRunning {
+			log.Printf("orchestrator: skipping task %s (already in flight)", task.ID)
+			continue
+		}
+
 		if err := pc.Tracker.Claim(ctx, task.ID); err != nil {
 			log.Printf("orchestrator: failed to claim task %s: %v", task.ID, err)
 			continue
@@ -161,6 +201,7 @@ func (o *Orchestrator) Run(ctx context.Context, projectDir string) (int, error) 
 
 			o.mu.Lock()
 			o.inFlight[projectDir]++
+			o.trackTask(projectDir, orchRunID, task.ID)
 			o.mu.Unlock()
 
 			hr := &HostRunner{
@@ -169,23 +210,27 @@ func (o *Orchestrator) Run(ctx context.Context, projectDir string) (int, error) 
 				ProjectDir: projectDir,
 			}
 
-			go func(task ports.TrackerTask) {
-				result, err := hr.RunWorkflow(ctx, wf, task, orchRunID)
-				if err != nil {
-					log.Printf("orchestrator: host workflow error for task %s: %v", task.ID, err)
-					_ = pc.Tracker.Fail(ctx, task.ID)
-				} else if result == domain.StepDone {
-					_ = pc.Tracker.Complete(ctx, task.ID)
-				} else {
-					_ = pc.Tracker.Fail(ctx, task.ID)
-				}
+			go func(task ports.TrackerTask, runID string) {
+				result, err := hr.RunWorkflow(ctx, wf, task, runID)
 
 				o.mu.Lock()
+				o.untrackTask(projectDir, runID)
 				if o.inFlight[projectDir] > 0 {
 					o.inFlight[projectDir]--
 				}
 				o.mu.Unlock()
-			}(task)
+
+				if err != nil {
+					log.Printf("orchestrator: host workflow error for task %s: %v", task.ID, err)
+					_ = pc.Tracker.Fail(ctx, task.ID)
+				} else if result == domain.StepDone {
+					log.Printf("orchestrator: task %s completed successfully", task.ID)
+					_ = pc.Tracker.Complete(ctx, task.ID)
+				} else {
+					log.Printf("orchestrator: task %s aborted", task.ID)
+					_ = pc.Tracker.Fail(ctx, task.ID)
+				}
+			}(task, orchRunID)
 
 			log.Printf("orchestrator: started host workflow %s for task %s in %s", orchRunID, task.ID, projectDir)
 			dispatched++
@@ -207,6 +252,7 @@ func (o *Orchestrator) Run(ctx context.Context, projectDir string) (int, error) 
 
 			o.mu.Lock()
 			o.inFlight[projectDir]++
+			o.trackTask(projectDir, runID, task.ID)
 			o.mu.Unlock()
 
 			log.Printf("orchestrator: dispatched run %s for task %s in %s", runID, task.ID, projectDir)
@@ -239,14 +285,28 @@ func (o *Orchestrator) TriggerAll(ctx context.Context) int {
 	return total
 }
 
-// OnRunComplete should be called when a workflow run finishes. It decrements
-// the in-flight counter and triggers a new orchestration cycle for that project.
-func (o *Orchestrator) OnRunComplete(ctx context.Context, projectDir string) {
+// OnRunComplete should be called when a workflow run finishes. It looks up the
+// associated task, completes or fails it in the tracker, decrements the
+// in-flight counter, and triggers a new orchestration cycle.
+func (o *Orchestrator) OnRunComplete(ctx context.Context, projectDir string, runID string, state domain.RunState) {
 	o.mu.Lock()
+	pc := o.projects[projectDir]
+	taskID := o.untrackTask(projectDir, runID)
 	if o.inFlight[projectDir] > 0 {
 		o.inFlight[projectDir]--
 	}
 	o.mu.Unlock()
+
+	// Close/fail the associated task in the tracker
+	if taskID != "" && pc != nil {
+		if state == domain.RunStateSucceeded {
+			log.Printf("orchestrator: completing task %s (run %s succeeded)", taskID, runID)
+			_ = pc.Tracker.Complete(ctx, taskID)
+		} else {
+			log.Printf("orchestrator: failing task %s (run %s state: %s)", taskID, runID, state)
+			_ = pc.Tracker.Fail(ctx, taskID)
+		}
+	}
 
 	if _, err := o.Run(ctx, projectDir); err != nil {
 		log.Printf("orchestrator: post-completion trigger failed for %s: %v", projectDir, err)

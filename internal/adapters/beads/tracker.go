@@ -16,18 +16,25 @@ import (
 
 // issue is the on-disk representation of a beads issue.
 type issue struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Status      string    `json:"status"`
-	Priority    int       `json:"priority"`
-	IssueType   string    `json:"issue_type"`
-	Labels      []string  `json:"labels"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	ClosedAt    time.Time `json:"closed_at,omitempty"`
-	CloseReason string    `json:"close_reason,omitempty"`
-	CreatedBy   string    `json:"created_by"`
+	ID           string       `json:"id"`
+	Title        string       `json:"title"`
+	Description  string       `json:"description"`
+	Status       string       `json:"status"`
+	Priority     int          `json:"priority"`
+	IssueType    string       `json:"issue_type"`
+	Labels       []string     `json:"labels"`
+	Dependencies []dependency `json:"dependencies,omitempty"`
+	CreatedAt    time.Time    `json:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+	ClosedAt     time.Time    `json:"closed_at,omitempty"`
+	CloseReason  string       `json:"close_reason,omitempty"`
+	CreatedBy    string       `json:"created_by"`
+}
+
+type dependency struct {
+	IssueID     string `json:"issue_id"`
+	DependsOnID string `json:"depends_on_id"`
+	Type        string `json:"type"`
 }
 
 // Tracker implements ports.TaskTracker backed by .beads/issues.jsonl.
@@ -42,7 +49,8 @@ func NewTracker(projectDir string) *Tracker {
 	return &Tracker{projectDir: projectDir}
 }
 
-// ListReady returns open tasks for the project, ordered by priority (highest first).
+// ListReady returns open tasks whose blocking dependencies are all closed,
+// ordered by priority (highest first).
 func (t *Tracker) ListReady(_ context.Context, project string) ([]ports.TrackerTask, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -52,9 +60,18 @@ func (t *Tracker) ListReady(_ context.Context, project string) ([]ports.TrackerT
 		return nil, err
 	}
 
+	// Build a status lookup for dependency checking.
+	statusByID := make(map[string]string, len(issues))
+	for _, iss := range issues {
+		statusByID[iss.ID] = iss.Status
+	}
+
 	var tasks []ports.TrackerTask
 	for _, iss := range issues {
 		if iss.Status != "open" {
+			continue
+		}
+		if hasOpenBlockers(iss, statusByID) {
 			continue
 		}
 		tasks = append(tasks, ports.TrackerTask{
@@ -71,6 +88,17 @@ func (t *Tracker) ListReady(_ context.Context, project string) ([]ports.TrackerT
 	})
 
 	return tasks, nil
+}
+
+// hasOpenBlockers returns true if any of the issue's dependencies are not closed.
+func hasOpenBlockers(iss issue, statusByID map[string]string) bool {
+	for _, dep := range iss.Dependencies {
+		depStatus := statusByID[dep.DependsOnID]
+		if depStatus != "closed" {
+			return true
+		}
+	}
+	return false
 }
 
 // Claim marks a task as "in_progress" by appending an updated line to the JSONL file.

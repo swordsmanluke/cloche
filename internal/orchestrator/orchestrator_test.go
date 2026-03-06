@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
@@ -315,14 +316,104 @@ func TestOrchestratorOnRunComplete(t *testing.T) {
 	// Simulate a run is in flight (fills the concurrency slot)
 	orch.mu.Lock()
 	orch.inFlight["/test/project"] = 1
+	orch.trackTask("/test/project", "existing-run", "existing-task")
 	orch.mu.Unlock()
 
 	// OnRunComplete should decrement in-flight and trigger new dispatch
-	orch.OnRunComplete(context.Background(), "/test/project")
+	orch.OnRunComplete(context.Background(), "/test/project", "existing-run", domain.RunStateSucceeded)
 
 	// After OnRunComplete: 1 → 0 (decrement) → 1 (new run dispatched)
 	assert.Equal(t, 1, orch.InFlight("/test/project"))
 	assert.Equal(t, 1, dispatchCount) // should have dispatched the waiting task
+}
+
+func TestOrchestratorOnRunComplete_ClosesTask(t *testing.T) {
+	tracker := &mockTracker{tasks: nil} // no more ready tasks
+	promptGen := &mockPromptGen{response: "prompt"}
+	dispatch := func(ctx context.Context, workflow, projectDir, prompt string) (string, error) {
+		return "run-1", nil
+	}
+
+	orch := New(promptGen, dispatch)
+	orch.Register(&ProjectConfig{
+		Dir:         "/test/project",
+		Workflow:    "develop",
+		Concurrency: 1,
+		Tracker:     tracker,
+	})
+
+	// Simulate a run for task-1 in flight
+	orch.mu.Lock()
+	orch.inFlight["/test/project"] = 1
+	orch.trackTask("/test/project", "run-1", "task-1")
+	orch.mu.Unlock()
+
+	// Run succeeds → task should be completed
+	orch.OnRunComplete(context.Background(), "/test/project", "run-1", domain.RunStateSucceeded)
+	assert.Equal(t, []string{"task-1"}, tracker.completed)
+	assert.Empty(t, tracker.failed)
+}
+
+func TestOrchestratorOnRunComplete_FailsTask(t *testing.T) {
+	tracker := &mockTracker{tasks: nil}
+	promptGen := &mockPromptGen{response: "prompt"}
+	dispatch := func(ctx context.Context, workflow, projectDir, prompt string) (string, error) {
+		return "run-1", nil
+	}
+
+	orch := New(promptGen, dispatch)
+	orch.Register(&ProjectConfig{
+		Dir:         "/test/project",
+		Workflow:    "develop",
+		Concurrency: 1,
+		Tracker:     tracker,
+	})
+
+	// Simulate a run for task-1 in flight
+	orch.mu.Lock()
+	orch.inFlight["/test/project"] = 1
+	orch.trackTask("/test/project", "run-1", "task-1")
+	orch.mu.Unlock()
+
+	// Run fails → task should be failed
+	orch.OnRunComplete(context.Background(), "/test/project", "run-1", domain.RunStateFailed)
+	assert.Equal(t, []string{"task-1"}, tracker.failed)
+	assert.Empty(t, tracker.completed)
+}
+
+func TestOrchestratorRun_SkipsDuplicateTasks(t *testing.T) {
+	tracker := &mockTracker{
+		tasks: []ports.TrackerTask{
+			{ID: "task-1", Title: "Already running", Priority: 2},
+			{ID: "task-2", Title: "New task", Priority: 1},
+		},
+	}
+	promptGen := &mockPromptGen{response: "prompt"}
+
+	var dispatched []string
+	dispatch := func(ctx context.Context, workflow, projectDir, prompt string) (string, error) {
+		dispatched = append(dispatched, fmt.Sprintf("run-%d", len(dispatched)+1))
+		return dispatched[len(dispatched)-1], nil
+	}
+
+	orch := New(promptGen, dispatch)
+	orch.Register(&ProjectConfig{
+		Dir:         "/test/project",
+		Workflow:    "develop",
+		Concurrency: 2,
+		Tracker:     tracker,
+	})
+
+	// Simulate task-1 already in flight
+	orch.mu.Lock()
+	orch.inFlight["/test/project"] = 1
+	orch.trackTask("/test/project", "existing-run", "task-1")
+	orch.mu.Unlock()
+
+	n, err := orch.Run(context.Background(), "/test/project")
+	require.NoError(t, err)
+	assert.Equal(t, 1, n) // only task-2 should be dispatched
+	assert.Equal(t, []string{"task-2"}, tracker.claimed) // task-1 skipped
 }
 
 func TestOrchestratorInFlightTracking(t *testing.T) {
@@ -412,6 +503,13 @@ func TestOrchestratorRun_HostWorkflowPath(t *testing.T) {
 	assert.Equal(t, 0, promptGen.calls)
 	// dispatch should NOT have been called directly (host runner handles it)
 	assert.False(t, dispatchCalled)
+
+	// Wait for the background goroutine to finish so TempDir cleanup succeeds.
+	require.Eventually(t, func() bool {
+		tracker.mu.Lock()
+		defer tracker.mu.Unlock()
+		return len(tracker.completed) > 0
+	}, time.Second, 10*time.Millisecond)
 }
 
 func TestOrchestratorRun_FallbackWithoutHostCloche(t *testing.T) {

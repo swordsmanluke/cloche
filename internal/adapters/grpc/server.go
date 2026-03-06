@@ -24,8 +24,8 @@ import (
 )
 
 // OnRunCompleteFunc is called after a workflow run finishes.
-// It receives the project directory and the final run state.
-type OnRunCompleteFunc func(ctx context.Context, projectDir string, state domain.RunState)
+// It receives the project directory, run ID, and the final run state.
+type OnRunCompleteFunc func(ctx context.Context, projectDir string, runID string, state domain.RunState)
 
 // MergeFunc is called after a run is enqueued for merge.
 type MergeFunc func(ctx context.Context, projectDir string)
@@ -328,7 +328,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	if s.onRunComplete != nil {
 		runForCallback, _ := s.store.GetRun(ctx, runID)
 		if runForCallback != nil {
-			s.onRunComplete(ctx, projectDir, runForCallback.State)
+			s.onRunComplete(ctx, projectDir, runID, runForCallback.State)
 		}
 	}
 

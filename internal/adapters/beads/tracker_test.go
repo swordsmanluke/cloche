@@ -153,6 +153,66 @@ func TestTrackerClaim_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
+func TestTrackerListReady_FiltersBlockedTasks(t *testing.T) {
+	dir := t.TempDir()
+	beadsDir := filepath.Join(dir, ".beads")
+	require.NoError(t, os.MkdirAll(beadsDir, 0755))
+
+	// t2 depends on t1 (which is open), so t2 should be blocked.
+	// t3 depends on t4 (which is closed), so t3 should be ready.
+	issuesJSONL := `{"id":"t1","title":"Blocker","status":"open","priority":1}
+{"id":"t2","title":"Blocked by t1","status":"open","priority":3,"dependencies":[{"issue_id":"t2","depends_on_id":"t1","type":"blocks"}]}
+{"id":"t3","title":"Unblocked","status":"open","priority":2,"dependencies":[{"issue_id":"t3","depends_on_id":"t4","type":"blocks"}]}
+{"id":"t4","title":"Done dep","status":"closed","priority":1}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(beadsDir, "issues.jsonl"), []byte(issuesJSONL), 0644))
+
+	tracker := NewTracker(dir)
+	tasks, err := tracker.ListReady(context.Background(), dir)
+	require.NoError(t, err)
+
+	// t2 should be filtered out (blocked by t1 which is open).
+	// t1 and t3 should be returned.
+	ids := make([]string, len(tasks))
+	for i, task := range tasks {
+		ids[i] = task.ID
+	}
+	assert.Contains(t, ids, "t1")
+	assert.Contains(t, ids, "t3")
+	assert.NotContains(t, ids, "t2")
+	assert.Len(t, tasks, 2)
+}
+
+func TestTrackerListReady_BlockerClosedUnblocks(t *testing.T) {
+	dir := t.TempDir()
+	beadsDir := filepath.Join(dir, ".beads")
+	require.NoError(t, os.MkdirAll(beadsDir, 0755))
+
+	// Initially t1 blocks t2
+	issuesJSONL := `{"id":"t1","title":"Blocker","status":"open","priority":1}
+{"id":"t2","title":"Blocked","status":"open","priority":2,"dependencies":[{"issue_id":"t2","depends_on_id":"t1","type":"blocks"}]}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(beadsDir, "issues.jsonl"), []byte(issuesJSONL), 0644))
+
+	tracker := NewTracker(dir)
+
+	// Before closing t1: only t1 ready
+	tasks, err := tracker.ListReady(context.Background(), dir)
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+	assert.Equal(t, "t1", tasks[0].ID)
+
+	// Close t1
+	err = tracker.Complete(context.Background(), "t1")
+	require.NoError(t, err)
+
+	// After closing t1: t2 should now be ready
+	tasks, err = tracker.ListReady(context.Background(), dir)
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+	assert.Equal(t, "t2", tasks[0].ID)
+}
+
 func TestTrackerImplementsInterface(t *testing.T) {
 	var _ interface {
 		ListReady(context.Context, string) ([]interface{}, error)
