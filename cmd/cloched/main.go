@@ -283,15 +283,7 @@ func initOrchestrator(globalCfg *config.Config, store ports.RunStore, srv *adapt
 }
 
 func initMergeAgent(globalCfg *config.Config, store ports.MergeQueueStore) *orchestrator.MergeAgent {
-	llmCmd := envOrConfig("CLOCHE_LLM_COMMAND", globalCfg.Daemon.LLMCommand, "")
-
-	var llm orchestrator.LLMClient
-	if llmCmd != "" {
-		llm = &orchestrator.CommandLLMClient{Command: llmCmd}
-	}
-
 	return &orchestrator.MergeAgent{
-		LLM:        llm,
 		MergeQueue: store,
 	}
 }

@@ -56,18 +56,6 @@ func (m *mockMergeQueue) FailMerge(_ context.Context, runID string) error {
 	return nil
 }
 
-// mockLLM implements LLMClient for testing.
-type mockLLM struct {
-	response string
-	err      error
-	calls    int
-}
-
-func (m *mockLLM) Complete(_ context.Context, systemPrompt, userPrompt string) (string, error) {
-	m.calls++
-	return m.response, m.err
-}
-
 // initTestRepo creates a temporary git repo with an initial commit on main.
 func initTestRepo(t *testing.T) string {
 	t.Helper()
@@ -169,55 +157,7 @@ func TestMergeAgent_SuccessfulMerge(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 }
 
-func TestMergeAgent_MergeFailure_BranchPreserved(t *testing.T) {
-	repoDir := initTestRepo(t)
-
-	// Create a conflicting setup: both main and feature modify the same file
-	env := []string{
-		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test",
-		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test",
-	}
-
-	// Add file on main
-	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "conflict.go"), []byte("package main\n// main version\n"), 0644))
-	runGit(t, repoDir, env, "git", "add", "-A")
-	runGit(t, repoDir, env, "git", "commit", "-m", "main: add conflict.go")
-
-	// Create feature branch with conflicting change
-	runGit(t, repoDir, env, "git", "checkout", "-b", "cloche/conflict-run")
-	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "conflict.go"), []byte("package main\n// feature version\n"), 0644))
-	runGit(t, repoDir, env, "git", "add", "-A")
-	runGit(t, repoDir, env, "git", "commit", "-m", "feature: modify conflict.go")
-	runGit(t, repoDir, env, "git", "checkout", "main")
-
-	// Further modify on main to cause actual conflict
-	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "conflict.go"), []byte("package main\n// updated main version\n"), 0644))
-	runGit(t, repoDir, env, "git", "add", "-A")
-	runGit(t, repoDir, env, "git", "commit", "-m", "main: update conflict.go")
-
-	// No LLM configured, so conflict resolution will fail
-	mq := &mockMergeQueue{}
-	agent := &MergeAgent{MergeQueue: mq}
-
-	entry := &ports.MergeQueueEntry{
-		RunID:   "conflict-run",
-		Branch:  "cloche/conflict-run",
-		Project: repoDir,
-		Status:  "in_progress",
-	}
-
-	err := agent.Merge(context.Background(), entry, repoDir)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "conflict resolution failed")
-
-	// Verify the branch is preserved
-	branchCmd := exec.Command("git", "branch", "--list", "cloche/conflict-run")
-	branchCmd.Dir = repoDir
-	branchOut, _ := branchCmd.Output()
-	assert.NotEmpty(t, strings.TrimSpace(string(branchOut)))
-}
-
-func TestMergeAgent_ConflictResolution_WithLLM(t *testing.T) {
+func TestMergeAgent_ConflictResolution_PrefersMain(t *testing.T) {
 	repoDir := initTestRepo(t)
 	env := []string{
 		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test",
@@ -230,7 +170,7 @@ func TestMergeAgent_ConflictResolution_WithLLM(t *testing.T) {
 	runGit(t, repoDir, env, "git", "commit", "-m", "main: add app.go")
 
 	// Create feature branch with conflicting change
-	runGit(t, repoDir, env, "git", "checkout", "-b", "cloche/llm-resolve-run")
+	runGit(t, repoDir, env, "git", "checkout", "-b", "cloche/conflict-run")
 	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "app.go"), []byte("package main\n\nfunc main() {\n\t// feature logic\n}\n"), 0644))
 	runGit(t, repoDir, env, "git", "add", "-A")
 	runGit(t, repoDir, env, "git", "commit", "-m", "feature: modify app.go")
@@ -241,16 +181,64 @@ func TestMergeAgent_ConflictResolution_WithLLM(t *testing.T) {
 	runGit(t, repoDir, env, "git", "add", "-A")
 	runGit(t, repoDir, env, "git", "commit", "-m", "main: update app.go")
 
-	// LLM returns resolved content
-	llm := &mockLLM{
-		response: "=== FILE: app.go ===\npackage main\n\nfunc main() {\n\t// merged logic from both sides\n}\n",
-	}
 	mq := &mockMergeQueue{}
-	agent := &MergeAgent{LLM: llm, MergeQueue: mq}
+	agent := &MergeAgent{MergeQueue: mq}
 
 	entry := &ports.MergeQueueEntry{
-		RunID:   "llm-resolve-run",
-		Branch:  "cloche/llm-resolve-run",
+		RunID:   "conflict-run",
+		Branch:  "cloche/conflict-run",
+		Project: repoDir,
+		Status:  "in_progress",
+	}
+
+	// Rebase with -X ours should succeed, preferring main's version
+	err := agent.Merge(context.Background(), entry, repoDir)
+	require.NoError(t, err)
+
+	// Verify main's content was preferred
+	cmd := exec.Command("git", "show", "main:app.go")
+	cmd.Dir = repoDir
+	out, err := cmd.Output()
+	require.NoError(t, err)
+	assert.Contains(t, string(out), "updated main logic")
+
+	// Branch was deleted
+	branchCmd := exec.Command("git", "branch", "--list", "cloche/conflict-run")
+	branchCmd.Dir = repoDir
+	branchOut, _ := branchCmd.Output()
+	assert.Empty(t, strings.TrimSpace(string(branchOut)))
+}
+
+func TestMergeAgent_NonConflictingChanges_BothPreserved(t *testing.T) {
+	repoDir := initTestRepo(t)
+	env := []string{
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test",
+	}
+
+	// Add a file on main
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "main.go"), []byte("package main\n"), 0644))
+	runGit(t, repoDir, env, "git", "add", "-A")
+	runGit(t, repoDir, env, "git", "commit", "-m", "main: add main.go")
+
+	// Create feature branch that adds a different file
+	runGit(t, repoDir, env, "git", "checkout", "-b", "cloche/noconflict-run")
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "feature.go"), []byte("package feature\n"), 0644))
+	runGit(t, repoDir, env, "git", "add", "-A")
+	runGit(t, repoDir, env, "git", "commit", "-m", "feature: add feature.go")
+	runGit(t, repoDir, env, "git", "checkout", "main")
+
+	// Add another file on main (diverges but no conflict)
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "other.go"), []byte("package other\n"), 0644))
+	runGit(t, repoDir, env, "git", "add", "-A")
+	runGit(t, repoDir, env, "git", "commit", "-m", "main: add other.go")
+
+	mq := &mockMergeQueue{}
+	agent := &MergeAgent{MergeQueue: mq}
+
+	entry := &ports.MergeQueueEntry{
+		RunID:   "noconflict-run",
+		Branch:  "cloche/noconflict-run",
 		Project: repoDir,
 		Status:  "in_progress",
 	}
@@ -258,21 +246,13 @@ func TestMergeAgent_ConflictResolution_WithLLM(t *testing.T) {
 	err := agent.Merge(context.Background(), entry, repoDir)
 	require.NoError(t, err)
 
-	// Verify the resolved content is on main
-	cmd := exec.Command("git", "show", "main:app.go")
-	cmd.Dir = repoDir
-	out, err := cmd.Output()
-	require.NoError(t, err)
-	assert.Contains(t, string(out), "merged logic from both sides")
-
-	// LLM was called
-	assert.Equal(t, 1, llm.calls)
-
-	// Branch was deleted
-	branchCmd := exec.Command("git", "branch", "--list", "cloche/llm-resolve-run")
-	branchCmd.Dir = repoDir
-	branchOut, _ := branchCmd.Output()
-	assert.Empty(t, strings.TrimSpace(string(branchOut)))
+	// Both files should be present on main
+	for _, f := range []string{"main.go", "feature.go", "other.go"} {
+		cmd := exec.Command("git", "show", "main:"+f)
+		cmd.Dir = repoDir
+		_, err := cmd.Output()
+		assert.NoError(t, err, "expected %s on main", f)
+	}
 }
 
 func TestMergeAgent_ValidationFailure(t *testing.T) {
@@ -343,35 +323,6 @@ func TestMergeAgent_ProcessQueue_Empty(t *testing.T) {
 
 	processed := agent.ProcessQueue(context.Background(), "/some/project")
 	assert.False(t, processed)
-}
-
-func TestParseFileSections(t *testing.T) {
-	input := `=== FILE: main.go ===
-package main
-
-func main() {}
-=== FILE: util.go ===
-package main
-
-func helper() {}
-`
-	sections := parseFileSections(input)
-	assert.Len(t, sections, 2)
-	assert.Contains(t, sections["main.go"], "package main")
-	assert.Contains(t, sections["main.go"], "func main() {}")
-	assert.Contains(t, sections["util.go"], "func helper() {}")
-}
-
-func TestParseFileSections_Empty(t *testing.T) {
-	sections := parseFileSections("")
-	assert.Empty(t, sections)
-}
-
-func TestParseFileSections_SingleFile(t *testing.T) {
-	input := "=== FILE: only.go ===\npackage only\n"
-	sections := parseFileSections(input)
-	assert.Len(t, sections, 1)
-	assert.Contains(t, sections["only.go"], "package only")
 }
 
 // runGit is a test helper that runs a git command and fails on error.
