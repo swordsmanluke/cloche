@@ -42,9 +42,13 @@ var workflowTemplate = `workflow "%s" {
 `
 
 var dockerfileTemplate = `FROM %s
-# Add your project's dependencies here, e.g.:
-# USER root
-# RUN apt-get update && apt-get install -y --no-install-recommends <packages> && rm -rf /var/lib/apt/lists/*
+USER root
+
+# Add your project's dependencies here.
+# Example:
+#   RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+#   RUN npm install -g @anthropic-ai/claude-code
+
 USER agent
 `
 
@@ -131,7 +135,6 @@ func cmdInit(args []string) {
 		{filepath.Join(clocheDir, "prompts", "implement.md"), implementPrompt},
 		{filepath.Join(clocheDir, "prompts", "fix.md"), fixPrompt},
 		{filepath.Join(clocheDir, "prompts", "update-docs.md"), updateDocsPrompt},
-		{filepath.Join(clocheDir, "version"), "1\n"},
 	}
 
 	for _, f := range files {

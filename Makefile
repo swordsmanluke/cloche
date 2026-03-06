@@ -25,7 +25,10 @@ proto:
 		api/proto/cloche/v1/cloche.proto
 
 docker-base:
-	docker build -t cloche-base:latest -t cloche-base:$(VERSION) -f docker/cloche-base/Dockerfile .
+	docker build -f docker/cloche-base/Dockerfile \
+		-t cloche-base:latest \
+		-t cloche-base:$(VERSION) \
+		.
 
 docker-build: docker-base
 	docker build -t cloche-agent:latest .
