@@ -70,6 +70,21 @@ Only modify files that need fixing. Do not rewrite the entire project.
 (Contents of .cloche/output/*.log will be injected here by the adapter)
 `
 
+var defaultConfigTOML = `# Cloche project configuration
+
+[orchestration]
+enabled     = false
+concurrency = 1
+workflow    = "develop"
+# tracker = "beads"
+
+[evolution]
+enabled            = true
+debounce_seconds   = 30
+min_confidence     = "medium"
+max_prompt_bullets = 50
+`
+
 var updateDocsPrompt = `Review the CLI source code and update usage documentation to reflect any changes.
 
 ## What to check
@@ -132,6 +147,7 @@ func cmdInit(args []string) {
 	files := []struct{ path, content string }{
 		{workflowFile, fmt.Sprintf(workflowTemplate, workflow)},
 		{filepath.Join(clocheDir, "Dockerfile"), fmt.Sprintf(dockerfileTemplate, image)},
+		{filepath.Join(clocheDir, "config.toml"), defaultConfigTOML},
 		{filepath.Join(clocheDir, "prompts", "implement.md"), implementPrompt},
 		{filepath.Join(clocheDir, "prompts", "fix.md"), fixPrompt},
 		{filepath.Join(clocheDir, "prompts", "update-docs.md"), updateDocsPrompt},

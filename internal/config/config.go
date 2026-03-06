@@ -8,14 +8,13 @@ import (
 )
 
 type DaemonConfig struct {
-	Listen        string `toml:"listen"`
-	HTTP          string `toml:"http"`
-	Image         string `toml:"image"`
-	DB            string `toml:"db"`
-	Runtime       string `toml:"runtime"`
-	AgentPath     string `toml:"agent_path"`
-	LLMCommand    string `toml:"llm_command"`
-	AgentCommands string `toml:"agent_commands"` // comma-separated fallback chain (e.g. "claude,gemini,codex")
+	Listen     string `toml:"listen"`
+	HTTP       string `toml:"http"`
+	Image      string `toml:"image"`
+	DB         string `toml:"db"`
+	Runtime    string `toml:"runtime"`
+	AgentPath  string `toml:"agent_path"`
+	LLMCommand string `toml:"llm_command"`
 }
 
 type EvolutionConfig struct {
@@ -54,10 +53,10 @@ func defaults() Config {
 	}
 }
 
-// Load reads a per-project config from <projectDir>/.cloche/config.
+// Load reads a per-project config from <projectDir>/.cloche/config.toml.
 func Load(projectDir string) (*Config, error) {
 	cfg := defaults()
-	path := filepath.Join(projectDir, ".cloche", "config")
+	path := filepath.Join(projectDir, ".cloche", "config.toml")
 
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
