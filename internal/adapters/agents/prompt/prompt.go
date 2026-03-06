@@ -20,8 +20,6 @@ import (
 // Commands not in this map receive no default arguments (prompt on stdin only).
 var defaultAgentArgs = map[string][]string{
 	"claude": {"-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"},
-	"gemini": {}, // Gemini CLI: configure args based on your setup
-	"codex":  {}, // OpenAI Codex CLI: configure args based on your setup
 }
 
 type Adapter struct {
@@ -92,10 +90,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	var lastErr error
 	ran := false
 
-	for i, command := range a.Commands {
-		if a.StatusWriter != nil {
-			a.StatusWriter.Log(step.Name, fmt.Sprintf("[cloche] trying agent: %s", command))
-		}
+	for _, command := range a.Commands {
 		result, stdout, fallbackErr := a.tryCommand(ctx, command, fullPrompt, workDir, step.Name)
 		lastResult = result
 		lastStdout = stdout
@@ -108,10 +103,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		if stdout != nil {
 			ran = true
 		}
-		// Fallback-eligible — log and try next command
-		if a.StatusWriter != nil && i < len(a.Commands)-1 {
-			a.StatusWriter.Log(step.Name, fmt.Sprintf("[cloche] agent %s failed, falling back to %s", command, a.Commands[i+1]))
-		}
+		// Fallback-eligible — try next command
 	}
 
 	if lastErr != nil && !ran && lastStdout == nil {

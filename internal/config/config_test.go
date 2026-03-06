@@ -14,7 +14,7 @@ func TestLoadEvolutionConfig(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "config"), []byte(`
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
 [evolution]
 enabled = true
 debounce_seconds = 45
@@ -46,7 +46,7 @@ func TestLoadDaemonConfig(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "config"), []byte(`
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
 [daemon]
 listen = "localhost:9090"
 http = "localhost:8080"
@@ -103,7 +103,7 @@ func TestLoadOrchestrationConfig(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "config"), []byte(`
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
 [orchestration]
 enabled = true
 tracker = "beads"
@@ -129,74 +129,6 @@ func TestLoadOrchestrationConfigDefaults(t *testing.T) {
 	assert.Equal(t, "beads", cfg.Orchestration.Tracker)
 	assert.Equal(t, 1, cfg.Orchestration.Concurrency)
 	assert.Equal(t, "develop", cfg.Orchestration.Workflow)
-}
-
-func TestLoadVersionDefault(t *testing.T) {
-	dir := t.TempDir()
-	v, err := LoadVersion(dir)
-	require.NoError(t, err)
-	assert.Equal(t, 1, v)
-}
-
-func TestLoadVersionFromFile(t *testing.T) {
-	dir := t.TempDir()
-	clocheDir := filepath.Join(dir, ".cloche")
-	os.MkdirAll(clocheDir, 0755)
-	os.WriteFile(filepath.Join(clocheDir, "version"), []byte("5\n"), 0644)
-
-	v, err := LoadVersion(dir)
-	require.NoError(t, err)
-	assert.Equal(t, 5, v)
-}
-
-func TestIncrementProjectVersion(t *testing.T) {
-	dir := t.TempDir()
-	clocheDir := filepath.Join(dir, ".cloche")
-	os.MkdirAll(clocheDir, 0755)
-
-	// No version file yet — should go from implicit 1 to 2
-	err := IncrementProjectVersion(dir)
-	require.NoError(t, err)
-
-	v, err := LoadVersion(dir)
-	require.NoError(t, err)
-	assert.Equal(t, 2, v)
-
-	// Increment again — should go to 3
-	err = IncrementProjectVersion(dir)
-	require.NoError(t, err)
-
-	v, err = LoadVersion(dir)
-	require.NoError(t, err)
-	assert.Equal(t, 3, v)
-
-	// Verify file content
-	data, err := os.ReadFile(filepath.Join(clocheDir, "version"))
-	require.NoError(t, err)
-	assert.Equal(t, "3\n", string(data))
-}
-
-func TestLoadAgentCommands(t *testing.T) {
-	dir := t.TempDir()
-	clocheDir := filepath.Join(dir, ".cloche")
-	os.MkdirAll(clocheDir, 0755)
-
-	os.WriteFile(filepath.Join(clocheDir, "config"), []byte(`
-[daemon]
-agent_commands = "claude,gemini,codex"
-`), 0644)
-
-	cfg, err := Load(dir)
-	require.NoError(t, err)
-	assert.Equal(t, "claude,gemini,codex", cfg.Daemon.AgentCommands)
-}
-
-func TestLoadAgentCommandsDefault(t *testing.T) {
-	dir := t.TempDir()
-
-	cfg, err := Load(dir)
-	require.NoError(t, err)
-	assert.Equal(t, "", cfg.Daemon.AgentCommands)
 }
 
 func TestLoadGlobalFromMissing(t *testing.T) {

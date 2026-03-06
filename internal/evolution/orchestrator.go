@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/ports"
 )
@@ -103,13 +102,6 @@ func (o *Orchestrator) Run(ctx context.Context, triggerRunID string, evoStore po
 	o.audit.UpdateKnowledge(o.cfg.WorkflowName, lessons)
 	result.KnowledgeDelta = fmt.Sprintf("%d lessons applied", len(lessons))
 	o.audit.Log(result)
-
-	// Increment project version if changes were made
-	if len(result.Changes) > 0 {
-		if err := config.IncrementProjectVersion(o.cfg.ProjectDir); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not increment project version: %v\n", err)
-		}
-	}
 
 	// Save to store if available
 	if evoStore != nil {
