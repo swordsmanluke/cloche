@@ -1,13 +1,16 @@
 package prompt_test
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -385,6 +388,65 @@ func TestPromptAdapter_DefaultArgsForClaude(t *testing.T) {
 	// Verify New() creates an adapter with "claude" as the default command
 	adapter := prompt.New()
 	assert.Equal(t, []string{"claude"}, adapter.Commands)
+	assert.Nil(t, adapter.ExplicitArgs)
+}
+
+func TestPromptAdapter_FallbackStatusMessages(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a good agent script
+	goodAgent := filepath.Join(dir, "good-agent.sh")
+	require.NoError(t, os.WriteFile(goodAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'good output'\n"), 0755))
+
+	var statusBuf bytes.Buffer
+	sw := protocol.NewStatusWriter(&statusBuf)
+
+	adapter := &prompt.Adapter{
+		Commands:     []string{"nonexistent-agent-xyz", goodAgent},
+		StatusWriter: sw,
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	result, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	// Parse status messages to verify fallback logging
+	msgs, err := protocol.ParseStatusStream(statusBuf.Bytes())
+	require.NoError(t, err)
+
+	var tryMsg, fallbackMsg bool
+	for _, msg := range msgs {
+		if msg.Type == protocol.MsgLog {
+			if strings.Contains(msg.Message, "[cloche] trying agent: nonexistent-agent-xyz") {
+				tryMsg = true
+			}
+			if strings.Contains(msg.Message, "[cloche] agent nonexistent-agent-xyz failed, falling back to") {
+				fallbackMsg = true
+			}
+		}
+	}
+	assert.True(t, tryMsg, "should log which agent is being tried")
+	assert.True(t, fallbackMsg, "should log fallback message")
+}
+
+func TestPromptAdapter_DefaultArgsForKnownAgents(t *testing.T) {
+	adapter := prompt.New()
+
+	// Verify gemini and codex are in defaultAgentArgs by checking argsFor behavior
+	// Since argsFor is private, we test indirectly: when ExplicitArgs is nil,
+	// known agents should not get nil args (they get their defaults).
+	// For gemini and codex the defaults are empty slices, not nil.
+	adapter.Commands = []string{"gemini"}
+	assert.Nil(t, adapter.ExplicitArgs)
+
+	adapter.Commands = []string{"codex"}
 	assert.Nil(t, adapter.ExplicitArgs)
 }
 

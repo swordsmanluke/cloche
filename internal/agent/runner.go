@@ -10,6 +10,7 @@ import (
 
 	"github.com/cloche-dev/cloche/internal/adapters/agents/generic"
 	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
+	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/engine"
@@ -50,6 +51,11 @@ func (r *Runner) Run(ctx context.Context) error {
 	promptAdapter := prompt.New()
 	promptAdapter.RunID = r.cfg.RunID
 	promptAdapter.StatusWriter = statusWriter
+
+	// Resolve agent commands: config < env < workflow-level (highest wins)
+	if cfg, err := config.Load(r.cfg.WorkDir); err == nil && cfg.Daemon.AgentCommands != "" {
+		promptAdapter.Commands = prompt.ParseCommands(cfg.Daemon.AgentCommands)
+	}
 	if cmd, ok := os.LookupEnv("CLOCHE_AGENT_COMMAND"); ok {
 		promptAdapter.Commands = prompt.ParseCommands(cmd)
 	}

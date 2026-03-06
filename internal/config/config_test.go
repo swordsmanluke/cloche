@@ -131,6 +131,29 @@ func TestLoadOrchestrationConfigDefaults(t *testing.T) {
 	assert.Equal(t, "develop", cfg.Orchestration.Workflow)
 }
 
+func TestLoadAgentCommands(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "config"), []byte(`
+[daemon]
+agent_commands = "claude,gemini,codex"
+`), 0644)
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "claude,gemini,codex", cfg.Daemon.AgentCommands)
+}
+
+func TestLoadAgentCommandsDefault(t *testing.T) {
+	dir := t.TempDir()
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "", cfg.Daemon.AgentCommands)
+}
+
 func TestLoadGlobalFromMissing(t *testing.T) {
 	cfg, err := LoadGlobalFrom("/nonexistent/path/config")
 	require.NoError(t, err)

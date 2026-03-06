@@ -8,13 +8,14 @@ import (
 )
 
 type DaemonConfig struct {
-	Listen     string `toml:"listen"`
-	HTTP       string `toml:"http"`
-	Image      string `toml:"image"`
-	DB         string `toml:"db"`
-	Runtime    string `toml:"runtime"`
-	AgentPath  string `toml:"agent_path"`
-	LLMCommand string `toml:"llm_command"`
+	Listen        string `toml:"listen"`
+	HTTP          string `toml:"http"`
+	Image         string `toml:"image"`
+	DB            string `toml:"db"`
+	Runtime       string `toml:"runtime"`
+	AgentPath     string `toml:"agent_path"`
+	LLMCommand    string `toml:"llm_command"`
+	AgentCommands string `toml:"agent_commands"` // comma-separated fallback chain (e.g. "claude,gemini,codex")
 }
 
 type EvolutionConfig struct {
