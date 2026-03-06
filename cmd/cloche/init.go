@@ -103,21 +103,6 @@ var updateDocsPrompt = `Review the CLI source code and update usage documentatio
 - If everything is already accurate, make no changes and report success
 `
 
-var configTomlTemplate = `# Cloche project configuration
-
-[orchestration]
-enabled     = false
-concurrency = 1
-workflow    = "develop"
-# tracker = "beads"
-
-[evolution]
-enabled            = true
-debounce_seconds   = 30
-min_confidence     = "medium"
-max_prompt_bullets = 50
-`
-
 var versionContent = "1\n"
 
 var hostWorkflowTemplate = `# host.cloche — orchestration workflow (runs on host, not in container)
@@ -156,7 +141,7 @@ echo "$prompt"
 
 func cmdInit(args []string) {
 	workflow := "develop"
-	image := "ubuntu:24.04"
+	baseImage := "cloche-base:latest"
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -165,10 +150,10 @@ func cmdInit(args []string) {
 				i++
 				workflow = args[i]
 			}
-		case "--image":
+		case "--base-image":
 			if i+1 < len(args) {
 				i++
-				image = args[i]
+				baseImage = args[i]
 			}
 		}
 	}
@@ -202,7 +187,7 @@ func cmdInit(args []string) {
 		mode    os.FileMode
 	}{
 		{workflowFile, fmt.Sprintf(workflowTemplate, workflow), 0644},
-		{filepath.Join(clocheDir, "Dockerfile"), fmt.Sprintf(dockerfileTemplate, image), 0644},
+		{filepath.Join(clocheDir, "Dockerfile"), fmt.Sprintf(dockerfileTemplate, baseImage), 0644},
 		{filepath.Join(clocheDir, "config.toml"), defaultConfigTOML, 0644},
 		{filepath.Join(clocheDir, "prompts", "implement.md"), implementPrompt, 0644},
 		{filepath.Join(clocheDir, "prompts", "fix.md"), fixPrompt, 0644},

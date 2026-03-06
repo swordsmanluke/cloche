@@ -1,0 +1,5 @@
+[orchestration]
+enabled = true
+tracker = "beads"
+concurrency = 4
+workflow = "develop"

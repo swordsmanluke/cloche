@@ -1,0 +1,32 @@
+workflow "develop" {
+  step implement {
+    prompt = file(".cloche/prompts/implement.md")
+    results = [success, fail]
+  }
+
+  step test {
+    run = "make test 2>&1"
+    results = [success, fail]
+  }
+
+  step fix {
+    prompt = file(".cloche/prompts/fix.md")
+    max_attempts = "2"
+    results = [success, fail, give-up]
+  }
+
+  step update-docs {
+    prompt = file(".cloche/prompts/update-docs.md")
+    results = [success, fail]
+  }
+
+  implement:success -> test
+  implement:fail -> abort
+  test:success -> update-docs
+  test:fail -> fix
+  fix:success -> test
+  fix:fail -> abort
+  fix:give-up -> abort
+  update-docs:success -> done
+  update-docs:fail -> done
+}

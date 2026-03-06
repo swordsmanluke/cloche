@@ -1,6 +1,7 @@
 .PHONY: build test lint clean proto docker-base docker-build install
 
 PREFIX ?= $(HOME)/.local
+VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo "dev")
 
 build:
 	go build -o bin/cloche ./cmd/cloche
@@ -30,7 +31,7 @@ docker-base:
 		.
 
 docker-build: docker-base
-	docker build -t cloche-agent:latest .
+	docker build -t cloche-agent:latest -f .cloche/Dockerfile .
 
 install: build docker-build
 	@# Stop running daemon (graceful via CLI, fallback to kill)

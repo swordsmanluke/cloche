@@ -81,7 +81,8 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `usage: cloche <command> [args]
 
 Commands:
-  init [--workflow <name>] [--image <base>]  Initialize a Cloche project
+  init [--workflow <name>] [--base-image <image>]
+                                             Initialize a Cloche project
   health                                   Show project health summary
   run --workflow <name> [--prompt "..."] [--keep-container]
                                              Launch a workflow run
