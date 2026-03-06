@@ -82,7 +82,7 @@ func main() {
 	}
 
 	// Set up orchestrator
-	orch := initOrchestrator(globalCfg, srv)
+	orch := initOrchestrator(globalCfg, store, srv)
 	if orch != nil {
 		srv.SetOnRunComplete(func(ctx context.Context, projectDir string, state domain.RunState) {
 			orch.OnRunComplete(ctx, projectDir)
@@ -230,18 +230,7 @@ func listen(addr string) (net.Listener, error) {
 	return net.Listen("tcp", addr)
 }
 
-func initOrchestrator(globalCfg *config.Config, srv *adaptgrpc.ClocheServer) *orchestrator.Orchestrator {
-	// Check if the current working directory has orchestration enabled
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil
-	}
-
-	cfg, err := config.Load(cwd)
-	if err != nil || !cfg.Orchestration.Enabled {
-		return nil
-	}
-
+func initOrchestrator(globalCfg *config.Config, store ports.RunStore, srv *adaptgrpc.ClocheServer) *orchestrator.Orchestrator {
 	llmClient := orchestrator.NewCommandLLMClientFromEnv()
 	promptGen := &orchestrator.LLMPromptGenerator{LLM: llmClient}
 
@@ -259,15 +248,37 @@ func initOrchestrator(globalCfg *config.Config, srv *adaptgrpc.ClocheServer) *or
 
 	orch := orchestrator.New(promptGen, dispatch)
 
-	// Register the current project
-	tracker := beads.NewTracker(cwd)
-	orch.Register(&orchestrator.ProjectConfig{
-		Dir:         cwd,
-		Workflow:    cfg.Orchestration.Workflow,
-		Concurrency: cfg.Orchestration.Concurrency,
-		Tracker:     tracker,
-	})
+	// Collect candidate project directories: cwd + all known projects from the store.
+	candidates := map[string]bool{}
+	if cwd, err := os.Getwd(); err == nil {
+		candidates[cwd] = true
+	}
+	if projects, err := store.ListProjects(context.Background()); err == nil {
+		for _, dir := range projects {
+			candidates[dir] = true
+		}
+	}
 
+	// Register every project that has orchestration enabled.
+	registered := 0
+	for dir := range candidates {
+		cfg, err := config.Load(dir)
+		if err != nil || !cfg.Orchestration.Enabled {
+			continue
+		}
+		tracker := beads.NewTracker(dir)
+		orch.Register(&orchestrator.ProjectConfig{
+			Dir:         dir,
+			Workflow:    cfg.Orchestration.Workflow,
+			Concurrency: cfg.Orchestration.Concurrency,
+			Tracker:     tracker,
+		})
+		registered++
+	}
+
+	if registered == 0 {
+		return nil
+	}
 	return orch
 }
 
