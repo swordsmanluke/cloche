@@ -103,6 +103,57 @@ var updateDocsPrompt = `Review the CLI source code and update usage documentatio
 - If everything is already accurate, make no changes and report success
 `
 
+var configTomlTemplate = `# Cloche project configuration
+
+[orchestration]
+enabled     = false
+concurrency = 1
+workflow    = "develop"
+# tracker = "beads"
+
+[evolution]
+enabled            = true
+debounce_seconds   = 30
+min_confidence     = "medium"
+max_prompt_bullets = 50
+`
+
+var versionContent = "1\n"
+
+var hostWorkflowTemplate = `# host.cloche — orchestration workflow (runs on host, not in container)
+# Steps here execute as the daemon user. Keep operations simple and safe.
+
+workflow "orchestrate" {
+  step prepare-prompt {
+    run     = "bash .cloche/scripts/prepare-prompt.sh"
+    results = [success, fail]
+  }
+
+  step develop {
+    workflow_name = "develop"
+    results       = [success, fail]
+  }
+
+  prepare-prompt:success -> develop
+  prepare-prompt:fail    -> abort
+  develop:success        -> done
+  develop:fail           -> done
+}
+`
+
+var preparePromptScript = `#!/usr/bin/env bash
+# Default prompt generator.
+# Writes the task prompt to stdout and to $CLOCHE_STEP_OUTPUT.
+set -euo pipefail
+
+prompt="## Task: ${CLOCHE_TASK_TITLE}
+
+${CLOCHE_TASK_BODY}"
+
+echo "$prompt"
+[ -n "${CLOCHE_STEP_OUTPUT:-}" ] && echo "$prompt" > "$CLOCHE_STEP_OUTPUT"
+`
+
 func cmdInit(args []string) {
 	workflow := "develop"
 	image := "ubuntu:24.04"
@@ -136,6 +187,7 @@ func cmdInit(args []string) {
 		clocheDir,
 		filepath.Join(clocheDir, "prompts"),
 		filepath.Join(clocheDir, "overrides"),
+		filepath.Join(clocheDir, "scripts"),
 	} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			fmt.Fprintf(os.Stderr, "error creating %s/: %v\n", dir, err)
@@ -144,13 +196,20 @@ func cmdInit(args []string) {
 	}
 
 	// Write all files, skipping any that already exist
-	files := []struct{ path, content string }{
-		{workflowFile, fmt.Sprintf(workflowTemplate, workflow)},
-		{filepath.Join(clocheDir, "Dockerfile"), fmt.Sprintf(dockerfileTemplate, image)},
-		{filepath.Join(clocheDir, "config.toml"), defaultConfigTOML},
-		{filepath.Join(clocheDir, "prompts", "implement.md"), implementPrompt},
-		{filepath.Join(clocheDir, "prompts", "fix.md"), fixPrompt},
-		{filepath.Join(clocheDir, "prompts", "update-docs.md"), updateDocsPrompt},
+	files := []struct {
+		path    string
+		content string
+		mode    os.FileMode
+	}{
+		{workflowFile, fmt.Sprintf(workflowTemplate, workflow), 0644},
+		{filepath.Join(clocheDir, "Dockerfile"), fmt.Sprintf(dockerfileTemplate, image), 0644},
+		{filepath.Join(clocheDir, "config.toml"), defaultConfigTOML, 0644},
+		{filepath.Join(clocheDir, "prompts", "implement.md"), implementPrompt, 0644},
+		{filepath.Join(clocheDir, "prompts", "fix.md"), fixPrompt, 0644},
+		{filepath.Join(clocheDir, "prompts", "update-docs.md"), updateDocsPrompt, 0644},
+		{filepath.Join(clocheDir, "version"), versionContent, 0644},
+		{filepath.Join(clocheDir, "host.cloche"), hostWorkflowTemplate, 0644},
+		{filepath.Join(clocheDir, "scripts", "prepare-prompt.sh"), preparePromptScript, 0755},
 	}
 
 	for _, f := range files {
@@ -158,29 +217,62 @@ func cmdInit(args []string) {
 			fmt.Fprintf(os.Stderr, "  skip %s (already exists)\n", f.path)
 			continue
 		}
-		if err := os.WriteFile(f.path, []byte(f.content), 0644); err != nil {
+		if err := os.WriteFile(f.path, []byte(f.content), f.mode); err != nil {
 			fmt.Fprintf(os.Stderr, "error writing %s: %v\n", f.path, err)
 			os.Exit(1)
 		}
 		fmt.Fprintf(os.Stderr, "  create %s\n", f.path)
 	}
 
-	addGitignoreEntries([]string{
+	removeGitignoreEntries([]string{
 		".cloche/*/",
 		"!.cloche/prompts/",
 		"!.cloche/overrides/",
 		"!.cloche/evolution/",
+	})
+
+	addGitignoreEntries([]string{
+		".cloche/*-*-*/",
+		".cloche/run-*/",
+		".cloche/attempt_count/",
 		".gitworktrees/",
 	})
 
 	cwd, _ := os.Getwd()
 	fmt.Fprintf(os.Stderr, "\nInitialized Cloche project in %s\n", filepath.Base(cwd))
 	fmt.Fprintf(os.Stderr, "\nNext steps:\n")
-	fmt.Fprintf(os.Stderr, "  1. Edit %s — change the test command for your project\n", workflowFile)
-	fmt.Fprintf(os.Stderr, "  2. Edit %s — add your project's dependencies\n", filepath.Join(clocheDir, "Dockerfile"))
-	fmt.Fprintf(os.Stderr, "  3. Add container-specific overrides to %s/ (e.g. CLAUDE.md)\n", filepath.Join(clocheDir, "overrides"))
-	fmt.Fprintf(os.Stderr, "  4. docker build -t cloche-agent -f %s .\n", filepath.Join(clocheDir, "Dockerfile"))
-	fmt.Fprintf(os.Stderr, "  5. cloche run --workflow %s --prompt \"...\"\n", workflow)
+	fmt.Fprintf(os.Stderr, "  1. Edit %s    — enable orchestration, set concurrency\n", filepath.Join(clocheDir, "config.toml"))
+	fmt.Fprintf(os.Stderr, "  2. Edit %s — adjust the test command for your project\n", workflowFile)
+	fmt.Fprintf(os.Stderr, "  3. Edit %s     — add your project's dependencies\n", filepath.Join(clocheDir, "Dockerfile"))
+	fmt.Fprintf(os.Stderr, "  4. Edit %s — customize prompt generation\n", filepath.Join(clocheDir, "scripts", "prepare-prompt.sh"))
+	fmt.Fprintf(os.Stderr, "  5. Add container-specific overrides to %s/ (e.g. CLAUDE.md)\n", filepath.Join(clocheDir, "overrides"))
+	fmt.Fprintf(os.Stderr, "  6. docker build -t cloche-agent -f %s .\n", filepath.Join(clocheDir, "Dockerfile"))
+	fmt.Fprintf(os.Stderr, "  7. cloche run --workflow %s --prompt \"...\"\n", workflow)
+}
+
+func removeGitignoreEntries(entries []string) {
+	const gitignore = ".gitignore"
+
+	existing, err := os.ReadFile(gitignore)
+	if err != nil {
+		return
+	}
+
+	lines := strings.Split(string(existing), "\n")
+	removeSet := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		removeSet[e] = true
+	}
+
+	var filtered []string
+	for _, line := range lines {
+		if !removeSet[strings.TrimSpace(line)] {
+			filtered = append(filtered, line)
+		}
+	}
+
+	result := strings.Join(filtered, "\n")
+	os.WriteFile(gitignore, []byte(result), 0644)
 }
 
 func addGitignoreEntries(entries []string) {
