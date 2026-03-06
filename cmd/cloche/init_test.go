@@ -21,6 +21,10 @@ func TestCmdInit_DefaultFlags(t *testing.T) {
 		filepath.Join(".cloche", "prompts", "implement.md"),
 		filepath.Join(".cloche", "prompts", "fix.md"),
 		filepath.Join(".cloche", "prompts", "update-docs.md"),
+		filepath.Join(".cloche", "config.toml"),
+		filepath.Join(".cloche", "version"),
+		filepath.Join(".cloche", "host.cloche"),
+		filepath.Join(".cloche", "scripts", "prepare-prompt.sh"),
 	} {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			t.Errorf("expected %s to exist", path)
@@ -35,6 +39,20 @@ func TestCmdInit_DefaultFlags(t *testing.T) {
 	// Verify overrides directory was created
 	if info, err := os.Stat(filepath.Join(".cloche", "overrides")); err != nil || !info.IsDir() {
 		t.Error("expected .cloche/overrides/ directory to exist")
+	}
+
+	// Verify scripts directory was created
+	if info, err := os.Stat(filepath.Join(".cloche", "scripts")); err != nil || !info.IsDir() {
+		t.Error("expected .cloche/scripts/ directory to exist")
+	}
+
+	// Verify prepare-prompt.sh is executable
+	info, err := os.Stat(filepath.Join(".cloche", "scripts", "prepare-prompt.sh"))
+	if err != nil {
+		t.Fatal("expected prepare-prompt.sh to exist")
+	}
+	if info.Mode()&0111 == 0 {
+		t.Error("expected prepare-prompt.sh to be executable")
 	}
 }
 
@@ -98,17 +116,21 @@ func TestCmdInit_GitignoreEntries(t *testing.T) {
 		t.Fatalf("expected .gitignore to exist: %v", err)
 	}
 	content := string(data)
-	if !strings.Contains(content, ".cloche/*/") {
-		t.Error(".gitignore should contain .cloche/*/")
+	if !strings.Contains(content, ".cloche/*-*-*/") {
+		t.Error(".gitignore should contain .cloche/*-*-*/")
 	}
-	if !strings.Contains(content, "!.cloche/prompts/") {
-		t.Error(".gitignore should contain !.cloche/prompts/")
+	if !strings.Contains(content, ".cloche/run-*/") {
+		t.Error(".gitignore should contain .cloche/run-*/")
 	}
-	if !strings.Contains(content, "!.cloche/overrides/") {
-		t.Error(".gitignore should contain !.cloche/overrides/")
+	if !strings.Contains(content, ".cloche/attempt_count/") {
+		t.Error(".gitignore should contain .cloche/attempt_count/")
 	}
 	if !strings.Contains(content, ".gitworktrees/") {
 		t.Error(".gitignore should contain .gitworktrees/")
+	}
+	// Old entries should not be present
+	if strings.Contains(content, ".cloche/*/") {
+		t.Error(".gitignore should not contain old .cloche/*/ entry")
 	}
 }
 
@@ -118,17 +140,84 @@ func TestCmdInit_GitignoreNoDuplicates(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	os.WriteFile(".gitignore", []byte(".cloche/*/\n"), 0644)
+	os.WriteFile(".gitignore", []byte(".cloche/*-*-*/\n"), 0644)
 
 	cmdInit([]string{})
 
 	data, _ := os.ReadFile(".gitignore")
 	content := string(data)
-	if strings.Count(content, ".cloche/*/") != 1 {
+	if strings.Count(content, ".cloche/*-*-*/") != 1 {
 		t.Error(".gitignore should not duplicate existing entries")
 	}
 	if !strings.Contains(content, ".gitworktrees/") {
 		t.Error(".gitignore should still add missing entries")
+	}
+}
+
+func TestCmdInit_GitignoreRemovesOldEntries(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	os.WriteFile(".gitignore", []byte(".cloche/*/\n!.cloche/prompts/\n!.cloche/overrides/\n!.cloche/evolution/\n.gitworktrees/\n"), 0644)
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(".gitignore")
+	content := string(data)
+
+	// Old entries should be removed
+	for _, old := range []string{".cloche/*/", "!.cloche/prompts/", "!.cloche/overrides/", "!.cloche/evolution/"} {
+		if strings.Contains(content, old) {
+			t.Errorf(".gitignore should not contain old entry %q", old)
+		}
+	}
+
+	// New entries should be present
+	for _, entry := range []string{".cloche/*-*-*/", ".cloche/run-*/", ".cloche/attempt_count/"} {
+		if !strings.Contains(content, entry) {
+			t.Errorf(".gitignore should contain new entry %q", entry)
+		}
+	}
+
+	// .gitworktrees/ should still be present (not duplicated)
+	if strings.Count(content, ".gitworktrees/") != 1 {
+		t.Error(".gitworktrees/ should appear exactly once")
+	}
+}
+
+func TestCmdInit_VersionContent(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	data, err := os.ReadFile(filepath.Join(".cloche", "version"))
+	if err != nil {
+		t.Fatal("expected .cloche/version to exist")
+	}
+	if string(data) != "1\n" {
+		t.Errorf("expected version content %q, got %q", "1\n", string(data))
+	}
+}
+
+func TestCmdInit_PreparePromptExecutable(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	info, err := os.Stat(filepath.Join(".cloche", "scripts", "prepare-prompt.sh"))
+	if err != nil {
+		t.Fatal("expected prepare-prompt.sh to exist")
+	}
+	if info.Mode()&0111 == 0 {
+		t.Error("expected prepare-prompt.sh to have executable permission bits")
 	}
 }
 

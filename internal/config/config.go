@@ -1,24 +1,20 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 
 	"github.com/BurntSushi/toml"
 )
 
 type DaemonConfig struct {
-	Listen        string `toml:"listen"`
-	HTTP          string `toml:"http"`
-	Image         string `toml:"image"`
-	DB            string `toml:"db"`
-	Runtime       string `toml:"runtime"`
-	AgentPath     string `toml:"agent_path"`
-	LLMCommand    string `toml:"llm_command"`
-	AgentCommands string `toml:"agent_commands"` // comma-separated fallback chain (e.g. "claude,gemini,codex")
+	Listen     string `toml:"listen"`
+	HTTP       string `toml:"http"`
+	Image      string `toml:"image"`
+	DB         string `toml:"db"`
+	Runtime    string `toml:"runtime"`
+	AgentPath  string `toml:"agent_path"`
+	LLMCommand string `toml:"llm_command"`
 }
 
 type EvolutionConfig struct {
@@ -74,49 +70,6 @@ func Load(projectDir string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
-}
-
-// LoadVersion reads the project version from .cloche/version.
-// Returns 1 if the file does not exist.
-func LoadVersion(projectDir string) (int, error) {
-	path := filepath.Join(projectDir, ".cloche", "version")
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return 1, nil
-	}
-	if err != nil {
-		return 0, err
-	}
-	v, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		return 0, fmt.Errorf("parsing version: %w", err)
-	}
-	return v, nil
-}
-
-// IncrementProjectVersion atomically increments .cloche/version.
-func IncrementProjectVersion(projectDir string) error {
-	v, err := LoadVersion(projectDir)
-	if err != nil {
-		return err
-	}
-	v++
-	dir := filepath.Join(projectDir, ".cloche")
-	tmp, err := os.CreateTemp(dir, "version-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	if _, err := fmt.Fprintf(tmp, "%d\n", v); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
-		return err
-	}
-	return os.Rename(tmpName, filepath.Join(dir, "version"))
 }
 
 // LoadGlobal reads the global daemon config from ~/.config/cloche/config.
