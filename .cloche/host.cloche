@@ -12,8 +12,15 @@ workflow "orchestrate" {
     results       = [success, fail]
   }
 
+  step merge {
+    run     = "bash .cloche/scripts/merge-to-main.sh"
+    results = [success, fail]
+  }
+
   prepare-prompt:success -> develop
   prepare-prompt:fail    -> abort
-  develop:success        -> done
+  develop:success        -> merge
   develop:fail           -> done
+  merge:success          -> done
+  merge:fail             -> done
 }

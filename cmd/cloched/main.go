@@ -73,15 +73,6 @@ func main() {
 		srv.SetEvolution(evoTrigger)
 	}
 
-	// Set up merge agent
-	srv.SetMergeQueue(store)
-	mergeAgent := initMergeAgent(globalCfg, store)
-	if mergeAgent != nil {
-		srv.SetOnMergeReady(func(ctx context.Context, projectDir string) {
-			mergeAgent.ProcessQueue(ctx, projectDir)
-		})
-	}
-
 	// Set up orchestrator
 	orch := initOrchestrator(globalCfg, store, srv)
 	if orch != nil {
@@ -293,11 +284,6 @@ func initOrchestrator(globalCfg *config.Config, store ports.RunStore, srv *adapt
 	return orch
 }
 
-func initMergeAgent(globalCfg *config.Config, store ports.MergeQueueStore) *orchestrator.MergeAgent {
-	return &orchestrator.MergeAgent{
-		MergeQueue: store,
-	}
-}
 
 // envOrConfig returns the env var value if set, otherwise the config file
 // value if non-empty, otherwise the fallback default.

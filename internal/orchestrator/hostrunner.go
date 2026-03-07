@@ -55,7 +55,7 @@ func (r *HostRunner) RunWorkflow(ctx context.Context, wf *domain.Workflow, task 
 		case domain.StepTypeScript, domain.StepTypeAgent:
 			result, err = r.runCommandStep(ctx, step, task, stepOutputPath, prevOutput)
 		case domain.StepTypeWorkflow:
-			result, err = r.runWorkflowStep(ctx, step, task, outputDir, prevOutput)
+			result, err = r.runWorkflowStep(ctx, step, task, stepOutputPath, outputDir, prevOutput)
 		default:
 			return domain.StepAbort, fmt.Errorf("unsupported step type %q for step %q", step.Type, step.Name)
 		}
@@ -114,7 +114,9 @@ func (r *HostRunner) runCommandStep(ctx context.Context, step *domain.Step, task
 }
 
 // runWorkflowStep dispatches a container workflow and waits for completion.
-func (r *HostRunner) runWorkflowStep(ctx context.Context, step *domain.Step, task ports.TrackerTask, outputDir, prevOutput string) (string, error) {
+// It writes the dispatched run ID to stepOutputPath so downstream steps can
+// reference the run's branch (cloche/<runID>).
+func (r *HostRunner) runWorkflowStep(ctx context.Context, step *domain.Step, task ports.TrackerTask, stepOutputPath, outputDir, prevOutput string) (string, error) {
 	workflowName := step.Config["workflow_name"]
 	if workflowName == "" {
 		return "fail", fmt.Errorf("step %q missing workflow_name", step.Name)
@@ -140,6 +142,11 @@ func (r *HostRunner) runWorkflowStep(ctx context.Context, step *domain.Step, tas
 	runID, err := r.Dispatch(ctx, workflowName, r.ProjectDir, prompt)
 	if err != nil {
 		return "fail", fmt.Errorf("dispatching workflow %q: %w", workflowName, err)
+	}
+
+	// Write the run ID to the step output so downstream steps can reference it
+	if writeErr := os.WriteFile(stepOutputPath, []byte(runID+"\n"), 0644); writeErr != nil {
+		log.Printf("hostrunner: failed to write run ID for %q: %v", step.Name, writeErr)
 	}
 
 	// Wait for the run to complete

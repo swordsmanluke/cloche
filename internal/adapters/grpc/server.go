@@ -27,22 +27,17 @@ import (
 // It receives the project directory, run ID, and the final run state.
 type OnRunCompleteFunc func(ctx context.Context, projectDir string, runID string, state domain.RunState)
 
-// MergeFunc is called after a run is enqueued for merge.
-type MergeFunc func(ctx context.Context, projectDir string)
-
 type ClocheServer struct {
 	pb.UnimplementedClocheServiceServer
 	store         ports.RunStore
 	captures      ports.CaptureStore
 	logStore      ports.LogStore
-	mergeQueue    ports.MergeQueueStore
 	container     ports.ContainerRuntime
 	defaultImage  string
 	evolution     *evolution.Trigger
 	logBroadcast  *logstream.Broadcaster
 	shutdownFn    func()
 	onRunComplete OnRunCompleteFunc
-	onMergeReady  MergeFunc
 	orchestrateFn func(ctx context.Context, projectDir string) (int, error)
 	mu            sync.Mutex
 	runIDs        map[string]string // run_id -> container_id
@@ -71,10 +66,6 @@ func (s *ClocheServer) SetLogStore(ls ports.LogStore) {
 	s.logStore = ls
 }
 
-// SetMergeQueue attaches a merge queue store to the server.
-func (s *ClocheServer) SetMergeQueue(mq ports.MergeQueueStore) {
-	s.mergeQueue = mq
-}
 
 // SetEvolution attaches an evolution trigger to the server.
 func (s *ClocheServer) SetEvolution(trigger *evolution.Trigger) {
@@ -96,10 +87,6 @@ func (s *ClocheServer) SetOnRunComplete(fn OnRunCompleteFunc) {
 	s.onRunComplete = fn
 }
 
-// SetOnMergeReady sets a callback invoked after a run is enqueued for merge.
-func (s *ClocheServer) SetOnMergeReady(fn MergeFunc) {
-	s.onMergeReady = fn
-}
 
 // SetOrchestrateFunc sets the function invoked by the Orchestrate RPC.
 func (s *ClocheServer) SetOrchestrateFunc(fn func(ctx context.Context, projectDir string) (int, error)) {
@@ -340,24 +327,9 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		}
 	}
 
-	// Enqueue successful runs into the merge queue
-	if s.mergeQueue != nil {
-		runForMerge, _ := s.store.GetRun(ctx, runID)
-		if runForMerge != nil && runForMerge.State == domain.RunStateSucceeded {
-			branch := fmt.Sprintf("cloche/%s", runID)
-			_ = s.mergeQueue.EnqueueMerge(ctx, &ports.MergeQueueEntry{
-				RunID:      runID,
-				Branch:     branch,
-				Project:    projectDir,
-				EnqueuedAt: time.Now(),
-			})
-
-			// Trigger merge agent if configured
-			if s.onMergeReady != nil {
-				go s.onMergeReady(ctx, projectDir)
-			}
-		}
-	}
+	// Merge is now handled as a workflow step in host.cloche, not here.
+	// The host workflow's merge step reads the run ID from the develop
+	// step's output and runs merge-to-main.sh.
 
 	// Container retention policy:
 	// - Failed runs: always keep the container for debugging
