@@ -9,6 +9,8 @@ FROM debian:12-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates make \
     && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /usr/local/go /usr/local/go
+ENV PATH="/usr/local/go/bin:/root/go/bin:/home/agent/go/bin:${PATH}"
 COPY --from=builder /cloche-agent /usr/local/bin/cloche-agent
 RUN useradd -m -s /bin/bash agent
 WORKDIR /workspace
