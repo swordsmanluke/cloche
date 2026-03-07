@@ -1,8 +1,11 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -95,6 +98,35 @@ func LoadGlobal() (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// LoadVersion reads the project version from <projectDir>/.cloche/version.
+// Returns 1 if the file does not exist.
+func LoadVersion(projectDir string) (int, error) {
+	path := filepath.Join(projectDir, ".cloche", "version")
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return 1, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	v, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return 0, fmt.Errorf("invalid version file: %w", err)
+	}
+	return v, nil
+}
+
+// IncrementVersion increments the integer in <projectDir>/.cloche/version.
+// If the file does not exist, it treats the current version as 1 and writes 2.
+func IncrementVersion(projectDir string) error {
+	v, err := LoadVersion(projectDir)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(projectDir, ".cloche", "version")
+	return os.WriteFile(path, []byte(fmt.Sprintf("%d\n", v+1)), 0644)
 }
 
 // LoadGlobalFrom reads the global config from a specific path.
