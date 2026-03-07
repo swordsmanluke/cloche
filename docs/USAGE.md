@@ -533,10 +533,48 @@ Fallback rules:
 - **All commands fail to start** — step returns an error
 - **Last command crashes without marker** — step returns `fail`
 
-Known agents have default arguments (e.g., Claude gets
-`-p --output-format text --dangerously-skip-permissions`). Other agents receive
-the prompt on stdin with no extra flags. Override with `agent_args` at the step
-or workflow level.
+Known agents (claude, gemini, codex, aider) have built-in default arguments.
+Other agents receive the prompt on stdin with no extra flags. Override with
+`agent_args` at the step or workflow level, or use per-agent overrides via
+`agent_args { <name> = "<flags>" }`:
+
+```
+workflow "develop" {
+  container {
+    agent_command = "claude,gemini"
+    agent_args {
+      claude = "-p --output-format stream-json --verbose --dangerously-skip-permissions"
+      gemini = "--model gemini-2.5-pro"
+    }
+  }
+
+  step implement {
+    prompt = "..."
+    results = [success, fail]
+  }
+
+  implement:success -> done
+  implement:fail -> abort
+}
+```
+
+Per-agent args can also be set at the step level:
+
+```
+step implement {
+  prompt = "..."
+  agent_command = "claude,aider"
+  agent_args {
+    aider = "--model gpt-4 --yes-always"
+  }
+  results = [success, fail]
+}
+```
+
+Priority for argument resolution (highest to lowest):
+1. `agent_args` (applies to all commands in the chain)
+2. `agent_args { <name> = "..." }` (per-agent overrides)
+3. Built-in defaults for known agents
 
 ## Result Protocol
 

@@ -19,12 +19,16 @@ import (
 // defaultAgentArgs maps known agent commands to their default arguments.
 // Commands not in this map receive no default arguments (prompt on stdin only).
 var defaultAgentArgs = map[string][]string{
-	"claude": {"-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"},
+	"claude":  {"-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"},
+	"gemini":  {},
+	"codex":   {},
+	"aider":   {"--yes-always", "--message"},
 }
 
 type Adapter struct {
-	Commands     []string // ordered fallback chain of agent commands
-	ExplicitArgs []string // if non-nil, overrides default args for all commands
+	Commands     []string            // ordered fallback chain of agent commands
+	ExplicitArgs []string            // if non-nil, overrides default args for all commands
+	AgentArgs    map[string][]string // per-agent arg overrides (e.g. "gemini" -> ["--model", "..."])
 	RunID        string
 	StatusWriter *protocol.StatusWriter // optional: streams live output lines
 }
@@ -39,16 +43,39 @@ func (a *Adapter) Name() string {
 	return "prompt"
 }
 
-// argsFor returns the arguments for the given command. If ExplicitArgs is set,
-// it is used for all commands. Otherwise, known agents get their default args.
+// argsFor returns the arguments for the given command. Priority:
+//  1. ExplicitArgs (overrides everything, applies to all commands)
+//  2. AgentArgs[command] exact match, then basename match
+//  3. defaultAgentArgs[command] exact match, then basename match
 func (a *Adapter) argsFor(command string) []string {
 	if a.ExplicitArgs != nil {
 		return a.ExplicitArgs
 	}
+	base := filepath.Base(command)
+	if a.AgentArgs != nil {
+		if args, ok := a.AgentArgs[command]; ok {
+			return args
+		}
+		if args, ok := a.AgentArgs[base]; ok {
+			return args
+		}
+	}
 	if args, ok := defaultAgentArgs[command]; ok {
 		return args
 	}
+	if args, ok := defaultAgentArgs[base]; ok {
+		return args
+	}
 	return nil
+}
+
+// KnownAgents returns the names of agents with built-in default arguments.
+func KnownAgents() []string {
+	agents := make([]string, 0, len(defaultAgentArgs))
+	for name := range defaultAgentArgs {
+		agents = append(agents, name)
+	}
+	return agents
 }
 
 // ParseCommands splits a comma-separated agent_command string into individual
@@ -90,7 +117,15 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	var lastErr error
 	ran := false
 
-	for _, command := range a.Commands {
+	for i, command := range a.Commands {
+		if a.StatusWriter != nil && len(a.Commands) > 1 {
+			if i == 0 {
+				a.StatusWriter.Log(step.Name, fmt.Sprintf("[agent] trying %s", command))
+			} else {
+				a.StatusWriter.Log(step.Name, fmt.Sprintf("[agent] falling back to %s", command))
+			}
+		}
+
 		result, stdout, fallbackErr := a.tryCommand(ctx, command, fullPrompt, workDir, step.Name)
 		lastResult = result
 		lastStdout = stdout
@@ -102,6 +137,9 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		}
 		if stdout != nil {
 			ran = true
+		}
+		if a.StatusWriter != nil && len(a.Commands) > 1 && i < len(a.Commands)-1 {
+			a.StatusWriter.Log(step.Name, fmt.Sprintf("[agent] %s failed: %v", command, fallbackErr))
 		}
 		// Fallback-eligible — try next command
 	}

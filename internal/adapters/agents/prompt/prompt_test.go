@@ -421,6 +421,113 @@ func TestPromptAdapter_DefaultArgsForClaude(t *testing.T) {
 	assert.Nil(t, adapter.ExplicitArgs)
 }
 
+func TestPromptAdapter_AgentArgsPerCommand(t *testing.T) {
+	dir := t.TempDir()
+
+	// Script that dumps its argv to a file so we can verify the args
+	script := filepath.Join(dir, "fake-agent.sh")
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\necho \"args: $@\" > "+filepath.Join(dir, "args.txt")+"\ncat > /dev/null\necho ok\n"), 0755))
+
+	adapter := &prompt.Adapter{
+		Commands: []string{script},
+		AgentArgs: map[string][]string{
+			script: {"--custom", "--flag"},
+		},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	result, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	// Verify the per-agent args were used
+	argsData, err := os.ReadFile(filepath.Join(dir, "args.txt"))
+	require.NoError(t, err)
+	assert.Contains(t, string(argsData), "--custom")
+	assert.Contains(t, string(argsData), "--flag")
+}
+
+func TestPromptAdapter_AgentArgsPriorityOverDefaults(t *testing.T) {
+	// Verify that AgentArgs takes priority over defaultAgentArgs
+	adapter := &prompt.Adapter{
+		Commands: []string{"claude"},
+		AgentArgs: map[string][]string{
+			"claude": {"--custom-only"},
+		},
+	}
+
+	// Use the argsFor method indirectly by checking the adapter's behavior.
+	// We test via a mock command that captures args.
+	dir := t.TempDir()
+	script := filepath.Join(dir, "claude")
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\necho \"args: $@\" > "+filepath.Join(dir, "args.txt")+"\ncat > /dev/null\necho ok\n"), 0755))
+
+	adapter.Commands = []string{script}
+	adapter.AgentArgs = map[string][]string{
+		script: {"--overridden"},
+	}
+
+	step := &domain.Step{
+		Name:    "test",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "test"},
+	}
+
+	result, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	argsData, err := os.ReadFile(filepath.Join(dir, "args.txt"))
+	require.NoError(t, err)
+	assert.Contains(t, string(argsData), "--overridden")
+}
+
+func TestPromptAdapter_ExplicitArgsTakePriorityOverAgentArgs(t *testing.T) {
+	dir := t.TempDir()
+
+	script := filepath.Join(dir, "agent.sh")
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\necho \"args: $@\" > "+filepath.Join(dir, "args.txt")+"\ncat > /dev/null\necho ok\n"), 0755))
+
+	adapter := &prompt.Adapter{
+		Commands:     []string{script},
+		ExplicitArgs: []string{"--explicit"},
+		AgentArgs: map[string][]string{
+			script: {"--should-not-appear"},
+		},
+	}
+
+	step := &domain.Step{
+		Name:    "test",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "test"},
+	}
+
+	result, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	argsData, err := os.ReadFile(filepath.Join(dir, "args.txt"))
+	require.NoError(t, err)
+	assert.Contains(t, string(argsData), "--explicit")
+	assert.NotContains(t, string(argsData), "--should-not-appear")
+}
+
+func TestKnownAgents(t *testing.T) {
+	agents := prompt.KnownAgents()
+	assert.Contains(t, agents, "claude")
+	assert.Contains(t, agents, "gemini")
+	assert.Contains(t, agents, "codex")
+	assert.Contains(t, agents, "aider")
+}
+
 func TestParseCommands(t *testing.T) {
 	tests := []struct {
 		input    string

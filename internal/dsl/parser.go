@@ -111,10 +111,36 @@ func (p *Parser) parseWorkflowConfig(wf *domain.Workflow) error {
 		return err
 	}
 
+	if err := p.parseWorkflowConfigFields(wf, prefix); err != nil {
+		return err
+	}
+
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *Parser) parseWorkflowConfigFields(wf *domain.Workflow, prefix string) error {
 	for p.current.Type != TokenRBrace && p.current.Type != TokenEOF {
 		keyTok, err := p.expect(TokenIdent)
 		if err != nil {
 			return fmt.Errorf("expected field name: %w", err)
+		}
+
+		fullKey := prefix + "." + keyTok.Literal
+
+		// Sub-block (e.g., agent_args { ... })
+		if p.current.Type == TokenLBrace {
+			p.advance() // consume {
+			if err := p.parseWorkflowConfigFields(wf, fullKey); err != nil {
+				return err
+			}
+			if _, err := p.expect(TokenRBrace); err != nil {
+				return err
+			}
+			continue
 		}
 
 		if _, err := p.expect(TokenEquals); err != nil {
@@ -126,13 +152,8 @@ func (p *Parser) parseWorkflowConfig(wf *domain.Workflow) error {
 			return err
 		}
 
-		wf.Config[prefix+"."+keyTok.Literal] = val
+		wf.Config[fullKey] = val
 	}
-
-	if _, err := p.expect(TokenRBrace); err != nil {
-		return err
-	}
-
 	return nil
 }
 
