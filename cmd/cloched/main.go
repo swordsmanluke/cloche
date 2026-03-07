@@ -233,10 +233,6 @@ func listen(addr string) (net.Listener, error) {
 }
 
 func initOrchestrator(globalCfg *config.Config, store ports.RunStore, srv *adaptgrpc.ClocheServer) *orchestrator.Orchestrator {
-	// DISABLED: orchestration loop was consuming too many tokens by dispatching
-	// runs too aggressively. Re-enable once rate limiting / backpressure is in place.
-	return nil
-
 	llmClient := orchestrator.NewCommandLLMClientFromEnv()
 	promptGen := &orchestrator.LLMPromptGenerator{LLM: llmClient}
 
