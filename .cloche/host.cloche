@@ -1,6 +1,3 @@
-# host.cloche — orchestration workflow (runs on host, not in container)
-# Steps here execute as the daemon user. Keep operations simple and safe.
-
 workflow "orchestrate" {
   step prepare-prompt {
     run     = "bash .cloche/scripts/prepare-prompt.sh"
