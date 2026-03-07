@@ -17,7 +17,7 @@ workflow "orchestrate" {
   prepare-prompt:success -> develop
   prepare-prompt:fail    -> abort
   develop:success        -> merge
-  develop:fail           -> done
+  develop:fail           -> abort
   merge:success          -> done
-  merge:fail             -> done
+  merge:fail             -> abort
 }
