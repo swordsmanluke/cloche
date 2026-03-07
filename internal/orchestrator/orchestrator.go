@@ -22,6 +22,7 @@ type ProjectConfig struct {
 	Workflow    string
 	Concurrency int
 	Tracker     ports.TaskTracker
+	Enabled     bool
 }
 
 // ParseHostWorkflowFunc parses a host.cloche file and returns the named workflow.
@@ -78,7 +79,37 @@ func WithParseHostWorkflow(fn ParseHostWorkflowFunc) OrchestratorOption {
 func (o *Orchestrator) Register(pc *ProjectConfig) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	pc.Enabled = true
 	o.projects[pc.Dir] = pc
+}
+
+// Status returns the enabled flag, in-flight count, and concurrency for a project.
+func (o *Orchestrator) Status(dir string) (enabled bool, inFlight int, concurrency int) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	pc, ok := o.projects[dir]
+	if !ok {
+		return false, 0, 0
+	}
+	return pc.Enabled, o.inFlight[dir], pc.Concurrency
+}
+
+// SetEnabled enables or disables orchestration for a project.
+func (o *Orchestrator) SetEnabled(dir string, enabled bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if pc, ok := o.projects[dir]; ok {
+		pc.Enabled = enabled
+	}
+}
+
+// SetConcurrency overrides the concurrency limit for a project (runtime only).
+func (o *Orchestrator) SetConcurrency(dir string, concurrency int) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if pc, ok := o.projects[dir]; ok {
+		pc.Concurrency = concurrency
+	}
 }
 
 // RegisterFromConfig registers a project using its config file.
@@ -101,6 +132,7 @@ func (o *Orchestrator) RegisterFromConfig(projectDir string, tracker ports.TaskT
 		Workflow:    workflow,
 		Concurrency: concurrency,
 		Tracker:     tracker,
+		Enabled:     true,
 	})
 	return true
 }
@@ -140,6 +172,10 @@ func (o *Orchestrator) Run(ctx context.Context, projectDir string) (int, error) 
 	if !ok {
 		o.mu.Unlock()
 		return 0, fmt.Errorf("project %q not registered", projectDir)
+	}
+	if !pc.Enabled {
+		o.mu.Unlock()
+		return 0, nil
 	}
 	current := o.inFlight[projectDir]
 	available := pc.Concurrency - current
