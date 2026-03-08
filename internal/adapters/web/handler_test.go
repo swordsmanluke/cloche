@@ -282,8 +282,8 @@ func TestRunsList_ProjectFilter(t *testing.T) {
 	assert.Contains(t, body, "run-a1")
 	assert.Contains(t, body, "run-b1")
 
-	// With project filter: only matching runs
-	req = httptest.NewRequest("GET", "/runs?project=/home/user/alpha", nil)
+	// With project filter via path: only matching runs
+	req = httptest.NewRequest("GET", "/projects/alpha/runs", nil)
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -291,6 +291,59 @@ func TestRunsList_ProjectFilter(t *testing.T) {
 	assert.Contains(t, body, "run-a1")
 	assert.Contains(t, body, "run-a2")
 	assert.NotContains(t, body, "run-b1")
+
+	// Old query param no longer filters
+	req = httptest.NewRequest("GET", "/runs?project=/home/user/alpha", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	body = w.Body.String()
+	assert.Contains(t, body, "run-a1")
+	assert.Contains(t, body, "run-b1") // all runs shown, query param ignored
+}
+
+func TestRunsList_ProjectPathFilter(t *testing.T) {
+	h, store := setupHandler(t)
+	seedRunWithProject(t, store, "run-a1", "develop", domain.RunStateRunning, "/home/user/alpha")
+	seedRunWithProject(t, store, "run-b1", "deploy", domain.RunStateRunning, "/home/user/beta")
+
+	// /projects/alpha/runs should show only alpha runs
+	req := httptest.NewRequest("GET", "/projects/alpha/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "run-a1")
+	assert.NotContains(t, body, "run-b1")
+
+	// Non-existent project returns 404
+	req = httptest.NewRequest("GET", "/projects/nonexistent/runs", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestAPIRuns_ProjectPathFilter(t *testing.T) {
+	h, store := setupHandler(t)
+	seedRunWithProject(t, store, "api-a1", "develop", domain.RunStateRunning, "/home/user/alpha")
+	seedRunWithProject(t, store, "api-b1", "deploy", domain.RunStateRunning, "/home/user/beta")
+
+	// /api/projects/alpha/runs should return only alpha runs
+	req := httptest.NewRequest("GET", "/api/projects/alpha/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var filtered []apiRun
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &filtered))
+	assert.Len(t, filtered, 1)
+	assert.Equal(t, "api-a1", filtered[0].ID)
+
+	// Non-existent project returns 404
+	req = httptest.NewRequest("GET", "/api/projects/nonexistent/runs", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestRunsList_ProjectColumn(t *testing.T) {
@@ -321,8 +374,8 @@ func TestAPIRuns_ProjectFilter(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &allRuns))
 	assert.Len(t, allRuns, 2)
 
-	// With filter: only matching
-	req = httptest.NewRequest("GET", "/api/runs?project=/home/user/alpha", nil)
+	// With path-based filter: only matching
+	req = httptest.NewRequest("GET", "/api/projects/alpha/runs", nil)
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -333,6 +386,16 @@ func TestAPIRuns_ProjectFilter(t *testing.T) {
 	assert.Equal(t, "api-a1", filtered[0].ID)
 	assert.Equal(t, "/home/user/alpha", filtered[0].ProjectDir)
 	assert.Equal(t, "alpha", filtered[0].ProjectLabel)
+
+	// Old query param no longer filters
+	req = httptest.NewRequest("GET", "/api/runs?project=/home/user/alpha", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var unfiltered []apiRun
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &unfiltered))
+	assert.Len(t, unfiltered, 2) // query param ignored, returns all
 }
 
 func setupHandlerWithContainerManager(t *testing.T) (*Handler, *sqlite.Store, *mockContainerManager) {

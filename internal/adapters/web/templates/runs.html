@@ -6,7 +6,7 @@
     <select id="project-select" onchange="filterByProject(this.value)">
         <option value="">All projects</option>
         {{range .Projects}}
-        <option value="{{.Dir}}"{{if eq .Dir $.ProjectFilter}} selected{{end}}>{{.Label}}{{if .ContainerCount}} ({{.ContainerCount}} container{{if gt .ContainerCount 1}}s{{end}}){{end}}</option>
+        <option value="{{.Label}}"{{if eq .Label $.ProjectLabel}} selected{{end}}>{{.Label}}{{if .ContainerCount}} ({{.ContainerCount}} container{{if gt .ContainerCount 1}}s{{end}}){{end}}</option>
         {{end}}
     </select>
 </div>
@@ -48,11 +48,11 @@
 {{define "scripts"}}
 <script>
 (function() {
-    var currentProject = '{{.ProjectFilter}}';
+    var currentProjectLabel = '{{.ProjectLabel}}';
 
-    function filterByProject(dir) {
-        if (dir) {
-            window.location.href = '/runs?project=' + encodeURIComponent(dir);
+    function filterByProject(label) {
+        if (label) {
+            window.location.href = '/projects/' + encodeURIComponent(label) + '/runs';
         } else {
             window.location.href = '/runs';
         }
@@ -60,10 +60,7 @@
     window.filterByProject = filterByProject;
 
     function poll() {
-        var url = '/api/runs';
-        if (currentProject) {
-            url += '?project=' + encodeURIComponent(currentProject);
-        }
+        var url = currentProjectLabel ? '/api/projects/' + encodeURIComponent(currentProjectLabel) + '/runs' : '/api/runs';
         fetch(url)
             .then(function(r) { return r.json(); })
             .then(function(runs) {
