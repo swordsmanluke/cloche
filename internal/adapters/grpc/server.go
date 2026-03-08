@@ -140,6 +140,7 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, r
 				_ = s.store.UpdateRun(ctx, run)
 			}
 			log.Printf("run %s: failed to ensure image: %v", runID, err)
+			s.fireOnRunComplete(ctx, req.ProjectDir, runID, domain.RunStateFailed)
 			return
 		}
 	}
@@ -160,6 +161,7 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, r
 			_ = s.store.UpdateRun(ctx, run)
 		}
 		log.Printf("run %s: failed to start container: %v", runID, err)
+		s.fireOnRunComplete(ctx, req.ProjectDir, runID, domain.RunStateFailed)
 		return
 	}
 
@@ -185,6 +187,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	reader, err := s.container.AttachOutput(ctx, containerID)
 	if err != nil {
 		log.Printf("failed to attach to output for run %s: %v", runID, err)
+		s.fireOnRunComplete(ctx, projectDir, runID, domain.RunStateFailed)
 		return
 	}
 
