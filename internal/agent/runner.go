@@ -120,6 +120,15 @@ func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, 
 			return result, err
 		}
 		if _, ok := step.Config["prompt"]; ok {
+			// Save and restore adapter config to avoid leaking step-level
+			// overrides into subsequent steps.
+			origCommands := e.prompt.Commands
+			origArgs := e.prompt.ExplicitArgs
+			defer func() {
+				e.prompt.Commands = origCommands
+				e.prompt.ExplicitArgs = origArgs
+			}()
+
 			if cmd := step.Config["agent_command"]; cmd != "" {
 				e.prompt.Commands = prompt.ParseCommands(cmd)
 			}

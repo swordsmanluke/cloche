@@ -421,6 +421,17 @@ func TestPromptAdapter_DefaultArgsForClaude(t *testing.T) {
 	assert.Nil(t, adapter.ExplicitArgs)
 }
 
+func TestDefaultAgentArgs_KnownAgents(t *testing.T) {
+	// Verify default args exist for known agents
+	assert.Equal(t, []string{"-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"}, prompt.DefaultAgentArgs["claude"])
+	assert.Equal(t, []string{"-p"}, prompt.DefaultAgentArgs["gemini"])
+	assert.Equal(t, []string{"--full-auto"}, prompt.DefaultAgentArgs["codex"])
+
+	// Unknown agents should have no defaults
+	_, ok := prompt.DefaultAgentArgs["unknown-agent"]
+	assert.False(t, ok)
+}
+
 func TestParseCommands(t *testing.T) {
 	tests := []struct {
 		input    string

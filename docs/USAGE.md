@@ -536,7 +536,7 @@ Fallback rules:
 - **Last command crashes without marker** — step returns `fail`
 
 Known agents have default arguments (e.g., Claude gets
-`-p --output-format text --dangerously-skip-permissions`). Other agents receive
+`-p --output-format stream-json --verbose --dangerously-skip-permissions`). Other agents receive
 the prompt on stdin with no extra flags. Override with `agent_args` at the step
 or workflow level.
 
