@@ -959,7 +959,7 @@ func (h *Handler) handleAPIProjectInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Version
-	version := 1
+	version := 0
 	versionPath := filepath.Join(dir, ".cloche", "version")
 	if data, err := os.ReadFile(versionPath); err == nil {
 		if v, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {

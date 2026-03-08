@@ -274,6 +274,7 @@ func initOrchestrator(globalCfg *config.Config, store ports.RunStore, srv *adapt
 			Workflow:    cfg.Orchestration.Workflow,
 			Concurrency: cfg.Orchestration.Concurrency,
 			Tracker:     tracker,
+			Enabled:     true,
 		})
 		registered++
 	}

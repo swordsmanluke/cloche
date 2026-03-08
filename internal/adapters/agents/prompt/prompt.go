@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,12 +16,10 @@ import (
 	"github.com/cloche-dev/cloche/internal/protocol"
 )
 
-// DefaultAgentArgs maps known agent commands to their default arguments.
+// defaultAgentArgs maps known agent commands to their default arguments.
 // Commands not in this map receive no default arguments (prompt on stdin only).
-var DefaultAgentArgs = map[string][]string{
+var defaultAgentArgs = map[string][]string{
 	"claude": {"-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"},
-	"gemini": {"-p"},
-	"codex":  {"--full-auto"},
 }
 
 type Adapter struct {
@@ -42,22 +39,13 @@ func (a *Adapter) Name() string {
 	return "prompt"
 }
 
-// logMessage writes a message to the StatusWriter if available, otherwise to the standard logger.
-func (a *Adapter) logMessage(stepName, msg string) {
-	if a.StatusWriter != nil {
-		a.StatusWriter.Log(stepName, msg)
-	} else {
-		log.Println(msg)
-	}
-}
-
 // argsFor returns the arguments for the given command. If ExplicitArgs is set,
 // it is used for all commands. Otherwise, known agents get their default args.
 func (a *Adapter) argsFor(command string) []string {
 	if a.ExplicitArgs != nil {
 		return a.ExplicitArgs
 	}
-	if args, ok := DefaultAgentArgs[command]; ok {
+	if args, ok := defaultAgentArgs[command]; ok {
 		return args
 	}
 	return nil
@@ -102,27 +90,20 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	var lastErr error
 	ran := false
 
-	for i, command := range a.Commands {
+	for _, command := range a.Commands {
 		result, stdout, fallbackErr := a.tryCommand(ctx, command, fullPrompt, workDir, step.Name)
 		lastResult = result
 		lastStdout = stdout
 		lastErr = fallbackErr
 
 		if fallbackErr == nil {
-			if i > 0 {
-				msg := fmt.Sprintf("[fallback] step %q: using agent %q (primary agents failed)", step.Name, command)
-				a.logMessage(step.Name, msg)
-			}
+			// Definitive result — agent completed (exit 0 or exit non-zero with marker)
 			break
 		}
 		if stdout != nil {
 			ran = true
 		}
-		// Log the fallback attempt
-		if i < len(a.Commands)-1 {
-			msg := fmt.Sprintf("[fallback] step %q: agent %q failed (%v), trying %q", step.Name, command, fallbackErr, a.Commands[i+1])
-			a.logMessage(step.Name, msg)
-		}
+		// Fallback-eligible — try next command
 	}
 
 	if lastErr != nil && !ran && lastStdout == nil {

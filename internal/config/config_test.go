@@ -131,62 +131,6 @@ func TestLoadOrchestrationConfigDefaults(t *testing.T) {
 	assert.Equal(t, "develop", cfg.Orchestration.Workflow)
 }
 
-func TestLoadVersionFromFile(t *testing.T) {
-	dir := t.TempDir()
-	clocheDir := filepath.Join(dir, ".cloche")
-	os.MkdirAll(clocheDir, 0755)
-	os.WriteFile(filepath.Join(clocheDir, "version"), []byte("5\n"), 0644)
-
-	v, err := LoadVersion(dir)
-	require.NoError(t, err)
-	assert.Equal(t, 5, v)
-}
-
-func TestLoadVersionMissingFileReturns1(t *testing.T) {
-	dir := t.TempDir()
-
-	v, err := LoadVersion(dir)
-	require.NoError(t, err)
-	assert.Equal(t, 1, v)
-}
-
-func TestLoadVersionInvalidContent(t *testing.T) {
-	dir := t.TempDir()
-	clocheDir := filepath.Join(dir, ".cloche")
-	os.MkdirAll(clocheDir, 0755)
-	os.WriteFile(filepath.Join(clocheDir, "version"), []byte("abc\n"), 0644)
-
-	_, err := LoadVersion(dir)
-	assert.Error(t, err)
-}
-
-func TestIncrementVersion(t *testing.T) {
-	dir := t.TempDir()
-	clocheDir := filepath.Join(dir, ".cloche")
-	os.MkdirAll(clocheDir, 0755)
-	os.WriteFile(filepath.Join(clocheDir, "version"), []byte("3\n"), 0644)
-
-	err := IncrementVersion(dir)
-	require.NoError(t, err)
-
-	v, err := LoadVersion(dir)
-	require.NoError(t, err)
-	assert.Equal(t, 4, v)
-}
-
-func TestIncrementVersionMissingFileCreatesAt2(t *testing.T) {
-	dir := t.TempDir()
-	clocheDir := filepath.Join(dir, ".cloche")
-	os.MkdirAll(clocheDir, 0755)
-
-	err := IncrementVersion(dir)
-	require.NoError(t, err)
-
-	v, err := LoadVersion(dir)
-	require.NoError(t, err)
-	assert.Equal(t, 2, v)
-}
-
 func TestLoadGlobalFromMissing(t *testing.T) {
 	cfg, err := LoadGlobalFrom("/nonexistent/path/config")
 	require.NoError(t, err)
