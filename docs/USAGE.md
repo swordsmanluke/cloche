@@ -622,7 +622,8 @@ make test           # Run all tests
 make test-short     # Run tests (skip slow ones)
 make lint           # Run go vet
 make proto          # Regenerate gRPC code from protobuf
-make docker-build   # Build the cloche-agent Docker image
+make docker-base    # Build the cloche-base Docker image
+make docker-build   # Build cloche-base + cloche-agent Docker images
 make install        # Build, install to ~/.local/bin/, restart daemon
 make clean          # Remove bin/
 ```
