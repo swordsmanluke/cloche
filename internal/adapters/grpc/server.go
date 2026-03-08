@@ -206,6 +206,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	}
 
 	// Parse JSON-lines status messages
+	var reportedResult string // captured from MsgRunCompleted, persisted after branch extraction
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		var msg protocol.StatusMessage
@@ -249,11 +250,8 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 				})
 			}
 		case protocol.MsgRunCompleted:
-			if msg.Result == "succeeded" {
-				run.Complete(domain.RunStateSucceeded)
-			} else {
-				run.Complete(domain.RunStateFailed)
-			}
+			reportedResult = msg.Result
+			continue // Don't persist terminal state yet; branch extraction must finish first
 		}
 
 		_ = s.store.UpdateRun(ctx, run)
@@ -292,13 +290,37 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		s.indexLogFiles(ctx, runID, outputDst)
 	}
 
-	// Ensure run is marked complete
+	// Extract results to git branch BEFORE finalizing state, so that
+	// WaitRun callers (e.g. host workflow merge step) see branches exist
+	// before the run is marked complete.
+	resultLabel := reportedResult
+	if resultLabel == "" {
+		if exitCode == 0 {
+			resultLabel = "succeeded"
+		} else {
+			resultLabel = "failed"
+		}
+	}
+	{
+		extractRun, _ := s.store.GetRun(ctx, runID)
+		if extractRun != nil && extractRun.BaseSHA != "" {
+			if err := docker.ExtractResults(ctx, containerID, extractRun.ProjectDir, runID, extractRun.BaseSHA, workflowName, resultLabel); err != nil {
+				log.Printf("run %s: failed to extract results to branch: %v", runID, err)
+			}
+		}
+	}
+
+	// Now finalize run state
 	run, err := s.store.GetRun(ctx, runID)
 	if err != nil {
 		return
 	}
 	if run.State == domain.RunStateRunning {
-		if exitCode == 0 {
+		if reportedResult == "succeeded" {
+			run.Complete(domain.RunStateSucceeded)
+		} else if reportedResult != "" {
+			run.Complete(domain.RunStateFailed)
+		} else if exitCode == 0 {
 			run.Complete(domain.RunStateSucceeded)
 		} else {
 			run.Fail(fmt.Sprintf("container exited with code %d", exitCode))
@@ -319,17 +341,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		}
 	}
 
-	// Extract results to git branch via worktree
-	run2, _ := s.store.GetRun(ctx, runID)
-	if run2 != nil && run2.BaseSHA != "" {
-		if err := docker.ExtractResults(ctx, containerID, run2.ProjectDir, runID, run2.BaseSHA, workflowName, string(run2.State)); err != nil {
-			log.Printf("run %s: failed to extract results to branch: %v", runID, err)
-		}
-	}
-
-	// Merge is now handled as a workflow step in host.cloche, not here.
-	// The host workflow's merge step reads the run ID from the develop
-	// step's output and runs merge-to-main.sh.
+	// Merge is handled as a workflow step in host.cloche, not here.
 
 	// Container retention policy:
 	// - Failed runs: always keep the container for debugging

@@ -247,7 +247,7 @@ func (o *Orchestrator) Run(ctx context.Context, projectDir string) (int, error) 
 			}
 
 			go func(task ports.TrackerTask, runID string) {
-				result, err := hr.RunWorkflow(ctx, wf, task, runID)
+				result, err := hr.RunWorkflow(context.Background(), wf, task, runID)
 
 				o.mu.Lock()
 				o.untrackTask(projectDir, runID)
