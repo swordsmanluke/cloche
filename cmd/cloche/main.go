@@ -15,6 +15,7 @@ import (
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/dsl"
+	"github.com/cloche-dev/cloche/internal/logstream"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -290,14 +291,14 @@ func cmdLogs(client pb.ClocheServiceClient, args []string) {
 				fmt.Printf("Error:      %s\n", entry.Message)
 			}
 		case "full_log":
-			fmt.Print(entry.Message)
+			fmt.Print(string(logstream.ParseClaudeStream([]byte(entry.Message))))
 		default:
 			// Handles filtered log entries like "script_log", "llm_log", "step_log"
 			if entry.StepName != "" {
 				fmt.Printf("--- %s ---\n", entry.StepName)
 			}
 			if entry.Message != "" {
-				fmt.Print(entry.Message)
+				fmt.Print(string(logstream.ParseClaudeStream([]byte(entry.Message))))
 			}
 		}
 	}

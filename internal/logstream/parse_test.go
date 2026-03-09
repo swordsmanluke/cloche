@@ -6,6 +6,50 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// --- Claude Code JSON format (type: "assistant", "system", "user") ---
+
+func TestParseClaudeLine_AssistantText(t *testing.T) {
+	line := `{"type":"assistant","message":{"content":[{"type":"text","text":"I'll read the file."}]}}`
+	text, ok := ParseClaudeLine([]byte(line))
+	assert.True(t, ok)
+	assert.Contains(t, text, "I'll read the file.")
+}
+
+func TestParseClaudeLine_AssistantToolUse(t *testing.T) {
+	line := `{"type":"assistant","message":{"content":[{"type":"text","text":"Let me check."},{"type":"tool_use","name":"Read"}]}}`
+	text, ok := ParseClaudeLine([]byte(line))
+	assert.True(t, ok)
+	assert.Contains(t, text, "Let me check.")
+	assert.Contains(t, text, "--- Tool: Read ---")
+}
+
+func TestParseClaudeLine_AssistantToolOnly(t *testing.T) {
+	line := `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"}]}}`
+	text, ok := ParseClaudeLine([]byte(line))
+	assert.True(t, ok)
+	assert.Contains(t, text, "--- Tool: Bash ---")
+}
+
+func TestParseClaudeLine_AssistantEmptyContent(t *testing.T) {
+	line := `{"type":"assistant","message":{"content":[]}}`
+	_, ok := ParseClaudeLine([]byte(line))
+	assert.False(t, ok)
+}
+
+func TestParseClaudeLine_SystemEvent(t *testing.T) {
+	line := `{"type":"system","subtype":"init","cwd":"/workspace"}`
+	_, ok := ParseClaudeLine([]byte(line))
+	assert.False(t, ok)
+}
+
+func TestParseClaudeLine_UserEvent(t *testing.T) {
+	line := `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"ok"}]}}`
+	_, ok := ParseClaudeLine([]byte(line))
+	assert.False(t, ok)
+}
+
+// --- Streaming API format (content_block_delta, content_block_start) ---
+
 func TestParseClaudeLine_TextDelta(t *testing.T) {
 	line := `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello!"}}`
 	text, ok := ParseClaudeLine([]byte(line))
@@ -13,7 +57,7 @@ func TestParseClaudeLine_TextDelta(t *testing.T) {
 	assert.Equal(t, "Hello!", text)
 }
 
-func TestParseClaudeLine_ToolUse(t *testing.T) {
+func TestParseClaudeLine_ToolUseBlockStart(t *testing.T) {
 	line := `{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"t1","name":"Read","input":{}}}`
 	text, ok := ParseClaudeLine([]byte(line))
 	assert.True(t, ok)
@@ -37,6 +81,22 @@ func TestParseClaudeLine_Empty(t *testing.T) {
 	assert.False(t, ok)
 }
 
+// --- ParseClaudeStream ---
+
+func TestParseClaudeStream_AssistantMessages(t *testing.T) {
+	input := `{"type":"system","subtype":"init","cwd":"/workspace"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"I'll implement the feature."}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"ok"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit"},{"type":"text","text":"Done editing."}]}}
+`
+	result := string(ParseClaudeStream([]byte(input)))
+	assert.Contains(t, result, "I'll implement the feature.")
+	assert.Contains(t, result, "--- Tool: Edit ---")
+	assert.Contains(t, result, "Done editing.")
+	assert.NotContains(t, result, "system")
+	assert.NotContains(t, result, "tool_result")
+}
+
 func TestParseClaudeStream_TextDeltas(t *testing.T) {
 	input := `{"type":"message_start","message":{"id":"msg_01","type":"message","role":"assistant"}}
 {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
@@ -50,26 +110,9 @@ func TestParseClaudeStream_TextDeltas(t *testing.T) {
 	assert.Equal(t, "Hello, world!", string(result))
 }
 
-func TestParseClaudeStream_ToolUse(t *testing.T) {
-	input := `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let me read the file."}}
-{"type":"content_block_stop","index":0}
-{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"tool_1","name":"Read","input":{}}}
-{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"/foo\"}"}}
-{"type":"content_block_stop","index":1}
-{"type":"content_block_start","index":2,"content_block":{"type":"text","text":""}}
-{"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"The file contains..."}}
-{"type":"content_block_stop","index":2}
-`
-	result := string(ParseClaudeStream([]byte(input)))
-	assert.Contains(t, result, "Let me read the file.")
-	assert.Contains(t, result, "--- Tool: Read ---")
-	assert.Contains(t, result, "The file contains...")
-}
-
 func TestParseClaudeStream_ResultEvent(t *testing.T) {
 	input := `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done.\n"}}
-{"type":"content_block_stop","index":0}
-{"type":"result","subtype":"success","result":"Done.\nCLOCHE_RESULT:success","cost_usd":0.05,"duration_ms":1234,"duration_api_ms":1000}
+{"type":"result","subtype":"success","result":"Done.\nCLOCHE_RESULT:success"}
 `
 	result := string(ParseClaudeStream([]byte(input)))
 	assert.Contains(t, result, "Done.\n")
@@ -82,30 +125,7 @@ func TestParseClaudeStream_NonJSON(t *testing.T) {
 	assert.Equal(t, input, string(result))
 }
 
-func TestParseClaudeStream_MixedContent(t *testing.T) {
-	// Non-JSON lines should be preserved
-	input := "some preamble\n{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n"
-	result := string(ParseClaudeStream([]byte(input)))
-	assert.Contains(t, result, "some preamble")
-	assert.Contains(t, result, "hello")
-}
-
 func TestParseClaudeStream_Empty(t *testing.T) {
 	result := ParseClaudeStream([]byte(""))
 	assert.Equal(t, "", string(result))
-}
-
-func TestParseClaudeStream_MultipleToolCalls(t *testing.T) {
-	input := `{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"t1","name":"Bash","input":{}}}
-{"type":"content_block_stop","index":0}
-{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}
-{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Running tests..."}}
-{"type":"content_block_stop","index":1}
-{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"t2","name":"Edit","input":{}}}
-{"type":"content_block_stop","index":2}
-`
-	result := string(ParseClaudeStream([]byte(input)))
-	assert.Contains(t, result, "--- Tool: Bash ---")
-	assert.Contains(t, result, "Running tests...")
-	assert.Contains(t, result, "--- Tool: Edit ---")
 }

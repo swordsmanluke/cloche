@@ -26,16 +26,20 @@ func ParseClaudeLine(line []byte) (text string, ok bool) {
 	}
 
 	switch base.Type {
+	case "assistant":
+		t := extractAssistantText(line)
+		return t, t != ""
+	case "result":
+		t := extractResultText(line)
+		return t, t != ""
 	case "content_block_delta":
 		t := extractDeltaText(line)
 		return t, t != ""
 	case "content_block_start":
 		t := extractBlockStart(line)
 		return t, t != ""
-	case "result":
-		t := extractResultText(line)
-		return t, t != ""
 	default:
+		// Skip system, user (tool results), and other protocol events
 		return "", false
 	}
 }
@@ -85,10 +89,41 @@ func ParseClaudeStream(raw []byte) []byte {
 	return []byte(out.String())
 }
 
-// extractDeltaText handles content_block_delta events.
-// Returns text from text_delta, or tool input snippet from input_json_delta.
+// extractAssistantText handles Claude Code "assistant" events.
+// Extracts text content from message.content blocks.
+func extractAssistantText(line []byte) string {
+	var event struct {
+		Message struct {
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+				Name string `json:"name"` // for tool_use blocks
+			} `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(line, &event) != nil {
+		return ""
+	}
+
+	var parts []string
+	for _, block := range event.Message.Content {
+		switch block.Type {
+		case "text":
+			if t := strings.TrimSpace(block.Text); t != "" {
+				parts = append(parts, t)
+			}
+		case "tool_use":
+			parts = append(parts, "\n--- Tool: "+block.Name+" ---")
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, "\n") + "\n"
+}
+
+// extractDeltaText handles content_block_delta events (streaming API format).
 func extractDeltaText(line []byte) string {
-	// Fast path for text_delta (most common)
 	if bytes.Contains(line, []byte(`"text_delta"`)) {
 		var event struct {
 			Delta struct {
@@ -103,8 +138,7 @@ func extractDeltaText(line []byte) string {
 	return ""
 }
 
-// extractBlockStart handles content_block_start events.
-// Returns a tool call header for tool_use blocks.
+// extractBlockStart handles content_block_start events (streaming API format).
 func extractBlockStart(line []byte) string {
 	if !bytes.Contains(line, []byte(`"tool_use"`)) {
 		return ""
