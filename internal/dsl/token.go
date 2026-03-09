@@ -6,6 +6,7 @@ const (
 	TokenEOF     TokenType = iota
 	TokenIllegal
 	TokenIdent
+	TokenInt
 	TokenString
 	TokenLBrace
 	TokenRBrace
@@ -28,6 +29,8 @@ func (t TokenType) String() string {
 		return "ILLEGAL"
 	case TokenIdent:
 		return "IDENT"
+	case TokenInt:
+		return "INT"
 	case TokenString:
 		return "STRING"
 	case TokenLBrace:

@@ -77,7 +77,10 @@ func (l *Lexer) NextToken() Token {
 		tok.Type = TokenString
 		tok.Literal = l.readString()
 	default:
-		if isIdentStart(ch) {
+		if isDigit(ch) {
+			tok.Type = TokenInt
+			tok.Literal = l.readInt()
+		} else if isIdentStart(ch) {
 			tok.Type = TokenIdent
 			tok.Literal = l.readIdent()
 		} else {
@@ -169,6 +172,18 @@ func (l *Lexer) readIdent() string {
 		}
 	}
 	return string(l.input[start:l.pos])
+}
+
+func (l *Lexer) readInt() string {
+	start := l.pos
+	for l.pos < len(l.input) && isDigit(l.input[l.pos]) {
+		l.advance()
+	}
+	return string(l.input[start:l.pos])
+}
+
+func isDigit(ch rune) bool {
+	return ch >= '0' && ch <= '9'
 }
 
 func isIdentStart(ch rune) bool {
