@@ -18,7 +18,7 @@ A special workflow file at `.cloche/host.cloche`. It uses the same DSL as contai
 workflow files, with one additional step type (`workflow`). Steps in this file execute
 on the **host machine**, not inside a container.
 
-The workflow named `orchestrate` in this file becomes the per-task orchestration loop
+The workflow named `main` in this file becomes the per-task orchestration loop
 for that project. The Go daemon becomes the executor of this workflow rather than the
 hard-coded logic holder.
 
@@ -77,11 +77,11 @@ Every step in a host workflow execution writes its output (stdout of `run` steps
 final response of `prompt` steps) to a file:
 
 ```
-.cloche/<orch-run-id>/orchestrate/<step_name>.out
+.cloche/<orch-run-id>/main/<step_name>.out
 ```
 
 `<orch-run-id>` is a unique ID for this orchestration invocation, formatted the same
-way as workflow run IDs (e.g. `orchestrate-bold-hawk`).
+way as workflow run IDs (e.g. `main-bold-hawk`).
 
 The daemon tracks the most recently completed step's output path and passes it to the
 next step as `CLOCHE_PREV_OUTPUT`.
@@ -162,8 +162,8 @@ is sufficient initially.
 **New flow (when `host.cloche` exists):**
 1. Pull ready tasks
 2. Claim task
-3. Parse `.cloche/host.cloche` → find `orchestrate` workflow
-4. Generate an `orchRunID` (`orchestrate-<namegen>`)
+3. Parse `.cloche/host.cloche` → find `main` workflow
+4. Generate an `orchRunID` (`main-<namegen>`)
 5. Spin up a goroutine: call `hostRunner.RunWorkflow(ctx, orch wf, task, orchRunID)`
 6. On goroutine return: decrement in-flight, update task state (success/fail)
 
@@ -181,7 +181,7 @@ The old `promptGen` and `dispatch` are still used as the **fallback** when
 # host.cloche — orchestration workflow (runs on host, not in container)
 # Steps here execute as the daemon user. Keep operations simple and safe.
 
-workflow "orchestrate" {
+workflow "main" {
   step prepare-prompt {
     run     = "bash .cloche/scripts/prepare-prompt.sh"
     results = [success, fail]
@@ -221,7 +221,7 @@ echo "$prompt"
 
 `cloche init` adds `.cloche/scripts/` is NOT gitignored (scripts are project config).
 The orchestration run output dirs follow the same pattern as container run dirs:
-`.cloche/orchestrate-*/` is gitignored via the existing `.cloche/*/` rule.
+`.cloche/main-*/` is gitignored via the existing `.cloche/*/` rule.
 
 ---
 

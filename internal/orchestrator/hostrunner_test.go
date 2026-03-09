@@ -27,7 +27,7 @@ func TestHostRunner_ScriptStep(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	wf := &domain.Workflow{
-		Name:      "orchestrate",
+		Name:      "main",
 		EntryStep: "greet",
 		Steps: map[string]*domain.Step{
 			"greet": {
@@ -54,7 +54,7 @@ func TestHostRunner_ScriptStep(t *testing.T) {
 	assert.Equal(t, domain.StepDone, result)
 
 	// Check output file was created
-	outFile := filepath.Join(tmpDir, ".cloche", "orch-test-run", "orchestrate", "greet.out")
+	outFile := filepath.Join(tmpDir, ".cloche", "orch-test-run", "main", "greet.out")
 	data, err := os.ReadFile(outFile)
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "hello")
@@ -64,7 +64,7 @@ func TestHostRunner_ScriptStepFail(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	wf := &domain.Workflow{
-		Name:      "orchestrate",
+		Name:      "main",
 		EntryStep: "bad",
 		Steps: map[string]*domain.Step{
 			"bad": {
@@ -101,7 +101,7 @@ func TestHostRunner_WorkflowStep(t *testing.T) {
 	waiter := &mockRunWaiter{state: domain.RunStateSucceeded}
 
 	wf := &domain.Workflow{
-		Name:      "orchestrate",
+		Name:      "main",
 		EntryStep: "prep",
 		Steps: map[string]*domain.Step{
 			"prep": {
@@ -151,7 +151,7 @@ func TestHostRunner_WorkflowStepFailed(t *testing.T) {
 	waiter := &mockRunWaiter{state: domain.RunStateFailed}
 
 	wf := &domain.Workflow{
-		Name:      "orchestrate",
+		Name:      "main",
 		EntryStep: "prep",
 		Steps: map[string]*domain.Step{
 			"prep": {
@@ -192,7 +192,7 @@ func TestHostRunner_AbortPath(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	wf := &domain.Workflow{
-		Name:      "orchestrate",
+		Name:      "main",
 		EntryStep: "fail-step",
 		Steps: map[string]*domain.Step{
 			"fail-step": {

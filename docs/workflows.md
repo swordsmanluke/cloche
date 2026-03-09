@@ -102,7 +102,7 @@ wired, no steps are orphaned, and an entry point exists.
 
 ```
 # .cloche/host.cloche — runs on the host machine
-workflow "orchestrate" {
+workflow "main" {
   step prepare-prompt {
     run     = "bash .cloche/scripts/prepare-prompt.sh"
     results = [success, fail]

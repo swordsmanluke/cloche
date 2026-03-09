@@ -1,4 +1,4 @@
-workflow "orchestrate" {
+workflow "main" {
   step prepare-prompt {
     run     = "bash .cloche/scripts/prepare-prompt.sh"
     results = [success, fail]

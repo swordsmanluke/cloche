@@ -28,7 +28,7 @@ type HostRunner struct {
 // RunWorkflow walks the workflow graph starting from wf.EntryStep, executing
 // each step on the host. Returns "done" or "abort" as the final result.
 func (r *HostRunner) RunWorkflow(ctx context.Context, wf *domain.Workflow, task ports.TrackerTask, orchRunID string) (string, error) {
-	outputDir := filepath.Join(r.ProjectDir, ".cloche", orchRunID, "orchestrate")
+	outputDir := filepath.Join(r.ProjectDir, ".cloche", orchRunID, "main")
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return domain.StepAbort, fmt.Errorf("creating output dir: %w", err)
 	}

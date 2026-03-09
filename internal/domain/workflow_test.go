@@ -288,7 +288,7 @@ func TestWorkflow_ValidateLocation_ContainerRejectsWorkflowStep(t *testing.T) {
 
 func TestWorkflow_ValidateLocation_HostAllowsWorkflowStep(t *testing.T) {
 	wf := &domain.Workflow{
-		Name:     "orchestrate",
+		Name:     "main",
 		Location: domain.LocationHost,
 		Steps: map[string]*domain.Step{
 			"develop": {

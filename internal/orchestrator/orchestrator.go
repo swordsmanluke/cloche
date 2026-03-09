@@ -233,7 +233,7 @@ func (o *Orchestrator) Run(ctx context.Context, projectDir string) (int, error) 
 				continue
 			}
 
-			orchRunID := domain.GenerateRunID("orchestrate")
+			orchRunID := domain.GenerateRunID("main")
 
 			o.mu.Lock()
 			o.inFlight[projectDir]++

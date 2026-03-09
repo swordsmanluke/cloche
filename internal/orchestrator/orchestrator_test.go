@@ -449,7 +449,7 @@ func TestOrchestratorRun_HostWorkflowPath(t *testing.T) {
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 
 	// Write a host.cloche file
-	hostCloche := `workflow "orchestrate" {
+	hostCloche := `workflow "main" {
   step prep {
     run     = "echo hello"
     results = [success, fail]

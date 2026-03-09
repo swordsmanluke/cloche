@@ -241,7 +241,7 @@ func TestParser_CollectAll(t *testing.T) {
 }
 
 func TestParser_WorkflowNameStep(t *testing.T) {
-	input := `workflow "orchestrate" {
+	input := `workflow "main" {
   step prepare-prompt {
     run     = "bash scripts/prepare.sh"
     results = [success, fail]
@@ -261,7 +261,7 @@ func TestParser_WorkflowNameStep(t *testing.T) {
 	wf, err := dsl.Parse(input)
 	require.NoError(t, err)
 
-	assert.Equal(t, "orchestrate", wf.Name)
+	assert.Equal(t, "main", wf.Name)
 	assert.Len(t, wf.Steps, 2)
 
 	develop := wf.Steps["develop"]
@@ -360,7 +360,7 @@ func TestParser_CollectAny(t *testing.T) {
 }
 
 func TestParseForHost_AllowsWorkflowSteps(t *testing.T) {
-	input := `workflow "orchestrate" {
+	input := `workflow "main" {
   step prepare {
     run     = "bash scripts/prepare.sh"
     results = [success, fail]

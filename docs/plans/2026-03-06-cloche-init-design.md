@@ -26,7 +26,7 @@ Track everything in `.cloche/` by default. Explicitly ignore only runtime artifa
 **Pattern rationale:**
 
 - `.cloche/*-*-*/` — matches all named run output dirs (`develop-bold-hawk/`,
-  `orchestrate-bright-reef/`, etc.). Run IDs are always `<workflow>-<adj>-<noun>`,
+  `main-bright-reef/`, etc.). Run IDs are always `<workflow>-<adj>-<noun>`,
   so any `.cloche/` subdirectory with two or more hyphens is a run artifact.
   Config directories (`prompts/`, `overrides/`, `scripts/`, `evolution/`) have no
   hyphens and are unaffected.

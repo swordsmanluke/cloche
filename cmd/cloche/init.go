@@ -108,7 +108,7 @@ var versionContent = "1\n"
 var hostWorkflowTemplate = `# host.cloche — orchestration workflow (runs on host, not in container)
 # Steps here execute as the daemon user. Keep operations simple and safe.
 
-workflow "orchestrate" {
+workflow "main" {
   step prepare-prompt {
     run     = "bash .cloche/scripts/prepare-prompt.sh"
     results = [success, fail]
