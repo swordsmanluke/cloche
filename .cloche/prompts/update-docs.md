@@ -1,1 +1,1 @@
-The write was blocked by permissions — ironically the same issue that has caused this corruption for 4+ cycles. Can you grant write permission so I can replace the corrupted content?
+The write was blocked by permissions. Can you grant write access to `.cloche/prompts/update-docs.md` so I can replace the corrupted content? The replacement is the clean `# Update Documentation` prompt with process steps, rules, and the learned rule about the corruption history.
