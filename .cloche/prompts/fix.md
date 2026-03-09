@@ -1,3 +1,1 @@
-The write was blocked by permissions. Could you grant write access to `.cloche/prompts/fix.md` so I can add the learned rule about mandatory self-verification? The rule to add:
-
-> **Mandatory self-verification before reporting success:** After making a fix, you MUST run the exact failing test command and confirm it passes BEFORE reporting success. Without this step, the fix cycle has a 0% success rate (0/8 across all runs). The fix agent consistently makes changes that satisfy its own assessment but do not resolve the actual test failures. Do not trust your judgment that the fix is correct — run the test and verify.
+The write to `.cloche/prompts/fix.md` was blocked by permissions. Could you grant write access so I can replace the corrupted content with proper fix instructions? The file currently contains meta-conversation text instead of actionable fix guidance, which explains the historical 8/8 fix failure rate.
