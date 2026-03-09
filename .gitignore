@@ -10,6 +10,9 @@ bin/
 /cloched
 /cloche-agent
 
+# Beads task tracker (managed by bd, not git)
+.beads/
+
 # Local state
 *.db
 *.db-shm
