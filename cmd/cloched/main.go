@@ -18,7 +18,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/adapters/web"
 	"github.com/cloche-dev/cloche/internal/config"
-	"github.com/cloche-dev/cloche/internal/domain"
+	_ "github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/evolution"
 	"github.com/cloche-dev/cloche/internal/logstream"
@@ -73,19 +73,19 @@ func main() {
 		srv.SetEvolution(evoTrigger)
 	}
 
-	// Set up orchestrator
-	orch := initOrchestrator(globalCfg, store, srv)
-	if orch != nil {
-		srv.SetOnRunComplete(func(ctx context.Context, projectDir string, runID string, state domain.RunState) {
-			orch.OnRunComplete(ctx, projectDir, runID, state)
-		})
-		srv.SetOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {
-			if projectDir != "" {
-				return orch.Run(ctx, projectDir)
-			}
-			return orch.TriggerAll(ctx), nil
-		})
-	}
+	// Orchestrator disabled — use `cloche run` for manual dispatch only.
+	// orch := initOrchestrator(globalCfg, store, srv)
+	// if orch != nil {
+	// 	srv.SetOnRunComplete(func(ctx context.Context, projectDir string, runID string, state domain.RunState) {
+	// 		orch.OnRunComplete(ctx, projectDir, runID, state)
+	// 	})
+	// 	srv.SetOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {
+	// 		if projectDir != "" {
+	// 			return orch.Run(ctx, projectDir)
+	// 		}
+	// 		return orch.TriggerAll(ctx), nil
+	// 	})
+	// }
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterClocheServiceServer(grpcServer, srv)
@@ -105,12 +105,12 @@ func main() {
 			web.WithLogStore(store),
 			web.WithLogBroadcaster(broadcaster),
 		}
-		if orch != nil {
-			webOpts = append(webOpts, web.WithOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {
-				return orch.Run(ctx, projectDir)
-			}))
-			webOpts = append(webOpts, web.WithOrchestrator(orch))
-		}
+		// if orch != nil {
+		// 	webOpts = append(webOpts, web.WithOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {
+		// 		return orch.Run(ctx, projectDir)
+		// 	}))
+		// 	webOpts = append(webOpts, web.WithOrchestrator(orch))
+		// }
 		webHandler, err := web.NewHandler(store, store, webOpts...)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to create web handler: %v\n", err)
@@ -135,15 +135,15 @@ func main() {
 		grpcServer.GracefulStop()
 	}()
 
-	// Trigger orchestration on startup
-	if orch != nil {
-		go func() {
-			n := orch.TriggerAll(context.Background())
-			if n > 0 {
-				fmt.Fprintf(os.Stderr, "startup: orchestrator dispatched %d run(s)\n", n)
-			}
-		}()
-	}
+	// Orchestrator auto-dispatch disabled while refactoring.
+	// if orch != nil {
+	// 	go func() {
+	// 		n := orch.TriggerAll(context.Background())
+	// 		if n > 0 {
+	// 			fmt.Fprintf(os.Stderr, "startup: orchestrator dispatched %d run(s)\n", n)
+	// 		}
+	// 	}()
+	// }
 
 	fmt.Fprintf(os.Stderr, "cloched listening on %s\n", listenAddr)
 	if err := grpcServer.Serve(lis); err != nil {
@@ -224,6 +224,7 @@ func listen(addr string) (net.Listener, error) {
 }
 
 func initOrchestrator(globalCfg *config.Config, store ports.RunStore, srv *adaptgrpc.ClocheServer) *orchestrator.Orchestrator {
+	return nil // Orchestrator disabled — use `cloche run` for manual dispatch only.
 	llmClient := orchestrator.NewCommandLLMClientFromEnv()
 	promptGen := &orchestrator.LLMPromptGenerator{LLM: llmClient}
 

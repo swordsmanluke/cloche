@@ -304,9 +304,14 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	{
 		extractRun, _ := s.store.GetRun(ctx, runID)
 		if extractRun != nil && extractRun.BaseSHA != "" {
+			log.Printf("run %s: extracting results to branch cloche/%s (baseSHA=%s)", runID, runID, extractRun.BaseSHA)
 			if err := docker.ExtractResults(ctx, containerID, extractRun.ProjectDir, runID, extractRun.BaseSHA, workflowName, resultLabel); err != nil {
 				log.Printf("run %s: failed to extract results to branch: %v", runID, err)
+			} else {
+				log.Printf("run %s: branch cloche/%s created successfully", runID, runID)
 			}
+		} else {
+			log.Printf("run %s: skipping branch extraction (baseSHA empty or run not found)", runID)
 		}
 	}
 

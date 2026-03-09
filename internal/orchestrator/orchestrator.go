@@ -326,15 +326,22 @@ func (o *Orchestrator) TriggerAll(ctx context.Context) int {
 // in-flight counter, and triggers a new orchestration cycle.
 func (o *Orchestrator) OnRunComplete(ctx context.Context, projectDir string, runID string, state domain.RunState) {
 	o.mu.Lock()
-	pc := o.projects[projectDir]
 	taskID := o.untrackTask(projectDir, runID)
+	if taskID == "" {
+		// Inner run not tracked by orchestrator (e.g. develop run inside a
+		// host workflow). The host workflow goroutine manages its own
+		// in-flight count and task lifecycle, so skip everything here.
+		o.mu.Unlock()
+		return
+	}
+	pc := o.projects[projectDir]
 	if o.inFlight[projectDir] > 0 {
 		o.inFlight[projectDir]--
 	}
 	o.mu.Unlock()
 
 	// Close/fail the associated task in the tracker
-	if taskID != "" && pc != nil {
+	if pc != nil {
 		if state == domain.RunStateSucceeded {
 			log.Printf("orchestrator: completing task %s (run %s succeeded)", taskID, runID)
 			_ = pc.Tracker.Complete(ctx, taskID)
