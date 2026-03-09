@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -762,6 +764,67 @@ func TestAPIProjects_HealthData(t *testing.T) {
 	assert.Equal(t, 2, beta.Health.Passed)
 	assert.Equal(t, 0, beta.Health.Failed)
 	assert.Equal(t, 2, beta.Health.Total)
+}
+
+func TestResolveFileRef(t *testing.T) {
+	// Create a temp directory with a test file
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "prompts"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "prompts", "implement.md"), []byte("# Implement\nDo the thing."), 0o644))
+
+	t.Run("file() reference resolves to contents", func(t *testing.T) {
+		content, err := resolveFileRef(`file("prompts/implement.md")`, dir)
+		require.NoError(t, err)
+		assert.Equal(t, "# Implement\nDo the thing.", content)
+	})
+
+	t.Run("file() reference with missing file returns error", func(t *testing.T) {
+		_, err := resolveFileRef(`file("prompts/nonexistent.md")`, dir)
+		assert.Error(t, err)
+	})
+
+	t.Run("plain string returned as-is", func(t *testing.T) {
+		content, err := resolveFileRef("echo hello", dir)
+		require.NoError(t, err)
+		assert.Equal(t, "echo hello", content)
+	})
+
+	t.Run("quoted string returned as-is", func(t *testing.T) {
+		content, err := resolveFileRef(`"some value"`, dir)
+		require.NoError(t, err)
+		assert.Equal(t, `"some value"`, content)
+	})
+}
+
+func TestAPIStepContent_FileRef(t *testing.T) {
+	h, store := setupHandler(t)
+
+	// Create a temp project directory with a workflow and prompt file
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "prompts", "implement.md"), []byte("Build the feature."), 0o644))
+
+	workflowContent := `workflow "develop" {
+    step implement {
+        prompt = file(".cloche/prompts/implement.md")
+        results = [success, fail]
+    }
+    implement:success -> done
+    implement:fail -> abort
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"), []byte(workflowContent), 0o644))
+
+	// Seed a run so the project is known
+	seedRunWithProject(t, store, "sc-1", "develop", domain.RunStateRunning, dir)
+
+	// Request step content
+	req := httptest.NewRequest("GET", "/api/projects/"+filepath.Base(dir)+"/workflows/develop/steps/implement/content", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "Build the feature.", w.Body.String())
 }
 
 func TestAPIProjects_HealthNoRuns(t *testing.T) {

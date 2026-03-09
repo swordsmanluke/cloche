@@ -1175,23 +1175,20 @@ func (h *Handler) handleAPIStepContent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
 	if prompt := step.Config["prompt"]; prompt != "" {
-		data, err := os.ReadFile(filepath.Join(dir, prompt))
+		content, err := resolveFileRef(prompt, dir)
 		if err == nil {
-			w.Write(data)
+			w.Write([]byte(content))
 			return
 		}
 	}
-	if script := step.Config["command"]; script != "" {
-		w.Write([]byte(script))
+	if cmd := step.Config["command"]; cmd != "" {
+		content, _ := resolveFileRef(cmd, dir)
+		w.Write([]byte(content))
 		return
 	}
 	if script := step.Config["script"]; script != "" {
-		data, err := os.ReadFile(filepath.Join(dir, script))
-		if err == nil {
-			w.Write(data)
-			return
-		}
-		w.Write([]byte(script))
+		content, _ := resolveFileRef(script, dir)
+		w.Write([]byte(content))
 		return
 	}
 
@@ -1199,6 +1196,21 @@ func (h *Handler) handleAPIStepContent(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- Template helpers ---
+
+// resolveFileRef resolves file("path") DSL syntax to actual file contents.
+// If the value uses file() syntax, the referenced file is read from disk.
+// Otherwise the value is returned as-is.
+func resolveFileRef(value, baseDir string) (string, error) {
+	if strings.HasPrefix(value, `file("`) && strings.HasSuffix(value, `")`) {
+		path := value[6 : len(value)-2]
+		data, err := os.ReadFile(filepath.Join(baseDir, path))
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	}
+	return value, nil
+}
 
 func stateColor(state domain.RunState) string {
 	switch state {
