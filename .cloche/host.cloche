@@ -1,4 +1,9 @@
 workflow "main" {
+  step ready-tasks {
+    run     = "bash .cloche/scripts/ready-tasks.sh 1"
+    results = [success, fail]
+  }
+
   step prepare-prompt {
     run     = "bash .cloche/scripts/prepare-prompt.sh"
     results = [success, fail]
@@ -14,10 +19,19 @@ workflow "main" {
     results = [success, fail]
   }
 
+  step cleanup {
+    run     = "bash .cloche/scripts/cleanup-run.sh"
+    results = [success, fail]
+  }
+
+  ready-tasks:success    -> prepare-prompt
+  ready-tasks:fail       -> abort
   prepare-prompt:success -> develop
   prepare-prompt:fail    -> abort
   develop:success        -> merge
   develop:fail           -> abort
-  merge:success          -> done
+  merge:success          -> cleanup
   merge:fail             -> abort
+  cleanup:success        -> done
+  cleanup:fail           -> done
 }
