@@ -10,6 +10,11 @@ Cloche provides
 - a focus on creating validated code
 - self-evolving tooling that grows with your codebase in response to encountered errors
 
+## Installation
+
+See [docs/INSTALL.md](docs/INSTALL.md) for full installation instructions
+covering build from source, `go install`, and other methods.
+
 ## Containers
 
 Coding agents are powerful, but running them interactively turns the human into the bottleneck.

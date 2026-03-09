@@ -71,20 +71,11 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 	defer ulog.Close()
 
-	// Parse workflow-level per-agent args (container.agent_args.<name>)
-	agentArgs := parseAgentArgsConfig(wf.Config, "container.agent_args.")
-	if len(agentArgs) > 0 {
-		promptAdapter.AgentArgs = agentArgs
-	}
-
 	executor := &stepExecutor{
-		workDir:       r.cfg.WorkDir,
-		generic:       genericAdapter,
-		prompt:        promptAdapter,
-		baseCommands:  promptAdapter.Commands,
-		baseExplicit:  promptAdapter.ExplicitArgs,
-		baseAgentArgs: promptAdapter.AgentArgs,
-		logStream:     ulog,
+		workDir:   r.cfg.WorkDir,
+		generic:   genericAdapter,
+		prompt:    promptAdapter,
+		logStream: ulog,
 	}
 
 	eng := engine.New(executor)
@@ -110,13 +101,10 @@ func (r *Runner) Run(ctx context.Context) error {
 }
 
 type stepExecutor struct {
-	workDir       string
-	generic       *generic.Adapter
-	prompt        *prompt.Adapter
-	baseCommands  []string            // workflow-level defaults to restore after step overrides
-	baseExplicit  []string            // workflow-level defaults to restore after step overrides
-	baseAgentArgs map[string][]string // workflow-level defaults to restore after step overrides
-	logStream     *logstream.Writer
+	workDir   string
+	generic   *generic.Adapter
+	prompt    *prompt.Adapter
+	logStream *logstream.Writer
 }
 
 func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, error) {
@@ -132,30 +120,12 @@ func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, 
 			return result, err
 		}
 		if _, ok := step.Config["prompt"]; ok {
-			// Apply step-level overrides, then restore after execution
-			e.prompt.Commands = e.baseCommands
-			e.prompt.ExplicitArgs = e.baseExplicit
-			e.prompt.AgentArgs = e.baseAgentArgs
-
 			if cmd := step.Config["agent_command"]; cmd != "" {
 				e.prompt.Commands = prompt.ParseCommands(cmd)
 			}
 			if args := step.Config["agent_args"]; args != "" {
 				e.prompt.ExplicitArgs = strings.Fields(args)
 			}
-			// Parse step-level per-agent args (agent_args.<name>)
-			stepAgentArgs := parseAgentArgsConfig(step.Config, "agent_args.")
-			if len(stepAgentArgs) > 0 {
-				merged := make(map[string][]string)
-				for k, v := range e.baseAgentArgs {
-					merged[k] = v
-				}
-				for k, v := range stepAgentArgs {
-					merged[k] = v
-				}
-				e.prompt.AgentArgs = merged
-			}
-
 			result, err := e.prompt.Execute(ctx, step, e.workDir)
 			e.copyToLLMLog(step.Name)
 			e.logStepOutput(step.Name, logstream.TypeLLM)
@@ -204,22 +174,3 @@ func (s *statusReporter) OnStepComplete(_ *domain.Run, step *domain.Step, result
 }
 
 func (s *statusReporter) OnRunComplete(_ *domain.Run) {}
-
-// parseAgentArgsConfig extracts per-agent argument overrides from a config map.
-// It looks for keys with the given prefix (e.g. "agent_args." or "container.agent_args.")
-// and splits the values into argument slices.
-func parseAgentArgsConfig(config map[string]string, prefix string) map[string][]string {
-	result := make(map[string][]string)
-	for key, val := range config {
-		if strings.HasPrefix(key, prefix) {
-			agentName := strings.TrimPrefix(key, prefix)
-			if agentName != "" {
-				result[agentName] = strings.Fields(val)
-			}
-		}
-	}
-	if len(result) == 0 {
-		return nil
-	}
-	return result
-}

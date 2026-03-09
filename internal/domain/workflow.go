@@ -157,9 +157,6 @@ func (w *Workflow) ValidateConfig() []string {
 			if strings.HasPrefix(key, "container.") {
 				continue
 			}
-			if strings.HasPrefix(key, "agent_args.") {
-				continue
-			}
 			warnings = append(warnings, fmt.Sprintf(
 				"workflow %q: step %q has unrecognized config key %q", w.Name, name, key))
 		}

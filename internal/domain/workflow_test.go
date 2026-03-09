@@ -284,22 +284,3 @@ func TestWorkflow_ValidateConfig_ContainerPrefix(t *testing.T) {
 	warnings := wf.ValidateConfig()
 	assert.Empty(t, warnings)
 }
-
-func TestWorkflow_ValidateConfig_AgentArgsPrefix(t *testing.T) {
-	wf := &domain.Workflow{
-		Name: "agent-args-keys",
-		Steps: map[string]*domain.Step{
-			"code": {
-				Name:    "code",
-				Results: []string{"success"},
-				Config: map[string]string{
-					"prompt":            "do stuff",
-					"agent_args.claude": "-p --verbose",
-					"agent_args.gemini": "--model gemini-2.5-pro",
-				},
-			},
-		},
-	}
-	warnings := wf.ValidateConfig()
-	assert.Empty(t, warnings)
-}

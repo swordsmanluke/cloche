@@ -139,10 +139,8 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /{$}", h.handleProjectOverview)
 	h.mux.HandleFunc("GET /runs", h.handleRunsList)
 	h.mux.HandleFunc("GET /runs/{id}", h.handleRunDetail)
-	h.mux.HandleFunc("GET /projects/{name}/runs", h.handleRunsList)
 	h.mux.HandleFunc("GET /projects/{name}", h.handleProjectDetail)
 	h.mux.HandleFunc("GET /api/projects", h.handleAPIProjects)
-	h.mux.HandleFunc("GET /api/projects/{name}/runs", h.handleAPIRuns)
 	h.mux.HandleFunc("GET /api/runs", h.handleAPIRuns)
 	h.mux.HandleFunc("GET /api/runs/{id}", h.handleAPIRunDetail)
 	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
@@ -248,25 +246,7 @@ func (h *Handler) handleProjectOverview(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
-	var projectFilter string
-	var projectLabel string
-	if name := r.PathValue("name"); name != "" {
-		projects, _ := h.store.ListProjects(r.Context())
-		labels := projectLabels(projects)
-		found := false
-		for dir, l := range labels {
-			if l == name {
-				projectFilter = dir
-				projectLabel = l
-				found = true
-				break
-			}
-		}
-		if !found {
-			http.NotFound(w, r)
-			return
-		}
-	}
+	projectFilter := r.URL.Query().Get("project")
 
 	var runs []*domain.Run
 	var err error
@@ -305,7 +285,6 @@ func (h *Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 		"Runs":          runs,
 		"Projects":      projectList,
 		"ProjectFilter": projectFilter,
-		"ProjectLabel":  projectLabel,
 		"ProjectLabels": labels,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -466,25 +445,7 @@ func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
 }
 
 func (h *Handler) handleAPIRuns(w http.ResponseWriter, r *http.Request) {
-	var projectFilter string
-	if name := r.PathValue("name"); name != "" {
-		projects, _ := h.store.ListProjects(r.Context())
-		labels := projectLabels(projects)
-		found := false
-		for dir, l := range labels {
-			if l == name {
-				projectFilter = dir
-				found = true
-				break
-			}
-		}
-		if !found {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{"error": "project not found"})
-			return
-		}
-	}
+	projectFilter := r.URL.Query().Get("project")
 
 	var runs []*domain.Run
 	var err error

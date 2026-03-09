@@ -136,31 +136,6 @@ func TestParser_WorkflowContainerBlockMultipleFields(t *testing.T) {
 	assert.Equal(t, "4g", wf.Config["container.memory"])
 }
 
-func TestParser_NestedContainerBlock(t *testing.T) {
-	input := `workflow "nested-config" {
-  container {
-    agent_command = "claude,gemini"
-    agent_args {
-      claude = "-p --verbose"
-      gemini = "--model gemini-2-5-pro"
-    }
-  }
-
-  step code {
-    prompt = "write code"
-    results = [success]
-  }
-
-  code:success -> done
-}`
-
-	wf, err := dsl.Parse(input)
-	require.NoError(t, err)
-	assert.Equal(t, "claude,gemini", wf.Config["container.agent_command"])
-	assert.Equal(t, "-p --verbose", wf.Config["container.agent_args.claude"])
-	assert.Equal(t, "--model gemini-2-5-pro", wf.Config["container.agent_args.gemini"])
-}
-
 func TestParser_WorkflowWithoutContainerBlock(t *testing.T) {
 	input := `workflow "no-container" {
   step code {

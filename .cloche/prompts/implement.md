@@ -1,1 +1,9 @@
-I need write permission to both `.cloche/prompts/fix.md` and `.cloche/prompts/implement.md`. Both files currently contain meta-conversation wrapper text instead of clean agent prompts. Could you grant write access so I can replace them with the clean versions?
+Implement the following change in this project.
+
+## User Request
+(Contents of .cloche/prompt.txt will be injected here by the adapter)
+
+## Guidelines
+- Follow existing project conventions if files already exist
+- Write tests for new functionality
+- Run tests locally before declaring success
