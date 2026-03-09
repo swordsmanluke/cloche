@@ -30,9 +30,7 @@ workflow "main" {
     CLOCHE_TASK_BODY  = output[0].description
   ]
   ready-tasks:fail       -> abort
-  prepare-prompt:success -> develop [
-    CLOCHE_TASK_ID = output.task_id
-  ]
+  prepare-prompt:success -> develop
   prepare-prompt:fail    -> abort
   develop:success        -> merge
   develop:fail           -> abort
