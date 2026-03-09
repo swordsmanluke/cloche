@@ -71,12 +71,8 @@ Only modify files that need fixing. Do not rewrite the entire project.
 `
 
 var defaultConfigTOML = `# Cloche project configuration
-
-[orchestration]
-enabled     = false
-concurrency = 1
-workflow    = "develop"
-# tracker = "beads"
+# Set active = true so cloched auto-runs the main workflow on startup.
+active = false
 
 [evolution]
 enabled            = true
@@ -226,7 +222,7 @@ func cmdInit(args []string) {
 	cwd, _ := os.Getwd()
 	fmt.Fprintf(os.Stderr, "\nInitialized Cloche project in %s\n", filepath.Base(cwd))
 	fmt.Fprintf(os.Stderr, "\nNext steps:\n")
-	fmt.Fprintf(os.Stderr, "  1. Edit %s    — enable orchestration, set concurrency\n", filepath.Join(clocheDir, "config.toml"))
+	fmt.Fprintf(os.Stderr, "  1. Edit %s    — set active = true to auto-run on startup\n", filepath.Join(clocheDir, "config.toml"))
 	fmt.Fprintf(os.Stderr, "  2. Edit %s — adjust the test command for your project\n", workflowFile)
 	fmt.Fprintf(os.Stderr, "  3. Edit %s     — add your project's dependencies\n", filepath.Join(clocheDir, "Dockerfile"))
 	fmt.Fprintf(os.Stderr, "  4. Edit %s — customize prompt generation\n", filepath.Join(clocheDir, "scripts", "prepare-prompt.sh"))

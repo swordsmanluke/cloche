@@ -25,6 +25,7 @@ type EvolutionConfig struct {
 }
 
 type Config struct {
+	Active    bool            `toml:"active"`
 	Daemon    DaemonConfig    `toml:"daemon"`
 	Evolution EvolutionConfig `toml:"evolution"`
 }

@@ -98,6 +98,28 @@ image = "custom:latest"
 	assert.Equal(t, "", cfg.Daemon.Listen) // unset stays empty
 }
 
+func TestLoadActiveFlag(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
+active = true
+`), 0644)
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.True(t, cfg.Active)
+}
+
+func TestLoadActiveFlagDefault(t *testing.T) {
+	dir := t.TempDir()
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.False(t, cfg.Active)
+}
+
 func TestLoadGlobalFromMissing(t *testing.T) {
 	cfg, err := LoadGlobalFrom("/nonexistent/path/config")
 	require.NoError(t, err)
