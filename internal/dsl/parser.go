@@ -2,6 +2,7 @@ package dsl
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/cloche-dev/cloche/internal/domain"
@@ -394,11 +395,93 @@ func (p *Parser) parseWire() (domain.Wire, error) {
 		return domain.Wire{}, err
 	}
 
+	var mappings []domain.OutputMapping
+	if p.current.Type == TokenLBracket {
+		mappings, err = p.parseOutputMappings()
+		if err != nil {
+			return domain.Wire{}, err
+		}
+	}
+
 	return domain.Wire{
-		From:   fromTok.Literal,
-		Result: resultTok.Literal,
-		To:     toTok.Literal,
+		From:      fromTok.Literal,
+		Result:    resultTok.Literal,
+		To:        toTok.Literal,
+		OutputMap: mappings,
 	}, nil
+}
+
+func (p *Parser) parseOutputMappings() ([]domain.OutputMapping, error) {
+	if _, err := p.expect(TokenLBracket); err != nil {
+		return nil, err
+	}
+
+	var mappings []domain.OutputMapping
+	for p.current.Type != TokenRBracket && p.current.Type != TokenEOF {
+		keyTok, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, fmt.Errorf("expected mapping key: %w", err)
+		}
+
+		if _, err := p.expect(TokenEquals); err != nil {
+			return nil, err
+		}
+
+		path, err := p.parseOutputPath()
+		if err != nil {
+			return nil, err
+		}
+
+		mappings = append(mappings, domain.OutputMapping{
+			EnvVar: keyTok.Literal,
+			Path:   path,
+		})
+
+		if p.current.Type == TokenComma {
+			p.advance()
+		}
+	}
+
+	if _, err := p.expect(TokenRBracket); err != nil {
+		return nil, err
+	}
+
+	return mappings, nil
+}
+
+func (p *Parser) parseOutputPath() (domain.OutputPath, error) {
+	if p.current.Type != TokenIdent || p.current.Literal != "output" {
+		return domain.OutputPath{}, fmt.Errorf("line %d col %d: expected \"output\", got %q",
+			p.current.Line, p.current.Col, p.current.Literal)
+	}
+	p.advance() // consume "output"
+
+	var segments []domain.PathSegment
+	for {
+		if p.current.Type == TokenDot {
+			p.advance() // consume "."
+			fieldTok, err := p.expect(TokenIdent)
+			if err != nil {
+				return domain.OutputPath{}, fmt.Errorf("expected field name after '.': %w", err)
+			}
+			segments = append(segments, domain.PathSegment{Kind: domain.SegmentField, Field: fieldTok.Literal})
+		} else if p.current.Type == TokenLBracket {
+			p.advance() // consume "["
+			idxTok, err := p.expect(TokenInt)
+			if err != nil {
+				return domain.OutputPath{}, fmt.Errorf("expected integer index: %w", err)
+			}
+			idx, _ := strconv.Atoi(idxTok.Literal)
+			if _, err := p.expect(TokenRBracket); err != nil {
+				return domain.OutputPath{}, err
+			}
+			segments = append(segments, domain.PathSegment{Kind: domain.SegmentIndex, Index: idx})
+		} else {
+			break
+		}
+	}
+
+	return domain.OutputPath{Segments: segments}, nil
 }
 
 func (p *Parser) parseCollect() (domain.Collect, error) {

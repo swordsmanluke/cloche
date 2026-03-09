@@ -25,7 +25,7 @@ file is a parse error.
 | workflow | A named graph of steps connected by result wiring                  |
 | step     | A unit of work (inferred: `prompt` = agent, `run` = script)        |
 | result   | A named outcome reported by a step (e.g. "success", "fail")       |
-| wiring   | Maps a step's result to the next step                              |
+| wiring   | Maps a step's result to the next step, with optional output mappings |
 | done     | Built-in terminal step — successful completion                     |
 | abort    | Built-in terminal step — failure with error reporting              |
 
@@ -70,7 +70,7 @@ workflow "implement-feature" {
     results = [approved, changes_requested]
   }
 
-  // Wiring: step:result -> next_step
+  // Wiring: step:result -> next_step [optional output mappings]
   code:success -> check
   code:fail -> abort
   code:retry_with_feedback -> code
@@ -97,6 +97,36 @@ Cloche's self-evolution feature.
 
 **Graphs are validated at parse time.** The parser checks that all declared results are
 wired, no steps are orphaned, and an entry point exists.
+
+## Wire Output Mappings
+
+Wires can include output mappings that extract values from a step's output and inject
+them as environment variables into the target step:
+
+```
+step-a:success -> step-b [ ENV_VAR = output.field, OTHER = output.list[0].name ]
+```
+
+The general form:
+
+```
+FROM:RESULT -> TO [ KEY = EXPR, KEY = EXPR, ... ]
+```
+
+Where `KEY` is the environment variable name and `EXPR` is an output path expression
+starting with the contextual keyword `output`:
+
+| Expression | Meaning |
+|---|---|
+| `output` | Raw output (full string) |
+| `output.key` | JSON object field access |
+| `output[N]` | JSON array index (0-based) |
+| `output.a.b.c` | Deeply nested field access |
+| `output.items[0].name` | Mixed field and index chaining |
+
+If the source step's output is valid JSON, path expressions navigate the parsed
+structure. If the output is plain text, only bare `output` is valid. The resolved
+value is converted to a string for env var injection.
 
 ## Host Workflow Example
 
