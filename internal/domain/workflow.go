@@ -211,6 +211,20 @@ func (w *Workflow) Validate() error {
 		}
 	}
 
+	// Check for duplicate output mapping env vars targeting the same step
+	targetEnvVars := make(map[string]map[string]bool) // step -> env var -> seen
+	for _, wire := range w.Wiring {
+		for _, om := range wire.OutputMap {
+			if targetEnvVars[wire.To] == nil {
+				targetEnvVars[wire.To] = make(map[string]bool)
+			}
+			if targetEnvVars[wire.To][om.EnvVar] {
+				return fmt.Errorf("duplicate output mapping for env var %q targeting step %q", om.EnvVar, wire.To)
+			}
+			targetEnvVars[wire.To][om.EnvVar] = true
+		}
+	}
+
 	return nil
 }
 

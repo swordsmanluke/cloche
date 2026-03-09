@@ -128,6 +128,10 @@ If the source step's output is valid JSON, path expressions navigate the parsed
 structure. If the output is plain text, only bare `output` is valid. The resolved
 value is converted to a string for env var injection.
 
+If two wires targeting the same step both map the same env var key, validation
+returns an error (the mapping would be ambiguous). The same key may be used on
+wires to different steps without conflict.
+
 ## Host Workflow Example
 
 ```
