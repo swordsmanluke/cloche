@@ -1,6 +1,8 @@
-I need write permission to `.cloche/prompts/implement.md`. The changes are:
+# Implement Feature
 
-1. **Restored** the clean prompt content (was corrupted with meta-conversation text)
-2. **Updated** the reliability rule: bumped "49/49+ runs in 11+ batches" → "55/55+ runs in 14+ batches"
+Implement the following change in this project.
 
-No other changes — all existing rules preserved as-is.
+## Guidelines
+- Follow existing project conventions if files already exist
+- Write tests for new functionality
+- You MUST run `go test ./... 2>&1` before reporting success. If any tests fail, fix the code until tests pass. Only report success when all tests pass. If you cannot get tests to pass after reasonable effort, report fail.

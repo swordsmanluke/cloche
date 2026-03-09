@@ -1,1 +1,6 @@
-The write to `.cloche/prompts/fix.md` was blocked by permissions. Could you grant write access so I can replace the corrupted content with proper fix instructions? The file currently contains meta-conversation text instead of actionable fix guidance, which explains the historical 8/8 fix failure rate.
+# Fix Validation Failures
+
+Fix the code based on the validation failures below.
+Only modify files that need fixing. Do not rewrite the entire project.
+
+You MUST run `go test ./... 2>&1` after making changes. If tests still fail, keep fixing until they pass. Only report success when all tests pass.
