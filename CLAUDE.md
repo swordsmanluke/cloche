@@ -17,7 +17,7 @@ tasks, validated code pipelines, and self-evolving tooling.
 Three binaries from one Go module:
 
 - **`cloche`** (CLI) — Short-lived client. Talks to daemon over gRPC. Subcommands: `run`, `status`, `logs`, `stop`.
-- **`cloched`** (Daemon) — Long-running. Manages container lifecycle, collects status, persists state. Does NOT interpret workflow logic.
+- **`cloched`** (Daemon) — Long-running. Manages container lifecycle, collects status, persists state. Executes host workflows (`host.cloche`) step by step on the host machine, dispatching container workflow runs as needed.
 - **`cloche-agent`** (In-Container) — Autonomous. Parses workflow DSL, walks the graph, executes steps, streams status back to daemon. Runs to completion without human intervention.
 
 Hexagonal architecture: domain logic is independent of infrastructure. Ports define
@@ -33,6 +33,7 @@ internal/
   domain/           # Core types (Workflow, Step, Result, Run)
   ports/            # Interfaces (store, container, agent, notifier)
   adapters/         # Implementations (docker, sqlite, grpc, agents)
+  host/             # Host workflow executor (runs steps on host machine)
 ```
 
 ## Workflow DSL
@@ -47,9 +48,11 @@ Cloche-specific files live in `.cloche/` at the project root:
 ```
 my-project/
 ├── .cloche/
-│   ├── develop.cloche      # Workflow definition
+│   ├── develop.cloche      # Container workflow definition
+│   ├── host.cloche          # Host orchestration workflow (runs on host)
 │   ├── Dockerfile           # Container image
 │   ├── prompts/             # Prompt templates for agent steps
+│   ├── scripts/             # Host-side scripts (e.g. prepare-prompt.sh)
 │   ├── overrides/           # Files copied on top of /workspace/ in container
 │   └── <run-id>/            # Runtime state (gitignored)
 ├── src/                     # Existing project source (untouched)

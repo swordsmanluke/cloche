@@ -1,0 +1,177 @@
+package host
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"time"
+
+	pb "github.com/cloche-dev/cloche/api/clochepb"
+	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/engine"
+	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/cloche-dev/cloche/internal/protocol"
+)
+
+// RunDispatcher dispatches a container workflow run and returns the run ID.
+type RunDispatcher interface {
+	RunWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error)
+}
+
+// Executor implements engine.StepExecutor for host workflow steps.
+type Executor struct {
+	ProjectDir string
+	Dispatcher RunDispatcher
+	Store      ports.RunStore
+	OutputDir  string // directory for step output files
+}
+
+var _ engine.StepExecutor = (*Executor)(nil)
+
+// Execute runs a single host workflow step.
+func (e *Executor) Execute(ctx context.Context, step *domain.Step) (string, error) {
+	switch step.Type {
+	case domain.StepTypeScript:
+		return e.executeScript(ctx, step)
+	case domain.StepTypeWorkflow:
+		return e.executeWorkflow(ctx, step)
+	default:
+		return "", fmt.Errorf("unsupported step type %q in host workflow", step.Type)
+	}
+}
+
+// executeScript runs a shell command on the host.
+func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string, error) {
+	cmdStr := step.Config["run"]
+	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
+	cmd.Dir = e.ProjectDir
+	cmd.Env = append(os.Environ(),
+		"CLOCHE_PROJECT_DIR="+e.ProjectDir,
+		"CLOCHE_STEP_OUTPUT="+e.stepOutputPath(step.Name),
+	)
+
+	// Pass previous step output if available
+	if prevOutput := e.findPrevOutput(step); prevOutput != "" {
+		cmd.Env = append(cmd.Env, "CLOCHE_PREV_OUTPUT="+prevOutput)
+	}
+
+	output, err := cmd.CombinedOutput()
+
+	// Extract result marker
+	markerResult, cleanOutput, found := protocol.ExtractResult(output)
+
+	// Write output to file
+	if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
+		_ = os.WriteFile(e.stepOutputPath(step.Name), cleanOutput, 0644)
+	}
+
+	if err != nil {
+		if _, ok := err.(*exec.ExitError); ok {
+			result := "fail"
+			if found {
+				result = markerResult
+			}
+			return result, nil
+		}
+		return "", err
+	}
+
+	result := "success"
+	if found {
+		result = markerResult
+	}
+	return result, nil
+}
+
+// executeWorkflow dispatches a container workflow run and blocks until it completes.
+func (e *Executor) executeWorkflow(ctx context.Context, step *domain.Step) (string, error) {
+	workflowName := step.Config["workflow_name"]
+	if workflowName == "" {
+		return "", fmt.Errorf("workflow step %q missing workflow_name", step.Name)
+	}
+
+	// Read prompt from previous step output or prompt_step override
+	var promptContent string
+	promptSource := step.Config["prompt_step"]
+	if promptSource != "" {
+		data, err := os.ReadFile(e.stepOutputPath(promptSource))
+		if err == nil {
+			promptContent = string(data)
+		}
+	} else if prev := e.findPrevOutput(step); prev != "" {
+		data, err := os.ReadFile(prev)
+		if err == nil {
+			promptContent = string(data)
+		}
+	}
+
+	resp, err := e.Dispatcher.RunWorkflow(ctx, &pb.RunWorkflowRequest{
+		WorkflowName: workflowName,
+		ProjectDir:   e.ProjectDir,
+		Prompt:       promptContent,
+	})
+	if err != nil {
+		return "", fmt.Errorf("dispatching workflow %q: %w", workflowName, err)
+	}
+
+	log.Printf("host executor: dispatched container workflow %q as run %s", workflowName, resp.RunId)
+
+	// Poll until the run reaches a terminal state
+	state, err := e.waitForRun(ctx, resp.RunId)
+	if err != nil {
+		return "", fmt.Errorf("waiting for workflow %q run %s: %w", workflowName, resp.RunId, err)
+	}
+
+	log.Printf("host executor: workflow %q run %s completed with state %s", workflowName, resp.RunId, state)
+
+	// Map run state to step result
+	if state == domain.RunStateSucceeded {
+		return "success", nil
+	}
+	return "fail", nil
+}
+
+// waitForRun polls the store until the run reaches a terminal state.
+func (e *Executor) waitForRun(ctx context.Context, runID string) (domain.RunState, error) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("context cancelled while waiting for run %s: %w", runID, ctx.Err())
+		case <-ticker.C:
+			run, err := e.Store.GetRun(ctx, runID)
+			if err != nil {
+				continue // transient error, retry
+			}
+			switch run.State {
+			case domain.RunStateSucceeded, domain.RunStateFailed, domain.RunStateCancelled:
+				return run.State, nil
+			}
+			// Still pending or running, continue polling
+		}
+	}
+}
+
+// stepOutputPath returns the path for a step's output file.
+func (e *Executor) stepOutputPath(stepName string) string {
+	return filepath.Join(e.OutputDir, stepName+".out")
+}
+
+// findPrevOutput looks for the most recent output file from any previously completed step.
+// This is a simplified approach — the engine doesn't expose ordering info,
+// so we check for common output files that might exist.
+func (e *Executor) findPrevOutput(step *domain.Step) string {
+	// Check if there's a prompt_step config
+	if ps := step.Config["prompt_step"]; ps != "" {
+		path := e.stepOutputPath(ps)
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
+}

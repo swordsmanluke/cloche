@@ -17,9 +17,8 @@ import (
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/adapters/web"
 	"github.com/cloche-dev/cloche/internal/config"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/evolution"
+	hostpkg "github.com/cloche-dev/cloche/internal/host"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"google.golang.org/grpc"
@@ -195,8 +194,7 @@ func listen(addr string) (net.Listener, error) {
 }
 
 // autoRunActiveProjects scans known projects for active = true in their config,
-// parses .cloche/host.cloche to find the container workflow to dispatch, and
-// launches each one in a goroutine so it does not block the gRPC server.
+// parses .cloche/host.cloche and executes the full host workflow step by step.
 func autoRunActiveProjects(store ports.RunStore, srv *adaptgrpc.ClocheServer) {
 	ctx := context.Background()
 	projects, err := store.ListProjects(ctx)
@@ -211,53 +209,27 @@ func autoRunActiveProjects(store ports.RunStore, srv *adaptgrpc.ClocheServer) {
 			continue
 		}
 
-		workflowName, err := findMainWorkflow(projectDir)
-		if err != nil {
+		// Verify host.cloche exists before launching
+		hostPath := filepath.Join(projectDir, ".cloche", "host.cloche")
+		if _, err := os.Stat(hostPath); err != nil {
 			fmt.Fprintf(os.Stderr, "startup: skipping active project %s: %v\n", projectDir, err)
 			continue
 		}
 
-		fmt.Fprintf(os.Stderr, "startup: auto-running workflow %q for active project %s\n", workflowName, projectDir)
-		go func(projDir, wfName string) {
-			_, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
-				WorkflowName: wfName,
-				ProjectDir:   projDir,
-			})
+		fmt.Fprintf(os.Stderr, "startup: auto-running host workflow for active project %s\n", projectDir)
+		go func(projDir string) {
+			runner := &hostpkg.Runner{
+				Dispatcher: srv,
+				Store:      store,
+			}
+			result, err := runner.Run(context.Background(), projDir)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "startup: failed to run workflow %q for %s: %v\n", wfName, projDir, err)
+				fmt.Fprintf(os.Stderr, "startup: host workflow failed for %s: %v\n", projDir, err)
+			} else {
+				fmt.Fprintf(os.Stderr, "startup: host workflow completed for %s: %s (run %s)\n", projDir, result.State, result.RunID)
 			}
-		}(projectDir, workflowName)
+		}(projectDir)
 	}
-}
-
-// findMainWorkflow parses .cloche/host.cloche and returns the container workflow
-// name to dispatch (from the first workflow_name step in the "main" workflow).
-func findMainWorkflow(projectDir string) (string, error) {
-	hostPath := filepath.Join(projectDir, ".cloche", "host.cloche")
-	data, err := os.ReadFile(hostPath)
-	if err != nil {
-		return "", fmt.Errorf("reading host.cloche: %w", err)
-	}
-
-	wf, err := dsl.ParseForHost(string(data))
-	if err != nil {
-		return "", fmt.Errorf("parsing host.cloche: %w", err)
-	}
-
-	if wf.Name != "main" {
-		return "", fmt.Errorf("host.cloche workflow is %q, expected \"main\"", wf.Name)
-	}
-
-	// Find the first workflow_name step to determine which container workflow to dispatch
-	for _, step := range wf.Steps {
-		if step.Type == domain.StepTypeWorkflow {
-			if name, ok := step.Config["workflow_name"]; ok {
-				return name, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("no workflow_name step found in host.cloche main workflow")
 }
 
 // envOrConfig returns the env var value if set, otherwise the config file

@@ -565,13 +565,16 @@ When an agent step runs, Cloche assembles a prompt from multiple sources:
 ```
 my-project/
 ├── .cloche/
-│   ├── develop.cloche        # Workflow definition
+│   ├── develop.cloche        # Container workflow definition
+│   ├── host.cloche           # Host orchestration workflow (runs on host)
 │   ├── Dockerfile            # Container image
 │   ├── config.toml           # Project configuration (orchestration, evolution)
 │   ├── prompts/
 │   │   ├── implement.md      # Prompt templates
 │   │   ├── fix.md
 │   │   └── update-docs.md
+│   ├── scripts/
+│   │   └── prepare-prompt.sh # Host-side prompt generation script
 │   ├── overrides/            # Files copied on top of /workspace/ in container
 │   │   └── CLAUDE.md         # Container-specific CLAUDE.md (optional)
 │   └── <run-id>/             # Runtime state (gitignored)
