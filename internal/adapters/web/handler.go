@@ -539,12 +539,21 @@ func (h *Handler) handleAPIRunDetail(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	step := r.PathValue("step")
-	logType := r.URL.Query().Get("type") // optional: "script", "llm"
+	logType := r.URL.Query().Get("type")   // optional: "script", "llm"
+	format := r.URL.Query().Get("format")  // optional: "raw" to skip parsing
 
 	run, err := h.store.GetRun(r.Context(), id)
 	if err != nil {
 		http.Error(w, "run not found", http.StatusNotFound)
 		return
+	}
+
+	writeOutput := func(data []byte) {
+		if format != "raw" {
+			data = logstream.ParseClaudeStream(data)
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(data)
 	}
 
 	// Try log index first for fast lookup
@@ -558,8 +567,7 @@ func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 				}
 				data, readErr := os.ReadFile(lf.FilePath)
 				if readErr == nil && len(data) > 0 {
-					w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-					w.Write(data)
+					writeOutput(data)
 					return
 				}
 			}
@@ -574,8 +582,7 @@ func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 		llmPath := filepath.Join(outputDir, "llm-"+step+".log")
 		data, err := os.ReadFile(llmPath)
 		if err == nil && len(data) > 0 {
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			w.Write(data)
+			writeOutput(data)
 			return
 		}
 	}
@@ -584,24 +591,21 @@ func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 	outputPath := filepath.Join(outputDir, step+".log")
 	data, err := os.ReadFile(outputPath)
 	if err == nil && len(data) > 0 {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write(data)
+		writeOutput(data)
 		return
 	}
 
 	containerLog := filepath.Join(outputDir, "container.log")
 	data, err = os.ReadFile(containerLog)
 	if err == nil && len(data) > 0 {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write(data)
+		writeOutput(data)
 		return
 	}
 
 	// Last resort: try live docker logs from still-existing container
 	if h.container != nil && run.ContainerID != "" {
 		if logs, logErr := h.container.Logs(r.Context(), run.ContainerID); logErr == nil && logs != "" {
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			w.Write([]byte(logs))
+			writeOutput([]byte(logs))
 			return
 		}
 	}
@@ -704,6 +708,10 @@ func (h *Handler) handleAPIStream(w http.ResponseWriter, r *http.Request) {
 				flusher.Flush()
 				return
 			}
+			line = parseLLMLogLine(line)
+			if line.Type == "" {
+				continue // skip protocol-only llm lines
+			}
 			data, _ := json.Marshal(line)
 			fmt.Fprintf(w, "data: %s\n\n", data)
 			flusher.Flush()
@@ -715,6 +723,7 @@ func (h *Handler) handleAPIStream(w http.ResponseWriter, r *http.Request) {
 var logLineRegex = regexp.MustCompile(`^\[([^\]]+)\] \[([^\]]+)\] (.*)$`)
 
 // streamFullLog reads the archived full.log file and sends its entries as SSE events.
+// LLM-type lines are parsed from raw Claude JSON into human-readable text.
 func (h *Handler) streamFullLog(w http.ResponseWriter, flusher http.Flusher, run *domain.Run) {
 	logPath := filepath.Join(run.ProjectDir, ".cloche", run.ID, "output", "full.log")
 	f, err := os.Open(logPath)
@@ -727,10 +736,30 @@ func (h *Handler) streamFullLog(w http.ResponseWriter, flusher http.Flusher, run
 	for scanner.Scan() {
 		text := scanner.Text()
 		line := parseFullLogLine(text)
+		line = parseLLMLogLine(line)
+		if line.Type == "" {
+			continue // skip protocol-only llm lines
+		}
 		data, _ := json.Marshal(line)
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()
 	}
+}
+
+// parseLLMLogLine parses a LogLine whose type is "llm". If the content is
+// Claude stream JSON, it extracts the human-readable text. Protocol-only
+// events return a LogLine with an empty Type (caller should skip it).
+// Non-llm lines are returned unchanged.
+func parseLLMLogLine(line logstream.LogLine) logstream.LogLine {
+	if line.Type != "llm" {
+		return line
+	}
+	text, ok := logstream.ParseClaudeLine([]byte(line.Content))
+	if !ok {
+		return logstream.LogLine{} // signal to skip
+	}
+	line.Content = text
+	return line
 }
 
 // parseFullLogLine parses a "[timestamp] [type] content" line into a LogLine.
