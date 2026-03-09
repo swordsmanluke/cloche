@@ -8,8 +8,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/ports"
 )
 
@@ -25,58 +27,94 @@ type HostRunner struct {
 	ProjectDir string
 }
 
-// RunWorkflow walks the workflow graph starting from wf.EntryStep, executing
-// each step on the host. Returns "done" or "abort" as the final result.
+// RunWorkflow executes the workflow using the shared engine, with a
+// host-specific StepExecutor. Returns "done" or "abort" as the final result.
 func (r *HostRunner) RunWorkflow(ctx context.Context, wf *domain.Workflow, task ports.TrackerTask, orchRunID string) (string, error) {
 	outputDir := filepath.Join(r.ProjectDir, ".cloche", orchRunID, "main")
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return domain.StepAbort, fmt.Errorf("creating output dir: %w", err)
 	}
 
-	currentStep := wf.EntryStep
-	prevOutput := ""
-
-	for {
-		if currentStep == domain.StepDone || currentStep == domain.StepAbort {
-			return currentStep, nil
-		}
-
-		step, ok := wf.Steps[currentStep]
-		if !ok {
-			return domain.StepAbort, fmt.Errorf("step %q not found in workflow", currentStep)
-		}
-
-		stepOutputPath := filepath.Join(outputDir, step.Name+".out")
-
-		var result string
-		var err error
-
-		switch step.Type {
-		case domain.StepTypeScript, domain.StepTypeAgent:
-			result, err = r.runCommandStep(ctx, step, task, stepOutputPath, prevOutput)
-		case domain.StepTypeWorkflow:
-			result, err = r.runWorkflowStep(ctx, step, task, stepOutputPath, outputDir, prevOutput)
-		default:
-			return domain.StepAbort, fmt.Errorf("unsupported step type %q for step %q", step.Type, step.Name)
-		}
-
-		if err != nil {
-			log.Printf("hostrunner: step %q error: %v", step.Name, err)
-			result = "fail"
-		}
-
-		prevOutput = stepOutputPath
-
-		nextStep, err := wf.NextStep(currentStep, result)
-		if err != nil {
-			return domain.StepAbort, fmt.Errorf("wiring error after step %q result %q: %w", currentStep, result, err)
-		}
-		currentStep = nextStep
+	executor := &hostStepExecutor{
+		dispatch:   r.Dispatch,
+		waitRun:    r.WaitRun,
+		projectDir: r.ProjectDir,
+		outputDir:  outputDir,
+		task:       task,
+		outputs:    make(map[string]string),
 	}
+
+	eng := engine.New(executor)
+	run, err := eng.Run(ctx, wf)
+	if err != nil {
+		return domain.StepAbort, err
+	}
+
+	if run.State == domain.RunStateSucceeded {
+		return domain.StepDone, nil
+	}
+	return domain.StepAbort, nil
+}
+
+// hostStepExecutor implements engine.StepExecutor for host-side execution.
+type hostStepExecutor struct {
+	dispatch   RunDispatcher
+	waitRun    RunWaiter
+	projectDir string
+	outputDir  string
+	task       ports.TrackerTask
+
+	mu      sync.Mutex
+	outputs map[string]string // step name -> output file path
+}
+
+func (e *hostStepExecutor) Execute(ctx context.Context, step *domain.Step) (string, error) {
+	stepOutputPath := filepath.Join(e.outputDir, step.Name+".out")
+
+	// Get the previous step's output path (last recorded).
+	e.mu.Lock()
+	prevOutput := e.lastOutput()
+	e.mu.Unlock()
+
+	var result string
+	var err error
+
+	switch step.Type {
+	case domain.StepTypeScript, domain.StepTypeAgent:
+		result, err = e.runCommandStep(ctx, step, stepOutputPath, prevOutput)
+	case domain.StepTypeWorkflow:
+		result, err = e.runWorkflowStep(ctx, step, stepOutputPath, prevOutput)
+	default:
+		return "", fmt.Errorf("unsupported step type %q for step %q", step.Type, step.Name)
+	}
+
+	// Record this step's output path.
+	e.mu.Lock()
+	e.outputs[step.Name] = stepOutputPath
+	e.mu.Unlock()
+
+	if err != nil {
+		log.Printf("hostrunner: step %q error: %v", step.Name, err)
+		return "fail", nil
+	}
+	return result, nil
+}
+
+// lastOutput returns the most recently recorded output path.
+// Caller must hold e.mu.
+func (e *hostStepExecutor) lastOutput() string {
+	// For linear workflows there's at most one meaningful "previous".
+	// Return the last one added (map iteration order is random, but
+	// in practice host workflows are sequential).
+	var last string
+	for _, v := range e.outputs {
+		last = v
+	}
+	return last
 }
 
 // runCommandStep executes a script or agent step via shell command.
-func (r *HostRunner) runCommandStep(ctx context.Context, step *domain.Step, task ports.TrackerTask, stepOutputPath, prevOutput string) (string, error) {
+func (e *hostStepExecutor) runCommandStep(ctx context.Context, step *domain.Step, stepOutputPath, prevOutput string) (string, error) {
 	cmdStr := step.Config["run"]
 	if cmdStr == "" {
 		cmdStr = step.Config["prompt"]
@@ -86,12 +124,12 @@ func (r *HostRunner) runCommandStep(ctx context.Context, step *domain.Step, task
 	}
 
 	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
-	cmd.Dir = r.ProjectDir
+	cmd.Dir = e.projectDir
 	cmd.Env = append(os.Environ(),
-		"CLOCHE_TASK_ID="+task.ID,
-		"CLOCHE_TASK_TITLE="+task.Title,
-		"CLOCHE_TASK_BODY="+task.Description,
-		"CLOCHE_PROJECT_DIR="+r.ProjectDir,
+		"CLOCHE_TASK_ID="+e.task.ID,
+		"CLOCHE_TASK_TITLE="+e.task.Title,
+		"CLOCHE_TASK_BODY="+e.task.Description,
+		"CLOCHE_PROJECT_DIR="+e.projectDir,
 		"CLOCHE_STEP_OUTPUT="+stepOutputPath,
 		"CLOCHE_PREV_OUTPUT="+prevOutput,
 	)
@@ -114,9 +152,7 @@ func (r *HostRunner) runCommandStep(ctx context.Context, step *domain.Step, task
 }
 
 // runWorkflowStep dispatches a container workflow and waits for completion.
-// It writes the dispatched run ID to stepOutputPath so downstream steps can
-// reference the run's branch (cloche/<runID>).
-func (r *HostRunner) runWorkflowStep(ctx context.Context, step *domain.Step, task ports.TrackerTask, stepOutputPath, outputDir, prevOutput string) (string, error) {
+func (e *hostStepExecutor) runWorkflowStep(ctx context.Context, step *domain.Step, stepOutputPath, prevOutput string) (string, error) {
 	workflowName := step.Config["workflow_name"]
 	if workflowName == "" {
 		return "fail", fmt.Errorf("step %q missing workflow_name", step.Name)
@@ -125,7 +161,13 @@ func (r *HostRunner) runWorkflowStep(ctx context.Context, step *domain.Step, tas
 	// Determine prompt source: prompt_step override or previous step output
 	promptSource := prevOutput
 	if ps, ok := step.Config["prompt_step"]; ok && ps != "" {
-		promptSource = filepath.Join(outputDir, ps+".out")
+		e.mu.Lock()
+		if path, exists := e.outputs[ps]; exists {
+			promptSource = path
+		} else {
+			promptSource = filepath.Join(e.outputDir, ps+".out")
+		}
+		e.mu.Unlock()
 	}
 
 	// Read the prompt from the source file
@@ -139,7 +181,7 @@ func (r *HostRunner) runWorkflowStep(ctx context.Context, step *domain.Step, tas
 	}
 
 	// Dispatch the container workflow
-	runID, err := r.Dispatch(ctx, workflowName, r.ProjectDir, prompt)
+	runID, err := e.dispatch(ctx, workflowName, e.projectDir, prompt)
 	if err != nil {
 		return "fail", fmt.Errorf("dispatching workflow %q: %w", workflowName, err)
 	}
@@ -150,7 +192,7 @@ func (r *HostRunner) runWorkflowStep(ctx context.Context, step *domain.Step, tas
 	}
 
 	// Wait for the run to complete
-	state, err := r.WaitRun.WaitRun(ctx, runID)
+	state, err := e.waitRun.WaitRun(ctx, runID)
 	if err != nil {
 		return "fail", fmt.Errorf("waiting for run %s: %w", runID, err)
 	}
