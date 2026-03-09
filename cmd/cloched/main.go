@@ -248,7 +248,7 @@ func initOrchestrator(globalCfg *config.Config, store ports.RunStore, srv *adapt
 
 	orch := orchestrator.New(promptGen, dispatch,
 		orchestrator.WithHostRunner(hostRunner),
-		orchestrator.WithParseHostWorkflow(dsl.Parse),
+		orchestrator.WithParseHostWorkflow(dsl.ParseForHost),
 	)
 
 	// Collect candidate project directories: cwd + all known projects from the store.

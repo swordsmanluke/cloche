@@ -40,7 +40,7 @@ func (r *Runner) Run(ctx context.Context) error {
 		return fmt.Errorf("reading workflow file: %w", err)
 	}
 
-	wf, err := dsl.Parse(string(data))
+	wf, err := dsl.ParseForContainer(string(data))
 	if err != nil {
 		return fmt.Errorf("parsing workflow: %w", err)
 	}

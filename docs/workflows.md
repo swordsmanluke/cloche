@@ -2,6 +2,22 @@
 
 Cloche workflows define a directed graph of steps connected by named results.
 
+## Workflow Locations
+
+Cloche distinguishes two workflow locations based on the file they live in:
+
+**Container workflows** (`.cloche/*.cloche` except `host.cloche`) — Run inside a Docker
+container via `cloche-agent`. Steps may only be `agent` or `script` type. These are the
+standard workflows for coding tasks.
+
+**Host workflow** (`.cloche/host.cloche`) — Runs on the host machine as the daemon
+process. Steps may be `agent`, `script`, or `workflow` type. The `workflow` step type
+dispatches a container workflow run and waits for it to complete. This is the extension
+point for custom orchestration strategies.
+
+The convention is enforced at parse time: a `workflow_name` step in a container workflow
+file is a parse error.
+
 ## Concepts
 
 | Concept  | Description                                                        |
@@ -19,12 +35,16 @@ Step type is inferred from the fields present in the step body:
 
 **agent** (has `prompt`) — Invokes a coding agent (Claude Code, or any tool conforming
 to the agent adapter interface) with a prompt. The agent works autonomously inside the
-container.
+container. Available in both host and container workflows.
 
 **script** (has `run`) — Runs a shell command. Used for tests, linters, validators, or
-any deterministic check.
+any deterministic check. Available in both host and container workflows.
 
-A step with both `prompt` and `run`, or neither, is a parse error.
+**workflow** (has `workflow_name`) — Dispatches a named container workflow run and blocks
+until it completes. Only available in host workflows (`host.cloche`).
+
+A step with more than one of `prompt`, `run`, or `workflow_name`, or none of them, is a
+parse error.
 
 ## DSL Syntax
 
@@ -78,11 +98,41 @@ Cloche's self-evolution feature.
 **Graphs are validated at parse time.** The parser checks that all declared results are
 wired, no steps are orphaned, and an entry point exists.
 
+## Host Workflow Example
+
+```
+# .cloche/host.cloche — runs on the host machine
+workflow "orchestrate" {
+  step prepare-prompt {
+    run     = "bash .cloche/scripts/prepare-prompt.sh"
+    results = [success, fail]
+  }
+
+  step develop {
+    workflow_name = "develop"
+    prompt_step   = "prepare-prompt"
+    results       = [success, fail]
+  }
+
+  prepare-prompt:success -> develop
+  prepare-prompt:fail    -> abort
+  develop:success        -> done
+  develop:fail           -> done
+}
+```
+
+The `workflow_name` step reads the prompt from the previous step's output (or
+`prompt_step` override), dispatches a container workflow run, and blocks until it
+completes.
+
 ## Execution Model
 
-The workflow graph is parsed and executed by `cloche-agent` inside the container.
-The agent walks the graph: execute current step, read its result, follow the wiring to
-the next step. This continues until a terminal step (`done` or `abort`) is reached.
+**Container workflows** are parsed and executed by `cloche-agent` inside a Docker
+container. The agent walks the graph: execute current step, read its result, follow the
+wiring to the next step. This continues until a terminal (`done` or `abort`) is reached.
+All steps run inside the same container. File state accumulates naturally across steps.
 
-All steps in a workflow run inside the same container. File state accumulates naturally
-across steps.
+**Host workflows** are parsed and executed by the daemon on the host machine. Script
+steps run via `sh -c`, and workflow steps dispatch container runs via the daemon's
+standard run pipeline. Environment variables (`CLOCHE_TASK_ID`, `CLOCHE_PROJECT_DIR`,
+etc.) are injected into each step.

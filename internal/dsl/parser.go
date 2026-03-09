@@ -8,16 +8,40 @@ import (
 )
 
 type Parser struct {
-	lexer   *Lexer
-	current Token
-	peek    Token
+	lexer    *Lexer
+	current  Token
+	peek     Token
+	location domain.WorkflowLocation
 }
 
-func Parse(input string) (*domain.Workflow, error) {
+// ParseOption configures the parser.
+type ParseOption func(*Parser)
+
+// WithLocation sets the workflow location, enabling location-based validation.
+func WithLocation(loc domain.WorkflowLocation) ParseOption {
+	return func(p *Parser) {
+		p.location = loc
+	}
+}
+
+func Parse(input string, opts ...ParseOption) (*domain.Workflow, error) {
 	p := &Parser{lexer: NewLexer(input)}
+	for _, opt := range opts {
+		opt(p)
+	}
 	p.advance() // load current
 	p.advance() // load peek
 	return p.parseWorkflow()
+}
+
+// ParseForHost parses a host.cloche file.
+func ParseForHost(input string) (*domain.Workflow, error) {
+	return Parse(input, WithLocation(domain.LocationHost))
+}
+
+// ParseForContainer parses a container workflow file.
+func ParseForContainer(input string) (*domain.Workflow, error) {
+	return Parse(input, WithLocation(domain.LocationContainer))
 }
 
 func (p *Parser) advance() {
@@ -60,9 +84,10 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 	}
 
 	wf := &domain.Workflow{
-		Name:   nameTok.Literal,
-		Steps:  make(map[string]*domain.Step),
-		Config: make(map[string]string),
+		Name:     nameTok.Literal,
+		Location: p.location,
+		Steps:    make(map[string]*domain.Step),
+		Config:   make(map[string]string),
 	}
 
 	for p.current.Type != TokenRBrace && p.current.Type != TokenEOF {
@@ -98,6 +123,12 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 
 	if _, err := p.expect(TokenRBrace); err != nil {
 		return nil, err
+	}
+
+	if wf.Location != "" {
+		if err := wf.ValidateLocation(); err != nil {
+			return nil, err
+		}
 	}
 
 	return wf, nil

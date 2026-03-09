@@ -18,6 +18,19 @@ const (
 	StepTypeWorkflow StepType = "workflow"
 )
 
+// WorkflowLocation indicates where a workflow is intended to run.
+type WorkflowLocation string
+
+const (
+	// LocationContainer is for workflows that run inside a Docker container.
+	// These are all .cloche/*.cloche files except host.cloche.
+	LocationContainer WorkflowLocation = "container"
+
+	// LocationHost is for workflows that run on the host machine.
+	// Only .cloche/host.cloche uses this location.
+	LocationHost WorkflowLocation = "host"
+)
+
 type Step struct {
 	Name    string
 	Type    StepType
@@ -51,6 +64,7 @@ type Collect struct {
 
 type Workflow struct {
 	Name      string
+	Location  WorkflowLocation  // host or container
 	Steps     map[string]*Step
 	Wiring    []Wire
 	Collects  []Collect
@@ -127,6 +141,19 @@ func (w *Workflow) Validate() error {
 		}
 	}
 
+	return nil
+}
+
+// ValidateLocation checks that step types are compatible with the workflow location.
+// workflow_name steps are only allowed in host workflows.
+func (w *Workflow) ValidateLocation() error {
+	if w.Location == LocationContainer {
+		for name, step := range w.Steps {
+			if step.Type == StepTypeWorkflow {
+				return fmt.Errorf("workflow %q: step %q uses workflow_name, which is only allowed in host workflows (host.cloche)", w.Name, name)
+			}
+		}
+	}
 	return nil
 }
 

@@ -1097,7 +1097,7 @@ func (h *Handler) handleAPIWorkflows(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
-		wf, err := dsl.Parse(string(data))
+		wf, err := dsl.ParseForContainer(string(data))
 		if err != nil {
 			continue
 		}
@@ -1151,7 +1151,7 @@ func (h *Handler) handleAPIStepContent(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
-		parsed, err := dsl.Parse(string(data))
+		parsed, err := dsl.ParseForContainer(string(data))
 		if err != nil {
 			continue
 		}

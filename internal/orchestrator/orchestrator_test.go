@@ -475,7 +475,7 @@ func TestOrchestratorRun_HostWorkflowPath(t *testing.T) {
 	}
 
 	parseFunc := func(input string) (*domain.Workflow, error) {
-		return dsl.Parse(input)
+		return dsl.ParseForHost(input)
 	}
 
 	waiter := &mockRunWaiter{state: domain.RunStateSucceeded}
@@ -536,7 +536,7 @@ func TestOrchestratorRun_FallbackWithoutHostCloche(t *testing.T) {
 	}
 
 	parseFunc := func(input string) (*domain.Workflow, error) {
-		return dsl.Parse(input)
+		return dsl.ParseForHost(input)
 	}
 
 	orch := New(promptGen, dispatch,

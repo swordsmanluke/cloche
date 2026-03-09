@@ -135,7 +135,7 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	var image string
 	wfPath := filepath.Join(cwd, ".cloche", workflow+".cloche")
 	if data, err := os.ReadFile(wfPath); err == nil {
-		if wf, err := dsl.Parse(string(data)); err == nil {
+		if wf, err := dsl.ParseForContainer(string(data)); err == nil {
 			image = wf.Config["container.image"]
 		}
 	}

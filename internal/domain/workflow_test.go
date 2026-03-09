@@ -266,6 +266,76 @@ func TestWorkflow_ValidateConfig_UnknownKey(t *testing.T) {
 	assert.Contains(t, warnings[0], "unrecognized")
 }
 
+func TestWorkflow_ValidateLocation_ContainerRejectsWorkflowStep(t *testing.T) {
+	wf := &domain.Workflow{
+		Name:     "develop",
+		Location: domain.LocationContainer,
+		Steps: map[string]*domain.Step{
+			"dispatch": {
+				Name:    "dispatch",
+				Type:    domain.StepTypeWorkflow,
+				Results: []string{"success"},
+				Config:  map[string]string{"workflow_name": "implement"},
+			},
+		},
+		EntryStep: "dispatch",
+	}
+	err := wf.ValidateLocation()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "workflow_name")
+	assert.Contains(t, err.Error(), "host workflows")
+}
+
+func TestWorkflow_ValidateLocation_HostAllowsWorkflowStep(t *testing.T) {
+	wf := &domain.Workflow{
+		Name:     "orchestrate",
+		Location: domain.LocationHost,
+		Steps: map[string]*domain.Step{
+			"develop": {
+				Name:    "develop",
+				Type:    domain.StepTypeWorkflow,
+				Results: []string{"success"},
+				Config:  map[string]string{"workflow_name": "develop"},
+			},
+		},
+		EntryStep: "develop",
+	}
+	err := wf.ValidateLocation()
+	assert.NoError(t, err)
+}
+
+func TestWorkflow_ValidateLocation_ContainerAllowsAgentAndScript(t *testing.T) {
+	wf := &domain.Workflow{
+		Name:     "develop",
+		Location: domain.LocationContainer,
+		Steps: map[string]*domain.Step{
+			"code":  {Name: "code", Type: domain.StepTypeAgent, Results: []string{"success"}},
+			"check": {Name: "check", Type: domain.StepTypeScript, Results: []string{"pass"}},
+		},
+		EntryStep: "code",
+	}
+	err := wf.ValidateLocation()
+	assert.NoError(t, err)
+}
+
+func TestWorkflow_ValidateLocation_EmptyLocationNoEnforcement(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "any",
+		Steps: map[string]*domain.Step{
+			"dispatch": {
+				Name:    "dispatch",
+				Type:    domain.StepTypeWorkflow,
+				Results: []string{"success"},
+				Config:  map[string]string{"workflow_name": "develop"},
+			},
+		},
+		EntryStep: "dispatch",
+	}
+	// No Location set — should not enforce
+	err := wf.ValidateLocation()
+	assert.NoError(t, err)
+}
+
 func TestWorkflow_ValidateConfig_ContainerPrefix(t *testing.T) {
 	wf := &domain.Workflow{
 		Name: "container-keys",

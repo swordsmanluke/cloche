@@ -358,3 +358,73 @@ func TestParser_CollectAny(t *testing.T) {
 	require.Len(t, wf.Collects, 1)
 	assert.Equal(t, domain.CollectAny, wf.Collects[0].Mode)
 }
+
+func TestParseForHost_AllowsWorkflowSteps(t *testing.T) {
+	input := `workflow "orchestrate" {
+  step prepare {
+    run     = "bash scripts/prepare.sh"
+    results = [success, fail]
+  }
+  step develop {
+    workflow_name = "develop"
+    results       = [success, fail]
+  }
+  prepare:success -> develop
+  prepare:fail    -> abort
+  develop:success -> done
+  develop:fail    -> done
+}`
+	wf, err := dsl.ParseForHost(input)
+	require.NoError(t, err)
+	assert.Equal(t, domain.LocationHost, wf.Location)
+	assert.Equal(t, domain.StepTypeWorkflow, wf.Steps["develop"].Type)
+}
+
+func TestParseForContainer_RejectsWorkflowSteps(t *testing.T) {
+	input := `workflow "develop" {
+  step dispatch {
+    workflow_name = "implement"
+    results       = [success, fail]
+  }
+  dispatch:success -> done
+  dispatch:fail    -> abort
+}`
+	_, err := dsl.ParseForContainer(input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "workflow_name")
+	assert.Contains(t, err.Error(), "host workflows")
+}
+
+func TestParseForContainer_AllowsAgentAndScript(t *testing.T) {
+	input := `workflow "develop" {
+  step code {
+    prompt = "write code"
+    results = [success, fail]
+  }
+  step test {
+    run = "make test"
+    results = [pass, fail]
+  }
+  code:success -> test
+  code:fail -> abort
+  test:pass -> done
+  test:fail -> code
+}`
+	wf, err := dsl.ParseForContainer(input)
+	require.NoError(t, err)
+	assert.Equal(t, domain.LocationContainer, wf.Location)
+}
+
+func TestParse_WithoutLocation_NoEnforcement(t *testing.T) {
+	input := `workflow "any" {
+  step dispatch {
+    workflow_name = "develop"
+    results       = [success]
+  }
+  dispatch:success -> done
+}`
+	// Plain Parse (no location) should not enforce location constraints
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+	assert.Equal(t, domain.WorkflowLocation(""), wf.Location)
+}
