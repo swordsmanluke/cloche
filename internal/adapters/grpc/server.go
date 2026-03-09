@@ -23,24 +23,18 @@ import (
 	rpcgrpc "google.golang.org/grpc"
 )
 
-// OnRunCompleteFunc is called after a workflow run finishes.
-// It receives the project directory, run ID, and the final run state.
-type OnRunCompleteFunc func(ctx context.Context, projectDir string, runID string, state domain.RunState)
-
 type ClocheServer struct {
 	pb.UnimplementedClocheServiceServer
-	store         ports.RunStore
-	captures      ports.CaptureStore
-	logStore      ports.LogStore
-	container     ports.ContainerRuntime
-	defaultImage  string
-	evolution     *evolution.Trigger
-	logBroadcast  *logstream.Broadcaster
-	shutdownFn    func()
-	onRunComplete OnRunCompleteFunc
-	orchestrateFn func(ctx context.Context, projectDir string) (int, error)
-	mu            sync.Mutex
-	runIDs        map[string]string // run_id -> container_id
+	store        ports.RunStore
+	captures     ports.CaptureStore
+	logStore     ports.LogStore
+	container    ports.ContainerRuntime
+	defaultImage string
+	evolution    *evolution.Trigger
+	logBroadcast *logstream.Broadcaster
+	shutdownFn   func()
+	mu           sync.Mutex
+	runIDs       map[string]string // run_id -> container_id
 }
 
 func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *ClocheServer {
@@ -80,17 +74,6 @@ func (s *ClocheServer) SetLogBroadcaster(b *logstream.Broadcaster) {
 // SetShutdownFunc sets the callback invoked when the Shutdown RPC is called.
 func (s *ClocheServer) SetShutdownFunc(fn func()) {
 	s.shutdownFn = fn
-}
-
-// SetOnRunComplete sets a callback invoked after each workflow run completes.
-func (s *ClocheServer) SetOnRunComplete(fn OnRunCompleteFunc) {
-	s.onRunComplete = fn
-}
-
-
-// SetOrchestrateFunc sets the function invoked by the Orchestrate RPC.
-func (s *ClocheServer) SetOrchestrateFunc(fn func(ctx context.Context, projectDir string) (int, error)) {
-	s.orchestrateFn = fn
 }
 
 func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
@@ -336,14 +319,6 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	// Fire evolution trigger if configured
 	if s.evolution != nil {
 		s.evolution.Fire(projectDir, workflowName, runID)
-	}
-
-	// Fire on-run-complete callback (orchestrator trigger)
-	if s.onRunComplete != nil {
-		runForCallback, _ := s.store.GetRun(ctx, runID)
-		if runForCallback != nil {
-			s.onRunComplete(ctx, projectDir, runID, runForCallback.State)
-		}
 	}
 
 	// Merge is handled as a workflow step in host.cloche, not here.
@@ -683,14 +658,7 @@ func (s *ClocheServer) DeleteContainer(ctx context.Context, req *pb.DeleteContai
 }
 
 func (s *ClocheServer) Orchestrate(ctx context.Context, req *pb.OrchestrateRequest) (*pb.OrchestrateResponse, error) {
-	if s.orchestrateFn == nil {
-		return nil, fmt.Errorf("orchestrator not configured")
-	}
-	dispatched, err := s.orchestrateFn(ctx, req.ProjectDir)
-	if err != nil {
-		return nil, fmt.Errorf("orchestration failed: %w", err)
-	}
-	return &pb.OrchestrateResponse{Dispatched: int32(dispatched)}, nil
+	return nil, fmt.Errorf("orchestrator has been removed; use host workflow instead")
 }
 
 func (s *ClocheServer) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*pb.ShutdownResponse, error) {

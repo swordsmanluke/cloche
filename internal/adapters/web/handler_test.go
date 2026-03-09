@@ -606,7 +606,6 @@ func TestProjectOverview_WithProjects(t *testing.T) {
 	assert.Contains(t, body, "run-dot")
 	// Quick actions
 	assert.Contains(t, body, "View Runs")
-	assert.Contains(t, body, "Trigger Orchestrator")
 }
 
 func TestProjectOverview_Empty(t *testing.T) {
@@ -618,93 +617,6 @@ func TestProjectOverview_Empty(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "No projects yet")
-}
-
-func TestAPITriggerOrchestrator_NoOrchestrator(t *testing.T) {
-	h, store := setupHandler(t)
-	seedRunWithProject(t, store, "orch-1", "develop", domain.RunStateSucceeded, "/home/user/myproject")
-
-	req := httptest.NewRequest("POST", "/api/projects/myproject/trigger", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusNotImplemented, w.Code)
-	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
-
-	var result map[string]string
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-	assert.Equal(t, "orchestrator not configured", result["error"])
-}
-
-func TestAPITriggerOrchestrator_Success(t *testing.T) {
-	store, err := sqlite.NewStore(":memory:")
-	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
-
-	h, err := NewHandler(store, store, WithOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {
-		assert.Equal(t, "/home/user/myproject", projectDir)
-		return 3, nil
-	}))
-	require.NoError(t, err)
-
-	seedRunWithProject(t, store, "orch-2", "develop", domain.RunStateSucceeded, "/home/user/myproject")
-
-	req := httptest.NewRequest("POST", "/api/projects/myproject/trigger", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
-
-	var result map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-	assert.Equal(t, "ok", result["status"])
-	assert.Equal(t, "myproject", result["project"])
-	assert.Equal(t, float64(3), result["dispatched"])
-}
-
-func TestAPITriggerOrchestrator_ProjectNotFound(t *testing.T) {
-	store, err := sqlite.NewStore(":memory:")
-	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
-
-	h, err := NewHandler(store, store, WithOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {
-		return 0, nil
-	}))
-	require.NoError(t, err)
-
-	req := httptest.NewRequest("POST", "/api/projects/nonexistent/trigger", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusNotFound, w.Code)
-
-	var result map[string]string
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-	assert.Equal(t, "project not found", result["error"])
-}
-
-func TestAPITriggerOrchestrator_Error(t *testing.T) {
-	store, err := sqlite.NewStore(":memory:")
-	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
-
-	h, err := NewHandler(store, store, WithOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {
-		return 0, fmt.Errorf("orchestration failed")
-	}))
-	require.NoError(t, err)
-
-	seedRunWithProject(t, store, "orch-3", "develop", domain.RunStateSucceeded, "/home/user/errproject")
-
-	req := httptest.NewRequest("POST", "/api/projects/errproject/trigger", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-
-	var result map[string]string
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-	assert.Equal(t, "orchestration failed", result["error"])
 }
 
 func TestHealthColor(t *testing.T) {

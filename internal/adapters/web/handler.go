@@ -47,23 +47,6 @@ func WithLogStore(ls ports.LogStore) HandlerOption {
 	return func(h *Handler) { h.logStore = ls }
 }
 
-// WithOrchestrateFunc sets the function called when the orchestrator is triggered.
-func WithOrchestrateFunc(fn func(ctx context.Context, projectDir string) (int, error)) HandlerOption {
-	return func(h *Handler) { h.orchestrateFn = fn }
-}
-
-// OrchestratorController provides per-project orchestrator control.
-type OrchestratorController interface {
-	Status(dir string) (enabled bool, inFlight int, concurrency int)
-	SetEnabled(dir string, enabled bool)
-	SetConcurrency(dir string, concurrency int)
-}
-
-// WithOrchestrator sets the orchestrator controller for project-level control.
-func WithOrchestrator(oc OrchestratorController) HandlerOption {
-	return func(h *Handler) { h.orchestrator = oc }
-}
-
 //go:embed templates/*.html static/*
 var content embed.FS
 
@@ -81,15 +64,13 @@ type ContainerManager interface {
 }
 
 type Handler struct {
-	store         ports.RunStore
-	captures      ports.CaptureStore
-	logStore      ports.LogStore
-	container     ContainerLogger
-	logBroadcast  *logstream.Broadcaster
-	orchestrateFn func(ctx context.Context, projectDir string) (int, error)
-	orchestrator  OrchestratorController
-	pages         map[string]*template.Template
-	mux           *http.ServeMux
+	store        ports.RunStore
+	captures     ports.CaptureStore
+	logStore     ports.LogStore
+	container    ContainerLogger
+	logBroadcast *logstream.Broadcaster
+	pages        map[string]*template.Template
+	mux          *http.ServeMux
 }
 
 // NewHandler creates a web dashboard handler.
@@ -145,11 +126,6 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/runs/{id}", h.handleAPIRunDetail)
 	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
 	h.mux.HandleFunc("DELETE /api/runs/{id}/container", h.handleAPIDeleteContainer)
-	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
-	h.mux.HandleFunc("GET /api/projects/{name}/orchestrator", h.handleAPIOrchestratorStatus)
-	h.mux.HandleFunc("POST /api/projects/{name}/orchestrator/start", h.handleAPIOrchestratorStart)
-	h.mux.HandleFunc("POST /api/projects/{name}/orchestrator/stop", h.handleAPIOrchestratorStop)
-	h.mux.HandleFunc("POST /api/projects/{name}/orchestrator/concurrency", h.handleAPIOrchestratorConcurrency)
 	h.mux.HandleFunc("GET /api/projects/{name}/info", h.handleAPIProjectInfo)
 	h.mux.HandleFunc("GET /api/projects/{name}/info/prompt-diff", h.handleAPIPromptDiff)
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows", h.handleAPIWorkflows)
@@ -671,45 +647,6 @@ func (h *Handler) handleAPIDeleteContainer(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-func (h *Handler) handleAPITriggerOrchestrator(w http.ResponseWriter, r *http.Request) {
-	label := r.PathValue("name")
-
-	// Resolve label back to project directory via the store.
-	projects, _ := h.store.ListProjects(r.Context())
-	labels := projectLabels(projects)
-	var projectDir string
-	for dir, l := range labels {
-		if l == label {
-			projectDir = dir
-			break
-		}
-	}
-	if projectDir == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "project not found"})
-		return
-	}
-
-	if h.orchestrateFn == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotImplemented)
-		json.NewEncoder(w).Encode(map[string]string{"error": "orchestrator not configured"})
-		return
-	}
-
-	dispatched, err := h.orchestrateFn(r.Context(), projectDir)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"status": "ok", "project": label, "dispatched": dispatched})
-}
-
 // handleAPIStream serves an SSE stream of log lines for a run.
 // For active runs, it subscribes to the live broadcaster.
 // For completed runs, it serves the archived full.log then closes.
@@ -858,82 +795,6 @@ func (h *Handler) handleProjectDetail(w http.ResponseWriter, r *http.Request) {
 	if err := h.pages["project_detail"].ExecuteTemplate(w, "layout", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-}
-
-func (h *Handler) handleAPIOrchestratorStatus(w http.ResponseWriter, r *http.Request) {
-	dir, _, ok := h.resolveProjectDir(w, r)
-	if !ok {
-		return
-	}
-	if h.orchestrator == nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"enabled": false, "in_flight": 0, "concurrency": 0})
-		return
-	}
-	enabled, inFlight, concurrency := h.orchestrator.Status(dir)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"enabled":     enabled,
-		"in_flight":   inFlight,
-		"concurrency": concurrency,
-	})
-}
-
-func (h *Handler) handleAPIOrchestratorStart(w http.ResponseWriter, r *http.Request) {
-	dir, _, ok := h.resolveProjectDir(w, r)
-	if !ok {
-		return
-	}
-	if h.orchestrator == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotImplemented)
-		json.NewEncoder(w).Encode(map[string]string{"error": "orchestrator not configured"})
-		return
-	}
-	h.orchestrator.SetEnabled(dir, true)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-}
-
-func (h *Handler) handleAPIOrchestratorStop(w http.ResponseWriter, r *http.Request) {
-	dir, _, ok := h.resolveProjectDir(w, r)
-	if !ok {
-		return
-	}
-	if h.orchestrator == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotImplemented)
-		json.NewEncoder(w).Encode(map[string]string{"error": "orchestrator not configured"})
-		return
-	}
-	h.orchestrator.SetEnabled(dir, false)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-}
-
-func (h *Handler) handleAPIOrchestratorConcurrency(w http.ResponseWriter, r *http.Request) {
-	dir, _, ok := h.resolveProjectDir(w, r)
-	if !ok {
-		return
-	}
-	if h.orchestrator == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotImplemented)
-		json.NewEncoder(w).Encode(map[string]string{"error": "orchestrator not configured"})
-		return
-	}
-	var body struct {
-		Concurrency int `json:"concurrency"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Concurrency < 1 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "concurrency must be a positive integer"})
-		return
-	}
-	h.orchestrator.SetConcurrency(dir, body.Concurrency)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func (h *Handler) handleAPIProjectInfo(w http.ResponseWriter, r *http.Request) {

@@ -8,21 +8,7 @@
     <a href="/runs?project={{.Dir}}" class="btn btn-secondary btn-sm" style="margin-left:0.5rem">View all runs</a>
 </div>
 
-<!-- Panel 1: Orchestrator Control -->
-<div class="panel" id="orchestrator-panel">
-    <div class="panel-header">Orchestrator Control</div>
-    <div class="panel-body">
-        <div id="orch-status" class="orch-status">Loading...</div>
-        <div class="orch-controls" style="margin-top:0.75rem;display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
-            <button id="orch-toggle" class="btn btn-primary btn-sm" onclick="toggleOrchestrator()">Enable</button>
-            <span style="margin-left:1rem;color:var(--text-muted);font-size:0.85rem">Concurrency:</span>
-            <input type="number" id="orch-concurrency" min="1" max="20" value="1" style="width:60px;padding:0.2em 0.4em;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text);font-size:0.85rem">
-            <button class="btn btn-secondary btn-sm" onclick="applyConcurrency()">Apply</button>
-        </div>
-    </div>
-</div>
-
-<!-- Panel 2: Project Info -->
+<!-- Panel 1: Project Info -->
 <div class="panel" id="info-panel">
     <div class="panel-header">Project Info</div>
     <div class="panel-body" id="project-info">Loading...</div>
@@ -50,41 +36,6 @@
 {{define "scripts"}}
 <script>
 var projectLabel = {{.Label}};
-var orchEnabled = false;
-
-function loadOrchestratorStatus() {
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/orchestrator')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            orchEnabled = data.enabled;
-            var statusEl = document.getElementById('orch-status');
-            var toggleBtn = document.getElementById('orch-toggle');
-            var concInput = document.getElementById('orch-concurrency');
-            statusEl.innerHTML = '<span class="badge ' + (data.enabled ? 'badge-succeeded' : 'badge-stopped') + '">' +
-                (data.enabled ? 'Enabled' : 'Disabled') + '</span>' +
-                '&nbsp; In-flight: <strong>' + data.in_flight + '</strong>' +
-                '&nbsp; Concurrency: <strong>' + data.concurrency + '</strong>';
-            toggleBtn.textContent = data.enabled ? 'Disable' : 'Enable';
-            toggleBtn.className = 'btn btn-sm ' + (data.enabled ? 'btn-danger' : 'btn-primary');
-            concInput.value = data.concurrency;
-        });
-}
-
-function toggleOrchestrator() {
-    var action = orchEnabled ? 'stop' : 'start';
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/orchestrator/' + action, {method: 'POST'})
-        .then(function() { loadOrchestratorStatus(); });
-}
-
-function applyConcurrency() {
-    var val = parseInt(document.getElementById('orch-concurrency').value, 10);
-    if (val < 1) return;
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/orchestrator/concurrency', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({concurrency: val})
-    }).then(function() { loadOrchestratorStatus(); });
-}
 
 function loadProjectInfo() {
     fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/info')
@@ -292,7 +243,6 @@ document.addEventListener('keydown', function(e) {
 });
 
 // Load all panels
-loadOrchestratorStatus();
 loadProjectInfo();
 loadWorkflows();
 </script>

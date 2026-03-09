@@ -11,7 +11,6 @@ import (
 	"syscall"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
-	"github.com/cloche-dev/cloche/internal/adapters/beads"
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
 	adaptgrpc "github.com/cloche-dev/cloche/internal/adapters/grpc"
 	"github.com/cloche-dev/cloche/internal/adapters/local"
@@ -19,10 +18,8 @@ import (
 	"github.com/cloche-dev/cloche/internal/adapters/web"
 	"github.com/cloche-dev/cloche/internal/config"
 	_ "github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/evolution"
 	"github.com/cloche-dev/cloche/internal/logstream"
-	"github.com/cloche-dev/cloche/internal/orchestrator"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"google.golang.org/grpc"
 )
@@ -73,20 +70,6 @@ func main() {
 		srv.SetEvolution(evoTrigger)
 	}
 
-	// Orchestrator disabled — use `cloche run` for manual dispatch only.
-	// orch := initOrchestrator(globalCfg, store, srv)
-	// if orch != nil {
-	// 	srv.SetOnRunComplete(func(ctx context.Context, projectDir string, runID string, state domain.RunState) {
-	// 		orch.OnRunComplete(ctx, projectDir, runID, state)
-	// 	})
-	// 	srv.SetOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {
-	// 		if projectDir != "" {
-	// 			return orch.Run(ctx, projectDir)
-	// 		}
-	// 		return orch.TriggerAll(ctx), nil
-	// 	})
-	// }
-
 	grpcServer := grpc.NewServer()
 	pb.RegisterClocheServiceServer(grpcServer, srv)
 
@@ -105,12 +88,6 @@ func main() {
 			web.WithLogStore(store),
 			web.WithLogBroadcaster(broadcaster),
 		}
-		// if orch != nil {
-		// 	webOpts = append(webOpts, web.WithOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {
-		// 		return orch.Run(ctx, projectDir)
-		// 	}))
-		// 	webOpts = append(webOpts, web.WithOrchestrator(orch))
-		// }
 		webHandler, err := web.NewHandler(store, store, webOpts...)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to create web handler: %v\n", err)
@@ -134,16 +111,6 @@ func main() {
 		}
 		grpcServer.GracefulStop()
 	}()
-
-	// Orchestrator auto-dispatch disabled while refactoring.
-	// if orch != nil {
-	// 	go func() {
-	// 		n := orch.TriggerAll(context.Background())
-	// 		if n > 0 {
-	// 			fmt.Fprintf(os.Stderr, "startup: orchestrator dispatched %d run(s)\n", n)
-	// 		}
-	// 	}()
-	// }
 
 	fmt.Fprintf(os.Stderr, "cloched listening on %s\n", listenAddr)
 	if err := grpcServer.Serve(lis); err != nil {
@@ -222,70 +189,6 @@ func listen(addr string) (net.Listener, error) {
 	}
 	return net.Listen("tcp", addr)
 }
-
-func initOrchestrator(globalCfg *config.Config, store ports.RunStore, srv *adaptgrpc.ClocheServer) *orchestrator.Orchestrator {
-	return nil // Orchestrator disabled — use `cloche run` for manual dispatch only.
-	llmClient := orchestrator.NewCommandLLMClientFromEnv()
-	promptGen := &orchestrator.LLMPromptGenerator{LLM: llmClient}
-
-	dispatch := func(ctx context.Context, workflowName, projectDir, prompt string) (string, error) {
-		resp, err := srv.RunWorkflow(ctx, &pb.RunWorkflowRequest{
-			WorkflowName: workflowName,
-			ProjectDir:   projectDir,
-			Prompt:       prompt,
-		})
-		if err != nil {
-			return "", err
-		}
-		return resp.RunId, nil
-	}
-
-	waiter := &orchestrator.StoreRunWaiter{Store: store}
-	hostRunner := &orchestrator.HostRunner{
-		Dispatch: dispatch,
-		WaitRun:  waiter,
-	}
-
-	orch := orchestrator.New(promptGen, dispatch,
-		orchestrator.WithHostRunner(hostRunner),
-		orchestrator.WithParseHostWorkflow(dsl.ParseForHost),
-	)
-
-	// Collect candidate project directories: cwd + all known projects from the store.
-	candidates := map[string]bool{}
-	if cwd, err := os.Getwd(); err == nil {
-		candidates[cwd] = true
-	}
-	if projects, err := store.ListProjects(context.Background()); err == nil {
-		for _, dir := range projects {
-			candidates[dir] = true
-		}
-	}
-
-	// Register every project that has orchestration enabled.
-	registered := 0
-	for dir := range candidates {
-		cfg, err := config.Load(dir)
-		if err != nil || !cfg.Orchestration.Enabled {
-			continue
-		}
-		tracker := beads.NewTracker(dir)
-		orch.Register(&orchestrator.ProjectConfig{
-			Dir:         dir,
-			Workflow:    cfg.Orchestration.Workflow,
-			Concurrency: cfg.Orchestration.Concurrency,
-			Tracker:     tracker,
-			Enabled:     true,
-		})
-		registered++
-	}
-
-	if registered == 0 {
-		return nil
-	}
-	return orch
-}
-
 
 // envOrConfig returns the env var value if set, otherwise the config file
 // value if non-empty, otherwise the fallback default.

@@ -24,17 +24,9 @@ type EvolutionConfig struct {
 	MaxPromptBullets int    `toml:"max_prompt_bullets"`
 }
 
-type OrchestrationConfig struct {
-	Enabled     bool   `toml:"enabled"`
-	Tracker     string `toml:"tracker"`
-	Concurrency int    `toml:"concurrency"`
-	Workflow    string `toml:"workflow"`
-}
-
 type Config struct {
-	Daemon        DaemonConfig        `toml:"daemon"`
-	Evolution     EvolutionConfig     `toml:"evolution"`
-	Orchestration OrchestrationConfig `toml:"orchestration"`
+	Daemon    DaemonConfig    `toml:"daemon"`
+	Evolution EvolutionConfig `toml:"evolution"`
 }
 
 func defaults() Config {
@@ -44,11 +36,6 @@ func defaults() Config {
 			DebounceSeconds:  30,
 			MinConfidence:    "medium",
 			MaxPromptBullets: 50,
-		},
-		Orchestration: OrchestrationConfig{
-			Tracker:     "beads",
-			Concurrency: 1,
-			Workflow:     "develop",
 		},
 	}
 }

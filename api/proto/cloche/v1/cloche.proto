@@ -10,7 +10,6 @@ service ClocheService {
   rpc StreamLogs(StreamLogsRequest) returns (stream LogEntry);
   rpc StopRun(StopRunRequest) returns (StopRunResponse);
   rpc ListRuns(ListRunsRequest) returns (ListRunsResponse);
-  rpc Orchestrate(OrchestrateRequest) returns (OrchestrateResponse);
   rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
   rpc DeleteContainer(DeleteContainerRequest) returns (DeleteContainerResponse);
 }
@@ -69,14 +68,6 @@ message StopRunRequest {
 }
 
 message StopRunResponse {}
-
-message OrchestrateRequest {
-  string project_dir = 1;
-}
-
-message OrchestrateResponse {
-  int32 dispatched = 1;
-}
 
 message ShutdownRequest {}
 
