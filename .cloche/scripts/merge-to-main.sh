@@ -34,22 +34,26 @@ cleanup_worktree() {
 # Create worktree at the feature branch
 git -C "$PROJECT_DIR" worktree add "$WORKTREE_DIR" "$BRANCH"
 
-# Rebase onto main, preferring main on conflict
-if ! git -C "$WORKTREE_DIR" rebase -X ours main; then
+# Rebase onto main — fail on conflict rather than silently dropping changes
+if ! git -C "$WORKTREE_DIR" rebase main; then
   echo "error: rebase failed — branch $BRANCH preserved for review" >&2
   git -C "$WORKTREE_DIR" rebase --abort 2>/dev/null || true
   cleanup_worktree
   exit 1
 fi
 
-# Read rebased HEAD before removing worktree
+# Update the branch ref to the rebased result so main can fast-forward to it
 REBASED_HEAD=$(git -C "$WORKTREE_DIR" rev-parse HEAD)
 
-# Must remove worktree before updating refs
+# Remove the worktree before merging (git won't allow branch deletion while
+# a worktree is attached)
 cleanup_worktree
 
-# Fast-forward main to rebased HEAD
-git -C "$PROJECT_DIR" update-ref refs/heads/main "$REBASED_HEAD"
+# Update the branch ref to the rebased HEAD (worktree removal detaches it)
+git -C "$PROJECT_DIR" update-ref "refs/heads/$BRANCH" "$REBASED_HEAD"
+
+# Fast-forward main, updating the working tree
+git -C "$PROJECT_DIR" merge --ff-only "$BRANCH"
 
 # Delete the feature branch
 git -C "$PROJECT_DIR" branch -D "$BRANCH" 2>/dev/null || echo "warning: could not delete branch $BRANCH" >&2
