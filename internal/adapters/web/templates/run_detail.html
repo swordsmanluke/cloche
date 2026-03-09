@@ -152,6 +152,23 @@
                         tbody.innerHTML = '<tr><td colspan="4" class="empty">No step executions recorded.</td></tr>';
                         return;
                     }
+
+                    // Capture current accordion state before updating
+                    var openAccordions = {};
+                    var loadedOutputs = {};
+                    var outputRows = tbody.querySelectorAll('.output-row');
+                    for (var j = 0; j < outputRows.length; j++) {
+                        var id = outputRows[j].id;
+                        if (outputRows[j].style.display !== 'none') {
+                            openAccordions[id] = true;
+                        }
+                        var pre = outputRows[j].querySelector('.step-output');
+                        if (pre && pre.textContent !== 'Loading...') {
+                            loadedOutputs[id] = pre.textContent;
+                        }
+                    }
+
+                    // Build updated step rows, preserving accordion state
                     var html = '';
                     for (var i = 0; i < data.steps.length; i++) {
                         var s = data.steps[i];
@@ -162,17 +179,52 @@
                         } else {
                             badge = '<span class="badge badge-running">running</span>';
                         }
+                        var outputId = 'output-' + i;
+                        var isOpen = openAccordions[outputId];
                         html += '<tr class="step-row" data-run-id="' + escapeHtml(runID) + '" data-step="' + escapeHtml(s.step_name) + '" data-index="' + i + '">' +
                             '<td>' + escapeHtml(s.step_name) + '</td>' +
                             '<td>' + badge + '</td>' +
                             '<td>' + s.started_at + '</td>' +
                             '<td>' + s.duration + '</td>' +
                             '</tr>' +
-                            '<tr class="output-row" id="output-' + i + '" style="display:none">' +
+                            '<tr class="output-row" id="' + outputId + '"' + (isOpen ? '' : ' style="display:none"') + '>' +
                             '<td colspan="4"><pre class="step-output">Loading...</pre></td>' +
                             '</tr>';
                     }
                     tbody.innerHTML = html;
+
+                    // Restore loaded output content for open accordions
+                    for (var key in loadedOutputs) {
+                        var row = document.getElementById(key);
+                        if (row) {
+                            var pre = row.querySelector('.step-output');
+                            if (pre) {
+                                pre.textContent = loadedOutputs[key];
+                            }
+                        }
+                    }
+
+                    // Re-fetch output for accordions that were open but had no cached content
+                    for (var key in openAccordions) {
+                        if (!loadedOutputs[key]) {
+                            var row = document.getElementById(key);
+                            if (row) {
+                                var stepRow = row.previousElementSibling;
+                                if (stepRow && stepRow.dataset.runId && stepRow.dataset.step) {
+                                    (function(r, rid, sname) {
+                                        var pre = r.querySelector('.step-output');
+                                        fetch('/api/runs/' + rid + '/steps/' + sname + '/output')
+                                            .then(function(resp) {
+                                                if (!resp.ok) return 'No output available.';
+                                                return resp.text();
+                                            })
+                                            .then(function(text) { pre.textContent = text; })
+                                            .catch(function() { pre.textContent = 'Failed to load output.'; });
+                                    })(row, stepRow.dataset.runId, stepRow.dataset.step);
+                                }
+                            }
+                        }
+                    }
                 })
                 .catch(function() {});
         }

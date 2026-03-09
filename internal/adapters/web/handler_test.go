@@ -139,6 +139,34 @@ func TestRunDetail_WithCaptures(t *testing.T) {
 	assert.Contains(t, body, "implement")
 }
 
+func TestRunDetail_AccordionStatePreserved(t *testing.T) {
+	// Verify the rendered page includes JavaScript that preserves accordion state
+	// during SSE polling updates (captures open/closed state before DOM rebuild).
+	h, store := setupHandler(t)
+	seedRun(t, store, "run-accordion-1", "develop", domain.RunStateRunning)
+
+	ctx := context.Background()
+	require.NoError(t, store.SaveCapture(ctx, "run-accordion-1", &domain.StepExecution{
+		StepName:    "build",
+		Result:      "success",
+		StartedAt:   time.Now().Add(-5 * time.Minute),
+		CompletedAt: time.Now(),
+	}))
+
+	req := httptest.NewRequest("GET", "/runs/run-accordion-1", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+
+	// The poll function should capture accordion state before rebuilding the DOM
+	assert.Contains(t, body, "openAccordions")
+	assert.Contains(t, body, "loadedOutputs")
+	// Verify it restores loaded output content after DOM rebuild
+	assert.Contains(t, body, "loadedOutputs[key]")
+}
+
 func TestRunDetail_NotFound(t *testing.T) {
 	h, _ := setupHandler(t)
 
