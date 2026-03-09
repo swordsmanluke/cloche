@@ -58,6 +58,7 @@ func (r *Runner) Run(ctx context.Context, projectDir string) (*RunResult, error)
 		Dispatcher: r.Dispatcher,
 		Store:      r.Store,
 		OutputDir:  outputDir,
+		Wires:      wf.Wiring,
 	}
 
 	eng := engine.New(executor)

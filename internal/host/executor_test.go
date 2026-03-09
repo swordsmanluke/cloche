@@ -369,3 +369,204 @@ func TestExecutor_ScriptStep_EnvironmentVars(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(data), tmpDir)
 }
+
+func TestExecutor_ScriptStep_NoOutputMappings(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		Wires: []domain.Wire{
+			{From: "step-a", Result: "success", To: "step-b"},
+		},
+	}
+
+	step := &domain.Step{
+		Name:    "step-b",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo hello"},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+}
+
+func TestExecutor_ScriptStep_OutputMappings_JSONFields(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+
+	// Write source step output as JSON
+	sourceJSON := `{"title": "Fix bug", "priority": "high"}`
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "get-tasks.out"), []byte(sourceJSON), 0644))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		Wires: []domain.Wire{
+			{
+				From:   "get-tasks",
+				Result: "success",
+				To:     "use-tasks",
+				OutputMap: []domain.OutputMapping{
+					{
+						EnvVar: "TASK_TITLE",
+						Path:   domain.OutputPath{Segments: []domain.PathSegment{{Kind: domain.SegmentField, Field: "title"}}},
+					},
+					{
+						EnvVar: "TASK_PRIORITY",
+						Path:   domain.OutputPath{Segments: []domain.PathSegment{{Kind: domain.SegmentField, Field: "priority"}}},
+					},
+				},
+			},
+		},
+	}
+
+	step := &domain.Step{
+		Name:    "use-tasks",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo $TASK_TITLE $TASK_PRIORITY"},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "use-tasks.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "Fix bug")
+	assert.Contains(t, string(data), "high")
+}
+
+func TestExecutor_ScriptStep_OutputMappings_ArrayIndex(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+
+	// Write source step output as JSON array
+	sourceJSON := `[{"id": "task-1", "title": "First"}, {"id": "task-2", "title": "Second"}]`
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "list-tasks.out"), []byte(sourceJSON), 0644))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		Wires: []domain.Wire{
+			{
+				From:   "list-tasks",
+				Result: "success",
+				To:     "process",
+				OutputMap: []domain.OutputMapping{
+					{
+						EnvVar: "FIRST_ID",
+						Path: domain.OutputPath{Segments: []domain.PathSegment{
+							{Kind: domain.SegmentIndex, Index: 0},
+							{Kind: domain.SegmentField, Field: "id"},
+						}},
+					},
+					{
+						EnvVar: "SECOND_TITLE",
+						Path: domain.OutputPath{Segments: []domain.PathSegment{
+							{Kind: domain.SegmentIndex, Index: 1},
+							{Kind: domain.SegmentField, Field: "title"},
+						}},
+					},
+				},
+			},
+		},
+	}
+
+	step := &domain.Step{
+		Name:    "process",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo $FIRST_ID $SECOND_TITLE"},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "process.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "task-1")
+	assert.Contains(t, string(data), "Second")
+}
+
+func TestExecutor_ScriptStep_OutputMappings_MissingSourceOutput(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+
+	// No source output file written
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		Wires: []domain.Wire{
+			{
+				From:   "missing-step",
+				Result: "success",
+				To:     "consumer",
+				OutputMap: []domain.OutputMapping{
+					{
+						EnvVar: "VAL",
+						Path:   domain.OutputPath{Segments: []domain.PathSegment{{Kind: domain.SegmentField, Field: "key"}}},
+					},
+				},
+			},
+		},
+	}
+
+	step := &domain.Step{
+		Name:    "consumer",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo hello"},
+	}
+
+	_, err := executor.Execute(context.Background(), step)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reading output of missing-step")
+}
+
+func TestExecutor_ScriptStep_OutputMappings_NotJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+
+	// Write non-JSON output
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "plain.out"), []byte("not json"), 0644))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		Wires: []domain.Wire{
+			{
+				From:   "plain",
+				Result: "success",
+				To:     "consumer",
+				OutputMap: []domain.OutputMapping{
+					{
+						EnvVar: "VAL",
+						Path:   domain.OutputPath{Segments: []domain.PathSegment{{Kind: domain.SegmentField, Field: "key"}}},
+					},
+				},
+			},
+		},
+	}
+
+	step := &domain.Step{
+		Name:    "consumer",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo hello"},
+	}
+
+	_, err := executor.Execute(context.Background(), step)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not valid JSON")
+}

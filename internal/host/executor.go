@@ -16,6 +16,30 @@ import (
 	"github.com/cloche-dev/cloche/internal/protocol"
 )
 
+// resolveOutputMappings finds all wires targeting stepName that have output mappings,
+// reads the source step's output, evaluates each mapping path, and returns KEY=value
+// strings suitable for adding to a command's environment.
+func (e *Executor) resolveOutputMappings(stepName string, wires []domain.Wire) ([]string, error) {
+	var env []string
+	for _, w := range wires {
+		if w.To != stepName || len(w.OutputMap) == 0 {
+			continue
+		}
+		data, err := os.ReadFile(e.stepOutputPath(w.From))
+		if err != nil {
+			return nil, fmt.Errorf("reading output of %s: %w", w.From, err)
+		}
+		for _, m := range w.OutputMap {
+			val, err := m.Path.Evaluate(data)
+			if err != nil {
+				return nil, fmt.Errorf("mapping %s for step %s: %w", m.EnvVar, stepName, err)
+			}
+			env = append(env, m.EnvVar+"="+val)
+		}
+	}
+	return env, nil
+}
+
 // RunDispatcher dispatches a container workflow run and returns the run ID.
 type RunDispatcher interface {
 	RunWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error)
@@ -26,7 +50,8 @@ type Executor struct {
 	ProjectDir string
 	Dispatcher RunDispatcher
 	Store      ports.RunStore
-	OutputDir  string // directory for step output files
+	OutputDir  string         // directory for step output files
+	Wires      []domain.Wire  // workflow wiring (for output mappings)
 }
 
 var _ engine.StepExecutor = (*Executor)(nil)
@@ -56,6 +81,15 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 	// Pass previous step output if available
 	if prevOutput := e.findPrevOutput(step); prevOutput != "" {
 		cmd.Env = append(cmd.Env, "CLOCHE_PREV_OUTPUT="+prevOutput)
+	}
+
+	// Resolve output mappings from wires and add as env vars
+	if len(e.Wires) > 0 {
+		mapped, err := e.resolveOutputMappings(step.Name, e.Wires)
+		if err != nil {
+			return "", fmt.Errorf("resolving output mappings for step %q: %w", step.Name, err)
+		}
+		cmd.Env = append(cmd.Env, mapped...)
 	}
 
 	output, err := cmd.CombinedOutput()
