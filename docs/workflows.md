@@ -137,6 +137,11 @@ wires to different steps without conflict.
 ```
 # .cloche/host.cloche — runs on the host machine
 workflow "main" {
+  step ready-tasks {
+    run     = "bash .cloche/scripts/ready-tasks.sh 1"
+    results = [success, fail]
+  }
+
   step prepare-prompt {
     run     = "bash .cloche/scripts/prepare-prompt.sh"
     results = [success, fail]
@@ -144,20 +149,27 @@ workflow "main" {
 
   step develop {
     workflow_name = "develop"
-    prompt_step   = "prepare-prompt"
     results       = [success, fail]
   }
 
-  prepare-prompt:success -> develop
+  ready-tasks:success -> prepare-prompt [
+    CLOCHE_TASK_ID    = output[0].id,
+    CLOCHE_TASK_TITLE = output[0].title,
+    CLOCHE_TASK_BODY  = output[0].description
+  ]
+  ready-tasks:fail       -> abort
+  prepare-prompt:success -> develop [
+    CLOCHE_TASK_ID = output.task_id
+  ]
   prepare-prompt:fail    -> abort
   develop:success        -> done
   develop:fail           -> done
 }
 ```
 
-The `workflow_name` step reads the prompt from the previous step's output (or
-`prompt_step` override), dispatches a container workflow run, and blocks until it
-completes.
+The `ready-tasks` step outputs JSON; wire output mappings extract fields and inject
+them as environment variables into `prepare-prompt`. The `workflow_name` step
+dispatches a container workflow run and blocks until it completes.
 
 ## Execution Model
 

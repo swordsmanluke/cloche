@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Returns IDs of ready tasks from bd, one per line.
+# Returns ready tasks from bd as a JSON array.
 # Usage: ready-tasks.sh [max]
 #   max  — maximum number of IDs to return (default: all)
 set -euo pipefail
@@ -13,4 +13,4 @@ fi
 
 json=$(bd ready --json "${limit_args[@]}" 2>/dev/null) || json="[]"
 
-echo "$json" | jq -r '.[].id // empty'
+echo "$json"
