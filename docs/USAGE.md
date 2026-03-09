@@ -119,11 +119,12 @@ cloche init [--workflow <name>] [--image <base>]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--workflow <name>` | `develop` | Workflow name. Creates `.cloche/<name>.cloche`. |
-| `--image <base>` | `ubuntu:24.04` | Base Docker image for the generated Dockerfile. |
+| `--base-image <image>` | `cloche-base:latest` | Base Docker image for the generated Dockerfile. |
 
 Creates `.cloche/` with a workflow file, Dockerfile, configuration file
-(`config.toml`), and prompt templates (`implement.md`, `fix.md`,
-`update-docs.md`). Skips files that already exist.
+(`config.toml`), prompt templates (`implement.md`, `fix.md`,
+`update-docs.md`), a `version` file, `host.cloche` (host-side orchestration
+workflow), and `scripts/prepare-prompt.sh`. Skips files that already exist.
 Also adds gitignore entries for runtime state directories.
 
 ### `cloche health`
