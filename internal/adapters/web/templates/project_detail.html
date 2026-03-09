@@ -5,7 +5,7 @@
     {{range .RecentRuns}}
     <a href="/runs/{{.ID}}"><span class="run-dot run-dot-{{.State}}" title="{{.ID}}: {{.State}}"></span></a>
     {{end}}
-    <a href="/runs?project={{.Dir}}" class="btn btn-secondary btn-sm" style="margin-left:0.5rem">View all runs</a>
+    <a href="/projects/{{.Label}}/runs" class="btn btn-secondary btn-sm" style="margin-left:0.5rem">View all runs</a>
 </div>
 
 <!-- Panel 1: Project Info -->

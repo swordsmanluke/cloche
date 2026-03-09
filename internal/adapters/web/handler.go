@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -118,6 +119,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	}
 
 	h.mux.HandleFunc("GET /{$}", h.handleProjectOverview)
+	h.mux.HandleFunc("GET /projects/{name}/runs", h.handleProjectRuns)
 	h.mux.HandleFunc("GET /runs", h.handleRunsList)
 	h.mux.HandleFunc("GET /runs/{id}", h.handleRunDetail)
 	h.mux.HandleFunc("GET /projects/{name}", h.handleProjectDetail)
@@ -267,6 +269,15 @@ func (h *Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 	if err := h.pages["runs"].ExecuteTemplate(w, "layout", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// handleProjectRuns redirects /projects/{name}/runs to /runs?project=<dir>.
+func (h *Handler) handleProjectRuns(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	http.Redirect(w, r, "/runs?project="+url.QueryEscape(dir), http.StatusFound)
 }
 
 // stepEntry is a merged view of a step execution for the template.
