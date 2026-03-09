@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -39,9 +40,78 @@ type Step struct {
 }
 
 type Wire struct {
-	From   string
-	Result string
-	To     string
+	From      string
+	Result    string
+	To        string
+	OutputMap []OutputMapping
+}
+
+type SegmentKind int
+
+const (
+	SegmentField SegmentKind = iota
+	SegmentIndex
+)
+
+type PathSegment struct {
+	Kind  SegmentKind
+	Field string // for SegmentField
+	Index int    // for SegmentIndex
+}
+
+type OutputPath struct {
+	Segments []PathSegment
+}
+
+type OutputMapping struct {
+	EnvVar string
+	Path   OutputPath
+}
+
+// Evaluate navigates the raw output bytes using the path segments.
+// With no segments, it returns the raw output as a string.
+// With segments, it parses the raw bytes as JSON and navigates using
+// field access (SegmentField) and array indexing (SegmentIndex).
+func (p OutputPath) Evaluate(raw []byte) (string, error) {
+	if len(p.Segments) == 0 {
+		return string(raw), nil
+	}
+
+	var val any
+	if err := json.Unmarshal(raw, &val); err != nil {
+		return "", fmt.Errorf("output is not valid JSON")
+	}
+
+	for _, seg := range p.Segments {
+		switch seg.Kind {
+		case SegmentField:
+			m, ok := val.(map[string]any)
+			if !ok {
+				return "", fmt.Errorf("expected object for .%s", seg.Field)
+			}
+			val, ok = m[seg.Field]
+			if !ok {
+				return "", fmt.Errorf("field %q not found", seg.Field)
+			}
+		case SegmentIndex:
+			arr, ok := val.([]any)
+			if !ok {
+				return "", fmt.Errorf("expected array for [%d]", seg.Index)
+			}
+			if seg.Index < 0 || seg.Index >= len(arr) {
+				return "", fmt.Errorf("index %d out of range (len %d)", seg.Index, len(arr))
+			}
+			val = arr[seg.Index]
+		}
+	}
+
+	switch v := val.(type) {
+	case string:
+		return v, nil
+	default:
+		b, _ := json.Marshal(v)
+		return string(b), nil
+	}
 }
 
 type CollectMode string
