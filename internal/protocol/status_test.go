@@ -31,6 +31,20 @@ func TestStatusWriter_WritesJSONLines(t *testing.T) {
 	assert.Equal(t, "succeeded", msgs[2].Result)
 }
 
+func TestStatusWriter_RunTitle(t *testing.T) {
+	var buf bytes.Buffer
+	w := protocol.NewStatusWriter(&buf)
+
+	w.RunTitle("Add dark mode toggle")
+
+	msgs, err := protocol.ParseStatusStream(buf.Bytes())
+	require.NoError(t, err)
+	require.Len(t, msgs, 1)
+
+	assert.Equal(t, protocol.MsgRunTitle, msgs[0].Type)
+	assert.Equal(t, "Add dark mode toggle", msgs[0].Message)
+}
+
 func TestStatusWriter_LogMessage(t *testing.T) {
 	var buf bytes.Buffer
 	w := protocol.NewStatusWriter(&buf)

@@ -401,6 +401,7 @@ type apiRun struct {
 	CompletedAt  string `json:"completed_at"`
 	ContainerID  string `json:"container_id"`
 	ErrorMessage string `json:"error_message"`
+	Title        string `json:"title"`
 }
 
 type apiStep struct {
@@ -428,6 +429,7 @@ func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
 		CompletedAt:  formatTime(r.CompletedAt),
 		ContainerID:  r.ContainerID,
 		ErrorMessage: r.ErrorMessage,
+		Title:        r.Title,
 	}
 }
 

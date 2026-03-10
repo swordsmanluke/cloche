@@ -100,6 +100,167 @@ func TestServer_RunWorkflow(t *testing.T) {
 	assert.GreaterOrEqual(t, len(status.StepExecutions), 1)
 }
 
+func TestServer_RunWorkflow_WithTitle(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
+		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := local.NewRuntime("sh")
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+		Prompt:       "do something",
+		Title:        "Add dark mode toggle",
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, resp.RunId)
+
+	// Poll until the background goroutine finishes
+	deadline := time.Now().Add(5 * time.Second)
+	var status *pb.GetStatusResponse
+	for time.Now().Before(deadline) {
+		status, err = srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State == "succeeded" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	require.NotNil(t, status)
+	assert.Equal(t, "Add dark mode toggle", status.Title)
+}
+
+func TestServer_RunWorkflow_AgentGeneratesTitle(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	// Mock agent outputs a run_title message (simulating agent-generated title)
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgRunTitle, Message: "Agent generated title"},
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
+		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := local.NewRuntime("sh")
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+	})
+	require.NoError(t, err)
+
+	// Poll until complete
+	deadline := time.Now().Add(5 * time.Second)
+	var status *pb.GetStatusResponse
+	for time.Now().Before(deadline) {
+		status, err = srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State == "succeeded" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	require.NotNil(t, status)
+	assert.Equal(t, "Agent generated title", status.Title)
+}
+
+func TestServer_RunWorkflow_ExplicitTitleNotOverriddenByAgent(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	// Mock agent also outputs a run_title message, but explicit title should win
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgRunTitle, Message: "Agent title"},
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
+		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := local.NewRuntime("sh")
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+		Title:        "Explicit user title",
+	})
+	require.NoError(t, err)
+
+	// Poll until complete
+	deadline := time.Now().Add(5 * time.Second)
+	var status *pb.GetStatusResponse
+	for time.Now().Before(deadline) {
+		status, err = srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State == "succeeded" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	require.NotNil(t, status)
+	assert.Equal(t, "Explicit user title", status.Title, "explicit title should not be overridden by agent")
+}
+
+func TestServer_ListRuns_IncludesTitle(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	run := domain.NewRun("title-list-1", "develop")
+	run.Start()
+	run.Title = "Fix the login bug"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	srv := server.NewClocheServer(store, nil)
+	resp, err := srv.ListRuns(ctx, &pb.ListRunsRequest{All: true})
+	require.NoError(t, err)
+	require.Len(t, resp.Runs, 1)
+	assert.Equal(t, "Fix the login bug", resp.Runs[0].Title)
+}
+
 func TestServer_RunWorkflow_CapturesStepMetadata(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

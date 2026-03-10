@@ -85,7 +85,7 @@ Commands:
   init [--workflow <name>] [--base-image <image>]
                                              Initialize a Cloche project
   health                                   Show project health summary
-  run --workflow <name> [--prompt "..."] [--keep-container]
+  run --workflow <name> [--prompt "..."] [--title "..."] [--keep-container]
                                              Launch a workflow run
   status <run-id>                            Check run status
   logs <run-id> [--step <name>] [--type <full|script|llm>] [--follow]
@@ -100,7 +100,7 @@ Commands:
 }
 
 func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
-	var workflow, prompt string
+	var workflow, prompt, title string
 	var keepContainer bool
 
 	for i := 0; i < len(args); i++ {
@@ -115,6 +115,11 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 				i++
 				prompt = args[i]
 			}
+		case "--title":
+			if i+1 < len(args) {
+				i++
+				title = args[i]
+			}
 		case "--keep-container":
 			keepContainer = true
 		default:
@@ -126,7 +131,7 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	}
 
 	if workflow == "" {
-		fmt.Fprintf(os.Stderr, "usage: cloche run --workflow <name> [--prompt \"...\"]\n")
+		fmt.Fprintf(os.Stderr, "usage: cloche run --workflow <name> [--prompt \"...\"] [--title \"...\"]\n")
 		os.Exit(1)
 	}
 
@@ -147,6 +152,7 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 		Image:         image,
 		Prompt:        prompt,
 		KeepContainer: keepContainer,
+		Title:         title,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -168,6 +174,9 @@ func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string
 	}
 
 	fmt.Printf("Run:       %s\n", resp.RunId)
+	if resp.Title != "" {
+		fmt.Printf("Title:     %s\n", resp.Title)
+	}
 	fmt.Printf("Workflow:  %s\n", resp.WorkflowName)
 	fmt.Printf("State:     %s\n", resp.State)
 	if resp.ContainerId != "" {
@@ -207,6 +216,13 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 
 	for _, run := range resp.Runs {
 		line := fmt.Sprintf("%s  %-20s  %-10s", run.RunId, run.WorkflowName, run.State)
+		if run.Title != "" {
+			t := run.Title
+			if len(t) > 40 {
+				t = t[:37] + "..."
+			}
+			line += "  " + t
+		}
 		if run.ContainerId != "" {
 			line += "  " + run.ContainerId
 		}

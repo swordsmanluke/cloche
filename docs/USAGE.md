@@ -153,13 +153,14 @@ Status is colored (green/yellow/red) when output is a TTY.
 Launch a workflow run.
 
 ```
-cloche run --workflow <name> [--prompt "..."] [--keep-container]
+cloche run --workflow <name> [--prompt "..."] [--title "..."] [--keep-container]
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--workflow <name>` | Workflow name. Resolves to `.cloche/<name>.cloche` in the project directory. |
 | `--prompt "..."`, `-p` | Inline prompt written to `.cloche/<run-id>/prompt.txt` and injected into agent steps. |
+| `--title "..."` | One-line summary of the work being done. Displayed in `cloche status`, `cloche list`, and the web dashboard. If omitted, the agent auto-generates a title from the first line of the prompt. |
 | `--keep-container` | Keep the Docker container even on success (default: remove on success). Failed runs always keep their container for debugging. |
 
 The current working directory is used as the project directory. It must be
@@ -179,7 +180,7 @@ Check the status of a run.
 cloche status <run-id>
 ```
 
-Output includes the run state, active steps, and per-step results with timestamps.
+Output includes the run title (if set), run state, active steps, and per-step results with timestamps.
 
 ### `cloche list`
 
@@ -193,7 +194,7 @@ cloche list [--all]
 |------|-------------|
 | `--all` | Show all runs, not just the last hour. |
 
-Columns: run ID, workflow name, state, container ID (if running), error message (if failed).
+Columns: run ID, workflow name, title (truncated to 40 characters), state, container ID (if running), error message (if failed).
 
 ### `cloche logs`
 

@@ -496,6 +496,94 @@ func TestRunner_UnifiedLogMixedSteps(t *testing.T) {
 	assert.NoError(t, err, "llm-implement.log should exist")
 }
 
+func TestRunner_ExtractsTitle(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write user prompt under run ID
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "title-run"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "title-run", "prompt.txt"), []byte("Add dark mode toggle to the settings page"), 0644))
+
+	workflowContent := `workflow "title-test" {
+  step build {
+    run = "echo building"
+    results = [success, fail]
+  }
+
+  build:success -> done
+  build:fail -> abort
+}`
+	workflowPath := filepath.Join(dir, "title.cloche")
+	require.NoError(t, os.WriteFile(workflowPath, []byte(workflowContent), 0644))
+
+	var statusBuf bytes.Buffer
+	runner := agent.NewRunner(agent.RunnerConfig{
+		WorkflowPath: workflowPath,
+		WorkDir:      dir,
+		StatusOutput: &statusBuf,
+		RunID:        "title-run",
+	})
+
+	err := runner.Run(context.Background())
+	require.NoError(t, err)
+
+	msgs, err := protocol.ParseStatusStream(statusBuf.Bytes())
+	require.NoError(t, err)
+
+	// Find the run_title message
+	var foundTitle bool
+	for _, msg := range msgs {
+		if msg.Type == protocol.MsgRunTitle {
+			foundTitle = true
+			assert.Equal(t, "Add dark mode toggle to the settings page", msg.Message)
+			break
+		}
+	}
+	assert.True(t, foundTitle, "should have run_title message extracted from prompt")
+}
+
+func TestRunner_TitleTruncation(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write a very long prompt
+	longLine := strings.Repeat("x", 200)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "long-run"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "long-run", "prompt.txt"), []byte(longLine), 0644))
+
+	workflowContent := `workflow "truncate-test" {
+  step build {
+    run = "echo building"
+    results = [success, fail]
+  }
+
+  build:success -> done
+  build:fail -> abort
+}`
+	workflowPath := filepath.Join(dir, "truncate.cloche")
+	require.NoError(t, os.WriteFile(workflowPath, []byte(workflowContent), 0644))
+
+	var statusBuf bytes.Buffer
+	runner := agent.NewRunner(agent.RunnerConfig{
+		WorkflowPath: workflowPath,
+		WorkDir:      dir,
+		StatusOutput: &statusBuf,
+		RunID:        "long-run",
+	})
+
+	err := runner.Run(context.Background())
+	require.NoError(t, err)
+
+	msgs, err := protocol.ParseStatusStream(statusBuf.Bytes())
+	require.NoError(t, err)
+
+	for _, msg := range msgs {
+		if msg.Type == protocol.MsgRunTitle {
+			assert.LessOrEqual(t, len(msg.Message), 100, "title should be truncated to 100 chars")
+			assert.True(t, strings.HasSuffix(msg.Message, "..."), "truncated title should end with ...")
+			break
+		}
+	}
+}
+
 func TestRunner_ExecutesWorkflowFile(t *testing.T) {
 	dir := t.TempDir()
 	workflowContent := `workflow "simple-build" {

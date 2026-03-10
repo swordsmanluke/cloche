@@ -219,6 +219,55 @@ func TestGetLastEvolution(t *testing.T) {
 	assert.Equal(t, "evo-1", entry.ID)
 }
 
+func TestRunTitle(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run with a title
+	run := domain.NewRun("title-1", "develop")
+	run.Title = "Add dark mode toggle"
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	got, err := store.GetRun(ctx, "title-1")
+	require.NoError(t, err)
+	assert.Equal(t, "Add dark mode toggle", got.Title)
+
+	// Update title
+	got.Title = "Updated title"
+	require.NoError(t, store.UpdateRun(ctx, got))
+
+	got2, err := store.GetRun(ctx, "title-1")
+	require.NoError(t, err)
+	assert.Equal(t, "Updated title", got2.Title)
+
+	// Verify title shows up in ListRuns
+	runs, err := store.ListRuns(ctx, time.Time{})
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	assert.Equal(t, "Updated title", runs[0].Title)
+}
+
+func TestRunTitle_BackwardCompat(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run without setting Title — simulates pre-migration rows
+	run := domain.NewRun("notitle-1", "develop")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	got, err := store.GetRun(ctx, "notitle-1")
+	require.NoError(t, err)
+	assert.Equal(t, "", got.Title)
+}
+
 func TestRunContainerID(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

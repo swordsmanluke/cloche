@@ -108,6 +108,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	}
 	run := domain.NewRun(runID, req.WorkflowName)
 	run.ProjectDir = req.ProjectDir
+	run.Title = req.Title
 	if err := s.store.CreateRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("creating run: %w", err)
 	}
@@ -231,6 +232,10 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 					Result:      msg.Result,
 					CompletedAt: msg.Timestamp,
 				})
+			}
+		case protocol.MsgRunTitle:
+			if run.Title == "" {
+				run.Title = msg.Message
 			}
 		case protocol.MsgRunCompleted:
 			reportedResult = msg.Result
@@ -373,6 +378,7 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 			StartedAt:    run.StartedAt.String(),
 			ErrorMessage: run.ErrorMessage,
 			ContainerId:  run.ContainerID,
+			Title:        run.Title,
 		})
 	}
 	return resp, nil
@@ -391,6 +397,7 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 		CurrentStep:  strings.Join(run.ActiveSteps, ","),
 		ErrorMessage: run.ErrorMessage,
 		ContainerId:  run.ContainerID,
+		Title:        run.Title,
 	}
 
 	// Check container liveness

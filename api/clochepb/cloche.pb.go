@@ -28,6 +28,7 @@ type RunWorkflowRequest struct {
 	Image         string                 `protobuf:"bytes,3,opt,name=image,proto3" json:"image,omitempty"`
 	Prompt        string                 `protobuf:"bytes,4,opt,name=prompt,proto3" json:"prompt,omitempty"`
 	KeepContainer bool                   `protobuf:"varint,5,opt,name=keep_container,json=keepContainer,proto3" json:"keep_container,omitempty"`
+	Title         string                 `protobuf:"bytes,6,opt,name=title,proto3" json:"title,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -95,6 +96,13 @@ func (x *RunWorkflowRequest) GetKeepContainer() bool {
 		return x.KeepContainer
 	}
 	return false
+}
+
+func (x *RunWorkflowRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
 }
 
 type RunWorkflowResponse struct {
@@ -196,6 +204,7 @@ type GetStatusResponse struct {
 	ContainerId        string                 `protobuf:"bytes,7,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
 	ContainerAlive     bool                   `protobuf:"varint,8,opt,name=container_alive,json=containerAlive,proto3" json:"container_alive,omitempty"`
 	ContainerDeadSince string                 `protobuf:"bytes,9,opt,name=container_dead_since,json=containerDeadSince,proto3" json:"container_dead_since,omitempty"`
+	Title              string                 `protobuf:"bytes,10,opt,name=title,proto3" json:"title,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -289,6 +298,13 @@ func (x *GetStatusResponse) GetContainerAlive() bool {
 func (x *GetStatusResponse) GetContainerDeadSince() string {
 	if x != nil {
 		return x.ContainerDeadSince
+	}
+	return ""
+}
+
+func (x *GetStatusResponse) GetTitle() string {
+	if x != nil {
+		return x.Title
 	}
 	return ""
 }
@@ -913,6 +929,7 @@ type RunSummary struct {
 	StartedAt     string                 `protobuf:"bytes,4,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
 	ErrorMessage  string                 `protobuf:"bytes,5,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
 	ContainerId   string                 `protobuf:"bytes,6,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
+	Title         string                 `protobuf:"bytes,7,opt,name=title,proto3" json:"title,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -985,6 +1002,13 @@ func (x *RunSummary) GetErrorMessage() string {
 func (x *RunSummary) GetContainerId() string {
 	if x != nil {
 		return x.ContainerId
+	}
+	return ""
+}
+
+func (x *RunSummary) GetTitle() string {
+	if x != nil {
+		return x.Title
 	}
 	return ""
 }

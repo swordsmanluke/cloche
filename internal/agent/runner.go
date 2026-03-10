@@ -81,6 +81,12 @@ func (r *Runner) Run(ctx context.Context) error {
 	eng := engine.New(executor)
 	eng.SetStatusHandler(&statusReporter{writer: statusWriter, logStream: ulog})
 
+	// Generate a run title from the prompt if one was not provided by the caller.
+	// The daemon sets title from --title; if empty, the agent extracts from prompt.
+	if title := extractTitle(r.cfg.WorkDir, r.cfg.RunID); title != "" {
+		statusWriter.RunTitle(title)
+	}
+
 	protocol.AppendHistoryMarker(r.cfg.WorkDir, "workflow:start "+wf.Name)
 
 	run, runErr := eng.Run(ctx, wf)
@@ -174,3 +180,44 @@ func (s *statusReporter) OnStepComplete(_ *domain.Run, step *domain.Step, result
 }
 
 func (s *statusReporter) OnRunComplete(_ *domain.Run) {}
+
+// extractTitle tries to derive a one-line summary from the run's prompt content.
+// It reads the per-run prompt.txt file (written by the daemon before container start),
+// then returns the first non-empty line, truncated to 100 characters.
+func extractTitle(workDir string, runID string) string {
+	// Try the per-run prompt file
+	promptPath := filepath.Join(workDir, ".cloche", runID, "prompt.txt")
+	if _, err := os.Stat(promptPath); err != nil {
+		// Fall back to legacy path
+		promptPath = filepath.Join(workDir, ".cloche", "prompt.txt")
+	}
+	data, err := os.ReadFile(promptPath)
+	if err != nil || len(data) == 0 {
+		return ""
+	}
+
+	text := strings.TrimSpace(string(data))
+	if text == "" {
+		return ""
+	}
+
+	// Take first non-empty line as the title
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		// Skip markdown headers, comment markers, and blank lines
+		if line == "" || line == "---" || line == "```" {
+			continue
+		}
+		// Strip leading markdown header markers
+		line = strings.TrimLeft(line, "# ")
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if len(line) > 100 {
+			line = line[:97] + "..."
+		}
+		return line
+	}
+	return ""
+}

@@ -15,6 +15,7 @@
     <thead>
         <tr>
             <th>Run ID</th>
+            <th>Title</th>
             <th>Project</th>
             <th>Workflow</th>
             <th>State</th>
@@ -29,6 +30,7 @@
         {{range .Runs}}
         <tr>
             <td><a href="/runs/{{.ID}}">{{.ID}}</a></td>
+            <td>{{truncate .Title 50}}</td>
             <td>{{index $.ProjectLabels .ProjectDir}}</td>
             <td>{{.WorkflowName}}</td>
             <td><span class="badge badge-{{stateColor .State}}">{{.State}}</span></td>
@@ -39,7 +41,7 @@
         </tr>
         {{end}}
     {{else}}
-        <tr><td colspan="8" class="empty">No runs yet.</td></tr>
+        <tr><td colspan="9" class="empty">No runs yet.</td></tr>
     {{end}}
     </tbody>
 </table>
@@ -69,7 +71,7 @@
             .then(function(runs) {
                 var tbody = document.getElementById('runs-body');
                 if (!runs || runs.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="empty">No runs yet.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="9" class="empty">No runs yet.</td></tr>';
                     return;
                 }
                 var html = '';
@@ -80,8 +82,11 @@
                     var err = r.error_message || '';
                     if (err.length > 80) err = err.substring(0, 80) + '...';
                     var proj = r.project_label || '';
+                    var title = r.title || '';
+                    if (title.length > 50) title = title.substring(0, 47) + '...';
                     html += '<tr>' +
                         '<td><a href="/runs/' + r.id + '">' + r.id + '</a></td>' +
+                        '<td>' + escapeHtml(title) + '</td>' +
                         '<td>' + escapeHtml(proj) + '</td>' +
                         '<td>' + r.workflow_name + '</td>' +
                         '<td><span class="badge badge-' + r.state + '">' + r.state + '</span></td>' +

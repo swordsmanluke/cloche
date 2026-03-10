@@ -6,6 +6,7 @@
 
 <div class="run-meta">
     <dl>
+        {{if .Run.Title}}<dt>Title</dt><dd>{{.Run.Title}}</dd>{{end}}
         <dt>Workflow</dt><dd>{{.Run.WorkflowName}}</dd>
         <dt>Started</dt><dd>{{formatTime .Run.StartedAt}}</dd>
         <dt>Completed</dt><dd>{{formatTime .Run.CompletedAt}}</dd>

@@ -14,6 +14,7 @@ const (
 	MsgStepStarted  MessageType = "step_started"
 	MsgStepCompleted MessageType = "step_completed"
 	MsgRunCompleted  MessageType = "run_completed"
+	MsgRunTitle      MessageType = "run_title"
 	MsgLog           MessageType = "log"
 	MsgError         MessageType = "error"
 )
@@ -45,6 +46,10 @@ func (s *StatusWriter) StepCompleted(stepName, result string) {
 
 func (s *StatusWriter) RunCompleted(result string) {
 	s.write(StatusMessage{Type: MsgRunCompleted, Result: result})
+}
+
+func (s *StatusWriter) RunTitle(title string) {
+	s.write(StatusMessage{Type: MsgRunTitle, Message: title})
 }
 
 func (s *StatusWriter) Log(stepName, message string) {

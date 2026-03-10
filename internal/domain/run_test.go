@@ -36,6 +36,12 @@ func TestRunProjectDir(t *testing.T) {
 	assert.Equal(t, "/home/user/project", r.ProjectDir)
 }
 
+func TestRunTitle(t *testing.T) {
+	r := domain.NewRun("test-1", "develop")
+	r.Title = "Add dark mode toggle"
+	assert.Equal(t, "Add dark mode toggle", r.Title)
+}
+
 func TestStepExecutionFields(t *testing.T) {
 	exec := &domain.StepExecution{
 		StepName: "implement",
