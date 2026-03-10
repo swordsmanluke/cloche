@@ -98,7 +98,7 @@ func (l *Loop) run() {
 			}
 
 			// Check how many host runs are active for this project (in case of
-			// external orchestrate calls or leftover runs from previous loops).
+			// leftover runs from previous loops).
 			active := l.countActiveHostRuns()
 			if active >= l.config.MaxConcurrent {
 				break

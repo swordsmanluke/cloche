@@ -68,8 +68,6 @@ func main() {
 		cmdStop(ctx, client, os.Args[2:])
 	case "delete":
 		cmdDelete(ctx, client, os.Args[2:])
-	case "orchestrate":
-		cmdOrchestrate(ctx, client)
 	case "loop":
 		cmdLoop(ctx, client, os.Args[2:])
 	case "shutdown":
@@ -96,7 +94,6 @@ Commands:
   list [--all]                                List runs (last hour by default)
   stop <run-id>                              Stop a running workflow
   delete <container-or-run-id>               Delete a retained container
-  orchestrate                                Start host workflow orchestration
   loop [--max <n>]                            Start orchestration loop (default max=1)
   loop stop                                  Stop orchestration loop
   shutdown                                   Shut down the daemon
@@ -421,16 +418,6 @@ func cmdDelete(ctx context.Context, client pb.ClocheServiceClient, args []string
 		os.Exit(1)
 	}
 	fmt.Printf("Deleted container: %s\n", args[0])
-}
-
-func cmdOrchestrate(ctx context.Context, client pb.ClocheServiceClient) {
-	cwd, _ := os.Getwd()
-	resp, err := client.Orchestrate(ctx, &pb.OrchestrateRequest{ProjectDir: cwd})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("Started orchestration: %s\n", resp.RunId)
 }
 
 func cmdLoop(ctx context.Context, client pb.ClocheServiceClient, args []string) {

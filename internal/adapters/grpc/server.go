@@ -671,40 +671,6 @@ func (s *ClocheServer) DeleteContainer(ctx context.Context, req *pb.DeleteContai
 	return &pb.DeleteContainerResponse{}, nil
 }
 
-func (s *ClocheServer) Orchestrate(ctx context.Context, req *pb.OrchestrateRequest) (*pb.OrchestrateResponse, error) {
-	projectDir := req.ProjectDir
-	if projectDir == "" {
-		return nil, fmt.Errorf("project_dir is required")
-	}
-
-	// Verify host.cloche exists
-	hostPath := filepath.Join(projectDir, ".cloche", "host.cloche")
-	if _, err := os.Stat(hostPath); err != nil {
-		return nil, fmt.Errorf("host.cloche not found in %s: %w", projectDir, err)
-	}
-
-	// Create a runner and start it synchronously to get the run ID,
-	// then let it execute in the background.
-	runner := &host.Runner{
-		Dispatcher: s,
-		Store:      s.store,
-	}
-
-	// Run in background goroutine so the RPC returns immediately.
-	// We pre-generate the run ID so we can return it to the caller.
-	runID := domain.GenerateRunID("main")
-	go func() {
-		result, err := runner.RunWithID(context.Background(), projectDir, runID)
-		if err != nil {
-			log.Printf("orchestrate: host workflow failed for %s: %v", projectDir, err)
-		} else {
-			log.Printf("orchestrate: host workflow completed for %s: %s (run %s)", projectDir, result.State, result.RunID)
-		}
-	}()
-
-	return &pb.OrchestrateResponse{RunId: runID}, nil
-}
-
 func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest) (*pb.EnableLoopResponse, error) {
 	projectDir := req.ProjectDir
 	if projectDir == "" {

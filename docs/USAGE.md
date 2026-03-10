@@ -243,18 +243,6 @@ container.
 cloche delete <container-or-run-id>
 ```
 
-### `cloche orchestrate`
-
-Start a fresh run of the host workflow orchestrator for the current project.
-
-```
-cloche orchestrate
-```
-
-Uses the current working directory as the project directory. The daemon begins
-orchestration and returns a run ID (e.g. "Started orchestration: abc123").
-Use `cloche status <run-id>` to track the orchestration run.
-
 ### `cloche shutdown`
 
 Shut down the daemon.

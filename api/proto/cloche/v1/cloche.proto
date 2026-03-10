@@ -12,7 +12,7 @@ service ClocheService {
   rpc ListRuns(ListRunsRequest) returns (ListRunsResponse);
   rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
   rpc DeleteContainer(DeleteContainerRequest) returns (DeleteContainerResponse);
-  rpc Orchestrate(OrchestrateRequest) returns (OrchestrateResponse);
+
   rpc EnableLoop(EnableLoopRequest) returns (EnableLoopResponse);
   rpc DisableLoop(DisableLoopRequest) returns (DisableLoopResponse);
 }
@@ -84,14 +84,6 @@ message DeleteContainerRequest {
 }
 
 message DeleteContainerResponse {}
-
-message OrchestrateRequest {
-  string project_dir = 1;
-}
-
-message OrchestrateResponse {
-  string run_id = 1;
-}
 
 message ListRunsRequest {
   bool all = 1;

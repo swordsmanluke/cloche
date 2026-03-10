@@ -51,7 +51,7 @@ as the `--prompt` argument.
 Event-driven, triggers on:
 1. Daemon startup — check all projects for ready work.
 2. Run completion — after a run finishes, check the completed run's project for more work.
-3. `cloche orchestrate` CLI command — manual trigger, checks all projects.
+3. `cloche loop` CLI command — manual trigger, checks all projects.
 
 On trigger:
 1. For each registered project with orchestration enabled:

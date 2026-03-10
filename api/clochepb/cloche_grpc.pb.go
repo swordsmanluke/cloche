@@ -26,7 +26,6 @@ const (
 	ClocheService_ListRuns_FullMethodName        = "/cloche.v1.ClocheService/ListRuns"
 	ClocheService_Shutdown_FullMethodName        = "/cloche.v1.ClocheService/Shutdown"
 	ClocheService_DeleteContainer_FullMethodName = "/cloche.v1.ClocheService/DeleteContainer"
-	ClocheService_Orchestrate_FullMethodName     = "/cloche.v1.ClocheService/Orchestrate"
 	ClocheService_EnableLoop_FullMethodName      = "/cloche.v1.ClocheService/EnableLoop"
 	ClocheService_DisableLoop_FullMethodName     = "/cloche.v1.ClocheService/DisableLoop"
 )
@@ -42,7 +41,6 @@ type ClocheServiceClient interface {
 	ListRuns(ctx context.Context, in *ListRunsRequest, opts ...grpc.CallOption) (*ListRunsResponse, error)
 	Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error)
 	DeleteContainer(ctx context.Context, in *DeleteContainerRequest, opts ...grpc.CallOption) (*DeleteContainerResponse, error)
-	Orchestrate(ctx context.Context, in *OrchestrateRequest, opts ...grpc.CallOption) (*OrchestrateResponse, error)
 	EnableLoop(ctx context.Context, in *EnableLoopRequest, opts ...grpc.CallOption) (*EnableLoopResponse, error)
 	DisableLoop(ctx context.Context, in *DisableLoopRequest, opts ...grpc.CallOption) (*DisableLoopResponse, error)
 }
@@ -134,16 +132,6 @@ func (c *clocheServiceClient) DeleteContainer(ctx context.Context, in *DeleteCon
 	return out, nil
 }
 
-func (c *clocheServiceClient) Orchestrate(ctx context.Context, in *OrchestrateRequest, opts ...grpc.CallOption) (*OrchestrateResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(OrchestrateResponse)
-	err := c.cc.Invoke(ctx, ClocheService_Orchestrate_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *clocheServiceClient) EnableLoop(ctx context.Context, in *EnableLoopRequest, opts ...grpc.CallOption) (*EnableLoopResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EnableLoopResponse)
@@ -175,7 +163,6 @@ type ClocheServiceServer interface {
 	ListRuns(context.Context, *ListRunsRequest) (*ListRunsResponse, error)
 	Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error)
 	DeleteContainer(context.Context, *DeleteContainerRequest) (*DeleteContainerResponse, error)
-	Orchestrate(context.Context, *OrchestrateRequest) (*OrchestrateResponse, error)
 	EnableLoop(context.Context, *EnableLoopRequest) (*EnableLoopResponse, error)
 	DisableLoop(context.Context, *DisableLoopRequest) (*DisableLoopResponse, error)
 	mustEmbedUnimplementedClocheServiceServer()
@@ -208,9 +195,6 @@ func (UnimplementedClocheServiceServer) Shutdown(context.Context, *ShutdownReque
 }
 func (UnimplementedClocheServiceServer) DeleteContainer(context.Context, *DeleteContainerRequest) (*DeleteContainerResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteContainer not implemented")
-}
-func (UnimplementedClocheServiceServer) Orchestrate(context.Context, *OrchestrateRequest) (*OrchestrateResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method Orchestrate not implemented")
 }
 func (UnimplementedClocheServiceServer) EnableLoop(context.Context, *EnableLoopRequest) (*EnableLoopResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method EnableLoop not implemented")
@@ -358,24 +342,6 @@ func _ClocheService_DeleteContainer_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ClocheService_Orchestrate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(OrchestrateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ClocheServiceServer).Orchestrate(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ClocheService_Orchestrate_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ClocheServiceServer).Orchestrate(ctx, req.(*OrchestrateRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _ClocheService_EnableLoop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(EnableLoopRequest)
 	if err := dec(in); err != nil {
@@ -442,10 +408,6 @@ var ClocheService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteContainer",
 			Handler:    _ClocheService_DeleteContainer_Handler,
-		},
-		{
-			MethodName: "Orchestrate",
-			Handler:    _ClocheService_Orchestrate_Handler,
 		},
 		{
 			MethodName: "EnableLoop",
