@@ -17,7 +17,8 @@ if echo "$claim_output" | grep -qi "error\|already claimed"; then
   exit 1
 fi
 
-# Forward task info as JSON so downstream steps can access it via output mappings.
-cat <<EOF
-[{"id":"${CLOCHE_TASK_ID}","title":"${CLOCHE_TASK_TITLE:-}","description":"${CLOCHE_TASK_BODY:-}"}]
-EOF
+# Forward task info as properly escaped JSON so downstream steps can parse it.
+jq -n --arg id "${CLOCHE_TASK_ID}" \
+      --arg title "${CLOCHE_TASK_TITLE:-}" \
+      --arg desc "${CLOCHE_TASK_BODY:-}" \
+      '[{id: $id, title: $title, description: $desc}]'
