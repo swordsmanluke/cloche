@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -437,6 +438,68 @@ func TestRunDetail_ContainerStopped(t *testing.T) {
 	assert.Contains(t, body, `badge-stopped">Container stopped`)
 }
 
+func TestRunDetail_ContainerStoppedTerminal_ShowsDeleteButton(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+
+	for _, state := range []domain.RunState{domain.RunStateSucceeded, domain.RunStateFailed, domain.RunStateCancelled} {
+		t.Run(string(state), func(t *testing.T) {
+			id := "run-cst-" + string(state)
+			ctx := context.Background()
+			run := domain.NewRun(id, "develop")
+			run.ProjectDir = "/proj"
+			run.Start()
+			run.ContainerID = "cid-stopped-" + string(state)
+			run.ContainerKept = false
+			run.Complete(state)
+			require.NoError(t, store.CreateRun(ctx, run))
+			mgr.containers[run.ContainerID] = true // container exists but not running, not kept
+
+			req := httptest.NewRequest("GET", "/runs/"+id, nil)
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code)
+			body := w.Body.String()
+			assert.Contains(t, body, "Container stopped")
+			assert.Contains(t, body, `id="delete-container-btn"`, "should show delete button for terminal run with stopped container")
+		})
+	}
+}
+
+func TestRunDetail_ContainerStoppedRunning_NoDeleteButton(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+
+	ctx := context.Background()
+	run := domain.NewRun("run-csr", "develop")
+	run.ProjectDir = "/proj"
+	run.Start()
+	run.ContainerID = "cid-stopped-running"
+	run.ContainerKept = false
+	require.NoError(t, store.CreateRun(ctx, run))
+	mgr.containers["cid-stopped-running"] = true
+	// container not running, but run state is still "running" (not terminal)
+	// containerState will return "stopped" since ContainerKept=false
+
+	req := httptest.NewRequest("GET", "/runs/run-csr", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "Container stopped")
+	// The HTML container-status section should NOT have the delete button.
+	// We check the dd#container-status block specifically, not the full body
+	// (which includes JS that references the button ID as string literals).
+	statusStart := "container-status"
+	statusEnd := "</dd>"
+	idx := strings.Index(body, statusStart)
+	require.NotEqual(t, -1, idx, "container-status element must exist")
+	endIdx := strings.Index(body[idx:], statusEnd)
+	require.NotEqual(t, -1, endIdx, "closing </dd> must exist")
+	statusSection := body[idx : idx+endIdx+len(statusEnd)]
+	assert.NotContains(t, statusSection, "Delete Container", "should NOT show delete button for non-terminal run")
+}
+
 func TestRunDetail_ContainerAvailable(t *testing.T) {
 	h, store, mgr := setupHandlerWithContainerManager(t)
 	seedRunWithContainer(t, store, mgr, "run-c1", "develop", "/proj", "cid-1234567890ab", true)
@@ -496,6 +559,31 @@ func TestAPIDeleteContainer_Success(t *testing.T) {
 	run, err := store.GetRun(context.Background(), "run-del1")
 	require.NoError(t, err)
 	assert.False(t, run.ContainerKept)
+}
+
+func TestAPIDeleteContainer_StoppedContainer(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+
+	ctx := context.Background()
+	run := domain.NewRun("run-del-stopped", "develop")
+	run.ProjectDir = "/proj"
+	run.Start()
+	run.ContainerID = "cid-stopped-del"
+	run.ContainerKept = false
+	run.Complete(domain.RunStateFailed)
+	require.NoError(t, store.CreateRun(ctx, run))
+	mgr.containers["cid-stopped-del"] = true
+
+	req := httptest.NewRequest("DELETE", "/api/runs/run-del-stopped/container", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "ok", resp["status"])
+	assert.Contains(t, mgr.removed, "cid-stopped-del")
 }
 
 func TestAPIDeleteContainer_RunNotFound(t *testing.T) {

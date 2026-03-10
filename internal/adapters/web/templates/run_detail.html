@@ -16,6 +16,9 @@
                 <span class="badge badge-running">Container running</span>
             {{else if eq .ContainerState "stopped"}}
                 <span class="badge badge-stopped">Container stopped</span>
+                {{if or (eq .Run.State "succeeded") (eq .Run.State "failed") (eq .Run.State "cancelled")}}
+                <button class="btn btn-danger btn-sm" id="delete-container-btn" onclick="deleteContainer('{{.Run.ID}}')">Delete Container</button>
+                {{end}}
             {{else if eq .ContainerState "available"}}
                 <span class="badge badge-succeeded">Container available</span>
                 <button class="btn btn-danger btn-sm" id="delete-container-btn" onclick="deleteContainer('{{.Run.ID}}')">Delete Container</button>
@@ -139,7 +142,11 @@
                         if (cs === 'running') {
                             statusEl.innerHTML = '<span class="badge badge-running">Container running</span>';
                         } else if (cs === 'stopped') {
-                            statusEl.innerHTML = '<span class="badge badge-stopped">Container stopped</span>';
+                            var stoppedHtml = '<span class="badge badge-stopped">Container stopped</span>';
+                            if (data.state === 'succeeded' || data.state === 'failed' || data.state === 'cancelled') {
+                                stoppedHtml += ' <button class="btn btn-danger btn-sm" id="delete-container-btn" onclick="deleteContainer(\'' + escapeHtml(runID) + '\')">Delete Container</button>';
+                            }
+                            statusEl.innerHTML = stoppedHtml;
                         } else if (cs === 'available') {
                             statusEl.innerHTML = '<span class="badge badge-succeeded">Container available</span>' +
                                 ' <button class="btn btn-danger btn-sm" id="delete-container-btn" onclick="deleteContainer(\'' + escapeHtml(runID) + '\')">Delete Container</button>';
