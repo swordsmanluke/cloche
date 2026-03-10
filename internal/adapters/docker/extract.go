@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // ExtractResults copies the container workspace to a git branch using worktrees.
@@ -79,13 +80,111 @@ func ExtractResults(ctx context.Context, containerID, projectDir, runID, baseSHA
 		return fmt.Errorf("git add: %s: %w", out, err)
 	}
 
-	commitMsg := fmt.Sprintf("cloche run %s: %s (%s)", runID, workflowName, result)
-	commitCmd := exec.CommandContext(ctx, "git", "commit", "-m", commitMsg, "--allow-empty")
+	commitMsg := buildCommitMessage(ctx, worktreeDir, gitEnv, runID, workflowName, result)
+	commitCmd := exec.CommandContext(ctx, "git", "commit", "-F", "-", "--allow-empty")
 	commitCmd.Dir = worktreeDir
 	commitCmd.Env = gitEnv
+	commitCmd.Stdin = strings.NewReader(commitMsg)
 	if out, err := commitCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git commit: %s: %w", out, err)
 	}
 
 	return nil
+}
+
+// buildCommitMessage generates a descriptive commit message by inspecting the
+// staged diff in the worktree. The title summarizes the workflow result, and
+// the body lists file-level changes grouped by operation (added, modified,
+// deleted, renamed).
+func buildCommitMessage(ctx context.Context, worktreeDir string, gitEnv []string, runID, workflowName, result string) string {
+	title := fmt.Sprintf("cloche run %s: %s (%s)", runID, workflowName, result)
+
+	// Get name-status of staged changes relative to parent
+	nsCmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--name-status")
+	nsCmd.Dir = worktreeDir
+	nsCmd.Env = gitEnv
+	nsOut, err := nsCmd.Output()
+	if err != nil || len(bytes.TrimSpace(nsOut)) == 0 {
+		return title
+	}
+
+	added, modified, deleted, renamed := classifyChanges(string(nsOut))
+
+	// Get diffstat summary line (e.g. "5 files changed, 100 insertions(+), 20 deletions(-)")
+	statCmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--stat", "--stat-width=72")
+	statCmd.Dir = worktreeDir
+	statCmd.Env = gitEnv
+	statOut, _ := statCmd.Output()
+	statSummary := extractStatSummary(string(statOut))
+
+	var body strings.Builder
+	if statSummary != "" {
+		body.WriteString(statSummary)
+		body.WriteString("\n\n")
+	}
+	writeChangeSection(&body, "Added", added)
+	writeChangeSection(&body, "Modified", modified)
+	writeChangeSection(&body, "Deleted", deleted)
+	writeChangeSection(&body, "Renamed", renamed)
+
+	if body.Len() == 0 {
+		return title
+	}
+
+	return title + "\n\n" + strings.TrimRight(body.String(), "\n")
+}
+
+// classifyChanges parses git diff --name-status output into categorized file lists.
+func classifyChanges(nameStatus string) (added, modified, deleted, renamed []string) {
+	for _, line := range strings.Split(strings.TrimSpace(nameStatus), "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		status := fields[0]
+		switch {
+		case status == "A":
+			added = append(added, fields[1])
+		case status == "M":
+			modified = append(modified, fields[1])
+		case status == "D":
+			deleted = append(deleted, fields[1])
+		case strings.HasPrefix(status, "R"):
+			if len(fields) >= 3 {
+				renamed = append(renamed, fields[1]+" -> "+fields[2])
+			}
+		}
+	}
+	return
+}
+
+// extractStatSummary returns the last line of git diff --stat output, which
+// contains the summary (e.g. "3 files changed, 10 insertions(+), 2 deletions(-)").
+func extractStatSummary(stat string) string {
+	lines := strings.Split(strings.TrimSpace(stat), "\n")
+	if len(lines) == 0 {
+		return ""
+	}
+	last := strings.TrimSpace(lines[len(lines)-1])
+	if strings.Contains(last, "changed") {
+		return last
+	}
+	return ""
+}
+
+// writeChangeSection writes a labeled list of files to the builder if the list is non-empty.
+func writeChangeSection(b *strings.Builder, label string, files []string) {
+	if len(files) == 0 {
+		return
+	}
+	b.WriteString(label)
+	b.WriteString(":\n")
+	for _, f := range files {
+		b.WriteString("  ")
+		b.WriteString(f)
+		b.WriteString("\n")
+	}
 }
