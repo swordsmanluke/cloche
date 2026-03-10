@@ -1,273 +1,25 @@
-# Usage
+# Cloche Usage
 
-Cloche runs containerized workflows for autonomous coding agents. You write a
-workflow graph in the `.cloche` DSL, point Cloche at a project directory, and it
-handles execution, retry logic, and status tracking.
+Cloche runs containerized workflows for autonomous coding agents. You define a
+workflow graph in the `.cloche` DSL, Cloche copies your project into a Docker
+container, runs the workflow steps (agent prompts and shell scripts), and extracts
+results to a git branch.
 
-## Prerequisites
+## Core Concepts
 
-- Go 1.25+
-- Docker
-- Git
-- An `ANTHROPIC_API_KEY` (for agent steps using Claude Code)
+- **Workflow**: A directed graph of steps connected by named-result wiring.
+- **Step**: A unit of work. Type is inferred: `prompt` = agent step, `run` = script step, `workflow_name` = workflow step (host only).
+- **Result**: A named outcome reported by a step (e.g. `success`, `fail`, `needs-research`). Steps declare their possible results; the engine follows wiring based on the reported result.
+- **Wiring**: Maps `step:result` pairs to the next step. Separate from step definitions.
+- **Terminals**: `done` (success) and `abort` (failure) are built-in terminal targets.
 
-For detailed installation options (pre-built binaries, `go install`, Homebrew,
-Docker-based usage), see [INSTALL.md](INSTALL.md).
+## Workflow DSL
 
-## Quick Start
+Workflow files use the `.cloche` extension and live in `.cloche/`. The first step
+declared is the entry point. Graphs are validated at parse time (all results wired,
+no orphans, entry point exists).
 
-### 1. Build everything
-
-```
-make build
-make docker-build
-```
-
-This produces `bin/cloche`, `bin/cloched`, `bin/cloche-agent`, and the
-`cloche-agent:latest` Docker image.
-
-### 2. Start the daemon
-
-```
-bin/cloched
-```
-
-The daemon listens on a Unix socket at `/tmp/cloche.sock` by default. It
-manages Docker containers, tracks run state in SQLite, and handles
-container cleanup. Containers are automatically removed after successful
-runs unless `--keep-container` is set. Failed runs always keep their
-container for debugging.
-
-To enable the web dashboard, set `CLOCHE_HTTP` (e.g.
-`CLOCHE_HTTP=:8080 bin/cloched`). The dashboard is not started unless
-this variable is set.
-
-### 3. Run a workflow
-
-From your project directory (must be inside a git repository):
-
-```
-cd my-project
-cloche run --workflow develop --prompt "Add user authentication"
-```
-
-This will:
-1. Write your prompt to `.cloche/<run-id>/prompt.txt`
-2. Create a Docker container and copy your entire project into it (no bind mounts)
-3. Apply any override files from `.cloche/overrides/` on top
-4. Start the container, which runs `cloche-agent` to walk the workflow graph
-5. When the workflow finishes, the daemon extracts results to a `cloche/<run-id>` branch
-
-### 4. Monitor progress
-
-```
-cloche status <run-id>
-cloche list
-```
-
-### 5. Get the results
-
-When the run completes, the agent's work is on a git branch:
-
-```
-git branch | grep cloche/
-git diff main..cloche/<run-id>
-```
-
-To merge results into your working branch:
-
-```
-git merge cloche/<run-id>
-# or cherry-pick, rebase, etc.
-```
-
-To clean up run branches:
-
-```
-git branch -D cloche/<run-id>
-```
-
-## Container Isolation Model
-
-Cloche provides **total filesystem isolation** between the host and container:
-
-- **Files in**: `docker cp` copies the entire project root into the container at
-  `/workspace/`. No bind mounts for project files. Override files from
-  `.cloche/overrides/` are then copied on top (e.g., a container-specific
-  `CLAUDE.md`). The `.git/` directory is included so agents have git context.
-- **Files out**: When the workflow completes, the daemon extracts results from
-  the container via `docker cp` into a git worktree and commits them to a
-  `cloche/<run-id>` branch.
-- **Auth mounts**: `~/.claude` and `~/.claude.json` are bind-mounted read-only
-  for Claude Code OAuth session reuse. `ANTHROPIC_API_KEY` is passed as an
-  environment variable.
-- **Network**: Containers have network access (needed for API calls).
-
-Your project directory is never modified by the container. All changes live
-on the run branch until you explicitly merge them.
-
-## CLI Reference
-
-### `cloche init`
-
-Scaffold a new Cloche project in the current directory.
-
-```
-cloche init [--workflow <name>] [--base-image <base>]
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--workflow <name>` | `develop` | Workflow name. Creates `.cloche/<name>.cloche`. |
-| `--base-image <base>` | `cloche-base:latest` | Base Docker image for the generated Dockerfile. |
-
-Creates `.cloche/` with a workflow file, Dockerfile, configuration file
-(`config.toml`), prompt templates (`implement.md`, `fix.md`,
-`update-docs.md`), a host orchestration workflow (`host.cloche`), a
-prompt generation script (`scripts/prepare-prompt.sh`), and a version
-marker. Skips files that already exist.
-Also adds gitignore entries for runtime state directories.
-
-### `cloche health`
-
-Show project health summary based on recent run results.
-
-```
-cloche health
-```
-
-Requires `CLOCHE_HTTP` to be set (e.g. `export CLOCHE_HTTP=localhost:8080`).
-Fetches health data from the daemon's HTTP API (`GET /api/projects`) and
-displays a table with per-project pass/fail counts:
-
-```
-PROJECT          STATUS    PASSED  FAILED  TOTAL
-my-project       green     5       0       5
-other-project    yellow    3       2       5
-```
-
-Status is colored (green/yellow/red) when output is a TTY.
-
-### `cloche run`
-
-Launch a workflow run.
-
-```
-cloche run --workflow <name> [--prompt "..."] [--title "..."] [--keep-container]
-```
-
-| Flag | Description |
-|------|-------------|
-| `--workflow <name>` | Workflow name. Resolves to `.cloche/<name>.cloche` in the project directory. |
-| `--prompt "..."`, `-p` | Inline prompt written to `.cloche/<run-id>/prompt.txt` and injected into agent steps. |
-| `--title "..."` | One-line summary of the work being done. Displayed in `cloche status`, `cloche list`, and the web dashboard. If omitted, the agent auto-generates a title from the first line of the prompt. |
-| `--keep-container` | Keep the Docker container even on success (default: remove on success). Failed runs always keep their container for debugging. |
-
-The current working directory is used as the project directory. It must be
-inside a git repository (Cloche needs the repo root for result extraction
-via git worktrees).
-
-When starting a run, the daemon checks whether the Docker image is up-to-date
-with the project's `.cloche/Dockerfile`. If the Dockerfile has changed since
-the last build (tracked via a SHA-256 label on the image), the daemon rebuilds
-the image automatically before launching the container.
-
-### `cloche status`
-
-Check the status of a run.
-
-```
-cloche status <run-id>
-```
-
-Output includes the run title (if set), run type (`host` or `container`), run state, active steps, and per-step results with timestamps.
-
-### `cloche list`
-
-List runs (last hour by default).
-
-```
-cloche list [--all]
-```
-
-| Flag | Description |
-|------|-------------|
-| `--all` | Show all runs, not just the last hour. |
-
-Columns: run ID, workflow name, type (`host` or `container`), title (truncated to 40 characters), state, container ID (if running), error message (if failed).
-
-### `cloche logs`
-
-Show logs for a run.
-
-```
-cloche logs <run-id> [--step <name>] [--type <full|script|llm>] [--follow]
-```
-
-| Flag | Description |
-|------|-------------|
-| `--step <name>` | Show only logs for the specified step. |
-| `--type <full\|script\|llm>` | Show only logs of the specified type (`full` = unified log, `script` = script output, `llm` = LLM conversation). |
-| `--follow`, `-f` | Stream live log lines via SSE. Color-coded by type: status (blue), LLM (green), script (default). Exits when the run completes. Connects to the daemon's HTTP endpoint (see `CLOCHE_HTTP` in Client Configuration). |
-
-Without flags, shows the unified log (`full.log`) if available, otherwise streams
-step start/completion events and run results.
-With `--follow`, connects to the SSE endpoint and prints log lines in real-time.
-
-### `cloche poll`
-
-Wait for a run to finish, printing progress updates.
-
-```
-cloche poll <run-id>
-```
-
-Polls every 2 seconds. Exits 0 on success, 1 on failure or if the container
-dies unexpectedly.
-
-### `cloche stop`
-
-Cancel a running workflow.
-
-```
-cloche stop <run-id>
-```
-
-### `cloche delete`
-
-Delete a retained Docker container. Accepts either a Docker container name/ID
-or a Cloche run ID. If given a run ID, the daemon looks up the associated
-container.
-
-```
-cloche delete <container-or-run-id>
-```
-
-### `cloche shutdown`
-
-Shut down the daemon.
-
-```
-cloche shutdown
-```
-
-## Setting Up a New Project
-
-### 1. Scaffold the project
-
-Run `cloche init` from your project root to create the `.cloche/` directory with
-default workflow, Dockerfile, and prompt templates:
-
-```
-cd my-project
-cloche init
-```
-
-Or create the structure manually:
-
-### 2. Create a workflow file
-
-Add `.cloche/<name>.cloche`:
+### Minimal Example
 
 ```
 workflow "develop" {
@@ -281,146 +33,72 @@ workflow "develop" {
     results = [success, fail]
   }
 
-  step fix {
-    prompt = file(".cloche/prompts/fix.md")
-    max_attempts = "2"
-    results = [success, fail, give-up]
-  }
-
-  step update-docs {
-    prompt = file(".cloche/prompts/update-docs.md")
-    results = [success, fail]
-  }
-
   implement:success -> test
   implement:fail -> abort
-
-  test:success -> update-docs
-  test:fail -> fix
-
-  fix:success -> test
-  fix:fail -> abort
-  fix:give-up -> abort
-
-  update-docs:success -> done
-  update-docs:fail -> done
+  test:success -> done
+  test:fail -> abort
 }
 ```
 
-### 3. Write prompt templates
+### Step Configuration
 
-Create `.cloche/prompts/` with markdown files:
+| Key | Type | Description |
+|-----|------|-------------|
+| `prompt` | string or `file("path")` | Prompt template. Makes this an agent step. |
+| `run` | string | Shell command. Makes this a script step. |
+| `workflow_name` | string | Container workflow to dispatch. Makes this a workflow step (host only). |
+| `results` | ident list | Declared result names, e.g. `[success, fail, give-up]`. |
+| `max_attempts` | string | Max retries before automatic `give-up` result, e.g. `"2"`. |
+| `timeout` | string | Step timeout as Go duration, e.g. `"30m"`, `"2h"`. Default: 30m. |
+| `agent_command` | string | Agent binary name(s), comma-separated for fallback chains, e.g. `"claude,gemini"`. |
+| `agent_args` | string | Override default agent arguments. |
+| `feedback` | string | Set to `"true"` to include `.cloche/output/*.log` content in the prompt. |
+| `prompt_step` | string | For workflow steps: which preceding step's output to use as the prompt. |
 
-**`.cloche/prompts/implement.md`** — Instructions for the initial implementation:
-```markdown
-You are working on a project. Implement the following change:
+A step must have exactly one of `prompt`, `run`, or `workflow_name`.
 
-## User Request
-(The user prompt is injected automatically by the agent adapter)
+### The `file()` Function
 
-## Guidelines
-- Follow existing project conventions
-- Write tests for new functionality
-- Run tests locally before declaring success
-```
-
-**`.cloche/prompts/fix.md`** — Instructions for fixing failures:
-```markdown
-The previous attempt had failures. Review the output logs in .cloche/output/
-and fix the issues.
-
-## Guidelines
-- Read the test/lint output carefully
-- Fix the root cause, not the symptoms
-- Run tests again to verify your fix
-```
-
-**`.cloche/prompts/update-docs.md`** — Instructions for keeping docs in sync:
-```markdown
-Review the CLI source code and update usage documentation to reflect any changes.
-```
-
-### 4. Add overrides (optional)
-
-Files in `.cloche/overrides/` are copied on top of `/workspace/` in the
-container. Use this for container-specific configuration:
+`file("path")` reads the file at the given path relative to the working directory
+(`/workspace/` in containers) at execution time, not parse time. Use it for prompt
+templates:
 
 ```
-.cloche/overrides/
-  CLAUDE.md              # Container-specific CLAUDE.md (replaces host version)
+prompt = file(".cloche/prompts/implement.md")
 ```
 
-### 5. Make sure your project builds in the container
+### The `container {}` Block
 
-The default Dockerfile generated by `cloche init` uses `cloche-base:latest` as its
-base image (configurable via `--base-image`). If your project needs different
-dependencies, edit `.cloche/Dockerfile`:
+Can appear at step level or workflow level. Keys are stored with a `container.` prefix.
 
-```dockerfile
-FROM golang:1.25 AS builder
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -o /cloche-agent ./cmd/cloche-agent
-
-FROM ubuntu:24.04
-RUN apt-get update && apt-get install -y git <your-deps> && rm -rf /var/lib/apt/lists/*
-RUN npm install -g @anthropic-ai/claude-code
-COPY --from=builder /cloche-agent /usr/local/bin/cloche-agent
-RUN useradd -m -s /bin/bash agent
-WORKDIR /workspace
-RUN chown agent:agent /workspace
-USER agent
+**Step level** — per-step container config:
 ```
-
-Key requirements for the image:
-- `cloche-agent` binary at `/usr/local/bin/cloche-agent`
-- `git` installed (for pushing results back)
-- An `agent` user (cloche wraps the command with `chown` + `su agent`)
-- `/workspace` as the working directory
-- Your project's build dependencies
-
-The daemon automatically rebuilds the image when `.cloche/Dockerfile` changes
-(see `cloche run` above). To build manually:
-```
-docker build -t my-project-agent -f .cloche/Dockerfile .
-CLOCHE_IMAGE=my-project-agent:latest bin/cloched
-```
-
-### 6. Run it
-
-```
-cd my-project
-cloche run --workflow develop --prompt "Add feature X"
-```
-
-## Writing Workflows
-
-Workflow files use the `.cloche` extension and live in the `.cloche/` directory. See
-[workflows.md](workflows.md) for full DSL reference.
-
-### Step Types
-
-**Agent steps** (has `prompt`) — Invokes a coding agent autonomously:
-
-```
-step implement {
+step code {
   prompt = file(".cloche/prompts/implement.md")
+  container {
+    image         = "custom-agent:v2"
+    memory        = "4g"
+    network_allow = ["docs.python.org", "api.example.com"]
+  }
   results = [success, fail]
 }
 ```
 
-**Script steps** (has `run`) — Runs a shell command:
-
+**Workflow level** — defaults for all steps:
 ```
-step test {
-  run = "make test 2>&1"
-  results = [success, fail]
+workflow "develop" {
+  container {
+    agent_command = "gemini"
+    image         = "myregistry/myimage:v2"
+    memory        = "4g"
+  }
+  ...
 }
 ```
 
-### Wiring
+Supported keys: `image`, `memory`, `network_allow`, `agent_command`, `agent_args`.
+
+### Wiring Syntax
 
 Connect steps with `step:result -> next_step`:
 
@@ -431,7 +109,26 @@ test:success -> done
 test:fail -> fix
 ```
 
-`done` and `abort` are built-in terminals for success and failure.
+### Wire Output Mappings
+
+Extract values from a step's JSON output and inject as env vars into the target:
+
+```
+step-a:success -> step-b [ ENV_VAR = output.field, OTHER = output.list[0].name ]
+```
+
+Path expressions:
+
+| Expression | Meaning |
+|---|---|
+| `output` | Raw output (full string) |
+| `output.key` | JSON object field access |
+| `output[N]` | JSON array index (0-based) |
+| `output.a.b.c` | Deeply nested field access |
+| `output.items[0].name` | Mixed field and index chaining |
+
+If the output is valid JSON, path expressions navigate the structure. If it's plain
+text, only bare `output` works.
 
 ### Retry Loops
 
@@ -443,9 +140,7 @@ fix:success -> test    // retry the test
 fix:fail -> abort
 ```
 
-### Max Attempts
-
-Limit retries on agent steps. When exhausted, the step returns `give-up`:
+Use `max_attempts` to cap retries. When exhausted, the step returns `give-up`:
 
 ```
 step fix {
@@ -455,7 +150,7 @@ step fix {
 }
 ```
 
-### Parallel Branches
+### Parallel Branches (Fanout)
 
 Wire one result to multiple targets for concurrent execution:
 
@@ -470,112 +165,313 @@ Synchronize parallel branches:
 
 ```
 collect all(lint:success, quality:success) -> done
+collect any(lint:success, quality:success) -> done
 ```
 
 `all` fires when every condition is met. `any` fires when at least one is.
 
-### Agent Command Override
+### Comments
 
-Agent steps use Claude Code by default. Override per-step:
-
-```
-step implement {
-  prompt = "..."
-  agent_command = "aider"
-  results = [success, fail]
-}
-```
-
-Or at the workflow level via a `container` block:
+Line comments with `//`:
 
 ```
-workflow "develop" {
-  container {
-    agent_command = "gemini"
-  }
-  ...
-}
+// This is a comment
+implement:success -> test  // inline comment
 ```
-
-Or globally via `CLOCHE_AGENT_COMMAND` environment variable.
-
-Priority (highest to lowest): step-level `agent_command`, workflow-level
-`container { agent_command }`, `CLOCHE_AGENT_COMMAND` env var, default (`claude`).
-
-### Agent Fallback Chains
-
-Use a comma-separated list in `agent_command` to configure fallback chains. If
-the first agent errors without reporting a result, the system tries the next:
-
-```
-step implement {
-  prompt = "..."
-  agent_command = "claude,gemini,codex"
-  results = [success, fail]
-}
-```
-
-Fallback rules:
-- **Command not found or failed to start** — fall back to next command
-- **Exit non-zero without `CLOCHE_RESULT` marker** — fall back to next command
-- **Exit non-zero with `CLOCHE_RESULT` marker** — use that result (no fallback)
-- **Exit 0** — use result (no fallback)
-- **All commands fail to start** — step returns an error
-- **Last command crashes without marker** — step returns `fail`
-
-Known agents have default arguments (e.g., Claude gets
-`-p --output-format text --dangerously-skip-permissions`). Other agents receive
-the prompt on stdin with no extra flags. Override with `agent_args` at the step
-or workflow level.
 
 ## Result Protocol
 
-Steps report results by writing a marker to stdout:
+Steps report results by printing a marker line to stdout:
 
 ```
 CLOCHE_RESULT:<name>
 ```
 
-For script steps, if no marker is written, the exit code determines the result:
-0 = `success`, non-zero = `fail`. Agent steps follow the same convention.
+For example: `CLOCHE_RESULT:success`, `CLOCHE_RESULT:needs-research`, `CLOCHE_RESULT:give-up`.
+
+Rules:
+- The **last** `CLOCHE_RESULT:` line wins if multiple are printed.
+- Marker lines are **stripped** from captured output (not passed to logs or downstream steps).
+- The result name must match one of the step's declared `results`.
+- For script steps with no marker: exit 0 = `success`, exit non-zero = `fail`.
+- For agent steps: if exit non-zero with a marker, the marker result is used. If exit non-zero without a marker, falls back to the next agent in the fallback chain (or returns `fail` if last).
 
 ## Prompt Assembly
 
-When an agent step runs, Cloche assembles a prompt from multiple sources:
+When an agent step runs, Cloche assembles a prompt from these sections (joined by blank lines):
 
-1. The step's `prompt` content (inline or from `file()`)
-2. The user prompt from `.cloche/<run-id>/prompt.txt` (set via `--prompt`)
-3. Validation output from `.cloche/<run-id>/output/*.log` (output from previous script steps)
-4. Result selection instructions listing the step's declared results
+1. **Step template**: The step's `prompt` content (inline string or resolved `file("path")`).
+2. **User request**: Content of `.cloche/<run-id>/prompt.txt` (set via `--prompt` flag), prefixed with `## User Request`.
+3. **Validation output** (opt-in): If `feedback = "true"`, reads all `.log` files from `.cloche/output/` and includes them prefixed with `## Validation Output`.
+4. **Result selection**: Lists the step's declared results with instructions to print exactly one `CLOCHE_RESULT:<name>` marker.
 
-## Project Directory Layout
+The assembled prompt is passed to the agent command via stdin.
+
+## Agent Command Resolution
+
+Priority (highest to lowest):
+1. Step-level `agent_command`
+2. Workflow-level `container { agent_command }`
+3. `CLOCHE_AGENT_COMMAND` environment variable
+4. Default: `claude`
+
+### Fallback Chains
+
+Comma-separated commands are tried in order:
+
+```
+agent_command = "claude,gemini,codex"
+```
+
+- **Command not found / failed to start** — try next command
+- **Exit non-zero without `CLOCHE_RESULT` marker** — try next command
+- **Exit non-zero with `CLOCHE_RESULT` marker** — use that result (no fallback)
+- **Exit 0** — use result (no fallback)
+- **All commands fail to start** — step returns an error
+- **Last command crashes without marker** — step returns `fail`
+
+Known agents (e.g. `claude`) get default arguments (`-p --output-format stream-json --verbose --dangerously-skip-permissions`). Unknown agents receive the prompt on stdin with no flags. Override with `agent_args`.
+
+## Workflow Locations
+
+**Container workflows** (`.cloche/*.cloche` except `host.cloche`) run inside Docker
+via `cloche-agent`. Steps may only be `agent` or `script` type.
+
+**Host workflow** (`.cloche/host.cloche`) runs on the host machine as the daemon.
+Steps may be `agent`, `script`, or `workflow` type. The `workflow_name` step type
+dispatches a container workflow run and blocks until it completes.
+
+### Host Workflow Example
+
+```
+workflow "main" {
+  step ready-tasks {
+    run     = "bash .cloche/scripts/ready-tasks.sh 1"
+    results = [success, fail]
+  }
+
+  step prepare-prompt {
+    run     = "bash .cloche/scripts/prepare-prompt.sh"
+    results = [success, fail]
+  }
+
+  step develop {
+    workflow_name = "develop"
+    results       = [success, fail]
+  }
+
+  ready-tasks:success -> prepare-prompt [
+    CLOCHE_TASK_ID    = output[0].id,
+    CLOCHE_TASK_TITLE = output[0].title,
+    CLOCHE_TASK_BODY  = output[0].description
+  ]
+  ready-tasks:fail       -> abort
+  prepare-prompt:success -> develop [ CLOCHE_TASK_ID = output.task_id ]
+  prepare-prompt:fail    -> abort
+  develop:success        -> done
+  develop:fail           -> done
+}
+```
+
+### Host Step Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `CLOCHE_PROJECT_DIR` | Absolute path to the project directory on the host. |
+| `CLOCHE_STEP_OUTPUT` | Path where this step should write its output (for output mappings). |
+| `CLOCHE_PREV_OUTPUT` | Path to the output file from the immediately preceding step. |
+| Wire-mapped vars | Any env vars declared in wire output mappings (e.g. `CLOCHE_TASK_ID`). |
+
+### Container Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `CLOCHE_RUN_ID` | The run ID for this workflow execution. |
+| `ANTHROPIC_API_KEY` | Passed through from the host if set. |
+| `CLOCHE_AGENT_COMMAND` | Overrides the default agent command inside the container. |
+
+## Complete Example: Container Workflow with Parallel Validation
+
+```
+workflow "develop" {
+  step implement {
+    prompt = file("prompts/implement.md")
+    results = [success, fail]
+  }
+
+  step test {
+    run = "bundle exec rake test 2>&1"
+    results = [success, fail]
+  }
+
+  step lint {
+    run = "bundle exec rubocop 2>&1"
+    results = [success, fail]
+  }
+
+  step quality {
+    run = "python3 scripts/quality-check.py 2>&1"
+    results = [success, fail]
+  }
+
+  step fix {
+    prompt = file("prompts/fix.md")
+    max_attempts = "2"
+    results = [success, fail, give-up]
+  }
+
+  implement:success -> test
+  implement:fail -> abort
+
+  test:success -> lint
+  test:success -> quality
+  test:fail -> fix
+
+  lint:fail -> fix
+  quality:fail -> fix
+  collect all(lint:success, quality:success) -> done
+
+  fix:success -> test
+  fix:fail -> abort
+  fix:give-up -> abort
+}
+```
+
+## Container Isolation Model
+
+- **Files in**: `docker cp` copies the project into `/workspace/`. No bind mounts. Override files from `.cloche/overrides/` are applied on top. `.git/` is included.
+- **Files out**: On completion, the daemon extracts results via `docker cp` into a git worktree and commits to a `cloche/<run-id>` branch.
+- **Auth mounts**: `~/.claude` and `~/.claude.json` are bind-mounted read-only for Claude Code session reuse.
+- **Network**: Containers have network access (needed for API calls).
+- **Cleanup**: Containers are removed after successful runs unless `--keep-container` is set. Failed runs always keep their container.
+
+Your project directory is never modified by the container.
+
+## CLI Reference
+
+### `cloche init`
+
+Scaffold a new Cloche project.
+
+```
+cloche init [--workflow <name>] [--base-image <base>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--workflow <name>` | `develop` | Workflow name. Creates `.cloche/<name>.cloche`. |
+| `--base-image <base>` | `cloche-base:latest` | Base Docker image for the generated Dockerfile. |
+
+Creates `.cloche/` with workflow file, Dockerfile, `config.toml`, prompt templates,
+host workflow (`host.cloche`), and prompt generation script. Skips existing files.
+
+### `cloche run`
+
+Launch a workflow run.
+
+```
+cloche run --workflow <name> [--prompt "..."] [--title "..."] [--keep-container]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--workflow <name>` | Workflow name. Resolves to `.cloche/<name>.cloche`. |
+| `--prompt "..."`, `-p` | Inline prompt written to `.cloche/<run-id>/prompt.txt`. |
+| `--title "..."` | One-line summary for status display. Auto-generated if omitted. |
+| `--keep-container` | Keep container on success (failed runs always keep it). |
+
+Must be run from inside a git repository. The daemon auto-rebuilds the Docker image
+when `.cloche/Dockerfile` changes.
+
+### `cloche status`
+
+```
+cloche status <run-id>
+```
+
+Shows run title, type (`host`/`container`), state, active steps, and per-step results.
+
+### `cloche list`
+
+```
+cloche list [--all]
+```
+
+Lists runs from the last hour (or all with `--all`).
+
+### `cloche logs`
+
+```
+cloche logs <run-id> [--step <name>] [--type <full|script|llm>] [--follow]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--step <name>` | Show only logs for the specified step. |
+| `--type <full\|script\|llm>` | Log type filter. |
+| `--follow`, `-f` | Stream live logs via SSE (requires `CLOCHE_HTTP`). |
+
+### `cloche poll`
+
+```
+cloche poll <run-id>
+```
+
+Block until the run finishes. Polls every 2 seconds. Exits 0 on success, 1 on failure.
+
+### `cloche stop`
+
+```
+cloche stop <run-id>
+```
+
+### `cloche delete`
+
+```
+cloche delete <container-or-run-id>
+```
+
+Delete a retained Docker container by container ID or run ID.
+
+### `cloche health`
+
+```
+cloche health
+```
+
+Show per-project pass/fail summary. Requires `CLOCHE_HTTP`.
+
+### `cloche shutdown`
+
+```
+cloche shutdown
+```
+
+## Project Layout
 
 ```
 my-project/
 ├── .cloche/
-│   ├── develop.cloche        # Container workflow definition
-│   ├── host.cloche           # Host orchestration workflow (runs on host)
-│   ├── Dockerfile            # Container image
-│   ├── config.toml           # Project configuration (orchestration, evolution)
-│   ├── prompts/
-│   │   ├── implement.md      # Prompt templates
+│   ├── develop.cloche        # Container workflow
+│   ├── host.cloche           # Host orchestration workflow
+│   ├── Dockerfile            # Container image definition
+│   ├── config.toml           # Project configuration
+│   ├── prompts/              # Prompt templates
+│   │   ├── implement.md
 │   │   ├── fix.md
 │   │   └── update-docs.md
-│   ├── scripts/
-│   │   └── prepare-prompt.sh # Host-side prompt generation script
-│   ├── overrides/            # Files copied on top of /workspace/ in container
+│   ├── scripts/              # Host-side scripts
+│   ├── overrides/            # Files copied on top of /workspace/
 │   │   └── CLAUDE.md         # Container-specific CLAUDE.md (optional)
 │   └── <run-id>/             # Runtime state (gitignored)
-│       ├── prompt.txt        # User prompt (from --prompt flag)
+│       ├── prompt.txt        # User prompt
 │       ├── output/
-│       │   ├── full.log      # Unified chronological log (status + script + LLM)
+│       │   ├── full.log      # Unified log
 │       │   ├── test.log      # Per-step script output
-│       │   └── llm-impl.log  # Per-step LLM conversation output
-│       ├── attempt_count/
-│       │   └── fix           # Retry counter for max_attempts
+│       │   └── llm-impl.log  # Per-step LLM conversation
+│       ├── attempt_count/    # Retry counters for max_attempts
 │       └── history.log       # Step execution log
-├── src/                      # Existing project source (untouched)
-├── CLAUDE.md                 # Host CLAUDE.md
+├── src/                      # Project source (untouched by Cloche)
 └── .git/
 ```
 
@@ -583,23 +479,32 @@ my-project/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLOCHE_LISTEN` | `unix:///tmp/cloche.sock` | Listen address (unix socket or TCP) |
+| `CLOCHE_LISTEN` | `unix:///tmp/cloche.sock` | Listen address |
 | `CLOCHE_DB` | `cloche.db` | SQLite database path |
-| `CLOCHE_RUNTIME` | `docker` | `docker` (container) or `local` (subprocess, for dev) |
+| `CLOCHE_RUNTIME` | `docker` | `docker` or `local` (subprocess, for dev only) |
 | `CLOCHE_IMAGE` | `cloche-agent:latest` | Default Docker image |
-| `CLOCHE_HTTP` | — | HTTP address for the web dashboard. Not started unless set. |
-| `CLOCHE_AGENT_PATH` | (auto-detected) | Path to `cloche-agent` binary (local runtime) |
-| `CLOCHE_LLM_COMMAND` | — | Command for LLM calls — evolution and merge conflict resolution (e.g. `claude`) |
-| `ANTHROPIC_API_KEY` | — | Passed into Docker containers |
-| `CLOCHE_EXTRA_MOUNTS` | — | Extra bind mounts (comma-separated `host:container`) |
-| `CLOCHE_EXTRA_ENV` | — | Extra env vars (comma-separated `KEY=VALUE`) |
+| `CLOCHE_HTTP` | _(unset)_ | HTTP address for web dashboard. Not started unless set. |
+| `CLOCHE_AGENT_PATH` | _(auto)_ | Path to `cloche-agent` binary (local runtime) |
+| `CLOCHE_LLM_COMMAND` | _(unset)_ | Command for LLM calls (evolution, merge conflicts) |
+| `ANTHROPIC_API_KEY` | _(unset)_ | Passed into Docker containers |
+| `CLOCHE_EXTRA_MOUNTS` | _(unset)_ | Extra bind mounts (comma-separated `host:container`) |
+| `CLOCHE_EXTRA_ENV` | _(unset)_ | Extra env vars (comma-separated `KEY=VALUE`) |
 
 ### Client Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLOCHE_ADDR` | `unix:///tmp/cloche.sock` | Daemon address (gRPC) |
-| `CLOCHE_HTTP` | `localhost:8080` | Daemon HTTP address (web dashboard, `cloche logs --follow`) |
+| `CLOCHE_ADDR` | `unix:///tmp/cloche.sock` | Daemon gRPC address |
+| `CLOCHE_HTTP` | `localhost:8080` | Daemon HTTP address |
+
+## Dockerfile Requirements
+
+The container image must have:
+- `cloche-agent` binary at `/usr/local/bin/cloche-agent`
+- `git` installed
+- An `agent` user (cloche wraps commands with `chown` + `su agent`)
+- `/workspace` as the working directory
+- Your project's build dependencies and the agent binary (e.g. `claude`)
 
 ## Build Commands
 
