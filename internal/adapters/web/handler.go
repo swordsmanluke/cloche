@@ -82,6 +82,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 		"healthColor":      healthColor,
 		"formatTime":       formatTime,
 		"formatDuration":   formatDuration,
+		"formatRunTiming":  formatRunTiming,
 		"truncate":         truncate,
 		"shortContainerID": shortContainerID,
 	}
@@ -413,6 +414,7 @@ type apiRun struct {
 	State        string `json:"state"`
 	StartedAt    string `json:"started_at"`
 	CompletedAt  string `json:"completed_at"`
+	Timing       string `json:"timing"`
 	ContainerID  string `json:"container_id"`
 	ErrorMessage string `json:"error_message"`
 	Title        string `json:"title"`
@@ -444,6 +446,7 @@ func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
 		State:        string(r.State),
 		StartedAt:    formatTime(r.StartedAt),
 		CompletedAt:  formatTime(r.CompletedAt),
+		Timing:       formatRunTiming(r.State, r.StartedAt, r.CompletedAt),
 		ContainerID:  r.ContainerID,
 		ErrorMessage: r.ErrorMessage,
 		Title:        r.Title,
@@ -1309,6 +1312,92 @@ func formatDuration(start, end time.Time) string {
 		return fmt.Sprintf("%.1fs", d.Seconds())
 	}
 	return fmt.Sprintf("%dm%ds", int(d.Minutes()), int(d.Seconds())%60)
+}
+
+// formatSmartDuration formats a duration into a human-friendly short string.
+// Examples: "3s", "2m", "1h20m", "3h".
+func formatSmartDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	if h == 0 {
+		return fmt.Sprintf("%dm", m)
+	}
+	if m == 0 {
+		return fmt.Sprintf("%dh", h)
+	}
+	return fmt.Sprintf("%dh%dm", h, m)
+}
+
+// roundRelativeTime rounds a duration to neat display units:
+// <1m -> "<1m ago", then 1m,5m,10m,15m,30m,45m,1h,2h,3h,...24h,
+// then days.
+func roundRelativeTime(d time.Duration) string {
+	if d < time.Minute {
+		return "<1m ago"
+	}
+	mins := int(d.Minutes())
+	hours := int(d.Hours())
+	days := hours / 24
+
+	if days > 0 {
+		if days == 1 {
+			return "1 day ago"
+		}
+		return fmt.Sprintf("%d days ago", days)
+	}
+	if hours >= 1 {
+		if hours == 1 {
+			return "1 hour ago"
+		}
+		return fmt.Sprintf("%d hours ago", hours)
+	}
+	// Round minutes to neat breakpoints
+	switch {
+	case mins < 3:
+		return "1m ago"
+	case mins < 8:
+		return "5m ago"
+	case mins < 13:
+		return "10m ago"
+	case mins < 20:
+		return "15m ago"
+	case mins < 38:
+		return "30m ago"
+	case mins < 53:
+		return "45m ago"
+	default:
+		return "1 hour ago"
+	}
+}
+
+// formatRunTiming returns a smart timing string for display on the Runs page.
+// Running: "5m" (just duration so far)
+// Completed: "20m, 1 hour ago"
+// Pending: ""
+func formatRunTiming(state domain.RunState, startedAt, completedAt time.Time) string {
+	return formatRunTimingAt(state, startedAt, completedAt, time.Now())
+}
+
+// formatRunTimingAt is the testable version of formatRunTiming with an explicit "now".
+func formatRunTimingAt(state domain.RunState, startedAt, completedAt, now time.Time) string {
+	if startedAt.IsZero() {
+		return ""
+	}
+	switch state {
+	case domain.RunStateRunning:
+		d := now.Sub(startedAt)
+		return formatSmartDuration(d)
+	default:
+		if completedAt.IsZero() {
+			return ""
+		}
+		d := completedAt.Sub(startedAt)
+		ago := now.Sub(completedAt)
+		return formatSmartDuration(d) + ", " + roundRelativeTime(ago)
+	}
 }
 
 func truncate(s string, n int) string {

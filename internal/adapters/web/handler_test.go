@@ -285,6 +285,66 @@ func TestHelpers(t *testing.T) {
 		assert.Equal(t, "short", shortContainerID("short"))
 	})
 
+	t.Run("formatSmartDuration", func(t *testing.T) {
+		assert.Equal(t, "0s", formatSmartDuration(0))
+		assert.Equal(t, "30s", formatSmartDuration(30*time.Second))
+		assert.Equal(t, "5m", formatSmartDuration(5*time.Minute))
+		assert.Equal(t, "1h", formatSmartDuration(1*time.Hour))
+		assert.Equal(t, "1h20m", formatSmartDuration(1*time.Hour+20*time.Minute))
+		assert.Equal(t, "3h", formatSmartDuration(3*time.Hour))
+		assert.Equal(t, "2h5m", formatSmartDuration(2*time.Hour+5*time.Minute+10*time.Second))
+	})
+
+	t.Run("roundRelativeTime", func(t *testing.T) {
+		assert.Equal(t, "<1m ago", roundRelativeTime(30*time.Second))
+		assert.Equal(t, "1m ago", roundRelativeTime(1*time.Minute))
+		assert.Equal(t, "1m ago", roundRelativeTime(2*time.Minute))
+		assert.Equal(t, "5m ago", roundRelativeTime(5*time.Minute))
+		assert.Equal(t, "5m ago", roundRelativeTime(7*time.Minute))
+		assert.Equal(t, "10m ago", roundRelativeTime(10*time.Minute))
+		assert.Equal(t, "10m ago", roundRelativeTime(12*time.Minute))
+		assert.Equal(t, "15m ago", roundRelativeTime(15*time.Minute))
+		assert.Equal(t, "15m ago", roundRelativeTime(19*time.Minute))
+		assert.Equal(t, "30m ago", roundRelativeTime(25*time.Minute))
+		assert.Equal(t, "30m ago", roundRelativeTime(37*time.Minute))
+		assert.Equal(t, "45m ago", roundRelativeTime(40*time.Minute))
+		assert.Equal(t, "45m ago", roundRelativeTime(52*time.Minute))
+		assert.Equal(t, "1 hour ago", roundRelativeTime(55*time.Minute))
+		assert.Equal(t, "1 hour ago", roundRelativeTime(1*time.Hour))
+		assert.Equal(t, "2 hours ago", roundRelativeTime(2*time.Hour))
+		assert.Equal(t, "5 hours ago", roundRelativeTime(5*time.Hour+30*time.Minute))
+		assert.Equal(t, "1 day ago", roundRelativeTime(24*time.Hour))
+		assert.Equal(t, "3 days ago", roundRelativeTime(72*time.Hour))
+	})
+
+	t.Run("formatRunTimingAt", func(t *testing.T) {
+		now := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+		started := now.Add(-20 * time.Minute)
+		completed := now.Add(-10 * time.Minute)
+
+		// Pending: no start time
+		assert.Equal(t, "", formatRunTimingAt(domain.RunStatePending, time.Time{}, time.Time{}, now))
+
+		// Running: shows elapsed duration
+		assert.Equal(t, "20m", formatRunTimingAt(domain.RunStateRunning, started, time.Time{}, now))
+
+		// Running: short duration
+		assert.Equal(t, "45s", formatRunTimingAt(domain.RunStateRunning, now.Add(-45*time.Second), time.Time{}, now))
+
+		// Completed: "duration, X ago"
+		assert.Equal(t, "10m, 10m ago", formatRunTimingAt(domain.RunStateSucceeded, started, completed, now))
+
+		// Failed: "duration, X ago"
+		assert.Equal(t, "10m, 10m ago", formatRunTimingAt(domain.RunStateFailed, started, completed, now))
+
+		// Cancelled: "duration, X ago"
+		longAgo := now.Add(-3 * time.Hour)
+		assert.Equal(t, "2h50m, 10m ago", formatRunTimingAt(domain.RunStateCancelled, longAgo, completed, now))
+
+		// Completed but no completedAt: empty
+		assert.Equal(t, "", formatRunTimingAt(domain.RunStateSucceeded, started, time.Time{}, now))
+	})
+
 	t.Run("projectLabels", func(t *testing.T) {
 		// No conflict: show base name only
 		labels := projectLabels([]string{"/home/user/alpha", "/home/user/beta"})

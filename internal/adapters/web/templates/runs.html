@@ -20,8 +20,7 @@
             <th>Workflow</th>
             <th>Type</th>
             <th>State</th>
-            <th>Started</th>
-            <th>Completed</th>
+            <th>Timing</th>
             <th>Container</th>
             <th>Error</th>
         </tr>
@@ -36,14 +35,13 @@
             <td>{{.WorkflowName}}</td>
             <td>{{if .IsHost}}host{{else}}container{{end}}</td>
             <td><span class="badge badge-{{stateColor .State}}">{{.State}}</span></td>
-            <td>{{formatTime .StartedAt}}</td>
-            <td>{{formatTime .CompletedAt}}</td>
+            <td>{{formatRunTiming .State .StartedAt .CompletedAt}}</td>
             <td class="mono">{{shortContainerID .ContainerID}}</td>
             <td class="error-cell">{{truncate .ErrorMessage 80}}</td>
         </tr>
         {{end}}
     {{else}}
-        <tr><td colspan="10" class="empty">No runs yet.</td></tr>
+        <tr><td colspan="9" class="empty">No runs yet.</td></tr>
     {{end}}
     </tbody>
 </table>
@@ -118,7 +116,7 @@
             .then(function(runs) {
                 var tbody = document.getElementById('runs-body');
                 if (!runs || runs.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="10" class="empty">No runs yet.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="9" class="empty">No runs yet.</td></tr>';
                     return;
                 }
 
@@ -136,6 +134,7 @@
                     if (title.length > 50) title = title.substring(0, 47) + '...';
                     var runType = r.is_host ? 'host' : 'container';
                     var rowClass = entry.isChild ? 'run-child-row' : (entry.isParent ? 'run-parent-row' : '');
+                    var timing = r.timing || '';
                     html += '<tr class="' + rowClass + '">' +
                         '<td><a href="/runs/' + r.id + '">' + r.id + '</a></td>' +
                         '<td>' + escapeHtml(title) + '</td>' +
@@ -143,8 +142,7 @@
                         '<td>' + r.workflow_name + '</td>' +
                         '<td>' + runType + '</td>' +
                         '<td><span class="badge badge-' + r.state + '">' + r.state + '</span></td>' +
-                        '<td>' + r.started_at + '</td>' +
-                        '<td>' + r.completed_at + '</td>' +
+                        '<td>' + escapeHtml(timing) + '</td>' +
                         '<td class="mono">' + cid + '</td>' +
                         '<td class="error-cell">' + escapeHtml(err) + '</td>' +
                         '</tr>';
