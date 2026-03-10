@@ -178,6 +178,30 @@ func TestRunDetail_AccordionStatePreserved(t *testing.T) {
 	assert.Contains(t, body, "loadedOutputs[key]")
 }
 
+func TestRunDetail_LogScrollStabilization(t *testing.T) {
+	// Verify the rendered page stabilizes scroll position when SSE log events
+	// arrive: saves scrollTop before append, auto-scrolls only when at bottom,
+	// and restores position otherwise.
+	h, store := setupHandler(t)
+	seedRun(t, store, "run-scroll-1", "develop", domain.RunStateRunning)
+
+	req := httptest.NewRequest("GET", "/runs/run-scroll-1", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+
+	// Must capture scroll position before DOM mutation
+	assert.Contains(t, body, "savedScrollTop")
+	// Must check if at bottom before appending content
+	assert.Contains(t, body, "var atBottom = logViewer.scrollHeight - savedScrollTop - logViewer.clientHeight < 40")
+	// Must restore scroll position when not at bottom
+	assert.Contains(t, body, "logViewer.scrollTop = savedScrollTop")
+	// Must NOT use a detached autoScroll state variable (race-prone)
+	assert.NotContains(t, body, "var autoScroll")
+}
+
 func TestRunDetail_NotFound(t *testing.T) {
 	h, _ := setupHandler(t)
 

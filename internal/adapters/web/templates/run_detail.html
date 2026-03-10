@@ -115,21 +115,23 @@
     var logContent = document.getElementById('log-content');
     var logViewer = document.getElementById('log-viewer');
     var logStatus = document.getElementById('log-status');
-    var autoScroll = true;
-
-    // Track scroll position to enable/disable auto-scroll
-    logViewer.addEventListener('scroll', function() {
-        var atBottom = logViewer.scrollHeight - logViewer.scrollTop - logViewer.clientHeight < 40;
-        autoScroll = atBottom;
-    });
-
     function appendLogLine(line) {
         var span = document.createElement('span');
         span.className = 'log-line log-type-' + (line.type || 'script');
         span.textContent = '[' + line.timestamp + '] [' + line.type + '] ' + line.content + '\n';
+
+        // Check scroll position BEFORE appending to avoid race conditions
+        // with the scroll event listener approach.
+        var savedScrollTop = logViewer.scrollTop;
+        var atBottom = logViewer.scrollHeight - savedScrollTop - logViewer.clientHeight < 40;
+
         logContent.appendChild(span);
-        if (autoScroll) {
+
+        if (atBottom) {
             logViewer.scrollTop = logViewer.scrollHeight;
+        } else {
+            // Restore scroll position in case the DOM mutation shifted it
+            logViewer.scrollTop = savedScrollTop;
         }
     }
 
