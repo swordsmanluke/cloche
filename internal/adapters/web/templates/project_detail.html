@@ -6,6 +6,9 @@
     <a href="/runs/{{.ID}}"><span class="run-dot run-dot-{{.State}}" title="{{.ID}}: {{.State}}"></span></a>
     {{end}}
     <a href="/projects/{{.Label}}/runs" class="btn btn-secondary btn-sm" style="margin-left:0.5rem">View all runs</a>
+    {{if .ContainerCount}}
+    <button class="btn btn-danger btn-sm" id="delete-containers-btn" onclick="deleteAllContainers()" style="margin-left:0.5rem">Delete {{.ContainerCount}} container{{if gt .ContainerCount 1}}s{{end}}</button>
+    {{end}}
 </div>
 
 <!-- Panel 1: Project Info -->
@@ -241,6 +244,26 @@ function closeDrawer() {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') closeDrawer();
 });
+
+window.deleteAllContainers = function() {
+    var btn = document.getElementById('delete-containers-btn');
+    if (btn) btn.disabled = true;
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/containers', { method: 'DELETE' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (btn) {
+                btn.textContent = 'Deleted ' + (data.deleted || 0) + ' container' + (data.deleted !== 1 ? 's' : '');
+                btn.classList.remove('btn-danger');
+                btn.classList.add('btn-secondary');
+            }
+        })
+        .catch(function() {
+            if (btn) {
+                btn.textContent = 'Delete failed';
+                btn.disabled = false;
+            }
+        });
+};
 
 // Load all panels
 loadProjectInfo();

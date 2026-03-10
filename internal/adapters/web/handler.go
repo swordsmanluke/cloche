@@ -130,6 +130,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
 	h.mux.HandleFunc("POST /api/runs/{id}/stop", h.handleAPIStopRun)
 	h.mux.HandleFunc("DELETE /api/runs/{id}/container", h.handleAPIDeleteContainer)
+	h.mux.HandleFunc("DELETE /api/projects/{name}/containers", h.handleAPIDeleteProjectContainers)
 	h.mux.HandleFunc("GET /api/projects/{name}/info", h.handleAPIProjectInfo)
 	h.mux.HandleFunc("GET /api/projects/{name}/info/prompt-diff", h.handleAPIPromptDiff)
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows", h.handleAPIWorkflows)
@@ -714,6 +715,67 @@ func (h *Handler) handleAPIDeleteContainer(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+// handleAPIDeleteProjectContainers mass-deletes all retained/exited containers for a project.
+func (h *Handler) handleAPIDeleteProjectContainers(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+
+	mgr, ok := h.container.(ContainerManager)
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "container management not available"})
+		return
+	}
+
+	runs, err := h.store.ListRunsByProject(r.Context(), dir, time.Time{})
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to list runs"})
+		return
+	}
+
+	var deleted int
+	var errors []string
+	for _, run := range runs {
+		if !run.ContainerKept || run.ContainerID == "" {
+			continue
+		}
+		// Check container is not running
+		status, err := mgr.Inspect(r.Context(), run.ContainerID)
+		if err != nil {
+			// Container already gone — just clear the flag
+			run.ContainerKept = false
+			h.store.UpdateRun(r.Context(), run)
+			deleted++
+			continue
+		}
+		if status.Running {
+			continue // skip running containers
+		}
+		if err := mgr.Remove(r.Context(), run.ContainerID); err != nil {
+			errors = append(errors, fmt.Sprintf("%s: %v", run.ID, err))
+			continue
+		}
+		run.ContainerKept = false
+		if err := h.store.UpdateRun(r.Context(), run); err != nil {
+			errors = append(errors, fmt.Sprintf("%s: update failed: %v", run.ID, err))
+			continue
+		}
+		deleted++
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]any{"deleted": deleted}
+	if len(errors) > 0 {
+		resp["errors"] = errors
+	}
+	json.NewEncoder(w).Encode(resp)
+}
+
 // handleAPIStream serves an SSE stream of log lines for a run.
 // For active runs, it subscribes to the live broadcaster.
 // For completed runs, it serves the archived full.log then closes.
@@ -877,11 +939,19 @@ func (h *Handler) handleProjectDetail(w http.ResponseWriter, r *http.Request) {
 		dots[i] = recentRunDot{ID: runs[i].ID, State: string(runs[i].State)}
 	}
 
+	var containerCount int
+	for _, run := range runs {
+		if run.ContainerKept {
+			containerCount++
+		}
+	}
+
 	data := map[string]any{
-		"Title":      label,
-		"Label":      label,
-		"Dir":        dir,
-		"RecentRuns": dots,
+		"Title":          label,
+		"Label":          label,
+		"Dir":            dir,
+		"RecentRuns":     dots,
+		"ContainerCount": containerCount,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.pages["project_detail"].ExecuteTemplate(w, "layout", data); err != nil {

@@ -974,6 +974,123 @@ func TestRunDetail_CancelButton_HiddenForTerminalRuns(t *testing.T) {
 	assert.NotContains(t, h1Section, `id="cancel-run-btn"`)
 }
 
+func TestAPIDeleteProjectContainers_Success(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+	seedRunWithContainer(t, store, mgr, "run-pd1", "develop", "/home/user/alpha", "cid-pd1", true)
+	seedRunWithContainer(t, store, mgr, "run-pd2", "develop", "/home/user/alpha", "cid-pd2", true)
+	seedRunWithContainer(t, store, mgr, "run-pd3", "deploy", "/home/user/beta", "cid-pd3", true)
+
+	req := httptest.NewRequest("DELETE", "/api/projects/alpha/containers", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, float64(2), resp["deleted"])
+
+	// Verify containers were removed
+	assert.Contains(t, mgr.removed, "cid-pd1")
+	assert.Contains(t, mgr.removed, "cid-pd2")
+	assert.NotContains(t, mgr.removed, "cid-pd3")
+
+	// Verify runs updated
+	run1, _ := store.GetRun(context.Background(), "run-pd1")
+	assert.False(t, run1.ContainerKept)
+	run2, _ := store.GetRun(context.Background(), "run-pd2")
+	assert.False(t, run2.ContainerKept)
+	// beta run unchanged
+	run3, _ := store.GetRun(context.Background(), "run-pd3")
+	assert.True(t, run3.ContainerKept)
+}
+
+func TestAPIDeleteProjectContainers_SkipsRunning(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+	seedRunWithContainer(t, store, mgr, "run-pdr1", "develop", "/home/user/alpha", "cid-pdr1", true)
+	mgr.running["cid-pdr1"] = true // mark as running
+
+	seedRunWithContainer(t, store, mgr, "run-pdr2", "develop", "/home/user/alpha", "cid-pdr2", true)
+
+	req := httptest.NewRequest("DELETE", "/api/projects/alpha/containers", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, float64(1), resp["deleted"])
+
+	// Running container not removed
+	assert.NotContains(t, mgr.removed, "cid-pdr1")
+	assert.Contains(t, mgr.removed, "cid-pdr2")
+}
+
+func TestAPIDeleteProjectContainers_SkipsNonKept(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+	seedRunWithContainer(t, store, mgr, "run-pdk1", "develop", "/home/user/alpha", "cid-pdk1", false) // not kept
+
+	req := httptest.NewRequest("DELETE", "/api/projects/alpha/containers", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, float64(0), resp["deleted"])
+}
+
+func TestAPIDeleteProjectContainers_NoManager(t *testing.T) {
+	h, store := setupHandler(t)
+	seedRunWithProject(t, store, "run-pdnm", "develop", domain.RunStateSucceeded, "/home/user/alpha")
+
+	req := httptest.NewRequest("DELETE", "/api/projects/alpha/containers", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAPIDeleteProjectContainers_ProjectNotFound(t *testing.T) {
+	h, _, _ := setupHandlerWithContainerManager(t)
+
+	req := httptest.NewRequest("DELETE", "/api/projects/nonexistent/containers", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestProjectDetail_ContainerDeleteButton(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+	seedRunWithContainer(t, store, mgr, "run-pdb1", "develop", "/home/user/alpha", "cid-pdb1", true)
+	seedRunWithContainer(t, store, mgr, "run-pdb2", "develop", "/home/user/alpha", "cid-pdb2", true)
+
+	req := httptest.NewRequest("GET", "/projects/alpha", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, `id="delete-containers-btn"`)
+	assert.Contains(t, body, "Delete 2 containers")
+}
+
+func TestProjectDetail_NoButtonWhenNoContainers(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+	seedRunWithContainer(t, store, mgr, "run-pdnb1", "develop", "/home/user/alpha", "cid-pdnb1", false)
+
+	req := httptest.NewRequest("GET", "/projects/alpha", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.NotContains(t, body, `id="delete-containers-btn"`)
+}
+
 func TestAPIProjects_HealthNoRuns(t *testing.T) {
 	h, _ := setupHandler(t)
 
