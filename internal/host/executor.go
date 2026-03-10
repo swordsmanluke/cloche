@@ -196,15 +196,25 @@ func (e *Executor) stepOutputPath(stepName string) string {
 	return filepath.Join(e.OutputDir, stepName+".out")
 }
 
-// findPrevOutput looks for the most recent output file from any previously completed step.
-// This is a simplified approach — the engine doesn't expose ordering info,
-// so we check for common output files that might exist.
+// findPrevOutput finds the output file from the step that wires into this one.
+// It checks prompt_step config first, then walks the wiring graph to find the
+// source step.
 func (e *Executor) findPrevOutput(step *domain.Step) string {
-	// Check if there's a prompt_step config
+	// Explicit prompt_step config takes priority
 	if ps := step.Config["prompt_step"]; ps != "" {
 		path := e.stepOutputPath(ps)
 		if _, err := os.Stat(path); err == nil {
 			return path
+		}
+	}
+
+	// Walk wiring to find the step that feeds into this one
+	for _, w := range e.Wires {
+		if w.To == step.Name {
+			path := e.stepOutputPath(w.From)
+			if _, err := os.Stat(path); err == nil {
+				return path
+			}
 		}
 	}
 	return ""
