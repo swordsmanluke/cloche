@@ -790,3 +790,61 @@ func TestLogFiles_EmptyResults(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, files)
 }
+
+func TestListRunsSortRunningFirst(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now()
+
+	// Create runs: oldest running, middle succeeded, newest failed
+	runs := []struct {
+		id    string
+		state domain.RunState
+		start time.Time
+	}{
+		{"old-running", domain.RunStateRunning, now.Add(-10 * time.Minute)},
+		{"mid-succeeded", domain.RunStateSucceeded, now.Add(-5 * time.Minute)},
+		{"new-failed", domain.RunStateFailed, now.Add(-1 * time.Minute)},
+		{"new-running", domain.RunStateRunning, now.Add(-2 * time.Minute)},
+	}
+
+	for _, tc := range runs {
+		r := domain.NewRun(tc.id, "develop")
+		r.State = tc.state
+		r.StartedAt = tc.start
+		r.ProjectDir = "/test/project"
+		if tc.state != domain.RunStateRunning {
+			r.CompletedAt = tc.start.Add(time.Minute)
+		}
+		require.NoError(t, store.CreateRun(ctx, r))
+	}
+
+	// ListRuns: running runs first (by recency), then non-running by recency
+	listed, err := store.ListRuns(ctx, time.Time{})
+	require.NoError(t, err)
+	require.Len(t, listed, 4)
+	assert.Equal(t, "new-running", listed[0].ID)    // running, more recent
+	assert.Equal(t, "old-running", listed[1].ID)     // running, older
+	assert.Equal(t, "new-failed", listed[2].ID)      // non-running, most recent
+	assert.Equal(t, "mid-succeeded", listed[3].ID)   // non-running, older
+
+	// ListRunsByProject: same ordering
+	listed, err = store.ListRunsByProject(ctx, "/test/project", time.Time{})
+	require.NoError(t, err)
+	require.Len(t, listed, 4)
+	assert.Equal(t, "new-running", listed[0].ID)
+	assert.Equal(t, "old-running", listed[1].ID)
+	assert.Equal(t, "new-failed", listed[2].ID)
+	assert.Equal(t, "mid-succeeded", listed[3].ID)
+
+	// ListRuns with since filter: same ordering
+	listed, err = store.ListRuns(ctx, now.Add(-6*time.Minute))
+	require.NoError(t, err)
+	require.Len(t, listed, 3) // excludes old-running (started 10min ago)
+	assert.Equal(t, "new-running", listed[0].ID)
+	assert.Equal(t, "new-failed", listed[1].ID)
+	assert.Equal(t, "mid-succeeded", listed[2].ID)
+}

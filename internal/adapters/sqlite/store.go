@@ -195,10 +195,10 @@ func (s *Store) ListRuns(ctx context.Context, since time.Time) ([]*domain.Run, e
 	var err error
 	if since.IsZero() {
 		rows, err = s.db.QueryContext(ctx,
-			`SELECT `+runSelectCols+` FROM runs ORDER BY started_at DESC`)
+			`SELECT `+runSelectCols+` FROM runs ORDER BY CASE WHEN state = 'running' THEN 0 ELSE 1 END, started_at DESC`)
 	} else {
 		rows, err = s.db.QueryContext(ctx,
-			`SELECT `+runSelectCols+` FROM runs WHERE started_at >= ? ORDER BY started_at DESC`,
+			`SELECT `+runSelectCols+` FROM runs WHERE started_at >= ? ORDER BY CASE WHEN state = 'running' THEN 0 ELSE 1 END, started_at DESC`,
 			formatTime(since))
 	}
 	if err != nil {
@@ -226,11 +226,11 @@ func (s *Store) ListRunsByProject(ctx context.Context, projectDir string, since 
 	var err error
 	if since.IsZero() {
 		rows, err = s.db.QueryContext(ctx,
-			`SELECT `+runSelectCols+` FROM runs WHERE project_dir = ? ORDER BY started_at DESC`,
+			`SELECT `+runSelectCols+` FROM runs WHERE project_dir = ? ORDER BY CASE WHEN state = 'running' THEN 0 ELSE 1 END, started_at DESC`,
 			projectDir)
 	} else {
 		rows, err = s.db.QueryContext(ctx,
-			`SELECT `+runSelectCols+` FROM runs WHERE project_dir = ? AND started_at >= ? ORDER BY started_at DESC`,
+			`SELECT `+runSelectCols+` FROM runs WHERE project_dir = ? AND started_at >= ? ORDER BY CASE WHEN state = 'running' THEN 0 ELSE 1 END, started_at DESC`,
 			projectDir, formatTime(since))
 	}
 	if err != nil {

@@ -82,6 +82,14 @@
             }
         }
 
+        // Sort top-level: running first, then by started_at descending
+        topLevel.sort(function(a, b) {
+            var aRunning = a.state === 'running' ? 0 : 1;
+            var bRunning = b.state === 'running' ? 0 : 1;
+            if (aRunning !== bRunning) return aRunning - bRunning;
+            return (b.started_at || '').localeCompare(a.started_at || '');
+        });
+
         var result = [];
         for (var i = 0; i < topLevel.length; i++) {
             var r = topLevel[i];
