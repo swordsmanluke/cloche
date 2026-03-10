@@ -4,6 +4,11 @@ workflow "main" {
     results = [success, fail]
   }
 
+  step claim-task {
+    run     = "bash .cloche/scripts/claim-task.sh"
+    results = [success, fail]
+  }
+
   step prepare-prompt {
     run     = "bash .cloche/scripts/prepare-prompt.sh"
     results = [success, fail]
@@ -24,12 +29,18 @@ workflow "main" {
     results = [success, fail]
   }
 
-  ready-tasks:success -> prepare-prompt [
+  ready-tasks:success -> claim-task [
     CLOCHE_TASK_ID    = output[0].id,
     CLOCHE_TASK_TITLE = output[0].title,
     CLOCHE_TASK_BODY  = output[0].description
   ]
   ready-tasks:fail       -> abort
+  claim-task:success     -> prepare-prompt [
+    CLOCHE_TASK_ID    = output[0].id,
+    CLOCHE_TASK_TITLE = output[0].title,
+    CLOCHE_TASK_BODY  = output[0].description
+  ]
+  claim-task:fail        -> abort
   prepare-prompt:success -> develop
   prepare-prompt:fail    -> abort
   develop:success        -> merge

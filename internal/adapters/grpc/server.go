@@ -15,6 +15,7 @@ import (
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
+	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/evolution"
 	"github.com/cloche-dev/cloche/internal/host"
@@ -35,7 +36,8 @@ type ClocheServer struct {
 	logBroadcast *logstream.Broadcaster
 	shutdownFn   func()
 	mu           sync.Mutex
-	runIDs       map[string]string // run_id -> container_id
+	runIDs       map[string]string      // run_id -> container_id
+	loops        map[string]*host.Loop  // project_dir -> orchestration loop
 }
 
 func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *ClocheServer {
@@ -43,6 +45,7 @@ func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *Cl
 		store:     store,
 		container: container,
 		runIDs:    make(map[string]string),
+		loops:     make(map[string]*host.Loop),
 	}
 }
 
@@ -53,6 +56,7 @@ func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureSto
 		container:    container,
 		defaultImage: defaultImage,
 		runIDs:       make(map[string]string),
+		loops:        make(map[string]*host.Loop),
 	}
 }
 
@@ -701,7 +705,84 @@ func (s *ClocheServer) Orchestrate(ctx context.Context, req *pb.OrchestrateReque
 	return &pb.OrchestrateResponse{RunId: runID}, nil
 }
 
+func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest) (*pb.EnableLoopResponse, error) {
+	projectDir := req.ProjectDir
+	if projectDir == "" {
+		return nil, fmt.Errorf("project_dir is required")
+	}
+
+	// Verify host.cloche exists
+	hostPath := filepath.Join(projectDir, ".cloche", "host.cloche")
+	if _, err := os.Stat(hostPath); err != nil {
+		return nil, fmt.Errorf("host.cloche not found in %s: %w", projectDir, err)
+	}
+
+	// Load project config for defaults.
+	projCfg, _ := config.Load(projectDir)
+
+	maxConc := int(req.MaxConcurrent)
+	if maxConc <= 0 {
+		maxConc = projCfg.Loop.Concurrency
+	}
+	if maxConc <= 0 {
+		maxConc = 1
+	}
+
+	stagger := time.Duration(float64(time.Second) * projCfg.Loop.StaggerSeconds)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Stop existing loop if running.
+	if existing, ok := s.loops[projectDir]; ok {
+		existing.Stop()
+	}
+
+	runFn := func(ctx context.Context, projDir string) (*host.RunResult, error) {
+		runner := &host.Runner{
+			Dispatcher: s,
+			Store:      s.store,
+		}
+		return runner.Run(ctx, projDir)
+	}
+
+	loop := host.NewLoop(host.LoopConfig{
+		ProjectDir:    projectDir,
+		MaxConcurrent: maxConc,
+		StaggerDelay:  stagger,
+	}, s.store, runFn)
+	s.loops[projectDir] = loop
+	loop.Start()
+
+	return &pb.EnableLoopResponse{}, nil
+}
+
+func (s *ClocheServer) DisableLoop(ctx context.Context, req *pb.DisableLoopRequest) (*pb.DisableLoopResponse, error) {
+	projectDir := req.ProjectDir
+	if projectDir == "" {
+		return nil, fmt.Errorf("project_dir is required")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if loop, ok := s.loops[projectDir]; ok {
+		loop.Stop()
+		delete(s.loops, projectDir)
+	}
+
+	return &pb.DisableLoopResponse{}, nil
+}
+
 func (s *ClocheServer) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*pb.ShutdownResponse, error) {
+	// Stop all orchestration loops.
+	s.mu.Lock()
+	for _, loop := range s.loops {
+		loop.Stop()
+	}
+	s.loops = make(map[string]*host.Loop)
+	s.mu.Unlock()
+
 	if s.shutdownFn == nil {
 		return nil, fmt.Errorf("shutdown not configured")
 	}

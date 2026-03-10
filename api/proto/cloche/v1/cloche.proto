@@ -13,6 +13,8 @@ service ClocheService {
   rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
   rpc DeleteContainer(DeleteContainerRequest) returns (DeleteContainerResponse);
   rpc Orchestrate(OrchestrateRequest) returns (OrchestrateResponse);
+  rpc EnableLoop(EnableLoopRequest) returns (EnableLoopResponse);
+  rpc DisableLoop(DisableLoopRequest) returns (DisableLoopResponse);
 }
 
 message RunWorkflowRequest {
@@ -109,3 +111,16 @@ message RunSummary {
   string title = 7;
   bool is_host = 8;
 }
+
+message EnableLoopRequest {
+  string project_dir = 1;
+  int32 max_concurrent = 2;
+}
+
+message EnableLoopResponse {}
+
+message DisableLoopRequest {
+  string project_dir = 1;
+}
+
+message DisableLoopResponse {}

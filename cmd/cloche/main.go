@@ -70,6 +70,8 @@ func main() {
 		cmdDelete(ctx, client, os.Args[2:])
 	case "orchestrate":
 		cmdOrchestrate(ctx, client)
+	case "loop":
+		cmdLoop(ctx, client, os.Args[2:])
 	case "shutdown":
 		cmdShutdown(ctx, client)
 	default:
@@ -95,6 +97,8 @@ Commands:
   stop <run-id>                              Stop a running workflow
   delete <container-or-run-id>               Delete a retained container
   orchestrate                                Start host workflow orchestration
+  loop [--max <n>]                            Start orchestration loop (default max=1)
+  loop stop                                  Stop orchestration loop
   shutdown                                   Shut down the daemon
 `)
 }
@@ -427,6 +431,51 @@ func cmdOrchestrate(ctx context.Context, client pb.ClocheServiceClient) {
 		os.Exit(1)
 	}
 	fmt.Printf("Started orchestration: %s\n", resp.RunId)
+}
+
+func cmdLoop(ctx context.Context, client pb.ClocheServiceClient, args []string) {
+	cwd, _ := os.Getwd()
+
+	// Check for "stop" subcommand
+	if len(args) > 0 && args[0] == "stop" {
+		_, err := client.DisableLoop(ctx, &pb.DisableLoopRequest{ProjectDir: cwd})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Orchestration loop stopped.")
+		return
+	}
+
+	// Default: 0 means "use config value" (server reads .cloche/config.toml).
+	var maxConcurrent int32
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--max":
+			if i+1 < len(args) {
+				i++
+				n, err := fmt.Sscanf(args[i], "%d", &maxConcurrent)
+				if n != 1 || err != nil {
+					fmt.Fprintf(os.Stderr, "invalid --max value: %s\n", args[i])
+					os.Exit(1)
+				}
+			}
+		}
+	}
+
+	_, err := client.EnableLoop(ctx, &pb.EnableLoopRequest{
+		ProjectDir:    cwd,
+		MaxConcurrent: maxConcurrent,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if maxConcurrent > 0 {
+		fmt.Printf("Orchestration loop started (max_concurrent=%d).\n", maxConcurrent)
+	} else {
+		fmt.Println("Orchestration loop started (using config defaults).")
+	}
 }
 
 func cmdShutdown(ctx context.Context, client pb.ClocheServiceClient) {
