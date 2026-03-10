@@ -153,6 +153,11 @@ func (e *Executor) executeWorkflow(ctx context.Context, step *domain.Step) (stri
 
 	log.Printf("host executor: dispatched container workflow %q as run %s", workflowName, resp.RunId)
 
+	// Write run ID to step output so downstream steps (e.g. merge) can find it
+	if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
+		_ = os.WriteFile(e.stepOutputPath(step.Name), []byte(resp.RunId), 0644)
+	}
+
 	// Poll until the run reaches a terminal state
 	state, err := e.waitForRun(ctx, resp.RunId)
 	if err != nil {
