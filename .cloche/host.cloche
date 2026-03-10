@@ -1,4 +1,8 @@
 workflow "main" {
+  host {
+    agent_command = "claude"
+  }
+
   step ready-tasks {
     run     = "bash .cloche/scripts/ready-tasks.sh 1"
     results = [success, fail]

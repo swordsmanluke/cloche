@@ -6,7 +6,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/engine"
@@ -76,6 +78,14 @@ func (r *Runner) RunWithID(ctx context.Context, projectDir string, orchRunID str
 		OutputDir:  outputDir,
 		Wires:      wf.Wiring,
 		HostRunID:  orchRunID,
+	}
+
+	// Configure agent from workflow-level host config
+	if cmd := wf.Config["host.agent_command"]; cmd != "" {
+		executor.AgentCommands = prompt.ParseCommands(cmd)
+	}
+	if args := wf.Config["host.agent_args"]; args != "" {
+		executor.AgentArgs = strings.Fields(args)
 	}
 
 	eng := engine.New(executor)

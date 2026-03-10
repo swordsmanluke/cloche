@@ -132,11 +132,36 @@ If two wires targeting the same step both map the same env var key, validation
 returns an error (the mapping would be ambiguous). The same key may be used on
 wires to different steps without conflict.
 
+## The `host {}` Block
+
+Host workflows support a `host {}` block at the workflow level to configure agent
+defaults for agent steps running on the host machine. Keys are stored with a `host.`
+prefix, analogous to the `container {}` block for container workflows.
+
+```
+workflow "main" {
+  host {
+    agent_command = "claude"
+  }
+  ...
+}
+```
+
+Supported keys: `agent_command`, `agent_args`. Step-level `agent_command` and
+`agent_args` override the workflow-level `host {}` defaults. The agent command
+resolution order for host agent steps is the same as for container agent steps:
+step-level > workflow-level `host {}` > `CLOCHE_AGENT_COMMAND` env var > default
+`claude`.
+
 ## Host Workflow Example
 
 ```
 # .cloche/host.cloche — runs on the host machine
 workflow "main" {
+  host {
+    agent_command = "claude"
+  }
+
   step ready-tasks {
     run     = "bash .cloche/scripts/ready-tasks.sh 1"
     results = [success, fail]

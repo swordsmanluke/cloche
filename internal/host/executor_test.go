@@ -834,6 +834,394 @@ func TestMainWorktreeDir_WithWorktree(t *testing.T) {
 	assert.Equal(t, mainDir, result)
 }
 
+func TestExecutor_AgentStep_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	// Create a mock agent script that reads stdin and produces output
+	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'agent did the work'\n"), 0755))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		HostRunID:  "test-host-run",
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config: map[string]string{
+			"prompt":        "You are a coding assistant.",
+			"agent_command": mockAgent,
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	// Check output was copied to executor's output path
+	data, err := os.ReadFile(filepath.Join(outputDir, "implement.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "agent did the work")
+}
+
+func TestExecutor_AgentStep_Failure(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	// Create a mock agent that reports failure via result marker
+	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'something went wrong'\necho 'CLOCHE_RESULT:fail'\n"), 0755))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		HostRunID:  "test-host-run",
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config: map[string]string{
+			"prompt":        "You are a coding assistant.",
+			"agent_command": mockAgent,
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "fail", result)
+}
+
+func TestExecutor_AgentStep_WorkflowLevelCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	// Create a mock agent
+	mockAgent := filepath.Join(tmpDir, "workflow-agent.sh")
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'workflow agent ran'\n"), 0755))
+
+	executor := &Executor{
+		ProjectDir:    tmpDir,
+		OutputDir:     outputDir,
+		HostRunID:     "test-host-run",
+		AgentCommands: []string{mockAgent},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config: map[string]string{
+			"prompt": "Write some code.",
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "implement.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "workflow agent ran")
+}
+
+func TestExecutor_AgentStep_StepLevelOverridesWorkflow(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	// Create two mock agents
+	workflowAgent := filepath.Join(tmpDir, "workflow-agent.sh")
+	require.NoError(t, os.WriteFile(workflowAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'workflow agent'\n"), 0755))
+
+	stepAgent := filepath.Join(tmpDir, "step-agent.sh")
+	require.NoError(t, os.WriteFile(stepAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'step agent'\n"), 0755))
+
+	executor := &Executor{
+		ProjectDir:    tmpDir,
+		OutputDir:     outputDir,
+		HostRunID:     "test-host-run",
+		AgentCommands: []string{workflowAgent},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config: map[string]string{
+			"prompt":        "Write some code.",
+			"agent_command": stepAgent,
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	// Step-level agent should have run, not workflow-level
+	data, err := os.ReadFile(filepath.Join(outputDir, "implement.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "step agent")
+	assert.NotContains(t, string(data), "workflow agent")
+}
+
+func TestExecutor_AgentStep_FallbackChain(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	// Create a good agent
+	goodAgent := filepath.Join(tmpDir, "good-agent.sh")
+	require.NoError(t, os.WriteFile(goodAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'fallback agent ran'\n"), 0755))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		HostRunID:  "test-host-run",
+	}
+
+	// Use nonexistent command as primary, good agent as fallback
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config: map[string]string{
+			"prompt":        "Write some code.",
+			"agent_command": "nonexistent-agent-xyz," + goodAgent,
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "implement.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "fallback agent ran")
+}
+
+func TestExecutor_AgentStep_PrevOutput(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+
+	// Write previous step output
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "prepare.out"), []byte("the task description"), 0644))
+
+	// Create a mock agent that echoes stdin (the prompt) to verify it received it
+	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'processed prompt'\n"), 0755))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		HostRunID:  "test-host-run",
+		Wires: []domain.Wire{
+			{From: "prepare", Result: "success", To: "implement"},
+		},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config: map[string]string{
+			"prompt":        "You are a coding assistant.",
+			"agent_command": mockAgent,
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	// Verify prompt.txt was written with previous step's output
+	promptPath := filepath.Join(tmpDir, ".cloche", "test-host-run", "prompt.txt")
+	data, err := os.ReadFile(promptPath)
+	require.NoError(t, err)
+	assert.Equal(t, "the task description", string(data))
+}
+
+func TestExecutor_AgentStep_PromptStep(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+
+	// Write a specific step's output
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "custom-source.out"), []byte("custom prompt content"), 0644))
+
+	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'done'\n"), 0755))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		HostRunID:  "test-host-run",
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config: map[string]string{
+			"prompt":        "You are a coding assistant.",
+			"agent_command": mockAgent,
+			"prompt_step":   "custom-source",
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	// Verify prompt.txt was written with the prompt_step output
+	promptPath := filepath.Join(tmpDir, ".cloche", "test-host-run", "prompt.txt")
+	data, err := os.ReadFile(promptPath)
+	require.NoError(t, err)
+	assert.Equal(t, "custom prompt content", string(data))
+}
+
+func TestEngine_HostWorkflow_WithAgentStep(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	// Create a mock agent
+	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'agent output'\n"), 0755))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		HostRunID:  "test-host-run",
+	}
+
+	wf := &domain.Workflow{
+		Name: "main",
+		Steps: map[string]*domain.Step{
+			"prepare": {
+				Name:    "prepare",
+				Type:    domain.StepTypeScript,
+				Results: []string{"success", "fail"},
+				Config:  map[string]string{"run": "echo 'task prompt'"},
+			},
+			"implement": {
+				Name:    "implement",
+				Type:    domain.StepTypeAgent,
+				Results: []string{"success", "fail"},
+				Config: map[string]string{
+					"prompt":        "You are a coding assistant.",
+					"agent_command": mockAgent,
+				},
+			},
+			"verify": {
+				Name:    "verify",
+				Type:    domain.StepTypeScript,
+				Results: []string{"success", "fail"},
+				Config:  map[string]string{"run": "echo verified"},
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: "prepare", Result: "success", To: "implement"},
+			{From: "prepare", Result: "fail", To: domain.StepAbort},
+			{From: "implement", Result: "success", To: "verify"},
+			{From: "implement", Result: "fail", To: domain.StepAbort},
+			{From: "verify", Result: "success", To: domain.StepDone},
+			{From: "verify", Result: "fail", To: domain.StepAbort},
+		},
+		EntryStep: "prepare",
+	}
+
+	eng := engine.New(executor)
+	run, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+}
+
+func TestRunner_HostWorkflow_AgentStep(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a mock agent
+	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'agent implemented'\n"), 0755))
+
+	// Write a host.cloche with an agent step
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	hostCloche := `workflow "main" {
+  host {
+    agent_command = "` + mockAgent + `"
+  }
+
+  step implement {
+    prompt = "Implement the feature."
+    results = [success, fail]
+  }
+
+  implement:success -> done
+  implement:fail    -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	runner := &Runner{
+		Dispatcher: &fakeDispatcher{runID: "test-run"},
+		Store:      store,
+	}
+
+	result, err := runner.Run(context.Background(), tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, result.State)
+
+	// Verify the run completed
+	hostRun, err := store.GetRun(context.Background(), result.RunID)
+	require.NoError(t, err)
+	assert.True(t, hostRun.IsHost)
+	assert.Equal(t, domain.RunStateSucceeded, hostRun.State)
+}
+
+func TestRunner_HostWorkflow_AgentStepOverridesWorkflowCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create two mock agents
+	workflowAgent := filepath.Join(tmpDir, "workflow-agent.sh")
+	require.NoError(t, os.WriteFile(workflowAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'workflow level'\n"), 0755))
+
+	stepAgent := filepath.Join(tmpDir, "step-agent.sh")
+	require.NoError(t, os.WriteFile(stepAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'step level'\n"), 0755))
+
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	hostCloche := `workflow "main" {
+  host {
+    agent_command = "` + workflowAgent + `"
+  }
+
+  step implement {
+    agent_command = "` + stepAgent + `"
+    prompt = "Implement the feature."
+    results = [success, fail]
+  }
+
+  implement:success -> done
+  implement:fail    -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	runner := &Runner{
+		Dispatcher: &fakeDispatcher{runID: "test-run"},
+		Store:      store,
+	}
+
+	result, err := runner.Run(context.Background(), tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, result.State)
+}
+
 func TestRunner_PersistsHostRunOnFailure(t *testing.T) {
 	tmpDir := t.TempDir()
 

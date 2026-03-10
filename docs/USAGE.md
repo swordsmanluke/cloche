@@ -98,6 +98,23 @@ workflow "develop" {
 
 Supported keys: `image`, `memory`, `network_allow`, `agent_command`, `agent_args`.
 
+### The `host {}` Block
+
+Can appear at workflow level in host workflows (`.cloche/host.cloche`). Keys are stored
+with a `host.` prefix. Configures agent defaults for agent steps running on the host.
+
+```
+workflow "main" {
+  host {
+    agent_command = "claude"
+  }
+  ...
+}
+```
+
+Supported keys: `agent_command`, `agent_args`. Step-level `agent_command` and
+`agent_args` config keys override the workflow-level `host {}` defaults.
+
 ### Wiring Syntax
 
 Connect steps with `step:result -> next_step`:
@@ -247,6 +264,10 @@ fixes on main are available to in-flight runs even if they branched earlier.
 
 ```
 workflow "main" {
+  host {
+    agent_command = "claude"
+  }
+
   step ready-tasks {
     run     = "bash .cloche/scripts/ready-tasks.sh 1"
     results = [success, fail]

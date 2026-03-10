@@ -265,7 +265,7 @@ func (w *Workflow) ValidateConfig() []string {
 			if knownStepConfigKeys[key] {
 				continue
 			}
-			if strings.HasPrefix(key, "container.") {
+			if strings.HasPrefix(key, "container.") || strings.HasPrefix(key, "host.") {
 				continue
 			}
 			warnings = append(warnings, fmt.Sprintf(

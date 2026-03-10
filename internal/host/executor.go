@@ -11,6 +11,7 @@ import (
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
+	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/ports"
@@ -48,13 +49,15 @@ type RunDispatcher interface {
 
 // Executor implements engine.StepExecutor for host workflow steps.
 type Executor struct {
-	ProjectDir string
-	MainDir    string         // main branch worktree dir; scripts execute from here
-	Dispatcher RunDispatcher
-	Store      ports.RunStore
-	OutputDir  string         // directory for step output files
-	Wires      []domain.Wire  // workflow wiring (for output mappings)
-	HostRunID  string         // ID of the parent host run (set on child runs)
+	ProjectDir    string
+	MainDir       string         // main branch worktree dir; scripts execute from here
+	Dispatcher    RunDispatcher
+	Store         ports.RunStore
+	OutputDir     string         // directory for step output files
+	Wires         []domain.Wire  // workflow wiring (for output mappings)
+	HostRunID     string         // ID of the parent host run (set on child runs)
+	AgentCommands []string       // workflow-level agent command fallback chain
+	AgentArgs     []string       // workflow-level explicit agent args (overrides defaults)
 }
 
 // scriptDir returns the directory from which scripts should execute.
@@ -75,6 +78,8 @@ func (e *Executor) Execute(ctx context.Context, step *domain.Step) (string, erro
 		return e.executeScript(ctx, step)
 	case domain.StepTypeWorkflow:
 		return e.executeWorkflow(ctx, step)
+	case domain.StepTypeAgent:
+		return e.executeAgent(ctx, step)
 	default:
 		return "", fmt.Errorf("unsupported step type %q in host workflow", step.Type)
 	}
@@ -191,6 +196,63 @@ func (e *Executor) executeWorkflow(ctx context.Context, step *domain.Step) (stri
 		return "success", nil
 	}
 	return "fail", nil
+}
+
+// executeAgent runs an agent command on the host using the prompt adapter.
+func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (string, error) {
+	adapter := prompt.New()
+
+	// Apply workflow-level agent config
+	if len(e.AgentCommands) > 0 {
+		adapter.Commands = e.AgentCommands
+	}
+	if len(e.AgentArgs) > 0 {
+		adapter.ExplicitArgs = e.AgentArgs
+	}
+
+	// Step-level overrides
+	if cmd := step.Config["agent_command"]; cmd != "" {
+		adapter.Commands = prompt.ParseCommands(cmd)
+	}
+	if args := step.Config["agent_args"]; args != "" {
+		adapter.ExplicitArgs = strings.Fields(args)
+	}
+
+	adapter.RunID = e.HostRunID
+
+	// Write previous step output as user prompt so the adapter can pick it up.
+	var promptContent string
+	promptSource := step.Config["prompt_step"]
+	if promptSource != "" {
+		if data, err := os.ReadFile(e.stepOutputPath(promptSource)); err == nil {
+			promptContent = string(data)
+		}
+	} else if prev := e.findPrevOutput(step); prev != "" {
+		if data, err := os.ReadFile(prev); err == nil {
+			promptContent = string(data)
+		}
+	}
+
+	if promptContent != "" {
+		promptDir := filepath.Join(e.ProjectDir, ".cloche", e.HostRunID)
+		_ = os.MkdirAll(promptDir, 0755)
+		_ = os.WriteFile(filepath.Join(promptDir, "prompt.txt"), []byte(promptContent), 0644)
+	}
+
+	result, err := adapter.Execute(ctx, step, e.ProjectDir)
+	if err != nil {
+		return "", err
+	}
+
+	// Copy output from adapter's output location to executor's output path
+	adapterOutput := filepath.Join(e.ProjectDir, ".cloche", "output", step.Name+".log")
+	if data, readErr := os.ReadFile(adapterOutput); readErr == nil {
+		if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
+			_ = os.WriteFile(e.stepOutputPath(step.Name), data, 0644)
+		}
+	}
+
+	return result, nil
 }
 
 // waitForRun polls the store until the run reaches a terminal state.
