@@ -178,6 +178,11 @@ func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string
 		fmt.Printf("Title:     %s\n", resp.Title)
 	}
 	fmt.Printf("Workflow:  %s\n", resp.WorkflowName)
+	if resp.IsHost {
+		fmt.Printf("Type:      host\n")
+	} else {
+		fmt.Printf("Type:      container\n")
+	}
 	fmt.Printf("State:     %s\n", resp.State)
 	if resp.ContainerId != "" {
 		cid := resp.ContainerId
@@ -215,7 +220,11 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 	}
 
 	for _, run := range resp.Runs {
-		line := fmt.Sprintf("%s  %-20s  %-10s", run.RunId, run.WorkflowName, run.State)
+		runType := "container"
+		if run.IsHost {
+			runType = "host"
+		}
+		line := fmt.Sprintf("%s  %-20s  %-10s  %-9s", run.RunId, run.WorkflowName, run.State, runType)
 		if run.Title != "" {
 			t := run.Title
 			if len(t) > 40 {

@@ -402,6 +402,7 @@ type apiRun struct {
 	ContainerID  string `json:"container_id"`
 	ErrorMessage string `json:"error_message"`
 	Title        string `json:"title"`
+	IsHost       bool   `json:"is_host"`
 }
 
 type apiStep struct {
@@ -430,6 +431,7 @@ func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
 		ContainerID:  r.ContainerID,
 		ErrorMessage: r.ErrorMessage,
 		Title:        r.Title,
+		IsHost:       r.IsHost,
 	}
 }
 

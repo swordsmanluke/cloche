@@ -42,6 +42,7 @@ type Run struct {
 	BaseSHA        string // Git HEAD at run start, for result branch creation
 	ContainerKept  bool   // true when the container was retained after run completion
 	Title          string // One-line summary of the work being done
+	IsHost         bool   // true for host workflow runs (vs container runs)
 }
 
 func NewRun(id, workflowName string) *Run {

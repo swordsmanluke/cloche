@@ -8,6 +8,7 @@
     <dl>
         {{if .Run.Title}}<dt>Title</dt><dd>{{.Run.Title}}</dd>{{end}}
         <dt>Workflow</dt><dd>{{.Run.WorkflowName}}</dd>
+        <dt>Type</dt><dd>{{if .Run.IsHost}}host{{else}}container{{end}}</dd>
         <dt>Started</dt><dd>{{formatTime .Run.StartedAt}}</dd>
         <dt>Completed</dt><dd>{{formatTime .Run.CompletedAt}}</dd>
         <dt>Container</dt><dd class="mono">{{.Run.ContainerID}}</dd>

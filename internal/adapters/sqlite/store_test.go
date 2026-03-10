@@ -504,6 +504,89 @@ func TestRunContainerKept(t *testing.T) {
 	assert.True(t, runs[0].ContainerKept)
 }
 
+func TestRunIsHost(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a host run
+	run := domain.NewRun("host-1", "main")
+	run.IsHost = true
+	run.ProjectDir = "/project"
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	got, err := store.GetRun(ctx, "host-1")
+	require.NoError(t, err)
+	assert.True(t, got.IsHost)
+
+	// Create a container run
+	crun := domain.NewRun("container-1", "develop")
+	crun.ProjectDir = "/project"
+	crun.Start()
+	require.NoError(t, store.CreateRun(ctx, crun))
+
+	got2, err := store.GetRun(ctx, "container-1")
+	require.NoError(t, err)
+	assert.False(t, got2.IsHost)
+
+	// Verify IsHost shows up in ListRuns
+	runs, err := store.ListRuns(ctx, time.Time{})
+	require.NoError(t, err)
+	require.Len(t, runs, 2)
+
+	hostFound := false
+	containerFound := false
+	for _, r := range runs {
+		if r.ID == "host-1" {
+			assert.True(t, r.IsHost)
+			hostFound = true
+		}
+		if r.ID == "container-1" {
+			assert.False(t, r.IsHost)
+			containerFound = true
+		}
+	}
+	assert.True(t, hostFound)
+	assert.True(t, containerFound)
+
+	// Verify IsHost shows up in ListRunsByProject
+	projRuns, err := store.ListRunsByProject(ctx, "/project", time.Time{})
+	require.NoError(t, err)
+	require.Len(t, projRuns, 2)
+	for _, r := range projRuns {
+		if r.ID == "host-1" {
+			assert.True(t, r.IsHost)
+		}
+	}
+
+	// Test update preserves IsHost
+	got.IsHost = false
+	require.NoError(t, store.UpdateRun(ctx, got))
+	got3, err := store.GetRun(ctx, "host-1")
+	require.NoError(t, err)
+	assert.False(t, got3.IsHost)
+}
+
+func TestRunIsHost_BackwardCompat(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run without setting IsHost — simulates pre-migration rows
+	run := domain.NewRun("old-1", "develop")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	got, err := store.GetRun(ctx, "old-1")
+	require.NoError(t, err)
+	assert.False(t, got.IsHost)
+}
+
 func TestStore_FailStaleRuns(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

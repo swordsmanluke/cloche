@@ -60,6 +60,13 @@ func TestRun_Fail(t *testing.T) {
 	assert.Equal(t, "container exploded", run.ErrorMessage)
 }
 
+func TestRunIsHost(t *testing.T) {
+	r := domain.NewRun("host-1", "main")
+	assert.False(t, r.IsHost)
+	r.IsHost = true
+	assert.True(t, r.IsHost)
+}
+
 func TestRun_StepExecution_Duration(t *testing.T) {
 	exec := &domain.StepExecution{
 		StepName:    "code",

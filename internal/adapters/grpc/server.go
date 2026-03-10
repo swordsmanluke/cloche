@@ -379,6 +379,7 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 			ErrorMessage: run.ErrorMessage,
 			ContainerId:  run.ContainerID,
 			Title:        run.Title,
+			IsHost:       run.IsHost,
 		})
 	}
 	return resp, nil
@@ -398,6 +399,7 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 		ErrorMessage: run.ErrorMessage,
 		ContainerId:  run.ContainerID,
 		Title:        run.Title,
+		IsHost:       run.IsHost,
 	}
 
 	// Check container liveness

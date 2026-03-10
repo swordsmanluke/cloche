@@ -180,7 +180,7 @@ Check the status of a run.
 cloche status <run-id>
 ```
 
-Output includes the run title (if set), run state, active steps, and per-step results with timestamps.
+Output includes the run title (if set), run type (`host` or `container`), run state, active steps, and per-step results with timestamps.
 
 ### `cloche list`
 
@@ -194,7 +194,7 @@ cloche list [--all]
 |------|-------------|
 | `--all` | Show all runs, not just the last hour. |
 
-Columns: run ID, workflow name, title (truncated to 40 characters), state, container ID (if running), error message (if failed).
+Columns: run ID, workflow name, type (`host` or `container`), title (truncated to 40 characters), state, container ID (if running), error message (if failed).
 
 ### `cloche logs`
 

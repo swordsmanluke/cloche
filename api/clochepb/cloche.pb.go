@@ -205,6 +205,7 @@ type GetStatusResponse struct {
 	ContainerAlive     bool                   `protobuf:"varint,8,opt,name=container_alive,json=containerAlive,proto3" json:"container_alive,omitempty"`
 	ContainerDeadSince string                 `protobuf:"bytes,9,opt,name=container_dead_since,json=containerDeadSince,proto3" json:"container_dead_since,omitempty"`
 	Title              string                 `protobuf:"bytes,10,opt,name=title,proto3" json:"title,omitempty"`
+	IsHost             bool                   `protobuf:"varint,11,opt,name=is_host,json=isHost,proto3" json:"is_host,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -307,6 +308,13 @@ func (x *GetStatusResponse) GetTitle() string {
 		return x.Title
 	}
 	return ""
+}
+
+func (x *GetStatusResponse) GetIsHost() bool {
+	if x != nil {
+		return x.IsHost
+	}
+	return false
 }
 
 type StepExecutionStatus struct {
@@ -930,6 +938,7 @@ type RunSummary struct {
 	ErrorMessage  string                 `protobuf:"bytes,5,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
 	ContainerId   string                 `protobuf:"bytes,6,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
 	Title         string                 `protobuf:"bytes,7,opt,name=title,proto3" json:"title,omitempty"`
+	IsHost        bool                   `protobuf:"varint,8,opt,name=is_host,json=isHost,proto3" json:"is_host,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1011,6 +1020,13 @@ func (x *RunSummary) GetTitle() string {
 		return x.Title
 	}
 	return ""
+}
+
+func (x *RunSummary) GetIsHost() bool {
+	if x != nil {
+		return x.IsHost
+	}
+	return false
 }
 
 var File_cloche_proto protoreflect.FileDescriptor

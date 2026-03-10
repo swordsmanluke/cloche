@@ -42,6 +42,7 @@ message GetStatusResponse {
   bool container_alive = 8;
   string container_dead_since = 9;
   string title = 10;
+  bool is_host = 11;
 }
 
 message StepExecutionStatus {
@@ -97,4 +98,5 @@ message RunSummary {
   string error_message = 5;
   string container_id = 6;
   string title = 7;
+  bool is_host = 8;
 }

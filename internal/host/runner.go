@@ -13,6 +13,9 @@ import (
 	"github.com/cloche-dev/cloche/internal/ports"
 )
 
+// Ensure hostStatusHandler implements engine.StatusHandler.
+var _ engine.StatusHandler = (*hostStatusHandler)(nil)
+
 // Runner executes a host workflow by parsing host.cloche and walking the step graph.
 type Runner struct {
 	Dispatcher RunDispatcher
@@ -53,6 +56,16 @@ func (r *Runner) Run(ctx context.Context, projectDir string) (*RunResult, error)
 
 	log.Printf("host workflow: starting %q for project %s (run %s)", wf.Name, projectDir, orchRunID)
 
+	// Persist the host run in the store so it appears in list/status/logs.
+	hostRun := domain.NewRun(orchRunID, wf.Name)
+	hostRun.ProjectDir = projectDir
+	hostRun.IsHost = true
+	if err := r.Store.CreateRun(ctx, hostRun); err != nil {
+		return nil, fmt.Errorf("creating host run record: %w", err)
+	}
+	hostRun.Start()
+	_ = r.Store.UpdateRun(ctx, hostRun)
+
 	executor := &Executor{
 		ProjectDir: projectDir,
 		Dispatcher: r.Dispatcher,
@@ -62,7 +75,11 @@ func (r *Runner) Run(ctx context.Context, projectDir string) (*RunResult, error)
 	}
 
 	eng := engine.New(executor)
-	eng.SetStatusHandler(&hostStatusHandler{projectDir: projectDir, orchRunID: orchRunID})
+	eng.SetStatusHandler(&hostStatusHandler{
+		projectDir: projectDir,
+		orchRunID:  orchRunID,
+		store:      r.Store,
+	})
 
 	run, runErr := eng.Run(ctx, wf)
 
@@ -74,6 +91,18 @@ func (r *Runner) Run(ctx context.Context, projectDir string) (*RunResult, error)
 		result.State = run.State
 	}
 
+	// Persist final state.
+	hostRun, _ = r.Store.GetRun(ctx, orchRunID)
+	if hostRun != nil {
+		if runErr != nil {
+			hostRun.Fail(runErr.Error())
+		} else {
+			hostRun.Complete(result.State)
+		}
+		hostRun.ActiveSteps = nil
+		_ = r.Store.UpdateRun(ctx, hostRun)
+	}
+
 	if runErr != nil {
 		log.Printf("host workflow: %q failed for %s: %v", wf.Name, projectDir, runErr)
 		return result, runErr
@@ -83,18 +112,31 @@ func (r *Runner) Run(ctx context.Context, projectDir string) (*RunResult, error)
 	return result, nil
 }
 
-// hostStatusHandler logs host workflow step events.
+// hostStatusHandler logs host workflow step events and persists them to the store.
 type hostStatusHandler struct {
 	projectDir string
 	orchRunID  string
+	store      ports.RunStore
 }
 
 func (h *hostStatusHandler) OnStepStart(_ *domain.Run, step *domain.Step) {
 	log.Printf("host workflow [%s]: step %q started", h.orchRunID, step.Name)
+	if h.store != nil {
+		if r, err := h.store.GetRun(context.Background(), h.orchRunID); err == nil {
+			r.RecordStepStart(step.Name)
+			_ = h.store.UpdateRun(context.Background(), r)
+		}
+	}
 }
 
 func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, result string) {
 	log.Printf("host workflow [%s]: step %q completed with result %q", h.orchRunID, step.Name, result)
+	if h.store != nil {
+		if r, err := h.store.GetRun(context.Background(), h.orchRunID); err == nil {
+			r.RecordStepComplete(step.Name, result)
+			_ = h.store.UpdateRun(context.Background(), r)
+		}
+	}
 }
 
 func (h *hostStatusHandler) OnRunComplete(run *domain.Run) {

@@ -80,6 +80,7 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE runs ADD COLUMN base_sha TEXT`,
 		`ALTER TABLE runs ADD COLUMN container_kept INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE runs ADD COLUMN title TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE runs ADD COLUMN is_host INTEGER NOT NULL DEFAULT 0`,
 	}
 	for _, stmt := range alterStmts {
 		db.Exec(stmt) // ignore "duplicate column" errors
@@ -130,42 +131,51 @@ func migrate(db *sql.DB) error {
 
 func (s *Store) CreateRun(ctx context.Context, run *domain.Run) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, project_dir, error_message, container_id, base_sha, container_kept, title)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, project_dir, error_message, container_id, base_sha, container_kept, title, is_host)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID, run.WorkflowName, string(run.State), run.ActiveStepsString(),
-		formatTime(run.StartedAt), formatTime(run.CompletedAt), run.ProjectDir, run.ErrorMessage, run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title,
+		formatTime(run.StartedAt), formatTime(run.CompletedAt), run.ProjectDir, run.ErrorMessage, run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost),
 	)
 	return err
 }
 
-func (s *Store) GetRun(ctx context.Context, id string) (*domain.Run, error) {
-	row := s.db.QueryRowContext(ctx,
-		`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,'') FROM runs WHERE id = ?`, id)
+// runSelectCols is the standard column list for scanning a Run row.
+const runSelectCols = `id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,''), COALESCE(is_host,0)`
 
+// scanRun scans a single row into a *domain.Run.
+func scanRun(scanner interface{ Scan(...any) error }) (*domain.Run, error) {
 	run := &domain.Run{}
 	var activeSteps, startedAt, completedAt string
-	var containerKept int
-	err := row.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage, &run.ContainerID, &run.BaseSHA, &containerKept, &run.Title)
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("run %q not found", id)
-	}
+	var containerKept, isHost int
+	err := scanner.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage, &run.ContainerID, &run.BaseSHA, &containerKept, &run.Title, &isHost)
 	if err != nil {
 		return nil, err
 	}
-
 	run.SetActiveStepsFromString(activeSteps)
 	run.StartedAt = parseTime(startedAt)
 	run.CompletedAt = parseTime(completedAt)
 	run.ContainerKept = containerKept != 0
+	run.IsHost = isHost != 0
 	return run, nil
+}
+
+func (s *Store) GetRun(ctx context.Context, id string) (*domain.Run, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT `+runSelectCols+` FROM runs WHERE id = ?`, id)
+
+	run, err := scanRun(row)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("run %q not found", id)
+	}
+	return run, err
 }
 
 func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ? WHERE id = ?`,
+		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ? WHERE id = ?`,
 		string(run.State), run.ActiveStepsString(),
 		formatTime(run.StartedAt), formatTime(run.CompletedAt),
-		run.ErrorMessage, run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, run.ID,
+		run.ErrorMessage, run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ID,
 	)
 	return err
 }
@@ -184,29 +194,27 @@ func (s *Store) ListRuns(ctx context.Context, since time.Time) ([]*domain.Run, e
 	var err error
 	if since.IsZero() {
 		rows, err = s.db.QueryContext(ctx,
-			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,'') FROM runs ORDER BY started_at DESC`)
+			`SELECT `+runSelectCols+` FROM runs ORDER BY started_at DESC`)
 	} else {
 		rows, err = s.db.QueryContext(ctx,
-			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,'') FROM runs WHERE started_at >= ? ORDER BY started_at DESC`,
+			`SELECT `+runSelectCols+` FROM runs WHERE started_at >= ? ORDER BY started_at DESC`,
 			formatTime(since))
 	}
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+	return scanRuns(rows)
+}
 
+// scanRuns scans all rows into a []*domain.Run slice.
+func scanRuns(rows *sql.Rows) ([]*domain.Run, error) {
 	var runs []*domain.Run
 	for rows.Next() {
-		run := &domain.Run{}
-		var activeSteps, startedAt, completedAt string
-		var containerKept int
-		if err := rows.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage, &run.ContainerID, &run.BaseSHA, &containerKept, &run.Title); err != nil {
+		run, err := scanRun(rows)
+		if err != nil {
 			return nil, err
 		}
-		run.SetActiveStepsFromString(activeSteps)
-		run.StartedAt = parseTime(startedAt)
-		run.CompletedAt = parseTime(completedAt)
-		run.ContainerKept = containerKept != 0
 		runs = append(runs, run)
 	}
 	return runs, rows.Err()
@@ -217,33 +225,18 @@ func (s *Store) ListRunsByProject(ctx context.Context, projectDir string, since 
 	var err error
 	if since.IsZero() {
 		rows, err = s.db.QueryContext(ctx,
-			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,'') FROM runs WHERE project_dir = ? ORDER BY started_at DESC`,
+			`SELECT `+runSelectCols+` FROM runs WHERE project_dir = ? ORDER BY started_at DESC`,
 			projectDir)
 	} else {
 		rows, err = s.db.QueryContext(ctx,
-			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,'') FROM runs WHERE project_dir = ? AND started_at >= ? ORDER BY started_at DESC`,
+			`SELECT `+runSelectCols+` FROM runs WHERE project_dir = ? AND started_at >= ? ORDER BY started_at DESC`,
 			projectDir, formatTime(since))
 	}
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
-	var runs []*domain.Run
-	for rows.Next() {
-		run := &domain.Run{}
-		var activeSteps, startedAt, completedAt string
-		var containerKept int
-		if err := rows.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage, &run.ContainerID, &run.BaseSHA, &containerKept, &run.Title); err != nil {
-			return nil, err
-		}
-		run.SetActiveStepsFromString(activeSteps)
-		run.StartedAt = parseTime(startedAt)
-		run.CompletedAt = parseTime(completedAt)
-		run.ContainerKept = containerKept != 0
-		runs = append(runs, run)
-	}
-	return runs, rows.Err()
+	return scanRuns(rows)
 }
 
 func (s *Store) ListProjects(ctx context.Context) ([]string, error) {
@@ -392,12 +385,12 @@ func (s *Store) ListRunsSince(ctx context.Context, projectDir, workflowName, sin
 
 	if sinceRunID == "" {
 		rows, err = s.db.QueryContext(ctx,
-			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,'')
+			`SELECT `+runSelectCols+`
 			 FROM runs WHERE project_dir = ? AND workflow_name = ? ORDER BY started_at ASC`,
 			projectDir, workflowName)
 	} else {
 		rows, err = s.db.QueryContext(ctx,
-			`SELECT id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,'')
+			`SELECT `+runSelectCols+`
 			 FROM runs WHERE project_dir = ? AND workflow_name = ? AND started_at > (SELECT started_at FROM runs WHERE id = ?)
 			 ORDER BY started_at ASC`,
 			projectDir, workflowName, sinceRunID)
@@ -406,22 +399,7 @@ func (s *Store) ListRunsSince(ctx context.Context, projectDir, workflowName, sin
 		return nil, err
 	}
 	defer rows.Close()
-
-	var runs []*domain.Run
-	for rows.Next() {
-		run := &domain.Run{}
-		var activeSteps, startedAt, completedAt string
-		var containerKept int
-		if err := rows.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage, &run.ContainerID, &run.BaseSHA, &containerKept, &run.Title); err != nil {
-			return nil, err
-		}
-		run.SetActiveStepsFromString(activeSteps)
-		run.StartedAt = parseTime(startedAt)
-		run.CompletedAt = parseTime(completedAt)
-		run.ContainerKept = containerKept != 0
-		runs = append(runs, run)
-	}
-	return runs, rows.Err()
+	return scanRuns(rows)
 }
 
 

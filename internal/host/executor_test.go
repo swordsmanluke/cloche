@@ -570,3 +570,78 @@ func TestExecutor_ScriptStep_OutputMappings_NotJSON(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not valid JSON")
 }
+
+func TestRunner_PersistsHostRun(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Write a simple host.cloche
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	hostCloche := `workflow "main" {
+  step prepare {
+    run     = "echo prepared"
+    results = [success, fail]
+  }
+
+  prepare:success -> done
+  prepare:fail    -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	runner := &Runner{
+		Dispatcher: &fakeDispatcher{runID: "test-run"},
+		Store:      store,
+	}
+
+	result, err := runner.Run(context.Background(), tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, result.State)
+	assert.NotEmpty(t, result.RunID)
+
+	// Verify the host run was persisted in the store
+	hostRun, err := store.GetRun(context.Background(), result.RunID)
+	require.NoError(t, err)
+	assert.True(t, hostRun.IsHost, "host run should have IsHost=true")
+	assert.Equal(t, tmpDir, hostRun.ProjectDir)
+	assert.Equal(t, domain.RunStateSucceeded, hostRun.State)
+	assert.False(t, hostRun.StartedAt.IsZero())
+	assert.False(t, hostRun.CompletedAt.IsZero())
+}
+
+func TestRunner_PersistsHostRunOnFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Write a host.cloche that will fail
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	hostCloche := `workflow "main" {
+  step bad {
+    run     = "exit 1"
+    results = [success, fail]
+  }
+
+  bad:success -> done
+  bad:fail    -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	runner := &Runner{
+		Dispatcher: &fakeDispatcher{runID: "test-run"},
+		Store:      store,
+	}
+
+	result, err := runner.Run(context.Background(), tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateFailed, result.State)
+
+	// Verify the host run was persisted with failed state
+	hostRun, err := store.GetRun(context.Background(), result.RunID)
+	require.NoError(t, err)
+	assert.True(t, hostRun.IsHost)
+	assert.Equal(t, domain.RunStateFailed, hostRun.State)
+	assert.False(t, hostRun.CompletedAt.IsZero())
+}
