@@ -239,7 +239,9 @@ via `cloche-agent`. Steps may only be `agent` or `script` type.
 
 **Host workflow** (`.cloche/host.cloche`) runs on the host machine as the daemon.
 Steps may be `agent`, `script`, or `workflow` type. The `workflow_name` step type
-dispatches a container workflow run and blocks until it completes.
+dispatches a container workflow run and blocks until it completes. Script steps
+execute with their working directory set to the main git worktree, so host-workflow
+fixes on main are available to in-flight runs even if they branched earlier.
 
 ### Host Workflow Example
 

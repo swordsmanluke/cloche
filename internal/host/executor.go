@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
@@ -48,11 +49,21 @@ type RunDispatcher interface {
 // Executor implements engine.StepExecutor for host workflow steps.
 type Executor struct {
 	ProjectDir string
+	MainDir    string         // main branch worktree dir; scripts execute from here
 	Dispatcher RunDispatcher
 	Store      ports.RunStore
 	OutputDir  string         // directory for step output files
 	Wires      []domain.Wire  // workflow wiring (for output mappings)
 	HostRunID  string         // ID of the parent host run (set on child runs)
+}
+
+// scriptDir returns the directory from which scripts should execute.
+// Uses MainDir if set, otherwise falls back to ProjectDir.
+func (e *Executor) scriptDir() string {
+	if e.MainDir != "" {
+		return e.MainDir
+	}
+	return e.ProjectDir
 }
 
 var _ engine.StepExecutor = (*Executor)(nil)
@@ -73,7 +84,7 @@ func (e *Executor) Execute(ctx context.Context, step *domain.Step) (string, erro
 func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string, error) {
 	cmdStr := step.Config["run"]
 	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
-	cmd.Dir = e.ProjectDir
+	cmd.Dir = e.scriptDir()
 	cmd.Env = append(os.Environ(),
 		"CLOCHE_PROJECT_DIR="+e.ProjectDir,
 		"CLOCHE_STEP_OUTPUT="+e.stepOutputPath(step.Name),
@@ -232,4 +243,23 @@ func (e *Executor) findPrevOutput(step *domain.Step) string {
 		}
 	}
 	return ""
+}
+
+// MainWorktreeDir returns the path of the main (non-linked) git worktree for
+// the repository containing projectDir. If projectDir is already the main
+// worktree, it returns projectDir unchanged. Falls back to projectDir on any
+// error (e.g. not a git repo).
+func MainWorktreeDir(projectDir string) string {
+	cmd := exec.Command("git", "-C", projectDir, "worktree", "list", "--porcelain")
+	out, err := cmd.Output()
+	if err != nil {
+		return projectDir
+	}
+	// The first "worktree <path>" line is always the main worktree.
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "worktree ") {
+			return strings.TrimPrefix(line, "worktree ")
+		}
+	}
+	return projectDir
 }

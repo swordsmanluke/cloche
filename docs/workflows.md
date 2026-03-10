@@ -179,6 +179,9 @@ wiring to the next step. This continues until a terminal (`done` or `abort`) is 
 All steps run inside the same container. File state accumulates naturally across steps.
 
 **Host workflows** are parsed and executed by the daemon on the host machine. Script
-steps run via `sh -c`, and workflow steps dispatch container runs via the daemon's
-standard run pipeline. Environment variables (`CLOCHE_TASK_ID`, `CLOCHE_PROJECT_DIR`,
-etc.) are injected into each step.
+steps run via `sh -c` with the working directory set to the **main git worktree** (i.e.
+the main branch checkout), even if the project directory is a linked worktree on a
+different branch. This ensures host-workflow scripts from main are used for all runs.
+Workflow steps dispatch container runs via the daemon's standard run pipeline.
+Environment variables (`CLOCHE_TASK_ID`, `CLOCHE_PROJECT_DIR`, etc.) are injected into
+each step; `CLOCHE_PROJECT_DIR` still points to the actual project directory.

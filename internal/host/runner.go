@@ -70,6 +70,7 @@ func (r *Runner) RunWithID(ctx context.Context, projectDir string, orchRunID str
 
 	executor := &Executor{
 		ProjectDir: projectDir,
+		MainDir:    MainWorktreeDir(projectDir),
 		Dispatcher: r.Dispatcher,
 		Store:      r.Store,
 		OutputDir:  outputDir,

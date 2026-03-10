@@ -3,6 +3,7 @@ package host
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -654,6 +655,183 @@ func TestRunner_PersistsHostRun(t *testing.T) {
 	assert.Equal(t, domain.RunStateSucceeded, hostRun.State)
 	assert.False(t, hostRun.StartedAt.IsZero())
 	assert.False(t, hostRun.CompletedAt.IsZero())
+}
+
+func TestExecutor_ScriptStep_UsesMainDir(t *testing.T) {
+	// ProjectDir has no script; MainDir has the script.
+	projectDir := t.TempDir()
+	mainDir := t.TempDir()
+	outputDir := filepath.Join(projectDir, "output")
+
+	// Create a script only in mainDir
+	scriptDir := filepath.Join(mainDir, ".cloche", "scripts")
+	require.NoError(t, os.MkdirAll(scriptDir, 0755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(scriptDir, "greet.sh"),
+		[]byte("#!/bin/sh\necho from-main"),
+		0755,
+	))
+
+	executor := &Executor{
+		ProjectDir: projectDir,
+		MainDir:    mainDir,
+		OutputDir:  outputDir,
+	}
+
+	step := &domain.Step{
+		Name:    "greet",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "bash .cloche/scripts/greet.sh"},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "greet.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "from-main")
+}
+
+func TestExecutor_ScriptStep_MainDirOverridesProjectDir(t *testing.T) {
+	// Both dirs have a script with different content; MainDir's version wins.
+	projectDir := t.TempDir()
+	mainDir := t.TempDir()
+	outputDir := filepath.Join(projectDir, "output")
+
+	// Create script in both dirs with different content
+	for _, dir := range []string{projectDir, mainDir} {
+		scriptDir := filepath.Join(dir, ".cloche", "scripts")
+		require.NoError(t, os.MkdirAll(scriptDir, 0755))
+	}
+	require.NoError(t, os.WriteFile(
+		filepath.Join(projectDir, ".cloche", "scripts", "hello.sh"),
+		[]byte("#!/bin/sh\necho from-branch"),
+		0755,
+	))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(mainDir, ".cloche", "scripts", "hello.sh"),
+		[]byte("#!/bin/sh\necho from-main"),
+		0755,
+	))
+
+	executor := &Executor{
+		ProjectDir: projectDir,
+		MainDir:    mainDir,
+		OutputDir:  outputDir,
+	}
+
+	step := &domain.Step{
+		Name:    "hello",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "bash .cloche/scripts/hello.sh"},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "hello.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "from-main")
+	assert.NotContains(t, string(data), "from-branch")
+}
+
+func TestExecutor_ScriptStep_FallsBackToProjectDir(t *testing.T) {
+	// When MainDir is empty, scripts resolve from ProjectDir.
+	projectDir := t.TempDir()
+	outputDir := filepath.Join(projectDir, "output")
+
+	executor := &Executor{
+		ProjectDir: projectDir,
+		OutputDir:  outputDir,
+	}
+
+	step := &domain.Step{
+		Name:    "pwd-check",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "pwd"},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "pwd-check.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), projectDir)
+}
+
+func TestExecutor_ScriptStep_ProjectDirEnvVar(t *testing.T) {
+	// CLOCHE_PROJECT_DIR should always point to ProjectDir, not MainDir.
+	projectDir := t.TempDir()
+	mainDir := t.TempDir()
+	outputDir := filepath.Join(projectDir, "output")
+
+	executor := &Executor{
+		ProjectDir: projectDir,
+		MainDir:    mainDir,
+		OutputDir:  outputDir,
+	}
+
+	step := &domain.Step{
+		Name:    "env-check",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo $CLOCHE_PROJECT_DIR"},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "env-check.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), projectDir)
+	assert.NotContains(t, string(data), mainDir)
+}
+
+func TestMainWorktreeDir_NonGitDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Non-git directory should fall back to projectDir.
+	result := MainWorktreeDir(tmpDir)
+	assert.Equal(t, tmpDir, result)
+}
+
+func TestMainWorktreeDir_WithWorktree(t *testing.T) {
+	// Set up a real git repo with a linked worktree.
+	mainDir := t.TempDir()
+
+	// Initialize git repo
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "command %v failed: %s", args, out)
+	}
+
+	run(mainDir, "git", "init")
+	run(mainDir, "git", "config", "user.email", "test@test.com")
+	run(mainDir, "git", "config", "user.name", "Test")
+	require.NoError(t, os.WriteFile(filepath.Join(mainDir, "file.txt"), []byte("hello"), 0644))
+	run(mainDir, "git", "add", ".")
+	run(mainDir, "git", "commit", "-m", "initial")
+
+	// Create a branch and worktree
+	worktreeDir := filepath.Join(t.TempDir(), "wt")
+	run(mainDir, "git", "worktree", "add", worktreeDir, "-b", "feature")
+
+	// MainWorktreeDir from the linked worktree should return mainDir.
+	result := MainWorktreeDir(worktreeDir)
+	assert.Equal(t, mainDir, result)
+
+	// MainWorktreeDir from main should return mainDir.
+	result = MainWorktreeDir(mainDir)
+	assert.Equal(t, mainDir, result)
 }
 
 func TestRunner_PersistsHostRunOnFailure(t *testing.T) {
