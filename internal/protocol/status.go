@@ -27,6 +27,11 @@ type StatusMessage struct {
 	Timestamp time.Time   `json:"timestamp"`
 }
 
+// flusher is an optional interface for writers that support explicit flushing.
+type flusher interface {
+	Flush() error
+}
+
 type StatusWriter struct {
 	w   io.Writer
 	enc *json.Encoder
@@ -63,6 +68,10 @@ func (s *StatusWriter) Error(stepName, message string) {
 func (s *StatusWriter) write(msg StatusMessage) {
 	msg.Timestamp = time.Now()
 	_ = s.enc.Encode(msg)
+	// Flush the underlying writer if it supports it, to ensure real-time delivery.
+	if f, ok := s.w.(flusher); ok {
+		_ = f.Flush()
+	}
 }
 
 func ParseStatusStream(data []byte) ([]StatusMessage, error) {

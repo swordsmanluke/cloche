@@ -71,11 +71,14 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 	defer ulog.Close()
 
+	genericAdapter.StatusWriter = statusWriter
+
 	executor := &stepExecutor{
-		workDir:   r.cfg.WorkDir,
-		generic:   genericAdapter,
-		prompt:    promptAdapter,
-		logStream: ulog,
+		workDir:      r.cfg.WorkDir,
+		generic:      genericAdapter,
+		prompt:       promptAdapter,
+		logStream:    ulog,
+		statusWriter: statusWriter,
 	}
 
 	eng := engine.New(executor)
@@ -107,10 +110,11 @@ func (r *Runner) Run(ctx context.Context) error {
 }
 
 type stepExecutor struct {
-	workDir   string
-	generic   *generic.Adapter
-	prompt    *prompt.Adapter
-	logStream *logstream.Writer
+	workDir      string
+	generic      *generic.Adapter
+	prompt       *prompt.Adapter
+	logStream    *logstream.Writer
+	statusWriter *protocol.StatusWriter
 }
 
 func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, error) {

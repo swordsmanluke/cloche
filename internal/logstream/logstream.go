@@ -55,6 +55,7 @@ func (w *Writer) Log(typ EntryType, message string) {
 	for _, line := range strings.Split(trimmed, "\n") {
 		fmt.Fprintf(w.file, "[%s] [%s] %s\n", ts, typ, line)
 	}
+	_ = w.file.Sync()
 }
 
 // Close closes the underlying file.

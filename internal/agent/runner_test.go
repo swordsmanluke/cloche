@@ -584,6 +584,62 @@ func TestRunner_TitleTruncation(t *testing.T) {
 	}
 }
 
+func TestRunner_ScriptStepStreamsLogs(t *testing.T) {
+	dir := t.TempDir()
+	workflowContent := `workflow "stream-test" {
+  step build {
+    run = "echo 'compiling main.go'; echo 'compiling util.go'; echo 'build complete'"
+    results = [success, fail]
+  }
+
+  build:success -> done
+  build:fail -> abort
+}`
+	workflowPath := filepath.Join(dir, "stream-test.cloche")
+	require.NoError(t, os.WriteFile(workflowPath, []byte(workflowContent), 0644))
+
+	var statusBuf bytes.Buffer
+	runner := agent.NewRunner(agent.RunnerConfig{
+		WorkflowPath: workflowPath,
+		WorkDir:      dir,
+		StatusOutput: &statusBuf,
+	})
+
+	err := runner.Run(context.Background())
+	require.NoError(t, err)
+
+	msgs, err := protocol.ParseStatusStream(statusBuf.Bytes())
+	require.NoError(t, err)
+
+	// Collect log messages for the build step
+	var logMessages []string
+	for _, msg := range msgs {
+		if msg.Type == protocol.MsgLog && msg.StepName == "build" {
+			logMessages = append(logMessages, msg.Message)
+		}
+	}
+
+	// Script output should be streamed as individual log messages
+	assert.Contains(t, logMessages, "compiling main.go")
+	assert.Contains(t, logMessages, "compiling util.go")
+	assert.Contains(t, logMessages, "build complete")
+
+	// Verify log messages appear between step_started and step_completed
+	var stepStartIdx, firstLogIdx, stepCompleteIdx int
+	for i, msg := range msgs {
+		switch {
+		case msg.Type == protocol.MsgStepStarted && msg.StepName == "build":
+			stepStartIdx = i
+		case msg.Type == protocol.MsgLog && msg.StepName == "build" && firstLogIdx == 0:
+			firstLogIdx = i
+		case msg.Type == protocol.MsgStepCompleted && msg.StepName == "build":
+			stepCompleteIdx = i
+		}
+	}
+	assert.Less(t, stepStartIdx, firstLogIdx, "log messages should appear after step_started")
+	assert.Less(t, firstLogIdx, stepCompleteIdx, "log messages should appear before step_completed")
+}
+
 func TestRunner_ExecutesWorkflowFile(t *testing.T) {
 	dir := t.TempDir()
 	workflowContent := `workflow "simple-build" {
