@@ -8,7 +8,14 @@ if [ -z "${CLOCHE_TASK_ID:-}" ]; then
   exit 1
 fi
 
-bd update "$CLOCHE_TASK_ID" --claim >&2
+# Capture bd output separately so it doesn't corrupt our JSON stdout.
+claim_output=$(bd update "$CLOCHE_TASK_ID" --claim 2>&1) || true
+
+# bd exits 0 even on failure, so check for error in output.
+if echo "$claim_output" | grep -qi "error\|already claimed"; then
+  echo "claim failed: $claim_output" >&2
+  exit 1
+fi
 
 # Forward task info as JSON so downstream steps can access it via output mappings.
 cat <<EOF
