@@ -24,16 +24,16 @@ type EvolutionConfig struct {
 	MaxPromptBullets int    `toml:"max_prompt_bullets"`
 }
 
-type LoopConfig struct {
+type OrchestrationConfig struct {
 	Concurrency    int     `toml:"concurrency"`
 	StaggerSeconds float64 `toml:"stagger_seconds"`
 }
 
 type Config struct {
-	Active    bool            `toml:"active"`
-	Daemon    DaemonConfig    `toml:"daemon"`
-	Evolution EvolutionConfig `toml:"evolution"`
-	Loop      LoopConfig      `toml:"loop"`
+	Active        bool                `toml:"active"`
+	Daemon        DaemonConfig        `toml:"daemon"`
+	Evolution     EvolutionConfig     `toml:"evolution"`
+	Orchestration OrchestrationConfig `toml:"orchestration"`
 }
 
 func defaults() Config {
@@ -44,7 +44,7 @@ func defaults() Config {
 			MinConfidence:    "medium",
 			MaxPromptBullets: 50,
 		},
-		Loop: LoopConfig{
+		Orchestration: OrchestrationConfig{
 			Concurrency:    1,
 			StaggerSeconds: 1.0,
 		},

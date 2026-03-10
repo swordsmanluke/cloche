@@ -688,13 +688,13 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 
 	maxConc := int(req.MaxConcurrent)
 	if maxConc <= 0 {
-		maxConc = projCfg.Loop.Concurrency
+		maxConc = projCfg.Orchestration.Concurrency
 	}
 	if maxConc <= 0 {
 		maxConc = 1
 	}
 
-	stagger := time.Duration(float64(time.Second) * projCfg.Loop.StaggerSeconds)
+	stagger := time.Duration(float64(time.Second) * projCfg.Orchestration.StaggerSeconds)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

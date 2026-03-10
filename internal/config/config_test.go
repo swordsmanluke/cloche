@@ -120,6 +120,32 @@ func TestLoadActiveFlagDefault(t *testing.T) {
 	assert.False(t, cfg.Active)
 }
 
+func TestLoadOrchestrationConfig(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
+[orchestration]
+concurrency = 2
+stagger_seconds = 3.5
+`), 0644)
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, 2, cfg.Orchestration.Concurrency)
+	assert.Equal(t, 3.5, cfg.Orchestration.StaggerSeconds)
+}
+
+func TestLoadOrchestrationConfigDefaults(t *testing.T) {
+	dir := t.TempDir()
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, 1, cfg.Orchestration.Concurrency)
+	assert.Equal(t, 1.0, cfg.Orchestration.StaggerSeconds)
+}
+
 func TestLoadGlobalFromMissing(t *testing.T) {
 	cfg, err := LoadGlobalFrom("/nonexistent/path/config")
 	require.NoError(t, err)
