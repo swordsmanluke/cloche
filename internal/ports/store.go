@@ -15,6 +15,7 @@ type RunStore interface {
 	ListRuns(ctx context.Context, since time.Time) ([]*domain.Run, error)
 	ListRunsByProject(ctx context.Context, projectDir string, since time.Time) ([]*domain.Run, error)
 	ListProjects(ctx context.Context) ([]string, error)
+	ListChildRuns(ctx context.Context, parentRunID string) ([]*domain.Run, error)
 }
 
 type CaptureStore interface {

@@ -682,6 +682,94 @@ func TestLogFiles_SaveAndGet(t *testing.T) {
 	assert.Equal(t, int64(1024), fullLogs[0].FileSize)
 }
 
+func TestRunParentRunID(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a host (parent) run
+	parent := domain.NewRun("host-run-1", "main")
+	parent.IsHost = true
+	parent.ProjectDir = "/project"
+	parent.Start()
+	require.NoError(t, store.CreateRun(ctx, parent))
+
+	// Create child runs with ParentRunID set
+	child1 := domain.NewRun("child-1", "develop")
+	child1.ProjectDir = "/project"
+	child1.ParentRunID = "host-run-1"
+	child1.StartedAt = time.Now()
+	child1.State = domain.RunStateRunning
+	require.NoError(t, store.CreateRun(ctx, child1))
+
+	child2 := domain.NewRun("child-2", "develop")
+	child2.ProjectDir = "/project"
+	child2.ParentRunID = "host-run-1"
+	child2.StartedAt = time.Now().Add(time.Second)
+	child2.State = domain.RunStateSucceeded
+	require.NoError(t, store.CreateRun(ctx, child2))
+
+	// Verify ParentRunID is persisted via GetRun
+	got, err := store.GetRun(ctx, "child-1")
+	require.NoError(t, err)
+	assert.Equal(t, "host-run-1", got.ParentRunID)
+
+	// Verify parent has no ParentRunID
+	gotParent, err := store.GetRun(ctx, "host-run-1")
+	require.NoError(t, err)
+	assert.Equal(t, "", gotParent.ParentRunID)
+
+	// ListChildRuns returns only children of the given parent
+	children, err := store.ListChildRuns(ctx, "host-run-1")
+	require.NoError(t, err)
+	assert.Len(t, children, 2)
+	assert.Equal(t, "child-1", children[0].ID)
+	assert.Equal(t, "child-2", children[1].ID)
+
+	// ListChildRuns for a non-parent returns empty
+	noChildren, err := store.ListChildRuns(ctx, "child-1")
+	require.NoError(t, err)
+	assert.Empty(t, noChildren)
+
+	// Verify ParentRunID shows up in ListRuns
+	runs, err := store.ListRuns(ctx, time.Time{})
+	require.NoError(t, err)
+	for _, r := range runs {
+		if r.ID == "child-1" || r.ID == "child-2" {
+			assert.Equal(t, "host-run-1", r.ParentRunID)
+		}
+		if r.ID == "host-run-1" {
+			assert.Equal(t, "", r.ParentRunID)
+		}
+	}
+
+	// Test update preserves ParentRunID
+	got.ParentRunID = "new-parent"
+	require.NoError(t, store.UpdateRun(ctx, got))
+	got2, err := store.GetRun(ctx, "child-1")
+	require.NoError(t, err)
+	assert.Equal(t, "new-parent", got2.ParentRunID)
+}
+
+func TestRunParentRunID_BackwardCompat(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run without setting ParentRunID — simulates pre-migration rows
+	run := domain.NewRun("old-1", "develop")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	got, err := store.GetRun(ctx, "old-1")
+	require.NoError(t, err)
+	assert.Equal(t, "", got.ParentRunID)
+}
+
 func TestLogFiles_EmptyResults(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

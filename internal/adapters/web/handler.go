@@ -379,12 +379,23 @@ func (h *Handler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 
 	steps := mergeCaptures(caps)
 
+	// Fetch parent run if this is a child
+	var parentRun *domain.Run
+	if run.ParentRunID != "" {
+		parentRun, _ = h.store.GetRun(r.Context(), run.ParentRunID)
+	}
+
+	// Fetch child runs
+	childRuns, _ := h.store.ListChildRuns(r.Context(), id)
+
 	data := map[string]any{
 		"Title":          "Run " + run.ID,
 		"Run":            run,
 		"Steps":          steps,
 		"Page":           "detail",
 		"ContainerState": h.containerState(r.Context(), run),
+		"ParentRun":      parentRun,
+		"ChildRuns":      childRuns,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.pages["run_detail"].ExecuteTemplate(w, "layout", data); err != nil {
@@ -406,6 +417,7 @@ type apiRun struct {
 	ErrorMessage string `json:"error_message"`
 	Title        string `json:"title"`
 	IsHost       bool   `json:"is_host"`
+	ParentRunID  string `json:"parent_run_id,omitempty"`
 }
 
 type apiStep struct {
@@ -420,6 +432,7 @@ type apiRunDetail struct {
 	apiRun
 	ContainerState string    `json:"container_state"`
 	Steps          []apiStep `json:"steps"`
+	ChildRuns      []apiRun  `json:"child_runs,omitempty"`
 }
 
 func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
@@ -435,6 +448,7 @@ func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
 		ErrorMessage: r.ErrorMessage,
 		Title:        r.Title,
 		IsHost:       r.IsHost,
+		ParentRunID:  r.ParentRunID,
 	}
 }
 
@@ -544,10 +558,19 @@ func (h *Handler) handleAPIRunDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Fetch child runs for the API response
+	var apiChildren []apiRun
+	if children, err := h.store.ListChildRuns(r.Context(), id); err == nil {
+		for _, c := range children {
+			apiChildren = append(apiChildren, toAPIRun(c, labels))
+		}
+	}
+
 	detail := apiRunDetail{
 		apiRun:         toAPIRun(run, labels),
 		ContainerState: h.containerState(r.Context(), run),
 		Steps:          steps,
+		ChildRuns:      apiChildren,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

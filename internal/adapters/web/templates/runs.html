@@ -29,7 +29,7 @@
     <tbody id="runs-body">
     {{if .Runs}}
         {{range .Runs}}
-        <tr>
+        <tr class="{{if .ParentRunID}}run-child-row{{else if .IsHost}}run-parent-row{{end}}">
             <td><a href="/runs/{{.ID}}">{{.ID}}</a></td>
             <td>{{truncate .Title 50}}</td>
             <td>{{index $.ProjectLabels .ProjectDir}}</td>
@@ -63,6 +63,51 @@
     }
     window.filterByProject = filterByProject;
 
+    // groupRuns arranges runs so children appear directly after their parent.
+    // Parents are de-emphasized; children (where active work happens) are prominent.
+    function groupRuns(runs) {
+        var parentMap = {};  // parent_run_id -> [children]
+        var topLevel = [];
+        var byId = {};
+
+        for (var i = 0; i < runs.length; i++) {
+            byId[runs[i].id] = runs[i];
+        }
+
+        for (var i = 0; i < runs.length; i++) {
+            var r = runs[i];
+            if (r.parent_run_id && byId[r.parent_run_id]) {
+                if (!parentMap[r.parent_run_id]) parentMap[r.parent_run_id] = [];
+                parentMap[r.parent_run_id].push(r);
+            } else {
+                topLevel.push(r);
+            }
+        }
+
+        var result = [];
+        for (var i = 0; i < topLevel.length; i++) {
+            var r = topLevel[i];
+            var children = parentMap[r.id];
+            var isParent = children && children.length > 0;
+            result.push({ run: r, isParent: isParent, isChild: false });
+            if (children) {
+                for (var j = 0; j < children.length; j++) {
+                    result.push({ run: children[j], isParent: false, isChild: true });
+                }
+            }
+        }
+
+        // Add orphaned children (parent not in current view)
+        for (var i = 0; i < runs.length; i++) {
+            var r = runs[i];
+            if (r.parent_run_id && !byId[r.parent_run_id]) {
+                result.push({ run: r, isParent: false, isChild: true });
+            }
+        }
+
+        return result;
+    }
+
     function poll() {
         var url = '/api/runs';
         if (currentProject) {
@@ -76,9 +121,12 @@
                     tbody.innerHTML = '<tr><td colspan="10" class="empty">No runs yet.</td></tr>';
                     return;
                 }
+
+                var grouped = groupRuns(runs);
                 var html = '';
-                for (var i = 0; i < runs.length; i++) {
-                    var r = runs[i];
+                for (var i = 0; i < grouped.length; i++) {
+                    var entry = grouped[i];
+                    var r = entry.run;
                     var cid = r.container_id || '';
                     if (cid.length > 12) cid = cid.substring(0, 12);
                     var err = r.error_message || '';
@@ -87,7 +135,8 @@
                     var title = r.title || '';
                     if (title.length > 50) title = title.substring(0, 47) + '...';
                     var runType = r.is_host ? 'host' : 'container';
-                    html += '<tr>' +
+                    var rowClass = entry.isChild ? 'run-child-row' : (entry.isParent ? 'run-parent-row' : '');
+                    html += '<tr class="' + rowClass + '">' +
                         '<td><a href="/runs/' + r.id + '">' + r.id + '</a></td>' +
                         '<td>' + escapeHtml(title) + '</td>' +
                         '<td>' + escapeHtml(proj) + '</td>' +

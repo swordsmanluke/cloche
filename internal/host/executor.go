@@ -52,6 +52,7 @@ type Executor struct {
 	Store      ports.RunStore
 	OutputDir  string         // directory for step output files
 	Wires      []domain.Wire  // workflow wiring (for output mappings)
+	HostRunID  string         // ID of the parent host run (set on child runs)
 }
 
 var _ engine.StepExecutor = (*Executor)(nil)
@@ -152,6 +153,14 @@ func (e *Executor) executeWorkflow(ctx context.Context, step *domain.Step) (stri
 	}
 
 	log.Printf("host executor: dispatched container workflow %q as run %s", workflowName, resp.RunId)
+
+	// Link child run to parent host run
+	if e.HostRunID != "" {
+		if childRun, err := e.Store.GetRun(ctx, resp.RunId); err == nil {
+			childRun.ParentRunID = e.HostRunID
+			_ = e.Store.UpdateRun(ctx, childRun)
+		}
+	}
 
 	// Write run ID to step output so downstream steps (e.g. merge) can find it
 	if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {

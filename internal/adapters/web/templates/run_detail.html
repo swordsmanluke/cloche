@@ -1,6 +1,8 @@
 {{define "content"}}
 <h1>
-    <a href="/runs">Runs</a> / {{.Run.ID}}
+    <a href="/runs">Runs</a> /
+    {{if .ParentRun}}<a href="/runs/{{.ParentRun.ID}}" class="parent-run-link">{{.ParentRun.ID}}</a> / {{end}}
+    {{.Run.ID}}
     <span class="badge badge-{{stateColor .Run.State}}">{{.Run.State}}</span>
     {{if or (eq .Run.State "pending") (eq .Run.State "running")}}
     <button class="btn btn-danger btn-sm" id="cancel-run-btn" onclick="cancelRun('{{.Run.ID}}')" style="margin-left:0.5rem;">Cancel</button>
@@ -10,6 +12,7 @@
 <div class="run-meta">
     <dl>
         {{if .Run.Title}}<dt>Title</dt><dd>{{.Run.Title}}</dd>{{end}}
+        {{if .ParentRun}}<dt>Parent Run</dt><dd><a href="/runs/{{.ParentRun.ID}}">{{.ParentRun.ID}}</a> <span class="badge badge-{{stateColor .ParentRun.State}}">{{.ParentRun.State}}</span></dd>{{end}}
         <dt>Workflow</dt><dd>{{.Run.WorkflowName}}</dd>
         <dt>Type</dt><dd>{{if .Run.IsHost}}host{{else}}container{{end}}</dd>
         <dt>Started</dt><dd>{{formatTime .Run.StartedAt}}</dd>
@@ -36,6 +39,34 @@
 
 {{if .Run.ErrorMessage}}
 <div class="error-box">{{.Run.ErrorMessage}}</div>
+{{end}}
+
+{{if .ChildRuns}}
+<h2>Child Runs</h2>
+<table class="runs-table">
+    <thead>
+        <tr>
+            <th>Run ID</th>
+            <th>Title</th>
+            <th>Workflow</th>
+            <th>State</th>
+            <th>Started</th>
+            <th>Completed</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .ChildRuns}}
+        <tr>
+            <td><a href="/runs/{{.ID}}">{{.ID}}</a></td>
+            <td>{{truncate .Title 50}}</td>
+            <td>{{.WorkflowName}}</td>
+            <td><span class="badge badge-{{stateColor .State}}">{{.State}}</span></td>
+            <td>{{formatTime .StartedAt}}</td>
+            <td>{{formatTime .CompletedAt}}</td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
 {{end}}
 
 <h2>Steps</h2>

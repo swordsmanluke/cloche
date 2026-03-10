@@ -1108,3 +1108,169 @@ func TestAPIProjects_HealthNoRuns(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &projects))
 	assert.Empty(t, projects)
 }
+
+func TestRunDetail_ParentChildLinks(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// Create parent (host) run
+	parent := domain.NewRun("parent-host-1", "main")
+	parent.IsHost = true
+	parent.ProjectDir = "/project"
+	parent.Start()
+	require.NoError(t, store.CreateRun(ctx, parent))
+
+	// Create child run with ParentRunID
+	child := domain.NewRun("child-run-1", "develop")
+	child.ProjectDir = "/project"
+	child.ParentRunID = "parent-host-1"
+	child.Start()
+	child.Title = "Implement feature X"
+	require.NoError(t, store.CreateRun(ctx, child))
+
+	// Check child's detail page shows parent link
+	req := httptest.NewRequest("GET", "/runs/child-run-1", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "parent-host-1")
+	assert.Contains(t, body, `href="/runs/parent-host-1"`)
+	assert.Contains(t, body, "Parent Run")
+
+	// Check parent's detail page shows child runs section
+	req = httptest.NewRequest("GET", "/runs/parent-host-1", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body = w.Body.String()
+	assert.Contains(t, body, "Child Runs")
+	assert.Contains(t, body, "child-run-1")
+	assert.Contains(t, body, `href="/runs/child-run-1"`)
+	assert.Contains(t, body, "Implement feature X")
+}
+
+func TestRunDetail_NoParentChild(t *testing.T) {
+	h, store := setupHandler(t)
+	seedRun(t, store, "standalone-1", "develop", domain.RunStateRunning)
+
+	req := httptest.NewRequest("GET", "/runs/standalone-1", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.NotContains(t, body, "Parent Run")
+	assert.NotContains(t, body, "Child Runs")
+}
+
+func TestAPIRunDetail_ChildRuns(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// Create parent run
+	parent := domain.NewRun("api-parent-1", "main")
+	parent.IsHost = true
+	parent.ProjectDir = "/project"
+	parent.Start()
+	require.NoError(t, store.CreateRun(ctx, parent))
+
+	// Create child runs
+	child1 := domain.NewRun("api-child-1", "develop")
+	child1.ProjectDir = "/project"
+	child1.ParentRunID = "api-parent-1"
+	child1.Start()
+	require.NoError(t, store.CreateRun(ctx, child1))
+
+	child2 := domain.NewRun("api-child-2", "develop")
+	child2.ProjectDir = "/project"
+	child2.ParentRunID = "api-parent-1"
+	child2.Start()
+	require.NoError(t, store.CreateRun(ctx, child2))
+
+	// API detail for parent should include child_runs
+	req := httptest.NewRequest("GET", "/api/runs/api-parent-1", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var detail apiRunDetail
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &detail))
+	assert.Equal(t, "api-parent-1", detail.ID)
+	assert.Len(t, detail.ChildRuns, 2)
+
+	childIDs := map[string]bool{}
+	for _, c := range detail.ChildRuns {
+		childIDs[c.ID] = true
+		assert.Equal(t, "api-parent-1", c.ParentRunID)
+	}
+	assert.True(t, childIDs["api-child-1"])
+	assert.True(t, childIDs["api-child-2"])
+}
+
+func TestAPIRuns_ParentRunID(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	parent := domain.NewRun("api-p-1", "main")
+	parent.IsHost = true
+	parent.Start()
+	require.NoError(t, store.CreateRun(ctx, parent))
+
+	child := domain.NewRun("api-c-1", "develop")
+	child.ParentRunID = "api-p-1"
+	child.Start()
+	require.NoError(t, store.CreateRun(ctx, child))
+
+	req := httptest.NewRequest("GET", "/api/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var runs []apiRun
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &runs))
+
+	for _, r := range runs {
+		if r.ID == "api-c-1" {
+			assert.Equal(t, "api-p-1", r.ParentRunID)
+		}
+		if r.ID == "api-p-1" {
+			assert.Equal(t, "", r.ParentRunID)
+		}
+	}
+}
+
+func TestRunsList_TreeGrouping(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// Create a parent host run
+	parent := domain.NewRun("tree-parent-1", "main")
+	parent.IsHost = true
+	parent.ProjectDir = "/project"
+	parent.Start()
+	require.NoError(t, store.CreateRun(ctx, parent))
+
+	// Create child run
+	child := domain.NewRun("tree-child-1", "develop")
+	child.ProjectDir = "/project"
+	child.ParentRunID = "tree-parent-1"
+	child.Start()
+	require.NoError(t, store.CreateRun(ctx, child))
+
+	req := httptest.NewRequest("GET", "/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+
+	// Parent row should have run-parent-row class (host run without parent)
+	assert.Contains(t, body, "run-parent-row")
+	// Child row should have run-child-row class
+	assert.Contains(t, body, "run-child-row")
+}

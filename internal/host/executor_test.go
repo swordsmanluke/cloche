@@ -61,6 +61,15 @@ func (f *fakeStore) ListRunsByProject(_ context.Context, _ string, _ time.Time) 
 func (f *fakeStore) ListProjects(_ context.Context) ([]string, error) {
 	return nil, nil
 }
+func (f *fakeStore) ListChildRuns(_ context.Context, parentRunID string) ([]*domain.Run, error) {
+	var children []*domain.Run
+	for _, r := range f.runs {
+		if r.ParentRunID == parentRunID {
+			children = append(children, r)
+		}
+	}
+	return children, nil
+}
 
 func TestExecutor_ScriptStep_Success(t *testing.T) {
 	tmpDir := t.TempDir()

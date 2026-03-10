@@ -74,6 +74,7 @@ func (r *Runner) RunWithID(ctx context.Context, projectDir string, orchRunID str
 		Store:      r.Store,
 		OutputDir:  outputDir,
 		Wires:      wf.Wiring,
+		HostRunID:  orchRunID,
 	}
 
 	eng := engine.New(executor)
