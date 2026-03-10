@@ -210,6 +210,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 					Timestamp: msg.Timestamp.Format(time.RFC3339),
 					Type:      "llm",
 					Content:   msg.Message,
+					StepName:  msg.StepName,
 				})
 			}
 			continue
@@ -229,6 +230,14 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 					StartedAt: msg.Timestamp,
 				})
 			}
+			if s.logBroadcast != nil {
+				s.logBroadcast.Publish(runID, logstream.LogLine{
+					Timestamp: msg.Timestamp.Format(time.RFC3339),
+					Type:      "status",
+					Content:   "step_started: " + msg.StepName,
+					StepName:  msg.StepName,
+				})
+			}
 		case protocol.MsgStepCompleted:
 			run.RecordStepComplete(msg.StepName, msg.Result)
 			if s.captures != nil {
@@ -236,6 +245,14 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 					StepName:    msg.StepName,
 					Result:      msg.Result,
 					CompletedAt: msg.Timestamp,
+				})
+			}
+			if s.logBroadcast != nil {
+				s.logBroadcast.Publish(runID, logstream.LogLine{
+					Timestamp: msg.Timestamp.Format(time.RFC3339),
+					Type:      "status",
+					Content:   "step_completed: " + msg.StepName + " -> " + msg.Result,
+					StepName:  msg.StepName,
 				})
 			}
 		case protocol.MsgRunTitle:
@@ -458,6 +475,11 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 		return s.streamFilteredLogs(ctx, req, run, stream)
 	}
 
+	// For active runs, stream live from the broadcaster so callers can tail output.
+	if (run.State == domain.RunStateRunning || run.State == domain.RunStatePending) && s.logBroadcast != nil {
+		return s.streamLiveLogs(req.RunId, stream)
+	}
+
 	if s.captures == nil {
 		return fmt.Errorf("captures store not configured")
 	}
@@ -611,6 +633,44 @@ func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLog
 	}
 
 	return fmt.Errorf("no log files found matching filter")
+}
+
+// streamLiveLogs subscribes to the broadcaster and streams log lines in real
+// time for an active run. The stream closes when the run completes or the
+// client disconnects.
+func (s *ClocheServer) streamLiveLogs(runID string, stream rpcgrpc.ServerStreamingServer[pb.LogEntry]) error {
+	sub := s.logBroadcast.Subscribe(runID)
+	defer s.logBroadcast.Unsubscribe(runID, sub)
+
+	ctx := stream.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case line, ok := <-sub.C:
+			if !ok {
+				// Run completed — send terminal entry.
+				run, err := s.store.GetRun(context.Background(), runID)
+				if err == nil && run.State != domain.RunStateRunning && run.State != domain.RunStatePending {
+					_ = stream.Send(&pb.LogEntry{
+						Type:      "run_completed",
+						Result:    string(run.State),
+						Timestamp: run.CompletedAt.String(),
+						Message:   run.ErrorMessage,
+					})
+				}
+				return nil
+			}
+			if err := stream.Send(&pb.LogEntry{
+				Type:      "log",
+				StepName:  line.StepName,
+				Message:   line.Content,
+				Timestamp: line.Timestamp,
+			}); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func (s *ClocheServer) StopRun(ctx context.Context, req *pb.StopRunRequest) (*pb.StopRunResponse, error) {

@@ -7,8 +7,9 @@ import (
 // LogLine is a single log entry broadcast to subscribers.
 type LogLine struct {
 	Timestamp string `json:"timestamp"`
-	Type      string `json:"type"`    // "status", "script", "llm"
-	Content   string `json:"content"` // the log message
+	Type      string `json:"type"`               // "status", "script", "llm"
+	Content   string `json:"content"`             // the log message
+	StepName  string `json:"step_name,omitempty"` // originating step
 }
 
 // Subscriber receives log lines via a channel.

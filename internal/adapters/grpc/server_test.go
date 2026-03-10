@@ -15,6 +15,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1188,5 +1189,116 @@ func TestServer_StreamLogs_FullLog(t *testing.T) {
 		}
 	}
 	assert.True(t, foundFullLog, "should serve full.log as unified log when available")
+}
+
+func TestServer_StreamLogs_LiveStreaming(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	// Create a running run (no container needed — we test the broadcaster path directly).
+	ctx := context.Background()
+	run := domain.NewRun("live-test-1", "develop")
+	run.ProjectDir = t.TempDir()
+	run.Start()
+	run.ContainerID = "fake"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	broadcaster := logstream.NewBroadcaster()
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+	srv.SetLogBroadcaster(broadcaster)
+
+	// Use a cancellable context for the mock stream so we can abort if needed.
+	streamCtx, streamCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer streamCancel()
+	mock := &mockLogStream{ctx: streamCtx}
+
+	// Publish log lines in a goroutine, then finish the broadcast.
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		broadcaster.Publish("live-test-1", logstream.LogLine{
+			Timestamp: "2026-03-10T10:00:00Z",
+			Type:      "status",
+			Content:   "step_started: implement",
+			StepName:  "implement",
+		})
+		time.Sleep(50 * time.Millisecond)
+		broadcaster.Publish("live-test-1", logstream.LogLine{
+			Timestamp: "2026-03-10T10:00:01Z",
+			Type:      "llm",
+			Content:   "Reading the codebase...",
+			StepName:  "implement",
+		})
+		time.Sleep(50 * time.Millisecond)
+		broadcaster.Publish("live-test-1", logstream.LogLine{
+			Timestamp: "2026-03-10T10:00:02Z",
+			Type:      "llm",
+			Content:   "Making changes now.",
+			StepName:  "implement",
+		})
+		time.Sleep(50 * time.Millisecond)
+
+		// Mark run as completed before finishing broadcast.
+		r, _ := store.GetRun(ctx, "live-test-1")
+		r.Complete(domain.RunStateSucceeded)
+		_ = store.UpdateRun(ctx, r)
+
+		broadcaster.Finish("live-test-1")
+	}()
+
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "live-test-1"}, mock)
+	require.NoError(t, err)
+
+	// Should have received live log entries plus a run_completed entry.
+	var logEntries []*pb.LogEntry
+	var foundRunCompleted bool
+	for _, e := range mock.entries {
+		switch e.Type {
+		case "log":
+			logEntries = append(logEntries, e)
+		case "run_completed":
+			foundRunCompleted = true
+			assert.Equal(t, "succeeded", e.Result)
+		}
+	}
+
+	require.Len(t, logEntries, 3, "should receive 3 live log entries")
+	assert.Equal(t, "step_started: implement", logEntries[0].Message)
+	assert.Equal(t, "implement", logEntries[0].StepName)
+	assert.Equal(t, "Reading the codebase...", logEntries[1].Message)
+	assert.Equal(t, "Making changes now.", logEntries[2].Message)
+	assert.True(t, foundRunCompleted, "should receive run_completed after broadcast finishes")
+}
+
+func TestServer_StreamLogs_LiveStreamingClientDisconnect(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	run := domain.NewRun("live-cancel-1", "develop")
+	run.ProjectDir = t.TempDir()
+	run.Start()
+	run.ContainerID = "fake"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	broadcaster := logstream.NewBroadcaster()
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+	srv.SetLogBroadcaster(broadcaster)
+
+	// Cancel the stream context immediately to simulate client disconnect.
+	streamCtx, streamCancel := context.WithCancel(ctx)
+	mock := &mockLogStream{ctx: streamCtx}
+
+	// Ensure broadcaster has an active entry for the run.
+	broadcaster.Subscribe("live-cancel-1")
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		streamCancel()
+	}()
+
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "live-cancel-1"}, mock)
+	assert.ErrorIs(t, err, context.Canceled)
 }
 

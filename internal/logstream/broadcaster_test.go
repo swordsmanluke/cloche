@@ -161,6 +161,27 @@ func TestBroadcaster_UnsubscribeNonexistent(t *testing.T) {
 	b.Unsubscribe("nonexistent", sub)
 }
 
+func TestBroadcaster_LogLineStepName(t *testing.T) {
+	b := NewBroadcaster()
+	sub := b.Subscribe("run-1")
+
+	line := LogLine{
+		Timestamp: "2026-03-10T10:00:00Z",
+		Type:      "llm",
+		Content:   "Analyzing code...",
+		StepName:  "implement",
+	}
+	b.Publish("run-1", line)
+
+	select {
+	case received := <-sub.C:
+		assert.Equal(t, "implement", received.StepName)
+		assert.Equal(t, "Analyzing code...", received.Content)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for log line")
+	}
+}
+
 func TestBroadcaster_SlowSubscriberDropsMessages(t *testing.T) {
 	b := NewBroadcaster()
 

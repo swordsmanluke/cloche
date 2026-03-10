@@ -409,7 +409,9 @@ cloche logs <run-id> [--step <name>] [--type <full|script|llm>] [--follow]
 |------|-------------|
 | `--step <name>` | Show only logs for the specified step. |
 | `--type <full\|script\|llm>` | Log type filter. |
-| `--follow`, `-f` | Stream live logs via SSE (requires `CLOCHE_HTTP`). |
+| `--follow`, `-f` | Stream live logs via SSE with color-coded output (requires `CLOCHE_HTTP`). |
+
+For active runs, `cloche logs <run-id>` streams LLM output and step status in real time via gRPC (no `--follow` needed). For completed runs, it serves the saved log files.
 
 ### `cloche poll`
 

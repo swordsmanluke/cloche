@@ -318,6 +318,9 @@ func cmdLogs(client pb.ClocheServiceClient, args []string) {
 			}
 		case "full_log":
 			fmt.Print(string(logstream.ParseClaudeStream([]byte(entry.Message))))
+		case "log":
+			// Live-streamed log line from an active run.
+			fmt.Println(entry.Message)
 		default:
 			// Handles filtered log entries like "script_log", "llm_log", "step_log"
 			if entry.StepName != "" {
