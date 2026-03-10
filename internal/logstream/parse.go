@@ -3,6 +3,7 @@ package logstream
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -95,9 +96,10 @@ func extractAssistantText(line []byte) string {
 	var event struct {
 		Message struct {
 			Content []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-				Name string `json:"name"` // for tool_use blocks
+				Type  string          `json:"type"`
+				Text  string          `json:"text"`
+				Name  string          `json:"name"`  // for tool_use blocks
+				Input json.RawMessage `json:"input"` // for tool_use blocks
 			} `json:"content"`
 		} `json:"message"`
 	}
@@ -113,7 +115,7 @@ func extractAssistantText(line []byte) string {
 				parts = append(parts, t)
 			}
 		case "tool_use":
-			parts = append(parts, "\n--- Tool: "+block.Name+" ---")
+			parts = append(parts, "\n--- Tool: "+formatToolCall(block.Name, block.Input)+" ---")
 		}
 	}
 	if len(parts) == 0 {
@@ -145,14 +147,76 @@ func extractBlockStart(line []byte) string {
 	}
 	var event struct {
 		ContentBlock struct {
-			Type string `json:"type"`
-			Name string `json:"name"`
+			Type  string          `json:"type"`
+			Name  string          `json:"name"`
+			Input json.RawMessage `json:"input"`
 		} `json:"content_block"`
 	}
 	if json.Unmarshal(line, &event) == nil && event.ContentBlock.Type == "tool_use" {
-		return "\n--- Tool: " + event.ContentBlock.Name + " ---\n"
+		return "\n--- Tool: " + formatToolCall(event.ContentBlock.Name, event.ContentBlock.Input) + " ---\n"
 	}
 	return ""
+}
+
+// formatToolCall formats a tool name and its input into a human-readable
+// summary like Bash('ls -al') or Read('path/to/file'). If the input is empty
+// or cannot be parsed, just the tool name is returned.
+func formatToolCall(name string, input json.RawMessage) string {
+	if len(input) == 0 {
+		return name
+	}
+	var params map[string]json.RawMessage
+	if json.Unmarshal(input, &params) != nil || len(params) == 0 {
+		return name
+	}
+
+	// Pick the most informative parameter for each known tool.
+	type paramSpec struct {
+		key      string
+		maxLen   int
+	}
+	toolParams := map[string]paramSpec{
+		"Bash":    {"command", 80},
+		"Read":    {"file_path", 0},
+		"Edit":    {"file_path", 0},
+		"Write":   {"file_path", 0},
+		"Glob":    {"pattern", 0},
+		"Grep":    {"pattern", 80},
+		"Agent":   {"description", 80},
+		"WebFetch": {"url", 0},
+		"WebSearch": {"query", 80},
+	}
+
+	spec, known := toolParams[name]
+	if !known {
+		// For unknown tools, try common parameter names.
+		for _, fallback := range []string{"command", "file_path", "pattern", "query", "description"} {
+			if _, exists := params[fallback]; exists {
+				spec = paramSpec{fallback, 80}
+				known = true
+				break
+			}
+		}
+	}
+	if !known {
+		return name
+	}
+
+	raw, exists := params[spec.key]
+	if !exists {
+		return name
+	}
+
+	var value string
+	if json.Unmarshal(raw, &value) != nil {
+		return name
+	}
+
+	if spec.maxLen > 0 && len(value) > spec.maxLen {
+		value = value[:spec.maxLen] + "..."
+	}
+
+	return fmt.Sprintf("%s('%s')", name, value)
 }
 
 // extractResultText handles result events (final output).
