@@ -60,6 +60,7 @@ type ContainerLogger interface {
 // ContainerManager extends ContainerLogger with container lifecycle operations.
 type ContainerManager interface {
 	ContainerLogger
+	Stop(ctx context.Context, containerID string) error
 	Remove(ctx context.Context, containerID string) error
 	Inspect(ctx context.Context, containerID string) (*ports.ContainerStatus, error)
 }
@@ -127,6 +128,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/runs", h.handleAPIRuns)
 	h.mux.HandleFunc("GET /api/runs/{id}", h.handleAPIRunDetail)
 	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
+	h.mux.HandleFunc("POST /api/runs/{id}/stop", h.handleAPIStopRun)
 	h.mux.HandleFunc("DELETE /api/runs/{id}/container", h.handleAPIDeleteContainer)
 	h.mux.HandleFunc("GET /api/projects/{name}/info", h.handleAPIProjectInfo)
 	h.mux.HandleFunc("GET /api/projects/{name}/info/prompt-diff", h.handleAPIPromptDiff)
@@ -626,6 +628,52 @@ func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Error(w, "step output not found", http.StatusNotFound)
+}
+
+func (h *Handler) handleAPIStopRun(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	run, err := h.store.GetRun(r.Context(), id)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "run not found"})
+		return
+	}
+
+	// Only allow stopping active runs
+	if run.State != domain.RunStatePending && run.State != domain.RunStateRunning {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "run is not active"})
+		return
+	}
+
+	mgr, ok := h.container.(ContainerManager)
+	if !ok || run.ContainerID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "container management not available"})
+		return
+	}
+
+	if err := mgr.Stop(r.Context(), run.ContainerID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to stop run: %v", err)})
+		return
+	}
+
+	run.Complete(domain.RunStateCancelled)
+	if err := h.store.UpdateRun(r.Context(), run); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to update run: %v", err)})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func (h *Handler) handleAPIDeleteContainer(w http.ResponseWriter, r *http.Request) {

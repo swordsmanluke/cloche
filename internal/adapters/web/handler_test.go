@@ -24,6 +24,7 @@ type mockContainerManager struct {
 	containers map[string]bool // containerID -> exists
 	running    map[string]bool // containerID -> running
 	removed    []string
+	stopped    []string
 }
 
 func newMockContainerManager() *mockContainerManager {
@@ -35,6 +36,15 @@ func newMockContainerManager() *mockContainerManager {
 
 func (m *mockContainerManager) Logs(_ context.Context, containerID string) (string, error) {
 	return "mock logs", nil
+}
+
+func (m *mockContainerManager) Stop(_ context.Context, containerID string) error {
+	if !m.containers[containerID] {
+		return fmt.Errorf("container %s not found", containerID)
+	}
+	m.running[containerID] = false
+	m.stopped = append(m.stopped, containerID)
+	return nil
 }
 
 func (m *mockContainerManager) Remove(_ context.Context, containerID string) error {
@@ -853,6 +863,115 @@ func TestAPIStepContent_FileRef(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "Build the feature.", w.Body.String())
+}
+
+func TestAPIStopRun_Success(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+
+	ctx := context.Background()
+	run := domain.NewRun("run-stop-1", "develop")
+	run.ProjectDir = "/proj"
+	run.Start()
+	run.ContainerID = "cid-to-stop"
+	require.NoError(t, store.CreateRun(ctx, run))
+	mgr.containers["cid-to-stop"] = true
+	mgr.running["cid-to-stop"] = true
+
+	req := httptest.NewRequest("POST", "/api/runs/run-stop-1/stop", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "ok", resp["status"])
+
+	// Verify container was stopped
+	assert.Contains(t, mgr.stopped, "cid-to-stop")
+
+	// Verify run state is cancelled
+	updated, err := store.GetRun(ctx, "run-stop-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateCancelled, updated.State)
+}
+
+func TestAPIStopRun_NotActive(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+	seedRunWithContainer(t, store, mgr, "run-stop-done", "develop", "/proj", "cid-done", false)
+
+	req := httptest.NewRequest("POST", "/api/runs/run-stop-done/stop", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Contains(t, resp["error"], "not active")
+}
+
+func TestAPIStopRun_NotFound(t *testing.T) {
+	h, _, _ := setupHandlerWithContainerManager(t)
+
+	req := httptest.NewRequest("POST", "/api/runs/nonexistent/stop", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestAPIStopRun_NoManager(t *testing.T) {
+	h, store := setupHandler(t) // no container manager
+	seedRun(t, store, "run-stop-noman", "develop", domain.RunStateRunning)
+
+	req := httptest.NewRequest("POST", "/api/runs/run-stop-noman/stop", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestRunDetail_CancelButton_ShownForActiveRuns(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+
+	ctx := context.Background()
+	run := domain.NewRun("run-cancel-btn", "develop")
+	run.ProjectDir = "/proj"
+	run.Start()
+	run.ContainerID = "cid-cancel"
+	require.NoError(t, store.CreateRun(ctx, run))
+	mgr.containers["cid-cancel"] = true
+	mgr.running["cid-cancel"] = true
+
+	req := httptest.NewRequest("GET", "/runs/run-cancel-btn", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, `id="cancel-run-btn"`)
+	assert.Contains(t, body, "Cancel")
+}
+
+func TestRunDetail_CancelButton_HiddenForTerminalRuns(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+	seedRunWithContainer(t, store, mgr, "run-no-cancel", "develop", "/proj", "cid-terminal", false)
+
+	req := httptest.NewRequest("GET", "/runs/run-no-cancel", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	// The cancel button ID should not appear in the HTML header section
+	// (it may appear in the JS as a string literal, so check the h1 area)
+	h1Start := strings.Index(body, "<h1>")
+	h1End := strings.Index(body, "</h1>")
+	require.NotEqual(t, -1, h1Start)
+	require.NotEqual(t, -1, h1End)
+	h1Section := body[h1Start : h1End+len("</h1>")]
+	assert.NotContains(t, h1Section, `id="cancel-run-btn"`)
 }
 
 func TestAPIProjects_HealthNoRuns(t *testing.T) {

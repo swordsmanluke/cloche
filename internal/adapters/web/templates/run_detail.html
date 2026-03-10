@@ -2,6 +2,9 @@
 <h1>
     <a href="/runs">Runs</a> / {{.Run.ID}}
     <span class="badge badge-{{stateColor .Run.State}}">{{.Run.State}}</span>
+    {{if or (eq .Run.State "pending") (eq .Run.State "running")}}
+    <button class="btn btn-danger btn-sm" id="cancel-run-btn" onclick="cancelRun('{{.Run.ID}}')" style="margin-left:0.5rem;">Cancel</button>
+    {{end}}
 </h1>
 
 <div class="run-meta">
@@ -247,6 +250,26 @@
         return d.innerHTML;
     }
 })();
+
+// Cancel run
+    window.cancelRun = function(runID) {
+        var btn = document.getElementById('cancel-run-btn');
+        if (btn) btn.disabled = true;
+        fetch('/api/runs/' + runID + '/stop', { method: 'POST' })
+            .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+            .then(function(res) {
+                if (res.ok) {
+                    location.reload();
+                } else {
+                    if (btn) btn.disabled = false;
+                    alert('Failed to cancel run: ' + (res.data.error || 'unknown error'));
+                }
+            })
+            .catch(function() {
+                if (btn) btn.disabled = false;
+                alert('Failed to cancel run');
+            });
+    };
 
 // Delete container
     window.deleteContainer = function(runID) {
