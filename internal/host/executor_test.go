@@ -571,6 +571,43 @@ func TestExecutor_ScriptStep_OutputMappings_NotJSON(t *testing.T) {
 	assert.Contains(t, err.Error(), "not valid JSON")
 }
 
+func TestRunner_RunWithID(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Write a simple host.cloche
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	hostCloche := `workflow "main" {
+  step greet {
+    run     = "echo hi"
+    results = [success, fail]
+  }
+
+  greet:success -> done
+  greet:fail    -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	runner := &Runner{
+		Dispatcher: &fakeDispatcher{runID: "test-run"},
+		Store:      store,
+	}
+
+	customID := "my-custom-run-id"
+	result, err := runner.RunWithID(context.Background(), tmpDir, customID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, result.State)
+	assert.Equal(t, customID, result.RunID, "RunWithID should use the provided ID")
+
+	// Verify the run was persisted with the custom ID
+	hostRun, err := store.GetRun(context.Background(), customID)
+	require.NoError(t, err)
+	assert.True(t, hostRun.IsHost)
+	assert.Equal(t, domain.RunStateSucceeded, hostRun.State)
+}
+
 func TestRunner_PersistsHostRun(t *testing.T) {
 	tmpDir := t.TempDir()
 

@@ -94,7 +94,7 @@ Commands:
   list [--all]                                List runs (last hour by default)
   stop <run-id>                              Stop a running workflow
   delete <container-or-run-id>               Delete a retained container
-  orchestrate                                Dispatch ready workflow runs
+  orchestrate                                Start host workflow orchestration
   shutdown                                   Shut down the daemon
 `)
 }
@@ -426,11 +426,7 @@ func cmdOrchestrate(ctx context.Context, client pb.ClocheServiceClient) {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	if resp.Dispatched == 0 {
-		fmt.Println("No ready work found.")
-	} else {
-		fmt.Printf("Dispatched %d run(s).\n", resp.Dispatched)
-	}
+	fmt.Printf("Started orchestration: %s\n", resp.RunId)
 }
 
 func cmdShutdown(ctx context.Context, client pb.ClocheServiceClient) {

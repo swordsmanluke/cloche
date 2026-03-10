@@ -3,27 +3,19 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"testing"
 )
 
 func TestOrchestrateOutput(t *testing.T) {
-	tests := []struct {
-		dispatched int32
-		want       string
-	}{
-		{0, "No ready work found.\n"},
-		{1, "Dispatched 1 run(s).\n"},
-		{5, "Dispatched 5 run(s).\n"},
+	runID := "main-abc123"
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "Started orchestration: %s\n", runID)
+	got := buf.String()
+	if !strings.HasPrefix(got, "Started orchestration: ") {
+		t.Errorf("unexpected output prefix: %q", got)
 	}
-	for _, tt := range tests {
-		var buf bytes.Buffer
-		if tt.dispatched == 0 {
-			fmt.Fprintln(&buf, "No ready work found.")
-		} else {
-			fmt.Fprintf(&buf, "Dispatched %d run(s).\n", tt.dispatched)
-		}
-		if buf.String() != tt.want {
-			t.Errorf("dispatched=%d: got %q, want %q", tt.dispatched, buf.String(), tt.want)
-		}
+	if !strings.Contains(got, runID) {
+		t.Errorf("output should contain run ID %q, got %q", runID, got)
 	}
 }

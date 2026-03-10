@@ -245,16 +245,15 @@ cloche delete <container-or-run-id>
 
 ### `cloche orchestrate`
 
-Dispatch ready workflow runs for the current project. Checks the project's
-issue tracker for unclaimed tasks, generates prompts, and launches runs.
+Start a fresh run of the host workflow orchestrator for the current project.
 
 ```
 cloche orchestrate
 ```
 
-Uses the current working directory as the project directory. Prints "No ready
-work found." if there are no tasks to dispatch, or "Dispatched N run(s)."
-with the count.
+Uses the current working directory as the project directory. The daemon begins
+orchestration and returns a run ID (e.g. "Started orchestration: abc123").
+Use `cloche status <run-id>` to track the orchestration run.
 
 ### `cloche shutdown`
 
