@@ -349,7 +349,7 @@ what cleanup to perform.
 | `CLOCHE_STEP_OUTPUT` | Path where this step should write its output (for output mappings). |
 | `CLOCHE_PREV_OUTPUT` | Path to the output file from the immediately preceding step. |
 | `CLOCHE_TASK_ID` | Task ID assigned by the daemon (set for `main` and `finalize` phases). |
-| `CLOCHE_MAIN_OUTCOME` | Result of the `main` workflow (`success` or `fail`). Set for `finalize` phase only. |
+| `CLOCHE_MAIN_OUTCOME` | Result of the `main` workflow (`succeeded` or `failed`). Set for `finalize` phase only. |
 | `CLOCHE_MAIN_RUN_ID` | Run ID of the completed `main` workflow. Set for `finalize` phase only. |
 | Wire-mapped vars | Any env vars declared in wire output mappings. |
 
