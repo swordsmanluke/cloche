@@ -16,8 +16,8 @@ import (
 const (
 	defaultMaxConcurrent = 1
 	defaultDedupTimeout  = 5 * time.Minute
-	idlePollInterval     = 30 * time.Second
-	capacityPollInterval = 5 * time.Second
+	idlePollInterval     = 2 * time.Minute
+	capacityPollInterval = 30 * time.Second
 )
 
 // LoopConfig holds configuration for an orchestration loop.

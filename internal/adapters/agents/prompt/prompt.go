@@ -245,36 +245,109 @@ func (a *Adapter) classifyResult(command string, stdoutBytes []byte, runErr erro
 	return result, stdoutBytes, nil
 }
 
-// extractStreamText parses a stream-json line and returns text content.
-// It handles both content_block_delta (text_delta) events for streaming and
-// result events for final output (which contains the CLOCHE_RESULT marker).
+// extractStreamText parses a Claude Code stream-json line and returns text content.
+//
+// Claude Code's stream-json emits these event types:
+//   - "assistant": one per turn, contains message.content[] with text and tool_use blocks
+//   - "result": final event with the full result text (contains CLOCHE_RESULT marker)
+//
+// For assistant events, we extract text blocks and summarize tool_use blocks
+// (e.g. "--- Tool: Read('path') ---"). Each assistant event has a unique uuid
+// for dedup by the caller.
 func extractStreamText(line []byte) string {
-	// Fast path: only parse lines that could contain text we care about.
-	if bytes.Contains(line, []byte(`"text_delta"`)) {
-		var event struct {
-			Type  string `json:"type"`
-			Delta struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			} `json:"delta"`
-		}
-		if json.Unmarshal(line, &event) == nil &&
-			event.Type == "content_block_delta" && event.Delta.Type == "text_delta" {
-			return event.Delta.Text
-		}
+	// Fast path: skip lines that can't contain content we care about.
+	if !bytes.Contains(line, []byte(`"type"`)) {
+		return ""
 	}
 
-	// Also extract the final result text (contains CLOCHE_RESULT marker).
-	if bytes.Contains(line, []byte(`"result"`)) && bytes.Contains(line, []byte(`"subtype"`)) {
-		var event struct {
-			Type   string `json:"type"`
-			Result string `json:"result"`
-		}
-		if json.Unmarshal(line, &event) == nil && event.Type == "result" {
-			return event.Result
-		}
+	var envelope struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(line, &envelope) != nil {
+		return ""
 	}
 
+	switch envelope.Type {
+	case "assistant":
+		return extractAssistantText(line)
+	case "result":
+		return extractResultText(line)
+	}
+	return ""
+}
+
+// extractAssistantText extracts text and tool-use summaries from an assistant event.
+func extractAssistantText(line []byte) string {
+	var event struct {
+		Message struct {
+			Content []struct {
+				Type  string          `json:"type"`
+				Text  string          `json:"text"`
+				Name  string          `json:"name"`
+				Input json.RawMessage `json:"input"`
+			} `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(line, &event) != nil {
+		return ""
+	}
+
+	var b strings.Builder
+	for _, c := range event.Message.Content {
+		switch c.Type {
+		case "text":
+			if c.Text != "" {
+				b.WriteString(c.Text)
+				if !strings.HasSuffix(c.Text, "\n") {
+					b.WriteByte('\n')
+				}
+			}
+		case "tool_use":
+			b.WriteString("--- Tool: ")
+			b.WriteString(c.Name)
+			b.WriteString(toolInputSummary(c.Input))
+			b.WriteString(" ---\n")
+		}
+	}
+	return b.String()
+}
+
+// extractResultText extracts the final result text (contains CLOCHE_RESULT marker).
+func extractResultText(line []byte) string {
+	if !bytes.Contains(line, []byte(`"subtype"`)) {
+		return ""
+	}
+	var event struct {
+		Type   string `json:"type"`
+		Result string `json:"result"`
+	}
+	if json.Unmarshal(line, &event) == nil && event.Type == "result" {
+		return event.Result
+	}
+	return ""
+}
+
+// toolInputSummary returns a short parenthesized summary of a tool's input.
+func toolInputSummary(input json.RawMessage) string {
+	if len(input) == 0 {
+		return ""
+	}
+	var m map[string]json.RawMessage
+	if json.Unmarshal(input, &m) != nil {
+		return ""
+	}
+	// Pick the most informative single argument to show.
+	for _, key := range []string{"file_path", "command", "pattern", "prompt", "skill"} {
+		if v, ok := m[key]; ok {
+			var s string
+			if json.Unmarshal(v, &s) == nil {
+				if len(s) > 60 {
+					s = s[:57] + "..."
+				}
+				return "('" + s + "')"
+			}
+		}
+	}
 	return ""
 }
 
