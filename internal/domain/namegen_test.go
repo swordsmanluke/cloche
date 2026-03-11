@@ -13,10 +13,11 @@ func TestGenerateRunID_Prefix(t *testing.T) {
 	assert.True(t, strings.HasPrefix(id, "develop-"), "expected ID to start with workflow name prefix, got %s", id)
 }
 
-func TestGenerateRunID_ThreeParts(t *testing.T) {
+func TestGenerateRunID_FourParts(t *testing.T) {
 	id := GenerateRunID("build")
 	parts := strings.Split(id, "-")
-	require.Len(t, parts, 3, "expected exactly 3 hyphen-separated parts, got %d in %s", len(parts), id)
+	require.Len(t, parts, 4, "expected exactly 4 hyphen-separated parts, got %d in %s", len(parts), id)
+	assert.Len(t, parts[3], 4, "expected 4-char hex suffix, got %s", parts[3])
 }
 
 func TestGenerateRunID_Unique(t *testing.T) {

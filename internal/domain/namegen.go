@@ -1,8 +1,10 @@
 package domain
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
-	"math/rand"
+	mathrand "math/rand"
 )
 
 var adjectives = []string{
@@ -24,9 +26,11 @@ var nouns = []string{
 }
 
 // GenerateRunID produces a human-readable run ID in the format
-// <workflow>-<adjective>-<noun>.
+// <workflow>-<adjective>-<noun>-<hex>.
 func GenerateRunID(workflowName string) string {
-	adj := adjectives[rand.Intn(len(adjectives))]
-	noun := nouns[rand.Intn(len(nouns))]
-	return fmt.Sprintf("%s-%s-%s", workflowName, adj, noun)
+	adj := adjectives[mathrand.Intn(len(adjectives))]
+	noun := nouns[mathrand.Intn(len(nouns))]
+	var b [2]byte
+	rand.Read(b[:])
+	return fmt.Sprintf("%s-%s-%s-%s", workflowName, adj, noun, hex.EncodeToString(b[:]))
 }
