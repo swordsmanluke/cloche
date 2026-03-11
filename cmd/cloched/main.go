@@ -87,6 +87,7 @@ func main() {
 			web.WithContainerLogger(runtime),
 			web.WithLogStore(store),
 			web.WithLogBroadcaster(broadcaster),
+			web.WithTaskProvider(srv),
 		}
 		webHandler, err := web.NewHandler(store, store, webOpts...)
 		if err != nil {

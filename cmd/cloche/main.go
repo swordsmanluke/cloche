@@ -41,6 +41,9 @@ func main() {
 	case "set":
 		cmdSet(os.Args[2:])
 		return
+	case "tasks":
+		cmdTasks(os.Args[2:])
+		return
 	}
 
 	// Commands that need a daemon connection
@@ -101,6 +104,7 @@ Commands:
   list [--all]                                List runs (last hour by default)
   stop <run-id>                              Stop a running workflow
   delete <container-or-run-id>               Delete a retained container
+  tasks [--project <dir>]                     Show task pipeline and assignment state
   loop [--max <n>]                            Start orchestration loop (default max=1)
   loop stop                                  Stop orchestration loop
   get <key>                                  Get a value from the run context store
@@ -474,6 +478,92 @@ func cmdLoop(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 		fmt.Printf("Orchestration loop started (max_concurrent=%d).\n", maxConcurrent)
 	} else {
 		fmt.Println("Orchestration loop started (using config defaults).")
+	}
+}
+
+func cmdTasks(args []string) {
+	// Determine HTTP address from env
+	httpAddr := os.Getenv("CLOCHE_HTTP")
+	if httpAddr == "" {
+		httpAddr = "localhost:8080"
+	}
+	httpAddr = strings.TrimPrefix(httpAddr, "http://")
+
+	// Determine project label from --project flag or current directory
+	projectDir := ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--project":
+			if i+1 < len(args) {
+				i++
+				projectDir = args[i]
+			}
+		}
+	}
+
+	if projectDir == "" {
+		cwd, _ := os.Getwd()
+		projectDir = filepath.Base(cwd)
+	}
+
+	tasksURL := fmt.Sprintf("http://%s/api/projects/%s/tasks", httpAddr, projectDir)
+	resp, err := http.Get(tasksURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error connecting to daemon web API: %v\n", err)
+		fmt.Fprintf(os.Stderr, "hint: ensure CLOCHE_HTTP is set and the daemon is running with --http\n")
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Fprintf(os.Stderr, "error: HTTP %d: %s\n", resp.StatusCode, strings.TrimSpace(string(body)))
+		os.Exit(1)
+	}
+
+	type taskEntry struct {
+		ID          string `json:"id"`
+		Status      string `json:"status"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Assigned    bool   `json:"assigned"`
+		AssignedAt  string `json:"assigned_at"`
+		RunID       string `json:"run_id"`
+	}
+
+	var tasks []taskEntry
+	if err := json.NewDecoder(resp.Body).Decode(&tasks); err != nil {
+		fmt.Fprintf(os.Stderr, "error parsing response: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(tasks) == 0 {
+		fmt.Println("No tasks found. (Is the orchestration loop running?)")
+		return
+	}
+
+	fmt.Printf("%-20s  %-12s  %-10s  %-30s  %s\n", "ID", "STATUS", "ASSIGNED", "RUN", "TITLE")
+	for _, t := range tasks {
+		status := t.Status
+		if status == "" {
+			status = "open"
+		}
+		assigned := "-"
+		if t.Assigned {
+			assigned = "yes"
+		}
+		runID := ""
+		if t.RunID != "" {
+			runID = t.RunID
+			if len(runID) > 30 {
+				runID = runID[:27] + "..."
+			}
+		}
+		title := t.Title
+		if len(title) > 40 {
+			title = title[:37] + "..."
+		}
+		fmt.Printf("%-20s  %-12s  %-10s  %-30s  %s\n", t.ID, status, assigned, runID, title)
 	}
 }
 

@@ -535,6 +535,20 @@ Set a value in the run context store (`.cloche/<run-id>/context.json`). Requires
 the `CLOCHE_RUN_ID` environment variable. Uses `CLOCHE_PROJECT_DIR` if set, otherwise
 the current working directory. Creates the file and directories if they don't exist.
 
+### `cloche tasks`
+
+```
+cloche tasks [--project <dir>]
+```
+
+Show the task pipeline and assignment state for an orchestration loop. Displays
+upcoming/open tasks, which tasks are assigned to which runs, and auto-assignment
+state. Requires `CLOCHE_HTTP` (talks to the daemon's web API).
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--project <dir>` | current directory name | Project to query tasks for. |
+
 ### `cloche shutdown`
 
 ```

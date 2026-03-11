@@ -48,6 +48,11 @@ func WithLogStore(ls ports.LogStore) HandlerOption {
 	return func(h *Handler) { h.logStore = ls }
 }
 
+// WithTaskProvider sets the task provider for querying orchestration loop task state.
+func WithTaskProvider(tp TaskProvider) HandlerOption {
+	return func(h *Handler) { h.taskProvider = tp }
+}
+
 //go:embed templates/*.html static/*
 var content embed.FS
 
@@ -65,12 +70,30 @@ type ContainerManager interface {
 	Inspect(ctx context.Context, containerID string) (*ports.ContainerStatus, error)
 }
 
+// TaskEntry represents a task with its assignment state for external consumers.
+type TaskEntry struct {
+	ID          string            `json:"id"`
+	Status      string            `json:"status"`
+	Title       string            `json:"title"`
+	Description string            `json:"description,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	Assigned    bool              `json:"assigned"`
+	AssignedAt  string            `json:"assigned_at,omitempty"`
+	RunID       string            `json:"run_id,omitempty"`
+}
+
+// TaskProvider retrieves task pipeline state for a project's orchestration loop.
+type TaskProvider interface {
+	GetLoopTasks(projectDir string) []TaskEntry
+}
+
 type Handler struct {
 	store        ports.RunStore
 	captures     ports.CaptureStore
 	logStore     ports.LogStore
 	container    ContainerLogger
 	logBroadcast *logstream.Broadcaster
+	taskProvider TaskProvider
 	pages        map[string]*template.Template
 	mux          *http.ServeMux
 }
@@ -136,6 +159,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/projects/{name}/info/prompt-diff", h.handleAPIPromptDiff)
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows", h.handleAPIWorkflows)
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows/{workflow}/steps/{step}/content", h.handleAPIStepContent)
+	h.mux.HandleFunc("GET /api/projects/{name}/tasks", h.handleAPITasks)
 	h.mux.HandleFunc("GET /api/runs/{id}/stream", h.handleAPIStream)
 	h.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
 
@@ -1308,6 +1332,28 @@ func (h *Handler) handleAPIStepContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Error(w, "no content available", http.StatusNotFound)
+}
+
+// handleAPITasks returns the task pipeline state for a project's orchestration loop.
+func (h *Handler) handleAPITasks(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+
+	if h.taskProvider == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]any{})
+		return
+	}
+
+	tasks := h.taskProvider.GetLoopTasks(dir)
+	if tasks == nil {
+		tasks = []TaskEntry{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(tasks)
 }
 
 // --- Template helpers ---

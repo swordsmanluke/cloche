@@ -43,6 +43,20 @@ type FinalizeFunc func(ctx context.Context, projectDir string, taskID string, ma
 // When taskID is non-empty, the runner should propagate it as CLOCHE_TASK_ID.
 type RunFunc func(ctx context.Context, projectDir string, taskID string) (*RunResult, error)
 
+// TaskAssignment tracks the assignment state of a task.
+type TaskAssignment struct {
+	AssignedAt time.Time
+	RunID      string // run ID handling this task (set after main completes)
+}
+
+// TaskStateEntry combines a task with its assignment state.
+type TaskStateEntry struct {
+	Task       Task
+	Assigned   bool
+	AssignedAt time.Time
+	RunID      string // empty if not yet known
+}
+
 // Loop manages a continuous orchestration loop for a project, keeping up to
 // MaxConcurrent host workflow runs active at all times when work is available.
 //
@@ -63,6 +77,9 @@ type Loop struct {
 	running    bool
 	dedupMu    sync.Mutex
 	dedup      map[string]time.Time // task ID -> last assignment time
+	tasksMu    sync.RWMutex
+	lastTasks  []Task                    // most recently fetched tasks
+	taskRuns   map[string]TaskAssignment // task ID -> assignment info
 }
 
 // NewLoop creates an orchestration loop using a single run function (legacy mode).
@@ -75,10 +92,11 @@ func NewLoop(cfg LoopConfig, store ports.RunStore, runFn RunFunc) *Loop {
 		cfg.DedupTimeout = defaultDedupTimeout
 	}
 	return &Loop{
-		config: cfg,
-		runner: runFn,
-		store:  store,
-		dedup:  make(map[string]time.Time),
+		config:   cfg,
+		runner:   runFn,
+		store:    store,
+		dedup:    make(map[string]time.Time),
+		taskRuns: make(map[string]TaskAssignment),
 	}
 }
 
@@ -99,6 +117,7 @@ func NewPhaseLoop(cfg LoopConfig, store ports.RunStore, listTasksFn ListTasksFun
 		finalizeFn: finalizeFn,
 		store:      store,
 		dedup:      make(map[string]time.Time),
+		taskRuns:   make(map[string]TaskAssignment),
 	}
 }
 
@@ -203,6 +222,16 @@ func (l *Loop) runPhased() {
 					}
 				}
 
+				// Track the run ID for this task.
+				if mainResult != nil && mainResult.RunID != "" {
+					l.tasksMu.Lock()
+					l.taskRuns[tid] = TaskAssignment{
+						AssignedAt: time.Now(),
+						RunID:      mainResult.RunID,
+					}
+					l.tasksMu.Unlock()
+				}
+
 				// Phase 3: finalize — cleanup (runs on both success and failure).
 				if l.finalizeFn != nil {
 					_, finalizeErr := l.finalizeFn(context.Background(), l.config.ProjectDir, tid, mainResult)
@@ -241,6 +270,40 @@ func (l *Loop) runPhased() {
 	}
 }
 
+// GetTaskSnapshot returns the current task pipeline state: the most recently
+// fetched tasks with their assignment information.
+func (l *Loop) GetTaskSnapshot() []TaskStateEntry {
+	l.tasksMu.RLock()
+	tasks := make([]Task, len(l.lastTasks))
+	copy(tasks, l.lastTasks)
+	l.tasksMu.RUnlock()
+
+	l.dedupMu.Lock()
+	defer l.dedupMu.Unlock()
+
+	now := time.Now()
+	var entries []TaskStateEntry
+	for _, task := range tasks {
+		entry := TaskStateEntry{Task: task}
+		if ts, ok := l.dedup[task.ID]; ok && now.Sub(ts) < l.config.DedupTimeout {
+			entry.Assigned = true
+			entry.AssignedAt = ts
+		}
+
+		l.tasksMu.RLock()
+		if a, ok := l.taskRuns[task.ID]; ok {
+			entry.RunID = a.RunID
+			if !entry.Assigned {
+				entry.AssignedAt = a.AssignedAt
+			}
+		}
+		l.tasksMu.RUnlock()
+
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
 // pickTaskFromPhase runs the list-tasks function and picks the first open,
 // non-deduped task.
 func (l *Loop) pickTaskFromPhase() (string, bool) {
@@ -252,6 +315,11 @@ func (l *Loop) pickTaskFromPhase() (string, bool) {
 		log.Printf("orchestration loop: list-tasks failed for %s: %v", l.config.ProjectDir, err)
 		return "", false
 	}
+
+	// Cache the latest tasks for snapshot queries.
+	l.tasksMu.Lock()
+	l.lastTasks = tasks
+	l.tasksMu.Unlock()
 
 	now := time.Now()
 	l.dedupMu.Lock()
@@ -380,6 +448,11 @@ func (l *Loop) pickTask() (string, bool) {
 		log.Printf("orchestration loop: list-tasks failed for %s: %v", l.config.ProjectDir, err)
 		return "", false
 	}
+
+	// Cache the latest tasks for snapshot queries.
+	l.tasksMu.Lock()
+	l.lastTasks = tasks
+	l.tasksMu.Unlock()
 
 	now := time.Now()
 	l.dedupMu.Lock()
