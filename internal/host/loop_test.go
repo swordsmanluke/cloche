@@ -280,3 +280,183 @@ func TestLoop_NoTaskAssigner_EmptyTaskID(t *testing.T) {
 	// Without a task assigner, taskID should be empty.
 	assert.Empty(t, receivedTaskID)
 }
+
+// --- Three-phase (NewPhaseLoop) tests ---
+
+func TestPhaseLoop_BasicFlow(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	var mainCalls, finalizeCalls atomic.Int32
+	var receivedTaskIDs []string
+	var mu sync.Mutex
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{
+			{ID: "task-1", Status: "open", Title: "Fix bug"},
+			{ID: "task-2", Status: "closed", Title: "Done task"},
+		}, nil
+	}
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+		mainCalls.Add(1)
+		mu.Lock()
+		receivedTaskIDs = append(receivedTaskIDs, taskID)
+		mu.Unlock()
+		time.Sleep(20 * time.Millisecond)
+		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
+	}
+
+	finalizeFn := func(ctx context.Context, projectDir string, taskID string, mainResult *RunResult) (*RunResult, error) {
+		finalizeCalls.Add(1)
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  2 * time.Second,
+	}, store, listTasksFn, mainFn, finalizeFn)
+
+	loop.Start()
+	time.Sleep(300 * time.Millisecond)
+	loop.Stop()
+
+	// Should have picked task-1 (open) and skipped task-2 (closed).
+	mu.Lock()
+	defer mu.Unlock()
+	assert.GreaterOrEqual(t, int(mainCalls.Load()), 1)
+	assert.Equal(t, "task-1", receivedTaskIDs[0])
+
+	// Finalize should have run for each main completion.
+	assert.Equal(t, mainCalls.Load(), finalizeCalls.Load())
+}
+
+func TestPhaseLoop_SkipsClosedTasks(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	var mainCalls atomic.Int32
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{
+			{ID: "task-1", Status: "closed"},
+			{ID: "task-2", Status: "in-progress"},
+		}, nil
+	}
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+		mainCalls.Add(1)
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+	}, store, listTasksFn, mainFn, nil)
+
+	loop.Start()
+	time.Sleep(200 * time.Millisecond)
+	loop.Stop()
+
+	// No open tasks → no main runs.
+	assert.Equal(t, int32(0), mainCalls.Load())
+}
+
+func TestPhaseLoop_FinalizeRunsOnFailure(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	var finalizeOutcome string
+	var mu sync.Mutex
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{{ID: "task-1", Status: "open"}}, nil
+	}
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+		return &RunResult{RunID: "run-1", State: domain.RunStateFailed}, nil
+	}
+
+	finalizeFn := func(ctx context.Context, projectDir string, taskID string, mainResult *RunResult) (*RunResult, error) {
+		mu.Lock()
+		finalizeOutcome = string(mainResult.State)
+		mu.Unlock()
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  2 * time.Second,
+	}, store, listTasksFn, mainFn, finalizeFn)
+
+	loop.Start()
+	time.Sleep(300 * time.Millisecond)
+	loop.Stop()
+
+	// Finalize should have received the failed state.
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, "failed", finalizeOutcome)
+}
+
+func TestPhaseLoop_NoFinalize(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	var mainCalls atomic.Int32
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{{ID: "task-1", Status: "open"}}, nil
+	}
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+		mainCalls.Add(1)
+		time.Sleep(20 * time.Millisecond)
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	// nil finalize — should be skipped without error
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  2 * time.Second,
+	}, store, listTasksFn, mainFn, nil)
+
+	loop.Start()
+	time.Sleep(200 * time.Millisecond)
+	loop.Stop()
+
+	assert.GreaterOrEqual(t, int(mainCalls.Load()), 1)
+}
+
+func TestPhaseLoop_DedupFiltersOpenTasks(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	var receivedTaskIDs []string
+	var mu sync.Mutex
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{{ID: "task-1", Status: "open"}}, nil
+	}
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+		mu.Lock()
+		receivedTaskIDs = append(receivedTaskIDs, taskID)
+		mu.Unlock()
+		time.Sleep(20 * time.Millisecond)
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  2 * time.Second,
+	}, store, listTasksFn, mainFn, nil)
+
+	loop.Start()
+	time.Sleep(200 * time.Millisecond)
+	loop.Stop()
+
+	mu.Lock()
+	defer mu.Unlock()
+	// With 2s dedup, task-1 should only be assigned once.
+	assert.Equal(t, 1, len(receivedTaskIDs))
+}

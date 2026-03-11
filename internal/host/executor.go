@@ -59,6 +59,7 @@ type Executor struct {
 	AgentCommands []string       // workflow-level agent command fallback chain
 	AgentArgs     []string       // workflow-level explicit agent args (overrides defaults)
 	TaskID        string         // optional task ID assigned by the daemon loop
+	ExtraEnv      []string       // additional KEY=VALUE env vars for all steps
 }
 
 // scriptDir returns the directory from which scripts should execute.
@@ -99,6 +100,11 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 	// Pass daemon-assigned task ID if available
 	if e.TaskID != "" {
 		cmd.Env = append(cmd.Env, "CLOCHE_TASK_ID="+e.TaskID)
+	}
+
+	// Pass extra env vars (e.g. finalize phase outcome vars)
+	if len(e.ExtraEnv) > 0 {
+		cmd.Env = append(cmd.Env, e.ExtraEnv...)
 	}
 
 	// Pass previous step output if available

@@ -10,10 +10,38 @@ Cloche distinguishes two workflow locations based on the file they live in:
 container via `cloche-agent`. Steps may only be `agent` or `script` type. These are the
 standard workflows for coding tasks.
 
-**Host workflow** (`.cloche/host.cloche`) — Runs on the host machine as the daemon
+**Host workflows** (`.cloche/host.cloche`) — Run on the host machine as the daemon
 process. Steps may be `agent`, `script`, or `workflow` type. The `workflow` step type
 dispatches a container workflow run and waits for it to complete. This is the extension
 point for custom orchestration strategies.
+
+A single `host.cloche` file may contain **multiple named workflows**. The daemon
+uses up to three workflow phases for orchestration:
+
+| Phase | Workflow name | Purpose |
+|-------|--------------|---------|
+| 1 | `list-tasks` | Discover available work. Output is JSONL (one task per line). |
+| 2 | `main` | Do the work. Receives a task ID via `CLOCHE_TASK_ID` env var. |
+| 3 | `finalize` | Post-main cleanup. Runs on **both** success and failure. |
+
+Only `main` is required. If `list-tasks` is absent, the daemon uses a legacy
+single-function mode. If `finalize` is absent, it is skipped.
+
+The `list-tasks` workflow's final step output is parsed as JSONL. Each line is a JSON
+object with the following fields:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | yes | Unique task identifier |
+| `status` | yes | One of `open`, `closed`, `in-progress` |
+| `title` | no | Short summary |
+| `description` | no | Full description |
+| `metadata` | no | Arbitrary key-value pairs |
+
+The daemon picks the first task with status `open` (or empty, for backward
+compatibility), runs `main` with that task ID, then runs `finalize` with the outcome.
+Tasks are deduplicated within a configurable timeout window to prevent rapid
+reassignment.
 
 The convention is enforced at parse time: a `workflow_name` step in a container workflow
 file is a parse error.
@@ -155,16 +183,25 @@ step-level > workflow-level `host {}` > `CLOCHE_AGENT_COMMAND` env var > default
 
 ## Host Workflow Example
 
+A three-phase `host.cloche` with separate `list-tasks`, `main`, and `finalize`
+workflows:
+
 ```
 # .cloche/host.cloche — runs on the host machine
+
+workflow "list-tasks" {
+  step fetch-tickets {
+    run     = "bash .cloche/scripts/ready-tasks.sh"
+    results = [success, fail]
+  }
+
+  fetch-tickets:success -> done
+  fetch-tickets:fail    -> abort
+}
+
 workflow "main" {
   host {
     agent_command = "claude"
-  }
-
-  step ready-tasks {
-    run     = "bash .cloche/scripts/ready-tasks.sh 1"
-    results = [success, fail]
   }
 
   step prepare-prompt {
@@ -177,24 +214,29 @@ workflow "main" {
     results       = [success, fail]
   }
 
-  ready-tasks:success -> prepare-prompt [
-    CLOCHE_TASK_ID    = output[0].id,
-    CLOCHE_TASK_TITLE = output[0].title,
-    CLOCHE_TASK_BODY  = output[0].description
-  ]
-  ready-tasks:fail       -> abort
-  prepare-prompt:success -> develop [
-    CLOCHE_TASK_ID = output.task_id
-  ]
+  prepare-prompt:success -> develop
   prepare-prompt:fail    -> abort
   develop:success        -> done
   develop:fail           -> done
 }
+
+workflow "finalize" {
+  step push-for-review {
+    run     = "bash .cloche/scripts/push-for-review.sh"
+    results = [success, fail]
+  }
+
+  push-for-review:success -> done
+  push-for-review:fail    -> done
+}
 ```
 
-The `ready-tasks` step outputs JSON; wire output mappings extract fields and inject
-them as environment variables into `prepare-prompt`. The `workflow_name` step
-dispatches a container workflow run and blocks until it completes.
+The daemon runs `list-tasks` to discover work (output is JSONL), picks an open task,
+runs `main` with `CLOCHE_TASK_ID` set, then runs `finalize` regardless of outcome.
+The `list-tasks` script writes one JSON object per line to `$CLOCHE_STEP_OUTPUT`.
+The `main` workflow receives the task ID and is responsible for claiming the ticket.
+The `finalize` workflow decides what to do based on the outcome (available via
+`CLOCHE_MAIN_OUTCOME` and `CLOCHE_MAIN_RUN_ID` env vars).
 
 ## Execution Model
 
@@ -203,10 +245,12 @@ container. The agent walks the graph: execute current step, read its result, fol
 wiring to the next step. This continues until a terminal (`done` or `abort`) is reached.
 All steps run inside the same container. File state accumulates naturally across steps.
 
-**Host workflows** are parsed and executed by the daemon on the host machine. Script
-steps run via `sh -c` with the working directory set to the **main git worktree** (i.e.
-the main branch checkout), even if the project directory is a linked worktree on a
-different branch. This ensures host-workflow scripts from main are used for all runs.
-Workflow steps dispatch container runs via the daemon's standard run pipeline.
-Environment variables (`CLOCHE_TASK_ID`, `CLOCHE_PROJECT_DIR`, etc.) are injected into
-each step; `CLOCHE_PROJECT_DIR` still points to the actual project directory.
+**Host workflows** are parsed and executed by the daemon on the host machine. A single
+`host.cloche` file may contain multiple named workflows; the daemon orchestrates them
+in three phases (list-tasks → main → finalize). Script steps run via `sh -c` with the
+working directory set to the **main git worktree** (i.e. the main branch checkout), even
+if the project directory is a linked worktree on a different branch. This ensures
+host-workflow scripts from main are used for all runs. Workflow steps dispatch container
+runs via the daemon's standard run pipeline. Environment variables (`CLOCHE_TASK_ID`,
+`CLOCHE_PROJECT_DIR`, etc.) are injected into each step; `CLOCHE_PROJECT_DIR` still
+points to the actual project directory.

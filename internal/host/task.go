@@ -1,6 +1,7 @@
 package host
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,11 +9,27 @@ import (
 	"strings"
 )
 
+// TaskStatus represents the state of a task from a task tracker.
+type TaskStatus string
+
+const (
+	TaskStatusOpen       TaskStatus = "open"
+	TaskStatusClosed     TaskStatus = "closed"
+	TaskStatusInProgress TaskStatus = "in-progress"
+)
+
 // Task represents a work item from an external task tracker.
 type Task struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
+	ID          string            `json:"id"`
+	Status      string            `json:"status"`
+	Title       string            `json:"title"`
+	Description string            `json:"description"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+}
+
+// IsOpen returns true if the task status is "open" or empty (for backward compatibility).
+func (t Task) IsOpen() bool {
+	return t.Status == "" || TaskStatus(t.Status) == TaskStatusOpen
 }
 
 // TaskAssigner lists available tasks for the daemon to assign to workflow runs.
@@ -45,6 +62,28 @@ func (s *ScriptTaskAssigner) ListTasks(ctx context.Context, projectDir string) (
 	var tasks []Task
 	if err := json.Unmarshal([]byte(output), &tasks); err != nil {
 		return nil, fmt.Errorf("parsing list-tasks output: %w", err)
+	}
+	return tasks, nil
+}
+
+// ParseTasksJSONL parses JSONL-formatted task output (one JSON object per line).
+// Each line should have at least an "id" field. Lines that are empty or fail to
+// parse are skipped.
+func ParseTasksJSONL(data string) ([]Task, error) {
+	var tasks []Task
+	scanner := bufio.NewScanner(strings.NewReader(data))
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var task Task
+		if err := json.Unmarshal([]byte(line), &task); err != nil {
+			return nil, fmt.Errorf("parsing JSONL line %d: %w", lineNum, err)
+		}
+		tasks = append(tasks, task)
 	}
 	return tasks, nil
 }

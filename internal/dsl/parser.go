@@ -35,9 +35,35 @@ func Parse(input string, opts ...ParseOption) (*domain.Workflow, error) {
 	return p.parseWorkflow()
 }
 
-// ParseForHost parses a host.cloche file.
+// ParseForHost parses a host.cloche file containing a single workflow.
 func ParseForHost(input string) (*domain.Workflow, error) {
 	return Parse(input, WithLocation(domain.LocationHost))
+}
+
+// ParseAllForHost parses a host.cloche file that may contain multiple workflows.
+// Returns a map of workflow name to workflow definition.
+func ParseAllForHost(input string) (map[string]*domain.Workflow, error) {
+	p := &Parser{lexer: NewLexer(input), location: domain.LocationHost}
+	p.advance() // load current
+	p.advance() // load peek
+
+	workflows := make(map[string]*domain.Workflow)
+	for p.current.Type != TokenEOF {
+		wf, err := p.parseWorkflow()
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := workflows[wf.Name]; exists {
+			return nil, fmt.Errorf("duplicate workflow name %q", wf.Name)
+		}
+		workflows[wf.Name] = wf
+	}
+
+	if len(workflows) == 0 {
+		return nil, fmt.Errorf("no workflows found in host.cloche")
+	}
+
+	return workflows, nil
 }
 
 // ParseForContainer parses a container workflow file.

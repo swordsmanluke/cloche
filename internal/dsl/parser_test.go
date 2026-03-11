@@ -624,3 +624,122 @@ func TestParse_WithoutLocation_NoEnforcement(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, domain.WorkflowLocation(""), wf.Location)
 }
+
+// --- ParseAllForHost tests ---
+
+func TestParseAllForHost_SingleWorkflow(t *testing.T) {
+	input := `workflow "main" {
+  step greet {
+    run     = "echo hi"
+    results = [success, fail]
+  }
+  greet:success -> done
+  greet:fail    -> abort
+}`
+	workflows, err := dsl.ParseAllForHost(input)
+	require.NoError(t, err)
+	require.Len(t, workflows, 1)
+
+	wf, ok := workflows["main"]
+	require.True(t, ok)
+	assert.Equal(t, "main", wf.Name)
+	assert.Equal(t, domain.LocationHost, wf.Location)
+}
+
+func TestParseAllForHost_MultipleWorkflows(t *testing.T) {
+	input := `workflow "list-tasks" {
+  step fetch {
+    run     = "bash scripts/list-tasks.sh"
+    results = [success, fail]
+  }
+  fetch:success -> done
+  fetch:fail    -> abort
+}
+
+workflow "main" {
+  step prepare {
+    run     = "echo preparing"
+    results = [success, fail]
+  }
+  step develop {
+    workflow_name = "develop"
+    results       = [success, fail]
+  }
+  prepare:success -> develop
+  prepare:fail    -> abort
+  develop:success -> done
+  develop:fail    -> abort
+}
+
+workflow "finalize" {
+  step cleanup {
+    run     = "echo cleanup"
+    results = [success, fail]
+  }
+  cleanup:success -> done
+  cleanup:fail    -> abort
+}`
+
+	workflows, err := dsl.ParseAllForHost(input)
+	require.NoError(t, err)
+	require.Len(t, workflows, 3)
+
+	_, ok := workflows["list-tasks"]
+	assert.True(t, ok, "should have list-tasks workflow")
+
+	_, ok = workflows["main"]
+	assert.True(t, ok, "should have main workflow")
+
+	_, ok = workflows["finalize"]
+	assert.True(t, ok, "should have finalize workflow")
+}
+
+func TestParseAllForHost_DuplicateName(t *testing.T) {
+	input := `workflow "main" {
+  step a {
+    run = "echo a"
+    results = [success]
+  }
+  a:success -> done
+}
+workflow "main" {
+  step b {
+    run = "echo b"
+    results = [success]
+  }
+  b:success -> done
+}`
+
+	_, err := dsl.ParseAllForHost(input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate workflow name")
+}
+
+func TestParseAllForHost_Empty(t *testing.T) {
+	_, err := dsl.ParseAllForHost("")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no workflows found")
+}
+
+func TestParseAllForHost_AllHostLocation(t *testing.T) {
+	input := `workflow "list-tasks" {
+  step fetch {
+    run = "echo fetch"
+    results = [success]
+  }
+  fetch:success -> done
+}
+workflow "main" {
+  step work {
+    run = "echo work"
+    results = [success]
+  }
+  work:success -> done
+}`
+
+	workflows, err := dsl.ParseAllForHost(input)
+	require.NoError(t, err)
+	for name, wf := range workflows {
+		assert.Equal(t, domain.LocationHost, wf.Location, "workflow %q should have host location", name)
+	}
+}

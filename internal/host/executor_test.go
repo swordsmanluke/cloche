@@ -1346,3 +1346,261 @@ func TestRunner_PersistsHostRunOnFailure(t *testing.T) {
 	assert.Equal(t, domain.RunStateFailed, hostRun.State)
 	assert.False(t, hostRun.CompletedAt.IsZero())
 }
+
+// --- RunNamed tests ---
+
+func TestRunner_RunNamed_Main(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	hostCloche := `workflow "main" {
+  step greet {
+    run     = "echo hi"
+    results = [success, fail]
+  }
+  greet:success -> done
+  greet:fail    -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	runner := &Runner{
+		Dispatcher: &fakeDispatcher{runID: "test-run"},
+		Store:      store,
+	}
+
+	result, err := runner.RunNamed(context.Background(), tmpDir, "main")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, result.State)
+	assert.NotEmpty(t, result.OutputDir)
+}
+
+func TestRunner_RunNamed_MultiWorkflow(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+
+	// host.cloche with three workflows
+	hostCloche := `workflow "list-tasks" {
+  step fetch {
+    run     = "echo '{\"id\":\"t1\",\"status\":\"open\",\"title\":\"Fix bug\"}'"
+    results = [success, fail]
+  }
+  fetch:success -> done
+  fetch:fail    -> abort
+}
+
+workflow "main" {
+  step work {
+    run     = "echo working"
+    results = [success, fail]
+  }
+  work:success -> done
+  work:fail    -> abort
+}
+
+workflow "finalize" {
+  step cleanup {
+    run     = "echo cleaned up"
+    results = [success, fail]
+  }
+  cleanup:success -> done
+  cleanup:fail    -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	runner := &Runner{
+		Dispatcher: &fakeDispatcher{runID: "test-run"},
+		Store:      store,
+	}
+
+	// Run list-tasks workflow
+	result, err := runner.RunNamed(context.Background(), tmpDir, "list-tasks")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, result.State)
+
+	// Verify output was captured
+	data, err := os.ReadFile(filepath.Join(result.OutputDir, "fetch.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "t1")
+
+	// Run main workflow
+	result, err = runner.RunNamed(context.Background(), tmpDir, "main")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, result.State)
+
+	// Run finalize workflow
+	result, err = runner.RunNamed(context.Background(), tmpDir, "finalize")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, result.State)
+}
+
+func TestRunner_RunNamed_NotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	hostCloche := `workflow "main" {
+  step greet {
+    run     = "echo hi"
+    results = [success, fail]
+  }
+  greet:success -> done
+  greet:fail    -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	runner := &Runner{
+		Dispatcher: &fakeDispatcher{runID: "test-run"},
+		Store:      store,
+	}
+
+	_, err := runner.RunNamed(context.Background(), tmpDir, "nonexistent")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no workflow \"nonexistent\"")
+}
+
+// --- ExtraEnv tests ---
+
+func TestExecutor_ScriptStep_ExtraEnv(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		ExtraEnv: []string{
+			"CLOCHE_MAIN_OUTCOME=succeeded",
+			"CLOCHE_MAIN_RUN_ID=main-run-123",
+		},
+	}
+
+	step := &domain.Step{
+		Name:    "check-env",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo \"OUTCOME=$CLOCHE_MAIN_OUTCOME RUN=$CLOCHE_MAIN_RUN_ID\""},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "check-env.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "OUTCOME=succeeded")
+	assert.Contains(t, string(data), "RUN=main-run-123")
+}
+
+func TestRunner_ExtraEnv_Propagated(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	hostCloche := `workflow "finalize" {
+  step check {
+    run     = "echo OUTCOME=$CLOCHE_MAIN_OUTCOME"
+    results = [success, fail]
+  }
+  check:success -> done
+  check:fail    -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	runner := &Runner{
+		Dispatcher: &fakeDispatcher{runID: "test-run"},
+		Store:      store,
+		ExtraEnv:   []string{"CLOCHE_MAIN_OUTCOME=succeeded"},
+	}
+
+	result, err := runner.RunNamed(context.Background(), tmpDir, "finalize")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, result.State)
+
+	// Verify the env var was available to the script
+	data, err := os.ReadFile(filepath.Join(result.OutputDir, "check.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "OUTCOME=succeeded")
+}
+
+// --- ReadListTasksOutput tests ---
+
+func TestReadListTasksOutput_Basic(t *testing.T) {
+	outputDir := t.TempDir()
+
+	// Write JSONL task output
+	jsonl := `{"id":"task-1","status":"open","title":"Fix bug"}
+{"id":"task-2","status":"closed","title":"Old bug"}`
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "fetch.out"), []byte(jsonl), 0644))
+
+	tasks, err := ReadListTasksOutput(outputDir)
+	require.NoError(t, err)
+	require.Len(t, tasks, 2)
+	assert.Equal(t, "task-1", tasks[0].ID)
+	assert.Equal(t, "open", tasks[0].Status)
+	assert.Equal(t, "task-2", tasks[1].ID)
+}
+
+func TestReadListTasksOutput_EmptyDir(t *testing.T) {
+	outputDir := t.TempDir()
+	_, err := ReadListTasksOutput(outputDir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no output files")
+}
+
+func TestReadListTasksOutput_MultipleFiles_PicksLatest(t *testing.T) {
+	outputDir := t.TempDir()
+
+	// Write an older file
+	oldPath := filepath.Join(outputDir, "old-step.out")
+	require.NoError(t, os.WriteFile(oldPath, []byte(`{"id":"old","status":"open"}`), 0644))
+
+	// Ensure different mod times by sleeping briefly
+	time.Sleep(50 * time.Millisecond)
+
+	// Write a newer file
+	newPath := filepath.Join(outputDir, "new-step.out")
+	require.NoError(t, os.WriteFile(newPath, []byte(`{"id":"new","status":"open"}`), 0644))
+
+	tasks, err := ReadListTasksOutput(outputDir)
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+	assert.Equal(t, "new", tasks[0].ID)
+}
+
+// --- RunResult.OutputDir tests ---
+
+func TestRunResult_HasOutputDir(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	hostCloche := `workflow "main" {
+  step greet {
+    run     = "echo hi"
+    results = [success, fail]
+  }
+  greet:success -> done
+  greet:fail    -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	runner := &Runner{
+		Dispatcher: &fakeDispatcher{runID: "test-run"},
+		Store:      store,
+	}
+
+	result, err := runner.Run(context.Background(), tmpDir)
+	require.NoError(t, err)
+	assert.NotEmpty(t, result.OutputDir)
+
+	// Verify output dir exists and contains step output
+	_, err = os.Stat(result.OutputDir)
+	assert.NoError(t, err)
+}

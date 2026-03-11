@@ -22,13 +22,15 @@ var _ engine.StatusHandler = (*hostStatusHandler)(nil)
 type Runner struct {
 	Dispatcher RunDispatcher
 	Store      ports.RunStore
-	TaskID     string // optional task ID assigned by the daemon loop
+	TaskID     string   // optional task ID assigned by the daemon loop
+	ExtraEnv   []string // additional KEY=VALUE env vars passed to all steps
 }
 
 // RunResult contains the outcome of a host workflow execution.
 type RunResult struct {
-	RunID string
-	State domain.RunState
+	RunID     string
+	State     domain.RunState
+	OutputDir string // path to the step output directory
 }
 
 // Run parses .cloche/host.cloche from projectDir and executes the "main" workflow.
@@ -38,19 +40,35 @@ func (r *Runner) Run(ctx context.Context, projectDir string) (*RunResult, error)
 
 // RunWithID is like Run but uses the provided run ID instead of generating one.
 func (r *Runner) RunWithID(ctx context.Context, projectDir string, orchRunID string) (*RunResult, error) {
+	return r.runNamedWorkflow(ctx, projectDir, "main", orchRunID)
+}
+
+// RunNamed parses .cloche/host.cloche from projectDir and executes the workflow
+// with the given name. The host.cloche file may contain multiple workflows (e.g.
+// "list-tasks", "main", "finalize"). Returns an error if the named workflow is
+// not found.
+func (r *Runner) RunNamed(ctx context.Context, projectDir string, workflowName string) (*RunResult, error) {
+	orchRunID := domain.GenerateRunID(workflowName)
+	return r.runNamedWorkflow(ctx, projectDir, workflowName, orchRunID)
+}
+
+// runNamedWorkflow is the internal implementation that runs a specific named
+// workflow from host.cloche.
+func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workflowName string, orchRunID string) (*RunResult, error) {
 	hostPath := filepath.Join(projectDir, ".cloche", "host.cloche")
 	data, err := os.ReadFile(hostPath)
 	if err != nil {
 		return nil, fmt.Errorf("reading host.cloche: %w", err)
 	}
 
-	wf, err := dsl.ParseForHost(string(data))
+	workflows, err := dsl.ParseAllForHost(string(data))
 	if err != nil {
 		return nil, fmt.Errorf("parsing host.cloche: %w", err)
 	}
 
-	if wf.Name != "main" {
-		return nil, fmt.Errorf("host.cloche workflow is %q, expected \"main\"", wf.Name)
+	wf, ok := workflows[workflowName]
+	if !ok {
+		return nil, fmt.Errorf("host.cloche has no workflow %q", workflowName)
 	}
 
 	// Create output directory for step outputs
@@ -80,6 +98,7 @@ func (r *Runner) RunWithID(ctx context.Context, projectDir string, orchRunID str
 		Wires:      wf.Wiring,
 		HostRunID:  orchRunID,
 		TaskID:     r.TaskID,
+		ExtraEnv:   r.ExtraEnv,
 	}
 
 	// Configure agent from workflow-level host config
@@ -100,8 +119,9 @@ func (r *Runner) RunWithID(ctx context.Context, projectDir string, orchRunID str
 	run, runErr := eng.Run(ctx, wf)
 
 	result := &RunResult{
-		RunID: orchRunID,
-		State: domain.RunStateFailed,
+		RunID:     orchRunID,
+		State:     domain.RunStateFailed,
+		OutputDir: outputDir,
 	}
 	if run != nil {
 		result.State = run.State

@@ -756,6 +756,13 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 	// Compute dedup timeout from config (default 5 minutes).
 	dedupTimeout := time.Duration(float64(time.Second) * projCfg.Orchestration.DedupSeconds)
 
+	loopCfg := host.LoopConfig{
+		ProjectDir:    projectDir,
+		MaxConcurrent: maxConc,
+		StaggerDelay:  stagger,
+		DedupTimeout:  dedupTimeout,
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -764,6 +771,87 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 		existing.Stop()
 	}
 
+	// Check if host.cloche defines a list-tasks workflow for three-phase mode.
+	var loop *host.Loop
+	if s.hasWorkflow(hostPath, "list-tasks") {
+		loop = s.createPhaseLoop(loopCfg, projectDir, hostPath, dedupTimeout)
+	} else {
+		loop = s.createLegacyLoop(loopCfg, projectDir, projCfg, dedupTimeout)
+	}
+
+	s.loops[projectDir] = loop
+	loop.Start()
+
+	return &pb.EnableLoopResponse{}, nil
+}
+
+// hasWorkflow checks if host.cloche contains a workflow with the given name.
+func (s *ClocheServer) hasWorkflow(hostPath, workflowName string) bool {
+	data, err := os.ReadFile(hostPath)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), fmt.Sprintf("workflow %q", workflowName))
+}
+
+// createPhaseLoop creates a three-phase orchestration loop using list-tasks,
+// main, and finalize workflows from host.cloche.
+func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir, hostPath string, dedupTimeout time.Duration) *host.Loop {
+	// Phase 1: list-tasks function
+	listTasksFn := func(ctx context.Context, projDir string) ([]host.Task, error) {
+		runner := &host.Runner{
+			Dispatcher: s,
+			Store:      s.store,
+		}
+		result, err := runner.RunNamed(ctx, projDir, "list-tasks")
+		if err != nil {
+			return nil, err
+		}
+		if result.State != domain.RunStateSucceeded {
+			return nil, fmt.Errorf("list-tasks workflow failed with state %s", result.State)
+		}
+		return host.ReadListTasksOutput(result.OutputDir)
+	}
+
+	// Phase 2: main function
+	mainFn := func(ctx context.Context, projDir string, taskID string) (*host.RunResult, error) {
+		runner := &host.Runner{
+			Dispatcher: s,
+			Store:      s.store,
+			TaskID:     taskID,
+		}
+		return runner.RunNamed(ctx, projDir, "main")
+	}
+
+	// Phase 3: finalize function (optional — only if host.cloche has it)
+	var finalizeFn host.FinalizeFunc
+	if s.hasWorkflow(hostPath, "finalize") {
+		finalizeFn = func(ctx context.Context, projDir string, taskID string, mainResult *host.RunResult) (*host.RunResult, error) {
+			mainRunID := ""
+			mainOutcome := "failed"
+			if mainResult != nil {
+				mainRunID = mainResult.RunID
+				mainOutcome = string(mainResult.State)
+			}
+			runner := &host.Runner{
+				Dispatcher: s,
+				Store:      s.store,
+				TaskID:     taskID,
+				ExtraEnv: []string{
+					"CLOCHE_MAIN_RUN_ID=" + mainRunID,
+					"CLOCHE_MAIN_OUTCOME=" + mainOutcome,
+				},
+			}
+			return runner.RunNamed(ctx, projDir, "finalize")
+		}
+	}
+
+	log.Printf("orchestration loop: three-phase mode enabled for %s (list-tasks + main + finalize, dedup=%s)", projectDir, dedupTimeout)
+	return host.NewPhaseLoop(loopCfg, s.store, listTasksFn, mainFn, finalizeFn)
+}
+
+// createLegacyLoop creates a legacy single-function orchestration loop.
+func (s *ClocheServer) createLegacyLoop(loopCfg host.LoopConfig, projectDir string, projCfg *config.Config, dedupTimeout time.Duration) *host.Loop {
 	runFn := func(ctx context.Context, projDir string, taskID string) (*host.RunResult, error) {
 		runner := &host.Runner{
 			Dispatcher: s,
@@ -773,12 +861,7 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 		return runner.Run(ctx, projDir)
 	}
 
-	loop := host.NewLoop(host.LoopConfig{
-		ProjectDir:    projectDir,
-		MaxConcurrent: maxConc,
-		StaggerDelay:  stagger,
-		DedupTimeout:  dedupTimeout,
-	}, s.store, runFn)
+	loop := host.NewLoop(loopCfg, s.store, runFn)
 
 	// Configure daemon-managed task assignment if a list-tasks command is set.
 	if cmd := projCfg.Orchestration.ListTasksCommand; cmd != "" {
@@ -786,10 +869,7 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 		log.Printf("orchestration loop: task assignment enabled for %s (command=%q, dedup=%s)", projectDir, cmd, dedupTimeout)
 	}
 
-	s.loops[projectDir] = loop
-	loop.Start()
-
-	return &pb.EnableLoopResponse{}, nil
+	return loop
 }
 
 func (s *ClocheServer) DisableLoop(ctx context.Context, req *pb.DisableLoopRequest) (*pb.DisableLoopResponse, error) {
