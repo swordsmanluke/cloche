@@ -1608,6 +1608,132 @@ func TestAPIProjectInfo_PromptFileContent(t *testing.T) {
 	assert.NotEmpty(t, resp.PromptFiles[0].History, "should still include git history")
 }
 
+func TestWorkflowAPI_ComplexGraph(t *testing.T) {
+	// Test that the workflow API returns the full graph structure needed by
+	// the layered layout engine (steps with types, wires with results,
+	// entry_step for layer assignment).
+	h, store := setupHandler(t)
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
+
+	// Complex workflow with branching: A -> B, A -> C, B -> done, C -> done, A -> abort
+	wf := `workflow "pipeline" {
+    step analyze {
+        prompt = "Analyze the input"
+        results = [pass, fail, error]
+    }
+    step transform {
+        prompt = "Transform data"
+        results = [success, fail]
+    }
+    step validate {
+        prompt = "Validate output"
+        results = [success, fail]
+    }
+    analyze:pass -> transform
+    analyze:fail -> validate
+    analyze:error -> abort
+    transform:success -> done
+    transform:fail -> abort
+    validate:success -> done
+    validate:fail -> abort
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"), []byte(wf), 0o644))
+	seedRunWithProject(t, store, "cg-1", "pipeline", domain.RunStateRunning, dir)
+
+	req := httptest.NewRequest("GET", "/api/projects/"+filepath.Base(dir)+"/workflows", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var workflows []struct {
+		Name      string `json:"name"`
+		Location  string `json:"location"`
+		EntryStep string `json:"entry_step"`
+		Steps     []struct {
+			Name    string   `json:"name"`
+			Type    string   `json:"type"`
+			Results []string `json:"results"`
+		} `json:"steps"`
+		Wires []struct {
+			From   string `json:"from"`
+			Result string `json:"result"`
+			To     string `json:"to"`
+		} `json:"wires"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &workflows))
+	require.Len(t, workflows, 1)
+
+	pipeline := workflows[0]
+	assert.Equal(t, "pipeline", pipeline.Name)
+	assert.Equal(t, "container", pipeline.Location)
+	assert.Equal(t, "analyze", pipeline.EntryStep)
+
+	// Should have 3 steps
+	assert.Len(t, pipeline.Steps, 3)
+	stepNames := map[string]bool{}
+	for _, s := range pipeline.Steps {
+		stepNames[s.Name] = true
+	}
+	assert.True(t, stepNames["analyze"])
+	assert.True(t, stepNames["transform"])
+	assert.True(t, stepNames["validate"])
+
+	// Should have 7 wires: analyze has 3, transform has 2, validate has 2
+	assert.Len(t, pipeline.Wires, 7)
+
+	// Count terminal wires: should have wires to both done and abort
+	terminalTargets := map[string]int{}
+	for _, wire := range pipeline.Wires {
+		if wire.To == "done" || wire.To == "abort" {
+			terminalTargets[wire.To]++
+		}
+	}
+	// transform:success->done, validate:success->done = 2 wires to done
+	assert.Equal(t, 2, terminalTargets["done"])
+	// analyze:error->abort, transform:fail->abort, validate:fail->abort = 3 wires to abort
+	assert.Equal(t, 3, terminalTargets["abort"])
+}
+
+func TestProjectDetail_RendersLayoutEngine(t *testing.T) {
+	// Verify the project detail page contains the layered layout engine code.
+	h, store := setupHandler(t)
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
+
+	wf := `workflow "develop" {
+    step implement {
+        prompt = "Build it"
+        results = [success, fail]
+    }
+    implement:success -> done
+    implement:fail -> abort
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"), []byte(wf), 0o644))
+	seedRunWithProject(t, store, "le-1", "develop", domain.RunStateRunning, dir)
+
+	req := httptest.NewRequest("GET", "/projects/"+filepath.Base(dir), nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+
+	// Layout engine key features
+	assert.Contains(t, body, "workflow-dag")           // DAG container
+	assert.Contains(t, body, "showWorkflow")           // Main render function
+	assert.Contains(t, body, "layerOf")                // Layer assignment
+	assert.Contains(t, body, "topoOrder")              // Topological sort
+	assert.Contains(t, body, "dag-merge-dot")          // Merge dot elements
+	assert.Contains(t, body, "layerGap")               // Horizontal layer spacing
+	assert.Contains(t, body, "termWires")              // Terminal wire merging
+}
+
 func TestStepOutput_DoesNotFallBackToLiveDockerLogs(t *testing.T) {
 	// Even with a container manager that returns logs, step output should not
 	// fall back to unfiltered live docker logs for a specific step.

@@ -131,10 +131,17 @@ Returns plain text unified diff (`git show <sha> -- <file>`).
   - Drawer closes via X button or Escape, returning focus to the DAG without page reload
 
 ### DAG rendering
-Use a simple client-side layout: no heavy library. Steps are laid out left-to-right in
-topological order. SVG arrows connect boxes. For the initial implementation, a linear
-column layout (one step per row) is acceptable if the graph is a DAG with no parallel
-branches; upgrade to a proper layered layout when parallel branches are added.
+Client-side Sugiyama-style layered layout with no external library. Steps are assigned to
+layers via longest-path from sources, then ordered within each layer using barycenter
+heuristic (4 forward/backward passes) to minimize edge crossings. Layout flows
+left-to-right with SVG Bezier curve edges.
+
+When multiple wires target the same terminal (`done` or `abort`), they merge into a
+collector bus: individual curves from each source converge on a vertical dashed line,
+which feeds a single arrow into the terminal node. This reduces wire clutter as graphs
+grow in complexity.
+
+The DAG container scrolls horizontally when the graph exceeds the panel width.
 
 ### API additions
 

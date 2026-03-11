@@ -160,89 +160,243 @@ function showFilteredWorkflow(idx) {
 function showWorkflow(wf) {
     var dagEl = document.getElementById('workflow-dag');
 
-    // Build step order via topological sort from entry
-    var ordered = [];
-    var visited = {};
-    function visit(name) {
-        if (visited[name] || name === 'done' || name === 'abort') return;
-        visited[name] = true;
-        ordered.push(name);
-        wf.wires.forEach(function(wire) {
-            if (wire.from === name) visit(wire.to);
-        });
+    if (!wf.steps || wf.steps.length === 0) {
+        dagEl.innerHTML = '<p class="empty">No steps defined</p>';
+        return;
     }
-    if (wf.entry_step) visit(wf.entry_step);
-    // Add any unvisited steps
-    wf.steps.forEach(function(s) { if (!visited[s.name]) { ordered.push(s.name); visited[s.name] = true; } });
-
-    // Collect terminal targets
-    var terminals = {};
-    wf.wires.forEach(function(wire) {
-        if (wire.to === 'done' || wire.to === 'abort') terminals[wire.to] = true;
-    });
 
     var stepMap = {};
     wf.steps.forEach(function(s) { stepMap[s.name] = s; });
 
-    var nodeH = 48, nodeW = 180, gapY = 24, gapX = 40, padTop = 20, padLeft = 30;
+    var wires = wf.wires || [];
 
-    // Assign positions
-    var positions = {};
-    ordered.forEach(function(name, i) {
-        positions[name] = {x: padLeft, y: padTop + i * (nodeH + gapY)};
+    // Collect terminal targets
+    var terminals = {};
+    wires.forEach(function(wire) {
+        if (wire.to === 'done' || wire.to === 'abort') terminals[wire.to] = true;
     });
-    var termIdx = ordered.length;
-    for (var t in terminals) {
-        positions[t] = {x: padLeft, y: padTop + termIdx * (nodeH + gapY)};
-        termIdx++;
+
+    // Build adjacency maps
+    var adj = {};    // from -> [wire]
+    var revAdj = {}; // to -> [from] (unique)
+    wires.forEach(function(wire) {
+        if (!adj[wire.from]) adj[wire.from] = [];
+        adj[wire.from].push(wire);
+        if (!revAdj[wire.to]) revAdj[wire.to] = [];
+        if (revAdj[wire.to].indexOf(wire.from) === -1) revAdj[wire.to].push(wire.from);
+    });
+
+    // --- Layer assignment via longest path (Sugiyama-style) ---
+    var stepNames = wf.steps.map(function(s) { return s.name; });
+
+    // Topological sort (Kahn's algorithm)
+    var inDeg = {};
+    stepNames.forEach(function(n) { inDeg[n] = 0; });
+    wires.forEach(function(wire) {
+        if (inDeg[wire.to] !== undefined) inDeg[wire.to]++;
+    });
+
+    var queue = [];
+    stepNames.forEach(function(n) { if (inDeg[n] === 0) queue.push(n); });
+
+    var topoOrder = [];
+    while (queue.length > 0) {
+        var n = queue.shift();
+        topoOrder.push(n);
+        (adj[n] || []).forEach(function(wire) {
+            if (inDeg[wire.to] !== undefined) {
+                inDeg[wire.to]--;
+                if (inDeg[wire.to] === 0) queue.push(wire.to);
+            }
+        });
+    }
+    // Add remaining steps (cycles or disconnected)
+    stepNames.forEach(function(n) { if (topoOrder.indexOf(n) === -1) topoOrder.push(n); });
+
+    // Assign layers: longest path from any source
+    var layerOf = {};
+    topoOrder.forEach(function(n) {
+        var maxParent = -1;
+        (revAdj[n] || []).forEach(function(p) {
+            if (layerOf[p] !== undefined && layerOf[p] > maxParent) maxParent = layerOf[p];
+        });
+        layerOf[n] = maxParent + 1;
+    });
+
+    var maxLayer = 0;
+    stepNames.forEach(function(n) { if (layerOf[n] > maxLayer) maxLayer = layerOf[n]; });
+
+    // Terminals in rightmost layer
+    var termLayer = maxLayer + 1;
+    for (var t in terminals) { layerOf[t] = termLayer; }
+    var numLayers = termLayer + 1;
+
+    // --- Build layer arrays ---
+    var layers = [];
+    for (var i = 0; i < numLayers; i++) layers.push([]);
+    topoOrder.forEach(function(n) { layers[layerOf[n]].push(n); });
+    for (var t in terminals) { layers[termLayer].push(t); }
+
+    // --- Barycenter ordering to minimize edge crossings ---
+    for (var pass = 0; pass < 4; pass++) {
+        // Forward pass
+        for (var li = 1; li < numLayers; li++) {
+            var bary = {};
+            layers[li].forEach(function(n) {
+                var pars = revAdj[n] || [];
+                var sum = 0, cnt = 0;
+                pars.forEach(function(p) {
+                    var idx = layers[li - 1].indexOf(p);
+                    if (idx >= 0) { sum += idx; cnt++; }
+                });
+                bary[n] = cnt > 0 ? sum / cnt : 999;
+            });
+            layers[li].sort(function(a, b) { return bary[a] - bary[b]; });
+        }
+        // Backward pass
+        for (var li = numLayers - 2; li >= 0; li--) {
+            var baryB = {};
+            layers[li].forEach(function(n) {
+                var children = (adj[n] || []).map(function(w) { return w.to; });
+                var sum = 0, cnt = 0;
+                children.forEach(function(c) {
+                    var idx = layers[li + 1].indexOf(c);
+                    if (idx >= 0) { sum += idx; cnt++; }
+                });
+                baryB[n] = cnt > 0 ? sum / cnt : 999;
+            });
+            layers[li].sort(function(a, b) { return baryB[a] - baryB[b]; });
+        }
     }
 
-    var totalH = padTop + termIdx * (nodeH + gapY) + 10;
-    var totalW = padLeft + nodeW + gapX + 80;
+    // --- Position calculation ---
+    var nodeW = 180, nodeH = 48;
+    var layerGap = 120; // horizontal gap between layers
+    var nodeGap = 28;   // vertical gap between nodes in same layer
+    var padL = 30, padT = 30;
 
-    var html = '<svg class="dag-svg" width="' + totalW + '" height="' + totalH + '">';
-    html += '<defs><marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="var(--text-muted)"/></marker></defs>';
+    var maxInLayer = 1;
+    layers.forEach(function(l) { if (l.length > maxInLayer) maxInLayer = l.length; });
+    var totalLayerH = maxInLayer * nodeH + (maxInLayer - 1) * nodeGap;
 
-    // Draw wires
-    wf.wires.forEach(function(wire) {
-        var from = positions[wire.from];
-        var to = positions[wire.to];
-        if (!from || !to) return;
-        var x1 = from.x + nodeW;
-        var y1 = from.y + nodeH / 2;
-        var x2 = to.x;
-        var y2 = to.y + nodeH / 2;
-        var cx = x1 + gapX / 2;
-        html += '<path d="M' + x1 + ' ' + y1 + ' C' + cx + ' ' + y1 + ' ' + cx + ' ' + y2 + ' ' + x2 + ' ' + y2 + '" class="dag-edge" marker-end="url(#arrowhead)"/>';
-        var lx = (x1 + x2) / 2, ly = (y1 + y2) / 2 - 6;
-        html += '<text x="' + lx + '" y="' + ly + '" class="dag-edge-label">' + wire.result + '</text>';
+    var positions = {};
+    layers.forEach(function(layer, li) {
+        var lh = layer.length * nodeH + (layer.length - 1) * nodeGap;
+        var offsetY = (totalLayerH - lh) / 2;
+        layer.forEach(function(name, ni) {
+            positions[name] = {
+                x: padL + li * (nodeW + layerGap),
+                y: padT + offsetY + ni * (nodeH + nodeGap)
+            };
+        });
     });
 
-    // Draw step nodes
-    ordered.forEach(function(name) {
-        var pos = positions[name];
-        var s = stepMap[name];
-        var icon = '\u{1F4DC}';
-        if (s) {
-            if (s.type === 'agent') icon = '\u{1F916}';
-            else if (s.type === 'workflow') icon = '\u{1F501}';
+    var svgW = padL * 2 + numLayers * nodeW + (numLayers - 1) * layerGap;
+    var svgH = padT * 2 + totalLayerH;
+
+    // --- Generate SVG ---
+    var svg = '<svg class="dag-svg" width="' + svgW + '" height="' + svgH + '">';
+    svg += '<defs><marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="var(--text-muted)"/></marker></defs>';
+
+    // Separate terminal wires (for merging) from normal wires
+    var termWires = {};
+    var normWires = [];
+    wires.forEach(function(wire) {
+        if (wire.to === 'done' || wire.to === 'abort') {
+            if (!termWires[wire.to]) termWires[wire.to] = [];
+            termWires[wire.to].push(wire);
+        } else {
+            normWires.push(wire);
         }
-        html += '<g class="dag-node" onclick="openDrawer(\'' + wf.name + '\',\'' + name + '\')" style="cursor:pointer">';
-        html += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + nodeW + '" height="' + nodeH + '" class="dag-node-rect"/>';
-        html += '<text x="' + (pos.x + 10) + '" y="' + (pos.y + nodeH / 2 + 5) + '" class="dag-node-text">' + icon + ' ' + name + '</text>';
-        html += '</g>';
+    });
+
+    // Draw normal edges with Bezier curves
+    normWires.forEach(function(wire) {
+        var from = positions[wire.from], to = positions[wire.to];
+        if (!from || !to) return;
+        var x1 = from.x + nodeW, y1 = from.y + nodeH / 2;
+        var x2 = to.x, y2 = to.y + nodeH / 2;
+        var dx = x2 - x1;
+        svg += '<path d="M' + x1 + ' ' + y1 + ' C' + (x1 + dx * 0.4) + ' ' + y1 + ' ' + (x1 + dx * 0.6) + ' ' + y2 + ' ' + x2 + ' ' + y2 + '" class="dag-edge" marker-end="url(#arrowhead)"/>';
+        svg += '<text x="' + (x1 + dx / 2) + '" y="' + ((y1 + y2) / 2 - 6) + '" class="dag-edge-label">' + wire.result + '</text>';
+    });
+
+    // Draw terminal edges with merge pattern for multiple wires
+    for (var term in termWires) {
+        var tWires = termWires[term];
+        var tpos = positions[term];
+        if (!tpos) continue;
+
+        if (tWires.length <= 1) {
+            // Single wire to terminal - draw normally
+            tWires.forEach(function(wire) {
+                var from = positions[wire.from];
+                if (!from) return;
+                var x1 = from.x + nodeW, y1 = from.y + nodeH / 2;
+                var x2 = tpos.x, y2 = tpos.y + nodeH / 2;
+                var dx = x2 - x1;
+                svg += '<path d="M' + x1 + ' ' + y1 + ' C' + (x1 + dx * 0.4) + ' ' + y1 + ' ' + (x1 + dx * 0.6) + ' ' + y2 + ' ' + x2 + ' ' + y2 + '" class="dag-edge" marker-end="url(#arrowhead)"/>';
+                svg += '<text x="' + (x1 + dx / 2) + '" y="' + ((y1 + y2) / 2 - 6) + '" class="dag-edge-label">' + wire.result + '</text>';
+            });
+            continue;
+        }
+
+        // Multiple wires to same terminal: merge into a collector bus
+        var mergeX = tpos.x - 50;
+        var termY = tpos.y + nodeH / 2;
+
+        var srcPts = [];
+        tWires.forEach(function(wire) {
+            var from = positions[wire.from];
+            if (!from) return;
+            srcPts.push({ x: from.x + nodeW, y: from.y + nodeH / 2, result: wire.result });
+        });
+        srcPts.sort(function(a, b) { return a.y - b.y; });
+
+        // Individual curves from each source to the merge line
+        srcPts.forEach(function(pt) {
+            var dx = mergeX - pt.x;
+            svg += '<path d="M' + pt.x + ' ' + pt.y + ' C' + (pt.x + dx * 0.5) + ' ' + pt.y + ' ' + (mergeX - 20) + ' ' + pt.y + ' ' + mergeX + ' ' + pt.y + '" class="dag-edge"/>';
+            svg += '<text x="' + (pt.x + dx * 0.35) + '" y="' + (pt.y - 6) + '" class="dag-edge-label">' + pt.result + '</text>';
+        });
+
+        // Vertical collector line
+        var minY = Math.min(srcPts[0].y, termY);
+        var maxY = Math.max(srcPts[srcPts.length - 1].y, termY);
+        svg += '<path d="M' + mergeX + ' ' + minY + ' L' + mergeX + ' ' + maxY + '" class="dag-edge dag-merge-line"/>';
+
+        // Merge point dots
+        srcPts.forEach(function(pt) {
+            svg += '<circle cx="' + mergeX + '" cy="' + pt.y + '" r="3" class="dag-merge-dot"/>';
+        });
+
+        // Single line from collector to terminal
+        svg += '<path d="M' + mergeX + ' ' + termY + ' L' + tpos.x + ' ' + termY + '" class="dag-edge" marker-end="url(#arrowhead)"/>';
+    }
+
+    // Draw step nodes
+    wf.steps.forEach(function(s) {
+        var pos = positions[s.name];
+        if (!pos) return;
+        var icon = '\u{1F4DC}';
+        if (s.type === 'agent') icon = '\u{1F916}';
+        else if (s.type === 'workflow') icon = '\u{1F501}';
+        svg += '<g class="dag-node" onclick="openDrawer(\'' + wf.name + '\',\'' + s.name + '\')" style="cursor:pointer">';
+        svg += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + nodeW + '" height="' + nodeH + '" class="dag-node-rect"/>';
+        svg += '<text x="' + (pos.x + 10) + '" y="' + (pos.y + nodeH / 2 + 5) + '" class="dag-node-text">' + icon + ' ' + s.name + '</text>';
+        svg += '</g>';
     });
 
     // Draw terminal nodes
     for (var t in terminals) {
         var pos = positions[t];
         var cls = t === 'done' ? 'dag-terminal-done' : 'dag-terminal-abort';
-        html += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + nodeW + '" height="' + nodeH + '" class="dag-node-rect ' + cls + '" rx="20"/>';
-        html += '<text x="' + (pos.x + nodeW / 2) + '" y="' + (pos.y + nodeH / 2 + 5) + '" class="dag-node-text" text-anchor="middle">' + t + '</text>';
+        svg += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + nodeW + '" height="' + nodeH + '" class="dag-node-rect ' + cls + '" rx="20"/>';
+        svg += '<text x="' + (pos.x + nodeW / 2) + '" y="' + (pos.y + nodeH / 2 + 5) + '" class="dag-node-text" text-anchor="middle">' + t + '</text>';
     }
 
-    html += '</svg>';
-    dagEl.innerHTML = html;
+    svg += '</svg>';
+    dagEl.innerHTML = svg;
 }
 
 function openDrawer(workflowName, stepName) {

@@ -458,7 +458,8 @@ details pre {
 .tab-btn.tab-active { color: var(--link); border-bottom-color: var(--link); }
 
 /* DAG */
-.dag-svg { display: block; margin: 0 auto; }
+.dag-svg { display: block; }
+#workflow-dag { overflow-x: auto; }
 
 .dag-node-rect {
     fill: var(--bg);
@@ -490,6 +491,9 @@ details pre {
 
 .dag-terminal-done { fill: var(--badge-succeeded-bg); stroke: var(--badge-succeeded-text); }
 .dag-terminal-abort { fill: var(--badge-failed-bg); stroke: var(--badge-failed-text); }
+
+.dag-merge-line { stroke-dasharray: 4 3; }
+.dag-merge-dot { fill: var(--text-muted); }
 
 /* Drawer */
 .drawer {
