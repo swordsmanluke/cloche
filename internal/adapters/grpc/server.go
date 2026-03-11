@@ -15,6 +15,7 @@ import (
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
+	"github.com/cloche-dev/cloche/internal/adapters/web"
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/evolution"
@@ -870,6 +871,36 @@ func (s *ClocheServer) createLegacyLoop(loopCfg host.LoopConfig, projectDir stri
 	}
 
 	return loop
+}
+
+// GetLoopTasks returns the current task pipeline state for a project's
+// orchestration loop, formatted as web.TaskEntry values. Returns nil if no
+// loop is active for the project.
+func (s *ClocheServer) GetLoopTasks(projectDir string) []web.TaskEntry {
+	s.mu.Lock()
+	loop, ok := s.loops[projectDir]
+	s.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	snapshot := loop.GetTaskSnapshot()
+	entries := make([]web.TaskEntry, len(snapshot))
+	for i, e := range snapshot {
+		entry := web.TaskEntry{
+			ID:          e.Task.ID,
+			Status:      e.Task.Status,
+			Title:       e.Task.Title,
+			Description: e.Task.Description,
+			Metadata:    e.Task.Metadata,
+			Assigned:    e.Assigned,
+			RunID:       e.RunID,
+		}
+		if !e.AssignedAt.IsZero() {
+			entry.AssignedAt = e.AssignedAt.Format(time.RFC3339)
+		}
+		entries[i] = entry
+	}
+	return entries
 }
 
 func (s *ClocheServer) DisableLoop(ctx context.Context, req *pb.DisableLoopRequest) (*pb.DisableLoopResponse, error) {

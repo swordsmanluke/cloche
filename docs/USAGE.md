@@ -514,6 +514,20 @@ cloche health
 
 Show per-project pass/fail summary. Requires `CLOCHE_HTTP`.
 
+### `cloche tasks`
+
+```
+cloche tasks [--project <dir>]
+```
+
+Show the task pipeline and assignment state for an orchestration loop. Displays
+upcoming/open tasks, which tasks are assigned to which runs, and auto-assignment
+state. Requires `CLOCHE_HTTP` (talks to the daemon's web API).
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--project <dir>` | current directory name | Project to query tasks for. |
+
 ### `cloche shutdown`
 
 ```

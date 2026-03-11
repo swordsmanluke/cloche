@@ -1427,3 +1427,112 @@ func TestStepOutput_DoesNotFallBackToLiveDockerLogs(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.NotContains(t, w.Body.String(), "mock logs")
 }
+
+// --- Tasks API tests ---
+
+// mockTaskProvider implements TaskProvider for testing.
+type mockTaskProvider struct {
+	tasks map[string][]TaskEntry // projectDir -> tasks
+}
+
+func (m *mockTaskProvider) GetLoopTasks(projectDir string) []TaskEntry {
+	return m.tasks[projectDir]
+}
+
+func TestAPITasks_WithTasks(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// Seed a project so the label resolver works.
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Set up mock task provider.
+	tp := &mockTaskProvider{
+		tasks: map[string][]TaskEntry{
+			projectDir: {
+				{ID: "task-1", Status: "open", Title: "Fix bug", Assigned: true, AssignedAt: "2026-03-11T10:00:00Z", RunID: "run-fix-bug"},
+				{ID: "task-2", Status: "open", Title: "Add feature", Assigned: false},
+				{ID: "task-3", Status: "closed", Title: "Done thing", Assigned: false},
+			},
+		},
+	}
+	h.taskProvider = tp
+
+	req := httptest.NewRequest("GET", "/api/projects/myapp/tasks", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	var tasks []TaskEntry
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &tasks))
+	assert.Len(t, tasks, 3)
+
+	assert.Equal(t, "task-1", tasks[0].ID)
+	assert.True(t, tasks[0].Assigned)
+	assert.Equal(t, "run-fix-bug", tasks[0].RunID)
+
+	assert.Equal(t, "task-2", tasks[1].ID)
+	assert.False(t, tasks[1].Assigned)
+
+	assert.Equal(t, "task-3", tasks[2].ID)
+	assert.Equal(t, "closed", tasks[2].Status)
+}
+
+func TestAPITasks_NoTaskProvider(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// Seed a project.
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// No task provider set — should return empty array.
+	req := httptest.NewRequest("GET", "/api/projects/myapp/tasks", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var tasks []TaskEntry
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &tasks))
+	assert.Empty(t, tasks)
+}
+
+func TestAPITasks_NoLoop(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Task provider returns nil (no loop active for project).
+	tp := &mockTaskProvider{tasks: map[string][]TaskEntry{}}
+	h.taskProvider = tp
+
+	req := httptest.NewRequest("GET", "/api/projects/myapp/tasks", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var tasks []TaskEntry
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &tasks))
+	assert.Empty(t, tasks)
+}
+
+func TestAPITasks_ProjectNotFound(t *testing.T) {
+	h, _ := setupHandler(t)
+
+	req := httptest.NewRequest("GET", "/api/projects/nonexistent/tasks", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}

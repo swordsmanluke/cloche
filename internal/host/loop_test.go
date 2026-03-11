@@ -460,3 +460,133 @@ func TestPhaseLoop_DedupFiltersOpenTasks(t *testing.T) {
 	// With 2s dedup, task-1 should only be assigned once.
 	assert.Equal(t, 1, len(receivedTaskIDs))
 }
+
+// --- GetTaskSnapshot tests ---
+
+func TestLoop_GetTaskSnapshot_Empty(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+		time.Sleep(100 * time.Millisecond)
+		return &RunResult{State: domain.RunStateFailed}, nil
+	}
+
+	loop := NewLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+	}, store, runFn)
+
+	snapshot := loop.GetTaskSnapshot()
+	assert.Empty(t, snapshot, "snapshot should be empty when no tasks fetched")
+}
+
+func TestLoop_GetTaskSnapshot_ReturnsLastTasks(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	tasks := []Task{
+		{ID: "task-1", Status: "open", Title: "Fix bug"},
+		{ID: "task-2", Status: "closed", Title: "Done task"},
+		{ID: "task-3", Status: "open", Title: "Add feature"},
+	}
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return tasks, nil
+	}
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+		time.Sleep(50 * time.Millisecond)
+		return &RunResult{RunID: "run-" + taskID, State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  2 * time.Second,
+	}, store, listTasksFn, mainFn, nil)
+
+	loop.Start()
+	time.Sleep(300 * time.Millisecond)
+	loop.Stop()
+
+	snapshot := loop.GetTaskSnapshot()
+	assert.Len(t, snapshot, 3, "should return all 3 tasks")
+
+	// task-1 should be assigned (it's open and was picked).
+	assert.Equal(t, "task-1", snapshot[0].Task.ID)
+	assert.True(t, snapshot[0].Assigned, "task-1 should be assigned")
+	assert.NotEmpty(t, snapshot[0].RunID, "task-1 should have a run ID")
+
+	// task-2 is closed — should not be assigned.
+	assert.Equal(t, "task-2", snapshot[1].Task.ID)
+	assert.False(t, snapshot[1].Assigned, "task-2 (closed) should not be assigned")
+
+	// task-3 should be assigned (it's open and would be picked after task-1).
+	assert.Equal(t, "task-3", snapshot[2].Task.ID)
+	assert.True(t, snapshot[2].Assigned, "task-3 should be assigned")
+}
+
+func TestLoop_GetTaskSnapshot_LegacyWithAssigner(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	assigner := &fakeTaskAssigner{
+		tasks: []Task{
+			{ID: "task-1", Title: "Fix bug"},
+			{ID: "task-2", Title: "Add feature"},
+		},
+	}
+
+	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+		time.Sleep(20 * time.Millisecond)
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  2 * time.Second,
+	}, store, runFn)
+	loop.SetTaskAssigner(assigner)
+
+	loop.Start()
+	time.Sleep(200 * time.Millisecond)
+	loop.Stop()
+
+	snapshot := loop.GetTaskSnapshot()
+	assert.Len(t, snapshot, 2, "should return tasks from assigner")
+	assert.Equal(t, "task-1", snapshot[0].Task.ID)
+	assert.True(t, snapshot[0].Assigned, "task-1 should be assigned")
+	assert.Equal(t, "task-2", snapshot[1].Task.ID)
+	assert.True(t, snapshot[1].Assigned, "task-2 should be assigned")
+}
+
+func TestLoop_GetTaskSnapshot_DedupExpired(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	tasks := []Task{
+		{ID: "task-1", Status: "open", Title: "Fix bug"},
+	}
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return tasks, nil
+	}
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  10 * time.Millisecond, // very short dedup
+	}, store, listTasksFn, mainFn, nil)
+
+	loop.Start()
+	time.Sleep(200 * time.Millisecond)
+	loop.Stop()
+
+	snapshot := loop.GetTaskSnapshot()
+	assert.Len(t, snapshot, 1)
+	// After dedup expires, the task should show as unassigned in the snapshot
+	// (the dedup check in GetTaskSnapshot uses current time).
+	// But the run ID may still be recorded from a previous assignment.
+	assert.Equal(t, "task-1", snapshot[0].Task.ID)
+}
