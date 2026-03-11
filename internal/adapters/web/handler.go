@@ -1014,6 +1014,7 @@ func (h *Handler) handleAPIProjectInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	type promptFile struct {
 		Path    string        `json:"path"`
+		Content string        `json:"content"`
 		History []commitEntry `json:"history"`
 	}
 
@@ -1025,6 +1026,10 @@ func (h *Handler) handleAPIProjectInfo(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			relPath := filepath.Join(".cloche", "prompts", e.Name())
+			content := ""
+			if data, err := os.ReadFile(filepath.Join(promptsDir, e.Name())); err == nil {
+				content = string(data)
+			}
 			cmd := exec.Command("git", "log", "--follow", "--format=%H %aI %s", "--", relPath)
 			cmd.Dir = dir
 			out, err := cmd.Output()
@@ -1051,7 +1056,7 @@ func (h *Handler) handleAPIProjectInfo(w http.ResponseWriter, r *http.Request) {
 					Message: parts[2],
 				})
 			}
-			promptFiles = append(promptFiles, promptFile{Path: relPath, History: history})
+			promptFiles = append(promptFiles, promptFile{Path: relPath, Content: content, History: history})
 		}
 	}
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1557,6 +1558,54 @@ func TestStepOutput_DoesNotFallBackToContainerLog(t *testing.T) {
 	// Should return 404, NOT the container.log content
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.NotContains(t, w.Body.String(), "wrong: mixed output from all steps")
+}
+
+func TestAPIProjectInfo_PromptFileContent(t *testing.T) {
+	// The project info API should return prompt file contents, not just git history.
+	h, store := setupHandler(t)
+
+	dir := t.TempDir()
+	seedRunWithProject(t, store, "info-1", "develop", domain.RunStateSucceeded, dir)
+
+	// Create .cloche/prompts/ with a prompt file
+	promptsDir := filepath.Join(dir, ".cloche", "prompts")
+	require.NoError(t, os.MkdirAll(promptsDir, 0o755))
+	promptContent := "You are a coding assistant.\nImplement the feature described below."
+	require.NoError(t, os.WriteFile(filepath.Join(promptsDir, "implement.md"), []byte(promptContent), 0o644))
+
+	// Initialize a git repo so git log doesn't fail
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com")
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+	}
+	runGit("init")
+	runGit("add", ".")
+	runGit("commit", "-m", "initial")
+
+	req := httptest.NewRequest("GET", "/api/projects/"+filepath.Base(dir)+"/info", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp struct {
+		PromptFiles []struct {
+			Path    string `json:"path"`
+			Content string `json:"content"`
+			History []struct {
+				SHA string `json:"sha"`
+			} `json:"history"`
+		} `json:"prompt_files"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Len(t, resp.PromptFiles, 1)
+	assert.Equal(t, filepath.Join(".cloche", "prompts", "implement.md"), resp.PromptFiles[0].Path)
+	assert.Equal(t, promptContent, resp.PromptFiles[0].Content)
+	assert.NotEmpty(t, resp.PromptFiles[0].History, "should still include git history")
 }
 
 func TestStepOutput_DoesNotFallBackToLiveDockerLogs(t *testing.T) {

@@ -54,18 +54,10 @@ function loadProjectInfo() {
                 html += '<h2 style="margin-top:1rem">Prompt Files</h2>';
                 data.prompt_files.forEach(function(pf) {
                     html += '<details><summary class="mono">' + pf.path + '</summary>';
-                    if (pf.history && pf.history.length > 0) {
-                        html += '<div style="margin:0.5rem 0">';
-                        pf.history.forEach(function(h) {
-                            html += '<div class="prompt-commit" data-file="' + pf.path + '" data-sha="' + h.sha + '" onclick="toggleDiff(this)" style="cursor:pointer;padding:0.25rem 0;font-size:0.85rem">';
-                            html += '<span class="mono" style="color:var(--link)">' + h.sha + '</span> ';
-                            html += '<span style="color:var(--text-muted)">' + h.date + '</span> ';
-                            html += h.message;
-                            html += '</div>';
-                        });
-                        html += '</div>';
+                    if (pf.content) {
+                        html += '<pre class="diff-block">' + pf.content.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</pre>';
                     } else {
-                        html += '<p style="color:var(--text-muted);font-size:0.85rem">No history</p>';
+                        html += '<p style="color:var(--text-muted);font-size:0.85rem">Empty file</p>';
                     }
                     html += '</details>';
                 });

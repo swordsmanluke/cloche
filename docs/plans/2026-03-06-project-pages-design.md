@@ -72,9 +72,9 @@ interface exposing `Status(dir)`, `SetEnabled(dir, bool)`, `SetConcurrency(dir, 
   non-builder stage's base image (i.e. the stage that produces the final image).
 - **Project version**: integer, sourced from `.cloche/version` (see Project Versioning
   design). Display as `v3`.
-- **Prompt file history**: for each file under `.cloche/prompts/`, show a timeline of
-  changes:
-  - List of git commits that touched the file (short SHA, date, message)
+- **Prompt files**: for each file under `.cloche/prompts/`, show:
+  - Current file contents in a collapsible accordion
+  - Git commit history (short SHA, date, message)
   - Click a commit entry to expand and show a unified diff inline
 
 ### API additions
@@ -91,6 +91,7 @@ Response:
   "prompt_files": [
     {
       "path": ".cloche/prompts/implement.md",
+      "content": "Full text of the prompt file...",
       "history": [
         {"sha": "abc1234", "date": "2026-03-05", "message": "evolution: tighten scope"},
         {"sha": "def5678", "date": "2026-03-01", "message": "init"}
