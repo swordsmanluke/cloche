@@ -228,7 +228,7 @@ The assembled prompt is passed to the agent command via stdin.
 
 Priority (highest to lowest):
 1. Step-level `agent_command`
-2. Workflow-level `container { agent_command }`
+2. Workflow-level config block (`container { agent_command }` for container workflows, `host { agent_command }` for host workflows)
 3. `CLOCHE_AGENT_COMMAND` environment variable
 4. Default: `claude`
 
@@ -260,17 +260,53 @@ dispatches a container workflow run and blocks until it completes. Script steps
 execute with their working directory set to the main git worktree, so host-workflow
 fixes on main are available to in-flight runs even if they branched earlier.
 
+A single `host.cloche` file may contain **multiple named workflows**. The daemon
+uses up to three workflow phases for orchestration:
+
+| Phase | Workflow name | Purpose |
+|-------|--------------|---------|
+| 1 | `list-tasks` | Discover available work. Output is JSONL (one task per line). |
+| 2 | `main` | Do the work. Receives a task ID via `CLOCHE_TASK_ID` env var. |
+| 3 | `finalize` | Post-main cleanup. Runs on **both** success and failure. |
+
+Only `main` is required. If `list-tasks` is absent, the daemon uses a single-workflow
+mode. If `finalize` is absent, it is skipped.
+
+### list-tasks Output Format
+
+The `list-tasks` workflow's final step output is parsed as JSONL. Each line is a JSON
+object:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | yes | Unique task identifier |
+| `status` | yes | One of `open`, `closed`, `in-progress` |
+| `title` | no | Short summary |
+| `description` | no | Full description |
+| `metadata` | no | Arbitrary key-value pairs |
+
+The daemon picks the first task with status `open`, runs `main` with that task's ID
+set in `CLOCHE_TASK_ID`, then runs `finalize` with the outcome. Tasks are
+deduplicated within a timeout window to prevent rapid reassignment of the same task.
+
 ### Host Workflow Example
 
+A three-phase `host.cloche`:
+
 ```
+workflow "list-tasks" {
+  step fetch-tickets {
+    run     = "bash .cloche/scripts/ready-tasks.sh"
+    results = [success, fail]
+  }
+
+  fetch-tickets:success -> done
+  fetch-tickets:fail    -> abort
+}
+
 workflow "main" {
   host {
     agent_command = "claude"
-  }
-
-  step ready-tasks {
-    run     = "bash .cloche/scripts/ready-tasks.sh 1"
-    results = [success, fail]
   }
 
   step prepare-prompt {
@@ -283,18 +319,27 @@ workflow "main" {
     results       = [success, fail]
   }
 
-  ready-tasks:success -> prepare-prompt [
-    CLOCHE_TASK_ID    = output[0].id,
-    CLOCHE_TASK_TITLE = output[0].title,
-    CLOCHE_TASK_BODY  = output[0].description
-  ]
-  ready-tasks:fail       -> abort
-  prepare-prompt:success -> develop [ CLOCHE_TASK_ID = output.task_id ]
+  prepare-prompt:success -> develop
   prepare-prompt:fail    -> abort
   develop:success        -> done
   develop:fail           -> done
 }
+
+workflow "finalize" {
+  step push-for-review {
+    run     = "bash .cloche/scripts/push-for-review.sh"
+    results = [success, fail]
+  }
+
+  push-for-review:success -> done
+  push-for-review:fail    -> done
+}
 ```
+
+The `list-tasks` script writes JSONL to `$CLOCHE_STEP_OUTPUT`. The `main` workflow
+receives the task ID and is responsible for claiming the ticket. The `finalize`
+workflow receives `CLOCHE_MAIN_OUTCOME` and `CLOCHE_MAIN_RUN_ID` env vars to decide
+what cleanup to perform.
 
 ### Host Step Environment Variables
 
@@ -303,7 +348,9 @@ workflow "main" {
 | `CLOCHE_PROJECT_DIR` | Absolute path to the project directory on the host. |
 | `CLOCHE_STEP_OUTPUT` | Path where this step should write its output (for output mappings). |
 | `CLOCHE_PREV_OUTPUT` | Path to the output file from the immediately preceding step. |
-| `CLOCHE_TASK_ID` | Task ID assigned by the daemon loop (present when daemon-managed task assignment is active). |
+| `CLOCHE_TASK_ID` | Task ID assigned by the daemon (set for `main` and `finalize` phases). |
+| `CLOCHE_MAIN_OUTCOME` | Result of the `main` workflow (`success` or `fail`). Set for `finalize` phase only. |
+| `CLOCHE_MAIN_RUN_ID` | Run ID of the completed `main` workflow. Set for `finalize` phase only. |
 | Wire-mapped vars | Any env vars declared in wire output mappings. |
 
 ### Container Environment Variables
