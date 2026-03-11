@@ -1,4 +1,12 @@
 active = true
 
+[orchestration]
+concurrency = 3
+stagger_seconds = 5.0
+dedup_seconds = 300
+
 [evolution]
 enabled = false
+debounce_seconds = 30
+min_confidence = "medium"
+max_prompt_bullets = 50
