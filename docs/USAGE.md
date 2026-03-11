@@ -303,7 +303,8 @@ workflow "main" {
 | `CLOCHE_PROJECT_DIR` | Absolute path to the project directory on the host. |
 | `CLOCHE_STEP_OUTPUT` | Path where this step should write its output (for output mappings). |
 | `CLOCHE_PREV_OUTPUT` | Path to the output file from the immediately preceding step. |
-| Wire-mapped vars | Any env vars declared in wire output mappings (e.g. `CLOCHE_TASK_ID`). |
+| `CLOCHE_TASK_ID` | Task ID assigned by the daemon loop (present when daemon-managed task assignment is active). |
+| Wire-mapped vars | Any env vars declared in wire output mappings. |
 
 ### Container Environment Variables
 

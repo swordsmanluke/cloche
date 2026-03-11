@@ -22,6 +22,7 @@ var _ engine.StatusHandler = (*hostStatusHandler)(nil)
 type Runner struct {
 	Dispatcher RunDispatcher
 	Store      ports.RunStore
+	TaskID     string // optional task ID assigned by the daemon loop
 }
 
 // RunResult contains the outcome of a host workflow execution.
@@ -78,6 +79,7 @@ func (r *Runner) RunWithID(ctx context.Context, projectDir string, orchRunID str
 		OutputDir:  outputDir,
 		Wires:      wf.Wiring,
 		HostRunID:  orchRunID,
+		TaskID:     r.TaskID,
 	}
 
 	// Configure agent from workflow-level host config

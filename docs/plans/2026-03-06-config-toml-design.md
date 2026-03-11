@@ -18,10 +18,10 @@ Rename to `.cloche/config.toml`. No backwards compatibility with the old filenam
 # Cloche project configuration
 
 [orchestration]
-enabled     = false
-concurrency = 1
-workflow    = "develop"
-# tracker = "beads"
+concurrency        = 1
+stagger_seconds    = 1.0
+# list_tasks_command = "bash .cloche/scripts/ready-tasks.sh"
+# dedup_seconds    = 300
 
 [evolution]
 enabled           = true
@@ -31,10 +31,14 @@ max_prompt_bullets = 50
 ```
 
 Notes:
-- `orchestration.enabled` defaults to `false` so new projects don't start pulling tasks
-  until explicitly opted in.
-- All keys are present so the file is self-documenting.
-- Commented-out keys (`tracker`) show optional overrides that rarely need changing.
+- `orchestration.concurrency` defaults to `1` (single run at a time).
+- `orchestration.stagger_seconds` adds delay between consecutive launches (default `1.0`).
+- `orchestration.list_tasks_command` (optional) is a shell command that outputs a JSON array of
+  task objects (`[{"id":"...","title":"...","description":"..."}]`). When set, the daemon
+  picks tasks and passes the ID via `CLOCHE_TASK_ID` env var.
+- `orchestration.dedup_seconds` (default `300`) prevents reassignment of the same task ID
+  within the timeout window.
+- Commented-out keys show optional overrides that rarely need changing.
 
 ## Code changes
 

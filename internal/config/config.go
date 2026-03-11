@@ -25,8 +25,10 @@ type EvolutionConfig struct {
 }
 
 type OrchestrationConfig struct {
-	Concurrency    int     `toml:"concurrency"`
-	StaggerSeconds float64 `toml:"stagger_seconds"`
+	Concurrency      int     `toml:"concurrency"`
+	StaggerSeconds   float64 `toml:"stagger_seconds"`
+	ListTasksCommand string  `toml:"list_tasks_command"` // shell command to list open tasks (JSON array output)
+	DedupSeconds     float64 `toml:"dedup_seconds"`      // dedup window for task assignment (default: 300)
 }
 
 type Config struct {

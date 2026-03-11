@@ -58,6 +58,7 @@ type Executor struct {
 	HostRunID     string         // ID of the parent host run (set on child runs)
 	AgentCommands []string       // workflow-level agent command fallback chain
 	AgentArgs     []string       // workflow-level explicit agent args (overrides defaults)
+	TaskID        string         // optional task ID assigned by the daemon loop
 }
 
 // scriptDir returns the directory from which scripts should execute.
@@ -94,6 +95,11 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 		"CLOCHE_PROJECT_DIR="+e.ProjectDir,
 		"CLOCHE_STEP_OUTPUT="+e.stepOutputPath(step.Name),
 	)
+
+	// Pass daemon-assigned task ID if available
+	if e.TaskID != "" {
+		cmd.Env = append(cmd.Env, "CLOCHE_TASK_ID="+e.TaskID)
+	}
 
 	// Pass previous step output if available
 	if prevOutput := e.findPrevOutput(step); prevOutput != "" {

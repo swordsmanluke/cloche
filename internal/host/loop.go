@@ -12,6 +12,7 @@ import (
 
 const (
 	defaultMaxConcurrent = 1
+	defaultDedupTimeout  = 5 * time.Minute
 	idlePollInterval     = 30 * time.Second
 	capacityPollInterval = 5 * time.Second
 )
@@ -21,30 +22,49 @@ type LoopConfig struct {
 	ProjectDir    string
 	MaxConcurrent int
 	StaggerDelay  time.Duration // delay between launching consecutive runs
+	DedupTimeout  time.Duration // how long to suppress reassignment of the same task ID
 }
+
+// RunFunc is the function signature for launching a host workflow run.
+// When taskID is non-empty, the runner should propagate it as CLOCHE_TASK_ID.
+type RunFunc func(ctx context.Context, projectDir string, taskID string) (*RunResult, error)
 
 // Loop manages a continuous orchestration loop for a project, keeping up to
 // MaxConcurrent host workflow runs active at all times when work is available.
 type Loop struct {
-	config     LoopConfig
-	runner     func(ctx context.Context, projectDir string) (*RunResult, error)
-	store      ports.RunStore
-	stopCh     chan struct{}
-	mu         sync.Mutex
-	running    bool
+	config   LoopConfig
+	runner   RunFunc
+	store    ports.RunStore
+	assigner TaskAssigner // optional; when set, daemon picks tasks
+	stopCh   chan struct{}
+	mu       sync.Mutex
+	running  bool
+	dedupMu  sync.Mutex
+	dedup    map[string]time.Time // task ID -> last assignment time
 }
 
 // NewLoop creates an orchestration loop. The runFn is called to start each
 // orchestration run and should block until the run completes.
-func NewLoop(cfg LoopConfig, store ports.RunStore, runFn func(ctx context.Context, projectDir string) (*RunResult, error)) *Loop {
+func NewLoop(cfg LoopConfig, store ports.RunStore, runFn RunFunc) *Loop {
 	if cfg.MaxConcurrent <= 0 {
 		cfg.MaxConcurrent = defaultMaxConcurrent
+	}
+	if cfg.DedupTimeout <= 0 {
+		cfg.DedupTimeout = defaultDedupTimeout
 	}
 	return &Loop{
 		config: cfg,
 		runner: runFn,
 		store:  store,
+		dedup:  make(map[string]time.Time),
 	}
+}
+
+// SetTaskAssigner configures a TaskAssigner for daemon-managed task assignment.
+// When set, the loop will query for available tasks and pass the selected task
+// ID to the runner, preventing concurrent assignment of the same task.
+func (l *Loop) SetTaskAssigner(a TaskAssigner) {
+	l.assigner = a
 }
 
 // Start begins the orchestration loop. No-op if already running.
@@ -111,11 +131,23 @@ func (l *Loop) run() {
 				}
 			}
 
+			// Determine task ID (if task assigner is configured).
+			taskID := ""
+			if l.assigner != nil {
+				var ok bool
+				taskID, ok = l.pickTask()
+				if !ok {
+					// No assignable tasks available.
+					break
+				}
+			}
+
 			// Launch a new orchestration run in a goroutine.
 			inFlight++
 			launched++
+			tid := taskID // capture for goroutine
 			go func() {
-				res, err := l.runner(context.Background(), l.config.ProjectDir)
+				res, err := l.runner(context.Background(), l.config.ProjectDir, tid)
 				if err != nil {
 					log.Printf("orchestration loop: run failed for %s: %v", l.config.ProjectDir, err)
 					completions <- result{state: domain.RunStateFailed}
@@ -149,6 +181,47 @@ func (l *Loop) run() {
 			return
 		}
 	}
+}
+
+// pickTask queries the task assigner for available tasks, filters out those
+// within the dedup timeout window, and returns the first assignable task ID.
+// It records the assignment time so the same task won't be picked again until
+// the dedup timeout expires. Returns ("", false) if no tasks are available.
+func (l *Loop) pickTask() (string, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	tasks, err := l.assigner.ListTasks(ctx, l.config.ProjectDir)
+	if err != nil {
+		log.Printf("orchestration loop: list-tasks failed for %s: %v", l.config.ProjectDir, err)
+		return "", false
+	}
+
+	now := time.Now()
+	l.dedupMu.Lock()
+	defer l.dedupMu.Unlock()
+
+	// Expire old dedup entries while we're here.
+	for id, ts := range l.dedup {
+		if now.Sub(ts) >= l.config.DedupTimeout {
+			delete(l.dedup, id)
+		}
+	}
+
+	for _, task := range tasks {
+		if task.ID == "" {
+			continue
+		}
+		if ts, ok := l.dedup[task.ID]; ok && now.Sub(ts) < l.config.DedupTimeout {
+			continue // still within dedup window
+		}
+		// Assign this task.
+		l.dedup[task.ID] = now
+		log.Printf("orchestration loop: assigned task %s for %s", task.ID, l.config.ProjectDir)
+		return task.ID, true
+	}
+
+	return "", false
 }
 
 // countActiveHostRuns counts running or pending host runs for the project.

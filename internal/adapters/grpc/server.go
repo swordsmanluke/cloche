@@ -753,6 +753,9 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 
 	stagger := time.Duration(float64(time.Second) * projCfg.Orchestration.StaggerSeconds)
 
+	// Compute dedup timeout from config (default 5 minutes).
+	dedupTimeout := time.Duration(float64(time.Second) * projCfg.Orchestration.DedupSeconds)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -761,10 +764,11 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 		existing.Stop()
 	}
 
-	runFn := func(ctx context.Context, projDir string) (*host.RunResult, error) {
+	runFn := func(ctx context.Context, projDir string, taskID string) (*host.RunResult, error) {
 		runner := &host.Runner{
 			Dispatcher: s,
 			Store:      s.store,
+			TaskID:     taskID,
 		}
 		return runner.Run(ctx, projDir)
 	}
@@ -773,7 +777,15 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 		ProjectDir:    projectDir,
 		MaxConcurrent: maxConc,
 		StaggerDelay:  stagger,
+		DedupTimeout:  dedupTimeout,
 	}, s.store, runFn)
+
+	// Configure daemon-managed task assignment if a list-tasks command is set.
+	if cmd := projCfg.Orchestration.ListTasksCommand; cmd != "" {
+		loop.SetTaskAssigner(&host.ScriptTaskAssigner{Command: cmd})
+		log.Printf("orchestration loop: task assignment enabled for %s (command=%q, dedup=%s)", projectDir, cmd, dedupTimeout)
+	}
+
 	s.loops[projectDir] = loop
 	loop.Start()
 

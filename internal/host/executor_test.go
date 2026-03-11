@@ -380,6 +380,59 @@ func TestExecutor_ScriptStep_EnvironmentVars(t *testing.T) {
 	assert.Contains(t, string(data), tmpDir)
 }
 
+func TestExecutor_ScriptStep_TaskIDEnvVar(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		TaskID:     "my-task-42",
+	}
+
+	step := &domain.Step{
+		Name:    "task-check",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo $CLOCHE_TASK_ID"},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "task-check.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "my-task-42")
+}
+
+func TestExecutor_ScriptStep_NoTaskID(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		// No TaskID set
+	}
+
+	step := &domain.Step{
+		Name:    "task-check",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo \"TASK_ID=$CLOCHE_TASK_ID\""},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "task-check.out"))
+	require.NoError(t, err)
+	// When no TaskID is set, CLOCHE_TASK_ID should not appear in the env
+	assert.Contains(t, string(data), "TASK_ID=\n")
+}
+
 func TestExecutor_ScriptStep_NoOutputMappings(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
@@ -616,6 +669,42 @@ func TestRunner_RunWithID(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, hostRun.IsHost)
 	assert.Equal(t, domain.RunStateSucceeded, hostRun.State)
+}
+
+func TestRunner_WithTaskID(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	// The script echoes the daemon-assigned CLOCHE_TASK_ID env var
+	hostCloche := `workflow "main" {
+  step check-task {
+    run     = "echo $CLOCHE_TASK_ID"
+    results = [success, fail]
+  }
+
+  check-task:success -> done
+  check-task:fail    -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	runner := &Runner{
+		Dispatcher: &fakeDispatcher{runID: "test-run"},
+		Store:      store,
+		TaskID:     "daemon-assigned-task-99",
+	}
+
+	result, err := runner.Run(context.Background(), tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, result.State)
+
+	// Verify the script saw the task ID
+	outputDir := filepath.Join(tmpDir, ".cloche", result.RunID, "output")
+	data, err := os.ReadFile(filepath.Join(outputDir, "check-task.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "daemon-assigned-task-99")
 }
 
 func TestRunner_PersistsHostRun(t *testing.T) {
