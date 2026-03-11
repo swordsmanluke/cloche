@@ -631,7 +631,7 @@ func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Try per-step output first, fall back to container.log, then live docker logs
+	// Try per-step output file
 	outputPath := filepath.Join(outputDir, step+".log")
 	data, err := os.ReadFile(outputPath)
 	if err == nil && len(data) > 0 {
@@ -639,20 +639,9 @@ func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	containerLog := filepath.Join(outputDir, "container.log")
-	data, err = os.ReadFile(containerLog)
-	if err == nil && len(data) > 0 {
-		writeOutput(data)
-		return
-	}
-
-	// Last resort: try live docker logs from still-existing container
-	if h.container != nil && run.ContainerID != "" {
-		if logs, logErr := h.container.Logs(r.Context(), run.ContainerID); logErr == nil && logs != "" {
-			writeOutput([]byte(logs))
-			return
-		}
-	}
+	// Do NOT fall back to container.log or live docker logs here — those
+	// contain unfiltered output from ALL steps and would show the wrong
+	// content for this specific step (the root cause of web-UI log mismatches).
 
 	http.Error(w, "step output not found", http.StatusNotFound)
 }

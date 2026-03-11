@@ -1358,3 +1358,72 @@ func TestRunsList_TreeGrouping(t *testing.T) {
 	// Child row should have run-child-row class
 	assert.Contains(t, body, "run-child-row")
 }
+
+func TestStepOutput_ReturnsStepLog(t *testing.T) {
+	h, store := setupHandler(t)
+
+	dir := t.TempDir()
+	seedRunWithProject(t, store, "step-out-1", "develop", domain.RunStateSucceeded, dir)
+
+	// Create step-specific log file
+	outputDir := filepath.Join(dir, ".cloche", "step-out-1", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "implement.log"), []byte("step impl output"), 0644))
+
+	req := httptest.NewRequest("GET", "/api/runs/step-out-1/steps/implement/output", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "step impl output")
+}
+
+func TestStepOutput_DoesNotFallBackToContainerLog(t *testing.T) {
+	// Regression test: the web UI must NOT serve container.log as step output.
+	// container.log contains unfiltered output from ALL steps, which causes
+	// the web UI to show wrong/stale content for a specific step.
+	h, store := setupHandler(t)
+
+	dir := t.TempDir()
+	seedRunWithProject(t, store, "step-out-2", "develop", domain.RunStateSucceeded, dir)
+
+	// Create container.log but NO step-specific log
+	outputDir := filepath.Join(dir, ".cloche", "step-out-2", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "container.log"), []byte("wrong: mixed output from all steps"), 0644))
+
+	req := httptest.NewRequest("GET", "/api/runs/step-out-2/steps/implement/output", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	// Should return 404, NOT the container.log content
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.NotContains(t, w.Body.String(), "wrong: mixed output from all steps")
+}
+
+func TestStepOutput_DoesNotFallBackToLiveDockerLogs(t *testing.T) {
+	// Even with a container manager that returns logs, step output should not
+	// fall back to unfiltered live docker logs for a specific step.
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	mgr := newMockContainerManager()
+	mgr.containers["abc123def456789"] = true
+	mgr.running["abc123def456789"] = true
+
+	h, err := NewHandler(store, store, WithContainerManager(mgr))
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	seedRunWithProject(t, store, "step-out-3", "develop", domain.RunStateRunning, dir)
+
+	// No step log, no container.log on disk — only live docker logs available
+	req := httptest.NewRequest("GET", "/api/runs/step-out-3/steps/implement/output", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	// Should return 404, NOT "mock logs" from the container manager
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.NotContains(t, w.Body.String(), "mock logs")
+}

@@ -416,7 +416,7 @@ func (m *mockLogStream) Context() context.Context {
 	return m.ctx
 }
 
-func TestServer_StreamLogs_FallsBackToContainerLog(t *testing.T) {
+func TestServer_StreamLogs_DoesNotFallBackToContainerLog(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
@@ -460,8 +460,9 @@ func TestServer_StreamLogs_FallsBackToContainerLog(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	// Simulate container.log being written (local runtime Logs() returns empty,
-	// so write it manually to test the StreamLogs fallback path)
+	// Write container.log but NOT a per-step log file. The step_completed
+	// entry should NOT contain container.log content (which is unfiltered
+	// output from ALL steps and would show wrong data for a specific step).
 	outputDir := filepath.Join(dir, ".cloche", resp.RunId, "output")
 	require.NoError(t, os.MkdirAll(outputDir, 0755))
 	require.NoError(t, os.WriteFile(
@@ -470,7 +471,6 @@ func TestServer_StreamLogs_FallsBackToContainerLog(t *testing.T) {
 		0644,
 	))
 
-	// Stream logs and verify the step_completed entry falls back to container.log
 	mock := &mockLogStream{ctx: context.Background()}
 	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: resp.RunId}, mock)
 	require.NoError(t, err)
@@ -480,11 +480,11 @@ func TestServer_StreamLogs_FallsBackToContainerLog(t *testing.T) {
 		if e.Type == "step_completed" && e.StepName == "implement" {
 			foundCompleted = true
 			assert.Equal(t, "fail", e.Result)
-			assert.Contains(t, e.Message, "error: compilation failed")
-			assert.Contains(t, e.Message, "detailed stack trace here")
+			// Message should be empty — NOT the container.log content
+			assert.Empty(t, e.Message, "step output should not fall back to container.log")
 		}
 	}
-	assert.True(t, foundCompleted, "should find step_completed with container.log fallback content")
+	assert.True(t, foundCompleted, "should find step_completed entry")
 }
 
 func TestServer_StreamLogs_PrefersStepOutput(t *testing.T) {

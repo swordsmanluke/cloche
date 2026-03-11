@@ -526,16 +526,13 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 				return err
 			}
 		} else {
-			// Read step output from file, falling back to container.log
+			// Read step output from per-step log file.
+			// Do NOT fall back to container.log — it contains unfiltered output
+			// from ALL steps and would show wrong content for this step.
 			var output string
 			outputPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", exec.StepName+".log")
 			if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
 				output = string(data)
-			} else {
-				containerLogPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", "container.log")
-				if data, err := os.ReadFile(containerLogPath); err == nil {
-					output = string(data)
-				}
 			}
 			entry := &pb.LogEntry{
 				Type:      "step_completed",
