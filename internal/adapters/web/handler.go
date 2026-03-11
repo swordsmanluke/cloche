@@ -873,6 +873,7 @@ func (h *Handler) streamFullLog(w http.ResponseWriter, flusher http.Flusher, run
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024) // 1MB max to handle large Claude JSON lines
 	for scanner.Scan() {
 		text := scanner.Text()
 		line := parseFullLogLine(text)

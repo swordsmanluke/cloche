@@ -235,6 +235,61 @@ func TestParseFullLogLine(t *testing.T) {
 	}
 }
 
+func TestSSE_CompletedRun_LargeJSONLines(t *testing.T) {
+	h, store, _ := setupHandlerWithBroadcaster(t)
+
+	dir := t.TempDir()
+
+	ctx := context.Background()
+	run := domain.NewRun("sse-large-1", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.ContainerID = "abc123"
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Build a large assistant event (>64KB) to simulate real Claude Code output.
+	// Default bufio.Scanner buffer is 64KB; this verifies we handle larger lines.
+	largeText := strings.Repeat("x", 100*1024) // 100KB of text
+	assistantJSON := `{"type":"assistant","message":{"content":[{"type":"text","text":"` + largeText + `"}]}}`
+
+	outputDir := filepath.Join(dir, ".cloche", "sse-large-1", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	logContent := "[2026-03-03T10:15:00Z] [status] step_started: build\n" +
+		"[2026-03-03T10:15:01Z] [llm] " + assistantJSON + "\n" +
+		"[2026-03-03T10:15:02Z] [status] step_completed: build -> success\n"
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "full.log"), []byte(logContent), 0644))
+
+	req := httptest.NewRequest("GET", "/api/runs/sse-large-1/stream", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	body := w.Body.String()
+	var events []logstream.LogLine
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+			var ll logstream.LogLine
+			if json.Unmarshal([]byte(data), &ll) == nil {
+				events = append(events, ll)
+			}
+		}
+	}
+
+	// All three lines should be present: status, llm (parsed from large JSON), status
+	require.Len(t, events, 3, "expected all log lines including those after large JSON line")
+	assert.Equal(t, "status", events[0].Type)
+	assert.Equal(t, "step_started: build", events[0].Content)
+	assert.Equal(t, "llm", events[1].Type)
+	assert.Contains(t, events[1].Content, largeText)
+	assert.Equal(t, "status", events[2].Type)
+	assert.Equal(t, "step_completed: build -> success", events[2].Content)
+
+	assert.Contains(t, body, "event: done")
+}
+
 func TestSSE_CompletedRun_NoFullLog(t *testing.T) {
 	h, store, _ := setupHandlerWithBroadcaster(t)
 

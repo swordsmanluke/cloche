@@ -197,6 +197,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	// Parse JSON-lines status messages
 	var reportedResult string // captured from MsgRunCompleted, persisted after branch extraction
 	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024) // 1MB max to handle large log messages
 	for scanner.Scan() {
 		var msg protocol.StatusMessage
 		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
