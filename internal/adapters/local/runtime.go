@@ -46,6 +46,7 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 
 	cmd := exec.CommandContext(ctx, agentCmd[0], agentCmd[1:]...)
 	cmd.Dir = cfg.ProjectDir
+	cmd.Env = append(os.Environ(), "CLOCHE_RUN_ID="+cfg.RunID)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

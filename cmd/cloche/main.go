@@ -16,6 +16,7 @@ import (
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/logstream"
+	"github.com/cloche-dev/cloche/internal/runcontext"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -33,6 +34,12 @@ func main() {
 		return
 	case "health":
 		cmdHealth(os.Args[2:])
+		return
+	case "get":
+		cmdGet(os.Args[2:])
+		return
+	case "set":
+		cmdSet(os.Args[2:])
 		return
 	}
 
@@ -96,6 +103,8 @@ Commands:
   delete <container-or-run-id>               Delete a retained container
   loop [--max <n>]                            Start orchestration loop (default max=1)
   loop stop                                  Stop orchestration loop
+  get <key>                                  Get a value from the run context store
+  set <key> <value>                          Set a value in the run context store
   shutdown                                   Shut down the daemon
 `)
 }
@@ -475,4 +484,63 @@ func cmdShutdown(ctx context.Context, client pb.ClocheServiceClient) {
 		os.Exit(1)
 	}
 	fmt.Println("Daemon shutting down.")
+}
+
+// resolveRunContext returns the project directory and run ID for context
+// commands. The run ID comes from CLOCHE_RUN_ID and the project directory
+// from CLOCHE_PROJECT_DIR (falling back to cwd).
+func resolveRunContext() (projectDir, runID string, err error) {
+	runID = os.Getenv("CLOCHE_RUN_ID")
+	if runID == "" {
+		return "", "", fmt.Errorf("CLOCHE_RUN_ID environment variable is not set")
+	}
+	projectDir = os.Getenv("CLOCHE_PROJECT_DIR")
+	if projectDir == "" {
+		projectDir, err = os.Getwd()
+		if err != nil {
+			return "", "", fmt.Errorf("getting working directory: %w", err)
+		}
+	}
+	return projectDir, runID, nil
+}
+
+func cmdGet(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintf(os.Stderr, "usage: cloche get <key>\n")
+		os.Exit(1)
+	}
+
+	projectDir, runID, err := resolveRunContext()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	val, ok, err := runcontext.Get(projectDir, runID, args[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if !ok {
+		os.Exit(1)
+	}
+	fmt.Println(val)
+}
+
+func cmdSet(args []string) {
+	if len(args) < 2 {
+		fmt.Fprintf(os.Stderr, "usage: cloche set <key> <value>\n")
+		os.Exit(1)
+	}
+
+	projectDir, runID, err := resolveRunContext()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := runcontext.Set(projectDir, runID, args[0], args[1]); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
 }

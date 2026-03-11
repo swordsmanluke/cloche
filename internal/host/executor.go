@@ -97,6 +97,11 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 		"CLOCHE_STEP_OUTPUT="+e.stepOutputPath(step.Name),
 	)
 
+	// Pass run ID so steps can access .cloche/<run-id>/ and context.json
+	if e.HostRunID != "" {
+		cmd.Env = append(cmd.Env, "CLOCHE_RUN_ID="+e.HostRunID)
+	}
+
 	// Pass daemon-assigned task ID if available
 	if e.TaskID != "" {
 		cmd.Env = append(cmd.Env, "CLOCHE_TASK_ID="+e.TaskID)

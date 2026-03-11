@@ -348,6 +348,7 @@ what cleanup to perform.
 | `CLOCHE_PROJECT_DIR` | Absolute path to the project directory on the host. |
 | `CLOCHE_STEP_OUTPUT` | Path where this step should write its output (for output mappings). |
 | `CLOCHE_PREV_OUTPUT` | Path to the output file from the immediately preceding step. |
+| `CLOCHE_RUN_ID` | The run ID for this workflow execution. |
 | `CLOCHE_TASK_ID` | Task ID assigned by the daemon (set for `main` and `finalize` phases). |
 | `CLOCHE_MAIN_OUTCOME` | Result of the `main` workflow (`succeeded` or `failed`). Set for `finalize` phase only. |
 | `CLOCHE_MAIN_RUN_ID` | Run ID of the completed `main` workflow. Set for `finalize` phase only. |
@@ -514,6 +515,26 @@ cloche health
 
 Show per-project pass/fail summary. Requires `CLOCHE_HTTP`.
 
+### `cloche get`
+
+```
+cloche get <key>
+```
+
+Get a value from the run context store (`.cloche/<run-id>/context.json`). Requires
+the `CLOCHE_RUN_ID` environment variable. Uses `CLOCHE_PROJECT_DIR` if set, otherwise
+the current working directory. Exits 1 if the key is not found.
+
+### `cloche set`
+
+```
+cloche set <key> <value>
+```
+
+Set a value in the run context store (`.cloche/<run-id>/context.json`). Requires
+the `CLOCHE_RUN_ID` environment variable. Uses `CLOCHE_PROJECT_DIR` if set, otherwise
+the current working directory. Creates the file and directories if they don't exist.
+
 ### `cloche shutdown`
 
 ```
@@ -538,6 +559,7 @@ my-project/
 │   │   └── CLAUDE.md         # Container-specific CLAUDE.md (optional)
 │   └── <run-id>/             # Runtime state (gitignored)
 │       ├── prompt.txt        # User prompt
+│       ├── context.json      # Shared key-value store (cloche get/set)
 │       ├── output/
 │       │   ├── full.log      # Unified log
 │       │   ├── test.log      # Per-step script output

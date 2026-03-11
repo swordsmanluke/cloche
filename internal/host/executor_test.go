@@ -380,6 +380,59 @@ func TestExecutor_ScriptStep_EnvironmentVars(t *testing.T) {
 	assert.Contains(t, string(data), tmpDir)
 }
 
+func TestExecutor_ScriptStep_RunIDEnvVar(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		HostRunID:  "develop-swift-oak-a1b2",
+	}
+
+	step := &domain.Step{
+		Name:    "runid-check",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo $CLOCHE_RUN_ID"},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "runid-check.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "develop-swift-oak-a1b2")
+}
+
+func TestExecutor_ScriptStep_NoRunID(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		// No HostRunID set
+	}
+
+	step := &domain.Step{
+		Name:    "runid-check",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo \"RUN_ID=$CLOCHE_RUN_ID\""},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "runid-check.out"))
+	require.NoError(t, err)
+	// When no HostRunID is set, CLOCHE_RUN_ID should not appear in the env
+	assert.Contains(t, string(data), "RUN_ID=\n")
+}
+
 func TestExecutor_ScriptStep_TaskIDEnvVar(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
