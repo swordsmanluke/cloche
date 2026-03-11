@@ -21,6 +21,7 @@
 <div class="panel" id="workflow-panel">
     <div class="panel-header">Workflows</div>
     <div class="panel-body">
+        <div id="location-tabs" class="tab-bar"></div>
         <div id="workflow-tabs" class="tab-bar"></div>
         <div id="workflow-dag"></div>
     </div>
@@ -93,6 +94,8 @@ function toggleDiff(el) {
 }
 
 var workflowsData = [];
+var activeLocation = 'container';
+
 function loadWorkflows() {
     fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/workflows')
         .then(function(r) { return r.json(); })
@@ -102,23 +105,67 @@ function loadWorkflows() {
                 document.getElementById('workflow-dag').innerHTML = '<p class="empty">No workflows found</p>';
                 return;
             }
-            var tabs = document.getElementById('workflow-tabs');
-            if (workflowsData.length > 1) {
+
+            // Check which locations exist
+            var hasContainer = workflowsData.some(function(wf) { return wf.location === 'container'; });
+            var hasHost = workflowsData.some(function(wf) { return wf.location === 'host'; });
+
+            // Render location tabs if both types exist
+            var locationTabs = document.getElementById('location-tabs');
+            if (hasContainer && hasHost) {
                 var html = '';
-                workflowsData.forEach(function(wf, i) {
-                    html += '<button class="tab-btn' + (i === 0 ? ' tab-active' : '') + '" onclick="showWorkflow(' + i + ')">' + wf.name + '</button>';
-                });
-                tabs.innerHTML = html;
+                html += '<button class="tab-btn tab-active" onclick="switchLocation(\'container\')">Container</button>';
+                html += '<button class="tab-btn" onclick="switchLocation(\'host\')">Host</button>';
+                locationTabs.innerHTML = html;
+            } else {
+                locationTabs.innerHTML = '';
             }
-            showWorkflow(0);
+
+            // Default to whichever location exists
+            activeLocation = hasContainer ? 'container' : 'host';
+            renderWorkflowTabs();
         });
 }
 
-function showWorkflow(idx) {
-    var btns = document.querySelectorAll('.tab-btn');
-    btns.forEach(function(b, i) { b.classList.toggle('tab-active', i === idx); });
+function switchLocation(loc) {
+    activeLocation = loc;
+    var btns = document.querySelectorAll('#location-tabs .tab-btn');
+    btns.forEach(function(b) {
+        b.classList.toggle('tab-active', b.textContent === (loc === 'container' ? 'Container' : 'Host'));
+    });
+    renderWorkflowTabs();
+}
 
-    var wf = workflowsData[idx];
+function renderWorkflowTabs() {
+    var filtered = workflowsData.filter(function(wf) { return wf.location === activeLocation; });
+    var tabs = document.getElementById('workflow-tabs');
+
+    if (filtered.length === 0) {
+        tabs.innerHTML = '';
+        document.getElementById('workflow-dag').innerHTML = '<p class="empty">No ' + activeLocation + ' workflows found</p>';
+        return;
+    }
+
+    if (filtered.length > 1) {
+        var html = '';
+        filtered.forEach(function(wf, i) {
+            html += '<button class="tab-btn' + (i === 0 ? ' tab-active' : '') + '" onclick="showFilteredWorkflow(' + i + ')">' + wf.name + '</button>';
+        });
+        tabs.innerHTML = html;
+    } else {
+        tabs.innerHTML = '';
+    }
+    showFilteredWorkflow(0);
+}
+
+function showFilteredWorkflow(idx) {
+    var filtered = workflowsData.filter(function(wf) { return wf.location === activeLocation; });
+    var btns = document.querySelectorAll('#workflow-tabs .tab-btn');
+    btns.forEach(function(b, i) { b.classList.toggle('tab-active', i === idx); });
+    showWorkflow(filtered[idx]);
+}
+
+function showWorkflow(wf) {
     var dagEl = document.getElementById('workflow-dag');
 
     // Build step order via topological sort from entry
@@ -183,7 +230,11 @@ function showWorkflow(idx) {
     ordered.forEach(function(name) {
         var pos = positions[name];
         var s = stepMap[name];
-        var icon = s && s.type === 'agent' ? '\u{1F916}' : '\u{1F4DC}';
+        var icon = '\u{1F4DC}';
+        if (s) {
+            if (s.type === 'agent') icon = '\u{1F916}';
+            else if (s.type === 'workflow') icon = '\u{1F501}';
+        }
         html += '<g class="dag-node" onclick="openDrawer(\'' + wf.name + '\',\'' + name + '\')" style="cursor:pointer">';
         html += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + nodeW + '" height="' + nodeH + '" class="dag-node-rect"/>';
         html += '<text x="' + (pos.x + 10) + '" y="' + (pos.y + nodeH / 2 + 5) + '" class="dag-node-text">' + icon + ' ' + name + '</text>';
@@ -214,7 +265,7 @@ function openDrawer(workflowName, stepName) {
     body += '<dt>Results</dt><dd>' + (step.results ? step.results.join(', ') : 'none') + '</dd>';
     if (step.config) {
         for (var k in step.config) {
-            if (k === 'max_attempts' || k === 'prompt' || k === 'command' || k === 'script') {
+            if (k === 'max_attempts' || k === 'prompt' || k === 'command' || k === 'script' || k === 'run' || k === 'workflow_name') {
                 body += '<dt>' + k + '</dt><dd class="mono">' + step.config[k] + '</dd>';
             }
         }

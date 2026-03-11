@@ -112,9 +112,11 @@ Returns plain text unified diff (`git show <sha> -- <file>`).
 ## Panel 3: Workflow View
 
 ### Display
-- Tabs if multiple `*.cloche` files exist in `.cloche/` (excluding `host.cloche`)
+- Two-level tab navigation:
+  - **Location tabs** (Container / Host) shown when both container and host workflows exist
+  - **Workflow tabs** shown when the active location has multiple workflows
 - Per workflow: a read-only DAG rendered client-side
-  - Nodes = steps, rendered as boxes showing step name + type icon (agent / script)
+  - Nodes = steps, rendered as boxes showing step name + type icon (agent 🤖 / script 📜 / workflow 🔁)
   - Edges = wires, labeled with the result name (e.g. `success`, `fail`)
   - Terminal nodes `done` and `abort` rendered distinctly
 - Clicking a step node opens a right-side **drawer panel** (CSS slide-in):
@@ -122,7 +124,9 @@ Returns plain text unified diff (`git show <sha> -- <file>`).
   - Results list
   - `max_attempts` if set
   - For agent steps: full content of the referenced prompt file (loaded on demand)
-  - For script steps: the command string or contents of the referenced script file
+  - For script steps: the `command`/`script` string or contents of the referenced script file
+  - For host script steps: the `run` command string or contents of the referenced file
+  - For workflow steps: displays the dispatched workflow name
   - Drawer closes via X button or Escape, returning focus to the DAG without page reload
 
 ### DAG rendering
@@ -143,6 +147,7 @@ Response:
   {
     "name": "develop",
     "file": ".cloche/develop.cloche",
+    "location": "container",
     "steps": [
       {
         "name": "implement",
@@ -160,6 +165,9 @@ Response:
   }
 ]
 ```
+
+The `location` field is either `"container"` or `"host"`. Host workflows are parsed from
+`.cloche/host.cloche` and included in the same response.
 
 ```
 GET /api/projects/{name}/workflows/{workflow}/steps/{step}/content

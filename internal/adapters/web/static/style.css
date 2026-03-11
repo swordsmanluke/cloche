@@ -438,6 +438,9 @@ details pre {
     border-bottom: 1px solid var(--border);
     margin-bottom: 1rem;
 }
+.tab-bar:empty {
+    display: none;
+}
 
 .tab-btn {
     padding: 0.4rem 1rem;

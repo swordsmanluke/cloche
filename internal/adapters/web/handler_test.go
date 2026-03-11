@@ -949,6 +949,107 @@ func TestAPIStepContent_FileRef(t *testing.T) {
 	assert.Equal(t, "Build the feature.", w.Body.String())
 }
 
+func TestAPIWorkflows_IncludesHostWorkflows(t *testing.T) {
+	h, store := setupHandler(t)
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
+
+	// Container workflow
+	containerWf := `workflow "develop" {
+    step implement {
+        prompt = "Build it"
+        results = [success, fail]
+    }
+    implement:success -> done
+    implement:fail -> abort
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"), []byte(containerWf), 0o644))
+
+	// Host workflow
+	hostWf := `workflow "main" {
+    step prepare {
+        run = "echo prepare"
+        results = [ready]
+    }
+    step build {
+        workflow_name = "develop"
+        results = [success, fail]
+    }
+    prepare:ready -> build
+    build:success -> done
+    build:fail -> abort
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "host.cloche"), []byte(hostWf), 0o644))
+
+	seedRunWithProject(t, store, "hw-1", "develop", domain.RunStateRunning, dir)
+
+	req := httptest.NewRequest("GET", "/api/projects/"+filepath.Base(dir)+"/workflows", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var workflows []struct {
+		Name     string `json:"name"`
+		Location string `json:"location"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &workflows))
+
+	// Should have both container and host workflows
+	assert.Len(t, workflows, 2)
+
+	var locations = map[string]string{}
+	for _, wf := range workflows {
+		locations[wf.Name] = wf.Location
+	}
+	assert.Equal(t, "container", locations["develop"])
+	assert.Equal(t, "host", locations["main"])
+}
+
+func TestAPIStepContent_HostWorkflow(t *testing.T) {
+	h, store := setupHandler(t)
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
+
+	hostWf := `workflow "main" {
+    step prepare {
+        run = "echo hello"
+        results = [ready]
+    }
+    step build {
+        workflow_name = "develop"
+        results = [success, fail]
+    }
+    prepare:ready -> build
+    build:success -> done
+    build:fail -> abort
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "host.cloche"), []byte(hostWf), 0o644))
+
+	seedRunWithProject(t, store, "hw-2", "main", domain.RunStateRunning, dir)
+
+	// Test script step content
+	req := httptest.NewRequest("GET", "/api/projects/"+filepath.Base(dir)+"/workflows/main/steps/prepare/content", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "echo hello", w.Body.String())
+
+	// Test workflow_name step content
+	req2 := httptest.NewRequest("GET", "/api/projects/"+filepath.Base(dir)+"/workflows/main/steps/build/content", nil)
+	w2 := httptest.NewRecorder()
+	h.ServeHTTP(w2, req2)
+
+	assert.Equal(t, http.StatusOK, w2.Code)
+	assert.Equal(t, "Dispatches workflow: develop", w2.Body.String())
+}
+
 func TestAPIStopRun_Success(t *testing.T) {
 	h, store, mgr := setupHandlerWithContainerManager(t)
 
