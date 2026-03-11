@@ -1286,6 +1286,14 @@ func (h *Handler) handleAPIStepContent(w http.ResponseWriter, r *http.Request) {
 	}
 	if run := step.Config["run"]; run != "" {
 		content, _ := resolveFileRef(run, dir)
+		// If resolveFileRef returned the command as-is (not a file() ref),
+		// try to find a script file referenced in the command and read it.
+		if content == run {
+			if scriptContent := readScriptFromCommand(run, dir); scriptContent != "" {
+				w.Write([]byte(scriptContent))
+				return
+			}
+		}
 		w.Write([]byte(content))
 		return
 	}
@@ -1312,6 +1320,32 @@ func resolveFileRef(value, baseDir string) (string, error) {
 		return string(data), nil
 	}
 	return value, nil
+}
+
+// readScriptFromCommand tries to find a script file referenced in a run command.
+// For commands like "bash .cloche/scripts/setup.sh arg1", it extracts the file
+// path and reads its contents. Returns empty string if no script file is found.
+func readScriptFromCommand(command, baseDir string) string {
+	fields := strings.Fields(command)
+	for _, field := range fields {
+		// Skip flags (e.g. -x, --verbose)
+		if strings.HasPrefix(field, "-") {
+			continue
+		}
+		// Skip shell redirections and pipes
+		if field == "2>&1" || field == ">" || field == ">>" || field == "|" {
+			continue
+		}
+		absPath := filepath.Join(baseDir, field)
+		info, err := os.Stat(absPath)
+		if err == nil && !info.IsDir() {
+			data, err := os.ReadFile(absPath)
+			if err == nil {
+				return string(data)
+			}
+		}
+	}
+	return ""
 }
 
 func stateColor(state domain.RunState) string {

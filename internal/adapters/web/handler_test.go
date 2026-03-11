@@ -1050,6 +1050,63 @@ func TestAPIStepContent_HostWorkflow(t *testing.T) {
 	assert.Equal(t, "Dispatches workflow: develop", w2.Body.String())
 }
 
+func TestAPIStepContent_ScriptFileFromCommand(t *testing.T) {
+	h, store := setupHandler(t)
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "scripts"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "scripts", "setup.sh"), []byte("#!/bin/bash\necho setup"), 0o644))
+
+	hostWf := `workflow "main" {
+    step setup {
+        run = "bash .cloche/scripts/setup.sh"
+        results = [success, fail]
+    }
+    setup:success -> done
+    setup:fail -> abort
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "host.cloche"), []byte(hostWf), 0o644))
+
+	seedRunWithProject(t, store, "sf-1", "main", domain.RunStateRunning, dir)
+
+	// Script step should return the script file contents, not the command
+	req := httptest.NewRequest("GET", "/api/projects/"+filepath.Base(dir)+"/workflows/main/steps/setup/content", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "#!/bin/bash\necho setup", w.Body.String())
+}
+
+func TestAPIStepContent_InlineCommand(t *testing.T) {
+	h, store := setupHandler(t)
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
+
+	hostWf := `workflow "main" {
+    step test {
+        run = "go test ./... 2>&1"
+        results = [success, fail]
+    }
+    test:success -> done
+    test:fail -> abort
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "host.cloche"), []byte(hostWf), 0o644))
+
+	seedRunWithProject(t, store, "ic-1", "main", domain.RunStateRunning, dir)
+
+	// Inline command with no script file should return the command itself
+	req := httptest.NewRequest("GET", "/api/projects/"+filepath.Base(dir)+"/workflows/main/steps/test/content", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "go test ./... 2>&1", w.Body.String())
+}
+
 func TestAPIStopRun_Success(t *testing.T) {
 	h, store, mgr := setupHandlerWithContainerManager(t)
 
