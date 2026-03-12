@@ -59,6 +59,8 @@ message StreamLogsRequest {
   string run_id = 1;
   string step_name = 2;
   string log_type = 3;
+  bool follow = 4;  // When true, stream existing logs then continue tailing new lines (like tail -f).
+                     // Passed via gRPC metadata header "x-cloche-follow" until proto is regenerated.
 }
 
 message LogEntry {

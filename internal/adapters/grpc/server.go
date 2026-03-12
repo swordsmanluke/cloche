@@ -24,6 +24,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/protocol"
 	rpcgrpc "google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 type ClocheServer struct {
@@ -466,6 +467,9 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.ServerStreamingServer[pb.LogEntry]) error {
 	ctx := stream.Context()
 
+	// Check for follow mode via gRPC metadata.
+	follow := followFromContext(ctx)
+
 	// Verify run exists
 	run, err := s.store.GetRun(ctx, req.RunId)
 	if err != nil {
@@ -477,14 +481,16 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 		return s.streamFilteredLogs(ctx, req, run, stream)
 	}
 
-	// For active runs, stream live from the broadcaster so callers can tail output.
-	if (run.State == domain.RunStateRunning || run.State == domain.RunStatePending) && s.logBroadcast != nil {
-		return s.streamLiveLogs(req.RunId, stream)
+	isActive := run.State == domain.RunStateRunning || run.State == domain.RunStatePending
+
+	// With -f on an active run: send existing logs then tail live output.
+	if follow && isActive && s.logBroadcast != nil {
+		return s.streamFollowLogs(req.RunId, run, stream)
 	}
 
-	if s.captures == nil {
-		return fmt.Errorf("captures store not configured")
-	}
+	// Without -f on an active run: snapshot existing logs and return.
+	// (Legacy callers that relied on implicit live streaming should use -f.)
+	// With -f on a completed run: same as without -f — no new lines will arrive.
 
 	// Check for full.log first — if it exists, serve it as the unified log
 	fullLogPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", "full.log")
@@ -495,8 +501,7 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 		}); err != nil {
 			return err
 		}
-		// Still send run completion entry
-		if run.State != domain.RunStateRunning && run.State != domain.RunStatePending {
+		if !isActive {
 			if err := stream.Send(&pb.LogEntry{
 				Type:      "run_completed",
 				Result:    string(run.State),
@@ -507,6 +512,10 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 			}
 		}
 		return nil
+	}
+
+	if s.captures == nil {
+		return fmt.Errorf("captures store not configured")
 	}
 
 	// Fall back to capture-based streaming
@@ -550,7 +559,7 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 	}
 
 	// Send run completion entry
-	if run.State != domain.RunStateRunning && run.State != domain.RunStatePending {
+	if !isActive {
 		if err := stream.Send(&pb.LogEntry{
 			Type:      "run_completed",
 			Result:    string(run.State),
@@ -562,6 +571,66 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 	}
 
 	return nil
+}
+
+// followFromContext checks for the follow flag in gRPC metadata.
+func followFromContext(ctx context.Context) bool {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return false
+	}
+	vals := md.Get("x-cloche-follow")
+	return len(vals) > 0 && vals[0] == "true"
+}
+
+// streamFollowLogs sends existing log content then tails live output from the
+// broadcaster. It combines snapshot + live streaming (like tail -f).
+func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rpcgrpc.ServerStreamingServer[pb.LogEntry]) error {
+	// Subscribe first so we don't miss lines written between read and subscribe.
+	sub := s.logBroadcast.Subscribe(runID)
+	defer s.logBroadcast.Unsubscribe(runID, sub)
+
+	// Send existing full.log content if available.
+	fullLogPath := filepath.Join(run.ProjectDir, ".cloche", runID, "output", "full.log")
+	if data, err := os.ReadFile(fullLogPath); err == nil && len(data) > 0 {
+		if err := stream.Send(&pb.LogEntry{
+			Type:    "full_log",
+			Message: string(data),
+		}); err != nil {
+			return err
+		}
+	}
+
+	// Now tail live output from the broadcaster.
+	ctx := stream.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case line, ok := <-sub.C:
+			if !ok {
+				// Run completed — send terminal entry.
+				r, err := s.store.GetRun(context.Background(), runID)
+				if err == nil && r.State != domain.RunStateRunning && r.State != domain.RunStatePending {
+					_ = stream.Send(&pb.LogEntry{
+						Type:      "run_completed",
+						Result:    string(r.State),
+						Timestamp: r.CompletedAt.String(),
+						Message:   r.ErrorMessage,
+					})
+				}
+				return nil
+			}
+			if err := stream.Send(&pb.LogEntry{
+				Type:      "log",
+				StepName:  line.StepName,
+				Message:   line.Content,
+				Timestamp: line.Timestamp,
+			}); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 // streamFilteredLogs serves log content filtered by step name and/or log type.

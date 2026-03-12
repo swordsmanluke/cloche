@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -19,6 +18,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/runcontext"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 func main() {
@@ -262,7 +262,7 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 
 func cmdLogs(client pb.ClocheServiceClient, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "usage: cloche logs <run-id> [--step <name>] [--type <full|script|llm>] [--follow]\n")
+		fmt.Fprintf(os.Stderr, "usage: cloche logs <run-id> [--step <name>] [--type <full|script|llm>] [-f]\n")
 		os.Exit(1)
 	}
 
@@ -287,13 +287,14 @@ func cmdLogs(client pb.ClocheServiceClient, args []string) {
 		}
 	}
 
+	// Use background context — log output can be large and follow mode blocks.
+	ctx := context.Background()
 	if follow {
-		cmdLogsFollow(runID)
-		return
+		md := metadata.Pairs("x-cloche-follow", "true")
+		ctx = metadata.NewOutgoingContext(ctx, md)
 	}
 
-	// Use background context — log output can be large
-	stream, err := client.StreamLogs(context.Background(), &pb.StreamLogsRequest{
+	stream, err := client.StreamLogs(ctx, &pb.StreamLogsRequest{
 		RunId:    runID,
 		StepName: stepFilter,
 		LogType:  typeFilter,
@@ -342,68 +343,6 @@ func cmdLogs(client pb.ClocheServiceClient, args []string) {
 			if entry.Message != "" {
 				fmt.Print(string(logstream.ParseClaudeStream([]byte(entry.Message))))
 			}
-		}
-	}
-}
-
-func cmdLogsFollow(runID string) {
-	// Determine HTTP address from env
-	httpAddr := os.Getenv("CLOCHE_HTTP")
-	if httpAddr == "" {
-		httpAddr = "localhost:8080"
-	}
-	// Strip protocol prefix if present
-	httpAddr = strings.TrimPrefix(httpAddr, "http://")
-
-	sseURL := fmt.Sprintf("http://%s/api/runs/%s/stream", httpAddr, runID)
-	req, err := http.NewRequest("GET", sseURL, nil)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-	req.Header.Set("Accept", "text/event-stream")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error connecting to SSE stream: %v\n", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
-		fmt.Fprintf(os.Stderr, "error: HTTP %d: %s\n", resp.StatusCode, strings.TrimSpace(string(body)))
-		os.Exit(1)
-	}
-
-	scanner := bufio.NewScanner(resp.Body)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "event: done") {
-			break
-		}
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-		data := strings.TrimPrefix(line, "data: ")
-
-		var entry struct {
-			Timestamp string `json:"timestamp"`
-			Type      string `json:"type"`
-			Content   string `json:"content"`
-		}
-		if err := json.Unmarshal([]byte(data), &entry); err != nil {
-			continue
-		}
-
-		// Color-code by type
-		switch entry.Type {
-		case "status":
-			fmt.Printf("\033[34m[%s] [%s] %s\033[0m\n", entry.Timestamp, entry.Type, entry.Content)
-		case "llm":
-			fmt.Printf("\033[32m[%s] [%s] %s\033[0m\n", entry.Timestamp, entry.Type, entry.Content)
-		default:
-			fmt.Printf("[%s] [%s] %s\n", entry.Timestamp, entry.Type, entry.Content)
 		}
 	}
 }

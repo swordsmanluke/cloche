@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	grpclib "google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 func TestServer_ListRuns_Empty(t *testing.T) {
@@ -1208,9 +1209,10 @@ func TestServer_StreamLogs_LiveStreaming(t *testing.T) {
 	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
 	srv.SetLogBroadcaster(broadcaster)
 
-	// Use a cancellable context for the mock stream so we can abort if needed.
+	// Use a cancellable context with follow metadata for the mock stream.
 	streamCtx, streamCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer streamCancel()
+	streamCtx = metadata.NewIncomingContext(streamCtx, metadata.Pairs("x-cloche-follow", "true"))
 	mock := &mockLogStream{ctx: streamCtx}
 
 	// Publish log lines in a goroutine, then finish the broadcast.
@@ -1288,6 +1290,7 @@ func TestServer_StreamLogs_LiveStreamingClientDisconnect(t *testing.T) {
 
 	// Cancel the stream context immediately to simulate client disconnect.
 	streamCtx, streamCancel := context.WithCancel(ctx)
+	streamCtx = metadata.NewIncomingContext(streamCtx, metadata.Pairs("x-cloche-follow", "true"))
 	mock := &mockLogStream{ctx: streamCtx}
 
 	// Ensure broadcaster has an active entry for the run.
@@ -1300,5 +1303,113 @@ func TestServer_StreamLogs_LiveStreamingClientDisconnect(t *testing.T) {
 
 	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "live-cancel-1"}, mock)
 	assert.ErrorIs(t, err, context.Canceled)
+}
+
+// TestServer_StreamLogs_NoFollowActiveRun verifies that without -f, logs for
+// an active run return existing content and exit (snapshot mode).
+func TestServer_StreamLogs_NoFollowActiveRun(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	dir := t.TempDir()
+	run := domain.NewRun("snapshot-test-1", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.ContainerID = "fake"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Write some existing log content.
+	outputDir := filepath.Join(dir, ".cloche", "snapshot-test-1", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "full.log"),
+		[]byte("[2026-03-10T10:00:00Z] [status] step_started: build\n"), 0644))
+
+	broadcaster := logstream.NewBroadcaster()
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+	srv.SetLogBroadcaster(broadcaster)
+
+	// Ensure broadcaster has an active entry so the run appears "live".
+	broadcaster.Subscribe("snapshot-test-1")
+
+	// No follow metadata — should return snapshot and exit immediately.
+	mock := &mockLogStream{ctx: context.Background()}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "snapshot-test-1"}, mock)
+	require.NoError(t, err)
+
+	// Should have received the full_log entry but NOT blocked waiting for live lines.
+	require.Len(t, mock.entries, 1, "should return exactly one entry (full_log snapshot)")
+	assert.Equal(t, "full_log", mock.entries[0].Type)
+	assert.Contains(t, mock.entries[0].Message, "step_started: build")
+}
+
+// TestServer_StreamLogs_FollowWithExistingLogs verifies that -f sends existing
+// full.log content first, then streams live output.
+func TestServer_StreamLogs_FollowWithExistingLogs(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	dir := t.TempDir()
+	run := domain.NewRun("follow-existing-1", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.ContainerID = "fake"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Write some existing log content.
+	outputDir := filepath.Join(dir, ".cloche", "follow-existing-1", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "full.log"),
+		[]byte("[2026-03-10T09:00:00Z] [status] existing log line\n"), 0644))
+
+	broadcaster := logstream.NewBroadcaster()
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+	srv.SetLogBroadcaster(broadcaster)
+
+	streamCtx, streamCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer streamCancel()
+	streamCtx = metadata.NewIncomingContext(streamCtx, metadata.Pairs("x-cloche-follow", "true"))
+	mock := &mockLogStream{ctx: streamCtx}
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		broadcaster.Publish("follow-existing-1", logstream.LogLine{
+			Timestamp: "2026-03-10T10:00:00Z",
+			Type:      "llm",
+			Content:   "new live line",
+			StepName:  "build",
+		})
+		time.Sleep(50 * time.Millisecond)
+
+		r, _ := store.GetRun(ctx, "follow-existing-1")
+		r.Complete(domain.RunStateSucceeded)
+		_ = store.UpdateRun(ctx, r)
+		broadcaster.Finish("follow-existing-1")
+	}()
+
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "follow-existing-1"}, mock)
+	require.NoError(t, err)
+
+	// Should have: full_log (existing), log (live), run_completed.
+	var foundFullLog, foundLive, foundCompleted bool
+	for _, e := range mock.entries {
+		switch e.Type {
+		case "full_log":
+			foundFullLog = true
+			assert.Contains(t, e.Message, "existing log line")
+		case "log":
+			foundLive = true
+			assert.Equal(t, "new live line", e.Message)
+		case "run_completed":
+			foundCompleted = true
+			assert.Equal(t, "succeeded", e.Result)
+		}
+	}
+	assert.True(t, foundFullLog, "should send existing full.log first")
+	assert.True(t, foundLive, "should stream live lines after existing logs")
+	assert.True(t, foundCompleted, "should send run_completed when done")
 }
 
