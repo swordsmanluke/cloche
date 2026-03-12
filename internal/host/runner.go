@@ -20,10 +20,11 @@ var _ engine.StatusHandler = (*hostStatusHandler)(nil)
 
 // Runner executes a host workflow by parsing host.cloche and walking the step graph.
 type Runner struct {
-	Dispatcher RunDispatcher
-	Store      ports.RunStore
-	TaskID     string   // optional task ID assigned by the daemon loop
-	ExtraEnv   []string // additional KEY=VALUE env vars passed to all steps
+	Dispatcher    RunDispatcher
+	Store         ports.RunStore
+	TaskID        string   // optional task ID assigned by the daemon loop
+	ExtraEnv      []string // additional KEY=VALUE env vars passed to all steps
+	SkipRunRecord bool     // when true, don't persist a run record to the store
 }
 
 // RunResult contains the outcome of a host workflow execution.
@@ -80,14 +81,18 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 	log.Printf("host workflow: starting %q for project %s (run %s)", wf.Name, projectDir, orchRunID)
 
 	// Persist the host run in the store so it appears in list/status/logs.
-	hostRun := domain.NewRun(orchRunID, wf.Name)
-	hostRun.ProjectDir = projectDir
-	hostRun.IsHost = true
-	if err := r.Store.CreateRun(ctx, hostRun); err != nil {
-		return nil, fmt.Errorf("creating host run record: %w", err)
+	// When SkipRunRecord is set (e.g. for list-tasks polling), skip creating
+	// the record to avoid cluttering the run history.
+	if !r.SkipRunRecord {
+		hostRun := domain.NewRun(orchRunID, wf.Name)
+		hostRun.ProjectDir = projectDir
+		hostRun.IsHost = true
+		if err := r.Store.CreateRun(ctx, hostRun); err != nil {
+			return nil, fmt.Errorf("creating host run record: %w", err)
+		}
+		hostRun.Start()
+		_ = r.Store.UpdateRun(ctx, hostRun)
 	}
-	hostRun.Start()
-	_ = r.Store.UpdateRun(ctx, hostRun)
 
 	executor := &Executor{
 		ProjectDir: projectDir,
@@ -128,15 +133,17 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 	}
 
 	// Persist final state.
-	hostRun, _ = r.Store.GetRun(ctx, orchRunID)
-	if hostRun != nil {
-		if runErr != nil {
-			hostRun.Fail(runErr.Error())
-		} else {
-			hostRun.Complete(result.State)
+	if !r.SkipRunRecord {
+		hostRun, _ := r.Store.GetRun(ctx, orchRunID)
+		if hostRun != nil {
+			if runErr != nil {
+				hostRun.Fail(runErr.Error())
+			} else {
+				hostRun.Complete(result.State)
+			}
+			hostRun.ActiveSteps = nil
+			_ = r.Store.UpdateRun(ctx, hostRun)
 		}
-		hostRun.ActiveSteps = nil
-		_ = r.Store.UpdateRun(ctx, hostRun)
 	}
 
 	if runErr != nil {
@@ -149,10 +156,10 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 }
 
 // RunListTasksWorkflow executes the list-tasks workflow and returns the
-// discovered tasks. When the workflow succeeds but finds no tasks, the run
-// record is deleted from the store to avoid cluttering the run history with
-// empty list-tasks entries.
+// discovered tasks. No run record is created for list-tasks executions since
+// they are polling operations that would otherwise clutter the run history.
 func RunListTasksWorkflow(ctx context.Context, runner *Runner, projectDir string) ([]Task, *RunResult, error) {
+	runner.SkipRunRecord = true
 	result, err := runner.RunNamed(ctx, projectDir, "list-tasks")
 	if err != nil {
 		return nil, nil, err
@@ -163,11 +170,6 @@ func RunListTasksWorkflow(ctx context.Context, runner *Runner, projectDir string
 	tasks, err := ReadListTasksOutput(result.OutputDir)
 	if err != nil {
 		return nil, result, err
-	}
-	// When list-tasks returns no tasks, remove the run record to keep the
-	// run history focused on runs where actual work was attempted.
-	if len(tasks) == 0 && result.RunID != "" {
-		_ = runner.Store.DeleteRun(ctx, result.RunID)
 	}
 	return tasks, result, nil
 }

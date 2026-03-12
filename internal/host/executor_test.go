@@ -1702,7 +1702,7 @@ func TestRunResult_HasOutputDir(t *testing.T) {
 
 // --- RunListTasksWorkflow tests ---
 
-func TestRunListTasksWorkflow_EmptyResult_DeletesRun(t *testing.T) {
+func TestRunListTasksWorkflow_EmptyResult_NoRunRecord(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	clocheDir := filepath.Join(tmpDir, ".cloche")
@@ -1730,12 +1730,11 @@ func TestRunListTasksWorkflow_EmptyResult_DeletesRun(t *testing.T) {
 	assert.Empty(t, tasks)
 	assert.NotNil(t, result)
 
-	// The run record should have been deleted since no tasks were found.
-	_, err = store.GetRun(context.Background(), result.RunID)
-	assert.ErrorIs(t, err, os.ErrNotExist, "run record should be deleted when list-tasks returns no tasks")
+	// No run record should have been created for list-tasks polling.
+	assert.Empty(t, store.runs, "no run record should be created for list-tasks")
 }
 
-func TestRunListTasksWorkflow_WithTasks_KeepsRun(t *testing.T) {
+func TestRunListTasksWorkflow_WithTasks_NoRunRecord(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	clocheDir := filepath.Join(tmpDir, ".cloche")
@@ -1763,8 +1762,7 @@ func TestRunListTasksWorkflow_WithTasks_KeepsRun(t *testing.T) {
 	require.Len(t, tasks, 1)
 	assert.Equal(t, "task-1", tasks[0].ID)
 
-	// The run record should be preserved since tasks were found.
-	run, err := store.GetRun(context.Background(), result.RunID)
-	require.NoError(t, err)
-	assert.Equal(t, domain.RunStateSucceeded, run.State)
+	// No run record should be created for list-tasks — it's a polling operation.
+	assert.Empty(t, store.runs, "no run record should be created for list-tasks")
+	assert.NotEmpty(t, result.RunID, "RunID should still be set for output directory resolution")
 }
