@@ -8,7 +8,6 @@ All installation methods require:
 
 - **Docker** — Cloche runs workflows in containers
 - **Git** — result extraction uses git worktrees
-- **`ANTHROPIC_API_KEY`** — for agent steps using Claude Code
 
 ## Build from Source
 
@@ -97,30 +96,6 @@ brew install cloche
 
 This will install all three binaries. You will still need the Docker image —
 the formula will print post-install instructions for building or pulling it.
-
-## Docker-Only Usage (Planned)
-
-> **Note:** A dedicated `Dockerfile.daemon` for running the daemon in Docker
-> does not exist yet. This section describes a planned future option.
-
-Running the Cloche daemon inside Docker would avoid any host installation
-beyond Docker itself. This would be useful for CI environments or trying Cloche
-without installing Go.
-
-Once available, usage would look like:
-
-```
-docker run -d \
-  --name cloched \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /tmp/cloche.sock:/tmp/cloche.sock \
-  -e ANTHROPIC_API_KEY \
-  cloche-daemon
-```
-
-Docker-in-Docker requires mounting the Docker socket. The CLI (`cloche`)
-still needs to be available on the host (or in the same container) to
-communicate with the daemon over the Unix socket.
 
 ## Verifying the Installation
 

@@ -77,37 +77,36 @@ parse error.
 ## DSL Syntax
 
 ```
-workflow "implement-feature" {
-  step code {
+workflow "develop" {
+  container {
+    image = "my-project:latest"
+    agent_command = "claude"
+  }
+
+  step implement {
     prompt = file(".cloche/prompts/implement.md")
-    container {
-      image = "cloche/agent:latest"
-      network_allow = ["docs.python.org"]
-    }
-    results = [success, fail, retry_with_feedback]
+    results = [success, fail]
   }
 
-  step check {
+  step test {
     run = "make test && make lint"
-    results = [pass, fail]
+    results = [success, fail]
   }
 
-  step review {
-    prompt = file(".cloche/prompts/review.md")
-    input = step.code.output
-    results = [approved, changes_requested]
+  step fix {
+    prompt = file(".cloche/prompts/fix.md")
+    max_attempts = "3"
+    results = [success, fail, give-up]
   }
 
   // Wiring: step:result -> next_step [optional output mappings]
-  code:success -> check
-  code:fail -> abort
-  code:retry_with_feedback -> code
-
-  check:pass -> review
-  check:fail -> code:retry_with_feedback
-
-  review:approved -> done
-  review:changes_requested -> code
+  implement:success -> test
+  implement:fail    -> abort
+  test:success      -> done
+  test:fail         -> fix
+  fix:success       -> test
+  fix:fail          -> abort
+  fix:give-up       -> abort
 }
 ```
 
@@ -160,11 +159,29 @@ If two wires targeting the same step both map the same env var key, validation
 returns an error (the mapping would be ambiguous). The same key may be used on
 wires to different steps without conflict.
 
-## The `host {}` Block
+## Workflow-Level Configuration Blocks
 
-Host workflows support a `host {}` block at the workflow level to configure agent
-defaults for agent steps running on the host machine. Keys are stored with a `host.`
-prefix, analogous to the `container {}` block for container workflows.
+Workflows support a configuration block at the workflow level to set defaults for all
+steps. The block name depends on the workflow location:
+
+**`container {}`** — For container workflows. Sets container image, agent command, and
+network allowlist.
+
+```
+workflow "develop" {
+  container {
+    image = "my-project:latest"
+    agent_command = "claude"
+    agent_args = "-p --dangerously-skip-permissions"
+  }
+  ...
+}
+```
+
+Supported keys: `image`, `agent_command`, `agent_args`, `network_allow`.
+
+**`host {}`** — For host workflows (`host.cloche`). Sets agent defaults for agent steps
+running on the host machine.
 
 ```
 workflow "main" {
@@ -175,11 +192,11 @@ workflow "main" {
 }
 ```
 
-Supported keys: `agent_command`, `agent_args`. Step-level `agent_command` and
-`agent_args` override the workflow-level `host {}` defaults. The agent command
-resolution order for host agent steps is the same as for container agent steps:
-step-level > workflow-level `host {}` > `CLOCHE_AGENT_COMMAND` env var > default
-`claude`.
+Supported keys: `agent_command`, `agent_args`.
+
+Step-level `agent_command` and `agent_args` override workflow-level defaults. The
+resolution order is: step-level > workflow-level block > `CLOCHE_AGENT_COMMAND` env
+var > default `claude`.
 
 ## Host Workflow Example
 
