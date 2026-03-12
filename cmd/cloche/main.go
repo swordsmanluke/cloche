@@ -101,7 +101,7 @@ Commands:
   logs <run-id> [--step <name>] [--type <full|script|llm>] [--follow]
                                              Show logs for a run
   poll <run-id>                              Wait for a run to finish
-  list [--all]                                List runs (last hour by default)
+  list [--all]                                List runs for current project (--all for all projects)
   stop <run-id>                              Stop a running workflow
   delete <container-or-run-id>               Delete a retained container
   tasks [--project <dir>]                     Show task pipeline and assignment state
@@ -222,7 +222,17 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 		}
 	}
 
-	resp, err := client.ListRuns(ctx, &pb.ListRunsRequest{All: all})
+	req := &pb.ListRunsRequest{}
+	if all {
+		// --all: show all runs across all projects (no time limit)
+		req.All = true
+	} else {
+		// Default: filter to current project
+		cwd, _ := os.Getwd()
+		req.ProjectDir = cwd
+	}
+
+	resp, err := client.ListRuns(ctx, req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)

@@ -34,6 +34,43 @@ func TestServer_ListRuns_Empty(t *testing.T) {
 	assert.Empty(t, resp.Runs)
 }
 
+func TestServer_ListRuns_FilterByProject(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create runs for two different projects
+	runA := domain.NewRun("run-proj-a", "wf")
+	runA.ProjectDir = "/home/user/project-a"
+	require.NoError(t, store.CreateRun(ctx, runA))
+
+	runB := domain.NewRun("run-proj-b", "wf")
+	runB.ProjectDir = "/home/user/project-b"
+	require.NoError(t, store.CreateRun(ctx, runB))
+
+	srv := server.NewClocheServer(store, nil)
+
+	// Filter by project-a: should only return runA
+	resp, err := srv.ListRuns(ctx, &pb.ListRunsRequest{ProjectDir: "/home/user/project-a"})
+	require.NoError(t, err)
+	require.Len(t, resp.Runs, 1)
+	assert.Equal(t, "run-proj-a", resp.Runs[0].RunId)
+	assert.Equal(t, "/home/user/project-a", resp.Runs[0].ProjectDir)
+
+	// Filter by project-b: should only return runB
+	resp, err = srv.ListRuns(ctx, &pb.ListRunsRequest{ProjectDir: "/home/user/project-b"})
+	require.NoError(t, err)
+	require.Len(t, resp.Runs, 1)
+	assert.Equal(t, "run-proj-b", resp.Runs[0].RunId)
+
+	// No filter (--all): should return both
+	resp, err = srv.ListRuns(ctx, &pb.ListRunsRequest{All: true})
+	require.NoError(t, err)
+	assert.Len(t, resp.Runs, 2)
+}
+
 func TestServer_GetStatus_NotFound(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

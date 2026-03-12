@@ -469,7 +469,7 @@ Shows run title, type (`host`/`container`), state, active steps, and per-step re
 cloche list [--all]
 ```
 
-Lists runs from the last hour (or all with `--all`).
+Lists runs for the current project directory. Pass `--all` to show runs across all projects.
 
 ### `cloche logs`
 
