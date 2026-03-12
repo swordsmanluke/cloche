@@ -139,6 +139,50 @@ func TestGenericAdapter_MarkerOverridesFailExitCode(t *testing.T) {
 	assert.Equal(t, "bug_fix", result)
 }
 
+func TestGenericAdapter_PassesRunIDEnvVar(t *testing.T) {
+	dir := t.TempDir()
+	adapter := generic.New()
+	adapter.RunID = "test-run-42"
+
+	step := &domain.Step{
+		Name:    "check",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo $CLOCHE_RUN_ID"},
+	}
+
+	result, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	logPath := filepath.Join(dir, ".cloche", "output", "check.log")
+	content, err := os.ReadFile(logPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "test-run-42")
+}
+
+func TestGenericAdapter_PassesProjectDirEnvVar(t *testing.T) {
+	dir := t.TempDir()
+	adapter := generic.New()
+	adapter.RunID = "test-run-42"
+
+	step := &domain.Step{
+		Name:    "check",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo $CLOCHE_PROJECT_DIR"},
+	}
+
+	result, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	logPath := filepath.Join(dir, ".cloche", "output", "check.log")
+	content, err := os.ReadFile(logPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), dir)
+}
+
 func TestGenericAdapter_StreamsOutputViaStatusWriter(t *testing.T) {
 	dir := t.TempDir()
 

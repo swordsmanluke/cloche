@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # merge-to-main.sh — Rebase a cloche run branch onto main and fast-forward.
-# Expects CLOCHE_PREV_OUTPUT to point to a file containing the run ID.
+# Reads the child run ID from run context (stored by the executor via runcontext.Set).
 # On conflict, prefers main's version. On failure, preserves the branch.
 set -euo pipefail
 
-if [ -z "${CLOCHE_PREV_OUTPUT:-}" ] || [ ! -f "$CLOCHE_PREV_OUTPUT" ]; then
-  echo "error: CLOCHE_PREV_OUTPUT not set or file missing" >&2
+RUN_ID=$(cloche get child_run_id)
+
+if [ -z "$RUN_ID" ]; then
+  echo "error: child_run_id not found in run context" >&2
   exit 1
 fi
 
-RUN_ID=$(cat "$CLOCHE_PREV_OUTPUT" | tr -d '[:space:]')
 BRANCH="cloche/${RUN_ID}"
 PROJECT_DIR="${CLOCHE_PROJECT_DIR:-.}"
 

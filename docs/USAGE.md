@@ -359,6 +359,7 @@ what cleanup to perform.
 | Variable | Description |
 |----------|-------------|
 | `CLOCHE_RUN_ID` | The run ID for this workflow execution. |
+| `CLOCHE_PROJECT_DIR` | Working directory (set for script steps so `cloche get`/`cloche set` work). |
 | `ANTHROPIC_API_KEY` | Passed through from the host if set. |
 | `CLOCHE_AGENT_COMMAND` | Overrides the default agent command inside the container. |
 
@@ -528,12 +529,13 @@ the current working directory. Exits 1 if the key is not found.
 ### `cloche set`
 
 ```
-cloche set <key> <value>
+cloche set <key> <value|->
 ```
 
 Set a value in the run context store (`.cloche/<run-id>/context.json`). Requires
 the `CLOCHE_RUN_ID` environment variable. Uses `CLOCHE_PROJECT_DIR` if set, otherwise
 the current working directory. Creates the file and directories if they don't exist.
+Pass `-` as the value to read from stdin (trailing newlines are trimmed).
 
 ### `cloche tasks`
 

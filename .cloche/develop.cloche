@@ -5,7 +5,7 @@ workflow "develop" {
   }
 
   step test {
-    run = "go test ./... 2>&1"
+    run = "go test ./... 2>&1; rc=$?; cloche set test_exit_code \"$rc\" 2>/dev/null; exit $rc"
     results = [success, fail]
   }
 

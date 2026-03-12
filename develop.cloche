@@ -5,17 +5,17 @@ workflow "develop" {
   }
 
   step test {
-    run = "go test ./... 2>&1"
+    run = "go test ./... 2>&1; rc=$?; cloche set test_exit_code \"$rc\" 2>/dev/null; exit $rc"
     results = [success, fail]
   }
 
   step vet {
-    run = "go vet ./... 2>&1"
+    run = "go vet ./... 2>&1; rc=$?; cloche set vet_exit_code \"$rc\" 2>/dev/null; exit $rc"
     results = [success, fail]
   }
 
   step build {
-    run = "go build ./cmd/cloche && go build ./cmd/cloched && go build ./cmd/cloche-agent 2>&1"
+    run = "go build ./cmd/cloche && go build ./cmd/cloched && go build ./cmd/cloche-agent 2>&1; rc=$?; cloche set build_exit_code \"$rc\" 2>/dev/null; exit $rc"
     results = [success, fail]
   }
 

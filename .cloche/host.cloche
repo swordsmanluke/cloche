@@ -33,17 +33,9 @@ workflow "main" {
     results = [success, fail]
   }
 
-  ready-tasks:success -> claim-task [
-    CLOCHE_TASK_ID    = output[0].id,
-    CLOCHE_TASK_TITLE = output[0].title,
-    CLOCHE_TASK_BODY  = output[0].description
-  ]
+  ready-tasks:success    -> claim-task
   ready-tasks:fail       -> abort
-  claim-task:success     -> prepare-prompt [
-    CLOCHE_TASK_ID    = output[0].id,
-    CLOCHE_TASK_TITLE = output[0].title,
-    CLOCHE_TASK_BODY  = output[0].description
-  ]
+  claim-task:success     -> prepare-prompt
   claim-task:fail        -> abort
   prepare-prompt:success -> develop
   prepare-prompt:fail    -> abort

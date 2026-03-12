@@ -11,6 +11,7 @@ import (
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/engine"
+	"github.com/cloche-dev/cloche/internal/runcontext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -213,6 +214,47 @@ func TestExecutor_WorkflowStep_Failure(t *testing.T) {
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
 	assert.Equal(t, "fail", result)
+}
+
+func TestExecutor_WorkflowStep_StoresChildRunID(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+	_ = os.MkdirAll(outputDir, 0755)
+
+	store := &fakeStore{runs: map[string]*domain.Run{
+		"develop-child-run": {
+			ID:    "develop-child-run",
+			State: domain.RunStateSucceeded,
+		},
+	}}
+
+	dispatcher := &fakeDispatcher{runID: "develop-child-run"}
+	hostRunID := "main-host-run"
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		Dispatcher: dispatcher,
+		Store:      store,
+		OutputDir:  outputDir,
+		HostRunID:  hostRunID,
+	}
+
+	step := &domain.Step{
+		Name:    "develop",
+		Type:    domain.StepTypeWorkflow,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"workflow_name": "develop"},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result)
+
+	// Verify child_run_id was stored in run context
+	val, ok, err := runcontext.Get(tmpDir, hostRunID, "child_run_id")
+	require.NoError(t, err)
+	assert.True(t, ok, "child_run_id should be stored in run context")
+	assert.Equal(t, "develop-child-run", val)
 }
 
 func TestExecutor_WorkflowStep_PassesPrompt(t *testing.T) {

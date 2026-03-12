@@ -14,6 +14,7 @@ import (
 
 type Adapter struct {
 	StatusWriter *protocol.StatusWriter // optional: streams live output lines
+	RunID        string                 // optional: passed as CLOCHE_RUN_ID to child processes
 }
 
 func New() *Adapter {
@@ -28,6 +29,14 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	cmdStr := step.Config["run"]
 	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
 	cmd.Dir = workDir
+
+	// Pass run context env vars so script steps can use "cloche get/set"
+	if a.RunID != "" {
+		cmd.Env = append(os.Environ(),
+			"CLOCHE_RUN_ID="+a.RunID,
+			"CLOCHE_PROJECT_DIR="+workDir,
+		)
+	}
 
 	var output []byte
 	var err error

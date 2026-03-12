@@ -47,6 +47,7 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	statusWriter := protocol.NewStatusWriter(r.cfg.StatusOutput)
 	genericAdapter := generic.New()
+	genericAdapter.RunID = r.cfg.RunID
 	promptAdapter := prompt.New()
 	promptAdapter.RunID = r.cfg.RunID
 	promptAdapter.StatusWriter = statusWriter

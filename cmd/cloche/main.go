@@ -108,7 +108,7 @@ Commands:
   loop [--max <n>]                            Start orchestration loop (default max=1)
   loop stop                                  Stop orchestration loop
   get <key>                                  Get a value from the run context store
-  set <key> <value>                          Set a value in the run context store
+  set <key> <value|->                        Set a value in the run context store (- reads from stdin)
   shutdown                                   Shut down the daemon
 `)
 }
@@ -569,6 +569,7 @@ func cmdGet(args []string) {
 func cmdSet(args []string) {
 	if len(args) < 2 {
 		fmt.Fprintf(os.Stderr, "usage: cloche set <key> <value>\n")
+		fmt.Fprintf(os.Stderr, "       cloche set <key> -     (read value from stdin)\n")
 		os.Exit(1)
 	}
 
@@ -578,7 +579,17 @@ func cmdSet(args []string) {
 		os.Exit(1)
 	}
 
-	if err := runcontext.Set(projectDir, runID, args[0], args[1]); err != nil {
+	value := args[1]
+	if value == "-" {
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error reading stdin: %v\n", err)
+			os.Exit(1)
+		}
+		value = strings.TrimRight(string(data), "\n")
+	}
+
+	if err := runcontext.Set(projectDir, runID, args[0], value); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}

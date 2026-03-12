@@ -16,6 +16,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/protocol"
+	"github.com/cloche-dev/cloche/internal/runcontext"
 )
 
 // resolveOutputMappings finds all wires targeting stepName that have output mappings,
@@ -187,12 +188,15 @@ func (e *Executor) executeWorkflow(ctx context.Context, step *domain.Step) (stri
 
 	log.Printf("host executor: dispatched container workflow %q as run %s", workflowName, resp.RunId)
 
-	// Link child run to parent host run
+	// Link child run to parent host run and store in run context
 	if e.HostRunID != "" {
 		if childRun, err := e.Store.GetRun(ctx, resp.RunId); err == nil {
 			childRun.ParentRunID = e.HostRunID
 			_ = e.Store.UpdateRun(ctx, childRun)
 		}
+		// Store child run ID in context so downstream steps can retrieve it
+		// via "cloche get child_run_id"
+		_ = runcontext.Set(e.ProjectDir, e.HostRunID, "child_run_id", resp.RunId)
 	}
 
 	// Write run ID to step output so downstream steps (e.g. merge) can find it

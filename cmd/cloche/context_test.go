@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cloche-dev/cloche/internal/runcontext"
@@ -85,5 +86,44 @@ func TestCmdSet_WritesContextFile(t *testing.T) {
 	}
 	if len(data) == 0 {
 		t.Error("context.json is empty")
+	}
+}
+
+func TestCmdSet_StdinValue(t *testing.T) {
+	dir := t.TempDir()
+	runID := "test-run-stdin"
+
+	t.Setenv("CLOCHE_RUN_ID", runID)
+	t.Setenv("CLOCHE_PROJECT_DIR", dir)
+
+	// Swap stdin to read from a string
+	origStdin := os.Stdin
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("creating pipe: %v", err)
+	}
+	os.Stdin = r
+	defer func() { os.Stdin = origStdin }()
+
+	// Write multi-line content and close
+	content := "line one\nline two\n"
+	go func() {
+		w.WriteString(content)
+		w.Close()
+	}()
+
+	cmdSet([]string{"multiline_key", "-"})
+
+	// Verify the value was stored with trailing newline trimmed
+	val, ok, err := runcontext.Get(dir, runID, "multiline_key")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected key to exist")
+	}
+	expected := strings.TrimRight(content, "\n")
+	if val != expected {
+		t.Errorf("Get = %q, want %q", val, expected)
 	}
 }
