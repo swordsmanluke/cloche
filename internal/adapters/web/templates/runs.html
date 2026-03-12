@@ -9,6 +9,9 @@
         <option value="{{.Dir}}"{{if eq .Dir $.ProjectFilter}} selected{{end}}>{{.Label}}{{if .ContainerCount}} ({{.ContainerCount}} container{{if gt .ContainerCount 1}}s{{end}}){{end}}</option>
         {{end}}
     </select>
+    {{if .TotalContainerCount}}
+    <button class="btn btn-danger btn-sm" id="cleanup-containers-btn" onclick="cleanupContainers()" style="margin-left:0.5rem">Clean up {{.TotalContainerCount}} old container{{if gt .TotalContainerCount 1}}s{{end}}</button>
+    {{end}}
 </div>
 {{end}}
 <table class="runs-table">
@@ -60,6 +63,24 @@
         }
     }
     window.filterByProject = filterByProject;
+
+    window.cleanupContainers = function() {
+        var btn = document.getElementById('cleanup-containers-btn');
+        if (btn) btn.disabled = true;
+        fetch('/api/containers', { method: 'DELETE' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (btn) {
+                    btn.textContent = 'Cleaned up ' + data.deleted + ' container' + (data.deleted !== 1 ? 's' : '');
+                }
+            })
+            .catch(function() {
+                if (btn) {
+                    btn.textContent = 'Cleanup failed';
+                    btn.disabled = false;
+                }
+            });
+    };
 
     // groupRuns arranges runs so children appear directly after their parent.
     // Parents are de-emphasized; children (where active work happens) are prominent.

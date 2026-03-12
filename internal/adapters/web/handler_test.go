@@ -1869,3 +1869,108 @@ func TestAPITasks_ProjectNotFound(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
+
+func TestAPIDeleteAllContainers_Success(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+	seedRunWithContainer(t, store, mgr, "run-ac1", "develop", "/home/user/alpha", "cid-ac1", true)
+	seedRunWithContainer(t, store, mgr, "run-ac2", "develop", "/home/user/alpha", "cid-ac2", true)
+	seedRunWithContainer(t, store, mgr, "run-ac3", "deploy", "/home/user/beta", "cid-ac3", true)
+
+	req := httptest.NewRequest("DELETE", "/api/containers", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, float64(3), resp["deleted"])
+
+	// Verify all containers were removed
+	assert.Contains(t, mgr.removed, "cid-ac1")
+	assert.Contains(t, mgr.removed, "cid-ac2")
+	assert.Contains(t, mgr.removed, "cid-ac3")
+
+	// Verify runs updated
+	for _, id := range []string{"run-ac1", "run-ac2", "run-ac3"} {
+		run, err := store.GetRun(context.Background(), id)
+		require.NoError(t, err)
+		assert.False(t, run.ContainerKept)
+	}
+}
+
+func TestAPIDeleteAllContainers_SkipsRunning(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+	seedRunWithContainer(t, store, mgr, "run-acr1", "develop", "/home/user/alpha", "cid-acr1", true)
+	mgr.running["cid-acr1"] = true // mark as running
+
+	seedRunWithContainer(t, store, mgr, "run-acr2", "develop", "/home/user/beta", "cid-acr2", true)
+
+	req := httptest.NewRequest("DELETE", "/api/containers", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, float64(1), resp["deleted"])
+
+	// Running container not removed
+	assert.NotContains(t, mgr.removed, "cid-acr1")
+	assert.Contains(t, mgr.removed, "cid-acr2")
+}
+
+func TestAPIDeleteAllContainers_SkipsNonKept(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+	seedRunWithContainer(t, store, mgr, "run-ack1", "develop", "/home/user/alpha", "cid-ack1", false) // not kept
+
+	req := httptest.NewRequest("DELETE", "/api/containers", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, float64(0), resp["deleted"])
+}
+
+func TestAPIDeleteAllContainers_NoManager(t *testing.T) {
+	h, store := setupHandler(t)
+	seedRunWithProject(t, store, "run-acnm", "develop", domain.RunStateSucceeded, "/home/user/alpha")
+
+	req := httptest.NewRequest("DELETE", "/api/containers", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestRunsList_CleanupButton(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+	seedRunWithContainer(t, store, mgr, "run-cb1", "develop", "/home/user/alpha", "cid-cb1", true)
+	seedRunWithContainer(t, store, mgr, "run-cb2", "develop", "/home/user/beta", "cid-cb2", true)
+
+	req := httptest.NewRequest("GET", "/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, `id="cleanup-containers-btn"`)
+	assert.Contains(t, body, "Clean up 2 old containers")
+}
+
+func TestRunsList_NoCleanupButtonWhenNoContainers(t *testing.T) {
+	h, store, mgr := setupHandlerWithContainerManager(t)
+	seedRunWithContainer(t, store, mgr, "run-ncb1", "develop", "/home/user/alpha", "cid-ncb1", false)
+
+	req := httptest.NewRequest("GET", "/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.NotContains(t, body, `id="cleanup-containers-btn"`)
+}

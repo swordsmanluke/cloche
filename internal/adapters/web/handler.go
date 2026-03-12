@@ -155,6 +155,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("POST /api/runs/{id}/stop", h.handleAPIStopRun)
 	h.mux.HandleFunc("DELETE /api/runs/{id}/container", h.handleAPIDeleteContainer)
 	h.mux.HandleFunc("DELETE /api/projects/{name}/containers", h.handleAPIDeleteProjectContainers)
+	h.mux.HandleFunc("DELETE /api/containers", h.handleAPIDeleteAllContainers)
 	h.mux.HandleFunc("GET /api/projects/{name}/info", h.handleAPIProjectInfo)
 	h.mux.HandleFunc("GET /api/projects/{name}/info/prompt-diff", h.handleAPIPromptDiff)
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows", h.handleAPIWorkflows)
@@ -286,12 +287,18 @@ func (h *Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 		return projectList[i].Label < projectList[j].Label
 	})
 
+	var totalContainerCount int
+	for _, c := range containerCounts {
+		totalContainerCount += c
+	}
+
 	data := map[string]any{
-		"Title":         "Runs",
-		"Runs":          runs,
-		"Projects":      projectList,
-		"ProjectFilter": projectFilter,
-		"ProjectLabels": labels,
+		"Title":               "Runs",
+		"Runs":                runs,
+		"Projects":            projectList,
+		"ProjectFilter":       projectFilter,
+		"ProjectLabels":       labels,
+		"TotalContainerCount": totalContainerCount,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.pages["runs"].ExecuteTemplate(w, "layout", data); err != nil {
@@ -770,6 +777,62 @@ func (h *Handler) handleAPIDeleteProjectContainers(w http.ResponseWriter, r *htt
 	}
 
 	runs, err := h.store.ListRunsByProject(r.Context(), dir, time.Time{})
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to list runs"})
+		return
+	}
+
+	var deleted int
+	var errors []string
+	for _, run := range runs {
+		if !run.ContainerKept || run.ContainerID == "" {
+			continue
+		}
+		// Check container is not running
+		status, err := mgr.Inspect(r.Context(), run.ContainerID)
+		if err != nil {
+			// Container already gone — just clear the flag
+			run.ContainerKept = false
+			h.store.UpdateRun(r.Context(), run)
+			deleted++
+			continue
+		}
+		if status.Running {
+			continue // skip running containers
+		}
+		if err := mgr.Remove(r.Context(), run.ContainerID); err != nil {
+			errors = append(errors, fmt.Sprintf("%s: %v", run.ID, err))
+			continue
+		}
+		run.ContainerKept = false
+		if err := h.store.UpdateRun(r.Context(), run); err != nil {
+			errors = append(errors, fmt.Sprintf("%s: update failed: %v", run.ID, err))
+			continue
+		}
+		deleted++
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]any{"deleted": deleted}
+	if len(errors) > 0 {
+		resp["errors"] = errors
+	}
+	json.NewEncoder(w).Encode(resp)
+}
+
+// handleAPIDeleteAllContainers mass-deletes all retained/exited containers across all projects.
+func (h *Handler) handleAPIDeleteAllContainers(w http.ResponseWriter, r *http.Request) {
+	mgr, ok := h.container.(ContainerManager)
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "container management not available"})
+		return
+	}
+
+	runs, err := h.store.ListRuns(r.Context(), time.Time{})
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
