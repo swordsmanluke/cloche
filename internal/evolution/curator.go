@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Curator merges lessons into prompt files using ACE-style curation.
@@ -35,10 +36,12 @@ Rules:
 	userPrompt := fmt.Sprintf("## Current Prompt Content\n```\n%s\n```\n\n## Lesson to Merge\nInsight: %s\nSuggested Action: %s",
 		string(current), lesson.Insight, lesson.SuggestedAction)
 
-	updated, err := c.LLM.Complete(ctx, systemPrompt, userPrompt)
+	raw, err := c.LLM.Complete(ctx, systemPrompt, userPrompt)
 	if err != nil {
 		return nil, fmt.Errorf("curator LLM call: %w", err)
 	}
+
+	updated := stripCodeFences(raw)
 
 	// Snapshot before writing
 	var snapName string
@@ -56,4 +59,32 @@ Rules:
 		Reason:   lesson.Insight,
 		Snapshot: snapName,
 	}, nil
+}
+
+// stripCodeFences removes markdown code fences from an LLM response,
+// extracting just the content between them. If no fences are found,
+// the input is returned unchanged (trimmed).
+func stripCodeFences(s string) string {
+	s = strings.TrimSpace(s)
+
+	openIdx := strings.Index(s, "```")
+	if openIdx == -1 {
+		return s
+	}
+
+	// Skip the opening fence line (may include language hint like ```markdown)
+	afterOpen := s[openIdx+3:]
+	newlineIdx := strings.Index(afterOpen, "\n")
+	if newlineIdx == -1 {
+		return s
+	}
+	contentStart := openIdx + 3 + newlineIdx + 1
+
+	// Find the closing fence (last ``` in the string)
+	closeIdx := strings.LastIndex(s, "```")
+	if closeIdx <= openIdx {
+		return s
+	}
+
+	return s[contentStart:closeIdx]
 }

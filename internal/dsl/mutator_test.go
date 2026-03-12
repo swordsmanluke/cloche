@@ -99,6 +99,59 @@ func TestMutatorAddWiring(t *testing.T) {
 	assert.Len(t, wf.Wiring, 5)
 }
 
+func TestMutatorRewireResult(t *testing.T) {
+	input := `workflow "develop" {
+  step test {
+    run = "make test"
+    results = [success, fail]
+  }
+
+  step scan {
+    run = "gosec ./..."
+    results = [success, fail]
+  }
+
+  test:success -> done
+  test:fail -> abort
+}`
+
+	m := &Mutator{}
+	result, err := m.RewireResult(input, "test", "success", "done", "scan")
+	require.NoError(t, err)
+	assert.Contains(t, result, "test:success -> scan")
+	assert.NotContains(t, result, "test:success -> done")
+
+	wf, err := Parse(result)
+	require.NoError(t, err)
+
+	// Verify the wire was changed
+	foundRewired := false
+	for _, w := range wf.Wiring {
+		if w.From == "test" && w.Result == "success" {
+			assert.Equal(t, "scan", w.To)
+			foundRewired = true
+		}
+	}
+	assert.True(t, foundRewired, "rewired wire should exist")
+}
+
+func TestMutatorRewireResultNotFound(t *testing.T) {
+	input := `workflow "develop" {
+  step test {
+    run = "make test"
+    results = [success, fail]
+  }
+
+  test:success -> done
+  test:fail -> abort
+}`
+
+	m := &Mutator{}
+	_, err := m.RewireResult(input, "test", "success", "scan", "lint")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
 func TestMutatorUpdateCollect(t *testing.T) {
 	input := `workflow "develop" {
   step test {

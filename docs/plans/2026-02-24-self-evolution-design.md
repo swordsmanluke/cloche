@@ -223,6 +223,9 @@ Handles `prompt_improvement` lessons.
   bullet/rule
 - Deduplication: checks for semantic overlap with existing bullets; if a lesson
   refines an existing bullet, it updates in place rather than appending
+- Code-fence stripping: LLM responses are cleaned of markdown code fences
+  (` ``` `) before writing, extracting only the content between fences. This
+  prevents meta-commentary or formatting artifacts from leaking into prompt files.
 - Output: the modified prompt file content, written to disk
 
 #### Branch B: Script Generator (LLM)
@@ -239,7 +242,7 @@ Handles `new_step` lessons where step_type is "script" or "agent".
 #### Branch C: DSL Mutator (deterministic Go code)
 
 Handles structural workflow changes. Receives structured proposals and applies
-them to the `.cloche` workflow file. Three operations:
+them to the `.cloche` workflow file. Four operations:
 
 **Add Step Definition:**
 ```json
@@ -267,8 +270,23 @@ Parses the workflow file, inserts the step definition, serializes back.
 }
 ```
 
-Appends wires to the wiring section. If a wire source already has a target, the
-new wire creates a fanout (both targets fire — already supported by the engine).
+Appends wires to the wiring section.
+
+**Rewire Result:**
+```json
+{
+  "op": "rewire_result",
+  "from": "test",
+  "result": "success",
+  "old_to": "done",
+  "new_to": "security-scan"
+}
+```
+
+Changes the target of an existing wire. Used by the orchestrator when inserting
+a new step into the graph: it finds a wire pointing to `done`, rewires it to
+the new step, then wires the new step's results to terminals. This splices the
+new step into the existing flow rather than creating a disconnected node.
 
 **Update Collect:**
 ```json

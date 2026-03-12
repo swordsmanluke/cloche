@@ -126,6 +126,31 @@ func (m *Mutator) AddWiring(input string, wires []WireDef) (string, error) {
 	return result, nil
 }
 
+// RewireResult changes the target of a specific wire in the workflow text.
+// It replaces the first wire matching from:result -> oldTo with from:result -> newTo.
+func (m *Mutator) RewireResult(input string, from, result, oldTo, newTo string) (string, error) {
+	// Match the wire with flexible whitespace around the arrow
+	pattern := fmt.Sprintf(`%s:%s\s*->\s*%s`, regexp.QuoteMeta(from), regexp.QuoteMeta(result), regexp.QuoteMeta(oldTo))
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return "", fmt.Errorf("invalid wire pattern: %w", err)
+	}
+
+	loc := re.FindStringIndex(input)
+	if loc == nil {
+		return "", fmt.Errorf("wire %s:%s -> %s not found in workflow", from, result, oldTo)
+	}
+
+	replacement := fmt.Sprintf("%s:%s -> %s", from, result, newTo)
+	updated := input[:loc[0]] + replacement + input[loc[1]:]
+
+	if _, err := Parse(updated); err != nil {
+		return "", fmt.Errorf("validation failed after rewiring: %w", err)
+	}
+
+	return updated, nil
+}
+
 // UpdateCollect adds a condition to an existing collect clause.
 func (m *Mutator) UpdateCollect(input string, addition CollectAddition) (string, error) {
 	// Find the collect clause targeting the specified step

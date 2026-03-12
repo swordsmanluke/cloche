@@ -172,8 +172,22 @@ func (o *Orchestrator) handleNewStep(ctx context.Context, data *CollectedData, l
 		return fmt.Errorf("adding step to workflow: %w", err)
 	}
 
-	// Add wiring: wire the new step's fail to the fix step (if it exists),
-	// and success to done
+	// Wire the new step into the existing graph by finding a wire
+	// that currently goes to "done" and rerouting it through the new step.
+	wf, parseErr := dsl.Parse(updated)
+	if parseErr == nil {
+		for _, wire := range wf.Wiring {
+			if wire.To == "done" {
+				rewired, rewireErr := o.mutator.RewireResult(updated, wire.From, wire.Result, "done", stepName)
+				if rewireErr == nil {
+					updated = rewired
+					break
+				}
+			}
+		}
+	}
+
+	// Wire the new step's results to terminals
 	wires := []dsl.WireDef{
 		{From: stepName, Result: "success", To: "done"},
 		{From: stepName, Result: "fail", To: "abort"},

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -268,6 +269,81 @@ func TestCuratorUpdatesPrompt(t *testing.T) {
 	assert.Contains(t, string(content), "sanitize user inputs")
 }
 
+// --- stripCodeFences tests ---
+
+func TestStripCodeFences(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "no fences returns as-is",
+			input:    "# Prompt\n\nDo good work.\n",
+			expected: "# Prompt\n\nDo good work.",
+		},
+		{
+			name:     "plain code fence",
+			input:    "```\n# Prompt\n\nDo good work.\n```",
+			expected: "# Prompt\n\nDo good work.\n",
+		},
+		{
+			name:     "code fence with language hint",
+			input:    "```markdown\n# Prompt\n\nDo good work.\n```",
+			expected: "# Prompt\n\nDo good work.\n",
+		},
+		{
+			name:     "commentary before and after fence",
+			input:    "Here's the updated prompt:\n\n```markdown\n# Prompt\n\nDo good work.\n```\n\nI've added the rule as requested.",
+			expected: "# Prompt\n\nDo good work.\n",
+		},
+		{
+			name:     "no closing fence returns as-is",
+			input:    "```markdown\n# Prompt\n",
+			expected: "```markdown\n# Prompt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, stripCodeFences(tt.input))
+		})
+	}
+}
+
+func TestCuratorStripsCodeFencesFromResponse(t *testing.T) {
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, ".cloche", "prompts", "implement.md")
+	os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
+	os.WriteFile(promptPath, []byte("# Implementation Prompt\n\nWrite good code.\n"), 0644)
+
+	// LLM returns content wrapped in code fences with commentary
+	fencedResponse := "Here is the updated prompt:\n\n```markdown\n# Implementation Prompt\n\nWrite good code.\n\n## Learned Rules\n\n- Always validate inputs\n```\n\nI added the validation rule."
+	llm := &fakeLLM{response: fencedResponse}
+
+	audit := &AuditLogger{ProjectDir: dir}
+	c := &Curator{LLM: llm, Audit: audit}
+	lesson := &Lesson{
+		Target:          ".cloche/prompts/implement.md",
+		Insight:         "Missing input validation",
+		SuggestedAction: "Add validation rule",
+	}
+
+	_, err := c.Apply(context.Background(), dir, lesson)
+	require.NoError(t, err)
+
+	content, err := os.ReadFile(promptPath)
+	require.NoError(t, err)
+
+	// Should contain the actual prompt content, not the commentary
+	assert.Contains(t, string(content), "# Implementation Prompt")
+	assert.Contains(t, string(content), "Always validate inputs")
+	assert.NotContains(t, string(content), "Here is the updated prompt")
+	assert.NotContains(t, string(content), "I added the validation rule")
+	assert.NotContains(t, string(content), "```")
+}
+
 // --- Script Generator tests ---
 
 func TestScriptGeneratorCreatesScript(t *testing.T) {
@@ -384,6 +460,72 @@ func TestOrchestratorEndToEnd(t *testing.T) {
 	// Verify knowledge base was updated
 	kbContent, _ := os.ReadFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.md"))
 	assert.Contains(t, string(kbContent), "L001")
+}
+
+func TestOrchestratorNewStepWiredIntoGraph(t *testing.T) {
+	dir := t.TempDir()
+
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
+	os.WriteFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.md"),
+		[]byte("# Knowledge Base: develop\n"), 0644)
+	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
+		[]byte(`workflow "develop" {
+  step implement {
+    prompt = file(".cloche/prompts/implement.md")
+    results = [success, fail]
+  }
+  step test {
+    run = "make test"
+    results = [success, fail]
+  }
+  implement:success -> test
+  implement:fail -> abort
+  test:success -> done
+  test:fail -> abort
+}`), 0644)
+
+	llm := &scriptedLLM{
+		responses: []string{
+			// Classifier
+			`{"classification": "enhancement"}`,
+			// Reflector
+			`{"lessons": [{"id": "L002", "category": "new_step", "step_type": "script", "insight": "No security scanning", "suggested_action": "Add gosec scan", "evidence": ["run-2"], "confidence": "high"}]}`,
+			// ScriptGenerator
+			`{"path": "scripts/security-scan.sh", "content": "#!/bin/bash\ngosec ./..."}`,
+		},
+	}
+
+	orch := NewOrchestrator(OrchestratorConfig{
+		ProjectDir:    dir,
+		WorkflowName:  "develop",
+		LLM:           llm,
+		MinConfidence: "medium",
+	})
+
+	result, err := orch.Run(context.Background(), "run-2", nil, nil)
+	require.NoError(t, err)
+	require.Len(t, result.Changes, 2) // add_script + add_step
+	assert.Equal(t, "add_script", result.Changes[0].Type)
+	assert.Equal(t, "add_step", result.Changes[1].Type)
+
+	// Read the updated workflow and verify the new step is reachable
+	wfContent, err := os.ReadFile(filepath.Join(dir, ".cloche", "develop.cloche"))
+	require.NoError(t, err)
+
+	wfStr := string(wfContent)
+	// The new step should be wired into the graph
+	assert.Contains(t, wfStr, "step security-scan")
+	// An existing step should wire to the new step (rewired from -> done)
+	assert.Contains(t, wfStr, "test:success -> security-scan")
+	// The new step should wire its results to terminals
+	assert.Contains(t, wfStr, "security-scan:success -> done")
+	assert.Contains(t, wfStr, "security-scan:fail -> abort")
+
+	// Verify the workflow parses and validates
+	wf, err := dsl.Parse(wfStr)
+	require.NoError(t, err)
+	require.NoError(t, wf.Validate())
 }
 
 func TestOrchestratorNoLessons(t *testing.T) {
