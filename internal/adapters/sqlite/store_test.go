@@ -343,6 +343,54 @@ func TestRunErrorMessage(t *testing.T) {
 	assert.Equal(t, "updated error", got2.ErrorMessage)
 }
 
+func TestRunErrorMessage_Truncation(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Build a message well over 1000 characters
+	longMsg := ""
+	for len(longMsg) < 5000 {
+		longMsg += "error output line that keeps going and going. "
+	}
+
+	// Test truncation on CreateRun
+	run := domain.NewRun("trunc-create", "develop")
+	run.Start()
+	run.Fail(longMsg)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	got, err := store.GetRun(ctx, "trunc-create")
+	require.NoError(t, err)
+	assert.LessOrEqual(t, len(got.ErrorMessage), 1020) // 1000 + "... (truncated)"
+	assert.Contains(t, got.ErrorMessage, "... (truncated)")
+
+	// Test truncation on UpdateRun
+	run2 := domain.NewRun("trunc-update", "develop")
+	run2.Start()
+	require.NoError(t, store.CreateRun(ctx, run2))
+
+	run2.Fail(longMsg)
+	require.NoError(t, store.UpdateRun(ctx, run2))
+
+	got2, err := store.GetRun(ctx, "trunc-update")
+	require.NoError(t, err)
+	assert.LessOrEqual(t, len(got2.ErrorMessage), 1020)
+	assert.Contains(t, got2.ErrorMessage, "... (truncated)")
+
+	// Short messages should NOT be truncated
+	run3 := domain.NewRun("trunc-short", "develop")
+	run3.Start()
+	run3.Fail("short error")
+	require.NoError(t, store.CreateRun(ctx, run3))
+
+	got3, err := store.GetRun(ctx, "trunc-short")
+	require.NoError(t, err)
+	assert.Equal(t, "short error", got3.ErrorMessage)
+}
+
 func TestRunErrorMessageInList(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

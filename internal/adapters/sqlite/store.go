@@ -135,7 +135,7 @@ func (s *Store) CreateRun(ctx context.Context, run *domain.Run) error {
 		`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, project_dir, error_message, container_id, base_sha, container_kept, title, is_host, parent_run_id)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID, run.WorkflowName, string(run.State), run.ActiveStepsString(),
-		formatTime(run.StartedAt), formatTime(run.CompletedAt), run.ProjectDir, run.ErrorMessage, run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID,
+		formatTime(run.StartedAt), formatTime(run.CompletedAt), run.ProjectDir, truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID,
 	)
 	return err
 }
@@ -176,7 +176,7 @@ func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ? WHERE id = ?`,
 		string(run.State), run.ActiveStepsString(),
 		formatTime(run.StartedAt), formatTime(run.CompletedAt),
-		run.ErrorMessage, run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.ID,
+		truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.ID,
 	)
 	return err
 }
@@ -448,4 +448,16 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+const maxErrorMessageLen = 1000
+
+// truncateErrorMessage caps s to maxErrorMessageLen characters to prevent
+// oversized agent output dumps from bloating the database. Full error
+// details remain available in step logs.
+func truncateErrorMessage(s string) string {
+	if len(s) <= maxErrorMessageLen {
+		return s
+	}
+	return s[:maxErrorMessageLen] + "... (truncated)"
 }
