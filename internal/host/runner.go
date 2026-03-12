@@ -148,6 +148,30 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 	return result, nil
 }
 
+// RunListTasksWorkflow executes the list-tasks workflow and returns the
+// discovered tasks. When the workflow succeeds but finds no tasks, the run
+// record is deleted from the store to avoid cluttering the run history with
+// empty list-tasks entries.
+func RunListTasksWorkflow(ctx context.Context, runner *Runner, projectDir string) ([]Task, *RunResult, error) {
+	result, err := runner.RunNamed(ctx, projectDir, "list-tasks")
+	if err != nil {
+		return nil, nil, err
+	}
+	if result.State != domain.RunStateSucceeded {
+		return nil, result, fmt.Errorf("list-tasks workflow failed with state %s", result.State)
+	}
+	tasks, err := ReadListTasksOutput(result.OutputDir)
+	if err != nil {
+		return nil, result, err
+	}
+	// When list-tasks returns no tasks, remove the run record to keep the
+	// run history focused on runs where actual work was attempted.
+	if len(tasks) == 0 && result.RunID != "" {
+		_ = runner.Store.DeleteRun(ctx, result.RunID)
+	}
+	return tasks, result, nil
+}
+
 // hostStatusHandler logs host workflow step events and persists them to the store.
 type hostStatusHandler struct {
 	projectDir string

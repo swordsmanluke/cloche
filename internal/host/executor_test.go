@@ -1657,3 +1657,72 @@ func TestRunResult_HasOutputDir(t *testing.T) {
 	_, err = os.Stat(result.OutputDir)
 	assert.NoError(t, err)
 }
+
+// --- RunListTasksWorkflow tests ---
+
+func TestRunListTasksWorkflow_EmptyResult_DeletesRun(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+
+	// list-tasks workflow that outputs no tasks (empty line)
+	hostCloche := `workflow "list-tasks" {
+  step fetch {
+    run     = "echo ''"
+    results = [success, fail]
+  }
+  fetch:success -> done
+  fetch:fail    -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	runner := &Runner{
+		Dispatcher: &fakeDispatcher{runID: "test-run"},
+		Store:      store,
+	}
+
+	tasks, result, err := RunListTasksWorkflow(context.Background(), runner, tmpDir)
+	require.NoError(t, err)
+	assert.Empty(t, tasks)
+	assert.NotNil(t, result)
+
+	// The run record should have been deleted since no tasks were found.
+	_, err = store.GetRun(context.Background(), result.RunID)
+	assert.ErrorIs(t, err, os.ErrNotExist, "run record should be deleted when list-tasks returns no tasks")
+}
+
+func TestRunListTasksWorkflow_WithTasks_KeepsRun(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+
+	// list-tasks workflow that outputs one task
+	hostCloche := `workflow "list-tasks" {
+  step fetch {
+    run     = "echo '{\"id\":\"task-1\",\"status\":\"open\",\"title\":\"Fix bug\"}'"
+    results = [success, fail]
+  }
+  fetch:success -> done
+  fetch:fail    -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	runner := &Runner{
+		Dispatcher: &fakeDispatcher{runID: "test-run"},
+		Store:      store,
+	}
+
+	tasks, result, err := RunListTasksWorkflow(context.Background(), runner, tmpDir)
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+	assert.Equal(t, "task-1", tasks[0].ID)
+
+	// The run record should be preserved since tasks were found.
+	run, err := store.GetRun(context.Background(), result.RunID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+}

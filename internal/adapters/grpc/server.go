@@ -874,14 +874,8 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir, host
 			Dispatcher: s,
 			Store:      s.store,
 		}
-		result, err := runner.RunNamed(ctx, projDir, "list-tasks")
-		if err != nil {
-			return nil, err
-		}
-		if result.State != domain.RunStateSucceeded {
-			return nil, fmt.Errorf("list-tasks workflow failed with state %s", result.State)
-		}
-		return host.ReadListTasksOutput(result.OutputDir)
+		tasks, _, err := host.RunListTasksWorkflow(ctx, runner, projDir)
+		return tasks, err
 	}
 
 	// Phase 2: main function
