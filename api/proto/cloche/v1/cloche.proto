@@ -90,6 +90,9 @@ message DeleteContainerResponse {}
 message ListRunsRequest {
   bool all = 1;
   string project_dir = 2;
+  string state = 3;
+  int32 limit = 4;
+  string task_id = 5;
 }
 
 message ListRunsResponse {

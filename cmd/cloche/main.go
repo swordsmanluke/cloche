@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -240,15 +241,49 @@ func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string
 
 func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	var all bool
-	for _, arg := range args {
-		if arg == "--all" {
+	var projectDir, stateFilter, issueFilter string
+	var limit int32
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--all":
 			all = true
+		case "--project", "-p":
+			if i+1 < len(args) {
+				i++
+				projectDir = args[i]
+			}
+		case "--state", "-s":
+			if i+1 < len(args) {
+				i++
+				stateFilter = args[i]
+			}
+		case "--limit", "-n":
+			if i+1 < len(args) {
+				i++
+				n, err := strconv.Atoi(args[i])
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "error: invalid --limit value: %s\n", args[i])
+					os.Exit(1)
+				}
+				limit = int32(n)
+			}
+		case "--issue", "-i":
+			if i+1 < len(args) {
+				i++
+				issueFilter = args[i]
+			}
 		}
 	}
 
-	req := &pb.ListRunsRequest{}
-	if all {
-		// --all: show all runs across all projects (no time limit)
+	req := &pb.ListRunsRequest{
+		State:  stateFilter,
+		Limit:  limit,
+		TaskId: issueFilter,
+	}
+	if projectDir != "" {
+		req.ProjectDir = projectDir
+	} else if all {
 		req.All = true
 	} else {
 		// Default: filter to current project

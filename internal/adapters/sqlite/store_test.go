@@ -896,3 +896,187 @@ func TestListRunsSortRunningFirst(t *testing.T) {
 	assert.Equal(t, "new-failed", listed[1].ID)
 	assert.Equal(t, "mid-succeeded", listed[2].ID)
 }
+
+func TestListRunsFiltered_ByState(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		id    string
+		state domain.RunState
+	}{
+		{"r1", domain.RunStateRunning},
+		{"r2", domain.RunStateSucceeded},
+		{"r3", domain.RunStateFailed},
+		{"r4", domain.RunStateRunning},
+	} {
+		r := domain.NewRun(tc.id, "develop")
+		r.State = tc.state
+		r.StartedAt = time.Now()
+		require.NoError(t, store.CreateRun(ctx, r))
+	}
+
+	runs, err := store.ListRunsFiltered(ctx, domain.RunListFilter{State: domain.RunStateRunning})
+	require.NoError(t, err)
+	assert.Len(t, runs, 2)
+	for _, r := range runs {
+		assert.Equal(t, domain.RunStateRunning, r.State)
+	}
+
+	runs, err = store.ListRunsFiltered(ctx, domain.RunListFilter{State: domain.RunStateFailed})
+	require.NoError(t, err)
+	assert.Len(t, runs, 1)
+	assert.Equal(t, "r3", runs[0].ID)
+}
+
+func TestListRunsFiltered_ByProject(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		id, project string
+	}{
+		{"r1", "/proj-a"},
+		{"r2", "/proj-a"},
+		{"r3", "/proj-b"},
+	} {
+		r := domain.NewRun(tc.id, "develop")
+		r.ProjectDir = tc.project
+		r.StartedAt = time.Now()
+		require.NoError(t, store.CreateRun(ctx, r))
+	}
+
+	runs, err := store.ListRunsFiltered(ctx, domain.RunListFilter{ProjectDir: "/proj-a"})
+	require.NoError(t, err)
+	assert.Len(t, runs, 2)
+	for _, r := range runs {
+		assert.Equal(t, "/proj-a", r.ProjectDir)
+	}
+}
+
+func TestListRunsFiltered_ByTaskID(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		id, taskID string
+	}{
+		{"r1", "TASK-1"},
+		{"r2", "TASK-1"},
+		{"r3", "TASK-2"},
+		{"r4", ""},
+	} {
+		r := domain.NewRun(tc.id, "develop")
+		r.TaskID = tc.taskID
+		r.StartedAt = time.Now()
+		require.NoError(t, store.CreateRun(ctx, r))
+	}
+
+	runs, err := store.ListRunsFiltered(ctx, domain.RunListFilter{TaskID: "TASK-1"})
+	require.NoError(t, err)
+	assert.Len(t, runs, 2)
+	for _, r := range runs {
+		assert.Equal(t, "TASK-1", r.TaskID)
+	}
+}
+
+func TestListRunsFiltered_WithLimit(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	for i := 0; i < 10; i++ {
+		r := domain.NewRun(fmt.Sprintf("r-%d", i), "develop")
+		r.StartedAt = time.Now().Add(time.Duration(i) * time.Minute)
+		require.NoError(t, store.CreateRun(ctx, r))
+	}
+
+	runs, err := store.ListRunsFiltered(ctx, domain.RunListFilter{Limit: 3})
+	require.NoError(t, err)
+	assert.Len(t, runs, 3)
+}
+
+func TestListRunsFiltered_CombinedFilters(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	for i, tc := range []struct {
+		id, project, taskID string
+		state               domain.RunState
+	}{
+		{"r1", "/proj-a", "TASK-1", domain.RunStateRunning},
+		{"r2", "/proj-a", "TASK-1", domain.RunStateSucceeded},
+		{"r3", "/proj-a", "TASK-2", domain.RunStateRunning},
+		{"r4", "/proj-b", "TASK-1", domain.RunStateRunning},
+	} {
+		r := domain.NewRun(tc.id, "develop")
+		r.ProjectDir = tc.project
+		r.TaskID = tc.taskID
+		r.State = tc.state
+		r.StartedAt = time.Now().Add(time.Duration(i) * time.Minute)
+		require.NoError(t, store.CreateRun(ctx, r))
+	}
+
+	// Filter by project + state
+	runs, err := store.ListRunsFiltered(ctx, domain.RunListFilter{
+		ProjectDir: "/proj-a",
+		State:      domain.RunStateRunning,
+	})
+	require.NoError(t, err)
+	assert.Len(t, runs, 2)
+	for _, r := range runs {
+		assert.Equal(t, "/proj-a", r.ProjectDir)
+		assert.Equal(t, domain.RunStateRunning, r.State)
+	}
+
+	// Filter by project + task + state
+	runs, err = store.ListRunsFiltered(ctx, domain.RunListFilter{
+		ProjectDir: "/proj-a",
+		TaskID:     "TASK-1",
+		State:      domain.RunStateRunning,
+	})
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	assert.Equal(t, "r1", runs[0].ID)
+
+	// Filter with limit
+	runs, err = store.ListRunsFiltered(ctx, domain.RunListFilter{
+		ProjectDir: "/proj-a",
+		Limit:      1,
+	})
+	require.NoError(t, err)
+	assert.Len(t, runs, 1)
+}
+
+func TestListRunsFiltered_NoFilters(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	for _, id := range []string{"r1", "r2", "r3"} {
+		r := domain.NewRun(id, "develop")
+		r.StartedAt = time.Now()
+		require.NoError(t, store.CreateRun(ctx, r))
+	}
+
+	// Empty filter returns all runs
+	runs, err := store.ListRunsFiltered(ctx, domain.RunListFilter{})
+	require.NoError(t, err)
+	assert.Len(t, runs, 3)
+}

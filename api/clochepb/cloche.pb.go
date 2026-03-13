@@ -765,6 +765,9 @@ type ListRunsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	All           bool                   `protobuf:"varint,1,opt,name=all,proto3" json:"all,omitempty"`
 	ProjectDir    string                 `protobuf:"bytes,2,opt,name=project_dir,json=projectDir,proto3" json:"project_dir,omitempty"`
+	State         string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	Limit         int32                  `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
+	TaskId        string                 `protobuf:"bytes,5,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -809,6 +812,27 @@ func (x *ListRunsRequest) GetAll() bool {
 func (x *ListRunsRequest) GetProjectDir() string {
 	if x != nil {
 		return x.ProjectDir
+	}
+	return ""
+}
+
+func (x *ListRunsRequest) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *ListRunsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListRunsRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
 	}
 	return ""
 }

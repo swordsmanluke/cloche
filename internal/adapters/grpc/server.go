@@ -385,16 +385,19 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 }
 
 func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*pb.ListRunsResponse, error) {
-	var runs []*domain.Run
-	var err error
-	if req.ProjectDir != "" {
-		// Project-scoped: no time filter (project is sufficient scoping)
-		runs, err = s.store.ListRunsByProject(ctx, req.ProjectDir, time.Time{})
-	} else if req.All {
-		runs, err = s.store.ListRuns(ctx, time.Time{})
-	} else {
-		runs, err = s.store.ListRuns(ctx, time.Now().Add(-1*time.Hour))
+	filter := domain.RunListFilter{
+		ProjectDir: req.ProjectDir,
+		State:      domain.RunState(req.State),
+		TaskID:     req.TaskId,
+		Limit:      int(req.Limit),
 	}
+
+	// When no project filter and not --all, default to last hour
+	if filter.ProjectDir == "" && !req.All {
+		filter.Since = time.Now().Add(-1 * time.Hour)
+	}
+
+	runs, err := s.store.ListRunsFiltered(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("listing runs: %w", err)
 	}

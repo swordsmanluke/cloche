@@ -628,10 +628,19 @@ Shows run title, type (`host`/`container`), state, active steps, and per-step re
 ### `cloche list`
 
 ```
-cloche list [--all]
+cloche list [flags]
 ```
 
 Lists runs for the current project directory. Pass `--all` to show runs across all projects.
+Results can be filtered by state, project, issue, or limited to a fixed number.
+
+| Flag | Description |
+|------|-------------|
+| `--all` | Show runs from all projects (default: current project only). |
+| `--project, -p DIR` | Filter by project directory. |
+| `--state, -s STATE` | Filter by run state (`pending`, `running`, `succeeded`, `failed`, `cancelled`). |
+| `--limit, -n NUM` | Limit the number of results returned. |
+| `--issue, -i ID` | Filter by issue/task ID. |
 
 ### `cloche logs`
 

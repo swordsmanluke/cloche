@@ -15,6 +15,15 @@ const (
 	RunStateCancelled RunState = "cancelled"
 )
 
+// RunListFilter holds optional filters for listing runs.
+type RunListFilter struct {
+	ProjectDir string
+	State      RunState
+	TaskID     string
+	Limit      int
+	Since      time.Time
+}
+
 type StepExecution struct {
 	StepName    string
 	Result      string

@@ -241,6 +241,41 @@ func (s *Store) ListRunsByProject(ctx context.Context, projectDir string, since 
 	return scanRuns(rows)
 }
 
+func (s *Store) ListRunsFiltered(ctx context.Context, filter domain.RunListFilter) ([]*domain.Run, error) {
+	query := `SELECT ` + runSelectCols + ` FROM runs WHERE 1=1`
+	var args []interface{}
+
+	if filter.ProjectDir != "" {
+		query += ` AND project_dir = ?`
+		args = append(args, filter.ProjectDir)
+	}
+	if filter.State != "" {
+		query += ` AND state = ?`
+		args = append(args, string(filter.State))
+	}
+	if filter.TaskID != "" {
+		query += ` AND task_id = ?`
+		args = append(args, filter.TaskID)
+	}
+	if !filter.Since.IsZero() {
+		query += ` AND started_at >= ?`
+		args = append(args, formatTime(filter.Since))
+	}
+
+	query += ` ORDER BY CASE WHEN state = 'running' THEN 0 ELSE 1 END, started_at DESC`
+
+	if filter.Limit > 0 {
+		query += fmt.Sprintf(` LIMIT %d`, filter.Limit)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanRuns(rows)
+}
+
 func (s *Store) ListProjects(ctx context.Context) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT DISTINCT project_dir FROM runs WHERE project_dir != '' ORDER BY project_dir`)

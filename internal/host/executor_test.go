@@ -60,6 +60,9 @@ func (f *fakeStore) ListRuns(_ context.Context, _ time.Time) ([]*domain.Run, err
 func (f *fakeStore) ListRunsByProject(_ context.Context, _ string, _ time.Time) ([]*domain.Run, error) {
 	return nil, nil
 }
+func (f *fakeStore) ListRunsFiltered(_ context.Context, _ domain.RunListFilter) ([]*domain.Run, error) {
+	return nil, nil
+}
 func (f *fakeStore) ListProjects(_ context.Context) ([]string, error) {
 	return nil, nil
 }

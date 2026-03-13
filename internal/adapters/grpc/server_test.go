@@ -71,6 +71,81 @@ func TestServer_ListRuns_FilterByProject(t *testing.T) {
 	assert.Len(t, resp.Runs, 2)
 }
 
+func TestServer_ListRuns_FilterByState(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	runA := domain.NewRun("run-running", "wf")
+	runA.ProjectDir = "/project"
+	runA.State = domain.RunStateRunning
+	runA.StartedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, runA))
+
+	runB := domain.NewRun("run-failed", "wf")
+	runB.ProjectDir = "/project"
+	runB.State = domain.RunStateFailed
+	runB.StartedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, runB))
+
+	srv := server.NewClocheServer(store, nil)
+
+	resp, err := srv.ListRuns(ctx, &pb.ListRunsRequest{All: true, State: "running"})
+	require.NoError(t, err)
+	require.Len(t, resp.Runs, 1)
+	assert.Equal(t, "run-running", resp.Runs[0].RunId)
+}
+
+func TestServer_ListRuns_FilterByLimit(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		r := domain.NewRun(fmt.Sprintf("run-%d", i), "wf")
+		r.ProjectDir = "/project"
+		r.StartedAt = time.Now()
+		require.NoError(t, store.CreateRun(ctx, r))
+	}
+
+	srv := server.NewClocheServer(store, nil)
+
+	resp, err := srv.ListRuns(ctx, &pb.ListRunsRequest{All: true, Limit: 2})
+	require.NoError(t, err)
+	assert.Len(t, resp.Runs, 2)
+}
+
+func TestServer_ListRuns_FilterByTaskId(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	runA := domain.NewRun("run-task-a", "wf")
+	runA.ProjectDir = "/project"
+	runA.TaskID = "ISSUE-42"
+	runA.StartedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, runA))
+
+	runB := domain.NewRun("run-task-b", "wf")
+	runB.ProjectDir = "/project"
+	runB.TaskID = "ISSUE-99"
+	runB.StartedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, runB))
+
+	srv := server.NewClocheServer(store, nil)
+
+	resp, err := srv.ListRuns(ctx, &pb.ListRunsRequest{All: true, TaskId: "ISSUE-42"})
+	require.NoError(t, err)
+	require.Len(t, resp.Runs, 1)
+	assert.Equal(t, "run-task-a", resp.Runs[0].RunId)
+}
+
 func TestServer_GetStatus_NotFound(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

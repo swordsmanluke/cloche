@@ -158,13 +158,18 @@ Examples:
 	"list": `cloche list — List workflow runs
 
 Shows all runs for the current project, or all runs across all projects
-with --all.
+with --all. Results can be filtered by state, project, issue, or limited
+to a fixed number.
 
 Usage:
-  cloche list [--all]
+  cloche list [flags]
 
 Flags:
-  --all    Show runs from all projects (default: current project only).
+  --all              Show runs from all projects (default: current project only).
+  --project, -p DIR  Filter by project directory.
+  --state, -s STATE  Filter by run state (pending, running, succeeded, failed, cancelled).
+  --limit, -n NUM    Limit the number of results returned.
+  --issue, -i ID     Filter by issue/task ID.
 
 Output columns: run ID, workflow name, state, type (host/container),
 title, container ID, and error message (if any).
@@ -172,6 +177,11 @@ title, container ID, and error message (if any).
 Examples:
   cloche list
   cloche list --all
+  cloche list --state running
+  cloche list --limit 10
+  cloche list --all --state failed --limit 5
+  cloche list --issue TASK-123
+  cloche list -p /home/user/project -s succeeded -n 20
 `,
 
 	"stop": `cloche stop — Stop a running workflow

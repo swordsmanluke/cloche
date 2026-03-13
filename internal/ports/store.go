@@ -14,6 +14,7 @@ type RunStore interface {
 	DeleteRun(ctx context.Context, id string) error
 	ListRuns(ctx context.Context, since time.Time) ([]*domain.Run, error)
 	ListRunsByProject(ctx context.Context, projectDir string, since time.Time) ([]*domain.Run, error)
+	ListRunsFiltered(ctx context.Context, filter domain.RunListFilter) ([]*domain.Run, error)
 	ListProjects(ctx context.Context) ([]string, error)
 	ListChildRuns(ctx context.Context, parentRunID string) ([]*domain.Run, error)
 }
