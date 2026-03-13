@@ -217,7 +217,7 @@ func (r *Runtime) Logs(ctx context.Context, containerID string) (string, error) 
 }
 
 func (r *Runtime) Remove(ctx context.Context, containerID string) error {
-	cmd := exec.CommandContext(ctx, "docker", "rm", containerID)
+	cmd := exec.CommandContext(ctx, "docker", "rm", "-f", containerID)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

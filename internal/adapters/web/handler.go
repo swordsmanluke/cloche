@@ -967,40 +967,12 @@ func (h *Handler) handleAPIDeleteProjectContainers(w http.ResponseWriter, r *htt
 		return
 	}
 
-	var deleted int
-	var errors []string
-	for _, run := range runs {
-		if !run.ContainerKept || run.ContainerID == "" {
-			continue
-		}
-		// Check container is not running
-		status, err := mgr.Inspect(r.Context(), run.ContainerID)
-		if err != nil {
-			// Container already gone — just clear the flag
-			run.ContainerKept = false
-			h.store.UpdateRun(r.Context(), run)
-			deleted++
-			continue
-		}
-		if status.Running {
-			continue // skip running containers
-		}
-		if err := mgr.Remove(r.Context(), run.ContainerID); err != nil {
-			errors = append(errors, fmt.Sprintf("%s: %v", run.ID, err))
-			continue
-		}
-		run.ContainerKept = false
-		if err := h.store.UpdateRun(r.Context(), run); err != nil {
-			errors = append(errors, fmt.Sprintf("%s: update failed: %v", run.ID, err))
-			continue
-		}
-		deleted++
-	}
+	deleted, errs := h.removeContainers(r.Context(), mgr, runs)
 
 	w.Header().Set("Content-Type", "application/json")
 	resp := map[string]any{"deleted": deleted}
-	if len(errors) > 0 {
-		resp["errors"] = errors
+	if len(errs) > 0 {
+		resp["errors"] = errs
 	}
 	json.NewEncoder(w).Encode(resp)
 }
@@ -1023,6 +995,20 @@ func (h *Handler) handleAPIDeleteAllContainers(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	deleted, errs := h.removeContainers(r.Context(), mgr, runs)
+
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]any{"deleted": deleted}
+	if len(errs) > 0 {
+		resp["errors"] = errs
+	}
+	json.NewEncoder(w).Encode(resp)
+}
+
+// removeContainers stops and removes retained containers for the given runs,
+// updating the ContainerKept flag in the store. It returns the number of
+// containers successfully removed and any per-run errors.
+func (h *Handler) removeContainers(ctx context.Context, mgr ContainerManager, runs []*domain.Run) (int, []string) {
 	var deleted int
 	var errors []string
 	for _, run := range runs {
@@ -1030,35 +1016,36 @@ func (h *Handler) handleAPIDeleteAllContainers(w http.ResponseWriter, r *http.Re
 			continue
 		}
 		// Check container is not running
-		status, err := mgr.Inspect(r.Context(), run.ContainerID)
+		status, err := mgr.Inspect(ctx, run.ContainerID)
 		if err != nil {
 			// Container already gone — just clear the flag
 			run.ContainerKept = false
-			h.store.UpdateRun(r.Context(), run)
+			if err := h.store.UpdateRun(ctx, run); err != nil {
+				errors = append(errors, fmt.Sprintf("%s: update failed: %v", run.ID, err))
+				continue
+			}
 			deleted++
 			continue
 		}
 		if status.Running {
-			continue // skip running containers
+			// Stop first, then remove
+			if err := mgr.Stop(ctx, run.ContainerID); err != nil {
+				errors = append(errors, fmt.Sprintf("%s: stop failed: %v", run.ID, err))
+				continue
+			}
 		}
-		if err := mgr.Remove(r.Context(), run.ContainerID); err != nil {
+		if err := mgr.Remove(ctx, run.ContainerID); err != nil {
 			errors = append(errors, fmt.Sprintf("%s: %v", run.ID, err))
 			continue
 		}
 		run.ContainerKept = false
-		if err := h.store.UpdateRun(r.Context(), run); err != nil {
+		if err := h.store.UpdateRun(ctx, run); err != nil {
 			errors = append(errors, fmt.Sprintf("%s: update failed: %v", run.ID, err))
 			continue
 		}
 		deleted++
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	resp := map[string]any{"deleted": deleted}
-	if len(errors) > 0 {
-		resp["errors"] = errors
-	}
-	json.NewEncoder(w).Encode(resp)
+	return deleted, errors
 }
 
 // handleAPIStream serves an SSE stream of log lines for a run.

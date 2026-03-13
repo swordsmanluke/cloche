@@ -1337,7 +1337,7 @@ func TestAPIDeleteProjectContainers_Success(t *testing.T) {
 	assert.True(t, run3.ContainerKept)
 }
 
-func TestAPIDeleteProjectContainers_SkipsRunning(t *testing.T) {
+func TestAPIDeleteProjectContainers_StopsRunning(t *testing.T) {
 	h, store, mgr := setupHandlerWithContainerManager(t)
 	seedRunWithContainer(t, store, mgr, "run-pdr1", "develop", "/home/user/alpha", "cid-pdr1", true)
 	mgr.running["cid-pdr1"] = true // mark as running
@@ -1352,10 +1352,11 @@ func TestAPIDeleteProjectContainers_SkipsRunning(t *testing.T) {
 
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, float64(1), resp["deleted"])
+	assert.Equal(t, float64(2), resp["deleted"])
 
-	// Running container not removed
-	assert.NotContains(t, mgr.removed, "cid-pdr1")
+	// Running container was stopped then removed
+	assert.Contains(t, mgr.stopped, "cid-pdr1")
+	assert.Contains(t, mgr.removed, "cid-pdr1")
 	assert.Contains(t, mgr.removed, "cid-pdr2")
 }
 
@@ -1992,7 +1993,7 @@ func TestAPIDeleteAllContainers_Success(t *testing.T) {
 	}
 }
 
-func TestAPIDeleteAllContainers_SkipsRunning(t *testing.T) {
+func TestAPIDeleteAllContainers_StopsRunning(t *testing.T) {
 	h, store, mgr := setupHandlerWithContainerManager(t)
 	seedRunWithContainer(t, store, mgr, "run-acr1", "develop", "/home/user/alpha", "cid-acr1", true)
 	mgr.running["cid-acr1"] = true // mark as running
@@ -2007,10 +2008,11 @@ func TestAPIDeleteAllContainers_SkipsRunning(t *testing.T) {
 
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, float64(1), resp["deleted"])
+	assert.Equal(t, float64(2), resp["deleted"])
 
-	// Running container not removed
-	assert.NotContains(t, mgr.removed, "cid-acr1")
+	// Running container was stopped then removed
+	assert.Contains(t, mgr.stopped, "cid-acr1")
+	assert.Contains(t, mgr.removed, "cid-acr1")
 	assert.Contains(t, mgr.removed, "cid-acr2")
 }
 
