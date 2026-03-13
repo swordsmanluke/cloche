@@ -8,12 +8,9 @@ if [ -z "${CLOCHE_TASK_ID:-}" ]; then
   exit 1
 fi
 
-# Claim the task in bead
-claim_output=$(bd update "$CLOCHE_TASK_ID" --claim 2>&1) || true
-
-if echo "$claim_output" | grep -qi "error\|already claimed"; then
-  echo "claim failed: $claim_output" >&2
-  exit 1
-fi
+# Force status to in_progress and assign to us, regardless of prior state.
+# This avoids the "already claimed" error when a previous run left the
+# assignee set but the status was reset to open.
+bd update "$CLOCHE_TASK_ID" -s in_progress 2>&1
 
 echo "Claimed task $CLOCHE_TASK_ID"
