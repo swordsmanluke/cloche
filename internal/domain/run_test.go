@@ -75,3 +75,106 @@ func TestRun_StepExecution_Duration(t *testing.T) {
 	}
 	assert.InDelta(t, 5.0, exec.Duration().Seconds(), 0.1)
 }
+
+func TestTaskAggregateStatus(t *testing.T) {
+	now := time.Now()
+	mkRun := func(state domain.RunState, startedAt time.Time) *domain.Run {
+		r := domain.NewRun("r", "wf")
+		r.State = state
+		r.StartedAt = startedAt
+		return r
+	}
+
+	tests := []struct {
+		name string
+		runs []*domain.Run
+		want domain.RunState
+	}{
+		{
+			name: "empty returns pending",
+			runs: nil,
+			want: domain.RunStatePending,
+		},
+		{
+			name: "single succeeded",
+			runs: []*domain.Run{mkRun(domain.RunStateSucceeded, now)},
+			want: domain.RunStateSucceeded,
+		},
+		{
+			name: "single failed",
+			runs: []*domain.Run{mkRun(domain.RunStateFailed, now)},
+			want: domain.RunStateFailed,
+		},
+		{
+			name: "running outweighs succeeded",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateSucceeded, now.Add(-1*time.Minute)),
+				mkRun(domain.RunStateRunning, now),
+			},
+			want: domain.RunStateRunning,
+		},
+		{
+			name: "running outweighs failed",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateFailed, now.Add(-1*time.Minute)),
+				mkRun(domain.RunStateRunning, now),
+			},
+			want: domain.RunStateRunning,
+		},
+		{
+			name: "pending outweighs terminal",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateFailed, now.Add(-1*time.Minute)),
+				mkRun(domain.RunStatePending, now),
+			},
+			want: domain.RunStatePending,
+		},
+		{
+			name: "running outweighs pending",
+			runs: []*domain.Run{
+				mkRun(domain.RunStatePending, now.Add(-1*time.Minute)),
+				mkRun(domain.RunStateRunning, now),
+			},
+			want: domain.RunStateRunning,
+		},
+		{
+			name: "most recent attempt wins - success after failure",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateFailed, now.Add(-2*time.Minute)),
+				mkRun(domain.RunStateSucceeded, now),
+			},
+			want: domain.RunStateSucceeded,
+		},
+		{
+			name: "most recent attempt wins - failure after success",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateSucceeded, now.Add(-2*time.Minute)),
+				mkRun(domain.RunStateFailed, now),
+			},
+			want: domain.RunStateFailed,
+		},
+		{
+			name: "cancelled is terminal - most recent wins",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateCancelled, now.Add(-2*time.Minute)),
+				mkRun(domain.RunStateSucceeded, now),
+			},
+			want: domain.RunStateSucceeded,
+		},
+		{
+			name: "active outweighs even most recent terminal",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateRunning, now.Add(-5*time.Minute)),
+				mkRun(domain.RunStateFailed, now),
+			},
+			want: domain.RunStateRunning,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := domain.TaskAggregateStatus(tt.runs)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

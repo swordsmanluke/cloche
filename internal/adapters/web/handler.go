@@ -525,29 +525,11 @@ type apiGroupedEntry struct {
 	Run        *apiRun `json:"run,omitempty"`
 }
 
-// taskAggregateStatus computes the most important state across a set of runs.
-// Priority: succeeded < cancelled < pending < running < failed.
+// taskAggregateStatus computes the aggregate status for a set of runs
+// representing attempts at a task. Active statuses (running, pending) outweigh
+// terminal ones, and among terminal-only statuses the most recent attempt wins.
 func taskAggregateStatus(runs []*domain.Run) string {
-	priority := map[domain.RunState]int{
-		domain.RunStateSucceeded: 0,
-		domain.RunStateCancelled: 1,
-		domain.RunStatePending:   2,
-		domain.RunStateRunning:   3,
-		domain.RunStateFailed:    4,
-	}
-	best := -1
-	bestState := domain.RunStatePending
-	for _, r := range runs {
-		p, ok := priority[r.State]
-		if !ok {
-			p = 2 // treat unknown as pending
-		}
-		if p > best {
-			best = p
-			bestState = r.State
-		}
-	}
-	return string(bestState)
+	return string(domain.TaskAggregateStatus(runs))
 }
 
 // groupAndSortRuns filters, sorts, and groups runs by task, mirroring the

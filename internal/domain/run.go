@@ -111,3 +111,40 @@ func (r *Run) Fail(msg string) {
 	r.CompletedAt = time.Now()
 	r.ErrorMessage = msg
 }
+
+// TaskAggregateStatus computes the aggregate status for a group of runs
+// representing attempts at a task. Active statuses (running, pending) outweigh
+// terminal ones, and among terminal-only statuses the most recently started
+// run determines the result.
+func TaskAggregateStatus(runs []*Run) RunState {
+	if len(runs) == 0 {
+		return RunStatePending
+	}
+
+	// Active statuses outweigh terminal ones. Prefer running over pending.
+	hasRunning := false
+	hasPending := false
+	for _, r := range runs {
+		switch r.State {
+		case RunStateRunning:
+			hasRunning = true
+		case RunStatePending:
+			hasPending = true
+		}
+	}
+	if hasRunning {
+		return RunStateRunning
+	}
+	if hasPending {
+		return RunStatePending
+	}
+
+	// All runs are terminal — return the state of the most recent attempt.
+	var latest *Run
+	for _, r := range runs {
+		if latest == nil || r.StartedAt.After(latest.StartedAt) {
+			latest = r
+		}
+	}
+	return latest.State
+}

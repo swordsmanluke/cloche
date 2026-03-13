@@ -2177,22 +2177,27 @@ func TestRunsList_TaskGrouping(t *testing.T) {
 }
 
 func TestTaskAggregateStatus(t *testing.T) {
+	now := time.Now()
 	tests := []struct {
 		name   string
 		states []domain.RunState
+		times  []time.Time // optional StartedAt per run; nil uses zero
 		want   string
 	}{
-		{"all succeeded", []domain.RunState{domain.RunStateSucceeded, domain.RunStateSucceeded}, "succeeded"},
-		{"one pending", []domain.RunState{domain.RunStateSucceeded, domain.RunStatePending}, "pending"},
-		{"one running", []domain.RunState{domain.RunStateSucceeded, domain.RunStateRunning}, "running"},
-		{"one failed", []domain.RunState{domain.RunStateSucceeded, domain.RunStateRunning, domain.RunStateFailed}, "failed"},
-		{"failed beats running", []domain.RunState{domain.RunStateRunning, domain.RunStateFailed}, "failed"},
-		{"running beats pending", []domain.RunState{domain.RunStatePending, domain.RunStateRunning}, "running"},
-		{"pending beats succeeded", []domain.RunState{domain.RunStateSucceeded, domain.RunStatePending}, "pending"},
-		{"cancelled beats succeeded", []domain.RunState{domain.RunStateSucceeded, domain.RunStateCancelled}, "cancelled"},
-		{"pending beats cancelled", []domain.RunState{domain.RunStateCancelled, domain.RunStatePending}, "pending"},
-		{"single pending", []domain.RunState{domain.RunStatePending}, "pending"},
-		{"single failed", []domain.RunState{domain.RunStateFailed}, "failed"},
+		{"all succeeded", []domain.RunState{domain.RunStateSucceeded, domain.RunStateSucceeded}, nil, "succeeded"},
+		{"one pending", []domain.RunState{domain.RunStateSucceeded, domain.RunStatePending}, nil, "pending"},
+		{"one running", []domain.RunState{domain.RunStateSucceeded, domain.RunStateRunning}, nil, "running"},
+		{"running outweighs failed", []domain.RunState{domain.RunStateSucceeded, domain.RunStateRunning, domain.RunStateFailed}, nil, "running"},
+		{"running beats failed", []domain.RunState{domain.RunStateRunning, domain.RunStateFailed}, nil, "running"},
+		{"running beats pending", []domain.RunState{domain.RunStatePending, domain.RunStateRunning}, nil, "running"},
+		{"pending beats succeeded", []domain.RunState{domain.RunStateSucceeded, domain.RunStatePending}, nil, "pending"},
+		{"most recent terminal wins",
+			[]domain.RunState{domain.RunStateSucceeded, domain.RunStateCancelled},
+			[]time.Time{now.Add(-1 * time.Minute), now},
+			"cancelled"},
+		{"pending beats cancelled", []domain.RunState{domain.RunStateCancelled, domain.RunStatePending}, nil, "pending"},
+		{"single pending", []domain.RunState{domain.RunStatePending}, nil, "pending"},
+		{"single failed", []domain.RunState{domain.RunStateFailed}, nil, "failed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2200,6 +2205,9 @@ func TestTaskAggregateStatus(t *testing.T) {
 			for i, s := range tt.states {
 				r := domain.NewRun(fmt.Sprintf("r-%d", i), "wf")
 				r.State = s
+				if tt.times != nil && i < len(tt.times) {
+					r.StartedAt = tt.times[i]
+				}
 				runs = append(runs, r)
 			}
 			got := taskAggregateStatus(runs)
@@ -2242,7 +2250,7 @@ func TestRunsList_TaskGroupingStatus(t *testing.T) {
 	assert.Equal(t, "task-200", entries[0].TaskID)
 	assert.Equal(t, "running", entries[0].TaskStatus)
 
-	// Now add a failed run and check again
+	// Now add a failed run — but r2 is still running, so active outweighs terminal
 	r3 := domain.NewRun("ts-run-3", "main")
 	r3.IsHost = true
 	r3.ProjectDir = "/project"
@@ -2259,7 +2267,7 @@ func TestRunsList_TaskGroupingStatus(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &entries2))
 
 	require.True(t, entries2[0].TaskHeader)
-	assert.Equal(t, "failed", entries2[0].TaskStatus)
+	assert.Equal(t, "running", entries2[0].TaskStatus)
 }
 
 func TestProjectDetail_TasksPanel(t *testing.T) {
