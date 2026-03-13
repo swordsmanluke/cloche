@@ -233,14 +233,19 @@ func (l *Loop) runPhased() {
 				}
 
 				// Phase 3: finalize — cleanup (runs on both success and failure).
+				// The overall state is the worst of main and finalize outcomes.
+				overallState := mainResult.State
 				if l.finalizeFn != nil {
-					_, finalizeErr := l.finalizeFn(context.Background(), l.config.ProjectDir, tid, mainResult)
+					finalizeResult, finalizeErr := l.finalizeFn(context.Background(), l.config.ProjectDir, tid, mainResult)
 					if finalizeErr != nil {
 						log.Printf("orchestration loop: finalize failed for %s task %s: %v", l.config.ProjectDir, tid, finalizeErr)
+						overallState = domain.WorseState(overallState, domain.RunStateFailed)
+					} else if finalizeResult != nil {
+						overallState = domain.WorseState(overallState, finalizeResult.State)
 					}
 				}
 
-				completions <- result{state: mainResult.State}
+				completions <- result{state: overallState}
 			}()
 		}
 

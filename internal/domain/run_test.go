@@ -76,12 +76,39 @@ func TestRun_StepExecution_Duration(t *testing.T) {
 	assert.InDelta(t, 5.0, exec.Duration().Seconds(), 0.1)
 }
 
+func TestWorseState(t *testing.T) {
+	tests := []struct {
+		name string
+		a, b domain.RunState
+		want domain.RunState
+	}{
+		{"succeeded vs succeeded", domain.RunStateSucceeded, domain.RunStateSucceeded, domain.RunStateSucceeded},
+		{"succeeded vs failed", domain.RunStateSucceeded, domain.RunStateFailed, domain.RunStateFailed},
+		{"failed vs succeeded", domain.RunStateFailed, domain.RunStateSucceeded, domain.RunStateFailed},
+		{"succeeded vs cancelled", domain.RunStateSucceeded, domain.RunStateCancelled, domain.RunStateCancelled},
+		{"cancelled vs failed", domain.RunStateCancelled, domain.RunStateFailed, domain.RunStateFailed},
+		{"failed vs failed", domain.RunStateFailed, domain.RunStateFailed, domain.RunStateFailed},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := domain.WorseState(tt.a, tt.b)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestTaskAggregateStatus(t *testing.T) {
 	now := time.Now()
 	mkRun := func(state domain.RunState, startedAt time.Time) *domain.Run {
 		r := domain.NewRun("r", "wf")
 		r.State = state
 		r.StartedAt = startedAt
+		return r
+	}
+	mkHostRun := func(state domain.RunState, startedAt time.Time) *domain.Run {
+		r := mkRun(state, startedAt)
+		r.IsHost = true
 		return r
 	}
 
@@ -166,6 +193,40 @@ func TestTaskAggregateStatus(t *testing.T) {
 			runs: []*domain.Run{
 				mkRun(domain.RunStateRunning, now.Add(-5*time.Minute)),
 				mkRun(domain.RunStateFailed, now),
+			},
+			want: domain.RunStateRunning,
+		},
+		{
+			name: "host run failed with succeeded child - host wins",
+			runs: []*domain.Run{
+				mkHostRun(domain.RunStateFailed, now.Add(-1*time.Minute)),
+				mkRun(domain.RunStateSucceeded, now),
+			},
+			want: domain.RunStateFailed,
+		},
+		{
+			name: "host run succeeded with succeeded child",
+			runs: []*domain.Run{
+				mkHostRun(domain.RunStateSucceeded, now.Add(-1*time.Minute)),
+				mkRun(domain.RunStateSucceeded, now),
+			},
+			want: domain.RunStateSucceeded,
+		},
+		{
+			name: "most recent host run wins over older host",
+			runs: []*domain.Run{
+				mkHostRun(domain.RunStateSucceeded, now.Add(-5*time.Minute)),
+				mkRun(domain.RunStateSucceeded, now.Add(-4*time.Minute)),
+				mkHostRun(domain.RunStateFailed, now.Add(-2*time.Minute)),
+				mkRun(domain.RunStateSucceeded, now),
+			},
+			want: domain.RunStateFailed,
+		},
+		{
+			name: "active outweighs failed host",
+			runs: []*domain.Run{
+				mkHostRun(domain.RunStateFailed, now.Add(-2*time.Minute)),
+				mkRun(domain.RunStateRunning, now),
 			},
 			want: domain.RunStateRunning,
 		},

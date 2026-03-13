@@ -506,8 +506,10 @@ workflow "finalize" {
 
 A typical `finalize` script checks `$CLOCHE_MAIN_OUTCOME` and acts accordingly —
 closing the ticket on success, or posting a failure comment for investigation.
-Wiring both results to `done` (not `abort`) ensures the daemon treats the
-finalize phase as complete regardless of the cleanup script's exit status.
+Wiring both results to `done` (not `abort`) ensures the finalize workflow itself
+completes rather than aborting. Note that the overall task status reflects the
+worst outcome of the main and finalize phases — if finalize fails, the task is
+marked as failed even when main succeeded.
 
 **If omitted:** The daemon skips the finalize phase entirely. This is fine if you
 don't need automated cleanup.

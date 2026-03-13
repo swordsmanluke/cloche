@@ -2430,6 +2430,44 @@ func TestRunsList_TaskGroupingStatus(t *testing.T) {
 	assert.Equal(t, "running", entries2[0].TaskStatus)
 }
 
+func TestRunsList_HostRunFailedOverridesChildSuccess(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// Host run failed (e.g., finalize/merge step failed).
+	hostRun := domain.NewRun("hf-host-1", "main")
+	hostRun.IsHost = true
+	hostRun.ProjectDir = "/project"
+	hostRun.TaskID = "task-500"
+	hostRun.Start()
+	time.Sleep(time.Millisecond) // ensure child starts later
+	hostRun.Fail("merge failed")
+	require.NoError(t, store.CreateRun(ctx, hostRun))
+
+	// Child container run succeeded (develop step).
+	childRun := domain.NewRun("hf-child-1", "develop")
+	childRun.ProjectDir = "/project"
+	childRun.TaskID = "task-500"
+	childRun.ParentRunID = "hf-host-1"
+	childRun.StartedAt = hostRun.StartedAt.Add(time.Second) // started after host
+	childRun.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, childRun))
+
+	req := httptest.NewRequest("GET", "/api/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var entries []apiGroupedEntry
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &entries))
+
+	// Task header should show failed (host run state), not succeeded (child run state).
+	require.True(t, entries[0].TaskHeader)
+	assert.Equal(t, "task-500", entries[0].TaskID)
+	assert.Equal(t, "failed", entries[0].TaskStatus)
+}
+
 func TestProjectDetail_TasksPanel(t *testing.T) {
 	h, store := setupHandler(t)
 	ctx := context.Background()

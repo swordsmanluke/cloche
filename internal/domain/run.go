@@ -121,10 +121,35 @@ func (r *Run) Fail(msg string) {
 	r.ErrorMessage = msg
 }
 
+// stateSeverity returns a severity score for terminal RunStates.
+// Higher values indicate worse outcomes.
+func stateSeverity(s RunState) int {
+	switch s {
+	case RunStateSucceeded:
+		return 0
+	case RunStateCancelled:
+		return 1
+	case RunStateFailed:
+		return 2
+	default:
+		return -1
+	}
+}
+
+// WorseState returns the more severe of two terminal RunStates.
+// Failed is worse than cancelled, which is worse than succeeded.
+func WorseState(a, b RunState) RunState {
+	if stateSeverity(b) > stateSeverity(a) {
+		return b
+	}
+	return a
+}
+
 // TaskAggregateStatus computes the aggregate status for a group of runs
 // representing attempts at a task. Active statuses (running, pending) outweigh
-// terminal ones, and among terminal-only statuses the most recently started
-// run determines the result.
+// terminal ones. Among terminal runs, host runs (which represent the full
+// attempt including finalize) take precedence over child container runs.
+// If no host runs exist, the most recently started run determines the result.
 func TaskAggregateStatus(runs []*Run) RunState {
 	if len(runs) == 0 {
 		return RunStatePending
@@ -148,12 +173,22 @@ func TaskAggregateStatus(runs []*Run) RunState {
 		return RunStatePending
 	}
 
-	// All runs are terminal — return the state of the most recent attempt.
+	// All runs are terminal. Prefer the most recently started host run,
+	// since it reflects the full attempt outcome (including finalize).
+	// Child container runs start after their parent, so naive most-recent
+	// selection would incorrectly pick a succeeded child over a failed host.
+	var latestHost *Run
 	var latest *Run
 	for _, r := range runs {
+		if r.IsHost && (latestHost == nil || r.StartedAt.After(latestHost.StartedAt)) {
+			latestHost = r
+		}
 		if latest == nil || r.StartedAt.After(latest.StartedAt) {
 			latest = r
 		}
+	}
+	if latestHost != nil {
+		return latestHost.State
 	}
 	return latest.State
 }
