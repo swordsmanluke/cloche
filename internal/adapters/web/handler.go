@@ -292,9 +292,11 @@ func (h *Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 		totalContainerCount += c
 	}
 
+	grouped := groupAndSortRuns(runs, labels)
+
 	data := map[string]any{
 		"Title":               "Runs",
-		"Runs":                runs,
+		"GroupedRuns":         grouped,
 		"Projects":            projectList,
 		"ProjectFilter":       projectFilter,
 		"ProjectLabels":       labels,
@@ -488,6 +490,109 @@ func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
 	}
 }
 
+// apiGroupedEntry is a single entry in the grouped runs response.
+// Either a task header (TaskHeader true, Run nil) or a run entry.
+type apiGroupedEntry struct {
+	TaskHeader bool    `json:"task_header,omitempty"`
+	TaskID     string  `json:"task_id,omitempty"`
+	IsParent   bool    `json:"is_parent,omitempty"`
+	IsChild    bool    `json:"is_child,omitempty"`
+	Run        *apiRun `json:"run,omitempty"`
+}
+
+// groupAndSortRuns filters, sorts, and groups runs by task, mirroring the
+// logic previously done client-side. Returns a flat list of grouped entries
+// suitable for both HTML template rendering and JSON API responses.
+func groupAndSortRuns(runs []*domain.Run, labels map[string]string) []apiGroupedEntry {
+	// Filter out list-tasks runs
+	var filtered []*domain.Run
+	for _, r := range runs {
+		if r.WorkflowName != "list-tasks" {
+			filtered = append(filtered, r)
+		}
+	}
+
+	// Build lookup and parent→children map
+	byID := map[string]*domain.Run{}
+	parentMap := map[string][]*domain.Run{}
+	var topLevel []*domain.Run
+
+	for _, r := range filtered {
+		byID[r.ID] = r
+	}
+	for _, r := range filtered {
+		if r.ParentRunID != "" && byID[r.ParentRunID] != nil {
+			parentMap[r.ParentRunID] = append(parentMap[r.ParentRunID], r)
+		} else if r.ParentRunID == "" || byID[r.ParentRunID] == nil {
+			topLevel = append(topLevel, r)
+		}
+	}
+
+	// Sort top-level: running first, then by started_at descending
+	sort.SliceStable(topLevel, func(i, j int) bool {
+		iRunning := topLevel[i].State == domain.RunStateRunning
+		jRunning := topLevel[j].State == domain.RunStateRunning
+		if iRunning != jRunning {
+			return iRunning
+		}
+		return topLevel[i].StartedAt.After(topLevel[j].StartedAt)
+	})
+
+	// Group by task_id preserving sort order
+	taskGroups := map[string][]*domain.Run{}
+	var taskOrder []string
+	var ungrouped []*domain.Run
+
+	for _, r := range topLevel {
+		if r.TaskID != "" {
+			if _, seen := taskGroups[r.TaskID]; !seen {
+				taskOrder = append(taskOrder, r.TaskID)
+			}
+			taskGroups[r.TaskID] = append(taskGroups[r.TaskID], r)
+		} else {
+			ungrouped = append(ungrouped, r)
+		}
+	}
+
+	// Build result
+	var result []apiGroupedEntry
+
+	// Emit task groups
+	for _, tid := range taskOrder {
+		result = append(result, apiGroupedEntry{TaskHeader: true, TaskID: tid})
+		for _, r := range taskGroups[tid] {
+			children := parentMap[r.ID]
+			ar := toAPIRun(r, labels)
+			result = append(result, apiGroupedEntry{Run: &ar, IsParent: len(children) > 0})
+			for _, child := range children {
+				ac := toAPIRun(child, labels)
+				result = append(result, apiGroupedEntry{Run: &ac, IsChild: true})
+			}
+		}
+	}
+
+	// Emit ungrouped
+	for _, r := range ungrouped {
+		children := parentMap[r.ID]
+		ar := toAPIRun(r, labels)
+		result = append(result, apiGroupedEntry{Run: &ar, IsParent: len(children) > 0})
+		for _, child := range children {
+			ac := toAPIRun(child, labels)
+			result = append(result, apiGroupedEntry{Run: &ac, IsChild: true})
+		}
+	}
+
+	// Orphaned children (parent not in current view)
+	for _, r := range filtered {
+		if r.ParentRunID != "" && byID[r.ParentRunID] == nil {
+			ac := toAPIRun(r, labels)
+			result = append(result, apiGroupedEntry{Run: &ac, IsChild: true})
+		}
+	}
+
+	return result
+}
+
 func (h *Handler) handleAPIRuns(w http.ResponseWriter, r *http.Request) {
 	projectFilter := r.URL.Query().Get("project")
 
@@ -506,10 +611,7 @@ func (h *Handler) handleAPIRuns(w http.ResponseWriter, r *http.Request) {
 	projects, _ := h.store.ListProjects(r.Context())
 	labels := projectLabels(projects)
 
-	result := make([]apiRun, len(runs))
-	for i, run := range runs {
-		result[i] = toAPIRun(run, labels)
-	}
+	result := groupAndSortRuns(runs, labels)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)

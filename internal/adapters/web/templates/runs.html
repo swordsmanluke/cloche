@@ -29,19 +29,21 @@
         </tr>
     </thead>
     <tbody id="runs-body">
-    {{if .Runs}}
-        {{range .Runs}}
-        {{if ne .WorkflowName "list-tasks"}}
-        <tr class="{{if .ParentRunID}}run-child-row{{else if .IsHost}}run-parent-row{{end}}">
-            <td><a href="/runs/{{.ID}}">{{.ID}}</a></td>
-            <td>{{truncate .Title 50}}</td>
-            <td>{{index $.ProjectLabels .ProjectDir}}</td>
-            <td>{{.WorkflowName}}</td>
-            <td>{{if .IsHost}}host{{else}}container{{end}}</td>
-            <td><span class="badge badge-{{stateColor .State}}">{{.State}}</span></td>
-            <td>{{formatRunTiming .State .StartedAt .CompletedAt}}</td>
-            <td class="mono">{{shortContainerID .ContainerID}}</td>
-            <td class="error-cell">{{truncate .ErrorMessage 80}}</td>
+    {{if .GroupedRuns}}
+        {{range .GroupedRuns}}
+        {{if .TaskHeader}}
+        <tr class="run-task-header"><td colspan="9">Task: {{.TaskID}}</td></tr>
+        {{else if .Run}}
+        <tr class="{{if .IsChild}}run-child-row{{else if .IsParent}}run-parent-row{{end}}">
+            <td><a href="/runs/{{.Run.ID}}">{{.Run.ID}}</a></td>
+            <td>{{truncate .Run.Title 50}}</td>
+            <td>{{.Run.ProjectLabel}}</td>
+            <td>{{.Run.WorkflowName}}</td>
+            <td>{{if .Run.IsHost}}host{{else}}container{{end}}</td>
+            <td><span class="badge badge-{{.Run.State}}">{{.Run.State}}</span></td>
+            <td>{{.Run.Timing}}</td>
+            <td class="mono">{{shortContainerID .Run.ContainerID}}</td>
+            <td class="error-cell">{{truncate .Run.ErrorMessage 80}}</td>
         </tr>
         {{end}}
         {{end}}
@@ -84,109 +86,6 @@
             });
     };
 
-    // groupRuns arranges runs by task, then by parent-child within each task.
-    // list-tasks runs are excluded. Runs with the same task_id are grouped
-    // under a task header row. Runs without a task_id appear ungrouped.
-    function groupRuns(runs) {
-        // Filter out list-tasks runs
-        var filtered = [];
-        for (var i = 0; i < runs.length; i++) {
-            if (runs[i].workflow_name !== 'list-tasks') {
-                filtered.push(runs[i]);
-            }
-        }
-        runs = filtered;
-
-        var parentMap = {};  // parent_run_id -> [children]
-        var topLevel = [];
-        var byId = {};
-
-        for (var i = 0; i < runs.length; i++) {
-            byId[runs[i].id] = runs[i];
-        }
-
-        for (var i = 0; i < runs.length; i++) {
-            var r = runs[i];
-            if (r.parent_run_id && byId[r.parent_run_id]) {
-                if (!parentMap[r.parent_run_id]) parentMap[r.parent_run_id] = [];
-                parentMap[r.parent_run_id].push(r);
-            } else {
-                topLevel.push(r);
-            }
-        }
-
-        // Sort top-level: running first, then by started_at descending
-        topLevel.sort(function(a, b) {
-            var aRunning = a.state === 'running' ? 0 : 1;
-            var bRunning = b.state === 'running' ? 0 : 1;
-            if (aRunning !== bRunning) return aRunning - bRunning;
-            return (b.started_at || '').localeCompare(a.started_at || '');
-        });
-
-        // Group top-level runs by task_id (preserving sort order within groups)
-        var taskGroups = {};   // task_id -> [top-level runs]
-        var taskOrder = [];    // ordered list of task_ids as first seen
-        var ungrouped = [];    // runs without a task_id
-
-        for (var i = 0; i < topLevel.length; i++) {
-            var r = topLevel[i];
-            var tid = r.task_id || '';
-            if (tid) {
-                if (!taskGroups[tid]) {
-                    taskGroups[tid] = [];
-                    taskOrder.push(tid);
-                }
-                taskGroups[tid].push(r);
-            } else {
-                ungrouped.push(r);
-            }
-        }
-
-        var result = [];
-
-        // Emit task groups first (they have active context)
-        for (var ti = 0; ti < taskOrder.length; ti++) {
-            var tid = taskOrder[ti];
-            var group = taskGroups[tid];
-            // Task header row
-            result.push({ run: null, isParent: false, isChild: false, isTaskHeader: true, taskID: tid });
-            for (var gi = 0; gi < group.length; gi++) {
-                var r = group[gi];
-                var children = parentMap[r.id];
-                var isParent = children && children.length > 0;
-                result.push({ run: r, isParent: isParent, isChild: false, isTaskHeader: false, taskID: '' });
-                if (children) {
-                    for (var j = 0; j < children.length; j++) {
-                        result.push({ run: children[j], isParent: false, isChild: true, isTaskHeader: false, taskID: '' });
-                    }
-                }
-            }
-        }
-
-        // Emit ungrouped runs
-        for (var i = 0; i < ungrouped.length; i++) {
-            var r = ungrouped[i];
-            var children = parentMap[r.id];
-            var isParent = children && children.length > 0;
-            result.push({ run: r, isParent: isParent, isChild: false, isTaskHeader: false, taskID: '' });
-            if (children) {
-                for (var j = 0; j < children.length; j++) {
-                    result.push({ run: children[j], isParent: false, isChild: true, isTaskHeader: false, taskID: '' });
-                }
-            }
-        }
-
-        // Add orphaned children (parent not in current view)
-        for (var i = 0; i < runs.length; i++) {
-            var r = runs[i];
-            if (r.parent_run_id && !byId[r.parent_run_id]) {
-                result.push({ run: r, isParent: false, isChild: true, isTaskHeader: false, taskID: '' });
-            }
-        }
-
-        return result;
-    }
-
     function poll() {
         var url = '/api/runs';
         if (currentProject) {
@@ -194,46 +93,35 @@
         }
         fetch(url)
             .then(function(r) { return r.json(); })
-            .then(function(runs) {
+            .then(function(entries) {
                 var tbody = document.getElementById('runs-body');
-                if (!runs || runs.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="9" class="empty">No runs yet.</td></tr>';
-                    return;
-                }
-
-                var grouped = groupRuns(runs);
-                // Check if all entries (after list-tasks filtering) are empty
-                var hasRuns = false;
-                for (var i = 0; i < grouped.length; i++) {
-                    if (grouped[i].run) { hasRuns = true; break; }
-                }
-                if (!hasRuns && grouped.length === 0) {
+                if (!entries || entries.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="9" class="empty">No runs yet.</td></tr>';
                     return;
                 }
 
                 var html = '';
-                for (var i = 0; i < grouped.length; i++) {
-                    var entry = grouped[i];
-                    if (entry.isTaskHeader) {
-                        html += '<tr class="run-task-header"><td colspan="9">Task: ' + escapeHtml(entry.taskID) + '</td></tr>';
+                for (var i = 0; i < entries.length; i++) {
+                    var entry = entries[i];
+                    if (entry.task_header) {
+                        html += '<tr class="run-task-header"><td colspan="9">Task: ' + escapeHtml(entry.task_id) + '</td></tr>';
                         continue;
                     }
                     var r = entry.run;
+                    if (!r) continue;
                     var cid = r.container_id || '';
                     if (cid.length > 12) cid = cid.substring(0, 12);
                     var err = r.error_message || '';
                     if (err.length > 80) err = err.substring(0, 80) + '...';
-                    var proj = r.project_label || '';
                     var title = r.title || '';
                     if (title.length > 50) title = title.substring(0, 47) + '...';
                     var runType = r.is_host ? 'host' : 'container';
-                    var rowClass = entry.isChild ? 'run-child-row' : (entry.isParent ? 'run-parent-row' : '');
+                    var rowClass = entry.is_child ? 'run-child-row' : (entry.is_parent ? 'run-parent-row' : '');
                     var timing = r.timing || '';
                     html += '<tr class="' + rowClass + '">' +
                         '<td><a href="/runs/' + r.id + '">' + r.id + '</a></td>' +
                         '<td>' + escapeHtml(title) + '</td>' +
-                        '<td>' + escapeHtml(proj) + '</td>' +
+                        '<td>' + escapeHtml(r.project_label || '') + '</td>' +
                         '<td>' + r.workflow_name + '</td>' +
                         '<td>' + runType + '</td>' +
                         '<td><span class="badge badge-' + r.state + '">' + r.state + '</span></td>' +

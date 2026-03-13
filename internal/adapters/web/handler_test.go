@@ -225,13 +225,15 @@ func TestAPIRuns(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
 
-	var runs []apiRun
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &runs))
-	assert.Len(t, runs, 2)
+	var entries []apiGroupedEntry
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &entries))
+	assert.Len(t, entries, 2)
 
 	ids := map[string]bool{}
-	for _, r := range runs {
-		ids[r.ID] = true
+	for _, e := range entries {
+		if e.Run != nil {
+			ids[e.Run.ID] = true
+		}
 	}
 	assert.True(t, ids["api-run-1"])
 	assert.True(t, ids["api-run-2"])
@@ -443,9 +445,10 @@ func TestAPIRuns_ProjectFilter(t *testing.T) {
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var allRuns []apiRun
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &allRuns))
-	assert.Len(t, allRuns, 2)
+	var allEntries []apiGroupedEntry
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &allEntries))
+	// 2 ungrouped runs (no task_id)
+	assert.Len(t, allEntries, 2)
 
 	// With filter: only matching
 	req = httptest.NewRequest("GET", "/api/runs?project=/home/user/alpha", nil)
@@ -453,12 +456,13 @@ func TestAPIRuns_ProjectFilter(t *testing.T) {
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var filtered []apiRun
+	var filtered []apiGroupedEntry
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &filtered))
 	assert.Len(t, filtered, 1)
-	assert.Equal(t, "api-a1", filtered[0].ID)
-	assert.Equal(t, "/home/user/alpha", filtered[0].ProjectDir)
-	assert.Equal(t, "alpha", filtered[0].ProjectLabel)
+	require.NotNil(t, filtered[0].Run)
+	assert.Equal(t, "api-a1", filtered[0].Run.ID)
+	assert.Equal(t, "/home/user/alpha", filtered[0].Run.ProjectDir)
+	assert.Equal(t, "alpha", filtered[0].Run.ProjectLabel)
 }
 
 func setupHandlerWithContainerManager(t *testing.T) (*Handler, *sqlite.Store, *mockContainerManager) {
@@ -2066,13 +2070,20 @@ func TestRunsList_TaskGrouping(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var runs []apiRun
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &runs))
-	assert.Len(t, runs, 2)
+	var entries []apiGroupedEntry
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &entries))
 
-	// Both runs should have task_id set
-	for _, r := range runs {
-		assert.Equal(t, "task-100", r.TaskID)
+	// Should have: 1 task header + 2 run entries = 3 entries
+	assert.Len(t, entries, 3)
+
+	// First entry should be the task header
+	assert.True(t, entries[0].TaskHeader)
+	assert.Equal(t, "task-100", entries[0].TaskID)
+
+	// Remaining entries should be runs with task_id set
+	for _, e := range entries[1:] {
+		require.NotNil(t, e.Run)
+		assert.Equal(t, "task-100", e.Run.TaskID)
 	}
 }
 
