@@ -87,6 +87,7 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		hostRun := domain.NewRun(orchRunID, wf.Name)
 		hostRun.ProjectDir = projectDir
 		hostRun.IsHost = true
+		hostRun.TaskID = r.TaskID
 		if err := r.Store.CreateRun(ctx, hostRun); err != nil {
 			return nil, fmt.Errorf("creating host run record: %w", err)
 		}

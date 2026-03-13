@@ -451,6 +451,7 @@ type apiRun struct {
 	Title        string `json:"title"`
 	IsHost       bool   `json:"is_host"`
 	ParentRunID  string `json:"parent_run_id,omitempty"`
+	TaskID       string `json:"task_id,omitempty"`
 }
 
 type apiStep struct {
@@ -483,6 +484,7 @@ func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
 		Title:        r.Title,
 		IsHost:       r.IsHost,
 		ParentRunID:  r.ParentRunID,
+		TaskID:       r.TaskID,
 	}
 }
 

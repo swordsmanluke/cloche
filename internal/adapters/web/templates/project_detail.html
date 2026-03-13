@@ -17,6 +17,12 @@
     <div class="panel-body" id="project-info">Loading...</div>
 </div>
 
+<!-- Panel 2: Tasks -->
+<div class="panel" id="tasks-panel">
+    <div class="panel-header">Tasks</div>
+    <div class="panel-body" id="tasks-body">Loading...</div>
+</div>
+
 <!-- Panel 3: Workflow View -->
 <div class="panel" id="workflow-panel">
     <div class="panel-header">Workflows</div>
@@ -462,8 +468,45 @@ window.deleteAllContainers = function() {
         });
 };
 
+function escapeHtml(s) {
+    var d = document.createElement('div');
+    d.appendChild(document.createTextNode(s));
+    return d.innerHTML;
+}
+
+function loadTasks() {
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/tasks')
+        .then(function(r) { return r.json(); })
+        .then(function(tasks) {
+            var body = document.getElementById('tasks-body');
+            if (!tasks || tasks.length === 0) {
+                body.innerHTML = '<p class="empty">No tasks discovered</p>';
+                return;
+            }
+            var html = '<table class="runs-table" style="margin:0"><thead><tr>';
+            html += '<th>Task ID</th><th>Title</th><th>Status</th><th>Assigned</th><th>Run</th>';
+            html += '</tr></thead><tbody>';
+            for (var i = 0; i < tasks.length; i++) {
+                var t = tasks[i];
+                var statusClass = t.status === 'open' ? 'running' : (t.status === 'closed' ? 'succeeded' : 'pending');
+                html += '<tr>';
+                html += '<td class="mono">' + escapeHtml(t.id) + '</td>';
+                html += '<td>' + escapeHtml(t.title || '') + '</td>';
+                html += '<td><span class="badge badge-' + statusClass + '">' + escapeHtml(t.status) + '</span></td>';
+                html += '<td>' + (t.assigned ? 'Yes' : 'No') + '</td>';
+                html += '<td>' + (t.run_id ? '<a href="/runs/' + escapeHtml(t.run_id) + '">' + escapeHtml(t.run_id) + '</a>' : '') + '</td>';
+                html += '</tr>';
+            }
+            html += '</tbody></table>';
+            body.innerHTML = html;
+        })
+        .catch(function() {});
+}
+
 // Load all panels
 loadProjectInfo();
 loadWorkflows();
+loadTasks();
+setInterval(loadTasks, 5000);
 </script>
 {{end}}

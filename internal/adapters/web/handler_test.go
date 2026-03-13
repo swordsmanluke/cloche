@@ -1974,3 +1974,170 @@ func TestRunsList_NoCleanupButtonWhenNoContainers(t *testing.T) {
 	body := w.Body.String()
 	assert.NotContains(t, body, `id="cleanup-containers-btn"`)
 }
+
+func TestAPIRuns_TaskID(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// Create a run with a task ID
+	run := domain.NewRun("task-run-1", "main")
+	run.IsHost = true
+	run.TaskID = "task-42"
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Create another run without a task ID
+	run2 := domain.NewRun("task-run-2", "develop")
+	run2.Start()
+	require.NoError(t, store.CreateRun(ctx, run2))
+
+	req := httptest.NewRequest("GET", "/api/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var runs []apiRun
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &runs))
+
+	for _, r := range runs {
+		if r.ID == "task-run-1" {
+			assert.Equal(t, "task-42", r.TaskID)
+		}
+		if r.ID == "task-run-2" {
+			assert.Equal(t, "", r.TaskID)
+		}
+	}
+}
+
+func TestRunsList_HidesListTasksRuns(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// Create a list-tasks host run
+	listRun := domain.NewRun("lt-run-1", "list-tasks")
+	listRun.IsHost = true
+	listRun.ProjectDir = "/project"
+	listRun.Start()
+	require.NoError(t, store.CreateRun(ctx, listRun))
+
+	// Create a main host run
+	mainRun := domain.NewRun("main-run-1", "main")
+	mainRun.IsHost = true
+	mainRun.ProjectDir = "/project"
+	mainRun.Start()
+	require.NoError(t, store.CreateRun(ctx, mainRun))
+
+	req := httptest.NewRequest("GET", "/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+
+	// list-tasks run should be hidden from the rendered HTML
+	assert.NotContains(t, body, "lt-run-1")
+	// main run should be visible
+	assert.Contains(t, body, "main-run-1")
+}
+
+func TestRunsList_TaskGrouping(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// Create two host runs with the same task ID
+	main1 := domain.NewRun("tg-main-1", "main")
+	main1.IsHost = true
+	main1.ProjectDir = "/project"
+	main1.TaskID = "task-100"
+	main1.Start()
+	require.NoError(t, store.CreateRun(ctx, main1))
+
+	fin1 := domain.NewRun("tg-fin-1", "finalize")
+	fin1.IsHost = true
+	fin1.ProjectDir = "/project"
+	fin1.TaskID = "task-100"
+	fin1.Start()
+	require.NoError(t, store.CreateRun(ctx, fin1))
+
+	req := httptest.NewRequest("GET", "/api/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var runs []apiRun
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &runs))
+	assert.Len(t, runs, 2)
+
+	// Both runs should have task_id set
+	for _, r := range runs {
+		assert.Equal(t, "task-100", r.TaskID)
+	}
+}
+
+func TestProjectDetail_TasksPanel(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// Seed a project so it resolves
+	run := domain.NewRun("pd-run-1", "develop")
+	run.ProjectDir = "/home/user/projects/taskapp"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	req := httptest.NewRequest("GET", "/projects/taskapp", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+
+	// The tasks panel should be present in the HTML
+	assert.Contains(t, body, `id="tasks-panel"`)
+	assert.Contains(t, body, `id="tasks-body"`)
+	assert.Contains(t, body, "Tasks")
+}
+
+func TestTaskID_StorePersistence(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run with task ID
+	run := domain.NewRun("persist-1", "main")
+	run.TaskID = "persist-task-55"
+	run.ProjectDir = "/project"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Retrieve and verify task ID is persisted
+	got, err := store.GetRun(ctx, "persist-1")
+	require.NoError(t, err)
+	assert.Equal(t, "persist-task-55", got.TaskID)
+
+	// Update the task ID
+	got.TaskID = "updated-task-77"
+	require.NoError(t, store.UpdateRun(ctx, got))
+
+	got2, err := store.GetRun(ctx, "persist-1")
+	require.NoError(t, err)
+	assert.Equal(t, "updated-task-77", got2.TaskID)
+}
+
+func TestTaskID_DefaultEmpty(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run without setting task ID
+	run := domain.NewRun("no-task-1", "develop")
+	run.ProjectDir = "/project"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	got, err := store.GetRun(ctx, "no-task-1")
+	require.NoError(t, err)
+	assert.Equal(t, "", got.TaskID)
+}

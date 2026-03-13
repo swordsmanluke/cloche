@@ -31,6 +31,7 @@
     <tbody id="runs-body">
     {{if .Runs}}
         {{range .Runs}}
+        {{if ne .WorkflowName "list-tasks"}}
         <tr class="{{if .ParentRunID}}run-child-row{{else if .IsHost}}run-parent-row{{end}}">
             <td><a href="/runs/{{.ID}}">{{.ID}}</a></td>
             <td>{{truncate .Title 50}}</td>
@@ -42,6 +43,7 @@
             <td class="mono">{{shortContainerID .ContainerID}}</td>
             <td class="error-cell">{{truncate .ErrorMessage 80}}</td>
         </tr>
+        {{end}}
         {{end}}
     {{else}}
         <tr><td colspan="9" class="empty">No runs yet.</td></tr>
@@ -82,9 +84,19 @@
             });
     };
 
-    // groupRuns arranges runs so children appear directly after their parent.
-    // Parents are de-emphasized; children (where active work happens) are prominent.
+    // groupRuns arranges runs by task, then by parent-child within each task.
+    // list-tasks runs are excluded. Runs with the same task_id are grouped
+    // under a task header row. Runs without a task_id appear ungrouped.
     function groupRuns(runs) {
+        // Filter out list-tasks runs
+        var filtered = [];
+        for (var i = 0; i < runs.length; i++) {
+            if (runs[i].workflow_name !== 'list-tasks') {
+                filtered.push(runs[i]);
+            }
+        }
+        runs = filtered;
+
         var parentMap = {};  // parent_run_id -> [children]
         var topLevel = [];
         var byId = {};
@@ -111,15 +123,55 @@
             return (b.started_at || '').localeCompare(a.started_at || '');
         });
 
-        var result = [];
+        // Group top-level runs by task_id (preserving sort order within groups)
+        var taskGroups = {};   // task_id -> [top-level runs]
+        var taskOrder = [];    // ordered list of task_ids as first seen
+        var ungrouped = [];    // runs without a task_id
+
         for (var i = 0; i < topLevel.length; i++) {
             var r = topLevel[i];
+            var tid = r.task_id || '';
+            if (tid) {
+                if (!taskGroups[tid]) {
+                    taskGroups[tid] = [];
+                    taskOrder.push(tid);
+                }
+                taskGroups[tid].push(r);
+            } else {
+                ungrouped.push(r);
+            }
+        }
+
+        var result = [];
+
+        // Emit task groups first (they have active context)
+        for (var ti = 0; ti < taskOrder.length; ti++) {
+            var tid = taskOrder[ti];
+            var group = taskGroups[tid];
+            // Task header row
+            result.push({ run: null, isParent: false, isChild: false, isTaskHeader: true, taskID: tid });
+            for (var gi = 0; gi < group.length; gi++) {
+                var r = group[gi];
+                var children = parentMap[r.id];
+                var isParent = children && children.length > 0;
+                result.push({ run: r, isParent: isParent, isChild: false, isTaskHeader: false, taskID: '' });
+                if (children) {
+                    for (var j = 0; j < children.length; j++) {
+                        result.push({ run: children[j], isParent: false, isChild: true, isTaskHeader: false, taskID: '' });
+                    }
+                }
+            }
+        }
+
+        // Emit ungrouped runs
+        for (var i = 0; i < ungrouped.length; i++) {
+            var r = ungrouped[i];
             var children = parentMap[r.id];
             var isParent = children && children.length > 0;
-            result.push({ run: r, isParent: isParent, isChild: false });
+            result.push({ run: r, isParent: isParent, isChild: false, isTaskHeader: false, taskID: '' });
             if (children) {
                 for (var j = 0; j < children.length; j++) {
-                    result.push({ run: children[j], isParent: false, isChild: true });
+                    result.push({ run: children[j], isParent: false, isChild: true, isTaskHeader: false, taskID: '' });
                 }
             }
         }
@@ -128,7 +180,7 @@
         for (var i = 0; i < runs.length; i++) {
             var r = runs[i];
             if (r.parent_run_id && !byId[r.parent_run_id]) {
-                result.push({ run: r, isParent: false, isChild: true });
+                result.push({ run: r, isParent: false, isChild: true, isTaskHeader: false, taskID: '' });
             }
         }
 
@@ -150,9 +202,23 @@
                 }
 
                 var grouped = groupRuns(runs);
+                // Check if all entries (after list-tasks filtering) are empty
+                var hasRuns = false;
+                for (var i = 0; i < grouped.length; i++) {
+                    if (grouped[i].run) { hasRuns = true; break; }
+                }
+                if (!hasRuns && grouped.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="9" class="empty">No runs yet.</td></tr>';
+                    return;
+                }
+
                 var html = '';
                 for (var i = 0; i < grouped.length; i++) {
                     var entry = grouped[i];
+                    if (entry.isTaskHeader) {
+                        html += '<tr class="run-task-header"><td colspan="9">Task: ' + escapeHtml(entry.taskID) + '</td></tr>';
+                        continue;
+                    }
                     var r = entry.run;
                     var cid = r.container_id || '';
                     if (cid.length > 12) cid = cid.substring(0, 12);

@@ -572,6 +572,16 @@ details pre {
 /* Orchestrator status */
 .orch-status { font-size: 0.9rem; }
 
+/* Task grouping header */
+.run-task-header td {
+    font-weight: 600;
+    background: var(--bg-secondary);
+    border-bottom: 2px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    color: var(--text);
+    font-size: 0.9rem;
+}
+
 /* Run tree grouping */
 .run-parent-row { opacity: 0.7; }
 .run-parent-row td:first-child { font-weight: 600; }

@@ -44,6 +44,7 @@ type Run struct {
 	Title          string // One-line summary of the work being done
 	IsHost         bool   // true for host workflow runs (vs container runs)
 	ParentRunID    string // ID of the parent (host) run, empty for top-level runs
+	TaskID         string // optional task ID this run is associated with
 }
 
 func NewRun(id, workflowName string) *Run {

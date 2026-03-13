@@ -192,6 +192,7 @@ func (e *Executor) executeWorkflow(ctx context.Context, step *domain.Step) (stri
 	if e.HostRunID != "" {
 		if childRun, err := e.Store.GetRun(ctx, resp.RunId); err == nil {
 			childRun.ParentRunID = e.HostRunID
+			childRun.TaskID = e.TaskID
 			_ = e.Store.UpdateRun(ctx, childRun)
 		}
 		// Store child run ID in context so downstream steps can retrieve it

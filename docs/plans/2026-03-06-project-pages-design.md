@@ -11,11 +11,12 @@ or buried in other views.
 
 ## Goal
 
-Add a dedicated `/projects/{name}` page with three panels:
+Add a dedicated `/projects/{name}` page with four panels:
 
 1. **Orchestrator control** — view status, enable/disable the auto-poll loop, override concurrency
 2. **Project info** — Docker image, prompt file evolution history, project version
-3. **Workflow view** — read-only DAG of steps/wires, drillable to prompt/script content
+3. **Tasks** — live task pipeline view showing discovered tasks, their status, and assigned runs
+4. **Workflow view** — read-only DAG of steps/wires, drillable to prompt/script content
 
 ## Route
 
@@ -110,7 +111,31 @@ GET /api/projects/{name}/info/prompt-diff?file=.cloche/prompts/implement.md&sha=
 
 Returns plain text unified diff (`git show <sha> -- <file>`).
 
-## Panel 3: Workflow View
+## Panel 3: Tasks
+
+### Display
+- Table showing discovered tasks: Task ID, Title, Status, Assigned (yes/no), Run link
+- Status badges: `open` (running style), `closed` (succeeded style), other (pending style)
+- Auto-refreshes every 5 seconds via polling
+- Shows "No tasks discovered" when the project has no list-tasks output
+
+### API
+
+```
+GET /api/projects/{name}/tasks
+```
+
+Returns the task pipeline state for the project's orchestration loop.
+
+### Runs page changes
+
+- `list-tasks` workflow runs are hidden from the Runs page (both server-rendered and
+  JS-rendered views)
+- Runs with the same `task_id` are grouped under a task header row
+- The `task_id` field is included in the `/api/runs` JSON response
+- Runs without a `task_id` appear ungrouped below task groups
+
+## Panel 4: Workflow View
 
 ### Display
 - Two-level tab navigation:
