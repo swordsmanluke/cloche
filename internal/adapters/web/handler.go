@@ -80,11 +80,13 @@ type TaskEntry struct {
 	Assigned    bool              `json:"assigned"`
 	AssignedAt  string            `json:"assigned_at,omitempty"`
 	RunID       string            `json:"run_id,omitempty"`
+	Stale       bool              `json:"stale,omitempty"`
 }
 
 // TaskProvider retrieves task pipeline state for a project's orchestration loop.
 type TaskProvider interface {
 	GetLoopTasks(projectDir string) []TaskEntry
+	ReleaseTask(ctx context.Context, projectDir string, taskID string) error
 }
 
 type Handler struct {
@@ -163,6 +165,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows", h.handleAPIWorkflows)
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows/{workflow}/steps/{step}/content", h.handleAPIStepContent)
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks", h.handleAPITasks)
+	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
 	h.mux.HandleFunc("GET /api/runs/{id}/stream", h.handleAPIStream)
 	h.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
 
@@ -1603,6 +1606,38 @@ func (h *Handler) handleAPITasks(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tasks)
+}
+
+// handleAPIReleaseTask releases a stale claimed task back to open status.
+func (h *Handler) handleAPIReleaseTask(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	taskID := r.PathValue("taskId")
+	if taskID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "task ID is required"})
+		return
+	}
+
+	if h.taskProvider == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "task provider not configured"})
+		return
+	}
+
+	if err := h.taskProvider.ReleaseTask(r.Context(), dir, taskID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to release task: %v", err)})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // --- Template helpers ---

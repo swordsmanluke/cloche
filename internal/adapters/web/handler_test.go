@@ -1868,11 +1868,21 @@ func TestStepOutput_DoesNotFallBackToLiveDockerLogs(t *testing.T) {
 
 // mockTaskProvider implements TaskProvider for testing.
 type mockTaskProvider struct {
-	tasks map[string][]TaskEntry // projectDir -> tasks
+	tasks        map[string][]TaskEntry // projectDir -> tasks
+	releasedTask string                 // last released task ID
+	releaseErr   error                  // error to return from ReleaseTask
 }
 
 func (m *mockTaskProvider) GetLoopTasks(projectDir string) []TaskEntry {
 	return m.tasks[projectDir]
+}
+
+func (m *mockTaskProvider) ReleaseTask(ctx context.Context, projectDir string, taskID string) error {
+	if m.releaseErr != nil {
+		return m.releaseErr
+	}
+	m.releasedTask = taskID
+	return nil
 }
 
 func TestAPITasks_WithTasks(t *testing.T) {
@@ -1971,6 +1981,108 @@ func TestAPITasks_ProjectNotFound(t *testing.T) {
 	h.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestAPIReleaseTask_Success(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	tp := &mockTaskProvider{
+		tasks: map[string][]TaskEntry{
+			projectDir: {
+				{ID: "task-1", Status: "in_progress", Title: "Stale task", Stale: true},
+			},
+		},
+	}
+	h.taskProvider = tp
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/task-1/release", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "task-1", tp.releasedTask)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "ok", resp["status"])
+}
+
+func TestAPIReleaseTask_NoProvider(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/task-1/release", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAPIReleaseTask_Error(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	tp := &mockTaskProvider{
+		tasks:      map[string][]TaskEntry{},
+		releaseErr: fmt.Errorf("workflow failed"),
+	}
+	h.taskProvider = tp
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/task-1/release", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestAPITasks_StaleField(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	tp := &mockTaskProvider{
+		tasks: map[string][]TaskEntry{
+			projectDir: {
+				{ID: "task-1", Status: "in_progress", Title: "Active task", Stale: false},
+				{ID: "task-2", Status: "in_progress", Title: "Stale task", Stale: true},
+				{ID: "task-3", Status: "open", Title: "Upcoming task"},
+			},
+		},
+	}
+	h.taskProvider = tp
+
+	req := httptest.NewRequest("GET", "/api/projects/myapp/tasks", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var tasks []TaskEntry
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &tasks))
+	assert.Len(t, tasks, 3)
+	assert.False(t, tasks[0].Stale)
+	assert.True(t, tasks[1].Stale)
+	assert.False(t, tasks[2].Stale)
 }
 
 func TestAPIDeleteAllContainers_Success(t *testing.T) {
@@ -2334,10 +2446,13 @@ func TestProjectDetail_TasksPanel(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := w.Body.String()
 
-	// The tasks panel should be present in the HTML
-	assert.Contains(t, body, `id="tasks-panel"`)
-	assert.Contains(t, body, `id="tasks-body"`)
-	assert.Contains(t, body, "Tasks")
+	// The tasks panels should be present in the HTML
+	assert.Contains(t, body, `id="in-progress-panel"`)
+	assert.Contains(t, body, `id="in-progress-body"`)
+	assert.Contains(t, body, "In-progress Tasks")
+	assert.Contains(t, body, `id="upcoming-panel"`)
+	assert.Contains(t, body, `id="upcoming-body"`)
+	assert.Contains(t, body, "Upcoming Tasks")
 }
 
 func TestTaskID_StorePersistence(t *testing.T) {

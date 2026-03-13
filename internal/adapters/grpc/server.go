@@ -968,6 +968,17 @@ func (s *ClocheServer) GetLoopTasks(projectDir string) []web.TaskEntry {
 		return nil
 	}
 	snapshot := loop.GetTaskSnapshot()
+
+	// Build a set of task IDs that have active (pending/running) runs.
+	activeTaskIDs := make(map[string]bool)
+	ctx := context.Background()
+	allRuns, _ := s.store.ListRunsByProject(ctx, projectDir, time.Time{})
+	for _, r := range allRuns {
+		if r.TaskID != "" && (r.State == domain.RunStatePending || r.State == domain.RunStateRunning) {
+			activeTaskIDs[r.TaskID] = true
+		}
+	}
+
 	entries := make([]web.TaskEntry, len(snapshot))
 	for i, e := range snapshot {
 		entry := web.TaskEntry{
@@ -982,9 +993,33 @@ func (s *ClocheServer) GetLoopTasks(projectDir string) []web.TaskEntry {
 		if !e.AssignedAt.IsZero() {
 			entry.AssignedAt = e.AssignedAt.Format(time.RFC3339)
 		}
+		// Stale: task is in_progress but has no active worker.
+		if host.TaskStatus(e.Task.Status) == host.TaskStatusInProgress && !activeTaskIDs[e.Task.ID] {
+			entry.Stale = true
+		}
 		entries[i] = entry
 	}
 	return entries
+}
+
+// ReleaseTask runs the release-task host workflow for a specific task,
+// returning it to open status.
+func (s *ClocheServer) ReleaseTask(ctx context.Context, projectDir string, taskID string) error {
+	runner := &host.Runner{
+		Dispatcher:   s,
+		Store:        s.store,
+		Captures:     s.captures,
+		LogBroadcast: s.logBroadcast,
+		TaskID:       taskID,
+	}
+	result, err := runner.RunNamed(ctx, projectDir, "release-task")
+	if err != nil {
+		return fmt.Errorf("release-task workflow failed: %w", err)
+	}
+	if result.State != domain.RunStateSucceeded {
+		return fmt.Errorf("release-task workflow finished with state %s", result.State)
+	}
+	return nil
 }
 
 func (s *ClocheServer) DisableLoop(ctx context.Context, req *pb.DisableLoopRequest) (*pb.DisableLoopResponse, error) {

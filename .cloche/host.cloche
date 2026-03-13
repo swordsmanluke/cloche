@@ -50,6 +50,16 @@ workflow "main" {
   cleanup:fail           -> done
 }
 
+workflow "release-task" {
+  step release-task {
+    run     = "bash .cloche/scripts/release-task.sh"
+    results = [success, fail]
+  }
+
+  release-task:success -> done
+  release-task:fail    -> abort
+}
+
 workflow "finalize" {
   step close-task {
     run     = "bash .cloche/scripts/close-task.sh"

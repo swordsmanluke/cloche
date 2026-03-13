@@ -17,10 +17,16 @@
     <div class="panel-body" id="project-info">Loading...</div>
 </div>
 
-<!-- Panel 2: Tasks -->
-<div class="panel" id="tasks-panel">
-    <div class="panel-header">Tasks</div>
-    <div class="panel-body" id="tasks-body">Loading...</div>
+<!-- Panel 2: In-progress Tasks -->
+<div class="panel" id="in-progress-panel">
+    <div class="panel-header">In-progress Tasks</div>
+    <div class="panel-body" id="in-progress-body">Loading...</div>
+</div>
+
+<!-- Panel 3: Upcoming Tasks -->
+<div class="panel" id="upcoming-panel">
+    <div class="panel-header">Upcoming Tasks</div>
+    <div class="panel-body" id="upcoming-body">Loading...</div>
 </div>
 
 <!-- Panel 3: Workflow View -->
@@ -496,31 +502,67 @@ function escapeHtml(s) {
     return d.innerHTML;
 }
 
+function releaseTask(taskId) {
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/tasks/' + encodeURIComponent(taskId) + '/release', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                alert('Failed to release task: ' + data.error);
+            } else {
+                loadTasks();
+            }
+        })
+        .catch(function() { alert('Failed to release task'); });
+}
+
+function renderTaskTable(tasks, showRelease) {
+    if (!tasks || tasks.length === 0) {
+        return '<p class="empty">No tasks</p>';
+    }
+    var html = '<table class="runs-table" style="margin:0"><thead><tr>';
+    html += '<th>Task ID</th><th>Title</th><th>Status</th><th>Assigned</th><th>Run</th>';
+    if (showRelease) html += '<th></th>';
+    html += '</tr></thead><tbody>';
+    for (var i = 0; i < tasks.length; i++) {
+        var t = tasks[i];
+        var statusClass = t.status === 'open' ? 'running' : (t.status === 'closed' ? 'succeeded' : 'pending');
+        html += '<tr>';
+        html += '<td class="mono">' + escapeHtml(t.id) + '</td>';
+        html += '<td>' + escapeHtml(t.title || '') + '</td>';
+        html += '<td><span class="badge badge-' + statusClass + '">' + escapeHtml(t.status) + '</span></td>';
+        html += '<td>' + (t.assigned ? 'Yes' : 'No') + '</td>';
+        html += '<td>' + (t.run_id ? '<a href="/runs/' + escapeHtml(t.run_id) + '">' + escapeHtml(t.run_id) + '</a>' : '') + '</td>';
+        if (showRelease) {
+            html += '<td>';
+            if (t.stale) {
+                html += '<button class="btn btn-secondary btn-sm" onclick="releaseTask(\'' + escapeHtml(t.id) + '\')">Release</button>';
+            }
+            html += '</td>';
+        }
+        html += '</tr>';
+    }
+    html += '</tbody></table>';
+    return html;
+}
+
 function loadTasks() {
     fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/tasks')
         .then(function(r) { return r.json(); })
         .then(function(tasks) {
-            var body = document.getElementById('tasks-body');
-            if (!tasks || tasks.length === 0) {
-                body.innerHTML = '<p class="empty">No tasks discovered</p>';
-                return;
+            var inProgress = [];
+            var upcoming = [];
+            if (tasks) {
+                for (var i = 0; i < tasks.length; i++) {
+                    var t = tasks[i];
+                    if (t.status === 'in-progress' || t.status === 'in_progress') {
+                        inProgress.push(t);
+                    } else if (t.status === 'open' || t.status === '') {
+                        upcoming.push(t);
+                    }
+                }
             }
-            var html = '<table class="runs-table" style="margin:0"><thead><tr>';
-            html += '<th>Task ID</th><th>Title</th><th>Status</th><th>Assigned</th><th>Run</th>';
-            html += '</tr></thead><tbody>';
-            for (var i = 0; i < tasks.length; i++) {
-                var t = tasks[i];
-                var statusClass = t.status === 'open' ? 'running' : (t.status === 'closed' ? 'succeeded' : 'pending');
-                html += '<tr>';
-                html += '<td class="mono">' + escapeHtml(t.id) + '</td>';
-                html += '<td>' + escapeHtml(t.title || '') + '</td>';
-                html += '<td><span class="badge badge-' + statusClass + '">' + escapeHtml(t.status) + '</span></td>';
-                html += '<td>' + (t.assigned ? 'Yes' : 'No') + '</td>';
-                html += '<td>' + (t.run_id ? '<a href="/runs/' + escapeHtml(t.run_id) + '">' + escapeHtml(t.run_id) + '</a>' : '') + '</td>';
-                html += '</tr>';
-            }
-            html += '</tbody></table>';
-            body.innerHTML = html;
+            document.getElementById('in-progress-body').innerHTML = renderTaskTable(inProgress, true);
+            document.getElementById('upcoming-body').innerHTML = renderTaskTable(upcoming, false);
         })
         .catch(function() {});
 }

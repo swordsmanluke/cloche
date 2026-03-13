@@ -276,6 +276,12 @@ uses up to three workflow phases for orchestration:
 | 2 | `main` | Do the work. Receives a task ID via `CLOCHE_TASK_ID` env var. |
 | 3 | `finalize` | Post-main cleanup. Runs on **both** success and failure. |
 
+Additionally, `host.cloche` may define a **`release-task`** utility workflow. This is
+not part of the automatic orchestration loop — it is invoked on demand (e.g. from the
+web dashboard) to release a stale claimed task back to `open` status. A task is
+considered stale when it has `in_progress` status but no active worker is running for
+it (e.g. after a failed run or daemon restart). The workflow receives `CLOCHE_TASK_ID`.
+
 Only `main` is required. If `list-tasks` is absent, the daemon uses a single-workflow
 mode. If `finalize` is absent, it is skipped.
 
@@ -383,8 +389,12 @@ The daemon recognizes three workflow names in `host.cloche` and runs them in ord
 2. **`main`** — execute the work
 3. **`finalize`** — clean up after the work completes
 
-All three workflows live in the same `.cloche/host.cloche` file. Only `main` is
-required; `list-tasks` and `finalize` are optional.
+A fourth optional workflow, **`release-task`**, can be defined for releasing stale
+claimed tasks back to open status. It is not part of the automatic loop — it runs on
+demand when triggered from the web dashboard's Release button.
+
+All these workflows live in the same `.cloche/host.cloche` file. Only `main` is
+required; `list-tasks`, `finalize`, and `release-task` are optional.
 
 ### `list-tasks` — Discovering Work
 
@@ -501,6 +511,36 @@ finalize phase as complete regardless of the cleanup script's exit status.
 
 **If omitted:** The daemon skips the finalize phase entirely. This is fine if you
 don't need automated cleanup.
+
+### `release-task` — Releasing Stale Claims
+
+The `release-task` workflow handles releasing tasks that are stuck in `in_progress`
+status without an active worker. This happens when a run fails, the daemon restarts,
+or a container is lost. The web dashboard detects these stale tasks and shows a
+**Release** button next to them.
+
+**When it runs:** On demand, when a user clicks Release in the web dashboard. The
+daemon sets `CLOCHE_TASK_ID` to the task being released.
+
+**How to configure:**
+
+```
+workflow "release-task" {
+  step release-task {
+    run     = "bash .cloche/scripts/release-task.sh"
+    results = [success, fail]
+  }
+
+  release-task:success -> done
+  release-task:fail    -> abort
+}
+```
+
+A typical release script returns the ticket to `open` status and unassigns the owner
+in your task tracker.
+
+**If omitted:** The Release button will not function. Stale tasks must be manually
+unclaimed in your task tracker.
 
 ### Putting It All Together
 

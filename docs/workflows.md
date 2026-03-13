@@ -24,6 +24,11 @@ uses up to three workflow phases for orchestration:
 | 2 | `main` | Do the work. Receives a task ID via `CLOCHE_TASK_ID` env var. |
 | 3 | `finalize` | Post-main cleanup. Runs on **both** success and failure. |
 
+Additionally, `host.cloche` may define a **`release-task`** utility workflow. This is
+not part of the automatic orchestration loop — it is invoked on demand (e.g. from the
+web dashboard) to release a stale claimed task back to `open` status. Receives
+`CLOCHE_TASK_ID` for the task to release.
+
 Only `main` is required. If `list-tasks` is absent, the daemon uses a legacy
 single-function mode. If `finalize` is absent, it is skipped.
 
