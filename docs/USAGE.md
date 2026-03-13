@@ -429,6 +429,15 @@ Your project directory is never modified by the container.
 
 ## CLI Reference
 
+Every subcommand supports `--help` (or `-h`) to show detailed usage, flags, and
+examples. Use `cloche help <command>` for the same output:
+
+```
+cloche --help              # top-level overview
+cloche help run            # detailed help for "run"
+cloche run --help          # same as above
+```
+
 ### `cloche init`
 
 Scaffold a new Cloche project.
@@ -557,6 +566,22 @@ state. Requires `CLOCHE_HTTP` (talks to the daemon's web API).
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--project <dir>` | current directory name | Project to query tasks for. |
+
+### `cloche loop`
+
+Start or stop the daemon's orchestration loop. The loop automatically picks up
+tasks from the pipeline and runs them.
+
+```
+cloche loop [--max <n>]
+cloche loop stop
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--max <n>` | config value | Maximum concurrent runs. Defaults to the value in `.cloche/config.toml`. |
+
+`cloche loop stop` disables the loop. Running tasks are not cancelled.
 
 ### `cloche shutdown`
 

@@ -23,26 +23,66 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		usage()
+		printTopLevelHelp()
 		os.Exit(1)
+	}
+
+	// Handle top-level help: "cloche help", "cloche --help", "cloche -h"
+	switch os.Args[1] {
+	case "help":
+		printHelp(os.Args[2:])
+		return
+	case "--help", "-h":
+		printTopLevelHelp()
+		return
 	}
 
 	// Commands that don't need a daemon connection
 	switch os.Args[1] {
 	case "init":
+		if hasHelpFlag(os.Args[2:]) {
+			printSubcommandHelp("init")
+			return
+		}
 		cmdInit(os.Args[2:])
 		return
 	case "health":
+		if hasHelpFlag(os.Args[2:]) {
+			printSubcommandHelp("health")
+			return
+		}
 		cmdHealth(os.Args[2:])
 		return
 	case "get":
+		if hasHelpFlag(os.Args[2:]) {
+			printSubcommandHelp("get")
+			return
+		}
 		cmdGet(os.Args[2:])
 		return
 	case "set":
+		if hasHelpFlag(os.Args[2:]) {
+			printSubcommandHelp("set")
+			return
+		}
 		cmdSet(os.Args[2:])
 		return
 	case "tasks":
+		if hasHelpFlag(os.Args[2:]) {
+			printSubcommandHelp("tasks")
+			return
+		}
 		cmdTasks(os.Args[2:])
+		return
+	}
+
+	// Handle --help for daemon commands before connecting
+	daemonCmds := map[string]bool{
+		"run": true, "status": true, "logs": true, "poll": true,
+		"list": true, "stop": true, "delete": true, "loop": true, "shutdown": true,
+	}
+	if daemonCmds[os.Args[1]] && hasHelpFlag(os.Args[2:]) {
+		printSubcommandHelp(os.Args[1])
 		return
 	}
 
@@ -83,35 +123,12 @@ func main() {
 	case "shutdown":
 		cmdShutdown(ctx, client)
 	default:
-		usage()
+		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", os.Args[1])
+		printTopLevelHelp()
 		os.Exit(1)
 	}
 }
 
-func usage() {
-	fmt.Fprintf(os.Stderr, `usage: cloche <command> [args]
-
-Commands:
-  init [--workflow <name>] [--base-image <image>]
-                                             Initialize a Cloche project
-  health                                   Show project health summary
-  run --workflow <name> [--prompt "..."] [--title "..."] [--keep-container]
-                                             Launch a workflow run
-  status <run-id>                            Check run status
-  logs <run-id> [--step <name>] [--type <full|script|llm>] [--follow]
-                                             Show logs for a run
-  poll <run-id>                              Wait for a run to finish
-  list [--all]                                List runs for current project (--all for all projects)
-  stop <run-id>                              Stop a running workflow
-  delete <container-or-run-id>               Delete a retained container
-  tasks [--project <dir>]                     Show task pipeline and assignment state
-  loop [--max <n>]                            Start orchestration loop (default max=1)
-  loop stop                                  Stop orchestration loop
-  get <key>                                  Get a value from the run context store
-  set <key> <value|->                        Set a value in the run context store (- reads from stdin)
-  shutdown                                   Shut down the daemon
-`)
-}
 
 func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	var workflow, prompt, title string
