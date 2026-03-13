@@ -1038,13 +1038,13 @@ func TestAPIStepContent_HostWorkflow(t *testing.T) {
 
 	seedRunWithProject(t, store, "hw-2", "main", domain.RunStateRunning, dir)
 
-	// Test script step content
+	// Inline command with no script file under .cloche/scripts/ should return empty
 	req := httptest.NewRequest("GET", "/api/projects/"+filepath.Base(dir)+"/workflows/main/steps/prepare/content", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "echo hello", w.Body.String())
+	assert.Empty(t, w.Body.String())
 
 	// Test workflow_name step content
 	req2 := httptest.NewRequest("GET", "/api/projects/"+filepath.Base(dir)+"/workflows/main/steps/build/content", nil)
@@ -1103,13 +1103,84 @@ func TestAPIStepContent_InlineCommand(t *testing.T) {
 
 	seedRunWithProject(t, store, "ic-1", "main", domain.RunStateRunning, dir)
 
-	// Inline command with no script file should return the command itself
+	// Inline command with no script file under .cloche/scripts/ should return empty
 	req := httptest.NewRequest("GET", "/api/projects/"+filepath.Base(dir)+"/workflows/main/steps/test/content", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "go test ./... 2>&1", w.Body.String())
+	assert.Empty(t, w.Body.String())
+}
+
+func TestAPIStepContent_BinaryFileNotServed(t *testing.T) {
+	h, store := setupHandler(t)
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
+
+	// Create a binary file named "test" in the project root (simulates compiled Go test binary)
+	binaryContent := make([]byte, 1024)
+	binaryContent[0] = 0x7f // ELF header byte
+	binaryContent[1] = 0x00 // null byte makes it binary
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test"), binaryContent, 0o755))
+
+	hostWf := `workflow "main" {
+    step test {
+        run = "go test ./... 2>&1"
+        results = [success, fail]
+    }
+    test:success -> done
+    test:fail -> abort
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "host.cloche"), []byte(hostWf), 0o644))
+
+	seedRunWithProject(t, store, "bin-1", "main", domain.RunStateRunning, dir)
+
+	req := httptest.NewRequest("GET", "/api/projects/"+filepath.Base(dir)+"/workflows/main/steps/test/content", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	// Should NOT return binary content
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Empty(t, w.Body.String())
+}
+
+func TestAPIStepContent_FileRefOutsideScripts(t *testing.T) {
+	h, store := setupHandler(t)
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "some-script.sh"), []byte("#!/bin/bash\necho hi"), 0o644))
+
+	hostWf := `workflow "main" {
+    step build {
+        run = file("some-script.sh")
+        results = [success, fail]
+    }
+    build:success -> done
+    build:fail -> abort
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "host.cloche"), []byte(hostWf), 0o644))
+
+	seedRunWithProject(t, store, "fro-1", "main", domain.RunStateRunning, dir)
+
+	req := httptest.NewRequest("GET", "/api/projects/"+filepath.Base(dir)+"/workflows/main/steps/build/content", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	// file() ref outside .cloche/scripts/ should not serve content
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Empty(t, w.Body.String())
+}
+
+func TestIsTextContent(t *testing.T) {
+	assert.True(t, isTextContent([]byte("hello world")))
+	assert.True(t, isTextContent([]byte("#!/bin/bash\necho hi")))
+	assert.True(t, isTextContent([]byte("")))
+	assert.False(t, isTextContent([]byte{0x7f, 0x45, 0x4c, 0x46, 0x00})) // ELF with null byte
+	assert.False(t, isTextContent([]byte("text\x00binary")))
 }
 
 func TestAPIStopRun_Success(t *testing.T) {

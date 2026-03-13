@@ -435,7 +435,7 @@ function openDrawer(workflowName, stepName) {
             if (text) {
                 el.innerHTML = '<pre>' + text.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</pre>';
             } else {
-                el.innerHTML = '<p style="color:var(--text-muted)">No content available</p>';
+                el.style.display = 'none';
             }
         });
 }

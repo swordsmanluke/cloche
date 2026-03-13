@@ -1507,16 +1507,25 @@ func (h *Handler) handleAPIStepContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if run := step.Config["run"]; run != "" {
-		content, _ := resolveFileRef(run, dir)
-		// If resolveFileRef returned the command as-is (not a file() ref),
-		// try to find a script file referenced in the command and read it.
-		if content == run {
-			if scriptContent := readScriptFromCommand(run, dir); scriptContent != "" {
-				w.Write([]byte(scriptContent))
-				return
+		// For file() references, only serve content from .cloche/scripts/ text files
+		if strings.HasPrefix(run, `file("`) && strings.HasSuffix(run, `")`) {
+			refPath := run[6 : len(run)-2]
+			cleanRef := filepath.Clean(refPath)
+			scriptsPrefix := filepath.Join(".cloche", "scripts") + string(filepath.Separator)
+			if strings.HasPrefix(cleanRef, scriptsPrefix) {
+				content, err := resolveFileRef(run, dir)
+				if err == nil && isTextContent([]byte(content)) {
+					w.Write([]byte(content))
+					return
+				}
 			}
+			return
 		}
-		w.Write([]byte(content))
+		// Bare command: only serve script content from .cloche/scripts/
+		if scriptContent := readScriptFromCommand(run, dir); scriptContent != "" {
+			w.Write([]byte(scriptContent))
+			return
+		}
 		return
 	}
 	if wfName := step.Config["workflow_name"]; wfName != "" {
@@ -1570,6 +1579,7 @@ func resolveFileRef(value, baseDir string) (string, error) {
 // For commands like "bash .cloche/scripts/setup.sh arg1", it extracts the file
 // path and reads its contents. Returns empty string if no script file is found.
 func readScriptFromCommand(command, baseDir string) string {
+	scriptsPrefix := filepath.Join(".cloche", "scripts") + string(filepath.Separator)
 	fields := strings.Fields(command)
 	for _, field := range fields {
 		// Skip flags (e.g. -x, --verbose)
@@ -1580,16 +1590,35 @@ func readScriptFromCommand(command, baseDir string) string {
 		if field == "2>&1" || field == ">" || field == ">>" || field == "|" {
 			continue
 		}
+		// Only read files under .cloche/scripts/
+		cleanField := filepath.Clean(field)
+		if !strings.HasPrefix(cleanField, scriptsPrefix) {
+			continue
+		}
 		absPath := filepath.Join(baseDir, field)
 		info, err := os.Stat(absPath)
 		if err == nil && !info.IsDir() {
 			data, err := os.ReadFile(absPath)
-			if err == nil {
+			if err == nil && isTextContent(data) {
 				return string(data)
 			}
 		}
 	}
 	return ""
+}
+
+// isTextContent checks if data appears to be text (no null bytes in first 8KB).
+func isTextContent(data []byte) bool {
+	limit := 8192
+	if len(data) < limit {
+		limit = len(data)
+	}
+	for i := 0; i < limit; i++ {
+		if data[i] == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func stateColor(state domain.RunState) string {

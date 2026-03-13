@@ -152,7 +152,7 @@ Returns the task pipeline state for the project's orchestration loop.
   - `max_attempts` if set
   - For agent steps: full content of the referenced prompt file (loaded on demand)
   - For script steps: the `command`/`script` string or contents of the referenced script file
-  - For host script steps: the `run` command string or contents of the referenced file
+  - For host script steps: contents of a referenced script file under `.cloche/scripts/` (text files only); the content panel is hidden when no displayable content is available
   - For workflow steps: displays the dispatched workflow name
   - Drawer closes via X button or Escape, returning focus to the DAG without page reload
 
@@ -208,7 +208,10 @@ GET /api/projects/{name}/workflows/{workflow}/steps/{step}/content
 ```
 
 Returns the raw content of the prompt file or script for that step (plain text).
-If the value is an inline command string (not a file reference), return it directly.
+For `run` steps, only serves content from text files under `.cloche/scripts/`;
+file references outside that directory or binary files return an empty response.
+Inline command strings (not file references) return empty unless they reference
+a script file under `.cloche/scripts/`.
 
 ## Template / file changes
 
