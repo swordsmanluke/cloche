@@ -743,3 +743,49 @@ workflow "main" {
 		assert.Equal(t, domain.LocationHost, wf.Location, "workflow %q should have host location", name)
 	}
 }
+
+func TestParseAll_HostBlockSetsLocation(t *testing.T) {
+	input := `workflow "main" {
+  host {
+    agent_command = "claude"
+  }
+  step work {
+    run = "echo work"
+    results = [success]
+  }
+  work:success -> done
+}`
+	workflows, err := dsl.ParseAll(input)
+	require.NoError(t, err)
+	assert.Equal(t, domain.LocationHost, workflows["main"].Location)
+}
+
+func TestParseAll_NoHostBlockDefaultsToContainer(t *testing.T) {
+	input := `workflow "build" {
+  step compile {
+    run = "make"
+    results = [success]
+  }
+  compile:success -> done
+}`
+	workflows, err := dsl.ParseAll(input)
+	require.NoError(t, err)
+	assert.Equal(t, domain.LocationContainer, workflows["build"].Location)
+}
+
+func TestParse_RejectsHostAndContainerBlocks(t *testing.T) {
+	input := `workflow "bad" {
+  host {}
+  container {
+    image = "foo"
+  }
+  step work {
+    run = "echo work"
+    results = [success]
+  }
+  work:success -> done
+}`
+	_, err := dsl.ParseAll(input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "both \"host\" and \"container\"")
+}

@@ -190,11 +190,23 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 
 func (p *Parser) parseWorkflowConfig(wf *domain.Workflow) error {
 	prefix := p.current.Literal // e.g. "host", "container"
-	p.advance()                 // consume prefix ident
+	line, col := p.current.Line, p.current.Col
+	p.advance() // consume prefix ident
+
+	// Reject conflicting location blocks.
+	if prefix == "host" && wf.Config["_location_block"] == "container" {
+		return fmt.Errorf("line %d col %d: workflow %q has both \"host\" and \"container\" blocks", line, col, wf.Name)
+	}
+	if prefix == "container" && wf.Config["_location_block"] == "host" {
+		return fmt.Errorf("line %d col %d: workflow %q has both \"host\" and \"container\" blocks", line, col, wf.Name)
+	}
 
 	// A "host { ... }" block marks this workflow as a host workflow.
 	if prefix == "host" {
 		wf.Location = domain.LocationHost
+	}
+	if prefix == "host" || prefix == "container" {
+		wf.Config["_location_block"] = prefix
 	}
 
 	if _, err := p.expect(TokenLBrace); err != nil {
