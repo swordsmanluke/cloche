@@ -713,6 +713,41 @@ func TestServer_Shutdown_NotConfigured(t *testing.T) {
 	assert.Contains(t, err.Error(), "shutdown not configured")
 }
 
+func TestServer_Shutdown_RejectsWithActiveRuns(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, nil)
+	srv.SetShutdownFunc(func() {})
+	srv.AddActiveRun("run-1", "container-1")
+
+	_, err = srv.Shutdown(context.Background(), &pb.ShutdownRequest{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "1 run(s) still active")
+}
+
+func TestServer_Shutdown_ForceWithActiveRuns(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, nil)
+	called := make(chan struct{}, 1)
+	srv.SetShutdownFunc(func() { called <- struct{}{} })
+	srv.AddActiveRun("run-1", "container-1")
+
+	resp, err := srv.Shutdown(context.Background(), &pb.ShutdownRequest{Force: true})
+	require.NoError(t, err)
+	assert.NotNil(t, resp)
+
+	select {
+	case <-called:
+	case <-time.After(time.Second):
+		t.Fatal("shutdown callback was not called")
+	}
+}
+
 func TestServer_RunWorkflow_NoRuntime(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

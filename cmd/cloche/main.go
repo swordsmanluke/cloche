@@ -144,7 +144,7 @@ func main() {
 	case "loop":
 		cmdLoop(ctx, client, os.Args[2:])
 	case "shutdown":
-		cmdShutdown(ctx, client)
+		cmdShutdown(ctx, client, os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", os.Args[1])
 		printTopLevelHelp()
@@ -619,8 +619,14 @@ func cmdTasks(args []string) {
 	}
 }
 
-func cmdShutdown(ctx context.Context, client pb.ClocheServiceClient) {
-	_, err := client.Shutdown(ctx, &pb.ShutdownRequest{})
+func cmdShutdown(ctx context.Context, client pb.ClocheServiceClient, args []string) {
+	var force bool
+	for _, a := range args {
+		if a == "-f" || a == "--force" {
+			force = true
+		}
+	}
+	_, err := client.Shutdown(ctx, &pb.ShutdownRequest{Force: force})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)

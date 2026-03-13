@@ -84,7 +84,9 @@ message StopRunRequest {
 
 message StopRunResponse {}
 
-message ShutdownRequest {}
+message ShutdownRequest {
+  bool force = 1;  // If false, reject shutdown when runs are active.
+}
 
 message ShutdownResponse {}
 

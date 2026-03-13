@@ -1247,6 +1247,16 @@ func (s *ClocheServer) GetVersion(ctx context.Context, req *pb.GetVersionRequest
 }
 
 func (s *ClocheServer) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*pb.ShutdownResponse, error) {
+	if !req.Force {
+		// Check for active container runs.
+		s.mu.Lock()
+		activeRuns := len(s.runIDs)
+		s.mu.Unlock()
+		if activeRuns > 0 {
+			return nil, fmt.Errorf("cannot shutdown: %d run(s) still active (use --force to override)", activeRuns)
+		}
+	}
+
 	// Stop all orchestration loops.
 	s.mu.Lock()
 	for _, loop := range s.loops {

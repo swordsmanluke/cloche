@@ -377,14 +377,18 @@ Examples:
 
 	"shutdown": `cloche shutdown — Shut down the daemon
 
-Sends a shutdown signal to the Cloche daemon. All running workflows are
-stopped and the daemon process exits.
+Sends a shutdown signal to the Cloche daemon. Refuses to shut down if
+there are active runs unless --force is specified.
 
 Usage:
-  cloche shutdown
+  cloche shutdown [--force|-f]
+
+Flags:
+  -f, --force   Shut down even if runs are still active.
 
 Examples:
   cloche shutdown
+  cloche shutdown --force
 `,
 }
 

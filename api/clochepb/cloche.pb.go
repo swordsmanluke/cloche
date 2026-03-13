@@ -620,6 +620,7 @@ func (*StopRunResponse) Descriptor() ([]byte, []int) {
 
 type ShutdownRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Force         bool                   `protobuf:"varint,1,opt,name=force,proto3" json:"force,omitempty"` // If false, reject shutdown when runs are active.
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -652,6 +653,13 @@ func (x *ShutdownRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ShutdownRequest.ProtoReflect.Descriptor instead.
 func (*ShutdownRequest) Descriptor() ([]byte, []int) {
 	return file_api_proto_cloche_v1_cloche_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ShutdownRequest) GetForce() bool {
+	if x != nil {
+		return x.Force
+	}
+	return false
 }
 
 type ShutdownResponse struct {
@@ -1576,8 +1584,9 @@ const file_api_proto_cloche_v1_cloche_proto_rawDesc = "" +
 	"\ttimestamp\x18\x05 \x01(\tR\ttimestamp\"'\n" +
 	"\x0eStopRunRequest\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\"\x11\n" +
-	"\x0fStopRunResponse\"\x11\n" +
-	"\x0fShutdownRequest\"\x12\n" +
+	"\x0fStopRunResponse\"'\n" +
+	"\x0fShutdownRequest\x12\x14\n" +
+	"\x05force\x18\x01 \x01(\bR\x05force\"\x12\n" +
 	"\x10ShutdownResponse\"(\n" +
 	"\x16DeleteContainerRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\x19\n" +
