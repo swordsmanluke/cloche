@@ -57,26 +57,16 @@ func discoverWorkflows(projectDir string) ([]workflowInfo, error) {
 
 	var infos []workflowInfo
 	for _, path := range entries {
-		base := filepath.Base(path)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
 		}
-
-		if base == "host.cloche" {
-			wfs, err := dsl.ParseAllForHost(string(data))
-			if err != nil {
-				continue
-			}
-			for name := range wfs {
-				infos = append(infos, workflowInfo{name: name, location: domain.LocationHost})
-			}
-		} else {
-			wf, err := dsl.ParseForContainer(string(data))
-			if err != nil {
-				continue
-			}
-			infos = append(infos, workflowInfo{name: wf.Name, location: domain.LocationContainer})
+		wfs, err := dsl.ParseAll(string(data))
+		if err != nil {
+			continue
+		}
+		for _, wf := range wfs {
+			infos = append(infos, workflowInfo{name: wf.Name, location: wf.Location})
 		}
 	}
 
@@ -128,23 +118,19 @@ func listWorkflows(projectDir string) {
 
 func loadWorkflow(projectDir, name string) (*domain.Workflow, error) {
 	clocheDir := filepath.Join(projectDir, ".cloche")
-
-	// Try container workflow first (named file)
-	containerPath := filepath.Join(clocheDir, name+".cloche")
-	if data, err := os.ReadFile(containerPath); err == nil {
-		wf, err := dsl.ParseForContainer(string(data))
-		if err != nil {
-			return nil, fmt.Errorf("parsing %s.cloche: %w", name, err)
-		}
-		return wf, nil
+	entries, err := filepath.Glob(filepath.Join(clocheDir, "*.cloche"))
+	if err != nil {
+		return nil, err
 	}
 
-	// Try host workflow
-	hostPath := filepath.Join(clocheDir, "host.cloche")
-	if data, err := os.ReadFile(hostPath); err == nil {
-		wfs, err := dsl.ParseAllForHost(string(data))
+	for _, path := range entries {
+		data, err := os.ReadFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("parsing host.cloche: %w", err)
+			continue
+		}
+		wfs, err := dsl.ParseAll(string(data))
+		if err != nil {
+			continue
 		}
 		if wf, ok := wfs[name]; ok {
 			return wf, nil

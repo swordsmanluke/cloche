@@ -374,6 +374,7 @@ func TestDiscoverWorkflows(t *testing.T) {
 
 	// Write a host workflow with two workflows
 	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow "plan" {
+  host {}
   step pick {
     run = "echo pick"
     results = [success]
@@ -382,6 +383,7 @@ func TestDiscoverWorkflows(t *testing.T) {
 }
 
 workflow "run" {
+  host {}
   step exec {
     run = "echo run"
     results = [success]
@@ -468,6 +470,7 @@ func TestLoadWorkflow_Host(t *testing.T) {
 	os.MkdirAll(clocheDir, 0755)
 
 	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow "orchestrate" {
+  host {}
   step dispatch {
     run = "echo go"
     results = [success]

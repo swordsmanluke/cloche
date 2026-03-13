@@ -1,4 +1,6 @@
 workflow "list-tasks" {
+  host {}
+
   step ready-tasks {
     run     = "bash .cloche/scripts/ready-tasks.sh"
     results = [success, fail]
@@ -51,6 +53,8 @@ workflow "main" {
 }
 
 workflow "release-task" {
+  host {}
+
   step release-task {
     run     = "bash .cloche/scripts/release-task.sh"
     results = [success, fail]

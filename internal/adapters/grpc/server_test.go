@@ -1778,7 +1778,7 @@ func TestServer_GetVersion(t *testing.T) {
 	resp, err := srv.GetVersion(context.Background(), &pb.GetVersionRequest{})
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.Version)
-	assert.Equal(t, "0.1.0", resp.Version)
+	assert.Equal(t, "1.0.0", resp.Version)
 }
 
 // TestServer_StreamLogs_LimitFullLog verifies that the --limit flag truncates

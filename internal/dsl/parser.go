@@ -71,6 +71,33 @@ func ParseForContainer(input string) (*domain.Workflow, error) {
 	return Parse(input, WithLocation(domain.LocationContainer))
 }
 
+// ParseAll parses a .cloche file that may contain multiple workflows.
+// Workflows default to LocationContainer but a "host { }" block overrides
+// the location to LocationHost, so any .cloche file can define host workflows.
+func ParseAll(input string) (map[string]*domain.Workflow, error) {
+	p := &Parser{lexer: NewLexer(input), location: domain.LocationContainer}
+	p.advance() // load current
+	p.advance() // load peek
+
+	workflows := make(map[string]*domain.Workflow)
+	for p.current.Type != TokenEOF {
+		wf, err := p.parseWorkflow()
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := workflows[wf.Name]; exists {
+			return nil, fmt.Errorf("duplicate workflow name %q", wf.Name)
+		}
+		workflows[wf.Name] = wf
+	}
+
+	if len(workflows) == 0 {
+		return nil, fmt.Errorf("no workflows found")
+	}
+
+	return workflows, nil
+}
+
 func (p *Parser) advance() {
 	p.current = p.peek
 	p.peek = p.lexer.NextToken()
@@ -162,8 +189,13 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 }
 
 func (p *Parser) parseWorkflowConfig(wf *domain.Workflow) error {
-	prefix := p.current.Literal // e.g. "container"
+	prefix := p.current.Literal // e.g. "host", "container"
 	p.advance()                 // consume prefix ident
+
+	// A "host { ... }" block marks this workflow as a host workflow.
+	if prefix == "host" {
+		wf.Location = domain.LocationHost
+	}
 
 	if _, err := p.expect(TokenLBrace); err != nil {
 		return err

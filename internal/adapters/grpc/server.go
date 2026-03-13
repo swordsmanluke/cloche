@@ -865,10 +865,10 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 		return nil, fmt.Errorf("project_dir is required")
 	}
 
-	// Verify host.cloche exists
-	hostPath := filepath.Join(projectDir, ".cloche", "host.cloche")
-	if _, err := os.Stat(hostPath); err != nil {
-		return nil, fmt.Errorf("host.cloche not found in %s: %w", projectDir, err)
+	// Verify at least one host workflow exists in the project.
+	hostWorkflows, err := host.FindHostWorkflows(projectDir)
+	if err != nil || len(hostWorkflows) == 0 {
+		return nil, fmt.Errorf("no host workflows found in %s/.cloche/", projectDir)
 	}
 
 	// Load project config for defaults.
@@ -903,10 +903,10 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 		existing.Stop()
 	}
 
-	// Check if host.cloche defines a list-tasks workflow for three-phase mode.
+	// Check if project defines a list-tasks workflow for three-phase mode.
 	var loop *host.Loop
-	if s.hasWorkflow(hostPath, "list-tasks") {
-		loop = s.createPhaseLoop(loopCfg, projectDir, hostPath, dedupTimeout)
+	if _, hasListTasks := hostWorkflows["list-tasks"]; hasListTasks {
+		loop = s.createPhaseLoop(loopCfg, projectDir, dedupTimeout)
 	} else {
 		loop = s.createLegacyLoop(loopCfg, projectDir, projCfg, dedupTimeout)
 	}
@@ -917,18 +917,9 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 	return &pb.EnableLoopResponse{}, nil
 }
 
-// hasWorkflow checks if host.cloche contains a workflow with the given name.
-func (s *ClocheServer) hasWorkflow(hostPath, workflowName string) bool {
-	data, err := os.ReadFile(hostPath)
-	if err != nil {
-		return false
-	}
-	return strings.Contains(string(data), fmt.Sprintf("workflow %q", workflowName))
-}
-
 // createPhaseLoop creates a three-phase orchestration loop using list-tasks,
-// main, and finalize workflows from host.cloche.
-func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir, hostPath string, dedupTimeout time.Duration) *host.Loop {
+// main, and finalize host workflows from any .cloche file.
+func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir string, dedupTimeout time.Duration) *host.Loop {
 	// Phase 1: list-tasks function
 	listTasksFn := func(ctx context.Context, projDir string) ([]host.Task, error) {
 		runner := &host.Runner{
@@ -951,28 +942,30 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir, host
 		return runner.RunNamed(ctx, projDir, "main")
 	}
 
-	// Phase 3: finalize function (optional — only if host.cloche has it)
+	// Phase 3: finalize function (optional — only if a finalize host workflow exists)
 	var finalizeFn host.FinalizeFunc
-	if s.hasWorkflow(hostPath, "finalize") {
-		finalizeFn = func(ctx context.Context, projDir string, taskID string, mainResult *host.RunResult) (*host.RunResult, error) {
-			mainRunID := ""
-			mainOutcome := "failed"
-			if mainResult != nil {
-				mainRunID = mainResult.RunID
-				mainOutcome = string(mainResult.State)
+	if hostWFs, err := host.FindHostWorkflows(projectDir); err == nil {
+		if _, hasFinalize := hostWFs["finalize"]; hasFinalize {
+			finalizeFn = func(ctx context.Context, projDir string, taskID string, mainResult *host.RunResult) (*host.RunResult, error) {
+				mainRunID := ""
+				mainOutcome := "failed"
+				if mainResult != nil {
+					mainRunID = mainResult.RunID
+					mainOutcome = string(mainResult.State)
+				}
+				runner := &host.Runner{
+					Dispatcher:   s,
+					Store:        s.store,
+					Captures:     s.captures,
+					LogBroadcast: s.logBroadcast,
+					TaskID:       taskID,
+					ExtraEnv: []string{
+						"CLOCHE_MAIN_RUN_ID=" + mainRunID,
+						"CLOCHE_MAIN_OUTCOME=" + mainOutcome,
+					},
+				}
+				return runner.RunNamed(ctx, projDir, "finalize")
 			}
-			runner := &host.Runner{
-				Dispatcher:   s,
-				Store:        s.store,
-				Captures:     s.captures,
-				LogBroadcast: s.logBroadcast,
-				TaskID:       taskID,
-				ExtraEnv: []string{
-					"CLOCHE_MAIN_RUN_ID=" + mainRunID,
-					"CLOCHE_MAIN_OUTCOME=" + mainOutcome,
-				},
-			}
-			return runner.RunNamed(ctx, projDir, "finalize")
 		}
 	}
 

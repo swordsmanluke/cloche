@@ -58,22 +58,11 @@ func (r *Runner) RunNamed(ctx context.Context, projectDir string, workflowName s
 }
 
 // runNamedWorkflow is the internal implementation that runs a specific named
-// workflow from host.cloche.
+// host workflow. Searches all .cloche files for the workflow.
 func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workflowName string, orchRunID string) (*RunResult, error) {
-	hostPath := filepath.Join(projectDir, ".cloche", "host.cloche")
-	data, err := os.ReadFile(hostPath)
+	wf, err := findHostWorkflow(projectDir, workflowName)
 	if err != nil {
-		return nil, fmt.Errorf("reading host.cloche: %w", err)
-	}
-
-	workflows, err := dsl.ParseAllForHost(string(data))
-	if err != nil {
-		return nil, fmt.Errorf("parsing host.cloche: %w", err)
-	}
-
-	wf, ok := workflows[workflowName]
-	if !ok {
-		return nil, fmt.Errorf("host.cloche has no workflow %q", workflowName)
+		return nil, err
 	}
 
 	// Create output directory for step outputs
@@ -180,6 +169,58 @@ func RunListTasksWorkflow(ctx context.Context, runner *Runner, projectDir string
 		return nil, result, err
 	}
 	return tasks, result, nil
+}
+
+// findHostWorkflow searches all .cloche files in a project for a host workflow
+// with the given name. A workflow is a host workflow if it contains a "host { }"
+// block in its definition.
+func findHostWorkflow(projectDir, workflowName string) (*domain.Workflow, error) {
+	clocheDir := filepath.Join(projectDir, ".cloche")
+	entries, _ := filepath.Glob(filepath.Join(clocheDir, "*.cloche"))
+
+	for _, path := range entries {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		workflows, err := dsl.ParseAll(string(data))
+		if err != nil {
+			continue
+		}
+		if wf, ok := workflows[workflowName]; ok && wf.Location == domain.LocationHost {
+			return wf, nil
+		}
+	}
+
+	return nil, fmt.Errorf("host workflow %q not found in any .cloche file", workflowName)
+}
+
+// FindHostWorkflows returns all host workflows across all .cloche files.
+func FindHostWorkflows(projectDir string) (map[string]*domain.Workflow, error) {
+	clocheDir := filepath.Join(projectDir, ".cloche")
+	entries, err := filepath.Glob(filepath.Join(clocheDir, "*.cloche"))
+	if err != nil {
+		return nil, err
+	}
+
+	all := make(map[string]*domain.Workflow)
+	for _, path := range entries {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		workflows, err := dsl.ParseAll(string(data))
+		if err != nil {
+			continue
+		}
+		for name, wf := range workflows {
+			if wf.Location == domain.LocationHost {
+				all[name] = wf
+			}
+		}
+	}
+
+	return all, nil
 }
 
 // hostStatusHandler logs host workflow step events and persists them to the store.

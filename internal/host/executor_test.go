@@ -739,6 +739,8 @@ func TestRunner_RunWithID(t *testing.T) {
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 	hostCloche := `workflow "main" {
+  host {}
+
   step greet {
     run     = "echo hi"
     results = [success, fail]
@@ -776,6 +778,8 @@ func TestRunner_WithTaskID(t *testing.T) {
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 	// The script echoes the daemon-assigned CLOCHE_TASK_ID env var
 	hostCloche := `workflow "main" {
+  host {}
+
   step check-task {
     run     = "echo $CLOCHE_TASK_ID"
     results = [success, fail]
@@ -812,6 +816,8 @@ func TestRunner_PersistsHostRun(t *testing.T) {
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 	hostCloche := `workflow "main" {
+  host {}
+
   step prepare {
     run     = "echo prepared"
     results = [success, fail]
@@ -1416,6 +1422,8 @@ func TestRunner_PersistsHostRunOnFailure(t *testing.T) {
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 	hostCloche := `workflow "main" {
+  host {}
+
   step bad {
     run     = "exit 1"
     results = [success, fail]
@@ -1453,6 +1461,8 @@ func TestRunner_RunNamed_Main(t *testing.T) {
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 	hostCloche := `workflow "main" {
+  host {}
+
   step greet {
     run     = "echo hi"
     results = [success, fail]
@@ -1482,6 +1492,8 @@ func TestRunner_RunNamed_MultiWorkflow(t *testing.T) {
 
 	// host.cloche with three workflows
 	hostCloche := `workflow "list-tasks" {
+  host {}
+
   step fetch {
     run     = "echo '{\"id\":\"t1\",\"status\":\"open\",\"title\":\"Fix bug\"}'"
     results = [success, fail]
@@ -1491,6 +1503,8 @@ func TestRunner_RunNamed_MultiWorkflow(t *testing.T) {
 }
 
 workflow "main" {
+  host {}
+
   step work {
     run     = "echo working"
     results = [success, fail]
@@ -1500,6 +1514,8 @@ workflow "main" {
 }
 
 workflow "finalize" {
+  host {}
+
   step cleanup {
     run     = "echo cleaned up"
     results = [success, fail]
@@ -1542,6 +1558,8 @@ func TestRunner_RunNamed_NotFound(t *testing.T) {
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 	hostCloche := `workflow "main" {
+  host {}
+
   step greet {
     run     = "echo hi"
     results = [success, fail]
@@ -1559,7 +1577,7 @@ func TestRunner_RunNamed_NotFound(t *testing.T) {
 
 	_, err := runner.RunNamed(context.Background(), tmpDir, "nonexistent")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no workflow \"nonexistent\"")
+	assert.Contains(t, err.Error(), "not found")
 }
 
 // --- ExtraEnv tests ---
@@ -1600,6 +1618,8 @@ func TestRunner_ExtraEnv_Propagated(t *testing.T) {
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 	hostCloche := `workflow "finalize" {
+  host {}
+
   step check {
     run     = "echo OUTCOME=$CLOCHE_MAIN_OUTCOME"
     results = [success, fail]
@@ -1679,6 +1699,8 @@ func TestRunResult_HasOutputDir(t *testing.T) {
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 	hostCloche := `workflow "main" {
+  host {}
+
   step greet {
     run     = "echo hi"
     results = [success, fail]
@@ -1713,6 +1735,8 @@ func TestRunListTasksWorkflow_EmptyResult_NoRunRecord(t *testing.T) {
 
 	// list-tasks workflow that outputs no tasks (empty line)
 	hostCloche := `workflow "list-tasks" {
+  host {}
+
   step fetch {
     run     = "echo ''"
     results = [success, fail]
@@ -1745,6 +1769,8 @@ func TestRunListTasksWorkflow_WithTasks_NoRunRecord(t *testing.T) {
 
 	// list-tasks workflow that outputs one task
 	hostCloche := `workflow "list-tasks" {
+  host {}
+
   step fetch {
     run     = "echo '{\"id\":\"task-1\",\"status\":\"open\",\"title\":\"Fix bug\"}'"
     results = [success, fail]

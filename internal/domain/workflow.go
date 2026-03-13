@@ -24,11 +24,11 @@ type WorkflowLocation string
 
 const (
 	// LocationContainer is for workflows that run inside a Docker container.
-	// These are all .cloche/*.cloche files except host.cloche.
+	// This is the default for workflows without a "host { }" block.
 	LocationContainer WorkflowLocation = "container"
 
 	// LocationHost is for workflows that run on the host machine.
-	// Only .cloche/host.cloche uses this location.
+	// A workflow declares itself as host by including a "host { }" block.
 	LocationHost WorkflowLocation = "host"
 )
 
