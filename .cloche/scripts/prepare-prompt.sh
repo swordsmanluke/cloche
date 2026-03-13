@@ -14,8 +14,8 @@ task_json=$(bd show "$CLOCHE_TASK_ID" --json 2>/dev/null) || {
   exit 1
 }
 
-task_title=$(echo "$task_json" | jq -r '.title // empty')
-task_body=$(echo "$task_json" | jq -r '.description // empty')
+task_title=$(echo "$task_json" | jq -r '.[0].title // empty')
+task_body=$(echo "$task_json" | jq -r '.[0].description // empty')
 
 if [ -z "$task_title" ]; then
   echo "error: task $CLOCHE_TASK_ID has no title" >&2
