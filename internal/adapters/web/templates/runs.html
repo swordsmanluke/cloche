@@ -58,10 +58,16 @@
 <script>
 (function() {
     var currentProject = '{{.ProjectFilter}}';
+    var dirToLabel = {{jsonMap .DirToLabel}};
 
     function filterByProject(dir) {
         if (dir) {
-            window.location.href = '/runs?project=' + encodeURIComponent(dir);
+            var label = dirToLabel[dir];
+            if (label) {
+                window.location.href = '/projects/' + encodeURIComponent(label) + '/runs';
+            } else {
+                window.location.href = '/runs';
+            }
         } else {
             window.location.href = '/runs';
         }
@@ -87,9 +93,12 @@
     };
 
     function poll() {
-        var url = '/api/runs';
+        var url;
         if (currentProject) {
-            url += '?project=' + encodeURIComponent(currentProject);
+            var label = dirToLabel[currentProject];
+            url = label ? '/api/projects/' + encodeURIComponent(label) + '/runs' : '/api/runs';
+        } else {
+            url = '/api/runs';
         }
         fetch(url)
             .then(function(r) { return r.json(); })

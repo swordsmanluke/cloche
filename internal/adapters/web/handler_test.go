@@ -410,8 +410,8 @@ func TestRunsList_ProjectFilter(t *testing.T) {
 	assert.Contains(t, body, "run-a1")
 	assert.Contains(t, body, "run-b1")
 
-	// With project filter: only matching runs
-	req = httptest.NewRequest("GET", "/runs?project=/home/user/alpha", nil)
+	// Clean URL /projects/{name}/runs renders filtered runs directly
+	req = httptest.NewRequest("GET", "/projects/alpha/runs", nil)
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -419,6 +419,13 @@ func TestRunsList_ProjectFilter(t *testing.T) {
 	assert.Contains(t, body, "run-a1")
 	assert.Contains(t, body, "run-a2")
 	assert.NotContains(t, body, "run-b1")
+
+	// Legacy ?project= query param redirects to clean URL
+	req = httptest.NewRequest("GET", "/runs?project=/home/user/alpha", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, "/projects/alpha/runs", w.Header().Get("Location"))
 }
 
 func TestRunsList_ProjectColumn(t *testing.T) {
@@ -450,8 +457,8 @@ func TestAPIRuns_ProjectFilter(t *testing.T) {
 	// 2 ungrouped runs (no task_id)
 	assert.Len(t, allEntries, 2)
 
-	// With filter: only matching
-	req = httptest.NewRequest("GET", "/api/runs?project=/home/user/alpha", nil)
+	// Clean URL /api/projects/{name}/runs returns filtered runs
+	req = httptest.NewRequest("GET", "/api/projects/alpha/runs", nil)
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -463,6 +470,13 @@ func TestAPIRuns_ProjectFilter(t *testing.T) {
 	assert.Equal(t, "api-a1", filtered[0].Run.ID)
 	assert.Equal(t, "/home/user/alpha", filtered[0].Run.ProjectDir)
 	assert.Equal(t, "alpha", filtered[0].Run.ProjectLabel)
+
+	// Legacy ?project= query param redirects to clean URL
+	req = httptest.NewRequest("GET", "/api/runs?project=/home/user/alpha", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, "/api/projects/alpha/runs", w.Header().Get("Location"))
 }
 
 func setupHandlerWithContainerManager(t *testing.T) (*Handler, *sqlite.Store, *mockContainerManager) {

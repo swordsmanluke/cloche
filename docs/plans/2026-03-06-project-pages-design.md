@@ -27,9 +27,9 @@ GET /projects/{name}
 `{name}` is the project label (same string used in `/api/projects/{name}/trigger`).
 The handler resolves the label back to a project directory via `projectLabels()`.
 
-Project cards on the landing page link to `/projects/{name}` instead of
-`/runs?project=X`. The project page includes a compact recent-runs strip (last 10 dots)
-and a "View all runs" link to the filtered runs list.
+Project cards on the landing page link to `/projects/{name}`. The project page
+includes a compact recent-runs strip (last 10 dots) and a "View all runs" link to
+`/projects/{name}/runs` for the filtered runs list.
 
 ## Panel 1: Orchestrator Control
 

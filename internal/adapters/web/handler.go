@@ -108,6 +108,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 		"formatRunTiming":  formatRunTiming,
 		"truncate":         truncate,
 		"shortContainerID": shortContainerID,
+		"jsonMap":          jsonMap,
 	}
 
 	base, err := template.New("").Funcs(funcMap).ParseFS(content, "templates/layout.html")
@@ -149,6 +150,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /runs/{id}", h.handleRunDetail)
 	h.mux.HandleFunc("GET /projects/{name}", h.handleProjectDetail)
 	h.mux.HandleFunc("GET /api/projects", h.handleAPIProjects)
+	h.mux.HandleFunc("GET /api/projects/{name}/runs", h.handleAPIProjectRuns)
 	h.mux.HandleFunc("GET /api/runs", h.handleAPIRuns)
 	h.mux.HandleFunc("GET /api/runs/{id}", h.handleAPIRunDetail)
 	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
@@ -255,6 +257,21 @@ func (h *Handler) handleProjectOverview(w http.ResponseWriter, r *http.Request) 
 func (h *Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 	projectFilter := r.URL.Query().Get("project")
 
+	// Redirect ?project=<dir> to clean URL /projects/<label>/runs.
+	if projectFilter != "" {
+		projects, _ := h.store.ListProjects(r.Context())
+		labels := projectLabels(projects)
+		if label, ok := labels[projectFilter]; ok {
+			http.Redirect(w, r, "/projects/"+url.PathEscape(label)+"/runs", http.StatusFound)
+			return
+		}
+	}
+
+	h.renderRunsList(w, r, "")
+}
+
+// renderRunsList renders the runs list page, optionally filtered by project directory.
+func (h *Handler) renderRunsList(w http.ResponseWriter, r *http.Request, projectFilter string) {
 	var runs []*domain.Run
 	var err error
 	if projectFilter != "" {
@@ -294,12 +311,19 @@ func (h *Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 
 	grouped := groupAndSortRuns(runs, labels)
 
+	// Build a JSON map of dir→label for the template JS.
+	dirToLabel := map[string]string{}
+	for _, p := range projectList {
+		dirToLabel[p.Dir] = p.Label
+	}
+
 	data := map[string]any{
 		"Title":               "Runs",
 		"GroupedRuns":         grouped,
 		"Projects":            projectList,
 		"ProjectFilter":       projectFilter,
 		"ProjectLabels":       labels,
+		"DirToLabel":          dirToLabel,
 		"TotalContainerCount": totalContainerCount,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -308,13 +332,13 @@ func (h *Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleProjectRuns redirects /projects/{name}/runs to /runs?project=<dir>.
+// handleProjectRuns renders the runs list filtered by the project in the URL path.
 func (h *Handler) handleProjectRuns(w http.ResponseWriter, r *http.Request) {
 	dir, _, ok := h.resolveProjectDir(w, r)
 	if !ok {
 		return
 	}
-	http.Redirect(w, r, "/runs?project="+url.QueryEscape(dir), http.StatusFound)
+	h.renderRunsList(w, r, dir)
 }
 
 // stepEntry is a merged view of a step execution for the template.
@@ -622,6 +646,30 @@ func groupAndSortRuns(runs []*domain.Run, labels map[string]string) []apiGrouped
 func (h *Handler) handleAPIRuns(w http.ResponseWriter, r *http.Request) {
 	projectFilter := r.URL.Query().Get("project")
 
+	// Redirect ?project=<dir> to clean URL /api/projects/<label>/runs.
+	if projectFilter != "" {
+		projects, _ := h.store.ListProjects(r.Context())
+		labels := projectLabels(projects)
+		if label, ok := labels[projectFilter]; ok {
+			http.Redirect(w, r, "/api/projects/"+url.PathEscape(label)+"/runs", http.StatusFound)
+			return
+		}
+	}
+
+	h.renderAPIRuns(w, r, "")
+}
+
+// handleAPIProjectRuns handles GET /api/projects/{name}/runs.
+func (h *Handler) handleAPIProjectRuns(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	h.renderAPIRuns(w, r, dir)
+}
+
+// renderAPIRuns returns the JSON runs list, optionally filtered by project directory.
+func (h *Handler) renderAPIRuns(w http.ResponseWriter, r *http.Request, projectFilter string) {
 	var runs []*domain.Run
 	var err error
 	if projectFilter != "" {
@@ -1765,6 +1813,12 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// jsonMap serializes a map to a JSON string for embedding in templates.
+func jsonMap(m map[string]string) template.JS {
+	b, _ := json.Marshal(m)
+	return template.JS(b)
 }
 
 func shortContainerID(id string) string {
