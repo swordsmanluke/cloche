@@ -419,6 +419,15 @@ func TestRunsList_ProjectFilter(t *testing.T) {
 	assert.Contains(t, body, "run-a1")
 	assert.Contains(t, body, "run-a2")
 	assert.NotContains(t, body, "run-b1")
+	// Backlink to project page should be present
+	assert.Contains(t, body, `href="/projects/alpha"`)
+
+	// Unfiltered runs page should NOT have a project backlink
+	req = httptest.NewRequest("GET", "/runs", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	body = w.Body.String()
+	assert.NotContains(t, body, `href="/projects/`)
 
 	// Legacy ?project= query param redirects to clean URL
 	req = httptest.NewRequest("GET", "/runs?project=/home/user/alpha", nil)

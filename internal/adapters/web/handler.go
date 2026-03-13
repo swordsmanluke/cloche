@@ -317,11 +317,18 @@ func (h *Handler) renderRunsList(w http.ResponseWriter, r *http.Request, project
 		dirToLabel[p.Dir] = p.Label
 	}
 
+	// Resolve the label for the active project filter, if any.
+	var projectLabel string
+	if projectFilter != "" {
+		projectLabel = labels[projectFilter]
+	}
+
 	data := map[string]any{
 		"Title":               "Runs",
 		"GroupedRuns":         grouped,
 		"Projects":            projectList,
 		"ProjectFilter":       projectFilter,
+		"ProjectLabel":        projectLabel,
 		"ProjectLabels":       labels,
 		"DirToLabel":          dirToLabel,
 		"TotalContainerCount": totalContainerCount,

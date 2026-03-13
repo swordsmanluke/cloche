@@ -1,5 +1,9 @@
 {{define "content"}}
+{{if .ProjectLabel}}
+<h1><a href="/">Projects</a> / <a href="/projects/{{.ProjectLabel}}">{{.ProjectLabel}}</a> / Runs</h1>
+{{else}}
 <h1>Runs</h1>
+{{end}}
 {{if .Projects}}
 <div class="project-filter">
     <label for="project-select">Project:</label>
