@@ -2087,6 +2087,92 @@ func TestRunsList_TaskGrouping(t *testing.T) {
 	}
 }
 
+func TestTaskAggregateStatus(t *testing.T) {
+	tests := []struct {
+		name   string
+		states []domain.RunState
+		want   string
+	}{
+		{"all succeeded", []domain.RunState{domain.RunStateSucceeded, domain.RunStateSucceeded}, "succeeded"},
+		{"one pending", []domain.RunState{domain.RunStateSucceeded, domain.RunStatePending}, "pending"},
+		{"one running", []domain.RunState{domain.RunStateSucceeded, domain.RunStateRunning}, "running"},
+		{"one failed", []domain.RunState{domain.RunStateSucceeded, domain.RunStateRunning, domain.RunStateFailed}, "failed"},
+		{"failed beats running", []domain.RunState{domain.RunStateRunning, domain.RunStateFailed}, "failed"},
+		{"running beats pending", []domain.RunState{domain.RunStatePending, domain.RunStateRunning}, "running"},
+		{"pending beats succeeded", []domain.RunState{domain.RunStateSucceeded, domain.RunStatePending}, "pending"},
+		{"cancelled beats succeeded", []domain.RunState{domain.RunStateSucceeded, domain.RunStateCancelled}, "cancelled"},
+		{"pending beats cancelled", []domain.RunState{domain.RunStateCancelled, domain.RunStatePending}, "pending"},
+		{"single pending", []domain.RunState{domain.RunStatePending}, "pending"},
+		{"single failed", []domain.RunState{domain.RunStateFailed}, "failed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var runs []*domain.Run
+			for i, s := range tt.states {
+				r := domain.NewRun(fmt.Sprintf("r-%d", i), "wf")
+				r.State = s
+				runs = append(runs, r)
+			}
+			got := taskAggregateStatus(runs)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestRunsList_TaskGroupingStatus(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// Create runs with same task ID in different states
+	r1 := domain.NewRun("ts-run-1", "main")
+	r1.IsHost = true
+	r1.ProjectDir = "/project"
+	r1.TaskID = "task-200"
+	r1.Start()
+	r1.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, r1))
+
+	r2 := domain.NewRun("ts-run-2", "main")
+	r2.IsHost = true
+	r2.ProjectDir = "/project"
+	r2.TaskID = "task-200"
+	r2.Start()
+	require.NoError(t, store.CreateRun(ctx, r2))
+
+	req := httptest.NewRequest("GET", "/api/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var entries []apiGroupedEntry
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &entries))
+
+	// First entry should be task header with aggregate status = running
+	require.True(t, entries[0].TaskHeader)
+	assert.Equal(t, "task-200", entries[0].TaskID)
+	assert.Equal(t, "running", entries[0].TaskStatus)
+
+	// Now add a failed run and check again
+	r3 := domain.NewRun("ts-run-3", "main")
+	r3.IsHost = true
+	r3.ProjectDir = "/project"
+	r3.TaskID = "task-200"
+	r3.Start()
+	r3.Fail("something broke")
+	require.NoError(t, store.CreateRun(ctx, r3))
+
+	req2 := httptest.NewRequest("GET", "/api/runs", nil)
+	w2 := httptest.NewRecorder()
+	h.ServeHTTP(w2, req2)
+
+	var entries2 []apiGroupedEntry
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &entries2))
+
+	require.True(t, entries2[0].TaskHeader)
+	assert.Equal(t, "failed", entries2[0].TaskStatus)
+}
+
 func TestProjectDetail_TasksPanel(t *testing.T) {
 	h, store := setupHandler(t)
 	ctx := context.Background()

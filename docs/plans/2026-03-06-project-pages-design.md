@@ -132,7 +132,8 @@ Returns the task pipeline state for the project's orchestration loop.
 - `list-tasks` workflow runs are hidden from the Runs page (both server-rendered and
   JS-rendered views)
 - Runs with the same `task_id` are grouped under a task header row
-- The `task_id` field is included in the `/api/runs` JSON response
+- The task header shows an aggregate status badge (priority: succeeded < cancelled < pending < running < failed)
+- The `task_id` and `task_status` fields are included in the `/api/runs` JSON response
 - Runs without a `task_id` appear ungrouped below task groups
 
 ## Panel 4: Workflow View

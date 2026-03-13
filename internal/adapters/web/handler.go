@@ -495,9 +495,35 @@ func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
 type apiGroupedEntry struct {
 	TaskHeader bool    `json:"task_header,omitempty"`
 	TaskID     string  `json:"task_id,omitempty"`
+	TaskStatus string  `json:"task_status,omitempty"` // aggregate status for task header
 	IsParent   bool    `json:"is_parent,omitempty"`
 	IsChild    bool    `json:"is_child,omitempty"`
 	Run        *apiRun `json:"run,omitempty"`
+}
+
+// taskAggregateStatus computes the most important state across a set of runs.
+// Priority: succeeded < cancelled < pending < running < failed.
+func taskAggregateStatus(runs []*domain.Run) string {
+	priority := map[domain.RunState]int{
+		domain.RunStateSucceeded: 0,
+		domain.RunStateCancelled: 1,
+		domain.RunStatePending:   2,
+		domain.RunStateRunning:   3,
+		domain.RunStateFailed:    4,
+	}
+	best := -1
+	bestState := domain.RunStatePending
+	for _, r := range runs {
+		p, ok := priority[r.State]
+		if !ok {
+			p = 2 // treat unknown as pending
+		}
+		if p > best {
+			best = p
+			bestState = r.State
+		}
+	}
+	return string(bestState)
 }
 
 // groupAndSortRuns filters, sorts, and groups runs by task, mirroring the
@@ -559,7 +585,7 @@ func groupAndSortRuns(runs []*domain.Run, labels map[string]string) []apiGrouped
 
 	// Emit task groups
 	for _, tid := range taskOrder {
-		result = append(result, apiGroupedEntry{TaskHeader: true, TaskID: tid})
+		result = append(result, apiGroupedEntry{TaskHeader: true, TaskID: tid, TaskStatus: taskAggregateStatus(taskGroups[tid])})
 		for _, r := range taskGroups[tid] {
 			children := parentMap[r.ID]
 			ar := toAPIRun(r, labels)
