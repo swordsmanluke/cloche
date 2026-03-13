@@ -1,34 +1,16 @@
 #!/usr/bin/env bash
-# Returns ready, unclaimed tasks from bd as a JSON array.
-# Usage: ready-tasks.sh [max]
-#   max  — maximum number of IDs to return (default: all)
+# ready-tasks.sh — Output open tasks as JSONL for the daemon to parse.
+# Each line is a JSON object with at least: id, status, title, description.
+# The daemon picks which task to assign; this script just reports what's available.
 set -euo pipefail
 
-max="${1:-0}"
+# bd list --json outputs a JSON array; convert to JSONL (one object per line).
+json=$(bd list -s open --json 2>/dev/null) || json="[]"
 
-limit_args=()
-if [ "$max" -gt 0 ] 2>/dev/null; then
-  limit_args=(--limit "$max")
-fi
-
-# Filter to open status only — excludes in_progress (already claimed) tasks.
-json=$(bd list -s open --json "${limit_args[@]}" 2>/dev/null) || json="[]"
-
-# Empty array means no work — exit non-zero so the workflow takes the fail path.
+# Empty array means no work — exit 0 with no output (daemon sees zero tasks).
 if [ "$json" = "[]" ] || [ -z "$json" ]; then
-  echo "[]"
-  exit 1
+  exit 0
 fi
 
-# Store first task's data in run context for downstream steps.
-task_id=$(echo "$json" | jq -r '.[0].id')
-task_title=$(echo "$json" | jq -r '.[0].title')
-task_body=$(echo "$json" | jq -r '.[0].description')
-
-cloche set task_id "$task_id"
-cloche set task_title "$task_title"
-cloche set task_body - <<EOF
-$task_body
-EOF
-
-echo "$json"
+# Convert JSON array to JSONL
+echo "$json" | jq -c '.[]'

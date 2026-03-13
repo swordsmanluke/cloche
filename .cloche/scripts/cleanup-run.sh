@@ -4,7 +4,6 @@
 set -euo pipefail
 
 RUN_ID=$(cloche get child_run_id) || true
-CLOCHE_TASK_ID=$(cloche get task_id) || true
 PROJECT_DIR="${CLOCHE_PROJECT_DIR:-.}"
 
 if [ -z "$RUN_ID" ]; then
@@ -25,11 +24,6 @@ else
   if git -C "$PROJECT_DIR" rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
     git -C "$PROJECT_DIR" branch -D "$BRANCH" 2>/dev/null || true
   fi
-fi
-
-# Close the task if task_id is set
-if [ -n "$CLOCHE_TASK_ID" ]; then
-  bd close "$CLOCHE_TASK_ID" 2>/dev/null && echo "Closed task $CLOCHE_TASK_ID" || echo "warning: could not close task $CLOCHE_TASK_ID" >&2
 fi
 
 echo "Cleaned up run ${RUN_ID:-unknown}"

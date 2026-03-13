@@ -1,28 +1,19 @@
 #!/usr/bin/env bash
-# claim-task.sh — Claim a bead task by setting it to in_progress.
-# Reads task data from run context (set by ready-tasks.sh via cloche set).
+# claim-task.sh — Claim the daemon-assigned task by setting it to in_progress.
+# Uses CLOCHE_TASK_ID env var set by the daemon's three-phase loop.
 set -euo pipefail
 
-CLOCHE_TASK_ID=$(cloche get task_id)
-CLOCHE_TASK_TITLE=$(cloche get task_title)
-CLOCHE_TASK_BODY=$(cloche get task_body)
-
-if [ -z "$CLOCHE_TASK_ID" ]; then
-  echo "error: task_id not found in run context" >&2
+if [ -z "${CLOCHE_TASK_ID:-}" ]; then
+  echo "error: CLOCHE_TASK_ID not set (is the daemon running in three-phase mode?)" >&2
   exit 1
 fi
 
-# Capture bd output separately so it doesn't corrupt our JSON stdout.
+# Claim the task in bead
 claim_output=$(bd update "$CLOCHE_TASK_ID" --claim 2>&1) || true
 
-# bd exits 0 even on failure, so check for error in output.
 if echo "$claim_output" | grep -qi "error\|already claimed"; then
   echo "claim failed: $claim_output" >&2
   exit 1
 fi
 
-# Forward task info as properly escaped JSON so downstream steps can parse it.
-jq -n --arg id "$CLOCHE_TASK_ID" \
-      --arg title "$CLOCHE_TASK_TITLE" \
-      --arg desc "$CLOCHE_TASK_BODY" \
-      '[{id: $id, title: $title, description: $desc}]'
+echo "Claimed task $CLOCHE_TASK_ID"

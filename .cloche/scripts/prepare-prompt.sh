@@ -1,14 +1,24 @@
 #!/usr/bin/env bash
-# Default prompt generator.
-# Writes the task prompt to stdout and to $CLOCHE_STEP_OUTPUT.
-# Reads task data from run context (set by ready-tasks.sh via cloche set).
+# prepare-prompt.sh — Build the task prompt from the daemon-assigned task.
+# Uses CLOCHE_TASK_ID env var to look up task details from bead.
 set -euo pipefail
 
-task_title=$(cloche get task_title)
-task_body=$(cloche get task_body)
+if [ -z "${CLOCHE_TASK_ID:-}" ]; then
+  echo "error: CLOCHE_TASK_ID not set" >&2
+  exit 1
+fi
+
+# Look up task details from bead
+task_json=$(bd show "$CLOCHE_TASK_ID" --json 2>/dev/null) || {
+  echo "error: could not look up task $CLOCHE_TASK_ID" >&2
+  exit 1
+}
+
+task_title=$(echo "$task_json" | jq -r '.title // empty')
+task_body=$(echo "$task_json" | jq -r '.description // empty')
 
 if [ -z "$task_title" ]; then
-  echo "error: task_title not found in run context" >&2
+  echo "error: task $CLOCHE_TASK_ID has no title" >&2
   exit 1
 fi
 

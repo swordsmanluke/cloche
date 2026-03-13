@@ -1,11 +1,16 @@
+workflow "list-tasks" {
+  step ready-tasks {
+    run     = "bash .cloche/scripts/ready-tasks.sh"
+    results = [success, fail]
+  }
+
+  ready-tasks:success -> done
+  ready-tasks:fail    -> abort
+}
+
 workflow "main" {
   host {
     agent_command = "claude"
-  }
-
-  step ready-tasks {
-    run     = "bash .cloche/scripts/ready-tasks.sh 1"
-    results = [success, fail]
   }
 
   step claim-task {
@@ -33,8 +38,6 @@ workflow "main" {
     results = [success, fail]
   }
 
-  ready-tasks:success    -> claim-task
-  ready-tasks:fail       -> abort
   claim-task:success     -> prepare-prompt
   claim-task:fail        -> abort
   prepare-prompt:success -> develop
@@ -45,4 +48,14 @@ workflow "main" {
   merge:fail             -> abort
   cleanup:success        -> done
   cleanup:fail           -> done
+}
+
+workflow "finalize" {
+  step close-task {
+    run     = "bash .cloche/scripts/close-task.sh"
+    results = [success, fail]
+  }
+
+  close-task:success -> done
+  close-task:fail    -> done
 }
