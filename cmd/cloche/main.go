@@ -74,6 +74,13 @@ func main() {
 		}
 		cmdTasks(os.Args[2:])
 		return
+	case "workflow":
+		if hasHelpFlag(os.Args[2:]) {
+			printSubcommandHelp("workflow")
+			return
+		}
+		cmdWorkflow(os.Args[2:])
+		return
 	}
 
 	// Handle --help for daemon commands before connecting

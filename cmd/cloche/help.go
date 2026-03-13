@@ -291,6 +291,34 @@ Examples:
   echo "multi-line content" | cloche set notes -
 `,
 
+	"workflow": `cloche workflow — View workflow definitions
+
+Lists all workflows in the project or renders a specific workflow as an
+ASCII-art graph showing steps, wiring, and result paths.
+
+Usage:
+  cloche workflow [--project <dir>]          List all workflows
+  cloche workflow <name> [--project <dir>]   Show workflow graph
+
+Arguments:
+  <name>    Name of the workflow to render as a graph.
+
+Flags:
+  --project <dir>, -p <dir>    Project directory (default: current directory).
+
+When listing, workflows are grouped by type (container or host). When
+showing a specific workflow, the output is a graph with step boxes and
+colored wires: green for success, red for fail/failed, and
+blue/yellow/orange/magenta for other result paths. Wires to the same
+destination are merged for readability.
+
+Examples:
+  cloche workflow
+  cloche workflow develop
+  cloche workflow main -p /path/to/project
+  cloche workflow --project ../other-project
+`,
+
 	"shutdown": `cloche shutdown — Shut down the daemon
 
 Sends a shutdown signal to the Cloche daemon. All running workflows are
@@ -357,6 +385,9 @@ Usage:
 Project Setup:
   init       Initialize a Cloche project (.cloche/ directory and templates)
   health     Show project health summary (pass/fail counts)
+
+Workflow Info:
+  workflow   List workflows or show a workflow as an ASCII-art graph
 
 Workflow Runs:
   run        Launch a workflow run in a container

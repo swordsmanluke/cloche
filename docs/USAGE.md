@@ -677,6 +677,25 @@ cloche health
 
 Show per-project pass/fail summary. Requires `CLOCHE_HTTP`.
 
+### `cloche workflow`
+
+```
+cloche workflow [--project <dir>]
+cloche workflow <name> [--project <dir>]
+```
+
+List all workflows or render a specific workflow as an ASCII-art graph.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--project <dir>`, `-p` | current directory | Project directory to search for workflows. |
+
+With no arguments, lists all workflows grouped by type (container or host). With a
+workflow name, renders the workflow graph showing step boxes, wiring, and result paths.
+Wires are colorized: green for `success`, red for `fail`/`failed`,
+blue/yellow/orange/magenta for other results. Wires to the same destination are merged
+for readability.
+
 ### `cloche get`
 
 ```
