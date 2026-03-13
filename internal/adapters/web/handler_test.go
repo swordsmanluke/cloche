@@ -2176,6 +2176,43 @@ func TestRunsList_TaskGrouping(t *testing.T) {
 	}
 }
 
+func TestRunsList_TaskGroupingTitle(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// Create a run with a task ID
+	r1 := domain.NewRun("tt-run-1", "develop")
+	r1.IsHost = true
+	r1.ProjectDir = "/project"
+	r1.TaskID = "task-300"
+	r1.Start()
+	require.NoError(t, store.CreateRun(ctx, r1))
+
+	// Set up mock task provider with a title for this task
+	tp := &mockTaskProvider{
+		tasks: map[string][]TaskEntry{
+			"/project": {
+				{ID: "task-300", Status: "open", Title: "Fix login page"},
+			},
+		},
+	}
+	h.taskProvider = tp
+
+	req := httptest.NewRequest("GET", "/api/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var entries []apiGroupedEntry
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &entries))
+
+	// First entry should be the task header with the title
+	require.True(t, entries[0].TaskHeader)
+	assert.Equal(t, "task-300", entries[0].TaskID)
+	assert.Equal(t, "Fix login page", entries[0].TaskTitle)
+}
+
 func TestTaskAggregateStatus(t *testing.T) {
 	now := time.Now()
 	tests := []struct {

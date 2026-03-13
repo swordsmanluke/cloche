@@ -309,7 +309,7 @@ func (h *Handler) renderRunsList(w http.ResponseWriter, r *http.Request, project
 		totalContainerCount += c
 	}
 
-	grouped := groupAndSortRuns(runs, labels)
+	grouped := groupAndSortRuns(runs, labels, h.taskTitlesFromRuns(runs))
 
 	// Build a JSON map of dir→label for the template JS.
 	dirToLabel := map[string]string{}
@@ -519,6 +519,7 @@ func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
 type apiGroupedEntry struct {
 	TaskHeader bool    `json:"task_header,omitempty"`
 	TaskID     string  `json:"task_id,omitempty"`
+	TaskTitle  string  `json:"task_title,omitempty"`  // title for task header display
 	TaskStatus string  `json:"task_status,omitempty"` // aggregate status for task header
 	IsParent   bool    `json:"is_parent,omitempty"`
 	IsChild    bool    `json:"is_child,omitempty"`
@@ -535,7 +536,7 @@ func taskAggregateStatus(runs []*domain.Run) string {
 // groupAndSortRuns filters, sorts, and groups runs by task, mirroring the
 // logic previously done client-side. Returns a flat list of grouped entries
 // suitable for both HTML template rendering and JSON API responses.
-func groupAndSortRuns(runs []*domain.Run, labels map[string]string) []apiGroupedEntry {
+func groupAndSortRuns(runs []*domain.Run, labels map[string]string, taskTitles map[string]string) []apiGroupedEntry {
 	// Filter out list-tasks runs
 	var filtered []*domain.Run
 	for _, r := range runs {
@@ -591,7 +592,7 @@ func groupAndSortRuns(runs []*domain.Run, labels map[string]string) []apiGrouped
 
 	// Emit task groups
 	for _, tid := range taskOrder {
-		result = append(result, apiGroupedEntry{TaskHeader: true, TaskID: tid, TaskStatus: taskAggregateStatus(taskGroups[tid])})
+		result = append(result, apiGroupedEntry{TaskHeader: true, TaskID: tid, TaskTitle: taskTitles[tid], TaskStatus: taskAggregateStatus(taskGroups[tid])})
 		for _, r := range taskGroups[tid] {
 			children := parentMap[r.ID]
 			ar := toAPIRun(r, labels)
@@ -623,6 +624,28 @@ func groupAndSortRuns(runs []*domain.Run, labels map[string]string) []apiGrouped
 	}
 
 	return result
+}
+
+// taskTitlesFromRuns builds a task-ID→title map by querying the task provider
+// for each distinct project directory found in the given runs.
+func (h *Handler) taskTitlesFromRuns(runs []*domain.Run) map[string]string {
+	titles := map[string]string{}
+	if h.taskProvider == nil {
+		return titles
+	}
+	seen := map[string]bool{}
+	for _, r := range runs {
+		if r.ProjectDir == "" || seen[r.ProjectDir] {
+			continue
+		}
+		seen[r.ProjectDir] = true
+		for _, te := range h.taskProvider.GetLoopTasks(r.ProjectDir) {
+			if te.Title != "" {
+				titles[te.ID] = te.Title
+			}
+		}
+	}
+	return titles
 }
 
 func (h *Handler) handleAPIRuns(w http.ResponseWriter, r *http.Request) {
@@ -667,7 +690,7 @@ func (h *Handler) renderAPIRuns(w http.ResponseWriter, r *http.Request, projectF
 	projects, _ := h.store.ListProjects(r.Context())
 	labels := projectLabels(projects)
 
-	result := groupAndSortRuns(runs, labels)
+	result := groupAndSortRuns(runs, labels, h.taskTitlesFromRuns(runs))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)

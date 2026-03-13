@@ -32,7 +32,7 @@
     {{if .GroupedRuns}}
         {{range .GroupedRuns}}
         {{if .TaskHeader}}
-        <tr class="run-task-header"><td colspan="9">Task: {{.TaskID}} <span class="badge badge-{{.TaskStatus}}">{{.TaskStatus}}</span></td></tr>
+        <tr class="run-task-header"><td colspan="9">Task: {{.TaskID}}{{if .TaskTitle}}: {{.TaskTitle}}{{end}} <span class="badge badge-{{.TaskStatus}}">{{.TaskStatus}}</span></td></tr>
         {{else if .Run}}
         <tr class="{{if .IsChild}}run-child-row{{else if .IsParent}}run-parent-row{{end}}">
             <td><a href="/runs/{{.Run.ID}}">{{.Run.ID}}</a></td>
@@ -114,7 +114,9 @@
                     var entry = entries[i];
                     if (entry.task_header) {
                         var ts = entry.task_status || 'pending';
-                        html += '<tr class="run-task-header"><td colspan="9">Task: ' + escapeHtml(entry.task_id) + ' <span class="badge badge-' + ts + '">' + ts + '</span></td></tr>';
+                        var taskLabel = escapeHtml(entry.task_id);
+                        if (entry.task_title) taskLabel += ': ' + escapeHtml(entry.task_title);
+                        html += '<tr class="run-task-header"><td colspan="9">Task: ' + taskLabel + ' <span class="badge badge-' + ts + '">' + ts + '</span></td></tr>';
                         continue;
                     }
                     var r = entry.run;
