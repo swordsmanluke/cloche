@@ -102,7 +102,10 @@
     Log
     <span id="log-status" class="badge badge-running" style="font-size:0.7rem; margin-left:0.5rem;">Live</span>
 </h2>
-<div id="log-viewer" class="log-viewer"><pre id="log-content"></pre></div>
+<div id="log-viewer" class="log-viewer">
+    <button id="load-earlier-btn" class="load-earlier-btn" style="display:none" onclick="loadEarlierLogs()">Load earlier (<span id="load-earlier-count">0</span> more lines)</button>
+    <pre id="log-content"></pre>
+</div>
 {{end}}
 
 {{define "scripts"}}
@@ -115,6 +118,10 @@
     var logContent = document.getElementById('log-content');
     var logViewer = document.getElementById('log-viewer');
     var logStatus = document.getElementById('log-status');
+    var loadEarlierBtn = document.getElementById('load-earlier-btn');
+    var loadEarlierCount = document.getElementById('load-earlier-count');
+    var skippedLines = 0;
+
     function appendLogLine(line) {
         var span = document.createElement('span');
         span.className = 'log-line log-type-' + (line.type || 'script');
@@ -148,6 +155,16 @@
             appendLogLine(line);
         } catch(err) {}
     };
+    source.addEventListener('meta', function(e) {
+        try {
+            var meta = JSON.parse(e.data);
+            skippedLines = meta.skipped || 0;
+            if (skippedLines > 0) {
+                loadEarlierCount.textContent = skippedLines;
+                loadEarlierBtn.style.display = '';
+            }
+        } catch(err) {}
+    });
     source.addEventListener('done', function(e) {
         markComplete();
         source.close();
@@ -283,6 +300,53 @@
         return d.innerHTML;
     }
 })();
+
+// Load earlier log lines
+    window.loadEarlierLogs = function() {
+        var btn = document.getElementById('load-earlier-btn');
+        var countEl = document.getElementById('load-earlier-count');
+        btn.disabled = true;
+        var prevText = btn.textContent;
+        btn.textContent = 'Loading...';
+
+        var limit = 1000;
+        var end = skippedLines;
+
+        fetch('/api/runs/' + runID + '/logs?end=' + end + '&limit=' + limit)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.lines && data.lines.length > 0) {
+                    var fragment = document.createDocumentFragment();
+                    for (var i = 0; i < data.lines.length; i++) {
+                        var line = data.lines[i];
+                        var span = document.createElement('span');
+                        span.className = 'log-line log-type-' + (line.type || 'script');
+                        span.textContent = '[' + line.timestamp + '] [' + line.type + '] ' + line.content + '\n';
+                        fragment.appendChild(span);
+                    }
+                    // Preserve scroll position relative to existing content
+                    var prevScrollHeight = logViewer.scrollHeight;
+                    logContent.insertBefore(fragment, logContent.firstChild);
+                    logViewer.scrollTop += logViewer.scrollHeight - prevScrollHeight;
+                }
+
+                skippedLines = data.start || 0;
+                if (skippedLines > 0) {
+                    btn.disabled = false;
+                    countEl.textContent = skippedLines;
+                    btn.textContent = '';
+                    btn.appendChild(document.createTextNode('Load earlier ('));
+                    btn.appendChild(countEl);
+                    btn.appendChild(document.createTextNode(' more lines)'));
+                } else {
+                    btn.style.display = 'none';
+                }
+            })
+            .catch(function() {
+                btn.disabled = false;
+                btn.textContent = prevText;
+            });
+    };
 
 // Cancel run
     window.cancelRun = function(runID) {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -308,4 +309,259 @@ func TestSSE_CompletedRun_NoFullLog(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "event: done")
+}
+
+// writeNLogLines creates a full.log with n visible log lines.
+func writeNLogLines(t *testing.T, dir, runID string, n int) {
+	t.Helper()
+	outputDir := filepath.Join(dir, ".cloche", runID, "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		fmt.Fprintf(&b, "[2026-03-03T10:15:%02dZ] [script] line %d\n", i%60, i)
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "full.log"), []byte(b.String()), 0644))
+}
+
+func TestSSE_CompletedRun_TailsLast1000(t *testing.T) {
+	h, store, _ := setupHandlerWithBroadcaster(t)
+	dir := t.TempDir()
+
+	ctx := context.Background()
+	run := domain.NewRun("sse-tail-1", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.ContainerID = "abc123"
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Write 1500 log lines
+	writeNLogLines(t, dir, "sse-tail-1", 1500)
+
+	req := httptest.NewRequest("GET", "/api/runs/sse-tail-1/stream", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+
+	// Parse events
+	var events []logstream.LogLine
+	var metaEvent map[string]int
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+			// Try as meta event (follows "event: meta")
+			var meta map[string]int
+			if json.Unmarshal([]byte(data), &meta) == nil {
+				if _, ok := meta["total_lines"]; ok {
+					metaEvent = meta
+					continue
+				}
+			}
+			var ll logstream.LogLine
+			if json.Unmarshal([]byte(data), &ll) == nil {
+				events = append(events, ll)
+			}
+		}
+	}
+
+	// Should have meta event indicating skipped lines
+	require.NotNil(t, metaEvent, "expected meta SSE event")
+	assert.Equal(t, 1500, metaEvent["total_lines"])
+	assert.Equal(t, 500, metaEvent["skipped"])
+
+	// Should only have 1000 log events (the last 1000 of 1500)
+	require.Len(t, events, 1000)
+	// First event should be line 500 (0-indexed)
+	assert.Equal(t, "line 500", events[0].Content)
+	// Last event should be line 1499
+	assert.Equal(t, "line 1499", events[999].Content)
+}
+
+func TestSSE_CompletedRun_NoMetaWhenUnderLimit(t *testing.T) {
+	h, store, _ := setupHandlerWithBroadcaster(t)
+	dir := t.TempDir()
+
+	ctx := context.Background()
+	run := domain.NewRun("sse-small-1", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.ContainerID = "abc123"
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Write only 50 log lines (under the 1000 limit)
+	writeNLogLines(t, dir, "sse-small-1", 50)
+
+	req := httptest.NewRequest("GET", "/api/runs/sse-small-1/stream", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+
+	// Should NOT contain meta event
+	assert.NotContains(t, body, "event: meta")
+
+	// Should have all 50 lines
+	var events []logstream.LogLine
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+			var ll logstream.LogLine
+			if json.Unmarshal([]byte(data), &ll) == nil {
+				events = append(events, ll)
+			}
+		}
+	}
+	assert.Len(t, events, 50)
+}
+
+func TestAPILogs_Pagination(t *testing.T) {
+	h, store, _ := setupHandlerWithBroadcaster(t)
+	dir := t.TempDir()
+
+	ctx := context.Background()
+	run := domain.NewRun("logs-page-1", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.ContainerID = "abc123"
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Write 2500 log lines
+	writeNLogLines(t, dir, "logs-page-1", 2500)
+
+	// Request last 1000 lines (default)
+	req := httptest.NewRequest("GET", "/api/runs/logs-page-1/logs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp struct {
+		Lines []logstream.LogLine `json:"lines"`
+		Total int                 `json:"total"`
+		Start int                 `json:"start"`
+		End   int                 `json:"end"`
+	}
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+
+	assert.Equal(t, 2500, resp.Total)
+	assert.Equal(t, 1500, resp.Start)
+	assert.Equal(t, 2500, resp.End)
+	assert.Len(t, resp.Lines, 1000)
+	assert.Equal(t, "line 1500", resp.Lines[0].Content)
+	assert.Equal(t, "line 2499", resp.Lines[999].Content)
+}
+
+func TestAPILogs_PaginateEarlier(t *testing.T) {
+	h, store, _ := setupHandlerWithBroadcaster(t)
+	dir := t.TempDir()
+
+	ctx := context.Background()
+	run := domain.NewRun("logs-page-2", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.ContainerID = "abc123"
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Write 2500 log lines
+	writeNLogLines(t, dir, "logs-page-2", 2500)
+
+	// Request earlier page: lines before index 1500, limit 1000
+	req := httptest.NewRequest("GET", "/api/runs/logs-page-2/logs?end=1500&limit=1000", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp struct {
+		Lines []logstream.LogLine `json:"lines"`
+		Total int                 `json:"total"`
+		Start int                 `json:"start"`
+		End   int                 `json:"end"`
+	}
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+
+	assert.Equal(t, 2500, resp.Total)
+	assert.Equal(t, 500, resp.Start)
+	assert.Equal(t, 1500, resp.End)
+	assert.Len(t, resp.Lines, 1000)
+	assert.Equal(t, "line 500", resp.Lines[0].Content)
+	assert.Equal(t, "line 1499", resp.Lines[999].Content)
+}
+
+func TestAPILogs_FirstPage(t *testing.T) {
+	h, store, _ := setupHandlerWithBroadcaster(t)
+	dir := t.TempDir()
+
+	ctx := context.Background()
+	run := domain.NewRun("logs-page-3", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.ContainerID = "abc123"
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Write 2500 log lines
+	writeNLogLines(t, dir, "logs-page-3", 2500)
+
+	// Request the very first page: end=500, limit=1000 — should clamp start to 0
+	req := httptest.NewRequest("GET", "/api/runs/logs-page-3/logs?end=500&limit=1000", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	var resp struct {
+		Lines []logstream.LogLine `json:"lines"`
+		Total int                 `json:"total"`
+		Start int                 `json:"start"`
+		End   int                 `json:"end"`
+	}
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+
+	assert.Equal(t, 2500, resp.Total)
+	assert.Equal(t, 0, resp.Start)
+	assert.Equal(t, 500, resp.End)
+	assert.Len(t, resp.Lines, 500)
+	assert.Equal(t, "line 0", resp.Lines[0].Content)
+}
+
+func TestAPILogs_RunNotFound(t *testing.T) {
+	h, _, _ := setupHandlerWithBroadcaster(t)
+
+	req := httptest.NewRequest("GET", "/api/runs/nonexistent/logs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestAPILogs_NoLogFile(t *testing.T) {
+	h, store, _ := setupHandlerWithBroadcaster(t)
+
+	ctx := context.Background()
+	run := domain.NewRun("logs-nolog-1", "develop")
+	run.ProjectDir = t.TempDir()
+	run.Start()
+	run.ContainerID = "abc123"
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	req := httptest.NewRequest("GET", "/api/runs/logs-nolog-1/logs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp struct {
+		Lines []logstream.LogLine `json:"lines"`
+		Total int                 `json:"total"`
+	}
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, 0, resp.Total)
+	assert.Empty(t, resp.Lines)
 }

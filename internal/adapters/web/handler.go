@@ -166,6 +166,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows/{workflow}/steps/{step}/content", h.handleAPIStepContent)
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks", h.handleAPITasks)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
+	h.mux.HandleFunc("GET /api/runs/{id}/logs", h.handleAPILogs)
 	h.mux.HandleFunc("GET /api/runs/{id}/stream", h.handleAPIStream)
 	h.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
 
@@ -1058,9 +1059,14 @@ func (h *Handler) removeContainers(ctx context.Context, mgr ContainerManager, ru
 	return deleted, errors
 }
 
+// defaultLogTail is the maximum number of log lines sent on initial page load.
+const defaultLogTail = 1000
+
 // handleAPIStream serves an SSE stream of log lines for a run.
 // For active runs, it subscribes to the live broadcaster.
 // For completed runs, it serves the archived full.log then closes.
+// The initial load is capped to the last defaultLogTail lines; a "meta"
+// SSE event is sent first when earlier lines were skipped.
 func (h *Handler) handleAPIStream(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -1086,8 +1092,8 @@ func (h *Handler) handleAPIStream(w http.ResponseWriter, r *http.Request) {
 		run.State == domain.RunStateCancelled
 
 	if isComplete {
-		// Serve archived full.log
-		h.streamFullLog(w, flusher, run)
+		// Serve archived full.log (capped to last defaultLogTail lines)
+		h.streamFullLog(w, flusher, run, defaultLogTail)
 		// Send done event
 		fmt.Fprintf(w, "event: done\ndata: %s\n\n", string(run.State))
 		flusher.Flush()
@@ -1126,28 +1132,110 @@ func (h *Handler) handleAPIStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleAPILogs serves paginated log lines as JSON for loading earlier output.
+// Query params:
+//   - end:   exclusive upper bound (visible line index); defaults to total lines
+//   - limit: max lines to return; defaults to defaultLogTail
+//
+// Response: {"lines": [...], "total": N, "start": S, "end": E}
+func (h *Handler) handleAPILogs(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	run, err := h.store.GetRun(r.Context(), id)
+	if err != nil {
+		http.Error(w, "run not found", http.StatusNotFound)
+		return
+	}
+
+	logPath := filepath.Join(run.ProjectDir, ".cloche", run.ID, "output", "full.log")
+	lines, err := readVisibleLogLines(logPath)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"lines": []logstream.LogLine{}, "total": 0, "start": 0, "end": 0})
+		return
+	}
+
+	total := len(lines)
+
+	end := total
+	if v := r.URL.Query().Get("end"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= total {
+			end = n
+		}
+	}
+
+	limit := defaultLogTail
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	start := end - limit
+	if start < 0 {
+		start = 0
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"lines": lines[start:end],
+		"total": total,
+		"start": start,
+		"end":   end,
+	})
+}
+
 // logLineRegex parses "[timestamp] [type] content" format from full.log.
 var logLineRegex = regexp.MustCompile(`^\[([^\]]+)\] \[([^\]]+)\] (.*)$`)
 
-// streamFullLog reads the archived full.log file and sends its entries as SSE events.
-// LLM-type lines are parsed from raw Claude JSON into human-readable text.
-func (h *Handler) streamFullLog(w http.ResponseWriter, flusher http.Flusher, run *domain.Run) {
-	logPath := filepath.Join(run.ProjectDir, ".cloche", run.ID, "output", "full.log")
+// readVisibleLogLines reads a full.log file and returns all visible (non-empty-type)
+// log lines after parsing and LLM filtering.
+func readVisibleLogLines(logPath string) ([]logstream.LogLine, error) {
 	f, err := os.Open(logPath)
 	if err != nil {
-		return
+		return nil, err
 	}
 	defer f.Close()
 
+	var lines []logstream.LogLine
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024) // 1MB max to handle large Claude JSON lines
 	for scanner.Scan() {
-		text := scanner.Text()
-		line := parseFullLogLine(text)
+		line := parseFullLogLine(scanner.Text())
 		line = parseLLMLogLine(line)
 		if line.Type == "" {
-			continue // skip protocol-only llm lines
+			continue
 		}
+		lines = append(lines, line)
+	}
+	return lines, scanner.Err()
+}
+
+// streamFullLog reads the archived full.log file and sends its entries as SSE events.
+// LLM-type lines are parsed from raw Claude JSON into human-readable text.
+// If tail > 0 and the log has more lines, only the last tail lines are sent and a
+// "meta" SSE event is emitted first with total_lines and skipped counts.
+func (h *Handler) streamFullLog(w http.ResponseWriter, flusher http.Flusher, run *domain.Run, tail int) {
+	logPath := filepath.Join(run.ProjectDir, ".cloche", run.ID, "output", "full.log")
+	lines, err := readVisibleLogLines(logPath)
+	if err != nil {
+		return
+	}
+
+	total := len(lines)
+	start := 0
+	if tail > 0 && total > tail {
+		start = total - tail
+	}
+
+	// Send metadata event when earlier lines were skipped
+	if start > 0 {
+		meta, _ := json.Marshal(map[string]int{"total_lines": total, "skipped": start})
+		fmt.Fprintf(w, "event: meta\ndata: %s\n\n", meta)
+		flusher.Flush()
+	}
+
+	for _, line := range lines[start:] {
 		data, _ := json.Marshal(line)
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()

@@ -404,6 +404,23 @@ details pre {
     line-height: 1.4;
 }
 
+/* Load-earlier button inside log viewer */
+.load-earlier-btn {
+    display: block;
+    width: 100%;
+    padding: 0.4rem;
+    text-align: center;
+    background: var(--bg-secondary);
+    border: none;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-family: var(--mono);
+    color: var(--link);
+}
+.load-earlier-btn:hover { background: var(--border); }
+.load-earlier-btn:disabled { opacity: 0.5; cursor: wait; }
+
 .log-line { display: block; }
 .log-type-status { color: var(--badge-running-text); }
 .log-type-llm { color: var(--badge-succeeded-text); }
