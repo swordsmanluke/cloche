@@ -70,15 +70,23 @@ func cmdProject(args []string) {
 	if resp.DedupSeconds > 0 {
 		fmt.Printf("  dedup_seconds:      %.0f\n", resp.DedupSeconds)
 	}
+	fmt.Printf("  stop_on_error:      %v\n", resp.StopOnError)
 	fmt.Printf("  evolution:          %v\n", resp.EvolutionEnabled)
 	fmt.Println()
 
 	// Orchestrator loop state.
 	loopState := "stopped"
 	if resp.LoopRunning {
-		loopState = "running"
+		if resp.ErrorHalted {
+			loopState = "halted"
+		} else {
+			loopState = "running"
+		}
 	}
 	fmt.Printf("Loop:        %s\n", loopState)
+	if resp.ErrorHalted {
+		fmt.Printf("Halt error:  %s\n", resp.HaltError)
+	}
 	fmt.Println()
 
 	// Active runs.

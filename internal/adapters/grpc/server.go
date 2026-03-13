@@ -892,6 +892,7 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 		MaxConcurrent: maxConc,
 		StaggerDelay:  stagger,
 		DedupTimeout:  dedupTimeout,
+		StopOnError:   projCfg.Orchestration.StopOnError,
 	}
 
 	s.mu.Lock()
@@ -1085,6 +1086,24 @@ func (s *ClocheServer) DisableLoop(ctx context.Context, req *pb.DisableLoopReque
 	return &pb.DisableLoopResponse{}, nil
 }
 
+func (s *ClocheServer) ResumeLoop(ctx context.Context, req *pb.ResumeLoopRequest) (*pb.ResumeLoopResponse, error) {
+	projectDir := req.ProjectDir
+	if projectDir == "" {
+		return nil, fmt.Errorf("project_dir is required")
+	}
+
+	s.mu.Lock()
+	loop, ok := s.loops[projectDir]
+	s.mu.Unlock()
+
+	if !ok || loop == nil {
+		return nil, fmt.Errorf("no orchestration loop for %s", projectDir)
+	}
+
+	loop.Resume()
+	return &pb.ResumeLoopResponse{}, nil
+}
+
 func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInfoRequest) (*pb.GetProjectInfoResponse, error) {
 	projectDir := req.ProjectDir
 
@@ -1176,6 +1195,13 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 	sort.Strings(containerWorkflows)
 	sort.Strings(hostWorkflows)
 
+	// Check if loop is halted due to an error.
+	var errorHalted bool
+	var haltError string
+	if loopExists && loop != nil {
+		errorHalted, haltError = loop.Halted()
+	}
+
 	return &pb.GetProjectInfoResponse{
 		ProjectDir:         projectDir,
 		Name:               label,
@@ -1188,6 +1214,9 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 		ActiveRuns:         activeRuns,
 		ContainerWorkflows: containerWorkflows,
 		HostWorkflows:      hostWorkflows,
+		StopOnError:        cfg.Orchestration.StopOnError,
+		ErrorHalted:        errorHalted,
+		HaltError:          haltError,
 	}, nil
 }
 

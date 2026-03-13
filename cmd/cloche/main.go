@@ -491,6 +491,17 @@ func cmdLoop(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 		return
 	}
 
+	// Check for "resume" subcommand
+	if len(args) > 0 && args[0] == "resume" {
+		_, err := client.ResumeLoop(ctx, &pb.ResumeLoopRequest{ProjectDir: cwd})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Orchestration loop resumed.")
+		return
+	}
+
 	// Default: 0 means "use config value" (server reads .cloche/config.toml).
 	var maxConcurrent int32
 	for i := 0; i < len(args); i++ {

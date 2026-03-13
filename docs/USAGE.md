@@ -767,9 +767,10 @@ up a project by its registered label instead.
 |------|---------|-------------|
 | `--name <label>` | _(cwd lookup)_ | Look up project by label (e.g. `cloche`) instead of directory. |
 
-Output includes: config settings (active, concurrency, stagger, dedup, evolution),
-orchestrator loop state (running/stopped), currently active runs, and known container
-and host workflow names.
+Output includes: config settings (active, concurrency, stagger, dedup, stop_on_error,
+evolution), orchestrator loop state (running/stopped/halted), currently active runs,
+and known container and host workflow names. When the loop is halted due to
+`stop_on_error`, the halt error message is displayed.
 
 ### `cloche get`
 
@@ -808,12 +809,13 @@ state. Requires `CLOCHE_HTTP` (talks to the daemon's web API).
 
 ### `cloche loop`
 
-Start or stop the daemon's orchestration loop. The loop automatically picks up
+Start, stop, or resume the daemon's orchestration loop. The loop automatically picks up
 tasks from the pipeline and runs them.
 
 ```
 cloche loop [--max <n>]
 cloche loop stop
+cloche loop resume
 ```
 
 | Flag | Default | Description |
@@ -821,6 +823,9 @@ cloche loop stop
 | `--max <n>` | config value | Maximum concurrent runs. Defaults to the value in `.cloche/config.toml`. |
 
 `cloche loop stop` disables the loop. Running tasks are not cancelled.
+
+`cloche loop resume` clears the halted state after a `stop_on_error` halt, allowing
+the loop to resume picking up new work. See `stop_on_error` in the project config.
 
 ### `cloche --version`
 

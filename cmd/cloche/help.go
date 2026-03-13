@@ -247,21 +247,27 @@ Examples:
 
 	"loop": `cloche loop — Manage the orchestration loop
 
-Starts or stops the daemon's orchestration loop, which automatically
-picks up and runs tasks from the task pipeline.
+Starts, stops, or resumes the daemon's orchestration loop, which
+automatically picks up and runs tasks from the task pipeline.
 
 Usage:
   cloche loop [--max <n>]     Start the orchestration loop
   cloche loop stop            Stop the orchestration loop
+  cloche loop resume          Resume a halted loop (clear error state)
 
 Flags:
   --max <n>    Maximum number of concurrent runs (default: value from
                .cloche/config.toml).
 
+When stop_on_error is enabled in .cloche/config.toml, an unrecovered
+error will halt the loop. Use "cloche loop resume" to clear the error
+and resume picking up new work.
+
 Examples:
   cloche loop
   cloche loop --max 3
   cloche loop stop
+  cloche loop resume
 `,
 
 	"get": `cloche get — Get a value from the run context store
@@ -354,8 +360,9 @@ Flags:
                     the current directory.
 
 Output includes:
-  Config            active, concurrency, stagger, dedup, evolution settings
-  Loop              Orchestration loop state (running or stopped)
+  Config            active, concurrency, stagger, dedup, stop_on_error,
+                    evolution settings
+  Loop              Orchestration loop state (running, stopped, or halted)
   Active runs       Currently pending or running workflow runs
   Workflows         Known container and host workflow names
 

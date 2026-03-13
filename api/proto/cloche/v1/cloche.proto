@@ -15,6 +15,7 @@ service ClocheService {
 
   rpc EnableLoop(EnableLoopRequest) returns (EnableLoopResponse);
   rpc DisableLoop(DisableLoopRequest) returns (DisableLoopResponse);
+  rpc ResumeLoop(ResumeLoopRequest) returns (ResumeLoopResponse);
 
   rpc GetProjectInfo(GetProjectInfoRequest) returns (GetProjectInfoResponse);
 
@@ -130,6 +131,12 @@ message DisableLoopRequest {
 
 message DisableLoopResponse {}
 
+message ResumeLoopRequest {
+  string project_dir = 1;
+}
+
+message ResumeLoopResponse {}
+
 message GetProjectInfoRequest {
   string project_dir = 1;  // Resolve by absolute path (default: cwd)
   string name = 2;         // Resolve by project label (e.g. "cloche")
@@ -147,6 +154,9 @@ message GetProjectInfoResponse {
   repeated RunSummary active_runs = 9;
   repeated string container_workflows = 10;
   repeated string host_workflows = 11;
+  bool stop_on_error = 12;
+  bool error_halted = 13;       // true when loop is halted due to an unrecovered error
+  string halt_error = 14;       // the error that caused the halt
 }
 
 message GetVersionRequest {}

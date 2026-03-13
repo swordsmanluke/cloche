@@ -26,6 +26,7 @@ type LoopConfig struct {
 	MaxConcurrent int
 	StaggerDelay  time.Duration // delay between launching consecutive runs
 	DedupTimeout  time.Duration // how long to suppress reassignment of the same task ID
+	StopOnError   bool          // halt loop on unrecovered error (allow in-flight work to finish)
 }
 
 // ListTasksFunc is called to discover available tasks. It should run the
@@ -73,8 +74,12 @@ type Loop struct {
 	store      ports.RunStore
 	assigner   TaskAssigner // optional; legacy task assignment
 	stopCh     chan struct{}
+	resumeCh   chan struct{} // signaled by Resume() to wake the loop
 	mu         sync.Mutex
 	running    bool
+	haltedMu   sync.RWMutex
+	halted     bool   // true when loop is halted due to an unrecovered error
+	haltError  string // the error message that caused the halt
 	dedupMu    sync.Mutex
 	dedup      map[string]time.Time // task ID -> last assignment time
 	tasksMu    sync.RWMutex
@@ -95,6 +100,7 @@ func NewLoop(cfg LoopConfig, store ports.RunStore, runFn RunFunc) *Loop {
 		config:   cfg,
 		runner:   runFn,
 		store:    store,
+		resumeCh: make(chan struct{}, 1),
 		dedup:    make(map[string]time.Time),
 		taskRuns: make(map[string]TaskAssignment),
 	}
@@ -116,6 +122,7 @@ func NewPhaseLoop(cfg LoopConfig, store ports.RunStore, listTasksFn ListTasksFun
 		mainFn:     mainFn,
 		finalizeFn: finalizeFn,
 		store:      store,
+		resumeCh:   make(chan struct{}, 1),
 		dedup:      make(map[string]time.Time),
 		taskRuns:   make(map[string]TaskAssignment),
 	}
@@ -159,6 +166,47 @@ func (l *Loop) Running() bool {
 	return l.running
 }
 
+// Halted returns whether the loop is halted due to an unrecovered error,
+// along with the error message that caused the halt. When halted, the loop
+// is still running but will not pick up new work.
+func (l *Loop) Halted() (bool, string) {
+	l.haltedMu.RLock()
+	defer l.haltedMu.RUnlock()
+	return l.halted, l.haltError
+}
+
+// Resume clears the halted state so the loop resumes picking up new work.
+func (l *Loop) Resume() {
+	l.haltedMu.Lock()
+	defer l.haltedMu.Unlock()
+	if l.halted {
+		log.Printf("orchestration loop: resumed for %s (was halted: %s)", l.config.ProjectDir, l.haltError)
+		l.halted = false
+		l.haltError = ""
+		// Wake the loop from any sleep so it picks up work immediately.
+		select {
+		case l.resumeCh <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// halt sets the loop into halted state with the given error message.
+func (l *Loop) halt(errMsg string) {
+	l.haltedMu.Lock()
+	defer l.haltedMu.Unlock()
+	l.halted = true
+	l.haltError = errMsg
+	log.Printf("orchestration loop: halted for %s (stop_on_error): %s", l.config.ProjectDir, errMsg)
+}
+
+// isHalted returns true if the loop is currently halted.
+func (l *Loop) isHalted() bool {
+	l.haltedMu.RLock()
+	defer l.haltedMu.RUnlock()
+	return l.halted
+}
+
 func (l *Loop) run() {
 	if l.listTasks != nil && l.mainFn != nil {
 		l.runPhased()
@@ -173,7 +221,8 @@ func (l *Loop) run() {
 // 3. finalize → cleanup after main completes (on both success and failure)
 func (l *Loop) runPhased() {
 	type result struct {
-		state domain.RunState
+		state  domain.RunState
+		errMsg string
 	}
 
 	completions := make(chan result, l.config.MaxConcurrent)
@@ -187,6 +236,11 @@ func (l *Loop) runPhased() {
 			case <-l.stopCh:
 				return
 			default:
+			}
+
+			// If halted, don't pick up new work.
+			if l.isHalted() {
+				break
 			}
 
 			// Check how many host runs are active for this project.
@@ -245,7 +299,7 @@ func (l *Loop) runPhased() {
 					}
 				}
 
-				completions <- result{state: overallState}
+				completions <- result{state: overallState, errMsg: fmt.Sprintf("task %s failed", tid)}
 			}()
 		}
 
@@ -265,7 +319,11 @@ func (l *Loop) runPhased() {
 				// Work was done — try to fill slots immediately.
 				continue
 			}
-			// Run failed or aborted. Back off.
+			// Run failed or aborted.
+			if l.config.StopOnError {
+				l.halt(r.errMsg)
+			}
+			// Back off.
 			if !l.sleep(idlePollInterval) {
 				return
 			}
@@ -358,7 +416,8 @@ func (l *Loop) pickTaskFromPhase() (string, bool) {
 // runLegacy implements the original single-function orchestration loop.
 func (l *Loop) runLegacy() {
 	type result struct {
-		state domain.RunState
+		state  domain.RunState
+		errMsg string
 	}
 
 	completions := make(chan result, l.config.MaxConcurrent)
@@ -372,6 +431,11 @@ func (l *Loop) runLegacy() {
 			case <-l.stopCh:
 				return
 			default:
+			}
+
+			// If halted, don't pick up new work.
+			if l.isHalted() {
+				break
 			}
 
 			// Check how many host runs are active for this project (in case of
@@ -407,7 +471,11 @@ func (l *Loop) runLegacy() {
 				res, err := l.runner(context.Background(), l.config.ProjectDir, tid)
 				if err != nil {
 					log.Printf("orchestration loop: run failed for %s: %v", l.config.ProjectDir, err)
-					completions <- result{state: domain.RunStateFailed}
+					completions <- result{state: domain.RunStateFailed, errMsg: err.Error()}
+					return
+				}
+				if res.State != domain.RunStateSucceeded {
+					completions <- result{state: res.State, errMsg: "run failed with state " + string(res.State)}
 					return
 				}
 				completions <- result{state: res.State}
@@ -430,7 +498,11 @@ func (l *Loop) runLegacy() {
 				// Work was done — try to fill slots immediately.
 				continue
 			}
-			// Run failed or aborted (no tasks available). Back off.
+			// Run failed or aborted (no tasks available).
+			if l.config.StopOnError {
+				l.halt(r.errMsg)
+			}
+			// Back off.
 			if !l.sleep(idlePollInterval) {
 				return
 			}
@@ -502,11 +574,13 @@ func (l *Loop) countActiveHostRuns() int {
 	return count
 }
 
-// sleep waits for the given duration or until the loop is stopped.
+// sleep waits for the given duration or until the loop is stopped or resumed.
 // Returns false if the loop was stopped.
 func (l *Loop) sleep(d time.Duration) bool {
 	select {
 	case <-time.After(d):
+		return true
+	case <-l.resumeCh:
 		return true
 	case <-l.stopCh:
 		return false
