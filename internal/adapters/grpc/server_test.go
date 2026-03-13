@@ -1525,3 +1525,158 @@ func TestServer_StreamLogs_FollowWithExistingLogs(t *testing.T) {
 	assert.True(t, foundCompleted, "should send run_completed when done")
 }
 
+func TestServer_GetProjectInfo_ByDir(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	// Create .cloche directory with workflow files and config.
+	clocheDir := filepath.Join(dir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+
+	// Container workflow.
+	containerWF := `workflow "develop" {
+  step code {
+    prompt = "write code"
+    results = [success, fail]
+  }
+  code:success -> done
+  code:fail -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(containerWF), 0644))
+
+	// Host workflow.
+	hostWF := `workflow "main" {
+  step build {
+    run = "make build"
+    results = [success, fail]
+  }
+  build:success -> done
+  build:fail -> abort
+}
+
+workflow "finalize" {
+  step cleanup {
+    run = "echo done"
+    results = [success]
+  }
+  cleanup:success -> done
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostWF), 0644))
+
+	// Config file.
+	configTOML := `active = true
+
+[orchestration]
+concurrency = 3
+stagger_seconds = 2.5
+dedup_seconds = 120
+
+[evolution]
+enabled = false
+`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(configTOML), 0644))
+
+	// Create an active run for this project.
+	run := domain.NewRun("run-active-1", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Create a completed run (should not appear in active runs).
+	completed := domain.NewRun("run-done-1", "develop")
+	completed.ProjectDir = dir
+	completed.Start()
+	completed.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, completed))
+
+	srv := server.NewClocheServer(store, nil)
+
+	resp, err := srv.GetProjectInfo(ctx, &pb.GetProjectInfoRequest{ProjectDir: dir})
+	require.NoError(t, err)
+
+	assert.Equal(t, dir, resp.ProjectDir)
+	assert.Equal(t, filepath.Base(dir), resp.Name)
+	assert.True(t, resp.Active)
+	assert.Equal(t, int32(3), resp.Concurrency)
+	assert.InDelta(t, 2.5, resp.StaggerSeconds, 0.01)
+	assert.InDelta(t, 120.0, resp.DedupSeconds, 0.01)
+	assert.False(t, resp.EvolutionEnabled)
+	assert.False(t, resp.LoopRunning)
+
+	// Active runs.
+	require.Len(t, resp.ActiveRuns, 1)
+	assert.Equal(t, "run-active-1", resp.ActiveRuns[0].RunId)
+	assert.Equal(t, "develop", resp.ActiveRuns[0].WorkflowName)
+
+	// Workflows.
+	assert.Equal(t, []string{"develop"}, resp.ContainerWorkflows)
+	assert.Contains(t, resp.HostWorkflows, "main")
+	assert.Contains(t, resp.HostWorkflows, "finalize")
+}
+
+func TestServer_GetProjectInfo_ByName(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	// Create .cloche directory with a workflow.
+	clocheDir := filepath.Join(dir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	containerWF := `workflow "build" {
+  step test {
+    run = "make test"
+    results = [success, fail]
+  }
+  test:success -> done
+  test:fail -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "build.cloche"), []byte(containerWF), 0644))
+
+	// Register the project by creating a run.
+	run := domain.NewRun("run-1", "build")
+	run.ProjectDir = dir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	srv := server.NewClocheServer(store, nil)
+
+	// Look up by project label (basename of dir).
+	label := filepath.Base(dir)
+	resp, err := srv.GetProjectInfo(ctx, &pb.GetProjectInfoRequest{Name: label})
+	require.NoError(t, err)
+
+	assert.Equal(t, dir, resp.ProjectDir)
+	assert.Equal(t, label, resp.Name)
+	assert.Equal(t, []string{"build"}, resp.ContainerWorkflows)
+}
+
+func TestServer_GetProjectInfo_NotFound(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, nil)
+
+	_, err = srv.GetProjectInfo(context.Background(), &pb.GetProjectInfoRequest{Name: "nonexistent"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestServer_GetProjectInfo_RequiresInput(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, nil)
+
+	_, err = srv.GetProjectInfo(context.Background(), &pb.GetProjectInfoRequest{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "required")
+}
+

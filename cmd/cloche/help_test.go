@@ -31,7 +31,7 @@ func TestSubcommandHelpExists(t *testing.T) {
 	commands := []string{
 		"init", "health", "run", "status", "logs", "poll",
 		"list", "stop", "delete", "tasks", "loop", "get", "set", "shutdown",
-		"workflow",
+		"workflow", "project",
 	}
 
 	for _, cmd := range commands {

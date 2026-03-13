@@ -28,6 +28,7 @@ const (
 	ClocheService_DeleteContainer_FullMethodName = "/cloche.v1.ClocheService/DeleteContainer"
 	ClocheService_EnableLoop_FullMethodName      = "/cloche.v1.ClocheService/EnableLoop"
 	ClocheService_DisableLoop_FullMethodName     = "/cloche.v1.ClocheService/DisableLoop"
+	ClocheService_GetProjectInfo_FullMethodName  = "/cloche.v1.ClocheService/GetProjectInfo"
 )
 
 // ClocheServiceClient is the client API for ClocheService service.
@@ -43,6 +44,7 @@ type ClocheServiceClient interface {
 	DeleteContainer(ctx context.Context, in *DeleteContainerRequest, opts ...grpc.CallOption) (*DeleteContainerResponse, error)
 	EnableLoop(ctx context.Context, in *EnableLoopRequest, opts ...grpc.CallOption) (*EnableLoopResponse, error)
 	DisableLoop(ctx context.Context, in *DisableLoopRequest, opts ...grpc.CallOption) (*DisableLoopResponse, error)
+	GetProjectInfo(ctx context.Context, in *GetProjectInfoRequest, opts ...grpc.CallOption) (*GetProjectInfoResponse, error)
 }
 
 type clocheServiceClient struct {
@@ -152,6 +154,16 @@ func (c *clocheServiceClient) DisableLoop(ctx context.Context, in *DisableLoopRe
 	return out, nil
 }
 
+func (c *clocheServiceClient) GetProjectInfo(ctx context.Context, in *GetProjectInfoRequest, opts ...grpc.CallOption) (*GetProjectInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetProjectInfoResponse)
+	err := c.cc.Invoke(ctx, ClocheService_GetProjectInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClocheServiceServer is the server API for ClocheService service.
 // All implementations must embed UnimplementedClocheServiceServer
 // for forward compatibility.
@@ -165,6 +177,7 @@ type ClocheServiceServer interface {
 	DeleteContainer(context.Context, *DeleteContainerRequest) (*DeleteContainerResponse, error)
 	EnableLoop(context.Context, *EnableLoopRequest) (*EnableLoopResponse, error)
 	DisableLoop(context.Context, *DisableLoopRequest) (*DisableLoopResponse, error)
+	GetProjectInfo(context.Context, *GetProjectInfoRequest) (*GetProjectInfoResponse, error)
 	mustEmbedUnimplementedClocheServiceServer()
 }
 
@@ -201,6 +214,9 @@ func (UnimplementedClocheServiceServer) EnableLoop(context.Context, *EnableLoopR
 }
 func (UnimplementedClocheServiceServer) DisableLoop(context.Context, *DisableLoopRequest) (*DisableLoopResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DisableLoop not implemented")
+}
+func (UnimplementedClocheServiceServer) GetProjectInfo(context.Context, *GetProjectInfoRequest) (*GetProjectInfoResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetProjectInfo not implemented")
 }
 func (UnimplementedClocheServiceServer) mustEmbedUnimplementedClocheServiceServer() {}
 func (UnimplementedClocheServiceServer) testEmbeddedByValue()                       {}
@@ -378,6 +394,24 @@ func _ClocheService_DisableLoop_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClocheService_GetProjectInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetProjectInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).GetProjectInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_GetProjectInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).GetProjectInfo(ctx, req.(*GetProjectInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClocheService_ServiceDesc is the grpc.ServiceDesc for ClocheService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -416,6 +450,10 @@ var ClocheService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DisableLoop",
 			Handler:    _ClocheService_DisableLoop_Handler,
+		},
+		{
+			MethodName: "GetProjectInfo",
+			Handler:    _ClocheService_GetProjectInfo_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

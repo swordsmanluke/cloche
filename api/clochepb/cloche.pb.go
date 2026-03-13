@@ -1157,6 +1157,182 @@ func (*DisableLoopResponse) Descriptor() ([]byte, []int) {
 	return file_cloche_proto_rawDescGZIP(), []int{19}
 }
 
+type GetProjectInfoRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectDir    string                 `protobuf:"bytes,1,opt,name=project_dir,json=projectDir,proto3" json:"project_dir,omitempty"` // Resolve by absolute path (default: cwd)
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`                               // Resolve by project label (e.g. "cloche")
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetProjectInfoRequest) Reset() {
+	*x = GetProjectInfoRequest{}
+	mi := &file_cloche_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetProjectInfoRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetProjectInfoRequest) ProtoMessage() {}
+
+func (x *GetProjectInfoRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetProjectInfoRequest.ProtoReflect.Descriptor instead.
+func (*GetProjectInfoRequest) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *GetProjectInfoRequest) GetProjectDir() string {
+	if x != nil {
+		return x.ProjectDir
+	}
+	return ""
+}
+
+func (x *GetProjectInfoRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type GetProjectInfoResponse struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	ProjectDir         string                 `protobuf:"bytes,1,opt,name=project_dir,json=projectDir,proto3" json:"project_dir,omitempty"`
+	Name               string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Active             bool                   `protobuf:"varint,3,opt,name=active,proto3" json:"active,omitempty"`
+	Concurrency        int32                  `protobuf:"varint,4,opt,name=concurrency,proto3" json:"concurrency,omitempty"`
+	StaggerSeconds     float64                `protobuf:"fixed64,5,opt,name=stagger_seconds,json=staggerSeconds,proto3" json:"stagger_seconds,omitempty"`
+	DedupSeconds       float64                `protobuf:"fixed64,6,opt,name=dedup_seconds,json=dedupSeconds,proto3" json:"dedup_seconds,omitempty"`
+	EvolutionEnabled   bool                   `protobuf:"varint,7,opt,name=evolution_enabled,json=evolutionEnabled,proto3" json:"evolution_enabled,omitempty"`
+	LoopRunning        bool                   `protobuf:"varint,8,opt,name=loop_running,json=loopRunning,proto3" json:"loop_running,omitempty"`
+	ActiveRuns         []*RunSummary          `protobuf:"bytes,9,rep,name=active_runs,json=activeRuns,proto3" json:"active_runs,omitempty"`
+	ContainerWorkflows []string               `protobuf:"bytes,10,rep,name=container_workflows,json=containerWorkflows,proto3" json:"container_workflows,omitempty"`
+	HostWorkflows      []string               `protobuf:"bytes,11,rep,name=host_workflows,json=hostWorkflows,proto3" json:"host_workflows,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *GetProjectInfoResponse) Reset() {
+	*x = GetProjectInfoResponse{}
+	mi := &file_cloche_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetProjectInfoResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetProjectInfoResponse) ProtoMessage() {}
+
+func (x *GetProjectInfoResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetProjectInfoResponse.ProtoReflect.Descriptor instead.
+func (*GetProjectInfoResponse) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *GetProjectInfoResponse) GetProjectDir() string {
+	if x != nil {
+		return x.ProjectDir
+	}
+	return ""
+}
+
+func (x *GetProjectInfoResponse) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *GetProjectInfoResponse) GetActive() bool {
+	if x != nil {
+		return x.Active
+	}
+	return false
+}
+
+func (x *GetProjectInfoResponse) GetConcurrency() int32 {
+	if x != nil {
+		return x.Concurrency
+	}
+	return 0
+}
+
+func (x *GetProjectInfoResponse) GetStaggerSeconds() float64 {
+	if x != nil {
+		return x.StaggerSeconds
+	}
+	return 0
+}
+
+func (x *GetProjectInfoResponse) GetDedupSeconds() float64 {
+	if x != nil {
+		return x.DedupSeconds
+	}
+	return 0
+}
+
+func (x *GetProjectInfoResponse) GetEvolutionEnabled() bool {
+	if x != nil {
+		return x.EvolutionEnabled
+	}
+	return false
+}
+
+func (x *GetProjectInfoResponse) GetLoopRunning() bool {
+	if x != nil {
+		return x.LoopRunning
+	}
+	return false
+}
+
+func (x *GetProjectInfoResponse) GetActiveRuns() []*RunSummary {
+	if x != nil {
+		return x.ActiveRuns
+	}
+	return nil
+}
+
+func (x *GetProjectInfoResponse) GetContainerWorkflows() []string {
+	if x != nil {
+		return x.ContainerWorkflows
+	}
+	return nil
+}
+
+func (x *GetProjectInfoResponse) GetHostWorkflows() []string {
+	if x != nil {
+		return x.HostWorkflows
+	}
+	return nil
+}
+
 var File_cloche_proto protoreflect.FileDescriptor
 
 const file_cloche_proto_rawDesc = "" +
@@ -1239,7 +1415,26 @@ const file_cloche_proto_rawDesc = "" +
 	"\x12DisableLoopRequest\x12\x1f\n" +
 	"\vproject_dir\x18\x01 \x01(\tR\n" +
 	"projectDir\"\x15\n" +
-	"\x13DisableLoopResponse2\xa7\x05\n" +
+	"\x13DisableLoopResponse\"L\n" +
+	"\x15GetProjectInfoRequest\x12\x1f\n" +
+	"\vproject_dir\x18\x01 \x01(\tR\n" +
+	"projectDir\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"\xb5\x03\n" +
+	"\x16GetProjectInfoResponse\x12\x1f\n" +
+	"\vproject_dir\x18\x01 \x01(\tR\n" +
+	"projectDir\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
+	"\x06active\x18\x03 \x01(\bR\x06active\x12 \n" +
+	"\vconcurrency\x18\x04 \x01(\x05R\vconcurrency\x12'\n" +
+	"\x0fstagger_seconds\x18\x05 \x01(\x01R\x0estaggerSeconds\x12#\n" +
+	"\rdedup_seconds\x18\x06 \x01(\x01R\fdedupSeconds\x12+\n" +
+	"\x11evolution_enabled\x18\a \x01(\bR\x10evolutionEnabled\x12!\n" +
+	"\floop_running\x18\b \x01(\bR\vloopRunning\x126\n" +
+	"\vactive_runs\x18\t \x03(\v2\x15.cloche.v1.RunSummaryR\n" +
+	"activeRuns\x12/\n" +
+	"\x13container_workflows\x18\n" +
+	" \x03(\tR\x12containerWorkflows\x12%\n" +
+	"\x0ehost_workflows\x18\v \x03(\tR\rhostWorkflows2\xfe\x05\n" +
 	"\rClocheService\x12L\n" +
 	"\vRunWorkflow\x12\x1d.cloche.v1.RunWorkflowRequest\x1a\x1e.cloche.v1.RunWorkflowResponse\x12F\n" +
 	"\tGetStatus\x12\x1b.cloche.v1.GetStatusRequest\x1a\x1c.cloche.v1.GetStatusResponse\x12A\n" +
@@ -1251,7 +1446,8 @@ const file_cloche_proto_rawDesc = "" +
 	"\x0fDeleteContainer\x12!.cloche.v1.DeleteContainerRequest\x1a\".cloche.v1.DeleteContainerResponse\x12I\n" +
 	"\n" +
 	"EnableLoop\x12\x1c.cloche.v1.EnableLoopRequest\x1a\x1d.cloche.v1.EnableLoopResponse\x12L\n" +
-	"\vDisableLoop\x12\x1d.cloche.v1.DisableLoopRequest\x1a\x1e.cloche.v1.DisableLoopResponseB+Z)github.com/cloche-dev/cloche/api/clochepbb\x06proto3"
+	"\vDisableLoop\x12\x1d.cloche.v1.DisableLoopRequest\x1a\x1e.cloche.v1.DisableLoopResponse\x12U\n" +
+	"\x0eGetProjectInfo\x12 .cloche.v1.GetProjectInfoRequest\x1a!.cloche.v1.GetProjectInfoResponseB+Z)github.com/cloche-dev/cloche/api/clochepbb\x06proto3"
 
 var (
 	file_cloche_proto_rawDescOnce sync.Once
@@ -1265,7 +1461,7 @@ func file_cloche_proto_rawDescGZIP() []byte {
 	return file_cloche_proto_rawDescData
 }
 
-var file_cloche_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_cloche_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_cloche_proto_goTypes = []any{
 	(*RunWorkflowRequest)(nil),      // 0: cloche.v1.RunWorkflowRequest
 	(*RunWorkflowResponse)(nil),     // 1: cloche.v1.RunWorkflowResponse
@@ -1287,33 +1483,38 @@ var file_cloche_proto_goTypes = []any{
 	(*EnableLoopResponse)(nil),      // 17: cloche.v1.EnableLoopResponse
 	(*DisableLoopRequest)(nil),      // 18: cloche.v1.DisableLoopRequest
 	(*DisableLoopResponse)(nil),     // 19: cloche.v1.DisableLoopResponse
+	(*GetProjectInfoRequest)(nil),   // 20: cloche.v1.GetProjectInfoRequest
+	(*GetProjectInfoResponse)(nil),  // 21: cloche.v1.GetProjectInfoResponse
 }
 var file_cloche_proto_depIdxs = []int32{
 	4,  // 0: cloche.v1.GetStatusResponse.step_executions:type_name -> cloche.v1.StepExecutionStatus
 	15, // 1: cloche.v1.ListRunsResponse.runs:type_name -> cloche.v1.RunSummary
-	0,  // 2: cloche.v1.ClocheService.RunWorkflow:input_type -> cloche.v1.RunWorkflowRequest
-	2,  // 3: cloche.v1.ClocheService.GetStatus:input_type -> cloche.v1.GetStatusRequest
-	5,  // 4: cloche.v1.ClocheService.StreamLogs:input_type -> cloche.v1.StreamLogsRequest
-	7,  // 5: cloche.v1.ClocheService.StopRun:input_type -> cloche.v1.StopRunRequest
-	13, // 6: cloche.v1.ClocheService.ListRuns:input_type -> cloche.v1.ListRunsRequest
-	9,  // 7: cloche.v1.ClocheService.Shutdown:input_type -> cloche.v1.ShutdownRequest
-	11, // 8: cloche.v1.ClocheService.DeleteContainer:input_type -> cloche.v1.DeleteContainerRequest
-	16, // 9: cloche.v1.ClocheService.EnableLoop:input_type -> cloche.v1.EnableLoopRequest
-	18, // 10: cloche.v1.ClocheService.DisableLoop:input_type -> cloche.v1.DisableLoopRequest
-	1,  // 11: cloche.v1.ClocheService.RunWorkflow:output_type -> cloche.v1.RunWorkflowResponse
-	3,  // 12: cloche.v1.ClocheService.GetStatus:output_type -> cloche.v1.GetStatusResponse
-	6,  // 13: cloche.v1.ClocheService.StreamLogs:output_type -> cloche.v1.LogEntry
-	8,  // 14: cloche.v1.ClocheService.StopRun:output_type -> cloche.v1.StopRunResponse
-	14, // 15: cloche.v1.ClocheService.ListRuns:output_type -> cloche.v1.ListRunsResponse
-	10, // 16: cloche.v1.ClocheService.Shutdown:output_type -> cloche.v1.ShutdownResponse
-	12, // 17: cloche.v1.ClocheService.DeleteContainer:output_type -> cloche.v1.DeleteContainerResponse
-	17, // 18: cloche.v1.ClocheService.EnableLoop:output_type -> cloche.v1.EnableLoopResponse
-	19, // 19: cloche.v1.ClocheService.DisableLoop:output_type -> cloche.v1.DisableLoopResponse
-	11, // [11:20] is the sub-list for method output_type
-	2,  // [2:11] is the sub-list for method input_type
-	2,  // [2:2] is the sub-list for extension type_name
-	2,  // [2:2] is the sub-list for extension extendee
-	0,  // [0:2] is the sub-list for field type_name
+	15, // 2: cloche.v1.GetProjectInfoResponse.active_runs:type_name -> cloche.v1.RunSummary
+	0,  // 3: cloche.v1.ClocheService.RunWorkflow:input_type -> cloche.v1.RunWorkflowRequest
+	2,  // 4: cloche.v1.ClocheService.GetStatus:input_type -> cloche.v1.GetStatusRequest
+	5,  // 5: cloche.v1.ClocheService.StreamLogs:input_type -> cloche.v1.StreamLogsRequest
+	7,  // 6: cloche.v1.ClocheService.StopRun:input_type -> cloche.v1.StopRunRequest
+	13, // 7: cloche.v1.ClocheService.ListRuns:input_type -> cloche.v1.ListRunsRequest
+	9,  // 8: cloche.v1.ClocheService.Shutdown:input_type -> cloche.v1.ShutdownRequest
+	11, // 9: cloche.v1.ClocheService.DeleteContainer:input_type -> cloche.v1.DeleteContainerRequest
+	16, // 10: cloche.v1.ClocheService.EnableLoop:input_type -> cloche.v1.EnableLoopRequest
+	18, // 11: cloche.v1.ClocheService.DisableLoop:input_type -> cloche.v1.DisableLoopRequest
+	20, // 12: cloche.v1.ClocheService.GetProjectInfo:input_type -> cloche.v1.GetProjectInfoRequest
+	1,  // 13: cloche.v1.ClocheService.RunWorkflow:output_type -> cloche.v1.RunWorkflowResponse
+	3,  // 14: cloche.v1.ClocheService.GetStatus:output_type -> cloche.v1.GetStatusResponse
+	6,  // 15: cloche.v1.ClocheService.StreamLogs:output_type -> cloche.v1.LogEntry
+	8,  // 16: cloche.v1.ClocheService.StopRun:output_type -> cloche.v1.StopRunResponse
+	14, // 17: cloche.v1.ClocheService.ListRuns:output_type -> cloche.v1.ListRunsResponse
+	10, // 18: cloche.v1.ClocheService.Shutdown:output_type -> cloche.v1.ShutdownResponse
+	12, // 19: cloche.v1.ClocheService.DeleteContainer:output_type -> cloche.v1.DeleteContainerResponse
+	17, // 20: cloche.v1.ClocheService.EnableLoop:output_type -> cloche.v1.EnableLoopResponse
+	19, // 21: cloche.v1.ClocheService.DisableLoop:output_type -> cloche.v1.DisableLoopResponse
+	21, // 22: cloche.v1.ClocheService.GetProjectInfo:output_type -> cloche.v1.GetProjectInfoResponse
+	13, // [13:23] is the sub-list for method output_type
+	3,  // [3:13] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_cloche_proto_init() }
@@ -1327,7 +1528,7 @@ func file_cloche_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cloche_proto_rawDesc), len(file_cloche_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

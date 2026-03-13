@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/adapters/web"
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/evolution"
 	"github.com/cloche-dev/cloche/internal/host"
 	"github.com/cloche-dev/cloche/internal/logstream"
@@ -999,6 +1001,134 @@ func (s *ClocheServer) DisableLoop(ctx context.Context, req *pb.DisableLoopReque
 	}
 
 	return &pb.DisableLoopResponse{}, nil
+}
+
+func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInfoRequest) (*pb.GetProjectInfoResponse, error) {
+	projectDir := req.ProjectDir
+
+	// Resolve by name if provided.
+	if req.Name != "" && projectDir == "" {
+		projects, err := s.store.ListProjects(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("listing projects: %w", err)
+		}
+		labels := projectLabels(projects)
+		found := false
+		for dir, label := range labels {
+			if label == req.Name {
+				projectDir = dir
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("project %q not found", req.Name)
+		}
+	}
+
+	if projectDir == "" {
+		return nil, fmt.Errorf("project_dir or name is required")
+	}
+
+	// Derive project label.
+	projects, _ := s.store.ListProjects(ctx)
+	labels := projectLabels(projects)
+	label := labels[projectDir]
+	if label == "" {
+		label = filepath.Base(projectDir)
+	}
+
+	// Load config.
+	cfg, _ := config.Load(projectDir)
+
+	// Check loop state.
+	s.mu.Lock()
+	loop, loopExists := s.loops[projectDir]
+	s.mu.Unlock()
+	loopRunning := loopExists && loop != nil && loop.Running()
+
+	// Get active runs.
+	allRuns, _ := s.store.ListRunsByProject(ctx, projectDir, time.Time{})
+	var activeRuns []*pb.RunSummary
+	for _, run := range allRuns {
+		if run.State == domain.RunStatePending || run.State == domain.RunStateRunning {
+			activeRuns = append(activeRuns, &pb.RunSummary{
+				RunId:        run.ID,
+				WorkflowName: run.WorkflowName,
+				State:        string(run.State),
+				StartedAt:    run.StartedAt.String(),
+				Title:        run.Title,
+				IsHost:       run.IsHost,
+				ContainerId:  run.ContainerID,
+			})
+		}
+	}
+
+	// Discover workflows.
+	var containerWorkflows, hostWorkflows []string
+	clocheDir := filepath.Join(projectDir, ".cloche")
+	entries, _ := filepath.Glob(filepath.Join(clocheDir, "*.cloche"))
+	for _, path := range entries {
+		base := filepath.Base(path)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		if base == "host.cloche" {
+			wfs, err := dsl.ParseAllForHost(string(data))
+			if err != nil {
+				continue
+			}
+			for name := range wfs {
+				hostWorkflows = append(hostWorkflows, name)
+			}
+		} else {
+			wf, err := dsl.ParseForContainer(string(data))
+			if err != nil {
+				continue
+			}
+			containerWorkflows = append(containerWorkflows, wf.Name)
+		}
+	}
+
+	sort.Strings(containerWorkflows)
+	sort.Strings(hostWorkflows)
+
+	return &pb.GetProjectInfoResponse{
+		ProjectDir:         projectDir,
+		Name:               label,
+		Active:             cfg.Active,
+		Concurrency:        int32(cfg.Orchestration.Concurrency),
+		StaggerSeconds:     cfg.Orchestration.StaggerSeconds,
+		DedupSeconds:       cfg.Orchestration.DedupSeconds,
+		EvolutionEnabled:   cfg.Evolution.Enabled,
+		LoopRunning:        loopRunning,
+		ActiveRuns:         activeRuns,
+		ContainerWorkflows: containerWorkflows,
+		HostWorkflows:      hostWorkflows,
+	}, nil
+}
+
+// projectLabels maps each project directory to a short display label.
+// Uses basename unless there are conflicts, in which case parent/basename is used.
+func projectLabels(dirs []string) map[string]string {
+	labels := make(map[string]string, len(dirs))
+	byBase := map[string][]string{}
+	for _, d := range dirs {
+		base := filepath.Base(d)
+		byBase[base] = append(byBase[base], d)
+	}
+	for base, paths := range byBase {
+		if len(paths) == 1 {
+			labels[paths[0]] = base
+		} else {
+			for _, p := range paths {
+				parent := filepath.Base(filepath.Dir(p))
+				labels[p] = parent + "/" + base
+			}
+		}
+	}
+	return labels
 }
 
 func (s *ClocheServer) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*pb.ShutdownResponse, error) {

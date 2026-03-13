@@ -705,6 +705,25 @@ Wires are colorized: green for `success`, red for `fail`/`failed`,
 blue/yellow/orange/magenta for other results. Wires to the same destination are merged
 for readability.
 
+### `cloche project`
+
+Show project info and config.
+
+```
+cloche project [--name <label>]
+```
+
+By default, looks up the project by the current working directory. Use `--name` to look
+up a project by its registered label instead.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--name <label>` | _(cwd lookup)_ | Look up project by label (e.g. `cloche`) instead of directory. |
+
+Output includes: config settings (active, concurrency, stagger, dedup, evolution),
+orchestrator loop state (running/stopped), currently active runs, and known container
+and host workflow names.
+
 ### `cloche get`
 
 ```

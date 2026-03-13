@@ -15,6 +15,8 @@ service ClocheService {
 
   rpc EnableLoop(EnableLoopRequest) returns (EnableLoopResponse);
   rpc DisableLoop(DisableLoopRequest) returns (DisableLoopResponse);
+
+  rpc GetProjectInfo(GetProjectInfoRequest) returns (GetProjectInfoResponse);
 }
 
 message RunWorkflowRequest {
@@ -123,3 +125,22 @@ message DisableLoopRequest {
 }
 
 message DisableLoopResponse {}
+
+message GetProjectInfoRequest {
+  string project_dir = 1;  // Resolve by absolute path (default: cwd)
+  string name = 2;         // Resolve by project label (e.g. "cloche")
+}
+
+message GetProjectInfoResponse {
+  string project_dir = 1;
+  string name = 2;
+  bool active = 3;
+  int32 concurrency = 4;
+  double stagger_seconds = 5;
+  double dedup_seconds = 6;
+  bool evolution_enabled = 7;
+  bool loop_running = 8;
+  repeated RunSummary active_runs = 9;
+  repeated string container_workflows = 10;
+  repeated string host_workflows = 11;
+}

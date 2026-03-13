@@ -329,6 +329,36 @@ Examples:
   cloche workflow --project ../other-project
 `,
 
+	"project": `cloche project — Show project info and config
+
+Displays project-level information including config settings, orchestrator
+loop state, concurrency, active runs, and known workflows.
+
+By default, looks up the project by the current working directory. Use
+--name to look up a project by its label instead.
+
+Usage:
+  cloche project [--name <label>]
+
+Flags:
+  --name <label>    Look up project by label (e.g. "cloche") instead of
+                    the current directory.
+
+Output includes:
+  Config            active, concurrency, stagger, dedup, evolution settings
+  Loop              Orchestration loop state (running or stopped)
+  Active runs       Currently pending or running workflow runs
+  Workflows         Known container and host workflow names
+
+Environment:
+  CLOCHE_ADDR    Daemon gRPC address (default: unix:///tmp/cloche.sock)
+
+Examples:
+  cloche project
+  cloche project --name cloche
+  cloche project --name my-app
+`,
+
 	"shutdown": `cloche shutdown — Shut down the daemon
 
 Sends a shutdown signal to the Cloche daemon. All running workflows are
@@ -395,6 +425,7 @@ Usage:
 Project Setup:
   init       Initialize a Cloche project (.cloche/ directory and templates)
   health     Show project health summary (pass/fail counts)
+  project    Show project info, config, loop state, and workflows
 
 Workflow Info:
   workflow   List workflows or show a workflow as an ASCII-art graph
