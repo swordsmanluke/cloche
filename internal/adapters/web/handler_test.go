@@ -1821,6 +1821,10 @@ func TestProjectDetail_RendersLayoutEngine(t *testing.T) {
 	assert.Contains(t, body, "dag-merge-dot")          // Merge dot elements
 	assert.Contains(t, body, "layerGap")               // Horizontal layer spacing
 	assert.Contains(t, body, "termWires")              // Terminal wire merging
+	assert.Contains(t, body, "dag-edge-nonsuccess")    // Non-success wire offset class
+	assert.Contains(t, body, "arrowhead-fail")         // Failure arrowhead marker
+	assert.Contains(t, body, "nonsuccOffset")          // Offset variable for non-success wires
+	assert.Contains(t, body, "isSuccessResult")        // Success result detection helper
 }
 
 func TestStepOutput_DoesNotFallBackToLiveDockerLogs(t *testing.T) {
