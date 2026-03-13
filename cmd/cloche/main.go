@@ -15,7 +15,7 @@ import (
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
-	"github.com/cloche-dev/cloche/internal/dsl"
+	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/runcontext"
 	"github.com/cloche-dev/cloche/internal/version"
@@ -191,13 +191,11 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 
 	cwd, _ := os.Getwd()
 
-	// Resolve image from workflow file (soft failure — fall back to daemon default)
+	// Resolve image from workflow file (soft failure — fall back to daemon default).
+	// Try loading from any .cloche file; only extract image for container workflows.
 	var image string
-	wfPath := filepath.Join(cwd, ".cloche", workflow+".cloche")
-	if data, err := os.ReadFile(wfPath); err == nil {
-		if wf, err := dsl.ParseForContainer(string(data)); err == nil {
-			image = wf.Config["container.image"]
-		}
+	if wf, err := loadWorkflow(cwd, workflow); err == nil && wf.Location == domain.LocationContainer {
+		image = wf.Config["container.image"]
 	}
 
 	resp, err := client.RunWorkflow(ctx, &pb.RunWorkflowRequest{

@@ -88,6 +88,13 @@ func (s *ClocheServer) SetShutdownFunc(fn func()) {
 }
 
 func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
+	// Check if this is a host workflow (has host {} block).
+	if hostWFs, err := host.FindHostWorkflows(req.ProjectDir); err == nil {
+		if _, isHost := hostWFs[req.WorkflowName]; isHost {
+			return s.runHostWorkflow(ctx, req)
+		}
+	}
+
 	if s.container == nil {
 		return nil, fmt.Errorf("no container runtime configured")
 	}
@@ -133,6 +140,25 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	// Launch container start + tracking in background so the RPC returns immediately.
 	// The run stays in "pending" state until the container is up.
 	go s.launchAndTrack(runID, image, req.KeepContainer, req)
+
+	return &pb.RunWorkflowResponse{RunId: runID}, nil
+}
+
+// runHostWorkflow dispatches a host workflow via the host runner, returning
+// immediately while the workflow runs in a background goroutine.
+func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
+	runID := domain.GenerateRunID(req.WorkflowName)
+
+	runner := &host.Runner{
+		Dispatcher:   s,
+		Store:        s.store,
+		Captures:     s.captures,
+		LogBroadcast: s.logBroadcast,
+	}
+
+	go func() {
+		runner.RunNamedWithID(context.Background(), req.ProjectDir, req.WorkflowName, runID)
+	}()
 
 	return &pb.RunWorkflowResponse{RunId: runID}, nil
 }

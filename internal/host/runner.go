@@ -48,13 +48,15 @@ func (r *Runner) RunWithID(ctx context.Context, projectDir string, orchRunID str
 	return r.runNamedWorkflow(ctx, projectDir, "main", orchRunID)
 }
 
-// RunNamed parses .cloche/host.cloche from projectDir and executes the workflow
-// with the given name. The host.cloche file may contain multiple workflows (e.g.
-// "list-tasks", "main", "finalize"). Returns an error if the named workflow is
-// not found.
+// RunNamed executes a named host workflow, generating a new run ID.
 func (r *Runner) RunNamed(ctx context.Context, projectDir string, workflowName string) (*RunResult, error) {
 	orchRunID := domain.GenerateRunID(workflowName)
 	return r.runNamedWorkflow(ctx, projectDir, workflowName, orchRunID)
+}
+
+// RunNamedWithID executes a named host workflow using the provided run ID.
+func (r *Runner) RunNamedWithID(ctx context.Context, projectDir string, workflowName string, runID string) (*RunResult, error) {
+	return r.runNamedWorkflow(ctx, projectDir, workflowName, runID)
 }
 
 // runNamedWorkflow is the internal implementation that runs a specific named
