@@ -543,13 +543,15 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 				return err
 			}
 		} else {
-			// Read step output from per-step log file.
-			// Do NOT fall back to container.log — it contains unfiltered output
-			// from ALL steps and would show wrong content for this step.
+			// Read step output from per-step output file.
+			// Container runs write .log, host runs write .out — try both.
 			var output string
-			outputPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", exec.StepName+".log")
-			if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
-				output = string(data)
+			for _, ext := range []string{".log", ".out"} {
+				outputPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", exec.StepName+ext)
+				if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
+					output = string(data)
+					break
+				}
 			}
 			entry := &pb.LogEntry{
 				Type:      "step_completed",
@@ -887,9 +889,11 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir, host
 	// Phase 2: main function
 	mainFn := func(ctx context.Context, projDir string, taskID string) (*host.RunResult, error) {
 		runner := &host.Runner{
-			Dispatcher: s,
-			Store:      s.store,
-			TaskID:     taskID,
+			Dispatcher:   s,
+			Store:        s.store,
+			Captures:     s.captures,
+			LogBroadcast: s.logBroadcast,
+			TaskID:       taskID,
 		}
 		return runner.RunNamed(ctx, projDir, "main")
 	}
@@ -905,9 +909,11 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir, host
 				mainOutcome = string(mainResult.State)
 			}
 			runner := &host.Runner{
-				Dispatcher: s,
-				Store:      s.store,
-				TaskID:     taskID,
+				Dispatcher:   s,
+				Store:        s.store,
+				Captures:     s.captures,
+				LogBroadcast: s.logBroadcast,
+				TaskID:       taskID,
 				ExtraEnv: []string{
 					"CLOCHE_MAIN_RUN_ID=" + mainRunID,
 					"CLOCHE_MAIN_OUTCOME=" + mainOutcome,
@@ -925,9 +931,11 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir, host
 func (s *ClocheServer) createLegacyLoop(loopCfg host.LoopConfig, projectDir string, projCfg *config.Config, dedupTimeout time.Duration) *host.Loop {
 	runFn := func(ctx context.Context, projDir string, taskID string) (*host.RunResult, error) {
 		runner := &host.Runner{
-			Dispatcher: s,
-			Store:      s.store,
-			TaskID:     taskID,
+			Dispatcher:   s,
+			Store:        s.store,
+			Captures:     s.captures,
+			LogBroadcast: s.logBroadcast,
+			TaskID:       taskID,
 		}
 		return runner.Run(ctx, projDir)
 	}

@@ -7,11 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/engine"
+	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
 )
 
@@ -22,9 +24,11 @@ var _ engine.StatusHandler = (*hostStatusHandler)(nil)
 type Runner struct {
 	Dispatcher    RunDispatcher
 	Store         ports.RunStore
-	TaskID        string   // optional task ID assigned by the daemon loop
-	ExtraEnv      []string // additional KEY=VALUE env vars passed to all steps
-	SkipRunRecord bool     // when true, don't persist a run record to the store
+	Captures      ports.CaptureStore       // optional: saves step captures for cloche logs
+	LogBroadcast  *logstream.Broadcaster   // optional: publishes live log lines
+	TaskID        string                   // optional task ID assigned by the daemon loop
+	ExtraEnv      []string                 // additional KEY=VALUE env vars passed to all steps
+	SkipRunRecord bool                     // when true, don't persist a run record to the store
 }
 
 // RunResult contains the outcome of a host workflow execution.
@@ -117,9 +121,12 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 
 	eng := engine.New(executor)
 	eng.SetStatusHandler(&hostStatusHandler{
-		projectDir: projectDir,
-		orchRunID:  orchRunID,
-		store:      r.Store,
+		projectDir:   projectDir,
+		orchRunID:    orchRunID,
+		store:        r.Store,
+		captures:     r.Captures,
+		logBroadcast: r.LogBroadcast,
+		outputDir:    outputDir,
 	})
 
 	run, runErr := eng.Run(ctx, wf)
@@ -176,13 +183,19 @@ func RunListTasksWorkflow(ctx context.Context, runner *Runner, projectDir string
 }
 
 // hostStatusHandler logs host workflow step events and persists them to the store.
+// It mirrors the container-side status pipeline: saving captures and publishing
+// to the log broadcaster so that cloche logs works identically for host runs.
 type hostStatusHandler struct {
-	projectDir string
-	orchRunID  string
-	store      ports.RunStore
+	projectDir   string
+	orchRunID    string
+	store        ports.RunStore
+	captures     ports.CaptureStore
+	logBroadcast *logstream.Broadcaster
+	outputDir    string
 }
 
 func (h *hostStatusHandler) OnStepStart(_ *domain.Run, step *domain.Step) {
+	now := time.Now()
 	log.Printf("host workflow [%s]: step %q started", h.orchRunID, step.Name)
 	if h.store != nil {
 		if r, err := h.store.GetRun(context.Background(), h.orchRunID); err == nil {
@@ -190,15 +203,55 @@ func (h *hostStatusHandler) OnStepStart(_ *domain.Run, step *domain.Step) {
 			_ = h.store.UpdateRun(context.Background(), r)
 		}
 	}
+	if h.captures != nil {
+		_ = h.captures.SaveCapture(context.Background(), h.orchRunID, &domain.StepExecution{
+			StepName:  step.Name,
+			StartedAt: now,
+		})
+	}
+	if h.logBroadcast != nil {
+		h.logBroadcast.Publish(h.orchRunID, logstream.LogLine{
+			Timestamp: now.Format(time.RFC3339),
+			Type:      "status",
+			Content:   "step_started: " + step.Name,
+			StepName:  step.Name,
+		})
+	}
 }
 
 func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, result string) {
+	now := time.Now()
 	log.Printf("host workflow [%s]: step %q completed with result %q", h.orchRunID, step.Name, result)
 	if h.store != nil {
 		if r, err := h.store.GetRun(context.Background(), h.orchRunID); err == nil {
 			r.RecordStepComplete(step.Name, result)
 			_ = h.store.UpdateRun(context.Background(), r)
 		}
+	}
+	if h.captures != nil {
+		_ = h.captures.SaveCapture(context.Background(), h.orchRunID, &domain.StepExecution{
+			StepName:    step.Name,
+			Result:      result,
+			CompletedAt: now,
+		})
+	}
+	if h.logBroadcast != nil {
+		// Read step output and publish it before the completion event.
+		outputPath := filepath.Join(h.outputDir, step.Name+".out")
+		if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
+			h.logBroadcast.Publish(h.orchRunID, logstream.LogLine{
+				Timestamp: now.Format(time.RFC3339),
+				Type:      "script",
+				Content:   string(data),
+				StepName:  step.Name,
+			})
+		}
+		h.logBroadcast.Publish(h.orchRunID, logstream.LogLine{
+			Timestamp: now.Format(time.RFC3339),
+			Type:      "status",
+			Content:   "step_completed: " + step.Name + " -> " + result,
+			StepName:  step.Name,
+		})
 	}
 }
 
