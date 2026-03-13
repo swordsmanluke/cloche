@@ -339,3 +339,45 @@ func TestEngine_StepTimeoutOverridesDefault(t *testing.T) {
 	assert.Equal(t, domain.RunStateFailed, run.State)
 	assert.Less(t, elapsed, 5*time.Second, "default timeout should fire quickly")
 }
+
+func TestEngine_StepErrorIncludesStepName(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "error-info",
+		Steps: map[string]*domain.Step{
+			"build": {Name: "build", Type: domain.StepTypeScript, Results: []string{"success"}},
+			"test":  {Name: "test", Type: domain.StepTypeScript, Results: []string{"pass"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "build", Result: "success", To: "test"},
+			{From: "test", Result: "pass", To: domain.StepDone},
+		},
+		EntryStep: "build",
+	}
+
+	// Executor that returns an error on the "test" step
+	exec := engine.StepExecutorFunc(func(_ context.Context, step *domain.Step) (string, error) {
+		if step.Name == "test" {
+			return "", fmt.Errorf("tests failed: 3 failures")
+		}
+		return "success", nil
+	})
+
+	eng := engine.New(exec)
+	run, err := eng.Run(context.Background(), wf)
+
+	require.Error(t, err)
+	assert.Equal(t, domain.RunStateFailed, run.State)
+	assert.Contains(t, err.Error(), "test", "error should contain the failed step name")
+	assert.Contains(t, err.Error(), "tests failed", "error should contain the original error message")
+
+	// Verify the step execution was recorded with "error" result
+	var testExec *domain.StepExecution
+	for _, se := range run.StepExecutions {
+		if se.StepName == "test" {
+			testExec = se
+			break
+		}
+	}
+	require.NotNil(t, testExec, "test step should be in step executions")
+	assert.Equal(t, "error", testExec.Result, "failed step should have 'error' result")
+}

@@ -98,7 +98,17 @@ func (r *Runner) Run(ctx context.Context) error {
 		protocol.AppendHistoryMarker(r.cfg.WorkDir, "workflow:end "+wf.Name+" result:failed")
 		ulog.Log(logstream.TypeStatus, "error: "+runErr.Error())
 		ulog.Log(logstream.TypeStatus, "run_completed: failed")
-		statusWriter.Error("", runErr.Error())
+		// Extract the failed step name from step executions so the daemon
+		// can display which step caused the failure.
+		failedStep := ""
+		if run != nil {
+			for _, se := range run.StepExecutions {
+				if se.Result == "error" || se.Result == "fail" {
+					failedStep = se.StepName
+				}
+			}
+		}
+		statusWriter.Error(failedStep, runErr.Error())
 		statusWriter.RunCompleted("failed")
 		return runErr
 	}

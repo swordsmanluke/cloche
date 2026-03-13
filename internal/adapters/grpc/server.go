@@ -201,6 +201,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 
 	// Parse JSON-lines status messages
 	var reportedResult string // captured from MsgRunCompleted, persisted after branch extraction
+	var reportedError string  // captured from MsgError, used to set ErrorMessage on failed runs
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024) // 1MB max to handle large log messages
 	for scanner.Scan() {
@@ -265,6 +266,9 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 			if run.Title == "" {
 				run.Title = msg.Message
 			}
+		case protocol.MsgError:
+			reportedError = msg.Message
+			continue // Don't persist; used during finalization
 		case protocol.MsgRunCompleted:
 			reportedResult = msg.Result
 			continue // Don't persist terminal state yet; branch extraction must finish first
@@ -340,7 +344,11 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		if reportedResult == "succeeded" {
 			run.Complete(domain.RunStateSucceeded)
 		} else if reportedResult != "" {
-			run.Complete(domain.RunStateFailed)
+			if reportedError != "" {
+				run.Fail(reportedError)
+			} else {
+				run.Complete(domain.RunStateFailed)
+			}
 		} else if exitCode == 0 {
 			run.Complete(domain.RunStateSucceeded)
 		} else {

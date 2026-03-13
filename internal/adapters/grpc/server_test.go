@@ -849,6 +849,60 @@ func TestServer_RunWorkflow_FailedRunKeepsContainer(t *testing.T) {
 	assert.True(t, run.ContainerKept, "ContainerKept should be true for failed runs")
 }
 
+func TestServer_RunWorkflow_FailedRunCapturesErrorMessage(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	// Mock agent outputs an error message before the failed run completion
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "develop"},
+		{Type: protocol.MsgStepCompleted, StepName: "develop", Result: "error"},
+		{Type: protocol.MsgError, StepName: "develop", Message: `step "develop" execution failed: exit status 1`},
+		{Type: protocol.MsgRunCompleted, Result: "failed"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	script += "exit 1\n"
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := &trackingRuntime{Runtime: local.NewRuntime("sh")}
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+	})
+	require.NoError(t, err)
+
+	// Poll until the run completes
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+		require.NoError(t, err)
+		if status.State == "failed" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Wait for post-completion cleanup to finish
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify the error message was captured on the run
+	run, err := store.GetRun(context.Background(), resp.RunId)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateFailed, run.State)
+	assert.Contains(t, run.ErrorMessage, "develop", "error message should contain the failed step name")
+	assert.Contains(t, run.ErrorMessage, "execution failed", "error message should contain the error details")
+}
+
 func TestServer_RunWorkflow_SucceededRunRemovesContainer(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
