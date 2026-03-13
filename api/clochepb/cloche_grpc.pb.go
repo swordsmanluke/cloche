@@ -29,6 +29,7 @@ const (
 	ClocheService_EnableLoop_FullMethodName      = "/cloche.v1.ClocheService/EnableLoop"
 	ClocheService_DisableLoop_FullMethodName     = "/cloche.v1.ClocheService/DisableLoop"
 	ClocheService_GetProjectInfo_FullMethodName  = "/cloche.v1.ClocheService/GetProjectInfo"
+	ClocheService_GetVersion_FullMethodName      = "/cloche.v1.ClocheService/GetVersion"
 )
 
 // ClocheServiceClient is the client API for ClocheService service.
@@ -45,6 +46,7 @@ type ClocheServiceClient interface {
 	EnableLoop(ctx context.Context, in *EnableLoopRequest, opts ...grpc.CallOption) (*EnableLoopResponse, error)
 	DisableLoop(ctx context.Context, in *DisableLoopRequest, opts ...grpc.CallOption) (*DisableLoopResponse, error)
 	GetProjectInfo(ctx context.Context, in *GetProjectInfoRequest, opts ...grpc.CallOption) (*GetProjectInfoResponse, error)
+	GetVersion(ctx context.Context, in *GetVersionRequest, opts ...grpc.CallOption) (*GetVersionResponse, error)
 }
 
 type clocheServiceClient struct {
@@ -164,6 +166,16 @@ func (c *clocheServiceClient) GetProjectInfo(ctx context.Context, in *GetProject
 	return out, nil
 }
 
+func (c *clocheServiceClient) GetVersion(ctx context.Context, in *GetVersionRequest, opts ...grpc.CallOption) (*GetVersionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetVersionResponse)
+	err := c.cc.Invoke(ctx, ClocheService_GetVersion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClocheServiceServer is the server API for ClocheService service.
 // All implementations must embed UnimplementedClocheServiceServer
 // for forward compatibility.
@@ -178,6 +190,7 @@ type ClocheServiceServer interface {
 	EnableLoop(context.Context, *EnableLoopRequest) (*EnableLoopResponse, error)
 	DisableLoop(context.Context, *DisableLoopRequest) (*DisableLoopResponse, error)
 	GetProjectInfo(context.Context, *GetProjectInfoRequest) (*GetProjectInfoResponse, error)
+	GetVersion(context.Context, *GetVersionRequest) (*GetVersionResponse, error)
 	mustEmbedUnimplementedClocheServiceServer()
 }
 
@@ -217,6 +230,9 @@ func (UnimplementedClocheServiceServer) DisableLoop(context.Context, *DisableLoo
 }
 func (UnimplementedClocheServiceServer) GetProjectInfo(context.Context, *GetProjectInfoRequest) (*GetProjectInfoResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetProjectInfo not implemented")
+}
+func (UnimplementedClocheServiceServer) GetVersion(context.Context, *GetVersionRequest) (*GetVersionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetVersion not implemented")
 }
 func (UnimplementedClocheServiceServer) mustEmbedUnimplementedClocheServiceServer() {}
 func (UnimplementedClocheServiceServer) testEmbeddedByValue()                       {}
@@ -412,6 +428,24 @@ func _ClocheService_GetProjectInfo_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClocheService_GetVersion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetVersionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).GetVersion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_GetVersion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).GetVersion(ctx, req.(*GetVersionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClocheService_ServiceDesc is the grpc.ServiceDesc for ClocheService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -454,6 +488,10 @@ var ClocheService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetProjectInfo",
 			Handler:    _ClocheService_GetProjectInfo_Handler,
+		},
+		{
+			MethodName: "GetVersion",
+			Handler:    _ClocheService_GetVersion_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

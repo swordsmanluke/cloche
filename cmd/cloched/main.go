@@ -12,6 +12,7 @@ import (
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
+	"github.com/cloche-dev/cloche/internal/version"
 	adaptgrpc "github.com/cloche-dev/cloche/internal/adapters/grpc"
 	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
@@ -25,6 +26,11 @@ import (
 )
 
 func main() {
+	if len(os.Args) >= 2 && (os.Args[1] == "-v" || os.Args[1] == "--version") {
+		fmt.Printf("cloched %s\n", version.Version())
+		return
+	}
+
 	// Load global config file (~/.config/cloche/config)
 	globalCfg, err := config.LoadGlobal()
 	if err != nil {

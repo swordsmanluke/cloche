@@ -777,6 +777,28 @@ cloche loop stop
 
 `cloche loop stop` disables the loop. Running tasks are not cancelled.
 
+### `cloche --version`
+
+Print version information for all Cloche components.
+
+```
+cloche -v
+cloche --version
+```
+
+Displays the CLI version, queries the running daemon for its version (via gRPC),
+and runs `docker run --rm --entrypoint cloche-agent <image> -v` to get the agent
+version from the project's container image. If the daemon is unreachable or the
+image doesn't exist, the corresponding version shows `<unavailable>`. Version
+mismatches between components produce warnings on stderr.
+
+The daemon and agent binaries also support standalone version output:
+
+```
+cloched -v       # prints daemon version
+cloche-agent -v  # prints agent version
+```
+
 ### `cloche shutdown`
 
 ```

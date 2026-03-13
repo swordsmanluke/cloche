@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/runcontext"
+	"github.com/cloche-dev/cloche/internal/version"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -26,6 +28,12 @@ func main() {
 	if len(os.Args) < 2 {
 		printTopLevelHelp()
 		os.Exit(1)
+	}
+
+	// Handle version flags before anything else
+	if os.Args[1] == "-v" || os.Args[1] == "--version" {
+		cmdVersion()
+		return
 	}
 
 	// Handle top-level help: "cloche help", "cloche --help", "cloche -h"
@@ -658,5 +666,54 @@ func cmdSet(args []string) {
 	if err := runcontext.Set(projectDir, runID, args[0], value); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func cmdVersion() {
+	cliVersion := version.Version()
+	fmt.Printf("cloche %s\n", cliVersion)
+
+	// Try to get daemon version via gRPC
+	daemonVersion := "<unavailable>"
+	addr := os.Getenv("CLOCHE_ADDR")
+	if addr == "" {
+		addr = "unix:///tmp/cloche.sock"
+	}
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err == nil {
+		defer conn.Close()
+		client := pb.NewClocheServiceClient(conn)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		resp, err := client.GetVersion(ctx, &pb.GetVersionRequest{})
+		if err == nil {
+			daemonVersion = resp.Version
+		}
+	}
+	fmt.Printf("cloched %s\n", daemonVersion)
+
+	// Try to get agent version by running: docker run --rm <image> cloche-agent -v
+	agentVersion := "<unavailable>"
+	image := os.Getenv("CLOCHE_IMAGE")
+	if image == "" {
+		image = "cloche-agent:latest"
+	}
+	out, err := exec.CommandContext(
+		context.Background(),
+		"docker", "run", "--rm", "--entrypoint", "cloche-agent", image, "-v",
+	).Output()
+	if err == nil {
+		agentVersion = strings.TrimSpace(string(out))
+		// Strip "cloche-agent " prefix if present
+		agentVersion = strings.TrimPrefix(agentVersion, "cloche-agent ")
+	}
+	fmt.Printf("cloche-agent %s\n", agentVersion)
+
+	// Warn about version mismatches
+	if daemonVersion != "<unavailable>" && daemonVersion != cliVersion {
+		fmt.Fprintf(os.Stderr, "warning: CLI version (%s) differs from daemon version (%s)\n", cliVersion, daemonVersion)
+	}
+	if agentVersion != "<unavailable>" && agentVersion != cliVersion {
+		fmt.Fprintf(os.Stderr, "warning: CLI version (%s) differs from agent version (%s)\n", cliVersion, agentVersion)
 	}
 }

@@ -8,9 +8,15 @@ import (
 	"syscall"
 
 	"github.com/cloche-dev/cloche/internal/agent"
+	"github.com/cloche-dev/cloche/internal/version"
 )
 
 func main() {
+	if len(os.Args) >= 2 && (os.Args[1] == "-v" || os.Args[1] == "--version") {
+		fmt.Printf("cloche-agent %s\n", version.Version())
+		return
+	}
+
 	if len(os.Args) < 2 {
 		fmt.Fprintf(os.Stderr, "usage: cloche-agent <workflow-file>\n")
 		os.Exit(1)

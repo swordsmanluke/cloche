@@ -25,6 +25,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/protocol"
+	"github.com/cloche-dev/cloche/internal/version"
 	rpcgrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -1129,6 +1130,10 @@ func projectLabels(dirs []string) map[string]string {
 		}
 	}
 	return labels
+}
+
+func (s *ClocheServer) GetVersion(ctx context.Context, req *pb.GetVersionRequest) (*pb.GetVersionResponse, error) {
+	return &pb.GetVersionResponse{Version: version.Version()}, nil
 }
 
 func (s *ClocheServer) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*pb.ShutdownResponse, error) {

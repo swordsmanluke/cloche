@@ -1680,3 +1680,15 @@ func TestServer_GetProjectInfo_RequiresInput(t *testing.T) {
 	assert.Contains(t, err.Error(), "required")
 }
 
+func TestServer_GetVersion(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, nil)
+	resp, err := srv.GetVersion(context.Background(), &pb.GetVersionRequest{})
+	require.NoError(t, err)
+	assert.NotEmpty(t, resp.Version)
+	assert.Equal(t, "0.1.0", resp.Version)
+}
+

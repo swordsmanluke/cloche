@@ -17,6 +17,8 @@ service ClocheService {
   rpc DisableLoop(DisableLoopRequest) returns (DisableLoopResponse);
 
   rpc GetProjectInfo(GetProjectInfoRequest) returns (GetProjectInfoResponse);
+
+  rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
 }
 
 message RunWorkflowRequest {
@@ -143,4 +145,10 @@ message GetProjectInfoResponse {
   repeated RunSummary active_runs = 9;
   repeated string container_workflows = 10;
   repeated string host_workflows = 11;
+}
+
+message GetVersionRequest {}
+
+message GetVersionResponse {
+  string version = 1;
 }

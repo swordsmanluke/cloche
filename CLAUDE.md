@@ -69,3 +69,26 @@ top. Results are extracted to git branches. Network is allowlisted.
 
 Agent-agnostic. The `AgentAdapter` interface wraps any coding agent. Initial adapters:
 Generic (arbitrary commands) and Claude Code.
+
+## Versioning
+
+All three binaries share a single version string from `internal/version/VERSION`.
+Format: `major.minor.build` (semver).
+
+- **Build**: increment on every compile/release.
+- **Minor**: backward-compatible API updates, feature additions.
+- **Major**: backward-incompatible changes, removing/deprecating APIs, incompatible gRPC
+  API changes, removing cloche commands.
+
+### Version commands
+
+- `cloche -v` / `cloche --version` — prints CLI, daemon, and agent versions.
+- `cloched -v` / `cloched --version` — prints daemon version.
+- `cloche-agent -v` / `cloche-agent --version` — prints agent version.
+- The daemon exposes a `GetVersion` gRPC endpoint.
+
+### Versioning policy for bead tickets
+
+When creating bead tickets, assess whether the change requires a minor or major version
+bump. If so, tag the ticket so the version bump is handled during the _finalize_ workflow
+while merging. Routine bug fixes and internal refactors only bump the build number.

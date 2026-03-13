@@ -102,9 +102,8 @@ the formula will print post-install instructions for building or pulling it.
 After installing, verify that everything works:
 
 ```
-# Check the binaries
-cloche --help
-cloched --help
+# Check versions
+cloche --version
 
 # Start the daemon (if not already running)
 cloched &
