@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -11,11 +12,19 @@ import (
 
 func cmdPoll(client pb.ClocheServiceClient, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "usage: cloche poll <run-id>\n")
+		fmt.Fprintf(os.Stderr, "usage: cloche poll <run-id> [run-id...]\n")
 		os.Exit(1)
 	}
 
-	runID := args[0]
+	if len(args) == 1 {
+		cmdPollSingle(client, args[0])
+	} else {
+		exitCode := cmdPollMulti(client, args, os.Stdout, os.Stderr)
+		os.Exit(exitCode)
+	}
+}
+
+func cmdPollSingle(client pb.ClocheServiceClient, runID string) {
 	pollInterval := 2 * time.Second
 	containerDeadThreshold := 1 * time.Minute
 
@@ -70,6 +79,75 @@ func cmdPoll(client pb.ClocheServiceClient, args []string) {
 					time.Now().Format("15:04:05"), deadSince.Format("15:04:05"))
 				os.Exit(1)
 			}
+		}
+
+		time.Sleep(pollInterval)
+	}
+}
+
+// isTerminalState returns true if the run state is a terminal state.
+func isTerminalState(state string) bool {
+	switch state {
+	case "succeeded", "failed", "cancelled":
+		return true
+	}
+	return false
+}
+
+// cmdPollMulti polls multiple runs and displays a compact status summary.
+// Returns 0 if all runs succeeded, 1 if any failed or were cancelled.
+func cmdPollMulti(client pb.ClocheServiceClient, runIDs []string, stdout, stderr io.Writer) int {
+	pollInterval := 2 * time.Second
+	states := make(map[string]string, len(runIDs))
+
+	for {
+		changed := false
+		for _, id := range runIDs {
+			if isTerminalState(states[id]) {
+				continue
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			resp, err := client.GetStatus(ctx, &pb.GetStatusRequest{RunId: id})
+			cancel()
+
+			if err != nil {
+				fmt.Fprintf(stderr, "error polling %s: %v\n", id, err)
+				states[id] = "error"
+				changed = true
+				continue
+			}
+
+			if resp.State != states[id] {
+				states[id] = resp.State
+				changed = true
+			}
+		}
+
+		if changed {
+			for _, id := range runIDs {
+				fmt.Fprintf(stdout, "%s: %s\n", id, states[id])
+			}
+			fmt.Fprintln(stdout)
+		}
+
+		// Check if all runs are in terminal states
+		allDone := true
+		for _, id := range runIDs {
+			if !isTerminalState(states[id]) && states[id] != "error" {
+				allDone = false
+				break
+			}
+		}
+
+		if allDone {
+			for _, id := range runIDs {
+				s := states[id]
+				if s != "succeeded" {
+					return 1
+				}
+			}
+			return 0
 		}
 
 		time.Sleep(pollInterval)

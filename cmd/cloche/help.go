@@ -135,23 +135,27 @@ Examples:
   cloche logs abc123 --step test --type script
 `,
 
-	"poll": `cloche poll — Wait for a run to finish
+	"poll": `cloche poll — Wait for runs to finish
 
-Polls the daemon every 2 seconds and prints step-level progress until the
-run reaches a terminal state (succeeded, failed, or cancelled).
+Polls the daemon every 2 seconds until all runs reach a terminal state
+(succeeded, failed, or cancelled).
+
+With a single run ID, prints step-level progress (same as before).
+With multiple run IDs, displays a compact status summary.
 
 Usage:
-  cloche poll <run-id>
+  cloche poll <run-id> [run-id...]
 
 Arguments:
-  <run-id>    The run identifier.
+  <run-id>    One or more run identifiers.
 
 Exit codes:
-  0    Run succeeded.
-  1    Run failed, was cancelled, or the container died.
+  0    All runs succeeded.
+  1    Any run failed, was cancelled, or the container died.
 
 Examples:
   cloche poll abc123
+  cloche poll abc123 def456 ghi789
   cloche run develop -p "Fix bug" && cloche poll "$(cloche run develop -p 'Fix bug')"
 `,
 
@@ -434,7 +438,7 @@ Workflow Runs:
   run        Launch a workflow run in a container
   status     Check run status (state, steps, errors)
   logs       Show or stream logs for a run
-  poll       Wait for a run to finish (blocks until terminal state)
+  poll       Wait for one or more runs to finish (blocks until terminal)
   list       List runs for current project (or all projects)
   stop       Stop a running workflow
   delete     Delete a retained container

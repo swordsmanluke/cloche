@@ -659,10 +659,12 @@ Without `-f`, displays all logs captured to date and exits (even for active runs
 ### `cloche poll`
 
 ```
-cloche poll <run-id>
+cloche poll <run-id> [run-id...]
 ```
 
-Block until the run finishes. Polls every 2 seconds. Exits 0 on success, 1 on failure.
+Block until all specified runs finish. Polls every 2 seconds. Exits 0 if all runs succeeded, 1 if any failed or were cancelled.
+
+With a single run ID, prints step-level progress. With multiple run IDs, displays a compact status summary (e.g. `id1: running`) and re-prints whenever a state changes. Use `cloche logs` for detailed output of individual runs.
 
 ### `cloche stop`
 
