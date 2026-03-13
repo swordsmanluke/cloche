@@ -1746,3 +1746,237 @@ func TestServer_GetVersion(t *testing.T) {
 	assert.Equal(t, "0.1.0", resp.Version)
 }
 
+// TestServer_StreamLogs_LimitFullLog verifies that the --limit flag truncates
+// full.log output to the last N lines.
+func TestServer_StreamLogs_LimitFullLog(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	// Create a completed run with a multi-line full.log.
+	ctx := context.Background()
+	run := domain.NewRun("limit-full-1", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.ContainerID = "fake"
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	outputDir := filepath.Join(dir, ".cloche", "limit-full-1", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	logContent := "line1\nline2\nline3\nline4\nline5\n"
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "full.log"), []byte(logContent), 0644))
+
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+
+	// Request with limit=2 via metadata.
+	streamCtx := metadata.NewIncomingContext(ctx, metadata.Pairs("x-cloche-limit", "2"))
+	mock := &mockLogStream{ctx: streamCtx}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "limit-full-1"}, mock)
+	require.NoError(t, err)
+
+	// Find the full_log entry and check it has only the last 2 lines.
+	var fullLogMsg string
+	for _, e := range mock.entries {
+		if e.Type == "full_log" {
+			fullLogMsg = e.Message
+		}
+	}
+	assert.Equal(t, "line4\nline5\n", fullLogMsg, "limit=2 should return last 2 lines")
+}
+
+// TestServer_StreamLogs_LimitStepFilter verifies that --limit applies to
+// step-filtered log output.
+func TestServer_StreamLogs_LimitStepFilter(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	ctx := context.Background()
+	run := domain.NewRun("limit-step-1", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.ContainerID = "fake"
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	outputDir := filepath.Join(dir, ".cloche", "limit-step-1", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	stepLog := "output line 1\noutput line 2\noutput line 3\noutput line 4\n"
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "build.log"), []byte(stepLog), 0644))
+
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+
+	// Request with step filter and limit=1 via metadata.
+	streamCtx := metadata.NewIncomingContext(ctx, metadata.Pairs("x-cloche-limit", "1"))
+	mock := &mockLogStream{ctx: streamCtx}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "limit-step-1", StepName: "build"}, mock)
+	require.NoError(t, err)
+
+	require.GreaterOrEqual(t, len(mock.entries), 1)
+	assert.Equal(t, "output line 4\n", mock.entries[0].Message, "limit=1 should return last line only")
+}
+
+// TestServer_StreamLogs_LimitZeroReturnsAll verifies that limit=0 returns all content.
+func TestServer_StreamLogs_LimitZeroReturnsAll(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	ctx := context.Background()
+	run := domain.NewRun("limit-zero-1", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.ContainerID = "fake"
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	outputDir := filepath.Join(dir, ".cloche", "limit-zero-1", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	logContent := "line1\nline2\nline3\n"
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "full.log"), []byte(logContent), 0644))
+
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+
+	// No limit metadata — should return all content.
+	mock := &mockLogStream{ctx: ctx}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "limit-zero-1"}, mock)
+	require.NoError(t, err)
+
+	var fullLogMsg string
+	for _, e := range mock.entries {
+		if e.Type == "full_log" {
+			fullLogMsg = e.Message
+		}
+	}
+	assert.Equal(t, logContent, fullLogMsg, "no limit should return all content")
+}
+
+// TestServer_StreamLogs_LimitWithFollow verifies that limit applies to the
+// initial snapshot in follow mode, but live lines are streamed without limit.
+func TestServer_StreamLogs_LimitWithFollow(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	dir := t.TempDir()
+	run := domain.NewRun("limit-follow-1", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.ContainerID = "fake"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Write existing log content (5 lines).
+	outputDir := filepath.Join(dir, ".cloche", "limit-follow-1", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "full.log"),
+		[]byte("old1\nold2\nold3\nold4\nold5\n"), 0644))
+
+	broadcaster := logstream.NewBroadcaster()
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+	srv.SetLogBroadcaster(broadcaster)
+
+	// Follow mode with limit=2.
+	streamCtx, streamCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer streamCancel()
+	streamCtx = metadata.NewIncomingContext(streamCtx, metadata.Pairs(
+		"x-cloche-follow", "true",
+		"x-cloche-limit", "2",
+	))
+	mock := &mockLogStream{ctx: streamCtx}
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		broadcaster.Publish("limit-follow-1", logstream.LogLine{
+			Timestamp: "2026-03-10T10:00:00Z",
+			Type:      "llm",
+			Content:   "new live line",
+			StepName:  "implement",
+		})
+		time.Sleep(50 * time.Millisecond)
+
+		r, _ := store.GetRun(ctx, "limit-follow-1")
+		r.Complete(domain.RunStateSucceeded)
+		_ = store.UpdateRun(ctx, r)
+		broadcaster.Finish("limit-follow-1")
+	}()
+
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "limit-follow-1"}, mock)
+	require.NoError(t, err)
+
+	// The initial full_log should have only last 2 lines.
+	var fullLogMsg string
+	var liveLines int
+	for _, e := range mock.entries {
+		switch e.Type {
+		case "full_log":
+			fullLogMsg = e.Message
+		case "log":
+			liveLines++
+		}
+	}
+	assert.Equal(t, "old4\nold5\n", fullLogMsg, "follow with limit=2 should truncate initial snapshot")
+	assert.Equal(t, 1, liveLines, "live lines should be streamed regardless of limit")
+}
+
+// TestServer_StreamLogs_LimitCaptureOutput verifies that limit applies to
+// per-step output in capture-based streaming (no full.log).
+func TestServer_StreamLogs_LimitCaptureOutput(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	ctx := context.Background()
+	run := domain.NewRun("limit-capture-1", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.ContainerID = "fake"
+	run.RecordStepStart("build")
+	run.RecordStepComplete("build", "success")
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Save captures for the step.
+	require.NoError(t, store.SaveCapture(ctx, "limit-capture-1", &domain.StepExecution{
+		StepName:  "build",
+		StartedAt: time.Now().Add(-2 * time.Second),
+	}))
+	require.NoError(t, store.SaveCapture(ctx, "limit-capture-1", &domain.StepExecution{
+		StepName:    "build",
+		Result:      "success",
+		StartedAt:   time.Now().Add(-2 * time.Second),
+		CompletedAt: time.Now().Add(-1 * time.Second),
+	}))
+
+	// Write per-step output file.
+	outputDir := filepath.Join(dir, ".cloche", "limit-capture-1", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "build.log"),
+		[]byte("compile start\ncompile middle\ncompile end\n"), 0644))
+
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+
+	// Request with limit=1.
+	streamCtx := metadata.NewIncomingContext(ctx, metadata.Pairs("x-cloche-limit", "1"))
+	mock := &mockLogStream{ctx: streamCtx}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "limit-capture-1"}, mock)
+	require.NoError(t, err)
+
+	// Find the step_completed entry with output.
+	var stepOutput string
+	for _, e := range mock.entries {
+		if e.Type == "step_completed" && e.StepName == "build" {
+			stepOutput = e.Message
+		}
+	}
+	assert.Equal(t, "compile end\n", stepOutput, "limit=1 should return only last line of step output")
+}

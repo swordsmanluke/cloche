@@ -65,6 +65,8 @@ message StreamLogsRequest {
   string log_type = 3;
   bool follow = 4;  // When true, stream existing logs then continue tailing new lines (like tail -f).
                      // Passed via gRPC metadata header "x-cloche-follow" until proto is regenerated.
+  int32 limit = 5;  // When > 0, display only the last N lines of output.
+                     // Passed via gRPC metadata header "x-cloche-limit" until proto is regenerated.
 }
 
 message LogEntry {

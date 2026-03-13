@@ -111,28 +111,33 @@ Examples:
 	"logs": `cloche logs — Show logs for a run
 
 Streams or displays log output for a workflow run. Supports filtering by
-step name and log type, and can follow live output.
+step name and log type, limiting output, and following live output.
 
 Usage:
-  cloche logs <run-id> [--step <name>] [--type <full|script|llm>] [--follow]
+  cloche logs <run-id> [-s <name>] [--type <full|script|llm>] [-f] [-l <n>]
 
 Arguments:
   <run-id>    The run identifier.
 
 Flags:
-  --step <name>                  Show logs only for the named step.
+  --step, -s <name>              Show logs only for the named step.
   --type <full|script|llm>       Filter by log type:
                                    full    — complete unfiltered output
                                    script  — script/command output only
                                    llm     — LLM interaction logs only
   --follow, -f                   Stream logs in real time (blocks until the
                                  run completes or is stopped).
+  --limit, -l <n>                Display only the last n lines of output.
+
+Flags are combinable: cloche logs run-id -s implement -l 20 -f
 
 Examples:
   cloche logs abc123
-  cloche logs abc123 --step implement --type llm
+  cloche logs abc123 -s implement
+  cloche logs abc123 -s implement -l 20
   cloche logs abc123 -f
-  cloche logs abc123 --step test --type script
+  cloche logs abc123 -s test --type script
+  cloche logs abc123 -s implement -l 20 -f
 `,
 
 	"poll": `cloche poll — Wait for runs to finish

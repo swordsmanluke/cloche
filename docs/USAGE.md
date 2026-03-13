@@ -687,14 +687,17 @@ Results can be filtered by state, project, issue, or limited to a fixed number.
 ### `cloche logs`
 
 ```
-cloche logs <run-id> [--step <name>] [--type <full|script|llm>] [-f]
+cloche logs <run-id> [--step <name>] [--type <full|script|llm>] [-f] [-l <n>]
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--step <name>` | Show only logs for the specified step. |
+| `--step, -s <name>` | Show only logs for the specified step. |
 | `--type <full\|script\|llm>` | Log type filter. |
-| `-f` | Follow mode: display existing logs then continue streaming new lines as they arrive (like `tail -f`). |
+| `--follow, -f` | Follow mode: display existing logs then continue streaming new lines as they arrive (like `tail -f`). |
+| `--limit, -l <n>` | Display only the last n lines of output. |
+
+Flags are combinable: `cloche logs run-id -s implement -l 20 -f`
 
 Without `-f`, displays all logs captured to date and exits (even for active runs). With `-f` on an active run, existing logs are sent first, then new output is streamed in real time via gRPC until the run completes.
 

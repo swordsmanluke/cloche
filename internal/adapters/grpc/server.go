@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -489,6 +490,7 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 
 	// Check for follow mode via gRPC metadata.
 	follow := followFromContext(ctx)
+	limit := limitFromContext(ctx)
 
 	// Verify run exists
 	run, err := s.store.GetRun(ctx, req.RunId)
@@ -498,14 +500,14 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 
 	// If step_name or log_type filter is set, serve content directly from the log index
 	if req.StepName != "" || req.LogType != "" {
-		return s.streamFilteredLogs(ctx, req, run, stream)
+		return s.streamFilteredLogs(ctx, req, run, stream, limit)
 	}
 
 	isActive := run.State == domain.RunStateRunning || run.State == domain.RunStatePending
 
 	// With -f on an active run: send existing logs then tail live output.
 	if follow && isActive && s.logBroadcast != nil {
-		return s.streamFollowLogs(req.RunId, run, stream)
+		return s.streamFollowLogs(req.RunId, run, stream, limit)
 	}
 
 	// Without -f on an active run: snapshot existing logs and return.
@@ -515,9 +517,10 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 	// Check for full.log first — if it exists, serve it as the unified log
 	fullLogPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", "full.log")
 	if data, readErr := os.ReadFile(fullLogPath); readErr == nil && len(data) > 0 {
+		msg := applyLimit(string(data), limit)
 		if err := stream.Send(&pb.LogEntry{
 			Type:    "full_log",
-			Message: string(data),
+			Message: msg,
 		}); err != nil {
 			return err
 		}
@@ -572,7 +575,7 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 				StepName:  exec.StepName,
 				Result:    exec.Result,
 				Timestamp: exec.CompletedAt.String(),
-				Message:   output,
+				Message:   applyLimit(output, limit),
 			}
 			if err := stream.Send(entry); err != nil {
 				return err
@@ -605,9 +608,43 @@ func followFromContext(ctx context.Context) bool {
 	return len(vals) > 0 && vals[0] == "true"
 }
 
+// limitFromContext reads the line limit from gRPC metadata.
+// Returns 0 when no limit is set.
+func limitFromContext(ctx context.Context) int {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return 0
+	}
+	vals := md.Get("x-cloche-limit")
+	if len(vals) == 0 {
+		return 0
+	}
+	n, err := strconv.Atoi(vals[0])
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
+}
+
+// applyLimit returns the last n lines of content. If n <= 0, returns content unchanged.
+func applyLimit(content string, n int) string {
+	if n <= 0 {
+		return content
+	}
+	lines := strings.Split(content, "\n")
+	// Remove trailing empty line from final newline
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) <= n {
+		return content
+	}
+	return strings.Join(lines[len(lines)-n:], "\n") + "\n"
+}
+
 // streamFollowLogs sends existing log content then tails live output from the
 // broadcaster. It combines snapshot + live streaming (like tail -f).
-func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rpcgrpc.ServerStreamingServer[pb.LogEntry]) error {
+func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rpcgrpc.ServerStreamingServer[pb.LogEntry], limit int) error {
 	// Subscribe first so we don't miss lines written between read and subscribe.
 	sub := s.logBroadcast.Subscribe(runID)
 	defer s.logBroadcast.Unsubscribe(runID, sub)
@@ -615,9 +652,10 @@ func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rp
 	// Send existing full.log content if available.
 	fullLogPath := filepath.Join(run.ProjectDir, ".cloche", runID, "output", "full.log")
 	if data, err := os.ReadFile(fullLogPath); err == nil && len(data) > 0 {
+		msg := applyLimit(string(data), limit)
 		if err := stream.Send(&pb.LogEntry{
 			Type:    "full_log",
-			Message: string(data),
+			Message: msg,
 		}); err != nil {
 			return err
 		}
@@ -657,7 +695,7 @@ func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rp
 
 // streamFilteredLogs serves log content filtered by step name and/or log type.
 // It uses the log index when available, falling back to file path conventions.
-func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLogsRequest, run *domain.Run, stream rpcgrpc.ServerStreamingServer[pb.LogEntry]) error {
+func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLogsRequest, run *domain.Run, stream rpcgrpc.ServerStreamingServer[pb.LogEntry], limit int) error {
 	outputDir := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output")
 
 	// Try log index first
@@ -692,7 +730,7 @@ func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLog
 				if err := stream.Send(&pb.LogEntry{
 					Type:     lf.FileType + "_log",
 					StepName: lf.StepName,
-					Message:  string(data),
+					Message:  applyLimit(string(data), limit),
 				}); err != nil {
 					return err
 				}
@@ -718,7 +756,7 @@ func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLog
 		return stream.Send(&pb.LogEntry{
 			Type:     "step_log",
 			StepName: req.StepName,
-			Message:  string(data),
+			Message:  applyLimit(string(data), limit),
 		})
 	}
 

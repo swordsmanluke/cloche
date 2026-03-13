@@ -346,17 +346,18 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 
 func cmdLogs(client pb.ClocheServiceClient, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "usage: cloche logs <run-id> [--step <name>] [--type <full|script|llm>] [-f]\n")
+		fmt.Fprintf(os.Stderr, "usage: cloche logs <run-id> [-s <name>] [--type <full|script|llm>] [-f] [-l <n>]\n")
 		os.Exit(1)
 	}
 
 	var stepFilter, typeFilter string
 	var follow bool
+	var limit int
 	runID := args[0]
 
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
-		case "--step":
+		case "--step", "-s":
 			if i+1 < len(args) {
 				i++
 				stepFilter = args[i]
@@ -368,13 +369,30 @@ func cmdLogs(client pb.ClocheServiceClient, args []string) {
 			}
 		case "--follow", "-f":
 			follow = true
+		case "--limit", "-l":
+			if i+1 < len(args) {
+				i++
+				n, err := strconv.Atoi(args[i])
+				if err != nil || n < 0 {
+					fmt.Fprintf(os.Stderr, "error: --limit requires a positive integer\n")
+					os.Exit(1)
+				}
+				limit = n
+			}
 		}
 	}
 
 	// Use background context — log output can be large and follow mode blocks.
 	ctx := context.Background()
+	var mdPairs []string
 	if follow {
-		md := metadata.Pairs("x-cloche-follow", "true")
+		mdPairs = append(mdPairs, "x-cloche-follow", "true")
+	}
+	if limit > 0 {
+		mdPairs = append(mdPairs, "x-cloche-limit", strconv.Itoa(limit))
+	}
+	if len(mdPairs) > 0 {
+		md := metadata.Pairs(mdPairs...)
 		ctx = metadata.NewOutgoingContext(ctx, md)
 	}
 
