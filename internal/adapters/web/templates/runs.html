@@ -119,13 +119,15 @@
                     var runType = r.is_host ? 'host' : 'container';
                     var rowClass = entry.is_child ? 'run-child-row' : (entry.is_parent ? 'run-parent-row' : '');
                     var timing = r.timing || '';
+                    var wfName = r.workflow_name || '';
+                    var state = r.state || '';
                     html += '<tr class="' + rowClass + '">' +
                         '<td><a href="/runs/' + r.id + '">' + r.id + '</a></td>' +
                         '<td>' + escapeHtml(title) + '</td>' +
                         '<td>' + escapeHtml(r.project_label || '') + '</td>' +
-                        '<td>' + r.workflow_name + '</td>' +
+                        '<td>' + wfName + '</td>' +
                         '<td>' + runType + '</td>' +
-                        '<td><span class="badge badge-' + r.state + '">' + r.state + '</span></td>' +
+                        '<td><span class="badge badge-' + state + '">' + state + '</span></td>' +
                         '<td>' + escapeHtml(timing) + '</td>' +
                         '<td class="mono">' + cid + '</td>' +
                         '<td class="error-cell">' + escapeHtml(err) + '</td>' +
