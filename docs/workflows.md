@@ -4,19 +4,20 @@ Cloche workflows define a directed graph of steps connected by named results.
 
 ## Workflow Locations
 
-Cloche distinguishes two workflow locations based on the file they live in:
+Cloche distinguishes two workflow locations based on the `host { }` block:
 
-**Container workflows** (`.cloche/*.cloche` except `host.cloche`) — Run inside a Docker
-container via `cloche-agent`. Steps may only be `agent` or `script` type. These are the
-standard workflows for coding tasks.
+**Container workflows** — The default. Run inside a Docker container via `cloche-agent`.
+Steps may only be `agent` or `script` type. These are the standard workflows for coding
+tasks.
 
-**Host workflows** (`.cloche/host.cloche`) — Run on the host machine as the daemon
-process. Steps may be `agent`, `script`, or `workflow` type. The `workflow` step type
-dispatches a container workflow run and waits for it to complete. This is the extension
-point for custom orchestration strategies.
+**Host workflows** — Declared by including a `host { }` block in the workflow definition.
+Run on the host machine as the daemon process. Steps may be `agent`, `script`, or
+`workflow` type. The `workflow` step type dispatches a container workflow run and waits
+for it to complete. This is the extension point for custom orchestration strategies.
 
-A single `host.cloche` file may contain **multiple named workflows**. The daemon
-uses up to three workflow phases for orchestration:
+Any `.cloche` file can contain host workflows — they are not restricted to a specific
+filename. A single file may contain **multiple named workflows**. The daemon uses up to
+three workflow phases for orchestration:
 
 | Phase | Workflow name | Purpose |
 |-------|--------------|---------|
@@ -24,10 +25,10 @@ uses up to three workflow phases for orchestration:
 | 2 | `main` | Do the work. Receives a task ID via `CLOCHE_TASK_ID` env var. |
 | 3 | `finalize` | Post-main cleanup. Runs on **both** success and failure. |
 
-Additionally, `host.cloche` may define a **`release-task`** utility workflow. This is
-not part of the automatic orchestration loop — it is invoked on demand (e.g. from the
-web dashboard) to release a stale claimed task back to `open` status. Receives
-`CLOCHE_TASK_ID` for the task to release.
+Additionally, a **`release-task`** host workflow may be defined. This is not part of the
+automatic orchestration loop — it is invoked on demand (e.g. from the web dashboard) to
+release a stale claimed task back to `open` status. Receives `CLOCHE_TASK_ID` for the
+task to release.
 
 Only `main` is required. If `list-tasks` is absent, the daemon uses a legacy
 single-function mode. If `finalize` is absent, it is skipped.
@@ -74,7 +75,7 @@ container. Available in both host and container workflows.
 any deterministic check. Available in both host and container workflows.
 
 **workflow** (has `workflow_name`) — Dispatches a named container workflow run and blocks
-until it completes. Only available in host workflows (`host.cloche`).
+until it completes. Only available in host workflows (those with a `host { }` block).
 
 A step with more than one of `prompt`, `run`, or `workflow_name`, or none of them, is a
 parse error.
@@ -185,8 +186,9 @@ workflow "develop" {
 
 Supported keys: `image`, `agent_command`, `agent_args`, `network_allow`.
 
-**`host {}`** — For host workflows (`host.cloche`). Sets agent defaults for agent steps
-running on the host machine.
+**`host {}`** — Declares a workflow as a host workflow. Can appear in any `.cloche` file.
+Sets agent defaults for agent steps running on the host machine. An empty `host {}` block
+(no keys) is valid and simply marks the workflow as host-side.
 
 ```
 workflow "main" {
@@ -205,11 +207,11 @@ var > default `claude`.
 
 ## Host Workflow Example
 
-A three-phase `host.cloche` with separate `list-tasks`, `main`, and `finalize`
+A three-phase host workflow setup with separate `list-tasks`, `main`, and `finalize`
 workflows:
 
 ```
-# .cloche/host.cloche — runs on the host machine
+# Host workflows — runs on the host machine
 
 workflow "list-tasks" {
   step fetch-tickets {
@@ -267,9 +269,10 @@ container. The agent walks the graph: execute current step, read its result, fol
 wiring to the next step. This continues until a terminal (`done` or `abort`) is reached.
 All steps run inside the same container. File state accumulates naturally across steps.
 
-**Host workflows** are parsed and executed by the daemon on the host machine. A single
-`host.cloche` file may contain multiple named workflows; the daemon orchestrates them
-in three phases (list-tasks → main → finalize). Script steps run via `sh -c` with the
+**Host workflows** (those with a `host { }` block) are parsed and executed by the daemon
+on the host machine. Any `.cloche` file may contain host workflows; the daemon
+orchestrates them in three phases (list-tasks → main → finalize). Script steps run via
+`sh -c` with the
 working directory set to the **main git worktree** (i.e. the main branch checkout), even
 if the project directory is a linked worktree on a different branch. This ensures
 host-workflow scripts from main are used for all runs. Workflow steps dispatch container

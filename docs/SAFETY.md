@@ -30,11 +30,11 @@ keeping host-side exposure minimal and container-side access locked down.
 
 ## Minimize Host-Side Agent Usage
 
-Host workflows (`.cloche/host.cloche`) run directly on the host machine. Agent steps in
-host workflows inherit the daemon's permissions: full filesystem, full network, all
-environment variables.
+Host workflows (those with a `host { }` block) run directly on the host machine. Agent
+steps in host workflows inherit the daemon's permissions: full filesystem, full network,
+all environment variables.
 
-**Prefer container workflows for agent work.** The `workflow` step type in `host.cloche`
+**Prefer container workflows for agent work.** The `workflow` step type in host workflows
 dispatches work to an isolated container. Use it:
 
 ```
@@ -66,7 +66,7 @@ runs on the host.
   permissions rather than your personal user account.
 - Avoid setting broad environment variables (cloud credentials, database URLs) in the
   daemon's environment. Only export what is strictly needed.
-- Keep `host.cloche` simple — use it for orchestration (scripts and workflow dispatch),
+- Keep host workflows simple — use them for orchestration (scripts and workflow dispatch),
   not for direct agent work.
 
 ## Network Allowlisting
