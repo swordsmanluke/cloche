@@ -249,6 +249,13 @@ agent_command = "claude,gemini,codex"
 
 Known agents (e.g. `claude`) get default arguments (`-p --output-format stream-json --verbose --dangerously-skip-permissions`). Unknown agents receive the prompt on stdin with no flags. Override with `agent_args`.
 
+### Agent Setup Guides
+
+For detailed container setup instructions per agent:
+
+- [How to set up Claude Code](agent-setup-claude.md) — session-based auth, no API key needed
+- [How to set up Codex](agent-setup-codex.md) — API key configuration
+
 ## Workflow Locations
 
 **Container workflows** (`.cloche/*.cloche` except `host.cloche`) run inside Docker
@@ -414,7 +421,7 @@ workflow "develop" {
 
 - **Files in**: `docker cp` copies the project into `/workspace/`. No bind mounts. Override files from `.cloche/overrides/` are applied on top. `.git/` is included.
 - **Files out**: On completion, the daemon extracts results via `docker cp` into a git worktree and commits to a `cloche/<run-id>` branch.
-- **Auth mounts**: `~/.claude` and `~/.claude.json` are bind-mounted read-only for Claude Code session reuse.
+- **Auth files**: `~/.claude/` and `~/.claude.json` are copied into each container at `/home/agent/` for Claude Code session reuse. Copied (not bind-mounted) so each container gets its own isolated copy.
 - **Network**: Containers have network access (needed for API calls).
 - **Cleanup**: Containers are removed after successful runs unless `--keep-container` is set. Failed runs always keep their container.
 

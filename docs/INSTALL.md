@@ -134,3 +134,5 @@ and restarts the daemon automatically.
 
 - [Usage guide](USAGE.md) — quick start, CLI reference, and workflow setup
 - [Workflow DSL reference](workflows.md) — full syntax for `.cloche` files
+- [How to set up Claude Code](agent-setup-claude.md) — container setup for Claude
+- [How to set up Codex](agent-setup-codex.md) — container setup for Codex
