@@ -117,6 +117,13 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		result = "fail"
 	}
 
+	// Reset attempt counter on success so give-up only triggers after
+	// consecutive failures, not after successful fixes whose downstream
+	// tests fail for unrelated reasons.
+	if result == "success" {
+		resetAttemptCount(workDir, step.Name)
+	}
+
 	// Write output file
 	outputDir := filepath.Join(workDir, ".cloche", "output")
 	if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
@@ -451,6 +458,11 @@ func readUserPrompt(workDir, runID string) string {
 		return string(data)
 	}
 	return ""
+}
+
+func resetAttemptCount(workDir, stepName string) {
+	path := filepath.Join(workDir, ".cloche", "attempt_count", stepName)
+	_ = os.Remove(path)
 }
 
 func incrementAttemptCount(workDir, stepName string) {
