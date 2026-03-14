@@ -1508,7 +1508,7 @@ func TestServer_StreamLogs_LiveStreamingClientDisconnect(t *testing.T) {
 
 // TestServer_StreamLogs_NoFollowActiveRun verifies that without -f, logs for
 // an active run return existing content and exit (snapshot mode).
-func TestServer_StreamLogs_NoFollowActiveRun(t *testing.T) {
+func TestServer_StreamLogs_ActiveRunStreamsImplicitly(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
@@ -1531,18 +1531,49 @@ func TestServer_StreamLogs_NoFollowActiveRun(t *testing.T) {
 	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
 	srv.SetLogBroadcaster(broadcaster)
 
-	// Ensure broadcaster has an active entry so the run appears "live".
-	broadcaster.Subscribe("snapshot-test-1")
+	streamCtx, streamCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer streamCancel()
+	mock := &mockLogStream{ctx: streamCtx}
 
-	// No follow metadata — should return snapshot and exit immediately.
-	mock := &mockLogStream{ctx: context.Background()}
+	// Active runs now stream implicitly (no -f needed). Publish a line
+	// then finish the broadcast so StreamLogs returns.
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		broadcaster.Publish("snapshot-test-1", logstream.LogLine{
+			Timestamp: "2026-03-10T10:01:00Z",
+			Type:      "llm",
+			Content:   "live output",
+			StepName:  "build",
+		})
+		time.Sleep(50 * time.Millisecond)
+
+		r, _ := store.GetRun(ctx, "snapshot-test-1")
+		r.Complete(domain.RunStateSucceeded)
+		_ = store.UpdateRun(ctx, r)
+		broadcaster.Finish("snapshot-test-1")
+	}()
+
+	// No follow metadata — should still stream for active runs.
 	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "snapshot-test-1"}, mock)
 	require.NoError(t, err)
 
-	// Should have received the full_log entry but NOT blocked waiting for live lines.
-	require.Len(t, mock.entries, 1, "should return exactly one entry (full_log snapshot)")
-	assert.Equal(t, "full_log", mock.entries[0].Type)
-	assert.Contains(t, mock.entries[0].Message, "step_started: build")
+	// Should have: full_log (existing), log (live), run_completed.
+	var foundFullLog, foundLive, foundCompleted bool
+	for _, e := range mock.entries {
+		switch e.Type {
+		case "full_log":
+			foundFullLog = true
+			assert.Contains(t, e.Message, "step_started: build")
+		case "log":
+			foundLive = true
+			assert.Equal(t, "live output", e.Message)
+		case "run_completed":
+			foundCompleted = true
+		}
+	}
+	assert.True(t, foundFullLog, "should send existing full.log")
+	assert.True(t, foundLive, "should stream live lines without -f for active runs")
+	assert.True(t, foundCompleted, "should send run_completed when done")
 }
 
 // TestServer_StreamLogs_FollowWithExistingLogs verifies that -f sends existing

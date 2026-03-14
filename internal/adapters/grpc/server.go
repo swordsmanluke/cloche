@@ -514,8 +514,7 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.ServerStreamingServer[pb.LogEntry]) error {
 	ctx := stream.Context()
 
-	// Check for follow mode via gRPC metadata.
-	follow := followFromContext(ctx)
+	_ = followFromContext(ctx) // follow is implicit for active runs
 	limit := limitFromContext(ctx)
 
 	// Verify run exists
@@ -531,14 +530,11 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 
 	isActive := run.State == domain.RunStateRunning || run.State == domain.RunStatePending
 
-	// With -f on an active run: send existing logs then tail live output.
-	if follow && isActive && s.logBroadcast != nil {
+	// Active runs always stream live output (follow mode is implicit).
+	// The -f flag is accepted but redundant for active runs.
+	if isActive && s.logBroadcast != nil {
 		return s.streamFollowLogs(req.RunId, run, stream, limit)
 	}
-
-	// Without -f on an active run: snapshot existing logs and return.
-	// (Legacy callers that relied on implicit live streaming should use -f.)
-	// With -f on a completed run: same as without -f — no new lines will arrive.
 
 	// Check for full.log first — if it exists, serve it as the unified log
 	fullLogPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", "full.log")
