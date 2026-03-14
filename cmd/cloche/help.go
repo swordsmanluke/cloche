@@ -375,6 +375,38 @@ Examples:
   cloche project --name my-app
 `,
 
+	"validate": `cloche validate — Validate project configuration and workflows
+
+Parses and validates all config and workflow files in the project's .cloche/
+directory. Checks syntax, result wiring, terminal coverage, orphan steps,
+file references, and cross-file consistency.
+
+Usage:
+  cloche validate [--project <path>] [--workflow <name>]
+
+Flags:
+  --project <path>    Project directory to validate (default: current directory).
+  --workflow <name>   Validate only the named workflow instead of all workflows.
+
+Checks performed:
+  config.toml         Parses correctly, fields are valid.
+  Workflow files      Syntax, result wiring completeness, terminal coverage
+                      (all paths reach done/abort), no orphan steps, and
+                      config key validation.
+  File references     prompt file() paths resolve to .cloche/prompts/,
+                      script run paths resolve to .cloche/scripts/.
+  Cross-file          workflow_name references resolve to defined workflows.
+
+Exit codes:
+  0    All configuration valid.
+  1    One or more errors found.
+
+Examples:
+  cloche validate
+  cloche validate --project /path/to/project
+  cloche validate --workflow develop
+`,
+
 	"shutdown": `cloche shutdown — Shut down the daemon
 
 Sends a shutdown signal to the Cloche daemon. Refuses to shut down if
@@ -449,6 +481,7 @@ Project Setup:
 
 Workflow Info:
   workflow   List workflows or show a workflow as an ASCII-art graph
+  validate   Validate project configuration and workflow definitions
 
 Workflow Runs:
   run        Launch a workflow run in a container

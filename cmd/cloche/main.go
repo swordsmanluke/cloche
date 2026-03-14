@@ -97,6 +97,13 @@ func main() {
 		}
 		cmdProject(os.Args[2:])
 		return
+	case "validate":
+		if hasHelpFlag(os.Args[2:]) {
+			printSubcommandHelp("validate")
+			return
+		}
+		cmdValidate(os.Args[2:])
+		return
 	}
 
 	// Handle --help for daemon commands before connecting

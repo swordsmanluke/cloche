@@ -754,6 +754,28 @@ Wires are colorized: green for `success`, red for `fail`/`failed`,
 blue/yellow/orange/magenta for other results. Wires to the same destination are merged
 for readability.
 
+### `cloche validate`
+
+Validate project configuration and workflow definitions.
+
+```
+cloche validate [--project <path>] [--workflow <name>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--project <path>` | current directory | Project directory to validate. |
+| `--workflow <name>` | _(all)_ | Validate only the named workflow instead of all workflows. |
+
+Checks performed:
+
+- **config.toml** — parses correctly, fields are valid.
+- **Workflow files** — syntax, result wiring completeness, terminal coverage (all paths reach `done`/`abort`), no orphan steps, config key validation.
+- **File references** — prompt `file()` paths resolve to `.cloche/prompts/`, script `run` paths resolve to `.cloche/scripts/`.
+- **Cross-file consistency** — `workflow_name` references in steps resolve to defined workflows.
+
+Exits 0 and prints "All configuration valid." on success. Exits 1 and prints each error with file path on failure.
+
 ### `cloche project`
 
 Show project info and config.
