@@ -162,18 +162,25 @@ layers via longest-path from sources, then ordered within each layer using baryc
 heuristic (4 forward/backward passes) to minimize edge crossings. Layout flows
 top-to-bottom with SVG Bezier curve edges.
 
-Non-success wires (any result not in `success`, `ok`, `done`, `pass`) are offset
-horizontally from the main flow so they don't overlap the happy-path edges. These wires
-use a distinct failure color and reduced opacity (`dag-edge-nonsuccess` class) with a
-matching arrowhead marker.
+Wires are colorized by result type: green for success results (`success`, `ok`, `done`,
+`pass`), red for failure results (`failed`, `fail`, `error`), then blue, yellow, magenta,
+cyan, and orange for other result names. Each color gets a matching SVG arrowhead marker.
 
-When multiple wires target the same terminal (`done` or `abort`), they merge into a
-collector bus: individual curves from each source converge on a horizontal dashed line,
-which feeds a single arrow into the terminal node. Non-success wires within a merge bus
-are offset to their own horizontal positions, and the collector line extends to cover them.
-This reduces wire clutter as graphs grow in complexity.
+Success wires between steps use straight Bezier curves along the main vertical flow.
+Non-success wires between non-terminal steps are offset horizontally (35px) so they don't
+overlap the happy-path edges.
 
-The DAG container scrolls vertically when the graph exceeds the panel height.
+Non-success wires targeting terminals (`done` or `abort`) are routed through **wire
+columns** — vertical channels positioned to the right of the main graph. Each unique
+(terminal, result) pair gets its own column. Source nodes connect to their wire column via
+a horizontal segment with a small link-node dot at the junction, then the column runs
+vertically down to the terminal node (curving in if the column is offset from the
+terminal center). This isolates failure paths from the main flow and avoids overlapping
+edges as graphs grow in complexity. Terminals that receive only non-success wires are
+repositioned horizontally under their wire columns.
+
+The DAG container scrolls horizontally and vertically when the graph exceeds the panel
+dimensions.
 
 ### API additions
 

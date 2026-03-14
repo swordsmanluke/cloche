@@ -1828,13 +1828,16 @@ func TestProjectDetail_RendersLayoutEngine(t *testing.T) {
 	assert.Contains(t, body, "showWorkflow")           // Main render function
 	assert.Contains(t, body, "layerOf")                // Layer assignment
 	assert.Contains(t, body, "topoOrder")              // Topological sort
-	assert.Contains(t, body, "dag-merge-dot")          // Merge dot elements
+	assert.Contains(t, body, "dag-link-node")           // Wire column link node dots
+	assert.Contains(t, body, "wireColStart")            // Wire column start position
 	assert.Contains(t, body, "layerGap")               // Horizontal layer spacing
 	assert.Contains(t, body, "termWires")              // Terminal wire merging
-	assert.Contains(t, body, "dag-edge-nonsuccess")    // Non-success wire offset class
-	assert.Contains(t, body, "arrowhead-fail")         // Failure arrowhead marker
 	assert.Contains(t, body, "nonsuccOffset")          // Offset variable for non-success wires
 	assert.Contains(t, body, "isSuccessResult")        // Success result detection helper
+	assert.Contains(t, body, "resultColor")            // Color mapping for wire results
+	assert.Contains(t, body, "wireColumns")            // Wire column routing for failure paths
+	assert.Contains(t, body, "isFailureResult")        // Failure result detection helper
+	assert.Contains(t, body, "colorPalette")           // Multi-color palette for custom results
 }
 
 func TestStepOutput_DoesNotFallBackToLiveDockerLogs(t *testing.T) {
