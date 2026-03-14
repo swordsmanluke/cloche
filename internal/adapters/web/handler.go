@@ -582,29 +582,40 @@ func groupAndSortRuns(runs []*domain.Run, labels map[string]string, taskTitles m
 		return topLevel[i].StartedAt.After(topLevel[j].StartedAt)
 	})
 
-	// Group by task_id preserving sort order
+	// Group by task_id preserving sort order, but interleave task groups
+	// and ungrouped runs so that running items always appear above completed
+	// ones regardless of whether they have a task ID.
 	taskGroups := map[string][]*domain.Run{}
-	var taskOrder []string
-	var ungrouped []*domain.Run
+	emittedTask := map[string]bool{}
+
+	// Build result by walking topLevel in sorted order. Each task group is
+	// emitted as a block the first time we encounter a run belonging to it.
+	var result []apiGroupedEntry
 
 	for _, r := range topLevel {
 		if r.TaskID != "" {
-			if _, seen := taskGroups[r.TaskID]; !seen {
-				taskOrder = append(taskOrder, r.TaskID)
-			}
 			taskGroups[r.TaskID] = append(taskGroups[r.TaskID], r)
-		} else {
-			ungrouped = append(ungrouped, r)
 		}
 	}
 
-	// Build result
-	var result []apiGroupedEntry
-
-	// Emit task groups
-	for _, tid := range taskOrder {
-		result = append(result, apiGroupedEntry{TaskHeader: true, TaskID: tid, TaskTitle: taskTitles[tid], TaskStatus: taskAggregateStatus(taskGroups[tid])})
-		for _, r := range taskGroups[tid] {
+	for _, r := range topLevel {
+		if r.TaskID != "" {
+			if emittedTask[r.TaskID] {
+				continue
+			}
+			emittedTask[r.TaskID] = true
+			group := taskGroups[r.TaskID]
+			result = append(result, apiGroupedEntry{TaskHeader: true, TaskID: r.TaskID, TaskTitle: taskTitles[r.TaskID], TaskStatus: taskAggregateStatus(group)})
+			for _, gr := range group {
+				children := parentMap[gr.ID]
+				ar := toAPIRun(gr, labels)
+				result = append(result, apiGroupedEntry{Run: &ar, IsParent: len(children) > 0})
+				for _, child := range children {
+					ac := toAPIRun(child, labels)
+					result = append(result, apiGroupedEntry{Run: &ac, IsChild: true})
+				}
+			}
+		} else {
 			children := parentMap[r.ID]
 			ar := toAPIRun(r, labels)
 			result = append(result, apiGroupedEntry{Run: &ar, IsParent: len(children) > 0})
@@ -612,17 +623,6 @@ func groupAndSortRuns(runs []*domain.Run, labels map[string]string, taskTitles m
 				ac := toAPIRun(child, labels)
 				result = append(result, apiGroupedEntry{Run: &ac, IsChild: true})
 			}
-		}
-	}
-
-	// Emit ungrouped
-	for _, r := range ungrouped {
-		children := parentMap[r.ID]
-		ar := toAPIRun(r, labels)
-		result = append(result, apiGroupedEntry{Run: &ar, IsParent: len(children) > 0})
-		for _, child := range children {
-			ac := toAPIRun(child, labels)
-			result = append(result, apiGroupedEntry{Run: &ac, IsChild: true})
 		}
 	}
 
