@@ -7,6 +7,7 @@ import (
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
+	"github.com/cloche-dev/cloche/internal/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -27,7 +28,7 @@ func cmdProject(args []string) {
 	// Connect to daemon.
 	addr := os.Getenv("CLOCHE_ADDR")
 	if addr == "" {
-		addr = "unix:///tmp/cloche.sock"
+		addr = config.DefaultSocketAddr()
 	}
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))

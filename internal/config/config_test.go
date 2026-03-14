@@ -171,3 +171,37 @@ func TestLoadGlobalFromMissing(t *testing.T) {
 	assert.True(t, cfg.Evolution.Enabled)
 	assert.Equal(t, "", cfg.Daemon.HTTP)
 }
+
+func TestStateDir(t *testing.T) {
+	dir := StateDir()
+	assert.Contains(t, dir, ".config/cloche")
+	assert.True(t, filepath.IsAbs(dir))
+}
+
+func TestEnsureStateDir(t *testing.T) {
+	// Override HOME to a temp directory so we don't touch the real home.
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	dir, err := EnsureStateDir()
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(tmp, ".config", "cloche"), dir)
+
+	// Directory should exist
+	info, err := os.Stat(dir)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+}
+
+func TestDefaultDBPath(t *testing.T) {
+	path := DefaultDBPath()
+	assert.Contains(t, path, "cloche.db")
+	assert.Contains(t, path, ".config/cloche")
+	assert.True(t, filepath.IsAbs(path))
+}
+
+func TestDefaultSocketAddr(t *testing.T) {
+	addr := DefaultSocketAddr()
+	assert.True(t, len(addr) > 7 && addr[:7] == "unix://")
+	assert.Contains(t, addr, ".config/cloche/cloche.sock")
+}

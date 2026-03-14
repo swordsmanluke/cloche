@@ -98,6 +98,35 @@ func LoadGlobal() (*Config, error) {
 	return &cfg, nil
 }
 
+// StateDir returns the path to ~/.config/cloche/ and ensures it exists.
+// Falls back to a temp directory if the home directory cannot be determined.
+func StateDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(os.TempDir(), "cloche")
+	}
+	return filepath.Join(home, ".config", "cloche")
+}
+
+// EnsureStateDir creates the state directory if it doesn't exist.
+func EnsureStateDir() (string, error) {
+	dir := StateDir()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// DefaultDBPath returns the default database path: ~/.config/cloche/cloche.db
+func DefaultDBPath() string {
+	return filepath.Join(StateDir(), "cloche.db")
+}
+
+// DefaultSocketAddr returns the default Unix socket address: unix://~/.config/cloche/cloche.sock
+func DefaultSocketAddr() string {
+	return "unix://" + filepath.Join(StateDir(), "cloche.sock")
+}
+
 // LoadGlobalFrom reads the global config from a specific path.
 // Useful for testing.
 func LoadGlobalFrom(path string) (*Config, error) {

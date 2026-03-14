@@ -369,7 +369,7 @@ Output includes:
   Workflows         Known container and host workflow names
 
 Environment:
-  CLOCHE_ADDR    Daemon gRPC address (default: unix:///tmp/cloche.sock)
+  CLOCHE_ADDR    Daemon gRPC address (default: unix://~/.config/cloche/cloche.sock)
 
 Examples:
   cloche project
@@ -506,7 +506,7 @@ Daemon:
   shutdown   Shut down the Cloche daemon
 
 Environment Variables:
-  CLOCHE_ADDR          Daemon gRPC address (default: unix:///tmp/cloche.sock)
+  CLOCHE_ADDR          Daemon gRPC address (default: unix://~/.config/cloche/cloche.sock)
   CLOCHE_HTTP          Daemon HTTP address (for health/tasks commands)
   CLOCHE_RUN_ID        Run ID for get/set commands (set automatically in steps)
   CLOCHE_PROJECT_DIR   Project directory override for get/set commands

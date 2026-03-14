@@ -913,8 +913,8 @@ my-project/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLOCHE_LISTEN` | `unix:///tmp/cloche.sock` | Listen address |
-| `CLOCHE_DB` | `cloche.db` | SQLite database path |
+| `CLOCHE_LISTEN` | `unix://~/.config/cloche/cloche.sock` | Listen address |
+| `CLOCHE_DB` | `~/.config/cloche/cloche.db` | SQLite database path |
 | `CLOCHE_RUNTIME` | `docker` | `docker` or `local` (subprocess, for dev only) |
 | `CLOCHE_IMAGE` | `cloche-agent:latest` | Default Docker image |
 | `CLOCHE_HTTP` | _(unset)_ | HTTP address for web dashboard. Not started unless set. |
@@ -928,7 +928,7 @@ my-project/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLOCHE_ADDR` | `unix:///tmp/cloche.sock` | Daemon gRPC address |
+| `CLOCHE_ADDR` | `unix://~/.config/cloche/cloche.sock` | Daemon gRPC address |
 | `CLOCHE_HTTP` | `localhost:8080` | Daemon HTTP address |
 
 ## Dockerfile Requirements

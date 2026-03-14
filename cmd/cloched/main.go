@@ -39,8 +39,13 @@ func main() {
 		globalCfg = &defaults
 	}
 
-	dbPath := envOrConfig("CLOCHE_DB", globalCfg.Daemon.DB, "cloche.db")
-	listenAddr := envOrConfig("CLOCHE_LISTEN", globalCfg.Daemon.Listen, "unix:///tmp/cloche.sock")
+	// Ensure state directory exists (~/.config/cloche/)
+	if _, err := config.EnsureStateDir(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to create state dir: %v\n", err)
+	}
+
+	dbPath := envOrConfig("CLOCHE_DB", globalCfg.Daemon.DB, config.DefaultDBPath())
+	listenAddr := envOrConfig("CLOCHE_LISTEN", globalCfg.Daemon.Listen, config.DefaultSocketAddr())
 
 	store, err := sqlite.NewStore(dbPath)
 	if err != nil {

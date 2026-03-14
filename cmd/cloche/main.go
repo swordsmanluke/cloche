@@ -16,6 +16,7 @@ import (
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
+	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/runcontext"
@@ -120,7 +121,7 @@ func main() {
 	// Commands that need a daemon connection
 	addr := os.Getenv("CLOCHE_ADDR")
 	if addr == "" {
-		addr = "unix:///tmp/cloche.sock"
+		addr = config.DefaultSocketAddr()
 	}
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -719,7 +720,7 @@ func cmdVersion() {
 	daemonVersion := "<unavailable>"
 	addr := os.Getenv("CLOCHE_ADDR")
 	if addr == "" {
-		addr = "unix:///tmp/cloche.sock"
+		addr = config.DefaultSocketAddr()
 	}
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err == nil {
