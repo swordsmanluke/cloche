@@ -229,12 +229,29 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 }
 
 func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string) {
-	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "usage: cloche status <run-id>\n")
-		os.Exit(1)
+	// Parse flags to detect --all before checking positional args.
+	var all bool
+	var positional []string
+	for _, arg := range args {
+		if arg == "--all" {
+			all = true
+		} else {
+			positional = append(positional, arg)
+		}
 	}
 
-	resp, err := client.GetStatus(ctx, &pb.GetStatusRequest{RunId: args[0]})
+	// If a run ID is provided, show single-run status.
+	if len(positional) > 0 {
+		cmdStatusRun(ctx, client, positional[0])
+		return
+	}
+
+	// No run ID: show daemon status overview.
+	cmdStatusOverview(ctx, client, os.Stdout, all)
+}
+
+func cmdStatusRun(ctx context.Context, client pb.ClocheServiceClient, runID string) {
+	resp, err := client.GetStatus(ctx, &pb.GetStatusRequest{RunId: runID})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -265,6 +282,130 @@ func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string
 	for _, exec := range resp.StepExecutions {
 		fmt.Printf("  %s: %s (%s -> %s)\n", exec.StepName, exec.Result, exec.StartedAt, exec.CompletedAt)
 	}
+}
+
+func cmdStatusOverview(ctx context.Context, client pb.ClocheServiceClient, w io.Writer, all bool) {
+	// Get daemon version.
+	verResp, err := client.GetVersion(ctx, &pb.GetVersionRequest{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Fprintf(w, "Daemon version: %s\n", verResp.Version)
+
+	cwd, _ := os.Getwd()
+	_, hasClocheDir := os.Stat(filepath.Join(cwd, ".cloche"))
+
+	if !all && hasClocheDir == nil {
+		// In a project directory: show project-specific info.
+		cmdStatusProject(ctx, client, w, cwd)
+	} else {
+		// Not in a project directory or --all: show global overview.
+		cmdStatusGlobal(ctx, client, w)
+	}
+}
+
+func cmdStatusProject(ctx context.Context, client pb.ClocheServiceClient, w io.Writer, projectDir string) {
+	info, err := client.GetProjectInfo(ctx, &pb.GetProjectInfoRequest{ProjectDir: projectDir})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Fprintf(w, "Project: %s\n", info.Name)
+	fmt.Fprintf(w, "Concurrency: %d\n", info.Concurrency)
+
+	loopStatus := "stopped"
+	if info.LoopRunning {
+		if info.ErrorHalted {
+			loopStatus = "halted"
+		} else {
+			loopStatus = "running"
+		}
+	}
+	fmt.Fprintf(w, "Orchestration loop: %s\n", loopStatus)
+
+	// Fetch runs for the past hour to compute success rate.
+	listResp, err := client.ListRuns(ctx, &pb.ListRunsRequest{ProjectDir: projectDir})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	var succeeded int
+	for _, run := range listResp.Runs {
+		if run.State == "succeeded" {
+			succeeded++
+		}
+	}
+	fmt.Fprintf(w, "Runs (past hour): %d / %d succeeded\n", succeeded, len(listResp.Runs))
+
+	// Active runs from project info.
+	fmt.Fprintf(w, "Active runs: %d\n", len(info.ActiveRuns))
+	for _, run := range info.ActiveRuns {
+		dur := formatDuration(run.StartedAt)
+		fmt.Fprintf(w, "  %s: %s\n", run.RunId, dur)
+	}
+}
+
+func cmdStatusGlobal(ctx context.Context, client pb.ClocheServiceClient, w io.Writer) {
+	// Fetch all runs (server defaults to past hour when no project filter and not --all).
+	// We pass All=true but the server returns everything; we filter client-side to past hour.
+	listResp, err := client.ListRuns(ctx, &pb.ListRunsRequest{All: true})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	var succeeded, total, activeCount int
+	type activeRun struct {
+		id        string
+		startedAt string
+	}
+	var actives []activeRun
+
+	oneHourAgo := time.Now().Add(-1 * time.Hour)
+	for _, run := range listResp.Runs {
+		parsed, parseErr := time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", run.StartedAt)
+		if parseErr != nil {
+			// Fall back: count all runs returned.
+			parsed = time.Time{}
+		}
+		if !parsed.IsZero() && parsed.Before(oneHourAgo) {
+			continue
+		}
+		total++
+		if run.State == "succeeded" {
+			succeeded++
+		}
+		if run.State == "running" || run.State == "pending" {
+			activeCount++
+			actives = append(actives, activeRun{id: run.RunId, startedAt: run.StartedAt})
+		}
+	}
+
+	fmt.Fprintf(w, "Runs (past hour): %d / %d succeeded\n", succeeded, total)
+	fmt.Fprintf(w, "Active runs: %d\n", activeCount)
+	for _, a := range actives {
+		dur := formatDuration(a.startedAt)
+		fmt.Fprintf(w, "  %s: %s\n", a.id, dur)
+	}
+}
+
+// formatDuration parses a Go time string and returns a human-readable duration since then.
+func formatDuration(startedAt string) string {
+	parsed, err := time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", startedAt)
+	if err != nil {
+		return startedAt
+	}
+	d := time.Since(parsed)
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm%ds", int(d.Minutes()), int(d.Seconds())%60)
+	}
+	return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
 }
 
 func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) {

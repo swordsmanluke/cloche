@@ -84,18 +84,26 @@ Examples:
   cloche run develop -p "Fix auth bug" -i TASK-123
 `,
 
-	"status": `cloche status — Check run status
+	"status": `cloche status — Check run or daemon status
 
-Shows the current state of a workflow run including its type, active step,
-and the result of each completed step.
+With a run ID, shows the current state of a workflow run including its
+type, active step, and the result of each completed step.
+
+Without a run ID, shows a daemon status overview: version, run statistics,
+and active runs. In a project directory, also shows project name,
+concurrency, and orchestration loop state. Use --all to show global stats
+instead of project-specific stats.
 
 Usage:
-  cloche status <run-id>
+  cloche status [<run-id>] [--all]
 
 Arguments:
-  <run-id>    The run identifier returned by "cloche run".
+  <run-id>    The run identifier returned by "cloche run" (optional).
 
-Output fields:
+Flags:
+  --all       Show global stats instead of project-specific stats.
+
+Output (with run ID):
   Run         Run identifier
   Title       Human-readable title (if set)
   Workflow    Workflow name
@@ -106,8 +114,17 @@ Output fields:
   Active      Name of the currently executing step
   Steps       List of completed steps with results and timestamps
 
+Output (without run ID):
+  Daemon version
+  Project name and concurrency (if in project directory)
+  Orchestration loop status
+  Successful / total runs in the past hour
+  Active run count with per-run duration
+
 Examples:
   cloche status abc123
+  cloche status
+  cloche status --all
 `,
 
 	"logs": `cloche logs — Show logs for a run
@@ -487,7 +504,7 @@ Workflow Info:
 
 Workflow Runs:
   run        Launch a workflow run in a container
-  status     Check run status (state, steps, errors)
+  status     Show daemon overview or check a specific run's status
   logs       Show or stream logs for a run
   poll       Wait for one or more runs to finish (blocks until terminal)
   list       List runs for current project (or all projects)

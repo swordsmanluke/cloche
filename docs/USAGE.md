@@ -665,10 +665,20 @@ when `.cloche/Dockerfile` changes.
 ### `cloche status`
 
 ```
-cloche status <run-id>
+cloche status [<run-id>] [--all]
 ```
 
-Shows run title, type (`host`/`container`), state, active steps, and per-step results.
+With a run ID, shows run title, type (`host`/`container`), state, active steps, and
+per-step results.
+
+Without a run ID, shows a daemon status overview: version, run statistics (past hour),
+and active runs. In a project directory, also shows project name, concurrency, and
+orchestration loop state. Use `--all` to show global stats instead of project-specific
+stats.
+
+| Flag | Description |
+|------|-------------|
+| `--all` | Show global stats instead of project-specific stats. |
 
 ### `cloche list`
 
