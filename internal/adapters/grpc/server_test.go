@@ -375,6 +375,71 @@ func TestServer_ListRuns_IncludesTitle(t *testing.T) {
 	assert.Equal(t, "Fix the login bug", resp.Runs[0].Title)
 }
 
+func TestServer_RunWorkflow_WithIssueId(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
+		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := local.NewRuntime("sh")
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+		IssueId:      "TASK-42",
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, resp.RunId)
+
+	// Poll until the background goroutine finishes
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		run, getErr := store.GetRun(context.Background(), resp.RunId)
+		if getErr == nil && run.State == domain.RunStateSucceeded {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Verify TaskID was persisted
+	run, err := store.GetRun(context.Background(), resp.RunId)
+	require.NoError(t, err)
+	assert.Equal(t, "TASK-42", run.TaskID)
+}
+
+func TestServer_ListRuns_IncludesTaskId(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	run := domain.NewRun("taskid-list-1", "develop")
+	run.Start()
+	run.TaskID = "ISSUE-99"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	srv := server.NewClocheServer(store, nil)
+	resp, err := srv.ListRuns(ctx, &pb.ListRunsRequest{All: true})
+	require.NoError(t, err)
+	require.Len(t, resp.Runs, 1)
+	assert.Equal(t, "ISSUE-99", resp.Runs[0].TaskId)
+}
+
 func TestServer_RunWorkflow_CapturesStepMetadata(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

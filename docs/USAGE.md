@@ -648,7 +648,7 @@ host workflows, and prompt generation script. Skips existing files.
 Launch a workflow run.
 
 ```
-cloche run --workflow <name> [--prompt "..."] [--title "..."] [--keep-container]
+cloche run --workflow <name> [--prompt "..."] [--title "..."] [--issue ID] [--keep-container]
 ```
 
 | Flag | Description |
@@ -656,6 +656,7 @@ cloche run --workflow <name> [--prompt "..."] [--title "..."] [--keep-container]
 | `--workflow <name>` | Workflow name. Resolves to `.cloche/<name>.cloche`. |
 | `--prompt "..."`, `-p` | Inline prompt written to `.cloche/<run-id>/prompt.txt`. |
 | `--title "..."` | One-line summary for status display. Auto-generated if omitted. |
+| `--issue ID`, `-i` | Associate a task/issue ID with the run (shown in list output). |
 | `--keep-container` | Keep container on success (failed runs always keep it). |
 
 Must be run from inside a git repository. The daemon auto-rebuilds the Docker image

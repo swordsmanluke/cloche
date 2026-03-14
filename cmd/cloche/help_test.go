@@ -81,3 +81,20 @@ func TestPrintHelp_ValidCommand(t *testing.T) {
 		t.Error("printHelp with valid command should return true")
 	}
 }
+
+func TestRunHelpIncludesIssueFlag(t *testing.T) {
+	text := subcommandHelp["run"]
+	if !strings.Contains(text, "--issue") {
+		t.Error("run help text should document --issue flag")
+	}
+	if !strings.Contains(text, "-i") {
+		t.Error("run help text should document -i shorthand")
+	}
+}
+
+func TestListHelpIncludesTaskIdColumn(t *testing.T) {
+	text := subcommandHelp["list"]
+	if !strings.Contains(text, "task ID") {
+		t.Error("list help text should mention task ID column")
+	}
+}

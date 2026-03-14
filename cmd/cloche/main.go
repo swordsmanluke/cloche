@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
@@ -161,7 +162,7 @@ func main() {
 
 
 func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
-	var workflow, prompt, title string
+	var workflow, prompt, title, issueID string
 	var keepContainer bool
 
 	for i := 0; i < len(args); i++ {
@@ -181,6 +182,11 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 				i++
 				title = args[i]
 			}
+		case "--issue", "-i":
+			if i+1 < len(args) {
+				i++
+				issueID = args[i]
+			}
 		case "--keep-container":
 			keepContainer = true
 		default:
@@ -192,7 +198,7 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	}
 
 	if workflow == "" {
-		fmt.Fprintf(os.Stderr, "usage: cloche run --workflow <name> [--prompt \"...\"] [--title \"...\"]\n")
+		fmt.Fprintf(os.Stderr, "usage: cloche run --workflow <name> [--prompt \"...\"] [--title \"...\"] [--issue ID]\n")
 		os.Exit(1)
 	}
 
@@ -212,6 +218,7 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 		Prompt:        prompt,
 		KeepContainer: keepContainer,
 		Title:         title,
+		IssueId:       issueID,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -322,31 +329,26 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 		return
 	}
 
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "RUN ID\tWORKFLOW\tSTATE\tTYPE\tTASK ID\tTITLE\tCONTAINER\tERROR")
 	for _, run := range resp.Runs {
 		runType := "container"
 		if run.IsHost {
 			runType = "host"
 		}
-		line := fmt.Sprintf("%s  %-20s  %-10s  %-9s", run.RunId, run.WorkflowName, run.State, runType)
-		if run.Title != "" {
-			t := run.Title
-			if len(t) > 40 {
-				t = t[:37] + "..."
-			}
-			line += "  " + t
+		title := run.Title
+		if len(title) > 40 {
+			title = title[:37] + "..."
 		}
-		if run.ContainerId != "" {
-			line += "  " + run.ContainerId
+		errMsg := run.ErrorMessage
+		if len(errMsg) > 60 {
+			errMsg = errMsg[:57] + "..."
 		}
-		if run.ErrorMessage != "" {
-			errMsg := run.ErrorMessage
-			if len(errMsg) > 60 {
-				errMsg = errMsg[:57] + "..."
-			}
-			line += "  " + errMsg
-		}
-		fmt.Println(line)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			run.RunId, run.WorkflowName, run.State, runType,
+			run.TaskId, title, run.ContainerId, errMsg)
 	}
+	w.Flush()
 }
 
 func cmdLogs(client pb.ClocheServiceClient, args []string) {

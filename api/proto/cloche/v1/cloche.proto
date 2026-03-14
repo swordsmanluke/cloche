@@ -29,6 +29,7 @@ message RunWorkflowRequest {
   string prompt = 4;
   bool keep_container = 5;
   string title = 6;
+  string issue_id = 7;
 }
 
 message RunWorkflowResponse {
@@ -118,6 +119,7 @@ message RunSummary {
   string title = 7;
   bool is_host = 8;
   string project_dir = 9;
+  string task_id = 10;
 }
 
 message EnableLoopRequest {

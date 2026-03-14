@@ -29,6 +29,7 @@ type RunWorkflowRequest struct {
 	Prompt        string                 `protobuf:"bytes,4,opt,name=prompt,proto3" json:"prompt,omitempty"`
 	KeepContainer bool                   `protobuf:"varint,5,opt,name=keep_container,json=keepContainer,proto3" json:"keep_container,omitempty"`
 	Title         string                 `protobuf:"bytes,6,opt,name=title,proto3" json:"title,omitempty"`
+	IssueId       string                 `protobuf:"bytes,7,opt,name=issue_id,json=issueId,proto3" json:"issue_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -101,6 +102,13 @@ func (x *RunWorkflowRequest) GetKeepContainer() bool {
 func (x *RunWorkflowRequest) GetTitle() string {
 	if x != nil {
 		return x.Title
+	}
+	return ""
+}
+
+func (x *RunWorkflowRequest) GetIssueId() string {
+	if x != nil {
+		return x.IssueId
 	}
 	return ""
 }
@@ -909,6 +917,7 @@ type RunSummary struct {
 	Title         string                 `protobuf:"bytes,7,opt,name=title,proto3" json:"title,omitempty"`
 	IsHost        bool                   `protobuf:"varint,8,opt,name=is_host,json=isHost,proto3" json:"is_host,omitempty"`
 	ProjectDir    string                 `protobuf:"bytes,9,opt,name=project_dir,json=projectDir,proto3" json:"project_dir,omitempty"`
+	TaskId        string                 `protobuf:"bytes,10,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1002,6 +1011,13 @@ func (x *RunSummary) GetIsHost() bool {
 func (x *RunSummary) GetProjectDir() string {
 	if x != nil {
 		return x.ProjectDir
+	}
+	return ""
+}
+
+func (x *RunSummary) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
 	}
 	return ""
 }

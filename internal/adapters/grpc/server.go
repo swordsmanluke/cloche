@@ -127,6 +127,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	run := domain.NewRun(runID, req.WorkflowName)
 	run.ProjectDir = req.ProjectDir
 	run.Title = req.Title
+	run.TaskID = req.IssueId
 	if err := s.store.CreateRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("creating run: %w", err)
 	}
@@ -154,6 +155,7 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 		Store:        s.store,
 		Captures:     s.captures,
 		LogBroadcast: s.logBroadcast,
+		TaskID:       req.IssueId,
 	}
 
 	go func() {
@@ -452,6 +454,7 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 			Title:        run.Title,
 			IsHost:       run.IsHost,
 			ProjectDir:   run.ProjectDir,
+			TaskId:       run.TaskID,
 		})
 	}
 	return resp, nil

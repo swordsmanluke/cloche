@@ -61,7 +61,7 @@ Starts a new container workflow run. The daemon builds/pulls the container
 image, copies the project into it, and executes the workflow steps.
 
 Usage:
-  cloche run --workflow <name> [--prompt "..."] [--title "..."] [--keep-container]
+  cloche run --workflow <name> [--prompt "..."] [--title "..."] [--issue ID] [--keep-container]
   cloche run <name>              (shorthand: bare positional workflow name)
 
 Flags:
@@ -70,6 +70,7 @@ Flags:
   --prompt "..."       Prompt text passed to agent steps. Also available as
   -p "..."             the short form.
   --title "..."        Human-readable title for the run (shown in status/list).
+  --issue ID, -i ID    Associate a task/issue ID with the run (shown in list).
   --keep-container     Do not remove the container after the run completes.
                        Useful for debugging.
 
@@ -80,6 +81,7 @@ Examples:
   cloche run --workflow develop --prompt "Add a /health endpoint"
   cloche run develop -p "Fix the broken CSV parser" --title "CSV fix"
   cloche run --workflow build --keep-container
+  cloche run develop -p "Fix auth bug" -i TASK-123
 `,
 
 	"status": `cloche status — Check run status
@@ -181,7 +183,7 @@ Flags:
   --issue, -i ID     Filter by issue/task ID.
 
 Output columns: run ID, workflow name, state, type (host/container),
-title, container ID, and error message (if any).
+task ID, title, container ID, and error message (if any).
 
 Examples:
   cloche list
