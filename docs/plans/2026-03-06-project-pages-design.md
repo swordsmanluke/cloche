@@ -160,20 +160,20 @@ Returns the task pipeline state for the project's orchestration loop.
 Client-side Sugiyama-style layered layout with no external library. Steps are assigned to
 layers via longest-path from sources, then ordered within each layer using barycenter
 heuristic (4 forward/backward passes) to minimize edge crossings. Layout flows
-left-to-right with SVG Bezier curve edges.
+top-to-bottom with SVG Bezier curve edges.
 
 Non-success wires (any result not in `success`, `ok`, `done`, `pass`) are offset
-vertically below the main flow so they don't overlap the happy-path edges. These wires
+horizontally from the main flow so they don't overlap the happy-path edges. These wires
 use a distinct failure color and reduced opacity (`dag-edge-nonsuccess` class) with a
 matching arrowhead marker.
 
 When multiple wires target the same terminal (`done` or `abort`), they merge into a
-collector bus: individual curves from each source converge on a vertical dashed line,
+collector bus: individual curves from each source converge on a horizontal dashed line,
 which feeds a single arrow into the terminal node. Non-success wires within a merge bus
-are offset to their own vertical positions, and the collector line extends to cover them.
+are offset to their own horizontal positions, and the collector line extends to cover them.
 This reduces wire clutter as graphs grow in complexity.
 
-The DAG container scrolls horizontally when the graph exceeds the panel width.
+The DAG container scrolls vertically when the graph exceeds the panel height.
 
 ### API additions
 

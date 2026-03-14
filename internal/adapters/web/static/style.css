@@ -476,7 +476,7 @@ details pre {
 
 /* DAG */
 .dag-svg { display: block; }
-#workflow-dag { overflow-x: auto; }
+#workflow-dag { overflow-y: auto; }
 
 .dag-node-rect {
     fill: var(--bg);
@@ -503,7 +503,7 @@ details pre {
     font-family: var(--font);
     font-size: 10px;
     fill: var(--text-muted);
-    text-anchor: middle;
+    text-anchor: start;
 }
 
 .dag-terminal-done { fill: var(--badge-succeeded-bg); stroke: var(--badge-succeeded-text); }

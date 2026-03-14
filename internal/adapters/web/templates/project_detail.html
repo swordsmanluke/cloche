@@ -281,31 +281,31 @@ function showWorkflow(wf) {
         }
     }
 
-    // --- Position calculation ---
+    // --- Position calculation (top-to-bottom layout) ---
     var nodeW = 180, nodeH = 48;
-    var layerGap = 120; // horizontal gap between layers
-    var nodeGap = 28;   // vertical gap between nodes in same layer
-    var nonsuccOffset = 35; // vertical offset for non-success wires
+    var layerGap = 80;  // vertical gap between layers
+    var nodeGap = 40;   // horizontal gap between nodes in same layer
+    var nonsuccOffset = 35; // horizontal offset for non-success wires
     var padL = 30, padT = 30;
 
     var maxInLayer = 1;
     layers.forEach(function(l) { if (l.length > maxInLayer) maxInLayer = l.length; });
-    var totalLayerH = maxInLayer * nodeH + (maxInLayer - 1) * nodeGap;
+    var totalLayerW = maxInLayer * nodeW + (maxInLayer - 1) * nodeGap;
 
     var positions = {};
     layers.forEach(function(layer, li) {
-        var lh = layer.length * nodeH + (layer.length - 1) * nodeGap;
-        var offsetY = (totalLayerH - lh) / 2;
+        var lw = layer.length * nodeW + (layer.length - 1) * nodeGap;
+        var offsetX = (totalLayerW - lw) / 2;
         layer.forEach(function(name, ni) {
             positions[name] = {
-                x: padL + li * (nodeW + layerGap),
-                y: padT + offsetY + ni * (nodeH + nodeGap)
+                x: padL + offsetX + ni * (nodeW + nodeGap),
+                y: padT + li * (nodeH + layerGap)
             };
         });
     });
 
-    var svgW = padL * 2 + numLayers * nodeW + (numLayers - 1) * layerGap;
-    var svgH = padT * 2 + totalLayerH + nonsuccOffset;
+    var svgW = padL * 2 + totalLayerW + nonsuccOffset;
+    var svgH = padT * 2 + numLayers * nodeH + (numLayers - 1) * layerGap;
 
     // --- Generate SVG ---
     var svg = '<svg class="dag-svg" width="' + svgW + '" height="' + svgH + '">';
@@ -327,19 +327,19 @@ function showWorkflow(wf) {
     // Helper: determine if a result is the success/happy-path
     function isSuccessResult(r) { return r === 'success' || r === 'ok' || r === 'done' || r === 'pass'; }
 
-    // Draw normal edges with Bezier curves
+    // Draw normal edges with Bezier curves (top-to-bottom)
     normWires.forEach(function(wire) {
         var from = positions[wire.from], to = positions[wire.to];
         if (!from || !to) return;
-        var x1 = from.x + nodeW, y1 = from.y + nodeH / 2;
-        var x2 = to.x, y2 = to.y + nodeH / 2;
-        var dx = x2 - x1;
+        var x1 = from.x + nodeW / 2, y1 = from.y + nodeH;
+        var x2 = to.x + nodeW / 2, y2 = to.y;
+        var dy = y2 - y1;
         var isSucc = isSuccessResult(wire.result);
         var off = isSucc ? 0 : nonsuccOffset;
         var cls = 'dag-edge' + (isSucc ? '' : ' dag-edge-nonsuccess');
         var marker = isSucc ? 'url(#arrowhead)' : 'url(#arrowhead-fail)';
-        svg += '<path d="M' + x1 + ' ' + y1 + ' C' + (x1 + dx * 0.4) + ' ' + (y1 + off) + ' ' + (x1 + dx * 0.6) + ' ' + (y2 + off) + ' ' + x2 + ' ' + y2 + '" class="' + cls + '" marker-end="' + marker + '"/>';
-        svg += '<text x="' + (x1 + dx / 2) + '" y="' + ((y1 + y2) / 2 + off - 6) + '" class="dag-edge-label">' + wire.result + '</text>';
+        svg += '<path d="M' + x1 + ' ' + y1 + ' C' + (x1 + off) + ' ' + (y1 + dy * 0.4) + ' ' + (x2 + off) + ' ' + (y1 + dy * 0.6) + ' ' + x2 + ' ' + y2 + '" class="' + cls + '" marker-end="' + marker + '"/>';
+        svg += '<text x="' + ((x1 + x2) / 2 + off + 6) + '" y="' + (y1 + dy / 2) + '" class="dag-edge-label">' + wire.result + '</text>';
     });
 
     // Draw terminal edges with merge pattern for multiple wires
@@ -353,59 +353,59 @@ function showWorkflow(wf) {
             tWires.forEach(function(wire) {
                 var from = positions[wire.from];
                 if (!from) return;
-                var x1 = from.x + nodeW, y1 = from.y + nodeH / 2;
-                var x2 = tpos.x, y2 = tpos.y + nodeH / 2;
-                var dx = x2 - x1;
+                var x1 = from.x + nodeW / 2, y1 = from.y + nodeH;
+                var x2 = tpos.x + nodeW / 2, y2 = tpos.y;
+                var dy = y2 - y1;
                 var isSucc = isSuccessResult(wire.result);
                 var off = isSucc ? 0 : nonsuccOffset;
                 var cls = 'dag-edge' + (isSucc ? '' : ' dag-edge-nonsuccess');
                 var marker = isSucc ? 'url(#arrowhead)' : 'url(#arrowhead-fail)';
-                svg += '<path d="M' + x1 + ' ' + y1 + ' C' + (x1 + dx * 0.4) + ' ' + (y1 + off) + ' ' + (x1 + dx * 0.6) + ' ' + (y2 + off) + ' ' + x2 + ' ' + y2 + '" class="' + cls + '" marker-end="' + marker + '"/>';
-                svg += '<text x="' + (x1 + dx / 2) + '" y="' + ((y1 + y2) / 2 + off - 6) + '" class="dag-edge-label">' + wire.result + '</text>';
+                svg += '<path d="M' + x1 + ' ' + y1 + ' C' + (x1 + off) + ' ' + (y1 + dy * 0.4) + ' ' + (x2 + off) + ' ' + (y1 + dy * 0.6) + ' ' + x2 + ' ' + y2 + '" class="' + cls + '" marker-end="' + marker + '"/>';
+                svg += '<text x="' + ((x1 + x2) / 2 + off + 6) + '" y="' + (y1 + dy / 2) + '" class="dag-edge-label">' + wire.result + '</text>';
             });
             continue;
         }
 
         // Multiple wires to same terminal: merge into a collector bus
-        var mergeX = tpos.x - 50;
-        var termY = tpos.y + nodeH / 2;
+        var mergeY = tpos.y - 40;
+        var termX = tpos.x + nodeW / 2;
 
         var srcPts = [];
         tWires.forEach(function(wire) {
             var from = positions[wire.from];
             if (!from) return;
-            srcPts.push({ x: from.x + nodeW, y: from.y + nodeH / 2, result: wire.result });
+            srcPts.push({ x: from.x + nodeW / 2, y: from.y + nodeH, result: wire.result });
         });
-        srcPts.sort(function(a, b) { return a.y - b.y; });
+        srcPts.sort(function(a, b) { return a.x - b.x; });
 
         // Individual curves from each source to the merge line (offset non-success)
         srcPts.forEach(function(pt) {
             var isSucc = isSuccessResult(pt.result);
             var off = isSucc ? 0 : nonsuccOffset;
-            var dx = mergeX - pt.x;
-            var arcY = pt.y + off;
+            var dy = mergeY - pt.y;
+            var arcX = pt.x + off;
             var cls = 'dag-edge' + (isSucc ? '' : ' dag-edge-nonsuccess');
-            svg += '<path d="M' + pt.x + ' ' + pt.y + ' C' + (pt.x + dx * 0.5) + ' ' + arcY + ' ' + (mergeX - 20) + ' ' + arcY + ' ' + mergeX + ' ' + arcY + '" class="' + cls + '"/>';
-            svg += '<text x="' + (pt.x + dx * 0.35) + '" y="' + (arcY - 6) + '" class="dag-edge-label">' + pt.result + '</text>';
+            svg += '<path d="M' + pt.x + ' ' + pt.y + ' C' + arcX + ' ' + (pt.y + dy * 0.5) + ' ' + arcX + ' ' + (mergeY - 20) + ' ' + arcX + ' ' + mergeY + '" class="' + cls + '"/>';
+            svg += '<text x="' + (arcX + 6) + '" y="' + (pt.y + dy * 0.35) + '" class="dag-edge-label">' + pt.result + '</text>';
         });
 
-        // Vertical collector line
-        var mergeEnds = srcPts.map(function(pt) { return pt.y + (isSuccessResult(pt.result) ? 0 : nonsuccOffset); });
-        mergeEnds.push(termY);
-        var minY = Math.min.apply(null, mergeEnds);
-        var maxY = Math.max.apply(null, mergeEnds);
+        // Horizontal collector line
+        var mergeEnds = srcPts.map(function(pt) { return pt.x + (isSuccessResult(pt.result) ? 0 : nonsuccOffset); });
+        mergeEnds.push(termX);
+        var minX = Math.min.apply(null, mergeEnds);
+        var maxX = Math.max.apply(null, mergeEnds);
         var hasNonSucc = tWires.some(function(w) { return !isSuccessResult(w.result); });
-        svg += '<path d="M' + mergeX + ' ' + minY + ' L' + mergeX + ' ' + maxY + '" class="dag-edge dag-merge-line' + (hasNonSucc ? ' dag-edge-nonsuccess' : '') + '"/>';
+        svg += '<path d="M' + minX + ' ' + mergeY + ' L' + maxX + ' ' + mergeY + '" class="dag-edge dag-merge-line' + (hasNonSucc ? ' dag-edge-nonsuccess' : '') + '"/>';
 
         // Merge point dots (at offset positions for non-success wires)
         srcPts.forEach(function(pt) {
             var off = isSuccessResult(pt.result) ? 0 : nonsuccOffset;
-            svg += '<circle cx="' + mergeX + '" cy="' + (pt.y + off) + '" r="3" class="dag-merge-dot"/>';
+            svg += '<circle cx="' + (pt.x + off) + '" cy="' + mergeY + '" r="3" class="dag-merge-dot"/>';
         });
 
         // Single line from collector to terminal
         var mergeMarker = hasNonSucc ? 'url(#arrowhead-fail)' : 'url(#arrowhead)';
-        svg += '<path d="M' + mergeX + ' ' + termY + ' L' + tpos.x + ' ' + termY + '" class="dag-edge' + (hasNonSucc ? ' dag-edge-nonsuccess' : '') + '" marker-end="' + mergeMarker + '"/>';
+        svg += '<path d="M' + termX + ' ' + mergeY + ' L' + termX + ' ' + tpos.y + '" class="dag-edge' + (hasNonSucc ? ' dag-edge-nonsuccess' : '') + '" marker-end="' + mergeMarker + '"/>';
     }
 
     // Draw step nodes
