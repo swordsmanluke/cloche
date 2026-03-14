@@ -110,6 +110,19 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		executor.AgentArgs = strings.Fields(args)
 	}
 
+	// Create a logstream.Writer so host runs persist logs to full.log,
+	// matching container-side behavior where the agent writes full.log.
+	var ulog *logstream.Writer
+	if !r.SkipRunRecord {
+		runDir := filepath.Join(projectDir, ".cloche", orchRunID)
+		w, err := logstream.New(runDir)
+		if err != nil {
+			log.Printf("host workflow [%s]: failed to create log writer: %v", orchRunID, err)
+		} else {
+			ulog = w
+		}
+	}
+
 	eng := engine.New(executor)
 	eng.SetStatusHandler(&hostStatusHandler{
 		projectDir:   projectDir,
@@ -118,9 +131,14 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		captures:     r.Captures,
 		logBroadcast: r.LogBroadcast,
 		outputDir:    outputDir,
+		logWriter:    ulog,
 	})
 
 	run, runErr := eng.Run(ctx, wf)
+
+	if ulog != nil {
+		ulog.Close()
+	}
 
 	result := &RunResult{
 		RunID:     orchRunID,
@@ -235,6 +253,7 @@ type hostStatusHandler struct {
 	captures     ports.CaptureStore
 	logBroadcast *logstream.Broadcaster
 	outputDir    string
+	logWriter    *logstream.Writer // persists log entries to full.log
 }
 
 func (h *hostStatusHandler) OnStepStart(_ *domain.Run, step *domain.Step) {
@@ -251,6 +270,9 @@ func (h *hostStatusHandler) OnStepStart(_ *domain.Run, step *domain.Step) {
 			StepName:  step.Name,
 			StartedAt: now,
 		})
+	}
+	if h.logWriter != nil {
+		h.logWriter.Log(logstream.TypeStatus, "step_started: "+step.Name)
 	}
 	if h.logBroadcast != nil {
 		h.logBroadcast.Publish(h.orchRunID, logstream.LogLine{
@@ -278,14 +300,24 @@ func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, res
 			CompletedAt: now,
 		})
 	}
+	// Read step output for logging/broadcasting.
+	var stepOutput string
+	outputPath := filepath.Join(h.outputDir, step.Name+".out")
+	if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
+		stepOutput = string(data)
+	}
+	if h.logWriter != nil {
+		if stepOutput != "" {
+			h.logWriter.Log(logstream.TypeScript, stepOutput)
+		}
+		h.logWriter.Log(logstream.TypeStatus, "step_completed: "+step.Name+" -> "+result)
+	}
 	if h.logBroadcast != nil {
-		// Read step output and publish it before the completion event.
-		outputPath := filepath.Join(h.outputDir, step.Name+".out")
-		if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
+		if stepOutput != "" {
 			h.logBroadcast.Publish(h.orchRunID, logstream.LogLine{
 				Timestamp: now.Format(time.RFC3339),
 				Type:      "script",
-				Content:   string(data),
+				Content:   stepOutput,
 				StepName:  step.Name,
 			})
 		}
