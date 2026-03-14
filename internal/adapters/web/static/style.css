@@ -631,3 +631,13 @@ details pre {
     .log-viewer { max-height: 400px; }
     .drawer { width: 100%; right: -100%; }
 }
+
+.version-watermark {
+    position: fixed;
+    bottom: 0.5rem;
+    right: 0.75rem;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    opacity: 0.5;
+    pointer-events: none;
+}

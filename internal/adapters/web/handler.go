@@ -23,6 +23,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/cloche-dev/cloche/internal/version"
 )
 
 // HandlerOption configures optional Handler dependencies.
@@ -111,6 +112,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 		"truncate":         truncate,
 		"shortContainerID": shortContainerID,
 		"jsonMap":          jsonMap,
+		"clocheVersion":    version.Version,
 	}
 
 	base, err := template.New("").Funcs(funcMap).ParseFS(content, "templates/layout.html")
