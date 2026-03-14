@@ -21,7 +21,7 @@ concurrency = 2
 
 	os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(`workflow "develop" {
   step implement {
-    prompt = file("prompts/implement.md")
+    prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
   }
   step test {

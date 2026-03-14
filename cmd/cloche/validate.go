@@ -223,8 +223,10 @@ func validateTerminalCoverage(wf *domain.Workflow, filename string) []string {
 			return false
 		}
 		if visiting[stepName] {
-			// Cycle — not terminal on its own, but the other branch might be
-			return false
+			// Cycle — optimistically assume the cycle will exit via
+			// another branch. The caller checks all results, so if
+			// every branch is a dead-end it will still be caught.
+			return true
 		}
 		if v, ok := memo[stepName]; ok {
 			return *v
@@ -292,7 +294,7 @@ func validateFileReferences(wf *domain.Workflow, filename, clocheDir string) []s
 		// Check prompt file references: file("prompts/foo.md")
 		if promptVal, ok := step.Config["prompt"]; ok {
 			if ref := extractFileRef(promptVal); ref != "" {
-				path := filepath.Join(clocheDir, ref)
+				path := filepath.Join(filepath.Dir(clocheDir), ref)
 				if _, err := os.Stat(path); os.IsNotExist(err) {
 					errs = append(errs, fmt.Sprintf(
 						"%s: workflow %q: step %q references missing file %q",
