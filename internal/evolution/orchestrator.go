@@ -14,10 +14,11 @@ import (
 
 // OrchestratorConfig configures the evolution pipeline.
 type OrchestratorConfig struct {
-	ProjectDir    string
-	WorkflowName  string
-	LLM           LLMClient
-	MinConfidence string
+	ProjectDir       string
+	WorkflowName     string
+	LLM              LLMClient
+	MinConfidence    string
+	MaxPromptBullets int
 }
 
 // Orchestrator wires all evolution pipeline stages together.
@@ -34,7 +35,7 @@ type Orchestrator struct {
 
 // NewOrchestrator creates a fully wired evolution pipeline.
 func NewOrchestrator(cfg OrchestratorConfig) *Orchestrator {
-	audit := &AuditLogger{ProjectDir: cfg.ProjectDir}
+	audit := &AuditLogger{ProjectDir: cfg.ProjectDir, MaxPromptBullets: cfg.MaxPromptBullets}
 	return &Orchestrator{
 		cfg:        cfg,
 		collector:  &Collector{ProjectDir: cfg.ProjectDir, WorkflowName: cfg.WorkflowName},

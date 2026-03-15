@@ -26,8 +26,8 @@ func (c *Collector) Collect(ctx context.Context, evoStore ports.EvolutionStore, 
 		CurrentPrompts: make(map[string]string),
 	}
 
-	// 1. Read knowledge base
-	kbPath := filepath.Join(c.ProjectDir, ".cloche", "evolution", "knowledge", c.WorkflowName+".md")
+	// 1. Read knowledge base (JSONL format)
+	kbPath := filepath.Join(c.ProjectDir, ".cloche", "evolution", "knowledge", c.WorkflowName+".jsonl")
 	if kb, err := os.ReadFile(kbPath); err == nil {
 		data.KnowledgeBase = string(kb)
 	}

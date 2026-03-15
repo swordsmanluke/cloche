@@ -15,7 +15,7 @@ type LLMClient interface {
 type CollectedData struct {
 	Runs            []*domain.Run
 	Captures        map[string][]*domain.StepExecution // run_id -> step executions
-	KnowledgeBase   string                             // contents of knowledge/<workflow>.md
+	KnowledgeBase   string                             // contents of knowledge/<workflow>.jsonl
 	CurrentPrompts  map[string]string                  // relative path -> content
 	CurrentWorkflow string                             // .cloche file content
 	WorkflowPath    string                             // path to .cloche file

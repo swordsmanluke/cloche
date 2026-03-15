@@ -12,7 +12,8 @@ import (
 
 // AuditLogger records evolution actions and manages snapshots.
 type AuditLogger struct {
-	ProjectDir string
+	ProjectDir       string
+	MaxPromptBullets int // 0 means unlimited
 }
 
 // Log appends an EvolutionResult as a JSONL entry.
@@ -71,43 +72,84 @@ func (a *AuditLogger) Snapshot(relativePath string) (string, error) {
 	return snapName, nil
 }
 
-// UpdateKnowledge appends lessons to the knowledge base file.
-func (a *AuditLogger) UpdateKnowledge(workflowName string, lessons []Lesson) error {
-	kbDir := filepath.Join(a.ProjectDir, ".cloche", "evolution", "knowledge")
-	if err := os.MkdirAll(kbDir, 0755); err != nil {
+// KnowledgePath returns the JSONL knowledge base path for a workflow.
+func (a *AuditLogger) KnowledgePath(workflowName string) string {
+	return filepath.Join(a.ProjectDir, ".cloche", "evolution", "knowledge", workflowName+".jsonl")
+}
+
+// readKnowledge reads existing lessons from the JSONL knowledge base.
+func readKnowledge(path string) ([]Lesson, error) {
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var lessons []Lesson
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var l Lesson
+		if err := json.Unmarshal([]byte(line), &l); err != nil {
+			continue // skip malformed lines
+		}
+		lessons = append(lessons, l)
+	}
+	return lessons, nil
+}
+
+// writeKnowledge writes lessons as JSONL, one per line.
+func writeKnowledge(path string, lessons []Lesson) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("creating knowledge dir: %w", err)
 	}
 
-	kbPath := filepath.Join(kbDir, workflowName+".md")
-
-	// Create with header if doesn't exist
-	if _, err := os.Stat(kbPath); os.IsNotExist(err) {
-		header := fmt.Sprintf("# Knowledge Base: %s workflow\n\n", workflowName)
-		if err := os.WriteFile(kbPath, []byte(header), 0644); err != nil {
-			return err
-		}
-	}
-
-	f, err := os.OpenFile(kbPath, os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("opening knowledge base: %w", err)
-	}
-	defer f.Close()
-
+	var sb strings.Builder
 	for _, l := range lessons {
-		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("\n- **[%s]** (%s, confidence: %s) %s\n",
-			l.ID, l.Category, l.Confidence, l.Insight))
-		if l.SuggestedAction != "" {
-			sb.WriteString(fmt.Sprintf("  _Action: %s_\n", l.SuggestedAction))
+		data, err := json.Marshal(l)
+		if err != nil {
+			continue
 		}
-		if len(l.Evidence) > 0 {
-			sb.WriteString(fmt.Sprintf("  _Evidence: %s_\n", strings.Join(l.Evidence, ", ")))
-		}
-		if _, err := f.WriteString(sb.String()); err != nil {
-			return err
+		sb.Write(data)
+		sb.WriteByte('\n')
+	}
+	return os.WriteFile(path, []byte(sb.String()), 0644)
+}
+
+// UpdateKnowledge merges lessons into the knowledge base with deduplication
+// and optional pruning when MaxPromptBullets is exceeded.
+func (a *AuditLogger) UpdateKnowledge(workflowName string, lessons []Lesson) error {
+	kbPath := a.KnowledgePath(workflowName)
+
+	existing, err := readKnowledge(kbPath)
+	if err != nil {
+		return fmt.Errorf("reading knowledge base: %w", err)
+	}
+
+	// Build index of existing lesson IDs
+	idIndex := make(map[string]int, len(existing))
+	for i, l := range existing {
+		idIndex[l.ID] = i
+	}
+
+	// Merge: update in place if ID exists, append if new
+	for _, l := range lessons {
+		if idx, ok := idIndex[l.ID]; ok {
+			existing[idx] = l // update existing entry
+		} else {
+			existing = append(existing, l)
+			idIndex[l.ID] = len(existing) - 1
 		}
 	}
 
-	return nil
+	// Prune oldest entries if MaxPromptBullets is set and exceeded
+	if a.MaxPromptBullets > 0 && len(existing) > a.MaxPromptBullets {
+		existing = existing[len(existing)-a.MaxPromptBullets:]
+	}
+
+	return writeKnowledge(kbPath, existing)
 }

@@ -341,48 +341,28 @@ After all changes are applied:
    `.cloche/evolution/snapshots/`
 2. **Log** — appends a JSONL entry to `.cloche/evolution/log.jsonl` and inserts
    into the `evolution_log` SQLite table
-3. **Knowledge base update** — appends the Reflector's lessons to
-   `knowledge/<workflow>.md`, runs deduplication/refinement
+3. **Knowledge base update** — merges the Reflector's lessons into
+   `knowledge/<workflow>.jsonl` with ID-based deduplication and optional
+   pruning via `MaxPromptBullets`
 
 ## Knowledge Base Structure
 
-The knowledge base is an ACE-style structured document — itemized bullets with
-metadata, not prose. Each bullet tracks usefulness over time:
+The knowledge base is a JSONL file — one JSON object per line, each
+representing a `Lesson`. Lessons are keyed by `id` for deduplication: if a
+lesson with the same ID already exists, it is updated in place rather than
+appended. When `MaxPromptBullets` is configured and the total number of
+lessons exceeds that limit, the oldest entries are pruned to stay within
+bounds.
 
-```markdown
-# Knowledge Base: develop workflow
-
-## Prompt Insights
-
-- **[P001]** (applied: 3, helpful: 2, stale: 0) Always sanitize user inputs
-  with html.EscapeString() before template rendering. XSS vulnerabilities
-  were recurring in form handlers.
-  _Evidence: run-abc, run-def, run-ghi, run-jkl_
-
-- **[P002]** (applied: 1, helpful: 1, stale: 0) Use goimports ordering for
-  imports. Lint step flags this in ~60% of runs.
-  _Evidence: run-mno, run-pqr_
-
-## Workflow Insights
-
-- **[W001]** (applied: 1, helpful: 1, stale: 0) Added gosec security scan
-  step. Catches static security issues before deployment.
-  _Evidence: run-abc, run-def_
-
-## Failure Patterns
-
-- **[F001]** (occurrences: 8) Test timeout failures correlate with database
-  connection setup. Usually resolves on retry.
-  _Action: none (transient)_
-
-- **[F002]** (occurrences: 4) Valgrind reports unfreed memory in request
-  handlers. Consistent pattern — agent needs explicit reminder about cleanup
-  in defer/finally blocks.
-  _Action: prompt update P001 applied_
+```jsonl
+{"id":"P001","category":"prompt_improvement","insight":"Always sanitize user inputs with html.EscapeString() before template rendering","suggested_action":"Add sanitization rule to prompt","evidence":["run-abc","run-def"],"confidence":"high"}
+{"id":"W001","category":"new_step","step_type":"script","insight":"Added gosec security scan step","suggested_action":"Add gosec step to workflow","evidence":["run-abc","run-def"],"confidence":"high"}
+{"id":"F001","category":"prompt_improvement","insight":"Test timeout failures correlate with database connection setup","suggested_action":"Add retry guidance to prompt","evidence":["run-ghi","run-jkl"],"confidence":"medium"}
 ```
 
-The `applied`/`helpful`/`stale` counters enable future refinement. If a lesson
-is applied but the same failure keeps occurring, it can be revised or removed.
+The structured JSONL format enables reliable deduplication by lesson ID and
+programmatic querying. Lessons that are superseded by newer insights with the
+same ID are replaced automatically.
 
 ## Trigger Logic
 

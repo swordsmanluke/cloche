@@ -58,8 +58,8 @@ func TestEvolutionPipelineIntegration(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(logContent), "prompt_update")
 
-	// Verify knowledge base was updated
-	kbPath := filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.md")
+	// Verify knowledge base was updated (JSONL format)
+	kbPath := filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.jsonl")
 	kbContent, err := os.ReadFile(kbPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(kbContent), "L001")
@@ -83,8 +83,7 @@ func setupTestProject(t *testing.T, dir string) {
 	}
 
 	files := map[string]string{
-		".cloche/evolution/knowledge/develop.md": "# Knowledge Base: develop\n",
-		".cloche/prompts/implement.md":           "Write good code.\n",
+		".cloche/prompts/implement.md": "Write good code.\n",
 		".cloche/develop.cloche": `workflow "develop" {
   step implement {
     prompt = file(".cloche/prompts/implement.md")

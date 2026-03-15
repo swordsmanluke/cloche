@@ -3,6 +3,7 @@ package evolution
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,8 +30,8 @@ func TestCollectorGathersData(t *testing.T) {
 
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
 	os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0755)
-	os.WriteFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.md"),
-		[]byte("# Knowledge Base\n"), 0644)
+	os.WriteFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.jsonl"),
+		[]byte(`{"id":"L000","insight":"existing lesson"}`+"\n"), 0644)
 	os.WriteFile(filepath.Join(dir, ".cloche", "prompts", "implement.md"),
 		[]byte("Write good code"), 0644)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
@@ -46,7 +47,7 @@ func TestCollectorGathersData(t *testing.T) {
 	data, err := c.Collect(context.Background(), nil, nil)
 	require.NoError(t, err)
 
-	assert.Equal(t, "# Knowledge Base\n", data.KnowledgeBase)
+	assert.Contains(t, data.KnowledgeBase, "existing lesson")
 	assert.Contains(t, data.CurrentPrompts, ".cloche/prompts/implement.md")
 	assert.Equal(t, "Write good code", data.CurrentPrompts[".cloche/prompts/implement.md"])
 	assert.NotEmpty(t, data.CurrentWorkflow)
@@ -211,7 +212,6 @@ func TestAuditLoggerUpdatesKnowledge(t *testing.T) {
 	dir := t.TempDir()
 	kbDir := filepath.Join(dir, ".cloche", "evolution", "knowledge")
 	os.MkdirAll(kbDir, 0755)
-	os.WriteFile(filepath.Join(kbDir, "develop.md"), []byte("# Knowledge Base: develop workflow\n"), 0644)
 
 	logger := &AuditLogger{ProjectDir: dir}
 	lessons := []Lesson{
@@ -227,11 +227,68 @@ func TestAuditLoggerUpdatesKnowledge(t *testing.T) {
 
 	require.NoError(t, logger.UpdateKnowledge("develop", lessons))
 
-	content, err := os.ReadFile(filepath.Join(kbDir, "develop.md"))
+	content, err := os.ReadFile(filepath.Join(kbDir, "develop.jsonl"))
 	require.NoError(t, err)
-	assert.Contains(t, string(content), "[P001]")
+	assert.Contains(t, string(content), "P001")
 	assert.Contains(t, string(content), "sanitize HTML")
-	assert.Contains(t, string(content), "run-1, run-2")
+	assert.Contains(t, string(content), "run-1")
+}
+
+func TestAuditLoggerDeduplicatesLessons(t *testing.T) {
+	dir := t.TempDir()
+	logger := &AuditLogger{ProjectDir: dir}
+
+	lesson := Lesson{
+		ID:       "L001",
+		Category: "prompt_improvement",
+		Insight:  "Original insight",
+	}
+
+	require.NoError(t, logger.UpdateKnowledge("develop", []Lesson{lesson}))
+	require.NoError(t, logger.UpdateKnowledge("develop", []Lesson{lesson}))
+
+	// Read back and verify only one entry
+	lessons, err := readKnowledge(logger.KnowledgePath("develop"))
+	require.NoError(t, err)
+	assert.Len(t, lessons, 1)
+	assert.Equal(t, "L001", lessons[0].ID)
+}
+
+func TestAuditLoggerUpdatesExistingLesson(t *testing.T) {
+	dir := t.TempDir()
+	logger := &AuditLogger{ProjectDir: dir}
+
+	original := Lesson{ID: "L001", Insight: "Original insight"}
+	updated := Lesson{ID: "L001", Insight: "Updated insight"}
+
+	require.NoError(t, logger.UpdateKnowledge("develop", []Lesson{original}))
+	require.NoError(t, logger.UpdateKnowledge("develop", []Lesson{updated}))
+
+	lessons, err := readKnowledge(logger.KnowledgePath("develop"))
+	require.NoError(t, err)
+	assert.Len(t, lessons, 1)
+	assert.Equal(t, "Updated insight", lessons[0].Insight)
+}
+
+func TestAuditLoggerPrunesWithMaxPromptBullets(t *testing.T) {
+	dir := t.TempDir()
+	logger := &AuditLogger{ProjectDir: dir, MaxPromptBullets: 5}
+
+	// Add 10 lessons
+	for i := 0; i < 10; i++ {
+		lesson := Lesson{
+			ID:      fmt.Sprintf("L%03d", i),
+			Insight: fmt.Sprintf("Insight %d", i),
+		}
+		require.NoError(t, logger.UpdateKnowledge("develop", []Lesson{lesson}))
+	}
+
+	lessons, err := readKnowledge(logger.KnowledgePath("develop"))
+	require.NoError(t, err)
+	assert.Len(t, lessons, 5)
+	// Should keep the most recent 5 (L005-L009)
+	assert.Equal(t, "L005", lessons[0].ID)
+	assert.Equal(t, "L009", lessons[4].ID)
 }
 
 // --- LLM Client tests ---
@@ -611,8 +668,6 @@ func TestOrchestratorEndToEnd(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
 	os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0755)
-	os.WriteFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.md"),
-		[]byte("# Knowledge Base: develop\n"), 0644)
 	os.WriteFile(filepath.Join(dir, ".cloche", "prompts", "implement.md"),
 		[]byte("Write good code.\n"), 0644)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
@@ -664,8 +719,8 @@ func TestOrchestratorEndToEnd(t *testing.T) {
 	assert.Contains(t, string(logContent), "prompt_update")
 	assert.Contains(t, string(logContent), "XSS pattern")
 
-	// Verify knowledge base was updated
-	kbContent, _ := os.ReadFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.md"))
+	// Verify knowledge base was updated (JSONL format)
+	kbContent, _ := os.ReadFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.jsonl"))
 	assert.Contains(t, string(kbContent), "L001")
 }
 
@@ -674,8 +729,7 @@ func TestOrchestratorNewStepWiredIntoGraph(t *testing.T) {
 
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
-	os.WriteFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.md"),
-		[]byte("# Knowledge Base: develop\n"), 0644)
+	// Knowledge base uses JSONL format (created automatically by UpdateKnowledge)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
 		[]byte(`workflow "develop" {
   step implement {
