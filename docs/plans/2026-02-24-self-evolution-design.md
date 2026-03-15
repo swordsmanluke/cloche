@@ -247,6 +247,13 @@ Handles `prompt_improvement` lessons.
   appending the lesson directly as a structured bullet rather than trusting the
   LLM output. This prevents prompt file corruption when the LLM produces
   interactive-style responses.
+- **Post-write sanity check:** After writing the updated prompt to disk, the
+  curator re-reads the file and validates it: the content must be non-empty,
+  must not start with conversational phrases, and must contain at least one
+  markdown heading (`#`). If the sanity check fails, the curator restores the
+  file from the pre-change snapshot and returns a `prompt_update_rollback`
+  change entry instead of `prompt_update`. The snapshot is preserved as
+  evidence.
 - Output: the modified prompt file content, written to disk
 
 #### Branch B: Script Generator (LLM)
@@ -339,9 +346,11 @@ After all changes are applied:
 
 1. **Snapshot** — copies pre-change versions of all modified files to
    `.cloche/evolution/snapshots/`
-2. **Log** — appends a JSONL entry to `.cloche/evolution/log.jsonl` and inserts
+2. **Restore** — restores a file from a named snapshot (used by the Curator
+   to roll back corrupted writes)
+3. **Log** — appends a JSONL entry to `.cloche/evolution/log.jsonl` and inserts
    into the `evolution_log` SQLite table
-3. **Knowledge base update** — merges the Reflector's lessons into
+4. **Knowledge base update** — merges the Reflector's lessons into
    `knowledge/<workflow>.jsonl` with ID-based deduplication and optional
    pruning via `MaxPromptBullets`
 

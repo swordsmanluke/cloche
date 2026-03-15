@@ -78,12 +78,58 @@ Rules:
 		return nil, fmt.Errorf("writing updated prompt: %w", err)
 	}
 
+	// Post-write sanity check: re-read and validate the written content
+	written, err := os.ReadFile(targetPath)
+	if err != nil {
+		return nil, fmt.Errorf("re-reading written prompt: %w", err)
+	}
+
+	if !promptSanityCheck(string(written)) {
+		// Rollback: restore from snapshot
+		if c.Audit != nil && snapName != "" {
+			if restoreErr := c.Audit.Restore(lesson.Target, snapName); restoreErr != nil {
+				return nil, fmt.Errorf("rollback failed after sanity check: %w", restoreErr)
+			}
+		}
+		return &Change{
+			Type:     "prompt_update_rollback",
+			File:     lesson.Target,
+			Reason:   fmt.Sprintf("curation rolled back: written content failed sanity check (lesson: %s)", lesson.Insight),
+			Snapshot: snapName,
+		}, nil
+	}
+
 	return &Change{
 		Type:     "prompt_update",
 		File:     lesson.Target,
 		Reason:   lesson.Insight,
 		Snapshot: snapName,
 	}, nil
+}
+
+// promptSanityCheck performs basic validation on prompt content to detect corruption.
+// Returns true if the content looks like a valid prompt file.
+func promptSanityCheck(content string) bool {
+	trimmed := strings.TrimSpace(content)
+
+	// Empty content is never valid
+	if trimmed == "" {
+		return false
+	}
+
+	// Must not start with conversational phrases
+	if isConversationalResponse(trimmed) {
+		return false
+	}
+
+	// Must either start with '#' (markdown heading) or contain at least
+	// one section header somewhere in the content
+	hasHeading := strings.HasPrefix(trimmed, "#") || strings.Contains(trimmed, "\n#")
+	if !hasHeading {
+		return false
+	}
+
+	return true
 }
 
 // conversationalMarkers are patterns that indicate the LLM returned

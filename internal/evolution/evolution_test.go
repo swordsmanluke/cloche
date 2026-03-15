@@ -1103,8 +1103,8 @@ func TestOrchestratorSkipsAlreadyAppliedLessons(t *testing.T) {
 
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
 	os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0755)
-	os.WriteFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.md"),
-		[]byte("# Knowledge Base\n\n- **[L001]** (prompt_improvement, confidence: high) XSS pattern\n"), 0644)
+	os.WriteFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.jsonl"),
+		[]byte(`{"id":"L001","category":"prompt_improvement","insight":"XSS pattern","suggested_action":"Add sanitization","confidence":"high"}`+"\n"), 0644)
 	os.WriteFile(filepath.Join(dir, ".cloche", "prompts", "implement.md"),
 		[]byte("Write good code.\n"), 0644)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),

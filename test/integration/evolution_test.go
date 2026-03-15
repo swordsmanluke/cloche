@@ -34,7 +34,7 @@ func TestEvolutionPipelineIntegration(t *testing.T) {
 			// Reflector
 			`{"lessons": [{"id": "L001", "category": "prompt_improvement", "target": ".cloche/prompts/implement.md", "insight": "Test insight", "suggested_action": "Add a rule", "evidence": ["run-1"], "confidence": "high"}]}`,
 			// Curator
-			"Updated prompt content with new rule.\n",
+			"# Implementation Prompt\n\nWrite good code.\n\n## Learned Rules\n\n- Add a rule\n",
 		},
 	}
 

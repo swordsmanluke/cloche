@@ -72,6 +72,24 @@ func (a *AuditLogger) Snapshot(relativePath string) (string, error) {
 	return snapName, nil
 }
 
+// Restore copies a snapshot back to the original file location.
+func (a *AuditLogger) Restore(relativePath, snapName string) error {
+	snapDir := filepath.Join(a.ProjectDir, ".cloche", "evolution", "snapshots")
+	srcPath := filepath.Join(snapDir, snapName)
+	dstPath := filepath.Join(a.ProjectDir, relativePath)
+
+	data, err := os.ReadFile(srcPath)
+	if err != nil {
+		return fmt.Errorf("reading snapshot %s: %w", snapName, err)
+	}
+
+	if err := os.WriteFile(dstPath, data, 0644); err != nil {
+		return fmt.Errorf("restoring snapshot to %s: %w", relativePath, err)
+	}
+
+	return nil
+}
+
 // KnowledgePath returns the JSONL knowledge base path for a workflow.
 func (a *AuditLogger) KnowledgePath(workflowName string) string {
 	return filepath.Join(a.ProjectDir, ".cloche", "evolution", "knowledge", workflowName+".jsonl")

@@ -111,12 +111,13 @@ func setupCuratorDir(t *testing.T, promptContent string) (string, string) {
 }
 
 func TestCuratorCorruption_ConversationalMetaTextNoFences(t *testing.T) {
-	// LLM returns conversational meta-text without code fences — the actual
-	// corruption pattern seen in production.
+	// LLM returns conversational meta-text without code fences.
+	// "Sure!" doesn't match the conversational markers regex, so it passes
+	// through stripCodeFences and isConversationalResponse unchanged.
+	// The post-write sanity check catches it (no '#' heading) and rolls back.
 	original := "# Implementation Prompt\n\nWrite good code.\n"
 	dir, promptPath := setupCuratorDir(t, original)
 
-	// The LLM returns a conversational response with no code fences at all.
 	conversationalResponse := "Sure! I've updated the prompt to include a sanitization rule. The prompt now instructs the agent to always sanitize user inputs before processing them."
 	llm := &fakeLLM{response: conversationalResponse}
 
@@ -128,30 +129,25 @@ func TestCuratorCorruption_ConversationalMetaTextNoFences(t *testing.T) {
 		SuggestedAction: "Add sanitization rule",
 	}
 
-	// Apply succeeds — the current implementation writes whatever comes back
 	change, err := c.Apply(context.Background(), dir, lesson)
 	require.NoError(t, err)
-	assert.Equal(t, "prompt_update", change.Type)
+	assert.Equal(t, "prompt_update_rollback", change.Type)
+	assert.Contains(t, change.Reason, "rolled back")
 
-	// The file now contains the conversational text instead of a valid prompt.
-	// This test documents the corruption behavior: since there are no code
-	// fences, stripCodeFences returns the response as-is.
+	// Original content is preserved via rollback.
 	content, err := os.ReadFile(promptPath)
 	require.NoError(t, err)
-
-	// The content IS the conversational text (the corruption).
-	assert.Equal(t, conversationalResponse, string(content))
-	// The original prompt header is lost.
-	assert.NotContains(t, string(content), "# Implementation Prompt")
+	assert.Equal(t, original, string(content))
 }
 
 func TestCuratorCorruption_ResponseShorterThanOriginal(t *testing.T) {
 	// LLM returns a response that is shorter than the original prompt,
-	// representing total content loss.
+	// representing total content loss. The sanity check catches this
+	// (no '#' heading) and rolls back to the snapshot.
 	original := "# Implementation Prompt\n\nWrite good code.\n\n## Guidelines\n\n- Follow best practices\n- Use proper error handling\n- Write tests\n\n## Learned Rules\n\n- Always validate inputs\n- Never trust user data\n"
 	dir, promptPath := setupCuratorDir(t, original)
 
-	// Extremely short response — most content is lost.
+	// Extremely short response — no heading, fails sanity check.
 	shortResponse := "Write good code."
 	llm := &fakeLLM{response: shortResponse}
 
@@ -165,21 +161,22 @@ func TestCuratorCorruption_ResponseShorterThanOriginal(t *testing.T) {
 
 	change, err := c.Apply(context.Background(), dir, lesson)
 	require.NoError(t, err)
-	assert.NotEmpty(t, change.Snapshot) // Snapshot was taken before corruption
+	assert.Equal(t, "prompt_update_rollback", change.Type)
+	assert.NotEmpty(t, change.Snapshot)
+	assert.Contains(t, change.Reason, "rolled back")
 
+	// Original content is preserved via rollback.
 	content, err := os.ReadFile(promptPath)
 	require.NoError(t, err)
-
-	// Documents the content loss: the prompt is now much shorter.
-	assert.Equal(t, shortResponse, string(content))
-	assert.Less(t, len(content), len(original))
-	// All the guidelines and learned rules are gone.
-	assert.NotContains(t, string(content), "## Guidelines")
-	assert.NotContains(t, string(content), "## Learned Rules")
+	assert.Equal(t, original, string(content))
+	assert.Contains(t, string(content), "## Guidelines")
+	assert.Contains(t, string(content), "## Learned Rules")
 }
 
 func TestCuratorCorruption_EmptyResponse(t *testing.T) {
-	// LLM returns an empty string — complete content destruction.
+	// LLM returns an empty string. isConversationalResponse returns true
+	// for empty strings, so the fallback appends the lesson directly,
+	// preserving the original content.
 	original := "# Implementation Prompt\n\nWrite good code.\n"
 	dir, promptPath := setupCuratorDir(t, original)
 
@@ -197,14 +194,18 @@ func TestCuratorCorruption_EmptyResponse(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "prompt_update", change.Type)
 
+	// The conversational guard catches the empty string and falls back
+	// to appendLessonDirectly, preserving original content.
 	content, err := os.ReadFile(promptPath)
 	require.NoError(t, err)
-	// The file is now empty.
-	assert.Empty(t, string(content))
+	assert.Contains(t, string(content), "# Implementation Prompt")
+	assert.Contains(t, string(content), "Test insight")
 }
 
 func TestCuratorCorruption_EmptyCodeFences(t *testing.T) {
 	// LLM returns only code fences with no content between them.
+	// After stripping fences, content is empty → isConversationalResponse
+	// returns true → fallback appends lesson directly → sanity check passes.
 	original := "# Implementation Prompt\n\nWrite good code.\n"
 	dir, promptPath := setupCuratorDir(t, original)
 
@@ -222,10 +223,11 @@ func TestCuratorCorruption_EmptyCodeFences(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "prompt_update", change.Type)
 
+	// Fallback preserves original content and appends lesson.
 	content, err := os.ReadFile(promptPath)
 	require.NoError(t, err)
-	// The file content is now empty (stripped fences with nothing between).
-	assert.Empty(t, string(content))
+	assert.Contains(t, string(content), "# Implementation Prompt")
+	assert.Contains(t, string(content), "Test insight")
 }
 
 func TestCuratorCorruption_RaceConcurrentApply(t *testing.T) {
@@ -272,6 +274,128 @@ func TestCuratorCorruption_RaceConcurrentApply(t *testing.T) {
 	assert.Contains(t, string(content), "Updated by goroutine")
 }
 
+// ===========================================================================
+// Rollback sanity check tests
+// ===========================================================================
+
+func TestCuratorRollback_GarbageLLMOutputPreservesOriginal(t *testing.T) {
+	// Mock the LLM to return garbage. Assert the original file content
+	// is preserved after Curator.Apply() returns.
+	original := "# Implementation Prompt\n\nWrite good code.\n\n## Guidelines\n\n- Follow best practices\n"
+	dir, promptPath := setupCuratorDir(t, original)
+
+	// LLM returns garbage that doesn't look like a prompt
+	garbageResponse := "asdf jkl; random garbage 12345 no markdown here"
+	llm := &fakeLLM{response: garbageResponse}
+
+	audit := &AuditLogger{ProjectDir: dir}
+	c := &Curator{LLM: llm, Audit: audit}
+	lesson := &Lesson{
+		Target:          ".cloche/prompts/implement.md",
+		Insight:         "Need better validation",
+		SuggestedAction: "Add validation rules",
+	}
+
+	change, err := c.Apply(context.Background(), dir, lesson)
+	require.NoError(t, err)
+	require.NotNil(t, change)
+
+	// Change should indicate rollback
+	assert.Equal(t, "prompt_update_rollback", change.Type)
+	assert.Contains(t, change.Reason, "rolled back")
+
+	// Original file content is preserved
+	content, err := os.ReadFile(promptPath)
+	require.NoError(t, err)
+	assert.Equal(t, original, string(content))
+}
+
+func TestCuratorRollback_SnapshotNotDeletedOnRollback(t *testing.T) {
+	// Assert the snapshot is NOT deleted on rollback (it's evidence).
+	original := "# Implementation Prompt\n\nWrite good code.\n\n## Guidelines\n\n- Follow best practices\n"
+	dir, _ := setupCuratorDir(t, original)
+
+	// LLM returns garbage
+	llm := &fakeLLM{response: "no markdown heading here at all"}
+
+	audit := &AuditLogger{ProjectDir: dir}
+	c := &Curator{LLM: llm, Audit: audit}
+	lesson := &Lesson{
+		Target:          ".cloche/prompts/implement.md",
+		Insight:         "Need better validation",
+		SuggestedAction: "Add validation rules",
+	}
+
+	change, err := c.Apply(context.Background(), dir, lesson)
+	require.NoError(t, err)
+	require.NotNil(t, change)
+	assert.Equal(t, "prompt_update_rollback", change.Type)
+	assert.NotEmpty(t, change.Snapshot)
+
+	// Verify the snapshot file still exists (not deleted)
+	snapDir := filepath.Join(dir, ".cloche", "evolution", "snapshots")
+	snapPath := filepath.Join(snapDir, change.Snapshot)
+	_, err = os.Stat(snapPath)
+	assert.NoError(t, err, "snapshot file should still exist after rollback")
+
+	// Verify snapshot contains the original content
+	snapContent, err := os.ReadFile(snapPath)
+	require.NoError(t, err)
+	assert.Equal(t, original, string(snapContent))
+}
+
+func TestCuratorRollback_ChangeIndicatesRollback(t *testing.T) {
+	// Assert the Change entry in the result indicates the rollback.
+	original := "# Implementation Prompt\n\nWrite good code.\n\n## Section\n\n- Rule one\n"
+	dir, _ := setupCuratorDir(t, original)
+
+	// LLM returns content without any heading
+	llm := &fakeLLM{response: "This is just plain text with no structure whatsoever."}
+
+	audit := &AuditLogger{ProjectDir: dir}
+	c := &Curator{LLM: llm, Audit: audit}
+	lesson := &Lesson{
+		Target:          ".cloche/prompts/implement.md",
+		Insight:         "Important insight",
+		SuggestedAction: "Do something",
+	}
+
+	change, err := c.Apply(context.Background(), dir, lesson)
+	require.NoError(t, err)
+	require.NotNil(t, change)
+
+	// Verify the Change entry indicates rollback
+	assert.Equal(t, "prompt_update_rollback", change.Type)
+	assert.Equal(t, ".cloche/prompts/implement.md", change.File)
+	assert.Contains(t, change.Reason, "rolled back")
+	assert.Contains(t, change.Reason, "sanity check")
+	assert.NotEmpty(t, change.Snapshot)
+}
+
+func TestPromptSanityCheck(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		valid   bool
+	}{
+		{"empty", "", false},
+		{"whitespace only", "   \n\n  ", false},
+		{"no heading", "Just some text without markdown headings", false},
+		{"conversational", "I've updated the prompt for you.", false},
+		{"valid with subsection", "# Title\n\n## Section\n\nContent here.\n", true},
+		{"valid single heading with content", "# Title\n\nSome content here.\n", true},
+		{"valid content with heading not at start", "Write good code.\n\n## Learned Rules\n\n- Rule one\n", true},
+		{"garbage text", "asdf jkl; random garbage", false},
+		{"heading at start", "# Prompt\n\nDo things.\n", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.valid, promptSanityCheck(tt.content), "content: %q", tt.content)
+		})
+	}
+}
+
 func TestStripCodeFences_EmptyFences(t *testing.T) {
 	// Fences with nothing between them.
 	assert.Equal(t, "", stripCodeFences("```\n```"))
@@ -308,6 +432,8 @@ func setupOrchestratorDir(t *testing.T, workflowContent, promptContent, kbConten
 func TestOrchestratorReflectorProducesDuplicateLessons(t *testing.T) {
 	// Reflector produces lessons that are already in the knowledge base.
 	// The orchestrator should still apply them (curation handles dedup).
+	// Note: the prompt must NOT contain the lesson's insight text, otherwise
+	// lessonAlreadyPresent returns true and the curator skips the update.
 	kb := "# Knowledge Base: develop\n\n## Learned (2026-03-15)\n- [L001] high: Always sanitize user inputs (run-1, run-2)\n"
 	dir := setupOrchestratorDir(t,
 		`workflow "develop" {
@@ -318,7 +444,7 @@ func TestOrchestratorReflectorProducesDuplicateLessons(t *testing.T) {
   implement:success -> done
   implement:fail -> abort
 }`,
-		"# Prompt\n\nWrite good code.\n\n## Learned Rules\n\n- Always sanitize user inputs\n",
+		"# Prompt\n\nWrite good code.\n",
 		kb,
 	)
 
@@ -341,7 +467,7 @@ func TestOrchestratorReflectorProducesDuplicateLessons(t *testing.T) {
 
 	result, err := orch.Run(context.Background(), "run-3", nil, nil)
 	require.NoError(t, err)
-	// Should still process the lesson even though it's a duplicate
+	// Should still process the lesson even though it's a duplicate in KB
 	assert.Len(t, result.Changes, 1)
 	assert.Equal(t, "prompt_update", result.Changes[0].Type)
 
