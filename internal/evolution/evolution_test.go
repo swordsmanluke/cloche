@@ -375,12 +375,80 @@ func TestScriptGeneratorCreatesScript(t *testing.T) {
 
 // --- LLM Client tests ---
 
-func TestCommandLLMClient(t *testing.T) {
-	c := &CommandLLMClient{Command: "cat", Args: []string{}}
-	result, err := c.Complete(context.Background(), "system", "user prompt")
+func TestCommandLLMClientPrintMode(t *testing.T) {
+	// Use a shell script that dumps its args and stdin so we can verify
+	// that the client passes the right flags and prompt separation.
+	script := filepath.Join(t.TempDir(), "fake-claude.sh")
+	os.WriteFile(script, []byte(`#!/bin/sh
+echo "ARGS:$*"
+echo "STDIN:$(cat)"
+`), 0755)
+
+	c := &CommandLLMClient{Command: script, Args: []string{}}
+	result, err := c.Complete(context.Background(), "You are a helpful assistant.", "Summarize this text")
 	require.NoError(t, err)
-	assert.Contains(t, result, "user prompt")
-	assert.Contains(t, result, "system")
+
+	// Should include -p flag for print/non-interactive mode
+	assert.Contains(t, result, "-p")
+
+	// Should pass system prompt via --system-prompt flag
+	assert.Contains(t, result, "--system-prompt")
+	assert.Contains(t, result, "You are a helpful assistant.")
+
+	// Should pass --output-format text
+	assert.Contains(t, result, "--output-format text")
+
+	// Stdin should contain only the user prompt, not the system prompt
+	assert.Contains(t, result, "STDIN:Summarize this text")
+	assert.NotContains(t, result, "STDIN:You are a helpful assistant")
+}
+
+func TestCommandLLMClientEmptySystemPrompt(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "fake-claude.sh")
+	os.WriteFile(script, []byte(`#!/bin/sh
+echo "ARGS:$*"
+echo "STDIN:$(cat)"
+`), 0755)
+
+	c := &CommandLLMClient{Command: script, Args: []string{}}
+	result, err := c.Complete(context.Background(), "", "just user prompt")
+	require.NoError(t, err)
+
+	// Should NOT include --system-prompt when system prompt is empty
+	assert.NotContains(t, result, "--system-prompt")
+	// Should still have -p and --output-format
+	assert.Contains(t, result, "-p")
+	assert.Contains(t, result, "--output-format text")
+	assert.Contains(t, result, "STDIN:just user prompt")
+}
+
+func TestCommandLLMClientExtraArgs(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "fake-claude.sh")
+	os.WriteFile(script, []byte(`#!/bin/sh
+echo "ARGS:$*"
+echo "STDIN:$(cat)"
+`), 0755)
+
+	c := &CommandLLMClient{Command: script, Args: []string{"--model", "sonnet"}}
+	result, err := c.Complete(context.Background(), "sys", "usr")
+	require.NoError(t, err)
+
+	// Extra args should appear before the appended flags
+	assert.Contains(t, result, "--model sonnet")
+	assert.Contains(t, result, "-p")
+}
+
+func TestCommandLLMClientDoesNotMutateArgs(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "fake-claude.sh")
+	os.WriteFile(script, []byte("#!/bin/sh\ncat\n"), 0755)
+
+	original := []string{"--verbose"}
+	c := &CommandLLMClient{Command: script, Args: original}
+	_, err := c.Complete(context.Background(), "sys", "usr")
+	require.NoError(t, err)
+
+	// The original Args slice should not be modified between calls.
+	assert.Equal(t, []string{"--verbose"}, original)
 }
 
 // --- Orchestrator tests ---

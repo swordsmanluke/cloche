@@ -1766,19 +1766,26 @@ adapter — shell out to a command (e.g., `claude -p`).
 **Step 1: Write failing test**
 
 ```go
-func TestCommandLLMClient(t *testing.T) {
-	// Use echo as a fake LLM
-	c := &CommandLLMClient{Command: "cat", Args: []string{}}
-	result, err := c.Complete(context.Background(), "system", "user prompt")
+func TestCommandLLMClientPrintMode(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "fake-claude.sh")
+	os.WriteFile(script, []byte("#!/bin/sh\necho \"ARGS:$*\"\necho \"STDIN:$(cat)\"\n"), 0755)
+
+	c := &CommandLLMClient{Command: script, Args: []string{}}
+	result, err := c.Complete(context.Background(), "You are a helpful assistant.", "Summarize this text")
 	require.NoError(t, err)
-	assert.Contains(t, result, "user prompt")
+	assert.Contains(t, result, "-p")
+	assert.Contains(t, result, "--system-prompt")
+	assert.Contains(t, result, "--output-format text")
+	assert.Contains(t, result, "STDIN:Summarize this text")
 }
 ```
 
 **Step 2: Run test, implement, run test again**
 
-The `CommandLLMClient` takes a system prompt and user prompt, combines them, and
-pipes to the command via stdin. Captures stdout as the response.
+The `CommandLLMClient` invokes the LLM command in print mode (`-p`) for
+non-interactive output. The system prompt is passed via the `--system-prompt`
+flag so the LLM can distinguish it from user content, and `--output-format text`
+is used to avoid JSON wrappers. Only the user prompt is piped via stdin.
 
 **Step 3: Commit**
 
