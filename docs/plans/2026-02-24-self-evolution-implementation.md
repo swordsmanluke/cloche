@@ -1236,9 +1236,9 @@ func TestScriptGeneratorCreatesScript(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "gosec")
 
-	// Verify executable
+	// Verify non-executable (workflow engine handles execution)
 	info, _ := os.Stat(filepath.Join(dir, "scripts", "security-scan.sh"))
-	assert.NotZero(t, info.Mode()&0111)
+	assert.Equal(t, os.FileMode(0644), info.Mode().Perm())
 }
 ```
 
@@ -1254,9 +1254,12 @@ Create `internal/evolution/scriptgen.go`:
 The ScriptGenerator:
 1. Sends the lesson to the LLM asking it to generate a checker script
 2. Parses the response as JSON with `path` and `content` fields
-3. Creates parent directories if needed
-4. Writes the script file with executable permissions (0755)
-5. For agent-type steps, generates a prompt file instead
+3. Validates the path starts with `scripts/` or `.cloche/scripts/` and contains no `..` traversal
+4. Validates the content starts with a shebang line (`#!/bin/bash` or similar)
+5. Verifies the resolved path stays within the project directory
+6. Rejects the script if the file already exists (no overwrite)
+7. Creates parent directories if needed
+8. Writes the script file as non-executable (0644); the workflow engine handles execution
 
 **Step 4: Run tests**
 

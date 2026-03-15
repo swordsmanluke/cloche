@@ -509,7 +509,7 @@ func TestScriptGeneratorCreatesScript(t *testing.T) {
 
 	info, err := os.Stat(filepath.Join(dir, "scripts", "security-scan.sh"))
 	require.NoError(t, err)
-	assert.NotZero(t, info.Mode()&0111) // executable
+	assert.Zero(t, info.Mode()&0111) // non-executable; workflow engine handles execution
 }
 
 // --- LLM Client tests ---

@@ -25,6 +25,19 @@ type GeneratedScript struct {
 	Content string
 }
 
+// validateScriptPath checks that a script path is constrained to allowed directories.
+func validateScriptPath(p string) error {
+	if strings.Contains(p, "..") {
+		return fmt.Errorf("path must not contain '..'")
+	}
+
+	cleaned := filepath.Clean(p)
+	if strings.HasPrefix(cleaned, "scripts/") || strings.HasPrefix(cleaned, ".cloche/scripts/") {
+		return nil
+	}
+	return fmt.Errorf("path must start with scripts/ or .cloche/scripts/")
+}
+
 // Generate creates a script file based on the lesson.
 func (g *ScriptGenerator) Generate(ctx context.Context, projectDir string, lesson *Lesson) (*GeneratedScript, error) {
 	systemPrompt := `You are a script generator for software validation workflows.
@@ -57,14 +70,42 @@ Do not include any other text.`
 		return nil, fmt.Errorf("script generator returned empty path or content")
 	}
 
-	// Create parent directories
+	// Validate path is within allowed directories
+	if err := validateScriptPath(resp.Path); err != nil {
+		return nil, fmt.Errorf("invalid script path %q: %w", resp.Path, err)
+	}
+
+	// Validate content starts with a shebang line
+	if !strings.HasPrefix(resp.Content, "#!") {
+		return nil, fmt.Errorf("script content must start with a shebang line (e.g. #!/bin/bash)")
+	}
+
+	// Resolve full path and verify it stays within projectDir
 	fullPath := filepath.Join(projectDir, resp.Path)
+	resolved, err := filepath.Abs(fullPath)
+	if err != nil {
+		return nil, fmt.Errorf("resolving script path: %w", err)
+	}
+	absProject, err := filepath.Abs(projectDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolving project dir: %w", err)
+	}
+	if !strings.HasPrefix(resolved, absProject+string(filepath.Separator)) {
+		return nil, fmt.Errorf("script path %q resolves outside project directory", resp.Path)
+	}
+
+	// Check if script already exists — do not overwrite
+	if _, err := os.Stat(fullPath); err == nil {
+		return nil, fmt.Errorf("script %q already exists; will not overwrite", resp.Path)
+	}
+
+	// Create parent directories
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
 		return nil, fmt.Errorf("creating script directory: %w", err)
 	}
 
-	// Write with executable permissions
-	if err := os.WriteFile(fullPath, []byte(resp.Content), 0755); err != nil {
+	// Write as non-executable; the workflow engine handles execution
+	if err := os.WriteFile(fullPath, []byte(resp.Content), 0644); err != nil {
 		return nil, fmt.Errorf("writing script file: %w", err)
 	}
 
