@@ -662,6 +662,33 @@ cloche run --workflow <name> [--prompt "..."] [--title "..."] [--issue ID] [--ke
 Must be run from inside a git repository. The daemon auto-rebuilds the Docker image
 when `.cloche/Dockerfile` changes.
 
+### `cloche resume`
+
+Resume a failed workflow run from a specific step.
+
+```
+cloche resume <run-id> [step-name]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `<run-id>` | The run identifier of the failed run. |
+| `[step-name]` | Step to resume from. If omitted, resumes from the first failed step. |
+
+**Prerequisites:** The run must be in a failed state. For container workflows, the
+container must still exist (failed runs keep their containers by default).
+
+**Step-specific resume behavior:**
+
+| Step type | Behavior |
+|-----------|----------|
+| script | Reruns the script fresh. Updated scripts are picked up. |
+| prompt | Resumes the conversation instead of starting a new one. For Claude Code, this uses the `-c` flag with a "retry" prompt. |
+| workflow | Same as script — starts the step again, passing values from previous steps' output. |
+
+Steps that completed successfully before the resume point are skipped; their results
+are replayed through the wiring so downstream steps receive the same inputs.
+
 ### `cloche status`
 
 ```

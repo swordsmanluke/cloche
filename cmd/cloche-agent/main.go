@@ -18,12 +18,21 @@ func main() {
 	}
 
 	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "usage: cloche-agent <workflow-file>\n")
+		fmt.Fprintf(os.Stderr, "usage: cloche-agent <workflow-file> [--resume-from <step>]\n")
 		os.Exit(1)
 	}
 
 	workflowPath := os.Args[1]
 	workDir, _ := os.Getwd()
+
+	// Parse --resume-from flag
+	var resumeFromStep string
+	for i := 2; i < len(os.Args); i++ {
+		if os.Args[i] == "--resume-from" && i+1 < len(os.Args) {
+			i++
+			resumeFromStep = os.Args[i]
+		}
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -39,10 +48,11 @@ func main() {
 	os.Unsetenv("CLOCHE_RUN_ID")
 
 	runner := agent.NewRunner(agent.RunnerConfig{
-		WorkflowPath: workflowPath,
-		WorkDir:      workDir,
-		StatusOutput: os.Stdout,
-		RunID:        runID,
+		WorkflowPath:   workflowPath,
+		WorkDir:        workDir,
+		StatusOutput:   os.Stdout,
+		RunID:          runID,
+		ResumeFromStep: resumeFromStep,
 	})
 
 	if err := runner.Run(ctx); err != nil {

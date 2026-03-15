@@ -38,3 +38,16 @@ type ContainerRuntime interface {
 type ImageEnsurer interface {
 	EnsureImage(ctx context.Context, projectDir, image string) error
 }
+
+// ContainerCommitter is an optional interface for creating an image from a
+// stopped container's filesystem state. Used for resume: the committed image
+// preserves all step outputs and workspace changes from the failed run.
+type ContainerCommitter interface {
+	Commit(ctx context.Context, containerID string) (imageID string, err error)
+}
+
+// ContainerCopier is an optional interface for copying files into a container.
+// Used to inject updated scripts before resuming a run.
+type ContainerCopier interface {
+	CopyTo(ctx context.Context, containerID string, srcPath, dstPath string) error
+}

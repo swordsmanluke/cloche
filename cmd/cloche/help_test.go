@@ -29,7 +29,7 @@ func TestHasHelpFlag(t *testing.T) {
 
 func TestSubcommandHelpExists(t *testing.T) {
 	commands := []string{
-		"init", "health", "run", "status", "logs", "poll",
+		"init", "health", "run", "resume", "status", "logs", "poll",
 		"list", "stop", "delete", "tasks", "loop", "get", "set", "shutdown",
 		"workflow", "project",
 	}

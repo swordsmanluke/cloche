@@ -20,6 +20,12 @@ service ClocheService {
   rpc GetProjectInfo(GetProjectInfoRequest) returns (GetProjectInfoResponse);
 
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
+
+  // ResumeRun is handled via gRPC metadata on the RunWorkflow RPC:
+  //   x-cloche-resume-run-id: the run ID to resume
+  //   x-cloche-resume-step: optional step name to resume from
+  // When these headers are present, RunWorkflow enters resume mode instead
+  // of creating a new run.
 }
 
 message RunWorkflowRequest {

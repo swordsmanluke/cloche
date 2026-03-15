@@ -84,6 +84,36 @@ Examples:
   cloche run develop -p "Fix auth bug" -i TASK-123
 `,
 
+	"resume": `cloche resume — Resume a failed workflow run
+
+Re-attempts a failed workflow run from a specific step. The container
+must still be available for container workflows (failed runs keep their
+containers by default).
+
+Usage:
+  cloche resume <run-id> [step-name]
+
+Arguments:
+  <run-id>      The run identifier of the failed run.
+  [step-name]   Step to resume from (optional). If omitted, resumes from
+                the first failed step.
+
+Step-specific resume behavior:
+  script step    Reruns the script fresh. Updated scripts are picked up.
+  prompt step    Resumes the conversation (Claude: -c flag with "retry"
+                 prompt) instead of starting a new one.
+  workflow step  Same as script — starts the step again, passing values
+                 from previous steps' output.
+
+Prerequisites:
+  - The workflow run must be in a failed state.
+  - For container workflows, the container must still exist.
+
+Examples:
+  cloche resume develop-lush-fern-470c
+  cloche resume develop-lush-fern-470c implement
+`,
+
 	"status": `cloche status — Check run or daemon status
 
 With a run ID, shows the current state of a workflow run including its
@@ -504,6 +534,7 @@ Workflow Info:
 
 Workflow Runs:
   run        Launch a workflow run in a container
+  resume     Resume a failed workflow run from a specific step
   status     Show daemon overview or check a specific run's status
   logs       Show or stream logs for a run
   poll       Wait for one or more runs to finish (blocks until terminal)

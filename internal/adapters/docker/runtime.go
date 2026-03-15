@@ -254,6 +254,32 @@ func (r *Runtime) Inspect(ctx context.Context, containerID string) (*ports.Conta
 	}, nil
 }
 
+func (r *Runtime) Commit(ctx context.Context, containerID string) (string, error) {
+	short := containerID
+	if len(short) > 12 {
+		short = short[:12]
+	}
+	tag := "cloche-resume-" + short
+	cmd := exec.CommandContext(ctx, "docker", "commit", containerID, tag)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("committing container: %s: %w", stderr.String(), err)
+	}
+	return tag, nil
+}
+
+func (r *Runtime) CopyTo(ctx context.Context, containerID string, srcPath, dstPath string) error {
+	cmd := exec.CommandContext(ctx, "docker", "cp", srcPath, containerID+":"+dstPath)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("copying to container: %s: %w", stderr.String(), err)
+	}
+	return nil
+}
+
 type cmdReadCloser struct {
 	io.ReadCloser
 	cmd *exec.Cmd

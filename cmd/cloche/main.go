@@ -110,7 +110,7 @@ func main() {
 
 	// Handle --help for daemon commands before connecting
 	daemonCmds := map[string]bool{
-		"run": true, "status": true, "logs": true, "poll": true,
+		"run": true, "resume": true, "status": true, "logs": true, "poll": true,
 		"list": true, "stop": true, "delete": true, "loop": true, "shutdown": true,
 	}
 	if daemonCmds[os.Args[1]] && hasHelpFlag(os.Args[2:]) {
@@ -138,6 +138,8 @@ func main() {
 	switch os.Args[1] {
 	case "run":
 		cmdRun(ctx, client, os.Args[2:])
+	case "resume":
+		cmdResume(ctx, client, os.Args[2:])
 	case "status":
 		cmdStatus(ctx, client, os.Args[2:])
 	case "logs":
@@ -226,6 +228,33 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 		os.Exit(1)
 	}
 	fmt.Printf("Started run: %s\n", resp.RunId)
+}
+
+func cmdResume(ctx context.Context, client pb.ClocheServiceClient, args []string) {
+	if len(args) < 1 {
+		fmt.Fprintf(os.Stderr, "usage: cloche resume <run-id> [step-name]\n")
+		os.Exit(1)
+	}
+
+	runID := args[0]
+	stepName := ""
+	if len(args) > 1 {
+		stepName = args[1]
+	}
+
+	// Send resume via gRPC metadata on a RunWorkflow call
+	md := metadata.Pairs(
+		"x-cloche-resume-run-id", runID,
+		"x-cloche-resume-step", stepName,
+	)
+	ctx = metadata.NewOutgoingContext(ctx, md)
+
+	resp, err := client.RunWorkflow(ctx, &pb.RunWorkflowRequest{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Resumed run: %s\n", resp.RunId)
 }
 
 func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string) {

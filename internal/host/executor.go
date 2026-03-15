@@ -61,6 +61,7 @@ type Executor struct {
 	AgentArgs     []string       // workflow-level explicit agent args (overrides defaults)
 	TaskID        string         // optional task ID assigned by the daemon loop
 	ExtraEnv      []string       // additional KEY=VALUE env vars for all steps
+	ResumeStep    string         // step being resumed (for prompt conversation resume)
 }
 
 // scriptDir returns the directory from which scripts should execute.
@@ -241,6 +242,11 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (string,
 	}
 
 	adapter.RunID = e.HostRunID
+
+	// Resume mode: if this is the step being resumed, use conversation resume
+	if e.ResumeStep == step.Name {
+		adapter.ResumeConversation = true
+	}
 
 	// Write previous step output as user prompt so the adapter can pick it up.
 	var promptContent string

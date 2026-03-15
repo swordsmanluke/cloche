@@ -18,10 +18,11 @@ import (
 )
 
 type RunnerConfig struct {
-	WorkflowPath string
-	WorkDir      string
-	StatusOutput io.Writer
-	RunID        string
+	WorkflowPath   string
+	WorkDir        string
+	StatusOutput   io.Writer
+	RunID          string
+	ResumeFromStep string // when non-empty, resume the workflow from this step
 }
 
 type Runner struct {
@@ -61,9 +62,11 @@ func (r *Runner) Run(ctx context.Context) error {
 		promptAdapter.ExplicitArgs = strings.Fields(args)
 	}
 
-	// Reset per-run state from any previous run
+	// Reset per-run state from any previous run — but preserve outputs when resuming
 	_ = os.RemoveAll(filepath.Join(r.cfg.WorkDir, ".cloche", "attempt_count"))
-	_ = os.RemoveAll(filepath.Join(r.cfg.WorkDir, ".cloche", "output"))
+	if r.cfg.ResumeFromStep == "" {
+		_ = os.RemoveAll(filepath.Join(r.cfg.WorkDir, ".cloche", "output"))
+	}
 
 	// Create unified log writer
 	ulog, err := logstream.New(r.cfg.WorkDir)
@@ -75,15 +78,25 @@ func (r *Runner) Run(ctx context.Context) error {
 	genericAdapter.StatusWriter = statusWriter
 
 	executor := &stepExecutor{
-		workDir:      r.cfg.WorkDir,
-		generic:      genericAdapter,
-		prompt:       promptAdapter,
-		logStream:    ulog,
-		statusWriter: statusWriter,
+		workDir:        r.cfg.WorkDir,
+		generic:        genericAdapter,
+		prompt:         promptAdapter,
+		logStream:      ulog,
+		statusWriter:   statusWriter,
+		resumeFromStep: r.cfg.ResumeFromStep,
 	}
 
 	eng := engine.New(executor)
 	eng.SetStatusHandler(&statusReporter{writer: statusWriter, logStream: ulog})
+
+	// Resume mode: load completed step results and configure engine
+	if r.cfg.ResumeFromStep != "" {
+		preloaded, err := loadCompletedStepResults(r.cfg.WorkDir, wf, r.cfg.ResumeFromStep)
+		if err != nil {
+			return fmt.Errorf("loading completed step results for resume: %w", err)
+		}
+		eng.SetPreloadedResults(preloaded)
+	}
 
 	// Generate a run title from the prompt if one was not provided by the caller.
 	// The daemon sets title from --title; if empty, the agent extracts from prompt.
@@ -121,11 +134,12 @@ func (r *Runner) Run(ctx context.Context) error {
 }
 
 type stepExecutor struct {
-	workDir      string
-	generic      *generic.Adapter
-	prompt       *prompt.Adapter
-	logStream    *logstream.Writer
-	statusWriter *protocol.StatusWriter
+	workDir        string
+	generic        *generic.Adapter
+	prompt         *prompt.Adapter
+	logStream      *logstream.Writer
+	statusWriter   *protocol.StatusWriter
+	resumeFromStep string // the step being resumed (for prompt resume mode)
 }
 
 func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, error) {
@@ -146,6 +160,11 @@ func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, 
 			}
 			if args := step.Config["agent_args"]; args != "" {
 				e.prompt.ExplicitArgs = strings.Fields(args)
+			}
+			// Resume mode: if this is the step being resumed, use conversation resume
+			if e.resumeFromStep == step.Name {
+				e.prompt.ResumeConversation = true
+				defer func() { e.prompt.ResumeConversation = false }()
 			}
 			result, err := e.prompt.Execute(ctx, step, e.workDir)
 			e.copyToLLMLog(step.Name)
@@ -195,6 +214,73 @@ func (s *statusReporter) OnStepComplete(_ *domain.Run, step *domain.Step, result
 }
 
 func (s *statusReporter) OnRunComplete(_ *domain.Run) {}
+
+// loadCompletedStepResults builds a map of step_name -> result for all steps
+// that completed successfully before the resume point. It walks the workflow
+// graph from the entry step, following wires, collecting results from the
+// history log. Steps at or after the resumeFrom step are excluded.
+func loadCompletedStepResults(workDir string, wf *domain.Workflow, resumeFrom string) (map[string]string, error) {
+	preloaded := make(map[string]string)
+
+	// Parse step results from history.log
+	historyPath := filepath.Join(workDir, ".cloche", "history.log")
+	data, err := os.ReadFile(historyPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading history log: %w", err)
+	}
+
+	// Extract step:result pairs from history entries
+	stepResults := make(map[string]string)
+	for _, line := range strings.Split(string(data), "\n") {
+		// History format: [timestamp] step:<name> result:<result> ...
+		if !strings.Contains(line, "step:") || !strings.Contains(line, "result:") {
+			continue
+		}
+		var stepName, result string
+		for _, field := range strings.Fields(line) {
+			if strings.HasPrefix(field, "step:") {
+				stepName = strings.TrimPrefix(field, "step:")
+			}
+			if strings.HasPrefix(field, "result:") {
+				result = strings.TrimPrefix(field, "result:")
+			}
+		}
+		if stepName != "" && result != "" {
+			stepResults[stepName] = result
+		}
+	}
+
+	// Walk the workflow graph from entry step, collecting completed steps
+	// until we reach the resume step
+	visited := make(map[string]bool)
+	var walk func(stepName string)
+	walk = func(stepName string) {
+		if visited[stepName] || stepName == resumeFrom {
+			return
+		}
+		visited[stepName] = true
+
+		result, ok := stepResults[stepName]
+		if !ok {
+			return
+		}
+		preloaded[stepName] = result
+
+		// Follow wires from this step's result
+		nextSteps, err := wf.NextSteps(stepName, result)
+		if err != nil {
+			return
+		}
+		for _, next := range nextSteps {
+			if next != domain.StepDone && next != domain.StepAbort {
+				walk(next)
+			}
+		}
+	}
+
+	walk(wf.EntryStep)
+	return preloaded, nil
+}
 
 // extractTitle tries to derive a one-line summary from the run's prompt content.
 // It reads the per-run prompt.txt file (written by the daemon before container start),

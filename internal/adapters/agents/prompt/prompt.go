@@ -23,10 +23,11 @@ var defaultAgentArgs = map[string][]string{
 }
 
 type Adapter struct {
-	Commands     []string // ordered fallback chain of agent commands
-	ExplicitArgs []string // if non-nil, overrides default args for all commands
-	RunID        string
-	StatusWriter *protocol.StatusWriter // optional: streams live output lines
+	Commands           []string // ordered fallback chain of agent commands
+	ExplicitArgs       []string // if non-nil, overrides default args for all commands
+	RunID              string
+	StatusWriter       *protocol.StatusWriter // optional: streams live output lines
+	ResumeConversation bool                   // when true, resume previous conversation instead of starting new one
 }
 
 func New() *Adapter {
@@ -79,9 +80,15 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	incrementAttemptCount(workDir, step.Name)
 
 	// Build the full prompt
-	fullPrompt, err := assemblePrompt(step, workDir, a.RunID)
-	if err != nil {
-		return "", fmt.Errorf("assembling prompt: %w", err)
+	var fullPrompt string
+	if a.ResumeConversation {
+		fullPrompt = "retry"
+	} else {
+		var err error
+		fullPrompt, err = assemblePrompt(step, workDir, a.RunID)
+		if err != nil {
+			return "", fmt.Errorf("assembling prompt: %w", err)
+		}
 	}
 
 	// Try each command in the fallback chain
@@ -147,6 +154,10 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 //   - Command exited non-zero but produced a CLOCHE_RESULT marker
 func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string, workDir string, stepName string) (result string, stdout []byte, fallbackErr error) {
 	args := a.argsFor(command)
+	// Resume mode: add -c flag to resume previous conversation
+	if a.ResumeConversation {
+		args = append([]string{"-c"}, args...)
+	}
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = workDir
 	cmd.Stdin = strings.NewReader(prompt)

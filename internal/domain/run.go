@@ -121,6 +121,18 @@ func (r *Run) Fail(msg string) {
 	r.ErrorMessage = msg
 }
 
+// FindFirstFailedStep returns the name of the first step that produced a
+// failure result (fail/error) in the run's step executions.
+// Returns empty string if no failed step is found.
+func (r *Run) FindFirstFailedStep() string {
+	for _, exec := range r.StepExecutions {
+		if exec.Result == "fail" || exec.Result == "error" {
+			return exec.StepName
+		}
+	}
+	return ""
+}
+
 // stateSeverity returns a severity score for terminal RunStates.
 // Higher values indicate worse outcomes.
 func stateSeverity(s RunState) int {

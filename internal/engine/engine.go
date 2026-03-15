@@ -38,10 +38,11 @@ func (noopStatus) OnStepComplete(*domain.Run, *domain.Step, string) {}
 func (noopStatus) OnRunComplete(*domain.Run)                        {}
 
 type Engine struct {
-	executor       StepExecutor
-	status         StatusHandler
-	maxSteps       int
-	defaultTimeout time.Duration
+	executor         StepExecutor
+	status           StatusHandler
+	maxSteps         int
+	defaultTimeout   time.Duration
+	preloadedResults map[string]string // step_name -> result for resume mode
 }
 
 func New(executor StepExecutor) *Engine {
@@ -64,6 +65,14 @@ func (e *Engine) SetMaxSteps(n int) {
 // SetDefaultTimeout sets the default timeout for steps that don't specify one.
 func (e *Engine) SetDefaultTimeout(d time.Duration) {
 	e.defaultTimeout = d
+}
+
+// SetPreloadedResults configures the engine to skip execution of steps whose
+// results are already known. When a step in this map is launched, the engine
+// immediately produces the stored result without calling the executor. This is
+// used for resume mode: completed steps before the resume point are replayed.
+func (e *Engine) SetPreloadedResults(results map[string]string) {
+	e.preloadedResults = results
 }
 
 // stepResult is sent from worker goroutines back to the main event loop.
@@ -144,6 +153,16 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 		activeCount++
 		run.RecordStepStart(step.Name)
 		e.status.OnStepStart(run, step)
+
+		// Resume mode: if this step has a preloaded result, replay it
+		// instead of executing. This allows completed steps to be
+		// skipped while preserving the wiring logic.
+		if preloadedResult, ok := e.preloadedResults[stepName]; ok {
+			go func(name, result string) {
+				results <- stepResult{stepName: name, result: result}
+			}(step.Name, preloadedResult)
+			return nil
+		}
 
 		go func(s *domain.Step) {
 			stepCtx := ctx

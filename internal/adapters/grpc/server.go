@@ -88,6 +88,11 @@ func (s *ClocheServer) SetShutdownFunc(fn func()) {
 }
 
 func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
+	// Check for resume mode via gRPC metadata
+	if resumeRunID := resumeRunIDFromContext(ctx); resumeRunID != "" {
+		return s.resumeRun(ctx, resumeRunID, resumeStepFromContext(ctx))
+	}
+
 	// Check if this is a host workflow (has host {} block).
 	if hostWFs, err := host.FindHostWorkflows(req.ProjectDir); err == nil {
 		if _, isHost := hostWFs[req.WorkflowName]; isHost {
@@ -163,6 +168,150 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 	}()
 
 	return &pb.RunWorkflowResponse{RunId: runID}, nil
+}
+
+// resumeRunIDFromContext extracts the resume run ID from gRPC metadata.
+func resumeRunIDFromContext(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+	vals := md.Get("x-cloche-resume-run-id")
+	if len(vals) == 0 {
+		return ""
+	}
+	return vals[0]
+}
+
+// resumeStepFromContext extracts the resume step name from gRPC metadata.
+func resumeStepFromContext(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+	vals := md.Get("x-cloche-resume-step")
+	if len(vals) == 0 {
+		return ""
+	}
+	return vals[0]
+}
+
+// resumeRun resumes a failed workflow run from a specific step.
+func (s *ClocheServer) resumeRun(ctx context.Context, runID, stepName string) (*pb.RunWorkflowResponse, error) {
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil {
+		return nil, fmt.Errorf("run %q not found: %w", runID, err)
+	}
+
+	if run.State != domain.RunStateFailed {
+		return nil, fmt.Errorf("run %q is in state %q, only failed runs can be resumed", runID, run.State)
+	}
+
+	// Determine the resume step: use provided step name, or find first failed step
+	if stepName == "" {
+		stepName = run.FindFirstFailedStep()
+		if stepName == "" {
+			return nil, fmt.Errorf("run %q has no failed step to resume from", runID)
+		}
+	}
+
+	if run.IsHost {
+		return s.resumeHostRun(ctx, run, stepName)
+	}
+	return s.resumeContainerRun(ctx, run, stepName)
+}
+
+// resumeHostRun resumes a failed host workflow run.
+func (s *ClocheServer) resumeHostRun(ctx context.Context, run *domain.Run, stepName string) (*pb.RunWorkflowResponse, error) {
+	runner := &host.Runner{
+		Dispatcher:   s,
+		Store:        s.store,
+		Captures:     s.captures,
+		LogBroadcast: s.logBroadcast,
+		TaskID:       run.TaskID,
+	}
+
+	go func() {
+		runner.ResumeRun(context.Background(), run, stepName)
+	}()
+
+	return &pb.RunWorkflowResponse{RunId: run.ID}, nil
+}
+
+// resumeContainerRun resumes a failed container workflow run.
+func (s *ClocheServer) resumeContainerRun(ctx context.Context, run *domain.Run, stepName string) (*pb.RunWorkflowResponse, error) {
+	if s.container == nil {
+		return nil, fmt.Errorf("no container runtime configured")
+	}
+
+	// Verify container still exists
+	cs, err := s.container.Inspect(ctx, run.ContainerID)
+	if err != nil {
+		return nil, fmt.Errorf("container %s not found (may have been cleaned up): %w", run.ContainerID, err)
+	}
+	if cs.Running {
+		return nil, fmt.Errorf("container %s is still running", run.ContainerID)
+	}
+
+	// Commit the container to preserve its filesystem state
+	committer, ok := s.container.(ports.ContainerCommitter)
+	if !ok {
+		return nil, fmt.Errorf("container runtime does not support resume (no commit capability)")
+	}
+
+	imageID, err := committer.Commit(ctx, run.ContainerID)
+	if err != nil {
+		return nil, fmt.Errorf("committing container state: %w", err)
+	}
+
+	// Copy updated scripts and overrides from host into the committed image
+	// by starting a new container with the resume command
+	resumeCmd := []string{
+		"cloche-agent", ".cloche/" + run.WorkflowName + ".cloche",
+		"--resume-from", stepName,
+	}
+
+	// Reset run state
+	run.State = domain.RunStateRunning
+	run.ErrorMessage = ""
+	run.CompletedAt = time.Time{}
+	run.ActiveSteps = nil
+	_ = s.store.UpdateRun(ctx, run)
+
+	// Start new container from committed image with resume command
+	go s.launchResumeContainer(run, imageID, resumeCmd)
+
+	return &pb.RunWorkflowResponse{RunId: run.ID}, nil
+}
+
+// launchResumeContainer starts a new container from a committed image with
+// the resume command, then tracks it to completion.
+func (s *ClocheServer) launchResumeContainer(run *domain.Run, image string, cmd []string) {
+	ctx := context.Background()
+
+	containerID, err := s.container.Start(ctx, ports.ContainerConfig{
+		Image:        image,
+		WorkflowName: run.WorkflowName,
+		ProjectDir:   run.ProjectDir,
+		RunID:        run.ID,
+		NetworkAllow: []string{"*"},
+		Cmd:          cmd,
+	})
+	if err != nil {
+		run.Fail(fmt.Sprintf("failed to start resume container: %v", err))
+		_ = s.store.UpdateRun(ctx, run)
+		log.Printf("run %s: failed to start resume container: %v", run.ID, err)
+		return
+	}
+
+	s.mu.Lock()
+	s.runIDs[run.ID] = containerID
+	s.mu.Unlock()
+
+	run.ContainerID = containerID
+	_ = s.store.UpdateRun(ctx, run)
+
+	s.trackRun(run.ID, containerID, run.ProjectDir, run.WorkflowName, true)
 }
 
 // launchAndTrack starts the container and then tracks it to completion.

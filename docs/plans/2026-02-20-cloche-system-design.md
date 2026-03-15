@@ -25,6 +25,7 @@ Short-lived process. Talks to `cloched` over gRPC (Unix socket locally, TCP remo
 
 Subcommands:
 - `run <workflow>` — Launch a new workflow run
+- `resume <run-id> [step]` — Resume a failed run from a specific step (or first failed step)
 - `status [run-id]` — Check run status
 - `logs <run-id>` — Stream logs from a running workflow (bidirectional gRPC stream)
 - `stop <run-id>` — Cancel a running workflow (signals container with SIGTERM)
