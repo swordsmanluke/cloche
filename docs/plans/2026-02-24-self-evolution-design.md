@@ -226,6 +226,13 @@ Handles `prompt_improvement` lessons.
 - Code-fence stripping: LLM responses are cleaned of markdown code fences
   (` ``` `) before writing, extracting only the content between fences. This
   prevents meta-commentary or formatting artifacts from leaking into prompt files.
+- Conversational response validation: after stripping code fences, the output is
+  checked for conversational markers (e.g. "I need write permission", "Here is
+  the updated prompt:", "Could you grant access"). If the LLM returned
+  meta-conversation text instead of prompt content, the curator falls back to
+  appending the lesson directly as a structured bullet rather than trusting the
+  LLM output. This prevents prompt file corruption when the LLM produces
+  interactive-style responses.
 - Output: the modified prompt file content, written to disk
 
 #### Branch B: Script Generator (LLM)

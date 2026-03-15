@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -43,6 +44,12 @@ Rules:
 
 	updated := stripCodeFences(raw)
 
+	// Validate that the LLM output is actual prompt content, not meta-conversation
+	if isConversationalResponse(updated) {
+		// Fallback: append the lesson directly rather than trusting the LLM
+		updated = appendLessonDirectly(string(current), lesson)
+	}
+
 	// Snapshot before writing
 	var snapName string
 	if c.Audit != nil {
@@ -59,6 +66,39 @@ Rules:
 		Reason:   lesson.Insight,
 		Snapshot: snapName,
 	}, nil
+}
+
+// conversationalMarkers are patterns that indicate the LLM returned
+// meta-conversation text instead of prompt content.
+var conversationalMarkers = regexp.MustCompile(
+	`(?i)^(I need |I can't |I cannot |Could you |Please grant |` +
+		`I don't have |I do not have |permission|write access|blocked by|` +
+		`Here is the updated|Here's the updated|I've updated|I have updated|` +
+		`Let me |I'll |I will )`)
+
+// isConversationalResponse checks whether the LLM output appears to be
+// meta-conversation text rather than actual prompt content.
+func isConversationalResponse(s string) bool {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return true
+	}
+	// Check the first non-empty line for conversational markers
+	firstLine := trimmed
+	if idx := strings.Index(trimmed, "\n"); idx != -1 {
+		firstLine = trimmed[:idx]
+	}
+	return conversationalMarkers.MatchString(strings.TrimSpace(firstLine))
+}
+
+// appendLessonDirectly adds a lesson to the prompt content without LLM help,
+// used as a fallback when the LLM returns conversational text.
+func appendLessonDirectly(current string, lesson *Lesson) string {
+	current = strings.TrimRight(current, "\n")
+	if strings.Contains(current, "## Learned Rules") {
+		return current + fmt.Sprintf("\n- %s: %s\n", lesson.Insight, lesson.SuggestedAction)
+	}
+	return current + fmt.Sprintf("\n\n## Learned Rules\n\n- %s: %s\n", lesson.Insight, lesson.SuggestedAction)
 }
 
 // stripCodeFences removes markdown code fences from an LLM response,

@@ -344,6 +344,145 @@ func TestCuratorStripsCodeFencesFromResponse(t *testing.T) {
 	assert.NotContains(t, string(content), "```")
 }
 
+func TestCuratorRejectsConversationalMetaText(t *testing.T) {
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, ".cloche", "prompts", "fix.md")
+	os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
+	original := "# Fix Prompt\n\nFix bugs carefully.\n"
+	os.WriteFile(promptPath, []byte(original), 0644)
+
+	// LLM returns conversational meta-text
+	llm := &fakeLLM{response: "I need write permission to update the file. Could you grant access to .cloche/prompts/fix.md?"}
+	audit := &AuditLogger{ProjectDir: dir}
+	c := &Curator{LLM: llm, Audit: audit}
+	lesson := &Lesson{
+		Target:          ".cloche/prompts/fix.md",
+		Insight:         "Missing error context",
+		SuggestedAction: "Wrap errors with context",
+	}
+
+	_, err := c.Apply(context.Background(), dir, lesson)
+	require.NoError(t, err)
+
+	content, err := os.ReadFile(promptPath)
+	require.NoError(t, err)
+	// Must NOT contain the conversational text
+	assert.NotContains(t, string(content), "I need write permission")
+	assert.NotContains(t, string(content), "Could you grant access")
+	// Should contain the original content and the lesson appended directly
+	assert.Contains(t, string(content), "# Fix Prompt")
+	assert.Contains(t, string(content), "Missing error context")
+}
+
+func TestCuratorRejectsUnfencedConversationalPrefix(t *testing.T) {
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, ".cloche", "prompts", "implement.md")
+	os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
+	original := "# Implementation Prompt\n\nWrite good code.\n"
+	os.WriteFile(promptPath, []byte(original), 0644)
+
+	// LLM returns "Here is the updated prompt:" with NO code fences
+	llm := &fakeLLM{response: "Here is the updated prompt:\n\n# Implementation Prompt\n\nWrite good code.\n\n## Learned Rules\n\n- Validate inputs\n"}
+	audit := &AuditLogger{ProjectDir: dir}
+	c := &Curator{LLM: llm, Audit: audit}
+	lesson := &Lesson{
+		Target:          ".cloche/prompts/implement.md",
+		Insight:         "Missing validation",
+		SuggestedAction: "Add input validation",
+	}
+
+	_, err := c.Apply(context.Background(), dir, lesson)
+	require.NoError(t, err)
+
+	content, err := os.ReadFile(promptPath)
+	require.NoError(t, err)
+	// The conversational prefix must not appear
+	assert.NotContains(t, string(content), "Here is the updated prompt")
+	// Original content preserved, lesson appended via fallback
+	assert.Contains(t, string(content), "# Implementation Prompt")
+	assert.Contains(t, string(content), "Missing validation")
+}
+
+func TestCuratorAcceptsValidPromptWithoutFences(t *testing.T) {
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, ".cloche", "prompts", "implement.md")
+	os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
+	os.WriteFile(promptPath, []byte("# Implementation Prompt\n\nWrite good code.\n"), 0644)
+
+	// LLM returns valid prompt content without code fences
+	validResponse := "# Implementation Prompt\n\nWrite good code.\n\n## Learned Rules\n\n- Always validate inputs\n"
+	llm := &fakeLLM{response: validResponse}
+	audit := &AuditLogger{ProjectDir: dir}
+	c := &Curator{LLM: llm, Audit: audit}
+	lesson := &Lesson{
+		Target:          ".cloche/prompts/implement.md",
+		Insight:         "Missing validation",
+		SuggestedAction: "Add validation rule",
+	}
+
+	_, err := c.Apply(context.Background(), dir, lesson)
+	require.NoError(t, err)
+
+	content, err := os.ReadFile(promptPath)
+	require.NoError(t, err)
+	// Should write the LLM response (after stripCodeFences trimming) since it's valid prompt content
+	assert.Contains(t, string(content), "Always validate inputs")
+	assert.Contains(t, string(content), "# Implementation Prompt")
+	assert.NotContains(t, string(content), "Missing validation")
+}
+
+func TestIsConversationalResponse(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"permission request", "I need write permission to update the file", true},
+		{"grant request", "Could you grant access to the file?", true},
+		{"blocked message", "Permission blocked by sandbox", true},
+		{"here is updated", "Here is the updated prompt:\n\n# Prompt", true},
+		{"heres updated", "Here's the updated prompt:\n\n# Prompt", true},
+		{"ive updated", "I've updated the prompt with the new rule", true},
+		{"let me", "Let me update the file for you", true},
+		{"valid markdown heading", "# Prompt\n\nDo good work.", false},
+		{"valid bullet list", "- Rule one\n- Rule two", false},
+		{"empty string", "", true},
+		{"valid content no heading", "Write good code and test everything.", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, isConversationalResponse(tt.input))
+		})
+	}
+}
+
+func TestAppendLessonDirectly(t *testing.T) {
+	t.Run("creates learned rules section", func(t *testing.T) {
+		result := appendLessonDirectly("# Prompt\n\nDo good work.\n", &Lesson{
+			Insight:         "Missing validation",
+			SuggestedAction: "Add validation",
+		})
+		assert.Contains(t, result, "## Learned Rules")
+		assert.Contains(t, result, "Missing validation: Add validation")
+	})
+
+	t.Run("appends to existing learned rules", func(t *testing.T) {
+		existing := "# Prompt\n\n## Learned Rules\n\n- Existing rule\n"
+		result := appendLessonDirectly(existing, &Lesson{
+			Insight:         "New insight",
+			SuggestedAction: "New action",
+		})
+		assert.Contains(t, result, "- Existing rule")
+		assert.Contains(t, result, "- New insight: New action")
+		// Should not create a duplicate section
+		assert.Equal(t, 1, strings.Count(result, "## Learned Rules"))
+	})
+}
+
 // --- Script Generator tests ---
 
 func TestScriptGeneratorCreatesScript(t *testing.T) {
