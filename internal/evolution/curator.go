@@ -15,12 +15,30 @@ type Curator struct {
 	Audit *AuditLogger
 }
 
+// lessonAlreadyPresent checks whether the lesson's key insight or action is
+// already present in the current prompt text (case-insensitive substring match).
+func lessonAlreadyPresent(currentPrompt string, lesson *Lesson) bool {
+	lower := strings.ToLower(currentPrompt)
+	if lesson.Insight != "" && strings.Contains(lower, strings.ToLower(lesson.Insight)) {
+		return true
+	}
+	if lesson.SuggestedAction != "" && strings.Contains(lower, strings.ToLower(lesson.SuggestedAction)) {
+		return true
+	}
+	return false
+}
+
 // Apply curates a lesson into the target prompt file.
 func (c *Curator) Apply(ctx context.Context, projectDir string, lesson *Lesson) (*Change, error) {
 	targetPath := filepath.Join(projectDir, lesson.Target)
 	current, err := os.ReadFile(targetPath)
 	if err != nil {
 		return nil, fmt.Errorf("reading target prompt %s: %w", lesson.Target, err)
+	}
+
+	// Guard: skip if the lesson is already incorporated in the prompt
+	if lessonAlreadyPresent(string(current), lesson) {
+		return nil, nil
 	}
 
 	systemPrompt := `You are a prompt curator using ACE (Agentic Context Engineering) principles.

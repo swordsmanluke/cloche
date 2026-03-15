@@ -946,3 +946,199 @@ func TestOrchestratorNoLessons(t *testing.T) {
 	assert.Equal(t, "feature", result.Classification)
 	assert.Empty(t, result.Changes)
 }
+
+// --- Content-change guard tests ---
+
+func TestLessonAlreadyPresent(t *testing.T) {
+	tests := []struct {
+		name    string
+		prompt  string
+		lesson  *Lesson
+		present bool
+	}{
+		{
+			name:    "insight present",
+			prompt:  "# Prompt\n\n## Learned Rules\n\n- Always sanitize user inputs\n",
+			lesson:  &Lesson{Insight: "Always sanitize user inputs", SuggestedAction: "Add rule"},
+			present: true,
+		},
+		{
+			name:    "action present",
+			prompt:  "# Prompt\n\n## Learned Rules\n\n- Add input validation for all forms\n",
+			lesson:  &Lesson{Insight: "Forms lack validation", SuggestedAction: "Add input validation for all forms"},
+			present: true,
+		},
+		{
+			name:    "case insensitive match",
+			prompt:  "# Prompt\n\n## Learned Rules\n\n- always sanitize user inputs\n",
+			lesson:  &Lesson{Insight: "Always Sanitize User Inputs", SuggestedAction: "Do it"},
+			present: true,
+		},
+		{
+			name:    "not present",
+			prompt:  "# Prompt\n\nWrite good code.\n",
+			lesson:  &Lesson{Insight: "Always sanitize user inputs", SuggestedAction: "Add sanitization"},
+			present: false,
+		},
+		{
+			name:    "empty insight and action",
+			prompt:  "# Prompt\n\nWrite good code.\n",
+			lesson:  &Lesson{Insight: "", SuggestedAction: ""},
+			present: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.present, lessonAlreadyPresent(tt.prompt, tt.lesson))
+		})
+	}
+}
+
+func TestCuratorSkipsWhenLessonAlreadyPresent(t *testing.T) {
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, ".cloche", "prompts", "implement.md")
+	os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
+
+	// Prompt already contains the lesson insight
+	os.WriteFile(promptPath, []byte("# Prompt\n\n## Learned Rules\n\n- Always sanitize user inputs\n"), 0644)
+
+	// LLM should NOT be called — use a response that would change the file
+	llm := &fakeLLM{response: "THIS SHOULD NOT APPEAR"}
+	audit := &AuditLogger{ProjectDir: dir}
+	c := &Curator{LLM: llm, Audit: audit}
+	lesson := &Lesson{
+		Target:          ".cloche/prompts/implement.md",
+		Insight:         "Always sanitize user inputs",
+		SuggestedAction: "Add sanitization rule",
+	}
+
+	change, err := c.Apply(context.Background(), dir, lesson)
+	require.NoError(t, err)
+	assert.Nil(t, change, "should return nil change when lesson already present")
+
+	// File should be unchanged
+	content, _ := os.ReadFile(promptPath)
+	assert.NotContains(t, string(content), "THIS SHOULD NOT APPEAR")
+}
+
+func TestReflectorFiltersAlreadyAppliedLessons(t *testing.T) {
+	lessonsJSON, _ := json.Marshal(map[string]any{
+		"lessons": []map[string]any{
+			{"id": "lesson-001", "category": "prompt_improvement", "confidence": "high"},
+			{"id": "lesson-002", "category": "prompt_improvement", "confidence": "high"},
+		},
+	})
+
+	llm := &fakeLLM{response: string(lessonsJSON)}
+	r := &Reflector{LLM: llm, MinConfidence: "low"}
+
+	// Knowledge base already contains lesson-001
+	data := &CollectedData{
+		KnowledgeBase: "# Knowledge Base\n\n- **[lesson-001]** (prompt_improvement, confidence: high) Old insight\n",
+	}
+	lessons, err := r.Reflect(context.Background(), data, "bug")
+	require.NoError(t, err)
+	require.Len(t, lessons, 1)
+	assert.Equal(t, "lesson-002", lessons[0].ID)
+}
+
+func TestOrchestratorSkipsAlreadyAppliedLessons(t *testing.T) {
+	dir := t.TempDir()
+
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0755)
+	os.WriteFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.md"),
+		[]byte("# Knowledge Base\n\n- **[L001]** (prompt_improvement, confidence: high) XSS pattern\n"), 0644)
+	os.WriteFile(filepath.Join(dir, ".cloche", "prompts", "implement.md"),
+		[]byte("Write good code.\n"), 0644)
+	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
+		[]byte(`workflow "develop" {
+  step s {
+    run = "echo hi"
+    results = [success]
+  }
+  s:success -> done
+}`), 0644)
+
+	// Reflector returns a lesson that's already in the knowledge base
+	llm := &scriptedLLM{
+		responses: []string{
+			`{"classification": "bug"}`,
+			`{"lessons": [{"id": "L001", "category": "prompt_improvement", "target": ".cloche/prompts/implement.md", "insight": "XSS pattern", "suggested_action": "Add sanitization", "evidence": ["run-1"], "confidence": "high"}]}`,
+		},
+	}
+
+	orch := NewOrchestrator(OrchestratorConfig{
+		ProjectDir:    dir,
+		WorkflowName:  "develop",
+		LLM:           llm,
+		MinConfidence: "low",
+	})
+
+	result, err := orch.Run(context.Background(), "run-1", nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, result.Changes, "should produce zero changes for already-applied lesson")
+}
+
+func TestOrchestratorSecondRunProducesNoChanges(t *testing.T) {
+	dir := t.TempDir()
+
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0755)
+	os.WriteFile(filepath.Join(dir, ".cloche", "evolution", "knowledge", "develop.md"),
+		[]byte("# Knowledge Base: develop\n"), 0644)
+	os.WriteFile(filepath.Join(dir, ".cloche", "prompts", "implement.md"),
+		[]byte("Write good code.\n"), 0644)
+	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
+		[]byte(`workflow "develop" {
+  step implement {
+    prompt = file(".cloche/prompts/implement.md")
+    results = [success, fail]
+  }
+  implement:success -> done
+  implement:fail -> abort
+}`), 0644)
+
+	// First run: lesson gets applied
+	llm1 := &scriptedLLM{
+		responses: []string{
+			`{"classification": "bug"}`,
+			`{"lessons": [{"id": "L010", "category": "prompt_improvement", "target": ".cloche/prompts/implement.md", "insight": "Always sanitize user inputs", "suggested_action": "Add sanitization rule", "evidence": ["run-1"], "confidence": "high"}]}`,
+			"Write good code.\n\n## Learned Rules\n\n- Always sanitize user inputs\n",
+		},
+	}
+
+	orch1 := NewOrchestrator(OrchestratorConfig{
+		ProjectDir:    dir,
+		WorkflowName:  "develop",
+		LLM:           llm1,
+		MinConfidence: "low",
+	})
+
+	result1, err := orch1.Run(context.Background(), "run-1", nil, nil)
+	require.NoError(t, err)
+	require.Len(t, result1.Changes, 1, "first run should produce one change")
+
+	// Second run: same lesson ID — the knowledge base now contains L010,
+	// and the prompt contains the insight text.
+	llm2 := &scriptedLLM{
+		responses: []string{
+			`{"classification": "bug"}`,
+			`{"lessons": [{"id": "L010", "category": "prompt_improvement", "target": ".cloche/prompts/implement.md", "insight": "Always sanitize user inputs", "suggested_action": "Add sanitization rule", "evidence": ["run-1"], "confidence": "high"}]}`,
+		},
+	}
+
+	orch2 := NewOrchestrator(OrchestratorConfig{
+		ProjectDir:    dir,
+		WorkflowName:  "develop",
+		LLM:           llm2,
+		MinConfidence: "low",
+	})
+
+	result2, err := orch2.Run(context.Background(), "run-2", nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, result2.Changes, "second run should produce zero changes")
+}

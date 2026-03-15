@@ -210,6 +210,14 @@ Confidence levels (high/medium/low) are based on evidence count and pattern
 consistency. Only lessons meeting the configured minimum confidence proceed to
 the executor branches.
 
+**Knowledge base deduplication:** After confidence filtering, the Reflector
+cross-references generated lesson IDs against the current knowledge base text.
+Lessons whose ID already appears in the knowledge base are dropped, preventing
+the same lessons from being re-surfaced across evolution cycles. The
+Orchestrator applies a second-layer ID filter as a guard, ensuring that even if
+the Reflector misses a duplicate, previously applied lessons are not
+re-processed.
+
 ### Stage 4: Executor Branches
 
 Based on each lesson's `category`, it routes to one of three branches.
@@ -219,6 +227,12 @@ Based on each lesson's `category`, it routes to one of three branches.
 Handles `prompt_improvement` lessons.
 
 - Receives the current prompt file content and the lesson
+- **Content-change guard:** Before calling the LLM, the curator checks whether
+  the lesson's key insight or suggested action is already present in the current
+  prompt text (case-insensitive substring match). If the lesson is already
+  incorporated, the curator returns immediately without calling the LLM and
+  without rewriting the file. This prevents churn, snapshot bloat, and
+  regression risk from unnecessary rewrites.
 - ACE-style curation: merges the lesson into the prompt as a structured
   bullet/rule
 - Deduplication: checks for semantic overlap with existing bullets; if a lesson

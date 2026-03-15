@@ -105,6 +105,19 @@ Do not include any other text.`
 		}
 	}
 
+	// Deduplicate against the knowledge base — drop lessons whose ID
+	// already appears in the knowledge text.
+	if data.KnowledgeBase != "" {
+		var deduped []Lesson
+		for _, l := range filtered {
+			if l.ID != "" && strings.Contains(data.KnowledgeBase, l.ID) {
+				continue
+			}
+			deduped = append(deduped, l)
+		}
+		filtered = deduped
+	}
+
 	return filtered, nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cloche-dev/cloche/internal/dsl"
@@ -66,6 +67,19 @@ func (o *Orchestrator) Run(ctx context.Context, triggerRunID string, evoStore po
 		return nil, fmt.Errorf("reflector: %w", err)
 	}
 
+	// Filter out lessons whose IDs are already recorded in the knowledge base.
+	// This guards against the Reflector re-surfacing previously applied lessons.
+	if data.KnowledgeBase != "" {
+		var fresh []Lesson
+		for _, l := range lessons {
+			if l.ID != "" && strings.Contains(data.KnowledgeBase, l.ID) {
+				continue
+			}
+			fresh = append(fresh, l)
+		}
+		lessons = fresh
+	}
+
 	result := &EvolutionResult{
 		ID:             fmt.Sprintf("evo-%d", time.Now().UnixNano()),
 		ProjectDir:     o.cfg.ProjectDir,
@@ -88,6 +102,9 @@ func (o *Orchestrator) Run(ctx context.Context, triggerRunID string, evoStore po
 			change, err := o.curator.Apply(ctx, o.cfg.ProjectDir, &lesson)
 			if err != nil {
 				continue // log but don't fail the whole pipeline
+			}
+			if change == nil {
+				continue // lesson already present in prompt — no change needed
 			}
 			result.Changes = append(result.Changes, *change)
 
