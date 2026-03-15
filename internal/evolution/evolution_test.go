@@ -596,6 +596,183 @@ func TestOrchestratorNewStepWiredIntoGraph(t *testing.T) {
 	require.NoError(t, wf.Validate())
 }
 
+func TestHandleNewStepSkipsDuplicate(t *testing.T) {
+	dir := t.TempDir()
+
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
+
+	// Workflow already contains a step named "security-scan"
+	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
+		[]byte(`workflow "develop" {
+  step implement {
+    prompt = file(".cloche/prompts/implement.md")
+    results = [success, fail]
+  }
+  step security-scan {
+    run = "scripts/security-scan.sh"
+    results = [success, fail]
+  }
+  implement:success -> security-scan
+  implement:fail -> abort
+  security-scan:success -> done
+  security-scan:fail -> abort
+}`), 0644)
+
+	llm := &scriptedLLM{
+		responses: []string{
+			// Classifier
+			`{"classification": "enhancement"}`,
+			// Reflector — lesson wants to add "security-scan" again
+			`{"lessons": [{"id": "L003", "category": "new_step", "step_type": "script", "insight": "Add security scanning", "suggested_action": "Add gosec scan", "evidence": ["run-3"], "confidence": "high"}]}`,
+			// ScriptGenerator
+			`{"path": "scripts/security-scan.sh", "content": "#!/bin/bash\ngosec ./..."}`,
+		},
+	}
+
+	orch := NewOrchestrator(OrchestratorConfig{
+		ProjectDir:    dir,
+		WorkflowName:  "develop",
+		LLM:           llm,
+		MinConfidence: "medium",
+	})
+
+	result, err := orch.Run(context.Background(), "run-3", nil, nil)
+	require.NoError(t, err)
+
+	// Should have add_script change but NOT add_step (skipped as duplicate)
+	stepChanges := 0
+	for _, c := range result.Changes {
+		if c.Type == "add_step" {
+			stepChanges++
+		}
+	}
+	assert.Equal(t, 0, stepChanges, "should not add a duplicate step")
+
+	// Workflow should be unchanged — still valid, no duplicates
+	wfContent, err := os.ReadFile(filepath.Join(dir, ".cloche", "develop.cloche"))
+	require.NoError(t, err)
+	wf, err := dsl.Parse(string(wfContent))
+	require.NoError(t, err)
+	require.NoError(t, wf.Validate())
+	assert.Equal(t, 2, len(wf.Steps), "should still have exactly 2 steps")
+}
+
+func TestHandleNewStepNoDoneEdge(t *testing.T) {
+	dir := t.TempDir()
+
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
+
+	// Workflow has no -> done edges (all go to abort)
+	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
+		[]byte(`workflow "develop" {
+  step implement {
+    prompt = file(".cloche/prompts/implement.md")
+    results = [success, fail]
+  }
+  implement:success -> done
+  implement:fail -> abort
+}`), 0644)
+
+	llm := &scriptedLLM{
+		responses: []string{
+			`{"classification": "enhancement"}`,
+			`{"lessons": [{"id": "L004", "category": "new_step", "step_type": "script", "insight": "Add linting", "suggested_action": "Add lint step", "evidence": ["run-4"], "confidence": "high"}]}`,
+			`{"path": "scripts/lint.sh", "content": "#!/bin/bash\ngolangci-lint run"}`,
+		},
+	}
+
+	orch := NewOrchestrator(OrchestratorConfig{
+		ProjectDir:    dir,
+		WorkflowName:  "develop",
+		LLM:           llm,
+		MinConfidence: "medium",
+	})
+
+	result, err := orch.Run(context.Background(), "run-4", nil, nil)
+	require.NoError(t, err)
+
+	// The new step should be added and the resulting workflow must validate
+	wfContent, err := os.ReadFile(filepath.Join(dir, ".cloche", "develop.cloche"))
+	require.NoError(t, err)
+	wf, err := dsl.Parse(string(wfContent))
+	require.NoError(t, err)
+	require.NoError(t, wf.Validate(), "resulting workflow should have no orphaned steps")
+
+	// The new step should be reachable
+	_, hasStep := wf.Steps["lint"]
+	assert.True(t, hasStep, "lint step should exist")
+
+	// Verify add_step change was recorded
+	hasAddStep := false
+	for _, c := range result.Changes {
+		if c.Type == "add_step" {
+			hasAddStep = true
+		}
+	}
+	assert.True(t, hasAddStep, "should have recorded add_step change")
+}
+
+func TestHandleNewStepValidatesResultingWorkflow(t *testing.T) {
+	dir := t.TempDir()
+
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
+	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
+		[]byte(`workflow "develop" {
+  step implement {
+    prompt = file(".cloche/prompts/implement.md")
+    results = [success, fail]
+  }
+  step test {
+    run = "make test"
+    results = [success, fail]
+  }
+  implement:success -> test
+  implement:fail -> abort
+  test:success -> done
+  test:fail -> abort
+}`), 0644)
+
+	llm := &scriptedLLM{
+		responses: []string{
+			`{"classification": "enhancement"}`,
+			`{"lessons": [{"id": "L005", "category": "new_step", "step_type": "script", "insight": "Add formatting check", "suggested_action": "Add gofmt check", "evidence": ["run-5"], "confidence": "high"}]}`,
+			`{"path": "scripts/format-check.sh", "content": "#!/bin/bash\ngofmt -l ."}`,
+		},
+	}
+
+	orch := NewOrchestrator(OrchestratorConfig{
+		ProjectDir:    dir,
+		WorkflowName:  "develop",
+		LLM:           llm,
+		MinConfidence: "medium",
+	})
+
+	result, err := orch.Run(context.Background(), "run-5", nil, nil)
+	require.NoError(t, err)
+
+	// Read and fully validate the workflow
+	wfContent, err := os.ReadFile(filepath.Join(dir, ".cloche", "develop.cloche"))
+	require.NoError(t, err)
+	wf, err := dsl.Parse(string(wfContent))
+	require.NoError(t, err)
+	require.NoError(t, wf.Validate())
+
+	// Verify we got 3 steps now
+	assert.Equal(t, 3, len(wf.Steps))
+
+	// Verify we got the add_step change
+	hasAddStep := false
+	for _, c := range result.Changes {
+		if c.Type == "add_step" {
+			hasAddStep = true
+		}
+	}
+	assert.True(t, hasAddStep)
+}
+
 func TestOrchestratorNoLessons(t *testing.T) {
 	dir := t.TempDir()
 

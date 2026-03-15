@@ -147,10 +147,19 @@ func (o *Orchestrator) handleNewStep(ctx context.Context, data *CollectedData, l
 	// Snapshot the workflow
 	wfRelPath, _ := filepath.Rel(o.cfg.ProjectDir, data.WorkflowPath)
 	snapName, _ := o.audit.Snapshot(wfRelPath)
+	original := string(workflowContent)
 
 	// Derive step name from the script path
 	stepName := filepath.Base(generated.Path)
 	stepName = stepName[:len(stepName)-len(filepath.Ext(stepName))]
+
+	// Check if a step with this name already exists — skip if so
+	existingWf, parseErr := dsl.Parse(original)
+	if parseErr == nil {
+		if _, exists := existingWf.Steps[stepName]; exists {
+			return nil
+		}
+	}
 
 	// Determine the config based on step type
 	config := map[string]string{}
@@ -162,7 +171,7 @@ func (o *Orchestrator) handleNewStep(ctx context.Context, data *CollectedData, l
 	}
 
 	// Add the step
-	updated, err := o.mutator.AddStep(string(workflowContent), dsl.StepDef{
+	updated, err := o.mutator.AddStep(original, dsl.StepDef{
 		Name:    stepName,
 		Type:    lesson.StepType,
 		Config:  config,
@@ -195,6 +204,15 @@ func (o *Orchestrator) handleNewStep(ctx context.Context, data *CollectedData, l
 	updated, err = o.mutator.AddWiring(updated, wires)
 	if err != nil {
 		return fmt.Errorf("adding wiring to workflow: %w", err)
+	}
+
+	// Validate the final workflow graph — roll back on failure
+	finalWf, parseErr := dsl.Parse(updated)
+	if parseErr != nil {
+		return fmt.Errorf("parsing updated workflow: %w", parseErr)
+	}
+	if valErr := finalWf.Validate(); valErr != nil {
+		return fmt.Errorf("workflow validation failed after adding step %q: %w", stepName, valErr)
 	}
 
 	if err := os.WriteFile(data.WorkflowPath, []byte(updated), 0644); err != nil {
