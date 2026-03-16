@@ -949,3 +949,23 @@ func TestParser_AgentUnknownField(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown agent field")
 }
+
+func TestParser_NumericMaxAttempts(t *testing.T) {
+	input := `workflow "retry" {
+  step code {
+    prompt = "write code"
+    max_attempts = 3
+    results = [success, fail, give-up]
+  }
+  code:success -> done
+  code:fail -> code
+  code:give-up -> abort
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+
+	code := wf.Steps["code"]
+	require.NotNil(t, code)
+	assert.Equal(t, "3", code.Config["max_attempts"])
+}

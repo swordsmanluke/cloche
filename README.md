@@ -86,7 +86,7 @@ workflow "develop" {
   step fix {
     prompt = file(".cloche/prompts/fix.md")
     feedback = "true"
-    max_attempts = "2"
+    max_attempts = 2
     results = [success, fail, give-up]
   }
 
