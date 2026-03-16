@@ -370,6 +370,11 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, r
 func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName string, keepContainer bool) {
 	ctx := context.Background()
 
+	// Register run in broadcaster so IsActive returns true for live-stream callers.
+	if s.logBroadcast != nil {
+		s.logBroadcast.Start(runID)
+	}
+
 	// Attach to agent output
 	reader, err := s.container.AttachOutput(ctx, containerID)
 	if err != nil {
@@ -456,11 +461,6 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	}
 	reader.Close()
 
-	// Signal live-stream subscribers that this run is done.
-	if s.logBroadcast != nil {
-		s.logBroadcast.Finish(runID)
-	}
-
 	// Wait for process exit
 	exitCode, err := s.container.Wait(ctx, containerID)
 	if err != nil {
@@ -533,6 +533,14 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 			run.Fail(fmt.Sprintf("container exited with code %d", exitCode))
 		}
 		_ = s.store.UpdateRun(ctx, run)
+	}
+
+	// Signal live-stream subscribers that this run is done. This must happen
+	// AFTER the state update so that subscribers see the final state when
+	// their channel closes (prevents a race where the channel closes but
+	// the store still says "running", causing StreamLogs to return empty).
+	if s.logBroadcast != nil {
+		s.logBroadcast.Finish(runID)
 	}
 
 	// Fire evolution trigger if configured
@@ -682,9 +690,11 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 
 	isActive := run.State == domain.RunStateRunning || run.State == domain.RunStatePending
 
-	// Active runs always stream live output (follow mode is implicit).
-	// The -f flag is accepted but redundant for active runs.
-	if isActive && s.logBroadcast != nil {
+	// Active runs stream live output when the broadcaster is tracking them.
+	// If the broadcaster has no active entry (e.g. daemon restarted while run
+	// was in progress, or Finish was already called during post-run cleanup),
+	// fall through to serve static content instead of hanging forever.
+	if isActive && s.logBroadcast != nil && s.logBroadcast.IsActive(req.RunId) {
 		return s.streamFollowLogs(req.RunId, run, stream, limit)
 	}
 
@@ -698,17 +708,7 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 		}); err != nil {
 			return err
 		}
-		if !isActive {
-			if err := stream.Send(&pb.LogEntry{
-				Type:      "run_completed",
-				Result:    string(run.State),
-				Timestamp: run.CompletedAt.String(),
-				Message:   run.ErrorMessage,
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
+		return s.sendRunCompleted(ctx, req.RunId, stream)
 	}
 
 	if s.captures == nil {
@@ -757,19 +757,8 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 		}
 	}
 
-	// Send run completion entry
-	if !isActive {
-		if err := stream.Send(&pb.LogEntry{
-			Type:      "run_completed",
-			Result:    string(run.State),
-			Timestamp: run.CompletedAt.String(),
-			Message:   run.ErrorMessage,
-		}); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	// Send run completion entry (re-read state in case it settled during static serving)
+	return s.sendRunCompleted(ctx, req.RunId, stream)
 }
 
 // followFromContext checks for the follow flag in gRPC metadata.
@@ -816,6 +805,25 @@ func applyLimit(content string, n int) string {
 	return strings.Join(lines[len(lines)-n:], "\n") + "\n"
 }
 
+// sendRunCompleted re-reads the run from the store and sends a run_completed entry
+// if the run has reached a terminal state. This handles the case where the run
+// state was updated between the initial read and now (e.g. during post-run cleanup).
+func (s *ClocheServer) sendRunCompleted(ctx context.Context, runID string, stream rpcgrpc.ServerStreamingServer[pb.LogEntry]) error {
+	r, err := s.store.GetRun(ctx, runID)
+	if err != nil {
+		return nil
+	}
+	if r.State == domain.RunStateRunning || r.State == domain.RunStatePending {
+		return nil
+	}
+	return stream.Send(&pb.LogEntry{
+		Type:      "run_completed",
+		Result:    string(r.State),
+		Timestamp: r.CompletedAt.String(),
+		Message:   r.ErrorMessage,
+	})
+}
+
 // streamFollowLogs sends existing log content then tails live output from the
 // broadcaster. It combines snapshot + live streaming (like tail -f).
 func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rpcgrpc.ServerStreamingServer[pb.LogEntry], limit int) error {
@@ -845,13 +853,26 @@ func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rp
 			if !ok {
 				// Run completed — send terminal entry.
 				r, err := s.store.GetRun(context.Background(), runID)
-				if err == nil && r.State != domain.RunStateRunning && r.State != domain.RunStatePending {
-					_ = stream.Send(&pb.LogEntry{
-						Type:      "run_completed",
-						Result:    string(r.State),
-						Timestamp: r.CompletedAt.String(),
-						Message:   r.ErrorMessage,
-					})
+				if err == nil {
+					if r.State != domain.RunStateRunning && r.State != domain.RunStatePending {
+						_ = stream.Send(&pb.LogEntry{
+							Type:      "run_completed",
+							Result:    string(r.State),
+							Timestamp: r.CompletedAt.String(),
+							Message:   r.ErrorMessage,
+						})
+					} else {
+						// Safety net: broadcast finished but state not yet settled.
+						// Send whatever static content exists so the user isn't left
+						// with an empty stream.
+						fullLogPath := filepath.Join(r.ProjectDir, ".cloche", runID, "output", "full.log")
+						if data, readErr := os.ReadFile(fullLogPath); readErr == nil && len(data) > 0 {
+							_ = stream.Send(&pb.LogEntry{
+								Type:    "full_log",
+								Message: applyLimit(string(data), limit),
+							})
+						}
+					}
 				}
 				return nil
 			}

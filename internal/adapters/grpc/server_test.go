@@ -1472,6 +1472,7 @@ func TestServer_StreamLogs_LiveStreaming(t *testing.T) {
 	require.NoError(t, store.CreateRun(ctx, run))
 
 	broadcaster := logstream.NewBroadcaster()
+	broadcaster.Start("live-test-1") // register run as active
 	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
 	srv.SetLogBroadcaster(broadcaster)
 
@@ -1593,6 +1594,7 @@ func TestServer_StreamLogs_ActiveRunStreamsImplicitly(t *testing.T) {
 		[]byte("[2026-03-10T10:00:00Z] [status] step_started: build\n"), 0644))
 
 	broadcaster := logstream.NewBroadcaster()
+	broadcaster.Start("snapshot-test-1") // register run as active
 	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
 	srv.SetLogBroadcaster(broadcaster)
 
@@ -1663,6 +1665,7 @@ func TestServer_StreamLogs_FollowWithExistingLogs(t *testing.T) {
 		[]byte("[2026-03-10T09:00:00Z] [status] existing log line\n"), 0644))
 
 	broadcaster := logstream.NewBroadcaster()
+	broadcaster.Start("follow-existing-1") // register run as active
 	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
 	srv.SetLogBroadcaster(broadcaster)
 
@@ -1708,6 +1711,96 @@ func TestServer_StreamLogs_FollowWithExistingLogs(t *testing.T) {
 	assert.True(t, foundFullLog, "should send existing full.log first")
 	assert.True(t, foundLive, "should stream live lines after existing logs")
 	assert.True(t, foundCompleted, "should send run_completed when done")
+}
+
+// TestServer_StreamLogs_ActiveRunNotInBroadcaster verifies that when a run is
+// marked as active in the store but the broadcaster has no entry (e.g. daemon
+// restarted mid-run), StreamLogs falls through to static content instead of
+// hanging forever.
+func TestServer_StreamLogs_ActiveRunNotInBroadcaster(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	dir := t.TempDir()
+	run := domain.NewRun("orphan-test-1", "develop")
+	run.ProjectDir = dir
+	run.Start() // state = running
+	run.ContainerID = "fake"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Write some existing log content (simulates partially extracted output).
+	outputDir := filepath.Join(dir, ".cloche", "orphan-test-1", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "full.log"),
+		[]byte("[2026-03-10T10:00:00Z] [status] step_started: build\n[2026-03-10T10:00:01Z] [llm] Working...\n"), 0644))
+
+	// Broadcaster is fresh (no Start called) — simulates daemon restart.
+	broadcaster := logstream.NewBroadcaster()
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+	srv.SetLogBroadcaster(broadcaster)
+
+	// Should NOT hang — should return static content.
+	streamCtx, streamCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer streamCancel()
+	mock := &mockLogStream{ctx: streamCtx}
+
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "orphan-test-1"}, mock)
+	require.NoError(t, err)
+
+	// Should have served full.log content (no run_completed since state is still "running").
+	require.NotEmpty(t, mock.entries, "should return at least one entry instead of hanging")
+	assert.Equal(t, "full_log", mock.entries[0].Type)
+	assert.Contains(t, mock.entries[0].Message, "step_started: build")
+}
+
+// TestServer_StreamLogs_BroadcastFinishedStateSettled verifies that when the
+// broadcaster finishes and the run state has been updated, streamFollowLogs
+// sends a proper run_completed entry.
+func TestServer_StreamLogs_BroadcastFinishedStateSettled(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	dir := t.TempDir()
+	run := domain.NewRun("settled-test-1", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.ContainerID = "fake"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	broadcaster := logstream.NewBroadcaster()
+	broadcaster.Start("settled-test-1")
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+	srv.SetLogBroadcaster(broadcaster)
+
+	streamCtx, streamCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer streamCancel()
+	mock := &mockLogStream{ctx: streamCtx}
+
+	// Simulate trackRun completing: update state THEN finish broadcast.
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		r, _ := store.GetRun(ctx, "settled-test-1")
+		r.Complete(domain.RunStateSucceeded)
+		_ = store.UpdateRun(ctx, r)
+		broadcaster.Finish("settled-test-1")
+	}()
+
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "settled-test-1"}, mock)
+	require.NoError(t, err)
+
+	// Should have received run_completed with correct state.
+	var foundCompleted bool
+	for _, e := range mock.entries {
+		if e.Type == "run_completed" {
+			foundCompleted = true
+			assert.Equal(t, "succeeded", e.Result)
+		}
+	}
+	assert.True(t, foundCompleted, "should send run_completed after broadcast finishes with state settled")
 }
 
 func TestServer_GetProjectInfo_ByDir(t *testing.T) {
@@ -2010,6 +2103,7 @@ func TestServer_StreamLogs_LimitWithFollow(t *testing.T) {
 		[]byte("old1\nold2\nold3\nold4\nold5\n"), 0644))
 
 	broadcaster := logstream.NewBroadcaster()
+	broadcaster.Start("limit-follow-1") // register run as active
 	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
 	srv.SetLogBroadcaster(broadcaster)
 

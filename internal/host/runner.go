@@ -123,6 +123,11 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		}
 	}
 
+	// Register run in broadcaster so IsActive returns true for live-stream callers.
+	if r.LogBroadcast != nil {
+		r.LogBroadcast.Start(orchRunID)
+	}
+
 	eng := engine.New(executor)
 	eng.SetStatusHandler(&hostStatusHandler{
 		projectDir:   projectDir,
@@ -161,6 +166,12 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 			hostRun.ActiveSteps = nil
 			_ = r.Store.UpdateRun(ctx, hostRun)
 		}
+	}
+
+	// Signal live-stream subscribers that this run is done (after state update
+	// so subscribers see the final state when their channel closes).
+	if r.LogBroadcast != nil {
+		r.LogBroadcast.Finish(orchRunID)
 	}
 
 	if runErr != nil {
@@ -236,6 +247,11 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 		ulog = w
 	}
 
+	// Register run in broadcaster so IsActive returns true for live-stream callers.
+	if r.LogBroadcast != nil {
+		r.LogBroadcast.Start(run.ID)
+	}
+
 	eng := engine.New(executor)
 	eng.SetPreloadedResults(preloaded)
 	eng.SetStatusHandler(&hostStatusHandler{
@@ -273,6 +289,11 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 		}
 		hostRun.ActiveSteps = nil
 		_ = r.Store.UpdateRun(ctx, hostRun)
+	}
+
+	// Signal live-stream subscribers that this run is done.
+	if r.LogBroadcast != nil {
+		r.LogBroadcast.Finish(run.ID)
 	}
 
 	if runErr != nil {

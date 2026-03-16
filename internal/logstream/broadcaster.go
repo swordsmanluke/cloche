@@ -47,6 +47,18 @@ func NewBroadcaster() *Broadcaster {
 	}
 }
 
+// Start registers a run as active in the broadcaster. This must be called
+// before Publish so that IsActive returns true for the run. Safe to call
+// multiple times; subsequent calls are no-ops if the run is already registered.
+func (b *Broadcaster) Start(runID string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if _, ok := b.runs[runID]; !ok {
+		b.runs[runID] = &runBroadcast{}
+	}
+}
+
 // Subscribe registers a new subscriber for the given run ID.
 // Returns a Subscriber whose channel receives log lines.
 // The channel is closed when the run completes or Finish is called.
