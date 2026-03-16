@@ -465,6 +465,12 @@ func (p *Parser) parseValue() (string, error) {
 		return tok.Literal, nil
 	}
 
+	if p.current.Type == TokenInt {
+		tok := p.current
+		p.advance()
+		return tok.Literal, nil
+	}
+
 	if p.current.Type == TokenIdent {
 		var buf strings.Builder
 		buf.WriteString(p.current.Literal)

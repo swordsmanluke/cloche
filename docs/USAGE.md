@@ -48,7 +48,7 @@ workflow "develop" {
 | `run` | string | Shell command. Makes this a script step. |
 | `workflow_name` | string | Container workflow to dispatch. Makes this a workflow step (host only). |
 | `results` | ident list | Declared result names, e.g. `[success, fail, give-up]`. |
-| `max_attempts` | string | Max retries before automatic `give-up` result, e.g. `"2"`. |
+| `max_attempts` | integer | Max retries before automatic `give-up` result, e.g. `2`. |
 | `timeout` | string | Step timeout as Go duration, e.g. `"30m"`, `"2h"`. Default: 30m. |
 | `agent_command` | string | Agent binary name(s), comma-separated for fallback chains, e.g. `"claude,gemini"`. |
 | `agent_args` | string | Override default agent arguments. |
@@ -163,7 +163,7 @@ Use `max_attempts` to cap retries. When exhausted, the step returns `give-up`:
 ```
 step fix {
   prompt = file(".cloche/prompts/fix.md")
-  max_attempts = "2"
+  max_attempts = 2
   results = [success, fail, give-up]
 }
 ```
@@ -585,7 +585,7 @@ workflow "develop" {
 
   step fix {
     prompt = file("prompts/fix.md")
-    max_attempts = "2"
+    max_attempts = 2
     results = [success, fail, give-up]
   }
 

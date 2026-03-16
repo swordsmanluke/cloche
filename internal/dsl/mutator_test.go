@@ -52,13 +52,13 @@ func TestMutatorAddStepAgent(t *testing.T) {
 	result, err := m.AddStep(input, StepDef{
 		Name:    "review",
 		Type:    "agent",
-		Config:  map[string]string{"prompt": `file("prompts/review.md")`, "max_attempts": `"2"`},
+		Config:  map[string]string{"prompt": `file("prompts/review.md")`, "max_attempts": `2`},
 		Results: []string{"success", "fail", "give-up"},
 	})
 	require.NoError(t, err)
 	assert.Contains(t, result, "step review")
 	assert.Contains(t, result, `prompt = file("prompts/review.md")`)
-	assert.Contains(t, result, `max_attempts = "2"`)
+	assert.Contains(t, result, `max_attempts = 2`)
 
 	wf, err := Parse(result)
 	require.NoError(t, err)

@@ -20,7 +20,7 @@ var workflowTemplate = `workflow "%s" {
 
   step fix {
     prompt = file(".cloche/prompts/fix.md")
-    max_attempts = "2"
+    max_attempts = 2
     results = [success, fail, give-up]
   }
 

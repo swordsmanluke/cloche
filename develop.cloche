@@ -21,7 +21,7 @@ workflow "develop" {
 
   step fix {
     prompt = file("prompts/fix.md")
-    max_attempts = "2"
+    max_attempts = 2
     feedback = "true"
     results = [success, fail, give-up]
   }
