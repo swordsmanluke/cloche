@@ -2110,3 +2110,36 @@ func TestServer_StreamLogs_LimitCaptureOutput(t *testing.T) {
 	}
 	assert.Equal(t, "compile end\n", stepOutput, "limit=1 should return only last line of step output")
 }
+
+// TestServer_StreamLogs_StepFilterFallbackToOut verifies that step-filtered
+// logs fall back to .out files when .log files don't exist (host workflow runs).
+func TestServer_StreamLogs_StepFilterFallbackToOut(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	run := domain.NewRun("host-out-1", "main")
+	run.ProjectDir = dir
+	run.IsHost = true
+	run.Start()
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Write only a .out file (as host executor does), no .log file
+	outputDir := filepath.Join(dir, ".cloche", "host-out-1", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "prepare.out"), []byte("host step output\n"), 0644))
+
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+
+	mock := &mockLogStream{ctx: ctx}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "host-out-1", StepName: "prepare"}, mock)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(mock.entries), 1)
+	assert.Equal(t, "step_log", mock.entries[0].Type)
+	assert.Equal(t, "prepare", mock.entries[0].StepName)
+	assert.Contains(t, mock.entries[0].Message, "host step output")
+}

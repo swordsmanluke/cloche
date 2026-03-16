@@ -1795,3 +1795,41 @@ func TestRunListTasksWorkflow_WithTasks_NoRunRecord(t *testing.T) {
 	assert.Empty(t, store.runs, "no run record should be created for list-tasks")
 	assert.NotEmpty(t, result.RunID, "RunID should still be set for output directory resolution")
 }
+
+// TestHostStatusHandler_WritesStepLogFile verifies that OnStepComplete writes
+// a .log copy of the .out file so that "cloche logs -s <step>" works.
+func TestHostStatusHandler_WritesStepLogFile(t *testing.T) {
+	outputDir := t.TempDir()
+
+	// Write a .out file (as the host executor does)
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "build.out"), []byte("build output data\n"), 0644))
+
+	handler := &hostStatusHandler{
+		outputDir: outputDir,
+	}
+
+	step := &domain.Step{Name: "build"}
+	handler.OnStepComplete(nil, step, "success")
+
+	// Verify .log file was written
+	logData, err := os.ReadFile(filepath.Join(outputDir, "build.log"))
+	require.NoError(t, err)
+	assert.Equal(t, "build output data\n", string(logData))
+}
+
+// TestHostStatusHandler_NoLogFileWhenNoOutput verifies that OnStepComplete
+// does not create a .log file when there is no .out file.
+func TestHostStatusHandler_NoLogFileWhenNoOutput(t *testing.T) {
+	outputDir := t.TempDir()
+
+	handler := &hostStatusHandler{
+		outputDir: outputDir,
+	}
+
+	step := &domain.Step{Name: "missing"}
+	handler.OnStepComplete(nil, step, "success")
+
+	// No .log file should be created
+	_, err := os.Stat(filepath.Join(outputDir, "missing.log"))
+	assert.True(t, os.IsNotExist(err), ".log file should not be created when .out doesn't exist")
+}

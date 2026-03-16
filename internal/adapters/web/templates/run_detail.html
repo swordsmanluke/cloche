@@ -89,7 +89,7 @@
             <td>{{.Duration}}</td>
         </tr>
         <tr class="output-row" id="output-{{.Index}}" style="display:none">
-            <td colspan="4"><pre class="step-output">Loading...</pre></td>
+            <td colspan="4"><div class="step-log-viewer"><pre class="step-output" data-step="{{.StepName}}"></pre></div></td>
         </tr>
         {{end}}
     {{else}}
@@ -122,23 +122,45 @@
     var loadEarlierCount = document.getElementById('load-earlier-count');
     var skippedLines = 0;
 
-    function appendLogLine(line) {
+    // Per-step log line buffers: stepName -> [line, ...]
+    var stepLogBuffers = {};
+
+    function appendToElement(container, pre, line) {
         var span = document.createElement('span');
         span.className = 'log-line log-type-' + (line.type || 'script');
         span.textContent = '[' + line.timestamp + '] [' + line.type + '] ' + line.content + '\n';
 
-        // Check scroll position BEFORE appending to avoid race conditions
-        // with the scroll event listener approach.
-        var savedScrollTop = logViewer.scrollTop;
-        var atBottom = logViewer.scrollHeight - savedScrollTop - logViewer.clientHeight < 40;
+        var savedScrollTop = container.scrollTop;
+        var atBottom = container.scrollHeight - savedScrollTop - container.clientHeight < 40;
 
-        logContent.appendChild(span);
+        pre.appendChild(span);
 
         if (atBottom) {
-            logViewer.scrollTop = logViewer.scrollHeight;
+            container.scrollTop = container.scrollHeight;
         } else {
-            // Restore scroll position in case the DOM mutation shifted it
-            logViewer.scrollTop = savedScrollTop;
+            container.scrollTop = savedScrollTop;
+        }
+    }
+
+    function appendLogLine(line) {
+        appendToElement(logViewer, logContent, line);
+
+        // Buffer and route to per-step accordion
+        if (line.step_name) {
+            if (!stepLogBuffers[line.step_name]) {
+                stepLogBuffers[line.step_name] = [];
+            }
+            stepLogBuffers[line.step_name].push(line);
+
+            // If the step's accordion pre is visible, append live
+            var pres = document.querySelectorAll('.step-output[data-step="' + line.step_name + '"]');
+            for (var i = 0; i < pres.length; i++) {
+                var pre = pres[i];
+                var viewer = pre.closest('.step-log-viewer');
+                if (viewer && pre.closest('.output-row').style.display !== 'none') {
+                    appendToElement(viewer, pre, line);
+                }
+            }
         }
     }
 
@@ -225,8 +247,8 @@
                             openAccordions[id] = true;
                         }
                         var pre = outputRows[j].querySelector('.step-output');
-                        if (pre && pre.textContent !== 'Loading...') {
-                            loadedOutputs[id] = pre.textContent;
+                        if (pre && pre.childNodes.length > 0) {
+                            loadedOutputs[id] = pre.innerHTML;
                         }
                     }
 
@@ -250,7 +272,7 @@
                             '<td>' + s.duration + '</td>' +
                             '</tr>' +
                             '<tr class="output-row" id="' + outputId + '"' + (isOpen ? '' : ' style="display:none"') + '>' +
-                            '<td colspan="4"><pre class="step-output">Loading...</pre></td>' +
+                            '<td colspan="4"><div class="step-log-viewer"><pre class="step-output" data-step="' + escapeHtml(s.step_name) + '"></pre></div></td>' +
                             '</tr>';
                     }
                     tbody.innerHTML = html;
@@ -261,12 +283,12 @@
                         if (row) {
                             var pre = row.querySelector('.step-output');
                             if (pre) {
-                                pre.textContent = loadedOutputs[key];
+                                pre.innerHTML = loadedOutputs[key];
                             }
                         }
                     }
 
-                    // Re-fetch output for accordions that were open but had no cached content
+                    // Re-populate open accordions from step log buffers or fetch
                     for (var key in openAccordions) {
                         if (!loadedOutputs[key]) {
                             var row = document.getElementById(key);
@@ -275,13 +297,21 @@
                                 if (stepRow && stepRow.dataset.runId && stepRow.dataset.step) {
                                     (function(r, rid, sname) {
                                         var pre = r.querySelector('.step-output');
-                                        fetch('/api/runs/' + rid + '/steps/' + sname + '/output')
-                                            .then(function(resp) {
-                                                if (!resp.ok) return 'No output available.';
-                                                return resp.text();
-                                            })
-                                            .then(function(text) { pre.textContent = text; })
-                                            .catch(function() { pre.textContent = 'Failed to load output.'; });
+                                        var viewer = pre.closest('.step-log-viewer');
+                                        var buf = stepLogBuffers[sname];
+                                        if (buf && buf.length > 0) {
+                                            for (var k = 0; k < buf.length; k++) {
+                                                appendToElement(viewer, pre, buf[k]);
+                                            }
+                                        } else {
+                                            fetch('/api/runs/' + rid + '/steps/' + sname + '/output')
+                                                .then(function(resp) {
+                                                    if (!resp.ok) return 'No output available.';
+                                                    return resp.text();
+                                                })
+                                                .then(function(text) { pre.textContent = text; })
+                                                .catch(function() { pre.textContent = 'Failed to load output.'; });
+                                        }
                                     })(row, stepRow.dataset.runId, stepRow.dataset.step);
                                 }
                             }
@@ -400,17 +430,28 @@ document.addEventListener('click', function(e) {
     if (outputRow.style.display === 'none') {
         outputRow.style.display = '';
         var pre = outputRow.querySelector('.step-output');
-        if (pre.textContent === 'Loading...') {
-            var runId = row.dataset.runId;
-            var step = row.dataset.step;
-            fetch('/api/runs/' + runId + '/steps/' + step + '/output')
-                .then(function(r) {
-                    if (!r.ok) return 'No output available.';
-                    return r.text();
-                })
-                .then(function(text) { pre.textContent = text; })
-                .catch(function() { pre.textContent = 'Failed to load output.'; });
+        var stepName = row.dataset.step;
+        var viewer = pre.closest('.step-log-viewer');
+        if (pre.childNodes.length === 0) {
+            // Populate from buffered live lines first
+            var buf = stepLogBuffers[stepName];
+            if (buf && buf.length > 0) {
+                for (var k = 0; k < buf.length; k++) {
+                    appendToElement(viewer, pre, buf[k]);
+                }
+            } else {
+                // No live buffer — fetch from server (completed step)
+                var runId = row.dataset.runId;
+                fetch('/api/runs/' + runId + '/steps/' + stepName + '/output')
+                    .then(function(r) {
+                        if (!r.ok) return 'No output available.';
+                        return r.text();
+                    })
+                    .then(function(text) { pre.textContent = text; })
+                    .catch(function() { pre.textContent = 'Failed to load output.'; });
+            }
         }
+        if (viewer) viewer.scrollTop = viewer.scrollHeight;
     } else {
         outputRow.style.display = 'none';
     }

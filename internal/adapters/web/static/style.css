@@ -153,18 +153,21 @@ h2 {
 .detail-row:hover { background: inherit; }
 .step-row { cursor: pointer; }
 .output-row td { padding: 0 !important; }
-.step-output {
+.step-log-viewer {
+    max-height: 500px;
+    overflow-y: auto;
+    margin: 0.25rem 0.75rem 0.75rem;
     background: var(--bg-surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
+}
+.step-output {
     padding: 0.75rem;
     font-family: var(--mono);
     font-size: 0.8rem;
-    max-height: 500px;
-    overflow: auto;
     white-space: pre-wrap;
     word-break: break-word;
-    margin: 0.25rem 0.75rem 0.75rem;
+    margin: 0;
 }
 
 .mono { font-family: var(--mono); font-size: 0.85em; }

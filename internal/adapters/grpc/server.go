@@ -915,23 +915,30 @@ func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLog
 
 	// Fall back to file path conventions
 	if req.StepName != "" {
-		var logPath string
+		var candidates []string
 		switch req.LogType {
 		case "llm":
-			logPath = filepath.Join(outputDir, "llm-"+req.StepName+".log")
+			candidates = []string{filepath.Join(outputDir, "llm-"+req.StepName+".log")}
 		default:
-			logPath = filepath.Join(outputDir, req.StepName+".log")
+			// Try .log first (container runs & new host runs), then .out (legacy host runs)
+			candidates = []string{
+				filepath.Join(outputDir, req.StepName+".log"),
+				filepath.Join(outputDir, req.StepName+".out"),
+			}
 		}
 
-		data, err := os.ReadFile(logPath)
-		if err != nil {
-			return fmt.Errorf("log file not found for step %q: %w", req.StepName, err)
+		for _, logPath := range candidates {
+			data, err := os.ReadFile(logPath)
+			if err != nil || len(data) == 0 {
+				continue
+			}
+			return stream.Send(&pb.LogEntry{
+				Type:     "step_log",
+				StepName: req.StepName,
+				Message:  applyLimit(string(data), limit),
+			})
 		}
-		return stream.Send(&pb.LogEntry{
-			Type:     "step_log",
-			StepName: req.StepName,
-			Message:  applyLimit(string(data), limit),
-		})
+		return fmt.Errorf("log file not found for step %q", req.StepName)
 	}
 
 	return fmt.Errorf("no log files found matching filter")

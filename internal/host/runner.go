@@ -461,6 +461,10 @@ func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, res
 	outputPath := filepath.Join(h.outputDir, step.Name+".out")
 	if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
 		stepOutput = string(data)
+		// Write a .log copy so that "cloche logs -s <step>" and the web UI
+		// can find per-step log output using the standard .log convention.
+		logPath := filepath.Join(h.outputDir, step.Name+".log")
+		_ = os.WriteFile(logPath, data, 0644)
 	}
 	if h.logWriter != nil {
 		if stepOutput != "" {

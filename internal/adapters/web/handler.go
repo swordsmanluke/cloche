@@ -858,12 +858,14 @@ func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Try per-step output file
-	outputPath := filepath.Join(outputDir, step+".log")
-	data, err := os.ReadFile(outputPath)
-	if err == nil && len(data) > 0 {
-		writeOutput(data)
-		return
+	// Try per-step output file (.log for container runs, .out for host runs)
+	for _, ext := range []string{".log", ".out"} {
+		outputPath := filepath.Join(outputDir, step+ext)
+		data, err := os.ReadFile(outputPath)
+		if err == nil && len(data) > 0 {
+			writeOutput(data)
+			return
+		}
 	}
 
 	// Do NOT fall back to container.log or live docker logs here — those

@@ -196,9 +196,9 @@ func TestRunDetail_LogScrollStabilization(t *testing.T) {
 	// Must capture scroll position before DOM mutation
 	assert.Contains(t, body, "savedScrollTop")
 	// Must check if at bottom before appending content
-	assert.Contains(t, body, "var atBottom = logViewer.scrollHeight - savedScrollTop - logViewer.clientHeight < 40")
+	assert.Contains(t, body, "var atBottom = container.scrollHeight - savedScrollTop - container.clientHeight < 40")
 	// Must restore scroll position when not at bottom
-	assert.Contains(t, body, "logViewer.scrollTop = savedScrollTop")
+	assert.Contains(t, body, "container.scrollTop = savedScrollTop")
 	// Must NOT use a detached autoScroll state variable (race-prone)
 	assert.NotContains(t, body, "var autoScroll")
 }
@@ -1865,6 +1865,47 @@ func TestStepOutput_DoesNotFallBackToLiveDockerLogs(t *testing.T) {
 	// Should return 404, NOT "mock logs" from the container manager
 	assert.Equal(t, http.StatusNotFound, w.Code)
 	assert.NotContains(t, w.Body.String(), "mock logs")
+}
+
+func TestStepOutput_FallsBackToOutFile(t *testing.T) {
+	// Host workflow runs write .out files instead of .log files.
+	// The step output endpoint should fall back to .out when .log is missing.
+	h, store := setupHandler(t)
+
+	dir := t.TempDir()
+	seedRunWithProject(t, store, "step-out-host-1", "main", domain.RunStateSucceeded, dir)
+
+	outputDir := filepath.Join(dir, ".cloche", "step-out-host-1", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "prepare.out"), []byte("host prepare output"), 0644))
+
+	req := httptest.NewRequest("GET", "/api/runs/step-out-host-1/steps/prepare/output", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "host prepare output")
+}
+
+func TestStepOutput_PrefersLogOverOut(t *testing.T) {
+	// When both .log and .out exist, .log should take precedence.
+	h, store := setupHandler(t)
+
+	dir := t.TempDir()
+	seedRunWithProject(t, store, "step-out-pref-1", "main", domain.RunStateSucceeded, dir)
+
+	outputDir := filepath.Join(dir, ".cloche", "step-out-pref-1", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "build.log"), []byte("log file content"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "build.out"), []byte("out file content"), 0644))
+
+	req := httptest.NewRequest("GET", "/api/runs/step-out-pref-1/steps/build/output", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "log file content")
+	assert.NotContains(t, w.Body.String(), "out file content")
 }
 
 // --- Tasks API tests ---
