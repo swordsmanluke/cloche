@@ -22,6 +22,7 @@ concurrency        = 1
 stagger_seconds    = 1.0
 # list_tasks_command = "bash .cloche/scripts/ready-tasks.sh"
 # dedup_seconds    = 300
+# max_consecutive_failures = 3
 
 [evolution]
 enabled           = true
@@ -38,6 +39,9 @@ Notes:
   picks tasks and passes the ID via `CLOCHE_TASK_ID` env var.
 - `orchestration.dedup_seconds` (default `300`) prevents reassignment of the same task ID
   within the timeout window.
+- `orchestration.max_consecutive_failures` (default `3`, must be > 0) halts the
+  orchestration loop after N consecutive failed runs (e.g. auth failures). Cleared on
+  any successful run or via `cloche loop resume`.
 - Commented-out keys show optional overrides that rarely need changing.
 
 ## Code changes

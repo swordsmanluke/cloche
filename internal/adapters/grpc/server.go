@@ -1062,11 +1062,12 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 	dedupTimeout := time.Duration(float64(time.Second) * projCfg.Orchestration.DedupSeconds)
 
 	loopCfg := host.LoopConfig{
-		ProjectDir:    projectDir,
-		MaxConcurrent: maxConc,
-		StaggerDelay:  stagger,
-		DedupTimeout:  dedupTimeout,
-		StopOnError:   projCfg.Orchestration.StopOnError,
+		ProjectDir:             projectDir,
+		MaxConcurrent:          maxConc,
+		StaggerDelay:           stagger,
+		DedupTimeout:           dedupTimeout,
+		StopOnError:            projCfg.Orchestration.StopOnError,
+		MaxConsecutiveFailures: projCfg.Orchestration.MaxConsecutiveFailures,
 	}
 
 	s.mu.Lock()
@@ -1381,9 +1382,10 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 		ActiveRuns:         activeRuns,
 		ContainerWorkflows: containerWorkflows,
 		HostWorkflows:      hostWorkflows,
-		StopOnError:        cfg.Orchestration.StopOnError,
-		ErrorHalted:        errorHalted,
-		HaltError:          haltError,
+		StopOnError:            cfg.Orchestration.StopOnError,
+		MaxConsecutiveFailures: int32(cfg.Orchestration.MaxConsecutiveFailures),
+		ErrorHalted:            errorHalted,
+		HaltError:              haltError,
 	}, nil
 }
 

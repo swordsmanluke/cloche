@@ -25,11 +25,12 @@ type EvolutionConfig struct {
 }
 
 type OrchestrationConfig struct {
-	Concurrency      int     `toml:"concurrency"`
-	StaggerSeconds   float64 `toml:"stagger_seconds"`
-	ListTasksCommand string  `toml:"list_tasks_command"` // shell command to list open tasks (JSON array output)
-	DedupSeconds     float64 `toml:"dedup_seconds"`      // dedup window for task assignment (default: 300)
-	StopOnError      bool    `toml:"stop_on_error"`      // halt orchestration loop on unrecovered error
+	Concurrency            int     `toml:"concurrency"`
+	StaggerSeconds         float64 `toml:"stagger_seconds"`
+	ListTasksCommand       string  `toml:"list_tasks_command"`       // shell command to list open tasks (JSON array output)
+	DedupSeconds           float64 `toml:"dedup_seconds"`            // dedup window for task assignment (default: 300)
+	StopOnError            bool    `toml:"stop_on_error"`            // halt orchestration loop on unrecovered error
+	MaxConsecutiveFailures int     `toml:"max_consecutive_failures"` // halt loop after N consecutive failures (default: 3, must be > 0)
 }
 
 type Config struct {
@@ -48,8 +49,9 @@ func defaults() Config {
 			MaxPromptBullets: 50,
 		},
 		Orchestration: OrchestrationConfig{
-			Concurrency:    1,
-			StaggerSeconds: 1.0,
+			Concurrency:            1,
+			StaggerSeconds:         1.0,
+			MaxConsecutiveFailures: 3,
 		},
 	}
 }

@@ -830,9 +830,10 @@ up a project by its registered label instead.
 | `--name <label>` | _(cwd lookup)_ | Look up project by label (e.g. `cloche`) instead of directory. |
 
 Output includes: config settings (active, concurrency, stagger, dedup, stop_on_error,
-evolution), orchestrator loop state (running/stopped/halted), currently active runs,
-and known container and host workflow names. When the loop is halted due to
-`stop_on_error`, the halt error message is displayed.
+max_consecutive_failures, evolution), orchestrator loop state (running/stopped/halted),
+currently active runs, and known container and host workflow names. When the loop is
+halted due to `stop_on_error` or `max_consecutive_failures`, the halt error message is
+displayed.
 
 ### `cloche get`
 
@@ -886,8 +887,9 @@ cloche loop resume
 
 `cloche loop stop` disables the loop. Running tasks are not cancelled.
 
-`cloche loop resume` clears the halted state after a `stop_on_error` halt, allowing
-the loop to resume picking up new work. See `stop_on_error` in the project config.
+`cloche loop resume` clears the halted state after a `stop_on_error` or
+`max_consecutive_failures` halt, resets the consecutive failure counter, and allows
+the loop to resume picking up new work.
 
 ### `cloche --version`
 

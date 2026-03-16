@@ -145,6 +145,7 @@ func TestLoadOrchestrationConfigDefaults(t *testing.T) {
 	assert.Equal(t, 1, cfg.Orchestration.Concurrency)
 	assert.Equal(t, 1.0, cfg.Orchestration.StaggerSeconds)
 	assert.False(t, cfg.Orchestration.StopOnError)
+	assert.Equal(t, 3, cfg.Orchestration.MaxConsecutiveFailures)
 }
 
 func TestLoadOrchestrationStopOnError(t *testing.T) {
@@ -162,6 +163,21 @@ concurrency = 1
 	require.NoError(t, err)
 	assert.True(t, cfg.Orchestration.StopOnError)
 	assert.Equal(t, 1, cfg.Orchestration.Concurrency)
+}
+
+func TestLoadOrchestrationMaxConsecutiveFailures(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
+[orchestration]
+max_consecutive_failures = 5
+`), 0644)
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, 5, cfg.Orchestration.MaxConsecutiveFailures)
 }
 
 func TestLoadGlobalFromMissing(t *testing.T) {

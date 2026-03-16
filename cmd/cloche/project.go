@@ -72,6 +72,7 @@ func cmdProject(args []string) {
 		fmt.Printf("  dedup_seconds:      %.0f\n", resp.DedupSeconds)
 	}
 	fmt.Printf("  stop_on_error:      %v\n", resp.StopOnError)
+	fmt.Printf("  max_consecutive_failures: %d\n", resp.MaxConsecutiveFailures)
 	fmt.Printf("  evolution:          %v\n", resp.EvolutionEnabled)
 	fmt.Println()
 

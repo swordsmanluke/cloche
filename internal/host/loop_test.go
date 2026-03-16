@@ -826,6 +826,172 @@ func TestPhaseLoop_StopOnError_HaltsOnFailure(t *testing.T) {
 	loop.Stop()
 }
 
+// --- MaxConsecutiveFailures tests ---
+
+func TestLoop_ConsecutiveFailures_RecordAndReset(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	loop := NewLoop(LoopConfig{
+		ProjectDir:             "/tmp/test-project",
+		MaxConcurrent:          1,
+		MaxConsecutiveFailures: 3,
+	}, store, func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	})
+
+	// Below threshold — not halted.
+	assert.False(t, loop.recordConsecutiveFailure())
+	assert.False(t, loop.recordConsecutiveFailure())
+
+	// Third failure reaches threshold.
+	assert.True(t, loop.recordConsecutiveFailure())
+
+	// Reset clears the counter.
+	loop.resetConsecutiveFailures()
+	assert.False(t, loop.recordConsecutiveFailure()) // back to 1
+}
+
+func TestLoop_ConsecutiveFailures_HaltsLoopOnThreshold(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	var called atomic.Int32
+
+	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+		n := called.Add(1)
+		time.Sleep(20 * time.Millisecond)
+		if n == 1 {
+			return &RunResult{State: domain.RunStateFailed}, nil
+		}
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	// With MaxConsecutiveFailures=1, behaves like stop_on_error.
+	loop := NewLoop(LoopConfig{
+		ProjectDir:             "/tmp/test-project",
+		MaxConcurrent:          1,
+		MaxConsecutiveFailures: 1,
+	}, store, runFn)
+
+	loop.Start()
+	time.Sleep(300 * time.Millisecond)
+
+	halted, haltErr := loop.Halted()
+	assert.True(t, halted, "loop should be halted after 1 consecutive failure")
+	assert.Contains(t, haltErr, "consecutive failures")
+	assert.Equal(t, int32(1), called.Load())
+
+	loop.Stop()
+}
+
+func TestLoop_ConsecutiveFailures_ResumeResetsCounter(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	var called atomic.Int32
+
+	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+		called.Add(1)
+		time.Sleep(20 * time.Millisecond)
+		return &RunResult{State: domain.RunStateFailed}, nil
+	}
+
+	loop := NewLoop(LoopConfig{
+		ProjectDir:             "/tmp/test-project",
+		MaxConcurrent:          1,
+		MaxConsecutiveFailures: 1,
+	}, store, runFn)
+
+	loop.Start()
+	time.Sleep(300 * time.Millisecond)
+
+	halted, _ := loop.Halted()
+	assert.True(t, halted, "loop should halt after 1 consecutive failure")
+	assert.Equal(t, int32(1), called.Load())
+
+	// Resume clears the counter so it takes another failure to halt.
+	loop.Resume()
+	time.Sleep(300 * time.Millisecond)
+
+	halted, _ = loop.Halted()
+	assert.True(t, halted, "loop should halt again after resume")
+	assert.Equal(t, int32(2), called.Load())
+
+	loop.Stop()
+}
+
+func TestLoop_ConsecutiveFailures_DefaultThreshold(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	// MaxConsecutiveFailures=0 should default to 3.
+	loop := NewLoop(LoopConfig{
+		ProjectDir:             "/tmp/test-project",
+		MaxConcurrent:          1,
+		MaxConsecutiveFailures: 0,
+	}, store, func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	})
+
+	assert.Equal(t, defaultMaxConsecutiveFailures, loop.config.MaxConsecutiveFailures)
+}
+
+func TestLoop_ConsecutiveFailures_SuccessResetsInLoop(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	var called atomic.Int32
+
+	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+		n := called.Add(1)
+		time.Sleep(20 * time.Millisecond)
+		// First succeeds (resets counter), second fails and halts (threshold=1).
+		if n == 1 {
+			return &RunResult{State: domain.RunStateSucceeded}, nil
+		}
+		return &RunResult{State: domain.RunStateFailed}, nil
+	}
+
+	loop := NewLoop(LoopConfig{
+		ProjectDir:             "/tmp/test-project",
+		MaxConcurrent:          1,
+		MaxConsecutiveFailures: 1,
+	}, store, runFn)
+
+	loop.Start()
+	time.Sleep(300 * time.Millisecond)
+
+	halted, _ := loop.Halted()
+	assert.True(t, halted, "loop should halt on second run (first failure after success)")
+	assert.Equal(t, int32(2), called.Load(), "two runs: one success, one failure")
+
+	loop.Stop()
+}
+
+func TestPhaseLoop_ConsecutiveFailures_HaltsAfterThreshold(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	var mainCalls atomic.Int32
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{{ID: fmt.Sprintf("task-%d", mainCalls.Load()+1), Status: "open"}}, nil
+	}
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+		mainCalls.Add(1)
+		time.Sleep(20 * time.Millisecond)
+		return &RunResult{RunID: "run-" + taskID, State: domain.RunStateFailed}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:             "/tmp/test-project",
+		MaxConcurrent:          1,
+		DedupTimeout:           50 * time.Millisecond,
+		MaxConsecutiveFailures: 1,
+	}, store, listTasksFn, mainFn, nil)
+
+	loop.Start()
+	time.Sleep(300 * time.Millisecond)
+
+	halted, haltErr := loop.Halted()
+	assert.True(t, halted, "phased loop should be halted after consecutive failures")
+	assert.Contains(t, haltErr, "consecutive failures")
+	assert.Equal(t, int32(1), mainCalls.Load())
+
+	loop.Stop()
+}
+
 func TestLoop_Halted_DefaultFalse(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {

@@ -14,19 +14,21 @@ import (
 )
 
 const (
-	defaultMaxConcurrent = 1
-	defaultDedupTimeout  = 5 * time.Minute
-	idlePollInterval     = 2 * time.Minute
-	capacityPollInterval = 30 * time.Second
+	defaultMaxConcurrent          = 1
+	defaultDedupTimeout           = 5 * time.Minute
+	defaultMaxConsecutiveFailures = 3
+	idlePollInterval              = 2 * time.Minute
+	capacityPollInterval          = 30 * time.Second
 )
 
 // LoopConfig holds configuration for an orchestration loop.
 type LoopConfig struct {
-	ProjectDir    string
-	MaxConcurrent int
-	StaggerDelay  time.Duration // delay between launching consecutive runs
-	DedupTimeout  time.Duration // how long to suppress reassignment of the same task ID
-	StopOnError   bool          // halt loop on unrecovered error (allow in-flight work to finish)
+	ProjectDir             string
+	MaxConcurrent          int
+	StaggerDelay           time.Duration // delay between launching consecutive runs
+	DedupTimeout           time.Duration // how long to suppress reassignment of the same task ID
+	StopOnError            bool          // halt loop on unrecovered error (allow in-flight work to finish)
+	MaxConsecutiveFailures int           // halt loop after N consecutive failures (default: 3, must be > 0)
 }
 
 // ListTasksFunc is called to discover available tasks. It should run the
@@ -77,10 +79,11 @@ type Loop struct {
 	resumeCh   chan struct{} // signaled by Resume() to wake the loop
 	mu         sync.Mutex
 	running    bool
-	haltedMu   sync.RWMutex
-	halted     bool   // true when loop is halted due to an unrecovered error
-	haltError  string // the error message that caused the halt
-	dedupMu    sync.Mutex
+	haltedMu            sync.RWMutex
+	halted              bool   // true when loop is halted due to an unrecovered error
+	haltError           string // the error message that caused the halt
+	consecutiveFailures int    // number of consecutive failed runs
+	dedupMu             sync.Mutex
 	dedup      map[string]time.Time // task ID -> last assignment time
 	tasksMu    sync.RWMutex
 	lastTasks  []Task                    // most recently fetched tasks
@@ -95,6 +98,9 @@ func NewLoop(cfg LoopConfig, store ports.RunStore, runFn RunFunc) *Loop {
 	}
 	if cfg.DedupTimeout <= 0 {
 		cfg.DedupTimeout = defaultDedupTimeout
+	}
+	if cfg.MaxConsecutiveFailures <= 0 {
+		cfg.MaxConsecutiveFailures = defaultMaxConsecutiveFailures
 	}
 	return &Loop{
 		config:   cfg,
@@ -115,6 +121,9 @@ func NewPhaseLoop(cfg LoopConfig, store ports.RunStore, listTasksFn ListTasksFun
 	}
 	if cfg.DedupTimeout <= 0 {
 		cfg.DedupTimeout = defaultDedupTimeout
+	}
+	if cfg.MaxConsecutiveFailures <= 0 {
+		cfg.MaxConsecutiveFailures = defaultMaxConsecutiveFailures
 	}
 	return &Loop{
 		config:     cfg,
@@ -183,6 +192,7 @@ func (l *Loop) Resume() {
 		log.Printf("orchestration loop: resumed for %s (was halted: %s)", l.config.ProjectDir, l.haltError)
 		l.halted = false
 		l.haltError = ""
+		l.consecutiveFailures = 0
 		// Wake the loop from any sleep so it picks up work immediately.
 		select {
 		case l.resumeCh <- struct{}{}:
@@ -198,6 +208,25 @@ func (l *Loop) halt(errMsg string) {
 	l.halted = true
 	l.haltError = errMsg
 	log.Printf("orchestration loop: halted for %s (stop_on_error): %s", l.config.ProjectDir, errMsg)
+}
+
+// recordConsecutiveFailure increments the consecutive failure counter and
+// returns true if the threshold has been reached.
+func (l *Loop) recordConsecutiveFailure() bool {
+	l.haltedMu.Lock()
+	defer l.haltedMu.Unlock()
+	if l.halted {
+		return false // already halted (e.g. by StopOnError)
+	}
+	l.consecutiveFailures++
+	return l.consecutiveFailures >= l.config.MaxConsecutiveFailures
+}
+
+// resetConsecutiveFailures resets the consecutive failure counter to zero.
+func (l *Loop) resetConsecutiveFailures() {
+	l.haltedMu.Lock()
+	defer l.haltedMu.Unlock()
+	l.consecutiveFailures = 0
 }
 
 // isHalted returns true if the loop is currently halted.
@@ -316,12 +345,16 @@ func (l *Loop) runPhased() {
 		case r := <-completions:
 			inFlight--
 			if r.state == domain.RunStateSucceeded {
+				l.resetConsecutiveFailures()
 				// Work was done — try to fill slots immediately.
 				continue
 			}
 			// Run failed or aborted.
 			if l.config.StopOnError {
 				l.halt(r.errMsg)
+			}
+			if l.recordConsecutiveFailure() {
+				l.halt(fmt.Sprintf("halted after %d consecutive failures: %s", l.config.MaxConsecutiveFailures, r.errMsg))
 			}
 			// Back off.
 			if !l.sleep(idlePollInterval) {
@@ -495,12 +528,16 @@ func (l *Loop) runLegacy() {
 		case r := <-completions:
 			inFlight--
 			if r.state == domain.RunStateSucceeded {
+				l.resetConsecutiveFailures()
 				// Work was done — try to fill slots immediately.
 				continue
 			}
 			// Run failed or aborted (no tasks available).
 			if l.config.StopOnError {
 				l.halt(r.errMsg)
+			}
+			if l.recordConsecutiveFailure() {
+				l.halt(fmt.Sprintf("halted after %d consecutive failures: %s", l.config.MaxConsecutiveFailures, r.errMsg))
 			}
 			// Back off.
 			if !l.sleep(idlePollInterval) {

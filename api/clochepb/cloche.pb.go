@@ -1335,9 +1335,10 @@ type GetProjectInfoResponse struct {
 	ActiveRuns         []*RunSummary          `protobuf:"bytes,9,rep,name=active_runs,json=activeRuns,proto3" json:"active_runs,omitempty"`
 	ContainerWorkflows []string               `protobuf:"bytes,10,rep,name=container_workflows,json=containerWorkflows,proto3" json:"container_workflows,omitempty"`
 	HostWorkflows      []string               `protobuf:"bytes,11,rep,name=host_workflows,json=hostWorkflows,proto3" json:"host_workflows,omitempty"`
-	StopOnError        bool                   `protobuf:"varint,12,opt,name=stop_on_error,json=stopOnError,proto3" json:"stop_on_error,omitempty"`
-	ErrorHalted        bool                   `protobuf:"varint,13,opt,name=error_halted,json=errorHalted,proto3" json:"error_halted,omitempty"` // true when loop is halted due to an unrecovered error
-	HaltError          string                 `protobuf:"bytes,14,opt,name=halt_error,json=haltError,proto3" json:"halt_error,omitempty"`        // the error that caused the halt
+	StopOnError            bool                   `protobuf:"varint,12,opt,name=stop_on_error,json=stopOnError,proto3" json:"stop_on_error,omitempty"`
+	ErrorHalted            bool                   `protobuf:"varint,13,opt,name=error_halted,json=errorHalted,proto3" json:"error_halted,omitempty"` // true when loop is halted due to an unrecovered error
+	HaltError              string                 `protobuf:"bytes,14,opt,name=halt_error,json=haltError,proto3" json:"halt_error,omitempty"`        // the error that caused the halt
+	MaxConsecutiveFailures int32                  `protobuf:"varint,15,opt,name=max_consecutive_failures,json=maxConsecutiveFailures,proto3" json:"max_consecutive_failures,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -1468,6 +1469,13 @@ func (x *GetProjectInfoResponse) GetHaltError() string {
 		return x.HaltError
 	}
 	return ""
+}
+
+func (x *GetProjectInfoResponse) GetMaxConsecutiveFailures() int32 {
+	if x != nil {
+		return x.MaxConsecutiveFailures
+	}
+	return 0
 }
 
 type GetVersionRequest struct {

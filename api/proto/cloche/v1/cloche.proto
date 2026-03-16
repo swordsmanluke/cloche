@@ -167,6 +167,7 @@ message GetProjectInfoResponse {
   bool stop_on_error = 12;
   bool error_halted = 13;       // true when loop is halted due to an unrecovered error
   string halt_error = 14;       // the error that caused the halt
+  int32 max_consecutive_failures = 15; // halt loop after N consecutive failures
 }
 
 message GetVersionRequest {}
