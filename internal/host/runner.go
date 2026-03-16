@@ -362,6 +362,7 @@ func findHostWorkflow(projectDir, workflowName string) (*domain.Workflow, error)
 			continue
 		}
 		if wf, ok := workflows[workflowName]; ok && wf.Location == domain.LocationHost {
+			wf.ResolveAgents()
 			return wf, nil
 		}
 	}
@@ -389,6 +390,7 @@ func FindHostWorkflows(projectDir string) (map[string]*domain.Workflow, error) {
 		}
 		for name, wf := range workflows {
 			if wf.Location == domain.LocationHost {
+				wf.ResolveAgents()
 				all[name] = wf
 			}
 		}

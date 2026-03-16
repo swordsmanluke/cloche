@@ -60,6 +60,7 @@ file is a parse error.
 | step     | A unit of work (inferred: `prompt` = agent, `run` = script)        |
 | result   | A named outcome reported by a step (e.g. "success", "fail")       |
 | wiring   | Maps a step's result to the next step, with optional output mappings |
+| agent    | A named agent declaration with command and arguments               |
 | done     | Built-in terminal step — successful completion                     |
 | abort    | Built-in terminal step — failure with error reporting              |
 
@@ -115,6 +116,60 @@ workflow "develop" {
   fix:give-up       -> abort
 }
 ```
+
+## Agent Declarations
+
+Workflows can declare named agents at the workflow level. An agent specifies a `command`
+(required) and optional `args`. Steps reference agents by identifier via the `agent`
+config key, avoiding repetition of agent configuration across multiple prompt steps.
+
+```
+workflow "develop" {
+  agent claude {
+    command = "claude"
+    args = "-p --output-format stream-json"
+  }
+
+  agent codex {
+    command = "codex"
+    args = "--full-auto"
+  }
+
+  step implement {
+    prompt = file(".cloche/prompts/implement.md")
+    agent = claude
+    results = [success, fail]
+  }
+
+  step review {
+    prompt = file(".cloche/prompts/review.md")
+    agent = codex
+    results = [success, fail]
+  }
+
+  implement:success -> review
+  implement:fail    -> abort
+  review:success    -> done
+  review:fail       -> implement
+}
+```
+
+**Agent block fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `command` | yes | The agent command to run (e.g. `claude`, `codex`, `ollama`) |
+| `args` | no | Arguments passed to the agent command |
+
+**Resolution:** When a step references an agent via `agent = <identifier>`, the agent's
+`command` and `args` are expanded into `agent_command` and `agent_args` on the step.
+Step-level `agent_command` and `agent_args` still override the agent declaration. The
+full resolution order is: step-level > agent declaration > workflow-level block >
+`CLOCHE_AGENT_COMMAND` env var > default `claude`.
+
+**Validation:** Referencing an undeclared agent is a validation error. Only prompt (agent
+type) steps may reference an agent. Duplicate agent names within a workflow are a parse
+error. An agent declaration without a `command` field is a parse error.
 
 ## Key Properties
 
@@ -202,8 +257,8 @@ workflow "main" {
 Supported keys: `agent_command`, `agent_args`.
 
 Step-level `agent_command` and `agent_args` override workflow-level defaults. The
-resolution order is: step-level > workflow-level block > `CLOCHE_AGENT_COMMAND` env
-var > default `claude`.
+resolution order is: step-level > agent declaration > workflow-level block >
+`CLOCHE_AGENT_COMMAND` env var > default `claude`.
 
 ## Host Workflow Example
 

@@ -45,6 +45,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("parsing workflow: %w", err)
 	}
+	wf.ResolveAgents()
 
 	statusWriter := protocol.NewStatusWriter(r.cfg.StatusOutput)
 	genericAdapter := generic.New()

@@ -141,11 +141,21 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 		Name:     nameTok.Literal,
 		Location: p.location,
 		Steps:    make(map[string]*domain.Step),
+		Agents:   make(map[string]*domain.Agent),
 		Config:   make(map[string]string),
 	}
 
 	for p.current.Type != TokenRBrace && p.current.Type != TokenEOF {
-		if p.current.Type == TokenIdent && p.current.Literal == "step" {
+		if p.current.Type == TokenIdent && p.current.Literal == "agent" && p.peek.Type == TokenIdent {
+			agent, err := p.parseAgent()
+			if err != nil {
+				return nil, err
+			}
+			if _, exists := wf.Agents[agent.Name]; exists {
+				return nil, fmt.Errorf("line %d: duplicate agent declaration %q", p.current.Line, agent.Name)
+			}
+			wf.Agents[agent.Name] = agent
+		} else if p.current.Type == TokenIdent && p.current.Literal == "step" {
 			step, err := p.parseStep()
 			if err != nil {
 				return nil, err
@@ -236,6 +246,57 @@ func (p *Parser) parseWorkflowConfig(wf *domain.Workflow) error {
 	}
 
 	return nil
+}
+
+func (p *Parser) parseAgent() (*domain.Agent, error) {
+	p.advance() // consume "agent"
+
+	nameTok, err := p.expect(TokenIdent)
+	if err != nil {
+		return nil, fmt.Errorf("expected agent name: %w", err)
+	}
+
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+
+	agent := &domain.Agent{Name: nameTok.Literal}
+
+	for p.current.Type != TokenRBrace && p.current.Type != TokenEOF {
+		keyTok, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, fmt.Errorf("expected field name in agent block: %w", err)
+		}
+
+		if _, err := p.expect(TokenEquals); err != nil {
+			return nil, err
+		}
+
+		val, err := p.parseValue()
+		if err != nil {
+			return nil, err
+		}
+
+		switch keyTok.Literal {
+		case "command":
+			agent.Command = val
+		case "args":
+			agent.Args = val
+		default:
+			return nil, fmt.Errorf("line %d col %d: unknown agent field %q (expected \"command\" or \"args\")",
+				keyTok.Line, keyTok.Col, keyTok.Literal)
+		}
+	}
+
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+
+	if agent.Command == "" {
+		return nil, fmt.Errorf("agent %q: \"command\" is required", agent.Name)
+	}
+
+	return agent, nil
 }
 
 func (p *Parser) parseStep() (*domain.Step, error) {

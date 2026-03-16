@@ -446,6 +446,160 @@ func TestWorkflow_Validate_DuplicateOutputMapping_NoMappings(t *testing.T) {
 	assert.NoError(t, err, "wires with no output mappings should be valid")
 }
 
+// --- Agent declaration tests ---
+
+func TestWorkflow_Validate_AgentReference(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "test",
+		Steps: map[string]*domain.Step{
+			"code": {
+				Name:    "code",
+				Type:    domain.StepTypeAgent,
+				Results: []string{"success"},
+				Config:  map[string]string{"prompt": "write code", "agent": "claude"},
+			},
+		},
+		Agents: map[string]*domain.Agent{
+			"claude": {Name: "claude", Command: "claude", Args: "-p --verbose"},
+		},
+		Wiring:    []domain.Wire{{From: "code", Result: "success", To: domain.StepDone}},
+		EntryStep: "code",
+	}
+	err := wf.Validate()
+	assert.NoError(t, err)
+}
+
+func TestWorkflow_Validate_UndeclaredAgentReference(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "test",
+		Steps: map[string]*domain.Step{
+			"code": {
+				Name:    "code",
+				Type:    domain.StepTypeAgent,
+				Results: []string{"success"},
+				Config:  map[string]string{"prompt": "write code", "agent": "nonexistent"},
+			},
+		},
+		Agents:    map[string]*domain.Agent{},
+		Wiring:    []domain.Wire{{From: "code", Result: "success", To: domain.StepDone}},
+		EntryStep: "code",
+	}
+	err := wf.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "undeclared agent")
+	assert.Contains(t, err.Error(), "nonexistent")
+}
+
+func TestWorkflow_Validate_AgentOnNonPromptStep(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "test",
+		Steps: map[string]*domain.Step{
+			"build": {
+				Name:    "build",
+				Type:    domain.StepTypeScript,
+				Results: []string{"success"},
+				Config:  map[string]string{"run": "make build", "agent": "claude"},
+			},
+		},
+		Agents: map[string]*domain.Agent{
+			"claude": {Name: "claude", Command: "claude"},
+		},
+		Wiring:    []domain.Wire{{From: "build", Result: "success", To: domain.StepDone}},
+		EntryStep: "build",
+	}
+	err := wf.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a prompt step")
+}
+
+func TestWorkflow_ResolveAgents(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "test",
+		Steps: map[string]*domain.Step{
+			"code": {
+				Name:    "code",
+				Type:    domain.StepTypeAgent,
+				Results: []string{"success"},
+				Config:  map[string]string{"prompt": "write code", "agent": "claude"},
+			},
+		},
+		Agents: map[string]*domain.Agent{
+			"claude": {Name: "claude", Command: "claude", Args: "-p --verbose"},
+		},
+	}
+	wf.ResolveAgents()
+
+	assert.Equal(t, "claude", wf.Steps["code"].Config["agent_command"])
+	assert.Equal(t, "-p --verbose", wf.Steps["code"].Config["agent_args"])
+}
+
+func TestWorkflow_ResolveAgents_StepOverride(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "test",
+		Steps: map[string]*domain.Step{
+			"code": {
+				Name:    "code",
+				Type:    domain.StepTypeAgent,
+				Results: []string{"success"},
+				Config: map[string]string{
+					"prompt":        "write code",
+					"agent":         "claude",
+					"agent_command": "custom-claude",
+				},
+			},
+		},
+		Agents: map[string]*domain.Agent{
+			"claude": {Name: "claude", Command: "claude", Args: "-p --verbose"},
+		},
+	}
+	wf.ResolveAgents()
+
+	// Step-level agent_command should not be overridden
+	assert.Equal(t, "custom-claude", wf.Steps["code"].Config["agent_command"])
+	// But args should be filled from agent since not set at step level
+	assert.Equal(t, "-p --verbose", wf.Steps["code"].Config["agent_args"])
+}
+
+func TestWorkflow_ResolveAgents_NoAgentRef(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "test",
+		Steps: map[string]*domain.Step{
+			"code": {
+				Name:    "code",
+				Type:    domain.StepTypeAgent,
+				Results: []string{"success"},
+				Config:  map[string]string{"prompt": "write code"},
+			},
+		},
+		Agents: map[string]*domain.Agent{
+			"claude": {Name: "claude", Command: "claude"},
+		},
+	}
+	wf.ResolveAgents()
+
+	// No agent ref, so agent_command should not be set
+	_, hasCmd := wf.Steps["code"].Config["agent_command"]
+	assert.False(t, hasCmd)
+}
+
+func TestWorkflow_ValidateConfig_AgentKey(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "agent-key",
+		Steps: map[string]*domain.Step{
+			"code": {
+				Name:    "code",
+				Results: []string{"success"},
+				Config: map[string]string{
+					"prompt": "do stuff",
+					"agent":  "claude",
+				},
+			},
+		},
+	}
+	warnings := wf.ValidateConfig()
+	assert.Empty(t, warnings)
+}
+
 func TestWorkflow_ValidateConfig_ContainerPrefix(t *testing.T) {
 	wf := &domain.Workflow{
 		Name: "container-keys",

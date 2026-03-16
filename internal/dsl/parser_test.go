@@ -789,3 +789,163 @@ func TestParse_RejectsHostAndContainerBlocks(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "both \"host\" and \"container\"")
 }
+
+// --- Agent declaration tests ---
+
+func TestParser_AgentDeclaration(t *testing.T) {
+	input := `workflow "develop" {
+  agent claude {
+    command = "claude"
+    args = "-p --output-format stream-json"
+  }
+
+  step code {
+    prompt = "write code"
+    agent = claude
+    results = [success, fail]
+  }
+
+  code:success -> done
+  code:fail -> abort
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+
+	require.Len(t, wf.Agents, 1)
+	agent := wf.Agents["claude"]
+	require.NotNil(t, agent)
+	assert.Equal(t, "claude", agent.Name)
+	assert.Equal(t, "claude", agent.Command)
+	assert.Equal(t, "-p --output-format stream-json", agent.Args)
+
+	code := wf.Steps["code"]
+	require.NotNil(t, code)
+	assert.Equal(t, "claude", code.Config["agent"])
+}
+
+func TestParser_MultipleAgents(t *testing.T) {
+	input := `workflow "develop" {
+  agent claude {
+    command = "claude"
+    args = "-p --verbose"
+  }
+
+  agent codex {
+    command = "codex"
+    args = "--full-auto"
+  }
+
+  step implement {
+    prompt = "implement the feature"
+    agent = claude
+    results = [success, fail]
+  }
+
+  step review {
+    prompt = "review the code"
+    agent = codex
+    results = [success, fail]
+  }
+
+  implement:success -> review
+  implement:fail -> abort
+  review:success -> done
+  review:fail -> implement
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+
+	require.Len(t, wf.Agents, 2)
+	assert.Equal(t, "claude", wf.Agents["claude"].Command)
+	assert.Equal(t, "codex", wf.Agents["codex"].Command)
+
+	assert.Equal(t, "claude", wf.Steps["implement"].Config["agent"])
+	assert.Equal(t, "codex", wf.Steps["review"].Config["agent"])
+}
+
+func TestParser_AgentCommandOnly(t *testing.T) {
+	input := `workflow "simple" {
+  agent ollama {
+    command = "ollama"
+  }
+
+  step code {
+    prompt = "write code"
+    agent = ollama
+    results = [success]
+  }
+
+  code:success -> done
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+
+	agent := wf.Agents["ollama"]
+	require.NotNil(t, agent)
+	assert.Equal(t, "ollama", agent.Command)
+	assert.Equal(t, "", agent.Args)
+}
+
+func TestParser_AgentMissingCommand(t *testing.T) {
+	input := `workflow "bad" {
+  agent nocommand {
+    args = "--verbose"
+  }
+
+  step code {
+    prompt = "write"
+    results = [success]
+  }
+
+  code:success -> done
+}`
+
+	_, err := dsl.Parse(input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "command")
+}
+
+func TestParser_DuplicateAgent(t *testing.T) {
+	input := `workflow "bad" {
+  agent claude {
+    command = "claude"
+  }
+  agent claude {
+    command = "claude2"
+  }
+
+  step code {
+    prompt = "write"
+    results = [success]
+  }
+
+  code:success -> done
+}`
+
+	_, err := dsl.Parse(input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate agent")
+}
+
+func TestParser_AgentUnknownField(t *testing.T) {
+	input := `workflow "bad" {
+  agent claude {
+    command = "claude"
+    unknown = "value"
+  }
+
+  step code {
+    prompt = "write"
+    results = [success]
+  }
+
+  code:success -> done
+}`
+
+	_, err := dsl.Parse(input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown agent field")
+}

@@ -132,10 +132,19 @@ type Collect struct {
 	To         string
 }
 
+// Agent declares a named agent with a command and arguments.
+// Steps reference agents by identifier via the "agent" config key.
+type Agent struct {
+	Name    string
+	Command string
+	Args    string
+}
+
 type Workflow struct {
 	Name      string
 	Location  WorkflowLocation  // host or container
 	Steps     map[string]*Step
+	Agents    map[string]*Agent // declared agents, keyed by identifier
 	Wiring    []Wire
 	Collects  []Collect
 	EntryStep string
@@ -225,7 +234,41 @@ func (w *Workflow) Validate() error {
 		}
 	}
 
+	// Validate agent references
+	for name, step := range w.Steps {
+		if agentRef, ok := step.Config["agent"]; ok {
+			if len(w.Agents) == 0 || w.Agents[agentRef] == nil {
+				return fmt.Errorf("workflow %q: step %q references undeclared agent %q", w.Name, name, agentRef)
+			}
+			if step.Type != StepTypeAgent {
+				return fmt.Errorf("workflow %q: step %q references agent %q but is not a prompt step", w.Name, name, agentRef)
+			}
+		}
+	}
+
 	return nil
+}
+
+// ResolveAgents expands agent references in steps to agent_command/agent_args config.
+// Must be called after Validate to ensure references are valid.
+func (w *Workflow) ResolveAgents() {
+	for _, step := range w.Steps {
+		agentRef, ok := step.Config["agent"]
+		if !ok {
+			continue
+		}
+		agent := w.Agents[agentRef]
+		if agent == nil {
+			continue
+		}
+		// Only set if not already explicitly overridden at step level
+		if _, has := step.Config["agent_command"]; !has && agent.Command != "" {
+			step.Config["agent_command"] = agent.Command
+		}
+		if _, has := step.Config["agent_args"]; !has && agent.Args != "" {
+			step.Config["agent_args"] = agent.Args
+		}
+	}
 }
 
 // ValidateLocation checks that step types are compatible with the workflow location.
@@ -250,6 +293,7 @@ var knownStepConfigKeys = map[string]bool{
 	"timeout":       true,
 	"agent_command": true,
 	"agent_args":    true,
+	"agent":         true,
 	"results":       true,
 	"feedback":      true,
 	"workflow_name": true,
