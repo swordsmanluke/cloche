@@ -2,16 +2,23 @@ package evolution
 
 import "math/rand"
 
-// Candidate represents a prompt variant that can be selected for the next evolution cycle.
+// Candidate represents a prompt variant in a GEPA population that can be
+// selected for the next evolution cycle.
 type Candidate struct {
-	ID       string
-	PromptID string
-	Content  string
+	ID         string        `json:"id"`
+	PromptID   string        `json:"prompt_id"`
+	Content    string        `json:"content"`
+	Generation int           `json:"generation"`
+	ParentID   string        `json:"parent_id,omitempty"`
+	Fitness    FitnessScores `json:"fitness"`
 }
 
 // FitnessScores holds multi-objective fitness values for a candidate.
 type FitnessScores struct {
-	Scores map[string]float64 // objective name -> score
+	Scores  map[string]float64 `json:"scores,omitempty"` // objective name -> score
+	Total   float64            `json:"total"`
+	Count   int                `json:"count"`
+	Average float64            `json:"average"`
 }
 
 // SelectCandidate picks a candidate for the next evolution cycle.

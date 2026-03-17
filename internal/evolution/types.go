@@ -54,3 +54,18 @@ type Change struct {
 	Reason   string `json:"reason"`
 	Snapshot string `json:"snapshot"`
 }
+
+// FitnessRecord captures the outcome of evaluating a candidate on a single run.
+type FitnessRecord struct {
+	CandidateID string  `json:"candidate_id"`
+	RunID       string  `json:"run_id"`
+	Score       float64 `json:"score"`
+	Details     string  `json:"details,omitempty"`
+}
+
+// PopulationConfig controls GEPA-style population-based prompt evolution.
+type PopulationConfig struct {
+	Enabled          bool `json:"enabled"`
+	MaxCandidates    int  `json:"max_candidates"`
+	MinRunsToPromote int  `json:"min_runs_to_promote"`
+}

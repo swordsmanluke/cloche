@@ -22,6 +22,9 @@ type EvolutionConfig struct {
 	DebounceSeconds  int    `toml:"debounce_seconds"`
 	MinConfidence    string `toml:"min_confidence"`
 	MaxPromptBullets int    `toml:"max_prompt_bullets"`
+	PopulationEnabled  bool `toml:"population_enabled"`
+	MaxCandidates      int  `toml:"max_candidates"`
+	MinRunsToPromote   int  `toml:"min_runs_to_promote"`
 }
 
 type OrchestrationConfig struct {
@@ -47,6 +50,9 @@ func defaults() Config {
 			DebounceSeconds:  30,
 			MinConfidence:    "medium",
 			MaxPromptBullets: 50,
+			PopulationEnabled:  false,
+			MaxCandidates:      5,
+			MinRunsToPromote:   5,
 		},
 		Orchestration: OrchestrationConfig{
 			Concurrency:            1,

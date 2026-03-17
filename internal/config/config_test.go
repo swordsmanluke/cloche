@@ -180,6 +180,35 @@ max_consecutive_failures = 5
 	assert.Equal(t, 5, cfg.Orchestration.MaxConsecutiveFailures)
 }
 
+func TestLoadPopulationConfig(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
+[evolution]
+population_enabled = true
+max_candidates = 10
+min_runs_to_promote = 3
+`), 0644)
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.True(t, cfg.Evolution.PopulationEnabled)
+	assert.Equal(t, 10, cfg.Evolution.MaxCandidates)
+	assert.Equal(t, 3, cfg.Evolution.MinRunsToPromote)
+}
+
+func TestLoadPopulationConfigDefaults(t *testing.T) {
+	dir := t.TempDir()
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.False(t, cfg.Evolution.PopulationEnabled)
+	assert.Equal(t, 5, cfg.Evolution.MaxCandidates)
+	assert.Equal(t, 5, cfg.Evolution.MinRunsToPromote)
+}
+
 func TestLoadGlobalFromMissing(t *testing.T) {
 	cfg, err := LoadGlobalFrom("/nonexistent/path/config")
 	require.NoError(t, err)
