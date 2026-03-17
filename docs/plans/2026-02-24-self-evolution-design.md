@@ -489,6 +489,22 @@ and strictly better in at least one. The front represents the optimal tradeoff
 between reliability and speed — no candidate on the front can be improved in one
 objective without sacrificing the other.
 
+### Candidate Selection
+
+`SelectCandidate` (in `internal/evolution/selector.go`) picks a candidate for
+the next evolution cycle using a stochastic strategy that balances exploitation
+and exploration:
+
+- **70%** — pick a random candidate from the Pareto front (exploit known-good
+  tradeoffs)
+- **30%** — pick a random non-front candidate (explore potentially improving
+  variants)
+
+If only one pool has candidates (e.g. all candidates are on the front, or no
+front candidates exist), selection draws from whichever pool is available.
+Returns nil when the candidate list is empty, signaling the caller to use the
+base prompt.
+
 ### Population Configuration
 
 Population-based evolution is controlled by `PopulationConfig`:
