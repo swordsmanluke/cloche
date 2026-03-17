@@ -245,8 +245,24 @@ function showWorkflow(wf) {
             }
         });
     }
-    // Add remaining steps (cycles or disconnected)
-    stepNames.forEach(function(n) { if (topoOrder.indexOf(n) === -1) topoOrder.push(n); });
+    // Add remaining steps (cycles) in BFS order from already-ordered nodes.
+    // This ensures forward dependencies are processed before their targets,
+    // so layer assignment sees correct parent layers even within cycles.
+    var topoVisited = {};
+    topoOrder.forEach(function(n) { topoVisited[n] = true; });
+    var bfsQ = topoOrder.slice();
+    while (bfsQ.length > 0) {
+        var bn = bfsQ.shift();
+        (adj[bn] || []).forEach(function(wire) {
+            if (!topoVisited[wire.to] && inDeg[wire.to] !== undefined) {
+                topoVisited[wire.to] = true;
+                topoOrder.push(wire.to);
+                bfsQ.push(wire.to);
+            }
+        });
+    }
+    // Add any truly disconnected nodes
+    stepNames.forEach(function(n) { if (!topoVisited[n]) { topoOrder.push(n); } });
 
     // Assign layers: longest path from any source
     var layerOf = {};
