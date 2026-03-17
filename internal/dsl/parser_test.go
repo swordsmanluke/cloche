@@ -969,3 +969,20 @@ func TestParser_NumericMaxAttempts(t *testing.T) {
 	require.NotNil(t, code)
 	assert.Equal(t, "3", code.Config["max_attempts"])
 }
+
+func TestParser_StringMaxAttempts_Rejected(t *testing.T) {
+	input := `workflow "retry" {
+  step code {
+    prompt = "write code"
+    max_attempts = "3"
+    results = [success, fail, give-up]
+  }
+  code:success -> done
+  code:fail -> code
+  code:give-up -> abort
+}`
+
+	_, err := dsl.Parse(input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "max_attempts must be a numeric value")
+}

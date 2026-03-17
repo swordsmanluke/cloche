@@ -400,6 +400,9 @@ func (p *Parser) parseStepField(step *domain.Step, prefix string) error {
 		}
 		step.Config[key] = strings.Join(values, ",")
 	} else {
+		if key == "max_attempts" && p.current.Type != TokenInt {
+			return fmt.Errorf("max_attempts must be a numeric value, not a string (line %d, col %d)", p.current.Line, p.current.Col)
+		}
 		val, err := p.parseValue()
 		if err != nil {
 			return err
