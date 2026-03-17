@@ -38,12 +38,6 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		"--add-host=host.docker.internal:host-gateway",
 	}
 
-	// When using the default command, run as root and wrap with chown + su agent
-	// so the workspace is owned by the agent user. Custom Cmd runs as-is.
-	if useDefaultCmd {
-		args = append(args, "--user", "root")
-	}
-
 	// Pass run ID into container
 	if cfg.RunID != "" {
 		args = append(args, "-e", "CLOCHE_RUN_ID="+cfg.RunID)
@@ -77,15 +71,17 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	// No --network none: agent needs network for git push and API access
 
 	if useDefaultCmd {
-		// Wrap: chown workspace, strip host-side tools (e.g. Serena MCP) that
-		// cause the agent to waste time on onboarding, then exec as agent.
+		// Start as root to fix ownership of docker-cp'd files, then drop
+		// to the agent user via gosu (direct setuid+exec, no intermediate
+		// shell — avoids stdout buffering issues that su/sh cause).
+		args = append(args, "--user", "root")
 		wrappedCmd := fmt.Sprintf(
 			"chown -R agent:agent /workspace"+
 				" && chown -R agent:agent /home/agent/.claude /home/agent/.claude.json 2>/dev/null"+
 				" && rm -rf /workspace/.serena"+
 				" && f=/home/agent/.claude/settings.json"+
 				` && [ -f "$f" ] && sed -i '/"enabledPlugins"/,/}/d' "$f"`+
-				"; exec su agent -s /bin/sh -c %q",
+				"; exec gosu agent %s",
 			strings.Join(containerCmd, " "),
 		)
 		args = append(args, cfg.Image, "sh", "-c", wrappedCmd)
