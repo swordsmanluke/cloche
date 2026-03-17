@@ -114,8 +114,7 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 	// matching container-side behavior where the agent writes full.log.
 	var ulog *logstream.Writer
 	if !r.SkipRunRecord {
-		runDir := filepath.Join(projectDir, ".cloche", orchRunID)
-		w, err := logstream.New(runDir)
+		w, err := logstream.NewAtDir(outputDir)
 		if err != nil {
 			log.Printf("host workflow [%s]: failed to create log writer: %v", orchRunID, err)
 		} else {
@@ -239,8 +238,7 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 	executor.ResumeStep = resumeFrom
 
 	var ulog *logstream.Writer
-	runDir := filepath.Join(run.ProjectDir, ".cloche", run.ID)
-	w, err := logstream.New(runDir)
+	w, err := logstream.NewAtDir(outputDir)
 	if err != nil {
 		log.Printf("host workflow [%s]: failed to create log writer: %v", run.ID, err)
 	} else {

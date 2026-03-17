@@ -27,8 +27,14 @@ type Writer struct {
 }
 
 // New creates a Writer that appends to .cloche/output/full.log under workDir.
+// This is used by the in-container agent where workDir is the workspace root.
 func New(workDir string) (*Writer, error) {
-	dir := filepath.Join(workDir, ".cloche", "output")
+	return NewAtDir(filepath.Join(workDir, ".cloche", "output"))
+}
+
+// NewAtDir creates a Writer that appends to full.log in the given directory.
+// The directory is created if it does not exist.
+func NewAtDir(dir string) (*Writer, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("creating output directory: %w", err)
 	}
