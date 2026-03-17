@@ -28,17 +28,24 @@ func lessonAlreadyPresent(currentPrompt string, lesson *Lesson) bool {
 	return false
 }
 
-// Apply curates a lesson into the target prompt file.
-func (c *Curator) Apply(ctx context.Context, projectDir string, lesson *Lesson) (*Change, error) {
+// ErrSanityCheckFailed indicates the curated content failed the prompt sanity check.
+var ErrSanityCheckFailed = fmt.Errorf("curation output failed sanity check")
+
+// Curate performs core curation logic: reads the current prompt, calls the LLM to
+// merge the lesson, and returns the updated prompt content as a string. All corruption
+// safeguards (conversational guard, code-fence stripping, sanity check) are applied.
+// Returns ("", nil) when the lesson is already present and no update is needed.
+// Returns ("", ErrSanityCheckFailed) when the curated output fails the sanity check.
+func (c *Curator) Curate(ctx context.Context, projectDir string, lesson *Lesson) (string, error) {
 	targetPath := filepath.Join(projectDir, lesson.Target)
 	current, err := os.ReadFile(targetPath)
 	if err != nil {
-		return nil, fmt.Errorf("reading target prompt %s: %w", lesson.Target, err)
+		return "", fmt.Errorf("reading target prompt %s: %w", lesson.Target, err)
 	}
 
 	// Guard: skip if the lesson is already incorporated in the prompt
 	if lessonAlreadyPresent(string(current), lesson) {
-		return nil, nil
+		return "", nil
 	}
 
 	systemPrompt := `You are a prompt curator using ACE (Agentic Context Engineering) principles.
@@ -57,7 +64,7 @@ Rules:
 
 	raw, err := c.LLM.Complete(ctx, systemPrompt, userPrompt)
 	if err != nil {
-		return nil, fmt.Errorf("curator LLM call: %w", err)
+		return "", fmt.Errorf("curator LLM call: %w", err)
 	}
 
 	updated := stripCodeFences(raw)
@@ -68,28 +75,22 @@ Rules:
 		updated = appendLessonDirectly(string(current), lesson)
 	}
 
-	// Snapshot before writing
-	var snapName string
-	if c.Audit != nil {
-		snapName, _ = c.Audit.Snapshot(lesson.Target)
+	// Sanity check the curated content
+	if !promptSanityCheck(updated) {
+		return "", ErrSanityCheckFailed
 	}
 
-	if err := os.WriteFile(targetPath, []byte(updated), 0644); err != nil {
-		return nil, fmt.Errorf("writing updated prompt: %w", err)
-	}
+	return updated, nil
+}
 
-	// Post-write sanity check: re-read and validate the written content
-	written, err := os.ReadFile(targetPath)
-	if err != nil {
-		return nil, fmt.Errorf("re-reading written prompt: %w", err)
-	}
-
-	if !promptSanityCheck(string(written)) {
-		// Rollback: restore from snapshot
-		if c.Audit != nil && snapName != "" {
-			if restoreErr := c.Audit.Restore(lesson.Target, snapName); restoreErr != nil {
-				return nil, fmt.Errorf("rollback failed after sanity check: %w", restoreErr)
-			}
+// Apply curates a lesson into the target prompt file.
+func (c *Curator) Apply(ctx context.Context, projectDir string, lesson *Lesson) (*Change, error) {
+	updated, err := c.Curate(ctx, projectDir, lesson)
+	if err == ErrSanityCheckFailed {
+		// Snapshot before rollback reporting
+		var snapName string
+		if c.Audit != nil {
+			snapName, _ = c.Audit.Snapshot(lesson.Target)
 		}
 		return &Change{
 			Type:     "prompt_update_rollback",
@@ -97,6 +98,25 @@ Rules:
 			Reason:   fmt.Sprintf("curation rolled back: written content failed sanity check (lesson: %s)", lesson.Insight),
 			Snapshot: snapName,
 		}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Empty string with nil error means lesson already present
+	if updated == "" {
+		return nil, nil
+	}
+
+	// Snapshot before writing
+	var snapName string
+	if c.Audit != nil {
+		snapName, _ = c.Audit.Snapshot(lesson.Target)
+	}
+
+	targetPath := filepath.Join(projectDir, lesson.Target)
+	if err := os.WriteFile(targetPath, []byte(updated), 0644); err != nil {
+		return nil, fmt.Errorf("writing updated prompt: %w", err)
 	}
 
 	return &Change{
