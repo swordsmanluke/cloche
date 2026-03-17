@@ -150,6 +150,11 @@ CREATE TABLE evolution_log (
       develop.md                # ACE-style knowledge base for 'develop' workflow
     snapshots/
       <timestamp>-<filename>    # pre-change backups for revert
+    population/
+      <step-name>/
+        candidate-NNN.md        # candidate prompt variant
+        meta.jsonl              # candidate metadata (id, status, parent, score)
+        assignments.jsonl       # run→candidate mapping
 ```
 
 ## Pipeline Stages
