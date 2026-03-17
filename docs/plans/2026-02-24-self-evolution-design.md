@@ -150,6 +150,8 @@ CREATE TABLE evolution_log (
       develop.md                # ACE-style knowledge base for 'develop' workflow
     snapshots/
       <timestamp>-<filename>    # pre-change backups for revert
+    fitness/
+      develop.jsonl             # JSONL fitness records per workflow (GEPA)
     population/
       <step-name>/
         candidate-NNN.md        # candidate prompt variant
@@ -452,6 +454,52 @@ max_prompt_bullets = 50       # cap on knowledge bullets per prompt
 
 Evolution is enabled by default. Users can disable it per-project for static
 workflows.
+
+## GEPA: Fitness Evaluation and Pareto Front
+
+The Guided Evolutionary Prompt Adaptation (GEPA) subsystem extends the evolution
+pipeline with multi-objective fitness evaluation for population-based prompt
+evolution. It lives in `internal/evolution/fitness.go`.
+
+### Fitness Records
+
+Each completed run is evaluated into a `FitnessRecord` containing:
+- **RunID / WorkflowName / Candidate** — identifies the run and its candidate
+  (e.g. a prompt version)
+- **Success** — whether the run reached `succeeded` state
+- **RetryCount** — number of step re-executions (detected by counting duplicate
+  step names in execution history)
+- **Duration** — wall-clock time from start to completion
+
+Records are persisted as JSONL at `.cloche/evolution/fitness/<workflow>.jsonl`.
+
+### Aggregation
+
+`AggregateFitness` groups records by candidate and computes two objectives:
+
+1. **Success rate** — fraction of runs that succeeded
+2. **Efficiency** — `1 / (1 + avgRetries + avgDurationMinutes)`, rewarding
+   faster candidates with fewer retries
+
+### Pareto Front
+
+`ComputeParetoFront` returns the non-dominated set using standard Pareto
+dominance: candidate A dominates B when A is at least as good in all objectives
+and strictly better in at least one. The front represents the optimal tradeoff
+between reliability and speed — no candidate on the front can be improved in one
+objective without sacrificing the other.
+
+### Population Configuration
+
+Population-based evolution is controlled by `PopulationConfig`:
+
+```go
+type PopulationConfig struct {
+    Enabled          bool
+    MaxCandidates    int
+    MinRunsToPromote int
+}
+```
 
 ## Future Work (Out of Scope)
 

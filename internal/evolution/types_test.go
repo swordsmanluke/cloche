@@ -61,8 +61,8 @@ func TestCandidateGeneration(t *testing.T) {
 	assert.Equal(t, "c-1", c.ParentID)
 }
 
-func TestFitnessRecordJSON(t *testing.T) {
-	fr := FitnessRecord{
+func TestRunScoreRecordJSON(t *testing.T) {
+	fr := RunScoreRecord{
 		CandidateID: "c-1",
 		RunID:       "run-abc",
 		Score:       0.95,
@@ -72,7 +72,7 @@ func TestFitnessRecordJSON(t *testing.T) {
 	data, err := json.Marshal(fr)
 	require.NoError(t, err)
 
-	var decoded FitnessRecord
+	var decoded RunScoreRecord
 	require.NoError(t, json.Unmarshal(data, &decoded))
 	assert.Equal(t, fr.CandidateID, decoded.CandidateID)
 	assert.Equal(t, fr.RunID, decoded.RunID)
@@ -80,8 +80,8 @@ func TestFitnessRecordJSON(t *testing.T) {
 	assert.Equal(t, fr.Details, decoded.Details)
 }
 
-func TestFitnessRecordOmitsEmptyDetails(t *testing.T) {
-	fr := FitnessRecord{
+func TestRunScoreRecordOmitsEmptyDetails(t *testing.T) {
+	fr := RunScoreRecord{
 		CandidateID: "c-1",
 		RunID:       "run-abc",
 		Score:       0.5,

@@ -55,8 +55,8 @@ type Change struct {
 	Snapshot string `json:"snapshot"`
 }
 
-// FitnessRecord captures the outcome of evaluating a candidate on a single run.
-type FitnessRecord struct {
+// RunScoreRecord captures a simple score outcome for a candidate on a single run.
+type RunScoreRecord struct {
 	CandidateID string  `json:"candidate_id"`
 	RunID       string  `json:"run_id"`
 	Score       float64 `json:"score"`
