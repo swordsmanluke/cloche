@@ -96,14 +96,12 @@ func TestCmdStatusOverview_GlobalMode(t *testing.T) {
 	cmdStatusGlobal(ctx, client, &buf)
 
 	out := buf.String()
-	// All runs are from the future (2026), so they won't pass the 1-hour filter
-	// unless we adjust. Since the runs are in 2026 and we're testing in 2026,
-	// the filter should include them. Let's just verify structure.
-	if !strings.Contains(out, "Runs (past hour):") {
-		t.Errorf("expected runs line, got:\n%s", out)
+	// Server handles past-hour filtering; client counts all returned runs.
+	if !strings.Contains(out, "1 / 3 succeeded") {
+		t.Errorf("expected 1/3 succeeded, got:\n%s", out)
 	}
-	if !strings.Contains(out, "Active runs:") {
-		t.Errorf("expected active runs line, got:\n%s", out)
+	if !strings.Contains(out, "Active runs: 1") {
+		t.Errorf("expected 1 active run, got:\n%s", out)
 	}
 }
 

@@ -1062,6 +1062,50 @@ func TestListRunsFiltered_CombinedFilters(t *testing.T) {
 	assert.Len(t, runs, 1)
 }
 
+func TestListRunsFiltered_SinceUsesCompletedAt(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Run completed 2 hours ago — should be excluded
+	old := domain.NewRun("old", "develop")
+	old.StartedAt = time.Now().Add(-3 * time.Hour)
+	old.CompletedAt = time.Now().Add(-2 * time.Hour)
+	old.State = domain.RunStateSucceeded
+	require.NoError(t, store.CreateRun(ctx, old))
+	require.NoError(t, store.UpdateRun(ctx, old))
+
+	// Run completed 30 minutes ago — should be included
+	recent := domain.NewRun("recent", "develop")
+	recent.StartedAt = time.Now().Add(-1 * time.Hour)
+	recent.CompletedAt = time.Now().Add(-30 * time.Minute)
+	recent.State = domain.RunStateSucceeded
+	require.NoError(t, store.CreateRun(ctx, recent))
+	require.NoError(t, store.UpdateRun(ctx, recent))
+
+	// Currently running — should be included (no completed_at)
+	active := domain.NewRun("active", "develop")
+	active.StartedAt = time.Now().Add(-2 * time.Hour)
+	active.State = domain.RunStateRunning
+	require.NoError(t, store.CreateRun(ctx, active))
+	require.NoError(t, store.UpdateRun(ctx, active))
+
+	since := time.Now().Add(-1 * time.Hour)
+	runs, err := store.ListRunsFiltered(ctx, domain.RunListFilter{Since: since})
+	require.NoError(t, err)
+	assert.Len(t, runs, 2)
+
+	ids := map[string]bool{}
+	for _, r := range runs {
+		ids[r.ID] = true
+	}
+	assert.True(t, ids["recent"], "recent completed run should be included")
+	assert.True(t, ids["active"], "active run should be included")
+	assert.False(t, ids["old"], "old completed run should be excluded")
+}
+
 func TestListRunsFiltered_NoFilters(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

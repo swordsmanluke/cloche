@@ -378,32 +378,21 @@ func cmdStatusProject(ctx context.Context, client pb.ClocheServiceClient, w io.W
 }
 
 func cmdStatusGlobal(ctx context.Context, client pb.ClocheServiceClient, w io.Writer) {
-	// Fetch all runs (server defaults to past hour when no project filter and not --all).
-	// We pass All=true but the server returns everything; we filter client-side to past hour.
-	listResp, err := client.ListRuns(ctx, &pb.ListRunsRequest{All: true})
+	// Server filters to past hour when All is not set.
+	listResp, err := client.ListRuns(ctx, &pb.ListRunsRequest{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
-	var succeeded, total, activeCount int
+	var succeeded, activeCount int
 	type activeRun struct {
 		id        string
 		startedAt string
 	}
 	var actives []activeRun
 
-	oneHourAgo := time.Now().Add(-1 * time.Hour)
 	for _, run := range listResp.Runs {
-		parsed, parseErr := time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", run.StartedAt)
-		if parseErr != nil {
-			// Fall back: count all runs returned.
-			parsed = time.Time{}
-		}
-		if !parsed.IsZero() && parsed.Before(oneHourAgo) {
-			continue
-		}
-		total++
 		if run.State == "succeeded" {
 			succeeded++
 		}
@@ -413,7 +402,7 @@ func cmdStatusGlobal(ctx context.Context, client pb.ClocheServiceClient, w io.Wr
 		}
 	}
 
-	fmt.Fprintf(w, "Runs (past hour): %d / %d succeeded\n", succeeded, total)
+	fmt.Fprintf(w, "Runs (past hour): %d / %d succeeded\n", succeeded, len(listResp.Runs))
 	fmt.Fprintf(w, "Active runs: %d\n", activeCount)
 	for _, a := range actives {
 		dur := formatDuration(a.startedAt)

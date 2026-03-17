@@ -589,8 +589,8 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 		Limit:      int(req.Limit),
 	}
 
-	// When no project filter and not --all, default to last hour
-	if filter.ProjectDir == "" && !req.All {
+	// Unless --all is set, default to last hour
+	if !req.All {
 		filter.Since = time.Now().Add(-1 * time.Hour)
 	}
 
