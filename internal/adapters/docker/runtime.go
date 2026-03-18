@@ -133,11 +133,19 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		}
 	}
 
-	// 4. Copy Claude auth files into container (each gets its own copy)
+	// 4. Copy Claude auth files into container (each gets its own copy).
+	// Only copy auth-relevant files — not the full ~/.claude directory
+	// which contains large history, session, and debug data.
 	if home, err := os.UserHomeDir(); err == nil {
 		claudeDir := home + "/.claude"
-		if _, err := os.Stat(claudeDir); err == nil {
-			exec.CommandContext(ctx, "docker", "cp", claudeDir, containerID+":/home/agent/.claude").Run()
+		// Create the target directory in the container
+		exec.CommandContext(ctx, "docker", "exec", containerID, "mkdir", "-p", "/home/agent/.claude").Run()
+		// Copy individual auth/config files
+		for _, name := range []string{".credentials.json", "settings.json", "settings.local.json"} {
+			src := filepath.Join(claudeDir, name)
+			if _, err := os.Stat(src); err == nil {
+				exec.CommandContext(ctx, "docker", "cp", src, containerID+":/home/agent/.claude/"+name).Run()
+			}
 		}
 		claudeJSON := home + "/.claude.json"
 		if _, err := os.Stat(claudeJSON); err == nil {
