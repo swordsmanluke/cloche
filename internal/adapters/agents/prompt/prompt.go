@@ -255,6 +255,11 @@ func (a *Adapter) classifyResult(command string, stdoutBytes []byte, runErr erro
 	if len(bytes.TrimSpace(stdoutBytes)) == 0 {
 		return "fail", stdoutBytes, fmt.Errorf("command %q exited 0 but produced no output (auth/config issue?)", command)
 	}
+	// Detect agent errors that exit 0 but indicate failure in the stream
+	// (e.g. rate limit exhaustion, internal errors).
+	if bytes.Contains(stdoutBytes, []byte(`"error_during_execution"`)) {
+		return "fail", stdoutBytes, fmt.Errorf("command %q reported error_during_execution", command)
+	}
 	markerResult, _, found := protocol.ExtractResult(stdoutBytes)
 	result := "success"
 	if found {
