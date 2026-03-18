@@ -115,6 +115,12 @@ func migrate(db *sql.DB) error {
 		return errMQ
 	}
 
+	// v2: Task-oriented migration — creates tasks/attempts tables,
+	// populates from existing runs, moves log files.
+	if err := migrateV2(db); err != nil {
+		return fmt.Errorf("v2 migration: %w", err)
+	}
+
 	_, err2 := db.Exec(`CREATE TABLE IF NOT EXISTS evolution_log (
 		id TEXT PRIMARY KEY,
 		project_dir TEXT NOT NULL,
