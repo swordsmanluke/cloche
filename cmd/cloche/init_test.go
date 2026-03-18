@@ -25,6 +25,7 @@ func TestCmdInit_DefaultFlags(t *testing.T) {
 		filepath.Join(".cloche", "version"),
 		filepath.Join(".cloche", "host.cloche"),
 		filepath.Join(".cloche", "scripts", "prepare-prompt.sh"),
+		".clocheignore",
 	} {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			t.Errorf("expected %s to exist", path)

@@ -99,6 +99,34 @@ var updateDocsPrompt = `Review the CLI source code and update usage documentatio
 - If everything is already accurate, make no changes and report success
 `
 
+var defaultClocheignore = `# Files excluded from the container workspace.
+# Uses gitignore-style patterns (*, ?, **).
+
+# Version control
+.git/
+
+# Cloche runtime state
+.cloche/*-*-*/
+.cloche/run-*/
+.cloche/attempt_count/
+
+# Common large/generated directories
+node_modules/
+.venv/
+venv/
+__pycache__/
+dist/
+build/
+.next/
+target/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+`
+
 var versionContent = "1\n"
 
 var hostWorkflowTemplate = `# host.cloche — orchestration workflow (runs on host, not in container)
@@ -191,6 +219,7 @@ func cmdInit(args []string) {
 		{filepath.Join(clocheDir, "version"), versionContent, 0644},
 		{filepath.Join(clocheDir, "host.cloche"), hostWorkflowTemplate, 0644},
 		{filepath.Join(clocheDir, "scripts", "prepare-prompt.sh"), preparePromptScript, 0755},
+		{".clocheignore", defaultClocheignore, 0644},
 	}
 
 	for _, f := range files {
