@@ -55,6 +55,7 @@ type Run struct {
 	ParentRunID    string // ID of the parent (host) run, empty for top-level runs
 	TaskID         string // optional task ID this run is associated with
 	TaskTitle      string // title from the task tracker, for display after the task leaves the active snapshot
+	AttemptID      string // ID of the attempt this run belongs to (v2)
 }
 
 func NewRun(id, workflowName string) *Run {
