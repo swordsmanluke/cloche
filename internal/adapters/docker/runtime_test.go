@@ -39,6 +39,7 @@ func TestDockerRuntime_StartAndStop(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotEmpty(t, containerID)
+	defer rt.Remove(ctx, containerID)
 
 	err = rt.Stop(ctx, containerID)
 	assert.NoError(t, err)
@@ -62,6 +63,7 @@ func TestDockerRuntime_Wait(t *testing.T) {
 		Cmd:          []string{"echo", "hello"},
 	})
 	require.NoError(t, err)
+	defer rt.Remove(ctx, containerID)
 
 	exitCode, err := rt.Wait(ctx, containerID)
 	require.NoError(t, err)
@@ -88,6 +90,7 @@ func TestDockerRuntime_FilesPresent(t *testing.T) {
 		Cmd:          []string{"cat", "/workspace/testfile.txt"},
 	})
 	require.NoError(t, err)
+	defer rt.Remove(ctx, containerID)
 
 	exitCode, err := rt.Wait(ctx, containerID)
 	require.NoError(t, err)

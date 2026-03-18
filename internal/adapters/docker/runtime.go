@@ -37,6 +37,12 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		"create",
 		"--workdir", "/workspace",
 		"--add-host=host.docker.internal:host-gateway",
+		"--log-driver", "json-file",
+	}
+
+	// Name container after run ID so `docker logs <run-id>` works.
+	if cfg.RunID != "" {
+		args = append(args, "--name", cfg.RunID)
 	}
 
 	// Pass run ID into container
@@ -168,6 +174,8 @@ func (r *Runtime) AttachOutput(ctx context.Context, containerID string) (io.Read
 	if err != nil {
 		return nil, fmt.Errorf("creating stdout pipe: %w", err)
 	}
+	// Merge container stderr into the same pipe so we capture all output.
+	cmd.Stderr = cmd.Stdout
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("attaching to container output: %w", err)
