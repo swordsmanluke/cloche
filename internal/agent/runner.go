@@ -80,6 +80,7 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	executor := &stepExecutor{
 		workDir:        r.cfg.WorkDir,
+		workflowName:   wf.Name,
 		generic:        genericAdapter,
 		prompt:         promptAdapter,
 		logStream:      ulog,
@@ -136,6 +137,7 @@ func (r *Runner) Run(ctx context.Context) error {
 
 type stepExecutor struct {
 	workDir        string
+	workflowName   string // used to prefix per-step log files (v2 layout)
 	generic        *generic.Adapter
 	prompt         *prompt.Adapter
 	logStream      *logstream.Writer
@@ -178,25 +180,54 @@ func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, 
 	}
 }
 
+// stepLogPath returns the v2 path for a per-step log file.
+// Files are named <workflow>-<step>.log to avoid collisions across workflows.
+func (e *stepExecutor) stepLogPath(stepName string) string {
+	return filepath.Join(e.workDir, ".cloche", "output", e.workflowName+"-"+stepName+".log")
+}
+
 // logStepOutput reads the per-step log file and writes its contents to the unified log.
+// It renames <step>.log to <workflow>-<step>.log (v2 layout) if not already done.
 func (e *stepExecutor) logStepOutput(stepName string, typ logstream.EntryType) {
-	path := filepath.Join(e.workDir, ".cloche", "output", stepName+".log")
-	data, err := os.ReadFile(path)
+	newPath := e.stepLogPath(stepName)
+
+	// If the v2 file doesn't exist yet, rename from the adapter-written path.
+	if _, err := os.Stat(newPath); err != nil {
+		oldPath := filepath.Join(e.workDir, ".cloche", "output", stepName+".log")
+		if renErr := os.Rename(oldPath, newPath); renErr != nil {
+			newPath = oldPath // fall back if rename fails
+		}
+	}
+
+	data, err := os.ReadFile(newPath)
 	if err != nil || len(data) == 0 {
 		return
 	}
 	e.logStream.Log(typ, string(data))
 }
 
-// copyToLLMLog copies <step>.log to llm-<step>.log for agent prompt steps.
+// copyToLLMLog renames <step>.log to <workflow>-<step>.log and copies it to
+// <workflow>-llm-<step>.log for agent prompt steps (v2 layout).
 func (e *stepExecutor) copyToLLMLog(stepName string) {
-	src := filepath.Join(e.workDir, ".cloche", "output", stepName+".log")
-	dst := filepath.Join(e.workDir, ".cloche", "output", "llm-"+stepName+".log")
-	data, err := os.ReadFile(src)
+	outputDir := filepath.Join(e.workDir, ".cloche", "output")
+	srcPath := e.stepLogPath(stepName)
+	dstPath := filepath.Join(outputDir, e.workflowName+"-llm-"+stepName+".log")
+
+	// Rename from adapter-written path if v2 file doesn't exist yet.
+	if _, err := os.Stat(srcPath); err != nil {
+		oldPath := filepath.Join(outputDir, stepName+".log")
+		if renErr := os.Rename(oldPath, srcPath); renErr != nil {
+			// Fall back to old naming if rename fails.
+			srcPath = oldPath
+			dstPath = filepath.Join(outputDir, "llm-"+stepName+".log")
+		}
+	}
+
+	data, err := os.ReadFile(srcPath)
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(dst, data, 0644)
+	_ = os.WriteFile(dstPath, data, 0644)
 }
 
 type statusReporter struct {

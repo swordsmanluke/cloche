@@ -427,12 +427,12 @@ func TestRunner_UnifiedLogLLMStep(t *testing.T) {
 	assert.Contains(t, logStr, "[status] step_completed: implement -> success")
 
 	// Verify llm-<step>.log was created
-	llmLog, err := os.ReadFile(filepath.Join(dir, ".cloche", "output", "llm-implement.log"))
+	llmLog, err := os.ReadFile(filepath.Join(dir, ".cloche", "output", "llm-log-test-llm-implement.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(llmLog), "Claude: I will implement the feature")
 
-	// Verify <step>.log still exists (backward compat)
-	stepLog, err := os.ReadFile(filepath.Join(dir, ".cloche", "output", "implement.log"))
+	// Verify <workflow>-<step>.log exists (v2 layout)
+	stepLog, err := os.ReadFile(filepath.Join(dir, ".cloche", "output", "llm-log-test-implement.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(stepLog), "Claude: I will implement the feature")
 }
@@ -485,15 +485,15 @@ func TestRunner_UnifiedLogMixedSteps(t *testing.T) {
 	// LLM step output tagged as [llm]
 	assert.Contains(t, logStr, "[llm] LLM output here")
 
-	// Verify both script and LLM per-step files exist
-	_, err = os.Stat(filepath.Join(dir, ".cloche", "output", "build.log"))
-	assert.NoError(t, err, "build.log should exist")
+	// Verify both script and LLM per-step files exist with v2 workflow-prefixed names
+	_, err = os.Stat(filepath.Join(dir, ".cloche", "output", "mixed-test-build.log"))
+	assert.NoError(t, err, "mixed-test-build.log should exist")
 
-	_, err = os.Stat(filepath.Join(dir, ".cloche", "output", "implement.log"))
-	assert.NoError(t, err, "implement.log should exist")
+	_, err = os.Stat(filepath.Join(dir, ".cloche", "output", "mixed-test-implement.log"))
+	assert.NoError(t, err, "mixed-test-implement.log should exist")
 
-	_, err = os.Stat(filepath.Join(dir, ".cloche", "output", "llm-implement.log"))
-	assert.NoError(t, err, "llm-implement.log should exist")
+	_, err = os.Stat(filepath.Join(dir, ".cloche", "output", "mixed-test-llm-implement.log"))
+	assert.NoError(t, err, "mixed-test-llm-implement.log should exist")
 }
 
 func TestRunner_ExtractsTitle(t *testing.T) {

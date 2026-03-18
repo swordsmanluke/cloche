@@ -133,6 +133,12 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	run.ProjectDir = req.ProjectDir
 	run.Title = req.Title
 	run.TaskID = req.IssueId
+	// Assign v2 attempt tracking IDs so log files are stored in the new
+	// .cloche/logs/<taskID>/<attemptID>/ hierarchy.
+	run.AttemptID = domain.GenerateAttemptID()
+	if run.TaskID == "" {
+		run.TaskID = "user-" + run.AttemptID
+	}
 	if err := s.store.CreateRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("creating run: %w", err)
 	}
@@ -367,8 +373,23 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, r
 	s.trackRun(runID, containerID, req.ProjectDir, req.WorkflowName, keepContainer)
 }
 
+// runLogDir returns the directory where extracted log files for a run are stored.
+// For v2 runs (with AttemptID and TaskID), uses .cloche/logs/<taskID>/<attemptID>/.
+// Falls back to the legacy .cloche/<runID>/output/ path for older runs.
+func runLogDir(run *domain.Run, projectDir, runID string) string {
+	if run != nil && run.AttemptID != "" && run.TaskID != "" {
+		return filepath.Join(projectDir, ".cloche", "logs", run.TaskID, run.AttemptID)
+	}
+	return filepath.Join(projectDir, ".cloche", runID, "output")
+}
+
 func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName string, keepContainer bool) {
 	ctx := context.Background()
+
+	// Determine the log extraction directory upfront. v2 runs with AttemptID
+	// use .cloche/logs/<taskID>/<attemptID>/; older runs use the legacy path.
+	initialRun, _ := s.store.GetRun(ctx, runID)
+	outputDst := runLogDir(initialRun, projectDir, runID)
 
 	// Register run in broadcaster so IsActive returns true for live-stream callers.
 	if s.logBroadcast != nil {
@@ -447,7 +468,6 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 			}
 			// Eagerly extract step output so the Web UI can serve it
 			// while the run is still active.
-			outputDst := filepath.Join(projectDir, ".cloche", runID, "output")
 			if mkErr := os.MkdirAll(outputDst, 0755); mkErr == nil {
 				_ = s.container.CopyFrom(ctx, containerID, "/workspace/.cloche/output/.", outputDst)
 			}
@@ -474,7 +494,6 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	}
 
 	// Extract step output files from container before it's removed
-	outputDst := filepath.Join(projectDir, ".cloche", runID, "output")
 	if err := os.MkdirAll(outputDst, 0755); err == nil {
 		if cpErr := s.container.CopyFrom(ctx, containerID, "/workspace/.cloche/output/.", outputDst); cpErr != nil {
 			log.Printf("run %s: failed to extract output: %v", runID, cpErr)
@@ -491,7 +510,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 
 	// Index extracted log files in the log store
 	if s.logStore != nil {
-		s.indexLogFiles(ctx, runID, outputDst)
+		s.indexLogFiles(ctx, runID, outputDst, workflowName)
 	}
 
 	// Extract results to git branch BEFORE finalizing state, so that
@@ -705,7 +724,11 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 	}
 
 	// Check for full.log first — if it exists, serve it as the unified log
-	fullLogPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", "full.log")
+	// Try v2 path first, fall back to legacy path.
+	fullLogPath := filepath.Join(runLogDir(run, run.ProjectDir, req.RunId), "full.log")
+	if _, statErr := os.Stat(fullLogPath); os.IsNotExist(statErr) {
+		fullLogPath = filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", "full.log")
+	}
 	if data, readErr := os.ReadFile(fullLogPath); readErr == nil && len(data) > 0 {
 		msg := applyLimit(string(data), limit)
 		if err := stream.Send(&pb.LogEntry{
@@ -741,13 +764,24 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 			}
 		} else {
 			// Read step output from per-step output file.
-			// Container runs write .log, host runs write .out — try both.
+			// Try v2 path (workflow-prefixed) first, then legacy path.
 			var output string
+			v2Dir := runLogDir(run, run.ProjectDir, req.RunId)
+			v2Prefix := run.WorkflowName + "-"
 			for _, ext := range []string{".log", ".out"} {
-				outputPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", exec.StepName+ext)
-				if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
+				v2Path := filepath.Join(v2Dir, v2Prefix+exec.StepName+ext)
+				if data, err := os.ReadFile(v2Path); err == nil && len(data) > 0 {
 					output = string(data)
 					break
+				}
+			}
+			if output == "" {
+				for _, ext := range []string{".log", ".out"} {
+					outputPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", exec.StepName+ext)
+					if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
+						output = string(data)
+						break
+					}
 				}
 			}
 			entry := &pb.LogEntry{
@@ -859,7 +893,11 @@ func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rp
 	} else {
 		// Fallback: broadcaster has no history (e.g. daemon restarted
 		// mid-run). Send existing full.log content if available.
-		fullLogPath := filepath.Join(run.ProjectDir, ".cloche", runID, "output", "full.log")
+		flp885 := filepath.Join(runLogDir(run, run.ProjectDir, runID), "full.log")
+		if _, err885 := os.Stat(flp885); os.IsNotExist(err885) {
+			flp885 = filepath.Join(run.ProjectDir, ".cloche", runID, "output", "full.log")
+		}
+		fullLogPath := flp885
 		if data, err := os.ReadFile(fullLogPath); err == nil && len(data) > 0 {
 			msg := applyLimit(string(data), limit)
 			if err := stream.Send(&pb.LogEntry{
@@ -893,7 +931,11 @@ func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rp
 						// Safety net: broadcast finished but state not yet settled.
 						// Send whatever static content exists so the user isn't left
 						// with an empty stream.
-						fullLogPath := filepath.Join(r.ProjectDir, ".cloche", runID, "output", "full.log")
+						flp919 := filepath.Join(runLogDir(r, r.ProjectDir, runID), "full.log")
+						if _, err919 := os.Stat(flp919); os.IsNotExist(err919) {
+							flp919 = filepath.Join(r.ProjectDir, ".cloche", runID, "output", "full.log")
+						}
+						fullLogPath := flp919
 						if data, readErr := os.ReadFile(fullLogPath); readErr == nil && len(data) > 0 {
 							_ = stream.Send(&pb.LogEntry{
 								Type:    "full_log",
@@ -919,6 +961,7 @@ func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rp
 // streamFilteredLogs serves log content filtered by step name and/or log type.
 // It uses the log index when available, falling back to file path conventions.
 func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLogsRequest, run *domain.Run, stream rpcgrpc.ServerStreamingServer[pb.LogEntry], limit int) error {
+	// Legacy output directory (v1 path); new v2 runs use runLogDir.
 	outputDir := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output")
 
 	// Try log index first
@@ -962,15 +1005,22 @@ func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLog
 		}
 	}
 
-	// Fall back to file path conventions
+	// Fall back to file path conventions (try v2 path first, then legacy)
 	if req.StepName != "" {
+		v2LogDir := runLogDir(run, run.ProjectDir, req.RunId)
+		wfPrefix := run.WorkflowName + "-"
 		var candidates []string
 		switch req.LogType {
 		case "llm":
-			candidates = []string{filepath.Join(outputDir, "llm-"+req.StepName+".log")}
-		default:
-			// Try .log first (container runs & new host runs), then .out (legacy host runs)
 			candidates = []string{
+				filepath.Join(v2LogDir, wfPrefix+"llm-"+req.StepName+".log"),
+				filepath.Join(outputDir, "llm-"+req.StepName+".log"),
+			}
+		default:
+			// Try v2 path (workflow-prefixed) then legacy path for .log and .out
+			candidates = []string{
+				filepath.Join(v2LogDir, wfPrefix+req.StepName+".log"),
+				filepath.Join(v2LogDir, wfPrefix+req.StepName+".out"),
 				filepath.Join(outputDir, req.StepName+".log"),
 				filepath.Join(outputDir, req.StepName+".out"),
 			}
@@ -1498,7 +1548,9 @@ func (s *ClocheServer) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*
 }
 
 // indexLogFiles scans the extracted output directory and creates log_files index entries.
-func (s *ClocheServer) indexLogFiles(ctx context.Context, runID, outputDir string) {
+// workflowName is used to parse v2 filenames (e.g. develop-build.log -> step "build").
+// Both v2 (workflow-prefixed) and v1 (bare step name) filename formats are supported.
+func (s *ClocheServer) indexLogFiles(ctx context.Context, runID, outputDir, workflowName string) {
 	entries, err := os.ReadDir(outputDir)
 	if err != nil {
 		log.Printf("run %s: failed to read output dir for indexing: %v", runID, err)
@@ -1524,10 +1576,20 @@ func (s *ClocheServer) indexLogFiles(ctx context.Context, runID, outputDir strin
 		case name == "container.log":
 			// container.log is internal, not indexed as a user-facing log type
 			continue
+		case workflowName != "" && strings.HasPrefix(base, workflowName+"-llm-"):
+			// v2 workflow-prefixed LLM log: <workflow>-llm-<step>.log
+			fileType = "llm"
+			stepName = strings.TrimPrefix(base, workflowName+"-llm-")
+		case workflowName != "" && strings.HasPrefix(base, workflowName+"-"):
+			// v2 workflow-prefixed script log: <workflow>-<step>.log
+			fileType = "script"
+			stepName = strings.TrimPrefix(base, workflowName+"-")
 		case strings.HasPrefix(name, "llm-"):
+			// v1 legacy LLM log: llm-<step>.log
 			fileType = "llm"
 			stepName = strings.TrimPrefix(base, "llm-")
 		default:
+			// v1 legacy script log: <step>.log
 			fileType = "script"
 			stepName = base
 		}

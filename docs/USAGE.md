@@ -935,15 +935,15 @@ my-project/
 │   ├── scripts/              # Host-side scripts
 │   ├── overrides/            # Files copied on top of /workspace/
 │   │   └── CLAUDE.md         # Container-specific CLAUDE.md (optional)
-│   └── <run-id>/             # Runtime state (gitignored)
-│       ├── prompt.txt        # User prompt
-│       ├── context.json      # Shared key-value store (cloche get/set)
-│       ├── output/
-│       │   ├── full.log      # Unified log
-│       │   ├── test.log      # Per-step script output
-│       │   └── llm-impl.log  # Per-step LLM conversation
-│       ├── attempt_count/    # Retry counters for max_attempts
-│       └── history.log       # Step execution log
+│   ├── <run-id>/             # Runtime state (gitignored)
+│   │   ├── prompt.txt        # User prompt
+│   │   └── context.json      # Shared key-value store (cloche get/set)
+│   └── logs/
+│       └── <task-id>/        # Grouped by task (ticket or user-initiated run)
+│           └── <attempt-id>/ # One directory per attempt
+│               ├── full.log                  # Unified log (all steps)
+│               ├── <workflow>-<step>.log     # Per-step script output
+│               └── <workflow>-llm-<step>.log # Per-step LLM conversation
 ├── src/                      # Project source (untouched by Cloche)
 └── .git/
 ```

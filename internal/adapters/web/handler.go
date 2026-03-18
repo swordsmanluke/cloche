@@ -870,26 +870,31 @@ func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	outputDir := filepath.Join(run.ProjectDir, ".cloche", id, "output")
-
-	// Fall back to file path conventions
-	// If type is "llm", try llm-<step>.log
-	if logType == "llm" {
-		llmPath := filepath.Join(outputDir, "llm-"+step+".log")
-		data, err := os.ReadFile(llmPath)
-		if err == nil && len(data) > 0 {
-			writeOutput(data)
-			return
-		}
+	// Fall back to file path conventions.
+	// Try v2 path (.cloche/logs/<taskID>/<attemptID>/<workflow>-<step>.log) first,
+	// then legacy path (.cloche/<runID>/output/<step>.log).
+	legacyOutputDir := filepath.Join(run.ProjectDir, ".cloche", id, "output")
+	var searchDirs []struct{ dir, prefix string }
+	if run.AttemptID != "" && run.TaskID != "" {
+		v2Dir := filepath.Join(run.ProjectDir, ".cloche", "logs", run.TaskID, run.AttemptID)
+		searchDirs = append(searchDirs, struct{ dir, prefix string }{v2Dir, run.WorkflowName + "-"})
 	}
+	searchDirs = append(searchDirs, struct{ dir, prefix string }{legacyOutputDir, ""})
 
-	// Try per-step output file (.log for container runs, .out for host runs)
-	for _, ext := range []string{".log", ".out"} {
-		outputPath := filepath.Join(outputDir, step+ext)
-		data, err := os.ReadFile(outputPath)
-		if err == nil && len(data) > 0 {
-			writeOutput(data)
-			return
+	for _, sd := range searchDirs {
+		if logType == "llm" {
+			llmPath := filepath.Join(sd.dir, sd.prefix+"llm-"+step+".log")
+			if data, err := os.ReadFile(llmPath); err == nil && len(data) > 0 {
+				writeOutput(data)
+				return
+			}
+		}
+		for _, ext := range []string{".log", ".out"} {
+			outputPath := filepath.Join(sd.dir, sd.prefix+step+ext)
+			if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
+				writeOutput(data)
+				return
+			}
 		}
 	}
 
