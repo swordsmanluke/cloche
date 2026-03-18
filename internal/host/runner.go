@@ -41,7 +41,7 @@ type RunResult struct {
 
 // Run parses .cloche/host.cloche from projectDir and executes the "main" workflow.
 func (r *Runner) Run(ctx context.Context, projectDir string) (*RunResult, error) {
-	return r.RunWithID(ctx, projectDir, domain.GenerateRunID("main"))
+	return r.RunWithID(ctx, projectDir, domain.GenerateRunID("main", ""))
 }
 
 // RunWithID is like Run but uses the provided run ID instead of generating one.
@@ -51,7 +51,7 @@ func (r *Runner) RunWithID(ctx context.Context, projectDir string, orchRunID str
 
 // RunNamed executes a named host workflow, generating a new run ID.
 func (r *Runner) RunNamed(ctx context.Context, projectDir string, workflowName string) (*RunResult, error) {
-	orchRunID := domain.GenerateRunID(workflowName)
+	orchRunID := domain.GenerateRunID(workflowName, "")
 	return r.runNamedWorkflow(ctx, projectDir, workflowName, orchRunID)
 }
 

@@ -81,7 +81,7 @@ final response of `prompt` steps) to a file:
 ```
 
 `<orch-run-id>` is a unique ID for this orchestration invocation, formatted the same
-way as workflow run IDs (e.g. `main-bold-hawk`).
+way as workflow run IDs (e.g. `a12z:main`).
 
 The daemon tracks the most recently completed step's output path and passes it to the
 next step as `CLOCHE_PREV_OUTPUT`.
@@ -163,7 +163,7 @@ is sufficient initially.
 1. Pull ready tasks
 2. Claim task
 3. Parse `.cloche/host.cloche` → find `main` workflow
-4. Generate an `orchRunID` (`main-<namegen>`)
+4. Generate an `orchRunID` (`<attempt>:main`, e.g. `a12z:main`)
 5. Spin up a goroutine: call `hostRunner.RunWorkflow(ctx, orch wf, task, orchRunID)`
 6. On goroutine return: decrement in-flight, update task state (success/fail)
 

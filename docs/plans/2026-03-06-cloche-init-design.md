@@ -25,11 +25,11 @@ Track everything in `.cloche/` by default. Explicitly ignore only runtime artifa
 
 **Pattern rationale:**
 
-- `.cloche/*-*-*/` — matches all named run output dirs (`develop-bold-hawk/`,
-  `main-bright-reef/`, etc.). Run IDs are always `<workflow>-<adj>-<noun>`,
-  so any `.cloche/` subdirectory with two or more hyphens is a run artifact.
+- `.cloche/*/` matching colon-delimited run output dirs (e.g. `a12z:develop/`,
+  `b3qx:develop:implement/`). Run IDs are always `<attempt>:<workflow>[:<step>]`,
+  so any `.cloche/` subdirectory containing a colon is a run artifact.
   Config directories (`prompts/`, `overrides/`, `scripts/`, `evolution/`) have no
-  hyphens and are unaffected.
+  colons and are unaffected.
 - `.cloche/run-*/` — legacy numeric run output dirs (`run-1772044065239145675/`).
 - `.cloche/attempt_count/` — runtime step-attempt counters written by the agent.
 - `.gitworktrees/` — existing entry, unchanged.

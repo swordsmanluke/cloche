@@ -107,7 +107,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	// Generate a unique run ID, retrying on collision
 	var runID string
 	for attempts := 0; attempts < 10; attempts++ {
-		runID = domain.GenerateRunID(req.WorkflowName)
+		runID = domain.GenerateRunID(req.WorkflowName, "")
 		existing, err := s.store.GetRun(ctx, runID)
 		if err != nil {
 			break // ID is free
@@ -153,7 +153,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 // runHostWorkflow dispatches a host workflow via the host runner, returning
 // immediately while the workflow runs in a background goroutine.
 func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
-	runID := domain.GenerateRunID(req.WorkflowName)
+	runID := domain.GenerateRunID(req.WorkflowName, "")
 
 	runner := &host.Runner{
 		Dispatcher:   s,
