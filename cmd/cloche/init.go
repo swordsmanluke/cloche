@@ -102,9 +102,6 @@ var updateDocsPrompt = `Review the CLI source code and update usage documentatio
 var defaultClocheignore = `# Files excluded from the container workspace.
 # Uses gitignore-style patterns (*, ?, **).
 
-# Version control
-.git/
-
 # Cloche runtime state
 .cloche/*-*-*/
 .cloche/run-*/
