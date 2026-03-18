@@ -138,14 +138,19 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	// which contains large history, session, and debug data.
 	if home, err := os.UserHomeDir(); err == nil {
 		claudeDir := home + "/.claude"
-		// Create the target directory in the container
-		exec.CommandContext(ctx, "docker", "exec", containerID, "mkdir", "-p", "/home/agent/.claude").Run()
-		// Copy individual auth/config files
-		for _, name := range []string{".credentials.json", "settings.json", "settings.local.json"} {
-			src := filepath.Join(claudeDir, name)
-			if _, err := os.Stat(src); err == nil {
-				exec.CommandContext(ctx, "docker", "cp", src, containerID+":/home/agent/.claude/"+name).Run()
+		// Stage auth files in a temp directory, then docker cp the
+		// directory into the container. This avoids needing `docker exec`
+		// (container isn't running yet) and ensures the directory exists.
+		tmpAuth, tmpErr := os.MkdirTemp("", "cloche-auth")
+		if tmpErr == nil {
+			defer os.RemoveAll(tmpAuth)
+			for _, name := range []string{".credentials.json", "settings.json", "settings.local.json"} {
+				src := filepath.Join(claudeDir, name)
+				if data, err := os.ReadFile(src); err == nil {
+					os.WriteFile(filepath.Join(tmpAuth, name), data, 0644)
+				}
 			}
+			exec.CommandContext(ctx, "docker", "cp", tmpAuth+"/.", containerID+":/home/agent/.claude/").Run()
 		}
 		claudeJSON := home + "/.claude.json"
 		if _, err := os.Stat(claudeJSON); err == nil {
