@@ -37,6 +37,8 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		"create",
 		"--workdir", "/workspace",
 		"--add-host=host.docker.internal:host-gateway",
+		"--dns", "8.8.8.8",
+		"--dns", "8.8.4.4",
 		"--log-driver", "json-file",
 	}
 
