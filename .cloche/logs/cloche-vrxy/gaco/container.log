@@ -1,0 +1,217 @@
+{"type":"run_title","message":"Task: Fix log reporting","timestamp":"2026-03-16T17:06:47.091400198Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-16T17:06:47.091573105Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Explore the codebase to understand how logging currently ...') ---","timestamp":"2026-03-16T17:07:00.185315135Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*.go') ---","timestamp":"2026-03-16T17:07:05.389399232Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*.proto') ---","timestamp":"2026-03-16T17:07:06.033196912Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*.md') ---","timestamp":"2026-03-16T17:07:06.178768774Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.ts\" -o -name \"*.tsx\" -o ...') ---","timestamp":"2026-03-16T17:07:06.74983468Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('logs') ---","timestamp":"2026-03-16T17:07:08.762950613Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('log') ---","timestamp":"2026-03-16T17:07:08.985064624Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/cmd/cloche -type f -name \"*.go\" | sort') ---","timestamp":"2026-03-16T17:07:09.353818627Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-16T17:07:10.783494246Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-16T17:07:10.940540358Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -r \"logs\" /workspace/cmd/cloche --include=\"*.go\" -l') ---","timestamp":"2026-03-16T17:07:11.144966246Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-16T17:07:12.778843715Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"StreamLogs\\|Logs\\|LogEntry\" /workspace/api/cloch...') ---","timestamp":"2026-03-16T17:07:13.284281747Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-16T17:07:14.709346586Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"StreamLogs\\|func.*Logs\" /workspace/internal/adap...') ---","timestamp":"2026-03-16T17:07:16.435507975Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-16T17:07:17.624968567Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-16T17:07:19.559313198Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/logstream/logstream.go') ---","timestamp":"2026-03-16T17:07:21.495379609Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/logstream/broadcaster.go') ---","timestamp":"2026-03-16T17:07:21.550523739Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-16T17:07:23.454521995Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-16T17:07:24.694278724Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-16T17:07:26.422716659Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/runner.go') ---","timestamp":"2026-03-16T17:07:28.019227429Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/executor.go') ---","timestamp":"2026-03-16T17:07:29.448269224Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/executor.go') ---","timestamp":"2026-03-16T17:07:31.391383653Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-16T17:07:32.965686129Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"handleAPILogs\\|handleAPIStream\" /workspace/inter...') ---","timestamp":"2026-03-16T17:07:35.291991568Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-16T17:07:36.68094903Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/adapters/web -name \"*.html\" -o -...') ---","timestamp":"2026-03-16T17:07:38.362421471Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/run_detail.html') ---","timestamp":"2026-03-16T17:07:39.590595535Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"parseFullLogLine\\|parseLLMLogLine\" /workspace/in...') ---","timestamp":"2026-03-16T17:07:41.509712259Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-16T17:07:44.411743481Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/logstream/parse.go') ---","timestamp":"2026-03-16T17:07:46.613510663Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/docs -name \"*.md\" | grep -E \"workflow|log...') ---","timestamp":"2026-03-16T17:07:48.230552599Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/docs/workflows.md') ---","timestamp":"2026-03-16T17:07:49.475960084Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/docs/plans/2026-03-06-host-workflow-design.md') ---","timestamp":"2026-03-16T17:07:50.990295297Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -r \"\\.cloche.*output\" /workspace --include=\"*.go\" | ...') ---","timestamp":"2026-03-16T17:07:53.409504367Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/logstream/logstream.go') ---","timestamp":"2026-03-16T17:08:27.666909797Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/logstream/broadcaster.go') ---","timestamp":"2026-03-16T17:08:28.114735819Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/runner.go') ---","timestamp":"2026-03-16T17:08:28.473541291Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-16T17:08:43.492672027Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-16T17:08:43.922911161Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/executor.go') ---","timestamp":"2026-03-16T17:09:00.50850089Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-16T17:09:00.861896387Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/run_detail.html') ---","timestamp":"2026-03-16T17:09:25.942062847Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('handleStepOutput|steps.*output|/steps/') ---","timestamp":"2026-03-16T17:09:33.407225289Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func.*handleAPIStepOutput') ---","timestamp":"2026-03-16T17:09:38.80873059Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-16T17:09:43.209526593Z"}
+{"type":"log","step_name":"implement","message":"Now I have a clear picture. The issues are:","timestamp":"2026-03-16T17:10:11.697179525Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:10:11.697198762Z"}
+{"type":"log","step_name":"implement","message":"1. **Host workflows write `\u003cstep\u003e.out` but not `\u003cstep\u003e.log`** — so `cloche logs -s \u003cstep\u003e` fails","timestamp":"2026-03-16T17:10:11.69720291Z"}
+{"type":"log","step_name":"implement","message":"2. **`streamFilteredLogs` (gRPC) doesn't fall back to `.out`** when `.log` is missing","timestamp":"2026-03-16T17:10:11.697211636Z"}
+{"type":"log","step_name":"implement","message":"3. **`handleAPIStepOutput` (web) doesn't fall back to `.out`** either","timestamp":"2026-03-16T17:10:11.697215994Z"}
+{"type":"log","step_name":"implement","message":"4. **Web UI step accordions don't stream live logs** — only fetch on click for completed steps","timestamp":"2026-03-16T17:10:11.697219802Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:10:11.697223398Z"}
+{"type":"log","step_name":"implement","message":"Let me implement the fixes.","timestamp":"2026-03-16T17:10:11.697226685Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: ToolSearch ---","timestamp":"2026-03-16T17:10:12.202492123Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-16T17:10:22.424750639Z"}
+{"type":"log","step_name":"implement","message":"**Fix 1**: Write `\u003cstep\u003e.log` files in host workflow's `OnStepComplete`. This is the root cause — host runs write `.out` but the logs system expects `.log`.","timestamp":"2026-03-16T17:10:27.796140395Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/host/runner.go') ---","timestamp":"2026-03-16T17:10:31.862230609Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-16T17:10:38.930636175Z"}
+{"type":"log","step_name":"implement","message":"**Fix 2**: Add `.out` fallback in `streamFilteredLogs` for backward compatibility with older runs.","timestamp":"2026-03-16T17:10:43.450759491Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-16T17:10:49.439802196Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-16T17:10:58.165009385Z"}
+{"type":"log","step_name":"implement","message":"**Fix 3**: Add `.out` fallback in `handleAPIStepOutput` for the web UI.","timestamp":"2026-03-16T17:11:05.363420927Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-16T17:11:10.631700234Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-16T17:11:15.438421015Z"}
+{"type":"log","step_name":"implement","message":"**Fix 4**: Add per-step live log streaming to the web UI. The SSE stream already includes `step_name`, so I'll buffer lines per-step in JS and route them to accordion sections, with auto-scroll behavior.","timestamp":"2026-03-16T17:11:20.975877244Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/run_detail.html') ---","timestamp":"2026-03-16T17:11:21.432272855Z"}
+{"type":"log","step_name":"implement","message":"Now I'll update the step accordion output rows to use a scrollable log viewer with live streaming, and update the JS to route SSE lines to per-step sections.","timestamp":"2026-03-16T17:11:26.147131141Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/templates/run_detail.html') ---","timestamp":"2026-03-16T17:11:28.095479314Z"}
+{"type":"log","step_name":"implement","message":"Now let me check if there's a CSS file for the web UI to add the step-log-viewer style.","timestamp":"2026-03-16T17:11:32.495013312Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('log-viewer|step-output') ---","timestamp":"2026-03-16T17:11:33.747315885Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('log-viewer|step-output') ---","timestamp":"2026-03-16T17:11:39.52300772Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/static/style.css') ---","timestamp":"2026-03-16T17:11:43.612381612Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/static/style.css') ---","timestamp":"2026-03-16T17:11:50.666554168Z"}
+{"type":"log","step_name":"implement","message":"Now update the JavaScript to:","timestamp":"2026-03-16T17:11:56.174747546Z"}
+{"type":"log","step_name":"implement","message":"1. Buffer SSE log lines per step","timestamp":"2026-03-16T17:11:56.174775459Z"}
+{"type":"log","step_name":"implement","message":"2. Route live lines to step accordion `\u003cpre\u003e` elements  ","timestamp":"2026-03-16T17:11:56.174777994Z"}
+{"type":"log","step_name":"implement","message":"3. Preserve scroll position (auto-scroll to bottom unless user scrolled up)","timestamp":"2026-03-16T17:11:56.174780248Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/templates/run_detail.html') ---","timestamp":"2026-03-16T17:12:06.907273294Z"}
+{"type":"log","step_name":"implement","message":"Now update the step accordion click handler to populate from buffers for active runs instead of only fetching:","timestamp":"2026-03-16T17:12:11.099188871Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/templates/run_detail.html') ---","timestamp":"2026-03-16T17:12:18.122034055Z"}
+{"type":"log","step_name":"implement","message":"Now update the polling step rebuild to also handle the per-step output sections. The current code builds output rows with `Loading...` text — we need to use `data-step` and empty content instead:","timestamp":"2026-03-16T17:12:24.375167947Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/templates/run_detail.html') ---","timestamp":"2026-03-16T17:12:28.554805531Z"}
+{"type":"log","step_name":"implement","message":"Now update the polling restore logic — instead of checking `pre.textContent !== 'Loading...'`, check `pre.childNodes.length`:","timestamp":"2026-03-16T17:12:33.045232262Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/templates/run_detail.html') ---","timestamp":"2026-03-16T17:12:37.591096699Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/templates/run_detail.html') ---","timestamp":"2026-03-16T17:12:50.530325045Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-16T17:12:56.620761028Z"}
+{"type":"log","step_name":"implement","message":"Now let me write tests. Let me check existing test patterns first.","timestamp":"2026-03-16T17:13:03.527608656Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/runner_test.go') ---","timestamp":"2026-03-16T17:13:03.997264046Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-16T17:13:04.605935489Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func Test.*StreamLogs|func Test.*StepLog|func Test.*Filte...') ---","timestamp":"2026-03-16T17:13:11.292634678Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-16T17:13:16.719220841Z"}
+{"type":"log","step_name":"implement","message":"Now let me add tests for the `.out` fallback in `streamFilteredLogs` and `handleAPIStepOutput`.","timestamp":"2026-03-16T17:13:21.53206174Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-16T17:13:21.760486314Z"}
+{"type":"log","step_name":"implement","message":"Good. Now I'll find the end of the test file and add our new test.","timestamp":"2026-03-16T17:13:27.129002373Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('wc -l /workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-16T17:13:27.685520545Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-16T17:13:33.140654883Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-16T17:13:43.734465293Z"}
+{"type":"log","step_name":"implement","message":"Now add a test for the web handler's `.out` fallback. Let me find the existing step output test.","timestamp":"2026-03-16T17:13:48.070230162Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-16T17:13:48.329330503Z"}
+{"type":"log","step_name":"implement","message":"Let me find the existing `TestStepOutput_HostOutFallback` test or the right insertion point:","timestamp":"2026-03-16T17:13:53.072721696Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-16T17:13:53.634151382Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-16T17:14:05.748597922Z"}
+{"type":"log","step_name":"implement","message":"Now let me add a test for the host status handler writing `.log` files. Let me check for existing host tests.","timestamp":"2026-03-16T17:14:16.474390872Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/host/*_test.go') ---","timestamp":"2026-03-16T17:14:16.584073895Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func Test.*Status|func Test.*Log|OnStepComplete') ---","timestamp":"2026-03-16T17:14:24.240740135Z"}
+{"type":"log","step_name":"implement","message":"No existing status handler tests. Let me create a focused test for the `.log` file creation in `OnStepComplete`:","timestamp":"2026-03-16T17:14:29.443189153Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/executor_test.go') ---","timestamp":"2026-03-16T17:14:29.753813044Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('wc -l /workspace/internal/host/executor_test.go') ---","timestamp":"2026-03-16T17:14:35.500070552Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/executor_test.go') ---","timestamp":"2026-03-16T17:14:39.72243227Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/host/executor_test.go') ---","timestamp":"2026-03-16T17:14:50.484980674Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-16T17:14:56.931784022Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-16T17:15:02.064365133Z"}
+{"type":"log","step_name":"implement","message":"There's one test failure: `TestRunDetail_LogScrollStabilization`. This test is checking the HTML output and expects specific content. Let me look at what it expects:","timestamp":"2026-03-16T17:15:50.484373647Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-16T17:15:51.151129117Z"}
+{"type":"log","step_name":"implement","message":"The test at line 199 checks for an exact string match on `var atBottom = logViewer.scrollHeight - savedScrollTop - logViewer.clientHeight \u003c 40` — but I moved the scroll logic from `appendLogLine` into `appendToElement`. The old string used `logViewer` directly, but now my `appendToElement` uses the `container` parameter. The unified log viewer still calls `appendToElement(logViewer, logContent, line)`, so in the rendered HTML the function body will use `container` not `logViewer`.","timestamp":"2026-03-16T17:15:58.526055585Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:15:58.526083798Z"}
+{"type":"log","step_name":"implement","message":"The test expects that exact string with `logViewer`. I need to update the test to match the new code:","timestamp":"2026-03-16T17:15:58.526087625Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-16T17:16:01.184302987Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-16T17:16:07.460258888Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Let me verify the new tests also ran (not cached):","timestamp":"2026-03-16T17:16:14.895017178Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test -count=1 ./internal/host/ ./internal/adapters/grp...') ---","timestamp":"2026-03-16T17:16:16.134361339Z"}
+{"type":"log","step_name":"implement","message":"All tests pass.","timestamp":"2026-03-16T17:16:38.134521106Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-16T17:16:41.523072799Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of what was changed:","timestamp":"2026-03-16T17:16:54.690750813Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.690766803Z"}
+{"type":"log","step_name":"implement","message":"**Root cause**: Host workflows wrote step output to `\u003cstep\u003e.out` files, but the log system (`cloche logs -s`, web UI) expected `\u003cstep\u003e.log` files.","timestamp":"2026-03-16T17:16:54.690773145Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.690779297Z"}
+{"type":"log","step_name":"implement","message":"**Changes made:**","timestamp":"2026-03-16T17:16:54.690781531Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.690783896Z"}
+{"type":"log","step_name":"implement","message":"1. **`internal/host/runner.go`** — `hostStatusHandler.OnStepComplete` now writes a `.log` copy of the `.out` file after step completion, so `cloche logs -s \u003cstep\u003e` and the web UI can find per-step log output.","timestamp":"2026-03-16T17:16:54.690786Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.690798012Z"}
+{"type":"log","step_name":"implement","message":"2. **`internal/adapters/grpc/server.go`** — `streamFilteredLogs` now tries `.out` as a fallback when `.log` doesn't exist (backward compat with older host runs).","timestamp":"2026-03-16T17:16:54.690800236Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.690805306Z"}
+{"type":"log","step_name":"implement","message":"3. **`internal/adapters/web/handler.go`** — `handleAPIStepOutput` now tries `.out` as a fallback when `.log` doesn't exist.","timestamp":"2026-03-16T17:16:54.69080734Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.690810346Z"}
+{"type":"log","step_name":"implement","message":"4. **`internal/adapters/web/templates/run_detail.html`** — Step accordion sections now receive live-streamed log lines from the SSE stream, filtered by `step_name`. Lines are buffered per-step and auto-scroll is preserved (scrolls to bottom unless user scrolled up).","timestamp":"2026-03-16T17:16:54.690812359Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.690817609Z"}
+{"type":"log","step_name":"implement","message":"5. **`internal/adapters/web/static/style.css`** — Added `.step-log-viewer` wrapper for scrollable per-step log containers.","timestamp":"2026-03-16T17:16:54.690819663Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.690822799Z"}
+{"type":"log","step_name":"implement","message":"6. **Tests added**: `TestHostStatusHandler_WritesStepLogFile`, `TestHostStatusHandler_NoLogFileWhenNoOutput`, `TestServer_StreamLogs_StepFilterFallbackToOut`, `TestStepOutput_FallsBackToOutFile`, `TestStepOutput_PrefersLogOverOut`.","timestamp":"2026-03-16T17:16:54.690824833Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.690827248Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-16T17:16:54.690829231Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of what was changed:","timestamp":"2026-03-16T17:16:54.7168564Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.716881778Z"}
+{"type":"log","step_name":"implement","message":"**Root cause**: Host workflows wrote step output to `\u003cstep\u003e.out` files, but the log system (`cloche logs -s`, web UI) expected `\u003cstep\u003e.log` files.","timestamp":"2026-03-16T17:16:54.716887258Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.71689356Z"}
+{"type":"log","step_name":"implement","message":"**Changes made:**","timestamp":"2026-03-16T17:16:54.716906575Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.716911674Z"}
+{"type":"log","step_name":"implement","message":"1. **`internal/host/runner.go`** — `hostStatusHandler.OnStepComplete` now writes a `.log` copy of the `.out` file after step completion, so `cloche logs -s \u003cstep\u003e` and the web UI can find per-step log output.","timestamp":"2026-03-16T17:16:54.716916553Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.716922765Z"}
+{"type":"log","step_name":"implement","message":"2. **`internal/adapters/grpc/server.go`** — `streamFilteredLogs` now tries `.out` as a fallback when `.log` doesn't exist (backward compat with older host runs).","timestamp":"2026-03-16T17:16:54.716927534Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.716933045Z"}
+{"type":"log","step_name":"implement","message":"3. **`internal/adapters/web/handler.go`** — `handleAPIStepOutput` now tries `.out` as a fallback when `.log` doesn't exist.","timestamp":"2026-03-16T17:16:54.716937683Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.716943524Z"}
+{"type":"log","step_name":"implement","message":"4. **`internal/adapters/web/templates/run_detail.html`** — Step accordion sections now receive live-streamed log lines from the SSE stream, filtered by `step_name`. Lines are buffered per-step and auto-scroll is preserved (scrolls to bottom unless user scrolled up).","timestamp":"2026-03-16T17:16:54.716948414Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.716954245Z"}
+{"type":"log","step_name":"implement","message":"5. **`internal/adapters/web/static/style.css`** — Added `.step-log-viewer` wrapper for scrollable per-step log containers.","timestamp":"2026-03-16T17:16:54.716958713Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.716964194Z"}
+{"type":"log","step_name":"implement","message":"6. **Tests added**: `TestHostStatusHandler_WritesStepLogFile`, `TestHostStatusHandler_NoLogFileWhenNoOutput`, `TestServer_StreamLogs_StepFilterFallbackToOut`, `TestStepOutput_FallsBackToOutFile`, `TestStepOutput_PrefersLogOverOut`.","timestamp":"2026-03-16T17:16:54.716968772Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:16:54.716974904Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-16T17:16:54.951375334Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-16T17:16:54.96702362Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-16T17:16:54.970162404Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-16T17:16:55.256868787Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t10.051s","timestamp":"2026-03-16T17:17:05.601832624Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-16T17:17:05.601869003Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-16T17:17:05.601873932Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-16T17:17:05.601879312Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-16T17:17:05.60188337Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-16T17:17:05.601890514Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-16T17:17:05.601899611Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-16T17:17:05.601903568Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-16T17:17:05.601907205Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-16T17:17:05.601910882Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-16T17:17:05.601914589Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-16T17:17:05.601918336Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-16T17:17:05.601922043Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-16T17:17:05.60192575Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-16T17:17:05.601929327Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-16T17:17:05.601937332Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-16T17:17:05.60194152Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-16T17:17:05.601945367Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-16T17:17:05.601949004Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-16T17:17:05.601954795Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-16T17:17:05.601958512Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/version\t(cached)","timestamp":"2026-03-16T17:17:05.601962199Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-16T17:17:05.601965856Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-16T17:17:05.658216977Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-16T17:17:05.661219223Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('git diff HEAD --name-only') ---","timestamp":"2026-03-16T17:17:13.050777219Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('docs/**/*.md') ---","timestamp":"2026-03-16T17:17:13.39991743Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('git diff HEAD -- internal/adapters/grpc/server.go interna...') ---","timestamp":"2026-03-16T17:17:18.76558882Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('log|logs|step.*log|output.*log|stream') ---","timestamp":"2026-03-16T17:17:20.293005017Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('log|logs|step.*log|output.*log|stream') ---","timestamp":"2026-03-16T17:17:20.789220323Z"}
+{"type":"log","step_name":"update-docs","message":"The changes add `.log` file copies for host workflow steps (which previously only had `.out` files) and update the gRPC/web handlers to try both extensions. Let me check if the docs need updating for the output directory layout.","timestamp":"2026-03-16T17:17:28.02645274Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-16T17:17:28.768738644Z"}
+{"type":"log","step_name":"update-docs","message":"The output directory layout in the docs (lines 939-942) only shows `.log` files. The implementation now also creates `.log` copies of `.out` files for host runs. The documentation already reflects the correct convention (`.log` files), and the code change makes host runs conform to that convention. No doc update is needed — the docs already describe the `.log` convention, and the code was brought into alignment with it.","timestamp":"2026-03-16T17:17:38.122470537Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-16T17:17:38.122489874Z"}
+{"type":"log","step_name":"update-docs","message":"Let me also verify the `cloche logs` documentation is consistent with the implementation.","timestamp":"2026-03-16T17:17:38.122493921Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-16T17:17:38.445826615Z"}
+{"type":"log","step_name":"update-docs","message":"The documentation for `cloche logs` already accurately describes the `-s` flag and streaming behavior. The source changes fix the implementation to match what the docs already describe.","timestamp":"2026-03-16T17:17:44.198325447Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-16T17:17:44.198344613Z"}
+{"type":"log","step_name":"update-docs","message":"No documentation changes are needed — the docs already describe the correct behavior (per-step `.log` files, `cloche logs -s \u003cstep\u003e` support, streaming to web UI), and the code changes bring the implementation into conformance with the existing documentation.","timestamp":"2026-03-16T17:17:44.198347258Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-16T17:17:44.198350594Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-16T17:17:44.198352648Z"}
+{"type":"log","step_name":"update-docs","message":"The documentation for `cloche logs` already accurately describes the `-s` flag and streaming behavior. The source changes fix the implementation to match what the docs already describe.","timestamp":"2026-03-16T17:17:44.21873839Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-16T17:17:44.218756835Z"}
+{"type":"log","step_name":"update-docs","message":"No documentation changes are needed — the docs already describe the correct behavior (per-step `.log` files, `cloche logs -s \u003cstep\u003e` support, streaming to web UI), and the code changes bring the implementation into conformance with the existing documentation.","timestamp":"2026-03-16T17:17:44.218761504Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-16T17:17:44.218767765Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-16T17:17:44.467876538Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-16T17:17:44.486049326Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-16T17:17:44.49236123Z"}

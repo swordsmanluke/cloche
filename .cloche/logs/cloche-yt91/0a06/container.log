@@ -1,0 +1,263 @@
+{"type":"run_title","message":"Task: Add filter flags to cloche list: --project, --state, --limit, --issue","timestamp":"2026-03-13T18:20:38.087762757Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-13T18:20:38.08932989Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Explore the codebase thoroughly to understand:","timestamp":"2026-03-13T18:20:47.522931359Z"}
+{"type":"log","step_name":"implement","message":"1. The `cl...') ---","timestamp":"2026-03-13T18:20:47.522974721Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.go\" -o -name \"*.proto\" -...') ---","timestamp":"2026-03-13T18:20:48.828396701Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f \\( -name \"*.proto\" -o -name \"*lis...') ---","timestamp":"2026-03-13T18:20:50.175045263Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/cmd -type f -name \"*.go\"') ---","timestamp":"2026-03-13T18:20:51.4224529Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('list|ListRuns') ---","timestamp":"2026-03-13T18:20:52.840900509Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T18:20:54.109004597Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-13T18:20:54.320537377Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-13T18:20:54.559241381Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-13T18:20:54.67483587Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T18:20:56.631419735Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/sqlite/store.go') ---","timestamp":"2026-03-13T18:20:56.867508616Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/sqlite/store.go') ---","timestamp":"2026-03-13T18:20:58.689750409Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-13T18:20:59.998486321Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('filter|query|state|workflow') ---","timestamp":"2026-03-13T18:21:00.546763509Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -name \"*test.go\" -type f | grep -E \"(list...') ---","timestamp":"2026-03-13T18:21:02.012436203Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-13T18:21:04.024827777Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('since|time\\.Duration|TimeRange|filter|query') ---","timestamp":"2026-03-13T18:21:05.887614256Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -r \"ListRuns\\|ListRunsByProject\" /workspace/cmd --in...') ---","timestamp":"2026-03-13T18:21:06.156847019Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('state.*=\\s*|RunState|run\\.State') ---","timestamp":"2026-03-13T18:21:09.172903209Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"type RunState\\|RunState.*=\" /workspace/internal/...') ---","timestamp":"2026-03-13T18:21:09.222208715Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/clochepb') ---","timestamp":"2026-03-13T18:21:10.564045131Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/api/clochepb/') ---","timestamp":"2026-03-13T18:21:11.601991095Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -r \"WHERE\\|SELECT\\|filter\\|query\" /workspace/interna...') ---","timestamp":"2026-03-13T18:21:13.242045915Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"ListRuns\\|ListRunsByProject\" /workspace/internal...') ---","timestamp":"2026-03-13T18:21:14.64730532Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/docs -type f -name \"*.md\" 2\u003e/dev/null | h...') ---","timestamp":"2026-03-13T18:21:16.202406822Z"}
+{"type":"log","step_name":"implement","message":"Let me read the key files I need to modify.","timestamp":"2026-03-13T18:21:41.277788782Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T18:21:41.546532926Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-13T18:21:41.972959016Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-13T18:21:42.468322985Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T18:21:43.051183302Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/sqlite/store.go') ---","timestamp":"2026-03-13T18:21:43.800888205Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-13T18:21:43.948868051Z"}
+{"type":"log","step_name":"implement","message":"Let me read the generated protobuf code and existing tests.","timestamp":"2026-03-13T18:21:47.143111856Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('ListRunsRequest') ---","timestamp":"2026-03-13T18:21:48.096393409Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-13T18:21:48.992535891Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/sqlite/store_test.go') ---","timestamp":"2026-03-13T18:21:49.320993352Z"}
+{"type":"log","step_name":"implement","message":"Let me check the generated protobuf code and how it's regenerated.","timestamp":"2026-03-13T18:21:53.855472997Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('ListRunsRequest') ---","timestamp":"2026-03-13T18:21:55.208758137Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('protoc|protobuf|generate|go_package') ---","timestamp":"2026-03-13T18:21:56.226116755Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-13T18:21:56.716849984Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/clochepb/cloche.pb.go') ---","timestamp":"2026-03-13T18:22:05.77494547Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/clochepb/cloche.pb.go') ---","timestamp":"2026-03-13T18:22:06.108540861Z"}
+{"type":"log","step_name":"implement","message":"Now I have a clear picture. Let me implement the feature. I need to:","timestamp":"2026-03-13T18:22:29.68985351Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:22:29.689889899Z"}
+{"type":"log","step_name":"implement","message":"1. Update proto definition and generated Go code with new fields","timestamp":"2026-03-13T18:22:29.689894187Z"}
+{"type":"log","step_name":"implement","message":"2. Add a `RunListFilter` domain type","timestamp":"2026-03-13T18:22:29.689902663Z"}
+{"type":"log","step_name":"implement","message":"3. Add `ListRunsFiltered` to the store interface + SQLite implementation","timestamp":"2026-03-13T18:22:29.689907732Z"}
+{"type":"log","step_name":"implement","message":"4. Update gRPC server to use the new filter","timestamp":"2026-03-13T18:22:29.689912471Z"}
+{"type":"log","step_name":"implement","message":"5. Update CLI to parse the new flags","timestamp":"2026-03-13T18:22:29.68991714Z"}
+{"type":"log","step_name":"implement","message":"6. Update help text","timestamp":"2026-03-13T18:22:29.689921368Z"}
+{"type":"log","step_name":"implement","message":"7. Add tests","timestamp":"2026-03-13T18:22:29.689925496Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: ToolSearch ---","timestamp":"2026-03-13T18:22:30.332503963Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T18:22:38.122400471Z"}
+{"type":"log","step_name":"implement","message":"Let me start by updating the proto file and generated Go code.","timestamp":"2026-03-13T18:22:41.363963036Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-13T18:22:42.443672509Z"}
+{"type":"log","step_name":"implement","message":"Now update the generated Go struct and add getter methods.","timestamp":"2026-03-13T18:22:45.063157677Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/api/clochepb/cloche.pb.go') ---","timestamp":"2026-03-13T18:22:49.184956399Z"}
+{"type":"log","step_name":"implement","message":"Now add the getter methods after the existing ones.","timestamp":"2026-03-13T18:22:51.550060024Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/api/clochepb/cloche.pb.go') ---","timestamp":"2026-03-13T18:22:53.770261896Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T18:22:57.926136752Z"}
+{"type":"log","step_name":"implement","message":"Now add the `RunListFilter` domain type.","timestamp":"2026-03-13T18:23:00.191680446Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-13T18:23:02.300083132Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T18:23:07.059954019Z"}
+{"type":"log","step_name":"implement","message":"Now add `ListRunsFiltered` to the store interface and implement it in SQLite.","timestamp":"2026-03-13T18:23:09.667200306Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-13T18:23:13.566767173Z"}
+{"type":"log","step_name":"implement","message":"Now let me check what `runSelectCols` looks like and implement `ListRunsFiltered` in the SQLite store.","timestamp":"2026-03-13T18:23:16.57388978Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('runSelectCols') ---","timestamp":"2026-03-13T18:23:17.375014862Z"}
+{"type":"log","step_name":"implement","message":"Now I'll add the `ListRunsFiltered` method right after `ListRunsByProject`.","timestamp":"2026-03-13T18:23:20.059881621Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/sqlite/store.go') ---","timestamp":"2026-03-13T18:23:20.364279776Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/sqlite/store.go') ---","timestamp":"2026-03-13T18:23:27.103738716Z"}
+{"type":"log","step_name":"implement","message":"Now I need to check if there are any other implementations of the `RunStore` interface (like mocks or test doubles).","timestamp":"2026-03-13T18:23:30.770478144Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('RunStore|ListRunsByProject') ---","timestamp":"2026-03-13T18:23:31.752791319Z"}
+{"type":"log","step_name":"implement","message":"Let me check if any of these files implement the interface (besides sqlite store).","timestamp":"2026-03-13T18:23:34.491473476Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('ListRunsByProject|ListRunsFiltered') ---","timestamp":"2026-03-13T18:23:35.437190351Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('ListRunsByProject|ListRunsFiltered') ---","timestamp":"2026-03-13T18:23:36.22575861Z"}
+{"type":"log","step_name":"implement","message":"There's a `fakeStore` in `executor_test.go` that needs to implement the new method. Let me read it and add the missing method.","timestamp":"2026-03-13T18:23:40.603219885Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/executor_test.go') ---","timestamp":"2026-03-13T18:23:41.149302562Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/host/executor_test.go') ---","timestamp":"2026-03-13T18:23:46.332708075Z"}
+{"type":"log","step_name":"implement","message":"Now let me check if there are other fake/mock stores that need updating.","timestamp":"2026-03-13T18:23:48.409277114Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('fakeStore|mockStore|testStore|stubStore') ---","timestamp":"2026-03-13T18:23:49.68069848Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('ListRunsByProject\"') ---","timestamp":"2026-03-13T18:23:53.511284894Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('fakeStore|RunStore') ---","timestamp":"2026-03-13T18:23:56.391881448Z"}
+{"type":"log","step_name":"implement","message":"The `loop_test.go` uses the same `fakeStore` type from `executor_test.go` (same package). Good, already updated.","timestamp":"2026-03-13T18:23:59.188353579Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T18:24:01.842214581Z"}
+{"type":"log","step_name":"implement","message":"Now update the gRPC server to use the new `ListRunsFiltered` method.","timestamp":"2026-03-13T18:24:04.974149433Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T18:24:14.684508306Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T18:24:19.035646278Z"}
+{"type":"log","step_name":"implement","message":"Now update the CLI command to parse the new flags. Let me look at how other commands parse flags in this codebase for convention.","timestamp":"2026-03-13T18:24:21.750065956Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T18:24:22.416259665Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('parseFlag|for.*range args|strconv\"') ---","timestamp":"2026-03-13T18:24:25.728089754Z"}
+{"type":"log","step_name":"implement","message":"The CLI uses manual arg parsing. Let me check how other commands with value flags parse them.","timestamp":"2026-03-13T18:24:29.099507078Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('args\\[i\\+1\\]|--step|--type') ---","timestamp":"2026-03-13T18:24:29.790160609Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T18:24:32.852150554Z"}
+{"type":"log","step_name":"implement","message":"Good, I see the pattern. Now let me update the `cmdList` function.","timestamp":"2026-03-13T18:24:35.950008206Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T18:24:36.256610316Z"}
+{"type":"log","step_name":"implement","message":"I need to add `strconv` to imports for parsing the limit flag.","timestamp":"2026-03-13T18:24:39.031248891Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T18:24:39.963178575Z"}
+{"type":"log","step_name":"implement","message":"Now replace the `cmdList` function.","timestamp":"2026-03-13T18:24:42.33381673Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T18:24:53.755733114Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T18:24:58.448600283Z"}
+{"type":"log","step_name":"implement","message":"Now update the help text.","timestamp":"2026-03-13T18:25:00.517134514Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-13T18:25:07.154728087Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T18:25:11.605819194Z"}
+{"type":"log","step_name":"implement","message":"Now let me add tests. I'll add tests in both the SQLite store test and gRPC server test files.","timestamp":"2026-03-13T18:25:14.420948795Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/sqlite/store_test.go') ---","timestamp":"2026-03-13T18:25:15.037791793Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/sqlite/store_test.go') ---","timestamp":"2026-03-13T18:25:35.513583293Z"}
+{"type":"log","step_name":"implement","message":"Now add gRPC server tests for the new filter functionality.","timestamp":"2026-03-13T18:25:37.783970301Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-13T18:25:38.429802219Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-13T18:25:49.776678498Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T18:25:55.722801657Z"}
+{"type":"log","step_name":"implement","message":"Now let's run the tests.","timestamp":"2026-03-13T18:25:57.922505218Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-13T18:25:58.550922394Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Let me verify the unused import isn't an issue.","timestamp":"2026-03-13T18:26:42.757881146Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go vet ./... 2\u003e\u00261') ---","timestamp":"2026-03-13T18:26:43.113663852Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T18:26:52.77012986Z"}
+{"type":"log","step_name":"implement","message":"All tests pass and `go vet` is clean. Here's a summary of the changes:","timestamp":"2026-03-13T18:27:02.27104367Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.271069078Z"}
+{"type":"log","step_name":"implement","message":"**Proto \u0026 generated code** (`api/proto/cloche/v1/cloche.proto`, `api/clochepb/cloche.pb.go`):","timestamp":"2026-03-13T18:27:02.271073005Z"}
+{"type":"log","step_name":"implement","message":"- Added `state`, `limit`, and `task_id` fields to `ListRunsRequest`","timestamp":"2026-03-13T18:27:02.271076882Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.271083565Z"}
+{"type":"log","step_name":"implement","message":"**Domain** (`internal/domain/run.go`):","timestamp":"2026-03-13T18:27:02.271086841Z"}
+{"type":"log","step_name":"implement","message":"- Added `RunListFilter` struct with `ProjectDir`, `State`, `TaskID`, `Limit`, `Since` fields","timestamp":"2026-03-13T18:27:02.271090228Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.271096089Z"}
+{"type":"log","step_name":"implement","message":"**Store interface** (`internal/ports/store.go`):","timestamp":"2026-03-13T18:27:02.271099585Z"}
+{"type":"log","step_name":"implement","message":"- Added `ListRunsFiltered(ctx, filter) ([]*Run, error)` method","timestamp":"2026-03-13T18:27:02.271102851Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.271106939Z"}
+{"type":"log","step_name":"implement","message":"**SQLite store** (`internal/adapters/sqlite/store.go`):","timestamp":"2026-03-13T18:27:02.271110175Z"}
+{"type":"log","step_name":"implement","message":"- Implemented `ListRunsFiltered` with dynamic query building — each filter conditionally adds a WHERE clause, with LIMIT support","timestamp":"2026-03-13T18:27:02.271114243Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.271118611Z"}
+{"type":"log","step_name":"implement","message":"**gRPC server** (`internal/adapters/grpc/server.go`):","timestamp":"2026-03-13T18:27:02.271121958Z"}
+{"type":"log","step_name":"implement","message":"- Rewrote `ListRuns` to build a `RunListFilter` from the request and use `ListRunsFiltered`","timestamp":"2026-03-13T18:27:02.271126366Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.271130424Z"}
+{"type":"log","step_name":"implement","message":"**CLI** (`cmd/cloche/main.go`):","timestamp":"2026-03-13T18:27:02.27113391Z"}
+{"type":"log","step_name":"implement","message":"- Added `--project/-p`, `--state/-s`, `--limit/-n`, `--issue/-i` flag parsing to `cmdList`","timestamp":"2026-03-13T18:27:02.271137808Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.271141955Z"}
+{"type":"log","step_name":"implement","message":"**Help** (`cmd/cloche/help.go`):","timestamp":"2026-03-13T18:27:02.271145402Z"}
+{"type":"log","step_name":"implement","message":"- Updated help text with all new flags and examples","timestamp":"2026-03-13T18:27:02.27114965Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.271153838Z"}
+{"type":"log","step_name":"implement","message":"**Tests**:","timestamp":"2026-03-13T18:27:02.271157164Z"}
+{"type":"log","step_name":"implement","message":"- 6 new store tests: filter by state, project, task ID, limit, combined filters, and no filters","timestamp":"2026-03-13T18:27:02.271161883Z"}
+{"type":"log","step_name":"implement","message":"- 3 new gRPC server tests: filter by state, limit, and task ID","timestamp":"2026-03-13T18:27:02.271165931Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.271169618Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T18:27:02.271172834Z"}
+{"type":"log","step_name":"implement","message":"All tests pass and `go vet` is clean. Here's a summary of the changes:","timestamp":"2026-03-13T18:27:02.295330527Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.295346838Z"}
+{"type":"log","step_name":"implement","message":"**Proto \u0026 generated code** (`api/proto/cloche/v1/cloche.proto`, `api/clochepb/cloche.pb.go`):","timestamp":"2026-03-13T18:27:02.295351787Z"}
+{"type":"log","step_name":"implement","message":"- Added `state`, `limit`, and `task_id` fields to `ListRunsRequest`","timestamp":"2026-03-13T18:27:02.295355744Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.295359411Z"}
+{"type":"log","step_name":"implement","message":"**Domain** (`internal/domain/run.go`):","timestamp":"2026-03-13T18:27:02.295365974Z"}
+{"type":"log","step_name":"implement","message":"- Added `RunListFilter` struct with `ProjectDir`, `State`, `TaskID`, `Limit`, `Since` fields","timestamp":"2026-03-13T18:27:02.29536956Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.295376203Z"}
+{"type":"log","step_name":"implement","message":"**Store interface** (`internal/ports/store.go`):","timestamp":"2026-03-13T18:27:02.295380661Z"}
+{"type":"log","step_name":"implement","message":"- Added `ListRunsFiltered(ctx, filter) ([]*Run, error)` method","timestamp":"2026-03-13T18:27:02.295384068Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.295387444Z"}
+{"type":"log","step_name":"implement","message":"**SQLite store** (`internal/adapters/sqlite/store.go`):","timestamp":"2026-03-13T18:27:02.29539051Z"}
+{"type":"log","step_name":"implement","message":"- Implemented `ListRunsFiltered` with dynamic query building — each filter conditionally adds a WHERE clause, with LIMIT support","timestamp":"2026-03-13T18:27:02.295394017Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.295397924Z"}
+{"type":"log","step_name":"implement","message":"**gRPC server** (`internal/adapters/grpc/server.go`):","timestamp":"2026-03-13T18:27:02.29540104Z"}
+{"type":"log","step_name":"implement","message":"- Rewrote `ListRuns` to build a `RunListFilter` from the request and use `ListRunsFiltered`","timestamp":"2026-03-13T18:27:02.295404577Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.295408023Z"}
+{"type":"log","step_name":"implement","message":"**CLI** (`cmd/cloche/main.go`):","timestamp":"2026-03-13T18:27:02.295411269Z"}
+{"type":"log","step_name":"implement","message":"- Added `--project/-p`, `--state/-s`, `--limit/-n`, `--issue/-i` flag parsing to `cmdList`","timestamp":"2026-03-13T18:27:02.295414796Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.295418273Z"}
+{"type":"log","step_name":"implement","message":"**Help** (`cmd/cloche/help.go`):","timestamp":"2026-03-13T18:27:02.29542196Z"}
+{"type":"log","step_name":"implement","message":"- Updated help text with all new flags and examples","timestamp":"2026-03-13T18:27:02.295425827Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.295429293Z"}
+{"type":"log","step_name":"implement","message":"**Tests**:","timestamp":"2026-03-13T18:27:02.29543254Z"}
+{"type":"log","step_name":"implement","message":"- 6 new store tests: filter by state, project, task ID, limit, combined filters, and no filters","timestamp":"2026-03-13T18:27:02.295435886Z"}
+{"type":"log","step_name":"implement","message":"- 3 new gRPC server tests: filter by state, limit, and task ID","timestamp":"2026-03-13T18:27:02.295439392Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T18:27:02.295442739Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T18:27:02.627735311Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-13T18:27:02.657279676Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-13T18:27:02.662282433Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-13T18:27:02.92580178Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t0.035s","timestamp":"2026-03-13T18:27:03.258179333Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-13T18:27:03.258210632Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-13T18:27:03.258216342Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-13T18:27:03.258222885Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-13T18:27:03.258230279Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-13T18:27:03.258234968Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-13T18:27:03.25824127Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-13T18:27:03.258245718Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-13T18:27:03.258249976Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-13T18:27:03.258254304Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-13T18:27:03.258258823Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-13T18:27:03.258263141Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-13T18:27:03.258271617Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-13T18:27:03.258276115Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-13T18:27:03.258280724Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-13T18:27:03.258286645Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-13T18:27:03.258293047Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-13T18:27:03.258297255Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-13T18:27:03.258303738Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-13T18:27:03.258308937Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-13T18:27:03.258313125Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-13T18:27:03.258317624Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-13T18:27:03.299701378Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-13T18:27:03.303327171Z"}
+{"type":"log","step_name":"update-docs","message":"Let me start by reading the relevant source code and documentation in parallel.","timestamp":"2026-03-13T18:27:08.875293044Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Agent('I need to understand the current state of the `cloche lis...') ---","timestamp":"2026-03-13T18:27:14.44171181Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('cmd/cloche/*.go') ---","timestamp":"2026-03-13T18:27:17.425241972Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('list|List') ---","timestamp":"2026-03-13T18:27:17.425726678Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('ListRuns|list') ---","timestamp":"2026-03-13T18:27:17.426876351Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Agent('Find all documentation files in this project that might r...') ---","timestamp":"2026-03-13T18:27:17.449819669Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T18:27:17.970607444Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-13T18:27:18.1813552Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-13T18:27:18.295153382Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('**/*.md') ---","timestamp":"2026-03-13T18:27:18.76180088Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('find /workspace -type f \\( -name \"*.1\" -o -name \"*.man\" -...') ---","timestamp":"2026-03-13T18:27:19.100683327Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-13T18:27:19.818361214Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/adapters/sqlite/store.go') ---","timestamp":"2026-03-13T18:27:19.847051404Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/CLAUDE.md') ---","timestamp":"2026-03-13T18:27:20.896346996Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/README.md') ---","timestamp":"2026-03-13T18:27:21.1324669Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T18:27:21.215790769Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-20-cloche-system-design.md') ---","timestamp":"2026-03-13T18:27:21.347298836Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('RunListFilter|ListRuns') ---","timestamp":"2026-03-13T18:27:21.503683364Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-13T18:27:23.022356584Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('find /workspace/docs -name \"*.md\" -type f | grep -v evolu...') ---","timestamp":"2026-03-13T18:27:23.131665199Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-13T18:27:23.292248013Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-13T18:27:24.780124229Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/workflows.md') ---","timestamp":"2026-03-13T18:27:24.992630299Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/INSTALL.md') ---","timestamp":"2026-03-13T18:27:25.122715937Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('cloche list|cloche list') ---","timestamp":"2026-03-13T18:27:26.908296483Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('cloche list|cloche list') ---","timestamp":"2026-03-13T18:27:27.225045241Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('list.*runs|list.*workflow|list.*command') ---","timestamp":"2026-03-13T18:27:28.975287841Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-03-01-subdirectory-layout-and-...') ---","timestamp":"2026-03-13T18:27:29.393038693Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-23-cloche-init.md') ---","timestamp":"2026-03-13T18:27:30.968136092Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-20-cloche-implementation.md') ---","timestamp":"2026-03-13T18:27:31.229865503Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T18:27:33.30934381Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('grep -r \"list\" /workspace/docs/plans/*.md 2\u003e/dev/null | g...') ---","timestamp":"2026-03-13T18:27:33.842759622Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-03-06-project-pages-design.md') ---","timestamp":"2026-03-13T18:27:35.498777615Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-03-06-config-toml-design.md') ---","timestamp":"2026-03-13T18:27:35.726490328Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('find /workspace/docs -type f -name \"*.md\" | wc -l') ---","timestamp":"2026-03-13T18:27:37.662166319Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me check the specific documentation files that might need updates.","timestamp":"2026-03-13T18:27:59.167268026Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/CLAUDE.md') ---","timestamp":"2026-03-13T18:27:59.17697796Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-13T18:27:59.796692889Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/README.md') ---","timestamp":"2026-03-13T18:28:00.230016823Z"}
+{"type":"log","step_name":"update-docs","message":"Two files need updates:","timestamp":"2026-03-13T18:28:12.491345462Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T18:28:12.491375479Z"}
+{"type":"log","step_name":"update-docs","message":"1. **CLAUDE.md:19** — subcommand list is missing `list`","timestamp":"2026-03-13T18:28:12.491379817Z"}
+{"type":"log","step_name":"update-docs","message":"2. **docs/USAGE.md:628-634** — `cloche list` section only documents `--all`, missing the new filter flags","timestamp":"2026-03-13T18:28:12.491384306Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/CLAUDE.md') ---","timestamp":"2026-03-13T18:28:13.353130717Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-13T18:28:15.723779674Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me verify both edits.","timestamp":"2026-03-13T18:28:17.849434856Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/CLAUDE.md') ---","timestamp":"2026-03-13T18:28:18.877646906Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-13T18:28:19.133036901Z"}
+{"type":"log","step_name":"update-docs","message":"Both edits look correct. Updated two files:","timestamp":"2026-03-13T18:28:27.774962361Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T18:28:27.774981307Z"}
+{"type":"log","step_name":"update-docs","message":"- **CLAUDE.md:19** — Added `list` to the CLI subcommand list","timestamp":"2026-03-13T18:28:27.774986026Z"}
+{"type":"log","step_name":"update-docs","message":"- **docs/USAGE.md:628-643** — Expanded `cloche list` section with the new filter flags (`--project/-p`, `--state/-s`, `--limit/-n`, `--issue/-i`) in a table matching the source implementation","timestamp":"2026-03-13T18:28:27.774995975Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T18:28:27.775002888Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T18:28:27.775007536Z"}
+{"type":"log","step_name":"update-docs","message":"Both edits look correct. Updated two files:","timestamp":"2026-03-13T18:28:27.832869706Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T18:28:27.832886588Z"}
+{"type":"log","step_name":"update-docs","message":"- **CLAUDE.md:19** — Added `list` to the CLI subcommand list","timestamp":"2026-03-13T18:28:27.832890445Z"}
+{"type":"log","step_name":"update-docs","message":"- **docs/USAGE.md:628-643** — Expanded `cloche list` section with the new filter flags (`--project/-p`, `--state/-s`, `--limit/-n`, `--issue/-i`) in a table matching the source implementation","timestamp":"2026-03-13T18:28:27.832894453Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T18:28:27.83289841Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T18:28:28.205012674Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-13T18:28:28.231772675Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-13T18:28:28.239137636Z"}

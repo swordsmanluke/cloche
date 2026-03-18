@@ -1,0 +1,3 @@
+## Task: Add cloche project command for project info and config
+
+Add a cloche project subcommand for getting/setting project-level information. Default to looking up project by cwd, with --name override (e.g. cloche project --name cloche shows the 'cloche' project regardless of path). Bare cloche project lists: config settings, orchestrator loop state (running/stopped), concurrency, currently active runs, and known host/container workflows (workflow names only, not full step definitions).

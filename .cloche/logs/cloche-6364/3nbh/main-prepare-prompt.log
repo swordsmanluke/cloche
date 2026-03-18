@@ -1,0 +1,5 @@
+## Task: Add cloche loop once — run a single task from the work queue
+
+Add a `cloche loop once` subcommand that claims the next task from the work queue and runs it, without starting the persistent loop. The loop remains in its current state (stopped/running) — this just pops one task off the queue and executes it.
+
+Useful for testing workflows, debugging a specific task, or manually draining the queue one item at a time.

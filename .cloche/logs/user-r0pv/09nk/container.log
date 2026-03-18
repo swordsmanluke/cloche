@@ -1,0 +1,40 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-06T20:51:38.491418029Z"}
+{"type":"log","step_name":"implement","message":"Build succeeds. Here's a summary of the changes made:","timestamp":"2026-03-06T20:53:18.420825883Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:53:18.420875046Z"}
+{"type":"log","step_name":"implement","message":"### docs/INSTALL.md changes:","timestamp":"2026-03-06T20:53:18.420878152Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:53:18.420880847Z"}
+{"type":"log","step_name":"implement","message":"1. **Prerequisites**: Added Go version specificity (`1.25.3+` matching go.mod), added note that Node.js/npm are NOT needed on the host","timestamp":"2026-03-06T20:53:18.420885846Z"}
+{"type":"log","step_name":"implement","message":"2. **New \"Architecture: What Runs Where\" section**: Table clarifying which components run on host vs inside containers, explicitly stating `cloche-agent` never needs host installation","timestamp":"2026-03-06T20:53:18.420888902Z"}
+{"type":"log","step_name":"implement","message":"3. **`go install` section**: Removed `cloche-agent` from the install commands (not needed on host), marked Docker image build as **Important** and mandatory","timestamp":"2026-03-06T20:53:18.420897548Z"}
+{"type":"log","step_name":"implement","message":"4. **Pre-built Release Binaries**: Marked as **Planned** since no GitHub Releases exist yet; removed `cloche-agent` from the install command; removed non-existent GHCR pull command","timestamp":"2026-03-06T20:53:18.420903029Z"}
+{"type":"log","step_name":"implement","message":"5. **Homebrew**: Marked as **Planned** since no tap exists yet","timestamp":"2026-03-06T20:53:18.420908509Z"}
+{"type":"log","step_name":"implement","message":"6. **Docker-Only Usage**: Removed entirely — `Dockerfile.daemon` does not exist in the repo, and the section referenced non-existent infrastructure","timestamp":"2026-03-06T20:53:18.420911174Z"}
+{"type":"log","step_name":"implement","message":"7. **Verification**: Replaced `make docker-build` with `docker images` check (more appropriate for verification); removed `cloche-agent --help`","timestamp":"2026-03-06T20:53:18.42091973Z"}
+{"type":"log","step_name":"implement","message":"8. **Upgrading**: Clarified that `make install` also rebuilds the Docker image","timestamp":"2026-03-06T20:53:18.420927806Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:53:18.420933096Z"}
+{"type":"log","step_name":"implement","message":"### README.md changes:","timestamp":"2026-03-06T20:53:18.42093545Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:53:18.420937845Z"}
+{"type":"log","step_name":"implement","message":"- Added an **Installation** section linking to `docs/INSTALL.md` with a quick-start snippet","timestamp":"2026-03-06T20:53:18.420940209Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:53:18.420945429Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-06T20:53:18.961160423Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-06T20:53:18.962930149Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-06T20:53:18.96296776Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-06T20:53:37.881514856Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-06T20:53:37.881555223Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-06T20:55:16.503205912Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-06T20:55:16.503247761Z"}
+{"type":"log","step_name":"update-docs","message":"Based on my thorough comparison of all CLI source files against `docs/USAGE.md`, everything is accurate:","timestamp":"2026-03-06T20:55:16.503251979Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-06T20:55:16.503257991Z"}
+{"type":"log","step_name":"update-docs","message":"- All subcommands match: `init`, `health`, `run`, `status`, `logs`, `poll`, `list`, `stop`, `delete`, `orchestrate`, `shutdown`","timestamp":"2026-03-06T20:55:16.503261608Z"}
+{"type":"log","step_name":"update-docs","message":"- All flags match for each command","timestamp":"2026-03-06T20:55:16.503265946Z"}
+{"type":"log","step_name":"update-docs","message":"- Environment variables in Daemon Configuration and Client Configuration sections match `cmd/cloched/main.go` and `cmd/cloche/main.go`","timestamp":"2026-03-06T20:55:16.503269883Z"}
+{"type":"log","step_name":"update-docs","message":"- The workflow template in \"Setting Up a New Project\" matches `cmd/cloche/init.go`","timestamp":"2026-03-06T20:55:16.503274392Z"}
+{"type":"log","step_name":"update-docs","message":"- The Dockerfile template matches","timestamp":"2026-03-06T20:55:16.50327887Z"}
+{"type":"log","step_name":"update-docs","message":"- Build Commands match the Makefile targets","timestamp":"2026-03-06T20:55:16.503286575Z"}
+{"type":"log","step_name":"update-docs","message":"- The `cloche init` flags (`--workflow`, `--image`) and defaults match","timestamp":"2026-03-06T20:55:16.503291765Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-06T20:55:16.503296333Z"}
+{"type":"log","step_name":"update-docs","message":"No changes needed to `docs/USAGE.md`.","timestamp":"2026-03-06T20:55:16.503300601Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-06T20:55:16.503305521Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-06T20:55:16.903387607Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-06T20:55:16.904789307Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-06T20:55:16.904852697Z"}

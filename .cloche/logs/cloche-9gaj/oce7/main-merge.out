@@ -1,0 +1,7 @@
+Preparing worktree (checking out 'cloche/develop-wise-pine-f9d6')
+HEAD is now at 4ce760f cloche run develop-wise-pine-f9d6: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-wise-pine-f9d6.
+Updating 6b1e2e8..af9e32e
+Fast-forward
+Deleted branch cloche/develop-wise-pine-f9d6 (was af9e32e).
+Merged cloche/develop-wise-pine-f9d6 into main (af9e32e0c072bf8540dcdd605dc1fa19c5e55ff9)

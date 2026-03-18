@@ -1,0 +1,163 @@
+{"type":"run_title","message":"Task: Add 'cloche validate' command","timestamp":"2026-03-14T16:02:51.234553792Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-14T16:02:51.234722501Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Explore the project structure to understand:","timestamp":"2026-03-14T16:03:00.342923842Z"}
+{"type":"log","step_name":"implement","message":"1. How exist...') ---","timestamp":"2026-03-14T16:03:00.342967054Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.go\" | head -20') ---","timestamp":"2026-03-14T16:03:01.533229061Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace') ---","timestamp":"2026-03-14T16:03:02.691578916Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/cmd -type f -name \"*.go\" | sort') ---","timestamp":"2026-03-14T16:03:04.352501433Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T16:03:07.355681568Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/workflow.go') ---","timestamp":"2026-03-14T16:03:07.774480908Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/project.go') ---","timestamp":"2026-03-14T16:03:08.033981231Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow.go') ---","timestamp":"2026-03-14T16:03:08.359159402Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-14T16:03:11.077730348Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('wc -l /workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-14T16:03:11.150120083Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-14T16:03:12.531188471Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"config.toml\" /workspace -r --include=\"*.go\" | he...') ---","timestamp":"2026-03-14T16:03:12.743393042Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/config/config.go') ---","timestamp":"2026-03-14T16:03:14.382487926Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/init.go') ---","timestamp":"2026-03-14T16:03:14.491938536Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-14T16:03:16.32051068Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -name \"*dir*\" -o -name \"*path*\" -o -name ...') ---","timestamp":"2026-03-14T16:03:16.755854603Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/') ---","timestamp":"2026-03-14T16:03:16.808156587Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-14T16:03:18.481854087Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"ValidateConfig\\|ValidateLocation\\|Validate()\" /w...') ---","timestamp":"2026-03-14T16:03:18.698204334Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.cloche\" | head -10') ---","timestamp":"2026-03-14T16:03:18.890135454Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/develop.cloche') ---","timestamp":"2026-03-14T16:03:20.789860283Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/examples/hello-world/build.cloche') ---","timestamp":"2026-03-14T16:03:21.001722176Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"projectDir\\|ProjectDir\\|cwd\\|getwd\" /workspace/c...') ---","timestamp":"2026-03-14T16:03:21.314993249Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"\\.cloche\" /workspace/cmd/cloche/workflow.go | he...') ---","timestamp":"2026-03-14T16:03:22.508453866Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-14T16:03:24.094602884Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"parseCollect\" /workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-14T16:03:24.24161232Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/token.go') ---","timestamp":"2026-03-14T16:03:25.890874097Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/lexer.go') ---","timestamp":"2026-03-14T16:03:25.927640966Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T16:03:27.559614573Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T16:03:29.072309342Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/ports/') ---","timestamp":"2026-03-14T16:03:30.727284127Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/version/version.go') ---","timestamp":"2026-03-14T16:03:30.9638677Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('cat /workspace/internal/version/VERSION') ---","timestamp":"2026-03-14T16:03:31.021869347Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-14T16:03:32.72658814Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/container.go') ---","timestamp":"2026-03-14T16:03:32.917115304Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/agent.go') ---","timestamp":"2026-03-14T16:03:32.929588542Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.md\" | grep -E \"(README|U...') ---","timestamp":"2026-03-14T16:03:34.82973974Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/docs/workflows.md') ---","timestamp":"2026-03-14T16:03:36.253841724Z"}
+{"type":"log","step_name":"implement","message":"Let me read the key files to understand the exact implementation patterns.","timestamp":"2026-03-14T16:04:15.12101956Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T16:04:15.644726294Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T16:04:16.115720408Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow.go') ---","timestamp":"2026-03-14T16:04:16.290667851Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/workflow.go') ---","timestamp":"2026-03-14T16:04:21.030725002Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/config/config.go') ---","timestamp":"2026-03-14T16:04:21.056950364Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-14T16:04:21.112000322Z"}
+{"type":"log","step_name":"implement","message":"Let me check for existing test patterns and the init.go template to understand prompt/script file references.","timestamp":"2026-03-14T16:04:26.105292995Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('cmd/cloche/*_test.go') ---","timestamp":"2026-03-14T16:04:26.627921679Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('file\\(\"') ---","timestamp":"2026-03-14T16:04:27.49473757Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/workflow_test.go') ---","timestamp":"2026-03-14T16:04:30.964498154Z"}
+{"type":"log","step_name":"implement","message":"Now I have a clear picture. Let me implement the `cloche validate` command. I need to:","timestamp":"2026-03-14T16:04:35.413944787Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T16:04:35.413961057Z"}
+{"type":"log","step_name":"implement","message":"1. Create `cmd/cloche/validate.go` with the validation logic","timestamp":"2026-03-14T16:04:35.413963352Z"}
+{"type":"log","step_name":"implement","message":"2. Create `cmd/cloche/validate_test.go` with tests","timestamp":"2026-03-14T16:04:35.413965416Z"}
+{"type":"log","step_name":"implement","message":"3. Wire it into `main.go` and `help.go`","timestamp":"2026-03-14T16:04:35.413967349Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: ToolSearch ---","timestamp":"2026-03-14T16:04:35.56792159Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-14T16:04:39.394316521Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/cmd/cloche/validate.go') ---","timestamp":"2026-03-14T16:05:23.701433854Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-14T16:05:27.898425861Z"}
+{"type":"log","step_name":"implement","message":"Now wire it into main.go and help.go.","timestamp":"2026-03-14T16:05:30.519513034Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T16:05:32.926549192Z"}
+{"type":"log","step_name":"implement","message":"Now add help text and update the top-level help.","timestamp":"2026-03-14T16:05:36.387057099Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T16:05:42.792531326Z"}
+{"type":"log","step_name":"implement","message":"Now update the top-level help to include validate.","timestamp":"2026-03-14T16:05:45.137100961Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T16:05:46.761327906Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-14T16:05:51.282920492Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/cmd/cloche/validate_test.go') ---","timestamp":"2026-03-14T16:06:28.098337383Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-14T16:06:31.800099352Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go build ./cmd/cloche/ 2\u003e\u00261') ---","timestamp":"2026-03-14T16:06:35.45031103Z"}
+{"type":"log","step_name":"implement","message":"Fix the named return parameter syntax.","timestamp":"2026-03-14T16:06:50.70934454Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/validate.go') ---","timestamp":"2026-03-14T16:06:52.005375883Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go build ./cmd/cloche/ 2\u003e\u00261') ---","timestamp":"2026-03-14T16:06:57.015941814Z"}
+{"type":"log","step_name":"implement","message":"Good, it compiles. Now run all tests.","timestamp":"2026-03-14T16:07:00.840417268Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-14T16:07:01.279195111Z"}
+{"type":"log","step_name":"implement","message":"All tests pass.","timestamp":"2026-03-14T16:07:42.883346898Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-14T16:07:43.906154563Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's what was implemented:","timestamp":"2026-03-14T16:07:53.054539809Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T16:07:53.054589112Z"}
+{"type":"log","step_name":"implement","message":"**New files:**","timestamp":"2026-03-14T16:07:53.054593841Z"}
+{"type":"log","step_name":"implement","message":"- `cmd/cloche/validate.go` — The `cloche validate` command with all validation logic","timestamp":"2026-03-14T16:07:53.054597718Z"}
+{"type":"log","step_name":"implement","message":"- `cmd/cloche/validate_test.go` — 15 test cases covering all validation scenarios","timestamp":"2026-03-14T16:07:53.054601866Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T16:07:53.054609711Z"}
+{"type":"log","step_name":"implement","message":"**Modified files:**","timestamp":"2026-03-14T16:07:53.054613428Z"}
+{"type":"log","step_name":"implement","message":"- `cmd/cloche/main.go` — Added `validate` to the non-daemon command switch","timestamp":"2026-03-14T16:07:53.054617105Z"}
+{"type":"log","step_name":"implement","message":"- `cmd/cloche/help.go` — Added help text for `validate` and listed it in the top-level help under \"Workflow Info\"","timestamp":"2026-03-14T16:07:53.054634368Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T16:07:53.054638736Z"}
+{"type":"log","step_name":"implement","message":"**Validation checks implemented:**","timestamp":"2026-03-14T16:07:53.054642273Z"}
+{"type":"log","step_name":"implement","message":"1. **config.toml** — Parses correctly via `config.Load()`","timestamp":"2026-03-14T16:07:53.05464608Z"}
+{"type":"log","step_name":"implement","message":"2. **Workflow files** — Syntax (DSL parser), result wiring completeness, terminal coverage (all paths reach done/abort), orphan step detection, config key validation","timestamp":"2026-03-14T16:07:53.054649997Z"}
+{"type":"log","step_name":"implement","message":"3. **File references** — `file(\"prompts/...\")` paths resolve, `.cloche/scripts/...` references in `run` resolve","timestamp":"2026-03-14T16:07:53.054654866Z"}
+{"type":"log","step_name":"implement","message":"4. **Cross-file consistency** — `workflow_name` references in host workflows resolve to defined workflows; duplicate workflow names across files detected","timestamp":"2026-03-14T16:07:53.054659275Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T16:07:53.054663703Z"}
+{"type":"log","step_name":"implement","message":"**Flags:** `--project \u003cpath\u003e`, `--workflow \u003cname\u003e`","timestamp":"2026-03-14T16:07:53.054667751Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T16:07:53.054672159Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T16:07:53.054675826Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's what was implemented:","timestamp":"2026-03-14T16:07:53.077257956Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T16:07:53.077294966Z"}
+{"type":"log","step_name":"implement","message":"**New files:**","timestamp":"2026-03-14T16:07:53.077300356Z"}
+{"type":"log","step_name":"implement","message":"- `cmd/cloche/validate.go` — The `cloche validate` command with all validation logic","timestamp":"2026-03-14T16:07:53.077305355Z"}
+{"type":"log","step_name":"implement","message":"- `cmd/cloche/validate_test.go` — 15 test cases covering all validation scenarios","timestamp":"2026-03-14T16:07:53.077311136Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T16:07:53.077316456Z"}
+{"type":"log","step_name":"implement","message":"**Modified files:**","timestamp":"2026-03-14T16:07:53.077325764Z"}
+{"type":"log","step_name":"implement","message":"- `cmd/cloche/main.go` — Added `validate` to the non-daemon command switch","timestamp":"2026-03-14T16:07:53.077329581Z"}
+{"type":"log","step_name":"implement","message":"- `cmd/cloche/help.go` — Added help text for `validate` and listed it in the top-level help under \"Workflow Info\"","timestamp":"2026-03-14T16:07:53.077333849Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T16:07:53.077338087Z"}
+{"type":"log","step_name":"implement","message":"**Validation checks implemented:**","timestamp":"2026-03-14T16:07:53.077341644Z"}
+{"type":"log","step_name":"implement","message":"1. **config.toml** — Parses correctly via `config.Load()`","timestamp":"2026-03-14T16:07:53.077345632Z"}
+{"type":"log","step_name":"implement","message":"2. **Workflow files** — Syntax (DSL parser), result wiring completeness, terminal coverage (all paths reach done/abort), orphan step detection, config key validation","timestamp":"2026-03-14T16:07:53.07735011Z"}
+{"type":"log","step_name":"implement","message":"3. **File references** — `file(\"prompts/...\")` paths resolve, `.cloche/scripts/...` references in `run` resolve","timestamp":"2026-03-14T16:07:53.077354428Z"}
+{"type":"log","step_name":"implement","message":"4. **Cross-file consistency** — `workflow_name` references in host workflows resolve to defined workflows; duplicate workflow names across files detected","timestamp":"2026-03-14T16:07:53.077358596Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T16:07:53.077362874Z"}
+{"type":"log","step_name":"implement","message":"**Flags:** `--project \u003cpath\u003e`, `--workflow \u003cname\u003e`","timestamp":"2026-03-14T16:07:53.077366351Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T16:07:53.077372021Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T16:07:53.396591516Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-14T16:07:53.412205927Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-14T16:07:53.414421822Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-14T16:07:53.709983245Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t10.043s","timestamp":"2026-03-14T16:08:04.054001266Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-14T16:08:04.054034739Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-14T16:08:04.054037414Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-14T16:08:04.054041401Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-14T16:08:04.054045118Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-14T16:08:04.054047122Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-14T16:08:04.054052322Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-14T16:08:04.054055318Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-14T16:08:04.054057782Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-14T16:08:04.054060067Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-14T16:08:04.054062531Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-14T16:08:04.054064876Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-14T16:08:04.05406736Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-14T16:08:04.054069685Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-14T16:08:04.05407257Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-14T16:08:04.054077329Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-14T16:08:04.054079684Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-14T16:08:04.054081637Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-14T16:08:04.054083541Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-14T16:08:04.054085465Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-14T16:08:04.054088671Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/version\t(cached)","timestamp":"2026-03-14T16:08:04.054090955Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-14T16:08:04.054092789Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-14T16:08:04.293243858Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-14T16:08:04.297005423Z"}
+{"type":"log","step_name":"update-docs","message":"Let me examine the source changes and existing documentation.","timestamp":"2026-03-14T16:08:14.602215178Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/validate.go') ---","timestamp":"2026-03-14T16:08:14.860237105Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T16:08:15.310609114Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T16:08:15.348775228Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me check what documentation files exist.","timestamp":"2026-03-14T16:08:17.288307806Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('docs/**/*.md') ---","timestamp":"2026-03-14T16:08:17.567117597Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-14T16:08:19.820547185Z"}
+{"type":"log","step_name":"update-docs","message":"The USAGE.md CLI Reference section is missing the `cloche validate` subsection. The command is already implemented and registered in `main.go` and `help.go`. I need to add it to the docs.","timestamp":"2026-03-14T16:08:29.331219578Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-14T16:08:37.200005589Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me verify the edit looks correct by re-reading that section.","timestamp":"2026-03-14T16:08:40.089182357Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-14T16:08:40.458621589Z"}
+{"type":"log","step_name":"update-docs","message":"The documentation is correct and matches the source code. The only doc that needed updating was `USAGE.md` — the `cloche validate` command was already listed in the top-level help text (help.go line 484) but was missing its own CLI Reference subsection.","timestamp":"2026-03-14T16:08:44.517114422Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T16:08:44.51713462Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T16:08:44.517136795Z"}
+{"type":"log","step_name":"update-docs","message":"The documentation is correct and matches the source code. The only doc that needed updating was `USAGE.md` — the `cloche validate` command was already listed in the top-level help text (help.go line 484) but was missing its own CLI Reference subsection.","timestamp":"2026-03-14T16:08:44.550691251Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T16:08:44.550708564Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T16:08:44.896076714Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-14T16:08:44.960210949Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-14T16:08:44.979023592Z"}

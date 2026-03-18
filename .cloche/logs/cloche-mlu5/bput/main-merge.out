@@ -1,0 +1,10 @@
+Preparing worktree (checking out 'cloche/develop-clear-jade-f1c5')
+HEAD is now at 805b5c5 cloche run develop-clear-jade-f1c5: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-clear-jade-f1c5.
+Updating 485d190..cbc38ce
+Fast-forward
+ internal/evolution/evolution_test.go | 177 +++++++++++++++++++++++++++++++++++
+ internal/evolution/orchestrator.go   |  20 +++-
+ 2 files changed, 196 insertions(+), 1 deletion(-)
+Deleted branch cloche/develop-clear-jade-f1c5 (was cbc38ce).
+Merged cloche/develop-clear-jade-f1c5 into main (cbc38ceadc4d0ddcda3ebaa3bba805767e85a366)

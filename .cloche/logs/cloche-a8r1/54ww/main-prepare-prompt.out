@@ -1,0 +1,3 @@
+## Task: Show task-level aggregate status in run grouping header
+
+Show the most important state in the task grouping bar on the Runs page. Priority order: success < pending < running < failed. If any workflow in the task group failed, the task-level status shows failed. If any is running (and none failed), shows running. Etc.

@@ -1,0 +1,3 @@
+## Task: GEPA: Population types and config
+
+Add Candidate, FitnessRecord, FitnessScores, PopulationConfig types to internal/evolution/types.go. Add PopulationEnabled, MaxCandidates, MinRunsToPromote fields to EvolutionConfig in internal/config/config.go with defaults (false, 5, 5). This is the foundation for GEPA-style population-based prompt evolution.

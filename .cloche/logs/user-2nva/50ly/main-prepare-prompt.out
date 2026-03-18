@@ -1,0 +1,3 @@
+## Task: Web UI: Workflow graph needs a real layout engine
+
+On Project detail page, the workflow graphic layout needs a better layout engine. The graph is very hard to read since every stage is in a vertical line and wires all overlap. Implement a real layout engine that emphasizes flow and prioritizes spacing for clarity/readability. Consider allowing wires to merge for common terminal routes (e.g. all x->done / y->failed) to reduce wire clutter as graphs become more complex.

@@ -1,0 +1,20 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-10T00:36:50.489217971Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. ","timestamp":"2026-03-10T00:49:08.535345999Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T00:49:08.535380254Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-10T00:49:09.075972336Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-10T00:49:09.089096964Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-10T00:49:09.089127211Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-10T00:49:09.483762665Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-10T00:49:09.483780779Z"}
+{"type":"log","step_name":"update-docs","message":"All edits are correct. The three documentation updates reflect the source code changes:","timestamp":"2026-03-10T00:50:14.159489126Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-10T00:50:14.159556132Z"}
+{"type":"log","step_name":"update-docs","message":"1. **`cloche run` synopsis** — added `[--title \"...\"]` flag","timestamp":"2026-03-10T00:50:14.159561943Z"}
+{"type":"log","step_name":"update-docs","message":"2. **`cloche run` flags table** — added `--title` row describing the behavior (explicit title or agent auto-generation)","timestamp":"2026-03-10T00:50:14.159573195Z"}
+{"type":"log","step_name":"update-docs","message":"3. **`cloche status` output** — mentions title is included","timestamp":"2026-03-10T00:50:14.159578815Z"}
+{"type":"log","step_name":"update-docs","message":"4. **`cloche list` columns** — mentions title column (truncated to 40 chars)","timestamp":"2026-03-10T00:50:14.159588343Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-10T00:50:14.159593613Z"}
+{"type":"log","step_name":"update-docs","message":"No other documentation files needed changes — `workflows.md` and the design docs don't cover CLI flags or run metadata at this level.","timestamp":"2026-03-10T00:50:14.159597821Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-10T00:50:14.159603472Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-10T00:50:14.443355372Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-10T00:50:14.446326522Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-10T00:50:14.446443985Z"}

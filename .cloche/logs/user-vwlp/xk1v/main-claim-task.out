@@ -1,0 +1,2 @@
+Error updating cloche-g5c: operation failed: already claimed by lucas
+[{"id":"cloche-g5c","title":"Remove old 'cloche orchestrate' command","description":"Remove the cloche orchestrate CLI command and its gRPC RPC. cloche loop covers the same intent better. Clean up references in usage text, server handler, and proto."}]

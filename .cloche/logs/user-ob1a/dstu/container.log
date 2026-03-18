@@ -1,0 +1,27 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-06T20:47:48.743586976Z"}
+{"type":"log","step_name":"implement","message":"All tasks complete. Here's a summary of what was implemented:","timestamp":"2026-03-06T20:54:40.681569558Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:54:40.681623961Z"}
+{"type":"log","step_name":"implement","message":"**Domain** (`internal/domain/workflow.go`): Added `StepTypeWorkflow = \"workflow\"` and `\"workflow_name\"`, `\"prompt_step\"` to `knownStepConfigKeys`.","timestamp":"2026-03-06T20:54:40.681627337Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:54:40.681634571Z"}
+{"type":"log","step_name":"implement","message":"**Parser** (`internal/dsl/parser.go`): Added type inference for `workflow_name` → `StepTypeWorkflow`, with mutual exclusivity enforcement against `prompt` and `run`.","timestamp":"2026-03-06T20:54:40.681637497Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:54:40.681651273Z"}
+{"type":"log","step_name":"implement","message":"**HostRunner** (`internal/orchestrator/hostrunner.go`): New file implementing host workflow execution — walks the graph, runs script/agent steps via `exec.Command` with env vars, handles workflow steps by reading previous output, dispatching, and waiting.","timestamp":"2026-03-06T20:54:40.681654108Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:54:40.681661332Z"}
+{"type":"log","step_name":"implement","message":"**RunWaiter** (`internal/orchestrator/runwaiter.go`): `StoreRunWaiter` polls the run store every 2 seconds until terminal state.","timestamp":"2026-03-06T20:54:40.681664147Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:54:40.68167097Z"}
+{"type":"log","step_name":"implement","message":"**Orchestrator** (`internal/orchestrator/orchestrator.go`): Added `HostRunner` and `ParseHostWorkflow` fields via functional options. `Run()` checks for `.cloche/host.cloche` — if present, parses and executes via `HostRunner` in a goroutine; otherwise falls back to existing `promptGen → dispatch` path.","timestamp":"2026-03-06T20:54:40.681673745Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:54:40.681680428Z"}
+{"type":"log","step_name":"implement","message":"**Wiring** (`cmd/cloched/main.go`): Created `StoreRunWaiter` and `HostRunner`, passed to orchestrator via `WithHostRunner`/`WithParseHostWorkflow`.","timestamp":"2026-03-06T20:54:40.681683213Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:54:40.681689595Z"}
+{"type":"log","step_name":"implement","message":"**Init** (`cmd/cloche/init.go`): Creates `.cloche/host.cloche`, `.cloche/scripts/prepare-prompt.sh` (chmod 0755), `.cloche/scripts/` directory, and `!.cloche/scripts/` gitignore entry.","timestamp":"2026-03-06T20:54:40.68169246Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:54:40.681699023Z"}
+{"type":"log","step_name":"implement","message":"**Tests**: Parser tests for workflow_name inference and mutual exclusivity; HostRunner tests for script steps, workflow steps, and abort paths; Orchestrator tests verifying host.cloche path vs fallback.","timestamp":"2026-03-06T20:54:40.681701638Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:54:40.68170833Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-06T20:54:40.952727045Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-06T20:54:40.962700458Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-06T20:54:40.962752086Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-06T20:54:52.795871029Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-06T20:54:52.795991386Z"}
+{"type":"log","step_name":"update-docs","message":"Prompt is too long","timestamp":"2026-03-06T20:54:56.597338675Z"}
+{"type":"step_completed","step_name":"update-docs","result":"fail","timestamp":"2026-03-06T20:54:56.597737649Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-06T20:54:56.597778697Z"}

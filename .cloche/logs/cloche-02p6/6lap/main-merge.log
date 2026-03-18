@@ -1,0 +1,7 @@
+Preparing worktree (checking out 'cloche/develop-happy-fern-1c30')
+HEAD is now at 0d68afe cloche run develop-happy-fern-1c30: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-happy-fern-1c30.
+Updating 98207bc..ed0aee7
+Fast-forward
+Deleted branch cloche/develop-happy-fern-1c30 (was ed0aee7).
+Merged cloche/develop-happy-fern-1c30 into cloche-v2 (ed0aee7977cfa9b01f57df86d7d4331d4d4130fc)

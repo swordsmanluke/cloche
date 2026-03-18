@@ -1,0 +1,246 @@
+{"type":"run_title","message":"Task: Project view: show in-progress and upcoming tasks with release button","timestamp":"2026-03-13T19:28:52.265699628Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-13T19:28:52.265970249Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Explore the codebase thoroughly to understand:","timestamp":"2026-03-13T19:29:05.468486426Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:29:05.468532774Z"}
+{"type":"log","step_name":"implement","message":"1. The Pr...') ---","timestamp":"2026-03-13T19:29:05.468537042Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.go\" | head -20') ---","timestamp":"2026-03-13T19:29:08.12283471Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/project*') ---","timestamp":"2026-03-13T19:29:09.707363883Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/task*') ---","timestamp":"2026-03-13T19:29:11.370096798Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/bead*') ---","timestamp":"2026-03-13T19:29:11.57985607Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/worker*') ---","timestamp":"2026-03-13T19:29:11.59664535Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*view*') ---","timestamp":"2026-03-13T19:29:11.655358575Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/.cloche -type f 2\u003e/dev/null | head -20') ---","timestamp":"2026-03-13T19:29:13.557111228Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/.cloche -maxdepth 2 -name \"*.cloche\" -o -...') ---","timestamp":"2026-03-13T19:29:15.516875731Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/host.cloche') ---","timestamp":"2026-03-13T19:29:17.298131738Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/develop.cloche') ---","timestamp":"2026-03-13T19:29:17.505955381Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-13T19:29:17.718922177Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/task.go') ---","timestamp":"2026-03-13T19:29:17.779870147Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/.cloche/scripts -type f 2\u003e/dev/null') ---","timestamp":"2026-03-13T19:29:19.645993369Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/.cloche/ | grep -E \"\\.sh|\\.cloche|scripts\"') ---","timestamp":"2026-03-13T19:29:19.772215618Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/scripts/ready-tasks.sh') ---","timestamp":"2026-03-13T19:29:21.255406163Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/scripts/claim-task.sh') ---","timestamp":"2026-03-13T19:29:21.469147191Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/scripts/prepare-prompt.sh') ---","timestamp":"2026-03-13T19:29:21.675071143Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/scripts/merge-to-main.sh') ---","timestamp":"2026-03-13T19:29:21.731489009Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/project.go') ---","timestamp":"2026-03-13T19:29:23.534112126Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/project_test.go') ---","timestamp":"2026-03-13T19:29:23.72415287Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/cmd -type f -name \"*.go\" | head -15') ---","timestamp":"2026-03-13T19:29:23.884628073Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T19:29:25.774959447Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/host -type f -name \"*.go\"') ---","timestamp":"2026-03-13T19:29:25.899504224Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/executor.go') ---","timestamp":"2026-03-13T19:29:29.253912287Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/loop.go') ---","timestamp":"2026-03-13T19:29:29.273366895Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow.go') ---","timestamp":"2026-03-13T19:29:32.357645398Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/adapters -type f -name \"*.go\" | ...') ---","timestamp":"2026-03-13T19:29:32.620829097Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-13T19:29:35.698317812Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/cmd/cloched -type f -name \"*.go\" | head -10') ---","timestamp":"2026-03-13T19:29:35.975047709Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-13T19:29:38.111434409Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloched/main.go') ---","timestamp":"2026-03-13T19:29:38.224396509Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"handleAPITasks\\|handleProjectDetail\\|handleAPIPr...') ---","timestamp":"2026-03-13T19:29:41.378030452Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-13T19:29:44.12766932Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-13T19:29:44.30455278Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"func (h \\*Handler) handleAPITasks\" /workspace/in...') ---","timestamp":"2026-03-13T19:29:46.351893747Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-13T19:29:49.139074551Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/adapters/grpc -type f -name \"*.g...') ---","timestamp":"2026-03-13T19:29:51.213298831Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"GetProjectInfo\\|GetLoopTasks\" /workspace/interna...') ---","timestamp":"2026-03-13T19:29:53.277968548Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T19:29:54.930737865Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/scripts/cleanup-run.sh') ---","timestamp":"2026-03-13T19:29:58.216237106Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/scripts/close-task.sh') ---","timestamp":"2026-03-13T19:29:58.256135803Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/engine -type f -name \"*.go\" | he...') ---","timestamp":"2026-03-13T19:30:00.241450371Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/engine/engine.go') ---","timestamp":"2026-03-13T19:30:01.815643491Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"finalize\\|Finalize\\|release\\|Release\" /workspace...') ---","timestamp":"2026-03-13T19:30:03.757597193Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T19:30:05.881690922Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/runner.go') ---","timestamp":"2026-03-13T19:30:08.020464814Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/runner.go') ---","timestamp":"2026-03-13T19:30:10.078825389Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"ParseAllForHost\\|ParseForContainer\" /workspace/i...') ---","timestamp":"2026-03-13T19:30:12.327608489Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/adapters/web/templates/') ---","timestamp":"2026-03-13T19:30:13.94035599Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/project_detail...') ---","timestamp":"2026-03-13T19:30:15.717113855Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"loadTasks\\|tasks-body\" /workspace/internal/adapt...') ---","timestamp":"2026-03-13T19:30:19.033676185Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/project_detail...') ---","timestamp":"2026-03-13T19:30:20.678461902Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/config -type f -name \"*.go\" | he...') ---","timestamp":"2026-03-13T19:30:22.563974741Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/config/config.go') ---","timestamp":"2026-03-13T19:30:24.320422388Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"type RunResult\\|type TaskAssignment\\|type TaskSt...') ---","timestamp":"2026-03-13T19:30:30.79925038Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/api -name \"*.proto\" | head -5') ---","timestamp":"2026-03-13T19:30:32.467136183Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"message GetProjectInfo\\|message RunSummary\" /wor...') ---","timestamp":"2026-03-13T19:30:38.435442637Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('tree -L 2 /workspace -I '.git|.beads|node_modules' -d 2\u003e/...') ---","timestamp":"2026-03-13T19:30:40.36294502Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -maxdepth 2 -type d -name \"cmd\" -o -name ...') ---","timestamp":"2026-03-13T19:30:43.444990804Z"}
+{"type":"log","step_name":"implement","message":"Now let me read the key files I need to modify.","timestamp":"2026-03-13T19:31:49.065452887Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/host.cloche') ---","timestamp":"2026-03-13T19:31:49.554302636Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/project_detail...') ---","timestamp":"2026-03-13T19:31:50.042258516Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-13T19:31:50.44334262Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/loop.go') ---","timestamp":"2026-03-13T19:31:50.887796563Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/task.go') ---","timestamp":"2026-03-13T19:31:50.900963394Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T19:31:51.16770953Z"}
+{"type":"log","step_name":"implement","message":"Let me read some more specific parts of the web handler and existing scripts.","timestamp":"2026-03-13T19:31:56.675241159Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('TaskEntry') ---","timestamp":"2026-03-13T19:31:57.150895373Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('TaskProvider') ---","timestamp":"2026-03-13T19:31:57.680639891Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('handleAPITasks') ---","timestamp":"2026-03-13T19:31:58.56080138Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/scripts/claim-task.sh') ---","timestamp":"2026-03-13T19:31:58.965738958Z"}
+{"type":"log","step_name":"implement","message":"Now let me check the `close-task.sh` script and look at how `RunNamed` works in the host runner.","timestamp":"2026-03-13T19:32:15.151824755Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/scripts/close-task.sh') ---","timestamp":"2026-03-13T19:32:15.633121014Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/runner.go') ---","timestamp":"2026-03-13T19:32:16.092758027Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-13T19:32:16.576266027Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: ToolSearch ---","timestamp":"2026-03-13T19:32:19.642653698Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T19:32:28.584458895Z"}
+{"type":"log","step_name":"implement","message":"Let me now look at how release would be triggered from the web API side, and understand the `RunHostWorkflow` patterns.","timestamp":"2026-03-13T19:32:33.493446189Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('handleAPIStop|POST.*api.*project|ReleaseTask|handleAPI.*task') ---","timestamp":"2026-03-13T19:32:35.782501401Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-13T19:32:36.230053065Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('RunNamed|RunHostWorkflow|release') ---","timestamp":"2026-03-13T19:32:37.068522164Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('assignee|Assignee|owner|Owner') ---","timestamp":"2026-03-13T19:32:51.178479698Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-13T19:32:51.952580059Z"}
+{"type":"log","step_name":"implement","message":"Now I have a complete understanding. Let me implement everything.","timestamp":"2026-03-13T19:33:09.240640537Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T19:33:14.280985368Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/.cloche/host.cloche') ---","timestamp":"2026-03-13T19:33:20.518633626Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T19:33:24.822103714Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/.cloche/scripts/release-task.sh') ---","timestamp":"2026-03-13T19:33:30.594150191Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('chmod +x /workspace/.cloche/scripts/release-task.sh') ---","timestamp":"2026-03-13T19:33:33.764386953Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T19:34:05.62561679Z"}
+{"type":"log","step_name":"implement","message":"Now I need to add stale claim detection. A task is \"stale\" when it has `in_progress` status but is NOT assigned to an active worker. I need to:","timestamp":"2026-03-13T19:34:30.797829603Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:34:30.797852967Z"}
+{"type":"log","step_name":"implement","message":"1. Add a `Stale` field to `TaskEntry`","timestamp":"2026-03-13T19:34:30.797856955Z"}
+{"type":"log","step_name":"implement","message":"2. Update `GetLoopTasks` in the gRPC server to detect stale claims by checking active runs","timestamp":"2026-03-13T19:34:30.79786496Z"}
+{"type":"log","step_name":"implement","message":"3. Add `ReleaseTask` to the `TaskProvider` interface and implement it","timestamp":"2026-03-13T19:34:30.797869138Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-13T19:34:35.337695223Z"}
+{"type":"log","step_name":"implement","message":"Now update `GetLoopTasks` in `server.go` to detect stale claims and implement `ReleaseTask`.","timestamp":"2026-03-13T19:34:39.528308159Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T19:34:51.693661029Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T19:35:01.875741073Z"}
+{"type":"log","step_name":"implement","message":"Now add the release-task API endpoint to the web handler.","timestamp":"2026-03-13T19:35:06.004730511Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-13T19:35:08.141154366Z"}
+{"type":"log","step_name":"implement","message":"Now add the handler method after `handleAPITasks`.","timestamp":"2026-03-13T19:35:14.334150651Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-13T19:35:15.079850111Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-13T19:35:31.472126116Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T19:35:39.614395522Z"}
+{"type":"log","step_name":"implement","message":"Now update the project_detail.html template to split tasks into \"In-progress\" and \"Upcoming\" sections with a Release button for stale tasks.","timestamp":"2026-03-13T19:35:43.045991549Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/templates/project_detail...') ---","timestamp":"2026-03-13T19:35:46.576778386Z"}
+{"type":"log","step_name":"implement","message":"Now update the `loadTasks` JavaScript function to split tasks into the two sections.","timestamp":"2026-03-13T19:35:49.815796326Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/templates/project_detail...') ---","timestamp":"2026-03-13T19:36:03.4831656Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T19:36:10.683721092Z"}
+{"type":"log","step_name":"implement","message":"Now I need to update the test mock to implement the new `ReleaseTask` method, and write tests for the new functionality.","timestamp":"2026-03-13T19:36:23.401117584Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-13T19:36:24.217318556Z"}
+{"type":"log","step_name":"implement","message":"Now update the mock to add `ReleaseTask` and write a test for the release endpoint.","timestamp":"2026-03-13T19:36:28.852518239Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-13T19:36:32.590834827Z"}
+{"type":"log","step_name":"implement","message":"Now add tests for the release endpoint and stale detection. Let me find where the tasks tests end.","timestamp":"2026-03-13T19:36:36.893676255Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-13T19:36:37.686683901Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-13T19:36:51.386582338Z"}
+{"type":"log","step_name":"implement","message":"Now I need to check if the test file imports `fmt` (for the error test) and `context`.","timestamp":"2026-03-13T19:37:03.655749987Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-13T19:37:03.984386086Z"}
+{"type":"log","step_name":"implement","message":"Good, `context` and `fmt` are already imported. Now let me also check if there are any other mocks that use the `TaskProvider` interface elsewhere that need updating.","timestamp":"2026-03-13T19:37:21.160499079Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('mockTaskProvider|TaskProvider') ---","timestamp":"2026-03-13T19:37:22.078203813Z"}
+{"type":"log","step_name":"implement","message":"The `ClocheServer` in `cmd/cloched/main.go` implements `TaskProvider` via `GetLoopTasks`. Since I added `ReleaseTask` to the interface, the `ClocheServer` already has my new `ReleaseTask` method. Let me verify the compile succeeds.","timestamp":"2026-03-13T19:37:26.386253481Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go build ./... 2\u003e\u00261') ---","timestamp":"2026-03-13T19:37:26.915807313Z"}
+{"type":"log","step_name":"implement","message":"Build succeeds. Let me now run the tests.","timestamp":"2026-03-13T19:37:54.039804557Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T19:37:56.584819704Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-13T19:38:02.346183695Z"}
+{"type":"log","step_name":"implement","message":"There's a test that checks for the old panel structure. Let me find and fix it.","timestamp":"2026-03-13T19:38:39.087394567Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('TestProjectDetail_TasksPanel') ---","timestamp":"2026-03-13T19:38:40.518323341Z"}
+{"type":"log","step_name":"implement","message":"The test at line 2450 checks for `id=\"tasks-panel\"` and `id=\"tasks-body\"` which no longer exist. I need to update it.","timestamp":"2026-03-13T19:38:46.193876878Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-13T19:38:51.087631832Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-13T19:39:11.383873514Z"}
+{"type":"log","step_name":"implement","message":"All tests pass.","timestamp":"2026-03-13T19:39:16.605841096Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T19:39:21.670859454Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-13T19:39:48.112191735Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.112214648Z"}
+{"type":"log","step_name":"implement","message":"**1. `release-task` host workflow** (`.cloche/host.cloche`) — New workflow definition with a single `release-task` step that runs the release script.","timestamp":"2026-03-13T19:39:48.112229386Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.112237051Z"}
+{"type":"log","step_name":"implement","message":"**2. `release-task.sh` script** (`.cloche/scripts/release-task.sh`) — Runs `bd update $CLOCHE_TASK_ID -s open` to return the ticket to open status and unassign the owner.","timestamp":"2026-03-13T19:39:48.112240778Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.1122471Z"}
+{"type":"log","step_name":"implement","message":"**3. Stale claim detection** (`internal/adapters/grpc/server.go`) — `GetLoopTasks` now checks active runs for each in-progress task. If a task has `in_progress` status but no active (pending/running) run, it's marked as `Stale: true`.","timestamp":"2026-03-13T19:39:48.112250576Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.112254534Z"}
+{"type":"log","step_name":"implement","message":"**4. `ReleaseTask` method** (`internal/adapters/grpc/server.go`) — Runs the `release-task` host workflow for a given task ID.","timestamp":"2026-03-13T19:39:48.11225767Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.112261848Z"}
+{"type":"log","step_name":"implement","message":"**5. `TaskEntry.Stale` field** (`internal/adapters/web/handler.go`) — New `stale` JSON field on `TaskEntry`. `TaskProvider` interface extended with `ReleaseTask(ctx, projectDir, taskID)`.","timestamp":"2026-03-13T19:39:48.112265204Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.112269512Z"}
+{"type":"log","step_name":"implement","message":"**6. Release API endpoint** (`internal/adapters/web/handler.go`) — `POST /api/projects/{name}/tasks/{taskId}/release` calls `ReleaseTask` on the task provider.","timestamp":"2026-03-13T19:39:48.112272808Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.112276325Z"}
+{"type":"log","step_name":"implement","message":"**7. Project view UI** (`internal/adapters/web/templates/project_detail.html`) — Tasks split into two panels:","timestamp":"2026-03-13T19:39:48.112280062Z"}
+{"type":"log","step_name":"implement","message":"  - **In-progress Tasks** — shows `in_progress`/`in-progress` tasks with a **Release** button on stale ones","timestamp":"2026-03-13T19:39:48.112286174Z"}
+{"type":"log","step_name":"implement","message":"  - **Upcoming Tasks** — shows `open` tasks (ready work queue)","timestamp":"2026-03-13T19:39:48.112290362Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.11229499Z"}
+{"type":"log","step_name":"implement","message":"**8. Tests** — Updated existing mock, added tests for release endpoint (success, no provider, error), stale field serialization, and updated the panel structure test.","timestamp":"2026-03-13T19:39:48.112299278Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.112303186Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T19:39:48.112306402Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-13T19:39:48.1345856Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.134600408Z"}
+{"type":"log","step_name":"implement","message":"**1. `release-task` host workflow** (`.cloche/host.cloche`) — New workflow definition with a single `release-task` step that runs the release script.","timestamp":"2026-03-13T19:39:48.134604405Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.134608824Z"}
+{"type":"log","step_name":"implement","message":"**2. `release-task.sh` script** (`.cloche/scripts/release-task.sh`) — Runs `bd update $CLOCHE_TASK_ID -s open` to return the ticket to open status and unassign the owner.","timestamp":"2026-03-13T19:39:48.13461241Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.134616358Z"}
+{"type":"log","step_name":"implement","message":"**3. Stale claim detection** (`internal/adapters/grpc/server.go`) — `GetLoopTasks` now checks active runs for each in-progress task. If a task has `in_progress` status but no active (pending/running) run, it's marked as `Stale: true`.","timestamp":"2026-03-13T19:39:48.134623161Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.134629112Z"}
+{"type":"log","step_name":"implement","message":"**4. `ReleaseTask` method** (`internal/adapters/grpc/server.go`) — Runs the `release-task` host workflow for a given task ID.","timestamp":"2026-03-13T19:39:48.13463353Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.13463854Z"}
+{"type":"log","step_name":"implement","message":"**5. `TaskEntry.Stale` field** (`internal/adapters/web/handler.go`) — New `stale` JSON field on `TaskEntry`. `TaskProvider` interface extended with `ReleaseTask(ctx, projectDir, taskID)`.","timestamp":"2026-03-13T19:39:48.134642828Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.134648058Z"}
+{"type":"log","step_name":"implement","message":"**6. Release API endpoint** (`internal/adapters/web/handler.go`) — `POST /api/projects/{name}/tasks/{taskId}/release` calls `ReleaseTask` on the task provider.","timestamp":"2026-03-13T19:39:48.134652356Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.134657255Z"}
+{"type":"log","step_name":"implement","message":"**7. Project view UI** (`internal/adapters/web/templates/project_detail.html`) — Tasks split into two panels:","timestamp":"2026-03-13T19:39:48.134660722Z"}
+{"type":"log","step_name":"implement","message":"  - **In-progress Tasks** — shows `in_progress`/`in-progress` tasks with a **Release** button on stale ones","timestamp":"2026-03-13T19:39:48.134665341Z"}
+{"type":"log","step_name":"implement","message":"  - **Upcoming Tasks** — shows `open` tasks (ready work queue)","timestamp":"2026-03-13T19:39:48.13467021Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.134674829Z"}
+{"type":"log","step_name":"implement","message":"**8. Tests** — Updated existing mock, added tests for release endpoint (success, no provider, error), stale field serialization, and updated the panel structure test.","timestamp":"2026-03-13T19:39:48.134679257Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:39:48.134684136Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T19:39:48.571733092Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-13T19:39:48.594353686Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-13T19:39:48.599126287Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-13T19:39:48.86365416Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t10.042s","timestamp":"2026-03-13T19:39:59.19970558Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-13T19:39:59.199739755Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-13T19:39:59.199743342Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-13T19:39:59.199747099Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-13T19:39:59.199749494Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-13T19:39:59.199753501Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-13T19:39:59.199757058Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-13T19:39:59.199759442Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-13T19:39:59.199761907Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-13T19:39:59.199764241Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-13T19:39:59.199766436Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-13T19:39:59.19976871Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-13T19:39:59.199771014Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-13T19:39:59.199773319Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-13T19:39:59.199775553Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-13T19:39:59.199778839Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-13T19:39:59.199780983Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-13T19:39:59.1997848Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-13T19:39:59.199787225Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-13T19:39:59.199789549Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-13T19:39:59.199791713Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/version\t(cached)","timestamp":"2026-03-13T19:39:59.199794198Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-13T19:39:59.199796472Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-13T19:39:59.241417178Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-13T19:39:59.244387368Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-13T19:40:04.933479603Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T19:40:05.328527063Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/project_detail...') ---","timestamp":"2026-03-13T19:40:06.10117479Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/.cloche/host.cloche') ---","timestamp":"2026-03-13T19:40:06.121140479Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me check the existing documentation files for content that may need updating.","timestamp":"2026-03-13T19:40:14.755698707Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('docs/**/*.md') ---","timestamp":"2026-03-13T19:40:14.762787811Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/.cloche/scripts/release-task.sh') ---","timestamp":"2026-03-13T19:40:15.310768267Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-13T19:40:17.676608955Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/workflows.md') ---","timestamp":"2026-03-13T19:40:17.85341364Z"}
+{"type":"log","step_name":"update-docs","message":"Let me check the web handler for the new task-related interfaces and routes.","timestamp":"2026-03-13T19:40:38.325729025Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('TaskProvider|TaskEntry|release|/tasks') ---","timestamp":"2026-03-13T19:40:38.975691247Z"}
+{"type":"log","step_name":"update-docs","message":"Now I have a clear picture of the changes. Let me check the docs for any mention of the web dashboard to see if I need to document the task panels.","timestamp":"2026-03-13T19:40:43.173440479Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('web dashboard|web UI|release-task|stale') ---","timestamp":"2026-03-13T19:40:43.954980121Z"}
+{"type":"log","step_name":"update-docs","message":"The docs have minimal mention of the web dashboard and no mention of `release-task` or task stale detection. The key documentation changes needed are:","timestamp":"2026-03-13T19:40:48.761417306Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T19:40:48.761440299Z"}
+{"type":"log","step_name":"update-docs","message":"1. **docs/workflows.md** — Add `release-task` as an optional utility workflow in the host workflow phases table","timestamp":"2026-03-13T19:40:48.761444437Z"}
+{"type":"log","step_name":"update-docs","message":"2. **docs/USAGE.md** — Add `release-task` to the host workflow documentation section","timestamp":"2026-03-13T19:40:48.761448635Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T19:40:48.761452292Z"}
+{"type":"log","step_name":"update-docs","message":"Let me update the docs.","timestamp":"2026-03-13T19:40:48.761459175Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/workflows.md') ---","timestamp":"2026-03-13T19:40:55.544101865Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-13T19:41:02.722872209Z"}
+{"type":"log","step_name":"update-docs","message":"Now update the \"Setting Up Host Workflows\" section in USAGE.md to mention the `release-task` workflow.","timestamp":"2026-03-13T19:41:06.468037825Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-13T19:41:10.518262227Z"}
+{"type":"log","step_name":"update-docs","message":"Now add a section for the `release-task` workflow after the `finalize` section.","timestamp":"2026-03-13T19:41:14.411731265Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-13T19:41:21.783647936Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me verify the edited files are valid by re-reading the changed sections.","timestamp":"2026-03-13T19:41:25.792998574Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/workflows.md') ---","timestamp":"2026-03-13T19:41:26.754905084Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-13T19:41:27.313183722Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-13T19:41:27.844071216Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-13T19:41:30.416267335Z"}
+{"type":"log","step_name":"update-docs","message":"All edits are valid. The documentation now reflects the new `release-task` workflow and stale claim detection feature.","timestamp":"2026-03-13T19:41:33.294778228Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T19:41:33.294804197Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T19:41:33.294809708Z"}
+{"type":"log","step_name":"update-docs","message":"All edits are valid. The documentation now reflects the new `release-task` workflow and stale claim detection feature.","timestamp":"2026-03-13T19:41:33.318840193Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T19:41:33.318858097Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T19:41:33.677096064Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-13T19:41:33.704418648Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-13T19:41:33.711030157Z"}

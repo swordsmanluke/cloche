@@ -1,0 +1,3 @@
+## Task: Offset failure/non-success wires in web UI workflow graph
+
+In the web UI workflow rendering, when joining multiple lines (e.g. multiple connectors to 'failed'), push the body of the line to an offset from the rest of the workflow core. For example, the success line could be a straight through-line through the center of a linear workflow. Put the failure line offset above or below (or left/right if laying out vertically) so that failure lines point out of the way and don't collide or overlap the success line.

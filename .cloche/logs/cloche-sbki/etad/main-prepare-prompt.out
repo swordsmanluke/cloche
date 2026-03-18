@@ -1,0 +1,21 @@
+## Task: Implement cloche resume command
+
+Add a `cloche resume` command to re-attempt failed workflow runs. The container must still be available for container workflows.
+
+## Usage
+
+- **Resume from a named step:** `cloche resume [workflow run id] [step name]`
+- **Resume from the first failed step:** `cloche resume [workflow run id]`
+
+## Step-specific resume behavior
+
+Different step types resume differently:
+
+- **script step:** Rerun the script fresh. The script file may have been updated, but all input/output from preceding steps should be present as if just run.
+- **prompt step:** Resume the conversation instead of starting a new one. For Claude, this means adding `-c` to resume the previous conversation and setting the prompt to "retry" instead of the prompt file. This reloads the previous conversation and instructs the agent to reattempt.
+- **workflow step:** Same as script — start the step again, passing values from previous steps' output.
+
+## Prerequisites
+
+- The workflow run must be in a failed state
+- For container workflows, the container must still exist (not cleaned up)

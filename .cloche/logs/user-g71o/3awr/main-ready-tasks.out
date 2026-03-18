@@ -1,0 +1,15 @@
+[
+  {
+    "id": "cloche-g5c",
+    "title": "Remove old 'cloche orchestrate' command",
+    "description": "Remove the cloche orchestrate CLI command and its gRPC RPC. cloche loop covers the same intent better. Clean up references in usage text, server handler, and proto.",
+    "status": "in_progress",
+    "priority": 2,
+    "issue_type": "task",
+    "assignee": "lucas",
+    "owner": "lucas@perfectlunacy.com",
+    "created_at": "2026-03-10T07:20:28.105480149-07:00",
+    "created_by": "lucas",
+    "updated_at": "2026-03-10T08:08:55.779462365-07:00"
+  }
+]

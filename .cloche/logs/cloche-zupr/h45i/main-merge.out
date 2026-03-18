@@ -1,0 +1,13 @@
+Preparing worktree (checking out 'cloche/develop-fair-drift-6819')
+HEAD is now at a9b5cdb cloche run develop-fair-drift-6819: develop (succeeded)
+Current branch cloche/develop-fair-drift-6819 is up to date.
+Updating dfe8a33..a9b5cdb
+Fast-forward
+ docs/plans/2026-03-06-project-pages-design.md |   2 +-
+ internal/adapters/web/handler.go              |  26 +------
+ internal/adapters/web/handler_test.go         |  34 +++++----
+ internal/domain/run.go                        |  37 +++++++++
+ internal/domain/run_test.go                   | 103 ++++++++++++++++++++++++++
+ 5 files changed, 166 insertions(+), 36 deletions(-)
+Deleted branch cloche/develop-fair-drift-6819 (was a9b5cdb).
+Merged cloche/develop-fair-drift-6819 into main (a9b5cdba2846470ae81bd0347f3213d8cbaca341)

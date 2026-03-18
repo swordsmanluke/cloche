@@ -1,0 +1,12 @@
+Preparing worktree (checking out 'cloche/develop-fresh-peak-525e')
+HEAD is now at cdf4781 cloche run develop-fresh-peak-525e: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-fresh-peak-525e.
+Updating e53f3e9..3d40983
+Fast-forward
+ internal/evolution/fitness.go      | 185 ++++++++++++++++++++++++
+ internal/evolution/fitness_test.go | 282 +++++++++++++++++++++++++++++++++++++
+ 2 files changed, 467 insertions(+)
+ create mode 100644 internal/evolution/fitness.go
+ create mode 100644 internal/evolution/fitness_test.go
+Deleted branch cloche/develop-fresh-peak-525e (was 3d40983).
+Merged cloche/develop-fresh-peak-525e into main (3d40983de134ca862cdd4b1087a976c2e25e24a2)

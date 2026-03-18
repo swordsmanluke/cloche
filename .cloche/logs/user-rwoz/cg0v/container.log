@@ -1,0 +1,19 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-06T20:39:54.718507263Z"}
+{"type":"log","step_name":"implement","message":"All done. Here's a summary of the changes:","timestamp":"2026-03-06T20:41:59.103271363Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:41:59.103313854Z"}
+{"type":"log","step_name":"implement","message":"1. **`internal/config/config.go`** — Added `LoadVersion(projectDir)` (returns version int, defaults to 1 if file missing) and `IncrementProjectVersion(projectDir)` (reads current version, increments, writes atomically via temp file + rename).","timestamp":"2026-03-06T20:41:59.103318442Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:41:59.103331126Z"}
+{"type":"log","step_name":"implement","message":"2. **`internal/evolution/orchestrator.go`** — After Stage 5 (Audit), calls `config.IncrementProjectVersion` when `len(result.Changes) \u003e 0`. Errors are logged to stderr but don't fail the pipeline.","timestamp":"2026-03-06T20:41:59.103334693Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:41:59.103350774Z"}
+{"type":"log","step_name":"implement","message":"3. **`cmd/cloche/init.go`** — Added `.cloche/version` with content `\"1\\n\"` to the files created by `cloche init`. Not added to `.gitignore`.","timestamp":"2026-03-06T20:41:59.103354731Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:41:59.103362987Z"}
+{"type":"log","step_name":"implement","message":"4. **`internal/config/config_test.go`** — Added 3 tests: `TestLoadVersionDefault`, `TestLoadVersionFromFile`, `TestIncrementProjectVersion`.","timestamp":"2026-03-06T20:41:59.103366684Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:41:59.103375009Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-06T20:41:59.484894366Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-06T20:41:59.487315042Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-06T20:41:59.487337184Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-06T20:42:12.645364931Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-06T20:42:12.645390749Z"}
+{"type":"log","step_name":"update-docs","message":"Prompt is too long","timestamp":"2026-03-06T20:42:15.513002939Z"}
+{"type":"step_completed","step_name":"update-docs","result":"fail","timestamp":"2026-03-06T20:42:15.513586021Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-06T20:42:15.513650773Z"}

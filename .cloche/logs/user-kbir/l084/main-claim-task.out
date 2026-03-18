@@ -1,0 +1,1 @@
+[{"id":"cloche-r1j","title":"Add Cancel button to Run Details page","description":"Add a Cancel button to the Run Details web UI page. It should call the equivalent of 'cloche stop <run id>' to stop a running workflow. Only show the button when the run is in a running/pending state."}]

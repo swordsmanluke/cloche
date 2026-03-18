@@ -1,0 +1,34 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T00:52:24.147898211Z"}
+{"type":"log","step_name":"implement","message":"All tests pass across the entire project.","timestamp":"2026-03-09T00:56:51.400758049Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:56:51.40081173Z"}
+{"type":"log","step_name":"implement","message":"## Summary","timestamp":"2026-03-09T00:56:51.400815728Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:56:51.400819475Z"}
+{"type":"log","step_name":"implement","message":"**Root cause:** The DSL parser stores prompt values with the `file(\"...\")` wrapper (e.g., `file(\".cloche/prompts/fix.md\")`), but `handleAPIStepContent` was trying to use this wrapped string directly as a file path, causing `os.ReadFile` to fail silently.","timestamp":"2026-03-09T00:56:51.40082737Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:56:51.400847548Z"}
+{"type":"log","step_name":"implement","message":"**Changes made:**","timestamp":"2026-03-09T00:56:51.400851816Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:56:51.400856124Z"}
+{"type":"log","step_name":"implement","message":"1. **`internal/adapters/web/handler.go`** — Added `resolveStepConfigFile()` helper that extracts the path from `file(\"...\")` syntax before reading the file. Updated `handleAPIStepContent` to use this helper for prompt and script config values. Also added handling for the `run` config key (script steps use `run`, not `command`).","timestamp":"2026-03-09T00:56:51.400860402Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:56:51.40086991Z"}
+{"type":"log","step_name":"implement","message":"2. **`internal/adapters/web/templates/project_detail.html`** — Updated the drawer's config display to strip `file(\"...\")` syntax for cleaner display, and added `run` to the list of displayed config keys.","timestamp":"2026-03-09T00:56:51.400873347Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:56:51.400881813Z"}
+{"type":"log","step_name":"implement","message":"3. **`internal/adapters/web/handler_test.go`** — Added tests for `resolveStepConfigFile` (file() syntax, plain path, missing file) and integration tests for the API endpoint with both prompt files and run commands.","timestamp":"2026-03-09T00:56:51.400886241Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:56:51.400893795Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T00:56:51.638518297Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T00:56:51.645027996Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T00:56:51.645068803Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T00:57:01.597194591Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T00:57:01.597268781Z"}
+{"type":"log","step_name":"update-docs","message":"All tests pass. Here's a summary of what was done:","timestamp":"2026-03-09T01:00:18.990891293Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T01:00:18.990927391Z"}
+{"type":"log","step_name":"update-docs","message":"**Bug fix (already in working tree, unstaged):** The `handleAPIStepContent` handler had two issues:","timestamp":"2026-03-09T01:00:18.990933513Z"}
+{"type":"log","step_name":"update-docs","message":"1. It tried to read `step.Config[\"prompt\"]` directly as a file path, but the DSL parser stores the raw `file(\".cloche/prompts/implement.md\")` string — not just the path. The fix adds `resolveStepConfigFile()` to extract the path from `file(\"...\")` syntax before reading.","timestamp":"2026-03-09T01:00:18.990943432Z"}
+{"type":"log","step_name":"update-docs","message":"2. It didn't check `step.Config[\"run\"]` for script steps, so clicking a script step with `run = \"...\"` would show \"No content available\". The template also wasn't displaying `run` config keys.","timestamp":"2026-03-09T01:00:18.990953841Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T01:00:18.990960053Z"}
+{"type":"log","step_name":"update-docs","message":"**USAGE.md updates — 3 discrepancies fixed:**","timestamp":"2026-03-09T01:00:18.990964762Z"}
+{"type":"log","step_name":"update-docs","message":"1. `--image` flag renamed to `--base-image` (matching source code)","timestamp":"2026-03-09T01:00:18.990970353Z"}
+{"type":"log","step_name":"update-docs","message":"2. Default image changed from `ubuntu:24.04` to `cloche-base:latest` (matching source code)","timestamp":"2026-03-09T01:00:18.990976464Z"}
+{"type":"log","step_name":"update-docs","message":"3. Added documentation for files created by `cloche init` that were missing: `host.cloche`, `version`, `scripts/prepare-prompt.sh`; also updated the Project Directory Layout section","timestamp":"2026-03-09T01:00:18.990982285Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T01:00:18.990988587Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T01:00:19.244491926Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T01:00:19.247992775Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T01:00:19.24805896Z"}

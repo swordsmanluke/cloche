@@ -1,0 +1,146 @@
+{"type":"run_title","message":"Task: Web Workflow UI: Offset failure-path nodes with colored wire paths","timestamp":"2026-03-14T18:18:34.64325301Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-14T18:18:34.643428292Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Explore the codebase to understand how workflow graphs ar...') ---","timestamp":"2026-03-14T18:18:49.219742752Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f \\( -name \"*.html\" -o -name \"*.tmp...') ---","timestamp":"2026-03-14T18:18:50.627925895Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/adapters/') ---","timestamp":"2026-03-14T18:18:51.960062428Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/adapters/web -type f | sort') ---","timestamp":"2026-03-14T18:18:52.942699085Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('graph|layout|render|node|edge|wire') ---","timestamp":"2026-03-14T18:18:54.420280867Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/domain -type f -name \"*.go\" | sort') ---","timestamp":"2026-03-14T18:18:54.622547033Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-14T18:18:55.734828843Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow.go') ---","timestamp":"2026-03-14T18:18:56.940455942Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-14T18:18:58.643182068Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/run_detail.html') ---","timestamp":"2026-03-14T18:18:58.736523078Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('wc -l /home/agent/.claude/projects/-workspace/e5f57d13-69...') ---","timestamp":"2026-03-14T18:19:01.718370837Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/home/agent/.claude/projects/-workspace/e5f57d13-6940-497...') ---","timestamp":"2026-03-14T18:19:01.963126813Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/static/style.css') ---","timestamp":"2026-03-14T18:19:03.451890869Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/project_detail...') ---","timestamp":"2026-03-14T18:19:03.597762794Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"func.*Handler\\|func.*GET\\|func.*POST\" /workspace...') ---","timestamp":"2026-03-14T18:19:06.520357087Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"workflows\\|steps\\|graph\" /workspace/internal/ada...') ---","timestamp":"2026-03-14T18:19:06.732920583Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('sed -n '1457,1577p' /workspace/internal/adapters/web/hand...') ---","timestamp":"2026-03-14T18:19:07.935037675Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"type.*Workflow\\|type.*Step\\|type.*Wire\\|type.*Co...') ---","timestamp":"2026-03-14T18:19:09.289984868Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-14T18:19:10.4322915Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('svg|canvas|d3|graph|layout|position|coordinate|node.*rect...') ---","timestamp":"2026-03-14T18:19:12.129670376Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/runs.html') ---","timestamp":"2026-03-14T18:19:13.96598912Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/projects.html') ---","timestamp":"2026-03-14T18:19:14.140588374Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/layout.html') ---","timestamp":"2026-03-14T18:19:15.890515678Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"Collect\" /workspace/internal/domain/workflow.go') ---","timestamp":"2026-03-14T18:19:17.526526008Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -rn \"apiWorkflow\\|apiWire\\|apiStep\" /workspace/inter...') ---","timestamp":"2026-03-14T18:19:17.913904266Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"Collect\\|collect\" /workspace/internal/adapters/w...') ---","timestamp":"2026-03-14T18:19:19.036302654Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow_test.go') ---","timestamp":"2026-03-14T18:19:20.387039637Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -name \"*.cloche\" -type f 2\u003e/dev/null | he...') ---","timestamp":"2026-03-14T18:19:21.688070514Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/examples/hello-world/build.cloche') ---","timestamp":"2026-03-14T18:19:22.788723748Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -rn \"topolog\\|sort\\|layer\\|position\\|node.*Y\\|x.*y\" ...') ---","timestamp":"2026-03-14T18:19:24.419052896Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/engine/') ---","timestamp":"2026-03-14T18:19:25.593921296Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"type.*Engine\\|func.*Execute\" /workspace/internal...') ---","timestamp":"2026-03-14T18:19:25.953615198Z"}
+{"type":"log","step_name":"implement","message":"Let me read the key files to understand the current implementation.","timestamp":"2026-03-14T18:19:44.730159026Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/project_detail...') ---","timestamp":"2026-03-14T18:19:44.740187508Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/static/style.css') ---","timestamp":"2026-03-14T18:19:45.215901792Z"}
+{"type":"log","step_name":"implement","message":"Now I have a clear understanding of the current implementation. Let me implement the offset failure-path link nodes with colored wire paths.","timestamp":"2026-03-14T18:25:50.851044046Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/templates/project_detail...') ---","timestamp":"2026-03-14T18:28:04.275515013Z"}
+{"type":"log","step_name":"implement","message":"Now add the CSS for link nodes.","timestamp":"2026-03-14T18:28:07.703760794Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/static/style.css') ---","timestamp":"2026-03-14T18:28:09.844801277Z"}
+{"type":"log","step_name":"implement","message":"Now let me verify the template renders correctly by checking for syntax issues.","timestamp":"2026-03-14T18:28:12.931607293Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/project_detail...') ---","timestamp":"2026-03-14T18:28:13.492004811Z"}
+{"type":"log","step_name":"implement","message":"The template looks correct. Now let me run the tests.","timestamp":"2026-03-14T18:28:17.40858581Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-14T18:28:17.903341429Z"}
+{"type":"log","step_name":"implement","message":"Test `TestProjectDetail_RendersLayoutEngine` fails because it checks for `dag-merge-dot` in the rendered HTML. Since we replaced the merge pattern with the new link node approach, these assertions no longer hold. Let me check the test.","timestamp":"2026-03-14T18:29:09.403520887Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('TestProjectDetail_RendersLayoutEngine') ---","timestamp":"2026-03-14T18:29:10.087812172Z"}
+{"type":"log","step_name":"implement","message":"The test checks for `dag-merge-dot`, `termWires`, `dag-edge-nonsuccess`, `arrowhead-fail`, and `nonsuccOffset` - all of which were removed/replaced. I need to update these assertions to match the new implementation.","timestamp":"2026-03-14T18:29:15.271554295Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-14T18:29:21.070939975Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-14T18:29:25.387948549Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-14T18:29:32.491255861Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-14T18:29:36.414731006Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-14T18:29:50.220432053Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T18:29:50.220452402Z"}
+{"type":"log","step_name":"implement","message":"**`internal/adapters/web/templates/project_detail.html`** — Rewrote the workflow graph edge rendering in `showWorkflow()`:","timestamp":"2026-03-14T18:29:50.220456509Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T18:29:50.220464705Z"}
+{"type":"log","step_name":"implement","message":"1. **Color mapping**: Each wire result type gets a distinct color — green for success/ok/done/pass, red for failed/fail/error, then blue/yellow/magenta/cyan/orange for other result types","timestamp":"2026-03-14T18:29:50.220468111Z"}
+{"type":"log","step_name":"implement","message":"2. **Per-color arrowhead markers**: Dynamic SVG `\u003cmarker\u003e` defs created for each color used","timestamp":"2026-03-14T18:29:50.220475335Z"}
+{"type":"log","step_name":"implement","message":"3. **Offset link nodes for failure paths**: Non-success wires to terminals (done/abort) are routed through a separate lane below the main flow:","timestamp":"2026-03-14T18:29:50.220479443Z"}
+{"type":"log","step_name":"implement","message":"   - Vertical drop from each source node's bottom to a horizontal lane","timestamp":"2026-03-14T18:29:50.2204833Z"}
+{"type":"log","step_name":"implement","message":"   - Link node circles at each junction point","timestamp":"2026-03-14T18:29:50.220486767Z"}
+{"type":"log","step_name":"implement","message":"   - Horizontal lane connecting all junctions","timestamp":"2026-03-14T18:29:50.220494181Z"}
+{"type":"log","step_name":"implement","message":"   - Bezier curve from lane end up to the terminal node","timestamp":"2026-03-14T18:29:50.220498028Z"}
+{"type":"log","step_name":"implement","message":"4. **Success paths draw directly**: Success wires to terminals use simple colored Bezier curves as before","timestamp":"2026-03-14T18:29:50.220505512Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T18:29:50.220518677Z"}
+{"type":"log","step_name":"implement","message":"**`internal/adapters/web/static/style.css`** — Added `.dag-link-node` class for junction circle styling","timestamp":"2026-03-14T18:29:50.220523216Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T18:29:50.220526983Z"}
+{"type":"log","step_name":"implement","message":"**`internal/adapters/web/handler_test.go`** — Updated `TestProjectDetail_RendersLayoutEngine` assertions to match the new rendering approach (checking for `nonSuccTermGroups`, `wireColor`, `laneY`, `markerRef` instead of the removed merge pattern elements)","timestamp":"2026-03-14T18:29:50.220530289Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T18:29:50.220534487Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T18:29:50.220537793Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-14T18:29:50.254140066Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T18:29:50.254169171Z"}
+{"type":"log","step_name":"implement","message":"**`internal/adapters/web/templates/project_detail.html`** — Rewrote the workflow graph edge rendering in `showWorkflow()`:","timestamp":"2026-03-14T18:29:50.254174962Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T18:29:50.254180953Z"}
+{"type":"log","step_name":"implement","message":"1. **Color mapping**: Each wire result type gets a distinct color — green for success/ok/done/pass, red for failed/fail/error, then blue/yellow/magenta/cyan/orange for other result types","timestamp":"2026-03-14T18:29:50.254191483Z"}
+{"type":"log","step_name":"implement","message":"2. **Per-color arrowhead markers**: Dynamic SVG `\u003cmarker\u003e` defs created for each color used","timestamp":"2026-03-14T18:29:50.254197094Z"}
+{"type":"log","step_name":"implement","message":"3. **Offset link nodes for failure paths**: Non-success wires to terminals (done/abort) are routed through a separate lane below the main flow:","timestamp":"2026-03-14T18:29:50.254202985Z"}
+{"type":"log","step_name":"implement","message":"   - Vertical drop from each source node's bottom to a horizontal lane","timestamp":"2026-03-14T18:29:50.254208576Z"}
+{"type":"log","step_name":"implement","message":"   - Link node circles at each junction point","timestamp":"2026-03-14T18:29:50.254213294Z"}
+{"type":"log","step_name":"implement","message":"   - Horizontal lane connecting all junctions","timestamp":"2026-03-14T18:29:50.254218184Z"}
+{"type":"log","step_name":"implement","message":"   - Bezier curve from lane end up to the terminal node","timestamp":"2026-03-14T18:29:50.254223143Z"}
+{"type":"log","step_name":"implement","message":"4. **Success paths draw directly**: Success wires to terminals use simple colored Bezier curves as before","timestamp":"2026-03-14T18:29:50.254227992Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T18:29:50.254233423Z"}
+{"type":"log","step_name":"implement","message":"**`internal/adapters/web/static/style.css`** — Added `.dag-link-node` class for junction circle styling","timestamp":"2026-03-14T18:29:50.254237981Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T18:29:50.254261706Z"}
+{"type":"log","step_name":"implement","message":"**`internal/adapters/web/handler_test.go`** — Updated `TestProjectDetail_RendersLayoutEngine` assertions to match the new rendering approach (checking for `nonSuccTermGroups`, `wireColor`, `laneY`, `markerRef` instead of the removed merge pattern elements)","timestamp":"2026-03-14T18:29:50.254266465Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T18:29:50.254272687Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T18:29:50.607345935Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-14T18:29:50.733526586Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-14T18:29:50.806732286Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-14T18:29:51.170293881Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t10.043s","timestamp":"2026-03-14T18:30:01.530773844Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-14T18:30:01.530806996Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-14T18:30:01.530812146Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-14T18:30:01.530817857Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-14T18:30:01.53082489Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-14T18:30:01.530829459Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-14T18:30:01.530834869Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-14T18:30:01.530839077Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-14T18:30:01.530843155Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-14T18:30:01.530847353Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-14T18:30:01.530851861Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-14T18:30:01.530855949Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-14T18:30:01.530860337Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-14T18:30:01.530864575Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-14T18:30:01.530870457Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-14T18:30:01.530880135Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-14T18:30:01.530886517Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-14T18:30:01.530891777Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-14T18:30:01.530897177Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-14T18:30:01.530902577Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-14T18:30:01.530910653Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/version\t(cached)","timestamp":"2026-03-14T18:30:01.530916033Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-14T18:30:01.530921703Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-14T18:30:01.814073209Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-14T18:30:01.90405966Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('git diff HEAD --stat') ---","timestamp":"2026-03-14T18:30:10.013147611Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('docs/**/*.md') ---","timestamp":"2026-03-14T18:30:10.094059039Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('workflow.*graph|graph.*render|wire.*path|failure.*path|of...') ---","timestamp":"2026-03-14T18:30:13.562352111Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-03-06-project-pages-design.md') ---","timestamp":"2026-03-14T18:30:16.328882737Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me check what the actual code changes look like to understand the new offset/colored wire behavior.","timestamp":"2026-03-14T18:30:19.739360871Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('git diff HEAD -- internal/adapters/web/templates/project_...') ---","timestamp":"2026-03-14T18:30:21.045959278Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('git diff HEAD -- internal/adapters/web/static/style.css') ---","timestamp":"2026-03-14T18:30:21.443312819Z"}
+{"type":"log","step_name":"update-docs","message":"Now I have a clear picture of the changes. The DAG rendering section in the design doc needs updating to reflect the new offset link node layout and per-result coloring. Let me update it.","timestamp":"2026-03-14T18:30:30.54750338Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-03-06-project-pages-design.md') ---","timestamp":"2026-03-14T18:30:31.087884991Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/plans/2026-03-06-project-pages-design.md') ---","timestamp":"2026-03-14T18:30:39.17228354Z"}
+{"type":"log","step_name":"update-docs","message":"Let me verify the edit looks correct.","timestamp":"2026-03-14T18:30:42.281634225Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-03-06-project-pages-design.md') ---","timestamp":"2026-03-14T18:30:42.817845192Z"}
+{"type":"log","step_name":"update-docs","message":"The documentation now accurately reflects the implementation. The update covers:","timestamp":"2026-03-14T18:30:47.225631351Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T18:30:47.22566282Z"}
+{"type":"log","step_name":"update-docs","message":"- **Color scheme**: success=green, failure=red, others cycle through blue/yellow/magenta/cyan/orange (replacing the old two-tone approach)","timestamp":"2026-03-14T18:30:47.225667519Z"}
+{"type":"log","step_name":"update-docs","message":"- **Per-color arrowhead markers** instead of just two","timestamp":"2026-03-14T18:30:47.225676025Z"}
+{"type":"log","step_name":"update-docs","message":"- **Offset link node layout** for non-success terminal wires (replacing the old collector bus merge pattern)","timestamp":"2026-03-14T18:30:47.2256841Z"}
+{"type":"log","step_name":"update-docs","message":"- **Lane-based routing**: vertical drops to horizontal lanes with circle junction markers","timestamp":"2026-03-14T18:30:47.225692446Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T18:30:47.225698087Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T18:30:47.225701834Z"}
+{"type":"log","step_name":"update-docs","message":"The documentation now accurately reflects the implementation. The update covers:","timestamp":"2026-03-14T18:30:47.249202449Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T18:30:47.249222407Z"}
+{"type":"log","step_name":"update-docs","message":"- **Color scheme**: success=green, failure=red, others cycle through blue/yellow/magenta/cyan/orange (replacing the old two-tone approach)","timestamp":"2026-03-14T18:30:47.249226645Z"}
+{"type":"log","step_name":"update-docs","message":"- **Per-color arrowhead markers** instead of just two","timestamp":"2026-03-14T18:30:47.249230983Z"}
+{"type":"log","step_name":"update-docs","message":"- **Offset link node layout** for non-success terminal wires (replacing the old collector bus merge pattern)","timestamp":"2026-03-14T18:30:47.249235021Z"}
+{"type":"log","step_name":"update-docs","message":"- **Lane-based routing**: vertical drops to horizontal lanes with circle junction markers","timestamp":"2026-03-14T18:30:47.249241133Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T18:30:47.249246903Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T18:30:47.590201702Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-14T18:30:47.637035716Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-14T18:30:47.661754266Z"}

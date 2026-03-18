@@ -1,0 +1,36 @@
+I've done a thorough comparison of the CLI source code against `docs/USAGE.md`. Here's my analysis:
+
+### CLI Reference
+All subcommands and flags in the source match the documentation:
+- `init` with `--workflow`, `--image` — matches
+- `run` with `--workflow`, `--prompt`/`-p`, `--keep-container` — matches
+- `status <run-id>` — matches
+- `list --all` — matches
+- `logs <run-id>` — matches
+- `poll <run-id>` — matches
+- `stop <run-id>` — matches
+- `shutdown` — matches
+
+### Setting Up a New Project
+The scaffolded files (workflow template, Dockerfile, prompt templates) in `cmd/cloche/init.go` match the docs exactly.
+
+### Daemon Configuration
+All documented environment variables (`CLOCHE_LISTEN`, `CLOCHE_DB`, `CLOCHE_RUNTIME`, `CLOCHE_IMAGE`, `CLOCHE_HTTP`, `CLOCHE_AGENT_PATH`, `CLOCHE_LLM_COMMAND`, `CLOCHE_ADDR`, `ANTHROPIC_API_KEY`, `CLOCHE_EXTRA_MOUNTS`, `CLOCHE_EXTRA_ENV`) are present in the codebase.
+
+### Build Commands
+All Makefile targets match the documented build commands.
+
+### Orchestration changes
+The new orchestration implementation adds:
+- `Orchestrate` gRPC RPC (server-side only)
+- `[orchestration]` section in per-project `.cloche/config`
+- No new CLI commands or flags
+
+Since there's no `cloche orchestrate` CLI command in the source, and the CLI surface (`cmd/cloche/main.go`) was not modified, no USAGE.md changes are needed.
+
+### Workflow DSL
+No changes to the DSL syntax. `docs/workflows.md` is accurate.
+
+**No discrepancies found. No changes needed.**
+
+CLOCHE_RESULT:success

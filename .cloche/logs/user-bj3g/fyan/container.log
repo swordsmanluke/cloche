@@ -1,0 +1,17 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-05T03:43:12.617797724Z"}
+{"type":"log","step_name":"implement","message":"All 34 tests pass. The feature is already fully implemented:","timestamp":"2026-03-05T03:44:00.691373063Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-05T03:44:00.691405134Z"}
+{"type":"log","step_name":"implement","message":"1. **`projectLabels()`** — Maps full paths to short labels using `filepath.Base()`, with parent disambiguation for conflicts (handler.go:864-883)","timestamp":"2026-03-05T03:44:00.691407438Z"}
+{"type":"log","step_name":"implement","message":"2. **`/runs` project filter** — Dropdown with `?project=` query param, preserved selection (runs.html + handleRunsList)","timestamp":"2026-03-05T03:44:00.691412227Z"}
+{"type":"log","step_name":"implement","message":"3. **`/` projects overview** — Cards with health dots, run history, \"View Runs\" links (projects.html + handleProjectOverview)","timestamp":"2026-03-05T03:44:00.691416305Z"}
+{"type":"log","step_name":"implement","message":"4. **JSON APIs** — `/api/runs` and `/api/projects` support project filtering and include labels","timestamp":"2026-03-05T03:44:00.691420904Z"}
+{"type":"log","step_name":"implement","message":"5. **Tests** — Label disambiguation, filtered/unfiltered runs, project overview, API endpoints all covered","timestamp":"2026-03-05T03:44:00.691427276Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-05T03:44:00.691431584Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-05T03:44:00.916395115Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-05T03:44:00.919515355Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-05T03:44:00.919545673Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-05T03:44:17.663934818Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-05T03:44:17.663960767Z"}
+{"type":"log","step_name":"update-docs","message":"Prompt is too long","timestamp":"2026-03-05T03:44:20.89704125Z"}
+{"type":"step_completed","step_name":"update-docs","result":"fail","timestamp":"2026-03-05T03:44:20.897627328Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-05T03:44:20.897697832Z"}

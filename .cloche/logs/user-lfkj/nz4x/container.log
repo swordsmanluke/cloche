@@ -1,0 +1,36 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T19:12:24.671382144Z"}
+{"type":"log","step_name":"implement","message":"All tests pass across the entire project.","timestamp":"2026-03-09T19:15:59.638126499Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:15:59.638168859Z"}
+{"type":"log","step_name":"implement","message":"## Summary","timestamp":"2026-03-09T19:15:59.638173227Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:15:59.638177105Z"}
+{"type":"log","step_name":"implement","message":"**Root cause:** The DSL parser stores prompt/script config values with `file(\"path\")` wrapper syntax (e.g., `file(\".cloche/prompts/implement.md\")`), but `handleAPIStepContent` was treating these values as raw file paths, so `os.ReadFile` would fail on a path like `file(\".cloche/prompts/implement.md\")`.","timestamp":"2026-03-09T19:15:59.638180541Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:15:59.63820642Z"}
+{"type":"log","step_name":"implement","message":"**Fix:** Added a `resolveFileRef()` helper function that strips the `file(\"...\")` wrapper before reading the file. Applied it to all three config types (`prompt`, `command`, `script`) in `handleAPIStepContent`.","timestamp":"2026-03-09T19:15:59.638210027Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:15:59.638214034Z"}
+{"type":"log","step_name":"implement","message":"**Files changed:**","timestamp":"2026-03-09T19:15:59.63821725Z"}
+{"type":"log","step_name":"implement","message":"- `internal/adapters/web/handler.go` — Updated `handleAPIStepContent` to use `resolveFileRef()` and added the helper function","timestamp":"2026-03-09T19:15:59.638248209Z"}
+{"type":"log","step_name":"implement","message":"- `internal/adapters/web/handler_test.go` — Added `TestResolveFileRef` (unit test for the helper) and `TestAPIStepContent_FileRef` (integration test for the endpoint)","timestamp":"2026-03-09T19:15:59.63825948Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:15:59.638263668Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T19:15:59.906574473Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T19:15:59.912734569Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T19:15:59.912767502Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T19:16:00.341688762Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T19:16:00.341708429Z"}
+{"type":"log","step_name":"update-docs","message":"All 25 tests pass.","timestamp":"2026-03-09T19:17:55.655106153Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T19:17:55.655149035Z"}
+{"type":"log","step_name":"update-docs","message":"## Summary","timestamp":"2026-03-09T19:17:55.65515213Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T19:17:55.65516245Z"}
+{"type":"log","step_name":"update-docs","message":"**Bug fix** (already in working tree): `handleAPIStepContent` in `handler.go` was treating `file(\".cloche/prompts/implement.md\")` as a literal file path instead of parsing the `file()` DSL syntax. The fix introduces `resolveFileRef()` which:","timestamp":"2026-03-09T19:17:55.655165826Z"}
+{"type":"log","step_name":"update-docs","message":"- Detects `file(\"path\")` syntax and reads the referenced file's contents","timestamp":"2026-03-09T19:17:55.655180404Z"}
+{"type":"log","step_name":"update-docs","message":"- Returns plain strings as-is (for inline commands/scripts)","timestamp":"2026-03-09T19:17:55.655185684Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T19:17:55.655193358Z"}
+{"type":"log","step_name":"update-docs","message":"This is used for all three config keys: `prompt`, `command`, and `script`.","timestamp":"2026-03-09T19:17:55.655195843Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T19:17:55.655198288Z"}
+{"type":"log","step_name":"update-docs","message":"**Docs fix**: Updated `docs/USAGE.md` to match the actual CLI:","timestamp":"2026-03-09T19:17:55.655200291Z"}
+{"type":"log","step_name":"update-docs","message":"- `--image` → `--base-image` (correct flag name)","timestamp":"2026-03-09T19:17:55.655205241Z"}
+{"type":"log","step_name":"update-docs","message":"- Default `ubuntu:24.04` → `cloche-base:latest` (correct default)","timestamp":"2026-03-09T19:17:55.655210861Z"}
+{"type":"log","step_name":"update-docs","message":"- Added mention of `version`, `host.cloche`, and `scripts/prepare-prompt.sh` to the init description","timestamp":"2026-03-09T19:17:55.655213757Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T19:17:55.655240247Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T19:17:55.899858421Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T19:17:55.902308363Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T19:17:55.902435093Z"}

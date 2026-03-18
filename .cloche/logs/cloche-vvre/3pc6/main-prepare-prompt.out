@@ -1,0 +1,3 @@
+## Task: V2: Database schema — tasks, attempts, attempt_logs tables
+
+PARTIALLY DONE: The tasks, attempts tables and attempt_id column on runs are created by the v2 migration (migrate_v2.go). What remains: update the RunStore interface in internal/ports/store.go to add TaskStore/AttemptStore methods (SaveTask, GetTask, ListTasks, SaveAttempt, GetAttempt, ListAttempts). Update the SQLite adapter to implement these. The attempt_logs table is designed but not yet created — add it and wire it into log file tracking.

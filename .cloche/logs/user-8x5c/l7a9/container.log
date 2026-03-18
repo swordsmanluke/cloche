@@ -1,0 +1,232 @@
+{"type":"run_title","message":"Task: Web UI: Display host workflows on Project detail page","timestamp":"2026-03-11T21:01:19.537477498Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-11T21:01:19.537689044Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Explore the web UI codebase for this project. I need to u...') ---","timestamp":"2026-03-11T21:01:31.083140267Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.html\" -o -name \"*.templ\"...') ---","timestamp":"2026-03-11T21:01:34.811390351Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/adapters/web/**/*.go') ---","timestamp":"2026-03-11T21:01:34.811911118Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/adapters/web/') ---","timestamp":"2026-03-11T21:01:34.812097727Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/adapters/web/static/**') ---","timestamp":"2026-03-11T21:01:34.812574662Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Explore the domain types and workflow-related code in thi...') ---","timestamp":"2026-03-11T21:01:34.85566874Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T21:01:34.944018571Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/project_detail...') ---","timestamp":"2026-03-11T21:01:35.127952238Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('type.*Workflow|type.*Project|type.*Run') ---","timestamp":"2026-03-11T21:01:35.699181773Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/domain/*.go') ---","timestamp":"2026-03-11T21:01:35.878456406Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/ports/*.go') ---","timestamp":"2026-03-11T21:01:36.080972568Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/adapters/**/*.go') ---","timestamp":"2026-03-11T21:01:36.343905945Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -name \"*.go\" -type f | grep -E \"(workflow...') ---","timestamp":"2026-03-11T21:01:36.564393927Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-11T21:01:37.353690167Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow.go') ---","timestamp":"2026-03-11T21:01:37.571359619Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow.go') ---","timestamp":"2026-03-11T21:01:37.731997818Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('IsHost|host\\.cloche') ---","timestamp":"2026-03-11T21:01:37.955168095Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-11T21:01:37.97874403Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-11T21:01:38.046472483Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/layout.html') ---","timestamp":"2026-03-11T21:01:39.62466299Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func.*Load.*[Ww]orkflow|func.*Parse.*[Ww]orkflow') ---","timestamp":"2026-03-11T21:01:39.716065976Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/run_detail.html') ---","timestamp":"2026-03-11T21:01:39.876854323Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f \\( -name \"*.cloche\" -o -name \"hos...') ---","timestamp":"2026-03-11T21:01:40.039118799Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -name \"*.go\" -type f | xargs grep -l \"Loa...') ---","timestamp":"2026-03-11T21:01:40.05998223Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/dsl/*.go') ---","timestamp":"2026-03-11T21:01:41.440661447Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/host/*.go') ---","timestamp":"2026-03-11T21:01:41.648479888Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/runner.go') ---","timestamp":"2026-03-11T21:01:41.710475477Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('workflow.*load|parse.*workflow') ---","timestamp":"2026-03-11T21:01:42.027508837Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('host\\.cloche|LocationHost|ParseForHost') ---","timestamp":"2026-03-11T21:01:42.223574385Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/static/style.css') ---","timestamp":"2026-03-11T21:01:42.627198764Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-11T21:01:43.132582918Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/runner.go') ---","timestamp":"2026-03-11T21:01:43.337997351Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T21:01:43.442314852Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-11T21:01:44.135544777Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"ParseAllForHost\\|ParseForContainer\\|LocationCont...') ---","timestamp":"2026-03-11T21:01:44.422272492Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/agent.go') ---","timestamp":"2026-03-11T21:01:45.525914077Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/container.go') ---","timestamp":"2026-03-11T21:01:45.78680517Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -r \"type.*Workflow\" /workspace/internal --include=\"*...') ---","timestamp":"2026-03-11T21:01:46.176677482Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"tab\\|Tab\\|drawer\" /workspace/internal/adapters/w...') ---","timestamp":"2026-03-11T21:01:46.617985985Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/static/style.css') ---","timestamp":"2026-03-11T21:01:47.551831947Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/static/style.css') ---","timestamp":"2026-03-11T21:01:50.446680262Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('ParseAllForHost') ---","timestamp":"2026-03-11T21:01:50.732517207Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -name \"host.cloche\" -type f') ---","timestamp":"2026-03-11T21:01:52.205547107Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/examples -name \"*.cloche\" -type f | head -10') ---","timestamp":"2026-03-11T21:01:52.321181513Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal -name \"engine*\" -type f | head -5') ---","timestamp":"2026-03-11T21:01:53.729094438Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/host.cloche') ---","timestamp":"2026-03-11T21:01:53.801435124Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/examples/hello-world/develop.cloche') ---","timestamp":"2026-03-11T21:01:53.806632962Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/projects.html') ---","timestamp":"2026-03-11T21:01:54.049006027Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/executor.go') ---","timestamp":"2026-03-11T21:01:54.268592572Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/examples -type d -name \".cloche\" | head -...') ---","timestamp":"2026-03-11T21:01:55.956955655Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/runs.html') ---","timestamp":"2026-03-11T21:01:56.193771402Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow.go') ---","timestamp":"2026-03-11T21:01:57.598863202Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"type Workflow\" /workspace/internal/domain/workfl...') ---","timestamp":"2026-03-11T21:01:57.703506308Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T21:01:59.644069724Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"host.cloche\\|LocationHost\\|IsHost\\|IsHost\\|workf...') ---","timestamp":"2026-03-11T21:01:59.897126477Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow_test.go') ---","timestamp":"2026-03-11T21:02:05.923439907Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"func.*Test.*Workflow\\|func.*Test.*Location\" /wor...') ---","timestamp":"2026-03-11T21:02:06.374766681Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/engine/engine.go') ---","timestamp":"2026-03-11T21:02:08.375623932Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -r \"type.*Project\" /workspace/internal --include=\"*....') ---","timestamp":"2026-03-11T21:02:08.723427467Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser_test.go') ---","timestamp":"2026-03-11T21:02:10.158138612Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"LocationHost\\|LocationContainer\\|ParseForHost\\|P...') ---","timestamp":"2026-03-11T21:02:10.610765216Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser_test.go') ---","timestamp":"2026-03-11T21:02:12.44761565Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -A 30 \"handleAPIWorkflows\\|handleAPIProjectInfo\" /wo...') ---","timestamp":"2026-03-11T21:02:13.111631955Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T21:02:15.209474289Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"\\.Location\\|WorkflowLocation\" /workspace/interna...') ---","timestamp":"2026-03-11T21:02:15.649334726Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T21:02:17.623263103Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/adapters/web/templates/ 2\u003e/dev...') ---","timestamp":"2026-03-11T21:02:18.776045476Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"^type\\|^const\" /workspace/internal/domain/workfl...') ---","timestamp":"2026-03-11T21:02:20.745532067Z"}
+{"type":"log","step_name":"implement","message":"Now let me read the key files I need to modify.","timestamp":"2026-03-11T21:02:42.666752132Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/project_detail...') ---","timestamp":"2026-03-11T21:02:43.177070499Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T21:02:44.017000896Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/static/style.css') ---","timestamp":"2026-03-11T21:02:44.815519049Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T21:02:55.085651151Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-11T21:02:55.494395054Z"}
+{"type":"log","step_name":"implement","message":"Let me check the existing tests for the web handler.","timestamp":"2026-03-11T21:03:02.406365038Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/adapters/web/*_test.go') ---","timestamp":"2026-03-11T21:03:02.874984357Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('handleAPIWorkflows|handleAPIStepContent') ---","timestamp":"2026-03-11T21:03:03.459326754Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('workflows|APIWorkflow|StepContent') ---","timestamp":"2026-03-11T21:03:06.917482934Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-11T21:03:14.011157184Z"}
+{"type":"log","step_name":"implement","message":"Now let me look at the `setupHandler` and `seedRunWithProject` helpers.","timestamp":"2026-03-11T21:03:17.083711403Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func setupHandler|func seedRunWithProject') ---","timestamp":"2026-03-11T21:03:17.706924161Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-11T21:03:20.634100463Z"}
+{"type":"log","step_name":"implement","message":"Now I have a clear picture. Let me implement the changes:","timestamp":"2026-03-11T21:03:27.174218188Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:03:27.174241081Z"}
+{"type":"log","step_name":"implement","message":"1. **Backend**: Modify `handleAPIWorkflows` to include host workflows with a `location` field, and `handleAPIStepContent` to support host workflow steps","timestamp":"2026-03-11T21:03:27.174245259Z"}
+{"type":"log","step_name":"implement","message":"2. **Frontend**: Add top-level tabs to switch between Container and Host workflow views","timestamp":"2026-03-11T21:03:27.174259576Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T21:03:27.451656101Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('^import|\\\"sort\\\"|\\\"strings\\\"|\\\"time\\\"') ---","timestamp":"2026-03-11T21:03:30.854862444Z"}
+{"type":"log","step_name":"implement","message":"Good, `sort` and `strings` are already imported. Now let me make the backend changes.","timestamp":"2026-03-11T21:03:33.951438142Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:03:33.951457539Z"}
+{"type":"log","step_name":"implement","message":"**Step 1**: Modify `handleAPIWorkflows` to include host workflows with a `location` field.","timestamp":"2026-03-11T21:03:33.951461606Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T21:03:36.345939441Z"}
+{"type":"log","step_name":"implement","message":"Now add `Location: \"container\"` to the container workflow append:","timestamp":"2026-03-11T21:03:39.526735983Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T21:03:46.018994485Z"}
+{"type":"log","step_name":"implement","message":"**Step 2**: Modify `handleAPIStepContent` to also handle host workflows.","timestamp":"2026-03-11T21:03:48.831535112Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T21:03:55.67435585Z"}
+{"type":"log","step_name":"implement","message":"Now also add `run` config key resolution for host workflow script steps (they use `run` not `script`):","timestamp":"2026-03-11T21:04:00.328875446Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T21:04:00.982200537Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T21:04:04.70658716Z"}
+{"type":"log","step_name":"implement","message":"I see the step content handler already handles `command` and `script` config keys. Let me check what config keys host workflow steps use. Let me look at the `run` key for script steps:","timestamp":"2026-03-11T21:04:08.452207497Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('\\\"run\\\"|Config\\[\\\"run\\\"\\]|StepTypeScript') ---","timestamp":"2026-03-11T21:04:09.229248941Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow.go') ---","timestamp":"2026-03-11T21:04:12.233439981Z"}
+{"type":"log","step_name":"implement","message":"So host workflow steps use `run` as their script config key (not `script`). The step content handler already handles `command` but not `run`. Let me add support for the `run` and `workflow_name` config keys:","timestamp":"2026-03-11T21:04:16.729029505Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T21:04:19.136860195Z"}
+{"type":"log","step_name":"implement","message":"**Step 3**: Update the frontend template to use top-level tabs for Container vs Host workflows.","timestamp":"2026-03-11T21:04:26.499012053Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/project_detail...') ---","timestamp":"2026-03-11T21:04:26.728878332Z"}
+{"type":"log","step_name":"implement","message":"Now I'll rewrite the template with top-level location tabs and per-location workflow sub-tabs:","timestamp":"2026-03-11T21:04:32.10879929Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/internal/adapters/web/templates/project_detail...') ---","timestamp":"2026-03-11T21:05:09.513012465Z"}
+{"type":"log","step_name":"implement","message":"Now add a small CSS tweak to visually separate the location tabs from the workflow sub-tabs:","timestamp":"2026-03-11T21:05:13.9861967Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/static/style.css') ---","timestamp":"2026-03-11T21:05:14.834291307Z"}
+{"type":"log","step_name":"implement","message":"The existing tab-bar style with `margin-bottom: 1rem` will provide adequate spacing between the two tab bars. The empty `#location-tabs` div won't show when there's only one location type (no border since it has no children). Let me verify by checking if an empty `.tab-bar` div with no children still renders a border:","timestamp":"2026-03-11T21:05:20.182430213Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/static/style.css') ---","timestamp":"2026-03-11T21:05:21.650597799Z"}
+{"type":"log","step_name":"implement","message":"Now let's run the tests to see if everything compiles and passes:","timestamp":"2026-03-11T21:05:25.379830269Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-11T21:05:26.3845148Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Now let me add tests for the new functionality:","timestamp":"2026-03-11T21:06:09.619613716Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-11T21:06:09.856270648Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-11T21:06:13.222918588Z"}
+{"type":"log","step_name":"implement","message":"Now I'll add tests after the existing `TestAPIStepContent_FileRef` test:","timestamp":"2026-03-11T21:06:16.02707848Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-11T21:06:16.591119901Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler_test.go') ---","timestamp":"2026-03-11T21:06:33.061072881Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-11T21:06:36.433919114Z"}
+{"type":"log","step_name":"implement","message":"All tests pass, including the new ones. Here's a summary of the changes:","timestamp":"2026-03-11T21:06:49.041233952Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:06:49.041253319Z"}
+{"type":"log","step_name":"implement","message":"## Changes Made","timestamp":"2026-03-11T21:06:49.041263087Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:06:49.041267526Z"}
+{"type":"log","step_name":"implement","message":"### Backend (`internal/adapters/web/handler.go`)","timestamp":"2026-03-11T21:06:49.041271162Z"}
+{"type":"log","step_name":"implement","message":"- **`handleAPIWorkflows`**: Added `location` field to `apiWorkflow` struct. After loading container workflows, now also parses `host.cloche` via `dsl.ParseAllForHost()` and appends host workflows with `location: \"host\"`.","timestamp":"2026-03-11T21:06:49.041274749Z"}
+{"type":"log","step_name":"implement","message":"- **`handleAPIStepContent`**: Falls back to host workflows when a workflow isn't found in container workflows. Added support for `run` config key (host script steps) and `workflow_name` config key (host dispatch steps).","timestamp":"2026-03-11T21:06:49.04128563Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:06:49.041290318Z"}
+{"type":"log","step_name":"implement","message":"### Frontend (`internal/adapters/web/templates/project_detail.html`)","timestamp":"2026-03-11T21:06:49.041293745Z"}
+{"type":"log","step_name":"implement","message":"- Added top-level **location tabs** (\"Container\" / \"Host\") that appear when both workflow types exist.","timestamp":"2026-03-11T21:06:49.041297903Z"}
+{"type":"log","step_name":"implement","message":"- Workflow sub-tabs now filter by the active location.","timestamp":"2026-03-11T21:06:49.041302341Z"}
+{"type":"log","step_name":"implement","message":"- `showWorkflow` now takes a workflow object directly instead of an index.","timestamp":"2026-03-11T21:06:49.041306429Z"}
+{"type":"log","step_name":"implement","message":"- Added workflow-type icon (🔁) for `workflow` step type nodes in the DAG.","timestamp":"2026-03-11T21:06:49.041316197Z"}
+{"type":"log","step_name":"implement","message":"- Drawer now shows `run` and `workflow_name` config keys.","timestamp":"2026-03-11T21:06:49.041324443Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:06:49.04133346Z"}
+{"type":"log","step_name":"implement","message":"### CSS (`internal/adapters/web/static/style.css`)","timestamp":"2026-03-11T21:06:49.041344691Z"}
+{"type":"log","step_name":"implement","message":"- Added `.tab-bar:empty { display: none; }` to hide empty tab bars.","timestamp":"2026-03-11T21:06:49.041349199Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:06:49.041354309Z"}
+{"type":"log","step_name":"implement","message":"### Tests (`internal/adapters/web/handler_test.go`)","timestamp":"2026-03-11T21:06:49.041357685Z"}
+{"type":"log","step_name":"implement","message":"- **`TestAPIWorkflows_IncludesHostWorkflows`**: Verifies API returns both container and host workflows with correct `location` fields.","timestamp":"2026-03-11T21:06:49.041365149Z"}
+{"type":"log","step_name":"implement","message":"- **`TestAPIStepContent_HostWorkflow`**: Verifies step content retrieval for host workflow steps (both `run` and `workflow_name` types).","timestamp":"2026-03-11T21:06:49.041373445Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:06:49.041377272Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-11T21:06:49.041380698Z"}
+{"type":"log","step_name":"implement","message":"All tests pass, including the new ones. Here's a summary of the changes:","timestamp":"2026-03-11T21:06:49.122223931Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:06:49.122240782Z"}
+{"type":"log","step_name":"implement","message":"## Changes Made","timestamp":"2026-03-11T21:06:49.122249389Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:06:49.122253216Z"}
+{"type":"log","step_name":"implement","message":"### Backend (`internal/adapters/web/handler.go`)","timestamp":"2026-03-11T21:06:49.122256833Z"}
+{"type":"log","step_name":"implement","message":"- **`handleAPIWorkflows`**: Added `location` field to `apiWorkflow` struct. After loading container workflows, now also parses `host.cloche` via `dsl.ParseAllForHost()` and appends host workflows with `location: \"host\"`.","timestamp":"2026-03-11T21:06:49.122260399Z"}
+{"type":"log","step_name":"implement","message":"- **`handleAPIStepContent`**: Falls back to host workflows when a workflow isn't found in container workflows. Added support for `run` config key (host script steps) and `workflow_name` config key (host dispatch steps).","timestamp":"2026-03-11T21:06:49.122264808Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:06:49.122269216Z"}
+{"type":"log","step_name":"implement","message":"### Frontend (`internal/adapters/web/templates/project_detail.html`)","timestamp":"2026-03-11T21:06:49.122273554Z"}
+{"type":"log","step_name":"implement","message":"- Added top-level **location tabs** (\"Container\" / \"Host\") that appear when both workflow types exist.","timestamp":"2026-03-11T21:06:49.122278904Z"}
+{"type":"log","step_name":"implement","message":"- Workflow sub-tabs now filter by the active location.","timestamp":"2026-03-11T21:06:49.122284414Z"}
+{"type":"log","step_name":"implement","message":"- `showWorkflow` now takes a workflow object directly instead of an index.","timestamp":"2026-03-11T21:06:49.122288011Z"}
+{"type":"log","step_name":"implement","message":"- Added workflow-type icon (🔁) for `workflow` step type nodes in the DAG.","timestamp":"2026-03-11T21:06:49.122291728Z"}
+{"type":"log","step_name":"implement","message":"- Drawer now shows `run` and `workflow_name` config keys.","timestamp":"2026-03-11T21:06:49.122295996Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:06:49.122299523Z"}
+{"type":"log","step_name":"implement","message":"### CSS (`internal/adapters/web/static/style.css`)","timestamp":"2026-03-11T21:06:49.122304061Z"}
+{"type":"log","step_name":"implement","message":"- Added `.tab-bar:empty { display: none; }` to hide empty tab bars.","timestamp":"2026-03-11T21:06:49.12230893Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:06:49.122317667Z"}
+{"type":"log","step_name":"implement","message":"### Tests (`internal/adapters/web/handler_test.go`)","timestamp":"2026-03-11T21:06:49.122322236Z"}
+{"type":"log","step_name":"implement","message":"- **`TestAPIWorkflows_IncludesHostWorkflows`**: Verifies API returns both container and host workflows with correct `location` fields.","timestamp":"2026-03-11T21:06:49.122326534Z"}
+{"type":"log","step_name":"implement","message":"- **`TestAPIStepContent_HostWorkflow`**: Verifies step content retrieval for host workflow steps (both `run` and `workflow_name` types).","timestamp":"2026-03-11T21:06:49.122330461Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:06:49.122334609Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-11T21:06:49.470424756Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-11T21:06:49.497089551Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-11T21:06:49.501056Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-11T21:06:49.765692638Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t(cached)","timestamp":"2026-03-11T21:06:49.805992895Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-11T21:06:49.806017572Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-11T21:06:49.843300325Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-11T21:06:49.843501844Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-11T21:06:49.843533002Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-11T21:06:49.84360072Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-11T21:06:49.844482808Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-11T21:06:49.844489852Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-11T21:06:49.84450515Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-11T21:06:49.84453145Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-11T21:06:49.844597484Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-11T21:06:49.844673988Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-11T21:06:49.844679799Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-11T21:06:49.84471205Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-11T21:06:49.844840491Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-11T21:06:49.844855229Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-11T21:06:49.854667722Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-11T21:06:49.854689443Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-11T21:06:49.854691687Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-11T21:06:49.854695745Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-11T21:06:49.86130326Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-11T21:06:49.902117515Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-11T21:06:49.905405738Z"}
+{"type":"log","step_name":"update-docs","message":"Let me examine the current source code changes and relevant documentation.","timestamp":"2026-03-11T21:06:55.628070881Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('git diff HEAD -- internal/adapters/web/handler.go interna...') ---","timestamp":"2026-03-11T21:06:57.407365799Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('docs/**/*.md') ---","timestamp":"2026-03-11T21:06:57.513850412Z"}
+{"type":"log","step_name":"update-docs","message":"Let me check the relevant documentation files that might describe the web UI.","timestamp":"2026-03-11T21:07:01.590373475Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('web|UI|dashboard|project.detail|workflow.*tab|host.*workflow') ---","timestamp":"2026-03-11T21:07:02.927402118Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('project.detail|web.*UI|dashboard|workflow.*tab|host.*work...') ---","timestamp":"2026-03-11T21:07:07.401033083Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('project.detail|web.*UI|dashboard|workflow.*tab|host.*work...') ---","timestamp":"2026-03-11T21:07:08.734613739Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('project.detail|web.*UI|dashboard|workflow.*tab|host.*work...') ---","timestamp":"2026-03-11T21:07:09.292681804Z"}
+{"type":"log","step_name":"update-docs","message":"Let me read the most relevant docs more closely.","timestamp":"2026-03-11T21:07:11.553907798Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-03-06-project-pages-design.md') ---","timestamp":"2026-03-11T21:07:11.999507113Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('web|dashboard|UI|workflow') ---","timestamp":"2026-03-11T21:07:12.891149758Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('host.workflow|web|UI|project.detail') ---","timestamp":"2026-03-11T21:07:13.960790205Z"}
+{"type":"log","step_name":"update-docs","message":"Now I have a clear picture. The design doc at `docs/plans/2026-03-06-project-pages-design.md` describes the workflow panel but doesn't reflect the new host workflow support. Let me update the affected sections.","timestamp":"2026-03-11T21:07:28.872797575Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/plans/2026-03-06-project-pages-design.md') ---","timestamp":"2026-03-11T21:07:38.553227295Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/plans/2026-03-06-project-pages-design.md') ---","timestamp":"2026-03-11T21:07:45.329993647Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me verify the edits are correct.","timestamp":"2026-03-11T21:07:47.733034121Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-03-06-project-pages-design.md') ---","timestamp":"2026-03-11T21:07:48.06732164Z"}
+{"type":"log","step_name":"update-docs","message":"The documentation is now updated. The two changes to the project pages design doc reflect the implementation:","timestamp":"2026-03-11T21:07:57.155651743Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T21:07:57.155672252Z"}
+{"type":"log","step_name":"update-docs","message":"1. **Panel 3 Display** (lines 115-130): Updated from single-level workflow tabs excluding `host.cloche` to a two-level tab navigation (location tabs + workflow tabs), added the workflow step type icon (🔁), and added drawer content for host script steps (`run`) and workflow steps (`workflow_name`).","timestamp":"2026-03-11T21:07:57.15567644Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T21:07:57.155681359Z"}
+{"type":"log","step_name":"update-docs","message":"2. **API response** (lines 150, 169-170): Added the `location` field to the JSON example and a note explaining the field values.","timestamp":"2026-03-11T21:07:57.155684635Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T21:07:57.155688302Z"}
+{"type":"log","step_name":"update-docs","message":"No other documentation files needed changes — `docs/workflows.md` and `docs/USAGE.md` already accurately describe host workflows, step types, and the DSL.","timestamp":"2026-03-11T21:07:57.155694684Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T21:07:57.155698812Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-11T21:07:57.155702058Z"}
+{"type":"log","step_name":"update-docs","message":"The documentation is now updated. The two changes to the project pages design doc reflect the implementation:","timestamp":"2026-03-11T21:07:57.175285753Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T21:07:57.175304528Z"}
+{"type":"log","step_name":"update-docs","message":"1. **Panel 3 Display** (lines 115-130): Updated from single-level workflow tabs excluding `host.cloche` to a two-level tab navigation (location tabs + workflow tabs), added the workflow step type icon (🔁), and added drawer content for host script steps (`run`) and workflow steps (`workflow_name`).","timestamp":"2026-03-11T21:07:57.175308656Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T21:07:57.175313374Z"}
+{"type":"log","step_name":"update-docs","message":"2. **API response** (lines 150, 169-170): Added the `location` field to the JSON example and a note explaining the field values.","timestamp":"2026-03-11T21:07:57.175316691Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T21:07:57.175324335Z"}
+{"type":"log","step_name":"update-docs","message":"No other documentation files needed changes — `docs/workflows.md` and `docs/USAGE.md` already accurately describe host workflows, step types, and the DSL.","timestamp":"2026-03-11T21:07:57.175327842Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T21:07:57.175331789Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-11T21:07:57.518239784Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-11T21:07:57.538664601Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-11T21:07:57.546867845Z"}

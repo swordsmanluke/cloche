@@ -1,0 +1,14 @@
+Preparing worktree (checking out 'cloche/develop-cool-star')
+HEAD is now at fef9195 cloche run develop-cool-star: develop (succeeded)
+Current branch cloche/develop-cool-star is up to date.
+Updating 765d0d3..fef9195
+Fast-forward
+ cmd/cloche/main.go                     |   3 +
+ docs/USAGE.md                          |   4 +-
+ internal/adapters/grpc/server.go       |  60 ++++++++++++++++++
+ internal/adapters/grpc/server_test.go  | 112 +++++++++++++++++++++++++++++++++
+ internal/logstream/broadcaster.go      |   5 +-
+ internal/logstream/broadcaster_test.go |  21 +++++++
+ 6 files changed, 202 insertions(+), 3 deletions(-)
+Deleted branch cloche/develop-cool-star (was fef9195).
+Merged cloche/develop-cool-star into main (fef9195a369514003734d230f577989f0bbd321c)

@@ -1,0 +1,7 @@
+[
+  {
+    "id": "cloche-8bs",
+    "title": "Add setup instructions to README.md",
+    "description": "Add a getting-started guide to README.md covering: how to build/install cloche itself; running 'cloche init'; how to configure the project's Dockerfile for builds; setting up workflows in the Cloche DSL; and pointers to the rest of the documentation for details. Also note that users' LLM client of choice can probably do the setup for them."
+  }
+]

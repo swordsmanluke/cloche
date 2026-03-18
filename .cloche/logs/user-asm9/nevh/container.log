@@ -1,0 +1,31 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-05T02:50:51.226836073Z"}
+{"type":"log","step_name":"implement","message":"All tasks complete. Here's a summary of what was implemented:","timestamp":"2026-03-05T02:53:36.224449152Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-05T02:53:36.224505047Z"}
+{"type":"log","step_name":"implement","message":"**Changes to `internal/adapters/docker/build.go`:**","timestamp":"2026-03-05T02:53:36.224511129Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-05T02:53:36.224521739Z"}
+{"type":"log","step_name":"implement","message":"1. **Overrides directory hashing** — `hashBuildContext()` replaces the simple `hashBytes(dockerfileContent)`. It hashes the Dockerfile content plus all files in `.cloche/overrides/` using a deterministic sorted walk. File paths are included in the hash so renames are detected.","timestamp":"2026-03-05T02:53:36.224526668Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-05T02:53:36.224553008Z"}
+{"type":"log","step_name":"implement","message":"2. **Base image digest tracking** — `parseFromImage()` extracts the FROM image from the Dockerfile. `checkBaseImageStaleness()` pulls the base image and compares its digest to the one stored as a `cloche.baseimage.digest` label on the built image. If different, triggers a rebuild.","timestamp":"2026-03-05T02:53:36.224558117Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-05T02:53:36.224569188Z"}
+{"type":"log","step_name":"implement","message":"3. **Rate-limited pulls** — `shouldPullBase()` checks a timestamp file (`.cloche/.last-base-pull`) to avoid pulling more than once per hour.","timestamp":"2026-03-05T02:53:36.224574097Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-05T02:53:36.224584748Z"}
+{"type":"log","step_name":"implement","message":"4. **Updated `buildImage()`** — Now accepts a `baseDigest` parameter and stores it as a label alongside the context hash. No changes to the `ImageEnsurer` interface were needed.","timestamp":"2026-03-05T02:53:36.224590949Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-05T02:53:36.22460177Z"}
+{"type":"log","step_name":"implement","message":"**New tests in `build_test.go`:**","timestamp":"2026-03-05T02:53:36.224608051Z"}
+{"type":"log","step_name":"implement","message":"- `TestHashBuildContext_StableWhenNothingChanges` — hash stability","timestamp":"2026-03-05T02:53:36.22461255Z"}
+{"type":"log","step_name":"implement","message":"- `TestHashBuildContext_ChangesWhenOverrideFileChanges` — override file mutation","timestamp":"2026-03-05T02:53:36.224627248Z"}
+{"type":"log","step_name":"implement","message":"- `TestHashBuildContext_ChangesWhenOverrideFileAdded` — new override file","timestamp":"2026-03-05T02:53:36.224639781Z"}
+{"type":"log","step_name":"implement","message":"- `TestHashBuildContext_NoOverridesDir` — graceful fallback","timestamp":"2026-03-05T02:53:36.224650041Z"}
+{"type":"log","step_name":"implement","message":"- `TestParseFromImage` — FROM instruction parsing (6 cases)","timestamp":"2026-03-05T02:53:36.224659639Z"}
+{"type":"log","step_name":"implement","message":"- `TestShouldPullBase` — rate limiting logic (4 cases)","timestamp":"2026-03-05T02:53:36.224669397Z"}
+{"type":"log","step_name":"implement","message":"- `TestCheckBaseImageStaleness_DigestMismatch` — component tests","timestamp":"2026-03-05T02:53:36.224683354Z"}
+{"type":"log","step_name":"implement","message":"- `TestEnsureImage_RebuildsWhenOverrideChanges` — integration test (Docker required)","timestamp":"2026-03-05T02:53:36.224692701Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-05T02:53:36.224697621Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-05T02:53:36.472142393Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-05T02:53:36.474409581Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-05T02:53:36.474438175Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-05T02:53:49.765767623Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-05T02:53:49.765790686Z"}
+{"type":"log","step_name":"update-docs","message":"Prompt is too long","timestamp":"2026-03-05T02:53:52.800717543Z"}
+{"type":"step_completed","step_name":"update-docs","result":"fail","timestamp":"2026-03-05T02:53:52.801209391Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-05T02:53:52.801278942Z"}

@@ -1,0 +1,39 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T19:12:32.746285861Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-09T19:16:21.458764627Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:16:21.458807408Z"}
+{"type":"log","step_name":"implement","message":"**Problem:** The Prompts section in the project info page was showing git commit history (SHA, date, commit message) instead of actual file contents when expanded.","timestamp":"2026-03-09T19:16:21.458812427Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:16:21.458825702Z"}
+{"type":"log","step_name":"implement","message":"**Changes:**","timestamp":"2026-03-09T19:16:21.45882958Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:16:21.458833557Z"}
+{"type":"log","step_name":"implement","message":"1. **`internal/adapters/web/handler.go`**: ","timestamp":"2026-03-09T19:16:21.458837174Z"}
+{"type":"log","step_name":"implement","message":"   - Changed `handleAPIProjectInfo` to read file contents via `os.ReadFile` instead of running `git log` for commit history","timestamp":"2026-03-09T19:16:21.458846291Z"}
+{"type":"log","step_name":"implement","message":"   - Replaced the `commitEntry`/`history` struct with a simple `content` string field","timestamp":"2026-03-09T19:16:21.458856591Z"}
+{"type":"log","step_name":"implement","message":"   - Removed the unused `handleAPIPromptDiff` endpoint and its route registration","timestamp":"2026-03-09T19:16:21.458867451Z"}
+{"type":"log","step_name":"implement","message":"   - Removed unused `os/exec` import","timestamp":"2026-03-09T19:16:21.458878152Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:16:21.458888952Z"}
+{"type":"log","step_name":"implement","message":"2. **`internal/adapters/web/templates/project_detail.html`**:","timestamp":"2026-03-09T19:16:21.458893671Z"}
+{"type":"log","step_name":"implement","message":"   - Changed the expansion to display file contents in a `\u003cpre\u003e` block instead of git commit entries","timestamp":"2026-03-09T19:16:21.458901726Z"}
+{"type":"log","step_name":"implement","message":"   - Removed the unused `toggleDiff` JavaScript function","timestamp":"2026-03-09T19:16:21.458911194Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:16:21.458923848Z"}
+{"type":"log","step_name":"implement","message":"3. **`internal/adapters/web/handler_test.go`**:","timestamp":"2026-03-09T19:16:21.458928657Z"}
+{"type":"log","step_name":"implement","message":"   - Added `TestAPIProjectInfo_PromptFileContents` test that creates temp prompt files and verifies the API returns their actual content","timestamp":"2026-03-09T19:16:21.458942203Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:16:21.458947573Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T19:16:21.786969061Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T19:16:21.806809222Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T19:16:21.806853456Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T19:16:22.184732549Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T19:16:22.184751916Z"}
+{"type":"log","step_name":"update-docs","message":"All changes are complete. Here's a summary:","timestamp":"2026-03-09T19:17:54.674611755Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T19:17:54.674637493Z"}
+{"type":"log","step_name":"update-docs","message":"**Bug fix (Prompts showing git commits instead of file contents):**","timestamp":"2026-03-09T19:17:54.674641761Z"}
+{"type":"log","step_name":"update-docs","message":"- **`handler.go`**: The `handleAPIProjectInfo` endpoint was running `git log` to return commit history for prompt files. Changed to read actual file contents with `os.ReadFile`. Removed the `handleAPIPromptDiff` endpoint and unused `os/exec` import. Fixed indentation on `\"path/filepath\"` import.","timestamp":"2026-03-09T19:17:54.674649406Z"}
+{"type":"log","step_name":"update-docs","message":"- **`project_detail.html`**: Frontend was rendering commit entries (SHA, date, message) with a `toggleDiff` click handler. Changed to display file contents in a `\u003cpre\u003e` block. Removed the `toggleDiff` function.","timestamp":"2026-03-09T19:17:54.674658303Z"}
+{"type":"log","step_name":"update-docs","message":"- **`handler_test.go`**: Added `TestAPIProjectInfo_PromptFileContents` test verifying prompt file contents are returned correctly.","timestamp":"2026-03-09T19:17:54.674664344Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T19:17:54.674668572Z"}
+{"type":"log","step_name":"update-docs","message":"**Docs fix (`docs/USAGE.md`):**","timestamp":"2026-03-09T19:17:54.674671908Z"}
+{"type":"log","step_name":"update-docs","message":"- Fixed `--image` flag name to `--base-image` (matching actual CLI source)","timestamp":"2026-03-09T19:17:54.674677529Z"}
+{"type":"log","step_name":"update-docs","message":"- Fixed default value from `ubuntu:24.04` to `cloche-base:latest` (matching actual code)","timestamp":"2026-03-09T19:17:54.67468317Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T19:17:54.67468853Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T19:17:54.945594305Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T19:17:54.949250859Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T19:17:54.949320931Z"}

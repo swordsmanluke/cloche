@@ -1,0 +1,31 @@
+All tasks complete. Here's a summary of what was implemented:
+
+### Changes Made
+
+1. **`internal/adapters/web/handler.go`** — Added:
+   - `ContainerManager` interface extending `ContainerLogger` with `Remove` and `Inspect` methods
+   - `WithContainerManager` option function
+   - Container availability check in `handleRunDetail` — checks `container_kept` flag and verifies container exists via `Inspect`
+   - `handleAPIDeleteContainer` — `DELETE /api/runs/{id}/container` endpoint that removes the Docker container and updates the SQLite `container_kept` flag
+   - Retained container count per project computed in `handleRunsList` and passed to the template via `projectEntry.ContainerCount`
+
+2. **`internal/adapters/web/templates/run_detail.html`** — Added:
+   - "Container Status" row in the run metadata showing either "Container available" badge with a "Delete Container" button, or "Container removed" badge
+   - JavaScript `deleteContainer` function that calls the DELETE API and updates the UI
+
+3. **`internal/adapters/web/templates/runs.html`** — Added:
+   - Retained container count displayed in the project filter dropdown (e.g., "alpha (2 containers)")
+
+4. **`internal/adapters/web/static/style.css`** — Added button styles (`.btn`, `.btn-danger`, `.btn-sm`)
+
+5. **`internal/adapters/web/handler_test.go`** — Added 6 new tests:
+   - `TestRunDetail_ContainerAvailable` — verifies badge and delete button when container exists
+   - `TestRunDetail_ContainerRemoved` — verifies badge without button when no container
+   - `TestAPIDeleteContainer_Success` — verifies container removal and DB update
+   - `TestAPIDeleteContainer_RunNotFound` — 404 for unknown run
+   - `TestAPIDeleteContainer_NoManager` — 400 when no container manager configured
+   - `TestRunsList_ContainerCount` — verifies container counts in project list
+
+All 22 tests pass, full project builds cleanly.
+
+CLOCHE_RESULT:success

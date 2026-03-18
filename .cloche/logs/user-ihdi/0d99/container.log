@@ -1,0 +1,39 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T23:53:34.166998773Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-09T23:57:29.867726277Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T23:57:29.86778085Z"}
+{"type":"log","step_name":"implement","message":"**`internal/adapters/web/handler.go`:**","timestamp":"2026-03-09T23:57:29.867789777Z"}
+{"type":"log","step_name":"implement","message":"- Added `orchestrateFn` field to `Handler` struct","timestamp":"2026-03-09T23:57:29.867793544Z"}
+{"type":"log","step_name":"implement","message":"- Added `WithOrchestrateFunc` handler option","timestamp":"2026-03-09T23:57:29.867797181Z"}
+{"type":"log","step_name":"implement","message":"- Registered `POST /api/projects/{name}/trigger` route","timestamp":"2026-03-09T23:57:29.867804495Z"}
+{"type":"log","step_name":"implement","message":"- Implemented `handleAPITriggerOrchestrator` that resolves label→dir, calls the orchestrate function, and returns JSON with dispatched count","timestamp":"2026-03-09T23:57:29.867808202Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T23:57:29.867816187Z"}
+{"type":"log","step_name":"implement","message":"**`internal/adapters/web/templates/projects.html`:**","timestamp":"2026-03-09T23:57:29.867819954Z"}
+{"type":"log","step_name":"implement","message":"- Added \"Trigger Orchestrator\" button to each project card","timestamp":"2026-03-09T23:57:29.867831075Z"}
+{"type":"log","step_name":"implement","message":"- Added JavaScript `triggerOrchestrator` function that POSTs to the API and updates button text with feedback (dispatched count, no tasks ready, or error)","timestamp":"2026-03-09T23:57:29.86783868Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T23:57:29.867846254Z"}
+{"type":"log","step_name":"implement","message":"**`cmd/cloched/main.go`:**","timestamp":"2026-03-09T23:57:29.867849841Z"}
+{"type":"log","step_name":"implement","message":"- Wired `WithOrchestrateFunc` into the web handler, launching a host workflow runner in a background goroutine","timestamp":"2026-03-09T23:57:29.86785453Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T23:57:29.867863316Z"}
+{"type":"log","step_name":"implement","message":"**`internal/adapters/web/handler_test.go`:**","timestamp":"2026-03-09T23:57:29.867868656Z"}
+{"type":"log","step_name":"implement","message":"- `TestAPITriggerOrchestrator_NoFunc` — 501 when no orchestrate function set","timestamp":"2026-03-09T23:57:29.867877533Z"}
+{"type":"log","step_name":"implement","message":"- `TestAPITriggerOrchestrator_ProjectNotFound` — 404 for unknown project label","timestamp":"2026-03-09T23:57:29.867890377Z"}
+{"type":"log","step_name":"implement","message":"- `TestAPITriggerOrchestrator_Success` — 200 with correct JSON response and dispatched count","timestamp":"2026-03-09T23:57:29.867900056Z"}
+{"type":"log","step_name":"implement","message":"- `TestAPITriggerOrchestrator_Error` — 500 when orchestrate function returns error","timestamp":"2026-03-09T23:57:29.867912469Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T23:57:29.867920003Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T23:57:30.105086813Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T23:57:30.12479389Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T23:57:30.124829608Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T23:57:30.522156559Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T23:57:30.52218911Z"}
+{"type":"log","step_name":"update-docs","message":"The current changes add a \"Trigger Orchestrator\" button to the web dashboard with a `POST /api/projects/{name}/trigger` API endpoint. ","timestamp":"2026-03-09T23:58:00.125897972Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T23:58:00.125922349Z"}
+{"type":"log","step_name":"update-docs","message":"Reviewing the documentation:","timestamp":"2026-03-09T23:58:00.125926396Z"}
+{"type":"log","step_name":"update-docs","message":"- **USAGE.md** mentions the web dashboard but doesn't document individual dashboard features or API endpoints — it just says to set `CLOCHE_HTTP` to enable it.","timestamp":"2026-03-09T23:58:00.125930003Z"}
+{"type":"log","step_name":"update-docs","message":"- **Design docs** (`2026-03-03-next-features-design.md`, `2026-03-06-project-pages-design.md`) already describe a \"Trigger orchestrator\" button as a planned feature.","timestamp":"2026-03-09T23:58:00.125935063Z"}
+{"type":"log","step_name":"update-docs","message":"- The `cloche orchestrate` CLI command is already documented in USAGE.md.","timestamp":"2026-03-09T23:58:00.12595998Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T23:58:00.125964178Z"}
+{"type":"log","step_name":"update-docs","message":"No documentation is out of date. The web dashboard's individual UI features and API endpoints are not documented in the user-facing docs, so there's nothing to update.","timestamp":"2026-03-09T23:58:00.125967614Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T23:58:00.125971532Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T23:58:00.371567322Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T23:58:00.372871487Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T23:58:00.372938914Z"}

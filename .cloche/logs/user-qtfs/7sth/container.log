@@ -1,0 +1,41 @@
+{"type":"run_title","message":"Fix output streaming - show step logs in real-time. Currently the logs for each step in the workf...","timestamp":"2026-03-10T01:26:44.174085901Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-10T01:26:44.174290156Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-10T01:32:30.051444091Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:32:30.051485819Z"}
+{"type":"log","step_name":"implement","message":"## Changes Made","timestamp":"2026-03-10T01:32:30.051490088Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:32:30.05149665Z"}
+{"type":"log","step_name":"implement","message":"### Problem","timestamp":"2026-03-10T01:32:30.051500016Z"}
+{"type":"log","step_name":"implement","message":"Script step logs were buffered until step completion because `generic.Adapter` used `cmd.CombinedOutput()` which collects all output before returning.","timestamp":"2026-03-10T01:32:30.051503583Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:32:30.051511167Z"}
+{"type":"log","step_name":"implement","message":"### Fix (4 files)","timestamp":"2026-03-10T01:32:30.051514654Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:32:30.051521477Z"}
+{"type":"log","step_name":"implement","message":"1. **`internal/adapters/agents/generic/generic.go`** — Added `StatusWriter` field and `executeStreaming()` method. When StatusWriter is set, pipes stdout/stderr and streams each line through `StatusWriter.Log()` in real-time instead of buffering with `CombinedOutput()`.","timestamp":"2026-03-10T01:32:30.051524823Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:32:30.051545773Z"}
+{"type":"log","step_name":"implement","message":"2. **`internal/agent/runner.go`** — Wires the `StatusWriter` into the generic adapter so script steps stream output through the same status protocol path that agent/prompt steps use.","timestamp":"2026-03-10T01:32:30.05154951Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:32:30.051572142Z"}
+{"type":"log","step_name":"implement","message":"3. **`internal/protocol/status.go`** — Added flush support: after each JSON status message is encoded, calls `Flush()` on the underlying writer if it implements the `flusher` interface, ensuring immediate delivery.","timestamp":"2026-03-10T01:32:30.051578875Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:32:30.05158658Z"}
+{"type":"log","step_name":"implement","message":"4. **`internal/logstream/logstream.go`** — Added `file.Sync()` after each log write to ensure the unified `full.log` is flushed to disk immediately.","timestamp":"2026-03-10T01:32:30.051589966Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:32:30.05159737Z"}
+{"type":"log","step_name":"implement","message":"### Tests Added","timestamp":"2026-03-10T01:32:30.051600756Z"}
+{"type":"log","step_name":"implement","message":"- `TestGenericAdapter_StreamsOutputViaStatusWriter` — verifies each output line is streamed as a separate `MsgLog`","timestamp":"2026-03-10T01:32:30.051608291Z"}
+{"type":"log","step_name":"implement","message":"- `TestGenericAdapter_StreamsStderrViaStatusWriter` — verifies stderr is also streamed","timestamp":"2026-03-10T01:32:30.051615504Z"}
+{"type":"log","step_name":"implement","message":"- `TestGenericAdapter_StreamingWithMarker` — verifies result markers work with streaming","timestamp":"2026-03-10T01:32:30.051622808Z"}
+{"type":"log","step_name":"implement","message":"- `TestGenericAdapter_StreamingOnFailure` — verifies streaming works on failed commands","timestamp":"2026-03-10T01:32:30.051634019Z"}
+{"type":"log","step_name":"implement","message":"- `TestRunner_ScriptStepStreamsLogs` — end-to-end test verifying log messages appear between `step_started` and `step_completed` in the status stream","timestamp":"2026-03-10T01:32:30.05164529Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:32:30.051649178Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-10T01:32:30.361182517Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-10T01:32:30.367603329Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-10T01:32:30.367649315Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-10T01:32:30.747668784Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-10T01:32:30.747687058Z"}
+{"type":"log","step_name":"update-docs","message":"The source changes add real-time log streaming by:","timestamp":"2026-03-10T01:32:57.996632855Z"}
+{"type":"log","step_name":"update-docs","message":"1. Adding `StatusWriter` to the generic adapter for line-by-line output streaming","timestamp":"2026-03-10T01:32:57.99665673Z"}
+{"type":"log","step_name":"update-docs","message":"2. Flushing the status writer after each message for immediate delivery","timestamp":"2026-03-10T01:32:57.996664364Z"}
+{"type":"log","step_name":"update-docs","message":"3. Syncing the logstream file after each write","timestamp":"2026-03-10T01:32:57.996668722Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-10T01:32:57.996673161Z"}
+{"type":"log","step_name":"update-docs","message":"The existing documentation already describes real-time streaming as the intended behavior (e.g., `docs/USAGE.md` documents `--follow` for live streaming, the system design describes streaming status events). The implementation was catching up to the documented design — no documentation updates are needed.","timestamp":"2026-03-10T01:32:57.996676657Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-10T01:32:57.996683059Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-10T01:32:58.311197001Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-10T01:32:58.311969458Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-10T01:32:58.312023369Z"}

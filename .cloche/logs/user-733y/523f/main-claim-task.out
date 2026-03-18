@@ -1,0 +1,7 @@
+[
+  {
+    "id": "cloche-3cs",
+    "title": "Stop creating run records when list-tasks returns no work",
+    "description": "The orchestration loop creates a run record every time it polls for tasks, even when list-tasks returns an empty list. This generates hundreds of useless failed run entries that clutter the run history and bloat the database. When list-tasks finds no work, skip creating a run record entirely rather than recording a failed run. Related to cloche-x3z (now closed) which suppressed empty runs at the workflow level, but the daemon still creates the record before the workflow even starts."
+  }
+]

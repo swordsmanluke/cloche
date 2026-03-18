@@ -1,0 +1,7 @@
+## Task: Fix log reporting
+
+cloche logs <run id> works, but individual log files in output directories are missing, so `cloche logs <run id> -s <step>` is broken and logs don't stream to the web UI. Requirements:
+- `cloche logs <run id>`: Show all current log output to date. `-f` to follow.
+- `cloche logs <run id> -s <step>`: Show log output for the named step. `-f` to follow.
+- Web UI: each step has an accordion section for log output. Logs stream (1+ lines at a time, near real-time) to the appropriate section. Text boxes default to scroll-to-bottom but preserve user scroll position if they scroll up.
+- After step completion, full log output available at `.cloche/<run id>/output/<step>.log`.

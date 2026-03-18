@@ -1,0 +1,17 @@
+All tests pass. Here's a summary of what was updated:
+
+**docs/USAGE.md changes:**
+
+1. **`cloche run`** — Added `--keep-container` flag to usage line and flags table
+2. **`cloche logs`** — Added missing CLI Reference section
+3. **`cloche poll`** — Added missing CLI Reference section
+4. **`cloche list`** — Added `--all` flag with description table; fixed column description (was "start time", now correctly lists container ID and error message)
+5. **`cloche shutdown`** — Added missing CLI Reference section
+6. **`cloche init`** — Added `--workflow` and `--image` flags table with defaults
+7. **Workflow template example** — Added the `update-docs` step and updated wiring to match the actual template in `init.go`
+8. **Dockerfile description** — Fixed "based on `ruby:3.3`" to "`ubuntu:24.04`"
+9. **Build Commands** — Added `make install` target with PREFIX override note
+
+**docs/INSTALL.md** — Already existed with comprehensive installation documentation. Already linked from USAGE.md Prerequisites section.
+
+CLOCHE_RESULT:success

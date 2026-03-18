@@ -1,0 +1,86 @@
+{"type":"run_title","message":"Task: Orchestration loop: split into list-tasks, main, finalize phases","timestamp":"2026-03-11T00:30:46.444306545Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-11T00:30:46.444601793Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-11T00:43:46.325594167Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T00:43:46.326023179Z"}
+{"type":"log","step_name":"implement","message":"## Changes Made","timestamp":"2026-03-11T00:43:46.326028339Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T00:43:46.326033138Z"}
+{"type":"log","step_name":"implement","message":"### 1. Task model (`internal/host/task.go`)","timestamp":"2026-03-11T00:43:46.326037185Z"}
+{"type":"log","step_name":"implement","message":"- Added `Status` field (open/closed/in-progress) and `Metadata` field to `Task` struct","timestamp":"2026-03-11T00:43:46.326041103Z"}
+{"type":"log","step_name":"implement","message":"- Added `TaskStatus` type constants","timestamp":"2026-03-11T00:43:46.326050651Z"}
+{"type":"log","step_name":"implement","message":"- Added `Task.IsOpen()` method (backward-compatible: empty status = open)","timestamp":"2026-03-11T00:43:46.326059157Z"}
+{"type":"log","step_name":"implement","message":"- Added `ParseTasksJSONL()` function that parses JSONL-formatted task output (one JSON object per line)","timestamp":"2026-03-11T00:43:46.326192599Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T00:43:46.326201025Z"}
+{"type":"log","step_name":"implement","message":"### 2. DSL parser (`internal/dsl/parser.go`)","timestamp":"2026-03-11T00:43:46.326205013Z"}
+{"type":"log","step_name":"implement","message":"- Added `ParseAllForHost()` function that parses host.cloche files containing multiple workflows, returning `map[string]*domain.Workflow`","timestamp":"2026-03-11T00:43:46.326212727Z"}
+{"type":"log","step_name":"implement","message":"- Validates duplicate workflow names and empty files","timestamp":"2026-03-11T00:43:46.326380946Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T00:43:46.326385645Z"}
+{"type":"log","step_name":"implement","message":"### 3. Runner (`internal/host/runner.go`)","timestamp":"2026-03-11T00:43:46.326392878Z"}
+{"type":"log","step_name":"implement","message":"- Added `RunNamed(ctx, projectDir, workflowName)` method to run any named workflow from host.cloche","timestamp":"2026-03-11T00:43:46.326396766Z"}
+{"type":"log","step_name":"implement","message":"- Added `ExtraEnv` field for passing additional env vars (used by finalize phase for `CLOCHE_MAIN_OUTCOME`, `CLOCHE_MAIN_RUN_ID`)","timestamp":"2026-03-11T00:43:46.326405632Z"}
+{"type":"log","step_name":"implement","message":"- Added `OutputDir` to `RunResult` so the loop can read step outputs (e.g. list-tasks JSONL)","timestamp":"2026-03-11T00:43:46.326575023Z"}
+{"type":"log","step_name":"implement","message":"- Refactored `Run`/`RunWithID` to use internal `runNamedWorkflow()` which calls `ParseAllForHost`","timestamp":"2026-03-11T00:43:46.32658387Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T00:43:46.326593267Z"}
+{"type":"log","step_name":"implement","message":"### 4. Executor (`internal/host/executor.go`)","timestamp":"2026-03-11T00:43:46.326596964Z"}
+{"type":"log","step_name":"implement","message":"- Added `ExtraEnv` field, propagated to script step environment","timestamp":"2026-03-11T00:43:46.326604258Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T00:43:46.326611542Z"}
+{"type":"log","step_name":"implement","message":"### 5. Loop (`internal/host/loop.go`)","timestamp":"2026-03-11T00:43:46.326614908Z"}
+{"type":"log","step_name":"implement","message":"- Added `NewPhaseLoop()` constructor for three-phase orchestration with `ListTasksFunc`, `MainFunc`, `FinalizeFunc`","timestamp":"2026-03-11T00:43:46.32662131Z"}
+{"type":"log","step_name":"implement","message":"- `runPhased()` implements: list-tasks → pick open tasks (with dedup) → main → finalize","timestamp":"2026-03-11T00:43:46.326628825Z"}
+{"type":"log","step_name":"implement","message":"- Finalize runs on **both success and failure** of main","timestamp":"2026-03-11T00:43:46.326633844Z"}
+{"type":"log","step_name":"implement","message":"- Original `NewLoop()` and `runLegacy()` preserved for backward compatibility","timestamp":"2026-03-11T00:43:46.326637411Z"}
+{"type":"log","step_name":"implement","message":"- Added `ReadListTasksOutput()` helper to read JSONL from workflow output directory","timestamp":"2026-03-11T00:43:46.32664765Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T00:43:46.326650987Z"}
+{"type":"log","step_name":"implement","message":"### 6. gRPC server (`internal/adapters/grpc/server.go`)","timestamp":"2026-03-11T00:43:46.326653992Z"}
+{"type":"log","step_name":"implement","message":"- `EnableLoop` now auto-detects three-phase mode by checking if host.cloche contains a `list-tasks` workflow","timestamp":"2026-03-11T00:43:46.326661557Z"}
+{"type":"log","step_name":"implement","message":"- `createPhaseLoop()` wires up list-tasks → main → finalize using `Runner.RunNamed()`","timestamp":"2026-03-11T00:43:46.326668961Z"}
+{"type":"log","step_name":"implement","message":"- Finalize receives `CLOCHE_MAIN_RUN_ID` and `CLOCHE_MAIN_OUTCOME` env vars","timestamp":"2026-03-11T00:43:46.326675834Z"}
+{"type":"log","step_name":"implement","message":"- Falls back to legacy single-function mode when no list-tasks workflow exists","timestamp":"2026-03-11T00:43:46.326682977Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T00:43:46.326690662Z"}
+{"type":"log","step_name":"implement","message":"### Tests Added","timestamp":"2026-03-11T00:43:46.326693808Z"}
+{"type":"log","step_name":"implement","message":"- JSONL parsing: basic, metadata, empty lines, error handling, all statuses","timestamp":"2026-03-11T00:43:46.326696833Z"}
+{"type":"log","step_name":"implement","message":"- `Task.IsOpen()`: all status variants","timestamp":"2026-03-11T00:43:46.326703917Z"}
+{"type":"log","step_name":"implement","message":"- `ParseAllForHost`: single, multiple, duplicate names, empty, location validation","timestamp":"2026-03-11T00:43:46.326710689Z"}
+{"type":"log","step_name":"implement","message":"- `RunNamed`: main, multi-workflow, not-found error","timestamp":"2026-03-11T00:43:46.326721871Z"}
+{"type":"log","step_name":"implement","message":"- `ExtraEnv`: executor-level and runner-level propagation","timestamp":"2026-03-11T00:43:46.326725818Z"}
+{"type":"log","step_name":"implement","message":"- `ReadListTasksOutput`: basic, empty dir, picks latest file","timestamp":"2026-03-11T00:43:46.326729705Z"}
+{"type":"log","step_name":"implement","message":"- Phase loop: basic flow, skips closed tasks, finalize on failure, no finalize, dedup filtering","timestamp":"2026-03-11T00:43:46.326733072Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T00:43:46.326842399Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-11T00:43:46.68073604Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-11T00:43:46.695724023Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-11T00:43:46.698852952Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-11T00:43:47.129764878Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t(cached)","timestamp":"2026-03-11T00:43:47.203738815Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-11T00:43:47.204062427Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-11T00:43:47.289747578Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-11T00:43:47.289806109Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-11T00:43:47.289810737Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-11T00:43:47.289815176Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-11T00:43:47.303285558Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-11T00:43:47.303826361Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-11T00:43:47.303840127Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-11T00:43:47.303844044Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-11T00:43:47.30384716Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-11T00:43:47.303850406Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-11T00:43:47.303853562Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-11T00:43:47.303856408Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-11T00:43:47.304397671Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-11T00:43:47.304416637Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-11T00:43:47.304489064Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-11T00:43:47.304517268Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-11T00:43:47.304531925Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-11T00:43:47.305087316Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-11T00:43:47.31986988Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-11T00:43:47.354506543Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-11T00:43:47.35811053Z"}
+{"type":"log","step_name":"update-docs","message":"The documentation is updated and valid. All changes are grounded in source code:","timestamp":"2026-03-11T00:46:58.799241925Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T00:46:58.799308121Z"}
+{"type":"log","step_name":"update-docs","message":"- **Workflow Locations**: Documents multiple named workflows in host.cloche, the three-phase table (list-tasks/main/finalize), JSONL task format with exact fields from `Task` struct, and dedup behavior","timestamp":"2026-03-11T00:46:58.799312479Z"}
+{"type":"log","step_name":"update-docs","message":"- **Host Workflow Example**: Updated from single monolithic \"main\" workflow to three separate workflows matching the `ParseAllForHost` / `NewPhaseLoop` architecture","timestamp":"2026-03-11T00:46:58.799319963Z"}
+{"type":"log","step_name":"update-docs","message":"- **Execution Model**: Notes that host.cloche supports multiple named workflows orchestrated in three phases","timestamp":"2026-03-11T00:46:58.799328379Z"}
+{"type":"log","step_name":"update-docs","message":"- **Env vars**: `CLOCHE_MAIN_OUTCOME` and `CLOCHE_MAIN_RUN_ID` match the actual server.go implementation (lines 841-842)","timestamp":"2026-03-11T00:46:58.799331976Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T00:46:58.799339139Z"}
+{"type":"log","step_name":"update-docs","message":"No other docs need changes — the design docs are historical records and CLAUDE.md is already accurate at its level of abstraction.","timestamp":"2026-03-11T00:46:58.799342305Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T00:46:58.799346543Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-11T00:46:59.140686088Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-11T00:46:59.150068116Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-11T00:46:59.156548605Z"}

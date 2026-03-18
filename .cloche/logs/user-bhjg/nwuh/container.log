@@ -1,0 +1,21 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T23:02:38.35372805Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-09T23:04:52.543370028Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T23:04:52.543408932Z"}
+{"type":"log","step_name":"implement","message":"**`internal/domain/workflow.go`**: Added duplicate output mapping validation in `Validate()` (lines 215-226). After existing checks, it iterates all wires and collects env var keys per target step. If any key appears more than once targeting the same step, it returns an error.","timestamp":"2026-03-09T23:04:52.543412028Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T23:04:52.5434237Z"}
+{"type":"log","step_name":"implement","message":"**`internal/domain/workflow_test.go`**: Added 4 test cases:","timestamp":"2026-03-09T23:04:52.543426144Z"}
+{"type":"log","step_name":"implement","message":"- `DuplicateOutputMapping_DifferentKeys` — two wires to same step with different env vars (valid)","timestamp":"2026-03-09T23:04:52.543428559Z"}
+{"type":"log","step_name":"implement","message":"- `DuplicateOutputMapping_SameKey` — two wires to same step with same env var (error)","timestamp":"2026-03-09T23:04:52.54343438Z"}
+{"type":"log","step_name":"implement","message":"- `DuplicateOutputMapping_SameKeyDifferentSteps` — same env var on wires to different steps (valid)","timestamp":"2026-03-09T23:04:52.543440151Z"}
+{"type":"log","step_name":"implement","message":"- `DuplicateOutputMapping_NoMappings` — wire with no output mappings (valid)","timestamp":"2026-03-09T23:04:52.543442726Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T23:04:52.543445351Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T23:04:52.755504993Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T23:04:52.756802224Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T23:04:52.756818084Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T23:04:53.50859312Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T23:04:53.508629359Z"}
+{"type":"log","step_name":"update-docs","message":"Documentation updated. The only drift was the missing mention of duplicate output mapping validation in `docs/workflows.md`. Added two sentences documenting the validation behavior at lines 131-133.","timestamp":"2026-03-09T23:05:32.966396699Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T23:05:32.966458185Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T23:05:33.208696438Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T23:05:33.210466071Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T23:05:33.21054479Z"}

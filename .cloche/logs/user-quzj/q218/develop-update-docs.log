@@ -1,0 +1,15 @@
+All edits are complete. Here's a summary of the discrepancies found and fixed in `docs/USAGE.md`:
+
+1. **`cloche run`** — Added missing `--keep-container` flag to usage line and flags table
+2. **`cloche list`** — Added `--all` flag with description; fixed columns (was "start time", now "container ID, error message")
+3. **CLI Reference** — Added four missing commands: `cloche logs`, `cloche poll`, `cloche init` (with `--workflow` and `--image` flags), and `cloche shutdown`
+4. **Workflow template** — Added the `update-docs` step and updated wiring (`test:success -> update-docs` instead of `test:success -> done`)
+5. **Default base image** — Fixed from `ruby:3.3` to `ubuntu:24.04` (matching `init.go` default)
+6. **Agent Command Override** — Added workflow-level `container { agent_command }` syntax, documented priority order
+7. **Agent Fallback Chains** — New section documenting comma-separated fallback lists with fallback rules and default args behavior
+8. **Project Directory Layout** — Added `update-docs.md` to the prompts directory listing
+9. **Build Commands** — Added `make install` target
+
+No changes to `docs/workflows.md` — the DSL syntax itself is unchanged (the semantic change of comma-separated values is documented in USAGE.md's new "Agent Fallback Chains" section).
+
+CLOCHE_RESULT:success

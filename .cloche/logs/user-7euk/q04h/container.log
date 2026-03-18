@@ -1,0 +1,48 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T00:39:48.039235731Z"}
+{"type":"log","step_name":"implement","message":"Clean build. Here's a summary of the fix:","timestamp":"2026-03-09T00:43:36.053069074Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:43:36.053111484Z"}
+{"type":"log","step_name":"implement","message":"## Changes Made","timestamp":"2026-03-09T00:43:36.053117456Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:43:36.053126763Z"}
+{"type":"log","step_name":"implement","message":"### Root Cause","timestamp":"2026-03-09T00:43:36.053131472Z"}
+{"type":"log","step_name":"implement","message":"The DSL parser stores prompt/script values with `file(\"...\")` wrapper syntax (e.g. `file(\".cloche/prompts/implement.md\")`), but the `handleAPIStepContent` handler was using this raw value directly as a file path, causing the file read to fail.","timestamp":"2026-03-09T00:43:36.053136372Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:43:36.053164435Z"}
+{"type":"log","step_name":"implement","message":"Additionally, the handler checked `step.Config[\"command\"]` but the DSL uses `\"run\"` as the key.","timestamp":"2026-03-09T00:43:36.053169835Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:43:36.053180806Z"}
+{"type":"log","step_name":"implement","message":"### Files Changed","timestamp":"2026-03-09T00:43:36.053191536Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:43:36.053196646Z"}
+{"type":"log","step_name":"implement","message":"1. **`internal/adapters/web/handler.go`**:","timestamp":"2026-03-09T00:43:36.053201104Z"}
+{"type":"log","step_name":"implement","message":"   - Added `extractFilePath()` helper that unwraps `file(\"path\")` → `path`","timestamp":"2026-03-09T00:43:36.053210672Z"}
+{"type":"log","step_name":"implement","message":"   - Fixed prompt file reading to use `extractFilePath(prompt)` before building the file path","timestamp":"2026-03-09T00:43:36.053288299Z"}
+{"type":"log","step_name":"implement","message":"   - Changed `step.Config[\"command\"]` → `step.Config[\"run\"]` to match the DSL key","timestamp":"2026-03-09T00:43:36.053307055Z"}
+{"type":"log","step_name":"implement","message":"   - Applied same `extractFilePath()` to the script path handling","timestamp":"2026-03-09T00:43:36.053318386Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:43:36.053323536Z"}
+{"type":"log","step_name":"implement","message":"2. **`internal/adapters/web/templates/project_detail.html`**:","timestamp":"2026-03-09T00:43:36.053327954Z"}
+{"type":"log","step_name":"implement","message":"   - Added `\"run\"` to the displayed config keys in the step drawer (alongside existing `\"command\"`)","timestamp":"2026-03-09T00:43:36.053342612Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:43:36.053349766Z"}
+{"type":"log","step_name":"implement","message":"3. **`internal/adapters/web/handler_test.go`**:","timestamp":"2026-03-09T00:43:36.053354294Z"}
+{"type":"log","step_name":"implement","message":"   - Added `TestExtractFilePath` - unit tests for the path unwrapping helper","timestamp":"2026-03-09T00:43:36.053364303Z"}
+{"type":"log","step_name":"implement","message":"   - Added `TestAPIStepContent_PromptFile` - integration test verifying prompt file content is loaded","timestamp":"2026-03-09T00:43:36.053375995Z"}
+{"type":"log","step_name":"implement","message":"   - Added `TestAPIStepContent_RunCommand` - integration test verifying run commands are returned","timestamp":"2026-03-09T00:43:36.053381395Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:43:36.053386505Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T00:43:36.325644533Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T00:43:36.328764039Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T00:43:36.328782213Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T00:43:46.963828566Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T00:43:46.963860998Z"}
+{"type":"log","step_name":"update-docs","message":"All changes look correct. Here's a summary:","timestamp":"2026-03-09T00:46:16.288105157Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T00:46:16.288139121Z"}
+{"type":"log","step_name":"update-docs","message":"**Bug fix (already in working tree, verified):**","timestamp":"2026-03-09T00:46:16.28814893Z"}
+{"type":"log","step_name":"update-docs","message":"- `handleAPIStepContent` now unwraps `file(\"...\")` syntax via `extractFilePath()` before reading prompt/script files","timestamp":"2026-03-09T00:46:16.288153458Z"}
+{"type":"log","step_name":"update-docs","message":"- Handler checks `step.Config[\"run\"]` instead of the incorrect `step.Config[\"command\"]`","timestamp":"2026-03-09T00:46:16.288158808Z"}
+{"type":"log","step_name":"update-docs","message":"- Template `openDrawer` includes `run` in the displayed config keys","timestamp":"2026-03-09T00:46:16.288164128Z"}
+{"type":"log","step_name":"update-docs","message":"- Tests added: `TestExtractFilePath`, `TestAPIStepContent_PromptFile`, `TestAPIStepContent_RunCommand`","timestamp":"2026-03-09T00:46:16.288169268Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T00:46:16.288174017Z"}
+{"type":"log","step_name":"update-docs","message":"**USAGE.md updates (3 discrepancies fixed):**","timestamp":"2026-03-09T00:46:16.288177814Z"}
+{"type":"log","step_name":"update-docs","message":"1. `--image` flag renamed to `--base-image` (matching source code)","timestamp":"2026-03-09T00:46:16.28818593Z"}
+{"type":"log","step_name":"update-docs","message":"2. Default base image updated from `ubuntu:24.04` to `cloche-base:latest`","timestamp":"2026-03-09T00:46:16.288194386Z"}
+{"type":"log","step_name":"update-docs","message":"3. Init description expanded to mention `host.cloche`, `scripts/prepare-prompt.sh`, and `version` file","timestamp":"2026-03-09T00:46:16.288199145Z"}
+{"type":"log","step_name":"update-docs","message":"4. Build commands: added `make docker-base` target, noted `docker-build` dependency on it","timestamp":"2026-03-09T00:46:16.288203964Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T00:46:16.288208803Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T00:46:16.569961116Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T00:46:16.572130953Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T00:46:16.572180857Z"}

@@ -1,0 +1,19 @@
+Preparing worktree (checking out 'cloche/develop-quick-flint-f2d4')
+HEAD is now at 969c64a cloche run develop-quick-flint-f2d4: develop (succeeded)
+Current branch cloche/develop-quick-flint-f2d4 is up to date.
+Updating c44d0a5..969c64a
+Fast-forward
+ cmd/cloche/context_test.go         |  89 ++++++++++++++++++++++++
+ cmd/cloche/main.go                 |  68 ++++++++++++++++++
+ docs/USAGE.md                      |  22 ++++++
+ internal/adapters/local/runtime.go |   1 +
+ internal/host/executor.go          |   5 ++
+ internal/host/executor_test.go     |  53 ++++++++++++++
+ internal/runcontext/store.go       |  83 ++++++++++++++++++++++
+ internal/runcontext/store_test.go  | 138 +++++++++++++++++++++++++++++++++++++
+ 8 files changed, 459 insertions(+)
+ create mode 100644 cmd/cloche/context_test.go
+ create mode 100644 internal/runcontext/store.go
+ create mode 100644 internal/runcontext/store_test.go
+Deleted branch cloche/develop-quick-flint-f2d4 (was 969c64a).
+Merged cloche/develop-quick-flint-f2d4 into main (969c64a4ffbb9e64f987df3018dddc543ea8912a)

@@ -1,0 +1,3 @@
+## Task: Host workflows: support agent steps with configurable agent command
+
+Host workflows need to support running agent commands, same as container workflows. Allow configuring the host-level agent with the same syntax as cloche-agent workflows (agent_command, agent_args, fallback chains, etc.). Configure our own host.cloche with a proof of concept using Claude Code.

@@ -1,0 +1,3 @@
+## Task: Sort Runs page: running status on top, then by time
+
+Sort the Runs pages to put running status runs at the top, then sort by time. A running Run will always be sorted above a Run in any other status, regardless of start time. But within running and non-running portions of the list, sort by time, most recent on top.

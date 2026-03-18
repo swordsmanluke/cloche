@@ -1,0 +1,15 @@
+Preparing worktree (checking out 'cloche/develop-proud-pine-3749')
+HEAD is now at add52d3 cloche run develop-proud-pine-3749: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-proud-pine-3749.
+Updating 6bbe890..60b4534
+Fast-forward
+ docs/plans/2026-02-24-self-evolution-design.md | 54 +++++----------
+ internal/evolution/audit.go                    | 96 ++++++++++++++++++--------
+ internal/evolution/collector.go                |  4 +-
+ internal/evolution/evolution_test.go           | 80 +++++++++++++++++----
+ internal/evolution/orchestrator.go             | 11 +--
+ internal/evolution/types.go                    |  2 +-
+ test/integration/evolution_test.go             |  7 +-
+ 7 files changed, 165 insertions(+), 89 deletions(-)
+Deleted branch cloche/develop-proud-pine-3749 (was 60b4534).
+Merged cloche/develop-proud-pine-3749 into main (60b4534e0622bcf3935965df8f28e5e3c7ca340a)

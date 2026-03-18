@@ -1,0 +1,11 @@
+Preparing worktree (checking out 'cloche/develop-brave-elm-e774')
+HEAD is now at 413bef3 cloche run develop-brave-elm-e774: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-brave-elm-e774.
+Updating 258defb..f55f051
+Fast-forward
+ internal/adapters/grpc/server.go             |  1 +
+ internal/adapters/web/handler.go             |  1 +
+ internal/adapters/web/handler_stream_test.go | 55 ++++++++++++++++++++++++++++
+ 3 files changed, 57 insertions(+)
+Deleted branch cloche/develop-brave-elm-e774 (was f55f051).
+Merged cloche/develop-brave-elm-e774 into main (f55f05186d49b82c3f5f91cdac168bcd30fa2bd2)

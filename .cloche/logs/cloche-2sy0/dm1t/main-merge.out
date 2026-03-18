@@ -1,0 +1,11 @@
+Preparing worktree (checking out 'cloche/develop-happy-crane-5c27')
+HEAD is now at e638fd8 cloche run develop-happy-crane-5c27: develop (succeeded)
+Current branch cloche/develop-happy-crane-5c27 is up to date.
+Updating 6ee69e8..e638fd8
+Fast-forward
+ docs/plans/2026-03-06-project-pages-design.md      | 10 +--
+ internal/adapters/web/static/style.css             |  4 +-
+ .../adapters/web/templates/project_detail.html     | 76 +++++++++++-----------
+ 3 files changed, 45 insertions(+), 45 deletions(-)
+Deleted branch cloche/develop-happy-crane-5c27 (was e638fd8).
+Merged cloche/develop-happy-crane-5c27 into main (e638fd80e03a64f734efe72b2313f58f0086d48b)

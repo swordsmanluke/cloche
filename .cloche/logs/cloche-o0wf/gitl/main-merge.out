@@ -1,0 +1,14 @@
+Preparing worktree (checking out 'cloche/develop-calm-vale-27ab')
+HEAD is now at f0455eb cloche run develop-calm-vale-27ab: develop (succeeded)
+Current branch cloche/develop-calm-vale-27ab is up to date.
+Updating dbb0b58..f0455eb
+Fast-forward
+ api/proto/cloche/v1/cloche.proto      |   2 +
+ cmd/cloche/help.go                    |  15 ++-
+ cmd/cloche/main.go                    |  24 +++-
+ docs/USAGE.md                         |   9 +-
+ internal/adapters/grpc/server.go      |  56 ++++++--
+ internal/adapters/grpc/server_test.go | 234 ++++++++++++++++++++++++++++++++++
+ 6 files changed, 320 insertions(+), 20 deletions(-)
+Deleted branch cloche/develop-calm-vale-27ab (was f0455eb).
+Merged cloche/develop-calm-vale-27ab into main (f0455eb99120509623ac21f08a3b2e65ca6dbb64)

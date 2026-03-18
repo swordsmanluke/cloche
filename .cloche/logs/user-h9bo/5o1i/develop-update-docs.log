@@ -1,0 +1,9 @@
+Two changes made to `docs/USAGE.md`:
+
+1. **Removed duplicate `cloche init` section** (was at lines 155-167) — the same subcommand was documented twice in the CLI Reference. The complete version at lines 105-120 remains.
+
+2. **Updated project directory layout** — added `full.log` (unified chronological log) and `llm-<step>.log` (per-step LLM conversation output) to the output directory listing, reflecting the new unified log stream feature.
+
+No changes to `docs/workflows.md` — the DSL syntax is unchanged.
+
+CLOCHE_RESULT:success

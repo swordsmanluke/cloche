@@ -1,0 +1,10 @@
+Preparing worktree (checking out 'cloche/develop-lush-fern')
+HEAD is now at 84930e2 cloche run develop-lush-fern: develop (succeeded)
+Current branch cloche/develop-lush-fern is up to date.
+Updating 4f7135f..84930e2
+Fast-forward
+ internal/adapters/web/handler_test.go           | 24 ++++++++++++++++++++++++
+ internal/adapters/web/templates/run_detail.html | 20 +++++++++++---------
+ 2 files changed, 35 insertions(+), 9 deletions(-)
+Deleted branch cloche/develop-lush-fern (was 84930e2).
+Merged cloche/develop-lush-fern into main (84930e26f71b85152c85b7ee2b9832a8b1956944)

@@ -1,0 +1,13 @@
+Preparing worktree (checking out 'cloche/develop-crisp-hawk-3ca4')
+HEAD is now at cf516e8 cloche run develop-crisp-hawk-3ca4: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-crisp-hawk-3ca4.
+Updating e5f1bc0..5655659
+Fast-forward
+ docs/plans/2026-02-24-self-evolution-design.md |   5 +
+ internal/evolution/population.go               | 315 +++++++++++++++++++++++++
+ internal/evolution/population_test.go          | 240 +++++++++++++++++++
+ 3 files changed, 560 insertions(+)
+ create mode 100644 internal/evolution/population.go
+ create mode 100644 internal/evolution/population_test.go
+Deleted branch cloche/develop-crisp-hawk-3ca4 (was 5655659).
+Merged cloche/develop-crisp-hawk-3ca4 into main (5655659bb156e3b58d7c2b98d9e4ef705044ad67)

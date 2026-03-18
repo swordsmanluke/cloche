@@ -1,0 +1,229 @@
+{"type":"run_title","message":"Task: Add task/issue ID support to cloche run and cloche list","timestamp":"2026-03-14T19:06:23.107830555Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-14T19:06:23.107983143Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Explore this Go codebase to understand:","timestamp":"2026-03-14T19:06:32.203017764Z"}
+{"type":"log","step_name":"implement","message":"1. The `cloche ru...') ---","timestamp":"2026-03-14T19:06:32.203061387Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.go\" | grep -E \"(cmd|inte...') ---","timestamp":"2026-03-14T19:06:33.96797612Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/cmd -type f -name \"*.go\" | sort') ---","timestamp":"2026-03-14T19:06:35.358818645Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-14T19:06:37.827737749Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T19:06:37.973992861Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*.proto') ---","timestamp":"2026-03-14T19:06:38.051985984Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-14T19:06:41.992314108Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/sqlite/store.go') ---","timestamp":"2026-03-14T19:06:42.207490173Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/ports/**/*.go') ---","timestamp":"2026-03-14T19:06:42.312019712Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-14T19:06:46.071287876Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.go\" | xargs grep -l \"cmd...') ---","timestamp":"2026-03-14T19:06:47.01452854Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloched/main.go') ---","timestamp":"2026-03-14T19:06:51.535940534Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/cmd/cloched -type f -name \"*.go\" | head -10') ---","timestamp":"2026-03-14T19:06:51.600315986Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/adapters -type f -name \"*.go\" | ...') ---","timestamp":"2026-03-14T19:06:56.43707809Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-14T19:06:59.83596191Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T19:07:06.169156436Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"cloche run\\|cloche list\" /workspace/cmd/cloche/h...') ---","timestamp":"2026-03-14T19:07:06.32982768Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -r \"issue\\|IssueID\\|issue_id\" /workspace --include=\"...') ---","timestamp":"2026-03-14T19:07:12.665170211Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('sed -n '262,350p' /workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T19:07:19.72479753Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-14T19:07:21.918443121Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('sed -n '18,26p' /workspace/internal/domain/run.go') ---","timestamp":"2026-03-14T19:07:27.947322109Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -name \"*test.go\" -type f | xargs grep -l ...') ---","timestamp":"2026-03-14T19:07:31.375221879Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -A 30 \"TestListRuns\\|func.*ListRuns\" /workspace/inte...') ---","timestamp":"2026-03-14T19:07:35.202932892Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"type Run struct\" /workspace/internal/domain/run....') ---","timestamp":"2026-03-14T19:07:41.471913768Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -B5 -A15 \"func (s \\*ClocheServer) RunWorkflow\" /work...') ---","timestamp":"2026-03-14T19:07:48.141800318Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('sed -n '25,32p' /workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-14T19:07:54.024853005Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('sed -n '163,221p' /workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T19:08:01.661993113Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"issue\\|task\" /workspace/cmd/cloche/main.go | gre...') ---","timestamp":"2026-03-14T19:08:07.981408106Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -path \"*/api/clochepb/*.pb.go\" 2\u003e/dev/null') ---","timestamp":"2026-03-14T19:08:14.331595518Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -A 30 \"type RunSummary struct\" /workspace/api/cloche...') ---","timestamp":"2026-03-14T19:08:20.329868369Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('wc -l /workspace/cmd/cloche/main.go /workspace/internal/a...') ---","timestamp":"2026-03-14T19:08:22.530716672Z"}
+{"type":"log","step_name":"implement","message":"Good, the domain already has `TaskID` support. I need to:","timestamp":"2026-03-14T19:08:48.78228108Z"}
+{"type":"log","step_name":"implement","message":"1. Add `issue_id` to proto `RunWorkflowRequest` and `task_id` to `RunSummary`","timestamp":"2026-03-14T19:08:48.782306629Z"}
+{"type":"log","step_name":"implement","message":"2. Add `--issue/-i` flag to `cloche run`","timestamp":"2026-03-14T19:08:48.782315125Z"}
+{"type":"log","step_name":"implement","message":"3. Wire TaskID through gRPC server","timestamp":"2026-03-14T19:08:48.782319443Z"}
+{"type":"log","step_name":"implement","message":"4. Add Task ID column to `cloche list` and fix alignment","timestamp":"2026-03-14T19:08:48.7823231Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:08:48.782326546Z"}
+{"type":"log","step_name":"implement","message":"Let me read the key files.","timestamp":"2026-03-14T19:08:48.782329833Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T19:08:49.429022603Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-14T19:08:50.167167258Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-14T19:08:50.368806215Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T19:08:50.469625623Z"}
+{"type":"log","step_name":"implement","message":"Now let me check the generated protobuf Go code and any existing tests.","timestamp":"2026-03-14T19:08:54.317647538Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('api/clochepb/*.go') ---","timestamp":"2026-03-14T19:08:54.787127137Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*_test.go') ---","timestamp":"2026-03-14T19:08:55.299306359Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('RunSummary struct') ---","timestamp":"2026-03-14T19:08:59.388352083Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('RunWorkflowRequest struct') ---","timestamp":"2026-03-14T19:08:59.650326393Z"}
+{"type":"log","step_name":"implement","message":"I need to add fields to both the proto file and the generated Go code. Let me check if there's a protoc generation setup.","timestamp":"2026-03-14T19:09:04.177897385Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('protoc|protobuf|proto_gen') ---","timestamp":"2026-03-14T19:09:04.656597032Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('protoc') ---","timestamp":"2026-03-14T19:09:05.030151838Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('protoc') ---","timestamp":"2026-03-14T19:09:08.121951684Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('which protoc 2\u003e/dev/null \u0026\u0026 protoc --version 2\u003e/dev/null ...') ---","timestamp":"2026-03-14T19:09:10.969838224Z"}
+{"type":"log","step_name":"implement","message":"No protoc available, so I'll need to manually update both the proto file and the generated Go code. Let me read the full generated pb.go to understand the structure for adding new fields.","timestamp":"2026-03-14T19:09:14.250234959Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/clochepb/cloche.pb.go') ---","timestamp":"2026-03-14T19:09:14.327957913Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func \\(x \\*RunWorkflowRequest\\) Get') ---","timestamp":"2026-03-14T19:09:18.827580603Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func \\(x \\*RunSummary\\) Get') ---","timestamp":"2026-03-14T19:09:19.614292033Z"}
+{"type":"log","step_name":"implement","message":"Now I have everything I need. Let me implement all the changes. I'll work on:","timestamp":"2026-03-14T19:09:25.403246806Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:09:25.403272725Z"}
+{"type":"log","step_name":"implement","message":"1. Proto file: add `issue_id` to `RunWorkflowRequest`, `task_id` to `RunSummary`","timestamp":"2026-03-14T19:09:25.403277985Z"}
+{"type":"log","step_name":"implement","message":"2. Generated Go code: add fields + getters to both structs","timestamp":"2026-03-14T19:09:25.403287333Z"}
+{"type":"log","step_name":"implement","message":"3. CLI `cloche run`: add `--issue/-i` flag","timestamp":"2026-03-14T19:09:25.403292222Z"}
+{"type":"log","step_name":"implement","message":"4. CLI `cloche list`: add Task ID column + fix alignment with tabwriter","timestamp":"2026-03-14T19:09:25.40329662Z"}
+{"type":"log","step_name":"implement","message":"5. gRPC server: wire TaskID through","timestamp":"2026-03-14T19:09:25.403302351Z"}
+{"type":"log","step_name":"implement","message":"6. Help text: update `cloche run` docs","timestamp":"2026-03-14T19:09:25.403306499Z"}
+{"type":"log","step_name":"implement","message":"7. Tests","timestamp":"2026-03-14T19:09:25.403310496Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-14T19:09:27.206631529Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-14T19:09:29.123689094Z"}
+{"type":"log","step_name":"implement","message":"Now update the generated Go code. Add `IssueId` field to `RunWorkflowRequest` and `TaskId` field to `RunSummary`.","timestamp":"2026-03-14T19:09:31.412945592Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/api/clochepb/cloche.pb.go') ---","timestamp":"2026-03-14T19:09:37.229074851Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/api/clochepb/cloche.pb.go') ---","timestamp":"2026-03-14T19:09:38.547267338Z"}
+{"type":"log","step_name":"implement","message":"Now add `TaskId` to `RunSummary`:","timestamp":"2026-03-14T19:09:42.580469829Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/api/clochepb/cloche.pb.go') ---","timestamp":"2026-03-14T19:09:49.740046537Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/api/clochepb/cloche.pb.go') ---","timestamp":"2026-03-14T19:09:51.298896963Z"}
+{"type":"log","step_name":"implement","message":"Now update the CLI and server code. First, `cmdRun` to add `--issue/-i` flag:","timestamp":"2026-03-14T19:09:54.178491956Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T19:10:03.252632156Z"}
+{"type":"log","step_name":"implement","message":"Now add `IssueId` to the RunWorkflow request:","timestamp":"2026-03-14T19:10:05.892101599Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T19:10:07.631703031Z"}
+{"type":"log","step_name":"implement","message":"Now update `cmdList` to use tabwriter and show Task ID column:","timestamp":"2026-03-14T19:10:09.947131601Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T19:10:11.032748464Z"}
+{"type":"log","step_name":"implement","message":"Now replace the list output formatting:","timestamp":"2026-03-14T19:10:15.286759463Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T19:10:21.19962775Z"}
+{"type":"log","step_name":"implement","message":"Now update the gRPC server to wire TaskID through. First in `RunWorkflow`:","timestamp":"2026-03-14T19:10:23.432275273Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-14T19:10:25.728220725Z"}
+{"type":"log","step_name":"implement","message":"Now add TaskId to the RunSummary in ListRuns:","timestamp":"2026-03-14T19:10:28.528501774Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-14T19:10:31.702976577Z"}
+{"type":"log","step_name":"implement","message":"Also set TaskID for host workflows in `runHostWorkflow`:","timestamp":"2026-03-14T19:10:34.598546266Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-14T19:10:35.034903927Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-14T19:10:42.230925973Z"}
+{"type":"log","step_name":"implement","message":"Now update the help text for `cloche run`:","timestamp":"2026-03-14T19:10:46.633615798Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T19:11:01.080038203Z"}
+{"type":"log","step_name":"implement","message":"Update the list help text to mention task ID in output columns:","timestamp":"2026-03-14T19:11:03.607762188Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T19:11:05.179792578Z"}
+{"type":"log","step_name":"implement","message":"Now let me run the tests to see if everything compiles and passes:","timestamp":"2026-03-14T19:11:07.534283563Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go build ./... 2\u003e\u00261') ---","timestamp":"2026-03-14T19:11:07.874749178Z"}
+{"type":"log","step_name":"implement","message":"Build succeeds. Now run tests:","timestamp":"2026-03-14T19:11:35.474154835Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-14T19:11:36.201444566Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Now let me write tests for the new functionality. Let me check existing test patterns:","timestamp":"2026-03-14T19:12:02.610209179Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/help_test.go') ---","timestamp":"2026-03-14T19:12:02.840121635Z"}
+{"type":"log","step_name":"implement","message":"Let me look at the grpc server tests to understand the pattern:","timestamp":"2026-03-14T19:12:05.627676581Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func Test.*List|func Test.*Run') ---","timestamp":"2026-03-14T19:12:06.211446569Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-14T19:12:08.711687784Z"}
+{"type":"log","step_name":"implement","message":"Now let me add tests for the new functionality:","timestamp":"2026-03-14T19:12:10.720740395Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-14T19:12:11.38168955Z"}
+{"type":"log","step_name":"implement","message":"Now I have the test pattern. Let me add tests for the issue ID feature:","timestamp":"2026-03-14T19:12:14.564535386Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-14T19:12:15.225209918Z"}
+{"type":"log","step_name":"implement","message":"Now I'll add two tests: one for RunWorkflow with IssueId, and one for ListRuns including TaskId:","timestamp":"2026-03-14T19:12:18.422404696Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-14T19:12:26.605928522Z"}
+{"type":"log","step_name":"implement","message":"Now let me also add a test for the help text to ensure the `--issue` flag is documented:","timestamp":"2026-03-14T19:12:29.182838373Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/help_test.go') ---","timestamp":"2026-03-14T19:12:33.193075255Z"}
+{"type":"log","step_name":"implement","message":"Now run all tests:","timestamp":"2026-03-14T19:12:35.821851608Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-14T19:12:36.708885623Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-14T19:13:00.34869336Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.348716484Z"}
+{"type":"log","step_name":"implement","message":"**1. Added `--issue/-i` flag to `cloche run`** (`cmd/cloche/main.go`):","timestamp":"2026-03-14T19:13:00.348720501Z"}
+{"type":"log","step_name":"implement","message":"- New flag parsing for `--issue`/`-i` in `cmdRun()`","timestamp":"2026-03-14T19:13:00.348727565Z"}
+{"type":"log","step_name":"implement","message":"- Passed as `IssueId` in the `RunWorkflowRequest`","timestamp":"2026-03-14T19:13:00.34873543Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.348739036Z"}
+{"type":"log","step_name":"implement","message":"**2. Added Task ID column to `cloche list`** (`cmd/cloche/main.go`):","timestamp":"2026-03-14T19:13:00.348745699Z"}
+{"type":"log","step_name":"implement","message":"- Replaced manual `fmt.Sprintf` formatting with `tabwriter` for proper column alignment","timestamp":"2026-03-14T19:13:00.348752953Z"}
+{"type":"log","step_name":"implement","message":"- Added header row: `RUN ID | WORKFLOW | STATE | TYPE | TASK ID | TITLE | CONTAINER | ERROR`","timestamp":"2026-03-14T19:13:00.34875657Z"}
+{"type":"log","step_name":"implement","message":"- Task ID column populated from `RunSummary.TaskId`","timestamp":"2026-03-14T19:13:00.348769845Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.348773341Z"}
+{"type":"log","step_name":"implement","message":"**3. Fixed table column alignment** (`cmd/cloche/main.go`):","timestamp":"2026-03-14T19:13:00.348776577Z"}
+{"type":"log","step_name":"implement","message":"- Switched from hardcoded `%-Ns` format strings to `text/tabwriter` which auto-aligns all columns","timestamp":"2026-03-14T19:13:00.348781356Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.348785244Z"}
+{"type":"log","step_name":"implement","message":"**4. Proto + generated code** (`api/proto/cloche/v1/cloche.proto`, `api/clochepb/cloche.pb.go`):","timestamp":"2026-03-14T19:13:00.34878852Z"}
+{"type":"log","step_name":"implement","message":"- Added `issue_id` field (7) to `RunWorkflowRequest`","timestamp":"2026-03-14T19:13:00.348792087Z"}
+{"type":"log","step_name":"implement","message":"- Added `task_id` field (10) to `RunSummary`","timestamp":"2026-03-14T19:13:00.348799631Z"}
+{"type":"log","step_name":"implement","message":"- Added corresponding Go struct fields and getter methods","timestamp":"2026-03-14T19:13:00.348803228Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.348810341Z"}
+{"type":"log","step_name":"implement","message":"**5. gRPC server wiring** (`internal/adapters/grpc/server.go`):","timestamp":"2026-03-14T19:13:00.348813748Z"}
+{"type":"log","step_name":"implement","message":"- `RunWorkflow`: sets `run.TaskID = req.IssueId` for container workflows","timestamp":"2026-03-14T19:13:00.348817294Z"}
+{"type":"log","step_name":"implement","message":"- `runHostWorkflow`: passes `TaskID` to host runner","timestamp":"2026-03-14T19:13:00.348824308Z"}
+{"type":"log","step_name":"implement","message":"- `ListRuns`: includes `TaskId` in `RunSummary` response","timestamp":"2026-03-14T19:13:00.348831591Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.348836962Z"}
+{"type":"log","step_name":"implement","message":"**6. Help text** (`cmd/cloche/help.go`):","timestamp":"2026-03-14T19:13:00.34884126Z"}
+{"type":"log","step_name":"implement","message":"- Updated `cloche run` help with `--issue` flag docs and example","timestamp":"2026-03-14T19:13:00.348855968Z"}
+{"type":"log","step_name":"implement","message":"- Updated `cloche list` help to mention task ID column","timestamp":"2026-03-14T19:13:00.348869413Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.348874422Z"}
+{"type":"log","step_name":"implement","message":"**7. Tests**:","timestamp":"2026-03-14T19:13:00.348877759Z"}
+{"type":"log","step_name":"implement","message":"- `TestServer_RunWorkflow_WithIssueId` — verifies issue ID persists through run","timestamp":"2026-03-14T19:13:00.348881035Z"}
+{"type":"log","step_name":"implement","message":"- `TestServer_ListRuns_IncludesTaskId` — verifies task ID appears in list response","timestamp":"2026-03-14T19:13:00.348884792Z"}
+{"type":"log","step_name":"implement","message":"- `TestRunHelpIncludesIssueFlag` — verifies help documentation","timestamp":"2026-03-14T19:13:00.348892366Z"}
+{"type":"log","step_name":"implement","message":"- `TestListHelpIncludesTaskIdColumn` — verifies help documentation","timestamp":"2026-03-14T19:13:00.348896274Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.348900041Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T19:13:00.348903267Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-14T19:13:00.388113599Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.388132655Z"}
+{"type":"log","step_name":"implement","message":"**1. Added `--issue/-i` flag to `cloche run`** (`cmd/cloche/main.go`):","timestamp":"2026-03-14T19:13:00.388142003Z"}
+{"type":"log","step_name":"implement","message":"- New flag parsing for `--issue`/`-i` in `cmdRun()`","timestamp":"2026-03-14T19:13:00.388147012Z"}
+{"type":"log","step_name":"implement","message":"- Passed as `IssueId` in the `RunWorkflowRequest`","timestamp":"2026-03-14T19:13:00.388151551Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.388154997Z"}
+{"type":"log","step_name":"implement","message":"**2. Added Task ID column to `cloche list`** (`cmd/cloche/main.go`):","timestamp":"2026-03-14T19:13:00.388172901Z"}
+{"type":"log","step_name":"implement","message":"- Replaced manual `fmt.Sprintf` formatting with `tabwriter` for proper column alignment","timestamp":"2026-03-14T19:13:00.388179965Z"}
+{"type":"log","step_name":"implement","message":"- Added header row: `RUN ID | WORKFLOW | STATE | TYPE | TASK ID | TITLE | CONTAINER | ERROR`","timestamp":"2026-03-14T19:13:00.388183602Z"}
+{"type":"log","step_name":"implement","message":"- Task ID column populated from `RunSummary.TaskId`","timestamp":"2026-03-14T19:13:00.388190525Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.388194051Z"}
+{"type":"log","step_name":"implement","message":"**3. Fixed table column alignment** (`cmd/cloche/main.go`):","timestamp":"2026-03-14T19:13:00.388197197Z"}
+{"type":"log","step_name":"implement","message":"- Switched from hardcoded `%-Ns` format strings to `text/tabwriter` which auto-aligns all columns","timestamp":"2026-03-14T19:13:00.388201515Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.388216364Z"}
+{"type":"log","step_name":"implement","message":"**4. Proto + generated code** (`api/proto/cloche/v1/cloche.proto`, `api/clochepb/cloche.pb.go`):","timestamp":"2026-03-14T19:13:00.388222205Z"}
+{"type":"log","step_name":"implement","message":"- Added `issue_id` field (7) to `RunWorkflowRequest`","timestamp":"2026-03-14T19:13:00.388226803Z"}
+{"type":"log","step_name":"implement","message":"- Added `task_id` field (10) to `RunSummary`","timestamp":"2026-03-14T19:13:00.388231763Z"}
+{"type":"log","step_name":"implement","message":"- Added corresponding Go struct fields and getter methods","timestamp":"2026-03-14T19:13:00.388235299Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.388238896Z"}
+{"type":"log","step_name":"implement","message":"**5. gRPC server wiring** (`internal/adapters/grpc/server.go`):","timestamp":"2026-03-14T19:13:00.388242072Z"}
+{"type":"log","step_name":"implement","message":"- `RunWorkflow`: sets `run.TaskID = req.IssueId` for container workflows","timestamp":"2026-03-14T19:13:00.388245499Z"}
+{"type":"log","step_name":"implement","message":"- `runHostWorkflow`: passes `TaskID` to host runner","timestamp":"2026-03-14T19:13:00.388249065Z"}
+{"type":"log","step_name":"implement","message":"- `ListRuns`: includes `TaskId` in `RunSummary` response","timestamp":"2026-03-14T19:13:00.388252602Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.388260467Z"}
+{"type":"log","step_name":"implement","message":"**6. Help text** (`cmd/cloche/help.go`):","timestamp":"2026-03-14T19:13:00.388263763Z"}
+{"type":"log","step_name":"implement","message":"- Updated `cloche run` help with `--issue` flag docs and example","timestamp":"2026-03-14T19:13:00.38826726Z"}
+{"type":"log","step_name":"implement","message":"- Updated `cloche list` help to mention task ID column","timestamp":"2026-03-14T19:13:00.388270756Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.388274223Z"}
+{"type":"log","step_name":"implement","message":"**7. Tests**:","timestamp":"2026-03-14T19:13:00.388277339Z"}
+{"type":"log","step_name":"implement","message":"- `TestServer_RunWorkflow_WithIssueId` — verifies issue ID persists through run","timestamp":"2026-03-14T19:13:00.388280645Z"}
+{"type":"log","step_name":"implement","message":"- `TestServer_ListRuns_IncludesTaskId` — verifies task ID appears in list response","timestamp":"2026-03-14T19:13:00.388285615Z"}
+{"type":"log","step_name":"implement","message":"- `TestRunHelpIncludesIssueFlag` — verifies help documentation","timestamp":"2026-03-14T19:13:00.388290434Z"}
+{"type":"log","step_name":"implement","message":"- `TestListHelpIncludesTaskIdColumn` — verifies help documentation","timestamp":"2026-03-14T19:13:00.388295153Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:13:00.388299902Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T19:13:00.690453338Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-14T19:13:00.723802882Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-14T19:13:00.72695764Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-14T19:13:00.984590358Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t10.051s","timestamp":"2026-03-14T19:13:11.341649497Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-14T19:13:11.341678943Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-14T19:13:11.341683772Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-14T19:13:11.341688812Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-14T19:13:11.341692589Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-14T19:13:11.34169825Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-14T19:13:11.341702959Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-14T19:13:11.341706646Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-14T19:13:11.341710022Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-14T19:13:11.341713468Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-14T19:13:11.341716865Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-14T19:13:11.341720211Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-14T19:13:11.341724179Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-14T19:13:11.341727585Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-14T19:13:11.341730992Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-14T19:13:11.341747844Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-14T19:13:11.341758934Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-14T19:13:11.341763403Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-14T19:13:11.341767851Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-14T19:13:11.34177229Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-14T19:13:11.341776778Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/version\t(cached)","timestamp":"2026-03-14T19:13:11.341780996Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-14T19:13:11.341785244Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-14T19:13:11.395465342Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-14T19:13:11.398656619Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('git diff HEAD --stat') ---","timestamp":"2026-03-14T19:13:17.251846885Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('docs/**/*.md') ---","timestamp":"2026-03-14T19:13:17.348284454Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-14T19:13:19.477338797Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T19:13:19.731898487Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T19:13:19.837919487Z"}
+{"type":"log","step_name":"update-docs","message":"The docs for `cloche list` are already up to date (include `--issue` flag and Task ID column). The only drift is in the `cloche run` section — it's missing the new `--issue`/`-i` flag.","timestamp":"2026-03-14T19:13:36.812776262Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-14T19:13:40.497186903Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me verify the edit looks correct.","timestamp":"2026-03-14T19:13:42.760010169Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-14T19:13:43.247927857Z"}
+{"type":"log","step_name":"update-docs","message":"Documentation updated. The only drift was the missing `--issue ID`/`-i` flag in the `cloche run` CLI reference — now added. The `cloche list` section was already up to date with `--issue` filtering and Task ID column documentation.","timestamp":"2026-03-14T19:13:47.10989917Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T19:13:47.109922674Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T19:13:47.109926602Z"}
+{"type":"log","step_name":"update-docs","message":"Documentation updated. The only drift was the missing `--issue ID`/`-i` flag in the `cloche run` CLI reference — now added. The `cloche list` section was already up to date with `--issue` filtering and Task ID column documentation.","timestamp":"2026-03-14T19:13:47.128035531Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T19:13:47.128047484Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T19:13:47.48287999Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-14T19:13:47.504777788Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-14T19:13:47.511042651Z"}

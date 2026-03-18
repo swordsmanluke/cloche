@@ -1,0 +1,7 @@
+[
+  {
+    "id": "cloche-2d3",
+    "title": "Stream Claude logs live instead of batching after step completion",
+    "description": "Claude logs still aren't streaming - they only arrive after the step finishes. We need to be able to tail the live claude output to see that it's on-task."
+  }
+]

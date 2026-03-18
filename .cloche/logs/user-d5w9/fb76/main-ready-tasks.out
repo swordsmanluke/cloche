@@ -1,0 +1,19 @@
+[
+  {
+    "id": "cloche-zpf",
+    "title": "Auto-filter cloche list by the project for the cwd",
+    "description": "The 'cloche list' command currently shows all runs across all projects. It should auto-detect the current working directory's project and filter results to only show runs for that project by default. Add a --all flag to show runs across all projects when needed.",
+    "status": "open",
+    "priority": 2,
+    "issue_type": "task",
+    "owner": "lucas@perfectlunacy.com",
+    "created_at": "2026-03-11T15:21:28.607810034-07:00",
+    "created_by": "lucas",
+    "updated_at": "2026-03-12T08:27:16.009745671-07:00",
+    "labels": [
+      "cli"
+    ],
+    "dependency_count": 0,
+    "dependent_count": 0
+  }
+]

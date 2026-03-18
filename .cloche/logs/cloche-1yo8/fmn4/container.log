@@ -1,0 +1,108 @@
+{"type":"run_title","message":"Task: Evolution: CommandLLMClient produces conversational responses instead of structured output","timestamp":"2026-03-15T16:07:26.178566038Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-15T16:07:26.178817443Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/llmclient.go') ---","timestamp":"2026-03-15T16:07:32.445915848Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/evolution/*') ---","timestamp":"2026-03-15T16:07:32.595162464Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/types.go') ---","timestamp":"2026-03-15T16:07:34.588259866Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/curator.go') ---","timestamp":"2026-03-15T16:07:35.060318842Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:07:35.178966996Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('CommandLLMClient') ---","timestamp":"2026-03-15T16:07:40.416172334Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloched/main.go') ---","timestamp":"2026-03-15T16:07:44.759102903Z"}
+{"type":"log","step_name":"implement","message":"Now I have the full picture. The `CommandLLMClient` is constructed with just `Command: llmCmd` (no `Args`). I need to:","timestamp":"2026-03-15T16:07:48.950607367Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:07:48.950622907Z"}
+{"type":"log","step_name":"implement","message":"1. Use `-p` (print mode) for non-interactive output","timestamp":"2026-03-15T16:07:48.950625662Z"}
+{"type":"log","step_name":"implement","message":"2. Pass `--system-prompt` flag to separate system from user prompts  ","timestamp":"2026-03-15T16:07:48.950628277Z"}
+{"type":"log","step_name":"implement","message":"3. Send only the user prompt via stdin","timestamp":"2026-03-15T16:07:48.950630942Z"}
+{"type":"log","step_name":"implement","message":"4. Update tests","timestamp":"2026-03-15T16:07:48.950633086Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/internal/evolution/llmclient.go') ---","timestamp":"2026-03-15T16:07:56.055045429Z"}
+{"type":"log","step_name":"implement","message":"Now update the tests. The existing `TestCommandLLMClient` uses `cat` which just echoes stdin — it needs updating since now only `userPrompt` goes to stdin, and the args include the flags. I'll write a proper test using a shell script to verify the flags and stdin content.","timestamp":"2026-03-15T16:08:01.343942453Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:08:01.760988629Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:08:16.798402046Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./internal/evolution/ 2\u003e\u00261') ---","timestamp":"2026-03-15T16:08:20.012683278Z"}
+{"type":"log","step_name":"implement","message":"All evolution tests pass. Now let me run the full test suite.","timestamp":"2026-03-15T16:08:40.317942146Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-15T16:08:40.878122048Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-15T16:09:39.278135425Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:09:39.27821736Z"}
+{"type":"log","step_name":"implement","message":"**`internal/evolution/llmclient.go`** — Three fixes to `CommandLLMClient.Complete`:","timestamp":"2026-03-15T16:09:39.278222319Z"}
+{"type":"log","step_name":"implement","message":"1. Added `-p` flag for print/non-interactive mode, so the `claude` command returns raw output without tool-use prompts or commentary","timestamp":"2026-03-15T16:09:39.27822835Z"}
+{"type":"log","step_name":"implement","message":"2. Added `--system-prompt` flag to pass the system prompt separately, so the LLM properly distinguishes system instructions from user content","timestamp":"2026-03-15T16:09:39.27823345Z"}
+{"type":"log","step_name":"implement","message":"3. Added `--output-format text` to get plain text output without JSON wrapping","timestamp":"2026-03-15T16:09:39.27823866Z"}
+{"type":"log","step_name":"implement","message":"4. Only the user prompt is now sent via stdin (previously both were concatenated)","timestamp":"2026-03-15T16:09:39.278243699Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:09:39.278255622Z"}
+{"type":"log","step_name":"implement","message":"**`internal/evolution/evolution_test.go`** — Replaced the old `TestCommandLLMClient` with four targeted tests:","timestamp":"2026-03-15T16:09:39.278257846Z"}
+{"type":"log","step_name":"implement","message":"- `TestCommandLLMClientPrintMode` — verifies `-p`, `--system-prompt`, `--output-format text` flags and that stdin contains only the user prompt","timestamp":"2026-03-15T16:09:39.278263346Z"}
+{"type":"log","step_name":"implement","message":"- `TestCommandLLMClientEmptySystemPrompt` — verifies `--system-prompt` is omitted when empty","timestamp":"2026-03-15T16:09:39.278266092Z"}
+{"type":"log","step_name":"implement","message":"- `TestCommandLLMClientExtraArgs` — verifies pre-existing args are preserved","timestamp":"2026-03-15T16:09:39.278271492Z"}
+{"type":"log","step_name":"implement","message":"- `TestCommandLLMClientDoesNotMutateArgs` — verifies the original `Args` slice isn't modified between calls","timestamp":"2026-03-15T16:09:39.278274047Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:09:39.278276501Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:09:39.278278505Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-15T16:09:39.293536994Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:09:39.293604251Z"}
+{"type":"log","step_name":"implement","message":"**`internal/evolution/llmclient.go`** — Three fixes to `CommandLLMClient.Complete`:","timestamp":"2026-03-15T16:09:39.293607698Z"}
+{"type":"log","step_name":"implement","message":"1. Added `-p` flag for print/non-interactive mode, so the `claude` command returns raw output without tool-use prompts or commentary","timestamp":"2026-03-15T16:09:39.293610854Z"}
+{"type":"log","step_name":"implement","message":"2. Added `--system-prompt` flag to pass the system prompt separately, so the LLM properly distinguishes system instructions from user content","timestamp":"2026-03-15T16:09:39.29361387Z"}
+{"type":"log","step_name":"implement","message":"3. Added `--output-format text` to get plain text output without JSON wrapping","timestamp":"2026-03-15T16:09:39.293617156Z"}
+{"type":"log","step_name":"implement","message":"4. Only the user prompt is now sent via stdin (previously both were concatenated)","timestamp":"2026-03-15T16:09:39.293619961Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:09:39.293622736Z"}
+{"type":"log","step_name":"implement","message":"**`internal/evolution/evolution_test.go`** — Replaced the old `TestCommandLLMClient` with four targeted tests:","timestamp":"2026-03-15T16:09:39.293624981Z"}
+{"type":"log","step_name":"implement","message":"- `TestCommandLLMClientPrintMode` — verifies `-p`, `--system-prompt`, `--output-format text` flags and that stdin contains only the user prompt","timestamp":"2026-03-15T16:09:39.293627586Z"}
+{"type":"log","step_name":"implement","message":"- `TestCommandLLMClientEmptySystemPrompt` — verifies `--system-prompt` is omitted when empty","timestamp":"2026-03-15T16:09:39.293630351Z"}
+{"type":"log","step_name":"implement","message":"- `TestCommandLLMClientExtraArgs` — verifies pre-existing args are preserved","timestamp":"2026-03-15T16:09:39.293633126Z"}
+{"type":"log","step_name":"implement","message":"- `TestCommandLLMClientDoesNotMutateArgs` — verifies the original `Args` slice isn't modified between calls","timestamp":"2026-03-15T16:09:39.293636172Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:09:39.293639328Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:09:39.535086858Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-15T16:09:39.668393547Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-15T16:09:39.671748255Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-15T16:09:40.138556171Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t10.052s","timestamp":"2026-03-15T16:09:50.615267213Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-15T16:09:50.615296679Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-15T16:09:50.615299284Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-15T16:09:50.615301428Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-15T16:09:50.615303602Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-15T16:09:50.61530782Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-15T16:09:50.615312609Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-15T16:09:50.615314613Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-15T16:09:50.615316457Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-15T16:09:50.61531828Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-15T16:09:50.615320154Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-15T16:09:50.615322127Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-15T16:09:50.615324071Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-15T16:09:50.615325924Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-15T16:09:50.615327768Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-15T16:09:50.615331936Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-15T16:09:50.615333889Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-15T16:09:50.615335773Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-15T16:09:50.615338568Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-15T16:09:50.615340512Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-15T16:09:50.615342375Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/version\t(cached)","timestamp":"2026-03-15T16:09:50.615344269Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-15T16:09:50.615346253Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-15T16:09:50.655190344Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-15T16:09:50.658846232Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:09:55.341163195Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:09:55.34118175Z"}
+{"type":"log","step_name":"update-docs","message":"I'll start by reading the current source code changes and relevant documentation.","timestamp":"2026-03-15T16:09:55.341185968Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/llmclient.go') ---","timestamp":"2026-03-15T16:09:55.794891899Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:09:56.200452904Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('docs/**/*.md') ---","timestamp":"2026-03-15T16:09:56.212120649Z"}
+{"type":"log","step_name":"update-docs","message":"Let me check the relevant evolution documentation for any references to how the LLM client works.","timestamp":"2026-03-15T16:10:00.555113082Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('CommandLLMClient|llmclient|LLM.*command|stdin.*prompt|sys...') ---","timestamp":"2026-03-15T16:10:01.836334909Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('evolution|self-evolv|evolve') ---","timestamp":"2026-03-15T16:10:02.700890738Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('CommandLLMClient|llmclient|stdin.*prompt|concatenat|syste...') ---","timestamp":"2026-03-15T16:10:07.379583786Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('CommandLLMClient|llmclient|stdin.*prompt|LLM.*client') ---","timestamp":"2026-03-15T16:10:08.108165656Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-implement...') ---","timestamp":"2026-03-15T16:10:13.222074245Z"}
+{"type":"log","step_name":"update-docs","message":"The implementation doc at line 1780 says: \"The `CommandLLMClient` takes a system prompt and user prompt, combines them, and pipes to the command via stdin.\" This is now outdated — the code now uses `-p` mode, `--system-prompt` flag, and `--output-format text` instead of concatenating prompts.","timestamp":"2026-03-15T16:10:17.648131442Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:10:17.648162351Z"}
+{"type":"log","step_name":"update-docs","message":"Let me update that section.","timestamp":"2026-03-15T16:10:17.648166729Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/plans/2026-02-24-self-evolution-implement...') ---","timestamp":"2026-03-15T16:10:24.361396383Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me verify the edit looks correct.","timestamp":"2026-03-15T16:10:27.069909749Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-implement...') ---","timestamp":"2026-03-15T16:10:27.620813334Z"}
+{"type":"log","step_name":"update-docs","message":"The edit is correct. Let me also check if there are any other docs that reference the old concatenation behavior.","timestamp":"2026-03-15T16:10:30.85109795Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('combines them.*stdin|concatenat.*prompt|newline.*system.*...') ---","timestamp":"2026-03-15T16:10:31.929814474Z"}
+{"type":"log","step_name":"update-docs","message":"No other docs reference the old behavior. The only documentation that needed updating was the implementation plan's Task 17 section, which now accurately reflects that `CommandLLMClient` uses `-p` (print mode), `--system-prompt` for system prompt separation, and `--output-format text` — instead of concatenating prompts via stdin.","timestamp":"2026-03-15T16:10:36.033319142Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:10:36.033335833Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:10:36.033338067Z"}
+{"type":"log","step_name":"update-docs","message":"No other docs reference the old behavior. The only documentation that needed updating was the implementation plan's Task 17 section, which now accurately reflects that `CommandLLMClient` uses `-p` (print mode), `--system-prompt` for system prompt separation, and `--output-format text` — instead of concatenating prompts via stdin.","timestamp":"2026-03-15T16:10:36.105761264Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:10:36.105788004Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:10:36.350733253Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-15T16:10:36.363132941Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-15T16:10:36.372873505Z"}

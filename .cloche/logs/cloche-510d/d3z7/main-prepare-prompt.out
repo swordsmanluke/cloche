@@ -1,0 +1,6 @@
+## Task: Add run stats to cloche status: total runs and workflow velocity EMA
+
+Add statistics to `cloche status` output, calculated per-project (or across all projects in `--all` mode):
+
+1. **Total number of workflow runs** — simple count of all runs for the project.
+2. **Workflow velocity** — exponential moving average (EMA) over the runtime of recent runs, grouped by workflow name. The window is the greater of: the last 100 runs, or all runs in the last 24 hours.

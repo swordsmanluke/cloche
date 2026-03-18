@@ -1,0 +1,3 @@
+## Task: Auto-filter cloche list by the project for the cwd
+
+The 'cloche list' command currently shows all runs across all projects. It should auto-detect the current working directory's project and filter results to only show runs for that project by default. Add a --all flag to show runs across all projects when needed.

@@ -1,0 +1,15 @@
+Preparing worktree (checking out 'cloche/develop-steady-lark-1845')
+HEAD is now at 6fe22c6 cloche run develop-steady-lark-1845: develop (succeeded)
+Current branch cloche/develop-steady-lark-1845 is up to date.
+Updating d199922..6fe22c6
+Fast-forward
+ cmd/cloche/help.go          |  33 ++++
+ cmd/cloche/main.go          |   7 +
+ cmd/cloche/validate.go      | 374 +++++++++++++++++++++++++++++++++++++++++
+ cmd/cloche/validate_test.go | 394 ++++++++++++++++++++++++++++++++++++++++++++
+ docs/USAGE.md               |  22 +++
+ 5 files changed, 830 insertions(+)
+ create mode 100644 cmd/cloche/validate.go
+ create mode 100644 cmd/cloche/validate_test.go
+Deleted branch cloche/develop-steady-lark-1845 (was 6fe22c6).
+Merged cloche/develop-steady-lark-1845 into main (6fe22c6d8c55703cc55393580b5d42ba887c6881)

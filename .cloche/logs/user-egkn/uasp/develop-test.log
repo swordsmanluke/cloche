@@ -1,0 +1,22 @@
+?   	github.com/cloche-dev/cloche/api/clochepb	[no test files]
+ok  	github.com/cloche-dev/cloche/cmd/cloche	0.033s
+?   	github.com/cloche-dev/cloche/cmd/cloche-agent	[no test files]
+?   	github.com/cloche-dev/cloche/cmd/cloched	[no test files]
+ok  	github.com/cloche-dev/cloche/internal/adapters/agents/generic	0.014s
+ok  	github.com/cloche-dev/cloche/internal/adapters/agents/prompt	0.040s
+ok  	github.com/cloche-dev/cloche/internal/adapters/docker	0.004s
+ok  	github.com/cloche-dev/cloche/internal/adapters/grpc	3.178s
+ok  	github.com/cloche-dev/cloche/internal/adapters/local	0.006s
+ok  	github.com/cloche-dev/cloche/internal/adapters/sqlite	0.196s
+ok  	github.com/cloche-dev/cloche/internal/adapters/web	0.303s
+ok  	github.com/cloche-dev/cloche/internal/agent	0.032s
+ok  	github.com/cloche-dev/cloche/internal/config	0.008s
+ok  	github.com/cloche-dev/cloche/internal/domain	0.004s
+ok  	github.com/cloche-dev/cloche/internal/dsl	0.004s
+ok  	github.com/cloche-dev/cloche/internal/engine	0.204s
+ok  	github.com/cloche-dev/cloche/internal/evolution	9.016s
+ok  	github.com/cloche-dev/cloche/internal/host	8.028s
+ok  	github.com/cloche-dev/cloche/internal/logstream	0.005s
+?   	github.com/cloche-dev/cloche/internal/ports	[no test files]
+ok  	github.com/cloche-dev/cloche/internal/protocol	0.006s
+ok  	github.com/cloche-dev/cloche/test/integration	0.009s

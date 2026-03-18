@@ -1,0 +1,24 @@
+Implementation complete. Here's a summary:
+
+**`internal/domain/health.go`** — New file with:
+- `HealthStatus` string enum: `green`, `yellow`, `red`, `grey`, `blue`
+- `HealthResult` struct with `Status`, `Passed`, `Failed`, `Total` fields
+- `CalculateHealth(runs []Run, windowSize int) HealthResult` function that:
+  - Returns **Grey** for no runs
+  - Returns **Blue** when all runs in the window are in-progress (pending/running)
+  - Returns **Green** when all completed runs succeeded
+  - Returns **Red** when all completed runs failed (including cancelled)
+  - Returns **Yellow** for a mix of passed and failed
+
+**`internal/domain/health_test.go`** — 17 test cases covering:
+- Empty/nil runs (grey)
+- All succeeded (green), all failed (red), all cancelled (red), mixed fail+cancel (red)
+- Mixed pass/fail (yellow)
+- All running/pending (blue)
+- Window size truncation, window larger than available runs, window of 1
+- In-progress runs mixed with completed runs (green, yellow, red variants)
+- Single run cases
+
+All 34 domain tests pass.
+
+CLOCHE_RESULT:success

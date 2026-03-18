@@ -1,0 +1,7 @@
+Preparing worktree (checking out 'cloche/develop-quick-glen-05db')
+HEAD is now at 4eb9111 cloche run develop-quick-glen-05db: develop (succeeded)
+Current branch cloche/develop-quick-glen-05db is up to date.
+Updating d366158..4eb9111
+Fast-forward
+Deleted branch cloche/develop-quick-glen-05db (was 4eb9111).
+Merged cloche/develop-quick-glen-05db into cloche-v2 (4eb91118714ca92a48c8ed2d8225c0db57170699)

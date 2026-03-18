@@ -1,0 +1,10 @@
+## Task: Limit initial log output in web UI to last 1000 lines with load-more
+
+Default log display in the web UI should only show the last 1000 lines of output per run.
+
+## Behavior
+- Initial page load shows the last 1000 lines of log output
+- Include a button to retrieve/load previous log output (pagination backwards)
+- If logs are streaming (follow mode), the initial load still starts with the last 1000 lines
+- If streamed output causes displayed lines to exceed 1000, that's fine — only the initial load is capped
+- Applies to individual run log views

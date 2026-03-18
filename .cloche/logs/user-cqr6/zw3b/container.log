@@ -1,0 +1,32 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T15:08:49.527640707Z"}
+{"type":"log","step_name":"implement","message":"All good. Here's a summary of the changes:","timestamp":"2026-03-09T15:10:46.850419097Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:10:46.850460906Z"}
+{"type":"log","step_name":"implement","message":"**Route added:** `GET /projects/{name}/runs` — new `handleProjectRuns` handler that resolves the project label from the URL path, fetches runs for that project, and renders the same runs template.","timestamp":"2026-03-09T15:10:46.850471195Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:10:46.850486675Z"}
+{"type":"log","step_name":"implement","message":"**Templates updated:**","timestamp":"2026-03-09T15:10:46.850491594Z"}
+{"type":"log","step_name":"implement","message":"- `projects.html`: \"View Runs\" link changed from `/runs?project={{.Dir}}` to `/projects/{{.Label}}/runs`","timestamp":"2026-03-09T15:10:46.850496393Z"}
+{"type":"log","step_name":"implement","message":"- `project_detail.html`: \"View all runs\" link changed similarly","timestamp":"2026-03-09T15:10:46.850501533Z"}
+{"type":"log","step_name":"implement","message":"- `runs.html`: Project filter dropdown now includes `data-label` attribute and the JS `filterByProject` function navigates to `/projects/\u003clabel\u003e/runs`","timestamp":"2026-03-09T15:10:46.850511572Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:10:46.850527973Z"}
+{"type":"log","step_name":"implement","message":"**Tests updated:** `TestRunsList_ProjectFilter` now uses `GET /projects/alpha/runs` instead of `GET /runs?project=...`","timestamp":"2026-03-09T15:10:46.850535046Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:10:46.850547349Z"}
+{"type":"log","step_name":"implement","message":"The old `GET /runs` and `GET /runs?project=` routes still work (backward compatible), and the API endpoint `/api/runs?project=` is unchanged.","timestamp":"2026-03-09T15:10:46.850553741Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:10:46.850558921Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T15:10:47.315105762Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T15:10:47.319940437Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T15:10:47.319978289Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T15:10:57.928845612Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T15:10:57.92887617Z"}
+{"type":"log","step_name":"update-docs","message":"All changes are complete. Here's a summary:","timestamp":"2026-03-09T15:12:08.483480029Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:12:08.483511419Z"}
+{"type":"log","step_name":"update-docs","message":"1. **`handler.go`**: `handleRunsList` now redirects `GET /runs?project=X` to `GET /projects/\u003clabel\u003e/runs` with a 301 (Moved Permanently), so bookmarks and crawlers update. When no `?project=` param is present, it still serves the \"all runs\" view.","timestamp":"2026-03-09T15:12:08.483515647Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:12:08.483521969Z"}
+{"type":"log","step_name":"update-docs","message":"2. **`runs.html`**: Removed the JS fallback to `/runs?project=` in `filterByProject()`. The dropdown always resolves a label, so it always navigates to `/projects/\u003clabel\u003e/runs`.","timestamp":"2026-03-09T15:12:08.483525425Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:12:08.483529804Z"}
+{"type":"log","step_name":"update-docs","message":"3. **`handler_test.go`**: Added `TestRunsList_LegacyProjectRedirect` to verify the 301 redirect from the old URL pattern.","timestamp":"2026-03-09T15:12:08.48353306Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:12:08.483537228Z"}
+{"type":"log","step_name":"update-docs","message":"The `/projects/{name}/runs` route and `handleProjectRuns` handler already existed, so no new route registration was needed. Templates (`projects.html`, `project_detail.html`) already linked to the new URL pattern.","timestamp":"2026-03-09T15:12:08.483540684Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:12:08.483545313Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T15:12:09.102195615Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T15:12:09.104410881Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T15:12:09.104489289Z"}

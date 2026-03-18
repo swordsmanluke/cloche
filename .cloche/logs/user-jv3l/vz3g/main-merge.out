@@ -1,0 +1,11 @@
+Preparing worktree (checking out 'cloche/develop-light-glen')
+HEAD is now at 765d0d3 cloche run develop-light-glen: develop (succeeded)
+Current branch cloche/develop-light-glen is up to date.
+Updating 57731fe..765d0d3
+Fast-forward
+ internal/adapters/sqlite/store.go         |  8 ++---
+ internal/adapters/sqlite/store_test.go    | 58 +++++++++++++++++++++++++++++++
+ internal/adapters/web/templates/runs.html |  8 +++++
+ 3 files changed, 70 insertions(+), 4 deletions(-)
+Deleted branch cloche/develop-light-glen (was 765d0d3).
+Merged cloche/develop-light-glen into main (765d0d384c69d1224bf53e8a26979b39f6315df4)

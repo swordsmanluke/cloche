@@ -1,0 +1,22 @@
+All tests pass. Here's a summary of the changes made to `docs/USAGE.md`:
+
+**CLI Reference updates:**
+- Added `--keep-container` flag to `cloche run` documentation
+- Added `cloche init` with `--workflow` and `--image` flags
+- Added `cloche logs` — stream step logs
+- Added `cloche poll` — wait for run completion with live events
+- Added `cloche shutdown` — shut down the daemon
+- Fixed `cloche list`: added `--all` flag, corrected column description (was "start time", now correctly shows container ID and error message)
+
+**Workflow template update:**
+- Added the `update-docs` step to the example workflow, matching the current template in `init.go` (wired as `test:success -> update-docs`, `update-docs:success -> done`)
+
+**Prompt templates:**
+- Added `.cloche/prompts/update-docs.md` entry
+
+**Project directory layout:**
+- Added `update-docs.md` to the prompts directory tree
+
+The `docs/INSTALL.md` created by the previous step was reviewed and is accurate — `make install`, `go install` module paths, and prerequisites all match the source.
+
+CLOCHE_RESULT:success

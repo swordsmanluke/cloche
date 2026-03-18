@@ -1,0 +1,8 @@
+Preparing worktree (checking out 'cloche/develop-proud-pine-cc32')
+HEAD is now at 2d32f8d cloche run develop-proud-pine-cc32: develop (succeeded)
+Current branch cloche/develop-proud-pine-cc32 is up to date.
+error: Your local changes to the following files would be overwritten by merge:
+	.cloche/scripts/close-task.sh
+Please commit your changes or stash them before you merge.
+Aborting
+Updating 05e99d8..2d32f8d

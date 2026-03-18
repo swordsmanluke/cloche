@@ -1,0 +1,27 @@
+## Task: Add 'cloche validate' command
+
+Create a new `cloche validate` CLI command that checks the project's `.cloche/` configuration for correctness.
+
+## What it does
+
+`cloche validate` parses and validates all config and workflow files in the current project's `.cloche/` directory:
+
+1. **config.toml** — checks that it parses correctly and all required fields are present and valid.
+2. **Workflow files (*.cloche)** — parses each workflow file and checks:
+   - All steps are syntactically valid.
+   - Result wiring is complete: every result reference in `wiring` maps to a result actually produced by the referenced step.
+   - Terminal coverage: every path through the workflow graph eventually reaches `done` or `abort`.
+   - No orphan steps (steps that are never wired to from any other step or the start).
+   - Prompt references (if any) resolve to files that exist in `.cloche/prompts/`.
+   - Script references (if any) resolve to files that exist in `.cloche/scripts/`.
+3. **Cross-file consistency** — workflows referenced in config.toml exist as `.cloche` files and vice versa.
+
+## Output
+
+- On success: prints "All configuration valid." and exits 0.
+- On failure: prints each error with file path and location, then exits 1.
+
+## Flags
+
+- `--project <path>` — override the project directory (default: current directory).
+- `--workflow <name>` — validate only a specific workflow instead of all.

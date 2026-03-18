@@ -1,0 +1,3 @@
+## Task: Document host workflows: list-tasks, main, finalize
+
+Add documentation to the setup instructions covering the three required/special host workflows: list-tasks, main, and finalize. Explain their roles, when they run, and how to configure them.

@@ -1,0 +1,30 @@
+go: downloading google.golang.org/grpc v1.79.1
+go: downloading google.golang.org/protobuf v1.36.11
+go: downloading github.com/BurntSushi/toml v1.6.0
+go: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217
+go: downloading golang.org/x/net v0.48.0
+go: downloading golang.org/x/text v0.32.0
+?   	github.com/cloche-dev/cloche/api/clochepb	[no test files]
+ok  	github.com/cloche-dev/cloche/cmd/cloche	0.015s
+?   	github.com/cloche-dev/cloche/cmd/cloche-agent	[no test files]
+?   	github.com/cloche-dev/cloche/cmd/cloched	[no test files]
+?   	github.com/cloche-dev/cloche/cmd/trackercheck	[no test files]
+ok  	github.com/cloche-dev/cloche/internal/adapters/agents/generic	0.021s
+ok  	github.com/cloche-dev/cloche/internal/adapters/agents/prompt	0.049s
+ok  	github.com/cloche-dev/cloche/internal/adapters/beads	0.010s
+ok  	github.com/cloche-dev/cloche/internal/adapters/docker	0.004s
+ok  	github.com/cloche-dev/cloche/internal/adapters/grpc	3.169s
+ok  	github.com/cloche-dev/cloche/internal/adapters/local	0.011s
+ok  	github.com/cloche-dev/cloche/internal/adapters/sqlite	0.230s
+ok  	github.com/cloche-dev/cloche/internal/adapters/web	(cached)
+ok  	github.com/cloche-dev/cloche/internal/agent	0.037s
+ok  	github.com/cloche-dev/cloche/internal/config	0.012s
+ok  	github.com/cloche-dev/cloche/internal/domain	0.012s
+ok  	github.com/cloche-dev/cloche/internal/dsl	0.012s
+ok  	github.com/cloche-dev/cloche/internal/engine	0.207s
+ok  	github.com/cloche-dev/cloche/internal/evolution	9.030s
+ok  	github.com/cloche-dev/cloche/internal/logstream	0.010s
+ok  	github.com/cloche-dev/cloche/internal/orchestrator	0.318s
+?   	github.com/cloche-dev/cloche/internal/ports	[no test files]
+ok  	github.com/cloche-dev/cloche/internal/protocol	0.015s
+ok  	github.com/cloche-dev/cloche/test/integration	0.025s

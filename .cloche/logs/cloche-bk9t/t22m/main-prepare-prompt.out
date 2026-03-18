@@ -1,0 +1,23 @@
+## Task: Evolution: Knowledge base grows unboundedly with duplicate lessons
+
+## Problem
+
+\`AuditLogger.UpdateKnowledge()\` in \`internal/evolution/audit.go\` appends every lesson to the knowledge base file unconditionally. There is no deduplication — the same lesson text gets appended every cycle. Over 31 evolution cycles, the knowledge base accumulates redundant entries that:
+
+1. Inflate the context sent to the Reflector (which reads the entire knowledge base)
+2. Waste LLM tokens on processing duplicate information
+3. Make the knowledge base unreadable for human review
+
+The config has \`MaxPromptBullets: 50\` but this value is never used anywhere in the codebase.
+
+## How to Fix
+
+1. Before appending, check if a lesson with the same ID already exists in the knowledge base
+2. Implement the MaxPromptBullets config — when the knowledge base exceeds this limit, summarize/prune old entries
+3. Consider using structured storage (JSONL) instead of markdown for the knowledge base to enable reliable deduplication
+
+## How to Test
+
+1. Call \`UpdateKnowledge\` twice with the same lesson ID — assert it appears only once
+2. Call \`UpdateKnowledge\` with MaxPromptBullets=5 and 10 lessons — assert pruning occurs
+3. Read back the knowledge base and verify it's parseable and non-redundant

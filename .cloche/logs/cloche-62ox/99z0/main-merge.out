@@ -1,0 +1,18 @@
+Preparing worktree (checking out 'cloche/develop-warm-reed-43b5')
+HEAD is now at 78526f5 cloche run develop-warm-reed-43b5: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-warm-reed-43b5.
+Updating 54c4299..5b719e9
+Fast-forward
+ api/clochepb/cloche.pb.go                   |  14 ++-
+ api/proto/cloche/v1/cloche.proto            |   1 +
+ cmd/cloche/project.go                       |   1 +
+ docs/USAGE.md                               |  12 +-
+ docs/plans/2026-03-06-config-toml-design.md |   4 +
+ internal/adapters/grpc/server.go            |  18 +--
+ internal/config/config.go                   |  16 +--
+ internal/config/config_test.go              |  16 +++
+ internal/host/loop.go                       |  63 ++++++++---
+ internal/host/loop_test.go                  | 166 ++++++++++++++++++++++++++++
+ 10 files changed, 275 insertions(+), 36 deletions(-)
+Deleted branch cloche/develop-warm-reed-43b5 (was 5b719e9).
+Merged cloche/develop-warm-reed-43b5 into main (5b719e9777087312c43b4705b074d65cd35ecc22)

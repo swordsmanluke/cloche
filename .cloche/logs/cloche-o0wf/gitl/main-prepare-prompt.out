@@ -1,0 +1,14 @@
+## Task: cloche logs: show actual workflow output with follow, step filter, and limit flags
+
+`cloche logs <run-id>` currently only shows step transitions. It should show the actual log output from the workflow steps.
+
+## New flags
+
+- `-f` / `--follow` — Stream output line-by-line as it's produced (tail -f style)
+- `-s` / `--step <step-name>` — Display logs only for the named step. e.g. `cloche logs develop-x-y-z -s implement`
+- `-l` / `--limit <n>` — Display only the last n lines of output. e.g. `cloche logs develop-x-y-z -l 10`
+
+## Notes
+- Default (no flags) dumps all captured log output for the run
+- Flags are combinable: `cloche logs run-id -s implement -l 20 -f`
+- Requires capturing and storing step output during execution, not just transition events

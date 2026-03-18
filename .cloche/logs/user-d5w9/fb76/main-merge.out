@@ -1,0 +1,15 @@
+Preparing worktree (checking out 'cloche/develop-warm-moss-8ae5')
+HEAD is now at 15619c8 cloche run develop-warm-moss-8ae5: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-warm-moss-8ae5.
+Updating b8bbb56..cd495f5
+Fast-forward
+ api/clochepb/cloche.pb.go             | 235 ++++++++++++----------------------
+ api/clochepb/cloche_grpc.pb.go        |   2 +-
+ api/proto/cloche/v1/cloche.proto      |   2 +
+ cmd/cloche/main.go                    |  14 +-
+ docs/USAGE.md                         |   2 +-
+ internal/adapters/grpc/server.go      |  14 +-
+ internal/adapters/grpc/server_test.go |  37 ++++++
+ 7 files changed, 146 insertions(+), 160 deletions(-)
+Deleted branch cloche/develop-warm-moss-8ae5 (was cd495f5).
+Merged cloche/develop-warm-moss-8ae5 into main (cd495f5aef5d265c3042ed3dc0365b262dc6f294)

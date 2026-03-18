@@ -1,0 +1,210 @@
+{"type":"run_title","message":"Task: Show failed step name and error output in run error section","timestamp":"2026-03-13T19:42:06.901026512Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-13T19:42:06.901205581Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Explore this Go codebase to understand how workflow run e...') ---","timestamp":"2026-03-13T19:42:18.920715612Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.go\" | head -20') ---","timestamp":"2026-03-13T19:42:20.201128057Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/internal/domain/*.go') ---","timestamp":"2026-03-13T19:42:21.845819627Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/internal/ports/*.go') ---","timestamp":"2026-03-13T19:42:21.861828524Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/internal/adapters/**/*.go') ---","timestamp":"2026-03-13T19:42:22.103600794Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/cmd/cloche/*.go') ---","timestamp":"2026-03-13T19:42:22.224138636Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-13T19:42:23.294537936Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow.go') ---","timestamp":"2026-03-13T19:42:23.53023322Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-13T19:42:23.647415663Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/sqlite/store.go') ---","timestamp":"2026-03-13T19:42:25.075688428Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T19:42:25.261424905Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/internal/host/*.go') ---","timestamp":"2026-03-13T19:42:25.377957638Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/executor.go') ---","timestamp":"2026-03-13T19:42:26.979718621Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/runner.go') ---","timestamp":"2026-03-13T19:42:27.001758858Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T19:42:28.678090803Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/internal/engine/*.go') ---","timestamp":"2026-03-13T19:42:29.200861698Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.go\" -path \"*/cmd/cloche*...') ---","timestamp":"2026-03-13T19:42:29.389428789Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T19:42:31.160354652Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/engine/engine.go') ---","timestamp":"2026-03-13T19:42:31.176959256Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"GetStatus\" /workspace/internal/adapters/grpc/ser...') ---","timestamp":"2026-03-13T19:42:31.440111139Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T19:42:36.479960218Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -A 20 \"type StatusMessage\" /workspace/internal/proto...') ---","timestamp":"2026-03-13T19:42:36.640810761Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/protocol/status.go') ---","timestamp":"2026-03-13T19:42:38.179313071Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-13T19:42:38.243616403Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-13T19:42:40.168856077Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run_test.go') ---","timestamp":"2026-03-13T19:42:40.251170572Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -rn \"ErrorMessage\\|error_message\\|Fail(\" /workspace/...') ---","timestamp":"2026-03-13T19:42:41.748231622Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-13T19:42:43.403990744Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -A 5 \"\\.Fail(\" /workspace/internal/adapters/grpc/ser...') ---","timestamp":"2026-03-13T19:42:43.563041349Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/workflow.go') ---","timestamp":"2026-03-13T19:42:44.998193528Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/poll.go') ---","timestamp":"2026-03-13T19:42:45.117246564Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"MsgError\\|MsgRunCompleted\" /workspace/internal/p...') ---","timestamp":"2026-03-13T19:42:46.8407212Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.proto\" -o -name \"*.pb.go...') ---","timestamp":"2026-03-13T19:42:46.985294966Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-13T19:42:48.340377238Z"}
+{"type":"log","step_name":"implement","message":"Let me read the key files to understand the current error flow in detail.","timestamp":"2026-03-13T19:43:12.452207095Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-13T19:43:12.914699231Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/engine/engine.go') ---","timestamp":"2026-03-13T19:43:12.928253742Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/runner.go') ---","timestamp":"2026-03-13T19:43:13.247143295Z"}
+{"type":"log","step_name":"implement","message":"Now let me read the CLI display code and the gRPC server error handling.","timestamp":"2026-03-13T19:43:19.385913021Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T19:43:20.363279361Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T19:43:20.865167716Z"}
+{"type":"log","step_name":"implement","message":"Let me read the agent runner and protocol to understand how failures are reported from inside containers.","timestamp":"2026-03-13T19:43:31.614382217Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-13T19:43:31.863143917Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/protocol/status.go') ---","timestamp":"2026-03-13T19:43:31.942629812Z"}
+{"type":"log","step_name":"implement","message":"Now let me look at the server's `trackRun` for handling `MsgError` and the existing tests.","timestamp":"2026-03-13T19:45:23.249886098Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('MsgError') ---","timestamp":"2026-03-13T19:45:23.990675527Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/engine/*_test.go') ---","timestamp":"2026-03-13T19:45:24.438174919Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/adapters/grpc/*_test.go') ---","timestamp":"2026-03-13T19:45:24.452443388Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/agent/*_test.go') ---","timestamp":"2026-03-13T19:45:24.710925116Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/engine/engine_test.go') ---","timestamp":"2026-03-13T19:45:27.434977641Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/agent/runner_test.go') ---","timestamp":"2026-03-13T19:45:27.697122646Z"}
+{"type":"log","step_name":"implement","message":"Now let me look at the host executor to understand how step errors are produced, and the server test.","timestamp":"2026-03-13T19:45:31.132245728Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/executor.go') ---","timestamp":"2026-03-13T19:45:31.614134271Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-13T19:45:32.153723667Z"}
+{"type":"log","step_name":"implement","message":"Now I have a clear understanding of the issue. Let me implement the changes.","timestamp":"2026-03-13T19:46:46.71516711Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:46:46.715192919Z"}
+{"type":"log","step_name":"implement","message":"**Problem:** When a container workflow run fails, the agent sends a `MsgError` with error info, but the server's `trackRun` ignores it. The run is finalized with `run.Complete(RunStateFailed)` which doesn't set `ErrorMessage`. Host runs already work because `hostRun.Fail(runErr.Error())` captures the error.","timestamp":"2026-03-13T19:46:46.715197107Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:46:46.715228476Z"}
+{"type":"log","step_name":"implement","message":"**Fix:**","timestamp":"2026-03-13T19:46:46.715233005Z"}
+{"type":"log","step_name":"implement","message":"1. Agent: Include failed step name in `MsgError`","timestamp":"2026-03-13T19:46:46.715238084Z"}
+{"type":"log","step_name":"implement","message":"2. Server: Capture `MsgError` and use it when finalizing failed runs","timestamp":"2026-03-13T19:46:46.715242583Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: ToolSearch ---","timestamp":"2026-03-13T19:46:46.968492515Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T19:46:53.654853214Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-13T19:47:01.624423309Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T19:47:04.965011745Z"}
+{"type":"log","step_name":"implement","message":"Now let me update the server's `trackRun` to handle `MsgError` and use it during finalization.","timestamp":"2026-03-13T19:47:07.42862821Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T19:47:07.967757045Z"}
+{"type":"log","step_name":"implement","message":"Now I'll make the changes to `trackRun`:","timestamp":"2026-03-13T19:47:10.53794093Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T19:47:12.867077964Z"}
+{"type":"log","step_name":"implement","message":"Now add the `MsgError` handler in the switch statement:","timestamp":"2026-03-13T19:47:15.307773352Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T19:47:17.298772305Z"}
+{"type":"log","step_name":"implement","message":"Now update the finalization to use `reportedError`:","timestamp":"2026-03-13T19:47:19.255366781Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-13T19:47:22.058385078Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T19:47:26.900449329Z"}
+{"type":"log","step_name":"implement","message":"Now let me write tests. First, a test for the agent runner that verifies error info is sent with the step name, and a test for the server tracking.","timestamp":"2026-03-13T19:47:29.800861338Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/agent/runner_test.go') ---","timestamp":"2026-03-13T19:47:30.292114537Z"}
+{"type":"log","step_name":"implement","message":"Now let me add a test for the agent runner that verifies error info is sent with step name when a step fails:","timestamp":"2026-03-13T19:47:32.324692073Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/agent/runner_test.go') ---","timestamp":"2026-03-13T19:47:43.88595471Z"}
+{"type":"log","step_name":"implement","message":"Now let me add a test for the engine that verifies step execution errors include step name:","timestamp":"2026-03-13T19:47:46.212850321Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/engine/engine_test.go') ---","timestamp":"2026-03-13T19:47:46.697376319Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/engine/engine_test.go') ---","timestamp":"2026-03-13T19:47:59.160944901Z"}
+{"type":"log","step_name":"implement","message":"Now let me add a test for the server's `trackRun` error propagation. Let me read the existing server test to understand the test patterns used.","timestamp":"2026-03-13T19:48:02.622227678Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-13T19:48:02.940238481Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('TestServer_TrackRun|func.*trackRun.*test|func.*Track.*Error') ---","timestamp":"2026-03-13T19:48:06.423434736Z"}
+{"type":"log","step_name":"implement","message":"Let me look at the local container runtime to understand how server tests use it.","timestamp":"2026-03-13T19:48:15.029247489Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func.*localRuntime|func.*LocalContainer|type.*localRuntime') ---","timestamp":"2026-03-13T19:48:15.087373073Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/adapters/local/*.go') ---","timestamp":"2026-03-13T19:48:17.227074922Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/local/runtime.go') ---","timestamp":"2026-03-13T19:48:19.436899662Z"}
+{"type":"log","step_name":"implement","message":"Let me check how the server tests set up full integration tests with local runtime.","timestamp":"2026-03-13T19:48:24.671081244Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func Test.*Server.*Run|func Test.*Track|func Test.*Error....') ---","timestamp":"2026-03-13T19:48:26.051970147Z"}
+{"type":"log","step_name":"implement","message":"Let me read the `TestServer_RunWorkflow_FailedRunKeepsContainer` test to understand how they test failed runs:","timestamp":"2026-03-13T19:48:29.33257316Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-13T19:48:30.143127923Z"}
+{"type":"log","step_name":"implement","message":"Now I can see the pattern. I'll write a test that sends a `MsgError` followed by `MsgRunCompleted(\"failed\")` and verifies the error message is captured on the run.","timestamp":"2026-03-13T19:48:34.390466014Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-13T19:48:34.933673851Z"}
+{"type":"log","step_name":"implement","message":"Now I'll find the right spot to add the test. Let me find the end of the `TestServer_RunWorkflow_FailedRunKeepsContainer` test and add a new test after it:","timestamp":"2026-03-13T19:48:37.338781686Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-13T19:48:37.940664423Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/server_test.go') ---","timestamp":"2026-03-13T19:48:49.606907977Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T19:48:54.956634026Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-13T19:48:57.455199366Z"}
+{"type":"log","step_name":"implement","message":"All tests pass, including the new ones.","timestamp":"2026-03-13T19:49:40.225704296Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T19:49:43.433826692Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-13T19:49:55.599264135Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:49:55.599283732Z"}
+{"type":"log","step_name":"implement","message":"**Problem:** When a container workflow run failed, the error message was not captured, making it hard to diagnose failures without reading full logs.","timestamp":"2026-03-13T19:49:55.599291086Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:49:55.599299312Z"}
+{"type":"log","step_name":"implement","message":"**Changes:**","timestamp":"2026-03-13T19:49:55.599302728Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:49:55.599306005Z"}
+{"type":"log","step_name":"implement","message":"1. **`internal/agent/runner.go`** - When the engine returns an error, the agent now extracts the failed step name from `run.StepExecutions` (looking for steps with \"error\" or \"fail\" result) and includes it in the `MsgError` status message sent to the daemon.","timestamp":"2026-03-13T19:49:55.599312276Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:49:55.599320342Z"}
+{"type":"log","step_name":"implement","message":"2. **`internal/adapters/grpc/server.go`** - The server's `trackRun` method now:","timestamp":"2026-03-13T19:49:55.599323688Z"}
+{"type":"log","step_name":"implement","message":"   - Handles `MsgError` protocol messages (previously ignored) and captures the error text","timestamp":"2026-03-13T19:49:55.599328597Z"}
+{"type":"log","step_name":"implement","message":"   - Uses the captured error message when finalizing failed runs: calls `run.Fail(reportedError)` instead of `run.Complete(RunStateFailed)`, which sets the `ErrorMessage` field on the run","timestamp":"2026-03-13T19:49:55.599335921Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:49:55.59934045Z"}
+{"type":"log","step_name":"implement","message":"3. **Tests added:**","timestamp":"2026-03-13T19:49:55.599343646Z"}
+{"type":"log","step_name":"implement","message":"   - `TestEngine_StepErrorIncludesStepName` - Verifies the engine error contains the step name and original error","timestamp":"2026-03-13T19:49:55.599347072Z"}
+{"type":"log","step_name":"implement","message":"   - `TestRunner_FailedStepReportsErrorWithStepName` - Verifies the agent runner handles abort paths","timestamp":"2026-03-13T19:49:55.599354276Z"}
+{"type":"log","step_name":"implement","message":"   - `TestRunner_StepExecutionErrorReportsErrorWithStepName` - Verifies `MsgError` includes step name on execution errors","timestamp":"2026-03-13T19:49:55.59936173Z"}
+{"type":"log","step_name":"implement","message":"   - `TestServer_RunWorkflow_FailedRunCapturesErrorMessage` - End-to-end test verifying the error message is persisted on the run and visible via `GetStatus`","timestamp":"2026-03-13T19:49:55.599366539Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:49:55.599371198Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T19:49:55.599374524Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-13T19:49:55.620555642Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:49:55.620588585Z"}
+{"type":"log","step_name":"implement","message":"**Problem:** When a container workflow run failed, the error message was not captured, making it hard to diagnose failures without reading full logs.","timestamp":"2026-03-13T19:49:55.620592502Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:49:55.620596329Z"}
+{"type":"log","step_name":"implement","message":"**Changes:**","timestamp":"2026-03-13T19:49:55.620599595Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:49:55.620619513Z"}
+{"type":"log","step_name":"implement","message":"1. **`internal/agent/runner.go`** - When the engine returns an error, the agent now extracts the failed step name from `run.StepExecutions` (looking for steps with \"error\" or \"fail\" result) and includes it in the `MsgError` status message sent to the daemon.","timestamp":"2026-03-13T19:49:55.62062322Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:49:55.62062864Z"}
+{"type":"log","step_name":"implement","message":"2. **`internal/adapters/grpc/server.go`** - The server's `trackRun` method now:","timestamp":"2026-03-13T19:49:55.620631886Z"}
+{"type":"log","step_name":"implement","message":"   - Handles `MsgError` protocol messages (previously ignored) and captures the error text","timestamp":"2026-03-13T19:49:55.620635423Z"}
+{"type":"log","step_name":"implement","message":"   - Uses the captured error message when finalizing failed runs: calls `run.Fail(reportedError)` instead of `run.Complete(RunStateFailed)`, which sets the `ErrorMessage` field on the run","timestamp":"2026-03-13T19:49:55.62063899Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:49:55.620642717Z"}
+{"type":"log","step_name":"implement","message":"3. **Tests added:**","timestamp":"2026-03-13T19:49:55.620645963Z"}
+{"type":"log","step_name":"implement","message":"   - `TestEngine_StepErrorIncludesStepName` - Verifies the engine error contains the step name and original error","timestamp":"2026-03-13T19:49:55.620649339Z"}
+{"type":"log","step_name":"implement","message":"   - `TestRunner_FailedStepReportsErrorWithStepName` - Verifies the agent runner handles abort paths","timestamp":"2026-03-13T19:49:55.620653026Z"}
+{"type":"log","step_name":"implement","message":"   - `TestRunner_StepExecutionErrorReportsErrorWithStepName` - Verifies `MsgError` includes step name on execution errors","timestamp":"2026-03-13T19:49:55.620656573Z"}
+{"type":"log","step_name":"implement","message":"   - `TestServer_RunWorkflow_FailedRunCapturesErrorMessage` - End-to-end test verifying the error message is persisted on the run and visible via `GetStatus`","timestamp":"2026-03-13T19:49:55.62066026Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T19:49:55.620663797Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T19:49:55.922141146Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-13T19:49:55.949223975Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-13T19:49:55.95248354Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-13T19:49:56.243770196Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t10.027s","timestamp":"2026-03-13T19:50:06.571519421Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-13T19:50:06.571581398Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-13T19:50:06.571586368Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-13T19:50:06.571594163Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-13T19:50:06.57159787Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-13T19:50:06.571601426Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-13T19:50:06.571611465Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-13T19:50:06.571615152Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-13T19:50:06.571621013Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-13T19:50:06.57162459Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-13T19:50:06.571627926Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-13T19:50:06.571631343Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-13T19:50:06.57163489Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-13T19:50:06.571638557Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-13T19:50:06.571642213Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-13T19:50:06.571650199Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-13T19:50:06.571659737Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-13T19:50:06.571664245Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-13T19:50:06.571668704Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-13T19:50:06.571673232Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-13T19:50:06.57167765Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/version\t(cached)","timestamp":"2026-03-13T19:50:06.571682129Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-13T19:50:06.571688581Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-13T19:50:06.61579758Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-13T19:50:06.62174064Z"}
+{"type":"log","step_name":"update-docs","message":"Let me examine the source code changes and relevant documentation.","timestamp":"2026-03-13T19:50:13.191407385Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('git diff HEAD -- internal/adapters/grpc/server.go interna...') ---","timestamp":"2026-03-13T19:50:14.217959652Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('docs/**/*.md') ---","timestamp":"2026-03-13T19:50:14.318654887Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('error|Error|fail|Fail|MsgError') ---","timestamp":"2026-03-13T19:50:17.607322896Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('error|Error|fail|Fail|status|ErrorMessage') ---","timestamp":"2026-03-13T19:50:18.471902327Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('ErrorMessage|error_message|Fail\\\\(|run\\\\.Error|error sect...') ---","timestamp":"2026-03-13T19:50:22.57943591Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('ErrorMessage|Fail\\\\(\"","timestamp":"2026-03-13T19:50:23.291031666Z"}
+{"type":"log","step_name":"update-docs","message":"\u003cparameter name=\"path\"\u003e/workspace/i...') ---","timestamp":"2026-03-13T19:50:23.291049029Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('cloche status|status.*output|error.*display|ErrorMessage\"...') ---","timestamp":"2026-03-13T19:50:24.109225128Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('ErrorMessage|Fail\\(') ---","timestamp":"2026-03-13T19:50:27.422871719Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('MsgError') ---","timestamp":"2026-03-13T19:50:27.903488347Z"}
+{"type":"log","step_name":"update-docs","message":"Let me check the relevant documentation sections for the status protocol and run error display.","timestamp":"2026-03-13T19:50:31.208407592Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('status.*protocol|protocol.*message|MsgError|error.*messag...') ---","timestamp":"2026-03-13T19:50:32.296998189Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('cloche status') ---","timestamp":"2026-03-13T19:50:33.156625435Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me check if there's any documentation about what information `cloche status` displays for failed runs, particularly around error messages.","timestamp":"2026-03-13T19:50:38.143139376Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-13T19:50:38.995020618Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('error_message|ErrorMessage|error.*field') ---","timestamp":"2026-03-13T19:50:39.632122503Z"}
+{"type":"log","step_name":"update-docs","message":"The changes are internal plumbing: the agent runner now includes the failed step name in `MsgError` messages, and the daemon's `trackRun` uses those to populate `run.ErrorMessage` via `run.Fail()`. The existing documentation already describes:","timestamp":"2026-03-13T19:50:48.4841145Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T19:50:48.484134999Z"}
+{"type":"log","step_name":"update-docs","message":"- `error_message` field in the gRPC protocol (in the implementation plan)","timestamp":"2026-03-13T19:50:48.484139067Z"}
+{"type":"log","step_name":"update-docs","message":"- `ErrorMessage` on the `Run` domain type (in the implementation plan)","timestamp":"2026-03-13T19:50:48.484142954Z"}
+{"type":"log","step_name":"update-docs","message":"- `cloche status` shows \"state, active steps, and per-step results\" (in USAGE.md)","timestamp":"2026-03-13T19:50:48.484146992Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T19:50:48.48415113Z"}
+{"type":"log","step_name":"update-docs","message":"The `Fail()` method and `ErrorMessage` field already existed before this change — the code change just wires them up properly. The user-facing behavior of `cloche status` hasn't changed its documented interface; it still shows state and step results. The error message was already part of the documented protocol.","timestamp":"2026-03-13T19:50:48.484154486Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T19:50:48.484158824Z"}
+{"type":"log","step_name":"update-docs","message":"No documentation updates are needed — the existing docs already describe the `error_message` field and the status output. The change is purely an internal bug fix that correctly populates fields that were already documented.","timestamp":"2026-03-13T19:50:48.484162191Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T19:50:48.484166339Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T19:50:48.484169545Z"}
+{"type":"log","step_name":"update-docs","message":"The changes are internal plumbing: the agent runner now includes the failed step name in `MsgError` messages, and the daemon's `trackRun` uses those to populate `run.ErrorMessage` via `run.Fail()`. The existing documentation already describes:","timestamp":"2026-03-13T19:50:48.504174137Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T19:50:48.504194646Z"}
+{"type":"log","step_name":"update-docs","message":"- `error_message` field in the gRPC protocol (in the implementation plan)","timestamp":"2026-03-13T19:50:48.504199775Z"}
+{"type":"log","step_name":"update-docs","message":"- `ErrorMessage` on the `Run` domain type (in the implementation plan)","timestamp":"2026-03-13T19:50:48.504204324Z"}
+{"type":"log","step_name":"update-docs","message":"- `cloche status` shows \"state, active steps, and per-step results\" (in USAGE.md)","timestamp":"2026-03-13T19:50:48.504209003Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T19:50:48.504213992Z"}
+{"type":"log","step_name":"update-docs","message":"The `Fail()` method and `ErrorMessage` field already existed before this change — the code change just wires them up properly. The user-facing behavior of `cloche status` hasn't changed its documented interface; it still shows state and step results. The error message was already part of the documented protocol.","timestamp":"2026-03-13T19:50:48.504218471Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T19:50:48.504223891Z"}
+{"type":"log","step_name":"update-docs","message":"No documentation updates are needed — the existing docs already describe the `error_message` field and the status output. The change is purely an internal bug fix that correctly populates fields that were already documented.","timestamp":"2026-03-13T19:50:48.504228149Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T19:50:48.504246454Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T19:50:48.828090889Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-13T19:50:48.832889995Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-13T19:50:48.838914428Z"}

@@ -1,0 +1,29 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T15:08:45.903206627Z"}
+{"type":"log","step_name":"implement","message":"Build and tests pass. Here's a summary of the fix:","timestamp":"2026-03-09T15:10:33.039831647Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:10:33.039884797Z"}
+{"type":"log","step_name":"implement","message":"**Problem:** The Prompt Files `\u003cdetails\u003e` expansion in `project_detail.html` rendered `pf.history` (git commit entries with SHA, date, message) instead of the actual file content.","timestamp":"2026-03-09T15:10:33.039889446Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:10:33.0399023Z"}
+{"type":"log","step_name":"implement","message":"**Changes:**","timestamp":"2026-03-09T15:10:33.039906087Z"}
+{"type":"log","step_name":"implement","message":"1. **`handler.go`**: Added `handleAPIPromptContent` endpoint (`GET /api/projects/{name}/info/prompt-content?file=...`) that reads and returns the raw file content, with path traversal protection.","timestamp":"2026-03-09T15:10:33.039909754Z"}
+{"type":"log","step_name":"implement","message":"2. **`project_detail.html`**: Replaced the commit-history rendering inside `\u003cdetails\u003e` with a lazy-loading mechanism that fetches and displays the file's text content when the user expands the section. Replaced `toggleDiff()` with `loadPromptContent()` triggered by the `toggle` event.","timestamp":"2026-03-09T15:10:33.03991796Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:10:33.039926276Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T15:10:33.338416079Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T15:10:33.341382264Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T15:10:33.341413924Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T15:10:50.57045636Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T15:10:50.570483521Z"}
+{"type":"log","step_name":"update-docs","message":"The fix is already applied and working. Here's what the change does:","timestamp":"2026-03-09T15:12:31.750084054Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:12:31.750127506Z"}
+{"type":"log","step_name":"update-docs","message":"**Root cause:** The `loadProjectInfo` function in `project_detail.html` was rendering `pf.history` (git commit entries: SHA, date, message) inside each `\u003cdetails\u003e` element instead of loading the actual file content.","timestamp":"2026-03-09T15:12:31.750135241Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:12:31.750148556Z"}
+{"type":"log","step_name":"update-docs","message":"**Fix (already in working tree):**","timestamp":"2026-03-09T15:12:31.750152123Z"}
+{"type":"log","step_name":"update-docs","message":"1. Added `data-file` attribute to `\u003cdetails\u003e` elements so the toggle handler can identify which file to load","timestamp":"2026-03-09T15:12:31.750160389Z"}
+{"type":"log","step_name":"update-docs","message":"2. Replaced inline git commit history rendering with a \"Loading...\" placeholder","timestamp":"2026-03-09T15:12:31.750168023Z"}
+{"type":"log","step_name":"update-docs","message":"3. Added `loadPromptContent()` function that fetches actual file content from `/api/projects/{name}/info/prompt-content?file=...`","timestamp":"2026-03-09T15:12:31.750175036Z"}
+{"type":"log","step_name":"update-docs","message":"4. Added a `toggle` event listener to trigger content loading when a `\u003cdetails\u003e` is expanded","timestamp":"2026-03-09T15:12:31.750187971Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:12:31.750195836Z"}
+{"type":"log","step_name":"update-docs","message":"The backend `handleAPIPromptContent` handler was already in place — it reads the file from disk and returns plain text.","timestamp":"2026-03-09T15:12:31.75020326Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:12:31.750207808Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T15:12:31.986499246Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T15:12:31.988800925Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T15:12:31.988911845Z"}

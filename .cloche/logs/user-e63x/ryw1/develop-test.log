@@ -1,0 +1,861 @@
+go test ./... -v
+?   	github.com/cloche-dev/cloche/api/clochepb	[no test files]
+=== RUN   TestColorStatus_NoTTY
+--- PASS: TestColorStatus_NoTTY (0.00s)
+=== RUN   TestCmdInit_DefaultFlags
+  create .cloche/develop.cloche
+  create .cloche/Dockerfile
+  create .cloche/config.toml
+  create .cloche/prompts/implement.md
+  create .cloche/prompts/fix.md
+  create .cloche/prompts/update-docs.md
+
+Initialized Cloche project in 001
+
+Next steps:
+  1. Edit .cloche/develop.cloche — change the test command for your project
+  2. Edit .cloche/Dockerfile — add your project's dependencies
+  3. Add container-specific overrides to .cloche/overrides/ (e.g. CLAUDE.md)
+  4. docker build -t cloche-agent -f .cloche/Dockerfile .
+  5. cloche run --workflow develop --prompt "..."
+--- PASS: TestCmdInit_DefaultFlags (0.00s)
+=== RUN   TestCmdInit_CustomFlags
+  create .cloche/build.cloche
+  create .cloche/Dockerfile
+  create .cloche/config.toml
+  create .cloche/prompts/implement.md
+  create .cloche/prompts/fix.md
+  create .cloche/prompts/update-docs.md
+
+Initialized Cloche project in 001
+
+Next steps:
+  1. Edit .cloche/build.cloche — change the test command for your project
+  2. Edit .cloche/Dockerfile — add your project's dependencies
+  3. Add container-specific overrides to .cloche/overrides/ (e.g. CLAUDE.md)
+  4. docker build -t cloche-agent -f .cloche/Dockerfile .
+  5. cloche run --workflow build --prompt "..."
+--- PASS: TestCmdInit_CustomFlags (0.00s)
+=== RUN   TestCmdInit_SkipsExistingFiles
+  create .cloche/develop.cloche
+  skip .cloche/Dockerfile (already exists)
+  create .cloche/config.toml
+  create .cloche/prompts/implement.md
+  create .cloche/prompts/fix.md
+  create .cloche/prompts/update-docs.md
+
+Initialized Cloche project in 001
+
+Next steps:
+  1. Edit .cloche/develop.cloche — change the test command for your project
+  2. Edit .cloche/Dockerfile — add your project's dependencies
+  3. Add container-specific overrides to .cloche/overrides/ (e.g. CLAUDE.md)
+  4. docker build -t cloche-agent -f .cloche/Dockerfile .
+  5. cloche run --workflow develop --prompt "..."
+--- PASS: TestCmdInit_SkipsExistingFiles (0.00s)
+=== RUN   TestCmdInit_GitignoreEntries
+  create .cloche/develop.cloche
+  create .cloche/Dockerfile
+  create .cloche/config.toml
+  create .cloche/prompts/implement.md
+  create .cloche/prompts/fix.md
+  create .cloche/prompts/update-docs.md
+
+Initialized Cloche project in 001
+
+Next steps:
+  1. Edit .cloche/develop.cloche — change the test command for your project
+  2. Edit .cloche/Dockerfile — add your project's dependencies
+  3. Add container-specific overrides to .cloche/overrides/ (e.g. CLAUDE.md)
+  4. docker build -t cloche-agent -f .cloche/Dockerfile .
+  5. cloche run --workflow develop --prompt "..."
+--- PASS: TestCmdInit_GitignoreEntries (0.01s)
+=== RUN   TestCmdInit_GitignoreNoDuplicates
+  create .cloche/develop.cloche
+  create .cloche/Dockerfile
+  create .cloche/config.toml
+  create .cloche/prompts/implement.md
+  create .cloche/prompts/fix.md
+  create .cloche/prompts/update-docs.md
+
+Initialized Cloche project in 001
+
+Next steps:
+  1. Edit .cloche/develop.cloche — change the test command for your project
+  2. Edit .cloche/Dockerfile — add your project's dependencies
+  3. Add container-specific overrides to .cloche/overrides/ (e.g. CLAUDE.md)
+  4. docker build -t cloche-agent -f .cloche/Dockerfile .
+  5. cloche run --workflow develop --prompt "..."
+--- PASS: TestCmdInit_GitignoreNoDuplicates (0.00s)
+=== RUN   TestCmdInit_WorkflowTemplatePromptPaths
+  create .cloche/develop.cloche
+  create .cloche/Dockerfile
+  create .cloche/config.toml
+  create .cloche/prompts/implement.md
+  create .cloche/prompts/fix.md
+  create .cloche/prompts/update-docs.md
+
+Initialized Cloche project in 001
+
+Next steps:
+  1. Edit .cloche/develop.cloche — change the test command for your project
+  2. Edit .cloche/Dockerfile — add your project's dependencies
+  3. Add container-specific overrides to .cloche/overrides/ (e.g. CLAUDE.md)
+  4. docker build -t cloche-agent -f .cloche/Dockerfile .
+  5. cloche run --workflow develop --prompt "..."
+--- PASS: TestCmdInit_WorkflowTemplatePromptPaths (0.00s)
+=== RUN   TestOrchestrateOutput
+--- PASS: TestOrchestrateOutput (0.00s)
+PASS
+ok  	github.com/cloche-dev/cloche/cmd/cloche	0.028s
+?   	github.com/cloche-dev/cloche/cmd/cloche-agent	[no test files]
+?   	github.com/cloche-dev/cloche/cmd/cloched	[no test files]
+=== RUN   TestGenericAdapter_ScriptSuccess
+--- PASS: TestGenericAdapter_ScriptSuccess (0.01s)
+=== RUN   TestGenericAdapter_ScriptFailure
+--- PASS: TestGenericAdapter_ScriptFailure (0.02s)
+=== RUN   TestGenericAdapter_ScriptModifiesFiles
+--- PASS: TestGenericAdapter_ScriptModifiesFiles (0.01s)
+=== RUN   TestGenericAdapter_CapturesOutput
+--- PASS: TestGenericAdapter_CapturesOutput (0.01s)
+=== RUN   TestGenericAdapter_CapturesOutputOnFailure
+--- PASS: TestGenericAdapter_CapturesOutputOnFailure (0.01s)
+=== RUN   TestGenericAdapter_StdoutMarkerOverridesExitCode
+--- PASS: TestGenericAdapter_StdoutMarkerOverridesExitCode (0.01s)
+=== RUN   TestGenericAdapter_MarkerOverridesFailExitCode
+--- PASS: TestGenericAdapter_MarkerOverridesFailExitCode (0.01s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/adapters/agents/generic	0.090s
+=== RUN   TestPromptAdapter_ExecutesCommand
+--- PASS: TestPromptAdapter_ExecutesCommand (0.01s)
+=== RUN   TestPromptAdapter_IncludesFeedback
+--- PASS: TestPromptAdapter_IncludesFeedback (0.01s)
+=== RUN   TestPromptAdapter_RespectsMaxAttempts
+--- PASS: TestPromptAdapter_RespectsMaxAttempts (0.00s)
+=== RUN   TestPromptAdapter_CommandFailure
+--- PASS: TestPromptAdapter_CommandFailure (0.00s)
+=== RUN   TestPromptAdapter_InjectsResultInstructions
+--- PASS: TestPromptAdapter_InjectsResultInstructions (0.00s)
+=== RUN   TestPromptAdapter_StdoutMarkerSelectsResult
+--- PASS: TestPromptAdapter_StdoutMarkerSelectsResult (0.01s)
+=== RUN   TestExecuteWritesOutputFile
+--- PASS: TestExecuteWritesOutputFile (0.02s)
+=== RUN   TestPromptAdapter_IncrementsAttemptCount
+--- PASS: TestPromptAdapter_IncrementsAttemptCount (0.03s)
+=== RUN   TestPromptAdapter_FallbackOnCommandNotFound
+--- PASS: TestPromptAdapter_FallbackOnCommandNotFound (0.03s)
+=== RUN   TestPromptAdapter_FallbackOnExitErrorNoMarker
+--- PASS: TestPromptAdapter_FallbackOnExitErrorNoMarker (0.01s)
+=== RUN   TestPromptAdapter_NoFallbackOnMarkerResult
+--- PASS: TestPromptAdapter_NoFallbackOnMarkerResult (0.02s)
+=== RUN   TestPromptAdapter_AllCommandsFail
+--- PASS: TestPromptAdapter_AllCommandsFail (0.00s)
+=== RUN   TestPromptAdapter_LastCommandCrashReturnsFailResult
+--- PASS: TestPromptAdapter_LastCommandCrashReturnsFailResult (0.02s)
+=== RUN   TestPromptAdapter_SingleCommandPreservesBehavior
+--- PASS: TestPromptAdapter_SingleCommandPreservesBehavior (0.02s)
+=== RUN   TestPromptAdapter_DefaultArgsForClaude
+--- PASS: TestPromptAdapter_DefaultArgsForClaude (0.00s)
+=== RUN   TestParseCommands
+=== RUN   TestParseCommands/claude
+=== RUN   TestParseCommands/claude,gemini
+=== RUN   TestParseCommands/claude,_gemini,_codex
+=== RUN   TestParseCommands/_claude_,_gemini_,_codex_
+=== RUN   TestParseCommands/claude,,gemini
+=== RUN   TestParseCommands/#00
+--- PASS: TestParseCommands (0.00s)
+    --- PASS: TestParseCommands/claude (0.00s)
+    --- PASS: TestParseCommands/claude,gemini (0.00s)
+    --- PASS: TestParseCommands/claude,_gemini,_codex (0.00s)
+    --- PASS: TestParseCommands/_claude_,_gemini_,_codex_ (0.00s)
+    --- PASS: TestParseCommands/claude,,gemini (0.00s)
+    --- PASS: TestParseCommands/#00 (0.00s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/adapters/agents/prompt	0.196s
+=== RUN   TestTrackerListReady_Empty
+--- PASS: TestTrackerListReady_Empty (0.00s)
+=== RUN   TestTrackerListReady_FiltersByOpenStatus
+--- PASS: TestTrackerListReady_FiltersByOpenStatus (0.00s)
+=== RUN   TestTrackerListReady_LastOccurrenceWins
+--- PASS: TestTrackerListReady_LastOccurrenceWins (0.00s)
+=== RUN   TestTrackerListReady_SkipsTombstones
+--- PASS: TestTrackerListReady_SkipsTombstones (0.00s)
+=== RUN   TestTrackerClaim
+--- PASS: TestTrackerClaim (0.00s)
+=== RUN   TestTrackerComplete
+--- PASS: TestTrackerComplete (0.00s)
+=== RUN   TestTrackerFail
+--- PASS: TestTrackerFail (0.00s)
+=== RUN   TestTrackerClaim_NotFound
+--- PASS: TestTrackerClaim_NotFound (0.00s)
+=== RUN   TestTrackerImplementsInterface
+--- PASS: TestTrackerImplementsInterface (0.00s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/adapters/beads	0.012s
+=== RUN   TestHashBytes
+--- PASS: TestHashBytes (0.00s)
+=== RUN   TestEnsureImage_NoDockerfile
+--- PASS: TestEnsureImage_NoDockerfile (0.00s)
+=== RUN   TestImageLabel_NonexistentImage
+    build_test.go:35: Docker not available
+--- SKIP: TestImageLabel_NonexistentImage (0.00s)
+=== RUN   TestEnsureImage_BuildsWhenImageMissing
+    build_test.go:44: Docker not available
+--- SKIP: TestEnsureImage_BuildsWhenImageMissing (0.00s)
+=== RUN   TestEnsureImage_SkipsWhenUpToDate
+    build_test.go:72: Docker not available
+--- SKIP: TestEnsureImage_SkipsWhenUpToDate (0.00s)
+=== RUN   TestEnsureImage_RebuildsWhenDockerfileChanges
+    build_test.go:104: Docker not available
+--- SKIP: TestEnsureImage_RebuildsWhenDockerfileChanges (0.00s)
+=== RUN   TestDockerRuntime_StartAndStop
+    runtime_test.go:24: Docker not available, skipping integration test
+--- SKIP: TestDockerRuntime_StartAndStop (0.00s)
+=== RUN   TestDockerRuntime_Wait
+    runtime_test.go:48: Docker not available, skipping integration test
+--- SKIP: TestDockerRuntime_Wait (0.00s)
+=== RUN   TestDockerRuntime_FilesPresent
+    runtime_test.go:72: Docker not available, skipping integration test
+--- SKIP: TestDockerRuntime_FilesPresent (0.00s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/adapters/docker	0.021s
+=== RUN   TestServer_ListRuns_Empty
+--- PASS: TestServer_ListRuns_Empty (0.01s)
+=== RUN   TestServer_GetStatus_NotFound
+--- PASS: TestServer_GetStatus_NotFound (0.01s)
+=== RUN   TestServer_RunWorkflow
+2026/03/06 20:50:38 run test-steady-reef: failed to extract output: copying files: cp: cannot stat '/tmp/TestServer_RunWorkflow927679182/001/.cloche/output/.': No such file or directory
+: exit status 1
+2026/03/06 20:50:38 run test-steady-reef: removed container local-1
+--- PASS: TestServer_RunWorkflow (0.06s)
+=== RUN   TestServer_RunWorkflow_CapturesStepMetadata
+2026/03/06 20:50:38 run capture-light-reed: failed to extract output: copying files: cp: cannot stat '/tmp/TestServer_RunWorkflow_CapturesStepMetadata1973546657/001/.cloche/output/.': No such file or directory
+: exit status 1
+2026/03/06 20:50:38 run capture-light-reed: removed container local-1
+--- PASS: TestServer_RunWorkflow_CapturesStepMetadata (0.06s)
+=== RUN   TestServer_StreamLogs
+2026/03/06 20:50:38 run test-lush-birch: failed to extract output: copying files: cp: cannot stat '/tmp/TestServer_StreamLogs1545724820/001/.cloche/output/.': No such file or directory
+: exit status 1
+2026/03/06 20:50:38 run test-lush-birch: removed container local-1
+--- PASS: TestServer_StreamLogs (0.06s)
+=== RUN   TestServer_StreamLogs_FallsBackToContainerLog
+2026/03/06 20:50:38 run test-grand-vale: failed to extract output: copying files: cp: cannot stat '/tmp/TestServer_StreamLogs_FallsBackToContainerLog3339089769/001/.cloche/output/.': No such file or directory
+: exit status 1
+2026/03/06 20:50:38 run test-grand-vale: keeping container local-1 (run failed)
+--- PASS: TestServer_StreamLogs_FallsBackToContainerLog (0.06s)
+=== RUN   TestServer_StreamLogs_PrefersStepOutput
+2026/03/06 20:50:38 run test-happy-jade: failed to extract output: copying files: cp: cannot stat '/tmp/TestServer_StreamLogs_PrefersStepOutput1082344184/001/.cloche/output/.': No such file or directory
+: exit status 1
+2026/03/06 20:50:38 run test-happy-jade: removed container local-1
+--- PASS: TestServer_StreamLogs_PrefersStepOutput (0.06s)
+=== RUN   TestServer_GetStatus_ContainerID
+--- PASS: TestServer_GetStatus_ContainerID (0.01s)
+=== RUN   TestServer_Shutdown
+--- PASS: TestServer_Shutdown (0.01s)
+=== RUN   TestServer_Shutdown_NotConfigured
+--- PASS: TestServer_Shutdown_NotConfigured (0.01s)
+=== RUN   TestServer_RunWorkflow_NoRuntime
+--- PASS: TestServer_RunWorkflow_NoRuntime (0.01s)
+=== RUN   TestServer_RunWorkflow_CallsEnsureImage
+2026/03/06 20:50:39 run test-sharp-flint: failed to extract output: copying files: cp: cannot stat '/tmp/TestServer_RunWorkflow_CallsEnsureImage244168890/001/.cloche/output/.': No such file or directory
+: exit status 1
+2026/03/06 20:50:39 run test-sharp-flint: removed container local-1
+--- PASS: TestServer_RunWorkflow_CallsEnsureImage (0.07s)
+=== RUN   TestServer_RunWorkflow_FailedRunKeepsContainer
+2026/03/06 20:50:39 run test-keen-cove: failed to extract output: copying files: cp: cannot stat '/tmp/TestServer_RunWorkflow_FailedRunKeepsContainer473049923/001/.cloche/output/.': No such file or directory
+: exit status 1
+2026/03/06 20:50:39 run test-keen-cove: keeping container local-1 (run failed)
+--- PASS: TestServer_RunWorkflow_FailedRunKeepsContainer (0.56s)
+=== RUN   TestServer_RunWorkflow_SucceededRunRemovesContainer
+2026/03/06 20:50:39 run test-cool-moss: failed to extract output: copying files: cp: cannot stat '/tmp/TestServer_RunWorkflow_SucceededRunRemovesContainer3756903175/001/.cloche/output/.': No such file or directory
+: exit status 1
+2026/03/06 20:50:39 run test-cool-moss: removed container local-1
+--- PASS: TestServer_RunWorkflow_SucceededRunRemovesContainer (0.26s)
+=== RUN   TestServer_RunWorkflow_KeepContainerOnSuccess
+2026/03/06 20:50:39 run test-glad-brook: failed to extract output: copying files: cp: cannot stat '/tmp/TestServer_RunWorkflow_KeepContainerOnSuccess3156972123/001/.cloche/output/.': No such file or directory
+: exit status 1
+2026/03/06 20:50:39 run test-glad-brook: keeping container local-1 (--keep-container)
+--- PASS: TestServer_RunWorkflow_KeepContainerOnSuccess (0.26s)
+=== RUN   TestServer_DeleteContainer_ByRunID
+--- PASS: TestServer_DeleteContainer_ByRunID (0.00s)
+=== RUN   TestServer_DeleteContainer_ByContainerID
+--- PASS: TestServer_DeleteContainer_ByContainerID (0.00s)
+=== RUN   TestServer_DeleteContainer_EmptyID
+--- PASS: TestServer_DeleteContainer_EmptyID (0.00s)
+=== RUN   TestServer_DeleteContainer_NoRuntime
+--- PASS: TestServer_DeleteContainer_NoRuntime (0.00s)
+=== RUN   TestServer_DeleteContainer_RunWithNoContainer
+--- PASS: TestServer_DeleteContainer_RunWithNoContainer (0.00s)
+=== RUN   TestServer_RunWorkflow_EnsureImageFailure
+2026/03/06 20:50:40 run test-steady-drift: failed to ensure image: build failed: Dockerfile syntax error
+--- PASS: TestServer_RunWorkflow_EnsureImageFailure (0.05s)
+=== RUN   TestServer_LogIndexing
+2026/03/06 20:50:40 run test-clear-reef: removed container local-1
+--- PASS: TestServer_LogIndexing (0.56s)
+=== RUN   TestServer_StreamLogs_StepFilter
+2026/03/06 20:50:40 run test-wise-lark: removed container local-1
+--- PASS: TestServer_StreamLogs_StepFilter (0.56s)
+=== RUN   TestServer_StreamLogs_FullLog
+2026/03/06 20:50:41 run test-gentle-drift: removed container local-1
+--- PASS: TestServer_StreamLogs_FullLog (0.56s)
+=== RUN   TestServer_RunWorkflow_EnqueuesMergeOnSuccess
+2026/03/06 20:50:41 run test-happy-vale: failed to extract output: copying files: cp: cannot stat '/tmp/TestServer_RunWorkflow_EnqueuesMergeOnSuccess3264234513/001/.cloche/output/.': No such file or directory
+: exit status 1
+2026/03/06 20:50:41 run test-happy-vale: removed container local-1
+--- PASS: TestServer_RunWorkflow_EnqueuesMergeOnSuccess (0.56s)
+=== RUN   TestServer_RunWorkflow_NoMergeEnqueueOnFailure
+2026/03/06 20:50:42 run test-vivid-lark: failed to extract output: copying files: cp: cannot stat '/tmp/TestServer_RunWorkflow_NoMergeEnqueueOnFailure4081385495/001/.cloche/output/.': No such file or directory
+: exit status 1
+2026/03/06 20:50:42 run test-vivid-lark: keeping container local-1 (run failed)
+--- PASS: TestServer_RunWorkflow_NoMergeEnqueueOnFailure (0.56s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/adapters/grpc	4.384s
+=== RUN   TestLocalRuntime_StartAndWait
+--- PASS: TestLocalRuntime_StartAndWait (0.02s)
+=== RUN   TestLocalRuntime_AttachOutput
+--- PASS: TestLocalRuntime_AttachOutput (0.00s)
+=== RUN   TestLocalRuntime_NonZeroExit
+--- PASS: TestLocalRuntime_NonZeroExit (0.00s)
+=== RUN   TestLocalRuntime_Stop
+--- PASS: TestLocalRuntime_Stop (0.01s)
+=== RUN   TestLocalRuntime_NotFound
+--- PASS: TestLocalRuntime_NotFound (0.00s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/adapters/local	0.048s
+=== RUN   TestRunStore_CreateAndGet
+--- PASS: TestRunStore_CreateAndGet (0.01s)
+=== RUN   TestRunStore_Update
+--- PASS: TestRunStore_Update (0.00s)
+=== RUN   TestRunStore_List
+--- PASS: TestRunStore_List (0.01s)
+=== RUN   TestRunStore_GetNotFound
+--- PASS: TestRunStore_GetNotFound (0.00s)
+=== RUN   TestStore_DeleteRun
+--- PASS: TestStore_DeleteRun (0.01s)
+=== RUN   TestRunProjectDir
+--- PASS: TestRunProjectDir (0.00s)
+=== RUN   TestCaptureStepMetadata
+--- PASS: TestCaptureStepMetadata (0.01s)
+=== RUN   TestListRunsSince
+--- PASS: TestListRunsSince (0.01s)
+=== RUN   TestListRunsSinceEmpty
+--- PASS: TestListRunsSinceEmpty (0.00s)
+=== RUN   TestGetLastEvolution
+--- PASS: TestGetLastEvolution (0.01s)
+=== RUN   TestRunContainerID
+--- PASS: TestRunContainerID (0.00s)
+=== RUN   TestRunContainerID_BackwardCompat
+--- PASS: TestRunContainerID_BackwardCompat (0.00s)
+=== RUN   TestRunErrorMessage
+--- PASS: TestRunErrorMessage (0.00s)
+=== RUN   TestRunErrorMessageInList
+--- PASS: TestRunErrorMessageInList (0.00s)
+=== RUN   TestStore_ConcurrentWrites
+--- PASS: TestStore_ConcurrentWrites (0.23s)
+=== RUN   TestListRunsByProject
+--- PASS: TestListRunsByProject (0.00s)
+=== RUN   TestListProjects
+--- PASS: TestListProjects (0.00s)
+=== RUN   TestRunContainerKept
+--- PASS: TestRunContainerKept (0.00s)
+=== RUN   TestStore_FailStaleRuns
+--- PASS: TestStore_FailStaleRuns (0.00s)
+=== RUN   TestMergeQueue_EnqueueAndNext
+--- PASS: TestMergeQueue_EnqueueAndNext (0.00s)
+=== RUN   TestMergeQueue_CompleteThenNext
+--- PASS: TestMergeQueue_CompleteThenNext (0.00s)
+=== RUN   TestMergeQueue_FailMerge
+--- PASS: TestMergeQueue_FailMerge (0.00s)
+=== RUN   TestMergeQueue_PerProjectSerialization
+--- PASS: TestMergeQueue_PerProjectSerialization (0.00s)
+=== RUN   TestMergeQueue_EmptyQueue
+--- PASS: TestMergeQueue_EmptyQueue (0.00s)
+=== RUN   TestLogFiles_SaveAndGet
+--- PASS: TestLogFiles_SaveAndGet (0.00s)
+=== RUN   TestLogFiles_EmptyResults
+--- PASS: TestLogFiles_EmptyResults (0.00s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/adapters/sqlite	0.363s
+=== RUN   TestSSE_CompletedRun_ServesFullLog
+--- PASS: TestSSE_CompletedRun_ServesFullLog (0.01s)
+=== RUN   TestSSE_ActiveRun_StreamsLive
+--- PASS: TestSSE_ActiveRun_StreamsLive (0.17s)
+=== RUN   TestSSE_RunNotFound
+--- PASS: TestSSE_RunNotFound (0.01s)
+=== RUN   TestSSE_NoBroadcaster_ActiveRun
+--- PASS: TestSSE_NoBroadcaster_ActiveRun (0.03s)
+=== RUN   TestParseFullLogLine
+=== RUN   TestParseFullLogLine/[2026-03-03T10:15:00Z]_[status]_step_started:_build
+=== RUN   TestParseFullLogLine/[2026-03-03T10:15:01Z]_[script]_npm_run_build
+=== RUN   TestParseFullLogLine/[2026-03-03T10:15:02Z]_[llm]_Claude:_Reading_files...
+=== RUN   TestParseFullLogLine/unstructured_line
+--- PASS: TestParseFullLogLine (0.00s)
+    --- PASS: TestParseFullLogLine/[2026-03-03T10:15:00Z]_[status]_step_started:_build (0.00s)
+    --- PASS: TestParseFullLogLine/[2026-03-03T10:15:01Z]_[script]_npm_run_build (0.00s)
+    --- PASS: TestParseFullLogLine/[2026-03-03T10:15:02Z]_[llm]_Claude:_Reading_files... (0.00s)
+    --- PASS: TestParseFullLogLine/unstructured_line (0.00s)
+=== RUN   TestSSE_CompletedRun_NoFullLog
+--- PASS: TestSSE_CompletedRun_NoFullLog (0.01s)
+=== RUN   TestRunsList_WithRuns
+--- PASS: TestRunsList_WithRuns (0.00s)
+=== RUN   TestRunsList_Empty
+--- PASS: TestRunsList_Empty (0.00s)
+=== RUN   TestRunDetail_WithCaptures
+--- PASS: TestRunDetail_WithCaptures (0.00s)
+=== RUN   TestRunDetail_NotFound
+--- PASS: TestRunDetail_NotFound (0.00s)
+=== RUN   TestAPIRuns
+--- PASS: TestAPIRuns (0.01s)
+=== RUN   TestAPIRunDetail
+--- PASS: TestAPIRunDetail (0.01s)
+=== RUN   TestStaticCSS
+--- PASS: TestStaticCSS (0.01s)
+=== RUN   TestHelpers
+=== RUN   TestHelpers/stateColor
+=== RUN   TestHelpers/formatTime
+=== RUN   TestHelpers/formatDuration
+=== RUN   TestHelpers/truncate
+=== RUN   TestHelpers/shortContainerID
+=== RUN   TestHelpers/projectLabels
+--- PASS: TestHelpers (0.00s)
+    --- PASS: TestHelpers/stateColor (0.00s)
+    --- PASS: TestHelpers/formatTime (0.00s)
+    --- PASS: TestHelpers/formatDuration (0.00s)
+    --- PASS: TestHelpers/truncate (0.00s)
+    --- PASS: TestHelpers/shortContainerID (0.00s)
+    --- PASS: TestHelpers/projectLabels (0.00s)
+=== RUN   TestRunsList_ProjectFilter
+--- PASS: TestRunsList_ProjectFilter (0.01s)
+=== RUN   TestRunsList_ProjectColumn
+--- PASS: TestRunsList_ProjectColumn (0.00s)
+=== RUN   TestAPIRuns_ProjectFilter
+--- PASS: TestAPIRuns_ProjectFilter (0.00s)
+=== RUN   TestRunDetail_ContainerRunning
+--- PASS: TestRunDetail_ContainerRunning (0.00s)
+=== RUN   TestRunDetail_ContainerStopped
+--- PASS: TestRunDetail_ContainerStopped (0.00s)
+=== RUN   TestRunDetail_ContainerAvailable
+--- PASS: TestRunDetail_ContainerAvailable (0.00s)
+=== RUN   TestRunDetail_ContainerRemoved
+--- PASS: TestRunDetail_ContainerRemoved (0.00s)
+=== RUN   TestAPIDeleteContainer_Success
+--- PASS: TestAPIDeleteContainer_Success (0.01s)
+=== RUN   TestAPIDeleteContainer_RunNotFound
+--- PASS: TestAPIDeleteContainer_RunNotFound (0.01s)
+=== RUN   TestAPIDeleteContainer_NoManager
+--- PASS: TestAPIDeleteContainer_NoManager (0.00s)
+=== RUN   TestAPIRunDetail_ContainerState
+--- PASS: TestAPIRunDetail_ContainerState (0.00s)
+=== RUN   TestRunsList_ContainerCount
+--- PASS: TestRunsList_ContainerCount (0.01s)
+=== RUN   TestAPIProjects
+--- PASS: TestAPIProjects (0.01s)
+=== RUN   TestProjectOverview_WithProjects
+--- PASS: TestProjectOverview_WithProjects (0.00s)
+=== RUN   TestProjectOverview_Empty
+--- PASS: TestProjectOverview_Empty (0.00s)
+=== RUN   TestAPITriggerOrchestrator_NoOrchestrator
+--- PASS: TestAPITriggerOrchestrator_NoOrchestrator (0.01s)
+=== RUN   TestAPITriggerOrchestrator_Success
+--- PASS: TestAPITriggerOrchestrator_Success (0.01s)
+=== RUN   TestAPITriggerOrchestrator_ProjectNotFound
+--- PASS: TestAPITriggerOrchestrator_ProjectNotFound (0.00s)
+=== RUN   TestAPITriggerOrchestrator_Error
+--- PASS: TestAPITriggerOrchestrator_Error (0.00s)
+=== RUN   TestHealthColor
+--- PASS: TestHealthColor (0.00s)
+=== RUN   TestAPIProjects_HealthData
+--- PASS: TestAPIProjects_HealthData (0.01s)
+=== RUN   TestAPIProjects_HealthNoRuns
+--- PASS: TestAPIProjects_HealthNoRuns (0.00s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/adapters/web	0.410s
+=== RUN   TestRunner_CaptureWiredToStatus
+--- PASS: TestRunner_CaptureWiredToStatus (0.01s)
+=== RUN   TestRunner_WorkflowLevelAgentConfig
+--- PASS: TestRunner_WorkflowLevelAgentConfig (0.01s)
+=== RUN   TestRunner_StepLevelAgentArgs
+--- PASS: TestRunner_StepLevelAgentArgs (0.01s)
+=== RUN   TestRunner_StepLevelOverridesWorkflowLevel
+--- PASS: TestRunner_StepLevelOverridesWorkflowLevel (0.01s)
+=== RUN   TestRunner_FallbackChain
+--- PASS: TestRunner_FallbackChain (0.01s)
+=== RUN   TestRunner_WorkflowLevelFallbackChain
+--- PASS: TestRunner_WorkflowLevelFallbackChain (0.01s)
+=== RUN   TestRunner_UnifiedLogScriptSteps
+--- PASS: TestRunner_UnifiedLogScriptSteps (0.02s)
+=== RUN   TestRunner_UnifiedLogLLMStep
+--- PASS: TestRunner_UnifiedLogLLMStep (0.02s)
+=== RUN   TestRunner_UnifiedLogMixedSteps
+--- PASS: TestRunner_UnifiedLogMixedSteps (0.03s)
+=== RUN   TestRunner_ExecutesWorkflowFile
+--- PASS: TestRunner_ExecutesWorkflowFile (0.01s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/agent	0.178s
+=== RUN   TestLoadEvolutionConfig
+--- PASS: TestLoadEvolutionConfig (0.00s)
+=== RUN   TestLoadEvolutionConfigDefaults
+--- PASS: TestLoadEvolutionConfigDefaults (0.00s)
+=== RUN   TestLoadDaemonConfig
+--- PASS: TestLoadDaemonConfig (0.00s)
+=== RUN   TestLoadDaemonConfigDefaults
+--- PASS: TestLoadDaemonConfigDefaults (0.00s)
+=== RUN   TestLoadGlobalFrom
+--- PASS: TestLoadGlobalFrom (0.00s)
+=== RUN   TestLoadOrchestrationConfig
+--- PASS: TestLoadOrchestrationConfig (0.00s)
+=== RUN   TestLoadOrchestrationConfigDefaults
+--- PASS: TestLoadOrchestrationConfigDefaults (0.00s)
+=== RUN   TestLoadGlobalFromMissing
+--- PASS: TestLoadGlobalFromMissing (0.00s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/config	0.020s
+=== RUN   TestGenerateRunID_Prefix
+--- PASS: TestGenerateRunID_Prefix (0.00s)
+=== RUN   TestGenerateRunID_ThreeParts
+--- PASS: TestGenerateRunID_ThreeParts (0.00s)
+=== RUN   TestGenerateRunID_Unique
+--- PASS: TestGenerateRunID_Unique (0.00s)
+=== RUN   TestCalculateHealth_Grey_NoRuns
+--- PASS: TestCalculateHealth_Grey_NoRuns (0.00s)
+=== RUN   TestCalculateHealth_Grey_EmptySlice
+--- PASS: TestCalculateHealth_Grey_EmptySlice (0.00s)
+=== RUN   TestCalculateHealth_Green_AllSucceeded
+--- PASS: TestCalculateHealth_Green_AllSucceeded (0.00s)
+=== RUN   TestCalculateHealth_Red_AllFailed
+--- PASS: TestCalculateHealth_Red_AllFailed (0.00s)
+=== RUN   TestCalculateHealth_Red_AllCancelled
+--- PASS: TestCalculateHealth_Red_AllCancelled (0.00s)
+=== RUN   TestCalculateHealth_Red_MixedFailedAndCancelled
+--- PASS: TestCalculateHealth_Red_MixedFailedAndCancelled (0.00s)
+=== RUN   TestCalculateHealth_Yellow_Mixed
+--- PASS: TestCalculateHealth_Yellow_Mixed (0.00s)
+=== RUN   TestCalculateHealth_Blue_AllRunning
+--- PASS: TestCalculateHealth_Blue_AllRunning (0.00s)
+=== RUN   TestCalculateHealth_Blue_AllPending
+--- PASS: TestCalculateHealth_Blue_AllPending (0.00s)
+=== RUN   TestCalculateHealth_WindowSize_TruncatesRuns
+--- PASS: TestCalculateHealth_WindowSize_TruncatesRuns (0.00s)
+=== RUN   TestCalculateHealth_WindowSize_LargerThanRuns
+--- PASS: TestCalculateHealth_WindowSize_LargerThanRuns (0.00s)
+=== RUN   TestCalculateHealth_Green_WithInProgressRuns
+--- PASS: TestCalculateHealth_Green_WithInProgressRuns (0.00s)
+=== RUN   TestCalculateHealth_Yellow_InProgressWithMixed
+--- PASS: TestCalculateHealth_Yellow_InProgressWithMixed (0.00s)
+=== RUN   TestCalculateHealth_Red_InProgressWithFailed
+--- PASS: TestCalculateHealth_Red_InProgressWithFailed (0.00s)
+=== RUN   TestCalculateHealth_SingleRun_Succeeded
+--- PASS: TestCalculateHealth_SingleRun_Succeeded (0.00s)
+=== RUN   TestCalculateHealth_SingleRun_Failed
+--- PASS: TestCalculateHealth_SingleRun_Failed (0.00s)
+=== RUN   TestCalculateHealth_WindowSize_One
+--- PASS: TestCalculateHealth_WindowSize_One (0.00s)
+=== RUN   TestRun_Lifecycle
+--- PASS: TestRun_Lifecycle (0.00s)
+=== RUN   TestRunProjectDir
+--- PASS: TestRunProjectDir (0.00s)
+=== RUN   TestStepExecutionFields
+--- PASS: TestStepExecutionFields (0.00s)
+=== RUN   TestRun_Fail
+--- PASS: TestRun_Fail (0.00s)
+=== RUN   TestRun_StepExecution_Duration
+--- PASS: TestRun_StepExecution_Duration (0.00s)
+=== RUN   TestWorkflow_Validate_ValidGraph
+--- PASS: TestWorkflow_Validate_ValidGraph (0.00s)
+=== RUN   TestWorkflow_Validate_UnwiredResult
+--- PASS: TestWorkflow_Validate_UnwiredResult (0.00s)
+=== RUN   TestWorkflow_Validate_OrphanStep
+--- PASS: TestWorkflow_Validate_OrphanStep (0.00s)
+=== RUN   TestWorkflow_Validate_NoEntryStep
+--- PASS: TestWorkflow_Validate_NoEntryStep (0.00s)
+=== RUN   TestWorkflow_NextSteps
+--- PASS: TestWorkflow_NextSteps (0.00s)
+=== RUN   TestWorkflow_NextSteps_Fanout
+--- PASS: TestWorkflow_NextSteps_Fanout (0.00s)
+=== RUN   TestWorkflow_Validate_CollectValid
+--- PASS: TestWorkflow_Validate_CollectValid (0.00s)
+=== RUN   TestWorkflow_Validate_CollectBadStep
+--- PASS: TestWorkflow_Validate_CollectBadStep (0.00s)
+=== RUN   TestWorkflow_Validate_CollectBadTarget
+--- PASS: TestWorkflow_Validate_CollectBadTarget (0.00s)
+=== RUN   TestWorkflow_ValidateConfig_KnownKeys
+--- PASS: TestWorkflow_ValidateConfig_KnownKeys (0.00s)
+=== RUN   TestWorkflow_ValidateConfig_UnknownKey
+--- PASS: TestWorkflow_ValidateConfig_UnknownKey (0.00s)
+=== RUN   TestWorkflow_ValidateConfig_ContainerPrefix
+--- PASS: TestWorkflow_ValidateConfig_ContainerPrefix (0.00s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/domain	0.022s
+=== RUN   TestMutatorAddStep
+--- PASS: TestMutatorAddStep (0.00s)
+=== RUN   TestMutatorAddStepAgent
+--- PASS: TestMutatorAddStepAgent (0.00s)
+=== RUN   TestMutatorAddWiring
+--- PASS: TestMutatorAddWiring (0.00s)
+=== RUN   TestMutatorUpdateCollect
+--- PASS: TestMutatorUpdateCollect (0.00s)
+=== RUN   TestLexer_SimpleWorkflow
+--- PASS: TestLexer_SimpleWorkflow (0.00s)
+=== RUN   TestLexer_StringLiteral
+--- PASS: TestLexer_StringLiteral (0.00s)
+=== RUN   TestLexer_Comments
+--- PASS: TestLexer_Comments (0.00s)
+=== RUN   TestLexer_Arrow
+--- PASS: TestLexer_Arrow (0.00s)
+=== RUN   TestLexer_EscapedStrings
+--- PASS: TestLexer_EscapedStrings (0.00s)
+=== RUN   TestLexer_HyphenatedIdent
+--- PASS: TestLexer_HyphenatedIdent (0.00s)
+=== RUN   TestParser_FullWorkflow
+--- PASS: TestParser_FullWorkflow (0.00s)
+=== RUN   TestParser_MinimalWorkflow
+--- PASS: TestParser_MinimalWorkflow (0.00s)
+=== RUN   TestParser_SyntaxError
+--- PASS: TestParser_SyntaxError (0.00s)
+=== RUN   TestParser_ContainerBlock
+--- PASS: TestParser_ContainerBlock (0.00s)
+=== RUN   TestParser_WorkflowContainerBlock
+--- PASS: TestParser_WorkflowContainerBlock (0.00s)
+=== RUN   TestParser_WorkflowContainerBlockMultipleFields
+--- PASS: TestParser_WorkflowContainerBlockMultipleFields (0.00s)
+=== RUN   TestParser_WorkflowWithoutContainerBlock
+--- PASS: TestParser_WorkflowWithoutContainerBlock (0.00s)
+=== RUN   TestParser_InfersTypeFromContent
+--- PASS: TestParser_InfersTypeFromContent (0.00s)
+=== RUN   TestParser_AmbiguousStepType
+--- PASS: TestParser_AmbiguousStepType (0.00s)
+=== RUN   TestParser_NoStepType
+--- PASS: TestParser_NoStepType (0.00s)
+=== RUN   TestParser_CollectAll
+--- PASS: TestParser_CollectAll (0.00s)
+=== RUN   TestParser_CollectAny
+--- PASS: TestParser_CollectAny (0.00s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/dsl	0.018s
+=== RUN   TestEngine_LinearWorkflow
+--- PASS: TestEngine_LinearWorkflow (0.00s)
+=== RUN   TestEngine_RetryLoop
+--- PASS: TestEngine_RetryLoop (0.00s)
+=== RUN   TestEngine_Abort
+--- PASS: TestEngine_Abort (0.00s)
+=== RUN   TestEngine_ContextCancellation
+--- PASS: TestEngine_ContextCancellation (0.00s)
+=== RUN   TestEngine_Fanout
+--- PASS: TestEngine_Fanout (0.00s)
+=== RUN   TestEngine_CollectAll
+--- PASS: TestEngine_CollectAll (0.00s)
+=== RUN   TestEngine_CollectAny
+--- PASS: TestEngine_CollectAny (0.00s)
+=== RUN   TestEngine_UndeclaredResultAborts
+--- PASS: TestEngine_UndeclaredResultAborts (0.00s)
+=== RUN   TestEngine_StepTimeout
+--- PASS: TestEngine_StepTimeout (0.10s)
+=== RUN   TestEngine_StepTimeoutOverridesDefault
+--- PASS: TestEngine_StepTimeoutOverridesDefault (0.10s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/engine	0.221s
+=== RUN   TestCollectorGathersData
+--- PASS: TestCollectorGathersData (0.00s)
+=== RUN   TestCollectorNoKnowledgeBase
+--- PASS: TestCollectorNoKnowledgeBase (0.00s)
+=== RUN   TestExtractPromptFiles
+--- PASS: TestExtractPromptFiles (0.00s)
+=== RUN   TestClassifierCategorizesRun
+=== RUN   TestClassifierCategorizesRun/bug
+=== RUN   TestClassifierCategorizesRun/feature
+=== RUN   TestClassifierCategorizesRun/feedback
+=== RUN   TestClassifierCategorizesRun/enhancement
+=== RUN   TestClassifierCategorizesRun/chore
+=== RUN   TestClassifierCategorizesRun/invalid_defaults_to_feature
+=== RUN   TestClassifierCategorizesRun/malformed_JSON_defaults_to_feature
+--- PASS: TestClassifierCategorizesRun (0.00s)
+    --- PASS: TestClassifierCategorizesRun/bug (0.00s)
+    --- PASS: TestClassifierCategorizesRun/feature (0.00s)
+    --- PASS: TestClassifierCategorizesRun/feedback (0.00s)
+    --- PASS: TestClassifierCategorizesRun/enhancement (0.00s)
+    --- PASS: TestClassifierCategorizesRun/chore (0.00s)
+    --- PASS: TestClassifierCategorizesRun/invalid_defaults_to_feature (0.00s)
+    --- PASS: TestClassifierCategorizesRun/malformed_JSON_defaults_to_feature (0.00s)
+=== RUN   TestReflectorExtractsLessons
+--- PASS: TestReflectorExtractsLessons (0.00s)
+=== RUN   TestReflectorFiltersLowConfidence
+--- PASS: TestReflectorFiltersLowConfidence (0.00s)
+=== RUN   TestConfidenceLevel
+--- PASS: TestConfidenceLevel (0.00s)
+=== RUN   TestAuditLoggerAppendsJSONL
+--- PASS: TestAuditLoggerAppendsJSONL (0.00s)
+=== RUN   TestAuditLoggerSnapshot
+--- PASS: TestAuditLoggerSnapshot (0.00s)
+=== RUN   TestAuditLoggerUpdatesKnowledge
+--- PASS: TestAuditLoggerUpdatesKnowledge (0.00s)
+=== RUN   TestCuratorUpdatesPrompt
+--- PASS: TestCuratorUpdatesPrompt (0.00s)
+=== RUN   TestScriptGeneratorCreatesScript
+--- PASS: TestScriptGeneratorCreatesScript (0.00s)
+=== RUN   TestCommandLLMClient
+--- PASS: TestCommandLLMClient (0.00s)
+=== RUN   TestOrchestratorEndToEnd
+--- PASS: TestOrchestratorEndToEnd (0.00s)
+=== RUN   TestOrchestratorNoLessons
+--- PASS: TestOrchestratorNoLessons (0.00s)
+=== RUN   TestTriggerDebounce
+--- PASS: TestTriggerDebounce (2.00s)
+=== RUN   TestTriggerDifferentProjectsRunIndependently
+--- PASS: TestTriggerDifferentProjectsRunIndependently (2.00s)
+=== RUN   TestTriggerUsesLatestRunID
+--- PASS: TestTriggerUsesLatestRunID (2.00s)
+=== RUN   TestTriggerStopCancelsPending
+--- PASS: TestTriggerStopCancelsPending (3.00s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/evolution	9.041s
+=== RUN   TestBroadcaster_SubscribePublish
+--- PASS: TestBroadcaster_SubscribePublish (0.00s)
+=== RUN   TestBroadcaster_MultipleSubscribers
+--- PASS: TestBroadcaster_MultipleSubscribers (0.00s)
+=== RUN   TestBroadcaster_IsolatedRuns
+--- PASS: TestBroadcaster_IsolatedRuns (0.00s)
+=== RUN   TestBroadcaster_Unsubscribe
+--- PASS: TestBroadcaster_Unsubscribe (0.00s)
+=== RUN   TestBroadcaster_Finish
+--- PASS: TestBroadcaster_Finish (0.00s)
+=== RUN   TestBroadcaster_SubscribeAfterFinish
+--- PASS: TestBroadcaster_SubscribeAfterFinish (0.00s)
+=== RUN   TestBroadcaster_IsActive
+--- PASS: TestBroadcaster_IsActive (0.00s)
+=== RUN   TestBroadcaster_PublishNoSubscribers
+--- PASS: TestBroadcaster_PublishNoSubscribers (0.00s)
+=== RUN   TestBroadcaster_ConcurrentAccess
+--- PASS: TestBroadcaster_ConcurrentAccess (0.00s)
+=== RUN   TestBroadcaster_FinishNonexistent
+--- PASS: TestBroadcaster_FinishNonexistent (0.00s)
+=== RUN   TestBroadcaster_UnsubscribeNonexistent
+--- PASS: TestBroadcaster_UnsubscribeNonexistent (0.00s)
+=== RUN   TestBroadcaster_SlowSubscriberDropsMessages
+--- PASS: TestBroadcaster_SlowSubscriberDropsMessages (0.00s)
+=== RUN   TestWriter_Log
+--- PASS: TestWriter_Log (0.00s)
+=== RUN   TestWriter_EmptyMessage
+--- PASS: TestWriter_EmptyMessage (0.00s)
+=== RUN   TestWriter_TrailingNewlineStripped
+--- PASS: TestWriter_TrailingNewlineStripped (0.00s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/logstream	0.016s
+=== RUN   TestMergeAgent_SuccessfulMerge
+--- PASS: TestMergeAgent_SuccessfulMerge (0.17s)
+=== RUN   TestMergeAgent_MergeFailure_BranchPreserved
+--- PASS: TestMergeAgent_MergeFailure_BranchPreserved (0.13s)
+=== RUN   TestMergeAgent_ConflictResolution_WithLLM
+--- PASS: TestMergeAgent_ConflictResolution_WithLLM (0.14s)
+=== RUN   TestMergeAgent_ValidationFailure
+--- PASS: TestMergeAgent_ValidationFailure (0.11s)
+=== RUN   TestMergeAgent_ProcessQueue_Success
+2026/03/06 20:50:39 merge-agent: processing merge for run queue-run-1 (branch cloche/queue-run-1)
+2026/03/06 20:50:39 merge-agent: merge succeeded for run queue-run-1
+--- PASS: TestMergeAgent_ProcessQueue_Success (0.09s)
+=== RUN   TestMergeAgent_ProcessQueue_Failure
+2026/03/06 20:50:39 merge-agent: processing merge for run bad-run (branch cloche/nonexistent)
+2026/03/06 20:50:39 merge-agent: merge failed for run bad-run: git merge failed: merge: cloche/nonexistent - not something we can merge
+: exit status 1
+--- PASS: TestMergeAgent_ProcessQueue_Failure (0.04s)
+=== RUN   TestMergeAgent_ProcessQueue_Empty
+--- PASS: TestMergeAgent_ProcessQueue_Empty (0.00s)
+=== RUN   TestParseFileSections
+--- PASS: TestParseFileSections (0.00s)
+=== RUN   TestParseFileSections_Empty
+--- PASS: TestParseFileSections_Empty (0.00s)
+=== RUN   TestParseFileSections_SingleFile
+--- PASS: TestParseFileSections_SingleFile (0.00s)
+=== RUN   TestOrchestratorRun_DispatchesTasks
+2026/03/06 20:50:39 orchestrator: dispatched run run-1 for task task-1 in /test/project
+2026/03/06 20:50:39 orchestrator: dispatched run run-2 for task task-2 in /test/project
+--- PASS: TestOrchestratorRun_DispatchesTasks (0.00s)
+=== RUN   TestOrchestratorRun_RespectsConncurrencyLimit
+2026/03/06 20:50:39 orchestrator: dispatched run run-1 for task task-1 in /test/project
+--- PASS: TestOrchestratorRun_RespectsConncurrencyLimit (0.00s)
+=== RUN   TestOrchestratorRun_NoAvailableSlots
+--- PASS: TestOrchestratorRun_NoAvailableSlots (0.00s)
+=== RUN   TestOrchestratorRun_NoReadyTasks
+--- PASS: TestOrchestratorRun_NoReadyTasks (0.00s)
+=== RUN   TestOrchestratorRun_UnregisteredProject
+--- PASS: TestOrchestratorRun_UnregisteredProject (0.00s)
+=== RUN   TestOrchestratorRun_PromptGenerationFailure
+2026/03/06 20:50:39 orchestrator: failed to generate prompt for task task-1: LLM unavailable
+--- PASS: TestOrchestratorRun_PromptGenerationFailure (0.00s)
+=== RUN   TestOrchestratorRun_DispatchFailure
+2026/03/06 20:50:39 orchestrator: failed to dispatch run for task task-1: container start failed
+--- PASS: TestOrchestratorRun_DispatchFailure (0.00s)
+=== RUN   TestOrchestratorRun_ClaimFailure
+2026/03/06 20:50:39 orchestrator: failed to claim task task-1: already claimed
+--- PASS: TestOrchestratorRun_ClaimFailure (0.00s)
+=== RUN   TestOrchestratorTriggerAll
+2026/03/06 20:50:39 orchestrator: dispatched run run-1 for task t1 in /proj1
+2026/03/06 20:50:39 orchestrator: dispatched run run-2 for task t2 in /proj2
+--- PASS: TestOrchestratorTriggerAll (0.00s)
+=== RUN   TestOrchestratorOnRunComplete
+2026/03/06 20:50:39 orchestrator: dispatched run run-1 for task task-1 in /test/project
+--- PASS: TestOrchestratorOnRunComplete (0.00s)
+=== RUN   TestOrchestratorInFlightTracking
+2026/03/06 20:50:39 orchestrator: dispatched run run-1 for task task-1 in /test/project
+--- PASS: TestOrchestratorInFlightTracking (0.00s)
+=== RUN   TestOrchestratorRun_UsesCorrectWorkflow
+2026/03/06 20:50:39 orchestrator: dispatched run run-1 for task task-1 in /test/project
+--- PASS: TestOrchestratorRun_UsesCorrectWorkflow (0.00s)
+=== RUN   TestLLMPromptGeneratorBasic
+--- PASS: TestLLMPromptGeneratorBasic (0.00s)
+=== RUN   TestLLMPromptGeneratorWithAcceptance
+--- PASS: TestLLMPromptGeneratorWithAcceptance (0.00s)
+=== RUN   TestLLMPromptGeneratorWithProjectContext
+--- PASS: TestLLMPromptGeneratorWithProjectContext (0.00s)
+=== RUN   TestLLMPromptGeneratorSystemPromptStructure
+--- PASS: TestLLMPromptGeneratorSystemPromptStructure (0.00s)
+=== RUN   TestLLMPromptGeneratorLLMError
+--- PASS: TestLLMPromptGeneratorLLMError (0.00s)
+=== RUN   TestLLMPromptGeneratorEmptyResponse
+--- PASS: TestLLMPromptGeneratorEmptyResponse (0.00s)
+=== RUN   TestLLMPromptGeneratorMinimalTask
+--- PASS: TestLLMPromptGeneratorMinimalTask (0.00s)
+=== RUN   TestLLMPromptGeneratorPriorityZeroOmitted
+--- PASS: TestLLMPromptGeneratorPriorityZeroOmitted (0.00s)
+=== RUN   TestCommandLLMClientWithMockCommand
+--- PASS: TestCommandLLMClientWithMockCommand (0.00s)
+=== RUN   TestCommandLLMClientFailure
+--- PASS: TestCommandLLMClientFailure (0.00s)
+=== RUN   TestNewCommandLLMClientFromEnv
+--- PASS: TestNewCommandLLMClientFromEnv (0.00s)
+=== RUN   TestReadFileIfExists
+--- PASS: TestReadFileIfExists (0.00s)
+=== RUN   TestReadProjectStructure
+--- PASS: TestReadProjectStructure (0.00s)
+=== RUN   TestGatherProjectContext
+--- PASS: TestGatherProjectContext (0.00s)
+=== RUN   TestReadGitLog
+--- PASS: TestReadGitLog (0.00s)
+=== RUN   TestPromptGeneratorInterface
+--- PASS: TestPromptGeneratorInterface (0.00s)
+=== RUN   TestLLMClientInterface
+--- PASS: TestLLMClientInterface (0.00s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/orchestrator	0.713s
+?   	github.com/cloche-dev/cloche/internal/ports	[no test files]
+=== RUN   TestExtractResult_Found
+--- PASS: TestExtractResult_Found (0.00s)
+=== RUN   TestExtractResult_LastWins
+--- PASS: TestExtractResult_LastWins (0.00s)
+=== RUN   TestExtractResult_NotFound
+--- PASS: TestExtractResult_NotFound (0.00s)
+=== RUN   TestExtractResult_EmptyOutput
+--- PASS: TestExtractResult_EmptyOutput (0.00s)
+=== RUN   TestExtractResult_MarkerOnly
+--- PASS: TestExtractResult_MarkerOnly (0.00s)
+=== RUN   TestStatusWriter_WritesJSONLines
+--- PASS: TestStatusWriter_WritesJSONLines (0.00s)
+=== RUN   TestStatusWriter_LogMessage
+--- PASS: TestStatusWriter_LogMessage (0.00s)
+PASS
+ok  	github.com/cloche-dev/cloche/internal/protocol	0.007s
+=== RUN   TestEvolutionPipelineIntegration
+--- PASS: TestEvolutionPipelineIntegration (0.00s)
+=== RUN   TestSmoke_AgentRunsWorkflowEndToEnd
+--- PASS: TestSmoke_AgentRunsWorkflowEndToEnd (0.01s)
+PASS
+ok  	github.com/cloche-dev/cloche/test/integration	0.018s

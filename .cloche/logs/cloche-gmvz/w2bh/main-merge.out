@@ -1,0 +1,15 @@
+Preparing worktree (checking out 'cloche/develop-vivid-bear-040e')
+HEAD is now at e616d77 cloche run develop-vivid-bear-040e: develop (succeeded)
+Current branch cloche/develop-vivid-bear-040e is up to date.
+Updating 3185d4f..e616d77
+Fast-forward
+ cmd/cloche/help.go             |  4 ++--
+ cmd/cloche/main.go             |  5 +++--
+ cmd/cloche/project.go          |  3 ++-
+ cmd/cloched/main.go            |  9 +++++++--
+ docs/USAGE.md                  |  6 +++---
+ internal/config/config.go      | 29 +++++++++++++++++++++++++++++
+ internal/config/config_test.go | 34 ++++++++++++++++++++++++++++++++++
+ 7 files changed, 80 insertions(+), 10 deletions(-)
+Deleted branch cloche/develop-vivid-bear-040e (was e616d77).
+Merged cloche/develop-vivid-bear-040e into main (e616d7795fec13016799af8d2b5cab1bd2f6fdea)

@@ -1,0 +1,313 @@
+{"type":"run_title","message":"Task: Add run stats to cloche status: total runs and workflow velocity EMA","timestamp":"2026-03-18T15:37:22.986746702Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-18T15:37:22.987525054Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Explore the codebase to understand:","timestamp":"2026-03-18T15:37:43.536157629Z"}
+{"type":"log","step_name":"implement","message":"1. How `cloche status...') ---","timestamp":"2026-03-18T15:37:43.536181604Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('cmd/cloche/**/*.go') ---","timestamp":"2026-03-18T15:37:48.275730562Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/ports/**/*.go') ---","timestamp":"2026-03-18T15:37:48.290315632Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/adapters/**/*.go') ---","timestamp":"2026-03-18T15:37:48.484550159Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/domain/**/*.go') ---","timestamp":"2026-03-18T15:37:48.669710917Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*.proto') ---","timestamp":"2026-03-18T15:37:48.679293387Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('cmd/cloche/**/*.go') ---","timestamp":"2026-03-18T15:37:52.515631823Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*.proto') ---","timestamp":"2026-03-18T15:37:52.942600318Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/domain/*.go') ---","timestamp":"2026-03-18T15:37:53.352265232Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/ports/*.go') ---","timestamp":"2026-03-18T15:37:53.365505349Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-18T15:37:56.273902659Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-18T15:37:56.721186079Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-18T15:37:57.043968779Z"}
+{"type":"log","step_name":"implement","message":"Now let me read the proto file, the status test, and the daemon-side gRPC service implementation.","timestamp":"2026-03-18T15:38:01.313516433Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-18T15:38:01.890930158Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/status_test.go') ---","timestamp":"2026-03-18T15:38:02.560056612Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/adapters/grpc/**/*.go') ---","timestamp":"2026-03-18T15:38:02.839762143Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-18T15:38:04.675307693Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-18T15:38:04.679349687Z"}
+{"type":"log","step_name":"test","message":"go: downloading google.golang.org/grpc v1.79.1","timestamp":"2026-03-18T15:38:04.82771818Z"}
+{"type":"log","step_name":"test","message":"go: downloading google.golang.org/protobuf v1.36.11","timestamp":"2026-03-18T15:38:04.827767173Z"}
+{"type":"log","step_name":"test","message":"go: downloading github.com/stretchr/testify v1.11.1","timestamp":"2026-03-18T15:38:04.827999923Z"}
+{"type":"log","step_name":"test","message":"go: downloading github.com/BurntSushi/toml v1.6.0","timestamp":"2026-03-18T15:38:04.833185068Z"}
+{"type":"log","step_name":"test","message":"go: downloading modernc.org/sqlite v1.46.1","timestamp":"2026-03-18T15:38:04.853251393Z"}
+{"type":"log","step_name":"test","message":"go: downloading github.com/davecgh/go-spew v1.1.1","timestamp":"2026-03-18T15:38:10.159286119Z"}
+{"type":"log","step_name":"test","message":"go: downloading github.com/pmezard/go-difflib v1.0.0","timestamp":"2026-03-18T15:38:10.159309433Z"}
+{"type":"log","step_name":"test","message":"go: downloading gopkg.in/yaml.v3 v3.0.1","timestamp":"2026-03-18T15:38:10.159315775Z"}
+{"type":"log","step_name":"test","message":"go: downloading golang.org/x/net v0.48.0","timestamp":"2026-03-18T15:38:10.652803155Z"}
+{"type":"log","step_name":"test","message":"go: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217","timestamp":"2026-03-18T15:38:10.653092813Z"}
+{"type":"log","step_name":"test","message":"go: downloading golang.org/x/sys v0.39.0","timestamp":"2026-03-18T15:38:10.653170299Z"}
+{"type":"log","step_name":"test","message":"go: downloading golang.org/x/text v0.32.0","timestamp":"2026-03-18T15:38:10.990334834Z"}
+{"type":"log","step_name":"test","message":"go: downloading modernc.org/libc v1.67.6","timestamp":"2026-03-18T15:38:17.833332295Z"}
+{"type":"log","step_name":"test","message":"go: downloading github.com/dustin/go-humanize v1.0.1","timestamp":"2026-03-18T15:38:19.666852903Z"}
+{"type":"log","step_name":"test","message":"go: downloading modernc.org/memory v1.11.0","timestamp":"2026-03-18T15:38:19.66688333Z"}
+{"type":"log","step_name":"test","message":"go: downloading github.com/google/uuid v1.6.0","timestamp":"2026-03-18T15:38:19.666890805Z"}
+{"type":"log","step_name":"test","message":"go: downloading golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546","timestamp":"2026-03-18T15:38:19.6669995Z"}
+{"type":"log","step_name":"test","message":"go: downloading modernc.org/mathutil v1.7.1","timestamp":"2026-03-18T15:38:19.667029447Z"}
+{"type":"log","step_name":"test","message":"go: downloading github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec","timestamp":"2026-03-18T15:38:19.704792476Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-18T15:38:30.224653928Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t10.038s","timestamp":"2026-03-18T15:38:41.016896487Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-18T15:38:41.016923237Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-18T15:38:41.016926704Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t0.021s","timestamp":"2026-03-18T15:38:41.016929589Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t0.045s","timestamp":"2026-03-18T15:38:41.016932134Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t0.006s","timestamp":"2026-03-18T15:38:41.016934729Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t4.858s","timestamp":"2026-03-18T15:38:45.505756111Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t0.008s","timestamp":"2026-03-18T15:38:45.505788081Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t0.410s","timestamp":"2026-03-18T15:38:45.505790626Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t0.778s","timestamp":"2026-03-18T15:38:45.50579268Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t0.371s","timestamp":"2026-03-18T15:38:45.505796216Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t0.010s","timestamp":"2026-03-18T15:38:45.50579827Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t0.006s","timestamp":"2026-03-18T15:38:45.505800234Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t0.006s","timestamp":"2026-03-18T15:38:45.505802538Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t0.209s","timestamp":"2026-03-18T15:38:45.505804472Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t9.101s","timestamp":"2026-03-18T15:38:49.861596614Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:40 host executor: dispatched container workflow \"develop\" as run develop-test-run","timestamp":"2026-03-18T15:38:58.200367424Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:42 host executor: workflow \"develop\" run develop-test-run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200386861Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:42 host executor: dispatched container workflow \"develop\" as run develop-test-run","timestamp":"2026-03-18T15:38:58.200389286Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:44 host executor: workflow \"develop\" run develop-test-run completed with state failed","timestamp":"2026-03-18T15:38:58.20039141Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:44 host executor: dispatched container workflow \"develop\" as run develop-child-run","timestamp":"2026-03-18T15:38:58.200393414Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:46 host executor: workflow \"develop\" run develop-child-run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200395387Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:46 host executor: dispatched container workflow \"develop\" as run develop-test-run","timestamp":"2026-03-18T15:38:58.200397251Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:48 host executor: workflow \"develop\" run develop-test-run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200399084Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:48 host executor: dispatched container workflow \"develop\" as run develop-test-run","timestamp":"2026-03-18T15:38:58.200400928Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host executor: workflow \"develop\" run develop-test-run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200402781Z"}
+{"type":"log","step_name":"test","message":"--- FAIL: TestExecutor_ScriptStep_NoRunID (0.00s)","timestamp":"2026-03-18T15:38:58.200404755Z"}
+{"type":"log","step_name":"test","message":"    executor_test.go:478: ","timestamp":"2026-03-18T15:38:58.200410576Z"}
+{"type":"log","step_name":"test","message":"        \tError Trace:\t/workspace/internal/host/executor_test.go:478","timestamp":"2026-03-18T15:38:58.200413211Z"}
+{"type":"log","step_name":"test","message":"        \tError:      \t\"RUN_ID=develop-steady-bear-8245\\n\" does not contain \"RUN_ID=\\n\"","timestamp":"2026-03-18T15:38:58.200415255Z"}
+{"type":"log","step_name":"test","message":"        \tTest:       \tTestExecutor_ScriptStep_NoRunID","timestamp":"2026-03-18T15:38:58.200417279Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: starting \"main\" for project /tmp/TestRunner_RunWithID2881813058/001 (run my-custom-run-id)","timestamp":"2026-03-18T15:38:58.200419222Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [my-custom-run-id]: step \"greet\" started","timestamp":"2026-03-18T15:38:58.200421196Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [my-custom-run-id]: step \"greet\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.20042316Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [my-custom-run-id]: run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200425194Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: \"main\" completed for /tmp/TestRunner_RunWithID2881813058/001 with state succeeded","timestamp":"2026-03-18T15:38:58.200427438Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: starting \"main\" for project /tmp/TestRunner_WithTaskID1211431545/001 (run main-deft-peak-e443)","timestamp":"2026-03-18T15:38:58.200431566Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-deft-peak-e443]: step \"check-task\" started","timestamp":"2026-03-18T15:38:58.200444871Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-deft-peak-e443]: step \"check-task\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200453968Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-deft-peak-e443]: run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200456072Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: \"main\" completed for /tmp/TestRunner_WithTaskID1211431545/001 with state succeeded","timestamp":"2026-03-18T15:38:58.200457926Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: starting \"main\" for project /tmp/TestRunner_PersistsHostRun1444798511/001 (run main-vivid-oak-d7b1)","timestamp":"2026-03-18T15:38:58.200459879Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-vivid-oak-d7b1]: step \"prepare\" started","timestamp":"2026-03-18T15:38:58.200461913Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-vivid-oak-d7b1]: step \"prepare\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200463787Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-vivid-oak-d7b1]: run completed with state succeeded","timestamp":"2026-03-18T15:38:58.20046569Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: \"main\" completed for /tmp/TestRunner_PersistsHostRun1444798511/001 with state succeeded","timestamp":"2026-03-18T15:38:58.200467514Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: starting \"main\" for project /tmp/TestRunner_HostWorkflow_AgentStep2228655954/001 (run main-lush-nest-81b6)","timestamp":"2026-03-18T15:38:58.200469487Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-lush-nest-81b6]: step \"implement\" started","timestamp":"2026-03-18T15:38:58.200471431Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-lush-nest-81b6]: step \"implement\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200473305Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-lush-nest-81b6]: run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200475258Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: \"main\" completed for /tmp/TestRunner_HostWorkflow_AgentStep2228655954/001 with state succeeded","timestamp":"2026-03-18T15:38:58.200477102Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: starting \"main\" for project /tmp/TestRunner_HostWorkflow_AgentStepOverridesWorkflowCommand3724305759/001 (run main-bold-jade-01ca)","timestamp":"2026-03-18T15:38:58.2004813Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-bold-jade-01ca]: step \"implement\" started","timestamp":"2026-03-18T15:38:58.200485237Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-bold-jade-01ca]: step \"implement\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200487141Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-bold-jade-01ca]: run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200489175Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: \"main\" completed for /tmp/TestRunner_HostWorkflow_AgentStepOverridesWorkflowCommand3724305759/001 with state succeeded","timestamp":"2026-03-18T15:38:58.200494855Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: starting \"main\" for project /tmp/TestRunner_PersistsHostRunOnFailure167503793/001 (run main-deft-brook-e7d4)","timestamp":"2026-03-18T15:38:58.200496919Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-deft-brook-e7d4]: step \"bad\" started","timestamp":"2026-03-18T15:38:58.200498883Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-deft-brook-e7d4]: step \"bad\" completed with result \"fail\"","timestamp":"2026-03-18T15:38:58.200500797Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-deft-brook-e7d4]: run completed with state failed","timestamp":"2026-03-18T15:38:58.20050272Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: \"main\" completed for /tmp/TestRunner_PersistsHostRunOnFailure167503793/001 with state failed","timestamp":"2026-03-18T15:38:58.200504554Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: starting \"main\" for project /tmp/TestRunner_RunNamed_Main1606570836/001 (run main-glad-birch-adb7)","timestamp":"2026-03-18T15:38:58.200506457Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-glad-birch-adb7]: step \"greet\" started","timestamp":"2026-03-18T15:38:58.200508381Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-glad-birch-adb7]: step \"greet\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200517188Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-glad-birch-adb7]: run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200519121Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: \"main\" completed for /tmp/TestRunner_RunNamed_Main1606570836/001 with state succeeded","timestamp":"2026-03-18T15:38:58.200520985Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: starting \"list-tasks\" for project /tmp/TestRunner_RunNamed_MultiWorkflow2346813834/001 (run list-tasks-steady-dale-715d)","timestamp":"2026-03-18T15:38:58.200522928Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [list-tasks-steady-dale-715d]: step \"fetch\" started","timestamp":"2026-03-18T15:38:58.200524862Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [list-tasks-steady-dale-715d]: step \"fetch\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200526786Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [list-tasks-steady-dale-715d]: run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200528689Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: \"list-tasks\" completed for /tmp/TestRunner_RunNamed_MultiWorkflow2346813834/001 with state succeeded","timestamp":"2026-03-18T15:38:58.200530523Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: starting \"main\" for project /tmp/TestRunner_RunNamed_MultiWorkflow2346813834/001 (run main-happy-sage-b953)","timestamp":"2026-03-18T15:38:58.200532426Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-happy-sage-b953]: step \"work\" started","timestamp":"2026-03-18T15:38:58.20053433Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-happy-sage-b953]: step \"work\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200536204Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [main-happy-sage-b953]: run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200538257Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: \"main\" completed for /tmp/TestRunner_RunNamed_MultiWorkflow2346813834/001 with state succeeded","timestamp":"2026-03-18T15:38:58.200551733Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: starting \"finalize\" for project /tmp/TestRunner_RunNamed_MultiWorkflow2346813834/001 (run finalize-fair-lake-ad84)","timestamp":"2026-03-18T15:38:58.200554358Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [finalize-fair-lake-ad84]: step \"cleanup\" started","timestamp":"2026-03-18T15:38:58.200567272Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [finalize-fair-lake-ad84]: step \"cleanup\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200569557Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [finalize-fair-lake-ad84]: run completed with state succeeded","timestamp":"2026-03-18T15:38:58.20057155Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: \"finalize\" completed for /tmp/TestRunner_RunNamed_MultiWorkflow2346813834/001 with state succeeded","timestamp":"2026-03-18T15:38:58.200573374Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: starting \"finalize\" for project /tmp/TestRunner_ExtraEnv_Propagated2479807731/001 (run finalize-crisp-fern-78fd)","timestamp":"2026-03-18T15:38:58.200575267Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [finalize-crisp-fern-78fd]: step \"check\" started","timestamp":"2026-03-18T15:38:58.200577141Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [finalize-crisp-fern-78fd]: step \"check\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200578994Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [finalize-crisp-fern-78fd]: run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200580888Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: \"finalize\" completed for /tmp/TestRunner_ExtraEnv_Propagated2479807731/001 with state succeeded","timestamp":"2026-03-18T15:38:58.200582762Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow: starting \"finalize\" for project /tmp/TestRunner_ExtraEnv_RestoredOnResume1673125983/001 (run finalize-glad-bear-75d2)","timestamp":"2026-03-18T15:38:58.200584645Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [finalize-glad-bear-75d2]: step \"route\" started","timestamp":"2026-03-18T15:38:58.200586709Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [finalize-glad-bear-75d2]: step \"route\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200588623Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:50 host workflow [finalize-glad-bear-75d2]: step \"merge\" started","timestamp":"2026-03-18T15:38:58.200590536Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [finalize-glad-bear-75d2]: step \"merge\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.20059239Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [finalize-glad-bear-75d2]: run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200594323Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow: \"finalize\" completed for /tmp/TestRunner_ExtraEnv_RestoredOnResume1673125983/001 with state succeeded","timestamp":"2026-03-18T15:38:58.200596177Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow: resuming \"finalize\" from step \"merge\" for project /tmp/TestRunner_ExtraEnv_RestoredOnResume1673125983/001 (run finalize-glad-bear-75d2)","timestamp":"2026-03-18T15:38:58.200598111Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [finalize-glad-bear-75d2]: step \"route\" started","timestamp":"2026-03-18T15:38:58.200600084Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [finalize-glad-bear-75d2]: step \"route\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200601908Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [finalize-glad-bear-75d2]: step \"merge\" started","timestamp":"2026-03-18T15:38:58.200603892Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [finalize-glad-bear-75d2]: step \"merge\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200605745Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [finalize-glad-bear-75d2]: run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200607629Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow: resume of \"finalize\" completed for /tmp/TestRunner_ExtraEnv_RestoredOnResume1673125983/001 with state succeeded","timestamp":"2026-03-18T15:38:58.200609442Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow: starting \"main\" for project /tmp/TestRunResult_HasOutputDir1368457727/001 (run main-proud-lake-8937)","timestamp":"2026-03-18T15:38:58.200611446Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [main-proud-lake-8937]: step \"greet\" started","timestamp":"2026-03-18T15:38:58.200613339Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [main-proud-lake-8937]: step \"greet\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200615153Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [main-proud-lake-8937]: run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200617066Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow: \"main\" completed for /tmp/TestRunResult_HasOutputDir1368457727/001 with state succeeded","timestamp":"2026-03-18T15:38:58.20061888Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow: starting \"list-tasks\" for project /tmp/TestRunListTasksWorkflow_EmptyResult_NoRunRecord1274129915/001 (run list-tasks-firm-lark-8915)","timestamp":"2026-03-18T15:38:58.200620834Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [list-tasks-firm-lark-8915]: step \"fetch\" started","timestamp":"2026-03-18T15:38:58.200622767Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [list-tasks-firm-lark-8915]: step \"fetch\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200624591Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [list-tasks-firm-lark-8915]: run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200626554Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow: \"list-tasks\" completed for /tmp/TestRunListTasksWorkflow_EmptyResult_NoRunRecord1274129915/001 with state succeeded","timestamp":"2026-03-18T15:38:58.200628368Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow: starting \"list-tasks\" for project /tmp/TestRunListTasksWorkflow_WithTasks_NoRunRecord332077653/001 (run list-tasks-firm-star-f68f)","timestamp":"2026-03-18T15:38:58.200632175Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [list-tasks-firm-star-f68f]: step \"fetch\" started","timestamp":"2026-03-18T15:38:58.200635682Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [list-tasks-firm-star-f68f]: step \"fetch\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200637535Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow [list-tasks-firm-star-f68f]: run completed with state succeeded","timestamp":"2026-03-18T15:38:58.200639449Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow: \"list-tasks\" completed for /tmp/TestRunListTasksWorkflow_WithTasks_NoRunRecord332077653/001 with state succeeded","timestamp":"2026-03-18T15:38:58.200641252Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow []: step \"build\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200643156Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 host workflow []: step \"missing\" completed with result \"success\"","timestamp":"2026-03-18T15:38:58.200644999Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200646823Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200648646Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.20065041Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200652213Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200653976Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.20065579Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200657543Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200659376Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 orchestration loop: assigned task task-2 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.20066126Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200663184Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200664997Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:51 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200666831Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:52 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200668624Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:52 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200672461Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:52 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200674886Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:52 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200676669Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:52 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200678483Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:52 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200680557Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:52 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.20068253Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:52 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200684344Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:52 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200686127Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:52 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.2006879Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:52 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200697499Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:52 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200699352Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:52 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200701206Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:52 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200703019Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:53 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200704802Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:53 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200706926Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:53 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.20070874Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:53 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200710754Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:53 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200718999Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:53 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200721264Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:53 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200723518Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:53 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200725702Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:54 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200727976Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:54 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200730341Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:54 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200732775Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:54 orchestration loop: finalize failed for /tmp/test-project task task-1: finalize infra error","timestamp":"2026-03-18T15:38:58.20073514Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:54 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200740149Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:54 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200745099Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:54 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200767621Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:54 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200770386Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:54 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.20077225Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:54 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200774133Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:54 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200775937Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:54 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200778001Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:54 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200780005Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:54 orchestration loop: assigned task task-3 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200781798Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:55 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200783752Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:55 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200785946Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:55 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.20078831Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:55 orchestration loop: assigned task task-2 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200790695Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:55 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200793029Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:55 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200795414Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:55 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200797588Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:55 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200799552Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:55 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200801966Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:55 orchestration loop: halted for /tmp/test-project (stop_on_error): run failed with state failed","timestamp":"2026-03-18T15:38:58.200804411Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:55 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200806926Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:55 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.20080933Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:55 orchestration loop: halted for /tmp/test-project (stop_on_error): run failed with state failed","timestamp":"2026-03-18T15:38:58.200811374Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:56 orchestration loop: resumed for /tmp/test-project (was halted: run failed with state failed)","timestamp":"2026-03-18T15:38:58.200813227Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:56 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200815041Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:56 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200816814Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:56 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200818628Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:56 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200820391Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:56 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200822224Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:56 orchestration loop: halted for /tmp/test-project (stop_on_error): task task-1 failed","timestamp":"2026-03-18T15:38:58.200824008Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:56 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200825811Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:56 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200827575Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:56 orchestration loop: halted for /tmp/test-project (stop_on_error): halted after 1 consecutive failures: run failed with state failed","timestamp":"2026-03-18T15:38:58.200829428Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:56 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200831332Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:56 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200833085Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:56 orchestration loop: halted for /tmp/test-project (stop_on_error): halted after 1 consecutive failures: run failed with state failed","timestamp":"2026-03-18T15:38:58.200834888Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:57 orchestration loop: resumed for /tmp/test-project (was halted: halted after 1 consecutive failures: run failed with state failed)","timestamp":"2026-03-18T15:38:58.200836772Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:57 orchestration loop: halted for /tmp/test-project (stop_on_error): halted after 1 consecutive failures: run failed with state failed","timestamp":"2026-03-18T15:38:58.200838686Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:57 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200840549Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:57 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200842352Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:57 orchestration loop: halted for /tmp/test-project (stop_on_error): halted after 1 consecutive failures: run failed with state failed","timestamp":"2026-03-18T15:38:58.200844176Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:57 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200846049Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:57 orchestration loop: started for /tmp/test-project (max_concurrent=1, stagger=0s)","timestamp":"2026-03-18T15:38:58.200847823Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:57 orchestration loop: assigned task task-1 for /tmp/test-project","timestamp":"2026-03-18T15:38:58.20085167Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:57 orchestration loop: halted for /tmp/test-project (stop_on_error): halted after 1 consecutive failures: task task-1 failed","timestamp":"2026-03-18T15:38:58.200853534Z"}
+{"type":"log","step_name":"test","message":"2026/03/18 15:38:58 orchestration loop: stopped for /tmp/test-project","timestamp":"2026-03-18T15:38:58.200855407Z"}
+{"type":"log","step_name":"test","message":"FAIL","timestamp":"2026-03-18T15:38:58.200860056Z"}
+{"type":"log","step_name":"test","message":"FAIL\tgithub.com/cloche-dev/cloche/internal/host\t17.451s","timestamp":"2026-03-18T15:38:58.200865196Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t0.046s","timestamp":"2026-03-18T15:38:58.20086765Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-18T15:38:58.200870145Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t0.003s","timestamp":"2026-03-18T15:38:58.20087258Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t0.007s","timestamp":"2026-03-18T15:38:58.200874974Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/version\t0.003s","timestamp":"2026-03-18T15:38:58.200877389Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t0.043s","timestamp":"2026-03-18T15:38:58.200879954Z"}
+{"type":"log","step_name":"test","message":"FAIL","timestamp":"2026-03-18T15:38:58.200882278Z"}
+{"type":"step_completed","step_name":"test","result":"fail","timestamp":"2026-03-18T15:38:58.355053764Z"}
+{"type":"step_started","step_name":"fix","timestamp":"2026-03-18T15:38:58.358467729Z"}
+{"type":"log","step_name":"fix","message":"--- Tool: Agent('I need to understand the codebase to add run stats to `cl...') ---","timestamp":"2026-03-18T15:39:21.414914014Z"}
+{"type":"log","step_name":"fix","message":"--- Tool: Glob('**/*.go') ---","timestamp":"2026-03-18T15:39:22.842922696Z"}
+{"type":"log","step_name":"fix","message":"--- Tool: Glob('**/*.proto') ---","timestamp":"2026-03-18T15:39:22.960857218Z"}
+{"type":"log","step_name":"fix","message":"--- Tool: Bash('go test ./... 2\u003e\u00261 | head -100') ---","timestamp":"2026-03-18T15:39:26.00098965Z"}
+{"type":"log","step_name":"fix","message":"All tests pass. Let me understand what exists so far and what needs to be built.","timestamp":"2026-03-18T15:39:50.162254905Z"}
+{"type":"log","step_name":"fix","message":"--- Tool: Grep('velocity|EMA|RunStats|WorkflowStats|TotalRuns') ---","timestamp":"2026-03-18T15:39:51.190486543Z"}
+{"type":"log","step_name":"fix","message":"--- Tool: Grep('status') ---","timestamp":"2026-03-18T15:39:54.496547112Z"}
+{"type":"log","step_name":"fix","message":"--- Tool: Grep('StatusResponse|StatusRequest') ---","timestamp":"2026-03-18T15:39:55.079976651Z"}
+{"type":"log","step_name":"fix","message":"--- Tool: Grep('func.*status|\\\"status\\\"') ---","timestamp":"2026-03-18T15:39:58.731008408Z"}
+{"type":"log","step_name":"fix","message":"--- Tool: Read('/workspace/cmd/cloche/status_test.go') ---","timestamp":"2026-03-18T15:39:59.032755713Z"}
+{"type":"log","step_name":"fix","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-18T15:40:02.333683112Z"}
+{"type":"log","step_name":"fix","message":"--- Tool: Grep('cmdStatusProject|cmdStatusGlobal|cmdStatusOverview') ---","timestamp":"2026-03-18T15:40:02.921514504Z"}
+{"type":"step_completed","step_name":"fix","result":"success","timestamp":"2026-03-18T15:40:04.267316766Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-18T15:40:04.270610445Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-18T15:40:04.566963189Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t10.056s","timestamp":"2026-03-18T15:40:14.971936878Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-18T15:40:14.97196442Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-18T15:40:14.971967907Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-18T15:40:14.971971564Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-18T15:40:14.971975992Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-18T15:40:14.971978487Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-18T15:40:14.971981903Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-18T15:40:14.971984288Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-18T15:40:14.971986642Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-18T15:40:14.971989107Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-18T15:40:14.971991512Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-18T15:40:14.971993826Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-18T15:40:14.971996211Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-18T15:40:14.971998535Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-18T15:40:14.972000859Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-18T15:40:14.972008634Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-18T15:40:14.972012221Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-18T15:40:14.972014605Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-18T15:40:14.97201698Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-18T15:40:14.972019404Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-18T15:40:14.972021749Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/version\t(cached)","timestamp":"2026-03-18T15:40:14.972024183Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-18T15:40:14.972026578Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-18T15:40:15.014787237Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-18T15:40:15.017873563Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Agent('Find all code related to \"run stats\", \"velocity\", \"EMA\", ...') ---","timestamp":"2026-03-18T15:40:35.699654494Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('**/*.go') ---","timestamp":"2026-03-18T15:40:38.194365217Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Agent('Find all documentation files in the project. Look at:","timestamp":"2026-03-18T15:40:38.218390718Z"}
+{"type":"log","step_name":"update-docs","message":"1. ...') ---","timestamp":"2026-03-18T15:40:38.218403121Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('velocity|EMA|RunStats|TotalRuns') ---","timestamp":"2026-03-18T15:40:38.242025701Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('docs/**/*.md') ---","timestamp":"2026-03-18T15:40:39.343262742Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('**/*.md') ---","timestamp":"2026-03-18T15:40:39.596895582Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('find /workspace/docs -type f -name \"*\" 2\u003e/dev/null | head...') ---","timestamp":"2026-03-18T15:40:39.978985291Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('velocity|EMA|RunStats|TotalRuns|run.?stats') ---","timestamp":"2026-03-18T15:40:48.72313634Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('docs/**/*.md') ---","timestamp":"2026-03-18T15:40:48.736475794Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('status') ---","timestamp":"2026-03-18T15:40:49.551489034Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('velocity|EMA|RunStats|TotalRuns|run.?stats') ---","timestamp":"2026-03-18T15:40:53.506787919Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('status') ---","timestamp":"2026-03-18T15:40:54.445663177Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('cloche status') ---","timestamp":"2026-03-18T15:40:55.060056632Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('Velocity|velocity|Stats|stats|Total.*Run|run.*count|EMA|ema') ---","timestamp":"2026-03-18T15:40:59.831864271Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('velocity|ema|stats|total_runs') ---","timestamp":"2026-03-18T15:41:01.208789244Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('velocity|ema|RunStats|TotalRuns') ---","timestamp":"2026-03-18T15:41:01.911685484Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-18T15:41:03.082671705Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-18T15:41:03.0946261Z"}

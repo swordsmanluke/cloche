@@ -1,0 +1,11 @@
+The duplicate `cloche init` section (lines 155-167) has been removed. All other documentation is accurate:
+
+- **CLI subcommands and flags** — all match the source code (`run`, `status`, `logs`, `poll`, `list`, `stop`, `shutdown`, `init`)
+- **`cloche run` flags** — `--workflow`, `--prompt`/`-p`, `--keep-container` all documented correctly
+- **`cloche init` flags** — `--workflow` (default `develop`), `--image` (default `ubuntu:24.04`) correct
+- **Setting Up a New Project** — workflow template matches `init.go`'s `workflowTemplate`
+- **Daemon Configuration** — env vars match the codebase
+- **Build Commands** — all Makefile targets documented correctly
+- **Workflow DSL** — no syntax changes
+
+CLOCHE_RESULT:success

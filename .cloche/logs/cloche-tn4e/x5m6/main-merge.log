@@ -1,0 +1,13 @@
+Preparing worktree (checking out 'cloche/develop-gentle-brook-1a9e')
+HEAD is now at 1476f3f cloche run develop-gentle-brook-1a9e: develop (succeeded)
+Current branch cloche/develop-gentle-brook-1a9e is up to date.
+Updating 73601f7..1476f3f
+Fast-forward
+ internal/domain/attempt.go | 77 ++++++++++++++++++++++++++++++++++++++++++++++
+ internal/domain/run.go     |  1 +
+ internal/domain/task.go    | 64 ++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 142 insertions(+)
+ create mode 100644 internal/domain/attempt.go
+ create mode 100644 internal/domain/task.go
+Deleted branch cloche/develop-gentle-brook-1a9e (was 1476f3f).
+Merged cloche/develop-gentle-brook-1a9e into cloche-v2 (1476f3f406a30370929ab28e791dfb79f6fdc3ce)

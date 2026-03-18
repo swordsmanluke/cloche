@@ -1,0 +1,3 @@
+## Task: UI: Show smart duration and relative time on Runs page
+
+Show duration on the Runs page along with the date. Make the date format smarter. Running tasks just need the duration. Stopped tasks show duration + how long ago they stopped. e.g. '20m, 1 hour ago'. Round how-long-ago to neat units: >1min, 1min, 5min, 10min, 15min, 30min, 45min, 1h, 2h, etc.

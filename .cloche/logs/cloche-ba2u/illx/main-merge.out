@@ -1,0 +1,11 @@
+Preparing worktree (checking out 'cloche/develop-brave-pine-ac85')
+HEAD is now at 3f518d5 cloche run develop-brave-pine-ac85: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-brave-pine-ac85.
+Updating b26da1c..0414483
+Fast-forward
+ docs/plans/2026-02-24-self-evolution-design.md |   7 ++
+ internal/evolution/curator.go                  |  40 +++++++
+ internal/evolution/evolution_test.go           | 139 +++++++++++++++++++++++++
+ 3 files changed, 186 insertions(+)
+Deleted branch cloche/develop-brave-pine-ac85 (was 0414483).
+Merged cloche/develop-brave-pine-ac85 into main (0414483e1d3f487ed06654b5b18082694421a851)

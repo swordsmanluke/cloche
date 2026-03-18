@@ -1,0 +1,13 @@
+Preparing worktree (checking out 'cloche/develop-gentle-vine-9faf')
+HEAD is now at 7bdf532 cloche run develop-gentle-vine-9faf: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-gentle-vine-9faf.
+Updating e19c5b9..f4cca00
+Fast-forward
+ docs/plans/2026-02-24-self-evolution-design.md |  14 ++
+ internal/evolution/curator.go                  |  18 +++
+ internal/evolution/evolution_test.go           | 196 +++++++++++++++++++++++++
+ internal/evolution/orchestrator.go             |  17 +++
+ internal/evolution/reflector.go                |  13 ++
+ 5 files changed, 258 insertions(+)
+Deleted branch cloche/develop-gentle-vine-9faf (was f4cca00).
+Merged cloche/develop-gentle-vine-9faf into main (f4cca0020f05a9aae704992b808495f36c6b2cb6)

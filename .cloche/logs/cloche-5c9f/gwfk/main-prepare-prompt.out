@@ -1,0 +1,19 @@
+## Task: Support multiple run IDs in cloche poll with status display
+
+Allow `cloche poll` to accept multiple run IDs: `cloche poll id1 id2 id3...`
+
+## Current behavior
+`cloche poll <run-id>` polls a single run and streams log output.
+
+## New behavior
+When given multiple IDs, display a compact status summary (not log output):
+
+```
+id1: running
+id2: succeeded
+id3: running
+```
+
+Polls until all runs reach a terminal state. Use `cloche logs` for detailed output.
+
+Single-ID behavior remains unchanged (streams logs as today).

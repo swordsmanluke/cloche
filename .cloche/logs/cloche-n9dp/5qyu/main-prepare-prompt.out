@@ -1,0 +1,3 @@
+## Task: Include task title in run grouping header
+
+Run grouping headers should show "{task.id}: {task.title}" instead of only "{task.id}". Makes it easier to identify what each group of runs is working on without clicking through.

@@ -1,0 +1,11 @@
+Preparing worktree (checking out 'cloche/develop-sharp-brook-334e')
+HEAD is now at c3fa0a0 cloche run develop-sharp-brook-334e: develop (succeeded)
+Current branch cloche/develop-sharp-brook-334e is up to date.
+Updating a9b5cdb..c3fa0a0
+Fast-forward
+ internal/adapters/web/handler.go          | 31 ++++++++++++++++++++++----
+ internal/adapters/web/handler_test.go     | 37 +++++++++++++++++++++++++++++++
+ internal/adapters/web/templates/runs.html |  6 +++--
+ 3 files changed, 68 insertions(+), 6 deletions(-)
+Deleted branch cloche/develop-sharp-brook-334e (was c3fa0a0).
+Merged cloche/develop-sharp-brook-334e into main (c3fa0a04963b229fc565a0f6394fdae0f556712c)

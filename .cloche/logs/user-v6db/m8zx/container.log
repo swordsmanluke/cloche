@@ -1,0 +1,26 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-06T20:46:52.093768125Z"}
+{"type":"log","step_name":"implement","message":"## Summary","timestamp":"2026-03-06T20:49:06.437612999Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:49:06.437647434Z"}
+{"type":"log","step_name":"implement","message":"Implemented base image change detection in `internal/adapters/docker/build.go`:","timestamp":"2026-03-06T20:49:06.437652414Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:49:06.437669255Z"}
+{"type":"log","step_name":"implement","message":"1. **`baseImageFromDockerfile(content []byte) string`** — Parses the last `FROM` directive from Dockerfile content, handling multi-stage builds, comments, and case-insensitive `FROM`.","timestamp":"2026-03-06T20:49:06.43767673Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:49:06.437695505Z"}
+{"type":"log","step_name":"implement","message":"2. **`imageID(ctx, image) (string, error)`** — Runs `docker inspect --format '{{.Id}}'` to get the current base image ID.","timestamp":"2026-03-06T20:49:06.437701627Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:49:06.437718378Z"}
+{"type":"log","step_name":"implement","message":"3. **`EnsureImage()` extended** — After the Dockerfile hash matches, it now also checks if the base image has changed by comparing the current base image ID against the stored `cloche.base.image.id` label. If the base image can't be inspected (not pulled yet), the check is skipped gracefully.","timestamp":"2026-03-06T20:49:06.43772483Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:49:06.437736432Z"}
+{"type":"log","step_name":"implement","message":"4. **`buildImage()` extended** — Now stores the `cloche.base.image.id` label alongside `cloche.dockerfile.hash` during builds.","timestamp":"2026-03-06T20:49:06.437741382Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:49:06.437752403Z"}
+{"type":"log","step_name":"implement","message":"Tests added in `build_test.go`:","timestamp":"2026-03-06T20:49:06.437757863Z"}
+{"type":"log","step_name":"implement","message":"- `TestBaseImageFromDockerfile` — 8 sub-cases covering single FROM, multi-stage, AS alias, comments, ARG before FROM, empty content, case insensitivity","timestamp":"2026-03-06T20:49:06.437768814Z"}
+{"type":"log","step_name":"implement","message":"- `TestImageID_NonexistentImage` — verifies error on missing image","timestamp":"2026-03-06T20:49:06.437781017Z"}
+{"type":"log","step_name":"implement","message":"- `TestEnsureImage_RebuildsWhenBaseImageChanges` — full integration test that builds a base image, builds a project image, rebuilds the base, and verifies staleness detection","timestamp":"2026-03-06T20:49:06.437791436Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-06T20:49:06.43779854Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-06T20:49:06.830171895Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-06T20:49:06.832072758Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-06T20:49:06.832091894Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-06T20:49:20.318359851Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-06T20:49:20.318386631Z"}
+{"type":"log","step_name":"update-docs","message":"Prompt is too long","timestamp":"2026-03-06T20:49:25.564157365Z"}
+{"type":"step_completed","step_name":"update-docs","result":"fail","timestamp":"2026-03-06T20:49:25.564850816Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-06T20:49:25.564883347Z"}

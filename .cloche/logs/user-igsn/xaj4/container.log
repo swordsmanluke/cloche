@@ -1,0 +1,35 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T01:04:30.709905729Z"}
+{"type":"log","step_name":"implement","message":"Everything builds cleanly. Here's a summary of the fix:","timestamp":"2026-03-09T01:07:23.515885233Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T01:07:23.515940968Z"}
+{"type":"log","step_name":"implement","message":"**Root cause**: The DSL parser stores prompt paths as `file(\".cloche/prompts/implement.md\")` (the full `file(\"...\")` expression), but `handleAPIStepContent` was using this raw value directly as a file path.","timestamp":"2026-03-09T01:07:23.515945847Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T01:07:23.515965134Z"}
+{"type":"log","step_name":"implement","message":"**Changes made**:","timestamp":"2026-03-09T01:07:23.515969773Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T01:07:23.515979501Z"}
+{"type":"log","step_name":"implement","message":"1. **`handler.go`** — Added `extractFilePath()` helper that strips the `file(\"...\")` wrapper to get the actual path. Applied it when reading prompt and script files. Also fixed the config key from `\"command\"` to `\"run\"` to match the DSL's actual key name.","timestamp":"2026-03-09T01:07:23.51598436Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T01:07:23.515993728Z"}
+{"type":"log","step_name":"implement","message":"2. **`project_detail.html`** — Frontend drawer now strips `file(\"...\")` wrapper before displaying the filename, and checks for `run` instead of `command`.","timestamp":"2026-03-09T01:07:23.515997445Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T01:07:23.51600558Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T01:07:24.018403399Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T01:07:24.022782266Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T01:07:24.022817974Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T01:07:34.700783034Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T01:07:34.70083376Z"}
+{"type":"log","step_name":"update-docs","message":"Everything passes. Here's a summary of what was done:","timestamp":"2026-03-09T01:15:49.069945985Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T01:15:49.070002692Z"}
+{"type":"log","step_name":"update-docs","message":"**Bug fix (already in working tree as unstaged changes):**","timestamp":"2026-03-09T01:15:49.070007511Z"}
+{"type":"log","step_name":"update-docs","message":"The `handleAPIStepContent` handler in `handler.go` had two bugs:","timestamp":"2026-03-09T01:15:49.07001188Z"}
+{"type":"log","step_name":"update-docs","message":"1. It passed the raw `file(\".cloche/prompts/implement.md\")` DSL expression directly to `os.ReadFile` instead of extracting the path first — the `extractFilePath` function was added to strip the `file(\"...\")` wrapper","timestamp":"2026-03-09T01:15:49.070019965Z"}
+{"type":"log","step_name":"update-docs","message":"2. It checked `step.Config[\"command\"]` instead of the correct `step.Config[\"run\"]` for script steps","timestamp":"2026-03-09T01:15:49.070034122Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T01:15:49.070042367Z"}
+{"type":"log","step_name":"update-docs","message":"The template `project_detail.html` had matching issues: it checked for `'command'` instead of `'run'`, and didn't extract filenames from `file(\"...\")` expressions for display.","timestamp":"2026-03-09T01:15:49.070046004Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T01:15:49.070054119Z"}
+{"type":"log","step_name":"update-docs","message":"These fixes were already applied and are correct.","timestamp":"2026-03-09T01:15:49.070058197Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T01:15:49.070062886Z"}
+{"type":"log","step_name":"update-docs","message":"**USAGE.md updates (3 discrepancies fixed):**","timestamp":"2026-03-09T01:15:49.070067765Z"}
+{"type":"log","step_name":"update-docs","message":"1. `cloche init` flag name: `--image` → `--base-image` (matching actual code)","timestamp":"2026-03-09T01:15:49.070076141Z"}
+{"type":"log","step_name":"update-docs","message":"2. Default value: `ubuntu:24.04` → `cloche-base:latest` (matching actual code)","timestamp":"2026-03-09T01:15:49.070090047Z"}
+{"type":"log","step_name":"update-docs","message":"3. Added missing files created by `cloche init`: `version`, `host.cloche`, `scripts/prepare-prompt.sh`","timestamp":"2026-03-09T01:15:49.070095457Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T01:15:49.070099856Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T01:15:49.399310894Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T01:15:49.408229762Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T01:15:49.408325463Z"}

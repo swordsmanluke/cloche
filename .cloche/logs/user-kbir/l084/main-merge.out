@@ -1,0 +1,11 @@
+Preparing worktree (checking out 'cloche/develop-wise-brook')
+HEAD is now at 96adde4 cloche run develop-wise-brook: develop (succeeded)
+Current branch cloche/develop-wise-brook is up to date.
+Updating 1462e46..96adde4
+Fast-forward
+ internal/adapters/web/handler.go                |  48 ++++++++++
+ internal/adapters/web/handler_test.go           | 119 ++++++++++++++++++++++++
+ internal/adapters/web/templates/run_detail.html |  23 +++++
+ 3 files changed, 190 insertions(+)
+Deleted branch cloche/develop-wise-brook (was 96adde4).
+Merged cloche/develop-wise-brook into main (96adde4cac3b82a2d0450074e6aee45ffcdc1846)

@@ -1,0 +1,3 @@
+## Task: V2: Web UI — task/attempt grouping and drill-down
+
+Update Web UI to group runs by Task with Attempts nested. Task status derived from latest attempt only. Landing page shows task list with status, attempt count, latest result. Clicking a task drills into attempts, then steps. SSE endpoint moves to /api/attempts/{id}/stream. Step detail serves logs from new file paths.

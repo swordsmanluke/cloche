@@ -1,0 +1,7 @@
+[
+  {
+    "id": "cloche-c1y",
+    "title": "Group cloche runs by task on Bead UI",
+    "description": "Group cloche runs by task, so that main/develop/finalize runs for the same task are clearly tied together. Drop list-tasks runs from the main Runs page and add a new section on the Project page for tracking list-task results."
+  }
+]

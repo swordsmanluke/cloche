@@ -1,0 +1,3 @@
+## Task: V2: Log file layout — task/attempt hierarchy
+
+Move log files from .cloche/<run-id>/output/<step>.log to .cloche/logs/<task-id>/<attempt-id>/<workflow>-<step>.log. Update logstream.Writer, the agent runner, and the daemon's trackRun to write/read from the new paths. Workflow-dispatch steps do not capture their own output. full.log moves to .cloche/logs/<task-id>/<attempt-id>/full.log.

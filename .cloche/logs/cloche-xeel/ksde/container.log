@@ -1,0 +1,141 @@
+{"type":"run_title","message":"Task: Evolution: No rollback on corruption — failed mutations are persisted","timestamp":"2026-03-15T16:07:12.412922257Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-15T16:07:12.413183942Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('I need to understand the evolution system, specifically t...') ---","timestamp":"2026-03-15T16:07:23.53173261Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('curator|Curator') ---","timestamp":"2026-03-15T16:07:25.347484976Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('audit|Audit') ---","timestamp":"2026-03-15T16:07:25.558385792Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('evolution|Evolution') ---","timestamp":"2026-03-15T16:07:25.769733131Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('snapshot|Snapshot') ---","timestamp":"2026-03-15T16:07:25.893672081Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/curator.go') ---","timestamp":"2026-03-15T16:07:26.957999337Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/audit.go') ---","timestamp":"2026-03-15T16:07:27.298632448Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/types.go') ---","timestamp":"2026-03-15T16:07:27.488748803Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-design.md') ---","timestamp":"2026-03-15T16:07:27.632397232Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-implement...') ---","timestamp":"2026-03-15T16:07:29.07695223Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/orchestrator.go') ---","timestamp":"2026-03-15T16:07:29.503282647Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/reflector.go') ---","timestamp":"2026-03-15T16:07:29.512970992Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/collector.go') ---","timestamp":"2026-03-15T16:07:29.676664424Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/classifier.go') ---","timestamp":"2026-03-15T16:07:31.218063548Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/scriptgen.go') ---","timestamp":"2026-03-15T16:07:31.466848381Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/llmclient.go') ---","timestamp":"2026-03-15T16:07:31.671539564Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/evolution/*.go') ---","timestamp":"2026-03-15T16:07:31.804621749Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/trigger.go') ---","timestamp":"2026-03-15T16:07:33.568842812Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:07:33.804108603Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/test/integration/evolution_test.go') ---","timestamp":"2026-03-15T16:07:33.858208229Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('type Run struct') ---","timestamp":"2026-03-15T16:07:35.967599726Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-15T16:07:36.117280963Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/curator.go') ---","timestamp":"2026-03-15T16:08:06.218398603Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/audit.go') ---","timestamp":"2026-03-15T16:08:06.667579093Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/types.go') ---","timestamp":"2026-03-15T16:08:07.113368456Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:08:07.121155869Z"}
+{"type":"log","step_name":"implement","message":"Now I have a clear understanding of the codebase. Let me implement the changes.","timestamp":"2026-03-15T16:08:17.71651749Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/evolution/curator.go') ---","timestamp":"2026-03-15T16:08:33.90672828Z"}
+{"type":"log","step_name":"implement","message":"Now add the `validatePromptContent` function:","timestamp":"2026-03-15T16:08:38.518504926Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/evolution/curator.go') ---","timestamp":"2026-03-15T16:08:43.932483058Z"}
+{"type":"log","step_name":"implement","message":"Now add the tests:","timestamp":"2026-03-15T16:08:47.897905273Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:08:48.505739644Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:09:08.879417883Z"}
+{"type":"log","step_name":"implement","message":"Now let's run the tests:","timestamp":"2026-03-15T16:09:13.187228736Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-15T16:09:13.789159372Z"}
+{"type":"log","step_name":"implement","message":"The existing tests fail because the fake LLM responses don't start with `#`. I need to fix the existing test data to return valid prompt content.","timestamp":"2026-03-15T16:10:11.337555544Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:10:12.39101722Z"}
+{"type":"log","step_name":"implement","message":"Now let me check the integration test:","timestamp":"2026-03-15T16:10:16.517111397Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/test/integration/evolution_test.go') ---","timestamp":"2026-03-15T16:10:16.593081845Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/test/integration/evolution_test.go') ---","timestamp":"2026-03-15T16:10:21.845788412Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./internal/evolution/... ./test/integration/... 2\u003e\u00261') ---","timestamp":"2026-03-15T16:10:25.885913941Z"}
+{"type":"log","step_name":"implement","message":"Tests pass. Now run the full suite:","timestamp":"2026-03-15T16:10:39.302488469Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-15T16:10:39.42824317Z"}
+{"type":"log","step_name":"implement","message":"All tests pass.","timestamp":"2026-03-15T16:10:51.224830502Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:10:51.224853686Z"}
+{"type":"log","step_name":"implement","message":"Here's what I implemented:","timestamp":"2026-03-15T16:10:51.224867732Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:10:51.224870748Z"}
+{"type":"log","step_name":"implement","message":"**`internal/evolution/curator.go`:**","timestamp":"2026-03-15T16:10:51.224872912Z"}
+{"type":"log","step_name":"implement","message":"- Added `validatePromptContent()` — checks that content starts with `#`, has at least one section header, and doesn't begin with conversational phrases (e.g., \"Sure,\", \"Here is\", \"Of course\")","timestamp":"2026-03-15T16:10:51.22487738Z"}
+{"type":"log","step_name":"implement","message":"- Modified `Curator.Apply()` — after writing, validates the output. If the sanity check fails, restores from the snapshot (or in-memory original if no snapshot) and returns a `Change` with type `\"prompt_update_rollback\"` documenting the rollback reason. The snapshot is preserved as evidence.","timestamp":"2026-03-15T16:10:51.224885877Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:10:51.224891587Z"}
+{"type":"log","step_name":"implement","message":"**`internal/evolution/evolution_test.go`** — added 4 new tests:","timestamp":"2026-03-15T16:10:51.224893932Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorRollsBackOnCorruptedOutput` — LLM returns conversational garbage, asserts original content preserved","timestamp":"2026-03-15T16:10:51.22490379Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorRollbackPreservesSnapshot` — asserts snapshot file still exists after rollback","timestamp":"2026-03-15T16:10:51.224909351Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorRollbackOnNoHeading` — LLM returns plain text without `#`, asserts rollback","timestamp":"2026-03-15T16:10:51.224912837Z"}
+{"type":"log","step_name":"implement","message":"- `TestValidatePromptContent` — table-driven tests for the validation function","timestamp":"2026-03-15T16:10:51.224915603Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:10:51.224921514Z"}
+{"type":"log","step_name":"implement","message":"**Existing tests updated** — fixed fake LLM curator responses in `TestOrchestratorEndToEnd` and `TestEvolutionPipelineIntegration` to include a `#` heading so they pass validation.","timestamp":"2026-03-15T16:10:51.224930811Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:10:51.224933567Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:10:51.22493556Z"}
+{"type":"log","step_name":"implement","message":"All tests pass.","timestamp":"2026-03-15T16:10:51.286990036Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:10:51.287008751Z"}
+{"type":"log","step_name":"implement","message":"Here's what I implemented:","timestamp":"2026-03-15T16:10:51.287011577Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:10:51.287013851Z"}
+{"type":"log","step_name":"implement","message":"**`internal/evolution/curator.go`:**","timestamp":"2026-03-15T16:10:51.28701848Z"}
+{"type":"log","step_name":"implement","message":"- Added `validatePromptContent()` — checks that content starts with `#`, has at least one section header, and doesn't begin with conversational phrases (e.g., \"Sure,\", \"Here is\", \"Of course\")","timestamp":"2026-03-15T16:10:51.287021195Z"}
+{"type":"log","step_name":"implement","message":"- Modified `Curator.Apply()` — after writing, validates the output. If the sanity check fails, restores from the snapshot (or in-memory original if no snapshot) and returns a `Change` with type `\"prompt_update_rollback\"` documenting the rollback reason. The snapshot is preserved as evidence.","timestamp":"2026-03-15T16:10:51.287024852Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:10:51.287027877Z"}
+{"type":"log","step_name":"implement","message":"**`internal/evolution/evolution_test.go`** — added 4 new tests:","timestamp":"2026-03-15T16:10:51.287030282Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorRollsBackOnCorruptedOutput` — LLM returns conversational garbage, asserts original content preserved","timestamp":"2026-03-15T16:10:51.287032747Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorRollbackPreservesSnapshot` — asserts snapshot file still exists after rollback","timestamp":"2026-03-15T16:10:51.287035141Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorRollbackOnNoHeading` — LLM returns plain text without `#`, asserts rollback","timestamp":"2026-03-15T16:10:51.287037986Z"}
+{"type":"log","step_name":"implement","message":"- `TestValidatePromptContent` — table-driven tests for the validation function","timestamp":"2026-03-15T16:10:51.287040782Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:10:51.287043236Z"}
+{"type":"log","step_name":"implement","message":"**Existing tests updated** — fixed fake LLM curator responses in `TestOrchestratorEndToEnd` and `TestEvolutionPipelineIntegration` to include a `#` heading so they pass validation.","timestamp":"2026-03-15T16:10:51.287045731Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:10:51.287048597Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:10:51.50276995Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-15T16:10:51.512629368Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-15T16:10:51.516957325Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-15T16:10:51.928391758Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t10.039s","timestamp":"2026-03-15T16:11:02.302415874Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-15T16:11:02.302453024Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-15T16:11:02.302458294Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-15T16:11:02.302467441Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-15T16:11:02.302472691Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-15T16:11:02.30247752Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-15T16:11:02.302483672Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-15T16:11:02.302488261Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-15T16:11:02.302492428Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-15T16:11:02.302496386Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-15T16:11:02.302500183Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-15T16:11:02.30250391Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-15T16:11:02.302509591Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-15T16:11:02.302513398Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-15T16:11:02.302517466Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-15T16:11:02.302526763Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-15T16:11:02.302530921Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-15T16:11:02.302534879Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-15T16:11:02.30254112Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-15T16:11:02.30254633Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-15T16:11:02.30255132Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/version\t(cached)","timestamp":"2026-03-15T16:11:02.302556209Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-15T16:11:02.302582409Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-15T16:11:02.333759424Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-15T16:11:02.337715439Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/curator.go') ---","timestamp":"2026-03-15T16:11:11.110979514Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('docs/**/*.md') ---","timestamp":"2026-03-15T16:11:11.166576539Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('(?i)curator|rollback|corruption|snapshot|validate') ---","timestamp":"2026-03-15T16:11:17.22155267Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('(?i)curator|rollback|corruption|snapshot') ---","timestamp":"2026-03-15T16:11:20.622387145Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('(?i)curator|rollback|corruption|snapshot') ---","timestamp":"2026-03-15T16:11:21.523553847Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('(?i)curator|rollback|corruption|snapshot') ---","timestamp":"2026-03-15T16:11:22.234389337Z"}
+{"type":"log","step_name":"update-docs","message":"Let me check the design doc's description of the Curator steps and the Change type more closely.","timestamp":"2026-03-15T16:11:33.766224537Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-implement...') ---","timestamp":"2026-03-15T16:11:34.571335581Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-implement...') ---","timestamp":"2026-03-15T16:11:35.033140273Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-design.md') ---","timestamp":"2026-03-15T16:11:35.618908011Z"}
+{"type":"log","step_name":"update-docs","message":"I need to update two doc files to reflect the new rollback-on-corruption behavior:","timestamp":"2026-03-15T16:11:41.068272601Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:11:41.068293921Z"}
+{"type":"log","step_name":"update-docs","message":"1. **Design doc** — Branch A (Prompt Curator) description needs validation/rollback info","timestamp":"2026-03-15T16:11:41.06829843Z"}
+{"type":"log","step_name":"update-docs","message":"2. **Implementation doc** — Curator steps and Change type comment need updating","timestamp":"2026-03-15T16:11:41.068302948Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/plans/2026-02-24-self-evolution-design.md') ---","timestamp":"2026-03-15T16:11:45.556816441Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/plans/2026-02-24-self-evolution-implement...') ---","timestamp":"2026-03-15T16:11:46.997058259Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/plans/2026-02-24-self-evolution-implement...') ---","timestamp":"2026-03-15T16:11:50.574705263Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me also check the design doc's future work section — it mentions `cloche evolve --revert` as future work, which is related but distinct from this automatic rollback. Let me verify the edits look correct.","timestamp":"2026-03-15T16:11:54.639405043Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-design.md') ---","timestamp":"2026-03-15T16:11:55.113573485Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-implement...') ---","timestamp":"2026-03-15T16:11:55.813866095Z"}
+{"type":"log","step_name":"update-docs","message":"Both docs look correct. Updated two documentation files:","timestamp":"2026-03-15T16:12:00.722427294Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:12:00.722448845Z"}
+{"type":"log","step_name":"update-docs","message":"- **`docs/plans/2026-02-24-self-evolution-design.md`** — Added post-write validation bullet to Prompt Curator (Branch A) description","timestamp":"2026-03-15T16:12:00.722453443Z"}
+{"type":"log","step_name":"update-docs","message":"- **`docs/plans/2026-02-24-self-evolution-implementation.md`** — Updated Curator steps to include validation/rollback (step 5) and added `prompt_update_rollback` to the Change type comment","timestamp":"2026-03-15T16:12:00.722457982Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:12:00.72246223Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:12:00.722465747Z"}
+{"type":"log","step_name":"update-docs","message":"Both docs look correct. Updated two documentation files:","timestamp":"2026-03-15T16:12:00.771896711Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:12:00.771915757Z"}
+{"type":"log","step_name":"update-docs","message":"- **`docs/plans/2026-02-24-self-evolution-design.md`** — Added post-write validation bullet to Prompt Curator (Branch A) description","timestamp":"2026-03-15T16:12:00.771919565Z"}
+{"type":"log","step_name":"update-docs","message":"- **`docs/plans/2026-02-24-self-evolution-implementation.md`** — Updated Curator steps to include validation/rollback (step 5) and added `prompt_update_rollback` to the Change type comment","timestamp":"2026-03-15T16:12:00.771923652Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:12:00.77192768Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:12:01.203170198Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-15T16:12:01.26197304Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-15T16:12:01.368419239Z"}

@@ -1,0 +1,195 @@
+{"type":"run_title","message":"Task: Evolution: Missing test coverage for Curator corruption scenarios and end-to-end self-repair","timestamp":"2026-03-15T16:11:30.689037981Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-15T16:11:30.689202252Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Explore the evolution-related code in this Go project. I ...') ---","timestamp":"2026-03-15T16:11:40.18574134Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/evolution/**/*.go') ---","timestamp":"2026-03-15T16:11:41.984045119Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/evolution/**/*') ---","timestamp":"2026-03-15T16:11:41.996117719Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal -type d -name \"*evolv*\" | head -20') ---","timestamp":"2026-03-15T16:11:42.416228995Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*evolv*.go\" | head -30') ---","timestamp":"2026-03-15T16:11:42.680452789Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/ports -type f -name \"*.go\" | gre...') ---","timestamp":"2026-03-15T16:11:44.627977936Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/ports/ 2\u003e/dev/null | head -30') ---","timestamp":"2026-03-15T16:11:44.922488704Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/curator.go') ---","timestamp":"2026-03-15T16:11:46.382245563Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/orchestrator.go') ---","timestamp":"2026-03-15T16:11:46.706816126Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/collector.go') ---","timestamp":"2026-03-15T16:11:46.713392511Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-15T16:11:46.777436185Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/types.go') ---","timestamp":"2026-03-15T16:11:48.314954568Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/classifier.go') ---","timestamp":"2026-03-15T16:11:48.328680962Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/reflector.go') ---","timestamp":"2026-03-15T16:11:48.529108219Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/llmclient.go') ---","timestamp":"2026-03-15T16:11:48.718628968Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/scriptgen.go') ---","timestamp":"2026-03-15T16:11:50.156280052Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/audit.go') ---","timestamp":"2026-03-15T16:11:50.389841332Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/trigger.go') ---","timestamp":"2026-03-15T16:11:50.462216096Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:11:52.244030059Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/trigger_test.go') ---","timestamp":"2026-03-15T16:11:52.441379881Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/reflector.go') ---","timestamp":"2026-03-15T16:11:52.544489356Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/domain -type f -name \"*.go\" | he...') ---","timestamp":"2026-03-15T16:11:55.423450816Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain') ---","timestamp":"2026-03-15T16:11:55.558596239Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-15T16:11:58.606296865Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/dsl -type f -name \"*.go\" | head -20') ---","timestamp":"2026-03-15T16:12:00.670739565Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -r \"type Mutator\" /workspace/internal/dsl/ 2\u003e/dev/nu...') ---","timestamp":"2026-03-15T16:12:01.011913168Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/mutator.go') ---","timestamp":"2026-03-15T16:12:02.268522972Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/reflector.go') ---","timestamp":"2026-03-15T16:12:04.14858236Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -r \"Orchestrator\\|Curator\\|Collector\" /workspace/cmd...') ---","timestamp":"2026-03-15T16:12:04.641705405Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -B 10 -A 20 \"evolution.NewOrchestrator\" /workspace/c...') ---","timestamp":"2026-03-15T16:12:06.326989445Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/docs -name \"*evolv*\" 2\u003e/dev/null') ---","timestamp":"2026-03-15T16:12:24.51681008Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls /workspace/docs/ 2\u003e/dev/null | head -20') ---","timestamp":"2026-03-15T16:12:24.594447608Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/docs -name \"*design*\" 2\u003e/dev/null') ---","timestamp":"2026-03-15T16:12:26.476394462Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-design.md') ---","timestamp":"2026-03-15T16:12:27.883272262Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:13:05.974277416Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/curator.go') ---","timestamp":"2026-03-15T16:13:06.423725241Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/orchestrator.go') ---","timestamp":"2026-03-15T16:13:06.939320245Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/collector.go') ---","timestamp":"2026-03-15T16:13:07.391892453Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/types.go') ---","timestamp":"2026-03-15T16:13:07.441175158Z"}
+{"type":"log","step_name":"implement","message":"Now let me read the ports/store.go to understand the store interfaces for mocking.","timestamp":"2026-03-15T16:13:15.310599752Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-15T16:13:15.366528303Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-15T16:13:15.554700736Z"}
+{"type":"log","step_name":"implement","message":"Now I have a thorough understanding of the codebase. Let me write the new tests.","timestamp":"2026-03-15T16:13:18.035361798Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:13:18.569170665Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: ToolSearch ---","timestamp":"2026-03-15T16:13:20.97987974Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-15T16:13:33.170271726Z"}
+{"type":"log","step_name":"implement","message":"Now let me check if there's an `errLLM` or similar error-returning fake already, and look at what the `dsl` package provides for validation.","timestamp":"2026-03-15T16:13:39.158139422Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func.*Validate') ---","timestamp":"2026-03-15T16:13:41.558794422Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('Validate') ---","timestamp":"2026-03-15T16:13:44.633918561Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('Validate|type Workflow|Wiring|Step \"') ---","timestamp":"2026-03-15T16:13:47.658054984Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func.*Workflow.*Validate|type Workflow struct|type Wire s...') ---","timestamp":"2026-03-15T16:13:53.288483226Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('type (Workflow|Wire|Step) struct\"') ---","timestamp":"2026-03-15T16:13:57.580931654Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('type.*struct') ---","timestamp":"2026-03-15T16:13:59.886076356Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('type.*Workflow|Validate|Wiring \\[') ---","timestamp":"2026-03-15T16:14:02.657949484Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/dsl/ast.go') ---","timestamp":"2026-03-15T16:14:04.881625298Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/dsl/*.go') ---","timestamp":"2026-03-15T16:14:07.046057489Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('type.*Workflow|func.*Validate|Wiring\"') ---","timestamp":"2026-03-15T16:14:10.328511396Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-15T16:14:12.44445325Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func.*Workflow.*Validate\"') ---","timestamp":"2026-03-15T16:14:15.057334558Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('Validate') ---","timestamp":"2026-03-15T16:14:17.450290892Z"}
+{"type":"log","step_name":"implement","message":"Now I have everything I need. Let me write the comprehensive test file.","timestamp":"2026-03-15T16:14:24.189806209Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/internal/evolution/corruption_test.go') ---","timestamp":"2026-03-15T16:16:18.839901978Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-15T16:16:34.387087866Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./internal/evolution/... 2\u003e\u00261') ---","timestamp":"2026-03-15T16:16:39.169640354Z"}
+{"type":"log","step_name":"implement","message":"The orchestrator doesn't save to the store when there are no lessons (it returns early on line 80-81). Let me fix that test.","timestamp":"2026-03-15T16:17:02.271619184Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/orchestrator.go') ---","timestamp":"2026-03-15T16:17:03.071417691Z"}
+{"type":"log","step_name":"implement","message":"Right — when there are no lessons, it returns early before saving to the store. The test should account for that. Let me fix the test to use a scenario that produces lessons so the store save path is hit.","timestamp":"2026-03-15T16:17:07.864607567Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/evolution/corruption_test.go') ---","timestamp":"2026-03-15T16:17:16.510530022Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./internal/evolution/... 2\u003e\u00261') ---","timestamp":"2026-03-15T16:17:20.701203186Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Now let me run the full test suite.","timestamp":"2026-03-15T16:17:33.789152873Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-15T16:17:34.418517562Z"}
+{"type":"log","step_name":"implement","message":"All tests pass across the entire project.","timestamp":"2026-03-15T16:18:20.593009329Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-15T16:18:22.606773588Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of what was added in `/workspace/internal/evolution/corruption_test.go`:","timestamp":"2026-03-15T16:18:37.281514323Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:18:37.281538078Z"}
+{"type":"log","step_name":"implement","message":"**Curator corruption scenarios (5 tests):**","timestamp":"2026-03-15T16:18:37.281542617Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorCorruption_ConversationalMetaTextNoFences` — LLM returns chat text without code fences","timestamp":"2026-03-15T16:18:37.281550041Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorCorruption_ResponseShorterThanOriginal` — total content loss","timestamp":"2026-03-15T16:18:37.281574286Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorCorruption_EmptyResponse` — empty string destroys file","timestamp":"2026-03-15T16:18:37.281584907Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorCorruption_EmptyCodeFences` — code fences with nothing between them","timestamp":"2026-03-15T16:18:37.281598212Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorCorruption_RaceConcurrentApply` — 10 concurrent Apply() calls on same file","timestamp":"2026-03-15T16:18:37.28160271Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:18:37.281607569Z"}
+{"type":"log","step_name":"implement","message":"**Orchestrator edge cases (5 tests):**","timestamp":"2026-03-15T16:18:37.281611286Z"}
+{"type":"log","step_name":"implement","message":"- `TestOrchestratorReflectorProducesDuplicateLessons` — lessons already in KB","timestamp":"2026-03-15T16:18:37.281624571Z"}
+{"type":"log","step_name":"implement","message":"- `TestOrchestratorHandleNewStepAlreadyExists` — step name collision","timestamp":"2026-03-15T16:18:37.281641383Z"}
+{"type":"log","step_name":"implement","message":"- `TestOrchestratorWorkflowValidAfterMultipleEvolutionCycles` — 3 cycles with Parse+Validate after each","timestamp":"2026-03-15T16:18:37.281649769Z"}
+{"type":"log","step_name":"implement","message":"- `TestOrchestratorErrorInOneLessonDoesNotPreventOthers` — first lesson fails, second succeeds (tests the `continue` on line 90)","timestamp":"2026-03-15T16:18:37.281661301Z"}
+{"type":"log","step_name":"implement","message":"- `TestOrchestratorSavesToEvolutionStore` — verifies store save with actual mock","timestamp":"2026-03-15T16:18:37.281668194Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:18:37.281672602Z"}
+{"type":"log","step_name":"implement","message":"**Collector with store mocks (4 tests):**","timestamp":"2026-03-15T16:18:37.281676199Z"}
+{"type":"log","step_name":"implement","message":"- `TestCollectorWithEvolutionStoreMock` — fetches runs from store","timestamp":"2026-03-15T16:18:37.281680046Z"}
+{"type":"log","step_name":"implement","message":"- `TestCollectorListRunsSinceCalledWithCorrectRunID` — verifies sinceRunID from last evolution","timestamp":"2026-03-15T16:18:37.281683944Z"}
+{"type":"log","step_name":"implement","message":"- `TestCollectorListRunsSinceEmptyWhenNoLastEvolution` — empty sinceRunID when no prior evolution","timestamp":"2026-03-15T16:18:37.28169233Z"}
+{"type":"log","step_name":"implement","message":"- `TestCollectorWithCaptureStoreMock` — captures fetched per run","timestamp":"2026-03-15T16:18:37.281697589Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:18:37.281705534Z"}
+{"type":"log","step_name":"implement","message":"**Integration tests (3 tests):**","timestamp":"2026-03-15T16:18:37.281710073Z"}
+{"type":"log","step_name":"implement","message":"- `TestIntegration_CorruptPromptDetectedAndFixed` — corrupt prompt → evolution → proper fix","timestamp":"2026-03-15T16:18:37.28171399Z"}
+{"type":"log","step_name":"implement","message":"- `TestIntegration_StabilityNoCyclesNoDrift` — 5 no-op cycles, no drift","timestamp":"2026-03-15T16:18:37.281721254Z"}
+{"type":"log","step_name":"implement","message":"- `TestIntegration_FullCycleWithStores` — end-to-end with both store mocks","timestamp":"2026-03-15T16:18:37.281725091Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:18:37.281729119Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:18:37.281733357Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of what was added in `/workspace/internal/evolution/corruption_test.go`:","timestamp":"2026-03-15T16:18:37.316508451Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:18:37.316550861Z"}
+{"type":"log","step_name":"implement","message":"**Curator corruption scenarios (5 tests):**","timestamp":"2026-03-15T16:18:37.316555029Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorCorruption_ConversationalMetaTextNoFences` — LLM returns chat text without code fences","timestamp":"2026-03-15T16:18:37.316568625Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorCorruption_ResponseShorterThanOriginal` — total content loss","timestamp":"2026-03-15T16:18:37.316572963Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorCorruption_EmptyResponse` — empty string destroys file","timestamp":"2026-03-15T16:18:37.31657685Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorCorruption_EmptyCodeFences` — code fences with nothing between them","timestamp":"2026-03-15T16:18:37.316583533Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorCorruption_RaceConcurrentApply` — 10 concurrent Apply() calls on same file","timestamp":"2026-03-15T16:18:37.31658718Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:18:37.316594063Z"}
+{"type":"log","step_name":"implement","message":"**Orchestrator edge cases (5 tests):**","timestamp":"2026-03-15T16:18:37.316597439Z"}
+{"type":"log","step_name":"implement","message":"- `TestOrchestratorReflectorProducesDuplicateLessons` — lessons already in KB","timestamp":"2026-03-15T16:18:37.316601306Z"}
+{"type":"log","step_name":"implement","message":"- `TestOrchestratorHandleNewStepAlreadyExists` — step name collision","timestamp":"2026-03-15T16:18:37.316604873Z"}
+{"type":"log","step_name":"implement","message":"- `TestOrchestratorWorkflowValidAfterMultipleEvolutionCycles` — 3 cycles with Parse+Validate after each","timestamp":"2026-03-15T16:18:37.31660846Z"}
+{"type":"log","step_name":"implement","message":"- `TestOrchestratorErrorInOneLessonDoesNotPreventOthers` — first lesson fails, second succeeds (tests the `continue` on line 90)","timestamp":"2026-03-15T16:18:37.316612237Z"}
+{"type":"log","step_name":"implement","message":"- `TestOrchestratorSavesToEvolutionStore` — verifies store save with actual mock","timestamp":"2026-03-15T16:18:37.316616145Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:18:37.316619902Z"}
+{"type":"log","step_name":"implement","message":"**Collector with store mocks (4 tests):**","timestamp":"2026-03-15T16:18:37.316623168Z"}
+{"type":"log","step_name":"implement","message":"- `TestCollectorWithEvolutionStoreMock` — fetches runs from store","timestamp":"2026-03-15T16:18:37.316626815Z"}
+{"type":"log","step_name":"implement","message":"- `TestCollectorListRunsSinceCalledWithCorrectRunID` — verifies sinceRunID from last evolution","timestamp":"2026-03-15T16:18:37.316630331Z"}
+{"type":"log","step_name":"implement","message":"- `TestCollectorListRunsSinceEmptyWhenNoLastEvolution` — empty sinceRunID when no prior evolution","timestamp":"2026-03-15T16:18:37.316633898Z"}
+{"type":"log","step_name":"implement","message":"- `TestCollectorWithCaptureStoreMock` — captures fetched per run","timestamp":"2026-03-15T16:18:37.316637715Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:18:37.316642504Z"}
+{"type":"log","step_name":"implement","message":"**Integration tests (3 tests):**","timestamp":"2026-03-15T16:18:37.316646802Z"}
+{"type":"log","step_name":"implement","message":"- `TestIntegration_CorruptPromptDetectedAndFixed` — corrupt prompt → evolution → proper fix","timestamp":"2026-03-15T16:18:37.316651541Z"}
+{"type":"log","step_name":"implement","message":"- `TestIntegration_StabilityNoCyclesNoDrift` — 5 no-op cycles, no drift","timestamp":"2026-03-15T16:18:37.316656641Z"}
+{"type":"log","step_name":"implement","message":"- `TestIntegration_FullCycleWithStores` — end-to-end with both store mocks","timestamp":"2026-03-15T16:18:37.316670517Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:18:37.316674274Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:18:37.853340089Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-15T16:18:38.079777639Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-15T16:18:38.171395331Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-15T16:18:38.714985118Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t10.042s","timestamp":"2026-03-15T16:18:49.076123127Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-15T16:18:49.076164465Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-15T16:18:49.076169595Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-15T16:18:49.076178051Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-15T16:18:49.076184884Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-15T16:18:49.076188921Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-15T16:18:49.076198109Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-15T16:18:49.076203329Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-15T16:18:49.076208568Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-15T16:18:49.076213919Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-15T16:18:49.076219148Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-15T16:18:49.076224258Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-15T16:18:49.076229147Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-15T16:18:49.076232904Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-15T16:18:49.076236712Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-15T16:18:49.076245458Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-15T16:18:49.076256018Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-15T16:18:49.076259845Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-15T16:18:49.076263632Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-15T16:18:49.076267359Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-15T16:18:49.076271036Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/version\t(cached)","timestamp":"2026-03-15T16:18:49.076274844Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-15T16:18:49.076278631Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-15T16:18:49.250881004Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-15T16:18:49.379550301Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:18:55.252553223Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:18:55.252585274Z"}
+{"type":"log","step_name":"update-docs","message":"I'll compare the source code against documentation to check if any docs need updating based on the evolution/corruption test coverage changes.","timestamp":"2026-03-15T16:18:55.252588059Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Agent('Find all files related to evolution, curator, orchestrato...') ---","timestamp":"2026-03-15T16:18:58.503078564Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('internal/evolution/**') ---","timestamp":"2026-03-15T16:19:00.108617884Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('docs/**') ---","timestamp":"2026-03-15T16:19:00.262665752Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('evolution|curator|orchestrator|collector') ---","timestamp":"2026-03-15T16:19:00.562766591Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/corruption_test.go') ---","timestamp":"2026-03-15T16:19:02.143322207Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/types.go') ---","timestamp":"2026-03-15T16:19:02.400243464Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/curator.go') ---","timestamp":"2026-03-15T16:19:02.406876366Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/orchestrator.go') ---","timestamp":"2026-03-15T16:19:02.644454765Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/collector.go') ---","timestamp":"2026-03-15T16:19:02.751119067Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/classifier.go') ---","timestamp":"2026-03-15T16:19:07.111986555Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/reflector.go') ---","timestamp":"2026-03-15T16:19:07.342237049Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('ls -lah /workspace/internal/evolution/') ---","timestamp":"2026-03-15T16:19:07.60882512Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/audit.go') ---","timestamp":"2026-03-15T16:19:09.333310707Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/scriptgen.go') ---","timestamp":"2026-03-15T16:19:09.707350827Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/trigger.go') ---","timestamp":"2026-03-15T16:19:09.856896027Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('evolution|curator|orchestrator|collector') ---","timestamp":"2026-03-15T16:19:10.540757112Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-design.md') ---","timestamp":"2026-03-15T16:19:12.6146352Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('wc -l /workspace/docs/plans/2026-02-24-self-evolution-imp...') ---","timestamp":"2026-03-15T16:19:12.900519048Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-implement...') ---","timestamp":"2026-03-15T16:19:15.045623171Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('head -50 /workspace/docs/plans/2026-02-24-self-evolution-...') ---","timestamp":"2026-03-15T16:19:15.362637236Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('corruption|curator|orchestrator') ---","timestamp":"2026-03-15T16:19:17.687963529Z"}
+{"type":"log","step_name":"update-docs","message":"The change is purely a new test file (`internal/evolution/corruption_test.go`) that adds test coverage for corruption scenarios, orchestrator edge cases, collector mocks, and integration tests. No production code, APIs, features, or behavior changed.","timestamp":"2026-03-15T16:19:41.399675958Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:19:41.399692749Z"}
+{"type":"log","step_name":"update-docs","message":"Let me quickly verify the docs don't reference test coverage in a way that needs updating.","timestamp":"2026-03-15T16:19:41.399695024Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('test coverage|test suite|missing test|corruption test') ---","timestamp":"2026-03-15T16:19:42.18522408Z"}
+{"type":"log","step_name":"update-docs","message":"No documentation references test coverage for the evolution system. Since the change is purely additive tests with no behavioral, API, or feature changes, no documentation updates are needed.","timestamp":"2026-03-15T16:19:44.68119046Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:19:44.681213543Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:19:44.681217831Z"}
+{"type":"log","step_name":"update-docs","message":"No documentation references test coverage for the evolution system. Since the change is purely additive tests with no behavioral, API, or feature changes, no documentation updates are needed.","timestamp":"2026-03-15T16:19:44.698493192Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:19:44.698512368Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:19:44.949519359Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-15T16:19:45.030689552Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-15T16:19:45.055690779Z"}

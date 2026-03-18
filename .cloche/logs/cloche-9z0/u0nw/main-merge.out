@@ -1,0 +1,12 @@
+Preparing worktree (checking out 'cloche/develop-proud-vale-8a47')
+HEAD is now at bb197e1 cloche run develop-proud-vale-8a47: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-proud-vale-8a47.
+Updating ea81160..ab002f6
+Fast-forward
+ docs/plans/2026-03-06-project-pages-design.md |  6 +--
+ internal/adapters/web/handler.go              | 58 ++++++++++++++++++++++++++-
+ internal/adapters/web/handler_test.go         | 22 ++++++++--
+ internal/adapters/web/templates/runs.html     | 15 +++++--
+ 4 files changed, 89 insertions(+), 12 deletions(-)
+Deleted branch cloche/develop-proud-vale-8a47 (was ab002f6).
+Merged cloche/develop-proud-vale-8a47 into main (ab002f674b72c373b5de919391b60a276b815003)

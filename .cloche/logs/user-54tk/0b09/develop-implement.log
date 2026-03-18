@@ -1,0 +1,14 @@
+Done. Here's what I implemented:
+
+**Changes:**
+
+1. **`cmd/cloche/main.go`** — Added `cloche orchestrate` subcommand:
+   - Wired into the command switch (line 70-71)
+   - Added to usage help text
+   - `cmdOrchestrate` calls `client.Orchestrate` with the current working directory, prints "No ready work found." if `dispatched == 0`, or "Dispatched N run(s)." otherwise
+
+2. **`cmd/cloche/orchestrate_test.go`** — Test for output formatting logic
+
+All tests pass, build compiles clean.
+
+CLOCHE_RESULT:success

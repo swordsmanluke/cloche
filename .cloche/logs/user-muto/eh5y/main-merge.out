@@ -1,0 +1,12 @@
+Preparing worktree (checking out 'cloche/develop-glad-reed')
+HEAD is now at dfe7f7e cloche run develop-glad-reed: develop (succeeded)
+Current branch cloche/develop-glad-reed is up to date.
+Updating 84930e2..dfe7f7e
+Fast-forward
+ internal/adapters/grpc/server.go      |  9 ++---
+ internal/adapters/grpc/server_test.go | 14 +++----
+ internal/adapters/web/handler.go      | 19 ++--------
+ internal/adapters/web/handler_test.go | 69 +++++++++++++++++++++++++++++++++++
+ 4 files changed, 83 insertions(+), 28 deletions(-)
+Deleted branch cloche/develop-glad-reed (was dfe7f7e).
+Merged cloche/develop-glad-reed into main (dfe7f7e263750fe80c4a99ab696a9e9c552c8a6a)

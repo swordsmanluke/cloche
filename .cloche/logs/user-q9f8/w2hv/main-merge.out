@@ -1,0 +1,17 @@
+Preparing worktree (checking out 'cloche/develop-deft-reed-832e')
+HEAD is now at b9c6538 cloche run develop-deft-reed-832e: develop (succeeded)
+Rebasing (1/1)Auto-merging docs/USAGE.md
+CONFLICT (content): Merge conflict in docs/USAGE.md
+Auto-merging internal/adapters/grpc/server.go
+CONFLICT (content): Merge conflict in internal/adapters/grpc/server.go
+Auto-merging internal/adapters/grpc/server_test.go
+CONFLICT (content): Merge conflict in internal/adapters/grpc/server_test.go
+Auto-merging internal/adapters/web/handler.go
+Auto-merging internal/adapters/web/handler_test.go
+error: could not apply b9c6538... cloche run develop-deft-reed-832e: develop (succeeded)
+hint: Resolve all conflicts manually, mark them as resolved with
+hint: "git add/rm <conflicted_files>", then run "git rebase --continue".
+hint: You can instead skip this commit: run "git rebase --skip".
+hint: To abort and get back to the state before "git rebase", run "git rebase --abort".
+Could not apply b9c6538... cloche run develop-deft-reed-832e: develop (succeeded)
+error: rebase failed — branch cloche/develop-deft-reed-832e preserved for review

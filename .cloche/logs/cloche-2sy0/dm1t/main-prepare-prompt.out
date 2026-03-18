@@ -1,0 +1,3 @@
+## Task: Web Workflow UI: Vertical layout for workflow graph
+
+Layout workflows top-to-bottom instead of horizontally. Vertical scrolling is easier than horizontal scrolling for users viewing workflow graphs in the web UI.

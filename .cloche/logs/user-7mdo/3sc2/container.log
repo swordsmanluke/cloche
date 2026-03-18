@@ -1,0 +1,36 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T15:36:55.480319689Z"}
+{"type":"log","step_name":"implement","message":"Everything compiles. Here's a summary of the changes:","timestamp":"2026-03-09T15:39:02.311820363Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:39:02.31185057Z"}
+{"type":"log","step_name":"implement","message":"**Route**: Added `GET /projects/{name}/runs` that serves runs filtered by the project identified by `{name}` (the project label).","timestamp":"2026-03-09T15:39:02.311858195Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:39:02.311870318Z"}
+{"type":"log","step_name":"implement","message":"**Handler** (`handler.go`):","timestamp":"2026-03-09T15:39:02.311873925Z"}
+{"type":"log","step_name":"implement","message":"- Registered new route before the existing `GET /projects/{name}` route (more specific path matches first)","timestamp":"2026-03-09T15:39:02.311881499Z"}
+{"type":"log","step_name":"implement","message":"- Added `handleProjectRuns` method that resolves the label to a project dir, fetches runs, and renders the same `runs` template","timestamp":"2026-03-09T15:39:02.311885186Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:39:02.311892269Z"}
+{"type":"log","step_name":"implement","message":"**Templates**:","timestamp":"2026-03-09T15:39:02.311895596Z"}
+{"type":"log","step_name":"implement","message":"- `projects.html`: Changed \"View Runs\" link from `/runs?project={{.Dir}}` to `/projects/{{.Label}}/runs`","timestamp":"2026-03-09T15:39:02.311902709Z"}
+{"type":"log","step_name":"implement","message":"- `project_detail.html`: Changed \"View all runs\" link similarly","timestamp":"2026-03-09T15:39:02.311910263Z"}
+{"type":"log","step_name":"implement","message":"- `runs.html`: Updated `filterByProject` JS to navigate to `/projects/\u003clabel\u003e/runs`; added `data-label` attribute to select options","timestamp":"2026-03-09T15:39:02.311917617Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:39:02.311929891Z"}
+{"type":"log","step_name":"implement","message":"**Tests** (`handler_test.go`):","timestamp":"2026-03-09T15:39:02.311933207Z"}
+{"type":"log","step_name":"implement","message":"- Added `TestProjectRuns` verifying the new route filters correctly","timestamp":"2026-03-09T15:39:02.31194009Z"}
+{"type":"log","step_name":"implement","message":"- Added `TestProjectRuns_NotFound` for unknown project labels","timestamp":"2026-03-09T15:39:02.311947254Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:39:02.311954507Z"}
+{"type":"log","step_name":"implement","message":"The old `/runs?project=...` route still works for backward compatibility (e.g., API polling in the runs page JS uses the query-param API endpoint).","timestamp":"2026-03-09T15:39:02.311957924Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:39:02.311962202Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T15:39:02.607696004Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T15:39:02.612985462Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T15:39:02.613024847Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T15:39:13.145654055Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T15:39:13.145680815Z"}
+{"type":"log","step_name":"update-docs","message":"All 24 tests pass. Here's what was done:","timestamp":"2026-03-09T15:40:17.659187064Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:40:17.659211941Z"}
+{"type":"log","step_name":"update-docs","message":"1. **runs.html**: Removed the `runs?project=` fallback in `filterByProject()`. The JS now always navigates to `/projects/\u003clabel\u003e/runs`.","timestamp":"2026-03-09T15:40:17.659217492Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:40:17.659247408Z"}
+{"type":"log","step_name":"update-docs","message":"2. **handler_test.go**: Updated `TestRunsList_ProjectFilter` to test via `/projects/alpha/runs` instead of `/runs?project=...`.","timestamp":"2026-03-09T15:40:17.65925356Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:40:17.659259602Z"}
+{"type":"log","step_name":"update-docs","message":"The route `GET /projects/{name}/runs` and its handler `handleProjectRuns` were already in place. The old `/runs?project=` query param still works on the `/runs` page handler (for the API polling), but all user-facing navigation now uses the clean URL structure.","timestamp":"2026-03-09T15:40:17.659264491Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:40:17.659271244Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T15:40:18.075384151Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T15:40:18.077351315Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T15:40:18.077416699Z"}

@@ -1,0 +1,16 @@
+Preparing worktree (checking out 'cloche/develop-eager-moss-cb2b')
+HEAD is now at 113371f cloche run develop-eager-moss-cb2b: develop (succeeded)
+Rebasing (1/1)Auto-merging docs/plans/2026-02-24-self-evolution-design.md
+CONFLICT (content): Merge conflict in docs/plans/2026-02-24-self-evolution-design.md
+Auto-merging docs/plans/2026-02-24-self-evolution-implementation.md
+Auto-merging internal/evolution/curator.go
+CONFLICT (content): Merge conflict in internal/evolution/curator.go
+Auto-merging internal/evolution/evolution_test.go
+CONFLICT (content): Merge conflict in internal/evolution/evolution_test.go
+error: could not apply 113371f... cloche run develop-eager-moss-cb2b: develop (succeeded)
+hint: Resolve all conflicts manually, mark them as resolved with
+hint: "git add/rm <conflicted_files>", then run "git rebase --continue".
+hint: You can instead skip this commit: run "git rebase --skip".
+hint: To abort and get back to the state before "git rebase", run "git rebase --abort".
+Could not apply 113371f... cloche run develop-eager-moss-cb2b: develop (succeeded)
+error: rebase failed — branch cloche/develop-eager-moss-cb2b preserved for review

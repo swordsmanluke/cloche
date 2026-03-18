@@ -1,0 +1,16 @@
+## Task: Web Workflow UI: Offset failure-path nodes with colored wire paths
+
+When rendering workflow graphs, create offset link nodes for failure paths to avoid collisions and overlapping when multiple pathways exist. Layout example:
+
+    [ node a ] - failed -> +
+        |                  |
+     succeeded             |
+        |                  |
+    [ node b ] - failed -> +
+        |                  |
+     succeeded             |
+        |                  |
+        V                  V
+     [ DONE ]          [ ABORT ]
+
+Use this approach to isolate wire paths from one another as much as possible. Use coloration to distinguish different paths: succeeded=green, failed=red, then blue, yellow, magenta, etc. for other non-success/failure pathways.

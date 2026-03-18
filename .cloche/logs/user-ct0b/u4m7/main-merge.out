@@ -1,0 +1,20 @@
+Preparing worktree (checking out 'cloche/develop-lush-birch')
+HEAD is now at b41a4e1 cloche run develop-lush-birch: develop (succeeded)
+Current branch cloche/develop-lush-birch is up to date.
+Updating 9f5b84a..b41a4e1
+Fast-forward
+ internal/adapters/sqlite/store.go               |  26 +++-
+ internal/adapters/sqlite/store_test.go          |  88 +++++++++++++
+ internal/adapters/web/handler.go                |  23 ++++
+ internal/adapters/web/handler_test.go           | 166 ++++++++++++++++++++++++
+ internal/adapters/web/static/style.css          |  21 +++
+ internal/adapters/web/templates/run_detail.html |  33 ++++-
+ internal/adapters/web/templates/runs.html       |  57 +++++++-
+ internal/domain/run.go                          |   1 +
+ internal/host/executor.go                       |   9 ++
+ internal/host/executor_test.go                  |   9 ++
+ internal/host/runner.go                         |   1 +
+ internal/ports/store.go                         |   1 +
+ 12 files changed, 423 insertions(+), 12 deletions(-)
+Deleted branch cloche/develop-lush-birch (was b41a4e1).
+Merged cloche/develop-lush-birch into main (b41a4e137e3fee1cd9c4d65289bcf895eba84491)

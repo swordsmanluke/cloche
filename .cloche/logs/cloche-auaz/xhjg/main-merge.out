@@ -1,0 +1,12 @@
+Preparing worktree (checking out 'cloche/develop-wise-dale-2b74')
+HEAD is now at 1cdee2c cloche run develop-wise-dale-2b74: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-wise-dale-2b74.
+Updating f0455eb..2b43762
+Fast-forward
+ internal/adapters/web/handler.go                | 108 +++++++++-
+ internal/adapters/web/handler_stream_test.go    | 256 ++++++++++++++++++++++++
+ internal/adapters/web/static/style.css          |  17 ++
+ internal/adapters/web/templates/run_detail.html |  66 +++++-
+ 4 files changed, 436 insertions(+), 11 deletions(-)
+Deleted branch cloche/develop-wise-dale-2b74 (was 2b43762).
+Merged cloche/develop-wise-dale-2b74 into main (2b437625b3000e3ebe4aab3ceb45d54150963e9d)

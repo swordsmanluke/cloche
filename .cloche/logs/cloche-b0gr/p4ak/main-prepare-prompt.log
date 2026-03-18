@@ -1,0 +1,3 @@
+## Task: GEPA: Fitness evaluation and Pareto front
+
+Create internal/evolution/fitness.go with: EvaluateRun (extracts metrics from domain.Run — success/fail, retry count, duration), RecordFitness/LoadFitness (JSONL I/O to fitness.jsonl), AggregateFitness (groups by candidate, computes success rate + efficiency), ComputeParetoFront (returns non-dominated set), Dominates (multi-objective comparison). Two objectives: success rate and efficiency. Include table-driven unit tests with known Pareto fronts.

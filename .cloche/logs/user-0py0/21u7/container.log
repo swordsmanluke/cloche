@@ -1,0 +1,37 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T00:52:24.097517638Z"}
+{"type":"log","step_name":"implement","message":"All tests pass across the entire project. Here's a summary of the changes:","timestamp":"2026-03-09T00:56:41.053565727Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:56:41.053594351Z"}
+{"type":"log","step_name":"implement","message":"**Routes added:**","timestamp":"2026-03-09T00:56:41.053601915Z"}
+{"type":"log","step_name":"implement","message":"- `GET /projects/{name}/runs` — HTML page showing runs for a specific project","timestamp":"2026-03-09T00:56:41.053603939Z"}
+{"type":"log","step_name":"implement","message":"- `GET /api/projects/{name}/runs` — JSON API returning runs for a specific project","timestamp":"2026-03-09T00:56:41.053608167Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:56:41.053612075Z"}
+{"type":"log","step_name":"implement","message":"**Handlers:**","timestamp":"2026-03-09T00:56:41.053613928Z"}
+{"type":"log","step_name":"implement","message":"- `handleRunsList` / `handleAPIRuns` — simplified to only serve all runs (removed `?project=` query param support)","timestamp":"2026-03-09T00:56:41.053615761Z"}
+{"type":"log","step_name":"implement","message":"- `handleProjectRunsList` — new handler that resolves project label from URL path, lists filtered runs","timestamp":"2026-03-09T00:56:41.053620701Z"}
+{"type":"log","step_name":"implement","message":"- `handleAPIProjectRuns` — new API handler, same pattern","timestamp":"2026-03-09T00:56:41.053624718Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:56:41.053628696Z"}
+{"type":"log","step_name":"implement","message":"**Templates updated:**","timestamp":"2026-03-09T00:56:41.053630419Z"}
+{"type":"log","step_name":"implement","message":"- `runs.html` — dropdown uses project labels as values, `filterByProject()` navigates to `/projects/\u003clabel\u003e/runs`, API polling uses `/api/projects/\u003clabel\u003e/runs`","timestamp":"2026-03-09T00:56:41.053632193Z"}
+{"type":"log","step_name":"implement","message":"- `projects.html` — \"View Runs\" link changed from `/runs?project={{.Dir}}` to `/projects/{{.Label}}/runs`","timestamp":"2026-03-09T00:56:41.053642562Z"}
+{"type":"log","step_name":"implement","message":"- `project_detail.html` — \"View all runs\" link changed similarly","timestamp":"2026-03-09T00:56:41.053647642Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:56:41.053652842Z"}
+{"type":"log","step_name":"implement","message":"**Tests:**","timestamp":"2026-03-09T00:56:41.053655116Z"}
+{"type":"log","step_name":"implement","message":"- Updated `TestRunsList_ProjectFilter` and `TestAPIRuns_ProjectFilter` to use new URL paths","timestamp":"2026-03-09T00:56:41.053660206Z"}
+{"type":"log","step_name":"implement","message":"- Added `TestProjectRunsList_NotFound` and `TestAPIProjectRuns_NotFound` for 404 cases","timestamp":"2026-03-09T00:56:41.05366769Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T00:56:41.053670545Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T00:56:41.294148536Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T00:56:41.298845647Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T00:56:41.298872047Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T00:56:41.674065801Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T00:56:41.674092461Z"}
+{"type":"log","step_name":"update-docs","message":"The docs are now accurate. Two discrepancies were fixed:","timestamp":"2026-03-09T00:57:33.106529129Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T00:57:33.106562542Z"}
+{"type":"log","step_name":"update-docs","message":"1. Flag name: `--image` → `--base-image` (matching init.go:153)","timestamp":"2026-03-09T00:57:33.106568413Z"}
+{"type":"log","step_name":"update-docs","message":"2. Default value: `ubuntu:24.04` → `cloche-base:latest` (matching init.go:144)","timestamp":"2026-03-09T00:57:33.106574855Z"}
+{"type":"log","step_name":"update-docs","message":"3. Reference in \"Make sure your project builds\" section: `--image` → `--base-image`","timestamp":"2026-03-09T00:57:33.106580836Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T00:57:33.106586888Z"}
+{"type":"log","step_name":"update-docs","message":"Everything else in USAGE.md (subcommands, flags, usage examples, daemon config, build commands) already matches the source code.","timestamp":"2026-03-09T00:57:33.106591647Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T00:57:33.106597578Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T00:57:33.744375609Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T00:57:33.747169011Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T00:57:33.747303755Z"}

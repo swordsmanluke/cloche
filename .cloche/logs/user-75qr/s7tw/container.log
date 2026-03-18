@@ -1,0 +1,40 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T17:39:14.379279792Z"}
+{"type":"log","step_name":"implement","message":"That's the CLI command name `cloche orchestrate`, which is separate from the workflow name — it's the subcommand that triggers orchestration. The task is specifically about renaming the workflow from \"orchestrate\" to \"main\", not the CLI command.","timestamp":"2026-03-09T17:41:00.736538702Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T17:41:00.73659621Z"}
+{"type":"log","step_name":"implement","message":"All changes are complete and tests pass:","timestamp":"2026-03-09T17:41:00.736600789Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T17:41:00.736604837Z"}
+{"type":"log","step_name":"implement","message":"**Files modified:**","timestamp":"2026-03-09T17:41:00.736620326Z"}
+{"type":"log","step_name":"implement","message":"- `.cloche/host.cloche` — workflow name `\"orchestrate\"` → `\"main\"`","timestamp":"2026-03-09T17:41:00.736624323Z"}
+{"type":"log","step_name":"implement","message":"- `cmd/cloche/init.go` — template workflow name","timestamp":"2026-03-09T17:41:00.736632108Z"}
+{"type":"log","step_name":"implement","message":"- `internal/orchestrator/orchestrator.go` — `GenerateRunID(\"main\")`","timestamp":"2026-03-09T17:41:00.736635865Z"}
+{"type":"log","step_name":"implement","message":"- `internal/orchestrator/hostrunner.go` — output dir path `\"main\"`","timestamp":"2026-03-09T17:41:00.73664352Z"}
+{"type":"log","step_name":"implement","message":"- `internal/orchestrator/orchestrator_test.go` — test workflow DSL","timestamp":"2026-03-09T17:41:00.736652397Z"}
+{"type":"log","step_name":"implement","message":"- `internal/orchestrator/hostrunner_test.go` — test workflow names and output path","timestamp":"2026-03-09T17:41:00.736659921Z"}
+{"type":"log","step_name":"implement","message":"- `internal/domain/workflow_test.go` — test workflow name","timestamp":"2026-03-09T17:41:00.736668437Z"}
+{"type":"log","step_name":"implement","message":"- `internal/dsl/parser_test.go` — test workflow DSL and assertion","timestamp":"2026-03-09T17:41:00.736678305Z"}
+{"type":"log","step_name":"implement","message":"- `docs/workflows.md` — example workflow name","timestamp":"2026-03-09T17:41:00.736683085Z"}
+{"type":"log","step_name":"implement","message":"- `docs/plans/2026-03-06-host-workflow-design.md` — all references","timestamp":"2026-03-09T17:41:00.736690939Z"}
+{"type":"log","step_name":"implement","message":"- `docs/plans/2026-03-06-cloche-init-design.md` — example run ID","timestamp":"2026-03-09T17:41:00.736699255Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T17:41:00.736707491Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T17:41:00.986355017Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T17:41:00.989544897Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T17:41:00.989575515Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T17:41:30.317927139Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T17:41:30.317955101Z"}
+{"type":"log","step_name":"update-docs","message":"The rename from \"orchestrate\" to \"main\" has already been completed across the entire codebase:","timestamp":"2026-03-09T17:42:26.911187982Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T17:42:26.911244378Z"}
+{"type":"log","step_name":"update-docs","message":"1. **cmd/cloche/init.go** — `hostWorkflowTemplate` uses `workflow \"main\"` (line 111)","timestamp":"2026-03-09T17:42:26.911249077Z"}
+{"type":"log","step_name":"update-docs","message":"2. **internal/orchestrator/orchestrator.go** — `GenerateRunID(\"main\")` (line 236)","timestamp":"2026-03-09T17:42:26.911253766Z"}
+{"type":"log","step_name":"update-docs","message":"3. **internal/orchestrator/hostrunner.go** — output dir uses `\"main\"` (line 31)","timestamp":"2026-03-09T17:42:26.911258385Z"}
+{"type":"log","step_name":"update-docs","message":"4. **docs/plans/2026-03-06-host-workflow-design.md** — all examples use `workflow \"main\"`","timestamp":"2026-03-09T17:42:26.911263374Z"}
+{"type":"log","step_name":"update-docs","message":"5. **docs/workflows.md** — host workflow example uses `workflow \"main\"` (line 105)","timestamp":"2026-03-09T17:42:26.911268013Z"}
+{"type":"log","step_name":"update-docs","message":"6. **All tests** — hostrunner and orchestrator tests use `Name: \"main\"` and `workflow \"main\"`","timestamp":"2026-03-09T17:42:26.911272461Z"}
+{"type":"log","step_name":"update-docs","message":"7. **.cloche/host.cloche** — uses `workflow \"main\"`","timestamp":"2026-03-09T17:42:26.91127724Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T17:42:26.911281719Z"}
+{"type":"log","step_name":"update-docs","message":"The remaining \"orchestrate\" references in the codebase (`cloche orchestrate` CLI subcommand, `orchestrateFn` function names) are for the CLI subcommand, not the workflow name — those are a separate concept and not in scope for this rename.","timestamp":"2026-03-09T17:42:26.911285516Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T17:42:26.911293311Z"}
+{"type":"log","step_name":"update-docs","message":"All tests pass.","timestamp":"2026-03-09T17:42:26.911296857Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T17:42:26.911300965Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T17:42:27.155737334Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T17:42:27.157516567Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T17:42:27.157570309Z"}

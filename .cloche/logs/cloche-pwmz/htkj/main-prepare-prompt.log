@@ -1,0 +1,3 @@
+## Task: V2: Orchestration loop — attempt creation and tracking
+
+Update the host workflow loop to create Attempt records when picking up tasks. Each loop iteration for a task creates a new Attempt. Manual cloche run --issue also creates a new Attempt. cloche run without --issue creates a User-Initiated Task + Attempt. Wire attempt ID through host executor and container dispatch.

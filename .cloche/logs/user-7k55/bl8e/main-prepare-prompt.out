@@ -1,0 +1,3 @@
+## Task: Add -f flag to cloche logs for streaming follow mode
+
+Add a '-f' (follow) flag to 'cloche logs'. Without -f, display all logs captured to date and exit. With -f, display logs to date then continue streaming new lines as they arrive (like tail -f). Currently the streaming behavior requires CLOCHE_HTTP and --follow; unify this under the standard -f convention.

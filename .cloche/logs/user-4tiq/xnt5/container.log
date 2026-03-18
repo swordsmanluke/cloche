@@ -1,0 +1,35 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T21:06:45.01028059Z"}
+{"type":"log","step_name":"implement","message":"Everything is clean. Here's a summary of what was implemented:","timestamp":"2026-03-09T21:12:18.717983104Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T21:12:18.7180283Z"}
+{"type":"log","step_name":"implement","message":"## Summary","timestamp":"2026-03-09T21:12:18.718034341Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T21:12:18.718043108Z"}
+{"type":"log","step_name":"implement","message":"### New files","timestamp":"2026-03-09T21:12:18.718047536Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T21:12:18.718051815Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/host/executor.go`** — Host workflow step executor implementing `engine.StepExecutor`:","timestamp":"2026-03-09T21:12:18.718075399Z"}
+{"type":"log","step_name":"implement","message":"  - `StepTypeScript` steps: Runs shell commands on the host via `sh -c`, captures output, extracts `CLOCHE_RESULT:` markers, injects `CLOCHE_PROJECT_DIR`/`CLOCHE_STEP_OUTPUT`/`CLOCHE_PREV_OUTPUT` env vars","timestamp":"2026-03-09T21:12:18.718088825Z"}
+{"type":"log","step_name":"implement","message":"  - `StepTypeWorkflow` steps: Dispatches a container workflow run via `RunDispatcher` (the gRPC server), then polls the `RunStore` every 2s until the run reaches a terminal state, mapping `succeeded→success`, `failed/cancelled→fail`","timestamp":"2026-03-09T21:12:18.718100376Z"}
+{"type":"log","step_name":"implement","message":"  - Reads prompt from previous step output (via `prompt_step` config) and passes it to dispatched workflows","timestamp":"2026-03-09T21:12:18.718108372Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T21:12:18.718116046Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/host/runner.go`** — High-level runner that parses `.cloche/host.cloche`, creates the executor and engine, and walks the full step graph","timestamp":"2026-03-09T21:12:18.718119613Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T21:12:18.718127368Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/host/executor_test.go`** — 9 tests covering script success/failure/result markers, workflow dispatch/wait/prompt passing, full linear workflow execution, abort on failure, and environment variable injection","timestamp":"2026-03-09T21:12:18.718130894Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T21:12:18.718142586Z"}
+{"type":"log","step_name":"implement","message":"### Modified files","timestamp":"2026-03-09T21:12:18.718149139Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T21:12:18.718156613Z"}
+{"type":"log","step_name":"implement","message":"- **`cmd/cloched/main.go`** — Replaced `findMainWorkflow()` (which only found the first `workflow_name` step and jumped straight to `RunWorkflow`) with `autoRunActiveProjects` that uses the new `host.Runner` to execute the full host workflow step by step","timestamp":"2026-03-09T21:12:18.71816017Z"}
+{"type":"log","step_name":"implement","message":"- **`.cloche/prompts/implement.md`** — Fixed corruption (stripped wrapper text, code fences, and changelog commentary)","timestamp":"2026-03-09T21:12:18.718168205Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T21:12:18.718172172Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T21:12:19.17625522Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T21:12:19.180666139Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T21:12:19.180690255Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T21:12:19.551019414Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T21:12:19.551037789Z"}
+{"type":"log","step_name":"update-docs","message":"Both files look correct. The updates reflect the actual implementation:","timestamp":"2026-03-09T21:13:29.219074907Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T21:13:29.219116525Z"}
+{"type":"log","step_name":"update-docs","message":"- **CLAUDE.md**: Updated cloched description to mention host workflow execution, added `internal/host/` to the source tree, added `host.cloche` and `scripts/` to the project layout.","timestamp":"2026-03-09T21:13:29.219121064Z"}
+{"type":"log","step_name":"update-docs","message":"- **USAGE.md**: Added `host.cloche` and `scripts/prepare-prompt.sh` to the project directory layout.","timestamp":"2026-03-09T21:13:29.21912937Z"}
+{"type":"log","step_name":"update-docs","message":"- **workflows.md**: Already accurate — no changes needed.","timestamp":"2026-03-09T21:13:29.219133888Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T21:13:29.219138747Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T21:13:29.533894019Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T21:13:29.53605039Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T21:13:29.536118139Z"}

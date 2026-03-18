@@ -1,0 +1,16 @@
+Preparing worktree (checking out 'cloche/develop-grand-crane-7335')
+HEAD is now at 13a3bc5 cloche run develop-grand-crane-7335: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-grand-crane-7335.
+Updating e4870bd..ec5c82d
+Fast-forward
+ internal/adapters/grpc/server.go                |  29 ++++---
+ internal/adapters/grpc/server_test.go           |  33 ++++++++
+ internal/adapters/web/handler.go                |  14 ++--
+ internal/adapters/web/handler_test.go           |  45 +++++++++-
+ internal/adapters/web/static/style.css          |  11 ++-
+ internal/adapters/web/templates/run_detail.html | 105 ++++++++++++++++--------
+ internal/host/executor_test.go                  |  38 +++++++++
+ internal/host/runner.go                         |   4 +
+ 8 files changed, 224 insertions(+), 55 deletions(-)
+Deleted branch cloche/develop-grand-crane-7335 (was ec5c82d).
+Merged cloche/develop-grand-crane-7335 into main (ec5c82dbaf7b2378047d9046871be6a506cd49b7)

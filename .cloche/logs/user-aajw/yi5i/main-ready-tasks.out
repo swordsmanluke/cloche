@@ -1,0 +1,19 @@
+[
+  {
+    "id": "cloche-8bs",
+    "title": "Add setup instructions to README.md",
+    "description": "Add a getting-started guide to README.md covering: how to build/install cloche itself; running 'cloche init'; how to configure the project's Dockerfile for builds; setting up workflows in the Cloche DSL; and pointers to the rest of the documentation for details. Also note that users' LLM client of choice can probably do the setup for them.",
+    "status": "open",
+    "priority": 2,
+    "issue_type": "task",
+    "owner": "lucas@perfectlunacy.com",
+    "created_at": "2026-03-12T08:00:45.357747863-07:00",
+    "created_by": "lucas",
+    "updated_at": "2026-03-12T08:27:15.936231144-07:00",
+    "labels": [
+      "docs"
+    ],
+    "dependency_count": 0,
+    "dependent_count": 0
+  }
+]

@@ -1,0 +1,21 @@
+[
+  {
+    "id": "cloche-h25",
+    "title": "CLI/Web UI: show upcoming tasks and assignment state",
+    "description": "Once the daemon understands the list-tasks JSONL format, expose task information in the CLI and web dashboard. Show upcoming/open tasks, which tasks are assigned to which runs, and auto-assignment state. This provides visibility into the orchestration loop's task pipeline and helps users see what work is queued, in-progress, and completed.",
+    "status": "open",
+    "priority": 3,
+    "issue_type": "feature",
+    "owner": "lucas@perfectlunacy.com",
+    "created_at": "2026-03-10T16:54:41.676534486-07:00",
+    "created_by": "lucas",
+    "updated_at": "2026-03-10T16:54:41.676534486-07:00",
+    "labels": [
+      "cli",
+      "orchestration",
+      "ui"
+    ],
+    "dependency_count": 1,
+    "dependent_count": 0
+  }
+]

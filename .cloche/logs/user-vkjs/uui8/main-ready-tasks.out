@@ -1,0 +1,21 @@
+[
+  {
+    "id": "cloche-0rm",
+    "title": "Add SAFETY.md covering good practices for using Cloche",
+    "description": "Create a SAFETY.md documentation file covering good practices for using Cloche securely. Topics: keeping host-side prompt usage to the minimum to reduce exposure to the Lethal Trifecta of LLM usage (access to private data, exposure to untrusted content, ability to communicate externally). Offer examples for configuring Docker containers to minimize external communication options, network allowlisting, etc.",
+    "status": "open",
+    "priority": 2,
+    "issue_type": "task",
+    "owner": "lucas@perfectlunacy.com",
+    "created_at": "2026-03-13T07:29:02.796704323-07:00",
+    "created_by": "lucas",
+    "updated_at": "2026-03-13T07:29:02.796704323-07:00",
+    "labels": [
+      "cloche",
+      "docs",
+      "security"
+    ],
+    "dependency_count": 0,
+    "dependent_count": 0
+  }
+]

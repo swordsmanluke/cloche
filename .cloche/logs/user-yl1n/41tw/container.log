@@ -1,0 +1,34 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T19:12:14.231130949Z"}
+{"type":"log","step_name":"implement","message":"Clean. Here's a summary of what was done:","timestamp":"2026-03-09T19:14:38.338789684Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:14:38.338843836Z"}
+{"type":"log","step_name":"implement","message":"**Refactored `internal/orchestrator/hostrunner.go`** to use `internal/engine.Engine` instead of a bespoke graph-walking loop:","timestamp":"2026-03-09T19:14:38.338852152Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:14:38.338865607Z"}
+{"type":"log","step_name":"implement","message":"1. **Removed the manual graph walk** — the `for` loop calling `wf.NextStep()` is gone","timestamp":"2026-03-09T19:14:38.338869805Z"}
+{"type":"log","step_name":"implement","message":"2. **Created `hostStepExecutor`** implementing `engine.StepExecutor` — handles `StepTypeScript`, `StepTypeAgent` (shell commands), and `StepTypeWorkflow` (dispatch + wait)","timestamp":"2026-03-09T19:14:38.338880014Z"}
+{"type":"log","step_name":"implement","message":"3. **`RunWorkflow` now delegates to `engine.New(executor).Run()`** — the same engine used by `cloche-agent`","timestamp":"2026-03-09T19:14:38.338895914Z"}
+{"type":"log","step_name":"implement","message":"4. **Maps engine result back to the original API** — `RunStateSucceeded` → `\"done\"`, otherwise `\"abort\"`","timestamp":"2026-03-09T19:14:38.338905793Z"}
+{"type":"log","step_name":"implement","message":"5. **Preserved all existing behavior** — step output files, env vars, prompt_step lookups, dispatch/wait for workflow steps","timestamp":"2026-03-09T19:14:38.33891458Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:14:38.338924308Z"}
+{"type":"log","step_name":"implement","message":"The `hostStepExecutor` tracks step outputs in a thread-safe map for `prompt_step` lookups, matching the previous `prevOutput`/`outputDir` mechanism.","timestamp":"2026-03-09T19:14:38.338928185Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:14:38.338936611Z"}
+{"type":"log","step_name":"implement","message":"All 5 host runner tests and the full test suite pass.","timestamp":"2026-03-09T19:14:38.338940899Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T19:14:38.338955437Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T19:14:38.581884426Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T19:14:38.586177302Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T19:14:38.586215945Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T19:14:39.015758597Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T19:14:39.015793694Z"}
+{"type":"log","step_name":"update-docs","message":"All tests pass.","timestamp":"2026-03-09T19:16:05.363105515Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T19:16:05.36313995Z"}
+{"type":"log","step_name":"update-docs","message":"**Summary of what was done:**","timestamp":"2026-03-09T19:16:05.363144008Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T19:16:05.363147504Z"}
+{"type":"log","step_name":"update-docs","message":"**Workflow engine unification (already complete):** The hostrunner.go in the working tree already uses `engine.New(executor)` with a `hostStepExecutor` implementing `engine.StepExecutor`. The old bespoke graph-walking loop (`for { ... NextStep() ... }`) has been replaced. Both `cloched` (via `hostStepExecutor`) and `cloche-agent` (via its own `stepExecutor`) now share the same `engine.Engine` for workflow parsing, graph walking, and step dispatching.","timestamp":"2026-03-09T19:16:05.363150941Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T19:16:05.363166049Z"}
+{"type":"log","step_name":"update-docs","message":"**Documentation fixes in docs/USAGE.md:**","timestamp":"2026-03-09T19:16:05.363169566Z"}
+{"type":"log","step_name":"update-docs","message":"1. Fixed `--image` → `--base-image` to match actual CLI flag (init.go:153)","timestamp":"2026-03-09T19:16:05.36317711Z"}
+{"type":"log","step_name":"update-docs","message":"2. Fixed default image `ubuntu:24.04` → `cloche-base:latest` (init.go:144)","timestamp":"2026-03-09T19:16:05.363184554Z"}
+{"type":"log","step_name":"update-docs","message":"3. Added mention of `host.cloche`, `scripts/prepare-prompt.sh`, and version marker that `cloche init` now creates","timestamp":"2026-03-09T19:16:05.363192209Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T19:16:05.363196978Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T19:16:05.661852845Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T19:16:05.664146502Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T19:16:05.664227505Z"}

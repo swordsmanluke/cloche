@@ -1,0 +1,10 @@
+Preparing worktree (checking out 'cloche/develop-crisp-oak-d8eb')
+HEAD is now at 21f2413 cloche run develop-crisp-oak-d8eb: develop (succeeded)
+Current branch cloche/develop-crisp-oak-d8eb is up to date.
+Updating f099ce9..21f2413
+Fast-forward
+ internal/adapters/web/handler.go      | 34 +++++++++++++++++++++
+ internal/adapters/web/handler_test.go | 57 +++++++++++++++++++++++++++++++++++
+ 2 files changed, 91 insertions(+)
+Deleted branch cloche/develop-crisp-oak-d8eb (was 21f2413).
+Merged cloche/develop-crisp-oak-d8eb into main (21f241362bc3f75ca87fed9b223a73423be3ec57)

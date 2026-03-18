@@ -1,0 +1,3 @@
+## Task: Add bulk container cleanup button to Runs list page
+
+Add a 'Clean up old containers' button (or similar) to the Runs list page in the web UI. This should allow mass-removal of retained containers from completed/failed runs, rather than requiring users to delete them one by one via 'cloche delete'.

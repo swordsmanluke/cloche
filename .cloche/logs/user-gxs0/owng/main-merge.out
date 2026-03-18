@@ -1,0 +1,19 @@
+Preparing worktree (checking out 'cloche/develop-quiet-jade')
+HEAD is now at c874525 cloche run develop-quiet-jade: develop (succeeded)
+Current branch cloche/develop-quiet-jade is up to date.
+Updating c2fe84c..c874525
+Fast-forward
+ docs/workflows.md                |  94 ++++++++++----
+ internal/adapters/grpc/server.go | 100 +++++++++++++--
+ internal/dsl/parser.go           |  28 ++++-
+ internal/dsl/parser_test.go      | 119 ++++++++++++++++++
+ internal/host/executor.go        |   6 +
+ internal/host/executor_test.go   | 258 +++++++++++++++++++++++++++++++++++++++
+ internal/host/loop.go            | 253 +++++++++++++++++++++++++++++++++++---
+ internal/host/loop_test.go       | 180 +++++++++++++++++++++++++++
+ internal/host/runner.go          |  36 ++++--
+ internal/host/task.go            |  45 ++++++-
+ internal/host/task_test.go       |  94 ++++++++++++++
+ 11 files changed, 1150 insertions(+), 63 deletions(-)
+Deleted branch cloche/develop-quiet-jade (was c874525).
+Merged cloche/develop-quiet-jade into main (c874525ac779851f1a7dfdf6632c3f2aecfc48e9)

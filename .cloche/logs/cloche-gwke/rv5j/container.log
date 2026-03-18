@@ -1,0 +1,143 @@
+{"type":"run_title","message":"Task: cloche status: 'Runs (past hour)' shows all-time counts instead of last hour","timestamp":"2026-03-17T15:50:17.610647174Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-17T15:50:17.611101516Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Find the code related to `cloche status` command, specifi...') ---","timestamp":"2026-03-17T15:50:27.147145271Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*.go') ---","timestamp":"2026-03-17T15:50:34.408039798Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('past hour') ---","timestamp":"2026-03-17T15:50:34.746582832Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('Runs \\(past') ---","timestamp":"2026-03-17T15:50:35.104963601Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('status') ---","timestamp":"2026-03-17T15:50:36.214839391Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-17T15:50:38.301149472Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/status_test.go') ---","timestamp":"2026-03-17T15:50:38.497632727Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/cmd/cloche -name \"*status*\" -type f') ---","timestamp":"2026-03-17T15:50:38.91158679Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('ListRuns') ---","timestamp":"2026-03-17T15:50:41.518746975Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -name \"*.proto\" -type f') ---","timestamp":"2026-03-17T15:50:41.724484387Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/cmd/cloched -type f -name \"*.go\" | head -20') ---","timestamp":"2026-03-17T15:50:42.048673084Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-17T15:50:44.352640889Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('past.*hour|hour.*filter') ---","timestamp":"2026-03-17T15:50:44.528422795Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/home/agent/.claude/projects/-workspace/65bc676b-72d7-478...') ---","timestamp":"2026-03-17T15:50:51.945150133Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"func.*ListRuns\" /workspace/internal/adapters/grp...') ---","timestamp":"2026-03-17T15:50:55.144604199Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-17T15:50:58.440198333Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('ListRunsFiltered') ---","timestamp":"2026-03-17T15:51:00.954209595Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-17T15:51:01.168224839Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('type RunListFilter') ---","timestamp":"2026-03-17T15:51:04.0474087Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-17T15:51:04.224094183Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"func.*ListRunsFiltered\" /workspace/internal/adap...') ---","timestamp":"2026-03-17T15:51:07.13713187Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/sqlite/store.go') ---","timestamp":"2026-03-17T15:51:09.458048391Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/sqlite/store.go') ---","timestamp":"2026-03-17T15:51:13.831591196Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -A 20 \"status\" /workspace/cmd/cloche/help.go | head -50') ---","timestamp":"2026-03-17T15:51:17.683284094Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-17T15:51:22.34614561Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"past hour\" /workspace/cmd/cloche/status_test.go') ---","timestamp":"2026-03-17T15:51:24.887555828Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-17T15:51:57.037330921Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-17T15:51:57.260222576Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/sqlite/store.go') ---","timestamp":"2026-03-17T15:52:08.739473424Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/sqlite/store.go') ---","timestamp":"2026-03-17T15:52:09.138302174Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/status_test.go') ---","timestamp":"2026-03-17T15:52:51.309676115Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('ListRunsFiltered') ---","timestamp":"2026-03-17T15:52:51.357741156Z"}
+{"type":"log","step_name":"implement","message":"Now I understand the bug. There are two issues:","timestamp":"2026-03-17T15:52:58.183531895Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-17T15:52:58.183547926Z"}
+{"type":"log","step_name":"implement","message":"1. **Server-side**: The `Since` filter is only applied when `ProjectDir == \"\"`, so project-specific queries return all-time runs.","timestamp":"2026-03-17T15:52:58.18355011Z"}
+{"type":"log","step_name":"implement","message":"2. **SQL query**: Filters by `started_at` instead of `completed_at`.","timestamp":"2026-03-17T15:52:58.183554939Z"}
+{"type":"log","step_name":"implement","message":"3. **Global mode**: Fetches all runs and filters client-side by `started_at` instead of relying on server filtering.","timestamp":"2026-03-17T15:52:58.183573003Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-17T15:52:58.183576109Z"}
+{"type":"log","step_name":"implement","message":"Let me also check the store test to understand the test patterns.","timestamp":"2026-03-17T15:52:58.183578453Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('ListRunsFiltered|Since|started_at|completed_at') ---","timestamp":"2026-03-17T15:52:59.551620321Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-17T15:52:59.871012665Z"}
+{"type":"log","step_name":"implement","message":"Now I have a clear picture. Let me make the three fixes:","timestamp":"2026-03-17T15:53:13.496510571Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-17T15:53:13.496544626Z"}
+{"type":"log","step_name":"implement","message":"1. **SQL store** (`store.go:261`): Change `started_at \u003e= ?` to `(completed_at \u003e= ? OR state IN ('running', 'pending'))` ","timestamp":"2026-03-17T15:53:13.496549505Z"}
+{"type":"log","step_name":"implement","message":"2. **gRPC server** (`server.go:593`): Change condition to `!req.All` so `Since` is applied for project queries too","timestamp":"2026-03-17T15:53:13.496575154Z"}
+{"type":"log","step_name":"implement","message":"3. **Global mode** (`main.go:380-422`): Simplify to use server-side filtering instead of client-side","timestamp":"2026-03-17T15:53:13.496584201Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/sqlite/store.go') ---","timestamp":"2026-03-17T15:53:16.770688607Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-17T15:53:18.906621142Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-17T15:53:32.367381663Z"}
+{"type":"log","step_name":"implement","message":"Now check if `time` is still needed in `main.go` after removing the client-side filtering.","timestamp":"2026-03-17T15:53:35.946341865Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('time\\.') ---","timestamp":"2026-03-17T15:53:37.094912066Z"}
+{"type":"log","step_name":"implement","message":"Good, `time` is still used. Now let me write a test for the `Since` filter in the SQLite store to verify the `completed_at` filtering works correctly.","timestamp":"2026-03-17T15:53:40.594762658Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/sqlite/store_test.go') ---","timestamp":"2026-03-17T15:53:41.193478555Z"}
+{"type":"log","step_name":"implement","message":"Let me check how `UpdateRun` works so I can set `CompletedAt` in tests.","timestamp":"2026-03-17T15:53:46.827474811Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func.*UpdateRun\"') ---","timestamp":"2026-03-17T15:53:47.6957052Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func.*Store.*Update\"') ---","timestamp":"2026-03-17T15:53:50.693010215Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func \\(s \\*Store\\)\"') ---","timestamp":"2026-03-17T15:53:54.212683928Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func \\(s \\*Store\\)') ---","timestamp":"2026-03-17T15:53:57.53088502Z"}
+{"type":"log","step_name":"implement","message":"Good, there's `UpdateRun`. Now let me add a test for the `Since` filter with `completed_at`.","timestamp":"2026-03-17T15:54:03.535866367Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/sqlite/store_test.go') ---","timestamp":"2026-03-17T15:54:11.155002329Z"}
+{"type":"log","step_name":"implement","message":"Now let's also update the global mode test to reflect the simplified logic.","timestamp":"2026-03-17T15:54:14.622170656Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/status_test.go') ---","timestamp":"2026-03-17T15:54:15.35220508Z"}
+{"type":"log","step_name":"implement","message":"The global mode test now returns consistent results since server-side filtering is assumed. The mock returns 3 runs, and the client just counts them. Let me update the test to verify the actual counts.","timestamp":"2026-03-17T15:54:19.869469976Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/status_test.go') ---","timestamp":"2026-03-17T15:54:23.18155498Z"}
+{"type":"log","step_name":"implement","message":"Now let's run the tests.","timestamp":"2026-03-17T15:54:27.478368198Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-17T15:54:28.202141528Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-17T15:55:24.405984189Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-17T15:55:24.406009618Z"}
+{"type":"log","step_name":"implement","message":"1. **`internal/adapters/sqlite/store.go`**: Changed the `Since` filter from `started_at \u003e= ?` to `(completed_at \u003e= ? OR state IN ('running', 'pending'))` — now counts runs that completed within the last hour plus any still-active runs.","timestamp":"2026-03-17T15:55:24.406014146Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-17T15:55:24.406024446Z"}
+{"type":"log","step_name":"implement","message":"2. **`internal/adapters/grpc/server.go`**: Changed the condition from `filter.ProjectDir == \"\" \u0026\u0026 !req.All` to `!req.All` — the 1-hour `Since` filter is now applied for project-specific queries too, not just global ones.","timestamp":"2026-03-17T15:55:24.406028313Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-17T15:55:24.406032781Z"}
+{"type":"log","step_name":"implement","message":"3. **`cmd/cloche/main.go`**: Simplified `cmdStatusGlobal` to rely on server-side filtering instead of fetching all runs with `All: true` and filtering client-side.","timestamp":"2026-03-17T15:55:24.406036338Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-17T15:55:24.406040716Z"}
+{"type":"log","step_name":"implement","message":"4. **`internal/adapters/sqlite/store_test.go`**: Added `TestListRunsFiltered_SinceUsesCompletedAt` verifying that old completed runs are excluded, recent completed runs are included, and active runs (no `completed_at`) are always included.","timestamp":"2026-03-17T15:55:24.406048591Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-17T15:55:24.406053891Z"}
+{"type":"log","step_name":"implement","message":"5. **`cmd/cloche/status_test.go`**: Updated global mode test to verify actual count values now that filtering is server-side.","timestamp":"2026-03-17T15:55:24.406077396Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-17T15:55:24.406082836Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-17T15:55:24.406087245Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-17T15:55:24.427696552Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-17T15:55:24.427723103Z"}
+{"type":"log","step_name":"implement","message":"1. **`internal/adapters/sqlite/store.go`**: Changed the `Since` filter from `started_at \u003e= ?` to `(completed_at \u003e= ? OR state IN ('running', 'pending'))` — now counts runs that completed within the last hour plus any still-active runs.","timestamp":"2026-03-17T15:55:24.427727962Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-17T15:55:24.427733192Z"}
+{"type":"log","step_name":"implement","message":"2. **`internal/adapters/grpc/server.go`**: Changed the condition from `filter.ProjectDir == \"\" \u0026\u0026 !req.All` to `!req.All` — the 1-hour `Since` filter is now applied for project-specific queries too, not just global ones.","timestamp":"2026-03-17T15:55:24.427753811Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-17T15:55:24.427759722Z"}
+{"type":"log","step_name":"implement","message":"3. **`cmd/cloche/main.go`**: Simplified `cmdStatusGlobal` to rely on server-side filtering instead of fetching all runs with `All: true` and filtering client-side.","timestamp":"2026-03-17T15:55:24.427764141Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-17T15:55:24.427769441Z"}
+{"type":"log","step_name":"implement","message":"4. **`internal/adapters/sqlite/store_test.go`**: Added `TestListRunsFiltered_SinceUsesCompletedAt` verifying that old completed runs are excluded, recent completed runs are included, and active runs (no `completed_at`) are always included.","timestamp":"2026-03-17T15:55:24.427773829Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-17T15:55:24.4277796Z"}
+{"type":"log","step_name":"implement","message":"5. **`cmd/cloche/status_test.go`**: Updated global mode test to verify actual count values now that filtering is server-side.","timestamp":"2026-03-17T15:55:24.427784148Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-17T15:55:24.427789689Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-17T15:55:24.813830711Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-17T15:55:24.877296185Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-17T15:55:24.898903469Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-17T15:55:25.230684532Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t10.042s","timestamp":"2026-03-17T15:55:35.56483788Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-17T15:55:35.564866073Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-17T15:55:35.564868808Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-17T15:55:35.564871553Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-17T15:55:35.564873627Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-17T15:55:35.564875771Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-17T15:55:35.564878677Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-17T15:55:35.564880741Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-17T15:55:35.564882624Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-17T15:55:35.564885239Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-17T15:55:35.564887734Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-17T15:55:35.564890179Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-17T15:55:35.564892643Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-17T15:55:35.564895589Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-17T15:55:35.564899657Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-17T15:55:35.564903243Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-17T15:55:35.564905758Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-17T15:55:35.564908052Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-17T15:55:35.564910497Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-17T15:55:35.564912831Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-17T15:55:35.564915276Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/version\t(cached)","timestamp":"2026-03-17T15:55:35.564917631Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-17T15:55:35.564920055Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-17T15:55:35.619811778Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-17T15:55:35.630049347Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('git diff HEAD') ---","timestamp":"2026-03-17T15:55:44.602036015Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('git diff --cached HEAD') ---","timestamp":"2026-03-17T15:55:44.791171021Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me check the documentation files for any mentions of the status command, ListRuns filtering, or \"past hour\" behavior.","timestamp":"2026-03-17T15:55:49.004422028Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('past.hour|ListRuns|Since|started_at.*filter|completed_at....') ---","timestamp":"2026-03-17T15:55:50.469737857Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('status|past.hour|ListRuns') ---","timestamp":"2026-03-17T15:55:51.794837484Z"}
+{"type":"log","step_name":"update-docs","message":"The key documentation file is `docs/USAGE.md` which mentions the status command. Let me read the relevant section.","timestamp":"2026-03-17T15:55:56.703237306Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('past hour|status|Runs') ---","timestamp":"2026-03-17T15:55:57.394173899Z"}
+{"type":"log","step_name":"update-docs","message":"The relevant section is around line 701. Let me read more context around it.","timestamp":"2026-03-17T15:56:02.646695578Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-17T15:56:03.179668358Z"}
+{"type":"log","step_name":"update-docs","message":"The documentation at line 701 already says \"run statistics (past hour)\" which is correct — the fix makes the implementation match this documented behavior. The docs describe the intended behavior; the bug was in the code not matching the docs.","timestamp":"2026-03-17T15:56:09.229644807Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-17T15:56:09.229666458Z"}
+{"type":"log","step_name":"update-docs","message":"Let me also check that the `--all` flag description is still accurate with the change. The code change makes the `Since` filter apply regardless of project filter (previously it only applied when no project was set). The `--all` flag in the proto still means \"show all time\" which bypasses the hour filter.","timestamp":"2026-03-17T15:56:09.229670646Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('--all|All.*bool|past hour|Since') ---","timestamp":"2026-03-17T15:56:10.075030285Z"}
+{"type":"log","step_name":"update-docs","message":"The documentation already correctly describes the behavior. The `--all` flag on `cloche status` means \"show global stats instead of project-specific stats,\" and the \"past hour\" filtering is already documented. The code change fixes the implementation to match the documented behavior — no documentation updates are needed.","timestamp":"2026-03-17T15:56:15.588413987Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-17T15:56:15.588432853Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-17T15:56:15.588435128Z"}
+{"type":"log","step_name":"update-docs","message":"The documentation already correctly describes the behavior. The `--all` flag on `cloche status` means \"show global stats instead of project-specific stats,\" and the \"past hour\" filtering is already documented. The code change fixes the implementation to match the documented behavior — no documentation updates are needed.","timestamp":"2026-03-17T15:56:15.896085766Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-17T15:56:15.896109911Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-17T15:56:16.111006943Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-17T15:56:16.450891254Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-17T15:56:16.573737088Z"}

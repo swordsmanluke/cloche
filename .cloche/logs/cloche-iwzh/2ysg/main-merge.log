@@ -1,0 +1,9 @@
+Preparing worktree (checking out 'cloche/develop-quick-bear-57cc')
+HEAD is now at df3a7b7 cloche run develop-quick-bear-57cc: develop (succeeded)
+Current branch cloche/develop-quick-bear-57cc is up to date.
+Updating a22721c..df3a7b7
+Fast-forward
+ internal/evolution/curator.go | 68 ++++++++++++++++++++++++++++---------------
+ 1 file changed, 44 insertions(+), 24 deletions(-)
+Deleted branch cloche/develop-quick-bear-57cc (was df3a7b7).
+Merged cloche/develop-quick-bear-57cc into main (df3a7b7e31eaee40f7bfa773b5261d5a39c71a6f)

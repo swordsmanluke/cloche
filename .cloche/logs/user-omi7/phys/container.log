@@ -1,0 +1,41 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-07T18:43:56.468542643Z"}
+{"type":"log","step_name":"implement","message":"## Summary","timestamp":"2026-03-07T18:49:50.694691484Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-07T18:49:50.694733493Z"}
+{"type":"log","step_name":"implement","message":"**Root Cause:** When the daemon crashes or restarts, tasks that were claimed (`in_progress` in `.beads/issues.jsonl`) are never reset back to `open`. The daemon calls `store.FailStaleRuns()` to clean up stale DB runs, but there's no corresponding cleanup for beads tracker tasks. On restart, `ListReady()` only returns tasks with `status == \"open\"`, so the stale `in_progress` tasks are invisible to the orchestrator.","timestamp":"2026-03-07T18:49:50.694736819Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-07T18:49:50.694754342Z"}
+{"type":"log","step_name":"implement","message":"Current state confirms this: 4 tasks stuck in `in_progress`, only 1 truly `open`.","timestamp":"2026-03-07T18:49:50.694757158Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-07T18:49:50.694760564Z"}
+{"type":"log","step_name":"implement","message":"**Fix (4 files changed):**","timestamp":"2026-03-07T18:49:50.694763089Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-07T18:49:50.694768018Z"}
+{"type":"log","step_name":"implement","message":"1. **`internal/ports/tracker.go`** — Added `RecoverStaleTasks(ctx, activeTaskIDs) (int, error)` to the `TaskTracker` interface","timestamp":"2026-03-07T18:49:50.694770433Z"}
+{"type":"log","step_name":"implement","message":"2. **`internal/adapters/beads/tracker.go`** — Implemented `RecoverStaleTasks`: scans for `in_progress` tasks not in the active set, resets them to `open` by appending updated JSONL lines","timestamp":"2026-03-07T18:49:50.69484293Z"}
+{"type":"log","step_name":"implement","message":"3. **`internal/orchestrator/orchestrator.go`** — Added `RecoverStaleTasks()` method that iterates all registered projects, collects actually in-flight task IDs, and delegates to each tracker's recovery","timestamp":"2026-03-07T18:49:50.694849362Z"}
+{"type":"log","step_name":"implement","message":"4. **`cmd/cloched/main.go`** — Calls `orch.RecoverStaleTasks()` at startup before `TriggerAll()`, so stale tasks are recovered before the first orchestration cycle","timestamp":"2026-03-07T18:49:50.694854722Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-07T18:49:50.694860313Z"}
+{"type":"log","step_name":"implement","message":"**Tests (2 files):**","timestamp":"2026-03-07T18:49:50.694862747Z"}
+{"type":"log","step_name":"implement","message":"- `internal/adapters/beads/tracker_test.go` — 3 new tests: recovery with active exclusion, no-op when no stale tasks, all-stale recovery","timestamp":"2026-03-07T18:49:50.694867787Z"}
+{"type":"log","step_name":"implement","message":"- `internal/orchestrator/orchestrator_test.go` — 2 new tests: basic recovery and exclusion of in-flight tasks; mock tracker updated with `RecoverStaleTasks`","timestamp":"2026-03-07T18:49:50.694873177Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-07T18:49:50.694878637Z"}
+{"type":"log","step_name":"implement","message":"Note: Go is not installed in this environment, so tests couldn't be run locally. The code follows existing patterns (JSONL append, mutex locking, mock tracker structure).","timestamp":"2026-03-07T18:49:50.694881052Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-07T18:49:50.694886632Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-07T18:49:50.953157307Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-07T18:49:50.95760174Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-07T18:49:50.957632087Z"}
+{"type":"step_completed","step_name":"test","result":"fail","timestamp":"2026-03-07T18:49:50.958692963Z"}
+{"type":"step_started","step_name":"fix","timestamp":"2026-03-07T18:49:50.958704164Z"}
+{"type":"log","step_name":"fix","message":"Good — `config` is still used in the function signature (`globalCfg *config.Config`) and elsewhere in the file, so no import issue.","timestamp":"2026-03-07T18:50:51.2347694Z"}
+{"type":"log","step_name":"fix","timestamp":"2026-03-07T18:50:51.234799237Z"}
+{"type":"log","step_name":"fix","message":"**Root cause:** `initOrchestrator` in `cmd/cloched/main.go` was manually constructing `ProjectConfig` with raw config values, bypassing the defaults that `RegisterFromConfig` applies. When `cfg.Orchestration.Concurrency` was 0 (the Go zero value for an unset int), the orchestrator had 0 available slots and always returned \"No ready work found\".","timestamp":"2026-03-07T18:50:51.234804216Z"}
+{"type":"log","step_name":"fix","timestamp":"2026-03-07T18:50:51.234810418Z"}
+{"type":"log","step_name":"fix","message":"**Fix:** Replaced the manual `config.Load` + `Register` with a call to `RegisterFromConfig`, which already handles defaults correctly:","timestamp":"2026-03-07T18:50:51.234814155Z"}
+{"type":"log","step_name":"fix","message":"- Concurrency defaults to 1 when \u003c 1","timestamp":"2026-03-07T18:50:51.234818072Z"}
+{"type":"log","step_name":"fix","message":"- Workflow defaults to \"develop\" when empty","timestamp":"2026-03-07T18:50:51.234822771Z"}
+{"type":"log","step_name":"fix","message":"- `Enabled` check is built in","timestamp":"2026-03-07T18:50:51.234826558Z"}
+{"type":"log","step_name":"fix","timestamp":"2026-03-07T18:50:51.234831257Z"}
+{"type":"log","step_name":"fix","message":"CLOCHE_RESULT:success","timestamp":"2026-03-07T18:50:51.619445226Z"}
+{"type":"step_completed","step_name":"fix","result":"success","timestamp":"2026-03-07T18:50:51.622048728Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-07T18:50:51.622211346Z"}
+{"type":"step_completed","step_name":"test","result":"fail","timestamp":"2026-03-07T18:50:51.624604159Z"}
+{"type":"step_started","step_name":"fix","timestamp":"2026-03-07T18:50:51.624626411Z"}
+
+Session terminated, killing shell... ...killed.

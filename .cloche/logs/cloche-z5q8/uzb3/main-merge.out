@@ -1,0 +1,14 @@
+Preparing worktree (checking out 'cloche/develop-happy-wolf-236f')
+HEAD is now at d1e85bd cloche run develop-happy-wolf-236f: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-happy-wolf-236f.
+Updating fe1412e..e5f1bc0
+Fast-forward
+ internal/config/config.go        |   6 ++
+ internal/config/config_test.go   |  29 ++++++++
+ internal/evolution/selector.go   |  17 +++--
+ internal/evolution/types.go      |  15 ++++
+ internal/evolution/types_test.go | 149 +++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 211 insertions(+), 5 deletions(-)
+ create mode 100644 internal/evolution/types_test.go
+Deleted branch cloche/develop-happy-wolf-236f (was e5f1bc0).
+Merged cloche/develop-happy-wolf-236f into main (e5f1bc0f787c84cf87d0290eb1518cde225eb497)

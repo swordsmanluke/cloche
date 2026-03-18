@@ -1,0 +1,20 @@
+[
+  {
+    "id": "cloche-3zy",
+    "title": "Truncate error_message at write time in RunStore",
+    "description": "Failed develop runs are storing entire agent output dumps (up to 54MB) in the error_message column, bloating the database. Cap error_message to ~1000 characters when writing to the store. The full error details are available in step logs — the error_message field should be a concise summary, not a full dump.",
+    "status": "open",
+    "priority": 2,
+    "issue_type": "task",
+    "owner": "lucas@perfectlunacy.com",
+    "created_at": "2026-03-12T10:47:54.119345513-07:00",
+    "created_by": "lucas",
+    "updated_at": "2026-03-12T10:47:54.119345513-07:00",
+    "labels": [
+      "daemon",
+      "sqlite"
+    ],
+    "dependency_count": 0,
+    "dependent_count": 0
+  }
+]

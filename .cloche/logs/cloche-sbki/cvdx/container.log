@@ -1,0 +1,329 @@
+{"type":"run_title","message":"Task: Implement cloche resume command","timestamp":"2026-03-14T19:55:44.304396508Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-14T19:55:44.304839556Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Explore this Go codebase thoroughly to understand:","timestamp":"2026-03-14T19:55:57.114183724Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T19:55:57.114200355Z"}
+{"type":"log","step_name":"implement","message":"1. Ho...') ---","timestamp":"2026-03-14T19:55:57.114202549Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.go\" | head -20') ---","timestamp":"2026-03-14T19:55:59.351816905Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type d -name \"cmd\" -o -type d -name \"int...') ---","timestamp":"2026-03-14T19:56:01.972610264Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/cmd/ \u0026\u0026 ls -la /workspace/internal/') ---","timestamp":"2026-03-14T19:56:06.118006906Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-14T19:56:08.846237671Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow.go') ---","timestamp":"2026-03-14T19:56:09.07391642Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -name \"*.proto\"') ---","timestamp":"2026-03-14T19:56:09.271946399Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/cmd/cloche/ \u0026\u0026 ls -la /workspace/cmd/cl...') ---","timestamp":"2026-03-14T19:56:09.658039194Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-14T19:56:12.972411102Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/ports/') ---","timestamp":"2026-03-14T19:56:13.08972596Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/adapters/') ---","timestamp":"2026-03-14T19:56:13.111927013Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-14T19:56:16.236304891Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/agent.go') ---","timestamp":"2026-03-14T19:56:16.473192548Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/container.go') ---","timestamp":"2026-03-14T19:56:16.754212871Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/adapters -name \"*.go\" | head -20') ---","timestamp":"2026-03-14T19:56:17.018944625Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host') ---","timestamp":"2026-03-14T19:56:19.432220761Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/host/') ---","timestamp":"2026-03-14T19:56:19.480332132Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-14T19:56:19.648040729Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/engine/') ---","timestamp":"2026-03-14T19:56:19.785480022Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/executor.go') ---","timestamp":"2026-03-14T19:56:22.445277337Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/engine/engine.go') ---","timestamp":"2026-03-14T19:56:22.472268691Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T19:56:22.705892735Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloched/main.go') ---","timestamp":"2026-03-14T19:56:26.666205254Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-14T19:56:27.11321397Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/adapters/agents/') ---","timestamp":"2026-03-14T19:56:27.153981241Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-14T19:56:32.616530465Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/agents/prompt/prompt.go') ---","timestamp":"2026-03-14T19:56:32.869725207Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/agents/generic/generic_test.go') ---","timestamp":"2026-03-14T19:56:33.054342065Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/docker/runtime.go') ---","timestamp":"2026-03-14T19:56:37.968633101Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/sqlite/store.go') ---","timestamp":"2026-03-14T19:56:38.083503185Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal -name \"*.go\" -path \"*/host/*\" | ...') ---","timestamp":"2026-03-14T19:56:38.265826957Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/runner.go') ---","timestamp":"2026-03-14T19:56:43.120940841Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/loop.go') ---","timestamp":"2026-03-14T19:56:43.293485555Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -name \"*.go\" -path \"*protocol*\" | head -5') ---","timestamp":"2026-03-14T19:56:43.371438712Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/protocol/status.go') ---","timestamp":"2026-03-14T19:56:48.589247815Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/dsl/ \u0026\u0026 wc -l /workspace/inter...') ---","timestamp":"2026-03-14T19:56:48.814955135Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-14T19:56:48.947342883Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"func cmd\" /workspace/cmd/cloche/main.go | head -20') ---","timestamp":"2026-03-14T19:56:54.78216935Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/version/version.go') ---","timestamp":"2026-03-14T19:56:59.832654655Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/version/VERSION') ---","timestamp":"2026-03-14T19:56:59.941739797Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/workflow.go') ---","timestamp":"2026-03-14T19:56:59.979522342Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"GenerateRunID\" /workspace/internal/domain/*.go') ---","timestamp":"2026-03-14T19:57:02.258103645Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/namegen.go') ---","timestamp":"2026-03-14T19:57:07.987653774Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('head -100 /workspace/cmd/cloche/main.go | grep -A 30 \"fun...') ---","timestamp":"2026-03-14T19:57:08.093206434Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T19:57:13.952802143Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -A 50 \"func cmdRun\" /workspace/cmd/cloche/main.go | ...') ---","timestamp":"2026-03-14T19:57:14.09339467Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -name \"*.go\" -path \"*adapters*agents*\" -t...') ---","timestamp":"2026-03-14T19:57:16.300487033Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/agents/generic/generic.go') ---","timestamp":"2026-03-14T19:57:21.531263436Z"}
+{"type":"log","step_name":"implement","message":"Now let me look at specific files I need to understand in detail for implementing the resume command.","timestamp":"2026-03-14T19:58:29.736843878Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T19:58:30.205202156Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-14T19:58:30.646543083Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-14T19:58:30.979625241Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-14T19:58:34.547309742Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/engine/engine.go') ---","timestamp":"2026-03-14T19:58:34.972009592Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/agents/prompt/prompt.go') ---","timestamp":"2026-03-14T19:58:35.024363718Z"}
+{"type":"log","step_name":"implement","message":"Now let me look at more key files needed for the implementation.","timestamp":"2026-03-14T19:58:39.104428663Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-14T19:58:39.591287565Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow.go') ---","timestamp":"2026-03-14T19:58:40.053812721Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/docker/runtime.go') ---","timestamp":"2026-03-14T19:58:40.385514156Z"}
+{"type":"log","step_name":"implement","message":"Let me check the container ports interface and the help system.","timestamp":"2026-03-14T19:58:44.422177878Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/container.go') ---","timestamp":"2026-03-14T19:58:45.385875469Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func.*printSubcommandHelp|func.*printTopLevelHelp|func.*p...') ---","timestamp":"2026-03-14T19:58:46.127714951Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T19:58:48.763220476Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/workflow.go') ---","timestamp":"2026-03-14T19:58:48.854805567Z"}
+{"type":"log","step_name":"implement","message":"Now let me check the host executor to understand how it runs steps with previous output.","timestamp":"2026-03-14T19:58:51.049658979Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/executor.go') ---","timestamp":"2026-03-14T19:58:51.309242525Z"}
+{"type":"log","step_name":"implement","message":"Now let me check the host runner to understand how it creates runs and manages them.","timestamp":"2026-03-14T19:58:53.782822122Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/host/runner.go') ---","timestamp":"2026-03-14T19:58:54.244674625Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func.*Exec.*container|docker exec') ---","timestamp":"2026-03-14T19:58:55.189963616Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: ToolSearch ---","timestamp":"2026-03-14T20:00:27.620943766Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-14T20:00:36.498811056Z"}
+{"type":"log","step_name":"implement","message":"Let me check how the protobuf is generated and look at the generated Go files.","timestamp":"2026-03-14T20:00:39.240301899Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('api/clochepb/*.go') ---","timestamp":"2026-03-14T20:00:39.678693737Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('protoc|buf generate|go generate') ---","timestamp":"2026-03-14T20:00:40.546950042Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/Makefile') ---","timestamp":"2026-03-14T20:00:43.049360911Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/clochepb/cloche_grpc.pb.go') ---","timestamp":"2026-03-14T20:00:45.901862699Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('which protoc 2\u003e/dev/null; which protoc-gen-go 2\u003e/dev/null...') ---","timestamp":"2026-03-14T20:00:51.247707824Z"}
+{"type":"log","step_name":"implement","message":"No protoc available. I'll need to manually add the proto messages and update the generated Go code. Let me also check how the agent binary processes flags.","timestamp":"2026-03-14T20:00:54.384614927Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche-agent/main.go') ---","timestamp":"2026-03-14T20:00:54.708950991Z"}
+{"type":"log","step_name":"implement","message":"Now I have a comprehensive understanding. Let me implement the resume feature. I'll use a design where:","timestamp":"2026-03-14T20:01:00.17509059Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T20:01:00.175121238Z"}
+{"type":"log","step_name":"implement","message":"1. A `resume.json` file is written into the container before restarting","timestamp":"2026-03-14T20:01:00.175124113Z"}
+{"type":"log","step_name":"implement","message":"2. The agent checks for this file and runs in resume mode","timestamp":"2026-03-14T20:01:00.175131998Z"}
+{"type":"log","step_name":"implement","message":"3. The engine wraps the executor to skip completed steps","timestamp":"2026-03-14T20:01:00.175135365Z"}
+{"type":"log","step_name":"implement","message":"4. Prompt steps get special `-c` resume handling","timestamp":"2026-03-14T20:01:00.17513845Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T20:01:00.175141446Z"}
+{"type":"log","step_name":"implement","message":"Let me start implementing. I'll work on multiple files in parallel.","timestamp":"2026-03-14T20:01:00.17514362Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/clochepb/cloche_grpc.pb.go') ---","timestamp":"2026-03-14T20:01:00.597113366Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/clochepb/cloche.pb.go') ---","timestamp":"2026-03-14T20:01:01.157200847Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep protobuf go.mod; grep protoimpl go.sum | head -3') ---","timestamp":"2026-03-14T20:01:54.800671283Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('http.*server|httpAddr|http\\.ListenAndServe|mux|ServeMux\"') ---","timestamp":"2026-03-14T20:02:32.247014185Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloched/main.go') ---","timestamp":"2026-03-14T20:02:36.38795387Z"}
+{"type":"log","step_name":"implement","message":"I need to add proto types without protoc. Let me generate the raw descriptor bytes programmatically.","timestamp":"2026-03-14T20:03:34.616816438Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/cmd/genresume/main.go') ---","timestamp":"2026-03-14T20:03:41.140340471Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go run ./cmd/genresume 2\u003e\u00261') ---","timestamp":"2026-03-14T20:03:46.804542288Z"}
+{"type":"log","step_name":"implement","message":"Now let me create all the necessary files. I'll work on multiple files in parallel.","timestamp":"2026-03-14T20:04:00.340891986Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/api/clochepb/resume.pb.go') ---","timestamp":"2026-03-14T20:04:23.798620152Z"}
+{"type":"log","step_name":"implement","message":"Now add the gRPC client/server methods for ResumeRun. I'll add them to the existing gRPC generated file.","timestamp":"2026-03-14T20:04:27.771520684Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/api/clochepb/resume_grpc.pb.go') ---","timestamp":"2026-03-14T20:04:40.183355479Z"}
+{"type":"log","step_name":"implement","message":"Let me verify the proto types compile before proceeding.","timestamp":"2026-03-14T20:04:45.687459113Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go build ./api/clochepb/ 2\u003e\u00261') ---","timestamp":"2026-03-14T20:04:46.526024088Z"}
+{"type":"log","step_name":"implement","message":"Proto types compile. Now let me update the proto file for documentation, then add the Exec method to ContainerRuntime.","timestamp":"2026-03-14T20:04:58.03870581Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-14T20:05:00.755915224Z"}
+{"type":"log","step_name":"implement","message":"Now let me update the proto file, add Exec to ContainerRuntime, update the Docker adapter, add the resume domain types, implement the engine resume support, the agent runner resume support, the prompt adapter resume mode, the server-side ResumeRun, the CLI command, and tests. Let me do this efficiently.","timestamp":"2026-03-14T20:05:04.500777947Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-14T20:05:05.872388354Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-14T20:05:09.136324948Z"}
+{"type":"log","step_name":"implement","message":"Now add `Exec` to ContainerRuntime and Docker adapter.","timestamp":"2026-03-14T20:05:12.273271381Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/ports/container.go') ---","timestamp":"2026-03-14T20:05:19.719924174Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/docker/runtime.go') ---","timestamp":"2026-03-14T20:05:25.104280882Z"}
+{"type":"log","step_name":"implement","message":"Now let me check if there's a local runtime adapter that also needs Exec.","timestamp":"2026-03-14T20:05:27.563061404Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/local/runtime.go') ---","timestamp":"2026-03-14T20:05:27.757501125Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/local/runtime.go') ---","timestamp":"2026-03-14T20:05:32.781994872Z"}
+{"type":"log","step_name":"implement","message":"Now let me create the resume domain types and the engine resume support.","timestamp":"2026-03-14T20:05:35.592606758Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/internal/domain/resume.go') ---","timestamp":"2026-03-14T20:05:42.222987584Z"}
+{"type":"log","step_name":"implement","message":"Now add resume support to the engine.","timestamp":"2026-03-14T20:05:44.321772913Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/internal/engine/resume.go') ---","timestamp":"2026-03-14T20:05:51.460942289Z"}
+{"type":"log","step_name":"implement","message":"Now add resume support to the agent runner.","timestamp":"2026-03-14T20:05:53.443796182Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-14T20:05:56.001660148Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-14T20:06:01.515158708Z"}
+{"type":"log","step_name":"implement","message":"Now wrap the executor with the resume executor when ResumeConfig is set.","timestamp":"2026-03-14T20:06:04.040732373Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-14T20:06:06.937140647Z"}
+{"type":"log","step_name":"implement","message":"Now add resume mode to the prompt adapter - when `_resume` is set in step config, use `-c` and \"retry\" prompt.","timestamp":"2026-03-14T20:06:09.770168026Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/agents/prompt/prompt.go') ---","timestamp":"2026-03-14T20:06:15.530742142Z"}
+{"type":"log","step_name":"implement","message":"Now add the `executeResume` method to the prompt adapter.","timestamp":"2026-03-14T20:06:17.24201869Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/agents/prompt/prompt.go') ---","timestamp":"2026-03-14T20:06:26.626509409Z"}
+{"type":"log","step_name":"implement","message":"Now update the cloche-agent main.go to support resume flags.","timestamp":"2026-03-14T20:06:28.938888342Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/cmd/cloche-agent/main.go') ---","timestamp":"2026-03-14T20:06:36.143969832Z"}
+{"type":"log","step_name":"implement","message":"Now implement the ResumeRun method on the gRPC server.","timestamp":"2026-03-14T20:06:37.993166389Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-14T20:06:40.891776289Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/internal/adapters/grpc/resume.go') ---","timestamp":"2026-03-14T20:07:22.029910674Z"}
+{"type":"log","step_name":"implement","message":"Let me fix the resume.go - the exec approach was getting complicated. Let me simplify.","timestamp":"2026-03-14T20:07:25.794685527Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/internal/adapters/grpc/resume.go') ---","timestamp":"2026-03-14T20:07:57.021038716Z"}
+{"type":"log","step_name":"implement","message":"Now register the ResumeRun handler in the daemon.","timestamp":"2026-03-14T20:08:00.40260517Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloched/main.go') ---","timestamp":"2026-03-14T20:08:02.724027939Z"}
+{"type":"log","step_name":"implement","message":"Now add the CLI command and help text.","timestamp":"2026-03-14T20:08:04.893612335Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T20:08:06.980939591Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T20:08:10.061997046Z"}
+{"type":"log","step_name":"implement","message":"Now add the `cmdResume` function and update the help text. First the function.","timestamp":"2026-03-14T20:08:16.6039371Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T20:08:18.4453716Z"}
+{"type":"log","step_name":"implement","message":"Now add help text and update the top-level help.","timestamp":"2026-03-14T20:08:20.832985091Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T20:08:28.333083849Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T20:08:32.193853956Z"}
+{"type":"log","step_name":"implement","message":"Now let me try to compile.","timestamp":"2026-03-14T20:08:34.250868506Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go build ./... 2\u003e\u00261') ---","timestamp":"2026-03-14T20:08:34.61055131Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-14T20:09:03.145785814Z"}
+{"type":"log","step_name":"implement","message":"Everything compiles. Now let me write tests. Let me check the existing test patterns.","timestamp":"2026-03-14T20:09:05.465769007Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/**/*_test.go') ---","timestamp":"2026-03-14T20:09:05.667554994Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/engine/engine_test.go') ---","timestamp":"2026-03-14T20:09:09.134645945Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run_test.go') ---","timestamp":"2026-03-14T20:09:09.191944265Z"}
+{"type":"log","step_name":"implement","message":"Now let me write tests for the new functionality.","timestamp":"2026-03-14T20:09:11.53126817Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/internal/domain/resume_test.go') ---","timestamp":"2026-03-14T20:09:22.069124237Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/internal/engine/resume_test.go') ---","timestamp":"2026-03-14T20:09:36.618857213Z"}
+{"type":"log","step_name":"implement","message":"Now let me write a test for the server-side resume logic (the helper functions).","timestamp":"2026-03-14T20:09:39.106013828Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/internal/adapters/grpc/resume_test.go') ---","timestamp":"2026-03-14T20:09:45.501703961Z"}
+{"type":"log","step_name":"implement","message":"I need to export the helper functions for testing. Let me check the existing export_test.go pattern.","timestamp":"2026-03-14T20:09:47.991148719Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/export_test.go') ---","timestamp":"2026-03-14T20:09:48.201886432Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/export_test.go') ---","timestamp":"2026-03-14T20:09:53.694115758Z"}
+{"type":"log","step_name":"implement","message":"Now let me run the tests.","timestamp":"2026-03-14T20:09:55.543156573Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-14T20:09:58.309478476Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-14T20:10:01.134960087Z"}
+{"type":"log","step_name":"implement","message":"The test file uses `_test` package suffix but the exported vars are in the internal package. The issue is the `resume_test.go` is in `grpc_test` package and needs to access the exported variables from `export_test.go` which is in the `grpc` package. The exported vars from `export_test.go` are visible to `grpc_test` package — but they need to be accessed via the package name. Let me fix.","timestamp":"2026-03-14T20:10:29.781110597Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/internal/adapters/grpc/resume_test.go') ---","timestamp":"2026-03-14T20:10:36.740109571Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-14T20:10:40.070459134Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Let me clean up the temporary genresume utility.","timestamp":"2026-03-14T20:10:48.629674786Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('rm -rf /workspace/cmd/genresume') ---","timestamp":"2026-03-14T20:10:49.023808879Z"}
+{"type":"log","step_name":"implement","message":"Let me run tests once more to make sure removing the utility doesn't break anything.","timestamp":"2026-03-14T20:10:52.858017635Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-14T20:10:53.402130275Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Let me update the todo list.","timestamp":"2026-03-14T20:10:56.903544831Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-14T20:11:05.014176829Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of what was implemented:","timestamp":"2026-03-14T20:11:21.128807359Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T20:11:21.128827477Z"}
+{"type":"log","step_name":"implement","message":"## Implementation Summary","timestamp":"2026-03-14T20:11:21.128830392Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T20:11:21.128833147Z"}
+{"type":"log","step_name":"implement","message":"### New files:","timestamp":"2026-03-14T20:11:21.128835882Z"}
+{"type":"log","step_name":"implement","message":"- **`api/clochepb/resume.pb.go`** — Proto message types (`ResumeRunRequest`, `ResumeRunResponse`) with proper protobuf registration","timestamp":"2026-03-14T20:11:21.128838577Z"}
+{"type":"log","step_name":"implement","message":"- **`api/clochepb/resume_grpc.pb.go`** — gRPC handler registration for the `ResumeRun` RPC","timestamp":"2026-03-14T20:11:21.128841363Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/domain/resume.go`** — `ResumeConfig` type and helper methods (`FirstFailedStep`, `SucceededStepsBefore`)","timestamp":"2026-03-14T20:11:21.128846553Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/engine/resume.go`** — `ResumeExecutor` wrapper that skips completed steps and marks the resume step","timestamp":"2026-03-14T20:11:21.128848997Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/adapters/grpc/resume.go`** — Server-side `ResumeRun` implementation handling both container and host workflows","timestamp":"2026-03-14T20:11:21.128852353Z"}
+{"type":"log","step_name":"implement","message":"- **Tests:** `internal/domain/resume_test.go`, `internal/engine/resume_test.go`, `internal/adapters/grpc/resume_test.go`","timestamp":"2026-03-14T20:11:21.128854988Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T20:11:21.128857774Z"}
+{"type":"log","step_name":"implement","message":"### Modified files:","timestamp":"2026-03-14T20:11:21.128862523Z"}
+{"type":"log","step_name":"implement","message":"- **`api/proto/cloche/v1/cloche.proto`** — Added `ResumeRun` RPC and message definitions","timestamp":"2026-03-14T20:11:21.128868103Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/ports/container.go`** — Added `Exec` method to `ContainerRuntime` interface","timestamp":"2026-03-14T20:11:21.128870798Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/adapters/docker/runtime.go`** — Implemented `Exec` via `docker exec`","timestamp":"2026-03-14T20:11:21.128874595Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/adapters/local/runtime.go`** — Implemented `Exec` for local runtime","timestamp":"2026-03-14T20:11:21.128877962Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/adapters/agents/prompt/prompt.go`** — Added `executeResume` for conversation continuation (`-c` flag + \"retry\" prompt)","timestamp":"2026-03-14T20:11:21.128881098Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/agent/runner.go`** — Added `ResumeConfig` to `RunnerConfig`, wraps executor with `ResumeExecutor` when resuming","timestamp":"2026-03-14T20:11:21.128884875Z"}
+{"type":"log","step_name":"implement","message":"- **`cmd/cloche-agent/main.go`** — Reads `.cloche/resume.json` for resume mode","timestamp":"2026-03-14T20:11:21.128890556Z"}
+{"type":"log","step_name":"implement","message":"- **`cmd/cloche/main.go`** — Added `cmdResume` CLI command","timestamp":"2026-03-14T20:11:21.128894062Z"}
+{"type":"log","step_name":"implement","message":"- **`cmd/cloche/help.go`** — Added help text for `resume` command","timestamp":"2026-03-14T20:11:21.128897138Z"}
+{"type":"log","step_name":"implement","message":"- **`cmd/cloched/main.go`** — Registers `ResumeRun` handler","timestamp":"2026-03-14T20:11:21.128900124Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T20:11:21.128904732Z"}
+{"type":"log","step_name":"implement","message":"### Resume flow:","timestamp":"2026-03-14T20:11:21.128907177Z"}
+{"type":"log","step_name":"implement","message":"1. **CLI:** `cloche resume \u003crun-id\u003e [step-name]` calls `ResumeRun` RPC","timestamp":"2026-03-14T20:11:21.128911655Z"}
+{"type":"log","step_name":"implement","message":"2. **Server:** Validates run is failed, computes prior results and resume step","timestamp":"2026-03-14T20:11:21.128915052Z"}
+{"type":"log","step_name":"implement","message":"3. **Container runs:** Writes `resume.json` into stopped container, copies updated scripts/prompts, restarts container via `docker start`","timestamp":"2026-03-14T20:11:21.128919871Z"}
+{"type":"log","step_name":"implement","message":"4. **Host runs:** Writes `resume.json` to run directory, re-runs host workflow","timestamp":"2026-03-14T20:11:21.128924379Z"}
+{"type":"log","step_name":"implement","message":"5. **Agent:** Reads `resume.json`, wraps executor with `ResumeExecutor` that skips completed steps","timestamp":"2026-03-14T20:11:21.128928156Z"}
+{"type":"log","step_name":"implement","message":"6. **Step behavior:** Script/workflow steps re-run fresh; prompt steps use `-c` (continue conversation) with \"retry\" prompt","timestamp":"2026-03-14T20:11:21.128933677Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T20:11:21.128938466Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T20:11:21.128941772Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of what was implemented:","timestamp":"2026-03-14T20:11:21.149805564Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T20:11:21.149822736Z"}
+{"type":"log","step_name":"implement","message":"## Implementation Summary","timestamp":"2026-03-14T20:11:21.149826774Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T20:11:21.149829549Z"}
+{"type":"log","step_name":"implement","message":"### New files:","timestamp":"2026-03-14T20:11:21.149832034Z"}
+{"type":"log","step_name":"implement","message":"- **`api/clochepb/resume.pb.go`** — Proto message types (`ResumeRunRequest`, `ResumeRunResponse`) with proper protobuf registration","timestamp":"2026-03-14T20:11:21.149834799Z"}
+{"type":"log","step_name":"implement","message":"- **`api/clochepb/resume_grpc.pb.go`** — gRPC handler registration for the `ResumeRun` RPC","timestamp":"2026-03-14T20:11:21.149837775Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/domain/resume.go`** — `ResumeConfig` type and helper methods (`FirstFailedStep`, `SucceededStepsBefore`)","timestamp":"2026-03-14T20:11:21.149846812Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/engine/resume.go`** — `ResumeExecutor` wrapper that skips completed steps and marks the resume step","timestamp":"2026-03-14T20:11:21.149849397Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/adapters/grpc/resume.go`** — Server-side `ResumeRun` implementation handling both container and host workflows","timestamp":"2026-03-14T20:11:21.149852272Z"}
+{"type":"log","step_name":"implement","message":"- **Tests:** `internal/domain/resume_test.go`, `internal/engine/resume_test.go`, `internal/adapters/grpc/resume_test.go`","timestamp":"2026-03-14T20:11:21.149856861Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T20:11:21.149859546Z"}
+{"type":"log","step_name":"implement","message":"### Modified files:","timestamp":"2026-03-14T20:11:21.14986189Z"}
+{"type":"log","step_name":"implement","message":"- **`api/proto/cloche/v1/cloche.proto`** — Added `ResumeRun` RPC and message definitions","timestamp":"2026-03-14T20:11:21.149866619Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/ports/container.go`** — Added `Exec` method to `ContainerRuntime` interface","timestamp":"2026-03-14T20:11:21.149869334Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/adapters/docker/runtime.go`** — Implemented `Exec` via `docker exec`","timestamp":"2026-03-14T20:11:21.14987232Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/adapters/local/runtime.go`** — Implemented `Exec` for local runtime","timestamp":"2026-03-14T20:11:21.149875245Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/adapters/agents/prompt/prompt.go`** — Added `executeResume` for conversation continuation (`-c` flag + \"retry\" prompt)","timestamp":"2026-03-14T20:11:21.149880245Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/agent/runner.go`** — Added `ResumeConfig` to `RunnerConfig`, wraps executor with `ResumeExecutor` when resuming","timestamp":"2026-03-14T20:11:21.149883571Z"}
+{"type":"log","step_name":"implement","message":"- **`cmd/cloche-agent/main.go`** — Reads `.cloche/resume.json` for resume mode","timestamp":"2026-03-14T20:11:21.149886547Z"}
+{"type":"log","step_name":"implement","message":"- **`cmd/cloche/main.go`** — Added `cmdResume` CLI command","timestamp":"2026-03-14T20:11:21.149889412Z"}
+{"type":"log","step_name":"implement","message":"- **`cmd/cloche/help.go`** — Added help text for `resume` command","timestamp":"2026-03-14T20:11:21.149892247Z"}
+{"type":"log","step_name":"implement","message":"- **`cmd/cloched/main.go`** — Registers `ResumeRun` handler","timestamp":"2026-03-14T20:11:21.149895113Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T20:11:21.149897968Z"}
+{"type":"log","step_name":"implement","message":"### Resume flow:","timestamp":"2026-03-14T20:11:21.149900443Z"}
+{"type":"log","step_name":"implement","message":"1. **CLI:** `cloche resume \u003crun-id\u003e [step-name]` calls `ResumeRun` RPC","timestamp":"2026-03-14T20:11:21.149903118Z"}
+{"type":"log","step_name":"implement","message":"2. **Server:** Validates run is failed, computes prior results and resume step","timestamp":"2026-03-14T20:11:21.149906053Z"}
+{"type":"log","step_name":"implement","message":"3. **Container runs:** Writes `resume.json` into stopped container, copies updated scripts/prompts, restarts container via `docker start`","timestamp":"2026-03-14T20:11:21.149908939Z"}
+{"type":"log","step_name":"implement","message":"4. **Host runs:** Writes `resume.json` to run directory, re-runs host workflow","timestamp":"2026-03-14T20:11:21.149911704Z"}
+{"type":"log","step_name":"implement","message":"5. **Agent:** Reads `resume.json`, wraps executor with `ResumeExecutor` that skips completed steps","timestamp":"2026-03-14T20:11:21.149914489Z"}
+{"type":"log","step_name":"implement","message":"6. **Step behavior:** Script/workflow steps re-run fresh; prompt steps use `-c` (continue conversation) with \"retry\" prompt","timestamp":"2026-03-14T20:11:21.149917234Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-14T20:11:21.14992001Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T20:11:21.710945798Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-14T20:11:21.858005952Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-14T20:11:21.872852447Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-14T20:11:22.195642668Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t10.035s","timestamp":"2026-03-14T20:11:32.544766823Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-14T20:11:32.544808441Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-14T20:11:32.544813511Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-14T20:11:32.544820374Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-14T20:11:32.544824582Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-14T20:11:32.544831826Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-14T20:11:32.544844379Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-14T20:11:32.544851202Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-14T20:11:32.544856452Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-14T20:11:32.544862634Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-14T20:11:32.544867974Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-14T20:11:32.544874366Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-14T20:11:32.544879726Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-14T20:11:32.544885867Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-14T20:11:32.544890857Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-14T20:11:32.544904022Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-14T20:11:32.544910654Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-14T20:11:32.544915604Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-14T20:11:32.544921795Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-14T20:11:32.544927045Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-14T20:11:32.544935822Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/version\t(cached)","timestamp":"2026-03-14T20:11:32.544942354Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-14T20:11:32.544947464Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-14T20:11:32.600727611Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-14T20:11:32.611750978Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T20:11:42.002115465Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T20:11:42.002135373Z"}
+{"type":"log","step_name":"update-docs","message":"I'll start by understanding the current codebase state and then compare against documentation.","timestamp":"2026-03-14T20:11:42.002139741Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Agent('Explore the current state of the \"resume\" feature impleme...') ---","timestamp":"2026-03-14T20:11:46.52522786Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/api/clochepb/resume.pb.go') ---","timestamp":"2026-03-14T20:11:48.268712941Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/api/clochepb/resume_grpc.pb.go') ---","timestamp":"2026-03-14T20:11:48.469428135Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/adapters/grpc/resume.go') ---","timestamp":"2026-03-14T20:11:48.677971142Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/adapters/grpc/resume_test.go') ---","timestamp":"2026-03-14T20:11:48.892782449Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/domain/resume.go') ---","timestamp":"2026-03-14T20:11:48.903777435Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/domain/resume_test.go') ---","timestamp":"2026-03-14T20:11:49.102988923Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/engine/resume.go') ---","timestamp":"2026-03-14T20:11:49.338050662Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/engine/resume_test.go') ---","timestamp":"2026-03-14T20:11:49.345977431Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-14T20:11:50.680551981Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-14T20:11:50.943526833Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T20:11:50.953858718Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche-agent/main.go') ---","timestamp":"2026-03-14T20:11:51.140373296Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloched/main.go') ---","timestamp":"2026-03-14T20:11:52.523222947Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/adapters/agents/prompt/prompt.go') ---","timestamp":"2026-03-14T20:11:52.733921796Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/adapters/docker/runtime.go') ---","timestamp":"2026-03-14T20:11:52.946801087Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/adapters/grpc/export_test.go') ---","timestamp":"2026-03-14T20:11:53.168927829Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/adapters/local/runtime.go') ---","timestamp":"2026-03-14T20:11:54.724315136Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-14T20:11:54.93330755Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/ports/container.go') ---","timestamp":"2026-03-14T20:11:55.195587693Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('find /workspace/docs -type f -name \"*.md\" | head -20') ---","timestamp":"2026-03-14T20:11:56.595534974Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('find /workspace/docs -type f -name \"*.md\" -exec grep -l \"...') ---","timestamp":"2026-03-14T20:11:57.837816321Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-14T20:11:58.877151251Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('find /workspace/docs/plans -type f -name \"*.md\" -exec gre...') ---","timestamp":"2026-03-14T20:12:00.843534457Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('git diff --stat HEAD internal/adapters/agents/prompt/prom...') ---","timestamp":"2026-03-14T20:12:02.23609464Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('git diff HEAD cmd/cloche/main.go | head -100') ---","timestamp":"2026-03-14T20:12:03.373834017Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me check the documentation files to see what needs updating.","timestamp":"2026-03-14T20:12:35.208967936Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('docs/**/*.md') ---","timestamp":"2026-03-14T20:12:35.469086243Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-14T20:12:39.144023146Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/workflows.md') ---","timestamp":"2026-03-14T20:12:39.63754828Z"}
+{"type":"log","step_name":"update-docs","message":"I can see that USAGE.md does NOT have a `cloche resume` section in the CLI Reference. The help text was added to `cmd/cloche/help.go` and the implementation is complete. Let me check the help text to ensure the docs match the implementation.","timestamp":"2026-03-14T20:12:44.788377542Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-14T20:12:45.24254786Z"}
+{"type":"log","step_name":"update-docs","message":"The USAGE.md is missing the `cloche resume` CLI reference section. I need to add it after `cloche run`.","timestamp":"2026-03-14T20:12:50.95899027Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-14T20:12:55.041312637Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me verify the edit looks correct and check if there are any other documentation gaps. The `workflows.md` file doesn't need resume-specific documentation since it covers DSL syntax and execution model, not CLI commands.","timestamp":"2026-03-14T20:13:00.9013382Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T20:13:00.901357687Z"}
+{"type":"log","step_name":"update-docs","message":"Let me also check if the CLAUDE.md project overview mentions `resume` in the CLI subcommands list.","timestamp":"2026-03-14T20:13:00.901361955Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/CLAUDE.md') ---","timestamp":"2026-03-14T20:13:01.231302835Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('Subcommands:') ---","timestamp":"2026-03-14T20:13:06.037031899Z"}
+{"type":"log","step_name":"update-docs","message":"The CLAUDE.md subcommands list is incomplete — it's missing `resume` along with several other commands. Let me update it to include `resume`.","timestamp":"2026-03-14T20:13:08.646210025Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/CLAUDE.md') ---","timestamp":"2026-03-14T20:13:10.058423838Z"}
+{"type":"log","step_name":"update-docs","message":"Let me verify the USAGE.md edit is valid by re-reading the relevant section.","timestamp":"2026-03-14T20:13:13.113392656Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-14T20:13:13.538003501Z"}
+{"type":"log","step_name":"update-docs","message":"Both documentation files have been updated:","timestamp":"2026-03-14T20:13:17.402395712Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T20:13:17.402421511Z"}
+{"type":"log","step_name":"update-docs","message":"1. **`docs/USAGE.md`** — Added `cloche resume` CLI reference section between `cloche run` and `cloche status`, documenting usage, arguments, step-specific resume behavior, and prerequisites.","timestamp":"2026-03-14T20:13:17.402424947Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T20:13:17.402428404Z"}
+{"type":"log","step_name":"update-docs","message":"2. **`CLAUDE.md`** — Added `resume` to the CLI subcommands list.","timestamp":"2026-03-14T20:13:17.402430838Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T20:13:17.402433714Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T20:13:17.402436088Z"}
+{"type":"log","step_name":"update-docs","message":"Both documentation files have been updated:","timestamp":"2026-03-14T20:13:17.425376175Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T20:13:17.425395382Z"}
+{"type":"log","step_name":"update-docs","message":"1. **`docs/USAGE.md`** — Added `cloche resume` CLI reference section between `cloche run` and `cloche status`, documenting usage, arguments, step-specific resume behavior, and prerequisites.","timestamp":"2026-03-14T20:13:17.425398437Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T20:13:17.425401994Z"}
+{"type":"log","step_name":"update-docs","message":"2. **`CLAUDE.md`** — Added `resume` to the CLI subcommands list.","timestamp":"2026-03-14T20:13:17.425404469Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-14T20:13:17.425407234Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-14T20:13:17.792597274Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-14T20:13:17.829114135Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-14T20:13:17.869872718Z"}

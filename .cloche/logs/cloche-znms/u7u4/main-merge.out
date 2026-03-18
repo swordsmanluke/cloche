@@ -1,0 +1,13 @@
+Preparing worktree (checking out 'cloche/develop-brave-hawk-d8a5')
+HEAD is now at 293c818 cloche run develop-brave-hawk-d8a5: develop (succeeded)
+Rebasing (1/1)Auto-merging internal/evolution/types.go
+CONFLICT (content): Merge conflict in internal/evolution/types.go
+Auto-merging internal/evolution/types_test.go
+CONFLICT (content): Merge conflict in internal/evolution/types_test.go
+error: could not apply 293c818... cloche run develop-brave-hawk-d8a5: develop (succeeded)
+hint: Resolve all conflicts manually, mark them as resolved with
+hint: "git add/rm <conflicted_files>", then run "git rebase --continue".
+hint: You can instead skip this commit: run "git rebase --skip".
+hint: To abort and get back to the state before "git rebase", run "git rebase --abort".
+Could not apply 293c818... cloche run develop-brave-hawk-d8a5: develop (succeeded)
+error: rebase failed — branch cloche/develop-brave-hawk-d8a5 preserved for review

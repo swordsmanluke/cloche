@@ -1,0 +1,18 @@
+Both files look correct. All discrepancies have been fixed. Here's a summary of changes made:
+
+**docs/USAGE.md** — 10 fixes:
+1. **`cloche run`**: Added `--keep-container` flag to usage line and flag table
+2. **`cloche list`**: Changed description from "List all runs" to "List runs (last hour by default)", added `--all` flag table, corrected column descriptions
+3. **`cloche logs`**: Added missing CLI reference section
+4. **`cloche poll`**: Added missing CLI reference section
+5. **`cloche shutdown`**: Added missing CLI reference section
+6. **`cloche init`**: Added `--workflow` and `--image` flags with defaults table
+7. **Workflow template**: Added `update-docs` step and updated wiring (`test:success -> update-docs` instead of `test:success -> done`)
+8. **Base image**: Fixed from `ruby:3.3` to `ubuntu:24.04`
+9. **Agent Command Override**: Expanded to show workflow-level `container { agent_command }` syntax, documented precedence order, added new "Agent Fallback Chains" subsection
+10. **Build Commands / Directory layout**: Added `make install` target, added `update-docs.md` to prompts directory listing
+
+**docs/workflows.md** — 1 addition:
+- Added "Agent Command" section documenting `agent_command` at workflow and step level, plus "Fallback Chains" subsection
+
+CLOCHE_RESULT:success

@@ -1,0 +1,177 @@
+{"type":"run_title","message":"Task: Evolution: No content-change guard — Curator rewrites prompt even when lesson is already ...","timestamp":"2026-03-15T16:12:18.145421049Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-15T16:12:18.1457284Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:12:24.564385058Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:12:24.564400387Z"}
+{"type":"log","step_name":"implement","message":"I'll start by exploring the codebase to understand the evolution system (Curator, Reflector, Orchestrator) and then implement the changes.","timestamp":"2026-03-15T16:12:24.564402972Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Explore the codebase to find all files related to the evo...') ---","timestamp":"2026-03-15T16:12:28.185756084Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*curator*') ---","timestamp":"2026-03-15T16:12:29.528584198Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*reflector*') ---","timestamp":"2026-03-15T16:12:29.593511993Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*orchestrator*') ---","timestamp":"2026-03-15T16:12:29.609180186Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*evolution*') ---","timestamp":"2026-03-15T16:12:30.099833986Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*lesson*') ---","timestamp":"2026-03-15T16:12:30.152444237Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/evolution -type f | head -20') ---","timestamp":"2026-03-15T16:12:32.316282125Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('lesson|Lesson') ---","timestamp":"2026-03-15T16:12:32.433203847Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/evolution/') ---","timestamp":"2026-03-15T16:12:32.503967988Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/types.go') ---","timestamp":"2026-03-15T16:12:33.976791626Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/curator.go') ---","timestamp":"2026-03-15T16:12:34.161002464Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/reflector.go') ---","timestamp":"2026-03-15T16:12:34.362626361Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/orchestrator.go') ---","timestamp":"2026-03-15T16:12:34.372864265Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/collector.go') ---","timestamp":"2026-03-15T16:12:35.826126213Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/classifier.go') ---","timestamp":"2026-03-15T16:12:36.091099863Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/audit.go') ---","timestamp":"2026-03-15T16:12:36.101877577Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/scriptgen.go') ---","timestamp":"2026-03-15T16:12:36.307058455Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/trigger.go') ---","timestamp":"2026-03-15T16:12:38.233222072Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/llmclient.go') ---","timestamp":"2026-03-15T16:12:38.444345107Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('head -100 /workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:12:39.2333764Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('wc -l /workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:12:40.534388237Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"func Test\" /workspace/internal/evolution/evoluti...') ---","timestamp":"2026-03-15T16:12:40.744948709Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:12:40.961129551Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-design.md') ---","timestamp":"2026-03-15T16:12:42.610059033Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-implement...') ---","timestamp":"2026-03-15T16:12:42.657073722Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('EvolutionStore|CaptureStore') ---","timestamp":"2026-03-15T16:12:44.508054378Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/ports -type f -name \"*.go\" | hea...') ---","timestamp":"2026-03-15T16:12:44.80507621Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-15T16:12:45.737256098Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('NewOrchestrator|Orchestrator\\{|evo.Run') ---","timestamp":"2026-03-15T16:12:50.379098359Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -r \"NewOrchestrator\\|evolution\\.NewOrchestrator\" /wo...') ---","timestamp":"2026-03-15T16:12:51.811991352Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -A 20 \"NewOrchestrator\" /workspace/cmd/cloched/main....') ---","timestamp":"2026-03-15T16:12:53.543970898Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/test/integration/evolution_test.go') ---","timestamp":"2026-03-15T16:12:55.138898148Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"type.*Execution\\|type StepExecution\" /workspace/...') ---","timestamp":"2026-03-15T16:12:57.110214486Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/domain -name \"*.go\" -type f | he...') ---","timestamp":"2026-03-15T16:12:57.548515771Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-15T16:12:59.190225291Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/internal/dsl -name \"*.go\" -type f') ---","timestamp":"2026-03-15T16:13:00.945168836Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"type Mutator\\|func.*Mutator\" /workspace/internal...') ---","timestamp":"2026-03-15T16:13:01.365283549Z"}
+{"type":"log","step_name":"implement","message":"Let me read the key files to understand the current implementation.","timestamp":"2026-03-15T16:13:41.517703595Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/curator.go') ---","timestamp":"2026-03-15T16:13:42.011486597Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/reflector.go') ---","timestamp":"2026-03-15T16:13:42.498590439Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/orchestrator.go') ---","timestamp":"2026-03-15T16:13:42.505137119Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/types.go') ---","timestamp":"2026-03-15T16:13:43.0078911Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/audit.go') ---","timestamp":"2026-03-15T16:13:43.391040251Z"}
+{"type":"log","step_name":"implement","message":"Now let me read the existing tests to understand patterns.","timestamp":"2026-03-15T16:13:46.464479286Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:13:46.97779318Z"}
+{"type":"log","step_name":"implement","message":"Now I have a clear picture. Let me implement the three fixes:","timestamp":"2026-03-15T16:14:02.841255762Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:14:02.841273806Z"}
+{"type":"log","step_name":"implement","message":"1. **Curator**: Skip LLM call if lesson insight/action already present in prompt","timestamp":"2026-03-15T16:14:02.84127615Z"}
+{"type":"log","step_name":"implement","message":"2. **Reflector**: Filter lessons whose IDs already appear in knowledge base","timestamp":"2026-03-15T16:14:02.841278345Z"}
+{"type":"log","step_name":"implement","message":"3. **Orchestrator**: Track applied lesson IDs and skip duplicates","timestamp":"2026-03-15T16:14:02.841280879Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/evolution/curator.go') ---","timestamp":"2026-03-15T16:14:09.281995483Z"}
+{"type":"log","step_name":"implement","message":"Now update the Reflector to filter out lessons already in the knowledge base:","timestamp":"2026-03-15T16:14:11.775702013Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/evolution/reflector.go') ---","timestamp":"2026-03-15T16:14:15.51293057Z"}
+{"type":"log","step_name":"implement","message":"Now update the Orchestrator to track applied lesson IDs and skip duplicates:","timestamp":"2026-03-15T16:14:18.173790319Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/evolution/orchestrator.go') ---","timestamp":"2026-03-15T16:14:21.51197285Z"}
+{"type":"log","step_name":"implement","message":"Add `\"strings\"` to the orchestrator imports:","timestamp":"2026-03-15T16:14:24.555610338Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/evolution/orchestrator.go') ---","timestamp":"2026-03-15T16:14:26.510505561Z"}
+{"type":"log","step_name":"implement","message":"Now update the orchestrator's lesson loop to handle the curator returning nil (no change needed):","timestamp":"2026-03-15T16:14:29.30494255Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/orchestrator.go') ---","timestamp":"2026-03-15T16:14:29.849410817Z"}
+{"type":"log","step_name":"implement","message":"The curator now returns `nil, nil` when the lesson is already present, so we need to handle that:","timestamp":"2026-03-15T16:14:33.088228328Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/evolution/orchestrator.go') ---","timestamp":"2026-03-15T16:14:35.05557729Z"}
+{"type":"log","step_name":"implement","message":"Now let me write the tests. Let me add tests to the existing test file:","timestamp":"2026-03-15T16:14:38.046005705Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:14:38.445719593Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:15:12.21157252Z"}
+{"type":"log","step_name":"implement","message":"Now let's run the tests:","timestamp":"2026-03-15T16:15:16.124604279Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-15T16:15:16.785478291Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Let me verify the key files are correct:","timestamp":"2026-03-15T16:16:05.986957338Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/evolution/curator.go') ---","timestamp":"2026-03-15T16:16:06.532591778Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-15T16:16:14.52953782Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:16:14.529581092Z"}
+{"type":"log","step_name":"implement","message":"**Curator** (`curator.go`): Added `lessonAlreadyPresent()` which checks if the lesson's insight or suggested action already appears in the prompt text (case-insensitive). `Apply()` returns `nil, nil` early when the lesson is already incorporated, avoiding the LLM call, snapshot, and file rewrite.","timestamp":"2026-03-15T16:16:14.52960675Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:16:14.529614565Z"}
+{"type":"log","step_name":"implement","message":"**Reflector** (`reflector.go`): After confidence filtering, added a deduplication pass that drops lessons whose ID already appears in the `KnowledgeBase` text.","timestamp":"2026-03-15T16:16:14.529618993Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:16:14.529624233Z"}
+{"type":"log","step_name":"implement","message":"**Orchestrator** (`orchestrator.go`): Added a pre-execution filter that removes lessons with IDs already present in the knowledge base. Also handles the curator returning `nil` change (lesson already present) by continuing to the next lesson.","timestamp":"2026-03-15T16:16:14.529629002Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:16:14.529634322Z"}
+{"type":"log","step_name":"implement","message":"**Tests added**:","timestamp":"2026-03-15T16:16:14.529638701Z"}
+{"type":"log","step_name":"implement","message":"- `TestLessonAlreadyPresent` — table-driven tests for the substring matching","timestamp":"2026-03-15T16:16:14.529643129Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorSkipsWhenLessonAlreadyPresent` — verifies LLM is not called and file is unchanged","timestamp":"2026-03-15T16:16:14.529648199Z"}
+{"type":"log","step_name":"implement","message":"- `TestReflectorFiltersAlreadyAppliedLessons` — verifies knowledge base deduplication","timestamp":"2026-03-15T16:16:14.529653078Z"}
+{"type":"log","step_name":"implement","message":"- `TestOrchestratorSkipsAlreadyAppliedLessons` — verifies orchestrator-level filtering","timestamp":"2026-03-15T16:16:14.529663277Z"}
+{"type":"log","step_name":"implement","message":"- `TestOrchestratorSecondRunProducesNoChanges` — end-to-end: first run applies, second run produces zero changes","timestamp":"2026-03-15T16:16:14.529668247Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:16:14.529673356Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:16:14.529677504Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-15T16:16:14.822940875Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:16:14.82302273Z"}
+{"type":"log","step_name":"implement","message":"**Curator** (`curator.go`): Added `lessonAlreadyPresent()` which checks if the lesson's insight or suggested action already appears in the prompt text (case-insensitive). `Apply()` returns `nil, nil` early when the lesson is already incorporated, avoiding the LLM call, snapshot, and file rewrite.","timestamp":"2026-03-15T16:16:14.823026447Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:16:14.823030404Z"}
+{"type":"log","step_name":"implement","message":"**Reflector** (`reflector.go`): After confidence filtering, added a deduplication pass that drops lessons whose ID already appears in the `KnowledgeBase` text.","timestamp":"2026-03-15T16:16:14.823036075Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:16:14.82303904Z"}
+{"type":"log","step_name":"implement","message":"**Orchestrator** (`orchestrator.go`): Added a pre-execution filter that removes lessons with IDs already present in the knowledge base. Also handles the curator returning `nil` change (lesson already present) by continuing to the next lesson.","timestamp":"2026-03-15T16:16:14.82304404Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:16:14.823047136Z"}
+{"type":"log","step_name":"implement","message":"**Tests added**:","timestamp":"2026-03-15T16:16:14.82304952Z"}
+{"type":"log","step_name":"implement","message":"- `TestLessonAlreadyPresent` — table-driven tests for the substring matching","timestamp":"2026-03-15T16:16:14.823054389Z"}
+{"type":"log","step_name":"implement","message":"- `TestCuratorSkipsWhenLessonAlreadyPresent` — verifies LLM is not called and file is unchanged","timestamp":"2026-03-15T16:16:14.823057375Z"}
+{"type":"log","step_name":"implement","message":"- `TestReflectorFiltersAlreadyAppliedLessons` — verifies knowledge base deduplication","timestamp":"2026-03-15T16:16:14.823060371Z"}
+{"type":"log","step_name":"implement","message":"- `TestOrchestratorSkipsAlreadyAppliedLessons` — verifies orchestrator-level filtering","timestamp":"2026-03-15T16:16:14.823063316Z"}
+{"type":"log","step_name":"implement","message":"- `TestOrchestratorSecondRunProducesNoChanges` — end-to-end: first run applies, second run produces zero changes","timestamp":"2026-03-15T16:16:14.823066021Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-15T16:16:14.823069137Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:16:15.048167748Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-15T16:16:15.151194416Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-15T16:16:15.39240598Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-15T16:16:15.761244613Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t10.039s","timestamp":"2026-03-15T16:16:26.14896717Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-15T16:16:26.149002838Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-15T16:16:26.149007326Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-15T16:16:26.149010943Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-15T16:16:26.149013959Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-15T16:16:26.149016363Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-15T16:16:26.149023106Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-15T16:16:26.149026172Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-15T16:16:26.149028877Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-15T16:16:26.149031812Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-15T16:16:26.149034588Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-15T16:16:26.149037403Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-15T16:16:26.149040248Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-15T16:16:26.149044606Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-15T16:16:26.149047462Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-15T16:16:26.149054014Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-15T16:16:26.149056339Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-15T16:16:26.149058543Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-15T16:16:26.149060687Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-15T16:16:26.149063001Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-15T16:16:26.149066107Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/version\t(cached)","timestamp":"2026-03-15T16:16:26.149068271Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-15T16:16:26.149070465Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-15T16:16:26.346692893Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-15T16:16:26.434411738Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:16:31.718699853Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:16:31.718718999Z"}
+{"type":"log","step_name":"update-docs","message":"I'll start by reading the current source code changes and existing documentation to understand what needs updating.","timestamp":"2026-03-15T16:16:31.718722807Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/curator.go') ---","timestamp":"2026-03-15T16:16:32.288345028Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/reflector.go') ---","timestamp":"2026-03-15T16:16:32.310386804Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/orchestrator.go') ---","timestamp":"2026-03-15T16:16:32.784474003Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/evolution/evolution_test.go') ---","timestamp":"2026-03-15T16:16:33.011324924Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me find relevant documentation files.","timestamp":"2026-03-15T16:16:36.963051352Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('docs/**/*.md') ---","timestamp":"2026-03-15T16:16:37.463441728Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('evolution|curator|reflector|orchestrator') ---","timestamp":"2026-03-15T16:16:38.128888771Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-design.md') ---","timestamp":"2026-03-15T16:16:41.671217705Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-implement...') ---","timestamp":"2026-03-15T16:16:41.705674167Z"}
+{"type":"log","step_name":"update-docs","message":"Now I'll compare the docs against the code changes. The key new behaviors are:","timestamp":"2026-03-15T16:16:55.463749738Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:16:55.463766009Z"}
+{"type":"log","step_name":"update-docs","message":"1. **Curator**: `lessonAlreadyPresent()` — skips the LLM call entirely if the lesson's insight/action is already in the prompt (case-insensitive substring match)","timestamp":"2026-03-15T16:16:55.463768243Z"}
+{"type":"log","step_name":"update-docs","message":"2. **Reflector**: Deduplicates lessons against the knowledge base by ID before returning","timestamp":"2026-03-15T16:16:55.463773604Z"}
+{"type":"log","step_name":"update-docs","message":"3. **Orchestrator**: Second-layer dedup — filters lessons whose IDs appear in the knowledge base","timestamp":"2026-03-15T16:16:55.463775858Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:16:55.463778012Z"}
+{"type":"log","step_name":"update-docs","message":"Let me update the design doc's relevant sections.","timestamp":"2026-03-15T16:16:55.463779815Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/plans/2026-02-24-self-evolution-design.md') ---","timestamp":"2026-03-15T16:17:00.365073092Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/plans/2026-02-24-self-evolution-design.md') ---","timestamp":"2026-03-15T16:17:07.307532421Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me verify the edits are correct.","timestamp":"2026-03-15T16:17:10.957204569Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-design.md') ---","timestamp":"2026-03-15T16:17:11.424881256Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/plans/2026-02-24-self-evolution-design.md') ---","timestamp":"2026-03-15T16:17:11.969971557Z"}
+{"type":"log","step_name":"update-docs","message":"Both edits look correct. The documentation now accurately reflects the three deduplication layers implemented in the code:","timestamp":"2026-03-15T16:17:16.729931559Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:17:16.729953991Z"}
+{"type":"log","step_name":"update-docs","message":"1. **Reflector**: Knowledge base ID deduplication (lines 213-219)","timestamp":"2026-03-15T16:17:16.729962317Z"}
+{"type":"log","step_name":"update-docs","message":"2. **Orchestrator**: Second-layer ID filtering (mentioned in same paragraph)","timestamp":"2026-03-15T16:17:16.729966054Z"}
+{"type":"log","step_name":"update-docs","message":"3. **Curator**: Content-change guard via substring matching (lines 230-235)","timestamp":"2026-03-15T16:17:16.729969711Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:17:16.729973258Z"}
+{"type":"log","step_name":"update-docs","message":"No other documentation files need updating — the USAGE.md and other docs don't cover evolution internals at this level of detail.","timestamp":"2026-03-15T16:17:16.729977566Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:17:16.729981593Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:17:16.72998488Z"}
+{"type":"log","step_name":"update-docs","message":"Both edits look correct. The documentation now accurately reflects the three deduplication layers implemented in the code:","timestamp":"2026-03-15T16:17:16.749619106Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:17:16.74963668Z"}
+{"type":"log","step_name":"update-docs","message":"1. **Reflector**: Knowledge base ID deduplication (lines 213-219)","timestamp":"2026-03-15T16:17:16.749639655Z"}
+{"type":"log","step_name":"update-docs","message":"2. **Orchestrator**: Second-layer ID filtering (mentioned in same paragraph)","timestamp":"2026-03-15T16:17:16.749642451Z"}
+{"type":"log","step_name":"update-docs","message":"3. **Curator**: Content-change guard via substring matching (lines 230-235)","timestamp":"2026-03-15T16:17:16.749645186Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:17:16.7496477Z"}
+{"type":"log","step_name":"update-docs","message":"No other documentation files need updating — the USAGE.md and other docs don't cover evolution internals at this level of detail.","timestamp":"2026-03-15T16:17:16.749649724Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-15T16:17:16.7496525Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-15T16:17:16.979185719Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-15T16:17:17.029481918Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-15T16:17:17.048767516Z"}

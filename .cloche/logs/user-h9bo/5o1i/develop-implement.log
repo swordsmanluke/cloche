@@ -1,0 +1,22 @@
+All tests pass. Here's a summary of what was implemented:
+
+## Summary
+
+### New file: `internal/logstream/logstream.go`
+A thread-safe unified log writer that appends timestamped, type-prefixed entries to `.cloche/output/full.log`. Supports three entry types: `[status]`, `[script]`, and `[llm]`. Multi-line messages are split into separate entries sharing the same timestamp.
+
+### Modified: `internal/agent/runner.go`
+- **Unified log creation**: After cleaning the output directory, creates a `logstream.Writer` that lives for the duration of the run.
+- **Status logging**: The `statusReporter` now writes `step_started`, `step_completed`, and `run_completed` entries to `full.log` with `[status]` type.
+- **Script output logging**: After each script step executes, its output is read from `<step>.log` and written to `full.log` with `[script]` type.
+- **LLM output logging**: After each prompt/agent step executes, its output is read from `<step>.log` and written to `full.log` with `[llm]` type. A copy is also written to `llm-<step>.log`.
+- **Chronological ordering**: Status messages are written in the engine's main loop, step output is written in the goroutine before returning — ensuring correct interleaving: `step_started → output → step_completed`.
+
+### Tests
+- **`internal/logstream/logstream_test.go`**: 3 unit tests for the log writer (multi-type entries, empty messages, trailing newline handling).
+- **`internal/agent/runner_test.go`**: 3 integration tests:
+  - `TestRunner_UnifiedLogScriptSteps` — verifies script steps produce `[status]` and `[script]` entries in correct chronological order
+  - `TestRunner_UnifiedLogLLMStep` — verifies LLM steps produce `[llm]` entries in `full.log` and create `llm-<step>.log`
+  - `TestRunner_UnifiedLogMixedSteps` — verifies mixed script+LLM workflows produce correctly typed entries with all per-step files
+
+CLOCHE_RESULT:success

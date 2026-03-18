@@ -1,0 +1,13 @@
+Preparing worktree (checking out 'cloche/develop-deft-peak-e30d')
+HEAD is now at 1e7b02d cloche run develop-deft-peak-e30d: develop (succeeded)
+Current branch cloche/develop-deft-peak-e30d is up to date.
+Updating 5ff8596..1e7b02d
+Fast-forward
+ cmd/cloche/help.go        |  31 ++++--
+ cmd/cloche/main.go        | 149 ++++++++++++++++++++++++++++-
+ cmd/cloche/status_test.go | 235 ++++++++++++++++++++++++++++++++++++++++++++++
+ docs/USAGE.md             |  14 ++-
+ 4 files changed, 416 insertions(+), 13 deletions(-)
+ create mode 100644 cmd/cloche/status_test.go
+Deleted branch cloche/develop-deft-peak-e30d (was 1e7b02d).
+Merged cloche/develop-deft-peak-e30d into main (1e7b02d530412ec9bf748338c585b314c87a17c2)

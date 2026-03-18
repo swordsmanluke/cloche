@@ -1,0 +1,12 @@
+Preparing worktree (checking out 'cloche/develop-bold-lake-2da0')
+HEAD is now at ff891ec cloche run develop-bold-lake-2da0: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-bold-lake-2da0.
+Updating df3a7b7..090360f
+Fast-forward
+ internal/evolution/selector.go      |  61 ++++++++++++++++
+ internal/evolution/selector_test.go | 137 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 198 insertions(+)
+ create mode 100644 internal/evolution/selector.go
+ create mode 100644 internal/evolution/selector_test.go
+Deleted branch cloche/develop-bold-lake-2da0 (was 090360f).
+Merged cloche/develop-bold-lake-2da0 into main (090360f157b65bb25856dc3279f76f49a1ad694e)

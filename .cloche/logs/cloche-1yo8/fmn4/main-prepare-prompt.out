@@ -1,0 +1,25 @@
+## Task: Evolution: CommandLLMClient produces conversational responses instead of structured output
+
+## Problem
+
+`CommandLLMClient` in `internal/evolution/llmclient.go` concatenates system + user prompts with a newline separator and pipes them to the `claude` command via stdin. This approach has two problems:
+
+1. **No system/user prompt separation**: Claude Code via stdin receives one blob of text. The system prompt instructions (e.g. "return only the updated prompt content", "respond with JSON") get mixed with the user content and are not reliably followed.
+
+2. **Interactive-style responses**: The `claude` command produces interactive responses including tool-use permission requests, commentary, and meta-text. The evolution system needs raw structured output, but gets conversational text instead.
+
+This is the upstream cause of the prompt corruption documented in cloche-ba2u. Even if the Curator adds validation, the LLM client should be producing better output in the first place.
+
+## How to Fix
+
+Options (in order of preference):
+1. Use `claude --print` or `claude -p` mode (if available) to get non-interactive output
+2. Add `--output-format json` or similar flags to constrain output
+3. Use the Anthropic API directly instead of shelling out to `claude`
+4. At minimum, add explicit instructions to the concatenated prompt that say "Do not ask for permissions. Do not include commentary. Return ONLY the requested content."
+
+## How to Test
+
+1. Test that `CommandLLMClient` passes system and user prompts in a way that the LLM can distinguish them
+2. Test that the LLM command is invoked with flags that produce non-interactive output
+3. Integration test: given a realistic curator prompt, verify the response is structured content, not conversation

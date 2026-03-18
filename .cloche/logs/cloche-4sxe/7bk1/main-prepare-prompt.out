@@ -1,0 +1,3 @@
+## Task: GEPA: Daemon wiring — pre-run selection and post-run fitness
+
+Wire population evolution into the daemon. Three changes: (1) In cmd/cloched/main.go initEvolution(), read PopulationConfig from EvolutionConfig, pass to Orchestrator, create Population instance. (2) In internal/adapters/grpc/server.go launchAndTrack(), add pre-run hook before container.Start(): if population enabled, call Selector.SelectCandidate(), copy chosen candidate content to base prompt path (with snapshot), record assignment. (3) In trackRun() post-run section alongside evolution.Fire(), call ScoreAndPromote() to record fitness and check promotion. Include end-to-end test. Requires minor version bump.

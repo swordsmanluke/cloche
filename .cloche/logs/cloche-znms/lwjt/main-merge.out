@@ -1,0 +1,10 @@
+Preparing worktree (checking out 'cloche/develop-eager-glen-b8b8')
+HEAD is now at a449bea cloche run develop-eager-glen-b8b8: develop (succeeded)
+Current branch cloche/develop-eager-glen-b8b8 is up to date.
+Updating 854cede..a449bea
+Fast-forward
+ internal/dsl/parser.go      |  3 +++
+ internal/dsl/parser_test.go | 17 +++++++++++++++++
+ 2 files changed, 20 insertions(+)
+Deleted branch cloche/develop-eager-glen-b8b8 (was a449bea).
+Merged cloche/develop-eager-glen-b8b8 into main (a449bea05e9fdc62242417e6048361a40652bf0a)

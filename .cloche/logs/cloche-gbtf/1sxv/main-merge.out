@@ -1,0 +1,17 @@
+Preparing worktree (checking out 'cloche/develop-lush-drift-1610')
+HEAD is now at c49fd47 cloche run develop-lush-drift-1610: develop (succeeded)
+Current branch cloche/develop-lush-drift-1610 is up to date.
+Updating 89ad3dc..c49fd47
+Fast-forward
+ .cloche/host.cloche                                |  10 ++
+ .cloche/scripts/release-task.sh                    |  15 +++
+ docs/USAGE.md                                      |  44 +++++++-
+ docs/workflows.md                                  |   5 +
+ internal/adapters/grpc/server.go                   |  35 ++++++
+ internal/adapters/web/handler.go                   |  35 ++++++
+ internal/adapters/web/handler_test.go              | 125 ++++++++++++++++++++-
+ .../adapters/web/templates/project_detail.html     |  90 +++++++++++----
+ 8 files changed, 328 insertions(+), 31 deletions(-)
+ create mode 100755 .cloche/scripts/release-task.sh
+Deleted branch cloche/develop-lush-drift-1610 (was c49fd47).
+Merged cloche/develop-lush-drift-1610 into main (c49fd475e798cc9e69379768cfd03c525e1ec6e6)

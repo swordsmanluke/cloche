@@ -1,0 +1,1 @@
+[{"id":"cloche-hbt","title":"Add mass-delete exited containers button to Project details page","description":"Add a button on the Project details web UI page for mass-deleting exited Docker containers. Should find all retained/exited containers for the project and delete them in one action."}]

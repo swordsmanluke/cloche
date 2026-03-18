@@ -1,0 +1,196 @@
+{"type":"run_title","message":"Task: Web UI: Logs not showing up","timestamp":"2026-03-11T20:44:08.0342977Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-11T20:44:08.034605432Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Explore the codebase to understand the web UI and how log...') ---","timestamp":"2026-03-11T20:44:18.459191841Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.go\" | head -20') ---","timestamp":"2026-03-11T20:44:20.145322255Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*.go') ---","timestamp":"2026-03-11T20:44:21.472099905Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f \\( -name \"*.html\" -o -name \"*.js\"...') ---","timestamp":"2026-03-11T20:44:21.977305898Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type d -name \"web\" -o -type d -name \"api...') ---","timestamp":"2026-03-11T20:44:22.434840905Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web') ---","timestamp":"2026-03-11T20:44:24.101345047Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/adapters/web/') ---","timestamp":"2026-03-11T20:44:24.11578676Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('ls -la /workspace/internal/adapters/web/templates/') ---","timestamp":"2026-03-11T20:44:24.26227102Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T20:44:25.547458713Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/run_detail.html') ---","timestamp":"2026-03-11T20:44:25.76875349Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/runs.html') ---","timestamp":"2026-03-11T20:44:25.907806972Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('logs|stream|full\\.log') ---","timestamp":"2026-03-11T20:44:29.22545914Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git log --oneline -20 -- internal/adapters/web/') ---","timestamp":"2026-03-11T20:44:29.461826573Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git log --oneline -20 -- internal/logstream/') ---","timestamp":"2026-03-11T20:44:29.664887197Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git show 14a1533') ---","timestamp":"2026-03-11T20:44:32.362410647Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/logstream/parse.go') ---","timestamp":"2026-03-11T20:44:32.587413765Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/logstream/logstream.go') ---","timestamp":"2026-03-11T20:44:32.705679286Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git log --oneline -5 -- internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T20:44:35.064159217Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git show a8ca04b:internal/adapters/web/handler.go | head ...') ---","timestamp":"2026-03-11T20:44:35.281173421Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git diff a8ca04b^ a8ca04b -- internal/adapters/web/handle...') ---","timestamp":"2026-03-11T20:44:35.459440732Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git diff a8ca04b^ a8ca04b -- internal/adapters/web/handle...') ---","timestamp":"2026-03-11T20:44:38.13033221Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git show a8ca04b --stat') ---","timestamp":"2026-03-11T20:44:38.14559217Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git log --all --oneline --graph --decorate | head -30') ---","timestamp":"2026-03-11T20:44:40.925020357Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git diff HEAD~5..HEAD -- internal/adapters/web/handler.go...') ---","timestamp":"2026-03-11T20:44:41.000435436Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T20:44:43.283298036Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"handler_stream_test.go\" | ...') ---","timestamp":"2026-03-11T20:44:43.677329538Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/logstream/broadcaster.go') ---","timestamp":"2026-03-11T20:44:46.767813612Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -r \"logBroadcast.Publish\\|logBroadcast.Finish\" /work...') ---","timestamp":"2026-03-11T20:44:46.781998449Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-11T20:44:48.744094584Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git log --oneline -10 -- internal/adapters/grpc/server.go') ---","timestamp":"2026-03-11T20:44:48.9951245Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -r \"full\\.log\" /workspace --include=\"*.go\" -n -B 2 -...') ---","timestamp":"2026-03-11T20:44:50.662224548Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"logBroadcast\\|s.logStream\\|WriteFile.*full.log\" ...') ---","timestamp":"2026-03-11T20:44:52.898367728Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-11T20:44:55.068386504Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"logstream\\|WriteFile\\|Publish\\|Log(\" /workspace/...') ---","timestamp":"2026-03-11T20:44:55.311611334Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -n \"TypeLLM\\|llm.*log\\|full.log\\|logStream\\|Log(\" /w...') ---","timestamp":"2026-03-11T20:44:57.855885057Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-11T20:44:59.847121912Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('grep -r \"copyToLLMLog\\|ParseClaudeStream\" /workspace/inte...') ---","timestamp":"2026-03-11T20:45:00.192650307Z"}
+{"type":"log","step_name":"implement","message":"Let me read the key files identified by the exploration.","timestamp":"2026-03-11T20:45:24.378903723Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T20:45:25.319729745Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-11T20:45:25.723577392Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/logstream/parse.go') ---","timestamp":"2026-03-11T20:45:25.930529968Z"}
+{"type":"log","step_name":"implement","message":"Now let me look at the run detail template and the stream test.","timestamp":"2026-03-11T20:45:30.158382417Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/templates/run_detail.html') ---","timestamp":"2026-03-11T20:45:30.580737004Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler_stream_test.go') ---","timestamp":"2026-03-11T20:45:30.89448042Z"}
+{"type":"log","step_name":"implement","message":"Let me check how the agent writes log messages and what format they're in.","timestamp":"2026-03-11T20:45:38.35287763Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/logstream/logstream.go') ---","timestamp":"2026-03-11T20:45:38.800090726Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/logstream/broadcaster.go') ---","timestamp":"2026-03-11T20:45:39.094463822Z"}
+{"type":"log","step_name":"implement","message":"Now let me check what the agent sends as log messages to the daemon.","timestamp":"2026-03-11T20:45:43.858403936Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('MsgLog|protocol\\.MsgLog') ---","timestamp":"2026-03-11T20:45:44.798235874Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('StatusLog|sendLog|\\.Log\\(') ---","timestamp":"2026-03-11T20:45:46.27143125Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-11T20:45:54.972604645Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/protocol/status.go') ---","timestamp":"2026-03-11T20:45:55.09230873Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('\\.Log\\(.*step|StatusWriter.*Log|writer\\.Log') ---","timestamp":"2026-03-11T20:46:03.545045335Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/agents/prompt/prompt.go') ---","timestamp":"2026-03-11T20:46:17.397939491Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func extractStreamText') ---","timestamp":"2026-03-11T20:46:30.37660389Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/agents/prompt/prompt.go') ---","timestamp":"2026-03-11T20:46:50.761809937Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/agents/generic/generic.go') ---","timestamp":"2026-03-11T20:47:16.382603196Z"}
+{"type":"log","step_name":"implement","message":"Let me look at how routes are registered and check for any issues.","timestamp":"2026-03-11T20:47:53.428220245Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T20:47:53.700904847Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T20:47:57.258776353Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('func.*handleRunDetail') ---","timestamp":"2026-03-11T20:48:04.977894153Z"}
+{"type":"log","step_name":"implement","message":"Let me check how the daemon initializes the web handler.","timestamp":"2026-03-11T20:48:22.185443104Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('NewHandler|WithLogBroadcaster') ---","timestamp":"2026-03-11T20:48:22.426502746Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git log --oneline -10') ---","timestamp":"2026-03-11T20:48:27.444132693Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git diff a8ca04b^..a8ca04b --stat') ---","timestamp":"2026-03-11T20:48:38.904432852Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git diff a8ca04b^..a8ca04b -- internal/adapters/agents/pr...') ---","timestamp":"2026-03-11T20:48:44.489639911Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git diff a8ca04b^..a8ca04b -- internal/host/loop.go') ---","timestamp":"2026-03-11T20:48:52.014192882Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T20:49:22.518835288Z"}
+{"type":"log","step_name":"implement","message":"Let me run the existing tests to see their current state.","timestamp":"2026-03-11T20:49:29.639923029Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./internal/adapters/web/... 2\u003e\u00261') ---","timestamp":"2026-03-11T20:49:30.544936689Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./internal/logstream/... 2\u003e\u00261') ---","timestamp":"2026-03-11T20:50:38.32198346Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: ToolSearch ---","timestamp":"2026-03-11T20:50:52.063665767Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TaskOutput ---","timestamp":"2026-03-11T20:51:01.226282355Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TaskOutput ---","timestamp":"2026-03-11T20:52:06.920435795Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('/workspace/internal/adapters/web/static/*.css') ---","timestamp":"2026-03-11T20:54:23.543896011Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('log-viewer|log-content|log-line|log-type') ---","timestamp":"2026-03-11T20:54:31.145011535Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('git diff 0d1a6dd^..0d1a6dd --stat') ---","timestamp":"2026-03-11T20:56:48.651572208Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T20:56:53.505260342Z"}
+{"type":"log","step_name":"implement","message":"Let me check how runs are stored in the database and whether ProjectDir is persisted.","timestamp":"2026-03-11T20:57:23.44554606Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('ProjectDir|project_dir') ---","timestamp":"2026-03-11T20:57:24.26666583Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/agent/runner.go') ---","timestamp":"2026-03-11T20:57:33.291816097Z"}
+{"type":"log","step_name":"implement","message":"Now I have a clear understanding of the issue. Let me check one more thing - the scanner buffer in the gRPC server.","timestamp":"2026-03-11T20:57:51.520527849Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-11T20:57:51.789650227Z"}
+{"type":"log","step_name":"implement","message":"I've identified the issue. The `streamFullLog` function uses a `bufio.Scanner` with the default 64KB buffer to read `full.log`. The full.log contains raw Claude Code JSON lines (from \"assistant\" events with tool_use blocks containing file contents), which can easily exceed 64KB. When the scanner encounters a line that's too long, it silently stops, causing all subsequent log entries to be lost.","timestamp":"2026-03-11T20:58:06.399533971Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:58:06.39958156Z"}
+{"type":"log","step_name":"implement","message":"The prompt adapter already uses a 1MB scanner buffer (line 176 of prompt.go), but `streamFullLog` doesn't.","timestamp":"2026-03-11T20:58:06.399585788Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:58:06.399589905Z"}
+{"type":"log","step_name":"implement","message":"Let me fix this.","timestamp":"2026-03-11T20:58:06.399593142Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T20:58:06.9302336Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T20:58:22.711389129Z"}
+{"type":"log","step_name":"implement","message":"Now let me also fix the scanner in the gRPC server's `trackRun`, which has the same issue when reading from the container's stdout.","timestamp":"2026-03-11T20:58:25.822856758Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-11T20:58:26.346404965Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/grpc/server.go') ---","timestamp":"2026-03-11T20:58:35.276386763Z"}
+{"type":"log","step_name":"implement","message":"Now let me write a test that verifies long lines in full.log are handled correctly.","timestamp":"2026-03-11T20:58:38.686451952Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler_stream_test.go') ---","timestamp":"2026-03-11T20:58:38.995591345Z"}
+{"type":"log","step_name":"implement","message":"Now let me add a test for long lines (\u003e64KB) in full.log:","timestamp":"2026-03-11T20:58:41.674868331Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler_stream_test.go') ---","timestamp":"2026-03-11T20:58:42.202104455Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler_stream_test.go') ---","timestamp":"2026-03-11T20:58:54.47379649Z"}
+{"type":"log","step_name":"implement","message":"Now let me run the tests.","timestamp":"2026-03-11T20:58:57.706012025Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./internal/adapters/web/... -run TestSSE -v 2\u003e\u00261') ---","timestamp":"2026-03-11T20:58:58.726534727Z"}
+{"type":"log","step_name":"implement","message":"All tests pass, including the new test for large JSON lines. Let me verify the test actually validates the fix by temporarily reverting the buffer change to confirm the test would fail without it.","timestamp":"2026-03-11T20:59:03.330497811Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./internal/adapters/web/... -run TestSSE_Complete...') ---","timestamp":"2026-03-11T20:59:04.512143513Z"}
+{"type":"log","step_name":"implement","message":"Good. Now let me verify it fails without the fix to confirm the test is meaningful:","timestamp":"2026-03-11T20:59:08.528570339Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T20:59:08.848733019Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T20:59:13.600879203Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./internal/adapters/web/... -run TestSSE_Complete...') ---","timestamp":"2026-03-11T20:59:17.470997255Z"}
+{"type":"log","step_name":"implement","message":"The test correctly fails without the fix — only 1 event (the status line before the large JSON) is read, confirming the scanner stops at the \u003e64KB line. Let me restore the fix.","timestamp":"2026-03-11T20:59:22.387883046Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T20:59:23.729374165Z"}
+{"type":"log","step_name":"implement","message":"Now let me run the full test suite.","timestamp":"2026-03-11T20:59:26.777053369Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-11T20:59:27.453189884Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-11T20:59:59.82047691Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:59:59.820509812Z"}
+{"type":"log","step_name":"implement","message":"## Fix: Web UI logs not showing up","timestamp":"2026-03-11T20:59:59.820514831Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:59:59.820521784Z"}
+{"type":"log","step_name":"implement","message":"**Root cause:** `streamFullLog` in `handler.go` used `bufio.NewScanner` with the default 64KB buffer to read `full.log`. Claude Code's raw JSON output lines (especially \"assistant\" events containing tool_use blocks with file contents) regularly exceed 64KB. When the scanner hits a line that's too long, it silently stops reading — all subsequent log entries are lost.","timestamp":"2026-03-11T20:59:59.820525301Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:59:59.820531743Z"}
+{"type":"log","step_name":"implement","message":"**Changes:**","timestamp":"2026-03-11T20:59:59.820536151Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:59:59.820540489Z"}
+{"type":"log","step_name":"implement","message":"1. **`internal/adapters/web/handler.go`** — Set scanner buffer to 1MB (matching the prompt adapter's scanner) in `streamFullLog` so large Claude JSON lines are read correctly.","timestamp":"2026-03-11T20:59:59.820544397Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:59:59.820550177Z"}
+{"type":"log","step_name":"implement","message":"2. **`internal/adapters/grpc/server.go`** — Same fix for the daemon's container output scanner in `trackRun`, preventing potential message loss when processing large protocol messages.","timestamp":"2026-03-11T20:59:59.820554506Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:59:59.820589231Z"}
+{"type":"log","step_name":"implement","message":"3. **`internal/adapters/web/handler_stream_test.go`** — Added `TestSSE_CompletedRun_LargeJSONLines` that writes a 100KB assistant JSON line to full.log and verifies all log entries (before and after) are served correctly.","timestamp":"2026-03-11T20:59:59.82059441Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:59:59.820598969Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-11T20:59:59.820602586Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-11T20:59:59.833779829Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:59:59.83380702Z"}
+{"type":"log","step_name":"implement","message":"## Fix: Web UI logs not showing up","timestamp":"2026-03-11T20:59:59.83381236Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:59:59.83381759Z"}
+{"type":"log","step_name":"implement","message":"**Root cause:** `streamFullLog` in `handler.go` used `bufio.NewScanner` with the default 64KB buffer to read `full.log`. Claude Code's raw JSON output lines (especially \"assistant\" events containing tool_use blocks with file contents) regularly exceed 64KB. When the scanner hits a line that's too long, it silently stops reading — all subsequent log entries are lost.","timestamp":"2026-03-11T20:59:59.833822168Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:59:59.833828971Z"}
+{"type":"log","step_name":"implement","message":"**Changes:**","timestamp":"2026-03-11T20:59:59.83383354Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:59:59.833838199Z"}
+{"type":"log","step_name":"implement","message":"1. **`internal/adapters/web/handler.go`** — Set scanner buffer to 1MB (matching the prompt adapter's scanner) in `streamFullLog` so large Claude JSON lines are read correctly.","timestamp":"2026-03-11T20:59:59.833842567Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:59:59.833847857Z"}
+{"type":"log","step_name":"implement","message":"2. **`internal/adapters/grpc/server.go`** — Same fix for the daemon's container output scanner in `trackRun`, preventing potential message loss when processing large protocol messages.","timestamp":"2026-03-11T20:59:59.833852355Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:59:59.833857885Z"}
+{"type":"log","step_name":"implement","message":"3. **`internal/adapters/web/handler_stream_test.go`** — Added `TestSSE_CompletedRun_LargeJSONLines` that writes a 100KB assistant JSON line to full.log and verifies all log entries (before and after) are served correctly.","timestamp":"2026-03-11T20:59:59.833862464Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T20:59:59.833868135Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:successThe linter-modified test file looks fine — the changes are consistent with what I wrote. All tests already passed with `go test ./... 2\u003e\u00261` showing clean results across all packages.","timestamp":"2026-03-11T21:00:03.705836186Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:00:03.705855973Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-11T21:00:03.70585986Z"}
+{"type":"log","step_name":"implement","message":"The linter-modified test file looks fine — the changes are consistent with what I wrote. All tests already passed with `go test ./... 2\u003e\u00261` showing clean results across all packages.","timestamp":"2026-03-11T21:00:03.735470679Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-11T21:00:03.735491267Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-11T21:00:08.827133719Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-11T21:00:08.847775544Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-11T21:00:08.850983221Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-11T21:00:09.13510015Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t(cached)","timestamp":"2026-03-11T21:00:09.195846171Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-11T21:00:09.19588305Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-11T21:00:09.234365727Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-11T21:00:09.234545013Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-11T21:00:09.234610556Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-11T21:00:09.23468733Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-11T21:00:09.240799105Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-11T21:00:09.240858467Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-11T21:00:09.241104417Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-11T21:00:09.241121549Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-11T21:00:09.241206859Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-11T21:00:09.241214203Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-11T21:00:09.241216788Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-11T21:00:09.241219282Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-11T21:00:09.241222388Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-11T21:00:09.241227317Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-11T21:00:09.247723242Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-11T21:00:09.247744041Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-11T21:00:09.247746436Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-11T21:00:09.247777885Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-11T21:00:09.254005607Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-11T21:00:09.282870754Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-11T21:00:09.28718308Z"}
+{"type":"log","step_name":"update-docs","message":"Let me look at the modified files to understand what's changed and what might be causing the logs issue.","timestamp":"2026-03-11T21:00:17.739385316Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('git diff HEAD -- internal/adapters/grpc/server.go') ---","timestamp":"2026-03-11T21:00:18.699982445Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('git diff -- internal/adapters/web/handler.go') ---","timestamp":"2026-03-11T21:00:19.162148507Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Bash('git diff -- internal/adapters/web/handler_stream_test.go') ---","timestamp":"2026-03-11T21:00:19.701601375Z"}
+{"type":"log","step_name":"update-docs","message":"I understand the bug. The default `bufio.Scanner` buffer is 64KB, but Claude Code can produce JSON log lines exceeding that. When a line is too large, the scanner silently stops, dropping all subsequent log entries. The fix increases the buffer to 1MB in both `server.go` (gRPC tracking) and `handler.go` (web streaming).","timestamp":"2026-03-11T21:00:29.647707583Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T21:00:29.647729564Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me check if any documentation references logging behavior or constraints that need updating.","timestamp":"2026-03-11T21:00:29.647733632Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('log|scanner|buffer|stream') ---","timestamp":"2026-03-11T21:00:31.113252343Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('log|scanner|buffer|stream') ---","timestamp":"2026-03-11T21:00:31.621486125Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('bufio|Scanner|64.?KB|buffer.?size|log.?line|full\\.log|str...') ---","timestamp":"2026-03-11T21:00:35.95386781Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('log.*stream|web.*log|portal.*log|SSE|server-sent') ---","timestamp":"2026-03-11T21:00:37.142240871Z"}
+{"type":"log","step_name":"update-docs","message":"The documentation doesn't describe internal buffer sizes, scanner implementation details, or log streaming internals. The `full.log` references are purely structural (describing file layout), and the `bufio.Scanner` mentions are in old design/implementation plans, not user-facing docs.","timestamp":"2026-03-11T21:00:47.683053937Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T21:00:47.683080266Z"}
+{"type":"log","step_name":"update-docs","message":"No documentation changes are needed — the fix is purely an internal implementation detail (increasing scanner buffer size) that isn't reflected in any documentation.","timestamp":"2026-03-11T21:00:47.683084354Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T21:00:47.683088532Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-11T21:00:47.683091858Z"}
+{"type":"log","step_name":"update-docs","message":"The documentation doesn't describe internal buffer sizes, scanner implementation details, or log streaming internals. The `full.log` references are purely structural (describing file layout), and the `bufio.Scanner` mentions are in old design/implementation plans, not user-facing docs.","timestamp":"2026-03-11T21:00:47.81613016Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T21:00:47.816150719Z"}
+{"type":"log","step_name":"update-docs","message":"No documentation changes are needed — the fix is purely an internal implementation detail (increasing scanner buffer size) that isn't reflected in any documentation.","timestamp":"2026-03-11T21:00:47.816154906Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-11T21:00:47.816159034Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-11T21:00:48.192694457Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-11T21:00:48.213463734Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-11T21:00:48.220824035Z"}

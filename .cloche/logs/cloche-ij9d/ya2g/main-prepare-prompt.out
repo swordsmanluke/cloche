@@ -1,0 +1,30 @@
+## Task: Evolution: Missing test coverage for Curator corruption scenarios and end-to-end self-repair
+
+## Problem
+
+The existing test suite covers happy paths but misses the failure modes that actually occurred in production:
+
+### Missing tests for Curator:
+- LLM returns conversational meta-text without code fences (the actual corruption pattern)
+- LLM returns a response that is shorter than the original prompt (total content loss)
+- LLM returns empty string
+- LLM returns only code fences with no content between them
+- Multiple rapid Curator.Apply() calls on the same file (race condition)
+
+### Missing tests for Orchestrator:
+- End-to-end test where Reflector produces lessons that are already in the knowledge base
+- End-to-end test where handleNewStep adds a step that already exists
+- End-to-end test verifying the workflow is valid after N evolution cycles
+- Test that errors in one lesson don't prevent other lessons from being applied (the \`continue\` on line 90-91 of orchestrator.go silently swallows errors)
+
+### Missing tests for Collector:
+- Test with actual EvolutionStore/CaptureStore mocks (all current tests pass nil stores)
+- Test that ListRunsSince is called with the correct "since" run ID
+
+### Missing integration tests:
+- Full cycle: corrupt a prompt → run evolution → verify it's detected and fixed
+- Stability test: run N evolution cycles on a stable workflow → verify no drift
+
+## How to Test the Fix
+
+The fix IS tests — run the new test suite and verify it passes. Each test should be clearly named after the production failure mode it covers.

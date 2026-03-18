@@ -1,0 +1,15 @@
+Preparing worktree (checking out 'cloche/develop-keen-cove-30f6')
+HEAD is now at 7e7346b cloche run develop-keen-cove-30f6: develop (succeeded)
+Current branch cloche/develop-keen-cove-30f6 is up to date.
+Updating b514408..7e7346b
+Fast-forward
+ docs/workflows.md                |  59 ++++++++++++++-
+ internal/agent/runner.go         |   1 +
+ internal/domain/workflow.go      |  44 +++++++++++
+ internal/domain/workflow_test.go | 154 +++++++++++++++++++++++++++++++++++++
+ internal/dsl/parser.go           |  63 ++++++++++++++-
+ internal/dsl/parser_test.go      | 160 +++++++++++++++++++++++++++++++++++++++
+ internal/host/runner.go          |   2 +
+ 7 files changed, 480 insertions(+), 3 deletions(-)
+Deleted branch cloche/develop-keen-cove-30f6 (was 7e7346b).
+Merged cloche/develop-keen-cove-30f6 into main (7e7346bc0b5a436434ca81050f70068789f3e25b)

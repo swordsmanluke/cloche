@@ -1,0 +1,38 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T15:12:20.728595833Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-09T15:17:31.071127414Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:17:31.071161819Z"}
+{"type":"log","step_name":"implement","message":"**New file: `internal/logparse/parse.go`**","timestamp":"2026-03-09T15:17:31.071169293Z"}
+{"type":"log","step_name":"implement","message":"- `FormatStreamJSON(raw []byte) []byte` — parses Claude Code stream-json output into human-readable text by extracting assistant text messages and tool call headers (`--- ToolName ---`), while skipping raw JSON metadata and tool input noise","timestamp":"2026-03-09T15:17:31.0711731Z"}
+{"type":"log","step_name":"implement","message":"- `IsStreamJSON(data []byte) bool` — detects whether content is stream-json format","timestamp":"2026-03-09T15:17:31.071195572Z"}
+{"type":"log","step_name":"implement","message":"- Auto-detects format: if input isn't stream-json, returns it unchanged","timestamp":"2026-03-09T15:17:31.071203447Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:17:31.071210631Z"}
+{"type":"log","step_name":"implement","message":"**New file: `internal/logparse/parse_test.go`**","timestamp":"2026-03-09T15:17:31.071213987Z"}
+{"type":"log","step_name":"implement","message":"- Tests for text extraction, tool use display, result events, plain text passthrough, empty input, and multiple tool calls","timestamp":"2026-03-09T15:17:31.071243363Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:17:31.071247851Z"}
+{"type":"log","step_name":"implement","message":"**Modified: `internal/adapters/web/handler.go`**","timestamp":"2026-03-09T15:17:31.071251348Z"}
+{"type":"log","step_name":"implement","message":"- `handleAPIStepOutput` now applies `logparse.FormatStreamJSON` to all step output before serving it","timestamp":"2026-03-09T15:17:31.071258591Z"}
+{"type":"log","step_name":"implement","message":"- Added `?format=raw` query parameter to bypass parsing when raw output is needed","timestamp":"2026-03-09T15:17:31.071267999Z"}
+{"type":"log","step_name":"implement","message":"- Uses a `writeOutput` helper to avoid duplicating the parse-and-write logic at each exit point","timestamp":"2026-03-09T15:17:31.071274131Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:17:31.071278669Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T15:17:31.333528686Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T15:17:31.338800115Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T15:17:31.338833278Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T15:17:31.727991716Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T15:17:31.728009359Z"}
+{"type":"log","step_name":"update-docs","message":"The implementation is complete. Here's what was changed:","timestamp":"2026-03-09T15:19:57.832182613Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:19:57.832209434Z"}
+{"type":"log","step_name":"update-docs","message":"**File:** `internal/adapters/web/templates/run_detail.html`","timestamp":"2026-03-09T15:19:57.832211768Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:19:57.832214534Z"}
+{"type":"log","step_name":"update-docs","message":"Added `parseLLMContent()` function that parses Claude Code stream-json events client-side, extracting only meaningful content:","timestamp":"2026-03-09T15:19:57.832216417Z"}
+{"type":"log","step_name":"update-docs","message":"- **`content_block_start` (tool_use)** → Shows `--- ToolName ---` header","timestamp":"2026-03-09T15:19:57.83223375Z"}
+{"type":"log","step_name":"update-docs","message":"- **`content_block_delta` (text_delta)** → Shows the assistant's text","timestamp":"2026-03-09T15:19:57.832236405Z"}
+{"type":"log","step_name":"update-docs","message":"- **`result`** → Shows the result text","timestamp":"2026-03-09T15:19:57.832238779Z"}
+{"type":"log","step_name":"update-docs","message":"- **Everything else** (message_start, message_stop, content_block_stop, input_json_delta) → Skipped as noise","timestamp":"2026-03-09T15:19:57.832242106Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:19:57.832244981Z"}
+{"type":"log","step_name":"update-docs","message":"Modified `appendLogLine()` to use this parser for `llm` type log lines, while keeping the original `[timestamp] [type] content` format for `status` and `script` type entries.","timestamp":"2026-03-09T15:19:57.832246754Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:19:57.832250482Z"}
+{"type":"log","step_name":"update-docs","message":"This mirrors the same parsing logic already used server-side in `internal/logparse/parse.go` for the step output endpoint.","timestamp":"2026-03-09T15:19:57.832252445Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:19:57.83225509Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T15:19:58.083668035Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T15:19:58.085996535Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T15:19:58.08605249Z"}

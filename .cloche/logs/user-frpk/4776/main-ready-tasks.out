@@ -1,0 +1,16 @@
+[
+  {
+    "id": "cloche-hbt",
+    "title": "Add mass-delete exited containers button to Project details page",
+    "description": "Add a button on the Project details web UI page for mass-deleting exited Docker containers. Should find all retained/exited containers for the project and delete them in one action.",
+    "status": "open",
+    "priority": 2,
+    "issue_type": "task",
+    "owner": "lucas@perfectlunacy.com",
+    "created_at": "2026-03-10T07:28:52.28920269-07:00",
+    "created_by": "lucas",
+    "updated_at": "2026-03-10T07:28:52.28920269-07:00",
+    "dependency_count": 0,
+    "dependent_count": 0
+  }
+]

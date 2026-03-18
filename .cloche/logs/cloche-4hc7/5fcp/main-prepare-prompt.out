@@ -1,0 +1,3 @@
+## Task: Cleanup Containers button not actually removing containers
+
+The 'Cleanup n Containers' button disables on click (correct) but the containers are not actually removed by Docker. Later page refreshes still show the same number of containers available to clean up, indicating the cleanup action is not working.

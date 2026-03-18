@@ -1,0 +1,7 @@
+Preparing worktree (checking out 'cloche/develop-keen-sage-e090')
+HEAD is now at 04ddb52 cloche run develop-keen-sage-e090: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-keen-sage-e090.
+Updating 93bf9e1..d3c0967
+Fast-forward
+Deleted branch cloche/develop-keen-sage-e090 (was d3c0967).
+Merged cloche/develop-keen-sage-e090 into cloche-v2 (d3c0967e46f9d16703f8481a6e732d16c9dcb49d)

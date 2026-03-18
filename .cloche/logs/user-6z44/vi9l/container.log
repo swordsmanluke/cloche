@@ -1,0 +1,26 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-09T15:18:25.626863235Z"}
+{"type":"log","step_name":"implement","message":"Build and tests pass. Here's what I fixed:","timestamp":"2026-03-09T15:19:59.04225407Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:19:59.042280409Z"}
+{"type":"log","step_name":"implement","message":"**Root cause:** `loadProjectInfo()` in `project_detail.html` rendered `pf.history` (git commit entries with sha/date/message) inside the `\u003cdetails\u003e` expansion for each prompt file, instead of showing the actual file contents.","timestamp":"2026-03-09T15:19:59.042282784Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:19:59.042293073Z"}
+{"type":"log","step_name":"implement","message":"**Changes:**","timestamp":"2026-03-09T15:19:59.042295037Z"}
+{"type":"log","step_name":"implement","message":"1. **`handler.go`** — Added `handleAPIPromptContent` endpoint at `GET /api/projects/{name}/info/prompt-content?file=...` that reads and returns the raw prompt file content (with path sanitization to prevent directory traversal).","timestamp":"2026-03-09T15:19:59.042303002Z"}
+{"type":"log","step_name":"implement","message":"2. **`project_detail.html`** — Replaced the git commit history rendering with a `\u003cpre\u003e` block that lazy-loads the file content via the new endpoint when the `\u003cdetails\u003e` element is expanded.","timestamp":"2026-03-09T15:19:59.042308312Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-09T15:19:59.042310767Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T15:19:59.268328711Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-09T15:19:59.270320384Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-09T15:19:59.270336564Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-09T15:20:17.310156514Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-09T15:20:17.310199936Z"}
+{"type":"log","step_name":"update-docs","message":"The fix is already applied in the working copy and compiles/tests successfully. Here's what was changed:","timestamp":"2026-03-09T15:24:30.34435104Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:24:30.344421783Z"}
+{"type":"log","step_name":"update-docs","message":"**Bug:** The Prompts section in the project detail page rendered `pf.history` (git commit entries: SHA, date, message) when expanding, instead of showing the actual prompt file contents.","timestamp":"2026-03-09T15:24:30.344429558Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:24:30.344439367Z"}
+{"type":"log","step_name":"update-docs","message":"**Fix (already in working copy):**","timestamp":"2026-03-09T15:24:30.344444436Z"}
+{"type":"log","step_name":"update-docs","message":"1. **Template** (`project_detail.html`): Replaced the git history rendering with a `\u003cpre\u003e` element that lazy-loads file content via a toggle event listener on the `\u003cdetails\u003e` element.","timestamp":"2026-03-09T15:24:30.344453784Z"}
+{"type":"log","step_name":"update-docs","message":"2. **Handler** (`handler.go`): Added a new `handleAPIPromptContent` endpoint (`GET /api/projects/{name}/info/prompt-content`) that reads and returns the actual prompt file contents, with path sanitization to ensure it only serves files under `.cloche/prompts/`.","timestamp":"2026-03-09T15:24:30.344462941Z"}
+{"type":"log","step_name":"update-docs","message":"3. **Route registration**: Added the new `prompt-content` route to the mux.","timestamp":"2026-03-09T15:24:30.34446755Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-09T15:24:30.344471668Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-09T15:24:30.685213479Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-09T15:24:30.688077861Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-09T15:24:30.688159565Z"}

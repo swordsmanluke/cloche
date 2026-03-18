@@ -1,0 +1,7 @@
+Preparing worktree (checking out 'cloche/develop-glad-dale-561a')
+HEAD is now at 6cf8e37 cloche run develop-glad-dale-561a: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-glad-dale-561a.
+Updating dfb5d43..49fb1b9
+Fast-forward
+Deleted branch cloche/develop-glad-dale-561a (was 49fb1b9).
+Merged cloche/develop-glad-dale-561a into cloche-v2 (49fb1b93802da607c252492ac930bae23173b300)

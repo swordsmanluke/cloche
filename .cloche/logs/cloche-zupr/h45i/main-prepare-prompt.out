@@ -1,0 +1,3 @@
+## Task: Run status should reflect most recent attempt, with active statuses outweighing terminal ones
+
+Task status should be based on the most recent attempt and active statuses outweigh terminal statuses. e.g. [running, pending] > [succeeded, failed] and if we have failed status from a past attempt, but only success on the latest attempt, the status is success.

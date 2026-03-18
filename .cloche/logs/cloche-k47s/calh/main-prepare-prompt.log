@@ -1,0 +1,3 @@
+## Task: V2: Log file layout — task/attempt hierarchy
+
+PARTIALLY DONE: The v2 migration moves existing log files to .cloche/logs/<task-id>/<attempt-id>/<workflow>-<step>.log. What remains: update logstream.Writer and the agent runner (internal/agent/runner.go) to WRITE to the new paths for new runs. Update the daemon's trackRun (internal/adapters/grpc/server.go) to read/extract from new paths. Update the Web UI step output handler to read from new paths.

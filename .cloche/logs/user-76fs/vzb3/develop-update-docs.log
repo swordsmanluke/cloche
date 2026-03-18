@@ -1,0 +1,17 @@
+I've reviewed all CLI source files (`main.go`, `init.go`, `poll.go`) and compared against `docs/USAGE.md` and `docs/workflows.md`. Here's what I checked:
+
+**CLI Reference** — All 8 subcommands (`init`, `run`, `status`, `logs`, `poll`, `list`, `stop`, `shutdown`) and their flags are accurately documented. No discrepancies.
+
+**Setting Up a New Project** — The scaffolding steps, workflow template, Dockerfile template, and prompt template names all match `init.go`.
+
+**Daemon Configuration** — Environment variables table is accurate. No new env vars were introduced.
+
+**Build Commands** — All 7 Makefile targets match the docs exactly.
+
+**Workflow DSL** — No syntax changes in `docs/workflows.md`.
+
+The changes in this task (container status badges on the web dashboard, `DELETE /api/runs/{id}/container` endpoint, container counts on project cards) are all web UI/API changes. They don't affect the CLI surface, environment variables, Makefile targets, or workflow DSL syntax. The `USAGE.md` doesn't have a web dashboard section — the only mention is `CLOCHE_HTTP` in the daemon config table, which remains accurate.
+
+No changes needed. Everything is already in sync.
+
+CLOCHE_RESULT:success

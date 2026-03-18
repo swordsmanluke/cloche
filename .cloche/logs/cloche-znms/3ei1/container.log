@@ -1,0 +1,169 @@
+{"type":"run_title","message":"Task: Fix max_attempts to expect numeric value","timestamp":"2026-03-16T17:06:46.891218769Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-16T17:06:46.89141462Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('max_attempts') ---","timestamp":"2026-03-16T17:06:56.982959029Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('max_attempts') ---","timestamp":"2026-03-16T17:07:03.793153454Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('max_attempts') ---","timestamp":"2026-03-16T17:07:04.792635554Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('internal/dsl/*.go') ---","timestamp":"2026-03-16T17:07:08.561429197Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('max_attempts') ---","timestamp":"2026-03-16T17:07:13.553724195Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('max_attempts') ---","timestamp":"2026-03-16T17:07:14.166382926Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('MaxAttempts|max_attempts') ---","timestamp":"2026-03-16T17:07:18.90724947Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('MaxAttempts|max_attempts') ---","timestamp":"2026-03-16T17:07:19.996606889Z"}
+{"type":"log","step_name":"implement","message":"Now let me look at the parser to understand how config values are parsed, and specifically how string vs numeric values are handled.","timestamp":"2026-03-16T17:07:25.32734603Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-16T17:07:25.49797743Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/token.go') ---","timestamp":"2026-03-16T17:07:34.300893034Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/lexer.go') ---","timestamp":"2026-03-16T17:07:34.335664043Z"}
+{"type":"log","step_name":"implement","message":"Now let me check the existing workflow files and all test references.","timestamp":"2026-03-16T17:07:43.873268926Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('max_attempts') ---","timestamp":"2026-03-16T17:07:44.805291001Z"}
+{"type":"log","step_name":"implement","message":"Now let me check how `max_attempts` is consumed (the prompt.go usage):","timestamp":"2026-03-16T17:07:49.709419126Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/agents/prompt/prompt.go') ---","timestamp":"2026-03-16T17:07:50.142732037Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/mutator.go') ---","timestamp":"2026-03-16T17:07:50.605633394Z"}
+{"type":"log","step_name":"implement","message":"Now I have a clear picture. The changes needed:","timestamp":"2026-03-16T17:07:59.406406959Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:07:59.406438077Z"}
+{"type":"log","step_name":"implement","message":"1. **`parseValue()`** in `parser.go` - add `TokenInt` handling","timestamp":"2026-03-16T17:07:59.406444399Z"}
+{"type":"log","step_name":"implement","message":"2. **`.cloche` files and examples** - change `max_attempts = \"3\"` to `max_attempts = 3`","timestamp":"2026-03-16T17:07:59.406449319Z"}
+{"type":"log","step_name":"implement","message":"3. **Tests** - update to use numeric values","timestamp":"2026-03-16T17:07:59.406467834Z"}
+{"type":"log","step_name":"implement","message":"4. **Mutator** - the `AddStep` method writes config values raw, so the `StepDef.Config` needs to store `\"2\"` (the raw DSL token) differently — but since Config is `map[string]string`, the value stored will just be the number string. The mutator writes it as-is, so we need to handle that.","timestamp":"2026-03-16T17:07:59.406477121Z"}
+{"type":"log","step_name":"implement","message":"5. **Docs** - update examples","timestamp":"2026-03-16T17:07:59.406482481Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:07:59.406485978Z"}
+{"type":"log","step_name":"implement","message":"Let me also check the parser test:","timestamp":"2026-03-16T17:07:59.406489354Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser_test.go') ---","timestamp":"2026-03-16T17:07:59.543998687Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow_test.go') ---","timestamp":"2026-03-16T17:08:07.016787604Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/adapters/agents/prompt/prompt_test.go') ---","timestamp":"2026-03-16T17:08:07.525537916Z"}
+{"type":"log","step_name":"implement","message":"Now I have a clear picture. Here's the plan:","timestamp":"2026-03-16T17:08:15.904836286Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:08:15.904861614Z"}
+{"type":"log","step_name":"implement","message":"1. **Parser**: Update `parseValue()` to handle `TokenInt` ","timestamp":"2026-03-16T17:08:15.904867244Z"}
+{"type":"log","step_name":"implement","message":"2. **Mutator**: Update the test to pass numeric values (without quotes)","timestamp":"2026-03-16T17:08:15.904879037Z"}
+{"type":"log","step_name":"implement","message":"3. **Workflow files**: Change `max_attempts = \"3\"` → `max_attempts = 3`","timestamp":"2026-03-16T17:08:15.904884798Z"}
+{"type":"log","step_name":"implement","message":"4. **Tests**: The domain tests and prompt tests construct `Config` maps directly with string values - those don't need to change since the parsed result is still a string in the map","timestamp":"2026-03-16T17:08:15.904895267Z"}
+{"type":"log","step_name":"implement","message":"5. **Docs**: Update examples","timestamp":"2026-03-16T17:08:15.904901179Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:08:15.904906569Z"}
+{"type":"log","step_name":"implement","message":"Let me start with the parser change and all the `.cloche` files:","timestamp":"2026-03-16T17:08:15.904911148Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-16T17:08:17.678935746Z"}
+{"type":"log","step_name":"implement","message":"Now update all `.cloche` workflow files and examples:","timestamp":"2026-03-16T17:08:23.176257278Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/develop.cloche') ---","timestamp":"2026-03-16T17:08:23.18471375Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/develop.cloche') ---","timestamp":"2026-03-16T17:08:23.695033148Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/examples/mini-redis/develop.cloche') ---","timestamp":"2026-03-16T17:08:24.082488995Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/examples/gemini-browser/develop.cloche') ---","timestamp":"2026-03-16T17:08:24.519393104Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/examples/ruby-calculator/develop.cloche') ---","timestamp":"2026-03-16T17:08:24.855436083Z"}
+{"type":"log","step_name":"implement","message":"Now update all the workflow files:","timestamp":"2026-03-16T17:08:28.788770808Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/develop.cloche') ---","timestamp":"2026-03-16T17:08:29.678172459Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/.cloche/develop.cloche') ---","timestamp":"2026-03-16T17:08:30.552933373Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/examples/mini-redis/develop.cloche') ---","timestamp":"2026-03-16T17:08:31.013086645Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/examples/gemini-browser/develop.cloche') ---","timestamp":"2026-03-16T17:08:31.881906261Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/examples/ruby-calculator/develop.cloche') ---","timestamp":"2026-03-16T17:08:32.400003501Z"}
+{"type":"log","step_name":"implement","message":"Now update the `cmd/cloche/init.go` template:","timestamp":"2026-03-16T17:08:38.179833494Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/init.go') ---","timestamp":"2026-03-16T17:08:39.082740264Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/init.go') ---","timestamp":"2026-03-16T17:08:43.662319897Z"}
+{"type":"log","step_name":"implement","message":"Now update the mutator test:","timestamp":"2026-03-16T17:08:51.45004895Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/dsl/mutator_test.go') ---","timestamp":"2026-03-16T17:08:52.934516845Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/mutator_test.go') ---","timestamp":"2026-03-16T17:08:58.975504673Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/dsl/mutator_test.go') ---","timestamp":"2026-03-16T17:09:05.371045913Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/dsl/mutator_test.go') ---","timestamp":"2026-03-16T17:09:11.68172809Z"}
+{"type":"log","step_name":"implement","message":"Now update the docs:","timestamp":"2026-03-16T17:09:15.882436356Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/docs/workflows.md') ---","timestamp":"2026-03-16T17:09:16.745640199Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-16T17:09:17.091393586Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/docs/workflows.md') ---","timestamp":"2026-03-16T17:09:25.428251629Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-16T17:09:26.716103297Z"}
+{"type":"log","step_name":"implement","message":"Now update the other `max_attempts` references in USAGE.md:","timestamp":"2026-03-16T17:09:30.956876211Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('max_attempts = \\\"') ---","timestamp":"2026-03-16T17:09:32.020866251Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-16T17:09:41.10857724Z"}
+{"type":"log","step_name":"implement","message":"Now update the README:","timestamp":"2026-03-16T17:09:45.626830454Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('max_attempts = \\\"') ---","timestamp":"2026-03-16T17:09:46.243759957Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/README.md') ---","timestamp":"2026-03-16T17:09:51.226390852Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/README.md') ---","timestamp":"2026-03-16T17:09:57.154489892Z"}
+{"type":"log","step_name":"implement","message":"Now let me add a parser test for numeric `max_attempts` and run the tests:","timestamp":"2026-03-16T17:10:05.069473652Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser_test.go') ---","timestamp":"2026-03-16T17:10:05.460150158Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/internal/dsl/parser_test.go') ---","timestamp":"2026-03-16T17:10:12.918147716Z"}
+{"type":"log","step_name":"implement","message":"Now run the tests:","timestamp":"2026-03-16T17:10:16.818131657Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-16T17:10:17.584760915Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Let me also verify there are no remaining string-quoted `max_attempts` in workflow files:","timestamp":"2026-03-16T17:11:10.077161255Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Grep('max_attempts = \\\"') ---","timestamp":"2026-03-16T17:11:10.677730804Z"}
+{"type":"log","step_name":"implement","message":"The remaining references in `docs/USAGE.md:166` — let me check:","timestamp":"2026-03-16T17:11:15.336032207Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-16T17:11:15.538102474Z"}
+{"type":"log","step_name":"implement","message":"This one has 2-space indentation (not 4). Let me fix it:","timestamp":"2026-03-16T17:11:22.571590908Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-16T17:11:23.045085212Z"}
+{"type":"log","step_name":"implement","message":"The remaining references are in `docs/plans/` which are historical design documents — those should stay as-is since they document what was planned at the time.","timestamp":"2026-03-16T17:11:32.584247604Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:11:32.584276158Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-16T17:11:32.584280326Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:11:32.584288111Z"}
+{"type":"log","step_name":"implement","message":"**Parser** (`internal/dsl/parser.go`): Added `TokenInt` handling in `parseValue()` so numeric literals like `3` are accepted as values.","timestamp":"2026-03-16T17:11:32.584291537Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:11:32.584299152Z"}
+{"type":"log","step_name":"implement","message":"**Workflow files** updated to use numeric `max_attempts`:","timestamp":"2026-03-16T17:11:32.584302658Z"}
+{"type":"log","step_name":"implement","message":"- `develop.cloche`, `.cloche/develop.cloche`","timestamp":"2026-03-16T17:11:32.584306195Z"}
+{"type":"log","step_name":"implement","message":"- `examples/mini-redis/develop.cloche`, `examples/gemini-browser/develop.cloche`, `examples/ruby-calculator/develop.cloche`","timestamp":"2026-03-16T17:11:32.584309602Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:11:32.584316965Z"}
+{"type":"log","step_name":"implement","message":"**Templates/docs**: Updated `cmd/cloche/init.go`, `README.md`, `docs/workflows.md`, `docs/USAGE.md`","timestamp":"2026-03-16T17:11:32.584320372Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:11:32.584324179Z"}
+{"type":"log","step_name":"implement","message":"**Tests**: Updated `internal/dsl/mutator_test.go` and added `TestParser_NumericMaxAttempts` in `parser_test.go`","timestamp":"2026-03-16T17:11:32.584327586Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:11:32.584331543Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-16T17:11:32.584334859Z"}
+{"type":"log","step_name":"implement","message":"The remaining references are in `docs/plans/` which are historical design documents — those should stay as-is since they document what was planned at the time.","timestamp":"2026-03-16T17:11:32.616378691Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:11:32.616395994Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes:","timestamp":"2026-03-16T17:11:32.616401013Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:11:32.616406503Z"}
+{"type":"log","step_name":"implement","message":"**Parser** (`internal/dsl/parser.go`): Added `TokenInt` handling in `parseValue()` so numeric literals like `3` are accepted as values.","timestamp":"2026-03-16T17:11:32.616411062Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:11:32.616415781Z"}
+{"type":"log","step_name":"implement","message":"**Workflow files** updated to use numeric `max_attempts`:","timestamp":"2026-03-16T17:11:32.616419949Z"}
+{"type":"log","step_name":"implement","message":"- `develop.cloche`, `.cloche/develop.cloche`","timestamp":"2026-03-16T17:11:32.616424548Z"}
+{"type":"log","step_name":"implement","message":"- `examples/mini-redis/develop.cloche`, `examples/gemini-browser/develop.cloche`, `examples/ruby-calculator/develop.cloche`","timestamp":"2026-03-16T17:11:32.616429146Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:11:32.616434156Z"}
+{"type":"log","step_name":"implement","message":"**Templates/docs**: Updated `cmd/cloche/init.go`, `README.md`, `docs/workflows.md`, `docs/USAGE.md`","timestamp":"2026-03-16T17:11:32.616438284Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:11:32.616443153Z"}
+{"type":"log","step_name":"implement","message":"**Tests**: Updated `internal/dsl/mutator_test.go` and added `TestParser_NumericMaxAttempts` in `parser_test.go`","timestamp":"2026-03-16T17:11:32.616447611Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-16T17:11:32.616452601Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-16T17:11:32.870853246Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-16T17:11:32.892642908Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-16T17:11:32.895725537Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-16T17:11:33.232802945Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t10.041s","timestamp":"2026-03-16T17:11:43.554711244Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-16T17:11:43.554748123Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-16T17:11:43.554751941Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-16T17:11:43.554758223Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-16T17:11:43.554761469Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-16T17:11:43.554764454Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-16T17:11:43.554771608Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-16T17:11:43.554774894Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-16T17:11:43.5547779Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-16T17:11:43.554780956Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-16T17:11:43.554785364Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-16T17:11:43.55478835Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-16T17:11:43.554791335Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-16T17:11:43.554794421Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-16T17:11:43.554797497Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-16T17:11:43.554805682Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-16T17:11:43.554809189Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-16T17:11:43.554812445Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-16T17:11:43.554815451Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-16T17:11:43.554819819Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-16T17:11:43.554822885Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/version\t(cached)","timestamp":"2026-03-16T17:11:43.554826211Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-16T17:11:43.554829267Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-16T17:11:43.612728979Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-16T17:11:43.615835232Z"}
+{"type":"log","step_name":"update-docs","message":"I'll start by examining the current implementation and documentation for `max_attempts`.","timestamp":"2026-03-16T17:11:52.585765513Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('max_attempts') ---","timestamp":"2026-03-16T17:11:53.416591961Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('**/*.cloche') ---","timestamp":"2026-03-16T17:11:53.446703749Z"}
+{"type":"log","step_name":"update-docs","message":"Let me read the parser code and key files to understand the current implementation.","timestamp":"2026-03-16T17:11:56.295970974Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-16T17:11:56.718656589Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/dsl/parser_test.go') ---","timestamp":"2026-03-16T17:11:57.245211499Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/domain/workflow.go') ---","timestamp":"2026-03-16T17:11:57.90454809Z"}
+{"type":"log","step_name":"update-docs","message":"Let me check how `max_attempts` is consumed in the prompt adapter.","timestamp":"2026-03-16T17:12:13.612980692Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/internal/adapters/agents/prompt/prompt.go') ---","timestamp":"2026-03-16T17:12:13.982672216Z"}
+{"type":"log","step_name":"update-docs","message":"Good. The parser already supports `max_attempts = 3` (numeric, no quotes) via the `TokenInt` branch in `parseValue()`. The existing workflow files and main documentation already use the numeric format. The config map stores everything as `string`, so the consumer in `prompt.go` uses `strconv.Atoi` — this works regardless of whether the DSL had quotes or not.","timestamp":"2026-03-16T17:12:20.342544609Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-16T17:12:20.342595435Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me check the documentation files that are in scope (not historical plan docs).","timestamp":"2026-03-16T17:12:20.342598411Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-16T17:12:20.790509143Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/workflows.md') ---","timestamp":"2026-03-16T17:12:21.677774147Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/README.md') ---","timestamp":"2026-03-16T17:12:21.898104989Z"}
+{"type":"log","step_name":"update-docs","message":"All the main documentation files (USAGE.md, workflows.md, README.md) and workflow files already use `max_attempts` as a numeric value (without quotes). The DSL parser already supports numeric values via the `TokenInt` token type in `parseValue()`. The documentation table in USAGE.md correctly describes it as type \"integer\".","timestamp":"2026-03-16T17:12:28.931614468Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-16T17:12:28.931635878Z"}
+{"type":"log","step_name":"update-docs","message":"No documentation changes are needed — the docs already reflect the numeric format for `max_attempts`.","timestamp":"2026-03-16T17:12:28.931638754Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-16T17:12:28.931641459Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-16T17:12:28.931643603Z"}
+{"type":"log","step_name":"update-docs","message":"All the main documentation files (USAGE.md, workflows.md, README.md) and workflow files already use `max_attempts` as a numeric value (without quotes). The DSL parser already supports numeric values via the `TokenInt` token type in `parseValue()`. The documentation table in USAGE.md correctly describes it as type \"integer\".","timestamp":"2026-03-16T17:12:29.034655272Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-16T17:12:29.0346811Z"}
+{"type":"log","step_name":"update-docs","message":"No documentation changes are needed — the docs already reflect the numeric format for `max_attempts`.","timestamp":"2026-03-16T17:12:29.034683625Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-16T17:12:29.03468604Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-16T17:12:29.272601821Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-16T17:12:29.347608877Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-16T17:12:29.353755009Z"}

@@ -1,0 +1,10 @@
+Preparing worktree (checking out 'cloche/develop-keen-jade-b40c')
+HEAD is now at f5f6b92 cloche run develop-keen-jade-b40c: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-keen-jade-b40c.
+Updating 3c247cf..4948189
+Fast-forward
+ internal/evolution/corruption_test.go | 834 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 834 insertions(+)
+ create mode 100644 internal/evolution/corruption_test.go
+Deleted branch cloche/develop-keen-jade-b40c (was 4948189).
+Merged cloche/develop-keen-jade-b40c into main (49481898213143abcaf0046f76d8efdda6f317cf)

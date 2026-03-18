@@ -1,0 +1,3 @@
+## Task: Project runs URL should use clean path instead of query param
+
+Project runs URL should be at projects/<project name>/runs instead of runs?project=[project_path]. Use a clean URL path structure for project-scoped run listings.

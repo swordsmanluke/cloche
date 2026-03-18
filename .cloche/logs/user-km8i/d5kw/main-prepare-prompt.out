@@ -1,0 +1,3 @@
+## Task: UI: SSE log scroll position should be stable
+
+SSE log events reset the scroll position in the web site logs. The scroll position should be stable so that users can continue to read the logs even as new logs come in. Special case: if the scroll position is at the bottom, just autoscroll with the new input at the bottom so we can tail the log easily.

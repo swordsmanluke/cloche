@@ -1,0 +1,12 @@
+Preparing worktree (checking out 'cloche/develop-steady-oak-61ea')
+HEAD is now at c44d0a5 cloche run develop-steady-oak-61ea: develop (succeeded)
+Current branch cloche/develop-steady-oak-61ea is up to date.
+Updating 21f2413..c44d0a5
+Fast-forward
+ docs/plans/2026-03-06-project-pages-design.md      |  7 ++--
+ internal/adapters/web/handler.go                   |  7 +++-
+ internal/adapters/web/handler_test.go              | 49 ++++++++++++++++++++++
+ .../adapters/web/templates/project_detail.html     | 14 ++-----
+ 4 files changed, 62 insertions(+), 15 deletions(-)
+Deleted branch cloche/develop-steady-oak-61ea (was c44d0a5).
+Merged cloche/develop-steady-oak-61ea into main (c44d0a5335e9c99367689bc7af9d0097699217a4)

@@ -1,0 +1,13 @@
+Preparing worktree (checking out 'cloche/develop-lush-glen')
+HEAD is now at 1900d50 cloche run develop-lush-glen: develop (succeeded)
+Current branch cloche/develop-lush-glen is up to date.
+Updating fef9195..1900d50
+Fast-forward
+ docs/USAGE.md                  |   4 +-
+ docs/workflows.md              |   9 ++-
+ internal/host/executor.go      |  32 +++++++-
+ internal/host/executor_test.go | 178 +++++++++++++++++++++++++++++++++++++++++
+ internal/host/runner.go        |   1 +
+ 5 files changed, 219 insertions(+), 5 deletions(-)
+Deleted branch cloche/develop-lush-glen (was 1900d50).
+Merged cloche/develop-lush-glen into main (1900d50e2f7354801ee5dcbe98d531fef4a02362)

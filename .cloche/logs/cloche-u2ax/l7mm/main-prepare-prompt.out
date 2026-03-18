@@ -1,0 +1,3 @@
+## Task: GEPA: Candidate selector
+
+Create internal/evolution/selector.go with SelectCandidate function. Strategy: 70% pick random candidate from Pareto front, 30% pick random non-front candidate (exploration). Returns nil if no candidates exist (use base prompt). Takes candidates list, fitness scores map, and Pareto front as input. Include unit tests verifying selection distribution.

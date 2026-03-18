@@ -1,0 +1,12 @@
+Preparing worktree (checking out 'cloche/develop-swift-peak-f436')
+HEAD is now at ac38a38 cloche run develop-swift-peak-f436: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-swift-peak-f436.
+Updating 4b0bcd9..332c87a
+Fast-forward
+ docs/plans/2026-03-06-project-pages-design.md      |  31 +--
+ internal/adapters/web/handler_test.go              |   9 +-
+ internal/adapters/web/static/style.css             |   3 +-
+ .../adapters/web/templates/project_detail.html     | 221 ++++++++++++++-------
+ 4 files changed, 178 insertions(+), 86 deletions(-)
+Deleted branch cloche/develop-swift-peak-f436 (was 332c87a).
+Merged cloche/develop-swift-peak-f436 into main (332c87a48c99343ff0b444c1f34f570676792ae0)

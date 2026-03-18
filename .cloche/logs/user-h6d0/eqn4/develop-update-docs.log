@@ -1,0 +1,9 @@
+Both edits look correct. The changes are:
+
+1. **Added `cloche health` section** to CLI Reference (between `init` and `run`) — documents the command, its `CLOCHE_HTTP` requirement, output format, and TTY color support.
+
+2. **Added `CLOCHE_HTTP` to Client Configuration** — since the `health` command reads this env var on the client side to know where the daemon's HTTP server is.
+
+No other discrepancies found — all other subcommands (`init`, `run`, `status`, `list`, `logs`, `poll`, `stop`, `shutdown`), their flags, the daemon configuration, and build commands all match the source code.
+
+CLOCHE_RESULT:success

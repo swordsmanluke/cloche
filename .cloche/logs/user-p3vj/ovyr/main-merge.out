@@ -1,0 +1,24 @@
+Preparing worktree (checking out 'cloche/develop-calm-sage-e653')
+HEAD is now at 61c899e cloche run develop-calm-sage-e653: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-calm-sage-e653.
+Updating cd495f5..cfd97c3
+Fast-forward
+ .cloche/develop.cloche                           |  2 +-
+ .cloche/host.cloche                              | 12 +-----
+ .cloche/scripts/claim-task.sh                    | 16 +++++---
+ .cloche/scripts/cleanup-run.sh                   | 50 ++++++++++--------------
+ .cloche/scripts/merge-to-main.sh                 |  9 +++--
+ .cloche/scripts/prepare-prompt.sh                |  8 ++--
+ .cloche/scripts/ready-tasks.sh                   | 14 ++++++-
+ cmd/cloche/context_test.go                       | 40 +++++++++++++++++++
+ cmd/cloche/main.go                               | 15 ++++++-
+ develop.cloche                                   |  6 +--
+ docs/USAGE.md                                    |  4 +-
+ internal/adapters/agents/generic/generic.go      |  9 +++++
+ internal/adapters/agents/generic/generic_test.go | 44 +++++++++++++++++++++
+ internal/agent/runner.go                         |  1 +
+ internal/host/executor.go                        |  6 ++-
+ internal/host/executor_test.go                   | 42 ++++++++++++++++++++
+ 16 files changed, 215 insertions(+), 63 deletions(-)
+Deleted branch cloche/develop-calm-sage-e653 (was cfd97c3).
+Merged cloche/develop-calm-sage-e653 into main (cfd97c360120b87ec2cdc34f47f92784f5953b6a)

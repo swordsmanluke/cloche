@@ -1,0 +1,16 @@
+Preparing worktree (checking out 'cloche/develop-wild-hare-3749')
+HEAD is now at 26f27d9 cloche run develop-wild-hare-3749: develop (succeeded)
+Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-wild-hare-3749.
+Updating 9367002..dfe8a33
+Fast-forward
+ cmd/cloche/help.go          |  31 +++
+ cmd/cloche/help_test.go     |   1 +
+ cmd/cloche/main.go          |   7 +
+ cmd/cloche/workflow.go      | 393 ++++++++++++++++++++++++++++
+ cmd/cloche/workflow_test.go | 625 ++++++++++++++++++++++++++++++++++++++++++++
+ docs/USAGE.md               |  19 ++
+ 6 files changed, 1076 insertions(+)
+ create mode 100644 cmd/cloche/workflow.go
+ create mode 100644 cmd/cloche/workflow_test.go
+Deleted branch cloche/develop-wild-hare-3749 (was dfe8a33).
+Merged cloche/develop-wild-hare-3749 into main (dfe8a3331de78a48fff6d2c39d17b21a7d6c93b6)

@@ -1,0 +1,3 @@
+✓ Closed cloche-dvf: Closed
+Closed task cloche-dvf
+Cleaned up run Preparingworktree(checkingout'cloche/develop-sharp-fox')HEADisnowat4f7135fclocherundevelop-sharp-fox:develop(succeeded)Currentbranchcloche/develop-sharp-foxisuptodate.Updating1900d50..4f7135fFast-forward.cloche/host.cloche|4+docs/USAGE.md|21+++docs/workflows.md|25+++internal/domain/workflow.go|2+-internal/host/executor.go|76+++++++-internal/host/executor_test.go|388+++++++++++++++++++++++++++++++++++++++++internal/host/runner.go|10++7fileschanged,518insertions(+),8deletions(-)Deletedbranchcloche/develop-sharp-fox(was4f7135f).Mergedcloche/develop-sharp-foxintomain(4f7135fcbcb63249d057c280df4d9c585048e4e6)

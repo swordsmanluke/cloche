@@ -1,0 +1,13 @@
+Preparing worktree (checking out 'cloche/develop-warm-pine-ec89')
+HEAD is now at 5533db9 cloche run develop-warm-pine-ec89: develop (succeeded)
+Rebasing (1/1)Auto-merging cmd/cloche/help.go
+CONFLICT (content): Merge conflict in cmd/cloche/help.go
+Auto-merging cmd/cloche/main.go
+Auto-merging docs/USAGE.md
+error: could not apply 5533db9... cloche run develop-warm-pine-ec89: develop (succeeded)
+hint: Resolve all conflicts manually, mark them as resolved with
+hint: "git add/rm <conflicted_files>", then run "git rebase --continue".
+hint: You can instead skip this commit: run "git rebase --skip".
+hint: To abort and get back to the state before "git rebase", run "git rebase --abort".
+Could not apply 5533db9... cloche run develop-warm-pine-ec89: develop (succeeded)
+error: rebase failed — branch cloche/develop-warm-pine-ec89 preserved for review

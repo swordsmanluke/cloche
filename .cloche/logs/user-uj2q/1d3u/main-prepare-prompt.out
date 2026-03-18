@@ -1,0 +1,3 @@
+## Task: Fix cloche loop ignoring config concurrency setting
+
+cloche loop used max_concurrency=1 for shandalar even though config had orchestration.concurrency=2. The config key we read (loop.concurrency) doesn't match the key the user set (orchestration.concurrency). Align to use the existing config key.

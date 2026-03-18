@@ -1,0 +1,23 @@
+## Task: Evolution: No rollback on corruption — failed mutations are persisted
+
+## Problem
+
+When the Curator writes corrupted content to a prompt file, there is no mechanism to detect and roll back the corruption. The Audit system takes a snapshot BEFORE writing (good), but:
+
+1. Nothing compares the written content to the snapshot to verify quality
+2. Nothing restores the snapshot when the write produces garbage
+3. The next evolution cycle reads the corrupted file as the "current prompt" and sends it to the Reflector, which then tries to fix the corruption — by producing more corrupted output
+
+This creates a self-reinforcing corruption loop, as documented across 25+ evolution cycles in the audit log. The system detected the corruption repeatedly ("fix.md is still corrupted") but could never self-repair.
+
+## How to Fix
+
+1. After writing, re-read the file and run a basic sanity check (e.g. starts with '#', contains at least one section header, doesn't start with conversational phrases)
+2. If the sanity check fails, restore from the snapshot
+3. Log a warning in the evolution result that curation was rolled back
+
+## How to Test
+
+1. Mock the LLM to return garbage. Assert the original file content is preserved after Curator.Apply() returns.
+2. Assert the snapshot is NOT deleted on rollback (it's evidence).
+3. Assert the Change entry in the result indicates the rollback.

@@ -1,0 +1,19 @@
+[
+  {
+    "id": "cloche-ygd",
+    "title": "Sort Runs page: running status on top, then by time",
+    "description": "Sort the Runs pages to put running status runs at the top, then sort by time. A running Run will always be sorted above a Run in any other status, regardless of start time. But within running and non-running portions of the list, sort by time, most recent on top.",
+    "status": "open",
+    "priority": 2,
+    "issue_type": "task",
+    "owner": "lucas@perfectlunacy.com",
+    "created_at": "2026-03-10T14:10:09.580507099-07:00",
+    "created_by": "lucas",
+    "updated_at": "2026-03-10T14:10:09.580507099-07:00",
+    "labels": [
+      "ui"
+    ],
+    "dependency_count": 0,
+    "dependent_count": 0
+  }
+]

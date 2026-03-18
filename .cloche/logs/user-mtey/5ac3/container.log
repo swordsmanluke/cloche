@@ -1,0 +1,35 @@
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-08T01:33:49.98759725Z"}
+{"type":"log","step_name":"implement","message":"The existing `docs/INSTALL.md` already thoroughly documents all the requested installation options:","timestamp":"2026-03-08T01:34:48.110268005Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-08T01:34:48.110330804Z"}
+{"type":"log","step_name":"implement","message":"- **Build from source** (`make install`)","timestamp":"2026-03-08T01:34:48.110335122Z"}
+{"type":"log","step_name":"implement","message":"- **`go install`** (three `go install` commands + separate `make docker-build`)","timestamp":"2026-03-08T01:34:48.110346493Z"}
+{"type":"log","step_name":"implement","message":"- **Pre-built release binaries** (planned, with example `curl` + `tar` commands)","timestamp":"2026-03-08T01:34:48.110354048Z"}
+{"type":"log","step_name":"implement","message":"- **Homebrew tap** (planned, with `brew tap`/`brew install` commands)","timestamp":"2026-03-08T01:34:48.110361372Z"}
+{"type":"log","step_name":"implement","message":"- **Docker-based usage** (planned, with `docker run` example)","timestamp":"2026-03-08T01:34:48.110368826Z"}
+{"type":"log","step_name":"implement","message":"- **Verification steps**","timestamp":"2026-03-08T01:34:48.110376891Z"}
+{"type":"log","step_name":"implement","message":"- **Upgrading instructions**","timestamp":"2026-03-08T01:34:48.110380428Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-08T01:34:48.110387461Z"}
+{"type":"log","step_name":"implement","message":"The doc is accurate against the actual Makefile and Dockerfile. The README already links to it. This task appears to have been completed in a prior iteration.","timestamp":"2026-03-08T01:34:48.110390928Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-08T01:34:48.110398422Z"}
+{"type":"log","step_name":"implement","message":"Since this is a documentation task, there's no code to test. The document is already well-structured, accurate, and complete. No changes needed.","timestamp":"2026-03-08T01:34:48.11040262Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-08T01:34:48.110410154Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-08T01:34:48.393545825Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-08T01:34:48.395159818Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-08T01:34:48.395192841Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-08T01:35:20.896760935Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-08T01:35:20.896788437Z"}
+{"type":"log","step_name":"update-docs","message":"All changes look correct. Here's a summary of what I found and fixed:","timestamp":"2026-03-08T01:36:24.772889606Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-08T01:36:24.772911597Z"}
+{"type":"log","step_name":"update-docs","message":"**USAGE.md fixes (3 discrepancies):**","timestamp":"2026-03-08T01:36:24.772915916Z"}
+{"type":"log","step_name":"update-docs","message":"1. `cloche init` flag name: `--image` → `--base-image` (matching source in init.go:153 and main.go:84)","timestamp":"2026-03-08T01:36:24.772919943Z"}
+{"type":"log","step_name":"update-docs","message":"2. Default base image: `ubuntu:24.04` → `cloche-base:latest` (matching init.go:144)","timestamp":"2026-03-08T01:36:24.772927898Z"}
+{"type":"log","step_name":"update-docs","message":"3. Init description: added missing `host.cloche` and `scripts/prepare-prompt.sh` to the list of generated files (matching init.go:196-197)","timestamp":"2026-03-08T01:36:24.772931806Z"}
+{"type":"log","step_name":"update-docs","message":"4. Build commands: added `docker-base` target and clarified `docker-build` builds both images (matching Makefile:27-34)","timestamp":"2026-03-08T01:36:24.772937256Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-08T01:36:24.772941153Z"}
+{"type":"log","step_name":"update-docs","message":"**INSTALL.md:** Already exists and comprehensively covers all requested installation methods — `go install`, pre-built release binaries, Homebrew tap, Docker-based usage, and build from source. No changes needed.","timestamp":"2026-03-08T01:36:24.77294468Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-08T01:36:24.772950421Z"}
+{"type":"log","step_name":"update-docs","message":"**docs/workflows.md:** No DSL syntax changes detected, no changes needed.","timestamp":"2026-03-08T01:36:24.7729555Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-08T01:36:24.772960129Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-08T01:36:25.05694524Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-08T01:36:25.060268184Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-08T01:36:25.060389794Z"}

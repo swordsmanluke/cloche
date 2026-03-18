@@ -1,0 +1,166 @@
+{"type":"run_title","message":"Task: Add cloche workflow command with ASCII-art graph rendering","timestamp":"2026-03-13T17:35:26.295065869Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-13T17:35:26.29526791Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Agent('Explore this Go project to understand:","timestamp":"2026-03-13T17:35:37.327300628Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T17:35:37.327334101Z"}
+{"type":"log","step_name":"implement","message":"1. The CLI comman...') ---","timestamp":"2026-03-13T17:35:37.327337116Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.go\" -o -name \"*.cloche\" ...') ---","timestamp":"2026-03-13T17:35:38.921922507Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f \\( -name \"*.go\" -o -name \"*.md\" \\...') ---","timestamp":"2026-03-13T17:35:40.279252025Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T17:35:41.436831863Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/docs/workflows.md') ---","timestamp":"2026-03-13T17:35:41.670642273Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow.go') ---","timestamp":"2026-03-13T17:35:41.878299779Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/run.go') ---","timestamp":"2026-03-13T17:35:41.886304214Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/store.go') ---","timestamp":"2026-03-13T17:35:42.07450497Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/agent.go') ---","timestamp":"2026-03-13T17:35:43.526491184Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/ports/container.go') ---","timestamp":"2026-03-13T17:35:43.766218658Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-13T17:35:43.839554187Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/init.go') ---","timestamp":"2026-03-13T17:35:45.238138796Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-13T17:35:45.482959538Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/health.go') ---","timestamp":"2026-03-13T17:35:45.516345981Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('**/*.cloche') ---","timestamp":"2026-03-13T17:35:47.127840509Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/examples/hello-world') ---","timestamp":"2026-03-13T17:35:47.315480488Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/testdata/workflows/simple.cloche') ---","timestamp":"2026-03-13T17:35:48.831498574Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/examples/hello-world/build.cloche') ---","timestamp":"2026-03-13T17:35:48.983638969Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/host.cloche') ---","timestamp":"2026-03-13T17:35:49.016651637Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/token.go') ---","timestamp":"2026-03-13T17:35:50.472603804Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace/cmd/cloche -name \"*.go\" | sort') ---","timestamp":"2026-03-13T17:35:50.676532762Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/poll.go') ---","timestamp":"2026-03-13T17:35:51.851852174Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow_test.go') ---","timestamp":"2026-03-13T17:35:52.194172226Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -name \"*.proto\" -o -name \"*pb.go\" | head -20') ---","timestamp":"2026-03-13T17:35:53.457431868Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/api/proto/cloche/v1/cloche.proto') ---","timestamp":"2026-03-13T17:35:55.336748676Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('find /workspace -type f -name \"*.go\" | grep -E \"(dsl|doma...') ---","timestamp":"2026-03-13T17:35:56.613063686Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('head -100 /workspace/internal/dsl/lexer.go') ---","timestamp":"2026-03-13T17:35:57.607519232Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('wc -l /workspace/cmd/cloche/*.go /workspace/internal/doma...') ---","timestamp":"2026-03-13T17:35:59.283135229Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T17:36:51.519816484Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-13T17:36:51.536888883Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/domain/workflow.go') ---","timestamp":"2026-03-13T17:36:51.870900483Z"}
+{"type":"log","step_name":"implement","message":"Now let me look at how workflow files are discovered and parsed, and check for any existing test patterns.","timestamp":"2026-03-13T17:36:57.460025686Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/internal/dsl/parser.go') ---","timestamp":"2026-03-13T17:36:58.451956943Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('cmd/cloche/*_test.go') ---","timestamp":"2026-03-13T17:36:58.801519853Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Glob('.cloche/*.cloche') ---","timestamp":"2026-03-13T17:36:58.830515788Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/develop.cloche') ---","timestamp":"2026-03-13T17:37:02.347757914Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/.cloche/host.cloche') ---","timestamp":"2026-03-13T17:37:02.794809821Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/help_test.go') ---","timestamp":"2026-03-13T17:37:02.994038363Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/health.go') ---","timestamp":"2026-03-13T17:38:15.757849415Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/init_test.go') ---","timestamp":"2026-03-13T17:38:15.773667817Z"}
+{"type":"log","step_name":"implement","message":"Now I have a thorough understanding of the codebase. Let me implement the feature.","timestamp":"2026-03-13T17:41:22.945389685Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: ToolSearch ---","timestamp":"2026-03-13T17:41:23.581475151Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T17:41:31.12684376Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/cmd/cloche/workflow.go') ---","timestamp":"2026-03-13T17:42:18.671238877Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T17:42:23.555713861Z"}
+{"type":"log","step_name":"implement","message":"Now register the `workflow` command in `main.go` — it doesn't need a daemon connection since it reads local files.","timestamp":"2026-03-13T17:42:27.985055837Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T17:42:29.891214826Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T17:42:39.606760775Z"}
+{"type":"log","step_name":"implement","message":"Now add help text for the `workflow` command and update the top-level help.","timestamp":"2026-03-13T17:42:43.567235851Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-13T17:42:50.294232234Z"}
+{"type":"log","step_name":"implement","message":"Now update the top-level help to include the `workflow` command.","timestamp":"2026-03-13T17:42:53.753550074Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-13T17:42:56.731469793Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T17:43:01.557055573Z"}
+{"type":"log","step_name":"implement","message":"Now create the tests.","timestamp":"2026-03-13T17:43:05.57247578Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Write('/workspace/cmd/cloche/workflow_test.go') ---","timestamp":"2026-03-13T17:44:15.578179807Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T17:44:23.897038635Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-13T17:44:28.187400943Z"}
+{"type":"log","step_name":"implement","message":"One test failure - the BFS order assertion was wrong. In the develop workflow, `update-docs` comes before `fix` in BFS because the wiring for `test:success -\u003e update-docs` appears before `test:fail -\u003e fix`. Let me fix the test.","timestamp":"2026-03-13T17:45:31.219418974Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/workflow_test.go') ---","timestamp":"2026-03-13T17:45:38.415475368Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./cmd/cloche/ 2\u003e\u00261') ---","timestamp":"2026-03-13T17:45:43.913088956Z"}
+{"type":"log","step_name":"implement","message":"CLI tests pass. Let me run the full suite to confirm everything is green.","timestamp":"2026-03-13T17:45:48.922947882Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... 2\u003e\u00261') ---","timestamp":"2026-03-13T17:45:49.487085631Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Let me also update the help test that checks for subcommand help entries to include \"workflow\".","timestamp":"2026-03-13T17:45:55.612375218Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Read('/workspace/cmd/cloche/help_test.go') ---","timestamp":"2026-03-13T17:45:56.491310405Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Edit('/workspace/cmd/cloche/help_test.go') ---","timestamp":"2026-03-13T17:46:01.737880158Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./cmd/cloche/ -count=1 2\u003e\u00261') ---","timestamp":"2026-03-13T17:46:05.691848198Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Let me run the full suite once more to confirm.","timestamp":"2026-03-13T17:46:10.467796543Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: Bash('go test ./... -count=1 2\u003e\u00261') ---","timestamp":"2026-03-13T17:46:10.80997009Z"}
+{"type":"log","step_name":"implement","message":"All tests pass.","timestamp":"2026-03-13T17:46:29.054987519Z"}
+{"type":"log","step_name":"implement","message":"--- Tool: TodoWrite ---","timestamp":"2026-03-13T17:46:31.328105902Z"}
+{"type":"log","step_name":"implement","message":"Here's a summary of what was implemented:","timestamp":"2026-03-13T17:46:45.989492135Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T17:46:45.989514608Z"}
+{"type":"log","step_name":"implement","message":"**New file: `cmd/cloche/workflow.go`**","timestamp":"2026-03-13T17:46:45.989518685Z"}
+{"type":"log","step_name":"implement","message":"- `cmdWorkflow` — parses `--project`/`-p` flag and optional workflow name arg","timestamp":"2026-03-13T17:46:45.989522292Z"}
+{"type":"log","step_name":"implement","message":"- **List mode** (no args): discovers all `.cloche/*.cloche` files, parses them, groups by container/host type","timestamp":"2026-03-13T17:46:45.98952628Z"}
+{"type":"log","step_name":"implement","message":"- **Graph mode** (`cloche workflow \u003cname\u003e`): loads the named workflow and renders an ASCII-art graph","timestamp":"2026-03-13T17:46:45.989533463Z"}
+{"type":"log","step_name":"implement","message":"- `renderWorkflowGraph` — BFS-ordered step boxes with tree-style wiring below each step","timestamp":"2026-03-13T17:46:45.989545356Z"}
+{"type":"log","step_name":"implement","message":"- Wire colorization: green for success, red for fail/failed, blue/yellow/orange/magenta cycling for other results; DONE colored green, ABORT colored red; TTY-aware","timestamp":"2026-03-13T17:46:45.989549223Z"}
+{"type":"log","step_name":"implement","message":"- Wire merging: wires to the same destination are merged (e.g., `fail, give-up ──▶ ABORT`)","timestamp":"2026-03-13T17:46:45.989553201Z"}
+{"type":"log","step_name":"implement","message":"- Consistent box widths across all steps in a workflow","timestamp":"2026-03-13T17:46:45.98957946Z"}
+{"type":"log","step_name":"implement","message":"- Entry step marked with `◀ entry`","timestamp":"2026-03-13T17:46:45.989583959Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T17:46:45.989587686Z"}
+{"type":"log","step_name":"implement","message":"**Modified files:**","timestamp":"2026-03-13T17:46:45.989590982Z"}
+{"type":"log","step_name":"implement","message":"- `cmd/cloche/main.go` — registered `workflow` as a non-daemon command","timestamp":"2026-03-13T17:46:45.989615057Z"}
+{"type":"log","step_name":"implement","message":"- `cmd/cloche/help.go` — added help text and top-level help entry under \"Workflow Info\"","timestamp":"2026-03-13T17:46:45.989618744Z"}
+{"type":"log","step_name":"implement","message":"- `cmd/cloche/help_test.go` — added `\"workflow\"` to the subcommand help existence check","timestamp":"2026-03-13T17:46:45.989622972Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T17:46:45.98962697Z"}
+{"type":"log","step_name":"implement","message":"**New file: `cmd/cloche/workflow_test.go`** — 17 tests covering BFS ordering, cycle handling, wire merging, color assignment, box width consistency, workflow discovery, loading from container/host files, the full develop workflow graph, and collect blocks.","timestamp":"2026-03-13T17:46:45.989630326Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T17:46:45.989634404Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T17:46:45.98963771Z"}
+{"type":"log","step_name":"implement","message":"Here's a summary of what was implemented:","timestamp":"2026-03-13T17:46:46.040239498Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T17:46:46.040266108Z"}
+{"type":"log","step_name":"implement","message":"**New file: `cmd/cloche/workflow.go`**","timestamp":"2026-03-13T17:46:46.040270306Z"}
+{"type":"log","step_name":"implement","message":"- `cmdWorkflow` — parses `--project`/`-p` flag and optional workflow name arg","timestamp":"2026-03-13T17:46:46.040277179Z"}
+{"type":"log","step_name":"implement","message":"- **List mode** (no args): discovers all `.cloche/*.cloche` files, parses them, groups by container/host type","timestamp":"2026-03-13T17:46:46.040284593Z"}
+{"type":"log","step_name":"implement","message":"- **Graph mode** (`cloche workflow \u003cname\u003e`): loads the named workflow and renders an ASCII-art graph","timestamp":"2026-03-13T17:46:46.04028848Z"}
+{"type":"log","step_name":"implement","message":"- `renderWorkflowGraph` — BFS-ordered step boxes with tree-style wiring below each step","timestamp":"2026-03-13T17:46:46.040292247Z"}
+{"type":"log","step_name":"implement","message":"- Wire colorization: green for success, red for fail/failed, blue/yellow/orange/magenta cycling for other results; DONE colored green, ABORT colored red; TTY-aware","timestamp":"2026-03-13T17:46:46.040295844Z"}
+{"type":"log","step_name":"implement","message":"- Wire merging: wires to the same destination are merged (e.g., `fail, give-up ──▶ ABORT`)","timestamp":"2026-03-13T17:46:46.040303268Z"}
+{"type":"log","step_name":"implement","message":"- Consistent box widths across all steps in a workflow","timestamp":"2026-03-13T17:46:46.040307115Z"}
+{"type":"log","step_name":"implement","message":"- Entry step marked with `◀ entry`","timestamp":"2026-03-13T17:46:46.040310822Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T17:46:46.040314609Z"}
+{"type":"log","step_name":"implement","message":"**Modified files:**","timestamp":"2026-03-13T17:46:46.040317896Z"}
+{"type":"log","step_name":"implement","message":"- `cmd/cloche/main.go` — registered `workflow` as a non-daemon command","timestamp":"2026-03-13T17:46:46.040324478Z"}
+{"type":"log","step_name":"implement","message":"- `cmd/cloche/help.go` — added help text and top-level help entry under \"Workflow Info\"","timestamp":"2026-03-13T17:46:46.040328786Z"}
+{"type":"log","step_name":"implement","message":"- `cmd/cloche/help_test.go` — added `\"workflow\"` to the subcommand help existence check","timestamp":"2026-03-13T17:46:46.040333495Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T17:46:46.040337332Z"}
+{"type":"log","step_name":"implement","message":"**New file: `cmd/cloche/workflow_test.go`** — 17 tests covering BFS ordering, cycle handling, wire merging, color assignment, box width consistency, workflow discovery, loading from container/host files, the full develop workflow graph, and collect blocks.","timestamp":"2026-03-13T17:46:46.040340829Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-13T17:46:46.040345017Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T17:46:46.343641948Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-13T17:46:46.37159695Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-13T17:46:46.375438887Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/api/clochepb\t[no test files]","timestamp":"2026-03-13T17:46:46.645933391Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/cmd/cloche\t0.034s","timestamp":"2026-03-13T17:46:46.975525799Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloche-agent\t[no test files]","timestamp":"2026-03-13T17:46:46.97557352Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/cmd/cloched\t[no test files]","timestamp":"2026-03-13T17:46:46.975577647Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/generic\t(cached)","timestamp":"2026-03-13T17:46:46.975582036Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/agents/prompt\t(cached)","timestamp":"2026-03-13T17:46:46.975585161Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/docker\t(cached)","timestamp":"2026-03-13T17:46:46.975589349Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/grpc\t(cached)","timestamp":"2026-03-13T17:46:46.975595741Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/local\t(cached)","timestamp":"2026-03-13T17:46:46.975598136Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/sqlite\t(cached)","timestamp":"2026-03-13T17:46:46.975600521Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/adapters/web\t(cached)","timestamp":"2026-03-13T17:46:46.975602875Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/agent\t(cached)","timestamp":"2026-03-13T17:46:46.9756053Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/config\t(cached)","timestamp":"2026-03-13T17:46:46.975607654Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/domain\t(cached)","timestamp":"2026-03-13T17:46:46.975609998Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/dsl\t(cached)","timestamp":"2026-03-13T17:46:46.975612343Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/engine\t(cached)","timestamp":"2026-03-13T17:46:46.975614777Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/evolution\t(cached)","timestamp":"2026-03-13T17:46:46.975620198Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/host\t(cached)","timestamp":"2026-03-13T17:46:46.981693168Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/logstream\t(cached)","timestamp":"2026-03-13T17:46:46.981832692Z"}
+{"type":"log","step_name":"test","message":"?   \tgithub.com/cloche-dev/cloche/internal/ports\t[no test files]","timestamp":"2026-03-13T17:46:46.981853341Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/protocol\t(cached)","timestamp":"2026-03-13T17:46:46.98188455Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/internal/runcontext\t(cached)","timestamp":"2026-03-13T17:46:46.981891583Z"}
+{"type":"log","step_name":"test","message":"ok  \tgithub.com/cloche-dev/cloche/test/integration\t(cached)","timestamp":"2026-03-13T17:46:46.981909988Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-13T17:46:47.01167065Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-13T17:46:47.015982234Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T17:46:52.196701625Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T17:46:52.196721132Z"}
+{"type":"log","step_name":"update-docs","message":"I'll start by reading the current source code changes and existing documentation to understand what needs to be updated.","timestamp":"2026-03-13T17:46:52.19672502Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/workflow.go') ---","timestamp":"2026-03-13T17:46:52.205545279Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/workflow_test.go') ---","timestamp":"2026-03-13T17:46:52.703969241Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/help.go') ---","timestamp":"2026-03-13T17:46:53.337780714Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/cmd/cloche/main.go') ---","timestamp":"2026-03-13T17:46:53.465413719Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me check the existing documentation files for any references to CLI subcommands or workflows that need updating.","timestamp":"2026-03-13T17:46:57.587484609Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Glob('docs/**/*.md') ---","timestamp":"2026-03-13T17:46:58.106553866Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Grep('workflow|subcommand|cloche.*command') ---","timestamp":"2026-03-13T17:46:59.245682583Z"}
+{"type":"log","step_name":"update-docs","message":"The main doc to check is `docs/USAGE.md` — it's the user-facing reference for CLI commands. Let me also check `docs/workflows.md` since it may reference CLI workflow viewing.","timestamp":"2026-03-13T17:47:02.435279276Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-13T17:47:03.042473176Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/workflows.md') ---","timestamp":"2026-03-13T17:47:03.230214645Z"}
+{"type":"log","step_name":"update-docs","message":"The `docs/USAGE.md` CLI Reference is missing a section for the new `cloche workflow` subcommand. I'll add it after the `cloche health` section, matching the grouping from the top-level help.","timestamp":"2026-03-13T17:47:17.376942911Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Edit('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-13T17:47:23.776438139Z"}
+{"type":"log","step_name":"update-docs","message":"Now let me verify the edit by re-reading the relevant section.","timestamp":"2026-03-13T17:47:26.69121974Z"}
+{"type":"log","step_name":"update-docs","message":"--- Tool: Read('/workspace/docs/USAGE.md') ---","timestamp":"2026-03-13T17:47:27.196988291Z"}
+{"type":"log","step_name":"update-docs","message":"The edit looks correct. No other documentation files need updating — `docs/workflows.md` covers the DSL syntax (unchanged), and the `help.go` already has the `workflow` entry in both the subcommand help map and the top-level help text.","timestamp":"2026-03-13T17:47:30.968127983Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T17:47:30.968147891Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T17:47:30.968151768Z"}
+{"type":"log","step_name":"update-docs","message":"The edit looks correct. No other documentation files need updating — `docs/workflows.md` covers the DSL syntax (unchanged), and the `help.go` already has the `workflow` entry in both the subcommand help map and the top-level help text.","timestamp":"2026-03-13T17:47:30.991988061Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-13T17:47:30.992001596Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-13T17:47:31.350055409Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-13T17:47:31.371188475Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-13T17:47:31.379842511Z"}

@@ -1,0 +1,3 @@
+## Task: Add SAFETY.md covering good practices for using Cloche
+
+Create a SAFETY.md documentation file covering good practices for using Cloche securely. Topics: keeping host-side prompt usage to the minimum to reduce exposure to the Lethal Trifecta of LLM usage (access to private data, exposure to untrusted content, ability to communicate externally). Offer examples for configuring Docker containers to minimize external communication options, network allowlisting, etc.

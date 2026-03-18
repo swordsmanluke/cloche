@@ -1,0 +1,31 @@
+Preparing worktree (checking out 'cloche/develop-eager-cove-a11e')
+HEAD is now at c4da8ed cloche run develop-eager-cove-a11e: develop (succeeded)
+Current branch cloche/develop-eager-cove-a11e is up to date.
+Updating cfed8e8..c4da8ed
+Fast-forward
+ CLAUDE.md                                      |   2 +-
+ api/proto/cloche/v1/cloche.proto               |   6 +
+ cmd/cloche-agent/main.go                       |  20 ++-
+ cmd/cloche/help.go                             |  31 ++++
+ cmd/cloche/help_test.go                        |   2 +-
+ cmd/cloche/main.go                             |  31 +++-
+ docs/USAGE.md                                  |  27 ++++
+ docs/plans/2026-02-20-cloche-system-design.md  |   1 +
+ internal/adapters/agents/prompt/prompt.go      |  25 +++-
+ internal/adapters/agents/prompt/resume_test.go |  36 +++++
+ internal/adapters/docker/runtime.go            |  26 ++++
+ internal/adapters/grpc/server.go               | 149 ++++++++++++++++++
+ internal/agent/runner.go                       | 118 +++++++++++++--
+ internal/domain/run.go                         |  12 ++
+ internal/engine/engine.go                      |  27 +++-
+ internal/engine/resume_test.go                 | 200 +++++++++++++++++++++++++
+ internal/host/executor.go                      |   6 +
+ internal/host/resume_test.go                   | 172 +++++++++++++++++++++
+ internal/host/runner.go                        | 154 +++++++++++++++++++
+ internal/ports/container.go                    |  13 ++
+ 20 files changed, 1023 insertions(+), 35 deletions(-)
+ create mode 100644 internal/adapters/agents/prompt/resume_test.go
+ create mode 100644 internal/engine/resume_test.go
+ create mode 100644 internal/host/resume_test.go
+Deleted branch cloche/develop-eager-cove-a11e (was c4da8ed).
+Merged cloche/develop-eager-cove-a11e into main (c4da8ed4f6f59ea3cc40098ee03201c8eb66cb92)

@@ -1,0 +1,55 @@
+## Summary
+
+Here's what was implemented:
+
+### Changes
+
+**`internal/adapters/agents/prompt/prompt.go`** — Core fallback logic:
+- Added `Fallbacks []string` field to `Adapter` struct for fallback command names
+- Refactored `Execute()` to try the primary command, then each fallback in order. Fallback triggers only on launch errors (command not found, permission denied) — NOT on `ExitError` (agent ran but returned non-zero), which represents a valid agent result
+- Extracted `execCommand()` helper for single-command execution
+- Extracted `writeOutput()` helper to reduce duplication
+- Added `ParseFallbackChain()` — parses comma-separated `agent_command` values into primary + fallbacks
+
+**`internal/agent/runner.go`** — Wiring fallback parsing at all config levels:
+- Environment variable (`CLOCHE_AGENT_COMMAND`), workflow-level (`container.agent_command`), and step-level (`agent_command`) all now parse comma-separated values into fallback chains via `ParseFallbackChain()`
+
+### Tests added
+
+**`internal/adapters/agents/prompt/prompt_test.go`** (5 new tests):
+- `TestPromptAdapter_FallbackOnCommandNotFound` — primary not found, fallback succeeds
+- `TestPromptAdapter_NoFallbackOnExitError` — ExitError does NOT trigger fallback
+- `TestPromptAdapter_FallbackChainExhausted` — all commands missing returns error
+- `TestPromptAdapter_FallbackSkipsToSecondFallback` — chains through multiple fallbacks
+- `TestParseFallbackChain` — table-driven tests for parsing (single, multiple, spaces, empty, trailing comma)
+
+**`internal/agent/runner_test.go`** (2 new tests):
+- `TestRunner_FallbackChainInWorkflow` — workflow-level `agent_command = "bad,good"`
+- `TestRunner_StepLevelFallbackChain` — step-level `agent_command = "bad,good"`
+
+### Usage
+
+In a workflow file:
+```
+workflow "develop" {
+  container {
+    agent_command = "claude,gemini,codex"
+  }
+  step implement {
+    prompt = file("prompts/implement.md")
+    results = [success, fail]
+  }
+  ...
+}
+```
+
+Or at step level:
+```
+step implement {
+  agent_command = "claude,gemini"
+  prompt = file("prompts/implement.md")
+  results = [success, fail]
+}
+```
+
+CLOCHE_RESULT:success

@@ -1,0 +1,32 @@
+## Task: Add --version/-v to cloche, cloche-agent, and cloched version endpoint
+
+Add version reporting to all three Cloche binaries.
+
+## Version Format
+Semver: major.minor.build, read from a version file (not ldflags).
+- **Build**: increases on every compile
+- **Minor**: backward-compatible API updates, feature additions
+- **Major**: backward-incompatible changes, removing/deprecating APIs, incompatible gRPC API changes, removing cloche commands
+
+## Requirements
+
+### CLI (`cloche -v` / `cloche --version`)
+- Prints its own CLI version
+- Calls gRPC endpoint on running `cloched` to get daemon version
+- Runs `docker run <project-image> cloche-agent -v` to get the project's agent version
+- Displays all three: CLI, daemon, agent
+- If daemon is unreachable or image doesn't exist, show `<unavailable>` for that component
+- Version mismatches between components are **warnings**, not errors
+
+### Daemon (`cloched -v`)
+- Prints its own version standalone
+- Exposes a gRPC `Version` endpoint that returns its version string
+
+### Agent (`cloche-agent -v`)
+- Prints its own version standalone
+
+## Versioning policy for bead tickets
+When creating bead tickets, assess whether the change requires a minor or major version bump. If so, tag the ticket so that the version bump is handled during the _finalize_ workflow while merging.
+
+## Also
+- Add versioning policy/instructions to CLAUDE.md

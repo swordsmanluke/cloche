@@ -1,0 +1,3 @@
+## Task: V2: CLI — task-oriented list, status, logs
+
+Update CLI commands for task-oriented output. cloche list shows tasks (status, title, attempt count, latest attempt). cloche status accepts task ID, attempt ID, or attempt:workflow:step and shows appropriate detail. cloche logs accepts the same ID levels. cloche run without --issue creates a User-Initiated task. Remove flat run listing as default.

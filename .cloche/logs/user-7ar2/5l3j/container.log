@@ -1,0 +1,54 @@
+{"type":"run_title","message":"Task: Track host workflow runs in RunStore and expose via CLI/web","timestamp":"2026-03-10T01:04:24.11521944Z"}
+{"type":"step_started","step_name":"implement","timestamp":"2026-03-10T01:04:24.115713477Z"}
+{"type":"log","step_name":"implement","message":"All tests pass. Here's a summary of the changes made:","timestamp":"2026-03-10T01:15:16.533471752Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:15:16.533498282Z"}
+{"type":"log","step_name":"implement","message":"## Changes Summary","timestamp":"2026-03-10T01:15:16.533508441Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:15:16.533512259Z"}
+{"type":"log","step_name":"implement","message":"### Domain Layer","timestamp":"2026-03-10T01:15:16.533515936Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/domain/run.go`**: Added `IsHost bool` field to `Run` struct to distinguish host workflow runs from container runs.","timestamp":"2026-03-10T01:15:16.533519412Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:15:16.533527047Z"}
+{"type":"log","step_name":"implement","message":"### Storage Layer","timestamp":"2026-03-10T01:15:16.53353413Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/adapters/sqlite/store.go`**: ","timestamp":"2026-03-10T01:15:16.533537687Z"}
+{"type":"log","step_name":"implement","message":"  - Added `is_host` column migration","timestamp":"2026-03-10T01:15:16.533544169Z"}
+{"type":"log","step_name":"implement","message":"  - Added `runSelectCols` constant and `scanRun`/`scanRuns` helpers to DRY up column scanning (all list/get queries now use the shared helper)","timestamp":"2026-03-10T01:15:16.533547655Z"}
+{"type":"log","step_name":"implement","message":"  - `CreateRun`, `UpdateRun`, `GetRun`, `ListRuns`, `ListRunsByProject`, `ListRunsSince` all now handle `is_host`","timestamp":"2026-03-10T01:15:16.533554428Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:15:16.533580367Z"}
+{"type":"log","step_name":"implement","message":"### Host Workflow Runner","timestamp":"2026-03-10T01:15:16.533583924Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/host/runner.go`**: ","timestamp":"2026-03-10T01:15:16.533599603Z"}
+{"type":"log","step_name":"implement","message":"  - `Runner.Run()` now creates a host run record in RunStore before executing, marks it running, and persists final state (success/failure) after completion","timestamp":"2026-03-10T01:15:16.5336086Z"}
+{"type":"log","step_name":"implement","message":"  - `hostStatusHandler` now persists step start/complete events to RunStore so steps are visible in status queries","timestamp":"2026-03-10T01:15:16.533613289Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:15:16.533620593Z"}
+{"type":"log","step_name":"implement","message":"### Proto \u0026 gRPC","timestamp":"2026-03-10T01:15:16.533628237Z"}
+{"type":"log","step_name":"implement","message":"- **`api/proto/cloche/v1/cloche.proto`**: Added `is_host` field to `GetStatusResponse` (field 11) and `RunSummary` (field 8)","timestamp":"2026-03-10T01:15:16.533631854Z"}
+{"type":"log","step_name":"implement","message":"- **`api/clochepb/cloche.pb.go`**: Added `IsHost` fields and getters to `GetStatusResponse` and `RunSummary` structs","timestamp":"2026-03-10T01:15:16.533636824Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/adapters/grpc/server.go`**: `ListRuns` and `GetStatus` now populate `IsHost` in responses","timestamp":"2026-03-10T01:15:16.533641212Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:15:16.53364528Z"}
+{"type":"log","step_name":"implement","message":"### CLI","timestamp":"2026-03-10T01:15:16.533648616Z"}
+{"type":"log","step_name":"implement","message":"- **`cmd/cloche/main.go`**: ","timestamp":"2026-03-10T01:15:16.533651972Z"}
+{"type":"log","step_name":"implement","message":"  - `status` command shows `Type: host` or `Type: container`","timestamp":"2026-03-10T01:15:16.533655799Z"}
+{"type":"log","step_name":"implement","message":"  - `list` command includes a type column","timestamp":"2026-03-10T01:15:16.533659356Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:15:16.533663274Z"}
+{"type":"log","step_name":"implement","message":"### Web Portal","timestamp":"2026-03-10T01:15:16.53366674Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/adapters/web/handler.go`**: `apiRun` struct and `toAPIRun` now include `is_host` field","timestamp":"2026-03-10T01:15:16.533670818Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/adapters/web/templates/runs.html`**: Added \"Type\" column showing host/container","timestamp":"2026-03-10T01:15:16.533680025Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/adapters/web/templates/run_detail.html`**: Shows run type in metadata","timestamp":"2026-03-10T01:15:16.533690294Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:15:16.533699261Z"}
+{"type":"log","step_name":"implement","message":"### Tests","timestamp":"2026-03-10T01:15:16.533704261Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/domain/run_test.go`**: `TestRunIsHost`","timestamp":"2026-03-10T01:15:16.533708539Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/adapters/sqlite/store_test.go`**: `TestRunIsHost` (CRUD + list), `TestRunIsHost_BackwardCompat`","timestamp":"2026-03-10T01:15:16.533717716Z"}
+{"type":"log","step_name":"implement","message":"- **`internal/host/executor_test.go`**: `TestRunner_PersistsHostRun`, `TestRunner_PersistsHostRunOnFailure`","timestamp":"2026-03-10T01:15:16.53373055Z"}
+{"type":"log","step_name":"implement","timestamp":"2026-03-10T01:15:16.533736001Z"}
+{"type":"log","step_name":"implement","message":"CLOCHE_RESULT:success","timestamp":"2026-03-10T01:15:16.83316293Z"}
+{"type":"step_completed","step_name":"implement","result":"success","timestamp":"2026-03-10T01:15:16.849275345Z"}
+{"type":"step_started","step_name":"test","timestamp":"2026-03-10T01:15:16.849307064Z"}
+{"type":"step_completed","step_name":"test","result":"success","timestamp":"2026-03-10T01:15:17.235356847Z"}
+{"type":"step_started","step_name":"update-docs","timestamp":"2026-03-10T01:15:17.235385812Z"}
+{"type":"log","step_name":"update-docs","message":"Both edits are correct. The documentation now reflects that:","timestamp":"2026-03-10T01:16:02.761959786Z"}
+{"type":"log","step_name":"update-docs","message":"- `cloche status` shows the run type (host or container)","timestamp":"2026-03-10T01:16:02.761981988Z"}
+{"type":"log","step_name":"update-docs","message":"- `cloche list` includes a type column","timestamp":"2026-03-10T01:16:02.761993179Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-10T01:16:02.762004219Z"}
+{"type":"log","step_name":"update-docs","message":"No other documentation files need updating — the host workflow design doc is a design/plan document and the system design doc covers the MVP architecture, neither of which need to track this implementation detail.","timestamp":"2026-03-10T01:16:02.762008788Z"}
+{"type":"log","step_name":"update-docs","timestamp":"2026-03-10T01:16:02.762017625Z"}
+{"type":"log","step_name":"update-docs","message":"CLOCHE_RESULT:success","timestamp":"2026-03-10T01:16:03.113004518Z"}
+{"type":"step_completed","step_name":"update-docs","result":"success","timestamp":"2026-03-10T01:16:03.115515112Z"}
+{"type":"run_completed","result":"succeeded","timestamp":"2026-03-10T01:16:03.115632703Z"}

@@ -1,0 +1,27 @@
+## Task: Evolution: ScriptGenerator writes LLM-generated scripts with no validation or sandboxing
+
+## Problem
+
+\`ScriptGenerator.Generate()\` in \`internal/evolution/scriptgen.go\` takes an LLM response, parses it as JSON, and writes the \`content\` field directly to disk as an executable file (mode 0755). There are several concerns:
+
+1. **No path validation**: The LLM-provided \`resp.Path\` is joined directly with \`projectDir\` via \`filepath.Join\`. A malicious or confused LLM response could write outside the expected scripts directory (e.g., \`path: "../../../etc/cron.d/evil"\`).
+
+2. **No content validation**: The script content is written as-is. There's no check that it's actually a shell script, that it's well-formed, or that it doesn't contain dangerous operations.
+
+3. **No deduplication**: Like handleNewStep, there's no check whether the script already exists. Multiple evolution cycles will overwrite the same script file repeatedly.
+
+4. **Scripts directory is arbitrary**: The LLM controls where scripts are placed. The system should constrain writes to \`.cloche/scripts/\` only.
+
+## How to Fix
+
+1. Validate that \`resp.Path\` starts with \`scripts/\` or \`.cloche/scripts/\` and contains no \`..
+2. Check if the file already exists before overwriting
+3. Validate that content starts with a shebang line
+4. Consider making the script non-executable by default and having the workflow engine handle execution
+
+## How to Test
+
+1. LLM returns a path with \`../\` traversal — assert it's rejected
+2. LLM returns a path outside \`scripts/\` — assert it's rejected
+3. LLM returns content without a shebang — assert it's rejected or a shebang is prepended
+4. Script already exists — assert it's not overwritten (or at least snapshotted first)
