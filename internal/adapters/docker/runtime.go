@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"fmt"
@@ -100,21 +101,24 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	}
 	containerID := strings.TrimSpace(stdout.String())
 
-	// 3. Copy project files into container (no bind mount)
+	// 3. Copy project files into container, respecting .clocheignore
 	if cfg.ProjectDir != "" {
-		cpCmd := exec.CommandContext(ctx, "docker", "cp", cfg.ProjectDir+"/.", containerID+":/workspace/")
-		var cpStderr bytes.Buffer
-		cpCmd.Stderr = &cpStderr
-		if err := cpCmd.Run(); err != nil {
-			// Cleanup on failure
+		patterns, err := parseClocheignore(cfg.ProjectDir)
+		if err != nil {
 			exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
-			return "", fmt.Errorf("copying files to container: %s: %w", cpStderr.String(), err)
+			return "", fmt.Errorf("parsing .clocheignore: %w", err)
+		}
+
+		if err := copyProjectToContainer(ctx, cfg.ProjectDir, containerID, patterns); err != nil {
+			exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
+			return "", err
 		}
 
 		// Apply override files from .cloche/overrides/ on top of workspace
 		overridesDir := filepath.Join(cfg.ProjectDir, ".cloche", "overrides")
 		if _, err := os.Stat(overridesDir); err == nil {
 			overrideCmd := exec.CommandContext(ctx, "docker", "cp", overridesDir+"/.", containerID+":/workspace/")
+			var cpStderr bytes.Buffer
 			overrideCmd.Stderr = &cpStderr
 			if err := overrideCmd.Run(); err != nil {
 				// Non-fatal: log but don't fail the run
@@ -272,6 +276,111 @@ func (r *Runtime) CopyTo(ctx context.Context, containerID string, srcPath, dstPa
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("copying to container: %s: %w", stderr.String(), err)
+	}
+	return nil
+}
+
+// copyProjectToContainer creates a filtered tar archive of the project
+// (honoring .clocheignore patterns) and pipes it into the container via
+// "docker cp - container:/workspace/".
+func copyProjectToContainer(ctx context.Context, projectDir, containerID string, patterns []ignorePattern) error {
+	// If no ignore patterns, use the fast path (plain docker cp).
+	if len(patterns) == 0 {
+		cmd := exec.CommandContext(ctx, "docker", "cp", projectDir+"/.", containerID+":/workspace/")
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("copying files to container: %s: %w", stderr.String(), err)
+		}
+		return nil
+	}
+
+	// Ensure /workspace/ exists in the container (docker cp - requires
+	// the destination directory to exist already).
+	initDir, err := os.MkdirTemp("", "cloche-init")
+	if err != nil {
+		return fmt.Errorf("creating temp dir: %w", err)
+	}
+	defer os.RemoveAll(initDir)
+	exec.CommandContext(ctx, "docker", "cp", initDir+"/.", containerID+":/workspace/").Run()
+
+	// Pipe a filtered tar into "docker cp -".
+	cmd := exec.CommandContext(ctx, "docker", "cp", "-", containerID+":/workspace/")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	pipeR, pipeW := io.Pipe()
+	cmd.Stdin = pipeR
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- cmd.Run()
+	}()
+
+	// Write tar archive, skipping ignored files.
+	tw := tar.NewWriter(pipeW)
+	walkErr := filepath.Walk(projectDir, func(absPath string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relPath, _ := filepath.Rel(projectDir, absPath)
+		if relPath == "." {
+			return nil
+		}
+		// Normalize to forward slashes for matching.
+		relPath = filepath.ToSlash(relPath)
+
+		if isIgnored(patterns, relPath, info.IsDir()) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Read symlink target (if any) before creating the header.
+		var link string
+		if info.Mode()&os.ModeSymlink != 0 {
+			link, err = os.Readlink(absPath)
+			if err != nil {
+				return err
+			}
+		}
+
+		header, err := tar.FileInfoHeader(info, link)
+		if err != nil {
+			return fmt.Errorf("creating tar header for %s: %w", relPath, err)
+		}
+		header.Name = relPath
+
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+
+		f, err := os.Open(absPath)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		_, err = io.Copy(tw, f)
+		return err
+	})
+
+	// Close the tar writer and pipe even if walk failed, so docker cp
+	// exits rather than hanging.
+	tw.Close()
+	pipeW.Close()
+
+	cmdErr := <-errCh
+	if walkErr != nil {
+		return fmt.Errorf("building tar archive: %w", walkErr)
+	}
+	if cmdErr != nil {
+		return fmt.Errorf("copying files to container: %s: %w", stderr.String(), cmdErr)
 	}
 	return nil
 }
