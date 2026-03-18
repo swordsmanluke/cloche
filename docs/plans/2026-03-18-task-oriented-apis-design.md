@@ -1,7 +1,7 @@
 # Version 2.0.0: Task-Oriented APIs Design
 
 **Date:** 2026-03-18
-**Status:** Design
+**Status:** In Progress
 
 ## Problem
 
@@ -63,10 +63,13 @@ New types in `internal/domain/`:
 
 ```go
 type Task struct {
-    ID        string
-    Title     string
-    Status    TaskStatus   // derived from latest attempt
-    Attempts  []*Attempt
+    ID         string
+    Title      string
+    Status     TaskStatus // derived from latest attempt
+    Source     TaskSource // "external" | "user-initiated"
+    ProjectDir string
+    CreatedAt  time.Time
+    Attempts   []*Attempt
 }
 
 type Attempt struct {
@@ -74,7 +77,7 @@ type Attempt struct {
     TaskID    string
     StartedAt time.Time
     EndedAt   time.Time
-    Result    string       // "succeeded", "failed", "cancelled", "running"
+    Result    AttemptResult // "succeeded", "failed", "cancelled", "running"
 }
 ```
 
@@ -116,14 +119,15 @@ their respective tables.
 A join table links log files to attempts:
 
 ```sql
-CREATE TABLE attempt_logs (
-    attempt_id TEXT NOT NULL REFERENCES attempts(id),
-    workflow TEXT NOT NULL,
-    step_name TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS attempt_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    attempt_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    file_type TEXT NOT NULL,
     file_path TEXT NOT NULL,
-    file_type TEXT NOT NULL DEFAULT 'full',
-    file_size INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (attempt_id, workflow, step_name, file_type)
+    file_size INTEGER,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (attempt_id) REFERENCES attempts(id)
 );
 ```
 

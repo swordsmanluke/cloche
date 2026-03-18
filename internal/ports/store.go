@@ -39,6 +39,30 @@ type LogStore interface {
 	GetLogFiles(ctx context.Context, runID string) ([]*LogFileEntry, error)
 	GetLogFilesByStep(ctx context.Context, runID, stepName string) ([]*LogFileEntry, error)
 	GetLogFileByType(ctx context.Context, runID, fileType string) ([]*LogFileEntry, error)
+	SaveAttemptLog(ctx context.Context, entry *AttemptLogEntry) error
+	GetAttemptLogs(ctx context.Context, attemptID string) ([]*AttemptLogEntry, error)
+}
+
+type TaskStore interface {
+	SaveTask(ctx context.Context, task *domain.Task) error
+	GetTask(ctx context.Context, id string) (*domain.Task, error)
+	ListTasks(ctx context.Context, projectDir string) ([]*domain.Task, error)
+}
+
+type AttemptStore interface {
+	SaveAttempt(ctx context.Context, attempt *domain.Attempt) error
+	GetAttempt(ctx context.Context, id string) (*domain.Attempt, error)
+	ListAttempts(ctx context.Context, taskID string) ([]*domain.Attempt, error)
+}
+
+type AttemptLogEntry struct {
+	ID        int64
+	AttemptID string
+	TaskID    string
+	FileType  string // "full", "script", "llm"
+	FilePath  string
+	FileSize  int64
+	CreatedAt time.Time
 }
 
 type EvolutionEntry struct {

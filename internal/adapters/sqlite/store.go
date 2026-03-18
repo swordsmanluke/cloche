@@ -121,6 +121,20 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("v2 migration: %w", err)
 	}
 
+	_, errAL := db.Exec(`CREATE TABLE IF NOT EXISTS attempt_logs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		attempt_id TEXT NOT NULL,
+		task_id TEXT NOT NULL,
+		file_type TEXT NOT NULL,
+		file_path TEXT NOT NULL,
+		file_size INTEGER,
+		created_at TEXT NOT NULL,
+		FOREIGN KEY (attempt_id) REFERENCES attempts(id)
+	)`)
+	if errAL != nil {
+		return errAL
+	}
+
 	_, err2 := db.Exec(`CREATE TABLE IF NOT EXISTS evolution_log (
 		id TEXT PRIMARY KEY,
 		project_dir TEXT NOT NULL,
@@ -458,6 +472,166 @@ func (s *Store) ListRunsSince(ctx context.Context, projectDir, workflowName, sin
 }
 
 
+func (s *Store) SaveTask(ctx context.Context, task *domain.Task) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT OR REPLACE INTO tasks (id, title, source, project_dir, created_at)
+		 VALUES (?, ?, ?, ?, ?)`,
+		task.ID, task.Title, string(task.Source), task.ProjectDir, formatTime(task.CreatedAt),
+	)
+	return err
+}
+
+func (s *Store) GetTask(ctx context.Context, id string) (*domain.Task, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, title, source, project_dir, created_at FROM tasks WHERE id = ?`, id)
+
+	task := &domain.Task{}
+	var createdAt string
+	err := row.Scan(&task.ID, &task.Title, &task.Source, &task.ProjectDir, &createdAt)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("task %q not found", id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	task.CreatedAt = parseTime(createdAt)
+
+	attempts, err := s.ListAttempts(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	task.Attempts = attempts
+	task.Status = task.DeriveStatus()
+	return task, nil
+}
+
+func (s *Store) ListTasks(ctx context.Context, projectDir string) ([]*domain.Task, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if projectDir == "" {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, title, source, project_dir, created_at FROM tasks ORDER BY created_at DESC`)
+	} else {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, title, source, project_dir, created_at FROM tasks WHERE project_dir = ? ORDER BY created_at DESC`,
+			projectDir)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tasks []*domain.Task
+	for rows.Next() {
+		task := &domain.Task{}
+		var createdAt string
+		if err := rows.Scan(&task.ID, &task.Title, &task.Source, &task.ProjectDir, &createdAt); err != nil {
+			return nil, err
+		}
+		task.CreatedAt = parseTime(createdAt)
+		tasks = append(tasks, task)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Populate attempts for each task
+	for _, task := range tasks {
+		attempts, err := s.ListAttempts(ctx, task.ID)
+		if err != nil {
+			return nil, err
+		}
+		task.Attempts = attempts
+		task.Status = task.DeriveStatus()
+	}
+	return tasks, nil
+}
+
+func (s *Store) SaveAttempt(ctx context.Context, attempt *domain.Attempt) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT OR REPLACE INTO attempts (id, task_id, started_at, ended_at, result, project_dir)
+		 VALUES (?, ?, ?, ?, ?, (SELECT project_dir FROM tasks WHERE id = ?))`,
+		attempt.ID, attempt.TaskID, formatTime(attempt.StartedAt),
+		nullIfEmptyTime(attempt.EndedAt), string(attempt.Result), attempt.TaskID,
+	)
+	return err
+}
+
+func (s *Store) GetAttempt(ctx context.Context, id string) (*domain.Attempt, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, task_id, started_at, COALESCE(ended_at,''), result FROM attempts WHERE id = ?`, id)
+
+	attempt := &domain.Attempt{}
+	var startedAt, endedAt string
+	err := row.Scan(&attempt.ID, &attempt.TaskID, &startedAt, &endedAt, &attempt.Result)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("attempt %q not found", id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	attempt.StartedAt = parseTime(startedAt)
+	attempt.EndedAt = parseTime(endedAt)
+	return attempt, nil
+}
+
+func (s *Store) ListAttempts(ctx context.Context, taskID string) ([]*domain.Attempt, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, task_id, started_at, COALESCE(ended_at,''), result
+		 FROM attempts WHERE task_id = ? ORDER BY started_at ASC`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var attempts []*domain.Attempt
+	for rows.Next() {
+		attempt := &domain.Attempt{}
+		var startedAt, endedAt string
+		if err := rows.Scan(&attempt.ID, &attempt.TaskID, &startedAt, &endedAt, &attempt.Result); err != nil {
+			return nil, err
+		}
+		attempt.StartedAt = parseTime(startedAt)
+		attempt.EndedAt = parseTime(endedAt)
+		attempts = append(attempts, attempt)
+	}
+	return attempts, rows.Err()
+}
+
+func (s *Store) SaveAttemptLog(ctx context.Context, entry *ports.AttemptLogEntry) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO attempt_logs (attempt_id, task_id, file_type, file_path, file_size, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		entry.AttemptID, entry.TaskID, entry.FileType, entry.FilePath, entry.FileSize,
+		formatTime(entry.CreatedAt),
+	)
+	return err
+}
+
+func (s *Store) GetAttemptLogs(ctx context.Context, attemptID string) ([]*ports.AttemptLogEntry, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, attempt_id, task_id, file_type, file_path, COALESCE(file_size,0), created_at
+		 FROM attempt_logs WHERE attempt_id = ? ORDER BY id`, attemptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []*ports.AttemptLogEntry
+	for rows.Next() {
+		e := &ports.AttemptLogEntry{}
+		var createdAt string
+		if err := rows.Scan(&e.ID, &e.AttemptID, &e.TaskID, &e.FileType, &e.FilePath, &e.FileSize, &createdAt); err != nil {
+			return nil, err
+		}
+		e.CreatedAt = parseTime(createdAt)
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
 func (s *Store) FailStaleRuns(ctx context.Context) (int64, error) {
 	now := formatTime(time.Now())
 	res, err := s.db.ExecContext(ctx,
@@ -491,6 +665,13 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+func nullIfEmptyTime(t time.Time) interface{} {
+	if t.IsZero() {
+		return nil
+	}
+	return t.Format(time.RFC3339Nano)
 }
 
 const maxErrorMessageLen = 1000

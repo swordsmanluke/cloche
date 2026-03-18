@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 // TaskStatus represents the status of a task, derived from its latest attempt.
 type TaskStatus string
 
@@ -22,11 +24,13 @@ const (
 // Task is the top-level work unit. It may come from an external task tracker
 // or be created by a manual `cloche run` invocation.
 type Task struct {
-	ID       string
-	Title    string
-	Status   TaskStatus // derived from latest attempt
-	Source   TaskSource
-	Attempts []*Attempt
+	ID         string
+	Title      string
+	Status     TaskStatus // derived from latest attempt
+	Source     TaskSource
+	ProjectDir string
+	CreatedAt  time.Time
+	Attempts   []*Attempt
 }
 
 // DeriveStatus computes the task status from the latest attempt's result.

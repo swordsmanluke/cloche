@@ -1106,6 +1106,292 @@ func TestListRunsFiltered_SinceUsesCompletedAt(t *testing.T) {
 	assert.False(t, ids["old"], "old completed run should be excluded")
 }
 
+func TestTaskStore_SaveAndGet(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	task := &domain.Task{
+		ID:         "task-1",
+		Title:      "Fix the widget",
+		Source:     domain.TaskSourceExternal,
+		ProjectDir: "/home/user/project",
+		CreatedAt:  now,
+	}
+	require.NoError(t, store.SaveTask(ctx, task))
+
+	got, err := store.GetTask(ctx, "task-1")
+	require.NoError(t, err)
+	assert.Equal(t, "task-1", got.ID)
+	assert.Equal(t, "Fix the widget", got.Title)
+	assert.Equal(t, domain.TaskSourceExternal, got.Source)
+	assert.Equal(t, "/home/user/project", got.ProjectDir)
+	assert.Equal(t, now, got.CreatedAt)
+	assert.Empty(t, got.Attempts)
+	assert.Equal(t, domain.TaskStatusPending, got.Status)
+}
+
+func TestTaskStore_GetNotFound(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	_, err = store.GetTask(context.Background(), "nonexistent")
+	assert.Error(t, err)
+}
+
+func TestTaskStore_ListTasks(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	for _, tc := range []struct {
+		id, project string
+	}{
+		{"t1", "/proj-a"},
+		{"t2", "/proj-a"},
+		{"t3", "/proj-b"},
+	} {
+		require.NoError(t, store.SaveTask(ctx, &domain.Task{
+			ID:         tc.id,
+			Title:      "Task " + tc.id,
+			Source:     domain.TaskSourceExternal,
+			ProjectDir: tc.project,
+			CreatedAt:  now,
+		}))
+	}
+
+	// Filter by project
+	tasks, err := store.ListTasks(ctx, "/proj-a")
+	require.NoError(t, err)
+	assert.Len(t, tasks, 2)
+	for _, t2 := range tasks {
+		assert.Equal(t, "/proj-a", t2.ProjectDir)
+	}
+
+	// All tasks (empty projectDir)
+	all, err := store.ListTasks(ctx, "")
+	require.NoError(t, err)
+	assert.Len(t, all, 3)
+}
+
+func TestTaskStore_SaveUpdates(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	task := &domain.Task{
+		ID:        "upd-1",
+		Title:     "Original",
+		Source:    domain.TaskSourceUserInitiated,
+		CreatedAt: now,
+	}
+	require.NoError(t, store.SaveTask(ctx, task))
+
+	task.Title = "Updated"
+	require.NoError(t, store.SaveTask(ctx, task))
+
+	got, err := store.GetTask(ctx, "upd-1")
+	require.NoError(t, err)
+	assert.Equal(t, "Updated", got.Title)
+}
+
+func TestAttemptStore_SaveAndGet(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	// Create a task first (foreign key)
+	require.NoError(t, store.SaveTask(ctx, &domain.Task{
+		ID:        "task-a",
+		Title:     "Task A",
+		Source:    domain.TaskSourceExternal,
+		CreatedAt: now,
+	}))
+
+	attempt := &domain.Attempt{
+		ID:        "att-1",
+		TaskID:    "task-a",
+		StartedAt: now,
+		Result:    domain.AttemptResultRunning,
+	}
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	got, err := store.GetAttempt(ctx, "att-1")
+	require.NoError(t, err)
+	assert.Equal(t, "att-1", got.ID)
+	assert.Equal(t, "task-a", got.TaskID)
+	assert.Equal(t, domain.AttemptResultRunning, got.Result)
+	assert.True(t, got.EndedAt.IsZero())
+}
+
+func TestAttemptStore_GetNotFound(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	_, err = store.GetAttempt(context.Background(), "nonexistent")
+	assert.Error(t, err)
+}
+
+func TestAttemptStore_ListAttempts(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	require.NoError(t, store.SaveTask(ctx, &domain.Task{
+		ID:        "task-list",
+		Title:     "List Task",
+		Source:    domain.TaskSourceExternal,
+		CreatedAt: now,
+	}))
+
+	for i, id := range []string{"a1", "a2", "a3"} {
+		require.NoError(t, store.SaveAttempt(ctx, &domain.Attempt{
+			ID:        id,
+			TaskID:    "task-list",
+			StartedAt: now.Add(time.Duration(i) * time.Minute),
+			Result:    domain.AttemptResultRunning,
+		}))
+	}
+
+	attempts, err := store.ListAttempts(ctx, "task-list")
+	require.NoError(t, err)
+	assert.Len(t, attempts, 3)
+	assert.Equal(t, "a1", attempts[0].ID)
+	assert.Equal(t, "a3", attempts[2].ID)
+}
+
+func TestAttemptStore_SaveUpdatesResult(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	require.NoError(t, store.SaveTask(ctx, &domain.Task{
+		ID:        "task-upd",
+		Title:     "Task",
+		Source:    domain.TaskSourceExternal,
+		CreatedAt: now,
+	}))
+
+	attempt := &domain.Attempt{
+		ID:        "att-upd",
+		TaskID:    "task-upd",
+		StartedAt: now,
+		Result:    domain.AttemptResultRunning,
+	}
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	attempt.Complete(domain.AttemptResultSucceeded)
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	got, err := store.GetAttempt(ctx, "att-upd")
+	require.NoError(t, err)
+	assert.Equal(t, domain.AttemptResultSucceeded, got.Result)
+	assert.False(t, got.EndedAt.IsZero())
+}
+
+func TestGetTask_PopulatesAttempts(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	require.NoError(t, store.SaveTask(ctx, &domain.Task{
+		ID:        "task-with-attempts",
+		Title:     "Task",
+		Source:    domain.TaskSourceExternal,
+		CreatedAt: now,
+	}))
+
+	require.NoError(t, store.SaveAttempt(ctx, &domain.Attempt{
+		ID:        "att-x",
+		TaskID:    "task-with-attempts",
+		StartedAt: now,
+		Result:    domain.AttemptResultFailed,
+	}))
+	require.NoError(t, store.SaveAttempt(ctx, &domain.Attempt{
+		ID:        "att-y",
+		TaskID:    "task-with-attempts",
+		StartedAt: now.Add(time.Minute),
+		Result:    domain.AttemptResultSucceeded,
+	}))
+
+	got, err := store.GetTask(ctx, "task-with-attempts")
+	require.NoError(t, err)
+	assert.Len(t, got.Attempts, 2)
+	assert.Equal(t, domain.TaskStatusSucceeded, got.Status)
+}
+
+func TestAttemptLogs_SaveAndGet(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+
+	// Create task and attempt first (foreign keys)
+	require.NoError(t, store.SaveTask(ctx, &domain.Task{
+		ID:        "task-log",
+		Title:     "Log task",
+		Source:    domain.TaskSourceExternal,
+		CreatedAt: now,
+	}))
+	require.NoError(t, store.SaveAttempt(ctx, &domain.Attempt{
+		ID:        "att-log",
+		TaskID:    "task-log",
+		StartedAt: now,
+		Result:    domain.AttemptResultRunning,
+	}))
+
+	entries := []*ports.AttemptLogEntry{
+		{AttemptID: "att-log", TaskID: "task-log", FileType: "full", FilePath: "/logs/full.log", FileSize: 2048, CreatedAt: now},
+		{AttemptID: "att-log", TaskID: "task-log", FileType: "script", FilePath: "/logs/step.log", FileSize: 512, CreatedAt: now},
+	}
+	for _, e := range entries {
+		require.NoError(t, store.SaveAttemptLog(ctx, e))
+	}
+
+	logs, err := store.GetAttemptLogs(ctx, "att-log")
+	require.NoError(t, err)
+	assert.Len(t, logs, 2)
+	assert.Equal(t, "att-log", logs[0].AttemptID)
+	assert.Equal(t, "task-log", logs[0].TaskID)
+	assert.Equal(t, "full", logs[0].FileType)
+	assert.Equal(t, int64(2048), logs[0].FileSize)
+}
+
+func TestAttemptLogs_EmptyResults(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	logs, err := store.GetAttemptLogs(context.Background(), "nonexistent")
+	require.NoError(t, err)
+	assert.Empty(t, logs)
+}
+
 func TestListRunsFiltered_NoFilters(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
