@@ -445,6 +445,12 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 					StepName:  msg.StepName,
 				})
 			}
+			// Eagerly extract step output so the Web UI can serve it
+			// while the run is still active.
+			outputDst := filepath.Join(projectDir, ".cloche", runID, "output")
+			if mkErr := os.MkdirAll(outputDst, 0755); mkErr == nil {
+				_ = s.container.CopyFrom(ctx, containerID, "/workspace/.cloche/output/.", outputDst)
+			}
 		case protocol.MsgRunTitle:
 			if run.Title == "" {
 				run.Title = msg.Message
