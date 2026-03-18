@@ -31,7 +31,7 @@ workflow "main" {
   }
 
   step merge {
-    run     = "bash .cloche/scripts/merge-to-main.sh"
+    run     = "bash .cloche/scripts/merge-to-base.sh"
     results = [success, fail]
   }
 

@@ -1,6 +1,6 @@
 # Bump Version
 
-Determine the appropriate version bump for the changes just merged to main, then update the version file.
+Determine the appropriate version bump for the changes just merged to the base branch, then update the version file.
 
 ## Version file
 
