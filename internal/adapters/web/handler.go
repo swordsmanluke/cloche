@@ -528,15 +528,19 @@ func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
 }
 
 // apiGroupedEntry is a single entry in the grouped runs response.
-// Either a task header (TaskHeader true, Run nil) or a run entry.
+// Can be a task header, an attempt header, or a run entry.
 type apiGroupedEntry struct {
-	TaskHeader bool    `json:"task_header,omitempty"`
-	TaskID     string  `json:"task_id,omitempty"`
-	TaskTitle  string  `json:"task_title,omitempty"`  // title for task header display
-	TaskStatus string  `json:"task_status,omitempty"` // aggregate status for task header
-	IsParent   bool    `json:"is_parent,omitempty"`
-	IsChild    bool    `json:"is_child,omitempty"`
-	Run        *apiRun `json:"run,omitempty"`
+	TaskHeader    bool    `json:"task_header,omitempty"`
+	TaskID        string  `json:"task_id,omitempty"`
+	TaskTitle     string  `json:"task_title,omitempty"`  // title for task header display
+	TaskStatus    string  `json:"task_status,omitempty"` // derived from latest attempt
+	AttemptHeader bool    `json:"attempt_header,omitempty"`
+	AttemptNum    int     `json:"attempt_num,omitempty"`    // 1-based attempt number (latest first)
+	AttemptStatus string  `json:"attempt_status,omitempty"` // state of this attempt's parent run
+	AttemptTime   string  `json:"attempt_time,omitempty"`   // when the attempt started
+	IsParent      bool    `json:"is_parent,omitempty"`
+	IsChild       bool    `json:"is_child,omitempty"`
+	Run           *apiRun `json:"run,omitempty"`
 }
 
 // taskAggregateStatus computes the aggregate status for a set of runs
@@ -607,11 +611,26 @@ func groupAndSortRuns(runs []*domain.Run, labels map[string]string, taskTitles m
 			}
 			emittedTask[r.TaskID] = true
 			group := taskGroups[r.TaskID]
-			result = append(result, apiGroupedEntry{TaskHeader: true, TaskID: r.TaskID, TaskTitle: taskTitles[r.TaskID], TaskStatus: taskAggregateStatus(group)})
-			for _, gr := range group {
+
+			// Task status derives from the latest attempt (first in sorted order)
+			latestStatus := ""
+			if len(group) > 0 {
+				latestStatus = string(group[0].State)
+			}
+			result = append(result, apiGroupedEntry{TaskHeader: true, TaskID: r.TaskID, TaskTitle: taskTitles[r.TaskID], TaskStatus: latestStatus})
+
+			// Each top-level run in the group is an attempt.
+			// Number them: latest attempt = 1 (shown first due to sort).
+			for i, gr := range group {
+				attemptNum := len(group) - i
 				children := parentMap[gr.ID]
-				ar := toAPIRun(gr, labels)
-				result = append(result, apiGroupedEntry{Run: &ar, IsParent: len(children) > 0})
+				result = append(result, apiGroupedEntry{
+					AttemptHeader: true,
+					AttemptNum:    attemptNum,
+					AttemptStatus: string(gr.State),
+					AttemptTime:   formatTime(gr.StartedAt),
+					TaskID:        r.TaskID,
+				})
 				for _, child := range children {
 					ac := toAPIRun(child, labels)
 					result = append(result, apiGroupedEntry{Run: &ac, IsChild: true})

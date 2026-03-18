@@ -36,7 +36,9 @@
     {{if .GroupedRuns}}
         {{range .GroupedRuns}}
         {{if .TaskHeader}}
-        <tr class="run-task-header"><td colspan="9">Task: {{.TaskID}}{{if .TaskTitle}}: {{.TaskTitle}}{{end}} <span class="badge badge-{{.TaskStatus}}">{{.TaskStatus}}</span></td></tr>
+        <tr class="run-task-header"><td colspan="9">{{.TaskID}}{{if .TaskTitle}}: {{.TaskTitle}}{{end}} <span class="badge badge-{{.TaskStatus}}">{{.TaskStatus}}</span></td></tr>
+        {{else if .AttemptHeader}}
+        <tr class="run-attempt-header"><td colspan="9">Attempt #{{.AttemptNum}} <span class="badge badge-{{.AttemptStatus}}">{{.AttemptStatus}}</span> <span class="attempt-time">{{.AttemptTime}}</span></td></tr>
         {{else if .Run}}
         <tr class="{{if .IsChild}}run-child-row{{else if .IsParent}}run-parent-row{{end}}">
             <td><a href="/runs/{{.Run.ID}}">{{.Run.ID}}</a></td>
@@ -120,7 +122,13 @@
                         var ts = entry.task_status || 'pending';
                         var taskLabel = escapeHtml(entry.task_id);
                         if (entry.task_title) taskLabel += ': ' + escapeHtml(entry.task_title);
-                        html += '<tr class="run-task-header"><td colspan="9">Task: ' + taskLabel + ' <span class="badge badge-' + ts + '">' + ts + '</span></td></tr>';
+                        html += '<tr class="run-task-header"><td colspan="9">' + taskLabel + ' <span class="badge badge-' + ts + '">' + ts + '</span></td></tr>';
+                        continue;
+                    }
+                    if (entry.attempt_header) {
+                        var as = entry.attempt_status || 'pending';
+                        var at = entry.attempt_time || '';
+                        html += '<tr class="run-attempt-header"><td colspan="9">Attempt #' + entry.attempt_num + ' <span class="badge badge-' + as + '">' + as + '</span> <span class="attempt-time">' + escapeHtml(at) + '</span></td></tr>';
                         continue;
                     }
                     var r = entry.run;

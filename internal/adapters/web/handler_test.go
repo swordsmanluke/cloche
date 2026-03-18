@@ -2329,17 +2329,18 @@ func TestRunsList_TaskGrouping(t *testing.T) {
 	var entries []apiGroupedEntry
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &entries))
 
-	// Should have: 1 task header + 2 run entries = 3 entries
+	// Should have: 1 task header + 2 attempt headers = 3 entries
+	// (no child runs because these top-level runs have no ParentRunID children)
 	assert.Len(t, entries, 3)
 
 	// First entry should be the task header
 	assert.True(t, entries[0].TaskHeader)
 	assert.Equal(t, "task-100", entries[0].TaskID)
 
-	// Remaining entries should be runs with task_id set
+	// Remaining entries should be attempt headers
 	for _, e := range entries[1:] {
-		require.NotNil(t, e.Run)
-		assert.Equal(t, "task-100", e.Run.TaskID)
+		assert.True(t, e.AttemptHeader)
+		assert.Equal(t, "task-100", e.TaskID)
 	}
 }
 

@@ -605,10 +605,24 @@ details pre {
     font-size: 0.9rem;
 }
 
+/* Attempt header within task group */
+.run-attempt-header td {
+    background: var(--bg);
+    padding: 0.35rem 0.75rem 0.35rem 1.5rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+}
+.attempt-time {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-left: 0.5rem;
+}
+
 /* Run tree grouping */
 .run-parent-row { opacity: 0.7; }
 .run-parent-row td:first-child { font-weight: 600; }
-.run-child-row td:first-child { padding-left: 2rem; }
+.run-child-row td:first-child { padding-left: 2.5rem; }
 .run-child-row td:first-child::before {
     content: "\2514\00a0";
     color: var(--text-muted);
