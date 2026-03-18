@@ -225,6 +225,11 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 	}
 
 	waitErr := cmd.Wait()
+	// Check raw output for agent-level errors (e.g. error_during_execution
+	// from rate limits) before classifying the extracted text.
+	if bytes.Contains(rawBuf.Bytes(), []byte(`"error_during_execution"`)) {
+		return "fail", rawBuf.Bytes(), fmt.Errorf("command %q reported error_during_execution", command)
+	}
 	// Prefer extracted text (stream-json) for result classification; fall back
 	// to raw output for non-JSON commands (scripts, non-claude agents).
 	classifyBuf := textBuf.Bytes()

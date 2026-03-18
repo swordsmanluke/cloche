@@ -4,6 +4,11 @@ workflow "develop" {
     results = [success, fail]
   }
 
+  step verify-changes {
+    run = "bash .cloche/scripts/verify-changes.sh"
+    results = [success, fail]
+  }
+
   step test {
     run = "go test ./... 2>&1; rc=$?; cloche set test_exit_code \"$rc\" 2>/dev/null; exit $rc"
     results = [success, fail]
@@ -20,8 +25,10 @@ workflow "develop" {
     results = [success, fail]
   }
 
-  implement:success -> test
+  implement:success -> verify-changes
   implement:fail -> abort
+  verify-changes:success -> test
+  verify-changes:fail -> abort
   test:success -> update-docs
   test:fail -> fix
   fix:success -> test
