@@ -84,7 +84,7 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		args = append(args, "--user", "root")
 		wrappedCmd := fmt.Sprintf(
 			"chown -R agent:agent /workspace"+
-				" && chown -R agent:agent /home/agent/.claude /home/agent/.claude.json 2>/dev/null"+
+				" && chown -R agent:agent /home/agent/.claude 2>/dev/null"+
 				" && rm -rf /workspace/.serena"+
 				" && f=/home/agent/.claude/settings.json"+
 				` && [ -f "$f" ] && sed -i '/"enabledPlugins"/,/}/d' "$f"`+
@@ -152,10 +152,9 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 			}
 			exec.CommandContext(ctx, "docker", "cp", tmpAuth+"/.", containerID+":/home/agent/.claude/").Run()
 		}
-		claudeJSON := home + "/.claude.json"
-		if _, err := os.Stat(claudeJSON); err == nil {
-			exec.CommandContext(ctx, "docker", "cp", claudeJSON, containerID+":/home/agent/.claude.json").Run()
-		}
+		// NOTE: ~/.claude.json is NOT copied — it contains 100KB+ of UI
+		// state and cached rate limit info that causes containers to
+		// incorrectly believe they are rate-limited.
 	}
 
 	// 5. Start the container
