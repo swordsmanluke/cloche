@@ -1,7 +1,7 @@
 active = true
 
 [orchestration]
-concurrency = 5
+concurrency = 10
 stagger_seconds = 5.0
 dedup_seconds = 300
 
