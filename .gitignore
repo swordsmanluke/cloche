@@ -36,3 +36,4 @@ examples/mini-redis/test_runner
 
 # Example projects' runtime state
 examples/*/.cloche/
+.cloche/logs/
