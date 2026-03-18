@@ -19,7 +19,7 @@ import (
 // defaultAgentArgs maps known agent commands to their default arguments.
 // Commands not in this map receive no default arguments (prompt on stdin only).
 var defaultAgentArgs = map[string][]string{
-	"claude": {"-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"},
+	"claude": {"-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions", "--model", "sonnet"},
 }
 
 type Adapter struct {
