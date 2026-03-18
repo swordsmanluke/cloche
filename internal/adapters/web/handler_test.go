@@ -2380,6 +2380,61 @@ func TestRunsList_TaskGroupingTitle(t *testing.T) {
 	assert.Equal(t, "Fix login page", entries[0].TaskTitle)
 }
 
+func TestRunsList_TaskGroupingTitle_MultipleTasks(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// Create runs for two different tasks
+	r1 := domain.NewRun("tt-run-a", "develop")
+	r1.IsHost = true
+	r1.ProjectDir = "/project"
+	r1.TaskID = "task-100"
+	r1.Start()
+	require.NoError(t, store.CreateRun(ctx, r1))
+
+	r2 := domain.NewRun("tt-run-b", "develop")
+	r2.IsHost = true
+	r2.ProjectDir = "/project"
+	r2.TaskID = "task-200"
+	r2.Start()
+	require.NoError(t, store.CreateRun(ctx, r2))
+
+	tp := &mockTaskProvider{
+		tasks: map[string][]TaskEntry{
+			"/project": {
+				{ID: "task-100", Status: "in_progress", Title: "Fix authentication"},
+				{ID: "task-200", Status: "in_progress", Title: "Add dark mode"},
+			},
+		},
+	}
+	h.taskProvider = tp
+
+	req := httptest.NewRequest("GET", "/api/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var entries []apiGroupedEntry
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &entries))
+
+	// Should have two task headers, each with their title
+	var headers []apiGroupedEntry
+	for _, e := range entries {
+		if e.TaskHeader {
+			headers = append(headers, e)
+		}
+	}
+	require.Len(t, headers, 2, "should have 2 task headers")
+	// Both headers should have titles (order depends on sort)
+	titles := map[string]string{}
+	for _, h := range headers {
+		titles[h.TaskID] = h.TaskTitle
+	}
+	assert.Equal(t, "Fix authentication", titles["task-100"])
+	assert.Equal(t, "Add dark mode", titles["task-200"])
+}
+
 func TestTaskAggregateStatus(t *testing.T) {
 	now := time.Now()
 	tests := []struct {

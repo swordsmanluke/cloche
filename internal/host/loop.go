@@ -286,7 +286,7 @@ func (l *Loop) runPhased() {
 			}
 
 			// Phase 1: list-tasks — discover available work.
-			taskID, ok := l.pickTaskFromPhase()
+			taskID, taskTitle, ok := l.pickTaskFromPhase()
 			if !ok {
 				break // no assignable tasks
 			}
@@ -295,6 +295,7 @@ func (l *Loop) runPhased() {
 			inFlight++
 			launched++
 			tid := taskID
+			ttitle := taskTitle
 			go func() {
 				// Phase 2: main — do the work.
 				mainResult, err := l.mainFn(context.Background(), l.config.ProjectDir, tid)
@@ -305,7 +306,7 @@ func (l *Loop) runPhased() {
 					}
 				}
 
-				// Track the run ID for this task.
+				// Track the run ID for this task and persist the task title.
 				if mainResult != nil && mainResult.RunID != "" {
 					l.tasksMu.Lock()
 					l.taskRuns[tid] = TaskAssignment{
@@ -313,6 +314,13 @@ func (l *Loop) runPhased() {
 						RunID:      mainResult.RunID,
 					}
 					l.tasksMu.Unlock()
+
+					if ttitle != "" {
+						if r, err := l.store.GetRun(context.Background(), mainResult.RunID); err == nil && r.TaskTitle == "" {
+							r.TaskTitle = ttitle
+							_ = l.store.UpdateRun(context.Background(), r)
+						}
+					}
 				}
 
 				// Phase 3: finalize — cleanup (runs on both success and failure).
@@ -401,15 +409,15 @@ func (l *Loop) GetTaskSnapshot() []TaskStateEntry {
 }
 
 // pickTaskFromPhase runs the list-tasks function and picks the first open,
-// non-deduped task.
-func (l *Loop) pickTaskFromPhase() (string, bool) {
+// non-deduped task. Returns the task ID, title, and whether a task was found.
+func (l *Loop) pickTaskFromPhase() (string, string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	tasks, err := l.listTasks(ctx, l.config.ProjectDir)
 	if err != nil {
 		log.Printf("orchestration loop: list-tasks failed for %s: %v", l.config.ProjectDir, err)
-		return "", false
+		return "", "", false
 	}
 
 	// Cache the latest tasks for snapshot queries.
@@ -440,10 +448,10 @@ func (l *Loop) pickTaskFromPhase() (string, bool) {
 		}
 		l.dedup[task.ID] = now
 		log.Printf("orchestration loop: assigned task %s for %s", task.ID, l.config.ProjectDir)
-		return task.ID, true
+		return task.ID, task.Title, true
 	}
 
-	return "", false
+	return "", "", false
 }
 
 // runLegacy implements the original single-function orchestration loop.

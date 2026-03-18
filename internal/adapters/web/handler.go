@@ -639,23 +639,29 @@ func groupAndSortRuns(runs []*domain.Run, labels map[string]string, taskTitles m
 	return result
 }
 
-// taskTitlesFromRuns builds a task-ID→title map by querying the task provider
-// for each distinct project directory found in the given runs.
+// taskTitlesFromRuns builds a task-ID→title map. It first queries the active
+// task provider snapshot, then falls back to titles persisted on runs for
+// tasks that are no longer in the active loop.
 func (h *Handler) taskTitlesFromRuns(runs []*domain.Run) map[string]string {
 	titles := map[string]string{}
-	if h.taskProvider == nil {
-		return titles
-	}
-	seen := map[string]bool{}
-	for _, r := range runs {
-		if r.ProjectDir == "" || seen[r.ProjectDir] {
-			continue
-		}
-		seen[r.ProjectDir] = true
-		for _, te := range h.taskProvider.GetLoopTasks(r.ProjectDir) {
-			if te.Title != "" {
-				titles[te.ID] = te.Title
+	if h.taskProvider != nil {
+		seen := map[string]bool{}
+		for _, r := range runs {
+			if r.ProjectDir == "" || seen[r.ProjectDir] {
+				continue
 			}
+			seen[r.ProjectDir] = true
+			for _, te := range h.taskProvider.GetLoopTasks(r.ProjectDir) {
+				if te.Title != "" {
+					titles[te.ID] = te.Title
+				}
+			}
+		}
+	}
+	// Fall back to titles persisted on run records.
+	for _, r := range runs {
+		if r.TaskID != "" && titles[r.TaskID] == "" && r.TaskTitle != "" {
+			titles[r.TaskID] = r.TaskTitle
 		}
 	}
 	return titles
