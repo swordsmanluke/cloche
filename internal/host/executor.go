@@ -94,7 +94,15 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 	cmdStr := step.Config["run"]
 	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
 	cmd.Dir = e.scriptDir()
-	cmd.Env = append(os.Environ(),
+	// Build env from parent, filtering out CLOCHE_RUN_ID so it doesn't
+	// leak from the container environment when HostRunID is not set.
+	var baseEnv []string
+	for _, ev := range os.Environ() {
+		if !strings.HasPrefix(ev, "CLOCHE_RUN_ID=") {
+			baseEnv = append(baseEnv, ev)
+		}
+	}
+	cmd.Env = append(baseEnv,
 		"CLOCHE_PROJECT_DIR="+e.ProjectDir,
 		"CLOCHE_STEP_OUTPUT="+e.stepOutputPath(step.Name),
 	)
