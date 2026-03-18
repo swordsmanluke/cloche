@@ -834,18 +834,40 @@ func (s *ClocheServer) sendRunCompleted(ctx context.Context, runID string, strea
 // broadcaster. It combines snapshot + live streaming (like tail -f).
 func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rpcgrpc.ServerStreamingServer[pb.LogEntry], limit int) error {
 	// Subscribe first so we don't miss lines written between read and subscribe.
-	sub := s.logBroadcast.Subscribe(runID)
+	// SubscribeWithHistory returns all previously published lines, giving
+	// callers a gap-free view from the start of the run.
+	sub, history := s.logBroadcast.SubscribeWithHistory(runID)
 	defer s.logBroadcast.Unsubscribe(runID, sub)
 
-	// Send existing full.log content if available.
-	fullLogPath := filepath.Join(run.ProjectDir, ".cloche", runID, "output", "full.log")
-	if data, err := os.ReadFile(fullLogPath); err == nil && len(data) > 0 {
-		msg := applyLimit(string(data), limit)
-		if err := stream.Send(&pb.LogEntry{
-			Type:    "full_log",
-			Message: msg,
-		}); err != nil {
-			return err
+	if len(history) > 0 {
+		// Send historical lines so the caller sees output from before this
+		// connection, including step_name for per-step routing.
+		start := 0
+		if limit > 0 && len(history) > limit {
+			start = len(history) - limit
+		}
+		for _, line := range history[start:] {
+			if err := stream.Send(&pb.LogEntry{
+				Type:      "log",
+				StepName:  line.StepName,
+				Message:   line.Content,
+				Timestamp: line.Timestamp,
+			}); err != nil {
+				return err
+			}
+		}
+	} else {
+		// Fallback: broadcaster has no history (e.g. daemon restarted
+		// mid-run). Send existing full.log content if available.
+		fullLogPath := filepath.Join(run.ProjectDir, ".cloche", runID, "output", "full.log")
+		if data, err := os.ReadFile(fullLogPath); err == nil && len(data) > 0 {
+			msg := applyLimit(string(data), limit)
+			if err := stream.Send(&pb.LogEntry{
+				Type:    "full_log",
+				Message: msg,
+			}); err != nil {
+				return err
+			}
 		}
 	}
 

@@ -1116,8 +1116,20 @@ func (h *Handler) handleAPIStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sub := h.logBroadcast.Subscribe(id)
+	sub, history := h.logBroadcast.SubscribeWithHistory(id)
 	defer h.logBroadcast.Unsubscribe(id, sub)
+
+	// Send historical lines first so the frontend can populate step buffers
+	// for steps that already completed before this SSE connection opened.
+	for _, line := range history {
+		line = parseLLMLogLine(line)
+		if line.Type == "" {
+			continue
+		}
+		data, _ := json.Marshal(line)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+	}
+	flusher.Flush()
 
 	ctx := r.Context()
 	for {

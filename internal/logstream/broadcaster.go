@@ -37,6 +37,7 @@ type Broadcaster struct {
 
 type runBroadcast struct {
 	subscribers []*Subscriber
+	history     []LogLine
 	done        bool
 }
 
@@ -82,6 +83,32 @@ func (b *Broadcaster) Subscribe(runID string) *Subscriber {
 	return sub
 }
 
+// SubscribeWithHistory registers a subscriber and returns a snapshot of all
+// lines published so far. The snapshot and channel are gap-free: history
+// contains everything before the subscription point, and the channel
+// receives everything after. No duplicates.
+func (b *Broadcaster) SubscribeWithHistory(runID string) (*Subscriber, []LogLine) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	rb, ok := b.runs[runID]
+	if !ok {
+		rb = &runBroadcast{}
+		b.runs[runID] = rb
+	}
+
+	history := make([]LogLine, len(rb.history))
+	copy(history, rb.history)
+
+	sub := newSubscriber(256)
+	if rb.done {
+		sub.close()
+		return sub, history
+	}
+	rb.subscribers = append(rb.subscribers, sub)
+	return sub, history
+}
+
 // Unsubscribe removes a subscriber. Safe to call multiple times.
 func (b *Broadcaster) Unsubscribe(runID string, sub *Subscriber) {
 	b.mu.Lock()
@@ -112,6 +139,8 @@ func (b *Broadcaster) Publish(runID string, line LogLine) {
 		return
 	}
 
+	rb.history = append(rb.history, line)
+
 	for _, sub := range rb.subscribers {
 		select {
 		case sub.ch <- line:
@@ -137,6 +166,7 @@ func (b *Broadcaster) Finish(runID string) {
 		sub.close()
 	}
 	rb.subscribers = nil
+	rb.history = nil // free memory; completed runs serve from full.log
 }
 
 // IsActive reports whether the given run has an active broadcast (not finished).
