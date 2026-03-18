@@ -1646,6 +1646,67 @@ func TestRunner_ExtraEnv_Propagated(t *testing.T) {
 	assert.Contains(t, string(data), "OUTCOME=succeeded")
 }
 
+func TestRunner_ExtraEnv_RestoredOnResume(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	hostCloche := `workflow "finalize" {
+  host {}
+
+  step route {
+    run     = "echo routed"
+    results = [success, fail]
+  }
+  step merge {
+    run     = "echo RUN=$CLOCHE_MAIN_RUN_ID"
+    results = [success, fail]
+  }
+  route:success -> merge
+  route:fail    -> abort
+  merge:success -> done
+  merge:fail    -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	runner := &Runner{
+		Dispatcher: &fakeDispatcher{runID: "test-run"},
+		Store:      store,
+		ExtraEnv:   []string{"CLOCHE_MAIN_RUN_ID=develop-original-branch"},
+	}
+
+	// Run the workflow — it succeeds and persists ExtraEnv to context.json
+	result, err := runner.RunNamed(context.Background(), tmpDir, "finalize")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, result.State)
+
+	// Simulate a failed run for resume: change state and record step results
+	run, err := store.GetRun(context.Background(), result.RunID)
+	require.NoError(t, err)
+	run.State = domain.RunStateFailed
+	run.StepExecutions = []*domain.StepExecution{
+		{StepName: "route", Result: "success"},
+		{StepName: "merge", Result: "fail"},
+	}
+	require.NoError(t, store.UpdateRun(context.Background(), run))
+
+	// Resume from merge with NO ExtraEnv on the runner — it should restore from context
+	resumeRunner := &Runner{
+		Dispatcher: &fakeDispatcher{runID: "test-run-2"},
+		Store:      store,
+	}
+
+	resumeResult, err := resumeRunner.ResumeRun(context.Background(), run, "merge")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, resumeResult.State)
+
+	// Verify the merge step got CLOCHE_MAIN_RUN_ID from restored ExtraEnv
+	data, err := os.ReadFile(filepath.Join(resumeResult.OutputDir, "merge.out"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "RUN=develop-original-branch")
+}
+
 // --- ReadListTasksOutput tests ---
 
 func TestReadListTasksOutput_Basic(t *testing.T) {

@@ -15,6 +15,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/cloche-dev/cloche/internal/runcontext"
 )
 
 // Ensure hostStatusHandler implements engine.StatusHandler.
@@ -88,6 +89,9 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		}
 		hostRun.Start()
 		_ = r.Store.UpdateRun(ctx, hostRun)
+
+		// Persist ExtraEnv so resume can restore it (e.g. CLOCHE_MAIN_RUN_ID).
+		saveExtraEnv(projectDir, orchRunID, r.ExtraEnv)
 	}
 
 	executor := &Executor{
@@ -202,6 +206,13 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 
 	log.Printf("host workflow: resuming %q from step %q for project %s (run %s)", wf.Name, resumeFrom, run.ProjectDir, run.ID)
 
+	// Restore ExtraEnv from the original run's context so that env vars like
+	// CLOCHE_MAIN_RUN_ID are available to re-executed steps.
+	extraEnv := r.ExtraEnv
+	if len(extraEnv) == 0 {
+		extraEnv = loadExtraEnv(run.ProjectDir, run.ID)
+	}
+
 	// Reset run state
 	run.State = domain.RunStateRunning
 	run.ErrorMessage = ""
@@ -220,7 +231,7 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 		Wires:      wf.Wiring,
 		HostRunID:  run.ID,
 		TaskID:     r.TaskID,
-		ExtraEnv:   r.ExtraEnv,
+		ExtraEnv:   extraEnv,
 	}
 
 	// Configure agent from workflow-level host config
@@ -362,6 +373,27 @@ func RunListTasksWorkflow(ctx context.Context, runner *Runner, projectDir string
 		return nil, result, err
 	}
 	return tasks, result, nil
+}
+
+const extraEnvContextKey = "extra_env"
+
+// saveExtraEnv persists the runner's ExtraEnv into the run's context.json so
+// that resume can restore env vars like CLOCHE_MAIN_RUN_ID.
+func saveExtraEnv(projectDir, runID string, env []string) {
+	if len(env) == 0 {
+		return
+	}
+	joined := strings.Join(env, "\n")
+	_ = runcontext.Set(projectDir, runID, extraEnvContextKey, joined)
+}
+
+// loadExtraEnv restores ExtraEnv from the run's context.json.
+func loadExtraEnv(projectDir, runID string) []string {
+	val, ok, err := runcontext.Get(projectDir, runID, extraEnvContextKey)
+	if err != nil || !ok || val == "" {
+		return nil
+	}
+	return strings.Split(val, "\n")
 }
 
 // findHostWorkflow searches all .cloche files in a project for a host workflow
