@@ -2932,7 +2932,11 @@ func TestResumeTarget_TaskID_PrefersHostRun(t *testing.T) {
 	// If we got a "no container runtime" error instead, the container run
 	// was incorrectly selected.
 	require.NoError(t, err, "should have picked host run (resumeHostRun returns success, not error)")
-	assert.Equal(t, hostRun.ID, resp.RunId, "response should carry the host run ID")
+	// A new run is created for the new attempt; the returned ID differs from
+	// the original host run's ID.
+	assert.NotEmpty(t, resp.RunId, "response should carry a run ID")
+	assert.NotEqual(t, hostRun.ID, resp.RunId, "resume should create a new run, not reuse the old one")
+	assert.NotEmpty(t, resp.AttemptId, "response should carry the new attempt ID")
 }
 
 // TestResumeTarget_FailResultIsResumable verifies that a run where a step
@@ -2985,4 +2989,120 @@ func TestResumeTarget_FailResultIsResumable(t *testing.T) {
 		"'fail' wired result should be treated as resumable")
 	assert.Contains(t, err.Error(), "no container runtime",
 		"expected to reach resumeContainerRun")
+}
+
+// TestResume_CreatesNewAttempt_HostRun verifies that resuming a failed host run
+// creates a new Attempt with PreviousAttemptID pointing to the old attempt, and
+// returns a new run ID rather than mutating the old run.
+func TestResume_CreatesNewAttempt_HostRun(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	taskID := "user-aa11"
+	oldAttemptID := "aa11"
+
+	// Save task and failed attempt.
+	require.NoError(t, store.SaveTask(ctx, &domain.Task{
+		ID:         taskID,
+		Title:      "test task",
+		ProjectDir: "/proj",
+		CreatedAt:  time.Now(),
+	}))
+	oldAttempt := &domain.Attempt{
+		ID:        oldAttemptID,
+		TaskID:    taskID,
+		StartedAt: time.Now().Add(-time.Minute),
+		Result:    domain.AttemptResultFailed,
+	}
+	require.NoError(t, store.SaveAttempt(ctx, oldAttempt))
+
+	// Failed host run.
+	hostRun := domain.NewRun(domain.GenerateRunID("main", oldAttemptID), "main")
+	hostRun.TaskID = taskID
+	hostRun.AttemptID = oldAttemptID
+	hostRun.IsHost = true
+	hostRun.State = domain.RunStateFailed
+	hostRun.StartedAt = time.Now().Add(-time.Minute)
+	hostRun.CompletedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, hostRun))
+
+	// One failed step capture.
+	require.NoError(t, store.SaveCapture(ctx, hostRun.ID, &domain.StepExecution{
+		StepName:    "build",
+		Result:      "fail",
+		CompletedAt: time.Now(),
+	}))
+
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+	srv.SetTaskStore(store)
+	srv.SetAttemptStore(store)
+
+	md := metadata.Pairs("x-cloche-resume-run-id", hostRun.ID)
+	resumeCtx := metadata.NewIncomingContext(ctx, md)
+	resp, err := srv.RunWorkflow(resumeCtx, &pb.RunWorkflowRequest{})
+	require.NoError(t, err)
+
+	// Response carries the new run ID and new attempt ID.
+	assert.NotEmpty(t, resp.RunId)
+	assert.NotEqual(t, hostRun.ID, resp.RunId, "resume should create a new run ID")
+	assert.NotEmpty(t, resp.AttemptId)
+	assert.NotEqual(t, oldAttemptID, resp.AttemptId, "resume should create a new attempt ID")
+
+	// Old run remains failed (not mutated).
+	oldRunFetched, err := store.GetRunByAttempt(ctx, oldAttemptID, hostRun.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateFailed, oldRunFetched.State, "old run must stay failed")
+
+	// New attempt has PreviousAttemptID linking back to the old attempt.
+	newAttempts, err := store.ListAttempts(ctx, taskID)
+	require.NoError(t, err)
+	require.Len(t, newAttempts, 2, "task should now have two attempts")
+	newAttempt := newAttempts[1] // second attempt (ordered by started_at ASC)
+	assert.Equal(t, resp.AttemptId, newAttempt.ID)
+	assert.Equal(t, oldAttemptID, newAttempt.PreviousAttemptID, "new attempt must reference the old one")
+}
+
+// TestResume_PreviousAttemptID_Persists verifies that SaveAttempt and GetAttempt
+// correctly round-trip the PreviousAttemptID field.
+func TestResume_PreviousAttemptID_Persists(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	require.NoError(t, store.SaveTask(ctx, &domain.Task{
+		ID:        "task-prev",
+		CreatedAt: time.Now(),
+	}))
+
+	first := &domain.Attempt{
+		ID:        "aaaa",
+		TaskID:    "task-prev",
+		StartedAt: time.Now().Add(-time.Minute),
+		Result:    domain.AttemptResultFailed,
+	}
+	require.NoError(t, store.SaveAttempt(ctx, first))
+
+	second := &domain.Attempt{
+		ID:                "bbbb",
+		TaskID:            "task-prev",
+		PreviousAttemptID: "aaaa",
+		StartedAt:         time.Now(),
+		Result:            domain.AttemptResultRunning,
+	}
+	require.NoError(t, store.SaveAttempt(ctx, second))
+
+	got, err := store.GetAttempt(ctx, "bbbb")
+	require.NoError(t, err)
+	assert.Equal(t, "aaaa", got.PreviousAttemptID)
+
+	listed, err := store.ListAttempts(ctx, "task-prev")
+	require.NoError(t, err)
+	require.Len(t, listed, 2)
+	assert.Equal(t, "aaaa", listed[1].PreviousAttemptID)
+	assert.Equal(t, "", listed[0].PreviousAttemptID, "first attempt has no previous")
 }

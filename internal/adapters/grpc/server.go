@@ -436,24 +436,51 @@ func (s *ClocheServer) resumeRun(ctx context.Context, runID, stepName string) (*
 	return s.resumeContainerRun(ctx, run, stepName)
 }
 
-// resumeHostRun resumes a failed host workflow run.
+// createResumeAttempt creates a new Attempt that records lineage back to the
+// previous attempt. If the attempt store is not configured, the attempt object
+// is returned without being persisted (non-fatal).
+func (s *ClocheServer) createResumeAttempt(ctx context.Context, oldRun *domain.Run) *domain.Attempt {
+	newAttemptID := domain.GenerateAttemptID()
+	attempt := &domain.Attempt{
+		ID:                newAttemptID,
+		TaskID:            oldRun.TaskID,
+		PreviousAttemptID: oldRun.AttemptID,
+		StartedAt:         time.Now(),
+		Result:            domain.AttemptResultRunning,
+	}
+	if s.attemptStore != nil && oldRun.TaskID != "" {
+		if err := s.attemptStore.SaveAttempt(ctx, attempt); err != nil {
+			log.Printf("server: failed to save resume attempt for task %s: %v", oldRun.TaskID, err)
+		}
+	}
+	return attempt
+}
+
+// resumeHostRun creates a new attempt and run for resuming a failed host workflow.
+// The old run is left in its failed state for lineage tracing.
 func (s *ClocheServer) resumeHostRun(ctx context.Context, run *domain.Run, stepName string) (*pb.RunWorkflowResponse, error) {
+	newAttempt := s.createResumeAttempt(ctx, run)
+	newRunID := domain.GenerateRunID(run.WorkflowName, newAttempt.ID)
+
 	runner := &host.Runner{
 		Dispatcher:   s,
 		Store:        s.store,
 		Captures:     s.captures,
 		LogBroadcast: s.logBroadcast,
 		TaskID:       run.TaskID,
+		AttemptID:    newAttempt.ID,
 	}
 
 	go func() {
-		runner.ResumeRun(context.Background(), run, stepName)
+		runner.ResumeRunAsNewAttempt(context.Background(), run, stepName, newRunID)
 	}()
 
-	return &pb.RunWorkflowResponse{RunId: run.ID}, nil
+	return &pb.RunWorkflowResponse{RunId: newRunID, AttemptId: newAttempt.ID}, nil
 }
 
-// resumeContainerRun resumes a failed container workflow run.
+// resumeContainerRun creates a new attempt and run for resuming a failed
+// container workflow. The committed container image captures workspace state;
+// the new run starts from that image and re-executes from the failed step.
 func (s *ClocheServer) resumeContainerRun(ctx context.Context, run *domain.Run, stepName string) (*pb.RunWorkflowResponse, error) {
 	if s.container == nil {
 		return nil, fmt.Errorf("no container runtime configured")
@@ -479,24 +506,30 @@ func (s *ClocheServer) resumeContainerRun(ctx context.Context, run *domain.Run, 
 		return nil, fmt.Errorf("committing container state: %w", err)
 	}
 
-	// Copy updated scripts and overrides from host into the committed image
-	// by starting a new container with the resume command
 	resumeCmd := []string{
 		"cloche-agent", ".cloche/" + run.WorkflowName + ".cloche",
 		"--resume-from", stepName,
 	}
 
-	// Reset run state
-	run.State = domain.RunStateRunning
-	run.ErrorMessage = ""
-	run.CompletedAt = time.Time{}
-	run.ActiveSteps = nil
-	_ = s.store.UpdateRun(ctx, run)
+	// Create a new attempt with lineage back to the previous one.
+	newAttempt := s.createResumeAttempt(ctx, run)
+	newRunID := domain.GenerateRunID(run.WorkflowName, newAttempt.ID)
+
+	// Create a new run record for the new attempt; the old run stays failed.
+	newRun := domain.NewRun(newRunID, run.WorkflowName)
+	newRun.ProjectDir = run.ProjectDir
+	newRun.TaskID = run.TaskID
+	newRun.TaskTitle = run.TaskTitle
+	newRun.AttemptID = newAttempt.ID
+	newRun.ParentRunID = run.ParentRunID
+	if err := s.store.CreateRun(ctx, newRun); err != nil {
+		return nil, fmt.Errorf("creating resume run record: %w", err)
+	}
 
 	// Start new container from committed image with resume command
-	go s.launchResumeContainer(run, imageID, resumeCmd)
+	go s.launchResumeContainer(newRun, imageID, resumeCmd)
 
-	return &pb.RunWorkflowResponse{RunId: run.ID}, nil
+	return &pb.RunWorkflowResponse{RunId: newRunID, AttemptId: newAttempt.ID}, nil
 }
 
 // launchResumeContainer starts a new container from a committed image with

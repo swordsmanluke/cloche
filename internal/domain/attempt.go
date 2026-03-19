@@ -19,11 +19,12 @@ const (
 // Attempt represents one try at completing a task. Each attempt has a short
 // generated ID (4 alphanumeric characters) that is unique within its parent task.
 type Attempt struct {
-	ID        string
-	TaskID    string
-	StartedAt time.Time
-	EndedAt   time.Time
-	Result    AttemptResult
+	ID                string
+	TaskID            string
+	StartedAt         time.Time
+	EndedAt           time.Time
+	Result            AttemptResult
+	PreviousAttemptID string // lineage: ID of the attempt this one was resumed from
 }
 
 // NewAttempt creates a new running attempt for the given task with a random ID.

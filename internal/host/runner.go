@@ -377,6 +377,182 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 	return result, nil
 }
 
+// ResumeRunAsNewAttempt resumes a failed host workflow run by creating a new
+// run record under a new attempt (r.AttemptID must be the new attempt's ID).
+// Step output files for successfully completed steps are copied from the old
+// attempt's output directory to the new one so subsequent steps can read them.
+// The old run is left in its failed state for lineage tracing.
+func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, resumeFrom, newRunID string) (*RunResult, error) {
+	wf, err := findHostWorkflow(oldRun.ProjectDir, oldRun.WorkflowName)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, ok := wf.Steps[resumeFrom]; !ok {
+		return nil, fmt.Errorf("step %q not found in workflow %q", resumeFrom, oldRun.WorkflowName)
+	}
+
+	// New attempt uses its own output directory.
+	newOutputDir := filepath.Join(oldRun.ProjectDir, ".cloche", "logs", oldRun.TaskID, r.AttemptID)
+	if err := os.MkdirAll(newOutputDir, 0755); err != nil {
+		return nil, fmt.Errorf("creating output dir: %w", err)
+	}
+
+	// Copy step output files for successfully completed steps from the old
+	// attempt's directory so downstream steps can read their predecessor outputs.
+	if oldRun.TaskID != "" && oldRun.AttemptID != "" {
+		oldOutputDir := filepath.Join(oldRun.ProjectDir, ".cloche", "logs", oldRun.TaskID, oldRun.AttemptID)
+		copySuccessfulStepOutputs(oldRun, wf, resumeFrom, oldOutputDir, newOutputDir)
+	}
+
+	log.Printf("host workflow: resuming %q as new attempt (prev run %s → new run %s) for project %s",
+		wf.Name, oldRun.ID, newRunID, oldRun.ProjectDir)
+
+	// Restore child_run_id from the DB if the context store was cleaned up.
+	if oldRun.TaskID != "" {
+		if _, ok, _ := runcontext.Get(oldRun.ProjectDir, oldRun.TaskID, "child_run_id"); !ok {
+			if children, err := r.Store.ListChildRuns(ctx, oldRun.ID); err == nil {
+				for i := len(children) - 1; i >= 0; i-- {
+					if !children[i].IsHost {
+						_ = runcontext.Set(oldRun.ProjectDir, oldRun.TaskID, "child_run_id", children[i].ID)
+						log.Printf("host workflow: restored child_run_id=%s from DB for resume", children[i].ID)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// Restore ExtraEnv from the original run's context.
+	extraEnv := r.ExtraEnv
+	if len(extraEnv) == 0 {
+		extraEnv = loadExtraEnv(oldRun.ProjectDir, oldRun.TaskID)
+	}
+
+	// Create new run record — the old run remains in its failed state.
+	hostRun := domain.NewRun(newRunID, oldRun.WorkflowName)
+	hostRun.ProjectDir = oldRun.ProjectDir
+	hostRun.IsHost = true
+	hostRun.TaskID = oldRun.TaskID
+	hostRun.TaskTitle = oldRun.TaskTitle
+	hostRun.AttemptID = r.AttemptID
+	hostRun.ParentRunID = oldRun.ParentRunID
+	if err := r.Store.CreateRun(ctx, hostRun); err != nil {
+		return nil, fmt.Errorf("creating resume run record: %w", err)
+	}
+	hostRun.Start()
+	_ = r.Store.UpdateRun(ctx, hostRun)
+
+	// Persist ExtraEnv so future resumes can restore it.
+	saveExtraEnv(oldRun.ProjectDir, oldRun.TaskID, extraEnv)
+
+	executor := &Executor{
+		ProjectDir: oldRun.ProjectDir,
+		MainDir:    MainWorktreeDir(oldRun.ProjectDir),
+		Dispatcher: r.Dispatcher,
+		Store:      r.Store,
+		OutputDir:  newOutputDir,
+		Wires:      wf.Wiring,
+		HostRunID:  newRunID,
+		TaskID:     r.TaskID,
+		AttemptID:  r.AttemptID,
+		ExtraEnv:   extraEnv,
+		ResumeStep: resumeFrom,
+	}
+
+	if cmd := wf.Config["host.agent_command"]; cmd != "" {
+		executor.AgentCommands = prompt.ParseCommands(cmd)
+	}
+	if args := wf.Config["host.agent_args"]; args != "" {
+		executor.AgentArgs = strings.Fields(args)
+	}
+
+	preloaded := buildPreloadedResults(oldRun, wf, resumeFrom)
+
+	var ulog *logstream.Writer
+	w, err := logstream.NewAtDir(newOutputDir)
+	if err != nil {
+		log.Printf("host workflow [%s]: failed to create log writer: %v", newRunID, err)
+	} else {
+		ulog = w
+	}
+
+	if r.LogBroadcast != nil {
+		r.LogBroadcast.Start(newRunID)
+	}
+
+	eng := engine.New(executor)
+	eng.SetPreloadedResults(preloaded)
+	eng.SetStatusHandler(&hostStatusHandler{
+		projectDir:   oldRun.ProjectDir,
+		orchRunID:    newRunID,
+		store:        r.Store,
+		captures:     r.Captures,
+		logBroadcast: r.LogBroadcast,
+		outputDir:    newOutputDir,
+		logWriter:    ulog,
+	})
+
+	engRun, runErr := eng.Run(ctx, wf)
+
+	if ulog != nil {
+		ulog.Close()
+	}
+
+	result := &RunResult{
+		RunID:     newRunID,
+		State:     domain.RunStateFailed,
+		OutputDir: newOutputDir,
+	}
+	if engRun != nil {
+		result.State = engRun.State
+	}
+
+	// Persist final state using the new run record.
+	hostRunFinal, _ := r.Store.GetRun(ctx, newRunID)
+	if hostRunFinal != nil {
+		if runErr != nil {
+			hostRunFinal.Fail(runErr.Error())
+		} else {
+			hostRunFinal.Complete(result.State)
+		}
+		hostRunFinal.ActiveSteps = nil
+		_ = r.Store.UpdateRun(ctx, hostRunFinal)
+	}
+
+	if r.LogBroadcast != nil {
+		r.LogBroadcast.Finish(newRunID)
+	}
+
+	if runErr != nil {
+		log.Printf("host workflow: resume of %q (new attempt) failed for %s: %v", wf.Name, oldRun.ProjectDir, runErr)
+		return result, runErr
+	}
+
+	if oldRun.TaskID != "" && result.State == domain.RunStateSucceeded {
+		_ = runcontext.Cleanup(oldRun.ProjectDir, oldRun.TaskID)
+	}
+
+	log.Printf("host workflow: resume of %q (new attempt) completed for %s with state %s", wf.Name, oldRun.ProjectDir, engRun.State)
+	return result, nil
+}
+
+// copySuccessfulStepOutputs copies step output files for steps that completed
+// successfully before the resume point from oldDir to newDir. This gives the
+// new attempt access to prior step outputs without re-executing those steps.
+func copySuccessfulStepOutputs(run *domain.Run, wf *domain.Workflow, resumeFrom, oldDir, newDir string) {
+	preloaded := buildPreloadedResults(run, wf, resumeFrom)
+	for stepName := range preloaded {
+		srcPath := filepath.Join(oldDir, stepName+".out")
+		data, err := os.ReadFile(srcPath)
+		if err != nil {
+			continue // no output file for this step (e.g. workflow steps that only write run ID)
+		}
+		dstPath := filepath.Join(newDir, stepName+".out")
+		_ = os.WriteFile(dstPath, data, 0644)
+	}
+}
+
 // buildPreloadedResults creates a map of step results for steps that completed
 // before the resume point. It walks the workflow graph from the entry step,
 // collecting results from the run's StepExecutions.

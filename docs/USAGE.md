@@ -731,6 +731,18 @@ A step is considered failed — and therefore resumable — if it produced eithe
 result (the step crashed) or a `fail` result via normal wiring (e.g. wired to `abort`).
 When resolving the resume step automatically, the earliest such step is chosen.
 
+**How resume works:** Resume creates a new Attempt (with a fresh attempt ID) rather
+than modifying the failed run. The previous attempt and its run record remain in their
+failed state for lineage tracing. The new attempt's `PreviousAttemptID` field points
+back to the old attempt. The command returns the new run ID and new attempt ID.
+
+- **Host workflows:** Successful step outputs from the previous attempt are copied into
+  the new attempt's directory. The new run executes from the resume step forward, with
+  those copied outputs available for wire output mappings.
+- **Container workflows:** The stopped container is committed to a Docker image to
+  capture the current filesystem state. A new container is launched from that image with
+  `--resume-from <step>`, re-executing from the failed step with workspace state intact.
+
 **Step-specific resume behavior:**
 
 | Step type | Behavior |

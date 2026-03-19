@@ -1,10 +1,15 @@
 package host
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBuildPreloadedResults_LinearWorkflow(t *testing.T) {
@@ -119,6 +124,128 @@ func TestBuildPreloadedResults_SkipsErrorResults(t *testing.T) {
 	// Resume from build: nothing should be preloaded because build had "error"
 	preloaded := buildPreloadedResults(run, wf, "build")
 	assert.Empty(t, preloaded)
+}
+
+func TestCopySuccessfulStepOutputs(t *testing.T) {
+	oldDir := t.TempDir()
+	newDir := t.TempDir()
+
+	wf := &domain.Workflow{
+		Name: "test",
+		Steps: map[string]*domain.Step{
+			"prep":  {Name: "prep", Type: domain.StepTypeScript, Results: []string{"success"}},
+			"build": {Name: "build", Type: domain.StepTypeScript, Results: []string{"success", "fail"}},
+			"test":  {Name: "test", Type: domain.StepTypeScript, Results: []string{"pass"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "prep", Result: "success", To: "build"},
+			{From: "build", Result: "success", To: "test"},
+			{From: "build", Result: "fail", To: domain.StepAbort},
+			{From: "test", Result: "pass", To: domain.StepDone},
+		},
+		EntryStep: "prep",
+	}
+
+	run := &domain.Run{
+		StepExecutions: []*domain.StepExecution{
+			{StepName: "prep", Result: "success"},
+			{StepName: "build", Result: "fail"},
+		},
+	}
+
+	// Write output files for completed steps in the old dir.
+	require.NoError(t, os.WriteFile(filepath.Join(oldDir, "prep.out"), []byte("prep-output"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(oldDir, "build.out"), []byte("build-output"), 0644))
+
+	// Resume from "build": only "prep" should be copied (not "build").
+	copySuccessfulStepOutputs(run, wf, "build", oldDir, newDir)
+
+	prepData, err := os.ReadFile(filepath.Join(newDir, "prep.out"))
+	require.NoError(t, err)
+	assert.Equal(t, "prep-output", string(prepData))
+
+	_, err = os.ReadFile(filepath.Join(newDir, "build.out"))
+	assert.True(t, os.IsNotExist(err), "build.out should not be copied (it's the resume point)")
+}
+
+func TestResumeRunAsNewAttempt_CreatesNewRun(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write a minimal host workflow using the correct DSL syntax.
+	clocheDir := filepath.Join(dir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	workflowContent := `workflow "main" {
+  host {}
+
+  step build {
+    run     = "echo done"
+    results = [success, fail]
+  }
+
+  step test {
+    run     = "echo done"
+    results = [success]
+  }
+
+  build:success -> test
+  build:fail    -> abort
+  test:success  -> done
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(workflowContent), 0644))
+
+	store := &fakeStore{runs: make(map[string]*domain.Run)}
+
+	oldAttemptID := "aa11"
+	newAttemptID := "bb22"
+	taskID := "user-aa11"
+
+	// Create old attempt's output dir with step output for "build".
+	oldOutputDir := filepath.Join(dir, ".cloche", "logs", taskID, oldAttemptID)
+	require.NoError(t, os.MkdirAll(oldOutputDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(oldOutputDir, "build.out"), []byte("build ok"), 0644))
+
+	oldRun := domain.NewRun(domain.GenerateRunID("main", oldAttemptID), "main")
+	oldRun.ProjectDir = dir
+	oldRun.TaskID = taskID
+	oldRun.AttemptID = oldAttemptID
+	oldRun.IsHost = true
+	oldRun.State = domain.RunStateFailed
+	oldRun.StartedAt = time.Now().Add(-time.Minute)
+	oldRun.CompletedAt = time.Now()
+	oldRun.StepExecutions = []*domain.StepExecution{
+		{StepName: "build", Result: "success"},
+		{StepName: "test", Result: "fail"},
+	}
+	require.NoError(t, store.CreateRun(context.Background(), oldRun))
+
+	newRunID := domain.GenerateRunID("main", newAttemptID)
+
+	runner := &Runner{
+		Store:    store,
+		TaskID:   taskID,
+		AttemptID: newAttemptID,
+	}
+
+	result, err := runner.ResumeRunAsNewAttempt(context.Background(), oldRun, "test", newRunID)
+	require.NoError(t, err)
+
+	// Old run must remain failed.
+	assert.Equal(t, domain.RunStateFailed, oldRun.State, "old run must stay failed")
+
+	// New run must exist in the store.
+	newRun, err := store.GetRun(context.Background(), newRunID)
+	require.NoError(t, err)
+	assert.Equal(t, newAttemptID, newRun.AttemptID)
+	assert.Equal(t, taskID, newRun.TaskID)
+
+	// Result should indicate the run completed (test script echos "done" = success).
+	assert.Equal(t, domain.RunStateSucceeded, result.State)
+
+	// New output dir must exist and contain build.out copied from old attempt.
+	newOutputDir := filepath.Join(dir, ".cloche", "logs", taskID, newAttemptID)
+	buildOut, err := os.ReadFile(filepath.Join(newOutputDir, "build.out"))
+	require.NoError(t, err)
+	assert.Equal(t, "build ok", string(buildOut), "build.out should be copied from previous attempt")
 }
 
 func TestFindFirstFailedStep(t *testing.T) {

@@ -132,6 +132,10 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("v3 runs composite key migration: %w", err)
 	}
 
+	// v4: Add previous_attempt_id to attempts for resume lineage tracing.
+	// Idempotent — ignored if column already exists.
+	db.Exec(`ALTER TABLE attempts ADD COLUMN previous_attempt_id TEXT NOT NULL DEFAULT ''`)
+
 	_, errAL := db.Exec(`CREATE TABLE IF NOT EXISTS attempt_logs (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		attempt_id TEXT NOT NULL,
@@ -660,21 +664,22 @@ func (s *Store) ListTasks(ctx context.Context, projectDir string) ([]*domain.Tas
 
 func (s *Store) SaveAttempt(ctx context.Context, attempt *domain.Attempt) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT OR REPLACE INTO attempts (id, task_id, started_at, ended_at, result, project_dir)
-		 VALUES (?, ?, ?, ?, ?, (SELECT project_dir FROM tasks WHERE id = ?))`,
+		`INSERT OR REPLACE INTO attempts (id, task_id, started_at, ended_at, result, project_dir, previous_attempt_id)
+		 VALUES (?, ?, ?, ?, ?, (SELECT project_dir FROM tasks WHERE id = ?), ?)`,
 		attempt.ID, attempt.TaskID, formatTime(attempt.StartedAt),
 		nullIfEmptyTime(attempt.EndedAt), string(attempt.Result), attempt.TaskID,
+		attempt.PreviousAttemptID,
 	)
 	return err
 }
 
 func (s *Store) GetAttempt(ctx context.Context, id string) (*domain.Attempt, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, task_id, started_at, COALESCE(ended_at,''), result FROM attempts WHERE id = ?`, id)
+		`SELECT id, task_id, started_at, COALESCE(ended_at,''), result, COALESCE(previous_attempt_id,'') FROM attempts WHERE id = ?`, id)
 
 	attempt := &domain.Attempt{}
 	var startedAt, endedAt string
-	err := row.Scan(&attempt.ID, &attempt.TaskID, &startedAt, &endedAt, &attempt.Result)
+	err := row.Scan(&attempt.ID, &attempt.TaskID, &startedAt, &endedAt, &attempt.Result, &attempt.PreviousAttemptID)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("attempt %q not found", id)
 	}
@@ -688,7 +693,7 @@ func (s *Store) GetAttempt(ctx context.Context, id string) (*domain.Attempt, err
 
 func (s *Store) ListAttempts(ctx context.Context, taskID string) ([]*domain.Attempt, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, task_id, started_at, COALESCE(ended_at,''), result
+		`SELECT id, task_id, started_at, COALESCE(ended_at,''), result, COALESCE(previous_attempt_id,'')
 		 FROM attempts WHERE task_id = ? ORDER BY started_at ASC`, taskID)
 	if err != nil {
 		return nil, err
@@ -699,7 +704,7 @@ func (s *Store) ListAttempts(ctx context.Context, taskID string) ([]*domain.Atte
 	for rows.Next() {
 		attempt := &domain.Attempt{}
 		var startedAt, endedAt string
-		if err := rows.Scan(&attempt.ID, &attempt.TaskID, &startedAt, &endedAt, &attempt.Result); err != nil {
+		if err := rows.Scan(&attempt.ID, &attempt.TaskID, &startedAt, &endedAt, &attempt.Result, &attempt.PreviousAttemptID); err != nil {
 			return nil, err
 		}
 		attempt.StartedAt = parseTime(startedAt)
