@@ -1240,6 +1240,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 					Captures:     s.captures,
 					LogBroadcast: s.logBroadcast,
 					TaskID:       taskID,
+					ParentRunID:  mainRunID, // nest finalize under the main run in the UI
 					ExtraEnv: []string{
 						"CLOCHE_MAIN_RUN_ID=" + mainRunID,
 						"CLOCHE_MAIN_OUTCOME=" + mainOutcome,

@@ -624,13 +624,22 @@ func groupAndSortRuns(runs []*domain.Run, labels map[string]string, taskTitles m
 			for i, gr := range group {
 				attemptNum := len(group) - i
 				children := parentMap[gr.ID]
+				// Aggregate status from the parent run and all its children so the
+				// attempt header reflects the overall state (e.g. running if any
+				// child is still running, even after the parent itself has finished).
+				allInAttempt := append([]*domain.Run{gr}, children...)
+				attemptStatus := taskAggregateStatus(allInAttempt)
 				result = append(result, apiGroupedEntry{
 					AttemptHeader: true,
 					AttemptNum:    attemptNum,
-					AttemptStatus: string(gr.State),
+					AttemptStatus: attemptStatus,
 					AttemptTime:   formatTime(gr.StartedAt),
 					TaskID:        r.TaskID,
 				})
+				// Show the parent run (e.g. "main") as a row within the attempt
+				// so users can navigate to it directly.
+				ar := toAPIRun(gr, labels)
+				result = append(result, apiGroupedEntry{Run: &ar, IsChild: true})
 				for _, child := range children {
 					ac := toAPIRun(child, labels)
 					result = append(result, apiGroupedEntry{Run: &ac, IsChild: true})

@@ -131,10 +131,16 @@ Returns the task pipeline state for the project's orchestration loop.
 
 - `list-tasks` workflow runs are hidden from the Runs page (both server-rendered and
   JS-rendered views)
-- Runs with the same `task_id` are grouped under a task header row
-- The task header shows an aggregate status badge (active statuses running/pending outweigh terminal ones; among terminal-only runs, host runs take precedence over child container runs since the host run reflects the full attempt outcome including finalize; if no host runs exist the most recently started determines the result)
+- Runs with the same `task_id` are grouped under a task header row; within each task
+  group, top-level runs are organized into attempt blocks (one attempt per top-level run)
+- Each attempt block contains the top-level run (e.g. `main`) and all its child runs
+  (e.g. `develop`, `finalize`) — all nested as child entries under the attempt header
+- The task header status is the state of the latest attempt's top-level run
+- The attempt header status aggregates across the top-level run and all its children
+  (active statuses `running`/`pending` outweigh terminal ones)
 - The `task_id` and `task_status` fields are included in the `/api/runs` JSON response
-- Runs without a `task_id` appear ungrouped below task groups
+- Runs without a `task_id` appear ungrouped below task groups, with their children
+  nested directly under the parent run
 
 ## Panel 4: Workflow View
 

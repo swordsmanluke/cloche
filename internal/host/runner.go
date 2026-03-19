@@ -28,6 +28,7 @@ type Runner struct {
 	Captures      ports.CaptureStore       // optional: saves step captures for cloche logs
 	LogBroadcast  *logstream.Broadcaster   // optional: publishes live log lines
 	TaskID        string                   // optional task ID assigned by the daemon loop
+	ParentRunID   string                   // optional parent run ID (links this run to another in the UI)
 	ExtraEnv      []string                 // additional KEY=VALUE env vars passed to all steps
 	SkipRunRecord bool                     // when true, don't persist a run record to the store
 }
@@ -84,6 +85,7 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		hostRun.ProjectDir = projectDir
 		hostRun.IsHost = true
 		hostRun.TaskID = r.TaskID
+		hostRun.ParentRunID = r.ParentRunID
 		if err := r.Store.CreateRun(ctx, hostRun); err != nil {
 			return nil, fmt.Errorf("creating host run record: %w", err)
 		}

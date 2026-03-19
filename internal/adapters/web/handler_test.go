@@ -2329,19 +2329,23 @@ func TestRunsList_TaskGrouping(t *testing.T) {
 	var entries []apiGroupedEntry
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &entries))
 
-	// Should have: 1 task header + 2 attempt headers = 3 entries
-	// (no child runs because these top-level runs have no ParentRunID children)
-	assert.Len(t, entries, 3)
+	// Should have: 1 task header + 2×(attempt header + run row) = 5 entries.
+	// Each top-level run is an attempt and also appears as a row within that attempt.
+	assert.Len(t, entries, 5)
 
 	// First entry should be the task header
 	assert.True(t, entries[0].TaskHeader)
 	assert.Equal(t, "task-100", entries[0].TaskID)
 
-	// Remaining entries should be attempt headers
-	for _, e := range entries[1:] {
-		assert.True(t, e.AttemptHeader)
-		assert.Equal(t, "task-100", e.TaskID)
-	}
+	// Entries 1 and 3 are attempt headers; entries 2 and 4 are run rows
+	assert.True(t, entries[1].AttemptHeader)
+	assert.Equal(t, "task-100", entries[1].TaskID)
+	require.NotNil(t, entries[2].Run)
+	assert.True(t, entries[2].IsChild)
+	assert.True(t, entries[3].AttemptHeader)
+	assert.Equal(t, "task-100", entries[3].TaskID)
+	require.NotNil(t, entries[4].Run)
+	assert.True(t, entries[4].IsChild)
 }
 
 func TestRunsList_TaskGroupingTitle(t *testing.T) {
@@ -2635,4 +2639,138 @@ func TestTaskID_DefaultEmpty(t *testing.T) {
 	got, err := store.GetRun(ctx, "no-task-1")
 	require.NoError(t, err)
 	assert.Equal(t, "", got.TaskID)
+}
+
+// TestGroupAndSortRuns_ParentRunShownAsRow verifies that a top-level run
+// belonging to a task group appears as a row (not only as an AttemptHeader).
+func TestGroupAndSortRuns_ParentRunShownAsRow(t *testing.T) {
+	now := time.Now()
+	mainRun := domain.NewRun("main-1", "main")
+	mainRun.IsHost = true
+	mainRun.TaskID = "task-abc"
+	mainRun.StartedAt = now
+
+	entries := groupAndSortRuns([]*domain.Run{mainRun}, nil, nil)
+
+	// Expect: TaskHeader, AttemptHeader, main run row
+	require.Len(t, entries, 3)
+	assert.True(t, entries[0].TaskHeader)
+	assert.True(t, entries[1].AttemptHeader)
+	require.NotNil(t, entries[2].Run)
+	assert.Equal(t, "main-1", entries[2].Run.ID)
+	assert.True(t, entries[2].IsChild)
+}
+
+// TestGroupAndSortRuns_FinalizeNestedUnderMain verifies that when finalize
+// has ParentRunID pointing to the main run, all three workflows (main, develop,
+// finalize) appear nested under a single attempt block.
+func TestGroupAndSortRuns_FinalizeNestedUnderMain(t *testing.T) {
+	now := time.Now()
+
+	mainRun := domain.NewRun("main-1", "main")
+	mainRun.IsHost = true
+	mainRun.TaskID = "task-xyz"
+	mainRun.StartedAt = now
+	mainRun.Complete(domain.RunStateSucceeded)
+
+	developRun := domain.NewRun("develop-1", "develop")
+	developRun.TaskID = "task-xyz"
+	developRun.ParentRunID = "main-1"
+	developRun.StartedAt = now.Add(time.Second)
+	developRun.Complete(domain.RunStateSucceeded)
+
+	finalizeRun := domain.NewRun("finalize-1", "finalize")
+	finalizeRun.IsHost = true
+	finalizeRun.TaskID = "task-xyz"
+	finalizeRun.ParentRunID = "main-1" // linked to main by the finalizeFn
+	finalizeRun.StartedAt = now.Add(2 * time.Second)
+	finalizeRun.Complete(domain.RunStateSucceeded)
+
+	runs := []*domain.Run{mainRun, developRun, finalizeRun}
+	entries := groupAndSortRuns(runs, nil, nil)
+
+	// Expect: TaskHeader, one AttemptHeader, main row, develop row, finalize row
+	require.Len(t, entries, 5, "expected TaskHeader + AttemptHeader + 3 run rows")
+
+	assert.True(t, entries[0].TaskHeader)
+	assert.Equal(t, "task-xyz", entries[0].TaskID)
+
+	assert.True(t, entries[1].AttemptHeader)
+	assert.Equal(t, 1, entries[1].AttemptNum)
+
+	ids := []string{}
+	for _, e := range entries[2:] {
+		require.NotNil(t, e.Run)
+		assert.True(t, e.IsChild)
+		ids = append(ids, e.Run.ID)
+	}
+	assert.ElementsMatch(t, []string{"main-1", "develop-1", "finalize-1"}, ids)
+}
+
+// TestGroupAndSortRuns_AttemptStatusAggregatesChildren verifies that the
+// AttemptHeader status reflects the aggregate state of parent + all children,
+// so a running child makes the attempt appear as "running" even if the parent
+// (main) has already completed.
+func TestGroupAndSortRuns_AttemptStatusAggregatesChildren(t *testing.T) {
+	now := time.Now()
+
+	mainRun := domain.NewRun("main-agg", "main")
+	mainRun.IsHost = true
+	mainRun.TaskID = "task-agg"
+	mainRun.StartedAt = now
+	mainRun.Complete(domain.RunStateSucceeded)
+
+	// finalize is still running
+	finalizeRun := domain.NewRun("finalize-agg", "finalize")
+	finalizeRun.IsHost = true
+	finalizeRun.TaskID = "task-agg"
+	finalizeRun.ParentRunID = "main-agg"
+	finalizeRun.StartedAt = now.Add(time.Second)
+	finalizeRun.Start()
+
+	entries := groupAndSortRuns([]*domain.Run{mainRun, finalizeRun}, nil, nil)
+
+	// Find the AttemptHeader entry
+	var attemptEntry *apiGroupedEntry
+	for i := range entries {
+		if entries[i].AttemptHeader {
+			attemptEntry = &entries[i]
+			break
+		}
+	}
+	require.NotNil(t, attemptEntry)
+	// Aggregate: parent succeeded but child is running → attempt is "running"
+	assert.Equal(t, "running", attemptEntry.AttemptStatus)
+}
+
+// TestGroupAndSortRuns_MultipleAttempts verifies that two separate main runs
+// (without ParentRunID linking) produce two distinct attempt blocks.
+func TestGroupAndSortRuns_MultipleAttempts(t *testing.T) {
+	now := time.Now()
+
+	mainRun1 := domain.NewRun("main-a1", "main")
+	mainRun1.IsHost = true
+	mainRun1.TaskID = "task-multi"
+	mainRun1.StartedAt = now.Add(-time.Minute)
+	mainRun1.Complete(domain.RunStateFailed)
+
+	mainRun2 := domain.NewRun("main-a2", "main")
+	mainRun2.IsHost = true
+	mainRun2.TaskID = "task-multi"
+	mainRun2.StartedAt = now
+	mainRun2.Start()
+
+	entries := groupAndSortRuns([]*domain.Run{mainRun1, mainRun2}, nil, nil)
+
+	// Expect: TaskHeader + 2×(AttemptHeader + run row) = 5 entries
+	require.Len(t, entries, 5)
+	assert.True(t, entries[0].TaskHeader)
+	assert.True(t, entries[1].AttemptHeader)
+	assert.Equal(t, 2, entries[1].AttemptNum) // latest attempt = #2 (running, shown first)
+	assert.NotNil(t, entries[2].Run)
+	assert.Equal(t, "main-a2", entries[2].Run.ID)
+	assert.True(t, entries[3].AttemptHeader)
+	assert.Equal(t, 1, entries[3].AttemptNum)
+	assert.NotNil(t, entries[4].Run)
+	assert.Equal(t, "main-a1", entries[4].Run.ID)
 }
