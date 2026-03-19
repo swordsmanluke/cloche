@@ -38,7 +38,7 @@
         {{if .TaskHeader}}
         <tr class="run-task-header"><td colspan="9">{{.TaskID}}{{if .TaskTitle}}: {{.TaskTitle}}{{end}} <span class="badge badge-{{.TaskStatus}}">{{.TaskStatus}}</span></td></tr>
         {{else if .AttemptHeader}}
-        <tr class="run-attempt-header"><td colspan="9">Attempt #{{.AttemptNum}} <span class="badge badge-{{.AttemptStatus}}">{{.AttemptStatus}}</span> <span class="attempt-time">{{.AttemptTime}}</span></td></tr>
+        <tr class="run-attempt-header" data-attempt-key="{{.TaskID}}:{{.AttemptNum}}" data-task-id="{{.TaskID}}"><td colspan="9">Attempt #{{.AttemptNum}} <span class="badge badge-{{.AttemptStatus}}">{{.AttemptStatus}}</span> <span class="attempt-time">{{.AttemptTime}}</span></td></tr>
         {{else if .Run}}
         <tr class="{{if .IsChild}}run-child-row{{else if .IsParent}}run-parent-row{{end}}">
             <td><a href="/runs/{{.Run.ID}}">{{.Run.ID}}</a></td>
@@ -65,6 +65,9 @@
 (function() {
     var currentProject = '{{.ProjectFilter}}';
     var dirToLabel = {{jsonMap .DirToLabel}};
+
+    // Accordion state: attemptKey -> true (expanded) or false (collapsed)
+    var accordionState = {};
 
     function filterByProject(dir) {
         if (dir) {
@@ -98,6 +101,80 @@
             });
     };
 
+    // Apply accordion expand/collapse to all attempt sections in the runs table.
+    // The latest attempt per task (first attempt header encountered per task) starts
+    // expanded; all others start collapsed. User toggles are remembered across polls.
+    function applyAccordions() {
+        var tbody = document.getElementById('runs-body');
+        if (!tbody) return;
+        var rows = tbody.querySelectorAll('tr');
+
+        // First pass: find the latest attempt key per task (first attempt header per task).
+        var latestPerTask = {};
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i];
+            if (row.classList.contains('run-attempt-header') && row.dataset.attemptKey) {
+                var tid = row.dataset.taskId || '';
+                if (!latestPerTask[tid]) {
+                    latestPerTask[tid] = row.dataset.attemptKey;
+                }
+            }
+        }
+
+        // Second pass: set initial state for new keys and apply display rules.
+        var curKey = null;
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i];
+            if (row.classList.contains('run-task-header')) {
+                curKey = null;
+                continue;
+            }
+            if (row.classList.contains('run-attempt-header') && row.dataset.attemptKey) {
+                curKey = row.dataset.attemptKey;
+                var tid = row.dataset.taskId || '';
+                var isLatest = latestPerTask[tid] === curKey;
+
+                // Initialise state only once per key.
+                if (!(curKey in accordionState)) {
+                    accordionState[curKey] = isLatest;
+                }
+
+                // Insert or update the chevron button.
+                var td = row.querySelector('td');
+                if (td) {
+                    var btn = td.querySelector('.accordion-toggle');
+                    if (!btn) {
+                        btn = document.createElement('button');
+                        btn.className = 'accordion-toggle';
+                        td.insertBefore(btn, td.firstChild);
+                    }
+                    btn.textContent = accordionState[curKey] ? '\u25be' : '\u25b8';
+                    btn.title = accordionState[curKey] ? 'Collapse' : 'Expand';
+                }
+                continue;
+            }
+            // Run row: show or hide based on its attempt's state.
+            if (curKey !== null) {
+                row.style.display = accordionState[curKey] === false ? 'none' : '';
+            }
+        }
+    }
+
+    // Use event delegation so clicks work after innerHTML replacement.
+    (function() {
+        var tbody = document.getElementById('runs-body');
+        if (tbody) {
+            tbody.addEventListener('click', function(e) {
+                var row = e.target.closest('tr.run-attempt-header');
+                if (row && row.dataset.attemptKey) {
+                    var key = row.dataset.attemptKey;
+                    accordionState[key] = !accordionState[key];
+                    applyAccordions();
+                }
+            });
+        }
+    })();
+
     function poll() {
         var url;
         if (currentProject) {
@@ -128,7 +205,9 @@
                     if (entry.attempt_header) {
                         var as = entry.attempt_status || 'pending';
                         var at = entry.attempt_time || '';
-                        html += '<tr class="run-attempt-header"><td colspan="9">Attempt #' + entry.attempt_num + ' <span class="badge badge-' + as + '">' + as + '</span> <span class="attempt-time">' + escapeHtml(at) + '</span></td></tr>';
+                        var akey = escapeAttr((entry.task_id || '') + ':' + entry.attempt_num);
+                        var ataskId = escapeAttr(entry.task_id || '');
+                        html += '<tr class="run-attempt-header" data-attempt-key="' + akey + '" data-task-id="' + ataskId + '"><td colspan="9">Attempt #' + entry.attempt_num + ' <span class="badge badge-' + as + '">' + as + '</span> <span class="attempt-time">' + escapeHtml(at) + '</span></td></tr>';
                         continue;
                     }
                     var r = entry.run;
@@ -157,14 +236,23 @@
                         '</tr>';
                 }
                 tbody.innerHTML = html;
+                applyAccordions();
             })
             .catch(function() {});
     }
+
     function escapeHtml(s) {
         var d = document.createElement('div');
         d.appendChild(document.createTextNode(s));
         return d.innerHTML;
     }
+
+    function escapeAttr(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Apply accordions to the server-rendered initial HTML.
+    applyAccordions();
     setInterval(poll, 3000);
 })();
 </script>

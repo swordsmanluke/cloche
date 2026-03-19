@@ -139,6 +139,9 @@ Returns the task pipeline state for the project's orchestration loop.
 - The task header status is the state of the latest attempt's top-level run
 - The attempt header status aggregates across the top-level run and all its children
   (active statuses `running`/`pending` outweigh terminal ones)
+- Each attempt block is a collapsible accordion: the latest attempt (highest number) starts
+  expanded; all earlier attempts start collapsed. Clicking the attempt header row toggles
+  expand/collapse. Accordion state is preserved across polling updates.
 - The `task_id` and `task_status` fields are included in the `/api/runs` JSON response
 - Runs without a `task_id` appear ungrouped below task groups, with their children
   nested directly under the parent run

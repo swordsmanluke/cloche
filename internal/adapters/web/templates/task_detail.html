@@ -8,14 +8,15 @@
 
 {{if .Attempts}}
 <h2>Attempts</h2>
-{{range .Attempts}}
-<div class="attempt-block">
-    <div class="run-attempt-header">
-        Attempt #{{.AttemptNum}}
-        <span class="badge badge-{{.Status}}">{{.Status}}</span>
-        <span class="attempt-time">{{.StartedAt}}</span>
-        {{if .AttemptID}}<span class="attempt-id mono" style="margin-left:0.5rem;font-size:0.85rem;color:#888">id: {{.AttemptID}}</span>{{end}}
+{{range $i, $a := .Attempts}}
+<div class="attempt-block" data-attempt-num="{{$a.AttemptNum}}">
+    <div class="run-attempt-header attempt-block-header" style="cursor:pointer;user-select:none;">
+        <button class="accordion-toggle"></button>Attempt #{{$a.AttemptNum}}
+        <span class="badge badge-{{$a.Status}}">{{$a.Status}}</span>
+        <span class="attempt-time">{{$a.StartedAt}}</span>
+        {{if $a.AttemptID}}<span class="attempt-id mono" style="margin-left:0.5rem;font-size:0.85rem;color:#888">id: {{$a.AttemptID}}</span>{{end}}
     </div>
+    <div class="attempt-block-body">
     <table class="runs-table attempt-runs-table">
         <thead>
             <tr>
@@ -28,7 +29,7 @@
             </tr>
         </thead>
         <tbody>
-            {{range .Runs}}
+            {{range $a.Runs}}
             <tr>
                 <td><a href="/runs/{{.ID}}">{{.ID}}</a></td>
                 <td>{{.WorkflowName}}</td>
@@ -40,6 +41,7 @@
             {{end}}
         </tbody>
     </table>
+    </div>
 </div>
 {{end}}
 {{else}}
@@ -48,4 +50,32 @@
 {{end}}
 
 {{define "scripts"}}
+<script>
+(function() {
+    var blocks = document.querySelectorAll('.attempt-block');
+    // Attempts are ordered latest-first (highest AttemptNum first).
+    // The first block is the latest; all others start collapsed.
+    blocks.forEach(function(block, idx) {
+        var header = block.querySelector('.attempt-block-header');
+        var body = block.querySelector('.attempt-block-body');
+        var btn = block.querySelector('.accordion-toggle');
+        var expanded = idx === 0;
+
+        function setExpanded(val) {
+            expanded = val;
+            body.style.display = expanded ? '' : 'none';
+            if (btn) {
+                btn.textContent = expanded ? '\u25be' : '\u25b8';
+                btn.title = expanded ? 'Collapse' : 'Expand';
+            }
+        }
+
+        setExpanded(expanded);
+
+        header.addEventListener('click', function() {
+            setExpanded(!expanded);
+        });
+    });
+})();
+</script>
 {{end}}
