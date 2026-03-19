@@ -246,19 +246,19 @@ Examples:
   cloche list --runs
 `,
 
-	"stop": `cloche stop — Stop a running workflow
+	"stop": `cloche stop — Stop all active runs for a task
 
-Sends a stop signal to a running workflow. The container is terminated
-and the run state transitions to "cancelled".
+Sends a stop signal to all active runs belonging to the given task.
+Each container is terminated and its run state transitions to "cancelled".
 
 Usage:
-  cloche stop <run-id>
+  cloche stop <task-id>
 
 Arguments:
-  <run-id>    The run identifier.
+  <task-id>    The task identifier.
 
 Examples:
-  cloche stop abc123
+  cloche stop TASK-42
 `,
 
 	"delete": `cloche delete — Delete a retained container

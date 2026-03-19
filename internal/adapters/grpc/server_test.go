@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/logstream"
+	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -2681,4 +2683,136 @@ func TestServer_StreamLogs_ByColonDelimitedId(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "should find full_log entry with colon log content")
+}
+
+// mockStopRuntime tracks which container IDs were stopped.
+type mockStopRuntime struct {
+	stopped []string
+}
+
+func (m *mockStopRuntime) Start(_ context.Context, _ ports.ContainerConfig) (string, error) {
+	return "cid-new", nil
+}
+
+func (m *mockStopRuntime) Stop(_ context.Context, containerID string) error {
+	m.stopped = append(m.stopped, containerID)
+	return nil
+}
+
+func (m *mockStopRuntime) AttachOutput(_ context.Context, _ string) (io.ReadCloser, error) {
+	return nil, nil
+}
+
+func (m *mockStopRuntime) Wait(_ context.Context, _ string) (int, error) { return 0, nil }
+
+func (m *mockStopRuntime) CopyFrom(_ context.Context, _, _, _ string) error { return nil }
+
+func (m *mockStopRuntime) Logs(_ context.Context, _ string) (string, error) { return "", nil }
+
+func (m *mockStopRuntime) Remove(_ context.Context, _ string) error { return nil }
+
+func (m *mockStopRuntime) Inspect(_ context.Context, _ string) (*ports.ContainerStatus, error) {
+	return &ports.ContainerStatus{}, nil
+}
+
+func TestServer_StopRun_StopsAllActiveRunsForTask(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create two active runs associated with the same task.
+	run1 := domain.NewRun("run-stop-1", "develop")
+	run1.TaskID = "TASK-STOP"
+	run1.Start()
+	require.NoError(t, store.CreateRun(ctx, run1))
+
+	run2 := domain.NewRun("run-stop-2", "develop")
+	run2.TaskID = "TASK-STOP"
+	run2.Start()
+	require.NoError(t, store.CreateRun(ctx, run2))
+
+	// Create a completed run for the same task — should not be stopped.
+	runDone := domain.NewRun("run-stop-done", "develop")
+	runDone.TaskID = "TASK-STOP"
+	runDone.Start()
+	runDone.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, runDone))
+
+	rt := &mockStopRuntime{}
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+	srv.AddActiveRun("run-stop-1", "container-1")
+	srv.AddActiveRun("run-stop-2", "container-2")
+
+	_, err = srv.StopRun(ctx, &pb.StopRunRequest{TaskId: "TASK-STOP"})
+	require.NoError(t, err)
+
+	// Both containers should have been stopped.
+	assert.ElementsMatch(t, []string{"container-1", "container-2"}, rt.stopped)
+
+	// Both runs should now be cancelled in the store.
+	r1, err := store.GetRun(ctx, "run-stop-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateCancelled, r1.State)
+
+	r2, err := store.GetRun(ctx, "run-stop-2")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateCancelled, r2.State)
+
+	// Completed run should remain succeeded.
+	rDone, err := store.GetRun(ctx, "run-stop-done")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, rDone.State)
+}
+
+func TestServer_StopRun_ErrorWhenNoActiveRuns(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	rt := &mockStopRuntime{}
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	_, err = srv.StopRun(ctx, &pb.StopRunRequest{TaskId: "TASK-MISSING"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no active runs")
+}
+
+func TestServer_StopRun_ErrorWhenTaskIdEmpty(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	rt := &mockStopRuntime{}
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	_, err = srv.StopRun(context.Background(), &pb.StopRunRequest{TaskId: ""})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "task_id is required")
+}
+
+func TestServer_StopRun_AlreadyCompletedRunsNotStopped(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Only a cancelled run for this task.
+	runCancelled := domain.NewRun("run-already-done", "develop")
+	runCancelled.TaskID = "TASK-DONE"
+	runCancelled.Start()
+	runCancelled.Complete(domain.RunStateCancelled)
+	require.NoError(t, store.CreateRun(ctx, runCancelled))
+
+	rt := &mockStopRuntime{}
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	_, err = srv.StopRun(ctx, &pb.StopRunRequest{TaskId: "TASK-DONE"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no active runs")
+	assert.Empty(t, rt.stopped)
 }

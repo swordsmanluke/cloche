@@ -590,7 +590,7 @@ func (x *LogEntry) GetTimestamp() string {
 
 type StopRunRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -625,9 +625,9 @@ func (*StopRunRequest) Descriptor() ([]byte, []int) {
 	return file_cloche_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *StopRunRequest) GetRunId() string {
+func (x *StopRunRequest) GetTaskId() string {
 	if x != nil {
-		return x.RunId
+		return x.TaskId
 	}
 	return ""
 }
@@ -2290,9 +2290,9 @@ const file_cloche_proto_rawDesc = "" +
 	"\tstep_name\x18\x02 \x01(\tR\bstepName\x12\x16\n" +
 	"\x06result\x18\x03 \x01(\tR\x06result\x12\x18\n" +
 	"\amessage\x18\x04 \x01(\tR\amessage\x12\x1c\n" +
-	"\ttimestamp\x18\x05 \x01(\tR\ttimestamp\"'\n" +
-	"\x0eStopRunRequest\x12\x15\n" +
-	"\x06run_id\x18\x01 \x01(\tR\x05runId\"\x11\n" +
+	"\ttimestamp\x18\x05 \x01(\tR\ttimestamp\")\n" +
+	"\x0eStopRunRequest\x12\x17\n" +
+	"\x07task_id\x18\x01 \x01(\tR\x06taskId\"\x11\n" +
 	"\x0fStopRunResponse\"'\n" +
 	"\x0fShutdownRequest\x12\x14\n" +
 	"\x05force\x18\x01 \x01(\bR\x05force\"\x12\n" +

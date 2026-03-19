@@ -104,8 +104,11 @@ message LogEntry {
   string timestamp = 5;
 }
 
+// StopRunRequest stops all active runs for the given task.
+// Note: the field is named task_id; the wire field number 1 is preserved
+// for compatibility with older clients that sent run_id.
 message StopRunRequest {
-  string run_id = 1;
+  string task_id = 1;
 }
 
 message StopRunResponse {}

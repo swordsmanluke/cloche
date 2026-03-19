@@ -924,7 +924,7 @@ func (s *ClocheServer) Complete(ctx context.Context, req *pb.CompleteRequest) (*
 		}
 
 	case "stop":
-		completions = s.runningIDs(ctx, projectDir)
+		completions = s.runningTaskIDs(ctx, projectDir)
 
 	case "delete":
 		completions = s.recentRunIDs(ctx, projectDir)
@@ -1037,6 +1037,24 @@ func (s *ClocheServer) runningIDs(ctx context.Context, projectDir string) []stri
 	var ids []string
 	for _, r := range runs {
 		ids = append(ids, r.ID)
+	}
+	return ids
+}
+
+// runningTaskIDs returns task IDs of tasks that have running or pending runs.
+func (s *ClocheServer) runningTaskIDs(ctx context.Context, projectDir string) []string {
+	filter := domain.RunListFilter{ProjectDir: projectDir, State: domain.RunStateRunning}
+	runs, err := s.store.ListRunsFiltered(ctx, filter)
+	if err != nil {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var ids []string
+	for _, r := range runs {
+		if r.TaskID != "" && !seen[r.TaskID] {
+			seen[r.TaskID] = true
+			ids = append(ids, r.TaskID)
+		}
 	}
 	return ids
 }
@@ -1660,23 +1678,40 @@ func (s *ClocheServer) streamLiveLogs(runID string, stream rpcgrpc.ServerStreami
 }
 
 func (s *ClocheServer) StopRun(ctx context.Context, req *pb.StopRunRequest) (*pb.StopRunResponse, error) {
-	s.mu.Lock()
-	containerID, ok := s.runIDs[req.RunId]
-	s.mu.Unlock()
-
-	if !ok {
-		return nil, fmt.Errorf("run %q not found or already completed", req.RunId)
+	taskID := req.TaskId
+	if taskID == "" {
+		return nil, fmt.Errorf("task_id is required")
 	}
 
-	if err := s.container.Stop(ctx, containerID); err != nil {
-		return nil, fmt.Errorf("stopping run: %w", err)
+	// Find all active runs for this task.
+	activeRuns, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{TaskID: taskID})
+	if err != nil {
+		return nil, fmt.Errorf("listing runs for task %q: %w", taskID, err)
 	}
 
-	// Mark as cancelled in store
-	run, err := s.store.GetRun(ctx, req.RunId)
-	if err == nil {
+	var stopped int
+	for _, run := range activeRuns {
+		if run.State != domain.RunStatePending && run.State != domain.RunStateRunning {
+			continue
+		}
+
+		s.mu.Lock()
+		containerID, ok := s.runIDs[run.ID]
+		s.mu.Unlock()
+
+		if ok {
+			if stopErr := s.container.Stop(ctx, containerID); stopErr != nil {
+				log.Printf("server: stop task %s: stopping container for run %s: %v", taskID, run.ID, stopErr)
+			}
+		}
+
 		run.Complete(domain.RunStateCancelled)
 		_ = s.store.UpdateRun(ctx, run)
+		stopped++
+	}
+
+	if stopped == 0 {
+		return nil, fmt.Errorf("task %q has no active runs", taskID)
 	}
 
 	return &pb.StopRunResponse{}, nil

@@ -674,16 +674,16 @@ func cmdLogs(client pb.ClocheServiceClient, args []string) {
 
 func cmdStop(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "usage: cloche stop <run-id>\n")
+		fmt.Fprintf(os.Stderr, "usage: cloche stop <task-id>\n")
 		os.Exit(1)
 	}
 
-	_, err := client.StopRun(ctx, &pb.StopRunRequest{RunId: args[0]})
+	_, err := client.StopRun(ctx, &pb.StopRunRequest{TaskId: args[0]})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Stopped run: %s\n", args[0])
+	fmt.Printf("Stopped task: %s\n", args[0])
 }
 
 func cmdDelete(ctx context.Context, client pb.ClocheServiceClient, args []string) {

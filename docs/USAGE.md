@@ -776,8 +776,10 @@ With a single run ID, prints step-level progress. With multiple run IDs, display
 ### `cloche stop`
 
 ```
-cloche stop <run-id>
+cloche stop <task-id>
 ```
+
+Stop all active runs for a task. Each container is terminated and its run state transitions to "cancelled".
 
 ### `cloche delete`
 
