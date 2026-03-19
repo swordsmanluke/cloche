@@ -511,6 +511,8 @@ func (s *ClocheServer) launchResumeContainer(run *domain.Run, image string, cmd 
 		WorkflowName: run.WorkflowName,
 		ProjectDir:   run.ProjectDir,
 		RunID:        run.ID,
+		TaskID:       run.TaskID,
+		AttemptID:    run.AttemptID,
 		NetworkAllow: []string{"*"},
 		Cmd:          cmd,
 	})
@@ -556,10 +558,11 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 
 	baseSHA := gitHEAD(req.ProjectDir)
 
-	// Look up the task ID from the run record for container env.
-	var taskID string
+	// Look up the task/attempt IDs from the run record for container env and naming.
+	var taskID, attemptID string
 	if r, err := s.store.GetRun(ctx, runID); err == nil && r != nil {
 		taskID = r.TaskID
+		attemptID = r.AttemptID
 	}
 
 	// Build container command, adding --start-step if a specific step was requested.
@@ -577,6 +580,7 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 		ProjectDir:   req.ProjectDir,
 		RunID:        runID,
 		TaskID:       taskID,
+		AttemptID:    attemptID,
 		NetworkAllow: []string{"*"},
 		Cmd:          cmd,
 	})

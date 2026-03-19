@@ -42,9 +42,14 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		"--log-driver", "json-file",
 	}
 
-	// Name container after run ID so `docker logs <run-id>` works.
-	if cfg.RunID != "" {
-		args = append(args, "--name", cfg.RunID)
+	// Name container uniquely. Use task-attempt-workflow when available
+	// (allows concurrent runs of the same workflow), fall back to run ID.
+	containerName := cfg.RunID
+	if cfg.TaskID != "" && cfg.AttemptID != "" {
+		containerName = cfg.AttemptID + "-" + cfg.WorkflowName
+	}
+	if containerName != "" {
+		args = append(args, "--name", containerName)
 	}
 
 	// Pass run ID and task ID into container
