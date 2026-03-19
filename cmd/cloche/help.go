@@ -151,22 +151,23 @@ Examples:
   cloche status --all
 `,
 
-	"logs": `cloche logs — Show logs for a task, attempt, or run
+	"logs": `cloche logs — Show logs for a task, attempt, workflow run, or step
 
-Streams or displays log output. The first argument accepts a task ID,
-attempt ID, run ID, or composite task:attempt:step identifier.
+Streams or displays log output. The first argument accepts any level of
+the ID hierarchy.
 
 Usage:
-  cloche logs <id> [-s <name>] [--type <full|script|llm>] [-f] [-l <n>]
+  cloche logs <id> [--type <full|script|llm>] [-f] [-l <n>]
 
 Arguments:
-  <id>    Task ID, attempt ID, run ID, or composite (task:attempt[:step]).
-          Task ID → logs for the latest attempt.
-          Attempt ID → logs for that specific attempt.
-          Composite → logs scoped to that attempt and step.
+  <id>    Any of the following:
+            Task ID        (shandalar-1234)        — logs for the latest attempt
+            Attempt ID     (a3f7)                  — logs for that attempt
+            Workflow ID    (a3f7:develop)           — logs for that workflow run
+            Step ID        (a3f7:develop:implement) — logs for that step
+          Legacy composite task:attempt[:step] is also accepted.
 
 Flags:
-  --step, -s <name>              Show logs only for the named step.
   --type <full|script|llm>       Filter by log type:
                                    full    — complete unfiltered output
                                    script  — script/command output only
@@ -175,16 +176,17 @@ Flags:
                                  run completes or is stopped).
   --limit, -l <n>                Display only the last n lines of output.
 
-Flags are combinable: cloche logs <id> -s implement -l 20 -f
+Flags are combinable: cloche logs a3f7:develop:implement -l 20 -f
 
 Examples:
   cloche logs TASK-123
   cloche logs a3f7
-  cloche logs develop-lush-fern-470c
+  cloche logs a3f7:develop
+  cloche logs a3f7:develop:implement
   cloche logs TASK-123:a3f7
   cloche logs TASK-123:a3f7:implement
-  cloche logs TASK-123 -s implement -l 20 -f
   cloche logs a3f7 --type script
+  cloche logs a3f7:develop -f -l 50
 `,
 
 	"poll": `cloche poll — Wait for runs to finish

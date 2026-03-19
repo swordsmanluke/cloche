@@ -2519,6 +2519,133 @@ func TestServer_GetStatus_ByTaskAndAttemptColonDelimited(t *testing.T) {
 	assert.Equal(t, "failed", resp.State)
 }
 
+func TestServer_ResolveRunIDFromID_AttemptWorkflow(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	srv := server.NewClocheServer(store, nil)
+
+	run := domain.NewRun("r1w1-develop", "develop")
+	run.TaskID = "TASK-RW"
+	run.AttemptID = "r1w1"
+	run.ProjectDir = "/proj"
+	run.Start()
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// attempt_id:workflow_name → resolves to run, no step
+	runID, step, err := srv.ResolveRunIDFromID(ctx, "r1w1:develop")
+	require.NoError(t, err)
+	assert.Equal(t, "r1w1-develop", runID)
+	assert.Empty(t, step)
+}
+
+func TestServer_ResolveRunIDFromID_AttemptWorkflowStep(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	srv := server.NewClocheServer(store, nil)
+
+	run := domain.NewRun("r2w2-develop", "develop")
+	run.TaskID = "TASK-RWS"
+	run.AttemptID = "r2w2"
+	run.ProjectDir = "/proj"
+	run.Start()
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// attempt_id:workflow_name:step_name → resolves to run + step
+	runID, step, err := srv.ResolveRunIDFromID(ctx, "r2w2:develop:review")
+	require.NoError(t, err)
+	assert.Equal(t, "r2w2-develop", runID)
+	assert.Equal(t, "review", step)
+}
+
+func TestServer_ResolveRunIDFromID_TaskAttemptBackcompat(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	srv := server.NewClocheServer(store, nil)
+
+	run := domain.NewRun("r3w3-develop", "develop")
+	run.TaskID = "TASK-BC"
+	run.AttemptID = "r3w3"
+	run.ProjectDir = "/proj"
+	run.Start()
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// task_id:attempt_id still works (backward compat)
+	runID, step, err := srv.ResolveRunIDFromID(ctx, "TASK-BC:r3w3")
+	require.NoError(t, err)
+	assert.Equal(t, "r3w3-develop", runID)
+	assert.Empty(t, step)
+}
+
+func TestServer_ResolveRunIDFromID_TaskAttemptStepBackcompat(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	srv := server.NewClocheServer(store, nil)
+
+	run := domain.NewRun("r4w4-develop", "develop")
+	run.TaskID = "TASK-BCS"
+	run.AttemptID = "r4w4"
+	run.ProjectDir = "/proj"
+	run.Start()
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// task_id:attempt_id:step_name still works (backward compat)
+	runID, step, err := srv.ResolveRunIDFromID(ctx, "TASK-BCS:r4w4:implement")
+	require.NoError(t, err)
+	assert.Equal(t, "r4w4-develop", runID)
+	assert.Equal(t, "implement", step)
+}
+
+func TestServer_StreamLogs_ByAttemptWorkflowId(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	run := domain.NewRun("aws1-develop", "develop")
+	run.TaskID = "TASK-AW"
+	run.AttemptID = "aws1"
+	run.ProjectDir = dir
+	run.Start()
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Write full.log
+	logDir := filepath.Join(dir, ".cloche", "logs", "TASK-AW", "aws1")
+	require.NoError(t, os.MkdirAll(logDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(logDir, "full.log"), []byte("workflow log content\n"), 0644))
+
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+
+	mock := &mockLogStream{ctx: ctx}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{Id: "aws1:develop"}, mock)
+	require.NoError(t, err)
+	var found bool
+	for _, e := range mock.entries {
+		if e.Type == "full_log" && strings.Contains(e.Message, "workflow log content") {
+			found = true
+		}
+	}
+	assert.True(t, found, "should find full_log entry using attempt:workflow id")
+}
+
 func TestServer_StreamLogs_ByColonDelimitedId(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

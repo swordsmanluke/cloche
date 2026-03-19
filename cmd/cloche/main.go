@@ -569,8 +569,8 @@ func cmdListRuns(ctx context.Context, client pb.ClocheServiceClient, all bool, p
 
 func cmdLogs(client pb.ClocheServiceClient, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "usage: cloche logs <id> [-s <name>] [--type <full|script|llm>] [-f] [-l <n>]\n")
-		fmt.Fprintf(os.Stderr, "  <id> can be a task ID, attempt ID, run ID, or task:attempt:step\n")
+		fmt.Fprintf(os.Stderr, "usage: cloche logs <id> [--type <full|script|llm>] [-f] [-l <n>]\n")
+		fmt.Fprintf(os.Stderr, "  <id>: task ID, attempt ID (a133), workflow ID (a133:develop), or step ID (a133:develop:review)\n")
 		os.Exit(1)
 	}
 

@@ -1043,11 +1043,13 @@ func (s *ClocheServer) recentRunIDs(ctx context.Context, projectDir string) []st
 
 // resolveRunIDFromID resolves a colon-delimited ID to a (runID, stepName) pair.
 // The id may be:
-//   - a run_id           → returns (runID, "", nil)
-//   - a task_id          → returns (latestRunID, "", nil)
-//   - an attempt_id      → returns (runID, "", nil) for the run with that attempt
-//   - task_id:attempt_id → returns (runID, "", nil) for that specific attempt
-//   - task_id:attempt_id:step_name → returns (runID, stepName, nil)
+//   - a run_id                       → returns (runID, "", nil)
+//   - a task_id                      → returns (latestRunID, "", nil)
+//   - an attempt_id                  → returns (runID, "", nil) for the run with that attempt
+//   - attempt_id:workflow_name       → returns (runID, "", nil) for that workflow run
+//   - attempt_id:workflow_name:step  → returns (runID, stepName, nil)
+//   - task_id:attempt_id             → returns (runID, "", nil) for that specific attempt
+//   - task_id:attempt_id:step_name   → returns (runID, stepName, nil)
 func (s *ClocheServer) resolveRunIDFromID(ctx context.Context, id string) (runID, stepName string, err error) {
 	parts := strings.SplitN(id, ":", 3)
 
@@ -1070,16 +1072,26 @@ func (s *ClocheServer) resolveRunIDFromID(ctx context.Context, id string) (runID
 		return "", "", fmt.Errorf("no run found for id %q", id)
 
 	case 2:
-		// task_id:attempt_id
-		run, e := s.findRunByTaskAndAttempt(ctx, parts[0], parts[1])
+		// Try attempt_id:workflow_name first
+		run, e := s.findRunByAttemptAndWorkflow(ctx, parts[0], parts[1])
+		if e == nil {
+			return run.ID, "", nil
+		}
+		// Fall back to task_id:attempt_id
+		run, e = s.findRunByTaskAndAttempt(ctx, parts[0], parts[1])
 		if e != nil {
-			return "", "", fmt.Errorf("no run found for task %q attempt %q: %w", parts[0], parts[1], e)
+			return "", "", fmt.Errorf("no run found for %q: not a valid attempt:workflow or task:attempt pair", id)
 		}
 		return run.ID, "", nil
 
 	case 3:
-		// task_id:attempt_id:step_name
-		run, e := s.findRunByTaskAndAttempt(ctx, parts[0], parts[1])
+		// Try attempt_id:workflow_name:step_name first
+		run, e := s.findRunByAttemptAndWorkflow(ctx, parts[0], parts[1])
+		if e == nil {
+			return run.ID, parts[2], nil
+		}
+		// Fall back to task_id:attempt_id:step_name
+		run, e = s.findRunByTaskAndAttempt(ctx, parts[0], parts[1])
 		if e != nil {
 			return "", "", fmt.Errorf("no run found for task %q attempt %q: %w", parts[0], parts[1], e)
 		}
@@ -1116,6 +1128,35 @@ func (s *ClocheServer) findRunByAttemptID(ctx context.Context, attemptID string)
 		}
 	}
 	return nil, fmt.Errorf("no run found with attempt ID %q", attemptID)
+}
+
+// findRunByAttemptAndWorkflow returns the run whose AttemptID and WorkflowName match.
+func (s *ClocheServer) findRunByAttemptAndWorkflow(ctx context.Context, attemptID, workflowName string) (*domain.Run, error) {
+	// Use attemptStore to narrow by task if available.
+	if s.attemptStore != nil {
+		attempt, err := s.attemptStore.GetAttempt(ctx, attemptID)
+		if err == nil {
+			runs, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{TaskID: attempt.TaskID})
+			if err == nil {
+				for _, r := range runs {
+					if r.AttemptID == attemptID && r.WorkflowName == workflowName {
+						return r, nil
+					}
+				}
+			}
+		}
+	}
+	// Fallback: scan all recent runs.
+	runs, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{})
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range runs {
+		if r.AttemptID == attemptID && r.WorkflowName == workflowName {
+			return r, nil
+		}
+	}
+	return nil, fmt.Errorf("no run found with attempt ID %q and workflow %q", attemptID, workflowName)
 }
 
 // findRunByTaskAndAttempt returns the run for the given task and attempt.

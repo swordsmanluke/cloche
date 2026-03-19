@@ -738,20 +738,27 @@ With `--runs`: run ID, workflow, state, type, task ID, title, error.
 ### `cloche logs`
 
 ```
-cloche logs <id> [--step <name>] [--type <full|script|llm>] [-f] [-l <n>]
+cloche logs <id> [--type <full|script|llm>] [-f] [-l <n>]
 ```
 
-The first argument accepts a task ID, attempt ID, run ID, or composite
-`task:attempt[:step]`. A task ID shows logs for the latest attempt.
+The first argument accepts any level of the ID hierarchy:
+
+| Form | Example | Scope |
+|------|---------|-------|
+| Task ID | `shandalar-1234` | Logs for the latest attempt |
+| Attempt ID | `a3f7` | Logs for that attempt |
+| Workflow ID | `a3f7:develop` | Logs for that workflow run |
+| Step ID | `a3f7:develop:implement` | Logs for that step |
+
+Legacy composite `task:attempt[:step]` is also accepted.
 
 | Flag | Description |
 |------|-------------|
-| `--step, -s <name>` | Show only logs for the specified step. |
 | `--type <full\|script\|llm>` | Log type filter. |
 | `--follow, -f` | Follow mode: display existing logs then continue streaming new lines as they arrive (like `tail -f`). |
 | `--limit, -l <n>` | Display only the last n lines of output. |
 
-Flags are combinable: `cloche logs <id> -s implement -l 20 -f`
+Flags are combinable: `cloche logs a3f7:develop:implement -l 20 -f`
 
 Without `-f`, displays all logs captured to date and exits (even for active runs). With `-f` on an active run, existing logs are sent first, then new output is streamed in real time via gRPC until the run completes.
 
