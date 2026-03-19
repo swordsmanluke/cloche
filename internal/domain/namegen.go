@@ -1,14 +1,14 @@
 package domain
 
-// GenerateRunID returns a run ID for the given workflow. The ID is just the
-// workflow name — run IDs are scoped to an attempt, so the full identity of a
-// run is (task, attempt, workflow). If stepName is non-empty, it is appended
-// with a dash to produce a step-scoped sub-ID.
-func GenerateRunID(workflowName, stepName string) string {
-	if stepName == "" {
-		return workflowName
+// GenerateRunID returns a unique run ID. When attemptID is provided, the ID
+// is "<attemptID>-<workflowName>" to ensure uniqueness across concurrent runs.
+// When attemptID is empty (e.g. ephemeral list-tasks runs), falls back to just
+// the workflow name.
+func GenerateRunID(workflowName, attemptID string) string {
+	if attemptID != "" {
+		return attemptID + "-" + workflowName
 	}
-	return workflowName + "-" + stepName
+	return workflowName
 }
 
 // FormatRunID returns the run ID unchanged. Run IDs are now just workflow

@@ -133,16 +133,15 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		return nil, fmt.Errorf("no container runtime configured")
 	}
 
-	// Run ID is just the workflow name — uniqueness is scoped to the attempt.
-	runID := domain.GenerateRunID(workflowName, "")
+	// Create or link Task and Attempt records for v2 tracking.
+	attemptID := s.ensureTaskAndAttempt(ctx, req.IssueId, req.Title, req.ProjectDir)
+
+	runID := domain.GenerateRunID(workflowName, attemptID)
 
 	run := domain.NewRun(runID, workflowName)
 	run.ProjectDir = req.ProjectDir
 	run.Title = req.Title
 	run.TaskID = req.IssueId
-
-	// Create or link Task and Attempt records for v2 tracking.
-	attemptID := s.ensureTaskAndAttempt(ctx, req.IssueId, req.Title, req.ProjectDir)
 	run.AttemptID = attemptID
 	if run.TaskID == "" {
 		// User-initiated run: task ID was synthesized during ensureTaskAndAttempt.
@@ -194,8 +193,7 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 	}
 
 	hostWorkflowName, _, _ := strings.Cut(req.WorkflowName, ":")
-	// Run ID is just the workflow name — uniqueness is scoped to the attempt.
-	runID := domain.GenerateRunID(hostWorkflowName, "")
+	runID := domain.GenerateRunID(hostWorkflowName, attemptID)
 
 	runner := &host.Runner{
 		Dispatcher:   s,

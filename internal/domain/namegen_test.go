@@ -6,26 +6,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGenerateRunID_WorkflowNameOnly(t *testing.T) {
+func TestGenerateRunID_NoAttempt(t *testing.T) {
 	id := GenerateRunID("develop", "")
-	assert.Equal(t, "develop", id, "run ID without step should be just the workflow name")
+	assert.Equal(t, "develop", id, "run ID without attempt should be just the workflow name")
 }
 
-func TestGenerateRunID_WithStep(t *testing.T) {
-	id := GenerateRunID("develop", "implement")
-	assert.Equal(t, "develop-implement", id, "run ID with step should be workflow-step")
+func TestGenerateRunID_WithAttempt(t *testing.T) {
+	id := GenerateRunID("develop", "a1b2")
+	assert.Equal(t, "a1b2-develop", id, "run ID with attempt should be attemptID-workflow")
 }
 
 func TestGenerateRunID_Deterministic(t *testing.T) {
-	// Same workflow name always produces same run ID (no random prefix).
-	a := GenerateRunID("main", "")
-	b := GenerateRunID("main", "")
+	a := GenerateRunID("main", "x1y2")
+	b := GenerateRunID("main", "x1y2")
 	assert.Equal(t, a, b, "GenerateRunID should be deterministic")
 }
 
 func TestFormatRunID_NoConversion(t *testing.T) {
 	assert.Equal(t, "develop", FormatRunID("develop"))
-	assert.Equal(t, "develop-implement", FormatRunID("develop-implement"))
+	assert.Equal(t, "a1b2-develop", FormatRunID("a1b2-develop"))
 }
 
 func TestParseRunID_ReturnsWorkflowName(t *testing.T) {
