@@ -245,6 +245,13 @@ func cmdInit(args []string) {
 		".gitworktrees/",
 	})
 
+	// Generate shell completion scripts into ~/.cloche/completions/.
+	home := os.Getenv("HOME")
+	if home != "" {
+		completionsDir := filepath.Join(home, ".cloche", "completions")
+		generateCompletionScripts(completionsDir)
+	}
+
 	cwd, _ := os.Getwd()
 	fmt.Fprintf(os.Stderr, "\nInitialized Cloche project in %s\n", filepath.Base(cwd))
 	fmt.Fprintf(os.Stderr, "\nNext steps:\n")

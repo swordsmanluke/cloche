@@ -67,3 +67,18 @@ type GetAttemptResponse struct {
 	EndedAt   string `json:"ended_at,omitempty"`
 	RunId     string `json:"run_id,omitempty"`
 }
+
+// CompleteRequest is the request message for the Complete RPC.
+// Words contains all command-line tokens (including "cloche" at index 0).
+// CurIdx is the index of the token currently being completed.
+// ProjectDir is optional; used to discover workflow names.
+type CompleteRequest struct {
+	Words      []string `json:"words,omitempty"`
+	CurIdx     int32    `json:"cur_idx,omitempty"`
+	ProjectDir string   `json:"project_dir,omitempty"`
+}
+
+// CompleteResponse is the response message for the Complete RPC.
+type CompleteResponse struct {
+	Completions []string `json:"completions,omitempty"`
+}

@@ -830,6 +830,205 @@ func (s *ClocheServer) GetAttempt(ctx context.Context, req *pb.GetAttemptRequest
 	}, nil
 }
 
+// allSubcmds is the canonical list of cloche subcommands for shell completion.
+var allSubcmds = []string{
+	"complete", "delete", "get", "health", "help", "init", "list", "logs",
+	"loop", "poll", "project", "resume", "run", "set", "shutdown", "status",
+	"stop", "tasks", "validate", "workflow",
+}
+
+// Complete returns shell completion candidates for the given partial command line.
+func (s *ClocheServer) Complete(ctx context.Context, req *pb.CompleteRequest) (*pb.CompleteResponse, error) {
+	words := req.Words
+	idx := int(req.CurIdx)
+	projectDir := req.ProjectDir
+
+	// Determine current token being completed (may be empty if just past a space).
+	cur := ""
+	if idx >= 0 && idx < len(words) {
+		cur = words[idx]
+	}
+
+	// Position 1: completing the subcommand.
+	if idx <= 1 {
+		return &pb.CompleteResponse{Completions: filterPrefix(allSubcmds, cur)}, nil
+	}
+
+	// Position >= 2: completing argument for a subcommand.
+	if len(words) < 2 {
+		return &pb.CompleteResponse{}, nil
+	}
+	subcommand := words[1]
+
+	// Previous token (for flag-value pairs).
+	prev := ""
+	if idx > 1 && idx-1 < len(words) {
+		prev = words[idx-1]
+	}
+
+	var completions []string
+
+	switch subcommand {
+	case "run":
+		switch prev {
+		case "--workflow":
+			completions = s.workflowNames(projectDir)
+		default:
+			completions = []string{"--workflow", "--prompt", "--title", "--issue", "--keep-container"}
+		}
+
+	case "status":
+		completions = append(completions, s.taskAndAttemptIDs(ctx, projectDir)...)
+		completions = append(completions, "--all")
+
+	case "logs":
+		if prev == "--step" || prev == "-s" {
+			// No dynamic step completions without knowing the run; skip.
+		} else if prev == "--type" {
+			completions = []string{"full", "script", "llm"}
+		} else if prev == "--limit" || prev == "-l" {
+			// numeric; skip
+		} else {
+			completions = append(completions, s.taskAndAttemptIDs(ctx, projectDir)...)
+			completions = append(completions, "--step", "--type", "--follow", "--limit")
+		}
+
+	case "stop":
+		completions = s.runningIDs(ctx, projectDir)
+
+	case "delete":
+		completions = s.recentRunIDs(ctx, projectDir)
+
+	case "resume":
+		completions = s.recentRunIDs(ctx, projectDir)
+
+	case "list":
+		if prev == "--state" || prev == "-s" {
+			completions = []string{"running", "pending", "succeeded", "failed", "cancelled"}
+		} else {
+			completions = []string{"--all", "--runs", "--state", "--project", "--limit"}
+		}
+
+	case "loop":
+		completions = []string{"stop", "resume", "--max"}
+
+	case "workflow":
+		completions = s.workflowNames(projectDir)
+
+	case "poll":
+		completions = s.recentRunIDs(ctx, projectDir)
+
+	default:
+		// No dynamic completions for other subcommands.
+	}
+
+	return &pb.CompleteResponse{Completions: filterPrefix(completions, cur)}, nil
+}
+
+// filterPrefix returns items from list that start with prefix.
+func filterPrefix(list []string, prefix string) []string {
+	if prefix == "" {
+		return list
+	}
+	var out []string
+	for _, s := range list {
+		if strings.HasPrefix(s, prefix) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// workflowNames returns workflow names from .cloche/*.cloche files in projectDir.
+func (s *ClocheServer) workflowNames(projectDir string) []string {
+	if projectDir == "" {
+		return nil
+	}
+	clocheDir := filepath.Join(projectDir, ".cloche")
+	entries, err := filepath.Glob(filepath.Join(clocheDir, "*.cloche"))
+	if err != nil {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var names []string
+	for _, path := range entries {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		wfs, err := dsl.ParseAll(string(data))
+		if err != nil {
+			continue
+		}
+		for name := range wfs {
+			if !seen[name] {
+				seen[name] = true
+				names = append(names, name)
+			}
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// taskAndAttemptIDs returns recent task IDs and attempt IDs from the store.
+func (s *ClocheServer) taskAndAttemptIDs(ctx context.Context, projectDir string) []string {
+	var ids []string
+
+	// Task IDs from task store.
+	if s.taskStore != nil {
+		tasks, err := s.taskStore.ListTasks(ctx, projectDir)
+		if err == nil {
+			for _, t := range tasks {
+				ids = append(ids, t.ID)
+				// Also include attempt IDs for colon-delimited drill-down.
+				for _, a := range t.Attempts {
+					ids = append(ids, t.ID+":"+a.ID)
+				}
+			}
+		}
+	}
+
+	// Fallback: recent run IDs.
+	if len(ids) == 0 {
+		ids = s.recentRunIDs(ctx, projectDir)
+	}
+
+	return ids
+}
+
+// runningIDs returns IDs of currently running or pending runs.
+func (s *ClocheServer) runningIDs(ctx context.Context, projectDir string) []string {
+	filter := domain.RunListFilter{ProjectDir: projectDir, State: domain.RunStateRunning}
+	runs, err := s.store.ListRunsFiltered(ctx, filter)
+	if err != nil {
+		return nil
+	}
+	var ids []string
+	for _, r := range runs {
+		ids = append(ids, r.ID)
+	}
+	return ids
+}
+
+// recentRunIDs returns IDs of recent runs (last 20).
+func (s *ClocheServer) recentRunIDs(ctx context.Context, projectDir string) []string {
+	filter := domain.RunListFilter{ProjectDir: projectDir, Limit: 20}
+	runs, err := s.store.ListRunsFiltered(ctx, filter)
+	if err != nil {
+		// Try unfiltered if project-filtered fails.
+		runs, err = s.store.ListRunsFiltered(ctx, domain.RunListFilter{Limit: 20})
+		if err != nil {
+			return nil
+		}
+	}
+	var ids []string
+	for _, r := range runs {
+		ids = append(ids, r.ID)
+	}
+	return ids
+}
+
 // resolveRunIDFromID resolves a colon-delimited ID to a (runID, stepName) pair.
 // The id may be:
 //   - a run_id           → returns (runID, "", nil)

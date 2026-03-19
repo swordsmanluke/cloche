@@ -34,6 +34,7 @@ const (
 	ClocheService_ResumeLoop_FullMethodName      = "/cloche.v1.ClocheService/ResumeLoop"
 	ClocheService_GetProjectInfo_FullMethodName  = "/cloche.v1.ClocheService/GetProjectInfo"
 	ClocheService_GetVersion_FullMethodName      = "/cloche.v1.ClocheService/GetVersion"
+	ClocheService_Complete_FullMethodName        = "/cloche.v1.ClocheService/Complete"
 )
 
 // ClocheServiceClient is the client API for ClocheService service.
@@ -55,6 +56,8 @@ type ClocheServiceClient interface {
 	ResumeLoop(ctx context.Context, in *ResumeLoopRequest, opts ...grpc.CallOption) (*ResumeLoopResponse, error)
 	GetProjectInfo(ctx context.Context, in *GetProjectInfoRequest, opts ...grpc.CallOption) (*GetProjectInfoResponse, error)
 	GetVersion(ctx context.Context, in *GetVersionRequest, opts ...grpc.CallOption) (*GetVersionResponse, error)
+	// Complete returns shell completion candidates for the given partial command line.
+	Complete(ctx context.Context, in *CompleteRequest, opts ...grpc.CallOption) (*CompleteResponse, error)
 }
 
 type clocheServiceClient struct {
@@ -224,6 +227,16 @@ func (c *clocheServiceClient) GetVersion(ctx context.Context, in *GetVersionRequ
 	return out, nil
 }
 
+func (c *clocheServiceClient) Complete(ctx context.Context, in *CompleteRequest, opts ...grpc.CallOption) (*CompleteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CompleteResponse)
+	err := c.cc.Invoke(ctx, ClocheService_Complete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClocheServiceServer is the server API for ClocheService service.
 // All implementations must embed UnimplementedClocheServiceServer
 // for forward compatibility.
@@ -243,6 +256,8 @@ type ClocheServiceServer interface {
 	ResumeLoop(context.Context, *ResumeLoopRequest) (*ResumeLoopResponse, error)
 	GetProjectInfo(context.Context, *GetProjectInfoRequest) (*GetProjectInfoResponse, error)
 	GetVersion(context.Context, *GetVersionRequest) (*GetVersionResponse, error)
+	// Complete returns shell completion candidates for the given partial command line.
+	Complete(context.Context, *CompleteRequest) (*CompleteResponse, error)
 	mustEmbedUnimplementedClocheServiceServer()
 }
 
@@ -297,6 +312,9 @@ func (UnimplementedClocheServiceServer) GetProjectInfo(context.Context, *GetProj
 }
 func (UnimplementedClocheServiceServer) GetVersion(context.Context, *GetVersionRequest) (*GetVersionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetVersion not implemented")
+}
+func (UnimplementedClocheServiceServer) Complete(context.Context, *CompleteRequest) (*CompleteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Complete not implemented")
 }
 func (UnimplementedClocheServiceServer) mustEmbedUnimplementedClocheServiceServer() {}
 func (UnimplementedClocheServiceServer) testEmbeddedByValue()                       {}
@@ -582,6 +600,24 @@ func _ClocheService_GetVersion_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClocheService_Complete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).Complete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_Complete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).Complete(ctx, req.(*CompleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClocheService_ServiceDesc is the grpc.ServiceDesc for ClocheService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -644,6 +680,10 @@ var ClocheService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetVersion",
 			Handler:    _ClocheService_GetVersion_Handler,
+		},
+		{
+			MethodName: "Complete",
+			Handler:    _ClocheService_Complete_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

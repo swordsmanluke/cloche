@@ -106,6 +106,10 @@ func main() {
 		}
 		cmdValidate(os.Args[2:])
 		return
+	case "complete":
+		// No help flag handling: complete must be fast and quiet.
+		cmdComplete(os.Args[2:])
+		return
 	}
 
 	// Handle --help for daemon commands before connecting

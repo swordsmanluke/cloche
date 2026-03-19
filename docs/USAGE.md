@@ -643,6 +643,10 @@ cloche init [--workflow <name>] [--base-image <base>]
 Creates `.cloche/` with workflow file, Dockerfile, `config.toml`, prompt templates,
 host workflows, and prompt generation script. Skips existing files.
 
+Also generates shell completion scripts to `~/.cloche/completions/` (bash and zsh)
+and offers to update `~/.bashrc` or `~/.zshrc` with the appropriate sourcing
+snippet. Skipped on Windows.
+
 ### `cloche run`
 
 Launch a workflow run.
@@ -930,6 +934,23 @@ cloche-agent -v  # prints agent version
 ```
 cloche shutdown
 ```
+
+### `cloche complete`
+
+Low-level helper used by shell completion scripts. Not intended for direct use.
+
+```
+cloche complete --index <n> -- <word0> <word1> ...
+```
+
+Prints one completion candidate per line for the word at position `<n>` in the
+command line. If the daemon is reachable, dynamic candidates (task IDs, workflow
+names, attempt IDs) are returned via the `Complete` gRPC RPC. Otherwise falls
+back to static subcommand and flag completions.
+
+The shell integration is set up automatically by `cloche init`, which writes
+`~/.cloche/completions/cloche.bash` (for bash) and `~/.cloche/completions/_cloche`
+(for zsh) and offers to append the sourcing snippet to `~/.bashrc` or `~/.zshrc`.
 
 ## Project Layout
 

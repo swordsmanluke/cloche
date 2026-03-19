@@ -24,6 +24,11 @@ service ClocheService {
 
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
 
+  // Complete returns shell completion candidates for the given partial command line.
+  // Used by shell integration scripts to provide dynamic completions for task IDs,
+  // attempt IDs, workflow names, and colon-delimited drill-down identifiers.
+  rpc Complete(CompleteRequest) returns (CompleteResponse);
+
   // ResumeRun is handled via gRPC metadata on the RunWorkflow RPC:
   //   x-cloche-resume-run-id: the run ID to resume
   //   x-cloche-resume-step: optional step name to resume from
@@ -242,4 +247,18 @@ message GetAttemptResponse {
   string started_at = 4;
   string ended_at = 5;
   string run_id = 6;
+}
+
+// CompleteRequest carries the current command-line state for shell completion.
+// Words contains all tokens (including "cloche" at index 0).
+// cur_idx is the index within words of the token being completed.
+// project_dir is optional; used to enumerate workflow names.
+message CompleteRequest {
+  repeated string words = 1;
+  int32 cur_idx = 2;
+  string project_dir = 3;
+}
+
+message CompleteResponse {
+  repeated string completions = 1;
 }
