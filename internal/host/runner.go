@@ -242,8 +242,11 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 	if run.TaskID != "" {
 		if _, ok, _ := runcontext.Get(run.ProjectDir, run.TaskID, "child_run_id"); !ok {
 			if children, err := r.Store.ListChildRuns(ctx, run.ID); err == nil {
+				// Find the most recent non-host child run (the container
+				// workflow). Host children (like finalize) are not what
+				// the merge script needs.
 				for i := len(children) - 1; i >= 0; i-- {
-					if children[i].WorkflowName != "list-tasks" {
+					if !children[i].IsHost {
 						_ = runcontext.Set(run.ProjectDir, run.TaskID, "child_run_id", children[i].ID)
 						log.Printf("host workflow: restored child_run_id=%s from DB for resume", children[i].ID)
 						break
