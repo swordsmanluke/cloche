@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -2238,4 +2239,319 @@ func TestServer_StreamLogs_StepFilterFallbackToOut(t *testing.T) {
 	assert.Equal(t, "step_log", mock.entries[0].Type)
 	assert.Equal(t, "prepare", mock.entries[0].StepName)
 	assert.Contains(t, mock.entries[0].Message, "host step output")
+}
+
+// ---- V2 task-oriented RPC tests ----
+
+func TestServer_RunWorkflow_ReturnsTaskIdAndAttemptId(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
+		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := local.NewRuntime("sh")
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, resp.RunId)
+	assert.NotEmpty(t, resp.TaskId, "response should include task_id")
+	assert.NotEmpty(t, resp.AttemptId, "response should include attempt_id")
+}
+
+func TestServer_ListTasks_NoStore(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, nil)
+	// taskStore not set — should return error
+	_, err = srv.ListTasks(context.Background(), &pb.ListTasksRequest{All: true})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "task store not configured")
+}
+
+func TestServer_ListTasks_Empty(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, nil)
+	srv.SetTaskStore(store)
+
+	resp, err := srv.ListTasks(context.Background(), &pb.ListTasksRequest{All: true})
+	require.NoError(t, err)
+	assert.Empty(t, resp.Tasks)
+}
+
+func TestServer_ListTasks_WithTasks(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	srv := server.NewClocheServer(store, nil)
+	srv.SetTaskStore(store)
+	srv.SetAttemptStore(store)
+
+	// Create tasks directly in the store
+	taskA := &domain.Task{
+		ID:         "TASK-1",
+		Title:      "Fix bug",
+		Status:     domain.TaskStatusRunning,
+		ProjectDir: "/proj",
+		CreatedAt:  time.Now(),
+	}
+	require.NoError(t, store.SaveTask(ctx, taskA))
+	attemptA := domain.NewAttempt("TASK-1")
+	require.NoError(t, store.SaveAttempt(ctx, attemptA))
+
+	taskB := &domain.Task{
+		ID:         "TASK-2",
+		Title:      "Add feature",
+		Status:     domain.TaskStatusSucceeded,
+		ProjectDir: "/proj",
+		CreatedAt:  time.Now(),
+	}
+	require.NoError(t, store.SaveTask(ctx, taskB))
+
+	resp, err := srv.ListTasks(ctx, &pb.ListTasksRequest{ProjectDir: "/proj"})
+	require.NoError(t, err)
+	assert.Len(t, resp.Tasks, 2)
+
+	// Find TASK-1 and verify it has a latest_attempt_id
+	var foundTask1 bool
+	for _, ts := range resp.Tasks {
+		if ts.TaskId == "TASK-1" {
+			foundTask1 = true
+			assert.Equal(t, "Fix bug", ts.Title)
+			assert.NotEmpty(t, ts.LatestAttemptId)
+		}
+	}
+	assert.True(t, foundTask1)
+}
+
+func TestServer_GetTask_NotFound(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, nil)
+	srv.SetTaskStore(store)
+
+	_, err = srv.GetTask(context.Background(), &pb.GetTaskRequest{TaskId: "nonexistent"})
+	assert.Error(t, err)
+}
+
+func TestServer_GetTask(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	srv := server.NewClocheServer(store, nil)
+	srv.SetTaskStore(store)
+	srv.SetAttemptStore(store)
+
+	task := &domain.Task{
+		ID:         "TASK-A",
+		Title:      "My task",
+		Status:     domain.TaskStatusFailed,
+		ProjectDir: "/myproj",
+		CreatedAt:  time.Now(),
+	}
+	require.NoError(t, store.SaveTask(ctx, task))
+	attempt := domain.NewAttempt("TASK-A")
+	attempt.Complete(domain.AttemptResultFailed)
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	resp, err := srv.GetTask(ctx, &pb.GetTaskRequest{TaskId: "TASK-A"})
+	require.NoError(t, err)
+	assert.Equal(t, "TASK-A", resp.TaskId)
+	assert.Equal(t, "My task", resp.Title)
+	assert.Equal(t, "/myproj", resp.ProjectDir)
+	require.Len(t, resp.Attempts, 1)
+	assert.Equal(t, attempt.ID, resp.Attempts[0].AttemptId)
+	assert.Equal(t, "failed", resp.Attempts[0].Result)
+}
+
+func TestServer_GetAttempt_NoStore(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, nil)
+	// attemptStore not set
+	_, err = srv.GetAttempt(context.Background(), &pb.GetAttemptRequest{AttemptId: "abc1"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "attempt store not configured")
+}
+
+func TestServer_GetAttempt(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	srv := server.NewClocheServer(store, nil)
+	srv.SetTaskStore(store)
+	srv.SetAttemptStore(store)
+
+	// Create task, attempt, and a matching run
+	task := &domain.Task{
+		ID:         "TASK-B",
+		Title:      "Attempt test",
+		ProjectDir: "/proj",
+		CreatedAt:  time.Now(),
+	}
+	require.NoError(t, store.SaveTask(ctx, task))
+	attempt := domain.NewAttempt("TASK-B")
+	attempt.Complete(domain.AttemptResultSucceeded)
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	// Create a run linked to this attempt
+	run := domain.NewRun("run-attempt-test-1", "develop")
+	run.TaskID = "TASK-B"
+	run.AttemptID = attempt.ID
+	run.ProjectDir = "/proj"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	resp, err := srv.GetAttempt(ctx, &pb.GetAttemptRequest{AttemptId: attempt.ID})
+	require.NoError(t, err)
+	assert.Equal(t, attempt.ID, resp.AttemptId)
+	assert.Equal(t, "TASK-B", resp.TaskId)
+	assert.Equal(t, "succeeded", resp.Result)
+	assert.Equal(t, "run-attempt-test-1", resp.RunId)
+}
+
+func TestServer_GetStatus_ByTaskId(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	srv := server.NewClocheServer(store, nil)
+
+	run := domain.NewRun("run-by-task-1", "develop")
+	run.TaskID = "ISSUE-42"
+	run.AttemptID = "xxxx"
+	run.ProjectDir = "/proj"
+	run.StartedAt = time.Now()
+	run.State = domain.RunStateSucceeded
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	resp, err := srv.GetStatus(ctx, &pb.GetStatusRequest{Id: "ISSUE-42"})
+	require.NoError(t, err)
+	assert.Equal(t, "run-by-task-1", resp.RunId)
+	assert.Equal(t, "succeeded", resp.State)
+}
+
+func TestServer_GetStatus_ByAttemptId(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	srv := server.NewClocheServer(store, nil)
+	srv.SetAttemptStore(store)
+	srv.SetTaskStore(store)
+
+	// Save task and attempt in store
+	task := &domain.Task{
+		ID:         "TASK-AT",
+		Title:      "Test",
+		ProjectDir: "/proj",
+		CreatedAt:  time.Now(),
+	}
+	require.NoError(t, store.SaveTask(ctx, task))
+	attempt := domain.NewAttempt("TASK-AT")
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	run := domain.NewRun("run-by-attempt-1", "develop")
+	run.TaskID = "TASK-AT"
+	run.AttemptID = attempt.ID
+	run.ProjectDir = "/proj"
+	run.StartedAt = time.Now()
+	run.State = domain.RunStateRunning
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	resp, err := srv.GetStatus(ctx, &pb.GetStatusRequest{Id: attempt.ID})
+	require.NoError(t, err)
+	assert.Equal(t, "run-by-attempt-1", resp.RunId)
+}
+
+func TestServer_GetStatus_ByTaskAndAttemptColonDelimited(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	srv := server.NewClocheServer(store, nil)
+
+	run := domain.NewRun("run-colon-1", "develop")
+	run.TaskID = "TASK-C"
+	run.AttemptID = "zzzz"
+	run.ProjectDir = "/proj"
+	run.StartedAt = time.Now()
+	run.State = domain.RunStateFailed
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Access via task_id:attempt_id
+	resp, err := srv.GetStatus(ctx, &pb.GetStatusRequest{Id: "TASK-C:zzzz"})
+	require.NoError(t, err)
+	assert.Equal(t, "run-colon-1", resp.RunId)
+	assert.Equal(t, "failed", resp.State)
+}
+
+func TestServer_StreamLogs_ByColonDelimitedId(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	run := domain.NewRun("run-stream-colon-1", "develop")
+	run.TaskID = "TASK-SC"
+	run.AttemptID = "aaaa"
+	run.ProjectDir = dir
+	run.Start()
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Write full.log for the run
+	logDir := filepath.Join(dir, ".cloche", "logs", "TASK-SC", "aaaa")
+	require.NoError(t, os.MkdirAll(logDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(logDir, "full.log"), []byte("colon log content\n"), 0644))
+
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+
+	// Stream logs using task_id:attempt_id colon-delimited id
+	mock := &mockLogStream{ctx: ctx}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{Id: "TASK-SC:aaaa"}, mock)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(mock.entries), 1)
+	var found bool
+	for _, e := range mock.entries {
+		if e.Type == "full_log" && strings.Contains(e.Message, "colon log content") {
+			found = true
+		}
+	}
+	assert.True(t, found, "should find full_log entry with colon log content")
 }

@@ -1,7 +1,7 @@
 # Version 2.0.0: Task-Oriented APIs Design
 
 **Date:** 2026-03-18
-**Status:** In Progress
+**Status:** Partially Implemented (gRPC API complete: RunWorkflow returns task_id + attempt_id, ListTasks, GetTask, GetAttempt RPCs added, StreamLogs and GetStatus accept hierarchical IDs)
 
 ## Problem
 

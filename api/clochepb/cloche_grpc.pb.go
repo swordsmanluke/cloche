@@ -24,6 +24,9 @@ const (
 	ClocheService_StreamLogs_FullMethodName      = "/cloche.v1.ClocheService/StreamLogs"
 	ClocheService_StopRun_FullMethodName         = "/cloche.v1.ClocheService/StopRun"
 	ClocheService_ListRuns_FullMethodName        = "/cloche.v1.ClocheService/ListRuns"
+	ClocheService_ListTasks_FullMethodName       = "/cloche.v1.ClocheService/ListTasks"
+	ClocheService_GetTask_FullMethodName         = "/cloche.v1.ClocheService/GetTask"
+	ClocheService_GetAttempt_FullMethodName      = "/cloche.v1.ClocheService/GetAttempt"
 	ClocheService_Shutdown_FullMethodName        = "/cloche.v1.ClocheService/Shutdown"
 	ClocheService_DeleteContainer_FullMethodName = "/cloche.v1.ClocheService/DeleteContainer"
 	ClocheService_EnableLoop_FullMethodName      = "/cloche.v1.ClocheService/EnableLoop"
@@ -42,6 +45,9 @@ type ClocheServiceClient interface {
 	StreamLogs(ctx context.Context, in *StreamLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogEntry], error)
 	StopRun(ctx context.Context, in *StopRunRequest, opts ...grpc.CallOption) (*StopRunResponse, error)
 	ListRuns(ctx context.Context, in *ListRunsRequest, opts ...grpc.CallOption) (*ListRunsResponse, error)
+	ListTasks(ctx context.Context, in *ListTasksRequest, opts ...grpc.CallOption) (*ListTasksResponse, error)
+	GetTask(ctx context.Context, in *GetTaskRequest, opts ...grpc.CallOption) (*GetTaskResponse, error)
+	GetAttempt(ctx context.Context, in *GetAttemptRequest, opts ...grpc.CallOption) (*GetAttemptResponse, error)
 	Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error)
 	DeleteContainer(ctx context.Context, in *DeleteContainerRequest, opts ...grpc.CallOption) (*DeleteContainerResponse, error)
 	EnableLoop(ctx context.Context, in *EnableLoopRequest, opts ...grpc.CallOption) (*EnableLoopResponse, error)
@@ -112,6 +118,36 @@ func (c *clocheServiceClient) ListRuns(ctx context.Context, in *ListRunsRequest,
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListRunsResponse)
 	err := c.cc.Invoke(ctx, ClocheService_ListRuns_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clocheServiceClient) ListTasks(ctx context.Context, in *ListTasksRequest, opts ...grpc.CallOption) (*ListTasksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListTasksResponse)
+	err := c.cc.Invoke(ctx, ClocheService_ListTasks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clocheServiceClient) GetTask(ctx context.Context, in *GetTaskRequest, opts ...grpc.CallOption) (*GetTaskResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTaskResponse)
+	err := c.cc.Invoke(ctx, ClocheService_GetTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clocheServiceClient) GetAttempt(ctx context.Context, in *GetAttemptRequest, opts ...grpc.CallOption) (*GetAttemptResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetAttemptResponse)
+	err := c.cc.Invoke(ctx, ClocheService_GetAttempt_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -197,6 +233,9 @@ type ClocheServiceServer interface {
 	StreamLogs(*StreamLogsRequest, grpc.ServerStreamingServer[LogEntry]) error
 	StopRun(context.Context, *StopRunRequest) (*StopRunResponse, error)
 	ListRuns(context.Context, *ListRunsRequest) (*ListRunsResponse, error)
+	ListTasks(context.Context, *ListTasksRequest) (*ListTasksResponse, error)
+	GetTask(context.Context, *GetTaskRequest) (*GetTaskResponse, error)
+	GetAttempt(context.Context, *GetAttemptRequest) (*GetAttemptResponse, error)
 	Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error)
 	DeleteContainer(context.Context, *DeleteContainerRequest) (*DeleteContainerResponse, error)
 	EnableLoop(context.Context, *EnableLoopRequest) (*EnableLoopResponse, error)
@@ -228,6 +267,15 @@ func (UnimplementedClocheServiceServer) StopRun(context.Context, *StopRunRequest
 }
 func (UnimplementedClocheServiceServer) ListRuns(context.Context, *ListRunsRequest) (*ListRunsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListRuns not implemented")
+}
+func (UnimplementedClocheServiceServer) ListTasks(context.Context, *ListTasksRequest) (*ListTasksResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListTasks not implemented")
+}
+func (UnimplementedClocheServiceServer) GetTask(context.Context, *GetTaskRequest) (*GetTaskResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetTask not implemented")
+}
+func (UnimplementedClocheServiceServer) GetAttempt(context.Context, *GetAttemptRequest) (*GetAttemptResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetAttempt not implemented")
 }
 func (UnimplementedClocheServiceServer) Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Shutdown not implemented")
@@ -350,6 +398,60 @@ func _ClocheService_ListRuns_Handler(srv interface{}, ctx context.Context, dec f
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ClocheServiceServer).ListRuns(ctx, req.(*ListRunsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClocheService_ListTasks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListTasksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).ListTasks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_ListTasks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).ListTasks(ctx, req.(*ListTasksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClocheService_GetTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).GetTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_GetTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).GetTask(ctx, req.(*GetTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClocheService_GetAttempt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAttemptRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).GetAttempt(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_GetAttempt_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).GetAttempt(ctx, req.(*GetAttemptRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -502,6 +604,18 @@ var ClocheService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListRuns",
 			Handler:    _ClocheService_ListRuns_Handler,
+		},
+		{
+			MethodName: "ListTasks",
+			Handler:    _ClocheService_ListTasks_Handler,
+		},
+		{
+			MethodName: "GetTask",
+			Handler:    _ClocheService_GetTask_Handler,
+		},
+		{
+			MethodName: "GetAttempt",
+			Handler:    _ClocheService_GetAttempt_Handler,
 		},
 		{
 			MethodName: "Shutdown",

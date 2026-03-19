@@ -116,6 +116,8 @@ func (x *RunWorkflowRequest) GetIssueId() string {
 type RunWorkflowResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	AttemptId     string                 `protobuf:"bytes,3,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -157,9 +159,24 @@ func (x *RunWorkflowResponse) GetRunId() string {
 	return ""
 }
 
+func (x *RunWorkflowResponse) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *RunWorkflowResponse) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
 type GetStatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -192,6 +209,13 @@ func (x *GetStatusRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use GetStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetStatusRequest) Descriptor() ([]byte, []int) {
 	return file_api_proto_cloche_v1_cloche_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *GetStatusRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
 }
 
 func (x *GetStatusRequest) GetRunId() string {
@@ -400,7 +424,8 @@ type StreamLogsRequest struct {
 	LogType  string                 `protobuf:"bytes,3,opt,name=log_type,json=logType,proto3" json:"log_type,omitempty"`
 	Follow   bool                   `protobuf:"varint,4,opt,name=follow,proto3" json:"follow,omitempty"` // When true, stream existing logs then continue tailing new lines (like tail -f).
 	// Passed via gRPC metadata header "x-cloche-follow" until proto is regenerated.
-	Limit         int32 `protobuf:"varint,5,opt,name=limit,proto3" json:"limit,omitempty"` // When > 0, display only the last N lines of output.
+	Limit         int32  `protobuf:"varint,5,opt,name=limit,proto3" json:"limit,omitempty"` // When > 0, display only the last N lines of output.
+	Id            string `protobuf:"bytes,6,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -461,6 +486,13 @@ func (x *StreamLogsRequest) GetFollow() bool {
 		return x.Follow
 	}
 	return false
+}
+
+func (x *StreamLogsRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
 }
 
 func (x *StreamLogsRequest) GetLimit() int32 {

@@ -10,6 +10,9 @@ service ClocheService {
   rpc StreamLogs(StreamLogsRequest) returns (stream LogEntry);
   rpc StopRun(StopRunRequest) returns (StopRunResponse);
   rpc ListRuns(ListRunsRequest) returns (ListRunsResponse);
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
+  rpc GetAttempt(GetAttemptRequest) returns (GetAttemptResponse);
   rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
   rpc DeleteContainer(DeleteContainerRequest) returns (DeleteContainerResponse);
 
@@ -40,10 +43,15 @@ message RunWorkflowRequest {
 
 message RunWorkflowResponse {
   string run_id = 1;
+  string task_id = 2;
+  string attempt_id = 3;
 }
 
 message GetStatusRequest {
   string run_id = 1;
+  // id accepts a task ID, attempt ID, or colon-delimited full step ID
+  // (task_id:attempt_id:step_name). When set, takes priority over run_id.
+  string id = 2;
 }
 
 message GetStatusResponse {
@@ -75,6 +83,12 @@ message StreamLogsRequest {
                      // Passed via gRPC metadata header "x-cloche-follow" until proto is regenerated.
   int32 limit = 5;  // When > 0, display only the last N lines of output.
                      // Passed via gRPC metadata header "x-cloche-limit" until proto is regenerated.
+  // id accepts colon-delimited IDs at any level:
+  //   task_id                        — stream logs for the latest attempt of a task
+  //   task_id:attempt_id             — stream logs for a specific attempt
+  //   task_id:attempt_id:step_name   — stream logs for a specific step
+  // When set, takes priority over run_id + step_name.
+  string id = 6;
 }
 
 message LogEntry {
@@ -174,4 +188,58 @@ message GetVersionRequest {}
 
 message GetVersionResponse {
   string version = 1;
+}
+
+// ListTasks replaces ListRuns as the primary task-oriented listing RPC.
+message ListTasksRequest {
+  bool all = 1;
+  string project_dir = 2;
+  string state = 3;
+  int32 limit = 4;
+}
+
+message TaskSummary {
+  string task_id = 1;
+  string title = 2;
+  string status = 3;
+  string project_dir = 4;
+  string created_at = 5;
+  string latest_attempt_id = 6;
+}
+
+message ListTasksResponse {
+  repeated TaskSummary tasks = 1;
+}
+
+message GetTaskRequest {
+  string task_id = 1;
+}
+
+message AttemptSummary {
+  string attempt_id = 1;
+  string task_id = 2;
+  string result = 3;
+  string started_at = 4;
+  string ended_at = 5;
+}
+
+message GetTaskResponse {
+  string task_id = 1;
+  string title = 2;
+  string status = 3;
+  string project_dir = 4;
+  repeated AttemptSummary attempts = 5;
+}
+
+message GetAttemptRequest {
+  string attempt_id = 1;
+}
+
+message GetAttemptResponse {
+  string attempt_id = 1;
+  string task_id = 2;
+  string result = 3;
+  string started_at = 4;
+  string ended_at = 5;
+  string run_id = 6;
 }

@@ -37,6 +37,8 @@ type ClocheServer struct {
 	store        ports.RunStore
 	captures     ports.CaptureStore
 	logStore     ports.LogStore
+	taskStore    ports.TaskStore
+	attemptStore ports.AttemptStore
 	container    ports.ContainerRuntime
 	defaultImage string
 	evolution    *evolution.Trigger
@@ -70,6 +72,16 @@ func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureSto
 // SetLogStore attaches a log store to the server for indexing extracted log files.
 func (s *ClocheServer) SetLogStore(ls ports.LogStore) {
 	s.logStore = ls
+}
+
+// SetTaskStore attaches a task store for GetTask and ListTasks RPCs.
+func (s *ClocheServer) SetTaskStore(ts ports.TaskStore) {
+	s.taskStore = ts
+}
+
+// SetAttemptStore attaches an attempt store for GetAttempt RPCs.
+func (s *ClocheServer) SetAttemptStore(as ports.AttemptStore) {
+	s.attemptStore = as
 }
 
 
@@ -155,7 +167,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	// The run stays in "pending" state until the container is up.
 	go s.launchAndTrack(runID, image, req.KeepContainer, req)
 
-	return &pb.RunWorkflowResponse{RunId: runID}, nil
+	return &pb.RunWorkflowResponse{RunId: runID, TaskId: run.TaskID, AttemptId: run.AttemptID}, nil
 }
 
 // runHostWorkflow dispatches a host workflow via the host runner, returning
@@ -651,8 +663,194 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 	return resp, nil
 }
 
+func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) (*pb.ListTasksResponse, error) {
+	if s.taskStore == nil {
+		return nil, fmt.Errorf("task store not configured")
+	}
+	tasks, err := s.taskStore.ListTasks(ctx, req.ProjectDir)
+	if err != nil {
+		return nil, fmt.Errorf("listing tasks: %w", err)
+	}
+
+	resp := &pb.ListTasksResponse{}
+	for _, task := range tasks {
+		sum := &pb.TaskSummary{
+			TaskId:     task.ID,
+			Title:      task.Title,
+			Status:     string(task.Status),
+			ProjectDir: task.ProjectDir,
+			CreatedAt:  task.CreatedAt.String(),
+		}
+		if la := task.LatestAttempt(); la != nil {
+			sum.LatestAttemptId = la.ID
+		}
+		resp.Tasks = append(resp.Tasks, sum)
+	}
+	return resp, nil
+}
+
+func (s *ClocheServer) GetTask(ctx context.Context, req *pb.GetTaskRequest) (*pb.GetTaskResponse, error) {
+	if s.taskStore == nil {
+		return nil, fmt.Errorf("task store not configured")
+	}
+	task, err := s.taskStore.GetTask(ctx, req.TaskId)
+	if err != nil {
+		return nil, fmt.Errorf("getting task: %w", err)
+	}
+
+	resp := &pb.GetTaskResponse{
+		TaskId:     task.ID,
+		Title:      task.Title,
+		Status:     string(task.Status),
+		ProjectDir: task.ProjectDir,
+	}
+	for _, a := range task.Attempts {
+		resp.Attempts = append(resp.Attempts, &pb.AttemptSummary{
+			AttemptId: a.ID,
+			TaskId:    a.TaskID,
+			Result:    string(a.Result),
+			StartedAt: a.StartedAt.String(),
+			EndedAt:   a.EndedAt.String(),
+		})
+	}
+	return resp, nil
+}
+
+func (s *ClocheServer) GetAttempt(ctx context.Context, req *pb.GetAttemptRequest) (*pb.GetAttemptResponse, error) {
+	if s.attemptStore == nil {
+		return nil, fmt.Errorf("attempt store not configured")
+	}
+	attempt, err := s.attemptStore.GetAttempt(ctx, req.AttemptId)
+	if err != nil {
+		return nil, fmt.Errorf("getting attempt: %w", err)
+	}
+
+	// Find the run associated with this attempt.
+	var runID string
+	runs, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{TaskID: attempt.TaskID})
+	if err == nil {
+		for _, r := range runs {
+			if r.AttemptID == req.AttemptId {
+				runID = r.ID
+				break
+			}
+		}
+	}
+
+	return &pb.GetAttemptResponse{
+		AttemptId: attempt.ID,
+		TaskId:    attempt.TaskID,
+		Result:    string(attempt.Result),
+		StartedAt: attempt.StartedAt.String(),
+		EndedAt:   attempt.EndedAt.String(),
+		RunId:     runID,
+	}, nil
+}
+
+// resolveRunIDFromID resolves a colon-delimited ID to a (runID, stepName) pair.
+// The id may be:
+//   - a run_id           → returns (runID, "", nil)
+//   - a task_id          → returns (latestRunID, "", nil)
+//   - an attempt_id      → returns (runID, "", nil) for the run with that attempt
+//   - task_id:attempt_id → returns (runID, "", nil) for that specific attempt
+//   - task_id:attempt_id:step_name → returns (runID, stepName, nil)
+func (s *ClocheServer) resolveRunIDFromID(ctx context.Context, id string) (runID, stepName string, err error) {
+	parts := strings.SplitN(id, ":", 3)
+
+	switch len(parts) {
+	case 1:
+		// Try as run_id first
+		if _, e := s.store.GetRun(ctx, id); e == nil {
+			return id, "", nil
+		}
+		// Try as task_id (most recent run)
+		runs, e := s.store.ListRunsFiltered(ctx, domain.RunListFilter{TaskID: id, Limit: 1})
+		if e == nil && len(runs) > 0 {
+			return runs[0].ID, "", nil
+		}
+		// Try as attempt_id
+		run, e := s.findRunByAttemptID(ctx, id)
+		if e == nil {
+			return run.ID, "", nil
+		}
+		return "", "", fmt.Errorf("no run found for id %q", id)
+
+	case 2:
+		// task_id:attempt_id
+		run, e := s.findRunByTaskAndAttempt(ctx, parts[0], parts[1])
+		if e != nil {
+			return "", "", fmt.Errorf("no run found for task %q attempt %q: %w", parts[0], parts[1], e)
+		}
+		return run.ID, "", nil
+
+	case 3:
+		// task_id:attempt_id:step_name
+		run, e := s.findRunByTaskAndAttempt(ctx, parts[0], parts[1])
+		if e != nil {
+			return "", "", fmt.Errorf("no run found for task %q attempt %q: %w", parts[0], parts[1], e)
+		}
+		return run.ID, parts[2], nil
+	}
+
+	return "", "", fmt.Errorf("invalid id %q", id)
+}
+
+// findRunByAttemptID searches for a run whose AttemptID matches the given ID.
+func (s *ClocheServer) findRunByAttemptID(ctx context.Context, attemptID string) (*domain.Run, error) {
+	// If an attempt store is available, look up the task_id first to narrow the search.
+	if s.attemptStore != nil {
+		attempt, err := s.attemptStore.GetAttempt(ctx, attemptID)
+		if err == nil {
+			runs, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{TaskID: attempt.TaskID})
+			if err == nil {
+				for _, r := range runs {
+					if r.AttemptID == attemptID {
+						return r, nil
+					}
+				}
+			}
+		}
+	}
+	// Fallback: scan all recent runs
+	runs, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{})
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range runs {
+		if r.AttemptID == attemptID {
+			return r, nil
+		}
+	}
+	return nil, fmt.Errorf("no run found with attempt ID %q", attemptID)
+}
+
+// findRunByTaskAndAttempt returns the run for the given task and attempt.
+func (s *ClocheServer) findRunByTaskAndAttempt(ctx context.Context, taskID, attemptID string) (*domain.Run, error) {
+	runs, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{TaskID: taskID})
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range runs {
+		if r.AttemptID == attemptID {
+			return r, nil
+		}
+	}
+	return nil, fmt.Errorf("no run found for task %q with attempt %q", taskID, attemptID)
+}
+
 func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) (*pb.GetStatusResponse, error) {
-	run, err := s.store.GetRun(ctx, req.RunId)
+	// Resolve the run to inspect. The Id field (task/attempt/step ID) takes
+	// priority over the legacy run_id field for backward compatibility.
+	runID := req.RunId
+	if req.Id != "" {
+		resolved, _, err := s.resolveRunIDFromID(ctx, req.Id)
+		if err != nil {
+			return nil, fmt.Errorf("resolving id %q: %w", req.Id, err)
+		}
+		runID = resolved
+	}
+
+	run, err := s.store.GetRun(ctx, runID)
 	if err != nil {
 		return nil, fmt.Errorf("getting run: %w", err)
 	}
@@ -680,7 +878,7 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 
 	// Load step executions from captures store if available
 	if s.captures != nil {
-		captures, err := s.captures.GetCaptures(ctx, req.RunId)
+		captures, err := s.captures.GetCaptures(ctx, run.ID)
 		if err == nil {
 			for _, exec := range captures {
 				resp.StepExecutions = append(resp.StepExecutions, &pb.StepExecutionStatus{
@@ -710,6 +908,24 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 
 	_ = followFromContext(ctx) // follow is implicit for active runs
 	limit := limitFromContext(ctx)
+
+	// Resolve run from the Id field if set (colon-delimited: task_id[:attempt_id[:step_name]]).
+	// Takes priority over the legacy run_id + step_name fields.
+	if req.Id != "" {
+		runID, stepName, err := s.resolveRunIDFromID(ctx, req.Id)
+		if err != nil {
+			return fmt.Errorf("resolving id %q: %w", req.Id, err)
+		}
+		// Build a synthetic request with the resolved run_id and step_name.
+		resolved := &pb.StreamLogsRequest{
+			RunId:    runID,
+			StepName: stepName,
+			LogType:  req.LogType,
+			Follow:   req.Follow,
+			Limit:    req.Limit,
+		}
+		return s.StreamLogs(resolved, stream)
+	}
 
 	// Verify run exists
 	run, err := s.store.GetRun(ctx, req.RunId)
