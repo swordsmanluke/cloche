@@ -77,23 +77,26 @@
             <th>Result</th>
             <th>Started</th>
             <th>Duration</th>
+            {{if .HasUsage}}<th>Agent</th><th>Tokens</th>{{end}}
         </tr>
     </thead>
     <tbody id="steps-body">
     {{if .Steps}}
+        {{$hasUsage := $.HasUsage}}
         {{range .Steps}}
         <tr class="step-row" data-run-id="{{$.Run.ID}}" data-step="{{.StepName}}" data-index="{{.Index}}">
             <td>{{.StepName}}</td>
             <td>{{if .Result}}<span class="badge badge-{{if eq .Result "success"}}succeeded{{else if eq .Result "fail"}}failed{{else}}pending{{end}}">{{.Result}}</span>{{else}}<span class="badge badge-running">running</span>{{end}}</td>
             <td>{{formatTime .StartedAt}}</td>
             <td>{{.Duration}}</td>
+            {{if $hasUsage}}<td>{{if .HasUsage}}{{.AgentName}}{{end}}</td><td>{{if .HasUsage}}{{.InputTokens}}/{{.OutputTokens}}{{end}}</td>{{end}}
         </tr>
         <tr class="output-row" id="output-{{.Index}}" style="display:none">
-            <td colspan="4"><div class="step-log-viewer"><pre class="step-output" data-step="{{.StepName}}"></pre></div></td>
+            <td colspan="{{if $hasUsage}}6{{else}}4{{end}}"><div class="step-log-viewer"><pre class="step-output" data-step="{{.StepName}}"></pre></div></td>
         </tr>
         {{end}}
     {{else}}
-        <tr><td colspan="4" class="empty">No step executions recorded.</td></tr>
+        <tr><td colspan="{{if .HasUsage}}6{{else}}4{{end}}" class="empty">No step executions recorded.</td></tr>
     {{end}}
     </tbody>
 </table>
@@ -113,6 +116,7 @@
 (function() {
     var runState = '{{.Run.State}}';
     var runID = '{{.Run.ID}}';
+    var hasUsage = {{if .HasUsage}}true{{else}}false{{end}};
 
     // --- Log Viewer ---
     var logContent = document.getElementById('log-content');
@@ -233,8 +237,15 @@
                     }
                     var tbody = document.getElementById('steps-body');
                     if (!data.steps || data.steps.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="4" class="empty">No step executions recorded.</td></tr>';
+                        var emptyColspan = hasUsage ? '6' : '4';
+                        tbody.innerHTML = '<tr><td colspan="' + emptyColspan + '" class="empty">No step executions recorded.</td></tr>';
                         return;
+                    }
+
+                    // Check if any step now has usage data (may appear during polling)
+                    var anyUsage = hasUsage;
+                    for (var i = 0; i < data.steps.length; i++) {
+                        if (data.steps[i].has_usage) { anyUsage = true; break; }
                     }
 
                     // Capture current accordion state before updating
@@ -253,6 +264,7 @@
                     }
 
                     // Build updated step rows, preserving accordion state
+                    var colspan = anyUsage ? '6' : '4';
                     var html = '';
                     for (var i = 0; i < data.steps.length; i++) {
                         var s = data.steps[i];
@@ -265,14 +277,21 @@
                         }
                         var outputId = 'output-' + i;
                         var isOpen = openAccordions[outputId];
+                        var usageCols = '';
+                        if (anyUsage) {
+                            var agent = s.has_usage ? escapeHtml(s.agent_name || '') : '';
+                            var tokens = s.has_usage ? (s.input_tokens || 0) + '/' + (s.output_tokens || 0) : '';
+                            usageCols = '<td>' + agent + '</td><td>' + tokens + '</td>';
+                        }
                         html += '<tr class="step-row" data-run-id="' + escapeHtml(runID) + '" data-step="' + escapeHtml(s.step_name) + '" data-index="' + i + '">' +
                             '<td>' + escapeHtml(s.step_name) + '</td>' +
                             '<td>' + badge + '</td>' +
                             '<td>' + s.started_at + '</td>' +
                             '<td>' + s.duration + '</td>' +
+                            usageCols +
                             '</tr>' +
                             '<tr class="output-row" id="' + outputId + '"' + (isOpen ? '' : ' style="display:none"') + '>' +
-                            '<td colspan="4"><div class="step-log-viewer"><pre class="step-output" data-step="' + escapeHtml(s.step_name) + '"></pre></div></td>' +
+                            '<td colspan="' + colspan + '"><div class="step-log-viewer"><pre class="step-output" data-step="' + escapeHtml(s.step_name) + '"></pre></div></td>' +
                             '</tr>';
                     }
                     tbody.innerHTML = html;

@@ -29,6 +29,12 @@
     <div class="panel-body" id="upcoming-body">Loading...</div>
 </div>
 
+<!-- Panel 4: Token Usage -->
+<div class="panel" id="token-usage-panel" style="display:none">
+    <div class="panel-header">Token Usage</div>
+    <div class="panel-body" id="token-usage-body">Loading...</div>
+</div>
+
 <!-- Panel 3: Workflow View -->
 <div class="panel" id="workflow-panel">
     <div class="panel-header">Workflows</div>
@@ -664,10 +670,78 @@ function loadTasks() {
         .catch(function() {});
 }
 
+function formatTokenCount(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+    return String(n);
+}
+
+function loadTokenUsage() {
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/usage')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var br = data.burn_rate_1h || [];
+            var t24 = data.totals_24h || [];
+
+            // Only show the panel if there's any data
+            if (br.length === 0 && t24.length === 0) {
+                document.getElementById('token-usage-panel').style.display = 'none';
+                return;
+            }
+            document.getElementById('token-usage-panel').style.display = '';
+
+            // Build a combined map keyed by agent name
+            var agents = {};
+            br.forEach(function(s) {
+                if (!agents[s.agent_name]) agents[s.agent_name] = {};
+                agents[s.agent_name].burn_rate = s.burn_rate;
+                agents[s.agent_name].br_input = s.input_tokens;
+                agents[s.agent_name].br_output = s.output_tokens;
+                agents[s.agent_name].br_total = s.total_tokens;
+            });
+            t24.forEach(function(s) {
+                if (!agents[s.agent_name]) agents[s.agent_name] = {};
+                agents[s.agent_name].t24_total = s.total_tokens;
+                agents[s.agent_name].t24_input = s.input_tokens;
+                agents[s.agent_name].t24_output = s.output_tokens;
+            });
+
+            var names = Object.keys(agents).sort();
+
+            var html = '<table class="runs-table" style="margin:0"><thead><tr>';
+            html += '<th>Agent</th>';
+            if (br.length > 0) html += '<th>Burn Rate (last 1h)</th><th>1h In/Out</th>';
+            if (t24.length > 0) html += '<th>24h Total</th><th>24h In/Out</th>';
+            html += '</tr></thead><tbody>';
+
+            names.forEach(function(name) {
+                var a = agents[name];
+                html += '<tr>';
+                html += '<td>' + escapeHtml(name || '(unknown)') + '</td>';
+                if (br.length > 0) {
+                    var rate = a.burn_rate ? '~' + formatTokenCount(Math.round(a.burn_rate)) + '/hr' : '-';
+                    var inout = (a.br_total != null) ? formatTokenCount(a.br_input || 0) + ' in / ' + formatTokenCount(a.br_output || 0) + ' out' : '-';
+                    html += '<td>' + rate + '</td><td>' + inout + '</td>';
+                }
+                if (t24.length > 0) {
+                    var total24 = (a.t24_total != null) ? formatTokenCount(a.t24_total) : '-';
+                    var inout24 = (a.t24_total != null) ? formatTokenCount(a.t24_input || 0) + ' in / ' + formatTokenCount(a.t24_output || 0) + ' out' : '-';
+                    html += '<td>' + total24 + '</td><td>' + inout24 + '</td>';
+                }
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            document.getElementById('token-usage-body').innerHTML = html;
+        })
+        .catch(function() {});
+}
+
 // Load all panels
 loadProjectInfo();
 loadWorkflows();
 loadTasks();
+loadTokenUsage();
 setInterval(loadTasks, 5000);
+setInterval(loadTokenUsage, 30000);
 </script>
 {{end}}

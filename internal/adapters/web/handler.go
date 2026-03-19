@@ -162,6 +162,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("DELETE /api/runs/{id}/container", h.handleAPIDeleteContainer)
 	h.mux.HandleFunc("DELETE /api/projects/{name}/containers", h.handleAPIDeleteProjectContainers)
 	h.mux.HandleFunc("DELETE /api/containers", h.handleAPIDeleteAllContainers)
+	h.mux.HandleFunc("GET /api/projects/{name}/usage", h.handleAPIProjectUsage)
 	h.mux.HandleFunc("GET /api/projects/{name}/info", h.handleAPIProjectInfo)
 	h.mux.HandleFunc("GET /api/projects/{name}/info/prompt-diff", h.handleAPIPromptDiff)
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows", h.handleAPIWorkflows)
@@ -536,11 +537,15 @@ func (h *Handler) handleProjectRuns(w http.ResponseWriter, r *http.Request) {
 
 // stepEntry is a merged view of a step execution for the template.
 type stepEntry struct {
-	Index     int
-	StepName  string
-	Result    string
-	StartedAt time.Time
-	Duration  string
+	Index        int
+	StepName     string
+	Result       string
+	StartedAt    time.Time
+	Duration     string
+	AgentName    string
+	InputTokens  int64
+	OutputTokens int64
+	HasUsage     bool
 }
 
 // mergeCaptures collapses started/completed capture pairs into single entries.
@@ -561,13 +566,20 @@ func mergeCaptures(caps []*domain.StepExecution) []stepEntry {
 			startedAt = started.StartedAt
 			delete(pending, c.StepName)
 		}
-		entries = append(entries, stepEntry{
+		e := stepEntry{
 			Index:     len(entries),
 			StepName:  c.StepName,
 			Result:    c.Result,
 			StartedAt: startedAt,
 			Duration:  formatDuration(startedAt, c.CompletedAt),
-		})
+		}
+		if c.Usage != nil {
+			e.AgentName = c.Usage.AgentName
+			e.InputTokens = c.Usage.InputTokens
+			e.OutputTokens = c.Usage.OutputTokens
+			e.HasUsage = true
+		}
+		entries = append(entries, e)
 	}
 
 	// Append any started-but-not-completed steps (still running)
@@ -630,6 +642,15 @@ func (h *Handler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 
 	steps := mergeCaptures(caps)
 
+	// Determine if any step has usage data (for conditional column display).
+	var hasUsage bool
+	for _, s := range steps {
+		if s.HasUsage {
+			hasUsage = true
+			break
+		}
+	}
+
 	// Fetch parent run if this is a child
 	var parentRun *domain.Run
 	if run.ParentRunID != "" {
@@ -643,6 +664,7 @@ func (h *Handler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 		"Title":          "Run " + run.ID,
 		"Run":            run,
 		"Steps":          steps,
+		"HasUsage":       hasUsage,
 		"Page":           "detail",
 		"ContainerState": h.containerState(r.Context(), run),
 		"ParentRun":      parentRun,
@@ -675,11 +697,15 @@ type apiRun struct {
 }
 
 type apiStep struct {
-	StepName    string `json:"step_name"`
-	Result      string `json:"result"`
-	StartedAt   string `json:"started_at"`
-	CompletedAt string `json:"completed_at"`
-	Duration    string `json:"duration"`
+	StepName     string `json:"step_name"`
+	Result       string `json:"result"`
+	StartedAt    string `json:"started_at"`
+	CompletedAt  string `json:"completed_at"`
+	Duration     string `json:"duration"`
+	AgentName    string `json:"agent_name,omitempty"`
+	InputTokens  int64  `json:"input_tokens,omitempty"`
+	OutputTokens int64  `json:"output_tokens,omitempty"`
+	HasUsage     bool   `json:"has_usage,omitempty"`
 }
 
 type apiRunDetail struct {
@@ -1004,10 +1030,14 @@ func (h *Handler) handleAPIRunDetail(w http.ResponseWriter, r *http.Request) {
 	steps := make([]apiStep, len(merged))
 	for i, e := range merged {
 		steps[i] = apiStep{
-			StepName:  e.StepName,
-			Result:    e.Result,
-			StartedAt: formatTime(e.StartedAt),
-			Duration:  e.Duration,
+			StepName:     e.StepName,
+			Result:       e.Result,
+			StartedAt:    formatTime(e.StartedAt),
+			Duration:     e.Duration,
+			AgentName:    e.AgentName,
+			InputTokens:  e.InputTokens,
+			OutputTokens: e.OutputTokens,
+			HasUsage:     e.HasUsage,
 		}
 	}
 
@@ -1746,6 +1776,69 @@ func (h *Handler) handleProjectDetail(w http.ResponseWriter, r *http.Request) {
 	if err := h.pages["project_detail"].ExecuteTemplate(w, "layout", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// apiUsageSummary is the JSON representation of a per-agent usage summary.
+type apiUsageSummary struct {
+	AgentName    string  `json:"agent_name"`
+	InputTokens  int64   `json:"input_tokens"`
+	OutputTokens int64   `json:"output_tokens"`
+	TotalTokens  int64   `json:"total_tokens"`
+	BurnRate     float64 `json:"burn_rate"` // tokens/hour
+}
+
+// apiProjectUsage is the JSON response for /api/projects/{name}/usage.
+type apiProjectUsage struct {
+	BurnRate1h []apiUsageSummary `json:"burn_rate_1h"`
+	Totals24h  []apiUsageSummary `json:"totals_24h"`
+}
+
+func (h *Handler) handleAPIProjectUsage(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+
+	now := time.Now()
+
+	summaries1h, err := h.store.QueryUsage(r.Context(), ports.UsageQuery{
+		ProjectDir: dir,
+		Since:      now.Add(-1 * time.Hour),
+		Until:      now,
+	})
+	if err != nil {
+		summaries1h = nil
+	}
+
+	summaries24h, err := h.store.QueryUsage(r.Context(), ports.UsageQuery{
+		ProjectDir: dir,
+		Since:      now.Add(-24 * time.Hour),
+		Until:      now,
+	})
+	if err != nil {
+		summaries24h = nil
+	}
+
+	toAPI := func(ss []domain.UsageSummary) []apiUsageSummary {
+		out := make([]apiUsageSummary, len(ss))
+		for i, s := range ss {
+			out[i] = apiUsageSummary{
+				AgentName:    s.AgentName,
+				InputTokens:  s.InputTokens,
+				OutputTokens: s.OutputTokens,
+				TotalTokens:  s.TotalTokens,
+				BurnRate:     s.BurnRate,
+			}
+		}
+		return out
+	}
+
+	resp := apiProjectUsage{
+		BurnRate1h: toAPI(summaries1h),
+		Totals24h:  toAPI(summaries24h),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (h *Handler) handleAPIProjectInfo(w http.ResponseWriter, r *http.Request) {
