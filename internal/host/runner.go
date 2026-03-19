@@ -71,19 +71,24 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 	}
 
 	// Create output directory for step outputs.
-	// v2 runs use .cloche/logs/<taskID>/<attemptID>/; legacy falls back
-	// to .cloche/<runID>/output/.
+	// v2 runs use .cloche/logs/<taskID>/<attemptID>/; ephemeral runs
+	// without a task ID (e.g. list-tasks) use a temp directory to avoid
+	// leaving v1-style dirs in the project.
 	var outputDir string
+	var tmpOutputDir string
 	if r.TaskID != "" {
 		attemptID := r.AttemptID
 		if attemptID == "" {
-			// Run IDs no longer embed the attempt ID — generate one so the
-			// output directory still has the <taskID>/<attemptID>/ structure.
 			attemptID = domain.GenerateAttemptID()
 		}
 		outputDir = filepath.Join(projectDir, ".cloche", "logs", r.TaskID, attemptID)
 	} else {
-		outputDir = filepath.Join(projectDir, ".cloche", orchRunID, "output")
+		dir, err := os.MkdirTemp("", "cloche-run-*")
+		if err != nil {
+			return nil, fmt.Errorf("creating temp output dir: %w", err)
+		}
+		outputDir = dir
+		tmpOutputDir = dir
 	}
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating output dir: %w", err)
@@ -193,6 +198,11 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 	// so subscribers see the final state when their channel closes).
 	if r.LogBroadcast != nil {
 		r.LogBroadcast.Finish(orchRunID)
+	}
+
+	// Clean up temp output directory (used for ephemeral runs like list-tasks).
+	if tmpOutputDir != "" {
+		_ = os.RemoveAll(tmpOutputDir)
 	}
 
 	if runErr != nil {
