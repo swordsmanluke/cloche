@@ -662,6 +662,7 @@ type apiRun struct {
 	ProjectDir   string `json:"project_dir"`
 	ProjectLabel string `json:"project_label"`
 	State        string `json:"state"`
+	CurrentStep  string `json:"current_step,omitempty"`
 	StartedAt    string `json:"started_at"`
 	CompletedAt  string `json:"completed_at"`
 	Timing       string `json:"timing"`
@@ -689,12 +690,17 @@ type apiRunDetail struct {
 }
 
 func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
+	var currentStep string
+	if r.State == domain.RunStateRunning && len(r.ActiveSteps) > 0 {
+		currentStep = strings.Join(r.ActiveSteps, ", ")
+	}
 	return apiRun{
 		ID:           r.ID,
 		WorkflowName: r.WorkflowName,
 		ProjectDir:   r.ProjectDir,
 		ProjectLabel: labels[r.ProjectDir],
 		State:        string(r.State),
+		CurrentStep:  currentStep,
 		StartedAt:    formatTime(r.StartedAt),
 		CompletedAt:  formatTime(r.CompletedAt),
 		Timing:       formatRunTiming(r.State, r.StartedAt, r.CompletedAt),
