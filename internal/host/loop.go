@@ -69,20 +69,20 @@ type TaskStateEntry struct {
 // Loop manages a continuous orchestration loop for a project, keeping up to
 // MaxConcurrent host workflow runs active at all times when work is available.
 //
-// When configured with three-phase functions (list-tasks, main, finalize), the
-// loop discovers tasks via list-tasks, picks open ones, runs main for each, and
-// then runs finalize on completion. When configured with a legacy RunFunc, it
-// falls back to the single-function approach.
+// The loop uses a three-phase approach: list-tasks discovers available work,
+// main executes the work for each task, and finalize runs cleanup after each
+// main run (on both success and failure). When no list-tasks function is
+// configured (e.g. via NewLoop without a task assigner), an untracked sentinel
+// task is used so main runs continuously.
 type Loop struct {
 	config       LoopConfig
 	listTasks    ListTasksFunc
 	mainFn       MainFunc
 	finalizeFn   FinalizeFunc // optional; skipped if nil
-	runner       RunFunc      // legacy single-function mode
 	store        ports.RunStore
 	attemptStore ports.AttemptStore // optional; creates Attempt records when set
 	taskStore    ports.TaskStore    // optional; ensures Task records exist when set
-	assigner     TaskAssigner       // optional; legacy task assignment
+	assigner     TaskAssigner       // optional; feeds listTasks in NewLoop-created loops
 	stopCh       chan struct{}
 	resumeCh     chan struct{} // signaled by Resume() to wake the loop
 	mu           sync.Mutex
@@ -98,8 +98,11 @@ type Loop struct {
 	taskRuns   map[string]TaskAssignment // task ID -> assignment info
 }
 
-// NewLoop creates an orchestration loop using a single run function (legacy mode).
-// For three-phase orchestration, use NewPhaseLoop instead.
+// NewLoop creates an orchestration loop using a single run function. Internally
+// it uses the three-phase approach: if a task assigner is configured via
+// SetTaskAssigner, tasks are discovered through it and their IDs passed to
+// runFn; without a task assigner the loop runs runFn continuously with an empty
+// task ID (no task-level tracking).
 func NewLoop(cfg LoopConfig, store ports.RunStore, runFn RunFunc) *Loop {
 	if cfg.MaxConcurrent <= 0 {
 		cfg.MaxConcurrent = defaultMaxConcurrent
@@ -110,14 +113,25 @@ func NewLoop(cfg LoopConfig, store ports.RunStore, runFn RunFunc) *Loop {
 	if cfg.MaxConsecutiveFailures <= 0 {
 		cfg.MaxConsecutiveFailures = defaultMaxConsecutiveFailures
 	}
-	return &Loop{
+	l := &Loop{
 		config:   cfg,
-		runner:   runFn,
 		store:    store,
 		resumeCh: make(chan struct{}, 1),
 		dedup:    make(map[string]time.Time),
 		taskRuns: make(map[string]TaskAssignment),
 	}
+	// listTasks delegates to the assigner when set, otherwise returns a single
+	// untracked sentinel task (empty ID) so main runs unconditionally.
+	l.listTasks = func(ctx context.Context, projectDir string) ([]Task, error) {
+		if l.assigner != nil {
+			return l.assigner.ListTasks(ctx, projectDir)
+		}
+		return []Task{{ID: ""}}, nil
+	}
+	l.mainFn = func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+		return runFn(ctx, projectDir, taskID, attemptID)
+	}
+	return l
 }
 
 // NewPhaseLoop creates a three-phase orchestration loop. The listTasksFn
@@ -145,8 +159,8 @@ func NewPhaseLoop(cfg LoopConfig, store ports.RunStore, listTasksFn ListTasksFun
 	}
 }
 
-// SetTaskAssigner configures a TaskAssigner for daemon-managed task assignment.
-// Only used in legacy (single RunFunc) mode when no list-tasks function is set.
+// SetTaskAssigner configures a TaskAssigner for task discovery in loops created
+// with NewLoop. Must be called before Start.
 func (l *Loop) SetTaskAssigner(a TaskAssigner) {
 	l.assigner = a
 }
@@ -257,11 +271,7 @@ func (l *Loop) isHalted() bool {
 }
 
 func (l *Loop) run() {
-	if l.listTasks != nil && l.mainFn != nil {
-		l.runPhased()
-	} else {
-		l.runLegacy()
-	}
+	l.runPhased()
 }
 
 // runPhased implements the three-phase orchestration loop:
@@ -476,7 +486,8 @@ func (l *Loop) pickTaskFromPhase() (string, string, bool) {
 
 	for _, task := range tasks {
 		if task.ID == "" {
-			continue
+			// Untracked sentinel task: always available, skip dedup and tracking.
+			return "", task.Title, true
 		}
 		if !task.IsOpen() {
 			continue
@@ -484,172 +495,6 @@ func (l *Loop) pickTaskFromPhase() (string, string, bool) {
 		if ts, ok := l.dedup[task.ID]; ok && now.Sub(ts) < l.config.DedupTimeout {
 			continue
 		}
-		l.dedup[task.ID] = now
-		log.Printf("orchestration loop: assigned task %s for %s", task.ID, l.config.ProjectDir)
-		return task.ID, task.Title, true
-	}
-
-	return "", "", false
-}
-
-// runLegacy implements the original single-function orchestration loop.
-func (l *Loop) runLegacy() {
-	type result struct {
-		state  domain.RunState
-		errMsg string
-	}
-
-	completions := make(chan result, l.config.MaxConcurrent)
-	inFlight := 0
-
-	for {
-		// Fill up to max concurrent slots.
-		launched := 0
-		for inFlight < l.config.MaxConcurrent {
-			select {
-			case <-l.stopCh:
-				return
-			default:
-			}
-
-			// If halted, don't pick up new work.
-			if l.isHalted() {
-				break
-			}
-
-			// Check how many host runs are active for this project (in case of
-			// leftover runs from previous loops).
-			active := l.countActiveHostRuns()
-			if active >= l.config.MaxConcurrent {
-				break
-			}
-
-			// Stagger consecutive launches to avoid race conditions on task claiming.
-			if launched > 0 && l.config.StaggerDelay > 0 {
-				if !l.sleep(l.config.StaggerDelay) {
-					return
-				}
-			}
-
-			// Determine task ID (if task assigner is configured).
-			taskID := ""
-			taskTitle := ""
-			if l.assigner != nil {
-				var ok bool
-				taskID, taskTitle, ok = l.pickTask()
-				if !ok {
-					// No assignable tasks available.
-					break
-				}
-			}
-
-			// Create an Attempt record for this loop iteration (if task ID known).
-			attemptID := l.createAttemptForTask(taskID, taskTitle, l.config.ProjectDir)
-
-			// Launch a new orchestration run in a goroutine.
-			inFlight++
-			launched++
-			tid := taskID    // capture for goroutine
-			aid := attemptID // capture for goroutine
-			go func() {
-				// runState defaults to failed; the deferred function guarantees
-				// completeAttempt and the completions signal are always sent, even on
-				// panic, so no attempt can be left permanently stuck as running.
-				runState := domain.RunStateFailed
-				defer func() {
-					if r := recover(); r != nil {
-						log.Printf("orchestration loop: panic in legacy run goroutine: %v", r)
-					}
-					l.completeAttempt(aid, runState)
-					if runState != domain.RunStateSucceeded {
-						completions <- result{state: runState, errMsg: "run failed with state " + string(runState)}
-					} else {
-						completions <- result{state: runState}
-					}
-				}()
-
-				res, err := l.runner(context.Background(), l.config.ProjectDir, tid, aid)
-				if err != nil {
-					log.Printf("orchestration loop: run failed for %s: %v", l.config.ProjectDir, err)
-					// runState stays RunStateFailed; defer handles the rest.
-					return
-				}
-				runState = res.State
-			}()
-		}
-
-		if inFlight == 0 {
-			// Nothing in flight and at capacity — wait before checking again.
-			if !l.sleep(capacityPollInterval) {
-				return
-			}
-			continue
-		}
-
-		// Wait for any run to complete.
-		select {
-		case r := <-completions:
-			inFlight--
-			if r.state == domain.RunStateSucceeded {
-				l.resetConsecutiveFailures()
-				// Work was done — try to fill slots immediately.
-				continue
-			}
-			// Run failed or aborted (no tasks available).
-			if l.config.StopOnError {
-				l.halt(r.errMsg)
-			}
-			if l.recordConsecutiveFailure() {
-				l.halt(fmt.Sprintf("halted after %d consecutive failures: %s", l.config.MaxConsecutiveFailures, r.errMsg))
-			}
-			// Back off.
-			if !l.sleep(idlePollInterval) {
-				return
-			}
-		case <-l.stopCh:
-			return
-		}
-	}
-}
-
-// pickTask queries the task assigner for available tasks, filters out those
-// within the dedup timeout window, and returns the first assignable task ID and title.
-// It records the assignment time so the same task won't be picked again until
-// the dedup timeout expires. Returns ("", "", false) if no tasks are available.
-func (l *Loop) pickTask() (string, string, bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	tasks, err := l.assigner.ListTasks(ctx, l.config.ProjectDir)
-	if err != nil {
-		log.Printf("orchestration loop: list-tasks failed for %s: %v", l.config.ProjectDir, err)
-		return "", "", false
-	}
-
-	// Cache the latest tasks for snapshot queries.
-	l.tasksMu.Lock()
-	l.lastTasks = tasks
-	l.tasksMu.Unlock()
-
-	now := time.Now()
-	l.dedupMu.Lock()
-	defer l.dedupMu.Unlock()
-
-	// Expire old dedup entries while we're here.
-	for id, ts := range l.dedup {
-		if now.Sub(ts) >= l.config.DedupTimeout {
-			delete(l.dedup, id)
-		}
-	}
-
-	for _, task := range tasks {
-		if task.ID == "" {
-			continue
-		}
-		if ts, ok := l.dedup[task.ID]; ok && now.Sub(ts) < l.config.DedupTimeout {
-			continue // still within dedup window
-		}
-		// Assign this task.
 		l.dedup[task.ID] = now
 		log.Printf("orchestration loop: assigned task %s for %s", task.ID, l.config.ProjectDir)
 		return task.ID, task.Title, true

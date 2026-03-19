@@ -1955,13 +1955,7 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 		existing.Stop()
 	}
 
-	// Check if project defines a list-tasks workflow for three-phase mode.
-	var loop *host.Loop
-	if _, hasListTasks := hostWorkflows["list-tasks"]; hasListTasks {
-		loop = s.createPhaseLoop(loopCfg, projectDir, dedupTimeout)
-	} else {
-		loop = s.createLegacyLoop(loopCfg, projectDir, projCfg, dedupTimeout)
-	}
+	loop := s.createPhaseLoop(loopCfg, projectDir, dedupTimeout)
 
 	s.loops[projectDir] = loop
 	loop.Start()
@@ -1969,17 +1963,32 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 	return &pb.EnableLoopResponse{}, nil
 }
 
-// createPhaseLoop creates a three-phase orchestration loop using list-tasks,
-// main, and finalize host workflows from any .cloche file.
+// createPhaseLoop creates a three-phase orchestration loop using host workflows
+// from any .cloche file in the project. When a list-tasks workflow exists, tasks
+// are discovered through it; otherwise main runs continuously with an untracked
+// sentinel task.
 func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir string, dedupTimeout time.Duration) *host.Loop {
-	// Phase 1: list-tasks function
-	listTasksFn := func(ctx context.Context, projDir string) ([]host.Task, error) {
-		runner := &host.Runner{
-			Dispatcher: s,
-			Store:      s.store,
+	hostWFs, _ := host.FindHostWorkflows(projectDir)
+
+	// Phase 1: list-tasks function.
+	// If no list-tasks workflow is defined, return a single untracked sentinel
+	// task (empty ID) so the main workflow runs continuously.
+	var listTasksFn host.ListTasksFunc
+	if _, hasListTasks := hostWFs["list-tasks"]; hasListTasks {
+		listTasksFn = func(ctx context.Context, projDir string) ([]host.Task, error) {
+			runner := &host.Runner{
+				Dispatcher: s,
+				Store:      s.store,
+			}
+			tasks, _, err := host.RunListTasksWorkflow(ctx, runner, projDir)
+			return tasks, err
 		}
-		tasks, _, err := host.RunListTasksWorkflow(ctx, runner, projDir)
-		return tasks, err
+		log.Printf("orchestration loop: three-phase mode enabled for %s (list-tasks + main + finalize, dedup=%s)", projectDir, dedupTimeout)
+	} else {
+		listTasksFn = func(ctx context.Context, projDir string) ([]host.Task, error) {
+			return []host.Task{{ID: ""}}, nil
+		}
+		log.Printf("orchestration loop: continuous mode enabled for %s (main runs unconditionally, dedup=%s)", projectDir, dedupTimeout)
 	}
 
 	// Phase 2: main function
@@ -1997,34 +2006,31 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 
 	// Phase 3: finalize function (optional — only if a finalize host workflow exists)
 	var finalizeFn host.FinalizeFunc
-	if hostWFs, err := host.FindHostWorkflows(projectDir); err == nil {
-		if _, hasFinalize := hostWFs["finalize"]; hasFinalize {
-			finalizeFn = func(ctx context.Context, projDir string, taskID string, attemptID string, mainResult *host.RunResult) (*host.RunResult, error) {
-				mainRunID := ""
-				mainOutcome := "failed"
-				if mainResult != nil {
-					mainRunID = mainResult.RunID
-					mainOutcome = string(mainResult.State)
-				}
-				runner := &host.Runner{
-					Dispatcher:   s,
-					Store:        s.store,
-					Captures:     s.captures,
-					LogBroadcast: s.logBroadcast,
-					TaskID:       taskID,
-					AttemptID:    attemptID,
-					ParentRunID:  mainRunID, // nest finalize under the main run in the UI
-					ExtraEnv: []string{
-						"CLOCHE_MAIN_RUN_ID=" + mainRunID,
-						"CLOCHE_MAIN_OUTCOME=" + mainOutcome,
-					},
-				}
-				return runner.RunNamed(ctx, projDir, "finalize")
+	if _, hasFinalize := hostWFs["finalize"]; hasFinalize {
+		finalizeFn = func(ctx context.Context, projDir string, taskID string, attemptID string, mainResult *host.RunResult) (*host.RunResult, error) {
+			mainRunID := ""
+			mainOutcome := "failed"
+			if mainResult != nil {
+				mainRunID = mainResult.RunID
+				mainOutcome = string(mainResult.State)
 			}
+			runner := &host.Runner{
+				Dispatcher:   s,
+				Store:        s.store,
+				Captures:     s.captures,
+				LogBroadcast: s.logBroadcast,
+				TaskID:       taskID,
+				AttemptID:    attemptID,
+				ParentRunID:  mainRunID, // nest finalize under the main run in the UI
+				ExtraEnv: []string{
+					"CLOCHE_MAIN_RUN_ID=" + mainRunID,
+					"CLOCHE_MAIN_OUTCOME=" + mainOutcome,
+				},
+			}
+			return runner.RunNamed(ctx, projDir, "finalize")
 		}
 	}
 
-	log.Printf("orchestration loop: three-phase mode enabled for %s (list-tasks + main + finalize, dedup=%s)", projectDir, dedupTimeout)
 	loop := host.NewPhaseLoop(loopCfg, s.store, listTasksFn, mainFn, finalizeFn)
 	if s.attemptStore != nil {
 		loop.SetAttemptStore(s.attemptStore)
@@ -2032,38 +2038,6 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	if s.taskStore != nil {
 		loop.SetTaskStore(s.taskStore)
 	}
-	return loop
-}
-
-// createLegacyLoop creates a legacy single-function orchestration loop.
-func (s *ClocheServer) createLegacyLoop(loopCfg host.LoopConfig, projectDir string, projCfg *config.Config, dedupTimeout time.Duration) *host.Loop {
-	runFn := func(ctx context.Context, projDir string, taskID string, attemptID string) (*host.RunResult, error) {
-		runner := &host.Runner{
-			Dispatcher:   s,
-			Store:        s.store,
-			Captures:     s.captures,
-			LogBroadcast: s.logBroadcast,
-			TaskID:       taskID,
-			AttemptID:    attemptID,
-		}
-		return runner.Run(ctx, projDir)
-	}
-
-	loop := host.NewLoop(loopCfg, s.store, runFn)
-
-	// Configure daemon-managed task assignment if a list-tasks command is set.
-	if cmd := projCfg.Orchestration.ListTasksCommand; cmd != "" {
-		loop.SetTaskAssigner(&host.ScriptTaskAssigner{Command: cmd})
-		log.Printf("orchestration loop: task assignment enabled for %s (command=%q, dedup=%s)", projectDir, cmd, dedupTimeout)
-	}
-
-	if s.attemptStore != nil {
-		loop.SetAttemptStore(s.attemptStore)
-	}
-	if s.taskStore != nil {
-		loop.SetTaskStore(s.taskStore)
-	}
-
 	return loop
 }
 

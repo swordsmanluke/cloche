@@ -30,8 +30,8 @@ automatic orchestration loop — it is invoked on demand (e.g. from the web dash
 release a stale claimed task back to `open` status. Receives `CLOCHE_TASK_ID` for the
 task to release.
 
-Only `main` is required. If `list-tasks` is absent, the daemon uses a legacy
-single-function mode. If `finalize` is absent, it is skipped.
+Only `main` is required. If `list-tasks` is absent, the daemon runs `main`
+continuously using a sentinel task (no task ID tracking). If `finalize` is absent, it is skipped.
 
 The `list-tasks` workflow's final step output is parsed as JSONL. Each line is a JSON
 object with the following fields:
