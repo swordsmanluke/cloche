@@ -678,17 +678,23 @@ with `cloche status`, `cloche logs`, and `cloche list`.
 Resume a failed workflow run from a specific step.
 
 ```
+cloche resume <task-id>
 cloche resume <workflow-id>
 cloche resume <step-id>
 ```
 
 | Argument | Description |
 |----------|-------------|
+| `<task-id>` | Bare task or run ID (no colons, e.g. `user-a12z`). Resolves to the latest attempt's failed run and resumes from the first failed step. |
 | `<workflow-id>` | Run ID and workflow name joined by a colon (e.g. `a133:develop`). Resumes from the first failed step. |
 | `<step-id>` | Run ID, workflow name, and step name joined by colons (e.g. `a133:develop:review`). Resumes from that step. |
 
 **Prerequisites:** The run must be in a failed state. For container workflows, the
 container must still exist (failed runs keep their containers by default).
+
+A step is considered failed — and therefore resumable — if it produced either an `error`
+result (the step crashed) or a `fail` result via normal wiring (e.g. wired to `abort`).
+When resolving the resume step automatically, the earliest such step is chosen.
 
 **Step-specific resume behavior:**
 

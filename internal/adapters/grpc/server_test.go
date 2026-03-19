@@ -2816,3 +2816,173 @@ func TestServer_StopRun_AlreadyCompletedRunsNotStopped(t *testing.T) {
 	assert.Contains(t, err.Error(), "no active runs")
 	assert.Empty(t, rt.stopped)
 }
+
+// TestResumeTarget_TaskID_WithoutAttemptStore verifies that cloche resume
+// accepts v2 task IDs even when the attempt store is not configured. The
+// resolver should fall back to scanning runs by task_id directly.
+func TestResumeTarget_TaskID_WithoutAttemptStore(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a failed run carrying only a task_id (no attempt store set up).
+	run := domain.NewRun("a12z-develop", "develop")
+	run.TaskID = "user-a12z"
+	run.AttemptID = "a12z"
+	run.State = domain.RunStateFailed
+	run.StartedAt = time.Now().Add(-time.Minute)
+	run.CompletedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Save a capture so FindFirstFailedStep can find the failed step.
+	require.NoError(t, store.SaveCapture(ctx, run.ID, &domain.StepExecution{
+		StepName:    "test",
+		Result:      "fail",
+		CompletedAt: time.Now(),
+	}))
+
+	// Server with NO attemptStore — task IDs must resolve via task_id scan.
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+
+	// Resume by task ID. Use NewIncomingContext so the server's metadata
+	// readers (FromIncomingContext) see the headers.
+	md := metadata.Pairs("x-cloche-resume-task-or-run", "user-a12z")
+	resumeCtx := metadata.NewIncomingContext(ctx, md)
+	_, err = srv.RunWorkflow(resumeCtx, &pb.RunWorkflowRequest{})
+
+	// Should reach resumeContainerRun (no container runtime) rather than
+	// "no task or run found", proving the task ID was resolved.
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "no task or run found",
+		"task ID 'user-a12z' should have been resolved to a run")
+	assert.Contains(t, err.Error(), "no container runtime",
+		"expected resumeContainerRun to be reached")
+}
+
+// TestResumeTarget_TaskID_PrefersHostRun verifies that when a task has both
+// a host run and child container runs that all failed, resume prefers the
+// host run. The host run carries the step-level 'fail' records that
+// correspond to failed container dispatches.
+func TestResumeTarget_TaskID_PrefersHostRun(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	taskID := "user-hst1"
+	attemptID := "hst1"
+
+	// Save task and attempt.
+	task := &domain.Task{
+		ID:         taskID,
+		Title:      "Host workflow task",
+		ProjectDir: "/proj",
+		CreatedAt:  time.Now(),
+	}
+	require.NoError(t, store.SaveTask(ctx, task))
+	attempt := &domain.Attempt{
+		ID:        attemptID,
+		TaskID:    taskID,
+		StartedAt: time.Now().Add(-2 * time.Minute),
+		Result:    domain.AttemptResultFailed,
+	}
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	// Host run started first.
+	hostRun := domain.NewRun("hst1-fowm-develop", "fowm-develop")
+	hostRun.TaskID = taskID
+	hostRun.AttemptID = attemptID
+	hostRun.IsHost = true
+	hostRun.State = domain.RunStateFailed
+	hostRun.StartedAt = time.Now().Add(-2 * time.Minute)
+	hostRun.CompletedAt = time.Now().Add(-time.Minute)
+	require.NoError(t, store.CreateRun(ctx, hostRun))
+
+	// Child container run started later (dispatched by the host).
+	childRun := domain.NewRun("hst1-develop", "develop")
+	childRun.TaskID = taskID
+	childRun.AttemptID = attemptID
+	childRun.ParentRunID = hostRun.ID
+	childRun.State = domain.RunStateFailed
+	childRun.StartedAt = time.Now().Add(-time.Minute)
+	childRun.CompletedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, childRun))
+
+	// The host run has a 'fail' capture for its "develop" step.
+	require.NoError(t, store.SaveCapture(ctx, hostRun.ID, &domain.StepExecution{
+		StepName:    "develop",
+		Result:      "fail",
+		CompletedAt: time.Now().Add(-time.Minute),
+	}))
+
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+	srv.SetTaskStore(store)
+	srv.SetAttemptStore(store)
+
+	// Resume by task ID. Use NewIncomingContext so the server's metadata
+	// readers (FromIncomingContext) see the headers.
+	md := metadata.Pairs("x-cloche-resume-task-or-run", taskID)
+	resumeCtx := metadata.NewIncomingContext(ctx, md)
+	resp, err := srv.RunWorkflow(resumeCtx, &pb.RunWorkflowRequest{})
+
+	// resumeHostRun spawns a goroutine and returns success immediately.
+	// If we got a "no container runtime" error instead, the container run
+	// was incorrectly selected.
+	require.NoError(t, err, "should have picked host run (resumeHostRun returns success, not error)")
+	assert.Equal(t, hostRun.ID, resp.RunId, "response should carry the host run ID")
+}
+
+// TestResumeTarget_FailResultIsResumable verifies that a run where a step
+// returned a 'fail' result (via normal wiring to abort) is treated as
+// resumable. The step's 'fail' result must be found by FindFirstFailedStep.
+func TestResumeTarget_FailResultIsResumable(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Container run that failed because a step wired 'fail' → abort.
+	run := domain.NewRun("ab12-develop", "develop")
+	run.TaskID = "user-ab12"
+	run.AttemptID = "ab12"
+	run.State = domain.RunStateFailed
+	run.StartedAt = time.Now().Add(-time.Minute)
+	run.CompletedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Two steps: dev succeeded, test failed via wiring (not crash).
+	require.NoError(t, store.SaveCapture(ctx, run.ID, &domain.StepExecution{
+		StepName:    "dev",
+		Result:      "success",
+		CompletedAt: time.Now().Add(-30 * time.Second),
+	}))
+	require.NoError(t, store.SaveCapture(ctx, run.ID, &domain.StepExecution{
+		StepName:    "test",
+		Result:      "fail",
+		CompletedAt: time.Now(),
+	}))
+
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+
+	// Resume by bare run ID. Use NewIncomingContext so the server's metadata
+	// readers (FromIncomingContext) see the headers.
+	md := metadata.Pairs(
+		"x-cloche-resume-run-id", run.ID,
+		"x-cloche-resume-step", "",
+		"x-cloche-resume-task-or-run", "",
+	)
+	resumeCtx := metadata.NewIncomingContext(ctx, md)
+	_, err = srv.RunWorkflow(resumeCtx, &pb.RunWorkflowRequest{})
+
+	// Should reach resumeContainerRun (fail result was found as resume point),
+	// not "has no failed step to resume from".
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "has no failed step to resume from",
+		"'fail' wired result should be treated as resumable")
+	assert.Contains(t, err.Error(), "no container runtime",
+		"expected to reach resumeContainerRun")
+}

@@ -334,10 +334,23 @@ func (s *ClocheServer) ensureTaskAndAttempt(ctx context.Context, issueID, title,
 // failed run ID. It first tries as a task ID (finds the latest attempt's
 // failed run), then falls back to treating it as a direct run ID.
 func (s *ClocheServer) resolveResumeTarget(ctx context.Context, id string) (string, error) {
-	// Try as a task ID first.
+	// Try as a task ID first via the task store (uses attempt tracking for
+	// precise latest-attempt resolution).
 	if s.taskStore != nil {
 		if task, err := s.taskStore.GetTask(ctx, id); err == nil {
-			return s.findFailedRunForTask(ctx, task)
+			if runID, err := s.findFailedRunForTask(ctx, task); err == nil {
+				return runID, nil
+			}
+		}
+	}
+
+	// Also scan runs with this task_id directly. This handles v2 task IDs
+	// even when the attempt store is not configured, since v2 runs carry the
+	// task_id on the run record itself. Runs are ordered by started_at DESC so
+	// the most recent run's AttemptID indicates the latest attempt.
+	if runs, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{TaskID: id}); err == nil && len(runs) > 0 {
+		if runID, err := pickFailedRun(runs); err == nil {
+			return runID, nil
 		}
 	}
 
@@ -349,9 +362,9 @@ func (s *ClocheServer) resolveResumeTarget(ctx context.Context, id string) (stri
 	return "", fmt.Errorf("no task or run found for %q", id)
 }
 
-// findFailedRunForTask finds the first failed run in the task's latest attempt.
-// It looks across all runs for the attempt and returns the one with the
-// earliest failed step.
+// findFailedRunForTask finds the best failed run in the task's latest attempt.
+// Host runs are preferred over child container runs so that resume restarts
+// from the correct host-level step.
 func (s *ClocheServer) findFailedRunForTask(ctx context.Context, task *domain.Task) (string, error) {
 	if s.attemptStore == nil {
 		return "", fmt.Errorf("attempt tracking not configured")
@@ -365,7 +378,7 @@ func (s *ClocheServer) findFailedRunForTask(ctx context.Context, task *domain.Ta
 	// Find the latest attempt (last in the list).
 	latest := attempts[len(attempts)-1]
 
-	// Find all failed runs for this attempt.
+	// Find all runs for this attempt and pick the best failed one.
 	runs, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{
 		AttemptID: latest.ID,
 	})
@@ -373,13 +386,37 @@ func (s *ClocheServer) findFailedRunForTask(ctx context.Context, task *domain.Ta
 		return "", fmt.Errorf("listing runs for attempt %s: %w", latest.ID, err)
 	}
 
+	runID, err := pickFailedRun(runs)
+	if err != nil {
+		return "", fmt.Errorf("no failed runs found for task %q (latest attempt %s)", task.ID, latest.ID)
+	}
+	return runID, nil
+}
+
+// pickFailedRun selects the best run ID to resume from a slice of runs.
+// Host runs are preferred over container runs: the host run orchestrates the
+// overall workflow, so resuming it re-dispatches from the correct host-level
+// step. Steps with a 'fail' wired result are recorded on the host run, not
+// on the child container run. Returns an error if no failed run is found.
+func pickFailedRun(runs []*domain.Run) (string, error) {
+	var hostRunID, containerRunID string
 	for _, run := range runs {
-		if run.State == domain.RunStateFailed {
-			return run.ID, nil
+		if run.State != domain.RunStateFailed {
+			continue
+		}
+		if run.IsHost && hostRunID == "" {
+			hostRunID = run.ID
+		} else if !run.IsHost && containerRunID == "" {
+			containerRunID = run.ID
 		}
 	}
-
-	return "", fmt.Errorf("no failed runs found for task %q (latest attempt %s)", task.ID, latest.ID)
+	if hostRunID != "" {
+		return hostRunID, nil
+	}
+	if containerRunID != "" {
+		return containerRunID, nil
+	}
+	return "", fmt.Errorf("no failed runs found")
 }
 
 // resumeRun resumes a failed workflow run from a specific step.
