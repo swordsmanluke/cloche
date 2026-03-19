@@ -19,7 +19,6 @@ import (
 	"github.com/cloche-dev/cloche/internal/adapters/web"
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/evolution"
-	hostpkg "github.com/cloche-dev/cloche/internal/host"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"google.golang.org/grpc"
@@ -207,8 +206,8 @@ func listen(addr string) (net.Listener, error) {
 	return net.Listen("tcp", addr)
 }
 
-// autoRunActiveProjects scans known projects for active = true in their config,
-// parses .cloche/host.cloche and executes the full host workflow step by step.
+// autoRunActiveProjects scans known projects for active = true in their config
+// and starts the orchestration loop for each one via EnableLoop.
 func autoRunActiveProjects(store ports.RunStore, srv *adaptgrpc.ClocheServer) {
 	ctx := context.Background()
 	projects, err := store.ListProjects(ctx)
@@ -230,19 +229,13 @@ func autoRunActiveProjects(store ports.RunStore, srv *adaptgrpc.ClocheServer) {
 			continue
 		}
 
-		fmt.Fprintf(os.Stderr, "startup: auto-running host workflow for active project %s\n", projectDir)
-		go func(projDir string) {
-			runner := &hostpkg.Runner{
-				Dispatcher: srv,
-				Store:      store,
-			}
-			result, err := runner.Run(context.Background(), projDir)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "startup: host workflow failed for %s: %v\n", projDir, err)
-			} else {
-				fmt.Fprintf(os.Stderr, "startup: host workflow completed for %s: %s (run %s)\n", projDir, result.State, result.RunID)
-			}
-		}(projectDir)
+		fmt.Fprintf(os.Stderr, "startup: enabling orchestration loop for active project %s\n", projectDir)
+		_, err = srv.EnableLoop(ctx, &pb.EnableLoopRequest{
+			ProjectDir: projectDir,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "startup: failed to enable loop for %s: %v\n", projectDir, err)
+		}
 	}
 }
 
