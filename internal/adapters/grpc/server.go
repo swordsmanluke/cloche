@@ -751,6 +751,13 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 }
 
 func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) (*pb.ListTasksResponse, error) {
+	// Ensure per-project log migration has run.
+	if req.ProjectDir != "" {
+		if migrator, ok := s.store.(ports.ProjectMigrator); ok {
+			_ = migrator.MigrateProjectLogs(req.ProjectDir)
+		}
+	}
+
 	if s.taskStore == nil {
 		return nil, fmt.Errorf("task store not configured")
 	}
@@ -1655,6 +1662,11 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 	projectDir := req.ProjectDir
 	if projectDir == "" {
 		return nil, fmt.Errorf("project_dir is required")
+	}
+
+	// Ensure per-project log migration has run.
+	if migrator, ok := s.store.(ports.ProjectMigrator); ok {
+		_ = migrator.MigrateProjectLogs(projectDir)
 	}
 
 	// Verify at least one host workflow exists in the project.
