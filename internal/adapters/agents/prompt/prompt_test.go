@@ -423,6 +423,130 @@ func TestPromptAdapter_DefaultArgsForClaude(t *testing.T) {
 	assert.Nil(t, adapter.ExplicitArgs)
 }
 
+func TestPromptAdapter_UsageCommandFromStepConfig(t *testing.T) {
+	dir := t.TempDir()
+
+	// Mock agent that produces no stream-json usage
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok"},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config: map[string]string{
+			"prompt":        "Do something.",
+			"usage_command": `echo '{"input_tokens":200,"output_tokens":75}'`,
+		},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result)
+	require.NotNil(t, sr.Usage)
+	assert.Equal(t, int64(200), sr.Usage.InputTokens)
+	assert.Equal(t, int64(75), sr.Usage.OutputTokens)
+}
+
+func TestPromptAdapter_UsageCommandFromAdapterField(t *testing.T) {
+	dir := t.TempDir()
+
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok"},
+		UsageCommand: `echo '{"input_tokens":300,"output_tokens":120}'`,
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result)
+	require.NotNil(t, sr.Usage)
+	assert.Equal(t, int64(300), sr.Usage.InputTokens)
+	assert.Equal(t, int64(120), sr.Usage.OutputTokens)
+}
+
+func TestPromptAdapter_StepConfigUsageCommandOverridesAdapterField(t *testing.T) {
+	dir := t.TempDir()
+
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok"},
+		UsageCommand: `echo '{"input_tokens":999,"output_tokens":999}'`,
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config: map[string]string{
+			"prompt":        "Do something.",
+			"usage_command": `echo '{"input_tokens":42,"output_tokens":17}'`,
+		},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	require.NotNil(t, sr.Usage)
+	// Step config wins over adapter field
+	assert.Equal(t, int64(42), sr.Usage.InputTokens)
+	assert.Equal(t, int64(17), sr.Usage.OutputTokens)
+}
+
+func TestPromptAdapter_UsageCommandFailsDegracefully(t *testing.T) {
+	dir := t.TempDir()
+
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok"},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config: map[string]string{
+			"prompt":        "Do something.",
+			"usage_command": "exit 1",
+		},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result)
+	// Usage is nil when usage_command fails
+	assert.Nil(t, sr.Usage)
+}
+
+func TestPromptAdapter_NoUsageCommandReturnsNilUsage(t *testing.T) {
+	dir := t.TempDir()
+
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok"},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result)
+	assert.Nil(t, sr.Usage)
+}
+
 func TestParseCommands(t *testing.T) {
 	tests := []struct {
 		input    string

@@ -12,6 +12,7 @@ import (
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
+	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/ports"
@@ -260,6 +261,13 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (string,
 		adapter.ExplicitArgs = strings.Fields(args)
 	}
 
+	// Populate usage_command from config.toml [agents.codex] if the agent is codex.
+	if cfg, err := config.Load(e.ProjectDir); err == nil {
+		if cfg.Agents.Codex.UsageCommand != "" && isCodexCommand(adapter.Commands) {
+			adapter.UsageCommand = cfg.Agents.Codex.UsageCommand
+		}
+	}
+
 	adapter.RunID = e.HostRunID
 
 	// Resume mode: if this is the step being resumed, use conversation resume
@@ -328,6 +336,16 @@ func (e *Executor) waitForRun(ctx context.Context, runID string) (domain.RunStat
 // stepOutputPath returns the path for a step's output file.
 func (e *Executor) stepOutputPath(stepName string) string {
 	return filepath.Join(e.OutputDir, stepName+".out")
+}
+
+// isCodexCommand reports whether any command in the chain is "codex".
+func isCodexCommand(commands []string) bool {
+	for _, c := range commands {
+		if strings.HasSuffix(c, "codex") || strings.Contains(c, "codex") {
+			return true
+		}
+	}
+	return false
 }
 
 // findPrevOutput finds the output file from the step that wires into this one.

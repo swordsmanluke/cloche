@@ -108,6 +108,47 @@ agent_command = "codex,claude"
 See [Agent Command Resolution](USAGE.md#agent-command-resolution) for full fallback
 semantics.
 
+## Token Usage Capture
+
+Codex does not emit token usage in its output stream. Cloche can capture usage by
+running a shell command after each agent step and parsing its JSON output.
+
+### Via `config.toml` (recommended for all Codex steps)
+
+Add an `[agents.codex]` section to `.cloche/config.toml`. The command is run
+automatically whenever the active agent command is `codex`:
+
+```toml
+[agents.codex]
+usage_command = "codex usage --last --json"
+```
+
+The command must print JSON to stdout:
+
+```json
+{"input_tokens": 1234, "output_tokens": 567}
+```
+
+If the command fails or the output cannot be parsed, usage is silently skipped —
+token tracking is best-effort and never blocks execution.
+
+### Via step config (per-step override)
+
+Set `usage_command` directly on a step to override or supplement the `config.toml`
+default:
+
+```
+step implement {
+  prompt = file(".cloche/prompts/implement.md")
+  agent_command = "codex"
+  usage_command = "codex usage --last --json"
+  results = [success, fail]
+}
+```
+
+Step-level `usage_command` takes precedence over the `[agents.codex]` config.toml
+value.
+
 ## Verifying the Setup
 
 Run a quick test workflow:

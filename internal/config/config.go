@@ -36,11 +36,20 @@ type OrchestrationConfig struct {
 	MaxConsecutiveFailures int     `toml:"max_consecutive_failures"` // halt loop after N consecutive failures (default: 3, must be > 0)
 }
 
+type AgentCodexConfig struct {
+	UsageCommand string `toml:"usage_command"`
+}
+
+type AgentsConfig struct {
+	Codex AgentCodexConfig `toml:"codex"`
+}
+
 type Config struct {
 	Active        bool                `toml:"active"`
 	Daemon        DaemonConfig        `toml:"daemon"`
 	Evolution     EvolutionConfig     `toml:"evolution"`
 	Orchestration OrchestrationConfig `toml:"orchestration"`
+	Agents        AgentsConfig        `toml:"agents"`
 }
 
 func defaults() Config {

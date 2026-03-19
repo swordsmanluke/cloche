@@ -53,6 +53,7 @@ workflow "develop" {
 | `agent_command` | string | Agent binary name(s), comma-separated for fallback chains, e.g. `"claude,gemini"`. |
 | `agent_args` | string | Override default agent arguments. |
 | `feedback` | string | Set to `"true"` to include `.cloche/output/*.log` content in the prompt. |
+| `usage_command` | string | Shell command to run after an agent step completes to capture token usage. Output must be JSON: `{"input_tokens": N, "output_tokens": N}`. If absent or the command fails, usage is not tracked. Overrides any adapter-level default (e.g. from `[agents.codex]` in `config.toml`). |
 | `prompt_step` | string | For workflow steps: which preceding step's output to use as the prompt. |
 
 A step must have exactly one of `prompt`, `run`, or `workflow_name`.

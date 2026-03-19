@@ -209,6 +209,29 @@ func TestLoadPopulationConfigDefaults(t *testing.T) {
 	assert.Equal(t, 5, cfg.Evolution.MinRunsToPromote)
 }
 
+func TestLoadAgentsCodexConfig(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
+[agents.codex]
+usage_command = "codex usage --last --json"
+`), 0644)
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "codex usage --last --json", cfg.Agents.Codex.UsageCommand)
+}
+
+func TestLoadAgentsCodexConfigDefaults(t *testing.T) {
+	dir := t.TempDir()
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "", cfg.Agents.Codex.UsageCommand)
+}
+
 func TestLoadGlobalFromMissing(t *testing.T) {
 	cfg, err := LoadGlobalFrom("/nonexistent/path/config")
 	require.NoError(t, err)

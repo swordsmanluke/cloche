@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,6 +30,7 @@ type Adapter struct {
 	TaskID             string                 // task ID for runtime state paths (.cloche/runs/<task-id>/)
 	StatusWriter       *protocol.StatusWriter // optional: streams live output lines
 	ResumeConversation bool                   // when true, resume previous conversation instead of starting new one
+	UsageCommand       string                 // optional: shell command to run after step to capture token usage JSON
 }
 
 func New() *Adapter {
@@ -125,6 +127,18 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	if lastErr != nil {
 		// Last command in chain crashed without a result marker
 		result = "fail"
+	}
+
+	// If no usage was captured from the agent output stream, try usage_command.
+	// Step config takes precedence over the adapter-level field.
+	if lastUsage == nil {
+		usageCmd := a.UsageCommand
+		if v := step.Config["usage_command"]; v != "" {
+			usageCmd = v
+		}
+		if usageCmd != "" {
+			lastUsage = runUsageCommand(ctx, usageCmd, workDir)
+		}
 	}
 
 	// Reset attempt counter on success so give-up only triggers after
@@ -282,6 +296,28 @@ func (a *Adapter) classifyResult(command string, stdoutBytes []byte, runErr erro
 		result = markerResult
 	}
 	return result, stdoutBytes, nil
+}
+
+// runUsageCommand executes a shell command and parses its JSON output as token usage.
+// Returns nil if the command fails or the output cannot be parsed.
+func runUsageCommand(ctx context.Context, cmd string, workDir string) *domain.TokenUsage {
+	out, err := exec.CommandContext(ctx, "sh", "-c", cmd).Output()
+	if err != nil {
+		log.Printf("warning: usage_command %q failed: %v", cmd, err)
+		return nil
+	}
+	var data struct {
+		InputTokens  int64 `json:"input_tokens"`
+		OutputTokens int64 `json:"output_tokens"`
+	}
+	if err := json.Unmarshal(out, &data); err != nil {
+		log.Printf("warning: usage_command %q output not parseable: %v", cmd, err)
+		return nil
+	}
+	return &domain.TokenUsage{
+		InputTokens:  data.InputTokens,
+		OutputTokens: data.OutputTokens,
+	}
 }
 
 // extractStreamText parses a Claude Code stream-json line and returns text content.

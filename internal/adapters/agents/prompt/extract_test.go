@@ -1,6 +1,7 @@
 package prompt
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -122,5 +123,31 @@ func TestScanOutputForUsage_NoUsageInOutput(t *testing.T) {
 
 func TestScanOutputForUsage_EmptyOutput(t *testing.T) {
 	got := scanOutputForUsage([]byte{})
+	assert.Nil(t, got)
+}
+
+func TestRunUsageCommand_Success(t *testing.T) {
+	ctx := context.Background()
+	got := runUsageCommand(ctx, `echo '{"input_tokens":100,"output_tokens":50}'`, t.TempDir())
+	require.NotNil(t, got)
+	assert.Equal(t, int64(100), got.InputTokens)
+	assert.Equal(t, int64(50), got.OutputTokens)
+}
+
+func TestRunUsageCommand_CommandFails(t *testing.T) {
+	ctx := context.Background()
+	got := runUsageCommand(ctx, "exit 1", t.TempDir())
+	assert.Nil(t, got)
+}
+
+func TestRunUsageCommand_BadJSON(t *testing.T) {
+	ctx := context.Background()
+	got := runUsageCommand(ctx, "echo 'not json'", t.TempDir())
+	assert.Nil(t, got)
+}
+
+func TestRunUsageCommand_CommandNotFound(t *testing.T) {
+	ctx := context.Background()
+	got := runUsageCommand(ctx, "nonexistent-command-xyz", t.TempDir())
 	assert.Nil(t, got)
 }
