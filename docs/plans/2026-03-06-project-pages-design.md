@@ -134,7 +134,8 @@ Returns the task pipeline state for the project's orchestration loop.
 - Runs with the same `task_id` are grouped under a task header row; within each task
   group, top-level runs are organized into attempt blocks (one attempt per top-level run)
 - Each attempt block contains the top-level run (e.g. `main`) and all its child runs
-  (e.g. `develop`, `finalize`) — all nested as child entries under the attempt header
+  (e.g. `develop`, `finalize`) — all nested as child entries under the attempt header,
+  ordered by start time with the most recently started run first
 - The task header status is the state of the latest attempt's top-level run
 - The attempt header status aggregates across the top-level run and all its children
   (active statuses `running`/`pending` outweigh terminal ones)

@@ -2826,6 +2826,46 @@ func TestGroupAndSortRuns_AttemptStatusAggregatesChildren(t *testing.T) {
 	assert.Equal(t, "running", attemptEntry.AttemptStatus)
 }
 
+// TestGroupAndSortRuns_RunsWithinAttemptSortedNewestFirst verifies that within
+// a single attempt, runs are ordered by start time with the newest at the top.
+func TestGroupAndSortRuns_RunsWithinAttemptSortedNewestFirst(t *testing.T) {
+	now := time.Now()
+
+	mainRun := domain.NewRun("main-ord", "main")
+	mainRun.IsHost = true
+	mainRun.TaskID = "task-ord"
+	mainRun.StartedAt = now
+	mainRun.Complete(domain.RunStateSucceeded)
+
+	// child1 started 1s after main
+	child1 := domain.NewRun("child-ord-1", "develop")
+	child1.TaskID = "task-ord"
+	child1.ParentRunID = "main-ord"
+	child1.StartedAt = now.Add(time.Second)
+	child1.Complete(domain.RunStateSucceeded)
+
+	// child2 started 2s after main (newest child)
+	child2 := domain.NewRun("child-ord-2", "finalize")
+	child2.TaskID = "task-ord"
+	child2.ParentRunID = "main-ord"
+	child2.StartedAt = now.Add(2 * time.Second)
+	child2.Complete(domain.RunStateSucceeded)
+
+	entries := groupAndSortRuns([]*domain.Run{mainRun, child1, child2}, nil, nil)
+
+	// Expect: TaskHeader + AttemptHeader + 3 run rows = 5 entries
+	require.Len(t, entries, 5)
+	assert.True(t, entries[0].TaskHeader)
+	assert.True(t, entries[1].AttemptHeader)
+	// Runs should be newest first: child2 (t+2s), child1 (t+1s), main (t+0s)
+	require.NotNil(t, entries[2].Run)
+	assert.Equal(t, "child-ord-2", entries[2].Run.ID)
+	require.NotNil(t, entries[3].Run)
+	assert.Equal(t, "child-ord-1", entries[3].Run.ID)
+	require.NotNil(t, entries[4].Run)
+	assert.Equal(t, "main-ord", entries[4].Run.ID)
+}
+
 // TestGroupAndSortRuns_MultipleAttempts verifies that two separate main runs
 // (without ParentRunID linking) produce two distinct attempt blocks.
 func TestGroupAndSortRuns_MultipleAttempts(t *testing.T) {

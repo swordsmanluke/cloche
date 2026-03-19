@@ -403,10 +403,13 @@ func (h *Handler) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 		allInAttempt := append([]*domain.Run{tr}, children...)
 		status := taskAggregateStatus(allInAttempt)
 
+		allRuns := append([]*domain.Run{tr}, children...)
+		sort.SliceStable(allRuns, func(i, j int) bool {
+			return allRuns[i].StartedAt.After(allRuns[j].StartedAt)
+		})
 		var runsForAttempt []apiRun
-		runsForAttempt = append(runsForAttempt, toAPIRun(tr, labels))
-		for _, c := range children {
-			runsForAttempt = append(runsForAttempt, toAPIRun(c, labels))
+		for _, ar := range allRuns {
+			runsForAttempt = append(runsForAttempt, toAPIRun(ar, labels))
 		}
 
 		attempts = append(attempts, taskAttemptEntry{
@@ -815,13 +818,14 @@ func groupAndSortRuns(runs []*domain.Run, labels map[string]string, taskTitles m
 					AttemptTime:   formatTime(gr.StartedAt),
 					TaskID:        r.TaskID,
 				})
-				// Show the parent run (e.g. "main") as a row within the attempt
-				// so users can navigate to it directly.
-				ar := toAPIRun(gr, labels)
-				result = append(result, apiGroupedEntry{Run: &ar, IsChild: true})
-				for _, child := range children {
-					ac := toAPIRun(child, labels)
-					result = append(result, apiGroupedEntry{Run: &ac, IsChild: true})
+				// Show all runs in the attempt sorted by start time, newest first.
+				allInRun := append([]*domain.Run{gr}, children...)
+				sort.SliceStable(allInRun, func(x, y int) bool {
+					return allInRun[x].StartedAt.After(allInRun[y].StartedAt)
+				})
+				for _, rr := range allInRun {
+					ar := toAPIRun(rr, labels)
+					result = append(result, apiGroupedEntry{Run: &ar, IsChild: true})
 				}
 			}
 		} else {
