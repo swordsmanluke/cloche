@@ -19,6 +19,7 @@ type statusMockClient struct {
 	versionResp     *pb.GetVersionResponse
 	projectInfoResp *pb.GetProjectInfoResponse
 	listRunsResp    *pb.ListRunsResponse
+	listTasksResp   *pb.ListTasksResponse
 	taskResp        *pb.GetTaskResponse
 	taskErr         error
 }
@@ -31,8 +32,24 @@ func (m *statusMockClient) GetProjectInfo(_ context.Context, _ *pb.GetProjectInf
 	return m.projectInfoResp, nil
 }
 
-func (m *statusMockClient) ListRuns(_ context.Context, _ *pb.ListRunsRequest, _ ...grpc.CallOption) (*pb.ListRunsResponse, error) {
+func (m *statusMockClient) ListRuns(_ context.Context, req *pb.ListRunsRequest, _ ...grpc.CallOption) (*pb.ListRunsResponse, error) {
+	if req.State != "" && m.listRunsResp != nil {
+		filtered := &pb.ListRunsResponse{}
+		for _, run := range m.listRunsResp.Runs {
+			if run.State == req.State {
+				filtered.Runs = append(filtered.Runs, run)
+			}
+		}
+		return filtered, nil
+	}
 	return m.listRunsResp, nil
+}
+
+func (m *statusMockClient) ListTasks(_ context.Context, _ *pb.ListTasksRequest, _ ...grpc.CallOption) (*pb.ListTasksResponse, error) {
+	if m.listTasksResp != nil {
+		return m.listTasksResp, nil
+	}
+	return &pb.ListTasksResponse{}, nil
 }
 
 func (m *statusMockClient) GetTask(_ context.Context, _ *pb.GetTaskRequest, _ ...grpc.CallOption) (*pb.GetTaskResponse, error) {
@@ -46,15 +63,17 @@ func TestCmdStatusOverview_ProjectMode(t *testing.T) {
 			Name:        "my-project",
 			Concurrency: 3,
 			LoopRunning: true,
-			ActiveRuns: []*pb.RunSummary{
-				{RunId: "run-abc", StartedAt: "2026-03-14 10:00:00 +0000 UTC"},
-			},
 		},
 		listRunsResp: &pb.ListRunsResponse{
 			Runs: []*pb.RunSummary{
 				{RunId: "run-1", State: "succeeded"},
 				{RunId: "run-2", State: "failed"},
 				{RunId: "run-3", State: "succeeded"},
+			},
+		},
+		listTasksResp: &pb.ListTasksResponse{
+			Tasks: []*pb.TaskSummary{
+				{TaskId: "TASK-1", Title: "Fix login bug", Status: "running"},
 			},
 		},
 	}
@@ -78,11 +97,14 @@ func TestCmdStatusOverview_ProjectMode(t *testing.T) {
 	if !strings.Contains(out, "2 / 3 succeeded") {
 		t.Errorf("expected 2/3 succeeded, got:\n%s", out)
 	}
-	if !strings.Contains(out, "Active runs: 1") {
-		t.Errorf("expected 1 active run, got:\n%s", out)
+	if !strings.Contains(out, "Active tasks: 1") {
+		t.Errorf("expected 1 active task, got:\n%s", out)
 	}
-	if !strings.Contains(out, "run-abc:") {
-		t.Errorf("expected active run ID, got:\n%s", out)
+	if !strings.Contains(out, "TASK-1") {
+		t.Errorf("expected task ID in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Fix login bug") {
+		t.Errorf("expected task title in output, got:\n%s", out)
 	}
 }
 
@@ -92,8 +114,13 @@ func TestCmdStatusOverview_GlobalMode(t *testing.T) {
 		listRunsResp: &pb.ListRunsResponse{
 			Runs: []*pb.RunSummary{
 				{RunId: "run-1", State: "succeeded", StartedAt: "2026-03-14 10:00:00 +0000 UTC"},
-				{RunId: "run-2", State: "running", StartedAt: "2026-03-14 10:05:00 +0000 UTC"},
+				{RunId: "run-2", State: "running", StartedAt: "2026-03-14 10:05:00 +0000 UTC", TaskId: "TASK-10", WorkflowName: "develop"},
 				{RunId: "run-3", State: "failed", StartedAt: "2026-03-14 10:10:00 +0000 UTC"},
+			},
+		},
+		listTasksResp: &pb.ListTasksResponse{
+			Tasks: []*pb.TaskSummary{
+				{TaskId: "TASK-10", Title: "Add search feature", Status: "running"},
 			},
 		},
 	}
@@ -107,8 +134,14 @@ func TestCmdStatusOverview_GlobalMode(t *testing.T) {
 	if !strings.Contains(out, "1 / 3 succeeded") {
 		t.Errorf("expected 1/3 succeeded, got:\n%s", out)
 	}
-	if !strings.Contains(out, "Active runs: 1") {
-		t.Errorf("expected 1 active run, got:\n%s", out)
+	if !strings.Contains(out, "Active tasks: 1") {
+		t.Errorf("expected 1 active task, got:\n%s", out)
+	}
+	if !strings.Contains(out, "TASK-10") {
+		t.Errorf("expected task ID in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Add search feature") {
+		t.Errorf("expected task title in output, got:\n%s", out)
 	}
 }
 
@@ -134,8 +167,8 @@ func TestCmdStatusOverview_LoopStopped(t *testing.T) {
 	if !strings.Contains(out, "0 / 0 succeeded") {
 		t.Errorf("expected 0/0 succeeded, got:\n%s", out)
 	}
-	if !strings.Contains(out, "Active runs: 0") {
-		t.Errorf("expected 0 active runs, got:\n%s", out)
+	if !strings.Contains(out, "Active tasks: 0") {
+		t.Errorf("expected 0 active tasks, got:\n%s", out)
 	}
 }
 
@@ -200,8 +233,8 @@ func TestCmdStatusOverview_NoActiveRuns(t *testing.T) {
 	cmdStatusProject(ctx, client, &buf, "/fake")
 
 	out := buf.String()
-	if !strings.Contains(out, "Active runs: 0") {
-		t.Errorf("expected 0 active runs, got:\n%s", out)
+	if !strings.Contains(out, "Active tasks: 0") {
+		t.Errorf("expected 0 active tasks, got:\n%s", out)
 	}
 	if !strings.Contains(out, "2 / 2 succeeded") {
 		t.Errorf("expected 2/2 succeeded, got:\n%s", out)
@@ -277,6 +310,42 @@ func TestCmdStatusTaskLatest_NoAttempts(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, "none") {
 		t.Errorf("expected 'none' for no attempts, got:\n%s", out)
+	}
+}
+
+func TestCmdStatusOverview_ActiveTasksWithNestedRuns(t *testing.T) {
+	client := &statusMockClient{
+		versionResp: &pb.GetVersionResponse{Version: "2.0.0"},
+		projectInfoResp: &pb.GetProjectInfoResponse{
+			Name:        "myproject",
+			Concurrency: 2,
+			LoopRunning: true,
+		},
+		listRunsResp: &pb.ListRunsResponse{
+			Runs: []*pb.RunSummary{
+				{RunId: "develop", State: "running", TaskId: "TASK-5", WorkflowName: "develop", StartedAt: "2026-03-14 10:00:00 +0000 UTC"},
+			},
+		},
+		listTasksResp: &pb.ListTasksResponse{
+			Tasks: []*pb.TaskSummary{
+				{TaskId: "TASK-5", Title: "Refactor auth module", Status: "running"},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	ctx := context.Background()
+	cmdStatusProject(ctx, client, &buf, "/fake/project")
+
+	out := buf.String()
+	if !strings.Contains(out, "TASK-5") {
+		t.Errorf("expected task ID TASK-5, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Refactor auth module") {
+		t.Errorf("expected task title in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "develop") {
+		t.Errorf("expected run workflow name 'develop' nested under task, got:\n%s", out)
 	}
 }
 

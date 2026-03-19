@@ -405,12 +405,8 @@ func cmdStatusProject(ctx context.Context, client pb.ClocheServiceClient, w io.W
 	}
 	fmt.Fprintf(w, "Runs (past hour): %d / %d succeeded\n", succeeded, len(listResp.Runs))
 
-	// Active runs from project info.
-	fmt.Fprintf(w, "Active runs: %d\n", len(info.ActiveRuns))
-	for _, run := range info.ActiveRuns {
-		dur := formatDuration(run.StartedAt)
-		fmt.Fprintf(w, "  %s: %s\n", run.RunId, dur)
-	}
+	// Active tasks with nested runs.
+	printActiveTasks(ctx, client, w, projectDir)
 }
 
 func cmdStatusGlobal(ctx context.Context, client pb.ClocheServiceClient, w io.Writer) {
@@ -421,28 +417,100 @@ func cmdStatusGlobal(ctx context.Context, client pb.ClocheServiceClient, w io.Wr
 		os.Exit(1)
 	}
 
-	var succeeded, activeCount int
-	type activeRun struct {
-		id        string
-		startedAt string
-	}
-	var actives []activeRun
-
+	var succeeded int
 	for _, run := range listResp.Runs {
 		if run.State == "succeeded" {
 			succeeded++
 		}
-		if run.State == "running" || run.State == "pending" {
-			activeCount++
-			actives = append(actives, activeRun{id: run.RunId, startedAt: run.StartedAt})
-		}
 	}
 
 	fmt.Fprintf(w, "Runs (past hour): %d / %d succeeded\n", succeeded, len(listResp.Runs))
-	fmt.Fprintf(w, "Active runs: %d\n", activeCount)
-	for _, a := range actives {
-		dur := formatDuration(a.startedAt)
-		fmt.Fprintf(w, "  %s: %s\n", a.id, dur)
+
+	// Active tasks with nested runs.
+	printActiveTasks(ctx, client, w, "")
+}
+
+// printActiveTasks displays active tasks with their in-progress runs nested under them.
+func printActiveTasks(ctx context.Context, client pb.ClocheServiceClient, w io.Writer, projectDir string) {
+	// Fetch all tasks (server returns all; we filter to running client-side).
+	tasksResp, err := client.ListTasks(ctx, &pb.ListTasksRequest{
+		ProjectDir: projectDir,
+		All:        projectDir == "",
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Fetch active runs (all time, to include long-running tasks).
+	runsResp, err := client.ListRuns(ctx, &pb.ListRunsRequest{
+		State:      "running",
+		All:        true,
+		ProjectDir: projectDir,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Group runs by task ID.
+	runsByTask := map[string][]*pb.RunSummary{}
+	var noTaskRuns []*pb.RunSummary
+	for _, run := range runsResp.Runs {
+		if run.TaskId != "" {
+			runsByTask[run.TaskId] = append(runsByTask[run.TaskId], run)
+		} else {
+			noTaskRuns = append(noTaskRuns, run)
+		}
+	}
+
+	// Filter to running tasks only.
+	var activeTasks []*pb.TaskSummary
+	for _, task := range tasksResp.Tasks {
+		if task.Status == "running" || task.Status == "pending" {
+			activeTasks = append(activeTasks, task)
+		}
+	}
+
+	// Count total active: tasks with known task IDs plus orphan runs.
+	knownTaskIDs := map[string]bool{}
+	for _, task := range activeTasks {
+		knownTaskIDs[task.TaskId] = true
+	}
+	orphanTaskCount := 0
+	for taskID := range runsByTask {
+		if !knownTaskIDs[taskID] {
+			orphanTaskCount++
+		}
+	}
+	totalActive := len(activeTasks) + orphanTaskCount + len(noTaskRuns)
+
+	fmt.Fprintf(w, "Active tasks: %d\n", totalActive)
+	for _, task := range activeTasks {
+		title := task.Title
+		if title == "" {
+			title = task.TaskId
+		}
+		fmt.Fprintf(w, "  %s: %s\n", task.TaskId, title)
+		for _, run := range runsByTask[task.TaskId] {
+			dur := formatDuration(run.StartedAt)
+			fmt.Fprintf(w, "    %s: %s\n", run.WorkflowName, dur)
+		}
+	}
+	// Show runs whose task ID isn't in the active tasks list (orphans).
+	for taskID, runs := range runsByTask {
+		if !knownTaskIDs[taskID] {
+			fmt.Fprintf(w, "  %s: (unknown)\n", taskID)
+			for _, run := range runs {
+				dur := formatDuration(run.StartedAt)
+				fmt.Fprintf(w, "    %s: %s\n", run.WorkflowName, dur)
+			}
+		}
+	}
+	// Show runs with no task ID at all (legacy).
+	for _, run := range noTaskRuns {
+		dur := formatDuration(run.StartedAt)
+		fmt.Fprintf(w, "  %s: %s\n", run.RunId, dur)
 	}
 }
 
