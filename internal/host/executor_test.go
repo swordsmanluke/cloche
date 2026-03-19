@@ -802,8 +802,10 @@ func TestRunner_WithTaskID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, domain.RunStateSucceeded, result.State)
 
-	// Verify the script saw the task ID
-	outputDir := filepath.Join(tmpDir, ".cloche", result.RunID, "output")
+	// Verify the script saw the task ID.
+	// v2 runs with a TaskID write output to .cloche/logs/<taskID>/<attemptID>/
+	attemptID, _, _ := domain.ParseRunID(result.RunID)
+	outputDir := filepath.Join(tmpDir, ".cloche", "logs", "daemon-assigned-task-99", attemptID)
 	data, err := os.ReadFile(filepath.Join(outputDir, "check-task.out"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "daemon-assigned-task-99")

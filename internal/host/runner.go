@@ -69,8 +69,16 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		return nil, err
 	}
 
-	// Create output directory for step outputs
-	outputDir := filepath.Join(projectDir, ".cloche", orchRunID, "output")
+	// Create output directory for step outputs.
+	// v2 runs use .cloche/logs/<taskID>/<attemptID>/; legacy falls back
+	// to .cloche/<runID>/output/.
+	var outputDir string
+	if r.TaskID != "" {
+		attemptID, _, _ := domain.ParseRunID(orchRunID)
+		outputDir = filepath.Join(projectDir, ".cloche", "logs", r.TaskID, attemptID)
+	} else {
+		outputDir = filepath.Join(projectDir, ".cloche", orchRunID, "output")
+	}
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating output dir: %w", err)
 	}
