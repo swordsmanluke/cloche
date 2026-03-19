@@ -22,6 +22,7 @@ type TaskSummary struct {
 	ProjectDir      string `json:"project_dir,omitempty"`
 	CreatedAt       string `json:"created_at,omitempty"`
 	LatestAttemptId string `json:"latest_attempt_id,omitempty"`
+	AttemptCount    int32  `json:"attempt_count,omitempty"`
 }
 
 // ListTasksResponse is the response message for the ListTasks RPC.

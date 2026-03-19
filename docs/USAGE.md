@@ -656,11 +656,14 @@ cloche run --workflow <name> [--prompt "..."] [--title "..."] [--issue ID] [--ke
 | `--workflow <name>` | Workflow name. Resolves to `.cloche/<name>.cloche`. |
 | `--prompt "..."`, `-p` | Inline prompt written to `.cloche/<run-id>/prompt.txt`. |
 | `--title "..."` | One-line summary for status display. Auto-generated if omitted. |
-| `--issue ID`, `-i` | Associate a task/issue ID with the run (shown in list output). |
+| `--issue ID`, `-i` | Associate an existing task/issue ID with the run. Without this flag, a User-Initiated task is created automatically. |
 | `--keep-container` | Keep container on success (failed runs always keep it). |
 
 Must be run from inside a git repository. The daemon auto-rebuilds the Docker image
 when `.cloche/Dockerfile` changes.
+
+The command prints the run ID, task ID, and attempt ID on success. Use the task ID
+with `cloche status`, `cloche logs`, and `cloche list`.
 
 ### `cloche resume`
 
@@ -692,20 +695,22 @@ are replayed through the wiring so downstream steps receive the same inputs.
 ### `cloche status`
 
 ```
-cloche status [<run-id>] [--all]
+cloche status [<id>] [--all]
 ```
 
-With a run ID, shows run title, type (`host`/`container`), state, active steps, and
-per-step results.
+Accepts a task ID, attempt ID, run ID, or composite `task:attempt[:step]` to show the
+appropriate level of detail. Without an ID, shows a daemon status overview.
 
-Without a run ID, shows a daemon status overview: version, run statistics (past hour),
-and active runs. In a project directory, also shows project name, concurrency, and
-orchestration loop state. Use `--all` to show global stats instead of project-specific
-stats.
+| Argument | Output |
+|----------|--------|
+| Task ID | Task status, title, project, and list of attempts with results and timestamps. |
+| Attempt ID | Attempt result, timestamps, and associated run ID. |
+| Run ID or composite | Run title, workflow, type, state, container ID, active step, and per-step results. |
+| _(none)_ | Daemon version, run statistics (past hour), active runs. In a project directory, also shows project name, concurrency, and loop state. |
 
 | Flag | Description |
 |------|-------------|
-| `--all` | Show global stats instead of project-specific stats. |
+| `--all` | Show global stats instead of project-specific stats (overview mode only). |
 
 ### `cloche list`
 
@@ -713,22 +718,29 @@ stats.
 cloche list [flags]
 ```
 
-Lists runs for the current project directory. Pass `--all` to show runs across all projects.
-Results can be filtered by state, project, issue, or limited to a fixed number.
+Lists tasks for the current project directory, grouped by status with attempt count and
+latest attempt ID. Pass `--all` to show tasks across all projects. Use `--runs` to
+show a flat run listing instead of the task-oriented view.
 
 | Flag | Description |
 |------|-------------|
-| `--all` | Show runs from all projects (default: current project only). |
+| `--all` | Show tasks from all projects (default: current project only). |
 | `--project, -p DIR` | Filter by project directory. |
-| `--state, -s STATE` | Filter by run state (`pending`, `running`, `succeeded`, `failed`, `cancelled`). |
+| `--state, -s STATE` | Filter by task status (`pending`, `running`, `succeeded`, `failed`, `cancelled`). |
 | `--limit, -n NUM` | Limit the number of results returned. |
-| `--issue, -i ID` | Filter by issue/task ID. |
+| `--runs` | Show flat run listing instead of task-oriented view. |
+
+Default output columns: task ID, status, attempt count, latest attempt ID, title.
+With `--runs`: run ID, workflow, state, type, task ID, title, error.
 
 ### `cloche logs`
 
 ```
-cloche logs <run-id> [--step <name>] [--type <full|script|llm>] [-f] [-l <n>]
+cloche logs <id> [--step <name>] [--type <full|script|llm>] [-f] [-l <n>]
 ```
+
+The first argument accepts a task ID, attempt ID, run ID, or composite
+`task:attempt[:step]`. A task ID shows logs for the latest attempt.
 
 | Flag | Description |
 |------|-------------|
@@ -737,7 +749,7 @@ cloche logs <run-id> [--step <name>] [--type <full|script|llm>] [-f] [-l <n>]
 | `--follow, -f` | Follow mode: display existing logs then continue streaming new lines as they arrive (like `tail -f`). |
 | `--limit, -l <n>` | Display only the last n lines of output. |
 
-Flags are combinable: `cloche logs run-id -s implement -l 20 -f`
+Flags are combinable: `cloche logs <id> -s implement -l 20 -f`
 
 Without `-f`, displays all logs captured to date and exits (even for active runs). With `-f` on an active run, existing logs are sent first, then new output is streamed in real time via gRPC until the run completes.
 

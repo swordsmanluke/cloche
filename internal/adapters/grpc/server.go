@@ -757,11 +757,12 @@ func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) 
 	resp := &pb.ListTasksResponse{}
 	for _, task := range tasks {
 		sum := &pb.TaskSummary{
-			TaskId:     task.ID,
-			Title:      task.Title,
-			Status:     string(task.Status),
-			ProjectDir: task.ProjectDir,
-			CreatedAt:  task.CreatedAt.String(),
+			TaskId:       task.ID,
+			Title:        task.Title,
+			Status:       string(task.Status),
+			ProjectDir:   task.ProjectDir,
+			CreatedAt:    task.CreatedAt.String(),
+			AttemptCount: int32(len(task.Attempts)),
 		}
 		if la := task.LatestAttempt(); la != nil {
 			sum.LatestAttemptId = la.ID

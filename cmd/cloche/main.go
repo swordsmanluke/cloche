@@ -228,6 +228,12 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 		os.Exit(1)
 	}
 	fmt.Printf("Started run: %s\n", resp.RunId)
+	if resp.TaskId != "" {
+		fmt.Printf("Task:        %s\n", resp.TaskId)
+	}
+	if resp.AttemptId != "" {
+		fmt.Printf("Attempt:     %s\n", resp.AttemptId)
+	}
 }
 
 func cmdResume(ctx context.Context, client pb.ClocheServiceClient, args []string) {
@@ -269,18 +275,86 @@ func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string
 		}
 	}
 
-	// If a run ID is provided, show single-run status.
+	// If an ID is provided, show detail for that ID (task, attempt, run, or composite).
 	if len(positional) > 0 {
-		cmdStatusRun(ctx, client, positional[0])
+		cmdStatusByID(ctx, client, positional[0])
 		return
 	}
 
-	// No run ID: show daemon status overview.
+	// No ID: show daemon status overview.
 	cmdStatusOverview(ctx, client, os.Stdout, all)
 }
 
-func cmdStatusRun(ctx context.Context, client pb.ClocheServiceClient, runID string) {
-	resp, err := client.GetStatus(ctx, &pb.GetStatusRequest{RunId: runID})
+// cmdStatusByID resolves the given ID and shows appropriate detail.
+// Tries task → attempt → run in order for single-segment IDs.
+// Composite IDs (with colons) are passed directly to GetStatus.
+func cmdStatusByID(ctx context.Context, client pb.ClocheServiceClient, id string) {
+	// Composite ID (task:attempt or task:attempt:step) → run-level status.
+	if strings.Contains(id, ":") {
+		cmdStatusRun(ctx, client, id)
+		return
+	}
+
+	// Try as task ID first.
+	taskResp, err := client.GetTask(ctx, &pb.GetTaskRequest{TaskId: id})
+	if err == nil {
+		cmdStatusTask(taskResp)
+		return
+	}
+
+	// Try as attempt ID.
+	attemptResp, err := client.GetAttempt(ctx, &pb.GetAttemptRequest{AttemptId: id})
+	if err == nil {
+		cmdStatusAttempt(attemptResp)
+		return
+	}
+
+	// Fall back to run-level status (passes id as Id field so server can resolve).
+	cmdStatusRun(ctx, client, id)
+}
+
+// cmdStatusTask displays task-level detail including all attempts.
+func cmdStatusTask(resp *pb.GetTaskResponse) {
+	fmt.Printf("Task:      %s\n", resp.TaskId)
+	if resp.Title != "" {
+		fmt.Printf("Title:     %s\n", resp.Title)
+	}
+	fmt.Printf("Status:    %s\n", resp.Status)
+	if resp.ProjectDir != "" {
+		fmt.Printf("Project:   %s\n", resp.ProjectDir)
+	}
+	if len(resp.Attempts) == 0 {
+		fmt.Println("Attempts:  none")
+		return
+	}
+	fmt.Printf("Attempts:  %d\n", len(resp.Attempts))
+	for _, a := range resp.Attempts {
+		dur := ""
+		if a.EndedAt != "" && a.EndedAt != "0001-01-01 00:00:00 +0000 UTC" {
+			dur = " (ended " + a.EndedAt + ")"
+		}
+		fmt.Printf("  %s: %s%s\n", a.AttemptId, a.Result, dur)
+	}
+}
+
+// cmdStatusAttempt displays attempt-level detail.
+func cmdStatusAttempt(resp *pb.GetAttemptResponse) {
+	fmt.Printf("Attempt:   %s\n", resp.AttemptId)
+	fmt.Printf("Task:      %s\n", resp.TaskId)
+	fmt.Printf("Result:    %s\n", resp.Result)
+	fmt.Printf("Started:   %s\n", resp.StartedAt)
+	if resp.EndedAt != "" && resp.EndedAt != "0001-01-01 00:00:00 +0000 UTC" {
+		fmt.Printf("Ended:     %s\n", resp.EndedAt)
+	}
+	if resp.RunId != "" {
+		fmt.Printf("Run:       %s\n", resp.RunId)
+	}
+}
+
+func cmdStatusRun(ctx context.Context, client pb.ClocheServiceClient, id string) {
+	// Pass the id via the Id field so the server can resolve task IDs,
+	// attempt IDs, run IDs, and composite IDs (task:attempt:step).
+	resp, err := client.GetStatus(ctx, &pb.GetStatusRequest{Id: id})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -428,13 +502,16 @@ func formatDuration(startedAt string) string {
 
 func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	var all bool
-	var projectDir, stateFilter, issueFilter string
+	var projectDir, stateFilter string
 	var limit int32
+	var runs bool // --runs flag to show flat run listing instead of tasks
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--all":
 			all = true
+		case "--runs":
+			runs = true
 		case "--project", "-p":
 			if i+1 < len(args) {
 				i++
@@ -455,25 +532,67 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 				}
 				limit = int32(n)
 			}
-		case "--issue", "-i":
-			if i+1 < len(args) {
-				i++
-				issueFilter = args[i]
-			}
 		}
 	}
 
-	req := &pb.ListRunsRequest{
-		State:  stateFilter,
-		Limit:  limit,
-		TaskId: issueFilter,
+	if runs {
+		cmdListRuns(ctx, client, all, projectDir, stateFilter, limit)
+		return
+	}
+
+	// Default: task-oriented listing
+	req := &pb.ListTasksRequest{
+		State: stateFilter,
+		Limit: limit,
 	}
 	if projectDir != "" {
 		req.ProjectDir = projectDir
 	} else if all {
 		req.All = true
 	} else {
-		// Default: filter to current project
+		cwd, _ := os.Getwd()
+		req.ProjectDir = cwd
+	}
+
+	resp, err := client.ListTasks(ctx, req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(resp.Tasks) == 0 {
+		fmt.Println("No tasks found.")
+		return
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "TASK ID\tSTATUS\tATTEMPTS\tLATEST ATTEMPT\tTITLE")
+	for _, task := range resp.Tasks {
+		title := task.Title
+		if len(title) > 50 {
+			title = title[:47] + "..."
+		}
+		latestAttempt := task.LatestAttemptId
+		if latestAttempt == "" {
+			latestAttempt = "-"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n",
+			task.TaskId, task.Status, task.AttemptCount, latestAttempt, title)
+	}
+	w.Flush()
+}
+
+// cmdListRuns shows a flat run listing (legacy mode, accessible via --runs).
+func cmdListRuns(ctx context.Context, client pb.ClocheServiceClient, all bool, projectDir, stateFilter string, limit int32) {
+	req := &pb.ListRunsRequest{
+		State: stateFilter,
+		Limit: limit,
+	}
+	if projectDir != "" {
+		req.ProjectDir = projectDir
+	} else if all {
+		req.All = true
+	} else {
 		cwd, _ := os.Getwd()
 		req.ProjectDir = cwd
 	}
@@ -490,7 +609,7 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "RUN ID\tWORKFLOW\tSTATE\tTYPE\tTASK ID\tTITLE\tCONTAINER\tERROR")
+	fmt.Fprintln(w, "RUN ID\tWORKFLOW\tSTATE\tTYPE\tTASK ID\tTITLE\tERROR")
 	for _, run := range resp.Runs {
 		runType := "container"
 		if run.IsHost {
@@ -504,23 +623,24 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 		if len(errMsg) > 60 {
 			errMsg = errMsg[:57] + "..."
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			run.RunId, run.WorkflowName, run.State, runType,
-			run.TaskId, title, run.ContainerId, errMsg)
+			run.TaskId, title, errMsg)
 	}
 	w.Flush()
 }
 
 func cmdLogs(client pb.ClocheServiceClient, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "usage: cloche logs <run-id> [-s <name>] [--type <full|script|llm>] [-f] [-l <n>]\n")
+		fmt.Fprintf(os.Stderr, "usage: cloche logs <id> [-s <name>] [--type <full|script|llm>] [-f] [-l <n>]\n")
+		fmt.Fprintf(os.Stderr, "  <id> can be a task ID, attempt ID, run ID, or task:attempt:step\n")
 		os.Exit(1)
 	}
 
 	var stepFilter, typeFilter string
 	var follow bool
 	var limit int
-	runID := args[0]
+	id := args[0]
 
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
@@ -563,8 +683,10 @@ func cmdLogs(client pb.ClocheServiceClient, args []string) {
 		ctx = metadata.NewOutgoingContext(ctx, md)
 	}
 
+	// Pass id via the Id field so the server can resolve task IDs, attempt IDs,
+	// run IDs, and composite IDs (task:attempt:step).
 	stream, err := client.StreamLogs(ctx, &pb.StreamLogsRequest{
-		RunId:    runID,
+		Id:       id,
 		StepName: stepFilter,
 		LogType:  typeFilter,
 	})

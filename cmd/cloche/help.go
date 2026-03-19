@@ -57,8 +57,8 @@ Examples:
 
 	"run": `cloche run — Launch a workflow run
 
-Starts a new container workflow run. The daemon builds/pulls the container
-image, copies the project into it, and executes the workflow steps.
+Starts a new workflow run. Without --issue, a User-Initiated task is created
+automatically and a task ID is printed alongside the run ID.
 
 Usage:
   cloche run --workflow <name> [--prompt "..."] [--title "..."] [--issue ID] [--keep-container]
@@ -70,12 +70,13 @@ Flags:
   --prompt "..."       Prompt text passed to agent steps. Also available as
   -p "..."             the short form.
   --title "..."        Human-readable title for the run (shown in status/list).
-  --issue ID, -i ID    Associate a task/issue ID with the run (shown in list).
+  --issue ID, -i ID    Associate an existing task/issue ID with the run.
+                       Without this flag, a User-Initiated task is created.
   --keep-container     Do not remove the container after the run completes.
                        Useful for debugging.
 
-The command prints the run ID on success. Use that ID with status, logs,
-poll, and stop.
+The command prints the run ID, task ID, and attempt ID on success.
+Use the task ID with "cloche status", "cloche logs", and "cloche list".
 
 Examples:
   cloche run --workflow develop --prompt "Add a /health endpoint"
@@ -114,26 +115,37 @@ Examples:
   cloche resume develop-lush-fern-470c implement
 `,
 
-	"status": `cloche status — Check run or daemon status
+	"status": `cloche status — Check task, attempt, or run status
 
-With a run ID, shows the current state of a workflow run including its
-type, active step, and the result of each completed step.
-
-Without a run ID, shows a daemon status overview: version, run statistics,
-and active runs. In a project directory, also shows project name,
-concurrency, and orchestration loop state. Use --all to show global stats
-instead of project-specific stats.
+Accepts a task ID, attempt ID, run ID, or composite task:attempt:step to show
+the appropriate level of detail. Without an ID, shows a daemon status overview.
 
 Usage:
-  cloche status [<run-id>] [--all]
+  cloche status [<id>] [--all]
 
 Arguments:
-  <run-id>    The run identifier returned by "cloche run" (optional).
+  <id>    A task ID, attempt ID, run ID, or composite (task:attempt[:step]).
+          When omitted, shows a daemon status overview.
 
 Flags:
-  --all       Show global stats instead of project-specific stats.
+  --all       Show global stats instead of project-specific stats (overview mode).
 
-Output (with run ID):
+Output (task ID):
+  Task        Task identifier
+  Title       Human-readable title (if set)
+  Status      Current task status
+  Project     Project directory
+  Attempts    Number of attempts, listed with result and end time
+
+Output (attempt ID):
+  Attempt     Attempt identifier
+  Task        Parent task ID
+  Result      running, succeeded, failed, or cancelled
+  Started     Start timestamp
+  Ended       End timestamp (if complete)
+  Run         Associated run ID
+
+Output (run ID or composite):
   Run         Run identifier
   Title       Human-readable title (if set)
   Workflow    Workflow name
@@ -144,7 +156,7 @@ Output (with run ID):
   Active      Name of the currently executing step
   Steps       List of completed steps with results and timestamps
 
-Output (without run ID):
+Output (no ID — daemon overview):
   Daemon version
   Project name and concurrency (if in project directory)
   Orchestration loop status
@@ -152,21 +164,27 @@ Output (without run ID):
   Active run count with per-run duration
 
 Examples:
-  cloche status abc123
+  cloche status TASK-123
+  cloche status a3f7
+  cloche status develop-lush-fern-470c
+  cloche status TASK-123:a3f7:implement
   cloche status
   cloche status --all
 `,
 
-	"logs": `cloche logs — Show logs for a run
+	"logs": `cloche logs — Show logs for a task, attempt, or run
 
-Streams or displays log output for a workflow run. Supports filtering by
-step name and log type, limiting output, and following live output.
+Streams or displays log output. The first argument accepts a task ID,
+attempt ID, run ID, or composite task:attempt:step identifier.
 
 Usage:
-  cloche logs <run-id> [-s <name>] [--type <full|script|llm>] [-f] [-l <n>]
+  cloche logs <id> [-s <name>] [--type <full|script|llm>] [-f] [-l <n>]
 
 Arguments:
-  <run-id>    The run identifier.
+  <id>    Task ID, attempt ID, run ID, or composite (task:attempt[:step]).
+          Task ID → logs for the latest attempt.
+          Attempt ID → logs for that specific attempt.
+          Composite → logs scoped to that attempt and step.
 
 Flags:
   --step, -s <name>              Show logs only for the named step.
@@ -178,15 +196,16 @@ Flags:
                                  run completes or is stopped).
   --limit, -l <n>                Display only the last n lines of output.
 
-Flags are combinable: cloche logs run-id -s implement -l 20 -f
+Flags are combinable: cloche logs <id> -s implement -l 20 -f
 
 Examples:
-  cloche logs abc123
-  cloche logs abc123 -s implement
-  cloche logs abc123 -s implement -l 20
-  cloche logs abc123 -f
-  cloche logs abc123 -s test --type script
-  cloche logs abc123 -s implement -l 20 -f
+  cloche logs TASK-123
+  cloche logs a3f7
+  cloche logs develop-lush-fern-470c
+  cloche logs TASK-123:a3f7
+  cloche logs TASK-123:a3f7:implement
+  cloche logs TASK-123 -s implement -l 20 -f
+  cloche logs a3f7 --type script
 `,
 
 	"poll": `cloche poll — Wait for runs to finish
@@ -213,24 +232,24 @@ Examples:
   cloche run develop -p "Fix bug" && cloche poll "$(cloche run develop -p 'Fix bug')"
 `,
 
-	"list": `cloche list — List workflow runs
+	"list": `cloche list — List tasks
 
-Shows all runs for the current project, or all runs across all projects
-with --all. Results can be filtered by state, project, issue, or limited
-to a fixed number.
+Shows all tasks for the current project, grouped by status with attempt
+count and latest attempt ID. Use --all to show tasks from all projects,
+or --runs to show a flat run listing instead.
 
 Usage:
   cloche list [flags]
 
 Flags:
-  --all              Show runs from all projects (default: current project only).
+  --all              Show tasks from all projects (default: current project only).
   --project, -p DIR  Filter by project directory.
-  --state, -s STATE  Filter by run state (pending, running, succeeded, failed, cancelled).
+  --state, -s STATE  Filter by task status (pending, running, succeeded, failed, cancelled).
   --limit, -n NUM    Limit the number of results returned.
-  --issue, -i ID     Filter by issue/task ID.
+  --runs             Show flat run listing instead of task-oriented view.
 
-Output columns: run ID, workflow name, state, type (host/container),
-task ID, title, container ID, and error message (if any).
+Output columns (default): task ID, status, attempt count, latest attempt ID, title.
+Output columns (--runs):   run ID, workflow, state, type, task ID, title, error.
 
 Examples:
   cloche list
@@ -238,8 +257,8 @@ Examples:
   cloche list --state running
   cloche list --limit 10
   cloche list --all --state failed --limit 5
-  cloche list --issue TASK-123
   cloche list -p /home/user/project -s succeeded -n 20
+  cloche list --runs
 `,
 
 	"stop": `cloche stop — Stop a running workflow
