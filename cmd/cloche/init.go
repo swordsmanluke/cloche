@@ -9,70 +9,78 @@ import (
 
 var workflowTemplate = `workflow "%s" {
   step implement {
-    prompt = file(".cloche/prompts/implement.md")
+    prompt  = file(".cloche/prompts/implement.md")
+    results = [success, fail]
+  }
+
+  step commit {
+    run     = "git add -A && git commit -m \"implement task changes\" || true"
     results = [success, fail]
   }
 
   step test {
-    run = "make test 2>&1"
+    run     = "python3 -m unittest discover -s test -v 2>&1"
     results = [success, fail]
   }
 
-  step fix {
-    prompt = file(".cloche/prompts/fix.md")
+  step fix-tests {
+    prompt       = file(".cloche/prompts/fix-tests.md")
     max_attempts = 2
-    results = [success, fail, give-up]
+    results      = [success, fail]
   }
 
-  step update-docs {
-    prompt = file(".cloche/prompts/update-docs.md")
-    results = [success, fail]
-  }
-
-  implement:success -> test
-  implement:fail -> abort
-  test:success -> update-docs
-  test:fail -> fix
-  fix:success -> test
-  fix:fail -> abort
-  fix:give-up -> abort
-  update-docs:success -> done
-  update-docs:fail -> done
+  implement:success  -> commit
+  implement:fail     -> abort
+  commit:success     -> test
+  commit:fail        -> abort
+  test:success       -> done
+  test:fail          -> fix-tests
+  fix-tests:success  -> test
+  fix-tests:fail     -> abort
 }
 `
 
 var dockerfileTemplate = `FROM %s
 USER root
 
-# Add your project's dependencies here.
-# Example:
-#   RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
-#   RUN npm install -g @anthropic-ai/claude-code
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 \
+ && rm -rf /var/lib/apt/lists/*
 
 USER agent
 `
 
 var implementPrompt = `Implement the following change in this project.
 
-## User Request
-(Contents of .cloche/prompt.txt will be injected here by the adapter)
+## Task
+
+{task_description}
 
 ## Guidelines
-- Follow existing project conventions if files already exist
+- Follow existing project conventions
 - Write tests for new functionality
 - Run tests locally before declaring success
 `
 
-var fixPrompt = `Fix the code based on the validation failures below.
-Only modify files that need fixing. Do not rewrite the entire project.
+var fixTestsPrompt = `The tests are failing. Fix the code so all tests pass.
 
-## Validation Output
-(Contents of .cloche/output/*.log will be injected here by the adapter)
+Do not modify the test files — fix the implementation instead.
+
+## Test Output
+
+{previous_output}
 `
 
 var defaultConfigTOML = `# Cloche project configuration
-# Set active = true so cloched auto-runs the main workflow on startup.
+# Set active = true so cloched picks up tasks automatically.
 active = false
+
+# [orchestration]
+# concurrency              = 1
+# stagger_seconds          = 1.0
+# dedup_seconds            = 300.0
+# stop_on_error            = false
+# max_consecutive_failures = 3
 
 [evolution]
 enabled            = true
@@ -81,31 +89,12 @@ min_confidence     = "medium"
 max_prompt_bullets = 50
 `
 
-var updateDocsPrompt = `Review the CLI source code and update usage documentation to reflect any changes.
-
-## What to check
-1. Read cmd/cloche/main.go and cmd/cloche/init.go to understand the current CLI surface
-2. Compare against docs/USAGE.md
-
-## Sections to keep in sync
-- CLI Reference: subcommands, flags, usage examples
-- Setting Up a New Project: scaffolding steps, workflow template
-- Daemon Configuration: environment variables
-- Build Commands: Makefile targets
-
-## Rules
-- Only modify docs/USAGE.md (and docs/workflows.md if workflow DSL syntax changed)
-- Only make changes when there are actual discrepancies — do not rewrite for style
-- If everything is already accurate, make no changes and report success
-`
-
 var defaultClocheignore = `# Files excluded from the container workspace.
 # Uses gitignore-style patterns (*, ?, **).
 
 # Cloche runtime state
-.cloche/*-*-*/
-.cloche/run-*/
-.cloche/attempt_count/
+.cloche/logs/
+.cloche/runs/
 
 # Common large/generated directories
 node_modules/
@@ -126,12 +115,23 @@ target/
 
 var versionContent = "1\n"
 
-var hostWorkflowTemplate = `# host.cloche — orchestration workflow (runs on host, not in container)
-# Steps here execute as the daemon user. Keep operations simple and safe.
+var hostWorkflowTemplate = `workflow "list-tasks" {
+  host {}
+
+  step get-tasks {
+    run     = "python3 .cloche/scripts/get-tasks.py"
+    results = [success, fail]
+  }
+
+  get-tasks:success -> done
+  get-tasks:fail    -> abort
+}
 
 workflow "main" {
-  step prepare-prompt {
-    run     = "bash .cloche/scripts/prepare-prompt.sh"
+  host {}
+
+  step claim-task {
+    run     = "python3 .cloche/scripts/claim-task.py"
     results = [success, fail]
   }
 
@@ -140,24 +140,135 @@ workflow "main" {
     results       = [success, fail]
   }
 
-  prepare-prompt:success -> develop
-  prepare-prompt:fail    -> abort
-  develop:success        -> done
-  develop:fail           -> done
+  claim-task:success -> develop
+  claim-task:fail    -> abort
+  develop:success    -> done
+  develop:fail       -> done
+}
+
+workflow "finalize" {
+  host {}
+
+  step prepare-merge {
+    run     = "python3 .cloche/scripts/prepare-merge.py"
+    results = [success, fail]
+  }
+
+  step fix-merge {
+    prompt  = file(".cloche/prompts/fix-merge.md")
+    results = [success, fail]
+  }
+
+  step merge {
+    run     = "python3 .cloche/scripts/merge.py"
+    results = [success, fail]
+  }
+
+  step release-task {
+    run     = "python3 .cloche/scripts/release-task.py"
+    results = [success, fail]
+  }
+
+  step cleanup {
+    run     = "python3 .cloche/scripts/cleanup.py"
+    results = [success, fail]
+  }
+
+  step unclaim {
+    run     = "python3 .cloche/scripts/unclaim.py"
+    results = [success, fail]
+  }
+
+  prepare-merge:success -> merge
+  prepare-merge:fail    -> fix-merge
+  fix-merge:success     -> merge
+  fix-merge:fail        -> unclaim
+  merge:success         -> release-task
+  merge:fail            -> fix-merge
+  release-task:success  -> cleanup
+  release-task:fail     -> unclaim
+  cleanup:success       -> done
+  cleanup:fail          -> unclaim
+  unclaim:success       -> abort
+  unclaim:fail          -> abort
 }
 `
 
-var preparePromptScript = `#!/usr/bin/env bash
-# Default prompt generator.
-# Writes the task prompt to stdout and to $CLOCHE_STEP_OUTPUT.
-set -euo pipefail
+var getTasksPyScript = `#!/usr/bin/env python3
+"""Read the next open task from task_list.json.
 
-prompt="## Task: ${CLOCHE_TASK_TITLE}
+Replace this script with one that reads from your task tracker of choice
+(Linear, Jira, GitHub Issues, etc.) and returns ready tasks as JSONL:
 
-${CLOCHE_TASK_BODY}"
+    {"id": "...", "title": "...", "description": "...", "status": "open"}
 
-echo "$prompt"
-[ -n "${CLOCHE_STEP_OUTPUT:-}" ] && echo "$prompt" > "$CLOCHE_STEP_OUTPUT"
+One JSON object per line. The orchestration loop picks the first open task.
+"""
+import json
+import os
+import sys
+
+task_file = os.path.join(os.environ.get("CLOCHE_PROJECT_DIR", "."), "task_list.json")
+
+with open(task_file) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        task = json.loads(line)
+        if task.get("status") == "open":
+            output = json.dumps(task)
+            print(output)
+            output_path = os.environ.get("CLOCHE_STEP_OUTPUT")
+            if output_path:
+                with open(output_path, "w") as out:
+                    out.write(output + "\n")
+            sys.exit(0)
+
+# No open tasks — exit success with empty output (loop idles)
+output_path = os.environ.get("CLOCHE_STEP_OUTPUT")
+if output_path:
+    with open(output_path, "w") as out:
+        out.write("")
+`
+
+var claimTaskPyScript = `#!/usr/bin/env python3
+"""Mark the assigned task as in-progress in task_list.json."""
+import json
+import os
+import sys
+
+task_id = os.environ.get("CLOCHE_TASK_ID", "")
+project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
+task_file = os.path.join(project_dir, "task_list.json")
+
+if not task_id:
+    print("error: CLOCHE_TASK_ID not set", file=sys.stderr)
+    sys.exit(1)
+
+tasks = []
+with open(task_file) as f:
+    for line in f:
+        line = line.strip()
+        if line:
+            tasks.append(json.loads(line))
+
+found = False
+for task in tasks:
+    if task["id"] == task_id:
+        task["status"] = "in-progress"
+        found = True
+        break
+
+if not found:
+    print(f"error: task {task_id} not found", file=sys.stderr)
+    sys.exit(1)
+
+with open(task_file, "w") as f:
+    for task in tasks:
+        f.write(json.dumps(task) + "\n")
+
+print(f"Claimed task {task_id}")
 `
 
 var prepareMergePyScript = `#!/usr/bin/env python3
@@ -268,6 +379,49 @@ subprocess.run(
 print(f"Merged {branch} ({rebased_head[:8]})")
 `
 
+var releaseTaskPyScript = `#!/usr/bin/env python3
+"""Mark the completed task as done and move it to the end of task_list.json."""
+import json
+import os
+import sys
+
+task_id = os.environ.get("CLOCHE_TASK_ID", "")
+project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
+task_file = os.path.join(project_dir, "task_list.json")
+
+if not task_id:
+    print("error: CLOCHE_TASK_ID not set", file=sys.stderr)
+    sys.exit(1)
+
+tasks = []
+with open(task_file) as f:
+    for line in f:
+        line = line.strip()
+        if line:
+            tasks.append(json.loads(line))
+
+target = None
+remaining = []
+for task in tasks:
+    if task["id"] == task_id:
+        task["status"] = "done"
+        target = task
+    else:
+        remaining.append(task)
+
+if target is None:
+    print(f"error: task {task_id} not found", file=sys.stderr)
+    sys.exit(1)
+
+remaining.append(target)
+
+with open(task_file, "w") as f:
+    for task in remaining:
+        f.write(json.dumps(task) + "\n")
+
+print(f"Released task {task_id}")
+`
+
 var cleanupPyScript = `#!/usr/bin/env python3
 """Clean up the worktree and branch from the develop run."""
 import os
@@ -301,6 +455,45 @@ else:
 print(f"Cleaned up run {run_id or 'unknown'}")
 `
 
+var unclaimPyScript = `#!/usr/bin/env python3
+"""Reset the task to open and stop the orchestration loop.
+
+This is the emergency brake — it halts all automated work so a human
+can investigate what went wrong.
+"""
+import json
+import os
+import subprocess
+import sys
+
+task_id = os.environ.get("CLOCHE_TASK_ID", "")
+project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
+task_file = os.path.join(project_dir, "task_list.json")
+
+if task_id:
+    tasks = []
+    with open(task_file) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                tasks.append(json.loads(line))
+
+    for task in tasks:
+        if task["id"] == task_id:
+            task["status"] = "open"
+            break
+
+    with open(task_file, "w") as f:
+        for task in tasks:
+            f.write(json.dumps(task) + "\n")
+
+    print(f"Unclaimed task {task_id}")
+
+# Stop the loop — human must investigate and resume
+subprocess.run(["cloche", "loop", "stop"])
+print("Loop stopped — investigate and run 'cloche loop resume' when ready")
+`
+
 var fixMergePrompt = `A rebase of the agent's branch onto the base branch has failed due to conflicts.
 
 The conflicting worktree is at the path stored in the ` + "`worktree_path`" + ` context key
@@ -312,9 +505,39 @@ Resolve the conflicts in the worktree, then run:
 Do not abort the rebase. If you cannot resolve the conflicts, report failure.
 `
 
+var taskListJSON = `{"id": "1", "title": "Validate Agent works", "description": "Create a file, ./agent_test containing the string 'I exist!'", "status": "open"}
+{"id": "2", "title": "Clean up cloche test files", "description": "Delete ./agent_test and test/cloche/test_cloche.py - they were created for validation and we're done now", "status": "open"}
+`
+
+var testClocheScript = `#!/usr/bin/env python3
+"""Cloche environment validation tests.
+
+These tests verify that the agent successfully completed the setup task.
+Delete this file once validation is complete (task #2 does this automatically).
+"""
+import os
+import unittest
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+class TestAgentSetup(unittest.TestCase):
+    def test_agent_test_file_exists(self):
+        path = os.path.join(PROJECT_ROOT, "agent_test")
+        self.assertTrue(os.path.isfile(path), "agent_test file does not exist")
+
+    def test_agent_test_file_contents(self):
+        path = os.path.join(PROJECT_ROOT, "agent_test")
+        with open(path) as f:
+            contents = f.read().strip()
+        self.assertEqual(contents, "I exist!")
+
+if __name__ == "__main__":
+    unittest.main()
+`
+
 func cmdInit(args []string) {
 	workflow := "develop"
-	baseImage := "cloche-base:latest"
+	baseImage := "cloche-agent:latest"
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -346,6 +569,7 @@ func cmdInit(args []string) {
 		filepath.Join(clocheDir, "prompts"),
 		filepath.Join(clocheDir, "overrides"),
 		filepath.Join(clocheDir, "scripts"),
+		filepath.Join("test", "cloche"),
 	} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			fmt.Fprintf(os.Stderr, "error creating %s/: %v\n", dir, err)
@@ -363,16 +587,20 @@ func cmdInit(args []string) {
 		{filepath.Join(clocheDir, "Dockerfile"), fmt.Sprintf(dockerfileTemplate, baseImage), 0644},
 		{filepath.Join(clocheDir, "config.toml"), defaultConfigTOML, 0644},
 		{filepath.Join(clocheDir, "prompts", "implement.md"), implementPrompt, 0644},
-		{filepath.Join(clocheDir, "prompts", "fix.md"), fixPrompt, 0644},
-		{filepath.Join(clocheDir, "prompts", "update-docs.md"), updateDocsPrompt, 0644},
+		{filepath.Join(clocheDir, "prompts", "fix-tests.md"), fixTestsPrompt, 0644},
+		{filepath.Join(clocheDir, "prompts", "fix-merge.md"), fixMergePrompt, 0644},
 		{filepath.Join(clocheDir, "version"), versionContent, 0644},
 		{filepath.Join(clocheDir, "host.cloche"), hostWorkflowTemplate, 0644},
-		{filepath.Join(clocheDir, "scripts", "prepare-prompt.sh"), preparePromptScript, 0755},
+		{filepath.Join(clocheDir, "scripts", "get-tasks.py"), getTasksPyScript, 0755},
+		{filepath.Join(clocheDir, "scripts", "claim-task.py"), claimTaskPyScript, 0755},
 		{filepath.Join(clocheDir, "scripts", "prepare-merge.py"), prepareMergePyScript, 0755},
 		{filepath.Join(clocheDir, "scripts", "merge.py"), mergePyScript, 0755},
+		{filepath.Join(clocheDir, "scripts", "release-task.py"), releaseTaskPyScript, 0755},
 		{filepath.Join(clocheDir, "scripts", "cleanup.py"), cleanupPyScript, 0755},
-		{filepath.Join(clocheDir, "prompts", "fix-merge.md"), fixMergePrompt, 0644},
+		{filepath.Join(clocheDir, "scripts", "unclaim.py"), unclaimPyScript, 0755},
 		{".clocheignore", defaultClocheignore, 0644},
+		{"task_list.json", taskListJSON, 0644},
+		{filepath.Join("test", "cloche", "test_cloche.py"), testClocheScript, 0644},
 	}
 
 	for _, f := range files {
@@ -387,17 +615,9 @@ func cmdInit(args []string) {
 		fmt.Fprintf(os.Stderr, "  create %s\n", f.path)
 	}
 
-	removeGitignoreEntries([]string{
-		".cloche/*/",
-		"!.cloche/prompts/",
-		"!.cloche/overrides/",
-		"!.cloche/evolution/",
-	})
-
 	addGitignoreEntries([]string{
-		".cloche/*-*-*/",
-		".cloche/run-*/",
-		".cloche/attempt_count/",
+		".cloche/logs/",
+		".cloche/runs/",
 		".gitworktrees/",
 	})
 
@@ -411,13 +631,14 @@ func cmdInit(args []string) {
 	cwd, _ := os.Getwd()
 	fmt.Fprintf(os.Stderr, "\nInitialized Cloche project in %s\n", filepath.Base(cwd))
 	fmt.Fprintf(os.Stderr, "\nNext steps:\n")
-	fmt.Fprintf(os.Stderr, "  1. Edit %s    — set active = true to auto-run on startup\n", filepath.Join(clocheDir, "config.toml"))
-	fmt.Fprintf(os.Stderr, "  2. Edit %s — adjust the test command for your project\n", workflowFile)
-	fmt.Fprintf(os.Stderr, "  3. Edit %s     — add your project's dependencies\n", filepath.Join(clocheDir, "Dockerfile"))
-	fmt.Fprintf(os.Stderr, "  4. Edit %s — customize prompt generation\n", filepath.Join(clocheDir, "scripts", "prepare-prompt.sh"))
-	fmt.Fprintf(os.Stderr, "  5. Add container-specific overrides to %s/ (e.g. CLAUDE.md)\n", filepath.Join(clocheDir, "overrides"))
-	fmt.Fprintf(os.Stderr, "  6. docker build -t cloche-agent -f %s .\n", filepath.Join(clocheDir, "Dockerfile"))
-	fmt.Fprintf(os.Stderr, "  7. cloche run --workflow %s --prompt \"...\"\n", workflow)
+	fmt.Fprintf(os.Stderr, "  1. Edit .cloche/config.toml           — set active = true\n")
+	fmt.Fprintf(os.Stderr, "  2. Edit %s        — adjust the test command for your project\n", workflowFile)
+	fmt.Fprintf(os.Stderr, "  3. Edit .cloche/Dockerfile            — add your project's dependencies\n")
+	fmt.Fprintf(os.Stderr, "  4. Edit .cloche/scripts/get-tasks.py  — connect to your task tracker\n")
+	fmt.Fprintf(os.Stderr, "  5. docker build -t cloche-agent -f .cloche/Dockerfile .\n")
+	fmt.Fprintf(os.Stderr, "  6. cloche loop                        — start the orchestration loop\n")
+	fmt.Fprintf(os.Stderr, "\nThe sample tasks in task_list.json verify your setup end-to-end.\n")
+	fmt.Fprintf(os.Stderr, "Task #1 asks the agent to create a file; task #2 cleans up after itself.\n")
 }
 
 func removeGitignoreEntries(entries []string) {

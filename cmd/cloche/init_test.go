@@ -19,13 +19,21 @@ func TestCmdInit_DefaultFlags(t *testing.T) {
 		filepath.Join(".cloche", "develop.cloche"),
 		filepath.Join(".cloche", "Dockerfile"),
 		filepath.Join(".cloche", "prompts", "implement.md"),
-		filepath.Join(".cloche", "prompts", "fix.md"),
-		filepath.Join(".cloche", "prompts", "update-docs.md"),
+		filepath.Join(".cloche", "prompts", "fix-tests.md"),
+		filepath.Join(".cloche", "prompts", "fix-merge.md"),
 		filepath.Join(".cloche", "config.toml"),
 		filepath.Join(".cloche", "version"),
 		filepath.Join(".cloche", "host.cloche"),
-		filepath.Join(".cloche", "scripts", "prepare-prompt.sh"),
+		filepath.Join(".cloche", "scripts", "get-tasks.py"),
+		filepath.Join(".cloche", "scripts", "claim-task.py"),
+		filepath.Join(".cloche", "scripts", "prepare-merge.py"),
+		filepath.Join(".cloche", "scripts", "merge.py"),
+		filepath.Join(".cloche", "scripts", "release-task.py"),
+		filepath.Join(".cloche", "scripts", "cleanup.py"),
+		filepath.Join(".cloche", "scripts", "unclaim.py"),
 		".clocheignore",
+		"task_list.json",
+		filepath.Join("test", "cloche", "test_cloche.py"),
 	} {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			t.Errorf("expected %s to exist", path)
@@ -47,13 +55,20 @@ func TestCmdInit_DefaultFlags(t *testing.T) {
 		t.Error("expected .cloche/scripts/ directory to exist")
 	}
 
-	// Verify prepare-prompt.sh is executable
-	info, err := os.Stat(filepath.Join(".cloche", "scripts", "prepare-prompt.sh"))
-	if err != nil {
-		t.Fatal("expected prepare-prompt.sh to exist")
+	// Verify test/cloche/ directory was created
+	if info, err := os.Stat(filepath.Join("test", "cloche")); err != nil || !info.IsDir() {
+		t.Error("expected test/cloche/ directory to exist")
 	}
-	if info.Mode()&0111 == 0 {
-		t.Error("expected prepare-prompt.sh to be executable")
+
+	// Old v1 files should not be created
+	for _, path := range []string{
+		filepath.Join(".cloche", "scripts", "prepare-prompt.sh"),
+		filepath.Join(".cloche", "prompts", "fix.md"),
+		filepath.Join(".cloche", "prompts", "update-docs.md"),
+	} {
+		if _, err := os.Stat(path); err == nil {
+			t.Errorf("expected %s to NOT exist", path)
+		}
 	}
 }
 
@@ -117,21 +132,20 @@ func TestCmdInit_GitignoreEntries(t *testing.T) {
 		t.Fatalf("expected .gitignore to exist: %v", err)
 	}
 	content := string(data)
-	if !strings.Contains(content, ".cloche/*-*-*/") {
-		t.Error(".gitignore should contain .cloche/*-*-*/")
+	if !strings.Contains(content, ".cloche/logs/") {
+		t.Error(".gitignore should contain .cloche/logs/")
 	}
-	if !strings.Contains(content, ".cloche/run-*/") {
-		t.Error(".gitignore should contain .cloche/run-*/")
-	}
-	if !strings.Contains(content, ".cloche/attempt_count/") {
-		t.Error(".gitignore should contain .cloche/attempt_count/")
+	if !strings.Contains(content, ".cloche/runs/") {
+		t.Error(".gitignore should contain .cloche/runs/")
 	}
 	if !strings.Contains(content, ".gitworktrees/") {
 		t.Error(".gitignore should contain .gitworktrees/")
 	}
-	// Old entries should not be present
-	if strings.Contains(content, ".cloche/*/") {
-		t.Error(".gitignore should not contain old .cloche/*/ entry")
+	// Old v1 entries should not be present
+	for _, old := range []string{".cloche/*-*-*/", ".cloche/run-*/", ".cloche/attempt_count/"} {
+		if strings.Contains(content, old) {
+			t.Errorf(".gitignore should not contain old entry %q", old)
+		}
 	}
 }
 
@@ -141,13 +155,13 @@ func TestCmdInit_GitignoreNoDuplicates(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	os.WriteFile(".gitignore", []byte(".cloche/*-*-*/\n"), 0644)
+	os.WriteFile(".gitignore", []byte(".cloche/logs/\n"), 0644)
 
 	cmdInit([]string{})
 
 	data, _ := os.ReadFile(".gitignore")
 	content := string(data)
-	if strings.Count(content, ".cloche/*-*-*/") != 1 {
+	if strings.Count(content, ".cloche/logs/") != 1 {
 		t.Error(".gitignore should not duplicate existing entries")
 	}
 	if !strings.Contains(content, ".gitworktrees/") {
@@ -155,36 +169,63 @@ func TestCmdInit_GitignoreNoDuplicates(t *testing.T) {
 	}
 }
 
-func TestCmdInit_GitignoreRemovesOldEntries(t *testing.T) {
+func TestCmdInit_DockerfileDefaultBaseImage(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	os.WriteFile(".gitignore", []byte(".cloche/*/\n!.cloche/prompts/\n!.cloche/overrides/\n!.cloche/evolution/\n.gitworktrees/\n"), 0644)
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "Dockerfile"))
+	content := string(data)
+	if !strings.Contains(content, "FROM cloche-agent:latest") {
+		t.Error("Dockerfile should default to cloche-agent:latest base image")
+	}
+	if !strings.Contains(content, "python3") {
+		t.Error("Dockerfile should install python3")
+	}
+}
+
+func TestCmdInit_ConfigTOMLOrchestrationSection(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
 
 	cmdInit([]string{})
 
-	data, _ := os.ReadFile(".gitignore")
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
 	content := string(data)
+	if !strings.Contains(content, "[orchestration]") {
+		t.Error("config.toml should contain commented [orchestration] section")
+	}
+	if !strings.Contains(content, "concurrency") {
+		t.Error("config.toml should contain concurrency setting")
+	}
+}
 
-	// Old entries should be removed
-	for _, old := range []string{".cloche/*/", "!.cloche/prompts/", "!.cloche/overrides/", "!.cloche/evolution/"} {
+func TestCmdInit_ClocheignoreV2Patterns(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(".clocheignore")
+	content := string(data)
+	if !strings.Contains(content, ".cloche/logs/") {
+		t.Error(".clocheignore should contain .cloche/logs/")
+	}
+	if !strings.Contains(content, ".cloche/runs/") {
+		t.Error(".clocheignore should contain .cloche/runs/")
+	}
+	// Old v1 patterns should not be present
+	for _, old := range []string{".cloche/*-*-*/", ".cloche/run-*/", ".cloche/attempt_count/"} {
 		if strings.Contains(content, old) {
-			t.Errorf(".gitignore should not contain old entry %q", old)
+			t.Errorf(".clocheignore should not contain old pattern %q", old)
 		}
-	}
-
-	// New entries should be present
-	for _, entry := range []string{".cloche/*-*-*/", ".cloche/run-*/", ".cloche/attempt_count/"} {
-		if !strings.Contains(content, entry) {
-			t.Errorf(".gitignore should contain new entry %q", entry)
-		}
-	}
-
-	// .gitworktrees/ should still be present (not duplicated)
-	if strings.Count(content, ".gitworktrees/") != 1 {
-		t.Error(".gitworktrees/ should appear exactly once")
 	}
 }
 
@@ -205,7 +246,7 @@ func TestCmdInit_VersionContent(t *testing.T) {
 	}
 }
 
-func TestCmdInit_PreparePromptExecutable(t *testing.T) {
+func TestCmdInit_ScriptsExecutable(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
 	os.Chdir(dir)
@@ -213,12 +254,23 @@ func TestCmdInit_PreparePromptExecutable(t *testing.T) {
 
 	cmdInit([]string{})
 
-	info, err := os.Stat(filepath.Join(".cloche", "scripts", "prepare-prompt.sh"))
-	if err != nil {
-		t.Fatal("expected prepare-prompt.sh to exist")
-	}
-	if info.Mode()&0111 == 0 {
-		t.Error("expected prepare-prompt.sh to have executable permission bits")
+	for _, path := range []string{
+		filepath.Join(".cloche", "scripts", "get-tasks.py"),
+		filepath.Join(".cloche", "scripts", "claim-task.py"),
+		filepath.Join(".cloche", "scripts", "prepare-merge.py"),
+		filepath.Join(".cloche", "scripts", "merge.py"),
+		filepath.Join(".cloche", "scripts", "release-task.py"),
+		filepath.Join(".cloche", "scripts", "cleanup.py"),
+		filepath.Join(".cloche", "scripts", "unclaim.py"),
+	} {
+		info, err := os.Stat(path)
+		if os.IsNotExist(err) {
+			t.Errorf("expected %s to exist", path)
+			continue
+		}
+		if info.Mode()&0111 == 0 {
+			t.Errorf("expected %s to be executable", path)
+		}
 	}
 }
 
@@ -332,7 +384,7 @@ func TestCmdInit_FixMergePromptContent(t *testing.T) {
 	}
 }
 
-func TestCmdInit_WorkflowTemplatePromptPaths(t *testing.T) {
+func TestCmdInit_WorkflowTemplateV2(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
 	os.Chdir(dir)
@@ -345,10 +397,141 @@ func TestCmdInit_WorkflowTemplatePromptPaths(t *testing.T) {
 	if !strings.Contains(content, `file(".cloche/prompts/implement.md")`) {
 		t.Error("workflow template should reference .cloche/prompts/implement.md")
 	}
-	if !strings.Contains(content, `file(".cloche/prompts/fix.md")`) {
-		t.Error("workflow template should reference .cloche/prompts/fix.md")
+	if !strings.Contains(content, `file(".cloche/prompts/fix-tests.md")`) {
+		t.Error("workflow template should reference .cloche/prompts/fix-tests.md")
 	}
-	if !strings.Contains(content, `file(".cloche/prompts/update-docs.md")`) {
-		t.Error("workflow template should reference .cloche/prompts/update-docs.md")
+	if !strings.Contains(content, "step commit") {
+		t.Error("workflow template should have a commit step")
+	}
+	if !strings.Contains(content, "step test") {
+		t.Error("workflow template should have a test step")
+	}
+	if !strings.Contains(content, "step fix-tests") {
+		t.Error("workflow template should have a fix-tests step")
+	}
+	// Old v1 steps should not be present
+	if strings.Contains(content, "step update-docs") {
+		t.Error("workflow template should not have update-docs step")
+	}
+}
+
+func TestCmdInit_HostWorkflowV2(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "host.cloche"))
+	content := string(data)
+	if !strings.Contains(content, `workflow "list-tasks"`) {
+		t.Error("host.cloche should contain list-tasks workflow")
+	}
+	if !strings.Contains(content, `workflow "main"`) {
+		t.Error("host.cloche should contain main workflow")
+	}
+	if !strings.Contains(content, `workflow "finalize"`) {
+		t.Error("host.cloche should contain finalize workflow")
+	}
+	if !strings.Contains(content, "get-tasks.py") {
+		t.Error("host.cloche should reference get-tasks.py")
+	}
+	if !strings.Contains(content, "claim-task.py") {
+		t.Error("host.cloche should reference claim-task.py")
+	}
+	if !strings.Contains(content, "unclaim.py") {
+		t.Error("host.cloche should reference unclaim.py")
+	}
+	// Old v1 script should not be present
+	if strings.Contains(content, "prepare-prompt.sh") {
+		t.Error("host.cloche should not reference prepare-prompt.sh")
+	}
+}
+
+func TestCmdInit_TaskListJSON(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	data, err := os.ReadFile("task_list.json")
+	if err != nil {
+		t.Fatal("expected task_list.json to exist")
+	}
+	content := string(data)
+	if !strings.Contains(content, "Validate Agent works") {
+		t.Error("task_list.json should contain validation task")
+	}
+	if !strings.Contains(content, "Clean up cloche test files") {
+		t.Error("task_list.json should contain cleanup task")
+	}
+}
+
+func TestCmdInit_TestClocheScript(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	data, err := os.ReadFile(filepath.Join("test", "cloche", "test_cloche.py"))
+	if err != nil {
+		t.Fatal("expected test/cloche/test_cloche.py to exist")
+	}
+	content := string(data)
+	if !strings.Contains(content, "TestAgentSetup") {
+		t.Error("test_cloche.py should contain TestAgentSetup class")
+	}
+	if !strings.Contains(content, "agent_test") {
+		t.Error("test_cloche.py should reference agent_test file")
+	}
+	if !strings.Contains(content, "I exist!") {
+		t.Error("test_cloche.py should check for 'I exist!' content")
+	}
+}
+
+func TestCmdInit_GetTasksContent(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "get-tasks.py"))
+	content := string(data)
+	if !strings.Contains(content, "task_list.json") {
+		t.Error("get-tasks.py should reference task_list.json")
+	}
+	if !strings.Contains(content, "CLOCHE_STEP_OUTPUT") {
+		t.Error("get-tasks.py should write to CLOCHE_STEP_OUTPUT")
+	}
+	if !strings.Contains(content, `"status": "open"`) || !strings.Contains(content, `.get("status") == "open"`) {
+		// Either format is acceptable
+		if !strings.Contains(content, "open") {
+			t.Error("get-tasks.py should filter for open tasks")
+		}
+	}
+}
+
+func TestCmdInit_UnclaimContent(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "unclaim.py"))
+	content := string(data)
+	if !strings.Contains(content, "loop") {
+		t.Error("unclaim.py should stop the loop")
+	}
+	if !strings.Contains(content, "open") {
+		t.Error("unclaim.py should reset task to open")
 	}
 }
