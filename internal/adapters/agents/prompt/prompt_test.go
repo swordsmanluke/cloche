@@ -34,9 +34,9 @@ func TestPromptAdapter_ExecutesCommand(t *testing.T) {
 		Config:  map[string]string{"prompt": "You are a coding assistant."},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", sr.Result)
 
 	// Verify the mock command ran
 	content, err := os.ReadFile(filepath.Join(dir, "result.txt"))
@@ -65,9 +65,9 @@ func TestPromptAdapter_IncludesFeedback(t *testing.T) {
 		Config:  map[string]string{"prompt": "Fix the code.", "feedback": "true"},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", sr.Result)
 
 	// Verify feedback was included in the prompt
 	captured, err := os.ReadFile(filepath.Join(dir, "captured_prompt.txt"))
@@ -97,9 +97,9 @@ func TestPromptAdapter_NoFeedbackByDefault(t *testing.T) {
 		Config:  map[string]string{"prompt": "Update the docs."},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", sr.Result)
 
 	// Verify feedback was NOT included in the prompt
 	captured, err := os.ReadFile(filepath.Join(dir, "captured_prompt.txt"))
@@ -133,9 +133,9 @@ func TestPromptAdapter_RespectsMaxAttempts(t *testing.T) {
 		},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "give-up", result)
+	assert.Equal(t, "give-up", sr.Result)
 }
 
 func TestPromptAdapter_CommandFailure(t *testing.T) {
@@ -153,9 +153,9 @@ func TestPromptAdapter_CommandFailure(t *testing.T) {
 		Config:  map[string]string{"prompt": "Do something."},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "fail", result)
+	assert.Equal(t, "fail", sr.Result)
 }
 
 func TestPromptAdapter_InjectsResultInstructions(t *testing.T) {
@@ -198,9 +198,9 @@ func TestPromptAdapter_StdoutMarkerSelectsResult(t *testing.T) {
 		Config:  map[string]string{"prompt": "Analyze the code."},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "needs_research", result)
+	assert.Equal(t, "needs_research", sr.Result)
 }
 
 func TestExecuteWritesOutputFile(t *testing.T) {
@@ -222,9 +222,9 @@ func TestExecuteWritesOutputFile(t *testing.T) {
 		Config:  map[string]string{"prompt": "Build something"},
 	}
 
-	result, err := a.Execute(context.Background(), step, dir)
+	sr, err := a.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", sr.Result)
 
 	// Verify output was written to file
 	outputPath := filepath.Join(dir, ".cloche", "output", "implement.log")
@@ -279,9 +279,9 @@ func TestPromptAdapter_FallbackOnCommandNotFound(t *testing.T) {
 		Config:  map[string]string{"prompt": "Do something."},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", sr.Result)
 
 	// Verify the fallback command's output was captured
 	outputPath := filepath.Join(dir, ".cloche", "output", "implement.log")
@@ -311,9 +311,9 @@ func TestPromptAdapter_FallbackOnExitErrorNoMarker(t *testing.T) {
 		Config:  map[string]string{"prompt": "Do something."},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", sr.Result)
 
 	// Verify the fallback command's output was captured
 	outputPath := filepath.Join(dir, ".cloche", "output", "implement.log")
@@ -343,10 +343,10 @@ func TestPromptAdapter_NoFallbackOnMarkerResult(t *testing.T) {
 		Config:  map[string]string{"prompt": "Do something."},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
 	// Should use the first agent's result, not fall back
-	assert.Equal(t, "fail", result)
+	assert.Equal(t, "fail", sr.Result)
 }
 
 func TestPromptAdapter_AllCommandsFail(t *testing.T) {
@@ -390,9 +390,9 @@ func TestPromptAdapter_LastCommandCrashReturnsFailResult(t *testing.T) {
 		Config:  map[string]string{"prompt": "Do something."},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "fail", result)
+	assert.Equal(t, "fail", sr.Result)
 }
 
 func TestPromptAdapter_SingleCommandPreservesBehavior(t *testing.T) {
@@ -411,9 +411,9 @@ func TestPromptAdapter_SingleCommandPreservesBehavior(t *testing.T) {
 		Config:  map[string]string{"prompt": "Do something."},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", sr.Result)
 }
 
 func TestPromptAdapter_DefaultArgsForClaude(t *testing.T) {

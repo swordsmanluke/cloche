@@ -25,7 +25,7 @@ func (a *Adapter) Name() string {
 	return "generic"
 }
 
-func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string) (string, error) {
+func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string) (domain.StepResult, error) {
 	cmdStr := step.Config["run"]
 	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
 	cmd.Dir = workDir
@@ -65,9 +65,9 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 				result = markerResult
 			}
 			protocol.AppendHistory(workDir, step.Name, result, isAgent, cleanOutput)
-			return result, nil
+			return domain.StepResult{Result: result}, nil
 		}
-		return "", err
+		return domain.StepResult{}, err
 	}
 
 	result := "success"
@@ -75,7 +75,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		result = markerResult
 	}
 	protocol.AppendHistory(workDir, step.Name, result, isAgent, cleanOutput)
-	return result, nil
+	return domain.StepResult{Result: result}, nil
 }
 
 // executeStreaming runs the command and streams output lines through StatusWriter

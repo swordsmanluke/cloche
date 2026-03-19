@@ -31,7 +31,8 @@ type StepExecution struct {
 	StartedAt   time.Time
 	CompletedAt time.Time
 	Logs        string
-	GitRef      string // output state
+	GitRef      string      // output state
+	Usage       *TokenUsage // optional token usage for agent steps
 }
 
 func (e *StepExecution) Duration() time.Duration {

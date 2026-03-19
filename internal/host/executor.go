@@ -286,7 +286,7 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (string,
 		_ = os.WriteFile(promptPath, []byte(promptContent), 0644)
 	}
 
-	result, err := adapter.Execute(ctx, step, e.ProjectDir)
+	stepResult, err := adapter.Execute(ctx, step, e.ProjectDir)
 	if err != nil {
 		return "", err
 	}
@@ -299,7 +299,7 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (string,
 		}
 	}
 
-	return result, nil
+	return stepResult.Result, nil
 }
 
 // waitForRun polls the store until the run reaches a terminal state.

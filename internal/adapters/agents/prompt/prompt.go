@@ -67,14 +67,14 @@ func ParseCommands(s string) []string {
 	return cmds
 }
 
-func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string) (string, error) {
+func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string) (domain.StepResult, error) {
 	// Check attempt count for retry limiting
 	if maxStr, ok := step.Config["max_attempts"]; ok {
 		max, err := strconv.Atoi(maxStr)
 		if err == nil {
 			count := readAttemptCount(workDir, step.Name)
 			if count >= max {
-				return "give-up", nil
+				return domain.StepResult{Result: "give-up"}, nil
 			}
 		}
 	}
@@ -88,7 +88,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		var err error
 		fullPrompt, err = assemblePrompt(step, workDir, a.TaskID)
 		if err != nil {
-			return "", fmt.Errorf("assembling prompt: %w", err)
+			return domain.StepResult{}, fmt.Errorf("assembling prompt: %w", err)
 		}
 	}
 
@@ -116,7 +116,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 
 	if lastErr != nil && !ran && lastStdout == nil {
 		// All commands failed to produce any output (e.g., all not found)
-		return "", lastErr
+		return domain.StepResult{}, lastErr
 	}
 
 	result := lastResult
@@ -138,7 +138,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		_ = os.WriteFile(filepath.Join(outputDir, step.Name+".log"), lastStdout, 0644)
 	}
 	protocol.AppendHistory(workDir, step.Name, result, true, nil)
-	return result, nil
+	return domain.StepResult{Result: result}, nil
 }
 
 // tryCommand executes a single agent command and returns:

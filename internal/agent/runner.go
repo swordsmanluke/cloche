@@ -156,14 +156,14 @@ type stepExecutor struct {
 func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, error) {
 	switch step.Type {
 	case domain.StepTypeScript:
-		result, err := e.generic.Execute(ctx, step, e.workDir)
+		sr, err := e.generic.Execute(ctx, step, e.workDir)
 		e.logStepOutput(step.Name, logstream.TypeScript)
-		return result, err
+		return sr.Result, err
 	case domain.StepTypeAgent:
 		if _, ok := step.Config["run"]; ok {
-			result, err := e.generic.Execute(ctx, step, e.workDir)
+			sr, err := e.generic.Execute(ctx, step, e.workDir)
 			e.logStepOutput(step.Name, logstream.TypeScript)
-			return result, err
+			return sr.Result, err
 		}
 		if _, ok := step.Config["prompt"]; ok {
 			if cmd := step.Config["agent_command"]; cmd != "" {
@@ -177,10 +177,10 @@ func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, 
 				e.prompt.ResumeConversation = true
 				defer func() { e.prompt.ResumeConversation = false }()
 			}
-			result, err := e.prompt.Execute(ctx, step, e.workDir)
+			sr, err := e.prompt.Execute(ctx, step, e.workDir)
 			e.copyToLLMLog(step.Name)
 			e.logStepOutput(step.Name, logstream.TypeLLM)
-			return result, err
+			return sr.Result, err
 		}
 		return "", fmt.Errorf("agent step %q requires either 'run' or 'prompt' config", step.Name)
 	default:

@@ -23,9 +23,9 @@ func TestGenericAdapter_ScriptSuccess(t *testing.T) {
 		Config:  map[string]string{"run": "echo hello"},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, t.TempDir())
+	sr, err := adapter.Execute(context.Background(), step, t.TempDir())
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", sr.Result)
 }
 
 func TestGenericAdapter_ScriptFailure(t *testing.T) {
@@ -37,9 +37,9 @@ func TestGenericAdapter_ScriptFailure(t *testing.T) {
 		Config:  map[string]string{"run": "exit 1"},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, t.TempDir())
+	sr, err := adapter.Execute(context.Background(), step, t.TempDir())
 	require.NoError(t, err)
-	assert.Equal(t, "fail", result)
+	assert.Equal(t, "fail", sr.Result)
 }
 
 func TestGenericAdapter_ScriptModifiesFiles(t *testing.T) {
@@ -52,9 +52,9 @@ func TestGenericAdapter_ScriptModifiesFiles(t *testing.T) {
 		Config:  map[string]string{"run": "echo 'generated' > output.txt"},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", sr.Result)
 
 	content, err := os.ReadFile(filepath.Join(dir, "output.txt"))
 	require.NoError(t, err)
@@ -71,9 +71,9 @@ func TestGenericAdapter_CapturesOutput(t *testing.T) {
 		Config:  map[string]string{"run": "echo 'hello from test'; echo 'error msg' >&2"},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", sr.Result)
 
 	logPath := filepath.Join(dir, ".cloche", "output", "test.log")
 	content, err := os.ReadFile(logPath)
@@ -92,9 +92,9 @@ func TestGenericAdapter_CapturesOutputOnFailure(t *testing.T) {
 		Config:  map[string]string{"run": "echo 'lint error: bad style'; exit 1"},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "fail", result)
+	assert.Equal(t, "fail", sr.Result)
 
 	logPath := filepath.Join(dir, ".cloche", "output", "lint.log")
 	content, err := os.ReadFile(logPath)
@@ -112,9 +112,9 @@ func TestGenericAdapter_StdoutMarkerOverridesExitCode(t *testing.T) {
 		Config:  map[string]string{"run": "echo 'analyzing...' && echo 'CLOCHE_RESULT:needs_research'"},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "needs_research", result)
+	assert.Equal(t, "needs_research", sr.Result)
 
 	// Verify marker is stripped from log
 	logPath := filepath.Join(dir, ".cloche", "output", "analyze.log")
@@ -134,9 +134,9 @@ func TestGenericAdapter_MarkerOverridesFailExitCode(t *testing.T) {
 		Config:  map[string]string{"run": "echo 'CLOCHE_RESULT:bug_fix' && exit 1"},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "bug_fix", result)
+	assert.Equal(t, "bug_fix", sr.Result)
 }
 
 func TestGenericAdapter_PassesRunIDEnvVar(t *testing.T) {
@@ -151,9 +151,9 @@ func TestGenericAdapter_PassesRunIDEnvVar(t *testing.T) {
 		Config:  map[string]string{"run": "echo $CLOCHE_RUN_ID"},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", sr.Result)
 
 	logPath := filepath.Join(dir, ".cloche", "output", "check.log")
 	content, err := os.ReadFile(logPath)
@@ -173,9 +173,9 @@ func TestGenericAdapter_PassesProjectDirEnvVar(t *testing.T) {
 		Config:  map[string]string{"run": "echo $CLOCHE_PROJECT_DIR"},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", sr.Result)
 
 	logPath := filepath.Join(dir, ".cloche", "output", "check.log")
 	content, err := os.ReadFile(logPath)
@@ -199,9 +199,9 @@ func TestGenericAdapter_StreamsOutputViaStatusWriter(t *testing.T) {
 		Config:  map[string]string{"run": "echo 'line one'; echo 'line two'; echo 'line three'"},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", sr.Result)
 
 	// Parse status messages and verify log lines were streamed
 	msgs, err := protocol.ParseStatusStream(statusBuf.Bytes())
@@ -241,9 +241,9 @@ func TestGenericAdapter_StreamsStderrViaStatusWriter(t *testing.T) {
 		Config:  map[string]string{"run": "echo 'stdout msg'; echo 'stderr msg' >&2"},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", sr.Result)
 
 	// Parse status messages — both stdout and stderr should appear
 	msgs, err := protocol.ParseStatusStream(statusBuf.Bytes())
@@ -275,9 +275,9 @@ func TestGenericAdapter_StreamingWithMarker(t *testing.T) {
 		Config:  map[string]string{"run": "echo 'analyzing...' && echo 'CLOCHE_RESULT:needs_research'"},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "needs_research", result)
+	assert.Equal(t, "needs_research", sr.Result)
 
 	// Verify marker is stripped from log file
 	logPath := filepath.Join(dir, ".cloche", "output", "analyze.log")
@@ -303,9 +303,9 @@ func TestGenericAdapter_StreamingOnFailure(t *testing.T) {
 		Config:  map[string]string{"run": "echo 'running tests'; echo 'FAIL: something broke'; exit 1"},
 	}
 
-	result, err := adapter.Execute(context.Background(), step, dir)
+	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
-	assert.Equal(t, "fail", result)
+	assert.Equal(t, "fail", sr.Result)
 
 	// Verify output was streamed even on failure
 	msgs, err := protocol.ParseStatusStream(statusBuf.Bytes())
