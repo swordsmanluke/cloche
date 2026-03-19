@@ -1,7 +1,7 @@
 # Token Usage and Burn Rate Design
 
 **Date:** 2026-03-19
-**Status:** In Progress — storage, query, and web UI layers implemented; capture, gRPC, and CLI layers pending
+**Status:** In Progress — storage, query, web UI, gRPC, and CLI layers implemented; capture layer pending
 
 ## Problem
 

@@ -3106,3 +3106,129 @@ func TestResume_PreviousAttemptID_Persists(t *testing.T) {
 	assert.Equal(t, "aaaa", listed[1].PreviousAttemptID)
 	assert.Equal(t, "", listed[0].PreviousAttemptID, "first attempt has no previous")
 }
+
+func TestServer_GetUsage_Empty(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, nil)
+	resp, err := srv.GetUsage(context.Background(), &pb.GetUsageRequest{})
+	require.NoError(t, err)
+	assert.Empty(t, resp.Summaries)
+}
+
+func TestServer_GetUsage_WithTokenData(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run and save step executions with token usage.
+	run := domain.NewRun("run-usage-1", "develop")
+	run.ProjectDir = "/project"
+	run.State = domain.RunStateSucceeded
+	run.StartedAt = time.Now().Add(-10 * time.Minute)
+	run.CompletedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	exec1 := &domain.StepExecution{
+		StepName:    "implement",
+		Result:      "done",
+		StartedAt:   run.StartedAt,
+		CompletedAt: run.CompletedAt,
+		Usage: &domain.TokenUsage{
+			InputTokens:  1000,
+			OutputTokens: 500,
+			AgentName:    "claude",
+		},
+	}
+	require.NoError(t, store.SaveCapture(ctx, run.ID, exec1))
+
+	srv := server.NewClocheServer(store, nil)
+	resp, err := srv.GetUsage(ctx, &pb.GetUsageRequest{ProjectDir: "/project"})
+	require.NoError(t, err)
+	require.Len(t, resp.Summaries, 1)
+	assert.Equal(t, "claude", resp.Summaries[0].AgentName)
+	assert.Equal(t, int64(1000), resp.Summaries[0].InputTokens)
+	assert.Equal(t, int64(500), resp.Summaries[0].OutputTokens)
+	assert.Equal(t, int64(1500), resp.Summaries[0].TotalTokens)
+}
+
+func TestServer_GetUsage_WindowFilter(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run with old step execution (outside window).
+	run := domain.NewRun("run-old", "develop")
+	run.ProjectDir = "/project"
+	run.State = domain.RunStateSucceeded
+	run.StartedAt = time.Now().Add(-4 * time.Hour)
+	run.CompletedAt = time.Now().Add(-3 * time.Hour)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	exec := &domain.StepExecution{
+		StepName:    "implement",
+		Result:      "done",
+		StartedAt:   run.StartedAt,
+		CompletedAt: run.CompletedAt,
+		Usage: &domain.TokenUsage{
+			InputTokens:  5000,
+			OutputTokens: 2000,
+			AgentName:    "claude",
+		},
+	}
+	require.NoError(t, store.SaveCapture(ctx, run.ID, exec))
+
+	srv := server.NewClocheServer(store, nil)
+	// Query with 1h window — old data should be excluded.
+	resp, err := srv.GetUsage(ctx, &pb.GetUsageRequest{
+		ProjectDir:    "/project",
+		WindowSeconds: 3600,
+	})
+	require.NoError(t, err)
+	// Either empty or zero tokens (no data in last hour).
+	for _, s := range resp.Summaries {
+		assert.Equal(t, int64(0), s.TotalTokens, "old usage should not appear in 1h window")
+	}
+}
+
+func TestServer_GetStatus_IncludesTokenFields(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	run := domain.NewRun("run-tok-1", "develop")
+	run.ProjectDir = "/project"
+	run.State = domain.RunStateSucceeded
+	run.StartedAt = time.Now().Add(-5 * time.Minute)
+	run.CompletedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	exec := &domain.StepExecution{
+		StepName:    "implement",
+		Result:      "done",
+		StartedAt:   run.StartedAt,
+		CompletedAt: run.CompletedAt,
+		Usage: &domain.TokenUsage{
+			InputTokens:  2345,
+			OutputTokens: 1234,
+			AgentName:    "claude",
+		},
+	}
+	require.NoError(t, store.SaveCapture(ctx, run.ID, exec))
+
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+	resp, err := srv.GetStatus(ctx, &pb.GetStatusRequest{RunId: "run-tok-1"})
+	require.NoError(t, err)
+	require.Len(t, resp.StepExecutions, 1)
+	se := resp.StepExecutions[0]
+	assert.Equal(t, int64(2345), se.InputTokens)
+	assert.Equal(t, int64(1234), se.OutputTokens)
+	assert.Equal(t, "claude", se.AgentName)
+}

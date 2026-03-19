@@ -35,6 +35,7 @@ const (
 	ClocheService_GetProjectInfo_FullMethodName  = "/cloche.v1.ClocheService/GetProjectInfo"
 	ClocheService_GetVersion_FullMethodName      = "/cloche.v1.ClocheService/GetVersion"
 	ClocheService_Complete_FullMethodName        = "/cloche.v1.ClocheService/Complete"
+	ClocheService_GetUsage_FullMethodName        = "/cloche.v1.ClocheService/GetUsage"
 )
 
 // ClocheServiceClient is the client API for ClocheService service.
@@ -60,6 +61,8 @@ type ClocheServiceClient interface {
 	// Used by shell integration scripts to provide dynamic completions for task IDs,
 	// attempt IDs, workflow names, and colon-delimited drill-down identifiers.
 	Complete(ctx context.Context, in *CompleteRequest, opts ...grpc.CallOption) (*CompleteResponse, error)
+	// GetUsage returns aggregated token usage statistics for a project or globally.
+	GetUsage(ctx context.Context, in *GetUsageRequest, opts ...grpc.CallOption) (*GetUsageResponse, error)
 }
 
 type clocheServiceClient struct {
@@ -239,6 +242,16 @@ func (c *clocheServiceClient) Complete(ctx context.Context, in *CompleteRequest,
 	return out, nil
 }
 
+func (c *clocheServiceClient) GetUsage(ctx context.Context, in *GetUsageRequest, opts ...grpc.CallOption) (*GetUsageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetUsageResponse)
+	err := c.cc.Invoke(ctx, ClocheService_GetUsage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClocheServiceServer is the server API for ClocheService service.
 // All implementations must embed UnimplementedClocheServiceServer
 // for forward compatibility.
@@ -262,6 +275,8 @@ type ClocheServiceServer interface {
 	// Used by shell integration scripts to provide dynamic completions for task IDs,
 	// attempt IDs, workflow names, and colon-delimited drill-down identifiers.
 	Complete(context.Context, *CompleteRequest) (*CompleteResponse, error)
+	// GetUsage returns aggregated token usage statistics for a project or globally.
+	GetUsage(context.Context, *GetUsageRequest) (*GetUsageResponse, error)
 	mustEmbedUnimplementedClocheServiceServer()
 }
 
@@ -319,6 +334,9 @@ func (UnimplementedClocheServiceServer) GetVersion(context.Context, *GetVersionR
 }
 func (UnimplementedClocheServiceServer) Complete(context.Context, *CompleteRequest) (*CompleteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Complete not implemented")
+}
+func (UnimplementedClocheServiceServer) GetUsage(context.Context, *GetUsageRequest) (*GetUsageResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetUsage not implemented")
 }
 func (UnimplementedClocheServiceServer) mustEmbedUnimplementedClocheServiceServer() {}
 func (UnimplementedClocheServiceServer) testEmbeddedByValue()                       {}
@@ -622,6 +640,24 @@ func _ClocheService_Complete_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClocheService_GetUsage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUsageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).GetUsage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_GetUsage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).GetUsage(ctx, req.(*GetUsageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClocheService_ServiceDesc is the grpc.ServiceDesc for ClocheService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -688,6 +724,10 @@ var ClocheService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Complete",
 			Handler:    _ClocheService_Complete_Handler,
+		},
+		{
+			MethodName: "GetUsage",
+			Handler:    _ClocheService_GetUsage_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

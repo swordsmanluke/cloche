@@ -765,8 +765,8 @@ status for that task.
 
 | Argument | Output |
 |----------|--------|
-| Task ID | Task status, title, project, latest attempt ID, result, and end timestamp. |
-| _(none)_ | Daemon version, run statistics (past hour), active tasks (with in-progress runs nested under each task). In a project directory, also shows project name, concurrency, and loop state. |
+| Task ID | Task status, title, project, latest attempt ID, result, end timestamp, and total tokens consumed across all attempts (omitted if no usage data). |
+| _(none)_ | Daemon version, run statistics (past hour), active tasks (with in-progress runs nested under each task), and per-agent token burn rate for the last hour (omitted if no usage data). In a project directory, also shows project name, concurrency, and loop state. |
 
 | Flag | Description |
 |------|-------------|

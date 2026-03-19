@@ -1393,22 +1393,34 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 		captures, err := s.captures.GetCaptures(ctx, run.ID)
 		if err == nil {
 			for _, exec := range captures {
-				resp.StepExecutions = append(resp.StepExecutions, &pb.StepExecutionStatus{
+				se := &pb.StepExecutionStatus{
 					StepName:    exec.StepName,
 					Result:      exec.Result,
 					StartedAt:   exec.StartedAt.String(),
 					CompletedAt: exec.CompletedAt.String(),
-				})
+				}
+				if exec.Usage != nil {
+					se.InputTokens = exec.Usage.InputTokens
+					se.OutputTokens = exec.Usage.OutputTokens
+					se.AgentName = exec.Usage.AgentName
+				}
+				resp.StepExecutions = append(resp.StepExecutions, se)
 			}
 		}
 	} else {
 		for _, exec := range run.StepExecutions {
-			resp.StepExecutions = append(resp.StepExecutions, &pb.StepExecutionStatus{
+			se := &pb.StepExecutionStatus{
 				StepName:    exec.StepName,
 				Result:      exec.Result,
 				StartedAt:   exec.StartedAt.String(),
 				CompletedAt: exec.CompletedAt.String(),
-			})
+			}
+			if exec.Usage != nil {
+				se.InputTokens = exec.Usage.InputTokens
+				se.OutputTokens = exec.Usage.OutputTokens
+				se.AgentName = exec.Usage.AgentName
+			}
+			resp.StepExecutions = append(resp.StepExecutions, se)
 		}
 	}
 
@@ -2399,4 +2411,33 @@ func gitHEAD(dir string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// GetUsage returns aggregated token usage statistics for a project or globally.
+func (s *ClocheServer) GetUsage(ctx context.Context, req *pb.GetUsageRequest) (*pb.GetUsageResponse, error) {
+	q := ports.UsageQuery{
+		ProjectDir: req.ProjectDir,
+		AgentName:  req.AgentName,
+	}
+	if req.WindowSeconds > 0 {
+		q.Since = time.Now().Add(-time.Duration(req.WindowSeconds) * time.Second)
+		q.Until = time.Now()
+	}
+
+	summaries, err := s.store.QueryUsage(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("querying usage: %w", err)
+	}
+
+	resp := &pb.GetUsageResponse{}
+	for _, s := range summaries {
+		resp.Summaries = append(resp.Summaries, &pb.UsageSummary{
+			AgentName:    s.AgentName,
+			InputTokens:  s.InputTokens,
+			OutputTokens: s.OutputTokens,
+			TotalTokens:  s.TotalTokens,
+			BurnRate:     s.BurnRate,
+		})
+	}
+	return resp, nil
 }

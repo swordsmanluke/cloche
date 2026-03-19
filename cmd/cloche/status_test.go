@@ -22,6 +22,7 @@ type statusMockClient struct {
 	listTasksResp   *pb.ListTasksResponse
 	taskResp        *pb.GetTaskResponse
 	taskErr         error
+	usageResp       *pb.GetUsageResponse
 }
 
 func (m *statusMockClient) GetVersion(_ context.Context, _ *pb.GetVersionRequest, _ ...grpc.CallOption) (*pb.GetVersionResponse, error) {
@@ -54,6 +55,13 @@ func (m *statusMockClient) ListTasks(_ context.Context, _ *pb.ListTasksRequest, 
 
 func (m *statusMockClient) GetTask(_ context.Context, _ *pb.GetTaskRequest, _ ...grpc.CallOption) (*pb.GetTaskResponse, error) {
 	return m.taskResp, m.taskErr
+}
+
+func (m *statusMockClient) GetUsage(_ context.Context, _ *pb.GetUsageRequest, _ ...grpc.CallOption) (*pb.GetUsageResponse, error) {
+	if m.usageResp != nil {
+		return m.usageResp, nil
+	}
+	return &pb.GetUsageResponse{}, nil
 }
 
 func TestCmdStatusOverview_ProjectMode(t *testing.T) {
@@ -364,6 +372,74 @@ func TestFormatDuration(t *testing.T) {
 				t.Errorf("formatDuration(%q) = %q, want containing %q", tt.input, got, tt.contains)
 			}
 		})
+	}
+}
+
+func TestPrintBurnRate_WithData(t *testing.T) {
+	client := &statusMockClient{
+		usageResp: &pb.GetUsageResponse{
+			Summaries: []*pb.UsageSummary{
+				{
+					AgentName:    "claude",
+					InputTokens:  4521,
+					OutputTokens: 2103,
+					TotalTokens:  6624,
+					BurnRate:     18200,
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	ctx := context.Background()
+	printBurnRate(ctx, client, &buf, "/fake/project")
+
+	out := buf.String()
+	if !strings.Contains(out, "Token usage (last 1h)") {
+		t.Errorf("expected burn rate header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "claude") {
+		t.Errorf("expected agent name, got:\n%s", out)
+	}
+	if !strings.Contains(out, "4,521") {
+		t.Errorf("expected formatted input tokens, got:\n%s", out)
+	}
+	if !strings.Contains(out, "6,624") {
+		t.Errorf("expected formatted total tokens, got:\n%s", out)
+	}
+}
+
+func TestPrintBurnRate_NoData(t *testing.T) {
+	client := &statusMockClient{
+		usageResp: &pb.GetUsageResponse{},
+	}
+
+	var buf bytes.Buffer
+	ctx := context.Background()
+	printBurnRate(ctx, client, &buf, "")
+
+	out := buf.String()
+	if strings.Contains(out, "Token usage") {
+		t.Errorf("expected no burn rate section when no data, got:\n%s", out)
+	}
+}
+
+func TestFormatTokenCount(t *testing.T) {
+	tests := []struct {
+		n    int64
+		want string
+	}{
+		{0, "0"},
+		{999, "999"},
+		{1000, "1,000"},
+		{1234567, "1,234,567"},
+		{6624, "6,624"},
+	}
+	for _, tt := range tests {
+		got := formatTokenCount(tt.n)
+		if got != tt.want {
+			t.Errorf("formatTokenCount(%d) = %q, want %q", tt.n, got, tt.want)
+		}
 	}
 }
 

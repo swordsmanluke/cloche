@@ -29,6 +29,9 @@ service ClocheService {
   // attempt IDs, workflow names, and colon-delimited drill-down identifiers.
   rpc Complete(CompleteRequest) returns (CompleteResponse);
 
+  // GetUsage returns aggregated token usage statistics for a project or globally.
+  rpc GetUsage(GetUsageRequest) returns (GetUsageResponse);
+
   // ResumeRun is handled via gRPC metadata on the RunWorkflow RPC:
   //   x-cloche-resume-run-id: the run ID to resume
   //   x-cloche-resume-step: optional step name to resume from
@@ -78,6 +81,9 @@ message StepExecutionStatus {
   string result = 2;
   string started_at = 3;
   string completed_at = 4;
+  int64 input_tokens = 5;
+  int64 output_tokens = 6;
+  string agent_name = 7;
 }
 
 message StreamLogsRequest {
@@ -265,4 +271,22 @@ message CompleteRequest {
 
 message CompleteResponse {
   repeated string completions = 1;
+}
+
+message GetUsageRequest {
+  string project_dir = 1; // empty = global
+  string agent_name = 2;  // empty = all agents
+  int64 window_seconds = 3; // 0 = all time
+}
+
+message GetUsageResponse {
+  repeated UsageSummary summaries = 1;
+}
+
+message UsageSummary {
+  string agent_name = 1;
+  int64 input_tokens = 2;
+  int64 output_tokens = 3;
+  int64 total_tokens = 4;
+  double burn_rate = 5; // tokens per hour
 }

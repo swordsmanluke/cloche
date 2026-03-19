@@ -347,6 +347,61 @@ func cmdStatusTaskLatest(ctx context.Context, client pb.ClocheServiceClient, tas
 	if latest.EndedAt != "" && latest.EndedAt != "0001-01-01 00:00:00 +0000 UTC" {
 		fmt.Printf("Ended:   %s\n", latest.EndedAt)
 	}
+
+	// Show token usage across all attempts for this task.
+	printTaskTokenUsage(ctx, client, taskID, resp.ProjectDir)
+}
+
+// printTaskTokenUsage fetches and displays total token consumption for all
+// attempts of a task by querying the status of each attempt's run.
+func printTaskTokenUsage(ctx context.Context, client pb.ClocheServiceClient, taskID, projectDir string) {
+	usageResp, err := client.GetUsage(ctx, &pb.GetUsageRequest{
+		ProjectDir: projectDir,
+	})
+	if err != nil || len(usageResp.Summaries) == 0 {
+		return
+	}
+
+	var totalIn, totalOut int64
+	agentTotals := map[string]int64{}
+	for _, s := range usageResp.Summaries {
+		totalIn += s.InputTokens
+		totalOut += s.OutputTokens
+		agentTotals[s.AgentName] = s.TotalTokens
+	}
+	total := totalIn + totalOut
+	if total == 0 {
+		return
+	}
+
+	// Format agent breakdown.
+	var agents []string
+	for agent, toks := range agentTotals {
+		agents = append(agents, fmt.Sprintf("%s: %s", agent, formatTokenCount(toks)))
+	}
+	breakdown := strings.Join(agents, " / ")
+	if breakdown != "" {
+		fmt.Printf("Tokens:  %s (%s)\n", formatTokenCount(total), breakdown)
+	} else {
+		fmt.Printf("Tokens:  %s\n", formatTokenCount(total))
+	}
+}
+
+// formatTokenCount formats a token count with comma separators for readability.
+func formatTokenCount(n int64) string {
+	if n == 0 {
+		return "0"
+	}
+	s := fmt.Sprintf("%d", n)
+	// Insert commas every 3 digits from the right.
+	var result []byte
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			result = append(result, ',')
+		}
+		result = append(result, byte(c))
+	}
+	return string(result)
 }
 
 func cmdStatusOverview(ctx context.Context, client pb.ClocheServiceClient, w io.Writer, all bool) {
@@ -407,6 +462,9 @@ func cmdStatusProject(ctx context.Context, client pb.ClocheServiceClient, w io.W
 
 	// Active tasks with nested runs.
 	printActiveTasks(ctx, client, w, projectDir)
+
+	// Burn rate section: show per-agent token usage for the last hour.
+	printBurnRate(ctx, client, w, projectDir)
 }
 
 func cmdStatusGlobal(ctx context.Context, client pb.ClocheServiceClient, w io.Writer) {
@@ -428,6 +486,51 @@ func cmdStatusGlobal(ctx context.Context, client pb.ClocheServiceClient, w io.Wr
 
 	// Active tasks with nested runs.
 	printActiveTasks(ctx, client, w, "")
+
+	// Burn rate section: show per-agent token usage for the last hour.
+	printBurnRate(ctx, client, w, "")
+}
+
+// printBurnRate fetches and displays per-agent token burn rates for the last hour.
+// If no usage data exists, the section is omitted.
+func printBurnRate(ctx context.Context, client pb.ClocheServiceClient, w io.Writer, projectDir string) {
+	usageResp, err := client.GetUsage(ctx, &pb.GetUsageRequest{
+		ProjectDir:    projectDir,
+		WindowSeconds: 3600,
+	})
+	if err != nil || len(usageResp.Summaries) == 0 {
+		return
+	}
+
+	// Only show section if there is actual data.
+	var hasData bool
+	for _, s := range usageResp.Summaries {
+		if s.TotalTokens > 0 {
+			hasData = true
+			break
+		}
+	}
+	if !hasData {
+		return
+	}
+
+	fmt.Fprintf(w, "Token usage (last 1h):\n")
+	for _, s := range usageResp.Summaries {
+		if s.TotalTokens == 0 {
+			continue
+		}
+		burnStr := fmt.Sprintf("~%.1fk/hr", s.BurnRate/1000)
+		if s.BurnRate < 1000 {
+			burnStr = fmt.Sprintf("~%.0f/hr", s.BurnRate)
+		}
+		fmt.Fprintf(w, "  %-10s %s in / %s out   %s total   %s\n",
+			s.AgentName,
+			formatTokenCount(s.InputTokens),
+			formatTokenCount(s.OutputTokens),
+			formatTokenCount(s.TotalTokens),
+			burnStr,
+		)
+	}
 }
 
 // printActiveTasks displays active tasks with their in-progress runs nested under them.
