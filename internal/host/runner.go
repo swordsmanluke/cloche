@@ -36,9 +36,10 @@ type Runner struct {
 
 // RunResult contains the outcome of a host workflow execution.
 type RunResult struct {
-	RunID     string
-	State     domain.RunState
-	OutputDir string // path to the step output directory
+	RunID        string
+	State        domain.RunState
+	OutputDir    string // path to the step output directory
+	tmpOutputDir string // non-empty if OutputDir is a temp dir that callers should clean up
 }
 
 // Run parses .cloche/host.cloche from projectDir and executes the "main" workflow.
@@ -172,9 +173,10 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 	}
 
 	result := &RunResult{
-		RunID:     orchRunID,
-		State:     domain.RunStateFailed,
-		OutputDir: outputDir,
+		RunID:        orchRunID,
+		State:        domain.RunStateFailed,
+		OutputDir:    outputDir,
+		tmpOutputDir: tmpOutputDir,
 	}
 	if run != nil {
 		result.State = run.State
@@ -198,11 +200,6 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 	// so subscribers see the final state when their channel closes).
 	if r.LogBroadcast != nil {
 		r.LogBroadcast.Finish(orchRunID)
-	}
-
-	// Clean up temp output directory (used for ephemeral runs like list-tasks).
-	if tmpOutputDir != "" {
-		_ = os.RemoveAll(tmpOutputDir)
 	}
 
 	if runErr != nil {
@@ -428,6 +425,9 @@ func buildPreloadedResults(run *domain.Run, wf *domain.Workflow, resumeFrom stri
 func RunListTasksWorkflow(ctx context.Context, runner *Runner, projectDir string) ([]Task, *RunResult, error) {
 	runner.SkipRunRecord = true
 	result, err := runner.RunNamed(ctx, projectDir, "list-tasks")
+	if result != nil && result.tmpOutputDir != "" {
+		defer os.RemoveAll(result.tmpOutputDir)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
