@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.1
 // - protoc             v5.29.3
-// source: api/proto/cloche/v1/cloche.proto
+// source: cloche.proto
 
 package clochepb
 
@@ -57,6 +57,8 @@ type ClocheServiceClient interface {
 	GetProjectInfo(ctx context.Context, in *GetProjectInfoRequest, opts ...grpc.CallOption) (*GetProjectInfoResponse, error)
 	GetVersion(ctx context.Context, in *GetVersionRequest, opts ...grpc.CallOption) (*GetVersionResponse, error)
 	// Complete returns shell completion candidates for the given partial command line.
+	// Used by shell integration scripts to provide dynamic completions for task IDs,
+	// attempt IDs, workflow names, and colon-delimited drill-down identifiers.
 	Complete(ctx context.Context, in *CompleteRequest, opts ...grpc.CallOption) (*CompleteResponse, error)
 }
 
@@ -257,6 +259,8 @@ type ClocheServiceServer interface {
 	GetProjectInfo(context.Context, *GetProjectInfoRequest) (*GetProjectInfoResponse, error)
 	GetVersion(context.Context, *GetVersionRequest) (*GetVersionResponse, error)
 	// Complete returns shell completion candidates for the given partial command line.
+	// Used by shell integration scripts to provide dynamic completions for task IDs,
+	// attempt IDs, workflow names, and colon-delimited drill-down identifiers.
 	Complete(context.Context, *CompleteRequest) (*CompleteResponse, error)
 	mustEmbedUnimplementedClocheServiceServer()
 }
@@ -693,5 +697,5 @@ var ClocheService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "api/proto/cloche/v1/cloche.proto",
+	Metadata: "cloche.proto",
 }

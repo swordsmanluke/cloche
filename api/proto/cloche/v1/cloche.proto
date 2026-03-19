@@ -210,6 +210,7 @@ message TaskSummary {
   string project_dir = 4;
   string created_at = 5;
   string latest_attempt_id = 6;
+  int32 attempt_count = 7;
 }
 
 message ListTasksResponse {
