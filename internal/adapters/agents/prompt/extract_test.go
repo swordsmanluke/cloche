@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExtractStreamText_AssistantTextBlock(t *testing.T) {
@@ -75,4 +76,51 @@ func TestExtractStreamText_TextWithoutTrailingNewline(t *testing.T) {
 	line := []byte(`{"type":"assistant","message":{"content":[{"type":"text","text":"no newline"}]},"uuid":"x"}`)
 	got := extractStreamText(line)
 	assert.Equal(t, "no newline\n", got, "should append newline to text without one")
+}
+
+func TestExtractResultUsage_WithUsage(t *testing.T) {
+	line := []byte(`{"type":"result","subtype":"success","result":"Done.\nCLOCHE_RESULT:success","usage":{"input_tokens":12345,"output_tokens":6789}}`)
+	got := extractResultUsage(line)
+	require.NotNil(t, got)
+	assert.Equal(t, int64(12345), got.InputTokens)
+	assert.Equal(t, int64(6789), got.OutputTokens)
+}
+
+func TestExtractResultUsage_NoUsageField(t *testing.T) {
+	line := []byte(`{"type":"result","subtype":"success","result":"Done.\nCLOCHE_RESULT:success"}`)
+	got := extractResultUsage(line)
+	assert.Nil(t, got)
+}
+
+func TestExtractResultUsage_NotResultEvent(t *testing.T) {
+	line := []byte(`{"type":"assistant","message":{"content":[]},"usage":{"input_tokens":100,"output_tokens":50}}`)
+	got := extractResultUsage(line)
+	assert.Nil(t, got)
+}
+
+func TestExtractResultUsage_InvalidJSON(t *testing.T) {
+	got := extractResultUsage([]byte(`not json`))
+	assert.Nil(t, got)
+}
+
+func TestScanOutputForUsage_FindsUsageInOutput(t *testing.T) {
+	output := []byte(`{"type":"system","subtype":"init"}` + "\n" +
+		`{"type":"assistant","message":{"content":[]}}` + "\n" +
+		`{"type":"result","subtype":"success","result":"CLOCHE_RESULT:success","usage":{"input_tokens":100,"output_tokens":50}}` + "\n")
+	got := scanOutputForUsage(output)
+	require.NotNil(t, got)
+	assert.Equal(t, int64(100), got.InputTokens)
+	assert.Equal(t, int64(50), got.OutputTokens)
+}
+
+func TestScanOutputForUsage_NoUsageInOutput(t *testing.T) {
+	output := []byte(`{"type":"system","subtype":"init"}` + "\n" +
+		`{"type":"result","subtype":"success","result":"CLOCHE_RESULT:success"}` + "\n")
+	got := scanOutputForUsage(output)
+	assert.Nil(t, got)
+}
+
+func TestScanOutputForUsage_EmptyOutput(t *testing.T) {
+	got := scanOutputForUsage([]byte{})
+	assert.Nil(t, got)
 }

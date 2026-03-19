@@ -24,21 +24,25 @@ aggregates usage across steps, runs, projects, and agents. Display burn rate
 New types in `internal/domain/usage.go`:
 
 ```go
-// TokenUsage is captured per prompt step execution.
+// TokenUsage holds token consumption for a single agent step execution.
 type TokenUsage struct {
     InputTokens  int64
     OutputTokens int64
-    AgentName    string  // "claude", "codex", etc.
 }
 
-// UsageSummary is returned by aggregation queries.
+// UsageSummary holds aggregated token usage with burn rate metrics.
 type UsageSummary struct {
-    AgentName     string
-    InputTokens   int64
-    OutputTokens  int64
-    TotalTokens   int64
-    WindowSeconds int64   // time window these stats cover
-    BurnRate      float64 // total tokens per hour
+    TotalInputTokens    int64
+    TotalOutputTokens   int64
+    InputTokensPerHour  float64
+    OutputTokensPerHour float64
+}
+
+// StepResult is the return value of AgentAdapter.Execute, combining the
+// result string with optional token usage information.
+type StepResult struct {
+    Result string
+    Usage  *TokenUsage
 }
 ```
 
@@ -51,20 +55,16 @@ Extend `AgentAdapter.Execute()` to return a result struct:
 ```go
 // internal/ports/agent.go
 
-type StepResult struct {
-    Result string       // "success", "fail", "give-up"
-    Usage  *TokenUsage  // nil if agent doesn't report usage
-}
-
 type AgentAdapter interface {
     Name() string
-    Execute(ctx context.Context, step *domain.Step, workDir string) (StepResult, error)
+    Execute(ctx context.Context, step *domain.Step, workDir string) (domain.StepResult, error)
 }
 ```
 
-All callers of `Execute()` update to use `StepResult`. The generic adapter
-returns `StepResult{Result: result, Usage: nil}` since script steps have no
-token usage.
+`StepResult` and `TokenUsage` are defined in `internal/domain/usage.go`.
+All callers of `Execute()` update to use `domain.StepResult`. The generic
+adapter returns `domain.StepResult{Result: result, Usage: nil}` since script
+steps have no token usage.
 
 ### Capture: Claude Code
 
@@ -83,8 +83,12 @@ this stream. The result event JSON includes a `usage` field:
 }
 ```
 
-Update `extractStreamText()` to also capture usage from result events. Store it
-on the adapter instance and include it in the returned `StepResult`.
+A separate `extractResultUsage()` function parses result events for usage data.
+In the streaming path, `tryCommand` calls it on each scanned line and carries
+the last non-nil usage forward. In the buffered path, `scanOutputForUsage`
+scans the full output for a result event. Usage is returned as the third value
+from `tryCommand` and propagated into the `domain.StepResult` returned by
+`Execute()`.
 
 ### Capture: Codex
 

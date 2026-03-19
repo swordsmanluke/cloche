@@ -95,13 +95,15 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	// Try each command in the fallback chain
 	var lastResult string
 	var lastStdout []byte
+	var lastUsage *domain.TokenUsage
 	var lastErr error
 	ran := false
 
 	for _, command := range a.Commands {
-		result, stdout, fallbackErr := a.tryCommand(ctx, command, fullPrompt, workDir, step.Name)
+		result, stdout, usage, fallbackErr := a.tryCommand(ctx, command, fullPrompt, workDir, step.Name)
 		lastResult = result
 		lastStdout = stdout
+		lastUsage = usage
 		lastErr = fallbackErr
 
 		if fallbackErr == nil {
@@ -138,12 +140,13 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		_ = os.WriteFile(filepath.Join(outputDir, step.Name+".log"), lastStdout, 0644)
 	}
 	protocol.AppendHistory(workDir, step.Name, result, true, nil)
-	return domain.StepResult{Result: result}, nil
+	return domain.StepResult{Result: result, Usage: lastUsage}, nil
 }
 
 // tryCommand executes a single agent command and returns:
 //   - result: the step result name (e.g. "success", "fail")
 //   - stdout: captured stdout bytes
+//   - usage: token usage extracted from result event (nil if not available)
 //   - fallbackErr: nil if the result is definitive, non-nil if fallback-eligible
 //
 // Fallback-eligible conditions:
@@ -153,7 +156,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 // Definitive (non-fallback) conditions:
 //   - Command exited 0
 //   - Command exited non-zero but produced a CLOCHE_RESULT marker
-func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string, workDir string, stepName string) (result string, stdout []byte, fallbackErr error) {
+func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string, workDir string, stepName string) (result string, stdout []byte, usage *domain.TokenUsage, fallbackErr error) {
 	args := a.argsFor(command)
 	// Resume mode: add -c flag to resume previous conversation
 	if a.ResumeConversation {
@@ -171,18 +174,20 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 
 		runErr := cmd.Run()
 		stdoutBytes := stdoutBuf.Bytes()
-		return a.classifyResult(command, stdoutBytes, runErr)
+		result, stdout, fallbackErr = a.classifyResult(command, stdoutBytes, runErr)
+		usage = scanOutputForUsage(stdoutBytes)
+		return
 	}
 
 	// Streaming path: pipe stdout through a scanner so we can emit lines live.
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", nil, fmt.Errorf("command %q stdout pipe: %w", command, err)
+		return "", nil, nil, fmt.Errorf("command %q stdout pipe: %w", command, err)
 	}
 	cmd.Stderr = nil // discard stderr
 
 	if err := cmd.Start(); err != nil {
-		return "", nil, fmt.Errorf("command %q failed to start: %w", command, err)
+		return "", nil, nil, fmt.Errorf("command %q failed to start: %w", command, err)
 	}
 
 	// textBuf accumulates extracted text content for result extraction.
@@ -197,6 +202,11 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 		raw := scanner.Bytes()
 		rawBuf.Write(raw)
 		rawBuf.WriteByte('\n')
+
+		// Capture token usage from result events.
+		if u := extractResultUsage(raw); u != nil {
+			usage = u
+		}
 
 		text := extractStreamText(raw)
 		if text == "" {
@@ -229,7 +239,7 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 	// Check raw output for agent-level errors (e.g. error_during_execution
 	// from rate limits) before classifying the extracted text.
 	if bytes.Contains(rawBuf.Bytes(), []byte(`"error_during_execution"`)) {
-		return "fail", rawBuf.Bytes(), fmt.Errorf("command %q reported error_during_execution", command)
+		return "fail", rawBuf.Bytes(), usage, fmt.Errorf("command %q reported error_during_execution", command)
 	}
 	// Prefer extracted text (stream-json) for result classification; fall back
 	// to raw output for non-JSON commands (scripts, non-claude agents).
@@ -238,7 +248,7 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 		classifyBuf = rawBuf.Bytes()
 	}
 	result, _, fallbackErr = a.classifyResult(command, classifyBuf, waitErr)
-	return result, rawBuf.Bytes(), fallbackErr
+	return result, rawBuf.Bytes(), usage, fallbackErr
 }
 
 // classifyResult interprets the command's exit status and stdout to determine
@@ -354,6 +364,40 @@ func extractResultText(line []byte) string {
 		return event.Result
 	}
 	return ""
+}
+
+// extractResultUsage parses a Claude Code stream-json result event and returns
+// token usage if present. Returns nil if the line is not a result event or has
+// no usage field.
+func extractResultUsage(line []byte) *domain.TokenUsage {
+	if !bytes.Contains(line, []byte(`"usage"`)) {
+		return nil
+	}
+	var event struct {
+		Type  string `json:"type"`
+		Usage *struct {
+			InputTokens  int64 `json:"input_tokens"`
+			OutputTokens int64 `json:"output_tokens"`
+		} `json:"usage"`
+	}
+	if json.Unmarshal(line, &event) != nil || event.Type != "result" || event.Usage == nil {
+		return nil
+	}
+	return &domain.TokenUsage{
+		InputTokens:  event.Usage.InputTokens,
+		OutputTokens: event.Usage.OutputTokens,
+	}
+}
+
+// scanOutputForUsage scans buffered (non-streaming) output for a result event
+// containing token usage data. Returns the first usage found, or nil.
+func scanOutputForUsage(output []byte) *domain.TokenUsage {
+	for _, line := range bytes.Split(output, []byte("\n")) {
+		if u := extractResultUsage(line); u != nil {
+			return u
+		}
+	}
+	return nil
 }
 
 // toolInputSummary returns a short parenthesized summary of a tool's input.
