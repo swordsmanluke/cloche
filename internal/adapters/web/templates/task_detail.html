@@ -1,0 +1,51 @@
+{{define "content"}}
+<h1>
+    <a href="/">Tasks</a> /
+    {{.TaskID}}
+    {{if .TaskTitle}}: {{.TaskTitle}}{{end}}
+    <span class="badge badge-{{.Status}}">{{.Status}}</span>
+</h1>
+
+{{if .Attempts}}
+<h2>Attempts</h2>
+{{range .Attempts}}
+<div class="attempt-block">
+    <div class="run-attempt-header">
+        Attempt #{{.AttemptNum}}
+        <span class="badge badge-{{.Status}}">{{.Status}}</span>
+        <span class="attempt-time">{{.StartedAt}}</span>
+        {{if .AttemptID}}<span class="attempt-id mono" style="margin-left:0.5rem;font-size:0.85rem;color:#888">id: {{.AttemptID}}</span>{{end}}
+    </div>
+    <table class="runs-table attempt-runs-table">
+        <thead>
+            <tr>
+                <th>Run ID</th>
+                <th>Workflow</th>
+                <th>Type</th>
+                <th>State</th>
+                <th>Timing</th>
+                <th>Error</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Runs}}
+            <tr>
+                <td><a href="/runs/{{.ID}}">{{.ID}}</a></td>
+                <td>{{.WorkflowName}}</td>
+                <td>{{if .IsHost}}host{{else}}container{{end}}</td>
+                <td><span class="badge badge-{{.State}}">{{.State}}</span></td>
+                <td>{{.Timing}}</td>
+                <td class="error-cell">{{truncate .ErrorMessage 80}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{end}}
+{{else}}
+<p class="empty">No attempts recorded for this task.</p>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+{{end}}

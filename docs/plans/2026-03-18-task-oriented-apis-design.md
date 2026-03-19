@@ -1,7 +1,7 @@
 # Version 2.0.0: Task-Oriented APIs Design
 
 **Date:** 2026-03-18
-**Status:** Partially Implemented (gRPC API complete: RunWorkflow returns task_id + attempt_id, ListTasks, GetTask, GetAttempt RPCs added, StreamLogs and GetStatus accept hierarchical IDs)
+**Status:** Partially Implemented (gRPC API complete: RunWorkflow returns task_id + attempt_id, ListTasks, GetTask, GetAttempt RPCs added, StreamLogs and GetStatus accept hierarchical IDs. Web UI: task list landing page, task drill-down at `/tasks/{id}`, SSE at `/api/attempts/{id}/stream`, v2 log paths). CLI and migration work remain.
 
 ## Problem
 
@@ -218,8 +218,10 @@ The existing `-f`, `-l`, `-s`, `--type` flags continue to work.
 
 ### Web UI Changes
 
-The runs list page groups by task, with attempts nested under each task. Task
-status is derived from the latest attempt.
+**Implemented.** The landing page (`/`) shows a task list with status, attempt
+count, and latest result. A task drill-down page at `/tasks/{id}` shows all
+attempts for a task. The runs list (`/projects/{name}/runs`) groups runs by
+task with attempt headers.
 
 ```
 ▼ cloche-123 — Fix the card renderer          [running]
@@ -229,11 +231,13 @@ status is derived from the latest attempt.
     ▶ Attempt c78y (succeeded) 2026-03-18 05:00
 ```
 
-Expanding an attempt shows its workflow steps with the colon-delimited IDs. The
-step detail view (accordion) serves per-step logs from the new file paths.
+The step detail view (accordion) serves per-step logs from the v2 file paths
+(`.cloche/logs/<task-id>/<attempt-id>/`), with legacy path fallback for older
+runs.
 
-The SSE streaming endpoint (`/api/runs/{id}/stream`) becomes
-`/api/attempts/{id}/stream` and streams all step output for an attempt.
+Both SSE endpoints are active: `/api/runs/{id}/stream` (legacy) and the new
+`/api/attempts/{id}/stream` which streams all step output for an attempt.
+Paginated log access is available at `/api/attempts/{id}/logs`.
 
 ### gRPC API Changes
 

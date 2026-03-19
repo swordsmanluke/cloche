@@ -20,6 +20,7 @@ type RunListFilter struct {
 	ProjectDir string
 	State      RunState
 	TaskID     string
+	AttemptID  string
 	Limit      int
 	Since      time.Time
 }

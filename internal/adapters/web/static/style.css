@@ -627,6 +627,22 @@ details pre {
     content: "\2514\00a0";
     color: var(--text-muted);
 }
+/* Task detail page */
+.attempt-block {
+    margin-bottom: 1.5rem;
+}
+.attempt-block .run-attempt-header {
+    padding: 0.4rem 0.75rem;
+    background: var(--bg-secondary);
+    border-left: 3px solid var(--border);
+    margin-bottom: 0.25rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+.attempt-runs-table {
+    margin-bottom: 0;
+}
+
 .tree-toggle {
     cursor: pointer;
     background: none;

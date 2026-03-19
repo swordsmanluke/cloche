@@ -121,7 +121,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	}
 
 	pages := map[string]*template.Template{}
-	for _, page := range []string{"projects", "runs", "run_detail", "project_detail"} {
+	for _, page := range []string{"projects", "runs", "run_detail", "project_detail", "task_detail"} {
 		clone, err := base.Clone()
 		if err != nil {
 			return nil, fmt.Errorf("clone layout for %s: %w", page, err)
@@ -168,8 +168,12 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows/{workflow}/steps/{step}/content", h.handleAPIStepContent)
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks", h.handleAPITasks)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
+	h.mux.HandleFunc("GET /api/tasks", h.handleAPIAllTasks)
 	h.mux.HandleFunc("GET /api/runs/{id}/logs", h.handleAPILogs)
 	h.mux.HandleFunc("GET /api/runs/{id}/stream", h.handleAPIStream)
+	h.mux.HandleFunc("GET /api/attempts/{id}/stream", h.handleAPIAttemptStream)
+	h.mux.HandleFunc("GET /api/attempts/{id}/logs", h.handleAPIAttemptLogs)
+	h.mux.HandleFunc("GET /tasks/{taskID}", h.handleTaskDetail)
 	h.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
 
 	return h, nil
@@ -194,6 +198,17 @@ type projectOverviewEntry struct {
 type recentRunDot struct {
 	ID    string
 	State string
+}
+
+// taskSummaryEntry holds a summary of a task for the landing page task list.
+type taskSummaryEntry struct {
+	TaskID       string `json:"task_id"`
+	TaskTitle    string `json:"task_title,omitempty"`
+	ProjectLabel string `json:"project_label,omitempty"`
+	Status       string `json:"status"`
+	AttemptCount int    `json:"attempt_count"`
+	LatestResult string `json:"latest_result,omitempty"`
+	LatestTime   string `json:"latest_time,omitempty"`
 }
 
 const healthWindowSize = 10
@@ -250,12 +265,165 @@ func (h *Handler) handleProjectOverview(w http.ResponseWriter, r *http.Request) 
 		return entries[i].Label < entries[j].Label
 	})
 
+	// Build task list from all runs.
+	allRuns, _ := h.store.ListRuns(r.Context(), time.Time{})
+	taskTitles := h.taskTitlesFromRuns(allRuns)
+	tasks := buildTaskSummaries(allRuns, labels, taskTitles)
+
 	data := map[string]any{
 		"Title":    "Projects",
 		"Projects": entries,
+		"Tasks":    tasks,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.pages["projects"].ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// buildTaskSummaries derives a task summary list from a set of runs.
+// Each unique TaskID produces one summary entry with status, attempt count, and latest result.
+func buildTaskSummaries(runs []*domain.Run, labels map[string]string, taskTitles map[string]string) []taskSummaryEntry {
+	// Group top-level runs by task ID (excluding list-tasks runs).
+	taskRuns := map[string][]*domain.Run{}
+	taskOrder := []string{} // preserve first-seen order (sorted by most active)
+	seenTask := map[string]bool{}
+
+	var sorted []*domain.Run
+	for _, r := range runs {
+		if r.WorkflowName != "list-tasks" && r.TaskID != "" && r.ParentRunID == "" {
+			sorted = append(sorted, r)
+		}
+	}
+	// Sort: running first, then by started_at desc
+	sort.SliceStable(sorted, func(i, j int) bool {
+		iRunning := sorted[i].State == domain.RunStateRunning
+		jRunning := sorted[j].State == domain.RunStateRunning
+		if iRunning != jRunning {
+			return iRunning
+		}
+		return sorted[i].StartedAt.After(sorted[j].StartedAt)
+	})
+
+	for _, r := range sorted {
+		taskRuns[r.TaskID] = append(taskRuns[r.TaskID], r)
+		if !seenTask[r.TaskID] {
+			seenTask[r.TaskID] = true
+			taskOrder = append(taskOrder, r.TaskID)
+		}
+	}
+
+	var result []taskSummaryEntry
+	for _, tid := range taskOrder {
+		group := taskRuns[tid]
+		if len(group) == 0 {
+			continue
+		}
+		// Compute aggregate status for all runs in the group
+		status := taskAggregateStatus(group)
+		latestRun := group[0]
+		latestResult := string(latestRun.State)
+		latestTime := formatTime(latestRun.StartedAt)
+
+		result = append(result, taskSummaryEntry{
+			TaskID:       tid,
+			TaskTitle:    taskTitles[tid],
+			ProjectLabel: labels[latestRun.ProjectDir],
+			Status:       status,
+			AttemptCount: len(group),
+			LatestResult: latestResult,
+			LatestTime:   latestTime,
+		})
+	}
+	return result
+}
+
+// taskAttemptEntry holds a single attempt's summary for the task drill-down page.
+type taskAttemptEntry struct {
+	AttemptNum int
+	AttemptID  string
+	Status     string
+	StartedAt  string
+	Runs       []apiRun
+}
+
+// handleTaskDetail renders the task drill-down page showing all attempts for a task.
+func (h *Handler) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("taskID")
+
+	runs, err := h.store.ListRunsFiltered(r.Context(), domain.RunListFilter{TaskID: taskID})
+	if err != nil || len(runs) == 0 {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+
+	projects, _ := h.store.ListProjects(r.Context())
+	labels := projectLabels(projects)
+	taskTitles := h.taskTitlesFromRuns(runs)
+
+	// Build lookup and parent→children map for top-level runs in this task.
+	byID := map[string]*domain.Run{}
+	for _, r := range runs {
+		byID[r.ID] = r
+	}
+	parentMap := map[string][]*domain.Run{}
+	var topLevel []*domain.Run
+	for _, rr := range runs {
+		if rr.ParentRunID != "" && byID[rr.ParentRunID] != nil {
+			parentMap[rr.ParentRunID] = append(parentMap[rr.ParentRunID], rr)
+		} else {
+			topLevel = append(topLevel, rr)
+		}
+	}
+
+	// Sort top-level: running first, then by started_at desc
+	sort.SliceStable(topLevel, func(i, j int) bool {
+		iRunning := topLevel[i].State == domain.RunStateRunning
+		jRunning := topLevel[j].State == domain.RunStateRunning
+		if iRunning != jRunning {
+			return iRunning
+		}
+		return topLevel[i].StartedAt.After(topLevel[j].StartedAt)
+	})
+
+	// Build attempts list (each top-level run is one attempt).
+	var attempts []taskAttemptEntry
+	for i, tr := range topLevel {
+		attemptNum := len(topLevel) - i
+		children := parentMap[tr.ID]
+		allInAttempt := append([]*domain.Run{tr}, children...)
+		status := taskAggregateStatus(allInAttempt)
+
+		var runsForAttempt []apiRun
+		runsForAttempt = append(runsForAttempt, toAPIRun(tr, labels))
+		for _, c := range children {
+			runsForAttempt = append(runsForAttempt, toAPIRun(c, labels))
+		}
+
+		attempts = append(attempts, taskAttemptEntry{
+			AttemptNum: attemptNum,
+			AttemptID:  tr.AttemptID,
+			Status:     status,
+			StartedAt:  formatTime(tr.StartedAt),
+			Runs:       runsForAttempt,
+		})
+	}
+
+	taskTitle := taskTitles[taskID]
+	status := ""
+	if len(attempts) > 0 {
+		status = attempts[0].Status
+	}
+
+	data := map[string]any{
+		"Title":    "Task " + taskID,
+		"TaskID":   taskID,
+		"TaskTitle": taskTitle,
+		"Status":   status,
+		"Attempts": attempts,
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := h.pages["task_detail"].ExecuteTemplate(w, "layout", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -1105,6 +1273,16 @@ func (h *Handler) removeContainers(ctx context.Context, mgr ContainerManager, ru
 // defaultLogTail is the maximum number of log lines sent on initial page load.
 const defaultLogTail = 1000
 
+// fullLogPath returns the path to the full.log for a run.
+// For v2 runs (with AttemptID and TaskID set), uses the v2 .cloche/logs/ path.
+// For legacy runs, uses .cloche/<runID>/output/full.log.
+func fullLogPath(run *domain.Run) string {
+	if run.AttemptID != "" && run.TaskID != "" {
+		return filepath.Join(run.ProjectDir, ".cloche", "logs", run.TaskID, run.AttemptID, "full.log")
+	}
+	return filepath.Join(run.ProjectDir, ".cloche", run.ID, "output", "full.log")
+}
+
 // handleAPIStream serves an SSE stream of log lines for a run.
 // For active runs, it subscribes to the live broadcaster.
 // For completed runs, it serves the archived full.log then closes.
@@ -1202,7 +1380,171 @@ func (h *Handler) handleAPILogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logPath := filepath.Join(run.ProjectDir, ".cloche", run.ID, "output", "full.log")
+	logPath := fullLogPath(run)
+	lines, err := readVisibleLogLines(logPath)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"lines": []logstream.LogLine{}, "total": 0, "start": 0, "end": 0})
+		return
+	}
+
+	total := len(lines)
+
+	end := total
+	if v := r.URL.Query().Get("end"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= total {
+			end = n
+		}
+	}
+
+	limit := defaultLogTail
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	start := end - limit
+	if start < 0 {
+		start = 0
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"lines": lines[start:end],
+		"total": total,
+		"start": start,
+		"end":   end,
+	})
+}
+
+// handleAPIAttemptStream serves an SSE stream of log lines for an attempt.
+// For active attempts, it subscribes to the live broadcaster using the host run ID.
+// For completed attempts, it serves the archived full.log then closes.
+func (h *Handler) handleAPIAttemptStream(w http.ResponseWriter, r *http.Request) {
+	attemptID := r.PathValue("id")
+
+	runs, err := h.store.ListRunsFiltered(r.Context(), domain.RunListFilter{AttemptID: attemptID})
+	if err != nil || len(runs) == 0 {
+		http.Error(w, "attempt not found", http.StatusNotFound)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	// Find host run (no parent) — that's the primary orchestration run for the attempt.
+	var hostRun *domain.Run
+	for _, rr := range runs {
+		if rr.ParentRunID == "" {
+			hostRun = rr
+			break
+		}
+	}
+	if hostRun == nil {
+		hostRun = runs[0]
+	}
+
+	isComplete := func(rr *domain.Run) bool {
+		return rr.State == domain.RunStateSucceeded ||
+			rr.State == domain.RunStateFailed ||
+			rr.State == domain.RunStateCancelled
+	}
+
+	// Check if any run in the attempt is still active.
+	var activeRun *domain.Run
+	for _, rr := range runs {
+		if !isComplete(rr) {
+			activeRun = rr
+			break
+		}
+	}
+
+	if activeRun == nil {
+		// All runs complete — serve archived full.log using host run for path resolution.
+		h.streamFullLog(w, flusher, hostRun, defaultLogTail)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", string(hostRun.State))
+		flusher.Flush()
+		return
+	}
+
+	// Active attempt — subscribe to broadcaster using the active host run's ID.
+	if h.logBroadcast == nil {
+		http.Error(w, "log streaming not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	streamRunID := activeRun.ID
+	if hostRun != nil && (activeRun.ParentRunID == "" || hostRun.ID == activeRun.ID) {
+		streamRunID = hostRun.ID
+	}
+
+	sub, history := h.logBroadcast.SubscribeWithHistory(streamRunID)
+	defer h.logBroadcast.Unsubscribe(streamRunID, sub)
+
+	for _, line := range history {
+		line = parseLLMLogLine(line)
+		if line.Type == "" {
+			continue
+		}
+		data, _ := json.Marshal(line)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+	}
+	flusher.Flush()
+
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case line, ok := <-sub.C:
+			if !ok {
+				fmt.Fprintf(w, "event: done\ndata: completed\n\n")
+				flusher.Flush()
+				return
+			}
+			line = parseLLMLogLine(line)
+			if line.Type == "" {
+				continue
+			}
+			data, _ := json.Marshal(line)
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
+}
+
+// handleAPIAttemptLogs serves paginated log lines for an attempt as JSON.
+func (h *Handler) handleAPIAttemptLogs(w http.ResponseWriter, r *http.Request) {
+	attemptID := r.PathValue("id")
+
+	runs, err := h.store.ListRunsFiltered(r.Context(), domain.RunListFilter{AttemptID: attemptID})
+	if err != nil || len(runs) == 0 {
+		http.Error(w, "attempt not found", http.StatusNotFound)
+		return
+	}
+
+	// Use host run for log path resolution.
+	var hostRun *domain.Run
+	for _, rr := range runs {
+		if rr.ParentRunID == "" {
+			hostRun = rr
+			break
+		}
+	}
+	if hostRun == nil {
+		hostRun = runs[0]
+	}
+
+	logPath := fullLogPath(hostRun)
 	lines, err := readVisibleLogLines(logPath)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -1271,7 +1613,7 @@ func readVisibleLogLines(logPath string) ([]logstream.LogLine, error) {
 // If tail > 0 and the log has more lines, only the last tail lines are sent and a
 // "meta" SSE event is emitted first with total_lines and skipped counts.
 func (h *Handler) streamFullLog(w http.ResponseWriter, flusher http.Flusher, run *domain.Run, tail int) {
-	logPath := filepath.Join(run.ProjectDir, ".cloche", run.ID, "output", "full.log")
+	logPath := fullLogPath(run)
 	lines, err := readVisibleLogLines(logPath)
 	if err != nil {
 		return
@@ -1746,6 +2088,22 @@ func (h *Handler) handleAPITasks(w http.ResponseWriter, r *http.Request) {
 	if tasks == nil {
 		tasks = []TaskEntry{}
 	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(tasks)
+}
+
+// handleAPIAllTasks returns a JSON task summary list derived from all runs.
+func (h *Handler) handleAPIAllTasks(w http.ResponseWriter, r *http.Request) {
+	runs, err := h.store.ListRuns(r.Context(), time.Time{})
+	if err != nil {
+		http.Error(w, "failed to list runs", http.StatusInternalServerError)
+		return
+	}
+	projects, _ := h.store.ListProjects(r.Context())
+	labels := projectLabels(projects)
+	taskTitles := h.taskTitlesFromRuns(runs)
+	tasks := buildTaskSummaries(runs, labels, taskTitles)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tasks)

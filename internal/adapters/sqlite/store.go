@@ -278,6 +278,10 @@ func (s *Store) ListRunsFiltered(ctx context.Context, filter domain.RunListFilte
 		query += ` AND task_id = ?`
 		args = append(args, filter.TaskID)
 	}
+	if filter.AttemptID != "" {
+		query += ` AND attempt_id = ?`
+		args = append(args, filter.AttemptID)
+	}
 	if !filter.Since.IsZero() {
 		query += ` AND (completed_at >= ? OR state IN ('running', 'pending'))`
 		args = append(args, formatTime(filter.Since))
