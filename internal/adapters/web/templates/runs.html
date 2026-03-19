@@ -22,7 +22,6 @@
     <thead>
         <tr>
             <th>Run ID</th>
-            <th>Title</th>
             <th>Project</th>
             <th>Workflow</th>
             <th>Type</th>
@@ -36,13 +35,12 @@
     {{if .GroupedRuns}}
         {{range .GroupedRuns}}
         {{if .TaskHeader}}
-        <tr class="run-task-header"><td colspan="9">{{.TaskID}}{{if .TaskTitle}}: {{.TaskTitle}}{{end}} <span class="badge badge-{{.TaskStatus}}">{{.TaskStatus}}</span></td></tr>
+        <tr class="run-task-header"><td colspan="8">{{.TaskID}}{{if .TaskTitle}}: {{.TaskTitle}}{{end}} <span class="badge badge-{{.TaskStatus}}">{{.TaskStatus}}</span></td></tr>
         {{else if .AttemptHeader}}
-        <tr class="run-attempt-header" data-attempt-key="{{.TaskID}}:{{.AttemptNum}}" data-task-id="{{.TaskID}}"><td colspan="9">Attempt #{{.AttemptNum}} <span class="badge badge-{{.AttemptStatus}}">{{.AttemptStatus}}</span> <span class="attempt-time">{{.AttemptTime}}</span></td></tr>
+        <tr class="run-attempt-header" data-attempt-key="{{.TaskID}}:{{.AttemptNum}}" data-task-id="{{.TaskID}}"><td colspan="8">Attempt #{{.AttemptNum}} <span class="badge badge-{{.AttemptStatus}}">{{.AttemptStatus}}</span> <span class="attempt-time">{{.AttemptTime}}</span></td></tr>
         {{else if .Run}}
         <tr class="{{if .IsChild}}run-child-row{{else if .IsParent}}run-parent-row{{end}}">
             <td><a href="/runs/{{.Run.ID}}">{{.Run.ID}}</a></td>
-            <td>{{truncate .Run.Title 50}}</td>
             <td>{{.Run.ProjectLabel}}</td>
             <td>{{.Run.WorkflowName}}</td>
             <td>{{if .Run.IsHost}}host{{else}}container{{end}}</td>
@@ -54,7 +52,7 @@
         {{end}}
         {{end}}
     {{else}}
-        <tr><td colspan="9" class="empty">No runs yet.</td></tr>
+        <tr><td colspan="8" class="empty">No runs yet.</td></tr>
     {{end}}
     </tbody>
 </table>
@@ -188,7 +186,7 @@
             .then(function(entries) {
                 var tbody = document.getElementById('runs-body');
                 if (!entries || entries.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="9" class="empty">No runs yet.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="empty">No runs yet.</td></tr>';
                     return;
                 }
 
@@ -199,7 +197,7 @@
                         var ts = entry.task_status || 'pending';
                         var taskLabel = escapeHtml(entry.task_id);
                         if (entry.task_title) taskLabel += ': ' + escapeHtml(entry.task_title);
-                        html += '<tr class="run-task-header"><td colspan="9">' + taskLabel + ' <span class="badge badge-' + ts + '">' + ts + '</span></td></tr>';
+                        html += '<tr class="run-task-header"><td colspan="8">' + taskLabel + ' <span class="badge badge-' + ts + '">' + ts + '</span></td></tr>';
                         continue;
                     }
                     if (entry.attempt_header) {
@@ -207,7 +205,7 @@
                         var at = entry.attempt_time || '';
                         var akey = escapeAttr((entry.task_id || '') + ':' + entry.attempt_num);
                         var ataskId = escapeAttr(entry.task_id || '');
-                        html += '<tr class="run-attempt-header" data-attempt-key="' + akey + '" data-task-id="' + ataskId + '"><td colspan="9">Attempt #' + entry.attempt_num + ' <span class="badge badge-' + as + '">' + as + '</span> <span class="attempt-time">' + escapeHtml(at) + '</span></td></tr>';
+                        html += '<tr class="run-attempt-header" data-attempt-key="' + akey + '" data-task-id="' + ataskId + '"><td colspan="8">Attempt #' + entry.attempt_num + ' <span class="badge badge-' + as + '">' + as + '</span> <span class="attempt-time">' + escapeHtml(at) + '</span></td></tr>';
                         continue;
                     }
                     var r = entry.run;
@@ -216,8 +214,6 @@
                     if (cid.length > 12) cid = cid.substring(0, 12);
                     var err = r.error_message || '';
                     if (err.length > 80) err = err.substring(0, 80) + '...';
-                    var title = r.title || '';
-                    if (title.length > 50) title = title.substring(0, 47) + '...';
                     var runType = r.is_host ? 'host' : 'container';
                     var rowClass = entry.is_child ? 'run-child-row' : (entry.is_parent ? 'run-parent-row' : '');
                     var timing = r.timing || '';
@@ -225,7 +221,6 @@
                     var state = r.state || '';
                     html += '<tr class="' + rowClass + '">' +
                         '<td><a href="/runs/' + r.id + '">' + r.id + '</a></td>' +
-                        '<td>' + escapeHtml(title) + '</td>' +
                         '<td>' + escapeHtml(r.project_label || '') + '</td>' +
                         '<td>' + wfName + '</td>' +
                         '<td>' + runType + '</td>' +
