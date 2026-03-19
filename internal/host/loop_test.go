@@ -56,6 +56,10 @@ func (f *fakeAttemptStore) ListAttempts(_ context.Context, taskID string) ([]*do
 	return out, nil
 }
 
+func (f *fakeAttemptStore) FailStaleAttempts(_ context.Context) (int64, error) {
+	return 0, nil
+}
+
 func (f *fakeAttemptStore) count() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()

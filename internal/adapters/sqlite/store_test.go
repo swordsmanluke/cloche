@@ -677,6 +677,48 @@ func TestStore_FailStaleRuns(t *testing.T) {
 	assert.Equal(t, domain.RunStateSucceeded, gotSucceeded.State)
 }
 
+func TestStore_FailStaleAttempts(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Save a task so the foreign key constraint is satisfied.
+	task := &domain.Task{ID: "task-1", ProjectDir: "/proj"}
+	require.NoError(t, store.SaveTask(ctx, task))
+
+	// Create attempts in different states.
+	running := domain.NewAttempt("task-1") // result = 'running'
+	require.NoError(t, store.SaveAttempt(ctx, running))
+
+	succeeded := domain.NewAttempt("task-1")
+	succeeded.Complete(domain.AttemptResultSucceeded)
+	require.NoError(t, store.SaveAttempt(ctx, succeeded))
+
+	failed := domain.NewAttempt("task-1")
+	failed.Complete(domain.AttemptResultFailed)
+	require.NoError(t, store.SaveAttempt(ctx, failed))
+
+	n, err := store.FailStaleAttempts(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n) // only the running attempt
+
+	got, err := store.GetAttempt(ctx, running.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.AttemptResultFailed, got.Result)
+	assert.False(t, got.EndedAt.IsZero(), "ended_at should be set")
+
+	// Succeeded and failed attempts should be untouched.
+	gotSucceeded, err := store.GetAttempt(ctx, succeeded.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.AttemptResultSucceeded, gotSucceeded.Result)
+
+	gotFailed, err := store.GetAttempt(ctx, failed.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.AttemptResultFailed, gotFailed.Result)
+}
+
 func TestLogFiles_SaveAndGet(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

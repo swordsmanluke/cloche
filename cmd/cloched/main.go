@@ -60,6 +60,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "startup: marked %d stale run(s) as failed\n", n)
 	}
 
+	// Sweep stale attempts whose goroutines were killed before completeAttempt could run.
+	if n, err := store.FailStaleAttempts(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to sweep stale attempts: %v\n", err)
+	} else if n > 0 {
+		fmt.Fprintf(os.Stderr, "startup: marked %d stale attempt(s) as failed\n", n)
+	}
+
 	runtime, err := initRuntime(globalCfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to init runtime: %v\n", err)

@@ -746,6 +746,19 @@ func (s *Store) GetAttemptLogs(ctx context.Context, attemptID string) ([]*ports.
 	return entries, rows.Err()
 }
 
+func (s *Store) FailStaleAttempts(ctx context.Context) (int64, error) {
+	now := formatTime(time.Now())
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE attempts SET result = 'failed', ended_at = ?
+		 WHERE result = 'running'`,
+		now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 func (s *Store) FailStaleRuns(ctx context.Context) (int64, error) {
 	now := formatTime(time.Now())
 	res, err := s.db.ExecContext(ctx,

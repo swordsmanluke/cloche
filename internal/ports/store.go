@@ -69,6 +69,7 @@ type AttemptStore interface {
 	SaveAttempt(ctx context.Context, attempt *domain.Attempt) error
 	GetAttempt(ctx context.Context, id string) (*domain.Attempt, error)
 	ListAttempts(ctx context.Context, taskID string) ([]*domain.Attempt, error)
+	FailStaleAttempts(ctx context.Context) (int64, error)
 }
 
 type AttemptLogEntry struct {
