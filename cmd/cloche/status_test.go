@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -11,13 +12,15 @@ import (
 	"google.golang.org/grpc"
 )
 
-// statusMockClient implements the gRPC methods needed by cmdStatusOverview.
+// statusMockClient implements the gRPC methods needed by status commands.
 type statusMockClient struct {
 	pb.ClocheServiceClient
 
 	versionResp     *pb.GetVersionResponse
 	projectInfoResp *pb.GetProjectInfoResponse
 	listRunsResp    *pb.ListRunsResponse
+	taskResp        *pb.GetTaskResponse
+	taskErr         error
 }
 
 func (m *statusMockClient) GetVersion(_ context.Context, _ *pb.GetVersionRequest, _ ...grpc.CallOption) (*pb.GetVersionResponse, error) {
@@ -30,6 +33,10 @@ func (m *statusMockClient) GetProjectInfo(_ context.Context, _ *pb.GetProjectInf
 
 func (m *statusMockClient) ListRuns(_ context.Context, _ *pb.ListRunsRequest, _ ...grpc.CallOption) (*pb.ListRunsResponse, error) {
 	return m.listRunsResp, nil
+}
+
+func (m *statusMockClient) GetTask(_ context.Context, _ *pb.GetTaskRequest, _ ...grpc.CallOption) (*pb.GetTaskResponse, error) {
+	return m.taskResp, m.taskErr
 }
 
 func TestCmdStatusOverview_ProjectMode(t *testing.T) {
@@ -198,6 +205,78 @@ func TestCmdStatusOverview_NoActiveRuns(t *testing.T) {
 	}
 	if !strings.Contains(out, "2 / 2 succeeded") {
 		t.Errorf("expected 2/2 succeeded, got:\n%s", out)
+	}
+}
+
+func TestCmdStatusTaskLatest_WithAttempt(t *testing.T) {
+	client := &statusMockClient{
+		taskResp: &pb.GetTaskResponse{
+			TaskId:     "TASK-42",
+			Title:      "my task",
+			Status:     "succeeded",
+			ProjectDir: "/fake/project",
+			Attempts: []*pb.AttemptSummary{
+				{AttemptId: "attempt-old", Result: "failed", EndedAt: "2026-03-18 10:00:00 +0000 UTC"},
+				{AttemptId: "attempt-new", Result: "succeeded", EndedAt: "2026-03-19 11:00:00 +0000 UTC"},
+			},
+		},
+	}
+
+	// Capture stdout by redirecting through cmdStatusTaskLatest output.
+	// We test via a helper that writes to a buffer.
+	var buf bytes.Buffer
+	ctx := context.Background()
+
+	// Call with a fake stdout capture using the exported function logic.
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	cmdStatusTaskLatest(ctx, client, "TASK-42")
+	w.Close()
+	os.Stdout = oldStdout
+	buf.ReadFrom(r)
+
+	out := buf.String()
+	if !strings.Contains(out, "TASK-42") {
+		t.Errorf("expected task ID, got:\n%s", out)
+	}
+	if !strings.Contains(out, "my task") {
+		t.Errorf("expected title, got:\n%s", out)
+	}
+	// Should show latest attempt only.
+	if !strings.Contains(out, "attempt-new") {
+		t.Errorf("expected latest attempt ID, got:\n%s", out)
+	}
+	if strings.Contains(out, "attempt-old") {
+		t.Errorf("should not show older attempt, got:\n%s", out)
+	}
+	if !strings.Contains(out, "succeeded") {
+		t.Errorf("expected result, got:\n%s", out)
+	}
+}
+
+func TestCmdStatusTaskLatest_NoAttempts(t *testing.T) {
+	client := &statusMockClient{
+		taskResp: &pb.GetTaskResponse{
+			TaskId: "TASK-99",
+			Status: "pending",
+		},
+	}
+
+	var buf bytes.Buffer
+	ctx := context.Background()
+
+	r, w, _ := os.Pipe()
+	oldStdout := os.Stdout
+	os.Stdout = w
+	cmdStatusTaskLatest(ctx, client, "TASK-99")
+	w.Close()
+	os.Stdout = oldStdout
+	buf.ReadFrom(r)
+
+	out := buf.String()
+	if !strings.Contains(out, "none") {
+		t.Errorf("expected 'none' for no attempts, got:\n%s", out)
 	}
 }
 

@@ -279,9 +279,14 @@ func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string
 		}
 	}
 
-	// If an ID is provided, show detail for that ID (task, attempt, run, or composite).
-	if len(positional) > 0 {
-		cmdStatusByID(ctx, client, positional[0])
+	if len(positional) > 1 {
+		fmt.Fprintf(os.Stderr, "usage: cloche status [<task-id>]\n")
+		os.Exit(1)
+	}
+
+	// If a task ID is provided, show the latest attempt status for that task.
+	if len(positional) == 1 {
+		cmdStatusTaskLatest(ctx, client, positional[0])
 		return
 	}
 
@@ -289,105 +294,33 @@ func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string
 	cmdStatusOverview(ctx, client, os.Stdout, all)
 }
 
-// cmdStatusByID resolves the given ID and shows appropriate detail.
-// Tries task → attempt → run in order for single-segment IDs.
-// Composite IDs (with colons) are passed directly to GetStatus.
-func cmdStatusByID(ctx context.Context, client pb.ClocheServiceClient, id string) {
-	// Composite ID (task:attempt or task:attempt:step) → run-level status.
-	if strings.Contains(id, ":") {
-		cmdStatusRun(ctx, client, id)
-		return
-	}
-
-	// Try as task ID first.
-	taskResp, err := client.GetTask(ctx, &pb.GetTaskRequest{TaskId: id})
-	if err == nil {
-		cmdStatusTask(taskResp)
-		return
-	}
-
-	// Try as attempt ID.
-	attemptResp, err := client.GetAttempt(ctx, &pb.GetAttemptRequest{AttemptId: id})
-	if err == nil {
-		cmdStatusAttempt(attemptResp)
-		return
-	}
-
-	// Fall back to run-level status (passes id as Id field so server can resolve).
-	cmdStatusRun(ctx, client, id)
-}
-
-// cmdStatusTask displays task-level detail including all attempts.
-func cmdStatusTask(resp *pb.GetTaskResponse) {
-	fmt.Printf("Task:      %s\n", resp.TaskId)
-	if resp.Title != "" {
-		fmt.Printf("Title:     %s\n", resp.Title)
-	}
-	fmt.Printf("Status:    %s\n", resp.Status)
-	if resp.ProjectDir != "" {
-		fmt.Printf("Project:   %s\n", resp.ProjectDir)
-	}
-	if len(resp.Attempts) == 0 {
-		fmt.Println("Attempts:  none")
-		return
-	}
-	fmt.Printf("Attempts:  %d\n", len(resp.Attempts))
-	for _, a := range resp.Attempts {
-		dur := ""
-		if a.EndedAt != "" && a.EndedAt != "0001-01-01 00:00:00 +0000 UTC" {
-			dur = " (ended " + a.EndedAt + ")"
-		}
-		fmt.Printf("  %s: %s%s\n", a.AttemptId, a.Result, dur)
-	}
-}
-
-// cmdStatusAttempt displays attempt-level detail.
-func cmdStatusAttempt(resp *pb.GetAttemptResponse) {
-	fmt.Printf("Attempt:   %s\n", resp.AttemptId)
-	fmt.Printf("Task:      %s\n", resp.TaskId)
-	fmt.Printf("Result:    %s\n", resp.Result)
-	fmt.Printf("Started:   %s\n", resp.StartedAt)
-	if resp.EndedAt != "" && resp.EndedAt != "0001-01-01 00:00:00 +0000 UTC" {
-		fmt.Printf("Ended:     %s\n", resp.EndedAt)
-	}
-	if resp.RunId != "" {
-		fmt.Printf("Run:       %s\n", resp.RunId)
-	}
-}
-
-func cmdStatusRun(ctx context.Context, client pb.ClocheServiceClient, id string) {
-	// Pass the id via the Id field so the server can resolve task IDs,
-	// attempt IDs, run IDs, and composite IDs (task:attempt:step).
-	resp, err := client.GetStatus(ctx, &pb.GetStatusRequest{Id: id})
+// cmdStatusTaskLatest fetches the task and displays its latest attempt status.
+func cmdStatusTaskLatest(ctx context.Context, client pb.ClocheServiceClient, taskID string) {
+	resp, err := client.GetTask(ctx, &pb.GetTaskRequest{TaskId: taskID})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Run:       %s\n", resp.RunId)
+	fmt.Printf("Task:    %s\n", resp.TaskId)
 	if resp.Title != "" {
-		fmt.Printf("Title:     %s\n", resp.Title)
+		fmt.Printf("Title:   %s\n", resp.Title)
 	}
-	fmt.Printf("Workflow:  %s\n", resp.WorkflowName)
-	if resp.IsHost {
-		fmt.Printf("Type:      host\n")
-	} else {
-		fmt.Printf("Type:      container\n")
+	fmt.Printf("Status:  %s\n", resp.Status)
+	if resp.ProjectDir != "" {
+		fmt.Printf("Project: %s\n", resp.ProjectDir)
 	}
-	fmt.Printf("State:     %s\n", resp.State)
-	if resp.ContainerId != "" {
-		cid := resp.ContainerId
-		if len(cid) > 12 {
-			cid = cid[:12]
-		}
-		fmt.Printf("Container: %s\n", cid)
+
+	if len(resp.Attempts) == 0 {
+		fmt.Println("Attempt: none")
+		return
 	}
-	if resp.ErrorMessage != "" {
-		fmt.Printf("Error:     %s\n", resp.ErrorMessage)
-	}
-	fmt.Printf("Active:    %s\n", resp.CurrentStep)
-	for _, exec := range resp.StepExecutions {
-		fmt.Printf("  %s: %s (%s -> %s)\n", exec.StepName, exec.Result, exec.StartedAt, exec.CompletedAt)
+
+	latest := resp.Attempts[len(resp.Attempts)-1]
+	fmt.Printf("Attempt: %s\n", latest.AttemptId)
+	fmt.Printf("Result:  %s\n", latest.Result)
+	if latest.EndedAt != "" && latest.EndedAt != "0001-01-01 00:00:00 +0000 UTC" {
+		fmt.Printf("Ended:   %s\n", latest.EndedAt)
 	}
 }
 

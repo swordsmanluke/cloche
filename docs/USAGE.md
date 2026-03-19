@@ -699,17 +699,15 @@ are replayed through the wiring so downstream steps receive the same inputs.
 ### `cloche status`
 
 ```
-cloche status [<id>] [--all]
+cloche status [<task-id>] [--all]
 ```
 
-Accepts a task ID, attempt ID, run ID, or composite `task:attempt[:step]` to show the
-appropriate level of detail. Without an ID, shows a daemon status overview.
+Without an ID, shows a daemon status overview. With a task ID, shows the latest attempt
+status for that task.
 
 | Argument | Output |
 |----------|--------|
-| Task ID | Task status, title, project, and list of attempts with results and timestamps. |
-| Attempt ID | Attempt result, timestamps, and associated run ID. |
-| Run ID or composite | Run title, workflow, type, state, container ID, active step, and per-step results. |
+| Task ID | Task status, title, project, latest attempt ID, result, and end timestamp. |
 | _(none)_ | Daemon version, run statistics (past hour), active runs. In a project directory, also shows project name, concurrency, and loop state. |
 
 | Flag | Description |

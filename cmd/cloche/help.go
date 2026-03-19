@@ -115,17 +115,16 @@ Examples:
   cloche resume develop-lush-fern-470c implement
 `,
 
-	"status": `cloche status — Check task, attempt, or run status
+	"status": `cloche status — Check task or daemon status
 
-Accepts a task ID, attempt ID, run ID, or composite task:attempt:step to show
-the appropriate level of detail. Without an ID, shows a daemon status overview.
+Without an ID, shows a daemon status overview for the current project.
+With a task ID, shows the latest attempt status for that task.
 
 Usage:
-  cloche status [<id>] [--all]
+  cloche status [<task-id>] [--all]
 
 Arguments:
-  <id>    A task ID, attempt ID, run ID, or composite (task:attempt[:step]).
-          When omitted, shows a daemon status overview.
+  <task-id>   A task ID. When omitted, shows a daemon status overview.
 
 Flags:
   --all       Show global stats instead of project-specific stats (overview mode).
@@ -135,26 +134,9 @@ Output (task ID):
   Title       Human-readable title (if set)
   Status      Current task status
   Project     Project directory
-  Attempts    Number of attempts, listed with result and end time
-
-Output (attempt ID):
-  Attempt     Attempt identifier
-  Task        Parent task ID
+  Attempt     Latest attempt ID
   Result      running, succeeded, failed, or cancelled
-  Started     Start timestamp
   Ended       End timestamp (if complete)
-  Run         Associated run ID
-
-Output (run ID or composite):
-  Run         Run identifier
-  Title       Human-readable title (if set)
-  Workflow    Workflow name
-  Type        "host" or "container"
-  State       Current state (e.g. running, succeeded, failed, cancelled)
-  Container   Truncated container ID (container runs only)
-  Error       Error message (if failed)
-  Active      Name of the currently executing step
-  Steps       List of completed steps with results and timestamps
 
 Output (no ID — daemon overview):
   Daemon version
@@ -165,9 +147,6 @@ Output (no ID — daemon overview):
 
 Examples:
   cloche status TASK-123
-  cloche status a3f7
-  cloche status develop-lush-fern-470c
-  cloche status TASK-123:a3f7:implement
   cloche status
   cloche status --all
 `,

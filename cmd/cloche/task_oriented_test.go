@@ -195,11 +195,8 @@ func TestStatusHelpTaskOriented(t *testing.T) {
 	if !strings.Contains(text, "task ID") {
 		t.Error("status help should mention task ID")
 	}
-	if !strings.Contains(text, "attempt ID") {
-		t.Error("status help should mention attempt ID")
-	}
-	if !strings.Contains(text, "task:attempt") {
-		t.Error("status help should mention composite ID format")
+	if !strings.Contains(text, "latest attempt") {
+		t.Error("status help should mention latest attempt")
 	}
 }
 
