@@ -236,6 +236,23 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 
 	log.Printf("host workflow: resuming %q from step %q for project %s (run %s)", wf.Name, resumeFrom, run.ProjectDir, run.ID)
 
+	// Restore child_run_id from the DB if the context store was cleaned up.
+	// The finalize phase cleans up .cloche/runs/<taskID>/ on success, but
+	// resume needs child_run_id to re-run merge/cleanup steps.
+	if run.TaskID != "" {
+		if _, ok, _ := runcontext.Get(run.ProjectDir, run.TaskID, "child_run_id"); !ok {
+			if children, err := r.Store.ListChildRuns(ctx, run.ID); err == nil {
+				for i := len(children) - 1; i >= 0; i-- {
+					if children[i].WorkflowName != "list-tasks" {
+						_ = runcontext.Set(run.ProjectDir, run.TaskID, "child_run_id", children[i].ID)
+						log.Printf("host workflow: restored child_run_id=%s from DB for resume", children[i].ID)
+						break
+					}
+				}
+			}
+		}
+	}
+
 	// Restore ExtraEnv from the original run's context so that env vars like
 	// CLOCHE_MAIN_RUN_ID are available to re-executed steps.
 	extraEnv := r.ExtraEnv
