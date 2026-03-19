@@ -239,3 +239,112 @@ func TestTaskAggregateStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestAttemptAggregateStatus(t *testing.T) {
+	now := time.Now()
+	mkRun := func(state domain.RunState) *domain.Run {
+		r := domain.NewRun("r", "wf")
+		r.State = state
+		r.StartedAt = now
+		return r
+	}
+	mkHostRun := func(state domain.RunState) *domain.Run {
+		r := mkRun(state)
+		r.IsHost = true
+		return r
+	}
+
+	tests := []struct {
+		name string
+		runs []*domain.Run
+		want domain.RunState
+	}{
+		{
+			name: "empty returns pending",
+			runs: nil,
+			want: domain.RunStatePending,
+		},
+		{
+			name: "single succeeded",
+			runs: []*domain.Run{mkRun(domain.RunStateSucceeded)},
+			want: domain.RunStateSucceeded,
+		},
+		{
+			name: "single failed",
+			runs: []*domain.Run{mkRun(domain.RunStateFailed)},
+			want: domain.RunStateFailed,
+		},
+		{
+			name: "any failed means attempt failed",
+			runs: []*domain.Run{
+				mkHostRun(domain.RunStateSucceeded),
+				mkRun(domain.RunStateFailed),
+			},
+			want: domain.RunStateFailed,
+		},
+		{
+			name: "child failed overrides host succeeded",
+			runs: []*domain.Run{
+				mkHostRun(domain.RunStateSucceeded),
+				mkRun(domain.RunStateFailed),
+				mkRun(domain.RunStateSucceeded),
+			},
+			want: domain.RunStateFailed,
+		},
+		{
+			name: "failed beats cancelled",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateCancelled),
+				mkRun(domain.RunStateFailed),
+			},
+			want: domain.RunStateFailed,
+		},
+		{
+			name: "cancelled beats succeeded",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateSucceeded),
+				mkRun(domain.RunStateCancelled),
+			},
+			want: domain.RunStateCancelled,
+		},
+		{
+			name: "running outweighs failed",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateFailed),
+				mkRun(domain.RunStateRunning),
+			},
+			want: domain.RunStateRunning,
+		},
+		{
+			name: "pending outweighs terminal",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateFailed),
+				mkRun(domain.RunStatePending),
+			},
+			want: domain.RunStatePending,
+		},
+		{
+			name: "running beats pending",
+			runs: []*domain.Run{
+				mkRun(domain.RunStatePending),
+				mkRun(domain.RunStateRunning),
+			},
+			want: domain.RunStateRunning,
+		},
+		{
+			name: "all succeeded",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateSucceeded),
+				mkRun(domain.RunStateSucceeded),
+			},
+			want: domain.RunStateSucceeded,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := domain.AttemptAggregateStatus(tt.runs)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

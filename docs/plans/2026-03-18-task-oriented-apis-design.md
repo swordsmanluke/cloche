@@ -1,7 +1,7 @@
 # Version 2.0.0: Task-Oriented APIs Design
 
 **Date:** 2026-03-18
-**Status:** Partially Implemented (gRPC API complete: RunWorkflow returns task_id + attempt_id, ListTasks, GetTask, GetAttempt RPCs added, StreamLogs and GetStatus accept hierarchical IDs. Web UI: task list landing page, task drill-down at `/tasks/{id}`, SSE at `/api/attempts/{id}/stream`, v2 log paths). CLI and migration work remain.
+**Status:** Partially Implemented (gRPC API complete: RunWorkflow returns task_id + attempt_id, ListTasks, GetTask, GetAttempt RPCs added, StreamLogs and GetStatus accept hierarchical IDs. Web UI: task list landing page, task drill-down at `/tasks/{id}`, SSE at `/api/attempts/{id}/stream`, v2 log paths, attempt aggregate status, task status reflects latest attempt). CLI and migration work remain.
 
 ## Problem
 
@@ -222,6 +222,15 @@ The existing `-f`, `-l`, `-s`, `--type` flags continue to work.
 count, and latest result. A task drill-down page at `/tasks/{id}` shows all
 attempts for a task. The runs list (`/projects/{name}/runs`) groups runs by
 task with attempt headers.
+
+**Attempt status** is computed by `domain.AttemptAggregateStatus`: if any
+workflow run within an attempt is still active (running or pending) that state
+takes precedence; otherwise the worst terminal state wins — failed > cancelled >
+succeeded. This means a single failed child run marks the entire attempt as
+failed.
+
+**Task status** always reflects the status of the task's latest (most recent)
+attempt, not an aggregate across all historical attempts.
 
 ```
 ▼ cloche-123 — Fix the card renderer          [running]

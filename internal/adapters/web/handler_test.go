@@ -2534,6 +2534,89 @@ func TestRunsList_TaskGroupingStatus(t *testing.T) {
 	assert.Equal(t, "running", entries2[0].TaskStatus)
 }
 
+func TestRunsList_ChildFailedOverridesHostSuccess(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// Host run succeeded, but a child container run failed.
+	hostRun := domain.NewRun("cf-host-1", "main")
+	hostRun.IsHost = true
+	hostRun.ProjectDir = "/project"
+	hostRun.TaskID = "task-600"
+	hostRun.AttemptID = "cf01"
+	hostRun.Start()
+	hostRun.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, hostRun))
+
+	childRun := domain.NewRun("cf-child-1", "develop")
+	childRun.ProjectDir = "/project"
+	childRun.TaskID = "task-600"
+	childRun.AttemptID = "cf01"
+	childRun.ParentRunID = "cf-host-1"
+	childRun.Start()
+	childRun.Fail("tests failed")
+	require.NoError(t, store.CreateRun(ctx, childRun))
+
+	req := httptest.NewRequest("GET", "/api/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var entries []apiGroupedEntry
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &entries))
+
+	// Task header should show failed because child run failed.
+	require.True(t, entries[0].TaskHeader)
+	assert.Equal(t, "task-600", entries[0].TaskID)
+	assert.Equal(t, "failed", entries[0].TaskStatus)
+
+	// Attempt header should also show failed.
+	require.True(t, entries[1].AttemptHeader)
+	assert.Equal(t, "failed", entries[1].AttemptStatus)
+}
+
+func TestRunsList_TaskStatusReflectsLatestAttempt(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// First attempt: failed
+	r1 := domain.NewRun("lta-run-1", "main")
+	r1.IsHost = true
+	r1.ProjectDir = "/project"
+	r1.TaskID = "task-700"
+	r1.AttemptID = "at01"
+	r1.StartedAt = time.Now().Add(-10 * time.Minute)
+	r1.Start()
+	r1.Fail("something went wrong")
+	require.NoError(t, store.CreateRun(ctx, r1))
+
+	// Second (latest) attempt: succeeded
+	r2 := domain.NewRun("lta-run-2", "main")
+	r2.IsHost = true
+	r2.ProjectDir = "/project"
+	r2.TaskID = "task-700"
+	r2.AttemptID = "at02"
+	r2.StartedAt = time.Now().Add(-2 * time.Minute)
+	r2.Start()
+	r2.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, r2))
+
+	req := httptest.NewRequest("GET", "/api/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var entries []apiGroupedEntry
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &entries))
+
+	// Task status should reflect latest attempt (succeeded), not earlier failed one.
+	require.True(t, entries[0].TaskHeader)
+	assert.Equal(t, "task-700", entries[0].TaskID)
+	assert.Equal(t, "succeeded", entries[0].TaskStatus)
+}
+
 func TestRunsList_HostRunFailedOverridesChildSuccess(t *testing.T) {
 	h, store := setupHandler(t)
 	ctx := context.Background()

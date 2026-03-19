@@ -284,6 +284,14 @@ func (h *Handler) handleProjectOverview(w http.ResponseWriter, r *http.Request) 
 // buildTaskSummaries derives a task summary list from a set of runs.
 // Each unique TaskID produces one summary entry with status, attempt count, and latest result.
 func buildTaskSummaries(runs []*domain.Run, labels map[string]string, taskTitles map[string]string) []taskSummaryEntry {
+	// Build children map for computing per-attempt status.
+	parentMap := map[string][]*domain.Run{}
+	for _, r := range runs {
+		if r.ParentRunID != "" {
+			parentMap[r.ParentRunID] = append(parentMap[r.ParentRunID], r)
+		}
+	}
+
 	// Group top-level runs by task ID (excluding list-tasks runs).
 	taskRuns := map[string][]*domain.Run{}
 	taskOrder := []string{} // preserve first-seen order (sorted by most active)
@@ -319,9 +327,10 @@ func buildTaskSummaries(runs []*domain.Run, labels map[string]string, taskTitles
 		if len(group) == 0 {
 			continue
 		}
-		// Compute aggregate status for all runs in the group
-		status := taskAggregateStatus(group)
+		// Task status reflects the latest attempt (group[0]) and its children.
 		latestRun := group[0]
+		latestAttemptRuns := append([]*domain.Run{latestRun}, parentMap[latestRun.ID]...)
+		status := taskAggregateStatus(latestAttemptRuns)
 		latestResult := string(latestRun.State)
 		latestTime := formatTime(latestRun.StartedAt)
 
@@ -711,11 +720,11 @@ type apiGroupedEntry struct {
 	Run           *apiRun `json:"run,omitempty"`
 }
 
-// taskAggregateStatus computes the aggregate status for a set of runs
-// representing attempts at a task. Active statuses (running, pending) outweigh
-// terminal ones, and among terminal-only statuses the most recent attempt wins.
+// taskAggregateStatus computes the aggregate status for the runs within a
+// single attempt. Active statuses (running, pending) outweigh terminal ones;
+// among terminal runs the worst outcome wins (failed > cancelled > succeeded).
 func taskAggregateStatus(runs []*domain.Run) string {
-	return string(domain.TaskAggregateStatus(runs))
+	return string(domain.AttemptAggregateStatus(runs))
 }
 
 // groupAndSortRuns filters, sorts, and groups runs by task, mirroring the
@@ -780,10 +789,12 @@ func groupAndSortRuns(runs []*domain.Run, labels map[string]string, taskTitles m
 			emittedTask[r.TaskID] = true
 			group := taskGroups[r.TaskID]
 
-			// Task status derives from the latest attempt (first in sorted order)
+			// Task status: aggregate of the latest attempt's runs (parent + children).
 			latestStatus := ""
 			if len(group) > 0 {
-				latestStatus = string(group[0].State)
+				latestChildren := parentMap[group[0].ID]
+				latestAttemptRuns := append([]*domain.Run{group[0]}, latestChildren...)
+				latestStatus = taskAggregateStatus(latestAttemptRuns)
 			}
 			result = append(result, apiGroupedEntry{TaskHeader: true, TaskID: r.TaskID, TaskTitle: taskTitles[r.TaskID], TaskStatus: latestStatus})
 

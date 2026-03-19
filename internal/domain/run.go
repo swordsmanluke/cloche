@@ -160,6 +160,40 @@ func WorseState(a, b RunState) RunState {
 	return a
 }
 
+// AttemptAggregateStatus computes the aggregate status for runs within a single
+// attempt. Active statuses (running, pending) outweigh terminal ones. Among
+// terminal runs, the worst outcome wins: failed > cancelled > succeeded. This
+// ensures that if any run in an attempt fails, the attempt is marked failed.
+func AttemptAggregateStatus(runs []*Run) RunState {
+	if len(runs) == 0 {
+		return RunStatePending
+	}
+
+	hasRunning := false
+	hasPending := false
+	for _, r := range runs {
+		switch r.State {
+		case RunStateRunning:
+			hasRunning = true
+		case RunStatePending:
+			hasPending = true
+		}
+	}
+	if hasRunning {
+		return RunStateRunning
+	}
+	if hasPending {
+		return RunStatePending
+	}
+
+	// All terminal: use worst state (failed > cancelled > succeeded).
+	result := RunStateSucceeded
+	for _, r := range runs {
+		result = WorseState(result, r.State)
+	}
+	return result
+}
+
 // TaskAggregateStatus computes the aggregate status for a group of runs
 // representing attempts at a task. Active statuses (running, pending) outweigh
 // terminal ones. Among terminal runs, host runs (which represent the full
