@@ -160,6 +160,158 @@ echo "$prompt"
 [ -n "${CLOCHE_STEP_OUTPUT:-}" ] && echo "$prompt" > "$CLOCHE_STEP_OUTPUT"
 `
 
+var prepareMergePyScript = `#!/usr/bin/env python3
+"""Create a worktree and rebase the agent's branch onto the base branch."""
+import os
+import subprocess
+import sys
+
+run_id = os.environ.get("CLOCHE_MAIN_RUN_ID", "")
+project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
+
+if not run_id:
+    print("error: CLOCHE_MAIN_RUN_ID not set", file=sys.stderr)
+    sys.exit(1)
+
+branch = f"cloche/{run_id}"
+worktree_dir = os.path.join(project_dir, ".gitworktrees", "merge", run_id)
+
+# Verify branch exists
+try:
+    subprocess.run(
+        ["git", "-C", project_dir, "rev-parse", "--verify", branch],
+        check=True, capture_output=True,
+    )
+except subprocess.CalledProcessError:
+    print(f"error: branch {branch} does not exist", file=sys.stderr)
+    sys.exit(1)
+
+base_branch = subprocess.run(
+    ["git", "-C", project_dir, "rev-parse", "--abbrev-ref", "HEAD"],
+    check=True, capture_output=True, text=True,
+).stdout.strip()
+
+os.makedirs(os.path.dirname(worktree_dir), exist_ok=True)
+
+env = {**os.environ,
+       "GIT_AUTHOR_NAME": "cloche", "GIT_AUTHOR_EMAIL": "cloche@local",
+       "GIT_COMMITTER_NAME": "cloche", "GIT_COMMITTER_EMAIL": "cloche@local"}
+
+subprocess.run(
+    ["git", "-C", project_dir, "worktree", "add", worktree_dir, branch],
+    check=True, env=env,
+)
+
+# Store worktree path for fix-merge / merge steps
+subprocess.run(["cloche", "set", "worktree_path", worktree_dir], check=True)
+subprocess.run(["cloche", "set", "base_branch", base_branch], check=True)
+
+# Rebase onto base branch
+result = subprocess.run(
+    ["git", "-C", worktree_dir, "rebase", base_branch],
+    env=env,
+)
+if result.returncode != 0:
+    subprocess.run(["git", "-C", worktree_dir, "rebase", "--abort"], capture_output=True)
+    print(f"error: rebase failed — worktree preserved at {worktree_dir}", file=sys.stderr)
+    sys.exit(1)
+
+print(f"Rebased {branch} onto {base_branch}")
+`
+
+var mergePyScript = `#!/usr/bin/env python3
+"""Fast-forward base branch to the rebased agent branch."""
+import os
+import subprocess
+import sys
+
+worktree_dir = subprocess.run(
+    ["cloche", "get", "worktree_path"], check=True, capture_output=True, text=True,
+).stdout.strip()
+
+run_id = os.environ.get("CLOCHE_MAIN_RUN_ID", "")
+project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
+branch = f"cloche/{run_id}"
+
+env = {**os.environ,
+       "GIT_AUTHOR_NAME": "cloche", "GIT_AUTHOR_EMAIL": "cloche@local",
+       "GIT_COMMITTER_NAME": "cloche", "GIT_COMMITTER_EMAIL": "cloche@local"}
+
+# Get rebased HEAD
+rebased_head = subprocess.run(
+    ["git", "-C", worktree_dir, "rev-parse", "HEAD"],
+    check=True, capture_output=True, text=True,
+).stdout.strip()
+
+# Remove worktree before merging
+subprocess.run(
+    ["git", "-C", project_dir, "worktree", "remove", "--force", worktree_dir],
+    capture_output=True,
+)
+
+# Update branch ref and fast-forward
+subprocess.run(
+    ["git", "-C", project_dir, "update-ref", f"refs/heads/{branch}", rebased_head],
+    check=True, env=env,
+)
+subprocess.run(
+    ["git", "-C", project_dir, "merge", "--ff-only", branch],
+    check=True, env=env,
+)
+
+# Delete the feature branch
+subprocess.run(
+    ["git", "-C", project_dir, "branch", "-D", branch],
+    capture_output=True,
+)
+
+print(f"Merged {branch} ({rebased_head[:8]})")
+`
+
+var cleanupPyScript = `#!/usr/bin/env python3
+"""Clean up the worktree and branch from the develop run."""
+import os
+import subprocess
+
+run_id = os.environ.get("CLOCHE_MAIN_RUN_ID", "")
+project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
+
+if not run_id:
+    print("warning: CLOCHE_MAIN_RUN_ID not set, skipping cleanup")
+else:
+    branch = f"cloche/{run_id}"
+    worktree_dir = os.path.join(project_dir, ".gitworktrees", "cloche", run_id)
+
+    if os.path.isdir(worktree_dir):
+        subprocess.run(
+            ["git", "-C", project_dir, "worktree", "remove", "--force", worktree_dir],
+            capture_output=True,
+        )
+
+    subprocess.run(
+        ["git", "-C", project_dir, "worktree", "prune"],
+        capture_output=True,
+    )
+
+    subprocess.run(
+        ["git", "-C", project_dir, "branch", "-D", branch],
+        capture_output=True,
+    )
+
+print(f"Cleaned up run {run_id or 'unknown'}")
+`
+
+var fixMergePrompt = `A rebase of the agent's branch onto the base branch has failed due to conflicts.
+
+The conflicting worktree is at the path stored in the ` + "`worktree_path`" + ` context key
+(retrieve with ` + "`cloche get worktree_path`" + `).
+
+Resolve the conflicts in the worktree, then run:
+  git -C <worktree_path> rebase --continue
+
+Do not abort the rebase. If you cannot resolve the conflicts, report failure.
+`
+
 func cmdInit(args []string) {
 	workflow := "develop"
 	baseImage := "cloche-base:latest"
@@ -216,6 +368,10 @@ func cmdInit(args []string) {
 		{filepath.Join(clocheDir, "version"), versionContent, 0644},
 		{filepath.Join(clocheDir, "host.cloche"), hostWorkflowTemplate, 0644},
 		{filepath.Join(clocheDir, "scripts", "prepare-prompt.sh"), preparePromptScript, 0755},
+		{filepath.Join(clocheDir, "scripts", "prepare-merge.py"), prepareMergePyScript, 0755},
+		{filepath.Join(clocheDir, "scripts", "merge.py"), mergePyScript, 0755},
+		{filepath.Join(clocheDir, "scripts", "cleanup.py"), cleanupPyScript, 0755},
+		{filepath.Join(clocheDir, "prompts", "fix-merge.md"), fixMergePrompt, 0644},
 		{".clocheignore", defaultClocheignore, 0644},
 	}
 

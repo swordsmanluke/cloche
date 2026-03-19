@@ -222,6 +222,116 @@ func TestCmdInit_PreparePromptExecutable(t *testing.T) {
 	}
 }
 
+func TestCmdInit_MergeCleanupScripts(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	for _, path := range []string{
+		filepath.Join(".cloche", "scripts", "prepare-merge.py"),
+		filepath.Join(".cloche", "scripts", "merge.py"),
+		filepath.Join(".cloche", "scripts", "cleanup.py"),
+	} {
+		info, err := os.Stat(path)
+		if os.IsNotExist(err) {
+			t.Errorf("expected %s to exist", path)
+			continue
+		}
+		if info.Mode()&0111 == 0 {
+			t.Errorf("expected %s to be executable", path)
+		}
+	}
+
+	// Verify fix-merge.md prompt exists
+	if _, err := os.Stat(filepath.Join(".cloche", "prompts", "fix-merge.md")); os.IsNotExist(err) {
+		t.Error("expected .cloche/prompts/fix-merge.md to exist")
+	}
+}
+
+func TestCmdInit_PrepareMergeContent(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "prepare-merge.py"))
+	content := string(data)
+	if !strings.Contains(content, "CLOCHE_MAIN_RUN_ID") {
+		t.Error("prepare-merge.py should reference CLOCHE_MAIN_RUN_ID")
+	}
+	if !strings.Contains(content, "worktree_path") {
+		t.Error("prepare-merge.py should store worktree_path via cloche set")
+	}
+	if !strings.Contains(content, "rebase") {
+		t.Error("prepare-merge.py should perform a rebase")
+	}
+}
+
+func TestCmdInit_MergeContent(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "merge.py"))
+	content := string(data)
+	if !strings.Contains(content, "worktree_path") {
+		t.Error("merge.py should retrieve worktree_path")
+	}
+	if !strings.Contains(content, "ff-only") {
+		t.Error("merge.py should fast-forward merge")
+	}
+	if !strings.Contains(content, `"branch", "-D"`) {
+		t.Error("merge.py should delete the feature branch")
+	}
+}
+
+func TestCmdInit_CleanupContent(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "cleanup.py"))
+	content := string(data)
+	if !strings.Contains(content, "CLOCHE_MAIN_RUN_ID") {
+		t.Error("cleanup.py should reference CLOCHE_MAIN_RUN_ID")
+	}
+	if !strings.Contains(content, `"worktree", "remove"`) {
+		t.Error("cleanup.py should remove the worktree")
+	}
+	if !strings.Contains(content, `"branch", "-D"`) {
+		t.Error("cleanup.py should delete the branch")
+	}
+}
+
+func TestCmdInit_FixMergePromptContent(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "prompts", "fix-merge.md"))
+	content := string(data)
+	if !strings.Contains(content, "worktree_path") {
+		t.Error("fix-merge.md should reference worktree_path")
+	}
+	if !strings.Contains(content, "rebase --continue") {
+		t.Error("fix-merge.md should instruct running rebase --continue")
+	}
+}
+
 func TestCmdInit_WorkflowTemplatePromptPaths(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
