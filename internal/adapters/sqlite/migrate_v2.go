@@ -87,6 +87,11 @@ func (s *Store) MigrateProjectLogs(projectDir string) error {
 		return err
 	}
 
+	// Clean up old .cloche/<run-id>/ directories that may still contain
+	// orphaned runtime state (prompt.txt, context.json) from before the
+	// move to .cloche/runs/<task-id>/.
+	cleanupOldRunDirs(s.db, projectDir)
+
 	s.db.Exec(`INSERT OR IGNORE INTO _migrations (id, applied_at) VALUES (?, ?)`,
 		migrationID, time.Now().UTC().Format(time.RFC3339))
 
@@ -236,6 +241,64 @@ func migrateProjectRuns(db *sql.DB, projectDir string) error {
 		log.Printf("v2 migration [%s]: migrated %d runs into tasks and attempts", projectDir, len(topLevel))
 	}
 	return nil
+}
+
+// cleanupOldRunDirs scans .cloche/ for directories that look like old
+// run-ID directories and contain only orphaned runtime state files
+// (prompt.txt, context.json). These were created by the old runtime state
+// layout before the move to .cloche/runs/<task-id>/.
+func cleanupOldRunDirs(db *sql.DB, projectDir string) {
+	clocheDir := filepath.Join(projectDir, ".cloche")
+	entries, err := os.ReadDir(clocheDir)
+	if err != nil {
+		log.Printf("v2 migration [%s]: failed to read .cloche dir: %v", projectDir, err)
+		return
+	}
+
+	// Known non-run directories to skip.
+	skip := map[string]bool{
+		"logs": true, "runs": true, "prompts": true, "scripts": true,
+		"overrides": true, "output": true, "attempt_count": true,
+		"evolution": true, "version": true, "config": true,
+	}
+
+	removed := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		// Skip known config/data directories and hidden dirs.
+		if skip[name] || strings.HasPrefix(name, ".") {
+			continue
+		}
+		// Skip directories that don't look like run IDs (must contain a dash).
+		if !strings.Contains(name, "-") {
+			continue
+		}
+
+		dirPath := filepath.Join(clocheDir, name)
+		children, err := os.ReadDir(dirPath)
+		if err != nil {
+			continue
+		}
+		// Only remove if it doesn't contain an output/ directory
+		// (which would have unmigrated log files).
+		hasOutput := false
+		for _, c := range children {
+			if c.IsDir() && c.Name() == "output" {
+				hasOutput = true
+				break
+			}
+		}
+		if !hasOutput {
+			os.RemoveAll(dirPath)
+			removed++
+		}
+	}
+	if removed > 0 {
+		log.Printf("v2 migration [%s]: cleaned up %d old run directories", projectDir, removed)
+	}
 }
 
 // moveRunLogs moves log files from .cloche/<run-id>/output/ to
