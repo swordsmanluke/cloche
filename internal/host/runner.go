@@ -222,7 +222,14 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 		return nil, fmt.Errorf("step %q not found in workflow %q", resumeFrom, run.WorkflowName)
 	}
 
-	outputDir := filepath.Join(run.ProjectDir, ".cloche", run.ID, "output")
+	// Use v2 log paths when task/attempt IDs are available, matching the
+	// normal run path. Fall back to legacy .cloche/<runID>/output/ otherwise.
+	var outputDir string
+	if run.TaskID != "" && run.AttemptID != "" {
+		outputDir = filepath.Join(run.ProjectDir, ".cloche", "logs", run.TaskID, run.AttemptID)
+	} else {
+		outputDir = filepath.Join(run.ProjectDir, ".cloche", run.ID, "output")
+	}
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating output dir: %w", err)
 	}
