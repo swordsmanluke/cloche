@@ -1327,3 +1327,92 @@ func TestLegacyLoop_NoAttemptWhenNoTaskAssigner(t *testing.T) {
 	assert.Empty(t, receivedAttemptID, "no attempt ID without task assigner")
 	assert.Equal(t, 0, attemptStore.count(), "no attempts should be created without task assigner")
 }
+
+func TestPhaseLoop_AttemptCompletedWhenMainReturnsNilResult(t *testing.T) {
+	// Regression test: mainFn returning (nil, nil) must not leave the attempt
+	// stuck as 'running'. The goroutine used to dereference mainResult without
+	// guarding for nil, causing a panic that skipped completeAttempt.
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	attemptStore := newFakeAttemptStore()
+	taskStore := newFakeTaskStore()
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{{ID: "task-nil", Status: "open"}}, nil
+	}
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+		// Return (nil, nil) — valid but unusual; must not orphan the attempt.
+		return nil, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  2 * time.Second,
+	}, store, listTasksFn, mainFn, nil)
+	loop.SetAttemptStore(attemptStore)
+	loop.SetTaskStore(taskStore)
+
+	loop.Start()
+	time.Sleep(300 * time.Millisecond)
+	loop.Stop()
+
+	attempts := attemptStore.all()
+	require.Len(t, attempts, 1)
+	// The attempt must be completed (not left as running).
+	assert.NotZero(t, attempts[0].EndedAt, "attempt must be completed, not stuck as running")
+	assert.Equal(t, domain.AttemptResultFailed, attempts[0].Result, "nil result should map to failed")
+}
+
+func TestPhaseLoop_AttemptCompletedOnRetry(t *testing.T) {
+	// Regression test: when a task is retried after dedup expiry, both attempts
+	// (the first failed one and the retry) must be completed.
+	//
+	// Use StopOnError=true so the loop halts after the first failure. Then call
+	// Resume() to wake it from the 2-minute backoff sleep immediately, allowing
+	// the retry to happen within the test window.
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	attemptStore := newFakeAttemptStore()
+	taskStore := newFakeTaskStore()
+
+	var callCount atomic.Int32
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{{ID: "task-retry", Status: "open"}}, nil
+	}
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+		n := callCount.Add(1)
+		if n == 1 {
+			return &RunResult{State: domain.RunStateFailed}, nil
+		}
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  50 * time.Millisecond, // short so retry happens after Resume
+		StopOnError:   true,                  // halts after first failure, allowing Resume to wake it
+	}, store, listTasksFn, mainFn, nil)
+	loop.SetAttemptStore(attemptStore)
+	loop.SetTaskStore(taskStore)
+
+	loop.Start()
+	// Wait for the first run to fail and the loop to halt.
+	time.Sleep(200 * time.Millisecond)
+	require.Equal(t, int32(1), callCount.Load(), "first run should have completed")
+
+	// Resume wakes the loop from its backoff sleep and clears halted state,
+	// allowing the retry to be picked up once the dedup has expired.
+	loop.Resume()
+	time.Sleep(200 * time.Millisecond)
+	loop.Stop()
+
+	require.GreaterOrEqual(t, int(callCount.Load()), 2, "task should have been attempted at least twice")
+
+	attempts := attemptStore.all()
+	require.GreaterOrEqual(t, len(attempts), 2, "should have at least 2 attempt records")
+	for _, a := range attempts {
+		assert.NotZero(t, a.EndedAt, "every attempt must be completed, not stuck as running")
+	}
+}

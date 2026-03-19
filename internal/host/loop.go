@@ -321,6 +321,18 @@ func (l *Loop) runPhased() {
 			ttitle := taskTitle
 			aid := attemptID
 			go func() {
+				// overallState defaults to failed; the deferred function guarantees
+				// completeAttempt and the completions signal are always sent, even on
+				// panic, so no attempt can be left permanently stuck as 'running'.
+				overallState := domain.RunStateFailed
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("orchestration loop: panic in task %s goroutine: %v", tid, r)
+					}
+					l.completeAttempt(aid, overallState)
+					completions <- result{state: overallState, errMsg: fmt.Sprintf("task %s failed", tid)}
+				}()
+
 				// Phase 2: main — do the work.
 				mainResult, err := l.mainFn(context.Background(), l.config.ProjectDir, tid, aid)
 				if err != nil {
@@ -329,9 +341,12 @@ func (l *Loop) runPhased() {
 						mainResult = &RunResult{State: domain.RunStateFailed}
 					}
 				}
+				if mainResult == nil {
+					mainResult = &RunResult{State: domain.RunStateFailed}
+				}
 
 				// Track the run ID for this task and persist the task title.
-				if mainResult != nil && mainResult.RunID != "" {
+				if mainResult.RunID != "" {
 					l.tasksMu.Lock()
 					l.taskRuns[tid] = TaskAssignment{
 						AssignedAt: time.Now(),
@@ -349,7 +364,7 @@ func (l *Loop) runPhased() {
 
 				// Phase 3: finalize — cleanup (runs on both success and failure).
 				// The overall state is the worst of main and finalize outcomes.
-				overallState := mainResult.State
+				overallState = mainResult.State
 				if l.finalizeFn != nil {
 					finalizeResult, finalizeErr := l.finalizeFn(context.Background(), l.config.ProjectDir, tid, aid, mainResult)
 					if finalizeErr != nil {
@@ -359,11 +374,7 @@ func (l *Loop) runPhased() {
 						overallState = domain.WorseState(overallState, finalizeResult.State)
 					}
 				}
-
-				// Complete the attempt record now that all phases are done.
-				l.completeAttempt(aid, overallState)
-
-				completions <- result{state: overallState, errMsg: fmt.Sprintf("task %s failed", tid)}
+				// defer handles completeAttempt and completions
 			}()
 		}
 
