@@ -111,9 +111,12 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		return s.resumeRun(ctx, resumeRunID, resumeStepFromContext(ctx))
 	}
 
+	// Parse optional step from workflow_name ("workflow:step" format).
+	workflowName, startStep, _ := strings.Cut(req.WorkflowName, ":")
+
 	// Check if this is a host workflow (has host {} block).
 	if hostWFs, err := host.FindHostWorkflows(req.ProjectDir); err == nil {
-		if _, isHost := hostWFs[req.WorkflowName]; isHost {
+		if _, isHost := hostWFs[workflowName]; isHost {
 			return s.runHostWorkflow(ctx, req)
 		}
 	}
@@ -125,7 +128,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	// Generate a unique run ID, retrying on collision
 	var runID string
 	for attempts := 0; attempts < 10; attempts++ {
-		runID = domain.GenerateRunID(req.WorkflowName, "")
+		runID = domain.GenerateRunID(workflowName, "")
 		existing, err := s.store.GetRun(ctx, runID)
 		if err != nil {
 			break // ID is free
@@ -137,7 +140,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		}
 	}
 
-	run := domain.NewRun(runID, req.WorkflowName)
+	run := domain.NewRun(runID, workflowName)
 	run.ProjectDir = req.ProjectDir
 	run.Title = req.Title
 	run.TaskID = req.IssueId
@@ -173,7 +176,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 
 	// Launch container start + tracking in background so the RPC returns immediately.
 	// The run stays in "pending" state until the container is up.
-	go s.launchAndTrack(runID, image, req.KeepContainer, req)
+	go s.launchAndTrack(runID, image, req.KeepContainer, startStep, req)
 
 	return &pb.RunWorkflowResponse{RunId: runID, TaskId: run.TaskID, AttemptId: run.AttemptID}, nil
 }
@@ -194,7 +197,8 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 		taskID = "user-" + attemptID
 	}
 
-	runID := domain.GenerateRunID(req.WorkflowName, "")
+	hostWorkflowName, _, _ := strings.Cut(req.WorkflowName, ":")
+	runID := domain.GenerateRunID(hostWorkflowName, "")
 
 	runner := &host.Runner{
 		Dispatcher:   s,
@@ -206,7 +210,7 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 	}
 
 	go func() {
-		runner.RunNamedWithID(context.Background(), req.ProjectDir, req.WorkflowName, runID)
+		runner.RunNamedWithID(context.Background(), req.ProjectDir, hostWorkflowName, runID)
 	}()
 
 	return &pb.RunWorkflowResponse{RunId: runID}, nil
@@ -424,8 +428,12 @@ func (s *ClocheServer) launchResumeContainer(run *domain.Run, image string, cmd 
 // launchAndTrack starts the container and then tracks it to completion.
 // It runs in a background goroutine with its own context, independent of the
 // RPC context which may be cancelled after RunWorkflow returns.
-func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, req *pb.RunWorkflowRequest) {
+// startStep, when non-empty, causes the agent to begin execution at that step.
+func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, startStep string, req *pb.RunWorkflowRequest) {
 	ctx := context.Background()
+
+	// Parse the workflow name (strip any ":step" suffix that was already extracted).
+	workflowName, _, _ := strings.Cut(req.WorkflowName, ":")
 
 	// Auto-rebuild image if the project Dockerfile has changed since last build.
 	if ensurer, ok := s.container.(ports.ImageEnsurer); ok {
@@ -448,13 +456,23 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, r
 		taskID = r.TaskID
 	}
 
+	// Build container command, adding --start-step if a specific step was requested.
+	var cmd []string
+	if startStep != "" {
+		cmd = []string{
+			"cloche-agent", ".cloche/" + workflowName + ".cloche",
+			"--start-step", startStep,
+		}
+	}
+
 	containerID, err := s.container.Start(ctx, ports.ContainerConfig{
 		Image:        image,
-		WorkflowName: req.WorkflowName,
+		WorkflowName: workflowName,
 		ProjectDir:   req.ProjectDir,
 		RunID:        runID,
 		TaskID:       taskID,
 		NetworkAllow: []string{"*"},
+		Cmd:          cmd,
 	})
 	if err != nil {
 		run, _ := s.store.GetRun(ctx, runID)
@@ -478,7 +496,7 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, r
 		_ = s.store.UpdateRun(ctx, run)
 	}
 
-	s.trackRun(runID, containerID, req.ProjectDir, req.WorkflowName, keepContainer)
+	s.trackRun(runID, containerID, req.ProjectDir, workflowName, keepContainer)
 }
 
 // runLogDir returns the directory where extracted log files for a run are stored.

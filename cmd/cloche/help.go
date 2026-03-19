@@ -61,12 +61,15 @@ Starts a new workflow run. Without --issue, a User-Initiated task is created
 automatically and a task ID is printed alongside the run ID.
 
 Usage:
-  cloche run --workflow <name> [--prompt "..."] [--title "..."] [--issue ID] [--keep-container]
-  cloche run <name>              (shorthand: bare positional workflow name)
+  cloche run <workflow>[:<step>] [--prompt "..."] [--title "..."] [--issue ID] [--keep-container]
+
+Arguments:
+  <workflow>           Name of the workflow to run. Must match a
+                       .cloche/<workflow>.cloche file in the project.
+  <workflow>:<step>    Run starting at a specific step within the workflow.
+                       Execution begins at <step> instead of the entry step.
 
 Flags:
-  --workflow <name>    Name of the workflow to run (required). Must match a
-                       .cloche/<name>.cloche file in the project.
   --prompt "..."       Prompt text passed to agent steps. Also available as
   -p "..."             the short form.
   --title "..."        Human-readable title for the run (shown in status/list).
@@ -79,9 +82,10 @@ The command prints the run ID, task ID, and attempt ID on success.
 Use the task ID with "cloche status", "cloche logs", and "cloche list".
 
 Examples:
-  cloche run --workflow develop --prompt "Add a /health endpoint"
+  cloche run develop --prompt "Add a /health endpoint"
   cloche run develop -p "Fix the broken CSV parser" --title "CSV fix"
-  cloche run --workflow build --keep-container
+  cloche run develop:review -p "Check the implementation"
+  cloche run build --keep-container
   cloche run develop -p "Fix auth bug" -i TASK-123
 `,
 
@@ -561,7 +565,7 @@ Environment Variables:
 
 Examples:
   cloche init
-  cloche run --workflow develop --prompt "Add user authentication"
+  cloche run develop --prompt "Add user authentication"
   cloche status abc123
   cloche logs abc123 --follow
   cloche list

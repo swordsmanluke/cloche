@@ -12,11 +12,11 @@ func TestHasHelpFlag(t *testing.T) {
 	}{
 		{nil, false},
 		{[]string{}, false},
-		{[]string{"--workflow", "develop"}, false},
+		{[]string{"develop"}, false},
 		{[]string{"--help"}, true},
 		{[]string{"-h"}, true},
-		{[]string{"--workflow", "develop", "--help"}, true},
-		{[]string{"-h", "--workflow", "develop"}, true},
+		{[]string{"develop", "--help"}, true},
+		{[]string{"-h", "develop"}, true},
 	}
 
 	for _, tt := range tests {
@@ -89,6 +89,44 @@ func TestRunHelpIncludesIssueFlag(t *testing.T) {
 	}
 	if !strings.Contains(text, "-i") {
 		t.Error("run help text should document -i shorthand")
+	}
+}
+
+func TestRunHelpPositionalArg(t *testing.T) {
+	text := subcommandHelp["run"]
+	// Should document positional workflow arg, not --workflow flag
+	if strings.Contains(text, "--workflow") {
+		t.Error("run help text should not reference removed --workflow flag")
+	}
+	// Should document workflow:step format
+	if !strings.Contains(text, "<workflow>:<step>") {
+		t.Error("run help text should document workflow:step format")
+	}
+	// Should include example of step-specific run
+	if !strings.Contains(text, "develop:review") {
+		t.Error("run help text should include example of workflow:step usage")
+	}
+}
+
+// TestParseWorkflowSpec verifies the workflow:step parsing logic used in cmdRun.
+func TestParseWorkflowSpec(t *testing.T) {
+	tests := []struct {
+		spec         string
+		wantWorkflow string
+		wantStep     string
+	}{
+		{"develop", "develop", ""},
+		{"develop:review", "develop", "review"},
+		{"build:test", "build", "test"},
+	}
+	for _, tt := range tests {
+		workflow, step, _ := strings.Cut(tt.spec, ":")
+		if workflow != tt.wantWorkflow {
+			t.Errorf("Cut(%q) workflow = %q, want %q", tt.spec, workflow, tt.wantWorkflow)
+		}
+		if step != tt.wantStep {
+			t.Errorf("Cut(%q) step = %q, want %q", tt.spec, step, tt.wantStep)
+		}
 	}
 }
 

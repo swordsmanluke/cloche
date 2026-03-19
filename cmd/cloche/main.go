@@ -169,16 +169,11 @@ func main() {
 
 
 func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
-	var workflow, prompt, title, issueID string
+	var workflowSpec, prompt, title, issueID string
 	var keepContainer bool
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--workflow":
-			if i+1 < len(args) {
-				i++
-				workflow = args[i]
-			}
 		case "--prompt", "-p":
 			if i+1 < len(args) {
 				i++
@@ -197,29 +192,31 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 		case "--keep-container":
 			keepContainer = true
 		default:
-			// Support bare positional arg as workflow name for backwards compat
-			if workflow == "" && !strings.HasPrefix(args[i], "-") {
-				workflow = args[i]
+			if workflowSpec == "" && !strings.HasPrefix(args[i], "-") {
+				workflowSpec = args[i]
 			}
 		}
 	}
 
-	if workflow == "" {
-		fmt.Fprintf(os.Stderr, "usage: cloche run --workflow <name> [--prompt \"...\"] [--title \"...\"] [--issue ID]\n")
+	if workflowSpec == "" {
+		fmt.Fprintf(os.Stderr, "usage: cloche run <workflow>[:<step>] [--prompt \"...\"] [--title \"...\"] [--issue ID]\n")
 		os.Exit(1)
 	}
+
+	// workflowSpec is "workflow" or "workflow:step"; extract the workflow name for image lookup.
+	workflowName, _, _ := strings.Cut(workflowSpec, ":")
 
 	cwd, _ := os.Getwd()
 
 	// Resolve image from workflow file (soft failure — fall back to daemon default).
 	// Try loading from any .cloche file; only extract image for container workflows.
 	var image string
-	if wf, err := loadWorkflow(cwd, workflow); err == nil && wf.Location == domain.LocationContainer {
+	if wf, err := loadWorkflow(cwd, workflowName); err == nil && wf.Location == domain.LocationContainer {
 		image = wf.Config["container.image"]
 	}
 
 	resp, err := client.RunWorkflow(ctx, &pb.RunWorkflowRequest{
-		WorkflowName:  workflow,
+		WorkflowName:  workflowSpec,
 		ProjectDir:    cwd,
 		Image:         image,
 		Prompt:        prompt,

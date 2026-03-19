@@ -95,7 +95,7 @@ is available.
 Run a quick test workflow:
 
 ```bash
-cloche run --workflow develop --prompt "Print hello world"
+cloche run develop --prompt "Print hello world"
 ```
 
 Check logs to confirm Claude Code is executing:

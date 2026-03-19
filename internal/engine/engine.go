@@ -43,6 +43,7 @@ type Engine struct {
 	maxSteps         int
 	defaultTimeout   time.Duration
 	preloadedResults map[string]string // step_name -> result for resume mode
+	startStep        string            // when non-empty, override wf.EntryStep
 }
 
 func New(executor StepExecutor) *Engine {
@@ -65,6 +66,12 @@ func (e *Engine) SetMaxSteps(n int) {
 // SetDefaultTimeout sets the default timeout for steps that don't specify one.
 func (e *Engine) SetDefaultTimeout(d time.Duration) {
 	e.defaultTimeout = d
+}
+
+// SetStartStep overrides the workflow entry step. When set, execution begins
+// at this step instead of wf.EntryStep. Used for single-step runs.
+func (e *Engine) SetStartStep(step string) {
+	e.startStep = step
 }
 
 // SetPreloadedResults configures the engine to skip execution of steps whose
@@ -178,8 +185,12 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 		return nil
 	}
 
-	// Launch entry step.
-	if err := launchStep(wf.EntryStep); err != nil {
+	// Launch entry step (or override step for single-step runs).
+	entryStep := wf.EntryStep
+	if e.startStep != "" {
+		entryStep = e.startStep
+	}
+	if err := launchStep(entryStep); err != nil {
 		run.Complete(domain.RunStateFailed)
 		return run, err
 	}

@@ -652,12 +652,13 @@ snippet. Skipped on Windows.
 Launch a workflow run.
 
 ```
-cloche run --workflow <name> [--prompt "..."] [--title "..."] [--issue ID] [--keep-container]
+cloche run <workflow>[:<step>] [--prompt "..."] [--title "..."] [--issue ID] [--keep-container]
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--workflow <name>` | Workflow name. Resolves to `.cloche/<name>.cloche`. |
+| Argument / Flag | Description |
+|-----------------|-------------|
+| `<workflow>` | Workflow name. Resolves to `.cloche/<name>.cloche`. |
+| `<workflow>:<step>` | Run starting at a specific step within the workflow. |
 | `--prompt "..."`, `-p` | Inline prompt written to `.cloche/<run-id>/prompt.txt`. |
 | `--title "..."` | One-line summary for status display. Auto-generated if omitted. |
 | `--issue ID`, `-i` | Associate an existing task/issue ID with the run. Without this flag, a User-Initiated task is created automatically. |

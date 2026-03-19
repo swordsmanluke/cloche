@@ -24,6 +24,7 @@ type RunnerConfig struct {
 	RunID          string
 	TaskID         string // task ID for runtime state paths (.cloche/runs/<task-id>/)
 	ResumeFromStep string // when non-empty, resume the workflow from this step
+	StartStep      string // when non-empty, start execution at this step instead of the entry step
 }
 
 type Runner struct {
@@ -100,6 +101,11 @@ func (r *Runner) Run(ctx context.Context) error {
 			return fmt.Errorf("loading completed step results for resume: %w", err)
 		}
 		eng.SetPreloadedResults(preloaded)
+	}
+
+	// Single-step mode: start execution at a specific step.
+	if r.cfg.StartStep != "" {
+		eng.SetStartStep(r.cfg.StartStep)
 	}
 
 	// Generate a run title from the prompt if one was not provided by the caller.

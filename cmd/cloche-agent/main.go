@@ -18,19 +18,22 @@ func main() {
 	}
 
 	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "usage: cloche-agent <workflow-file> [--resume-from <step>]\n")
+		fmt.Fprintf(os.Stderr, "usage: cloche-agent <workflow-file> [--resume-from <step>] [--start-step <step>]\n")
 		os.Exit(1)
 	}
 
 	workflowPath := os.Args[1]
 	workDir, _ := os.Getwd()
 
-	// Parse --resume-from flag
-	var resumeFromStep string
+	// Parse --resume-from and --start-step flags
+	var resumeFromStep, startStep string
 	for i := 2; i < len(os.Args); i++ {
 		if os.Args[i] == "--resume-from" && i+1 < len(os.Args) {
 			i++
 			resumeFromStep = os.Args[i]
+		} else if os.Args[i] == "--start-step" && i+1 < len(os.Args) {
+			i++
+			startStep = os.Args[i]
 		}
 	}
 
@@ -56,6 +59,7 @@ func main() {
 		RunID:          runID,
 		TaskID:         taskID,
 		ResumeFromStep: resumeFromStep,
+		StartStep:      startStep,
 	})
 
 	if err := runner.Run(ctx); err != nil {
