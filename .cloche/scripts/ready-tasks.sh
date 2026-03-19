@@ -3,7 +3,7 @@
 # A task is ready when:
 #   1. bd considers it ready (open, not blocked/deferred)
 #   2. All its closed dependencies have a succeeded cloche run
-set -euo pipefail
+set -uo pipefail
 
 # bd ready --json outputs a JSON array of ready tasks.
 json=$(bd ready --json 2>/dev/null) || json="[]"
@@ -12,22 +12,27 @@ if [ "$json" = "[]" ] || [ -z "$json" ]; then
   exit 0
 fi
 
-# For each ready task, verify that all closed dependencies have landed.
-echo "$json" | jq -c '.[]' | while IFS= read -r task; do
-  task_id=$(echo "$task" | jq -r '.id')
+task_count=$(echo "$json" | jq 'length')
 
-  # Get closed dependencies for this task (bd show --json returns an array)
-  closed_deps=$(bd show "$task_id" --json 2>/dev/null \
-    | jq -r '.[0].dependencies[]? | select(.status == "closed") | .id' 2>/dev/null) || true
+for (( i=0; i<task_count; i++ )); do
+  task=$(echo "$json" | jq -c ".[$i]")
+  task_id=$(echo "$json" | jq -r ".[$i].id")
+
+  # Get closed dependency IDs
+  deps=$(bd show "$task_id" --json 2>/dev/null \
+    | jq -r '.[0].dependencies[]? | select(.status == "closed") | .id' 2>/dev/null) || deps=""
 
   ready=true
-  for dep_id in $closed_deps; do
-    # Check if cloche has a succeeded run for this dependency
-    if ! cloche list --all --issue "$dep_id" --state succeeded 2>/dev/null | grep -q "succeeded"; then
-      ready=false
-      break
-    fi
-  done
+  if [ -n "$deps" ]; then
+    while IFS= read -r dep_id; do
+      [ -z "$dep_id" ] && continue
+      count=$(cloche list --all --issue "$dep_id" --state succeeded 2>/dev/null | grep -c "succeeded" || true)
+      if [ "$count" -eq 0 ]; then
+        ready=false
+        break
+      fi
+    done <<< "$deps"
+  fi
 
   if [ "$ready" = true ]; then
     echo "$task"
