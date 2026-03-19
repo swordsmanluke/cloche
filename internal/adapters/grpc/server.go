@@ -37,8 +37,8 @@ type ClocheServer struct {
 	store        ports.RunStore
 	captures     ports.CaptureStore
 	logStore     ports.LogStore
-	taskStore    ports.TaskStore
-	attemptStore ports.AttemptStore
+	taskStore    ports.TaskStore    // optional; creates Task records
+	attemptStore ports.AttemptStore // optional; creates Attempt records
 	container    ports.ContainerRuntime
 	defaultImage string
 	evolution    *evolution.Trigger
@@ -74,12 +74,12 @@ func (s *ClocheServer) SetLogStore(ls ports.LogStore) {
 	s.logStore = ls
 }
 
-// SetTaskStore attaches a task store for GetTask and ListTasks RPCs.
+// SetTaskStore attaches a task store so RunWorkflow can create Task records.
 func (s *ClocheServer) SetTaskStore(ts ports.TaskStore) {
 	s.taskStore = ts
 }
 
-// SetAttemptStore attaches an attempt store for GetAttempt RPCs.
+// SetAttemptStore attaches an attempt store so RunWorkflow can create Attempt records.
 func (s *ClocheServer) SetAttemptStore(as ports.AttemptStore) {
 	s.attemptStore = as
 }
@@ -136,11 +136,14 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	run.ProjectDir = req.ProjectDir
 	run.Title = req.Title
 	run.TaskID = req.IssueId
-	// Assign v2 attempt tracking IDs so log files are stored in the new
-	// .cloche/logs/<taskID>/<attemptID>/ hierarchy.
-	run.AttemptID = domain.GenerateAttemptID()
+
+	// Create or link Task and Attempt records for v2 tracking.
+	attemptID := s.ensureTaskAndAttempt(ctx, req.IssueId, req.Title, req.ProjectDir)
+	run.AttemptID = attemptID
 	if run.TaskID == "" {
-		run.TaskID = "user-" + run.AttemptID
+		// User-initiated run: task ID was synthesized during ensureTaskAndAttempt.
+		// Derive it from the attempt prefix for backward compat with log paths.
+		run.TaskID = "user-" + attemptID
 	}
 
 	// Write prompt to .cloche/runs/<task-id>/prompt.txt
@@ -173,6 +176,19 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 // runHostWorkflow dispatches a host workflow via the host runner, returning
 // immediately while the workflow runs in a background goroutine.
 func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
+	// Check for a propagated attempt ID from a parent host executor.
+	attemptID := attemptIDFromContext(ctx)
+
+	// If no parent attempt, create Task and Attempt records for this host run.
+	if attemptID == "" {
+		attemptID = s.ensureTaskAndAttempt(ctx, req.IssueId, req.Title, req.ProjectDir)
+	}
+
+	taskID := req.IssueId
+	if taskID == "" && attemptID != "" {
+		taskID = "user-" + attemptID
+	}
+
 	runID := domain.GenerateRunID(req.WorkflowName, "")
 
 	runner := &host.Runner{
@@ -180,7 +196,8 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 		Store:        s.store,
 		Captures:     s.captures,
 		LogBroadcast: s.logBroadcast,
-		TaskID:       req.IssueId,
+		TaskID:       taskID,
+		AttemptID:    attemptID,
 	}
 
 	go func() {
@@ -214,6 +231,71 @@ func resumeStepFromContext(ctx context.Context) string {
 		return ""
 	}
 	return vals[0]
+}
+
+// attemptIDFromContext extracts a propagated attempt ID from gRPC metadata.
+// This is set by the host executor when dispatching a child container workflow
+// so the container run is linked to the parent host run's attempt.
+func attemptIDFromContext(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+	vals := md.Get(host.AttemptIDMetadataKey)
+	if len(vals) == 0 {
+		return ""
+	}
+	return vals[0]
+}
+
+// ensureTaskAndAttempt creates (or looks up) a Task record and creates a new
+// running Attempt for it. Returns the attempt ID, or a generated fallback ID
+// if the stores are not configured.
+//
+// When issueID is non-empty, the task has external source. When empty, a
+// user-initiated task is created with a generated ID.
+func (s *ClocheServer) ensureTaskAndAttempt(ctx context.Context, issueID, title, projectDir string) string {
+	attemptID := domain.GenerateAttemptID()
+
+	if s.taskStore == nil || s.attemptStore == nil {
+		return attemptID
+	}
+
+	taskID := issueID
+	taskSource := domain.TaskSourceExternal
+	if taskID == "" {
+		// User-initiated: synthesize a stable task ID from the attempt ID.
+		taskID = "user-" + attemptID
+		taskSource = domain.TaskSourceUserInitiated
+	}
+
+	// Ensure the task record exists.
+	if _, err := s.taskStore.GetTask(ctx, taskID); err != nil {
+		task := &domain.Task{
+			ID:         taskID,
+			Title:      title,
+			Source:     taskSource,
+			ProjectDir: projectDir,
+			CreatedAt:  time.Now(),
+		}
+		if saveErr := s.taskStore.SaveTask(ctx, task); saveErr != nil {
+			log.Printf("server: failed to save task %s: %v", taskID, saveErr)
+			return attemptID
+		}
+	}
+
+	// Create a new Attempt for this run.
+	attempt := &domain.Attempt{
+		ID:        attemptID,
+		TaskID:    taskID,
+		StartedAt: time.Now(),
+		Result:    domain.AttemptResultRunning,
+	}
+	if err := s.attemptStore.SaveAttempt(ctx, attempt); err != nil {
+		log.Printf("server: failed to save attempt %s for task %s: %v", attemptID, taskID, err)
+	}
+
+	return attemptID
 }
 
 // resumeRun resumes a failed workflow run from a specific step.
@@ -1437,13 +1519,14 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	}
 
 	// Phase 2: main function
-	mainFn := func(ctx context.Context, projDir string, taskID string) (*host.RunResult, error) {
+	mainFn := func(ctx context.Context, projDir string, taskID string, attemptID string) (*host.RunResult, error) {
 		runner := &host.Runner{
 			Dispatcher:   s,
 			Store:        s.store,
 			Captures:     s.captures,
 			LogBroadcast: s.logBroadcast,
 			TaskID:       taskID,
+			AttemptID:    attemptID,
 		}
 		return runner.RunNamed(ctx, projDir, "main")
 	}
@@ -1452,7 +1535,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	var finalizeFn host.FinalizeFunc
 	if hostWFs, err := host.FindHostWorkflows(projectDir); err == nil {
 		if _, hasFinalize := hostWFs["finalize"]; hasFinalize {
-			finalizeFn = func(ctx context.Context, projDir string, taskID string, mainResult *host.RunResult) (*host.RunResult, error) {
+			finalizeFn = func(ctx context.Context, projDir string, taskID string, attemptID string, mainResult *host.RunResult) (*host.RunResult, error) {
 				mainRunID := ""
 				mainOutcome := "failed"
 				if mainResult != nil {
@@ -1465,6 +1548,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 					Captures:     s.captures,
 					LogBroadcast: s.logBroadcast,
 					TaskID:       taskID,
+					AttemptID:    attemptID,
 					ParentRunID:  mainRunID, // nest finalize under the main run in the UI
 					ExtraEnv: []string{
 						"CLOCHE_MAIN_RUN_ID=" + mainRunID,
@@ -1477,18 +1561,26 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	}
 
 	log.Printf("orchestration loop: three-phase mode enabled for %s (list-tasks + main + finalize, dedup=%s)", projectDir, dedupTimeout)
-	return host.NewPhaseLoop(loopCfg, s.store, listTasksFn, mainFn, finalizeFn)
+	loop := host.NewPhaseLoop(loopCfg, s.store, listTasksFn, mainFn, finalizeFn)
+	if s.attemptStore != nil {
+		loop.SetAttemptStore(s.attemptStore)
+	}
+	if s.taskStore != nil {
+		loop.SetTaskStore(s.taskStore)
+	}
+	return loop
 }
 
 // createLegacyLoop creates a legacy single-function orchestration loop.
 func (s *ClocheServer) createLegacyLoop(loopCfg host.LoopConfig, projectDir string, projCfg *config.Config, dedupTimeout time.Duration) *host.Loop {
-	runFn := func(ctx context.Context, projDir string, taskID string) (*host.RunResult, error) {
+	runFn := func(ctx context.Context, projDir string, taskID string, attemptID string) (*host.RunResult, error) {
 		runner := &host.Runner{
 			Dispatcher:   s,
 			Store:        s.store,
 			Captures:     s.captures,
 			LogBroadcast: s.logBroadcast,
 			TaskID:       taskID,
+			AttemptID:    attemptID,
 		}
 		return runner.Run(ctx, projDir)
 	}
@@ -1499,6 +1591,13 @@ func (s *ClocheServer) createLegacyLoop(loopCfg host.LoopConfig, projectDir stri
 	if cmd := projCfg.Orchestration.ListTasksCommand; cmd != "" {
 		loop.SetTaskAssigner(&host.ScriptTaskAssigner{Command: cmd})
 		log.Printf("orchestration loop: task assignment enabled for %s (command=%q, dedup=%s)", projectDir, cmd, dedupTimeout)
+	}
+
+	if s.attemptStore != nil {
+		loop.SetAttemptStore(s.attemptStore)
+	}
+	if s.taskStore != nil {
+		loop.SetTaskStore(s.taskStore)
 	}
 
 	return loop

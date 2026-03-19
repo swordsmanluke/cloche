@@ -73,6 +73,8 @@ func main() {
 
 	srv := adaptgrpc.NewClocheServerWithCaptures(store, store, runtime, defaultImage)
 	srv.SetLogStore(store)
+	srv.SetTaskStore(store)
+	srv.SetAttemptStore(store)
 	srv.SetLogBroadcaster(broadcaster)
 
 	// Set up evolution trigger

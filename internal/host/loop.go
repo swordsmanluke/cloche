@@ -13,6 +13,10 @@ import (
 	"github.com/cloche-dev/cloche/internal/ports"
 )
 
+// AttemptIDMetadataKey is the gRPC metadata key used to propagate an attempt ID
+// from a host executor to a child container dispatch.
+const AttemptIDMetadataKey = "x-cloche-attempt-id"
+
 const (
 	defaultMaxConcurrent          = 1
 	defaultDedupTimeout           = 5 * time.Minute
@@ -36,15 +40,17 @@ type LoopConfig struct {
 type ListTasksFunc func(ctx context.Context, projectDir string) ([]Task, error)
 
 // MainFunc is called to execute the main workflow for a given task.
-type MainFunc func(ctx context.Context, projectDir string, taskID string) (*RunResult, error)
+// attemptID is the ID of the Attempt record created for this loop iteration.
+type MainFunc func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error)
 
 // FinalizeFunc is called after the main workflow completes (both success and
-// failure). It receives the task ID and the outcome of the main phase.
-type FinalizeFunc func(ctx context.Context, projectDir string, taskID string, mainResult *RunResult) (*RunResult, error)
+// failure). It receives the task ID, attempt ID, and the outcome of the main phase.
+type FinalizeFunc func(ctx context.Context, projectDir string, taskID string, attemptID string, mainResult *RunResult) (*RunResult, error)
 
 // RunFunc is the legacy function signature for launching a host workflow run.
 // When taskID is non-empty, the runner should propagate it as CLOCHE_TASK_ID.
-type RunFunc func(ctx context.Context, projectDir string, taskID string) (*RunResult, error)
+// attemptID is the ID of the Attempt record for this run (may be empty).
+type RunFunc func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error)
 
 // TaskAssignment tracks the assignment state of a task.
 type TaskAssignment struct {
@@ -68,17 +74,19 @@ type TaskStateEntry struct {
 // then runs finalize on completion. When configured with a legacy RunFunc, it
 // falls back to the single-function approach.
 type Loop struct {
-	config     LoopConfig
-	listTasks  ListTasksFunc
-	mainFn     MainFunc
-	finalizeFn FinalizeFunc // optional; skipped if nil
-	runner     RunFunc      // legacy single-function mode
-	store      ports.RunStore
-	assigner   TaskAssigner // optional; legacy task assignment
-	stopCh     chan struct{}
-	resumeCh   chan struct{} // signaled by Resume() to wake the loop
-	mu         sync.Mutex
-	running    bool
+	config       LoopConfig
+	listTasks    ListTasksFunc
+	mainFn       MainFunc
+	finalizeFn   FinalizeFunc // optional; skipped if nil
+	runner       RunFunc      // legacy single-function mode
+	store        ports.RunStore
+	attemptStore ports.AttemptStore // optional; creates Attempt records when set
+	taskStore    ports.TaskStore    // optional; ensures Task records exist when set
+	assigner     TaskAssigner       // optional; legacy task assignment
+	stopCh       chan struct{}
+	resumeCh     chan struct{} // signaled by Resume() to wake the loop
+	mu           sync.Mutex
+	running      bool
 	haltedMu            sync.RWMutex
 	halted              bool   // true when loop is halted due to an unrecovered error
 	haltError           string // the error message that caused the halt
@@ -141,6 +149,18 @@ func NewPhaseLoop(cfg LoopConfig, store ports.RunStore, listTasksFn ListTasksFun
 // Only used in legacy (single RunFunc) mode when no list-tasks function is set.
 func (l *Loop) SetTaskAssigner(a TaskAssigner) {
 	l.assigner = a
+}
+
+// SetAttemptStore configures an AttemptStore so the loop creates and completes
+// Attempt records for each task it picks up.
+func (l *Loop) SetAttemptStore(a ports.AttemptStore) {
+	l.attemptStore = a
+}
+
+// SetTaskStore configures a TaskStore so the loop can ensure Task records exist
+// before creating Attempt records against them.
+func (l *Loop) SetTaskStore(ts ports.TaskStore) {
+	l.taskStore = ts
 }
 
 // Start begins the orchestration loop. No-op if already running.
@@ -291,14 +311,18 @@ func (l *Loop) runPhased() {
 				break // no assignable tasks
 			}
 
+			// Create an Attempt record for this loop iteration.
+			attemptID := l.createAttemptForTask(taskID, taskTitle, l.config.ProjectDir)
+
 			// Launch main + finalize in a goroutine.
 			inFlight++
 			launched++
 			tid := taskID
 			ttitle := taskTitle
+			aid := attemptID
 			go func() {
 				// Phase 2: main — do the work.
-				mainResult, err := l.mainFn(context.Background(), l.config.ProjectDir, tid)
+				mainResult, err := l.mainFn(context.Background(), l.config.ProjectDir, tid, aid)
 				if err != nil {
 					log.Printf("orchestration loop: main failed for %s task %s: %v", l.config.ProjectDir, tid, err)
 					if mainResult == nil {
@@ -327,7 +351,7 @@ func (l *Loop) runPhased() {
 				// The overall state is the worst of main and finalize outcomes.
 				overallState := mainResult.State
 				if l.finalizeFn != nil {
-					finalizeResult, finalizeErr := l.finalizeFn(context.Background(), l.config.ProjectDir, tid, mainResult)
+					finalizeResult, finalizeErr := l.finalizeFn(context.Background(), l.config.ProjectDir, tid, aid, mainResult)
 					if finalizeErr != nil {
 						log.Printf("orchestration loop: finalize failed for %s task %s: %v", l.config.ProjectDir, tid, finalizeErr)
 						overallState = domain.WorseState(overallState, domain.RunStateFailed)
@@ -335,6 +359,9 @@ func (l *Loop) runPhased() {
 						overallState = domain.WorseState(overallState, finalizeResult.State)
 					}
 				}
+
+				// Complete the attempt record now that all phases are done.
+				l.completeAttempt(aid, overallState)
 
 				completions <- result{state: overallState, errMsg: fmt.Sprintf("task %s failed", tid)}
 			}()
@@ -495,26 +522,33 @@ func (l *Loop) runLegacy() {
 
 			// Determine task ID (if task assigner is configured).
 			taskID := ""
+			taskTitle := ""
 			if l.assigner != nil {
 				var ok bool
-				taskID, ok = l.pickTask()
+				taskID, taskTitle, ok = l.pickTask()
 				if !ok {
 					// No assignable tasks available.
 					break
 				}
 			}
 
+			// Create an Attempt record for this loop iteration (if task ID known).
+			attemptID := l.createAttemptForTask(taskID, taskTitle, l.config.ProjectDir)
+
 			// Launch a new orchestration run in a goroutine.
 			inFlight++
 			launched++
-			tid := taskID // capture for goroutine
+			tid := taskID    // capture for goroutine
+			aid := attemptID // capture for goroutine
 			go func() {
-				res, err := l.runner(context.Background(), l.config.ProjectDir, tid)
+				res, err := l.runner(context.Background(), l.config.ProjectDir, tid, aid)
 				if err != nil {
 					log.Printf("orchestration loop: run failed for %s: %v", l.config.ProjectDir, err)
+					l.completeAttempt(aid, domain.RunStateFailed)
 					completions <- result{state: domain.RunStateFailed, errMsg: err.Error()}
 					return
 				}
+				l.completeAttempt(aid, res.State)
 				if res.State != domain.RunStateSucceeded {
 					completions <- result{state: res.State, errMsg: "run failed with state " + string(res.State)}
 					return
@@ -558,17 +592,17 @@ func (l *Loop) runLegacy() {
 }
 
 // pickTask queries the task assigner for available tasks, filters out those
-// within the dedup timeout window, and returns the first assignable task ID.
+// within the dedup timeout window, and returns the first assignable task ID and title.
 // It records the assignment time so the same task won't be picked again until
-// the dedup timeout expires. Returns ("", false) if no tasks are available.
-func (l *Loop) pickTask() (string, bool) {
+// the dedup timeout expires. Returns ("", "", false) if no tasks are available.
+func (l *Loop) pickTask() (string, string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	tasks, err := l.assigner.ListTasks(ctx, l.config.ProjectDir)
 	if err != nil {
 		log.Printf("orchestration loop: list-tasks failed for %s: %v", l.config.ProjectDir, err)
-		return "", false
+		return "", "", false
 	}
 
 	// Cache the latest tasks for snapshot queries.
@@ -597,10 +631,72 @@ func (l *Loop) pickTask() (string, bool) {
 		// Assign this task.
 		l.dedup[task.ID] = now
 		log.Printf("orchestration loop: assigned task %s for %s", task.ID, l.config.ProjectDir)
-		return task.ID, true
+		return task.ID, task.Title, true
 	}
 
-	return "", false
+	return "", "", false
+}
+
+// createAttemptForTask ensures a Task record exists in the store and creates a
+// new running Attempt for it. Returns the attempt ID, or "" if attempt tracking
+// is not configured or the task ID is empty.
+func (l *Loop) createAttemptForTask(taskID, taskTitle, projectDir string) string {
+	if l.attemptStore == nil || taskID == "" {
+		return ""
+	}
+	ctx := context.Background()
+
+	// Ensure the task exists before creating an attempt that references it.
+	if l.taskStore != nil {
+		if _, err := l.taskStore.GetTask(ctx, taskID); err != nil {
+			task := &domain.Task{
+				ID:         taskID,
+				Title:      taskTitle,
+				Source:     domain.TaskSourceExternal,
+				ProjectDir: projectDir,
+				CreatedAt:  time.Now(),
+			}
+			if saveErr := l.taskStore.SaveTask(ctx, task); saveErr != nil {
+				log.Printf("orchestration loop: failed to save task %s: %v", taskID, saveErr)
+			}
+		}
+	}
+
+	attempt := domain.NewAttempt(taskID)
+	if err := l.attemptStore.SaveAttempt(ctx, attempt); err != nil {
+		log.Printf("orchestration loop: failed to create attempt for task %s: %v", taskID, err)
+		return ""
+	}
+	log.Printf("orchestration loop: created attempt %s for task %s", attempt.ID, taskID)
+	return attempt.ID
+}
+
+// completeAttempt marks the attempt with the given ID as finished with the
+// result derived from the run state. No-op if attempt tracking is not configured
+// or the attempt ID is empty.
+func (l *Loop) completeAttempt(attemptID string, state domain.RunState) {
+	if l.attemptStore == nil || attemptID == "" {
+		return
+	}
+	ctx := context.Background()
+	attempt, err := l.attemptStore.GetAttempt(ctx, attemptID)
+	if err != nil {
+		log.Printf("orchestration loop: failed to get attempt %s for completion: %v", attemptID, err)
+		return
+	}
+	var result domain.AttemptResult
+	switch state {
+	case domain.RunStateSucceeded:
+		result = domain.AttemptResultSucceeded
+	case domain.RunStateCancelled:
+		result = domain.AttemptResultCancelled
+	default:
+		result = domain.AttemptResultFailed
+	}
+	attempt.Complete(result)
+	if err := l.attemptStore.SaveAttempt(ctx, attempt); err != nil {
+		log.Printf("orchestration loop: failed to complete attempt %s: %v", attemptID, err)
+	}
 }
 
 // countActiveHostRuns counts running or pending host runs for the project.

@@ -9,14 +9,118 @@ import (
 	"time"
 
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// fakeAttemptStore records saved and updated attempts for testing.
+type fakeAttemptStore struct {
+	mu       sync.Mutex
+	attempts map[string]*domain.Attempt
+}
+
+func newFakeAttemptStore() *fakeAttemptStore {
+	return &fakeAttemptStore{attempts: make(map[string]*domain.Attempt)}
+}
+
+func (f *fakeAttemptStore) SaveAttempt(_ context.Context, a *domain.Attempt) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cp := *a
+	f.attempts[a.ID] = &cp
+	return nil
+}
+
+func (f *fakeAttemptStore) GetAttempt(_ context.Context, id string) (*domain.Attempt, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	a, ok := f.attempts[id]
+	if !ok {
+		return nil, fmt.Errorf("attempt %q not found", id)
+	}
+	cp := *a
+	return &cp, nil
+}
+
+func (f *fakeAttemptStore) ListAttempts(_ context.Context, taskID string) ([]*domain.Attempt, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []*domain.Attempt
+	for _, a := range f.attempts {
+		if a.TaskID == taskID {
+			cp := *a
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeAttemptStore) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.attempts)
+}
+
+func (f *fakeAttemptStore) all() []*domain.Attempt {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*domain.Attempt, 0, len(f.attempts))
+	for _, a := range f.attempts {
+		cp := *a
+		out = append(out, &cp)
+	}
+	return out
+}
+
+// fakeTaskStore records saved tasks for testing.
+type fakeTaskStore struct {
+	mu    sync.Mutex
+	tasks map[string]*domain.Task
+}
+
+func newFakeTaskStore() *fakeTaskStore {
+	return &fakeTaskStore{tasks: make(map[string]*domain.Task)}
+}
+
+func (f *fakeTaskStore) SaveTask(_ context.Context, t *domain.Task) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cp := *t
+	f.tasks[t.ID] = &cp
+	return nil
+}
+
+func (f *fakeTaskStore) GetTask(_ context.Context, id string) (*domain.Task, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.tasks[id]
+	if !ok {
+		return nil, fmt.Errorf("task %q not found", id)
+	}
+	cp := *t
+	return &cp, nil
+}
+
+func (f *fakeTaskStore) ListTasks(_ context.Context, _ string) ([]*domain.Task, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*domain.Task, 0, len(f.tasks))
+	for _, t := range f.tasks {
+		cp := *t
+		out = append(out, &cp)
+	}
+	return out, nil
+}
+
+var _ ports.AttemptStore = (*fakeAttemptStore)(nil)
+var _ ports.TaskStore = (*fakeTaskStore)(nil)
 
 func TestLoop_StartStop(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	var called atomic.Int32
 
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		called.Add(1)
 		// Simulate a run that finds no work (failed = aborted).
 		time.Sleep(50 * time.Millisecond)
@@ -54,7 +158,7 @@ func TestLoop_RampsUpOnSuccess(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	var called atomic.Int32
 
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		n := called.Add(1)
 		time.Sleep(20 * time.Millisecond)
 		// First 3 succeed, then fail (no more work).
@@ -81,7 +185,7 @@ func TestLoop_RampsUpOnSuccess(t *testing.T) {
 
 func TestLoop_DoubleStartIsNoop(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		time.Sleep(100 * time.Millisecond)
 		return &RunResult{State: domain.RunStateFailed}, nil
 	}
@@ -125,7 +229,7 @@ func TestLoop_TaskAssigner_PassesTaskID(t *testing.T) {
 	var receivedTaskIDs []string
 	var mu sync.Mutex
 
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		mu.Lock()
 		receivedTaskIDs = append(receivedTaskIDs, taskID)
 		mu.Unlock()
@@ -162,7 +266,7 @@ func TestLoop_TaskAssigner_DedupPreventsReassignment(t *testing.T) {
 	var receivedTaskIDs []string
 	var mu sync.Mutex
 
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		mu.Lock()
 		receivedTaskIDs = append(receivedTaskIDs, taskID)
 		mu.Unlock()
@@ -198,7 +302,7 @@ func TestLoop_TaskAssigner_DedupExpires(t *testing.T) {
 	var receivedTaskIDs []string
 	var mu sync.Mutex
 
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		mu.Lock()
 		receivedTaskIDs = append(receivedTaskIDs, taskID)
 		mu.Unlock()
@@ -239,7 +343,7 @@ func TestLoop_TaskAssigner_NoTasks_BacksOff(t *testing.T) {
 
 	var called atomic.Int32
 
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		called.Add(1)
 		return &RunResult{State: domain.RunStateSucceeded}, nil
 	}
@@ -262,7 +366,7 @@ func TestLoop_NoTaskAssigner_EmptyTaskID(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 
 	var receivedTaskID string
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		receivedTaskID = taskID
 		time.Sleep(20 * time.Millisecond)
 		return &RunResult{State: domain.RunStateFailed}, nil
@@ -298,7 +402,7 @@ func TestPhaseLoop_BasicFlow(t *testing.T) {
 		}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		mainCalls.Add(1)
 		mu.Lock()
 		receivedTaskIDs = append(receivedTaskIDs, taskID)
@@ -307,7 +411,7 @@ func TestPhaseLoop_BasicFlow(t *testing.T) {
 		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
 	}
 
-	finalizeFn := func(ctx context.Context, projectDir string, taskID string, mainResult *RunResult) (*RunResult, error) {
+	finalizeFn := func(ctx context.Context, projectDir string, taskID string, attemptID string, mainResult *RunResult) (*RunResult, error) {
 		finalizeCalls.Add(1)
 		return &RunResult{State: domain.RunStateSucceeded}, nil
 	}
@@ -344,7 +448,7 @@ func TestPhaseLoop_SkipsClosedTasks(t *testing.T) {
 		}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		mainCalls.Add(1)
 		return &RunResult{State: domain.RunStateSucceeded}, nil
 	}
@@ -372,11 +476,11 @@ func TestPhaseLoop_FinalizeRunsOnFailure(t *testing.T) {
 		return []Task{{ID: "task-1", Status: "open"}}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		return &RunResult{RunID: "run-1", State: domain.RunStateFailed}, nil
 	}
 
-	finalizeFn := func(ctx context.Context, projectDir string, taskID string, mainResult *RunResult) (*RunResult, error) {
+	finalizeFn := func(ctx context.Context, projectDir string, taskID string, attemptID string, mainResult *RunResult) (*RunResult, error) {
 		mu.Lock()
 		finalizeOutcome = string(mainResult.State)
 		mu.Unlock()
@@ -414,11 +518,11 @@ func TestPhaseLoop_FinalizeFailureOverridesMainSuccess(t *testing.T) {
 		return nil, nil // no more tasks after first round
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
 	}
 
-	finalizeFn := func(ctx context.Context, projectDir string, taskID string, mainResult *RunResult) (*RunResult, error) {
+	finalizeFn := func(ctx context.Context, projectDir string, taskID string, attemptID string, mainResult *RunResult) (*RunResult, error) {
 		// Finalize fails (e.g., merge step failed).
 		return &RunResult{State: domain.RunStateFailed}, nil
 	}
@@ -456,12 +560,12 @@ func TestPhaseLoop_FinalizeErrorOverridesMainSuccess(t *testing.T) {
 		return []Task{{ID: "task-1", Status: "open"}}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		mainCalls.Add(1)
 		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
 	}
 
-	finalizeFn := func(ctx context.Context, projectDir string, taskID string, mainResult *RunResult) (*RunResult, error) {
+	finalizeFn := func(ctx context.Context, projectDir string, taskID string, attemptID string, mainResult *RunResult) (*RunResult, error) {
 		// Finalize returns an error (infra failure).
 		return nil, fmt.Errorf("finalize infra error")
 	}
@@ -489,7 +593,7 @@ func TestPhaseLoop_NoFinalize(t *testing.T) {
 		return []Task{{ID: "task-1", Status: "open"}}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		mainCalls.Add(1)
 		time.Sleep(20 * time.Millisecond)
 		return &RunResult{State: domain.RunStateSucceeded}, nil
@@ -519,7 +623,7 @@ func TestPhaseLoop_DedupFiltersOpenTasks(t *testing.T) {
 		return []Task{{ID: "task-1", Status: "open"}}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		mu.Lock()
 		receivedTaskIDs = append(receivedTaskIDs, taskID)
 		mu.Unlock()
@@ -547,7 +651,7 @@ func TestPhaseLoop_DedupFiltersOpenTasks(t *testing.T) {
 
 func TestLoop_GetTaskSnapshot_Empty(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		time.Sleep(100 * time.Millisecond)
 		return &RunResult{State: domain.RunStateFailed}, nil
 	}
@@ -574,7 +678,7 @@ func TestLoop_GetTaskSnapshot_ReturnsLastTasks(t *testing.T) {
 		return tasks, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		time.Sleep(50 * time.Millisecond)
 		return &RunResult{RunID: "run-" + taskID, State: domain.RunStateSucceeded}, nil
 	}
@@ -616,7 +720,7 @@ func TestLoop_GetTaskSnapshot_LegacyWithAssigner(t *testing.T) {
 		},
 	}
 
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		time.Sleep(20 * time.Millisecond)
 		return &RunResult{State: domain.RunStateSucceeded}, nil
 	}
@@ -651,7 +755,7 @@ func TestLoop_GetTaskSnapshot_DedupExpired(t *testing.T) {
 		return tasks, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
 	}
 
@@ -679,7 +783,7 @@ func TestLoop_StopOnError_HaltsOnFailure(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	var called atomic.Int32
 
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		n := called.Add(1)
 		time.Sleep(20 * time.Millisecond)
 		if n == 1 {
@@ -715,7 +819,7 @@ func TestLoop_StopOnError_ResumeAllowsNewWork(t *testing.T) {
 	var called atomic.Int32
 	var resumeReady atomic.Bool
 
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		n := called.Add(1)
 		time.Sleep(20 * time.Millisecond)
 		if n == 1 {
@@ -765,7 +869,7 @@ func TestLoop_StopOnError_Disabled_ContinuesOnFailure(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	var called atomic.Int32
 
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		called.Add(1)
 		time.Sleep(20 * time.Millisecond)
 		return &RunResult{State: domain.RunStateFailed}, nil
@@ -800,7 +904,7 @@ func TestPhaseLoop_StopOnError_HaltsOnFailure(t *testing.T) {
 		}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		mainCalls.Add(1)
 		time.Sleep(20 * time.Millisecond)
 		return &RunResult{RunID: "run-" + taskID, State: domain.RunStateFailed}, nil
@@ -834,7 +938,7 @@ func TestLoop_ConsecutiveFailures_RecordAndReset(t *testing.T) {
 		ProjectDir:             "/tmp/test-project",
 		MaxConcurrent:          1,
 		MaxConsecutiveFailures: 3,
-	}, store, func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	}, store, func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		return &RunResult{State: domain.RunStateSucceeded}, nil
 	})
 
@@ -854,7 +958,7 @@ func TestLoop_ConsecutiveFailures_HaltsLoopOnThreshold(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	var called atomic.Int32
 
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		n := called.Add(1)
 		time.Sleep(20 * time.Millisecond)
 		if n == 1 {
@@ -885,7 +989,7 @@ func TestLoop_ConsecutiveFailures_ResumeResetsCounter(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	var called atomic.Int32
 
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		called.Add(1)
 		time.Sleep(20 * time.Millisecond)
 		return &RunResult{State: domain.RunStateFailed}, nil
@@ -923,7 +1027,7 @@ func TestLoop_ConsecutiveFailures_DefaultThreshold(t *testing.T) {
 		ProjectDir:             "/tmp/test-project",
 		MaxConcurrent:          1,
 		MaxConsecutiveFailures: 0,
-	}, store, func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	}, store, func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		return &RunResult{State: domain.RunStateSucceeded}, nil
 	})
 
@@ -934,7 +1038,7 @@ func TestLoop_ConsecutiveFailures_SuccessResetsInLoop(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	var called atomic.Int32
 
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		n := called.Add(1)
 		time.Sleep(20 * time.Millisecond)
 		// First succeeds (resets counter), second fails and halts (threshold=1).
@@ -968,7 +1072,7 @@ func TestPhaseLoop_ConsecutiveFailures_HaltsAfterThreshold(t *testing.T) {
 		return []Task{{ID: fmt.Sprintf("task-%d", mainCalls.Load()+1), Status: "open"}}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		mainCalls.Add(1)
 		time.Sleep(20 * time.Millisecond)
 		return &RunResult{RunID: "run-" + taskID, State: domain.RunStateFailed}, nil
@@ -994,7 +1098,7 @@ func TestPhaseLoop_ConsecutiveFailures_HaltsAfterThreshold(t *testing.T) {
 
 func TestLoop_Halted_DefaultFalse(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		return &RunResult{State: domain.RunStateSucceeded}, nil
 	}
 
@@ -1010,7 +1114,7 @@ func TestLoop_Halted_DefaultFalse(t *testing.T) {
 
 func TestLoop_Resume_NopWhenNotHalted(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
-	runFn := func(ctx context.Context, projectDir string, taskID string) (*RunResult, error) {
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		return &RunResult{State: domain.RunStateSucceeded}, nil
 	}
 
@@ -1023,4 +1127,203 @@ func TestLoop_Resume_NopWhenNotHalted(t *testing.T) {
 	loop.Resume()
 	halted, _ := loop.Halted()
 	assert.False(t, halted)
+}
+
+// --- Attempt tracking tests ---
+
+func TestPhaseLoop_CreatesAttemptOnTaskPick(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	attemptStore := newFakeAttemptStore()
+	taskStore := newFakeTaskStore()
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{{ID: "task-1", Status: "open", Title: "Fix bug"}}, nil
+	}
+
+	var receivedAttemptID string
+	var mu sync.Mutex
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+		mu.Lock()
+		receivedAttemptID = attemptID
+		mu.Unlock()
+		time.Sleep(20 * time.Millisecond)
+		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  2 * time.Second,
+	}, store, listTasksFn, mainFn, nil)
+	loop.SetAttemptStore(attemptStore)
+	loop.SetTaskStore(taskStore)
+
+	loop.Start()
+	time.Sleep(300 * time.Millisecond)
+	loop.Stop()
+
+	// An attempt should have been created.
+	require.Equal(t, 1, attemptStore.count(), "expected one attempt to be created")
+
+	mu.Lock()
+	aid := receivedAttemptID
+	mu.Unlock()
+
+	assert.NotEmpty(t, aid, "attempt ID should be passed to mainFn")
+
+	// The attempt should be completed (succeeded).
+	attempts := attemptStore.all()
+	require.Len(t, attempts, 1)
+	assert.Equal(t, domain.AttemptResultSucceeded, attempts[0].Result)
+	assert.Equal(t, "task-1", attempts[0].TaskID)
+
+	// The task record should exist.
+	task, err := taskStore.GetTask(context.Background(), "task-1")
+	require.NoError(t, err)
+	assert.Equal(t, "Fix bug", task.Title)
+}
+
+func TestPhaseLoop_AttemptCompletedAsFailed(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	attemptStore := newFakeAttemptStore()
+	taskStore := newFakeTaskStore()
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{{ID: "task-1", Status: "open"}}, nil
+	}
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+		return &RunResult{RunID: "run-1", State: domain.RunStateFailed}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  2 * time.Second,
+	}, store, listTasksFn, mainFn, nil)
+	loop.SetAttemptStore(attemptStore)
+	loop.SetTaskStore(taskStore)
+
+	loop.Start()
+	time.Sleep(200 * time.Millisecond)
+	loop.Stop()
+
+	attempts := attemptStore.all()
+	require.Len(t, attempts, 1)
+	assert.Equal(t, domain.AttemptResultFailed, attempts[0].Result)
+}
+
+func TestPhaseLoop_AttemptIDPassedToFinalize(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	attemptStore := newFakeAttemptStore()
+	taskStore := newFakeTaskStore()
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{{ID: "task-1", Status: "open"}}, nil
+	}
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
+	}
+
+	var finalizeAttemptID string
+	var mu sync.Mutex
+
+	finalizeFn := func(ctx context.Context, projectDir string, taskID string, attemptID string, mainResult *RunResult) (*RunResult, error) {
+		mu.Lock()
+		finalizeAttemptID = attemptID
+		mu.Unlock()
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  2 * time.Second,
+	}, store, listTasksFn, mainFn, finalizeFn)
+	loop.SetAttemptStore(attemptStore)
+	loop.SetTaskStore(taskStore)
+
+	loop.Start()
+	time.Sleep(300 * time.Millisecond)
+	loop.Stop()
+
+	mu.Lock()
+	aid := finalizeAttemptID
+	mu.Unlock()
+
+	assert.NotEmpty(t, aid, "attempt ID should be passed to finalizeFn")
+	// mainFn and finalizeFn should receive the same attempt ID.
+}
+
+func TestLegacyLoop_CreatesAttemptWhenTaskAssignerSet(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	attemptStore := newFakeAttemptStore()
+	taskStore := newFakeTaskStore()
+
+	assigner := &fakeTaskAssigner{
+		tasks: []Task{{ID: "task-1", Title: "Fix bug"}},
+	}
+
+	var receivedAttemptID string
+	var mu sync.Mutex
+
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+		mu.Lock()
+		receivedAttemptID = attemptID
+		mu.Unlock()
+		time.Sleep(20 * time.Millisecond)
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  2 * time.Second,
+	}, store, runFn)
+	loop.SetTaskAssigner(assigner)
+	loop.SetAttemptStore(attemptStore)
+	loop.SetTaskStore(taskStore)
+
+	loop.Start()
+	time.Sleep(200 * time.Millisecond)
+	loop.Stop()
+
+	mu.Lock()
+	aid := receivedAttemptID
+	mu.Unlock()
+
+	assert.NotEmpty(t, aid, "attempt ID should be passed to runFn when task assigner is set")
+	assert.Equal(t, 1, attemptStore.count(), "one attempt should be created")
+
+	attempts := attemptStore.all()
+	require.Len(t, attempts, 1)
+	assert.Equal(t, "task-1", attempts[0].TaskID)
+	assert.Equal(t, domain.AttemptResultSucceeded, attempts[0].Result)
+}
+
+func TestLegacyLoop_NoAttemptWhenNoTaskAssigner(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	attemptStore := newFakeAttemptStore()
+
+	var receivedAttemptID string
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+		receivedAttemptID = attemptID
+		return &RunResult{State: domain.RunStateFailed}, nil
+	}
+
+	loop := NewLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+	}, store, runFn)
+	loop.SetAttemptStore(attemptStore)
+	// No task assigner — task ID is empty, no attempt should be created.
+
+	loop.Start()
+	time.Sleep(200 * time.Millisecond)
+	loop.Stop()
+
+	assert.Empty(t, receivedAttemptID, "no attempt ID without task assigner")
+	assert.Equal(t, 0, attemptStore.count(), "no attempts should be created without task assigner")
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/protocol"
 	"github.com/cloche-dev/cloche/internal/runcontext"
+	"google.golang.org/grpc/metadata"
 )
 
 // resolveOutputMappings finds all wires targeting stepName that have output mappings,
@@ -60,6 +61,7 @@ type Executor struct {
 	AgentCommands []string       // workflow-level agent command fallback chain
 	AgentArgs     []string       // workflow-level explicit agent args (overrides defaults)
 	TaskID        string         // optional task ID assigned by the daemon loop
+	AttemptID     string         // optional attempt ID for v2 tracking (propagated to child runs)
 	ExtraEnv      []string       // additional KEY=VALUE env vars for all steps
 	ResumeStep    string         // step being resumed (for prompt conversation resume)
 }
@@ -186,7 +188,15 @@ func (e *Executor) executeWorkflow(ctx context.Context, step *domain.Step) (stri
 		}
 	}
 
-	resp, err := e.Dispatcher.RunWorkflow(ctx, &pb.RunWorkflowRequest{
+	// Propagate attempt ID to the child run via gRPC metadata so the server
+	// can link the container run to the same attempt as the parent host run.
+	dispatchCtx := ctx
+	if e.AttemptID != "" {
+		md := metadata.Pairs(AttemptIDMetadataKey, e.AttemptID)
+		dispatchCtx = metadata.NewOutgoingContext(ctx, md)
+	}
+
+	resp, err := e.Dispatcher.RunWorkflow(dispatchCtx, &pb.RunWorkflowRequest{
 		WorkflowName: workflowName,
 		ProjectDir:   e.ProjectDir,
 		Prompt:       promptContent,

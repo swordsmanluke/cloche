@@ -157,17 +157,18 @@ Logs move from the current per-run layout:
 To a task/attempt hierarchy:
 
 ```
-.cloche/logs/<task-id>/<attempt-id>/<workflow>-<step>.log
+.cloche/logs/<task-id>/<attempt-id>/<step>.log
 ```
 
-Example: `.cloche/logs/cloche-123/a12z/develop-implement.log`
+Example: `.cloche/logs/cloche-123/a12z/prepare-prompt.log`
 
-Workflow-dispatch steps (e.g. `main:develop`) do not capture their own output
-because the dispatched workflow has its own step logs. This avoids duplication —
-`main-develop.log` does not exist; instead the output lives under
-`develop-implement.log`, `develop-test.log`, etc.
+Each host workflow run (e.g. `main`) writes its step logs into the shared
+attempt directory. Workflow-dispatch steps (e.g. `main:develop`) capture the
+child run ID as their step output, so `develop.log` contains the dispatched run
+ID rather than container-side output. Container-side step logs still live under
+`.cloche/<run-id>/output/` until full v2 migration is complete.
 
-The `full.log` unified log file moves to
+The `full.log` unified log file is at
 `.cloche/logs/<task-id>/<attempt-id>/full.log`.
 
 ### CLI Changes
@@ -238,8 +239,11 @@ The SSE streaming endpoint (`/api/runs/{id}/stream`) becomes
 
 This is a v2.0.0 breaking change. Key RPC changes:
 
+- `RunWorkflow` already accepts an attempt ID propagated from the host executor
+  via the `x-cloche-attempt-id` gRPC metadata header, so child container runs
+  are linked to the parent host run's attempt.
 - `RunWorkflow` response includes `task_id` and `attempt_id` (instead of just
-  `run_id`)
+  `run_id`) — *not yet implemented; currently returns only `run_id`*
 - `ListRuns` becomes `ListTasks` — returns tasks with latest attempt info
 - New `GetTask(task_id)` RPC — returns task with all attempts
 - New `GetAttempt(attempt_id)` RPC — returns attempt with step executions
