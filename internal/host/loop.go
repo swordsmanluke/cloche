@@ -552,19 +552,29 @@ func (l *Loop) runLegacy() {
 			tid := taskID    // capture for goroutine
 			aid := attemptID // capture for goroutine
 			go func() {
+				// runState defaults to failed; the deferred function guarantees
+				// completeAttempt and the completions signal are always sent, even on
+				// panic, so no attempt can be left permanently stuck as running.
+				runState := domain.RunStateFailed
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("orchestration loop: panic in legacy run goroutine: %v", r)
+					}
+					l.completeAttempt(aid, runState)
+					if runState != domain.RunStateSucceeded {
+						completions <- result{state: runState, errMsg: "run failed with state " + string(runState)}
+					} else {
+						completions <- result{state: runState}
+					}
+				}()
+
 				res, err := l.runner(context.Background(), l.config.ProjectDir, tid, aid)
 				if err != nil {
 					log.Printf("orchestration loop: run failed for %s: %v", l.config.ProjectDir, err)
-					l.completeAttempt(aid, domain.RunStateFailed)
-					completions <- result{state: domain.RunStateFailed, errMsg: err.Error()}
+					// runState stays RunStateFailed; defer handles the rest.
 					return
 				}
-				l.completeAttempt(aid, res.State)
-				if res.State != domain.RunStateSucceeded {
-					completions <- result{state: res.State, errMsg: "run failed with state " + string(res.State)}
-					return
-				}
-				completions <- result{state: res.State}
+				runState = res.State
 			}()
 		}
 

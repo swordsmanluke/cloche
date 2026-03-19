@@ -1328,6 +1328,99 @@ func TestLegacyLoop_NoAttemptWhenNoTaskAssigner(t *testing.T) {
 	assert.Equal(t, 0, attemptStore.count(), "no attempts should be created without task assigner")
 }
 
+func TestLegacyLoop_AttemptCompletedOnPanic(t *testing.T) {
+	// Regression test: if runner panics, the attempt must still be completed
+	// (not left permanently stuck as 'running') and the loop must not deadlock.
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	attemptStore := newFakeAttemptStore()
+	taskStore := newFakeTaskStore()
+
+	assigner := &fakeTaskAssigner{
+		tasks: []Task{{ID: "task-panic", Title: "Panic task"}},
+	}
+
+	var callCount atomic.Int32
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+		n := callCount.Add(1)
+		if n == 1 {
+			panic("simulated runner panic")
+		}
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  50 * time.Millisecond, // short so retry happens quickly
+		StopOnError:   true,                  // halts after first failure, allowing Resume to wake it
+	}, store, runFn)
+	loop.SetTaskAssigner(assigner)
+	loop.SetAttemptStore(attemptStore)
+	loop.SetTaskStore(taskStore)
+
+	loop.Start()
+	// Wait for the first (panicking) run to complete and the loop to halt.
+	time.Sleep(200 * time.Millisecond)
+	require.Equal(t, int32(1), callCount.Load(), "first run should have completed (panicked)")
+
+	// The first attempt must be completed even though runner panicked.
+	attempts := attemptStore.all()
+	require.Len(t, attempts, 1, "one attempt should have been created")
+	assert.NotZero(t, attempts[0].EndedAt, "attempt must be completed, not stuck as running after panic")
+	assert.Equal(t, domain.AttemptResultFailed, attempts[0].Result, "panicked run should map to failed")
+
+	loop.Stop()
+}
+
+func TestLegacyLoop_AttemptCompletedOnRetry(t *testing.T) {
+	// Regression test: when a task is retried after dedup expiry, all attempts
+	// (including the retry) must be completed.
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	attemptStore := newFakeAttemptStore()
+	taskStore := newFakeTaskStore()
+
+	assigner := &fakeTaskAssigner{
+		tasks: []Task{{ID: "task-retry", Title: "Retry task"}},
+	}
+
+	var callCount atomic.Int32
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+		n := callCount.Add(1)
+		if n == 1 {
+			return &RunResult{State: domain.RunStateFailed}, nil
+		}
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  50 * time.Millisecond, // short so retry happens after Resume
+		StopOnError:   true,                  // halts after first failure, allowing Resume to wake it
+	}, store, runFn)
+	loop.SetTaskAssigner(assigner)
+	loop.SetAttemptStore(attemptStore)
+	loop.SetTaskStore(taskStore)
+
+	loop.Start()
+	// Wait for the first run to fail and the loop to halt.
+	time.Sleep(200 * time.Millisecond)
+	require.Equal(t, int32(1), callCount.Load(), "first run should have completed")
+
+	// Resume wakes the loop so the retry is picked up once the dedup has expired.
+	loop.Resume()
+	time.Sleep(200 * time.Millisecond)
+	loop.Stop()
+
+	require.GreaterOrEqual(t, int(callCount.Load()), 2, "task should have been attempted at least twice")
+
+	attempts := attemptStore.all()
+	require.GreaterOrEqual(t, len(attempts), 2, "should have at least 2 attempt records")
+	for _, a := range attempts {
+		assert.NotZero(t, a.EndedAt, "every attempt must be completed, not stuck as running")
+	}
+}
+
 func TestPhaseLoop_AttemptCompletedWhenMainReturnsNilResult(t *testing.T) {
 	// Regression test: mainFn returning (nil, nil) must not leave the attempt
 	// stuck as 'running'. The goroutine used to dereference mainResult without
