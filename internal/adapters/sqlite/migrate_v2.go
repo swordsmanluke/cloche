@@ -49,6 +49,81 @@ func migrateV2Schema(db *sql.DB) error {
 	return nil
 }
 
+// migrateRunsCompositeKey recreates the runs table with a pk auto-increment
+// primary key and a UNIQUE(attempt_id, id) constraint. This allows run IDs
+// to be just the workflow name (attempt-scoped) rather than globally unique.
+// Safe to run multiple times — checks for the pk column first.
+func migrateRunsCompositeKey(db *sql.DB) error {
+	// Check if migration already applied by inspecting the pk column.
+	rows, err := db.Query(`PRAGMA table_info(runs)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	hasPK := false
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull int
+		var dfltVal sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltVal, &pk); err != nil {
+			continue
+		}
+		if name == "pk" {
+			hasPK = true
+			break
+		}
+	}
+	rows.Close()
+	if hasPK {
+		return nil // already migrated
+	}
+
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS runs_new (
+			pk           INTEGER PRIMARY KEY AUTOINCREMENT,
+			id           TEXT NOT NULL,
+			workflow_name TEXT NOT NULL,
+			state        TEXT NOT NULL,
+			active_steps  TEXT,
+			started_at   TEXT,
+			completed_at  TEXT,
+			project_dir  TEXT NOT NULL DEFAULT '',
+			error_message TEXT,
+			container_id  TEXT,
+			base_sha     TEXT,
+			container_kept INTEGER NOT NULL DEFAULT 0,
+			title        TEXT NOT NULL DEFAULT '',
+			is_host      INTEGER NOT NULL DEFAULT 0,
+			parent_run_id TEXT NOT NULL DEFAULT '',
+			task_id      TEXT NOT NULL DEFAULT '',
+			task_title   TEXT NOT NULL DEFAULT '',
+			attempt_id   TEXT NOT NULL DEFAULT '',
+			UNIQUE(attempt_id, id)
+		)`,
+		`INSERT OR IGNORE INTO runs_new
+			(id, workflow_name, state, active_steps, started_at, completed_at,
+			 project_dir, error_message, container_id, base_sha, container_kept,
+			 title, is_host, parent_run_id, task_id, task_title, attempt_id)
+		 SELECT id, workflow_name, state, active_steps, started_at, completed_at,
+			project_dir, COALESCE(error_message,''), COALESCE(container_id,''),
+			COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,''),
+			COALESCE(is_host,0), COALESCE(parent_run_id,''), COALESCE(task_id,''),
+			COALESCE(task_title,''), COALESCE(attempt_id,'')
+		 FROM runs`,
+		`DROP TABLE runs`,
+		`ALTER TABLE runs_new RENAME TO runs`,
+	}
+
+	for _, stmt := range stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("v3 migration step failed: %w", err)
+		}
+	}
+	return nil
+}
+
 // migratedProjects tracks which projects have been migrated in this process
 // lifetime, avoiding repeated DB checks for the common case.
 var (

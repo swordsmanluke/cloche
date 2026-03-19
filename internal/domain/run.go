@@ -40,6 +40,7 @@ func (e *StepExecution) Duration() time.Duration {
 }
 
 type Run struct {
+	PK             int64  // internal DB primary key; zero for unsaved runs
 	ID             string
 	WorkflowName   string
 	State          RunState

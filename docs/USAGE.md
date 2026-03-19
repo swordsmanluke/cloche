@@ -721,8 +721,8 @@ cloche resume <step-id>
 | Argument | Description |
 |----------|-------------|
 | `<task-id>` | Bare task or run ID (no colons, e.g. `user-a12z`). Resolves to the latest attempt's failed run and resumes from the first failed step. |
-| `<workflow-id>` | Run ID and workflow name joined by a colon (e.g. `a133:develop`). Resumes from the first failed step. |
-| `<step-id>` | Run ID, workflow name, and step name joined by colons (e.g. `a133:develop:review`). Resumes from that step. |
+| `<workflow-id>` | Attempt ID and run ID (workflow name) joined by a colon (e.g. `a133:develop`). Resumes from the first failed step. |
+| `<step-id>` | Attempt ID, run ID (workflow name), and step name joined by colons (e.g. `a133:develop:review`). Resumes from that step. |
 
 **Prerequisites:** The run must be in a failed state. For container workflows, the
 container must still exist (failed runs keep their containers by default).

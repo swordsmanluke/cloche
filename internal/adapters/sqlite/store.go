@@ -125,6 +125,13 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("v2 schema migration: %w", err)
 	}
 
+	// v3: Recreate runs table with pk autoincrement + UNIQUE(attempt_id, id)
+	// so run IDs are attempt-scoped (just the workflow name) rather than
+	// globally unique with a random prefix.
+	if err := migrateRunsCompositeKey(db); err != nil {
+		return fmt.Errorf("v3 runs composite key migration: %w", err)
+	}
+
 	_, errAL := db.Exec(`CREATE TABLE IF NOT EXISTS attempt_logs (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		attempt_id TEXT NOT NULL,
@@ -167,14 +174,14 @@ func (s *Store) CreateRun(ctx context.Context, run *domain.Run) error {
 }
 
 // runSelectCols is the standard column list for scanning a Run row.
-const runSelectCols = `id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,''), COALESCE(is_host,0), COALESCE(parent_run_id,''), COALESCE(task_id,''), COALESCE(task_title,''), COALESCE(attempt_id,'')`
+const runSelectCols = `pk, id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,''), COALESCE(is_host,0), COALESCE(parent_run_id,''), COALESCE(task_id,''), COALESCE(task_title,''), COALESCE(attempt_id,'')`
 
 // scanRun scans a single row into a *domain.Run.
 func scanRun(scanner interface{ Scan(...any) error }) (*domain.Run, error) {
 	run := &domain.Run{}
 	var activeSteps, startedAt, completedAt string
 	var containerKept, isHost int
-	err := scanner.Scan(&run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage, &run.ContainerID, &run.BaseSHA, &containerKept, &run.Title, &isHost, &run.ParentRunID, &run.TaskID, &run.TaskTitle, &run.AttemptID)
+	err := scanner.Scan(&run.PK, &run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage, &run.ContainerID, &run.BaseSHA, &containerKept, &run.Title, &isHost, &run.ParentRunID, &run.TaskID, &run.TaskTitle, &run.AttemptID)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +195,7 @@ func scanRun(scanner interface{ Scan(...any) error }) (*domain.Run, error) {
 
 func (s *Store) GetRun(ctx context.Context, id string) (*domain.Run, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT `+runSelectCols+` FROM runs WHERE id = ?`, id)
+		`SELECT `+runSelectCols+` FROM runs WHERE id = ? ORDER BY pk DESC LIMIT 1`, id)
 
 	run, err := scanRun(row)
 	if err == sql.ErrNoRows {
@@ -197,12 +204,38 @@ func (s *Store) GetRun(ctx context.Context, id string) (*domain.Run, error) {
 	return run, err
 }
 
+// GetRunByAttempt returns the run with the given attempt ID and run ID.
+// This is the preferred lookup when the attempt is known, since run IDs are
+// only unique within an attempt.
+func (s *Store) GetRunByAttempt(ctx context.Context, attemptID, id string) (*domain.Run, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT `+runSelectCols+` FROM runs WHERE attempt_id = ? AND id = ? LIMIT 1`, attemptID, id)
+
+	run, err := scanRun(row)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("run %q for attempt %q not found", id, attemptID)
+	}
+	return run, err
+}
+
 func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
+	// Use pk when available (populated after reads); fall back to
+	// attempt_id+id composite which is unique by schema constraint.
+	if run.PK != 0 {
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ? WHERE pk = ?`,
+			string(run.State), run.ActiveStepsString(),
+			formatTime(run.StartedAt), formatTime(run.CompletedAt),
+			truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, run.PK,
+		)
+		return err
+	}
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ? WHERE id = ?`,
+		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ? WHERE attempt_id = ? AND id = ?`,
 		string(run.State), run.ActiveStepsString(),
 		formatTime(run.StartedAt), formatTime(run.CompletedAt),
-		truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, run.ID,
+		truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID,
+		run.AttemptID, run.ID,
 	)
 	return err
 }

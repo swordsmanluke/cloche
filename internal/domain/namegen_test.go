@@ -1,79 +1,36 @@
 package domain
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func TestGenerateRunID_FormatWithStep(t *testing.T) {
-	id := GenerateRunID("develop", "implement")
-	parts := strings.SplitN(id, "-", 3)
-	require.Len(t, parts, 3, "expected attempt-workflow-step format, got %s", id)
-	assert.Len(t, parts[0], 4, "attempt segment should be 4 chars, got %s", parts[0])
-	assert.Equal(t, "develop", parts[1])
-	assert.Equal(t, "implement", parts[2])
-}
-
-func TestGenerateRunID_FormatWithoutStep(t *testing.T) {
+func TestGenerateRunID_WorkflowNameOnly(t *testing.T) {
 	id := GenerateRunID("develop", "")
-	parts := strings.SplitN(id, "-", 2)
-	require.Len(t, parts, 2, "expected attempt-workflow format, got %s", id)
-	assert.Len(t, parts[0], 4, "attempt segment should be 4 chars, got %s", parts[0])
-	assert.Equal(t, "develop", parts[1])
+	assert.Equal(t, "develop", id, "run ID without step should be just the workflow name")
 }
 
-func TestGenerateRunID_AttemptAlphanumeric(t *testing.T) {
-	for i := 0; i < 20; i++ {
-		id := GenerateRunID("test", "")
-		attempt := strings.SplitN(id, "-", 2)[0]
-		for _, c := range attempt {
-			assert.True(t, (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'),
-				"attempt char %q not alphanumeric in id %s", c, id)
-		}
-	}
+func TestGenerateRunID_WithStep(t *testing.T) {
+	id := GenerateRunID("develop", "implement")
+	assert.Equal(t, "develop-implement", id, "run ID with step should be workflow-step")
 }
 
-func TestGenerateRunID_Unique(t *testing.T) {
-	seen := make(map[string]bool)
-	for i := 0; i < 50; i++ {
-		seen[GenerateRunID("test", "")] = true
-	}
-	assert.Greater(t, len(seen), 1, "expected multiple distinct IDs across 50 calls")
+func TestGenerateRunID_Deterministic(t *testing.T) {
+	// Same workflow name always produces same run ID (no random prefix).
+	a := GenerateRunID("main", "")
+	b := GenerateRunID("main", "")
+	assert.Equal(t, a, b, "GenerateRunID should be deterministic")
 }
 
-func TestFormatRunID(t *testing.T) {
-	assert.Equal(t, "a12z:develop:implement", FormatRunID("a12z-develop-implement"))
-	assert.Equal(t, "a12z:develop", FormatRunID("a12z-develop"))
+func TestFormatRunID_NoConversion(t *testing.T) {
+	assert.Equal(t, "develop", FormatRunID("develop"))
+	assert.Equal(t, "develop-implement", FormatRunID("develop-implement"))
 }
 
-func TestParseRunID_WithColons(t *testing.T) {
-	attempt, workflow, step := ParseRunID("a12z:develop:implement")
-	assert.Equal(t, "a12z", attempt)
-	assert.Equal(t, "develop", workflow)
-	assert.Equal(t, "implement", step)
-}
-
-func TestParseRunID_WithDashes(t *testing.T) {
-	attempt, workflow, step := ParseRunID("a12z-develop-implement")
-	assert.Equal(t, "a12z", attempt)
-	assert.Equal(t, "develop", workflow)
-	assert.Equal(t, "implement", step)
-}
-
-func TestParseRunID_WithoutStep(t *testing.T) {
-	attempt, workflow, step := ParseRunID("a12z:develop")
-	assert.Equal(t, "a12z", attempt)
+func TestParseRunID_ReturnsWorkflowName(t *testing.T) {
+	attempt, workflow, step := ParseRunID("develop")
+	assert.Equal(t, "", attempt, "attempt should be empty — not encoded in run ID")
 	assert.Equal(t, "develop", workflow)
 	assert.Equal(t, "", step)
-}
-
-func TestParseRunID_RoundTrip(t *testing.T) {
-	original := GenerateRunID("main", "build")
-	attempt, workflow, step := ParseRunID(original)
-	assert.Len(t, attempt, 4)
-	assert.Equal(t, "main", workflow)
-	assert.Equal(t, "build", step)
 }

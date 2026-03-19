@@ -77,8 +77,9 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 	if r.TaskID != "" {
 		attemptID := r.AttemptID
 		if attemptID == "" {
-			// Fall back to the attempt ID embedded in the run ID prefix.
-			attemptID, _, _ = domain.ParseRunID(orchRunID)
+			// Run IDs no longer embed the attempt ID — generate one so the
+			// output directory still has the <taskID>/<attemptID>/ structure.
+			attemptID = domain.GenerateAttemptID()
 		}
 		outputDir = filepath.Join(projectDir, ".cloche", "logs", r.TaskID, attemptID)
 	} else {

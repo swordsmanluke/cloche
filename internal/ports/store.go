@@ -18,6 +18,7 @@ type UsageQuery struct {
 type RunStore interface {
 	CreateRun(ctx context.Context, run *domain.Run) error
 	GetRun(ctx context.Context, id string) (*domain.Run, error)
+	GetRunByAttempt(ctx context.Context, attemptID, id string) (*domain.Run, error)
 	UpdateRun(ctx context.Context, run *domain.Run) error
 	DeleteRun(ctx context.Context, id string) error
 	ListRuns(ctx context.Context, since time.Time) ([]*domain.Run, error)

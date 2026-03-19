@@ -47,6 +47,12 @@ func (f *fakeStore) GetRun(_ context.Context, id string) (*domain.Run, error) {
 	}
 	return nil, os.ErrNotExist
 }
+func (f *fakeStore) GetRunByAttempt(_ context.Context, attemptID, id string) (*domain.Run, error) {
+	if r, ok := f.runs[id]; ok && r.AttemptID == attemptID {
+		return r, nil
+	}
+	return nil, os.ErrNotExist
+}
 func (f *fakeStore) UpdateRun(_ context.Context, run *domain.Run) error {
 	f.runs[run.ID] = run
 	return nil
@@ -809,10 +815,8 @@ func TestRunner_WithTaskID(t *testing.T) {
 	assert.Equal(t, domain.RunStateSucceeded, result.State)
 
 	// Verify the script saw the task ID.
-	// v2 runs with a TaskID write output to .cloche/logs/<taskID>/<attemptID>/
-	attemptID, _, _ := domain.ParseRunID(result.RunID)
-	outputDir := filepath.Join(tmpDir, ".cloche", "logs", "daemon-assigned-task-99", attemptID)
-	data, err := os.ReadFile(filepath.Join(outputDir, "check-task.out"))
+	// Use result.OutputDir directly — it is set by the runner to the correct path.
+	data, err := os.ReadFile(filepath.Join(result.OutputDir, "check-task.out"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "daemon-assigned-task-99")
 }

@@ -133,20 +133,8 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		return nil, fmt.Errorf("no container runtime configured")
 	}
 
-	// Generate a unique run ID, retrying on collision
-	var runID string
-	for attempts := 0; attempts < 10; attempts++ {
-		runID = domain.GenerateRunID(workflowName, "")
-		existing, err := s.store.GetRun(ctx, runID)
-		if err != nil {
-			break // ID is free
-		}
-		// Reuse if completed more than 1 hour ago
-		if !existing.CompletedAt.IsZero() && time.Since(existing.CompletedAt) > time.Hour {
-			_ = s.store.DeleteRun(ctx, runID)
-			break
-		}
-	}
+	// Run ID is just the workflow name — uniqueness is scoped to the attempt.
+	runID := domain.GenerateRunID(workflowName, "")
 
 	run := domain.NewRun(runID, workflowName)
 	run.ProjectDir = req.ProjectDir
@@ -206,6 +194,7 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 	}
 
 	hostWorkflowName, _, _ := strings.Cut(req.WorkflowName, ":")
+	// Run ID is just the workflow name — uniqueness is scoped to the attempt.
 	runID := domain.GenerateRunID(hostWorkflowName, "")
 
 	runner := &host.Runner{
