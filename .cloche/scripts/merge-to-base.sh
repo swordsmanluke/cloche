@@ -36,11 +36,26 @@ cleanup_worktree() {
 # Create worktree at the feature branch
 git -C "$PROJECT_DIR" worktree add "$WORKTREE_DIR" "$BRANCH"
 
+# Stash untracked files in the main working tree so they don't conflict with
+# the incoming branch during the fast-forward merge.
+STASH_CREATED=0
+if ! git -C "$PROJECT_DIR" stash --include-untracked -m "cloche/merge-to-base: $RUN_ID" 2>/dev/null; then
+  echo "warning: could not stash untracked files — proceeding anyway" >&2
+else
+  # Only pop if stash actually created an entry (stash exits 0 with "No local changes" too)
+  if git -C "$PROJECT_DIR" stash list | grep -q "cloche/merge-to-base: $RUN_ID"; then
+    STASH_CREATED=1
+  fi
+fi
+
 # Rebase onto base branch — fail on conflict rather than silently dropping changes
 if ! git -C "$WORKTREE_DIR" rebase "$BASE_BRANCH"; then
   echo "error: rebase failed — branch $BRANCH preserved for review" >&2
   git -C "$WORKTREE_DIR" rebase --abort 2>/dev/null || true
   cleanup_worktree
+  if [ "$STASH_CREATED" -eq 1 ]; then
+    git -C "$PROJECT_DIR" stash pop || true
+  fi
   exit 1
 fi
 
@@ -56,6 +71,11 @@ git -C "$PROJECT_DIR" update-ref "refs/heads/$BRANCH" "$REBASED_HEAD"
 
 # Fast-forward base branch, updating the working tree
 git -C "$PROJECT_DIR" merge --ff-only "$BRANCH"
+
+# Restore stashed untracked files
+if [ "$STASH_CREATED" -eq 1 ]; then
+  git -C "$PROJECT_DIR" stash pop || echo "warning: could not restore stashed files" >&2
+fi
 
 # Delete the feature branch
 git -C "$PROJECT_DIR" branch -D "$BRANCH" 2>/dev/null || echo "warning: could not delete branch $BRANCH" >&2
