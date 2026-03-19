@@ -141,9 +141,10 @@ characters, e.g. `a12z`). Generated randomly with collision retry.
 - `a12z:develop` — a workflow execution within the attempt
 - `a12z:develop:implement` — a specific step
 
-This format is used in CLI output, log paths, and API responses. The colon
-delimiter is chosen because it is shell-safe (no quoting needed) and visually
-distinct.
+This format is used in CLI output and API responses. The colon delimiter is
+chosen because it is shell-safe (no quoting needed) and visually distinct.
+**Colons are never used in filesystem paths** — log files use the
+task/attempt directory hierarchy with dash-delimited filenames.
 
 ### Log File Layout
 
