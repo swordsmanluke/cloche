@@ -46,12 +46,15 @@ func main() {
 
 	runID := os.Getenv("CLOCHE_RUN_ID")
 	os.Unsetenv("CLOCHE_RUN_ID")
+	taskID := os.Getenv("CLOCHE_TASK_ID")
+	os.Unsetenv("CLOCHE_TASK_ID")
 
 	runner := agent.NewRunner(agent.RunnerConfig{
 		WorkflowPath:   workflowPath,
 		WorkDir:        workDir,
 		StatusOutput:   os.Stdout,
 		RunID:          runID,
+		TaskID:         taskID,
 		ResumeFromStep: resumeFromStep,
 	})
 

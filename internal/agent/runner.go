@@ -22,6 +22,7 @@ type RunnerConfig struct {
 	WorkDir        string
 	StatusOutput   io.Writer
 	RunID          string
+	TaskID         string // task ID for runtime state paths (.cloche/runs/<task-id>/)
 	ResumeFromStep string // when non-empty, resume the workflow from this step
 }
 
@@ -52,6 +53,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	genericAdapter.RunID = r.cfg.RunID
 	promptAdapter := prompt.New()
 	promptAdapter.RunID = r.cfg.RunID
+	promptAdapter.TaskID = r.cfg.TaskID
 	promptAdapter.StatusWriter = statusWriter
 	if cmd, ok := os.LookupEnv("CLOCHE_AGENT_COMMAND"); ok {
 		promptAdapter.Commands = prompt.ParseCommands(cmd)
@@ -102,7 +104,7 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	// Generate a run title from the prompt if one was not provided by the caller.
 	// The daemon sets title from --title; if empty, the agent extracts from prompt.
-	if title := extractTitle(r.cfg.WorkDir, r.cfg.RunID); title != "" {
+	if title := extractTitle(r.cfg.WorkDir, r.cfg.TaskID); title != "" {
 		statusWriter.RunTitle(title)
 	}
 
@@ -315,11 +317,11 @@ func loadCompletedStepResults(workDir string, wf *domain.Workflow, resumeFrom st
 }
 
 // extractTitle tries to derive a one-line summary from the run's prompt content.
-// It reads the per-run prompt.txt file (written by the daemon before container start),
-// then returns the first non-empty line, truncated to 100 characters.
-func extractTitle(workDir string, runID string) string {
-	// Try the per-run prompt file
-	promptPath := filepath.Join(workDir, ".cloche", runID, "prompt.txt")
+// It reads the prompt.txt file from .cloche/runs/<task-id>/ (written by the daemon
+// before container start), then returns the first non-empty line, truncated to 100 characters.
+func extractTitle(workDir string, taskID string) string {
+	// Try the task-specific prompt file
+	promptPath := filepath.Join(workDir, ".cloche", "runs", taskID, "prompt.txt")
 	if _, err := os.Stat(promptPath); err != nil {
 		// Fall back to legacy path
 		promptPath = filepath.Join(workDir, ".cloche", "prompt.txt")

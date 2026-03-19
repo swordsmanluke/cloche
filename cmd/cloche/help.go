@@ -321,7 +321,7 @@ Examples:
 
 	"get": `cloche get — Get a value from the run context store
 
-Reads a key from the run's context.json file. Intended for use inside
+Reads a key from the task's context.json file. Intended for use inside
 workflow scripts and steps.
 
 Usage:
@@ -331,7 +331,7 @@ Arguments:
   <key>    The context key to read.
 
 Environment:
-  CLOCHE_RUN_ID        Run identifier (required).
+  CLOCHE_TASK_ID       Task identifier (required).
   CLOCHE_PROJECT_DIR   Project directory (default: current directory).
 
 Exit codes:
@@ -340,12 +340,12 @@ Exit codes:
 
 Examples:
   cloche get branch
-  cloche get task_id
+  cloche get child_run_id
 `,
 
 	"set": `cloche set — Set a value in the run context store
 
-Writes a key-value pair to the run's context.json file. Use "-" as the
+Writes a key-value pair to the task's context.json file. Use "-" as the
 value to read from stdin (useful for multi-line content).
 
 Usage:
@@ -357,7 +357,7 @@ Arguments:
   <value>    The value to store, or "-" to read from stdin.
 
 Environment:
-  CLOCHE_RUN_ID        Run identifier (required).
+  CLOCHE_TASK_ID       Task identifier (required).
   CLOCHE_PROJECT_DIR   Project directory (default: current directory).
 
 Examples:

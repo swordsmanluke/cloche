@@ -9,24 +9,24 @@ import (
 	"github.com/cloche-dev/cloche/internal/runcontext"
 )
 
-func TestResolveRunContext_MissingRunID(t *testing.T) {
-	t.Setenv("CLOCHE_RUN_ID", "")
+func TestResolveRunContext_MissingTaskID(t *testing.T) {
+	t.Setenv("CLOCHE_TASK_ID", "")
 	_, _, err := resolveRunContext()
 	if err == nil {
-		t.Fatal("expected error when CLOCHE_RUN_ID is not set")
+		t.Fatal("expected error when CLOCHE_TASK_ID is not set")
 	}
 }
 
 func TestResolveRunContext_UsesEnvVars(t *testing.T) {
-	t.Setenv("CLOCHE_RUN_ID", "test-run-1234")
+	t.Setenv("CLOCHE_TASK_ID", "test-task-1234")
 	t.Setenv("CLOCHE_PROJECT_DIR", "/tmp/myproject")
 
-	projectDir, runID, err := resolveRunContext()
+	projectDir, taskID, err := resolveRunContext()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if runID != "test-run-1234" {
-		t.Errorf("runID = %q, want %q", runID, "test-run-1234")
+	if taskID != "test-task-1234" {
+		t.Errorf("taskID = %q, want %q", taskID, "test-task-1234")
 	}
 	if projectDir != "/tmp/myproject" {
 		t.Errorf("projectDir = %q, want %q", projectDir, "/tmp/myproject")
@@ -34,7 +34,7 @@ func TestResolveRunContext_UsesEnvVars(t *testing.T) {
 }
 
 func TestResolveRunContext_FallsToCwd(t *testing.T) {
-	t.Setenv("CLOCHE_RUN_ID", "test-run-1234")
+	t.Setenv("CLOCHE_TASK_ID", "test-task-1234")
 	t.Setenv("CLOCHE_PROJECT_DIR", "")
 
 	projectDir, _, err := resolveRunContext()
@@ -49,15 +49,15 @@ func TestResolveRunContext_FallsToCwd(t *testing.T) {
 
 func TestCmdGet_PrintsValue(t *testing.T) {
 	dir := t.TempDir()
-	runID := "test-run-abcd"
+	taskID := "test-task-abcd"
 
 	// Pre-populate context
-	if err := runcontext.Set(dir, runID, "branch", "feature-x"); err != nil {
+	if err := runcontext.Set(dir, taskID, "branch", "feature-x"); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
 
 	// Verify the file exists
-	path := runcontext.ContextPath(dir, runID)
+	path := runcontext.ContextPath(dir, taskID)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		t.Fatalf("context.json not created at %s", path)
 	}
@@ -65,13 +65,13 @@ func TestCmdGet_PrintsValue(t *testing.T) {
 
 func TestCmdSet_WritesContextFile(t *testing.T) {
 	dir := t.TempDir()
-	runID := "test-run-abcd"
+	taskID := "test-task-abcd"
 
-	if err := runcontext.Set(dir, runID, "mykey", "myval"); err != nil {
+	if err := runcontext.Set(dir, taskID, "mykey", "myval"); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
 
-	val, ok, err := runcontext.Get(dir, runID, "mykey")
+	val, ok, err := runcontext.Get(dir, taskID, "mykey")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestCmdSet_WritesContextFile(t *testing.T) {
 	}
 
 	// Verify the JSON file is well-formed
-	data, err := os.ReadFile(filepath.Join(dir, ".cloche", runID, "context.json"))
+	data, err := os.ReadFile(filepath.Join(dir, ".cloche", "runs", taskID, "context.json"))
 	if err != nil {
 		t.Fatalf("reading context.json: %v", err)
 	}
@@ -91,9 +91,9 @@ func TestCmdSet_WritesContextFile(t *testing.T) {
 
 func TestCmdSet_StdinValue(t *testing.T) {
 	dir := t.TempDir()
-	runID := "test-run-stdin"
+	taskID := "test-task-stdin"
 
-	t.Setenv("CLOCHE_RUN_ID", runID)
+	t.Setenv("CLOCHE_TASK_ID", taskID)
 	t.Setenv("CLOCHE_PROJECT_DIR", dir)
 
 	// Swap stdin to read from a string
@@ -115,7 +115,7 @@ func TestCmdSet_StdinValue(t *testing.T) {
 	cmdSet([]string{"multiline_key", "-"})
 
 	// Verify the value was stored with trailing newline trimmed
-	val, ok, err := runcontext.Get(dir, runID, "multiline_key")
+	val, ok, err := runcontext.Get(dir, taskID, "multiline_key")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}

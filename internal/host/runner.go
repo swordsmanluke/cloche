@@ -101,7 +101,7 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		_ = r.Store.UpdateRun(ctx, hostRun)
 
 		// Persist ExtraEnv so resume can restore it (e.g. CLOCHE_MAIN_RUN_ID).
-		saveExtraEnv(projectDir, orchRunID, r.ExtraEnv)
+		saveExtraEnv(projectDir, r.TaskID, r.ExtraEnv)
 	}
 
 	executor := &Executor{
@@ -192,6 +192,12 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		return result, runErr
 	}
 
+	// Clean up ephemeral runtime state (.cloche/runs/<task-id>/) on success.
+	// On failure, keep it so resume can restore ExtraEnv and context.
+	if r.TaskID != "" && result.State == domain.RunStateSucceeded {
+		_ = runcontext.Cleanup(projectDir, r.TaskID)
+	}
+
 	log.Printf("host workflow: %q completed for %s with state %s", wf.Name, projectDir, run.State)
 	return result, nil
 }
@@ -220,7 +226,7 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 	// CLOCHE_MAIN_RUN_ID are available to re-executed steps.
 	extraEnv := r.ExtraEnv
 	if len(extraEnv) == 0 {
-		extraEnv = loadExtraEnv(run.ProjectDir, run.ID)
+		extraEnv = loadExtraEnv(run.ProjectDir, run.TaskID)
 	}
 
 	// Reset run state
@@ -320,6 +326,11 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 		return result, runErr
 	}
 
+	// Clean up ephemeral runtime state on success.
+	if run.TaskID != "" && result.State == domain.RunStateSucceeded {
+		_ = runcontext.Cleanup(run.ProjectDir, run.TaskID)
+	}
+
 	log.Printf("host workflow: resume of %q completed for %s with state %s", wf.Name, run.ProjectDir, engRun.State)
 	return result, nil
 }
@@ -387,19 +398,19 @@ func RunListTasksWorkflow(ctx context.Context, runner *Runner, projectDir string
 
 const extraEnvContextKey = "extra_env"
 
-// saveExtraEnv persists the runner's ExtraEnv into the run's context.json so
+// saveExtraEnv persists the runner's ExtraEnv into the task's context.json so
 // that resume can restore env vars like CLOCHE_MAIN_RUN_ID.
-func saveExtraEnv(projectDir, runID string, env []string) {
+func saveExtraEnv(projectDir, taskID string, env []string) {
 	if len(env) == 0 {
 		return
 	}
 	joined := strings.Join(env, "\n")
-	_ = runcontext.Set(projectDir, runID, extraEnvContextKey, joined)
+	_ = runcontext.Set(projectDir, taskID, extraEnvContextKey, joined)
 }
 
-// loadExtraEnv restores ExtraEnv from the run's context.json.
-func loadExtraEnv(projectDir, runID string) []string {
-	val, ok, err := runcontext.Get(projectDir, runID, extraEnvContextKey)
+// loadExtraEnv restores ExtraEnv from the task's context.json.
+func loadExtraEnv(projectDir, taskID string) []string {
+	val, ok, err := runcontext.Get(projectDir, taskID, extraEnvContextKey)
 	if err != nil || !ok || val == "" {
 		return nil
 	}

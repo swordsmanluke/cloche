@@ -18,6 +18,7 @@ type ContainerConfig struct {
 	ProjectDir   string
 	NetworkAllow []string
 	RunID        string
+	TaskID       string   // task ID for runtime state paths (.cloche/runs/<task-id>/)
 	Cmd          []string // override container command; defaults to ["cloche-agent", WorkflowName]
 }
 

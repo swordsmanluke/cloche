@@ -190,8 +190,10 @@ func TestServer_RunWorkflow(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.RunId)
 
-	// Verify prompt was written to run-specific path
-	promptData, err := os.ReadFile(filepath.Join(dir, ".cloche", resp.RunId, "prompt.txt"))
+	// Verify prompt was written to task-specific path under .cloche/runs/<task-id>/
+	run, err := store.GetRun(context.Background(), resp.RunId)
+	require.NoError(t, err)
+	promptData, err := os.ReadFile(filepath.Join(dir, ".cloche", "runs", run.TaskID, "prompt.txt"))
 	require.NoError(t, err)
 	assert.Equal(t, "hello world", string(promptData))
 

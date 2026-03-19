@@ -801,13 +801,13 @@ func cmdShutdown(ctx context.Context, client pb.ClocheServiceClient, args []stri
 	fmt.Println("Daemon shutting down.")
 }
 
-// resolveRunContext returns the project directory and run ID for context
-// commands. The run ID comes from CLOCHE_RUN_ID and the project directory
+// resolveRunContext returns the project directory and task ID for context
+// commands. The task ID comes from CLOCHE_TASK_ID and the project directory
 // from CLOCHE_PROJECT_DIR (falling back to cwd).
-func resolveRunContext() (projectDir, runID string, err error) {
-	runID = os.Getenv("CLOCHE_RUN_ID")
-	if runID == "" {
-		return "", "", fmt.Errorf("CLOCHE_RUN_ID environment variable is not set")
+func resolveRunContext() (projectDir, taskID string, err error) {
+	taskID = os.Getenv("CLOCHE_TASK_ID")
+	if taskID == "" {
+		return "", "", fmt.Errorf("CLOCHE_TASK_ID environment variable is not set")
 	}
 	projectDir = os.Getenv("CLOCHE_PROJECT_DIR")
 	if projectDir == "" {
@@ -816,7 +816,7 @@ func resolveRunContext() (projectDir, runID string, err error) {
 			return "", "", fmt.Errorf("getting working directory: %w", err)
 		}
 	}
-	return projectDir, runID, nil
+	return projectDir, taskID, nil
 }
 
 func cmdGet(args []string) {
@@ -825,13 +825,13 @@ func cmdGet(args []string) {
 		os.Exit(1)
 	}
 
-	projectDir, runID, err := resolveRunContext()
+	projectDir, taskID, err := resolveRunContext()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
-	val, ok, err := runcontext.Get(projectDir, runID, args[0])
+	val, ok, err := runcontext.Get(projectDir, taskID, args[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -849,7 +849,7 @@ func cmdSet(args []string) {
 		os.Exit(1)
 	}
 
-	projectDir, runID, err := resolveRunContext()
+	projectDir, taskID, err := resolveRunContext()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -865,7 +865,7 @@ func cmdSet(args []string) {
 		value = strings.TrimRight(string(data), "\n")
 	}
 
-	if err := runcontext.Set(projectDir, runID, args[0], value); err != nil {
+	if err := runcontext.Set(projectDir, taskID, args[0], value); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}

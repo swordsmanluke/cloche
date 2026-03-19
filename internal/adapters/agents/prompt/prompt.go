@@ -26,6 +26,7 @@ type Adapter struct {
 	Commands           []string // ordered fallback chain of agent commands
 	ExplicitArgs       []string // if non-nil, overrides default args for all commands
 	RunID              string
+	TaskID             string                 // task ID for runtime state paths (.cloche/runs/<task-id>/)
 	StatusWriter       *protocol.StatusWriter // optional: streams live output lines
 	ResumeConversation bool                   // when true, resume previous conversation instead of starting new one
 }
@@ -85,7 +86,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		fullPrompt = "retry"
 	} else {
 		var err error
-		fullPrompt, err = assemblePrompt(step, workDir, a.RunID)
+		fullPrompt, err = assemblePrompt(step, workDir, a.TaskID)
 		if err != nil {
 			return "", fmt.Errorf("assembling prompt: %w", err)
 		}
@@ -379,7 +380,7 @@ func toolInputSummary(input json.RawMessage) string {
 	return ""
 }
 
-func assemblePrompt(step *domain.Step, workDir, runID string) (string, error) {
+func assemblePrompt(step *domain.Step, workDir, taskID string) (string, error) {
 	var parts []string
 
 	// 1. Read system template from step config
@@ -391,8 +392,8 @@ func assemblePrompt(step *domain.Step, workDir, runID string) (string, error) {
 		parts = append(parts, content)
 	}
 
-	// 2. Read user prompt from .cloche/<run-id>/prompt.txt
-	userPrompt := readUserPrompt(workDir, runID)
+	// 2. Read user prompt from .cloche/runs/<task-id>/prompt.txt
+	userPrompt := readUserPrompt(workDir, taskID)
 	if userPrompt != "" {
 		parts = append(parts, "## User Request\n"+userPrompt)
 	}
@@ -469,12 +470,12 @@ func readAttemptCount(workDir, stepName string) int {
 	return n
 }
 
-// readUserPrompt reads the user prompt from .cloche/<run-id>/prompt.txt.
-func readUserPrompt(workDir, runID string) string {
-	if runID == "" {
+// readUserPrompt reads the user prompt from .cloche/runs/<task-id>/prompt.txt.
+func readUserPrompt(workDir, taskID string) string {
+	if taskID == "" {
 		return ""
 	}
-	path := filepath.Join(workDir, ".cloche", runID, "prompt.txt")
+	path := filepath.Join(workDir, ".cloche", "runs", taskID, "prompt.txt")
 	if data, err := os.ReadFile(path); err == nil {
 		return string(data)
 	}

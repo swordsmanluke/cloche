@@ -17,9 +17,9 @@ import (
 func TestRunner_CaptureWiredToStatus(t *testing.T) {
 	dir := t.TempDir()
 
-	// Write user prompt under run ID
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "test-run"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test-run", "prompt.txt"), []byte("build a thing"), 0644))
+	// Write user prompt under task ID
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "runs", "test-task"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "runs", "test-task", "prompt.txt"), []byte("build a thing"), 0644))
 
 	// Create a mock agent script that reads stdin and produces output
 	mockAgent := filepath.Join(dir, "mock-agent.sh")
@@ -44,6 +44,7 @@ func TestRunner_CaptureWiredToStatus(t *testing.T) {
 		WorkDir:      dir,
 		StatusOutput: &statusBuf,
 		RunID:        "test-run",
+		TaskID:       "test-task",
 	})
 
 	err := runner.Run(context.Background())
@@ -499,9 +500,9 @@ func TestRunner_UnifiedLogMixedSteps(t *testing.T) {
 func TestRunner_ExtractsTitle(t *testing.T) {
 	dir := t.TempDir()
 
-	// Write user prompt under run ID
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "title-run"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "title-run", "prompt.txt"), []byte("Add dark mode toggle to the settings page"), 0644))
+	// Write user prompt under task ID
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "runs", "title-task"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "runs", "title-task", "prompt.txt"), []byte("Add dark mode toggle to the settings page"), 0644))
 
 	workflowContent := `workflow "title-test" {
   step build {
@@ -521,6 +522,7 @@ func TestRunner_ExtractsTitle(t *testing.T) {
 		WorkDir:      dir,
 		StatusOutput: &statusBuf,
 		RunID:        "title-run",
+		TaskID:       "title-task",
 	})
 
 	err := runner.Run(context.Background())
@@ -546,8 +548,8 @@ func TestRunner_TitleTruncation(t *testing.T) {
 
 	// Write a very long prompt
 	longLine := strings.Repeat("x", 200)
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "long-run"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "long-run", "prompt.txt"), []byte(longLine), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "runs", "long-task"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "runs", "long-task", "prompt.txt"), []byte(longLine), 0644))
 
 	workflowContent := `workflow "truncate-test" {
   step build {
@@ -567,6 +569,7 @@ func TestRunner_TitleTruncation(t *testing.T) {
 		WorkDir:      dir,
 		StatusOutput: &statusBuf,
 		RunID:        "long-run",
+		TaskID:       "long-task",
 	})
 
 	err := runner.Run(context.Background())

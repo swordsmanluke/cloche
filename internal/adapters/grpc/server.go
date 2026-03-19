@@ -25,6 +25,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/host"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/cloche-dev/cloche/internal/runcontext"
 	"github.com/cloche-dev/cloche/internal/protocol"
 	"github.com/cloche-dev/cloche/internal/version"
 	rpcgrpc "google.golang.org/grpc"
@@ -119,16 +120,6 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		}
 	}
 
-	// Write prompt to .cloche/<run-id>/prompt.txt (run-specific to avoid conflicts)
-	if req.Prompt != "" {
-		clocheDir := filepath.Join(req.ProjectDir, ".cloche", runID)
-		if err := os.MkdirAll(clocheDir, 0755); err != nil {
-			return nil, fmt.Errorf("creating .cloche dir: %w", err)
-		}
-		if err := os.WriteFile(filepath.Join(clocheDir, "prompt.txt"), []byte(req.Prompt), 0644); err != nil {
-			return nil, fmt.Errorf("writing prompt: %w", err)
-		}
-	}
 	run := domain.NewRun(runID, req.WorkflowName)
 	run.ProjectDir = req.ProjectDir
 	run.Title = req.Title
@@ -138,6 +129,17 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	run.AttemptID = domain.GenerateAttemptID()
 	if run.TaskID == "" {
 		run.TaskID = "user-" + run.AttemptID
+	}
+
+	// Write prompt to .cloche/runs/<task-id>/prompt.txt
+	if req.Prompt != "" {
+		promptPath := runcontext.PromptPath(req.ProjectDir, run.TaskID)
+		if err := os.MkdirAll(filepath.Dir(promptPath), 0755); err != nil {
+			return nil, fmt.Errorf("creating runs dir: %w", err)
+		}
+		if err := os.WriteFile(promptPath, []byte(req.Prompt), 0644); err != nil {
+			return nil, fmt.Errorf("writing prompt: %w", err)
+		}
 	}
 	if err := s.store.CreateRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("creating run: %w", err)
@@ -341,11 +343,18 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, r
 
 	baseSHA := gitHEAD(req.ProjectDir)
 
+	// Look up the task ID from the run record for container env.
+	var taskID string
+	if r, err := s.store.GetRun(ctx, runID); err == nil && r != nil {
+		taskID = r.TaskID
+	}
+
 	containerID, err := s.container.Start(ctx, ports.ContainerConfig{
 		Image:        image,
 		WorkflowName: req.WorkflowName,
 		ProjectDir:   req.ProjectDir,
 		RunID:        runID,
+		TaskID:       taskID,
 		NetworkAllow: []string{"*"},
 	})
 	if err != nil {

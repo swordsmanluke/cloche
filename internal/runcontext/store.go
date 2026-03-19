@@ -1,5 +1,7 @@
 // Package runcontext provides a shared key-value store (context.json) for
 // passing metadata between workflow steps within a single run.
+// Files are stored under .cloche/runs/<taskID>/context.json and are
+// ephemeral — cleaned up by the host runner after the run completes.
 package runcontext
 
 import (
@@ -10,21 +12,40 @@ import (
 	"sync"
 )
 
-// ContextPath returns the path to context.json for a given project and run ID.
-func ContextPath(projectDir, runID string) string {
-	return filepath.Join(projectDir, ".cloche", runID, "context.json")
+// ContextPath returns the path to context.json for a given project and task ID.
+func ContextPath(projectDir, taskID string) string {
+	return filepath.Join(projectDir, ".cloche", "runs", taskID, "context.json")
+}
+
+// RunDir returns the .cloche/runs/<taskID> directory for a given project.
+func RunDir(projectDir, taskID string) string {
+	return filepath.Join(projectDir, ".cloche", "runs", taskID)
+}
+
+// PromptPath returns the path to prompt.txt for a given project and task ID.
+func PromptPath(projectDir, taskID string) string {
+	return filepath.Join(projectDir, ".cloche", "runs", taskID, "prompt.txt")
+}
+
+// Cleanup removes the .cloche/runs/<taskID> directory and all its contents.
+func Cleanup(projectDir, taskID string) error {
+	dir := RunDir(projectDir, taskID)
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("cleaning up run directory %s: %w", dir, err)
+	}
+	return nil
 }
 
 // mu serialises concurrent reads/writes within the same process.
 var mu sync.Mutex
 
-// Get retrieves a value from the run's context store.
+// Get retrieves a value from the task's context store.
 // Returns ("", false, nil) if the key does not exist.
-func Get(projectDir, runID, key string) (string, bool, error) {
+func Get(projectDir, taskID, key string) (string, bool, error) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	m, err := load(ContextPath(projectDir, runID))
+	m, err := load(ContextPath(projectDir, taskID))
 	if err != nil {
 		return "", false, err
 	}
@@ -32,13 +53,13 @@ func Get(projectDir, runID, key string) (string, bool, error) {
 	return v, ok, nil
 }
 
-// Set writes a key-value pair to the run's context store, creating the file
+// Set writes a key-value pair to the task's context store, creating the file
 // and parent directories if necessary.
-func Set(projectDir, runID, key, value string) error {
+func Set(projectDir, taskID, key, value string) error {
 	mu.Lock()
 	defer mu.Unlock()
 
-	path := ContextPath(projectDir, runID)
+	path := ContextPath(projectDir, taskID)
 
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("creating context directory: %w", err)

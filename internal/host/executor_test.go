@@ -233,6 +233,7 @@ func TestExecutor_WorkflowStep_StoresChildRunID(t *testing.T) {
 
 	dispatcher := &fakeDispatcher{runID: "develop-child-run"}
 	hostRunID := "main-host-run"
+	taskID := "main-task-id"
 
 	executor := &Executor{
 		ProjectDir: tmpDir,
@@ -240,6 +241,7 @@ func TestExecutor_WorkflowStep_StoresChildRunID(t *testing.T) {
 		Store:      store,
 		OutputDir:  outputDir,
 		HostRunID:  hostRunID,
+		TaskID:     taskID,
 	}
 
 	step := &domain.Step{
@@ -254,7 +256,7 @@ func TestExecutor_WorkflowStep_StoresChildRunID(t *testing.T) {
 	assert.Equal(t, "success", result)
 
 	// Verify child_run_id was stored in run context
-	val, ok, err := runcontext.Get(tmpDir, hostRunID, "child_run_id")
+	val, ok, err := runcontext.Get(tmpDir, taskID, "child_run_id")
 	require.NoError(t, err)
 	assert.True(t, ok, "child_run_id should be stored in run context")
 	assert.Equal(t, "develop-child-run", val)
@@ -1214,6 +1216,7 @@ func TestExecutor_AgentStep_PrevOutput(t *testing.T) {
 		ProjectDir: tmpDir,
 		OutputDir:  outputDir,
 		HostRunID:  "test-host-run",
+		TaskID:     "test-task-id",
 		Wires: []domain.Wire{
 			{From: "prepare", Result: "success", To: "implement"},
 		},
@@ -1234,7 +1237,7 @@ func TestExecutor_AgentStep_PrevOutput(t *testing.T) {
 	assert.Equal(t, "success", result)
 
 	// Verify prompt.txt was written with previous step's output
-	promptPath := filepath.Join(tmpDir, ".cloche", "test-host-run", "prompt.txt")
+	promptPath := filepath.Join(tmpDir, ".cloche", "runs", "test-task-id", "prompt.txt")
 	data, err := os.ReadFile(promptPath)
 	require.NoError(t, err)
 	assert.Equal(t, "the task description", string(data))
@@ -1255,6 +1258,7 @@ func TestExecutor_AgentStep_PromptStep(t *testing.T) {
 		ProjectDir: tmpDir,
 		OutputDir:  outputDir,
 		HostRunID:  "test-host-run",
+		TaskID:     "test-task-id",
 	}
 
 	step := &domain.Step{
@@ -1273,7 +1277,7 @@ func TestExecutor_AgentStep_PromptStep(t *testing.T) {
 	assert.Equal(t, "success", result)
 
 	// Verify prompt.txt was written with the prompt_step output
-	promptPath := filepath.Join(tmpDir, ".cloche", "test-host-run", "prompt.txt")
+	promptPath := filepath.Join(tmpDir, ".cloche", "runs", "test-task-id", "prompt.txt")
 	data, err := os.ReadFile(promptPath)
 	require.NoError(t, err)
 	assert.Equal(t, "custom prompt content", string(data))
@@ -1291,6 +1295,7 @@ func TestEngine_HostWorkflow_WithAgentStep(t *testing.T) {
 		ProjectDir: tmpDir,
 		OutputDir:  outputDir,
 		HostRunID:  "test-host-run",
+		TaskID:     "test-task-id",
 	}
 
 	wf := &domain.Workflow{

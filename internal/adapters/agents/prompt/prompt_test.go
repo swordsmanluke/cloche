@@ -15,15 +15,16 @@ import (
 func TestPromptAdapter_ExecutesCommand(t *testing.T) {
 	dir := t.TempDir()
 
-	// Write a user prompt under a run ID
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "test-run"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test-run", "prompt.txt"), []byte("add a calculator"), 0644))
+	// Write a user prompt under a task ID
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "runs", "test-task"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "runs", "test-task", "prompt.txt"), []byte("add a calculator"), 0644))
 
 	// Use a mock command that writes a file to prove it ran
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
 		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'implemented' > result.txt && echo ok"},
 		RunID:        "test-run",
+		TaskID:       "test-task",
 	}
 
 	step := &domain.Step{
@@ -204,13 +205,14 @@ func TestPromptAdapter_StdoutMarkerSelectsResult(t *testing.T) {
 
 func TestExecuteWritesOutputFile(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".cloche", "test-run"), 0755)
-	os.WriteFile(filepath.Join(dir, ".cloche", "test-run", "prompt.txt"), []byte("user request"), 0644)
+	os.MkdirAll(filepath.Join(dir, ".cloche", "runs", "test-task"), 0755)
+	os.WriteFile(filepath.Join(dir, ".cloche", "runs", "test-task", "prompt.txt"), []byte("user request"), 0644)
 
 	a := &prompt.Adapter{
 		Commands:     []string{"sh"},
 		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output'"},
 		RunID:        "test-run",
+		TaskID:       "test-task",
 	}
 
 	step := &domain.Step{

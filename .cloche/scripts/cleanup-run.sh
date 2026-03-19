@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # cleanup-run.sh — Remove the worktree and branch left over from a cloche run.
-# Reads child run ID and task ID from run context (set via cloche set).
+# Reads child run ID from task context (stored by the host executor).
 set -euo pipefail
 
 RUN_ID=$(cloche get child_run_id) || true

@@ -107,7 +107,7 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 		"CLOCHE_STEP_OUTPUT="+e.stepOutputPath(step.Name),
 	)
 
-	// Pass run ID so steps can access .cloche/<run-id>/ and context.json
+	// Pass run ID for identification
 	if e.HostRunID != "" {
 		cmd.Env = append(cmd.Env, "CLOCHE_RUN_ID="+e.HostRunID)
 	}
@@ -190,6 +190,7 @@ func (e *Executor) executeWorkflow(ctx context.Context, step *domain.Step) (stri
 		WorkflowName: workflowName,
 		ProjectDir:   e.ProjectDir,
 		Prompt:       promptContent,
+		IssueId:      e.TaskID,
 	})
 	if err != nil {
 		return "", fmt.Errorf("dispatching workflow %q: %w", workflowName, err)
@@ -206,7 +207,7 @@ func (e *Executor) executeWorkflow(ctx context.Context, step *domain.Step) (stri
 		}
 		// Store child run ID in context so downstream steps can retrieve it
 		// via "cloche get child_run_id"
-		_ = runcontext.Set(e.ProjectDir, e.HostRunID, "child_run_id", resp.RunId)
+		_ = runcontext.Set(e.ProjectDir, e.TaskID, "child_run_id", resp.RunId)
 	}
 
 	// Write run ID to step output so downstream steps (e.g. merge) can find it
@@ -270,9 +271,9 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (string,
 	}
 
 	if promptContent != "" {
-		promptDir := filepath.Join(e.ProjectDir, ".cloche", e.HostRunID)
-		_ = os.MkdirAll(promptDir, 0755)
-		_ = os.WriteFile(filepath.Join(promptDir, "prompt.txt"), []byte(promptContent), 0644)
+		promptPath := runcontext.PromptPath(e.ProjectDir, e.TaskID)
+		_ = os.MkdirAll(filepath.Dir(promptPath), 0755)
+		_ = os.WriteFile(promptPath, []byte(promptContent), 0644)
 	}
 
 	result, err := adapter.Execute(ctx, step, e.ProjectDir)
