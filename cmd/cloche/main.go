@@ -237,31 +237,40 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	}
 }
 
-// parseResumeArg parses a workflow ID ("a133:develop") or step ID
-// ("a133:develop:review") into its component run ID and step name.
-// Returns an error if the argument is not in one of those two forms.
-func parseResumeArg(arg string) (runID, stepName string, err error) {
-	parts := strings.SplitN(arg, ":", 3)
-	if len(parts) < 2 {
-		return "", "", fmt.Errorf("invalid argument %q: expected workflow ID (e.g. a133:develop) or step ID (e.g. a133:develop:review)", arg)
+// parseResumeArg parses a resume argument which can be:
+//   - a task ID ("cloche-k4gh") — no colons, resolved server-side
+//   - a run ID ("pqpm-main") — no colons, resolved server-side
+//   - a workflow ID ("a133:develop") — attempt:workflow
+//   - a step ID ("a133:develop:review") — attempt:workflow:step
+//
+// Returns taskOrRunID (for no-colon args), runID, and stepName.
+func parseResumeArg(arg string) (taskOrRunID, runID, stepName string, err error) {
+	if arg == "" {
+		return "", "", "", fmt.Errorf("argument must not be empty")
 	}
+	parts := strings.SplitN(arg, ":", 3)
+	if len(parts) == 1 {
+		// No colons — could be a task ID or a run ID. Let the server resolve it.
+		return arg, "", "", nil
+	}
+	// Colon-separated: attempt:workflow or attempt:workflow:step
 	runID = parts[0]
 	if runID == "" {
-		return "", "", fmt.Errorf("invalid argument %q: run ID must not be empty", arg)
+		return "", "", "", fmt.Errorf("invalid argument %q: run ID must not be empty", arg)
 	}
 	if len(parts) == 3 {
 		stepName = parts[2]
 	}
-	return runID, stepName, nil
+	return "", runID, stepName, nil
 }
 
 func cmdResume(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	if len(args) != 1 {
-		fmt.Fprintf(os.Stderr, "usage: cloche resume <workflow-id|step-id>\n")
+		fmt.Fprintf(os.Stderr, "usage: cloche resume <task-id|run-id|workflow-id|step-id>\n")
 		os.Exit(1)
 	}
 
-	runID, stepName, err := parseResumeArg(args[0])
+	taskOrRunID, runID, stepName, err := parseResumeArg(args[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -271,6 +280,7 @@ func cmdResume(ctx context.Context, client pb.ClocheServiceClient, args []string
 	md := metadata.Pairs(
 		"x-cloche-resume-run-id", runID,
 		"x-cloche-resume-step", stepName,
+		"x-cloche-resume-task-or-run", taskOrRunID,
 	)
 	ctx = metadata.NewOutgoingContext(ctx, md)
 

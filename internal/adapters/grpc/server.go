@@ -106,9 +106,17 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		_ = migrator.MigrateProjectLogs(req.ProjectDir)
 	}
 
-	// Check for resume mode via gRPC metadata
+	// Check for resume mode via gRPC metadata.
+	// Two paths: explicit run ID, or task/run ID that needs resolution.
 	if resumeRunID := resumeRunIDFromContext(ctx); resumeRunID != "" {
 		return s.resumeRun(ctx, resumeRunID, resumeStepFromContext(ctx))
+	}
+	if taskOrRunID := resumeTaskOrRunFromContext(ctx); taskOrRunID != "" {
+		runID, err := s.resolveResumeTarget(ctx, taskOrRunID)
+		if err != nil {
+			return nil, err
+		}
+		return s.resumeRun(ctx, runID, "")
 	}
 
 	// Parse optional step from workflow_name ("workflow:step" format).
@@ -242,6 +250,21 @@ func resumeStepFromContext(ctx context.Context) string {
 	return vals[0]
 }
 
+// resumeTaskOrRunFromContext extracts a task-or-run ID from gRPC metadata.
+// This is used when the CLI passes a bare ID (no colons) that could be either
+// a task ID or a run ID — the server resolves it.
+func resumeTaskOrRunFromContext(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+	vals := md.Get("x-cloche-resume-task-or-run")
+	if len(vals) == 0 {
+		return ""
+	}
+	return vals[0]
+}
+
 // attemptIDFromContext extracts a propagated attempt ID from gRPC metadata.
 // This is set by the host executor when dispatching a child container workflow
 // so the container run is linked to the parent host run's attempt.
@@ -307,6 +330,58 @@ func (s *ClocheServer) ensureTaskAndAttempt(ctx context.Context, issueID, title,
 	return attemptID
 }
 
+// resolveResumeTarget takes a bare ID (no colons) and resolves it to a
+// failed run ID. It first tries as a task ID (finds the latest attempt's
+// failed run), then falls back to treating it as a direct run ID.
+func (s *ClocheServer) resolveResumeTarget(ctx context.Context, id string) (string, error) {
+	// Try as a task ID first.
+	if s.taskStore != nil {
+		if task, err := s.taskStore.GetTask(ctx, id); err == nil {
+			return s.findFailedRunForTask(ctx, task)
+		}
+	}
+
+	// Fall back to treating it as a run ID.
+	if _, err := s.store.GetRun(ctx, id); err == nil {
+		return id, nil
+	}
+
+	return "", fmt.Errorf("no task or run found for %q", id)
+}
+
+// findFailedRunForTask finds the first failed run in the task's latest attempt.
+// It looks across all runs for the attempt and returns the one with the
+// earliest failed step.
+func (s *ClocheServer) findFailedRunForTask(ctx context.Context, task *domain.Task) (string, error) {
+	if s.attemptStore == nil {
+		return "", fmt.Errorf("attempt tracking not configured")
+	}
+
+	attempts, err := s.attemptStore.ListAttempts(ctx, task.ID)
+	if err != nil || len(attempts) == 0 {
+		return "", fmt.Errorf("no attempts found for task %q", task.ID)
+	}
+
+	// Find the latest attempt (last in the list).
+	latest := attempts[len(attempts)-1]
+
+	// Find all failed runs for this attempt.
+	runs, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{
+		AttemptID: latest.ID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("listing runs for attempt %s: %w", latest.ID, err)
+	}
+
+	for _, run := range runs {
+		if run.State == domain.RunStateFailed {
+			return run.ID, nil
+		}
+	}
+
+	return "", fmt.Errorf("no failed runs found for task %q (latest attempt %s)", task.ID, latest.ID)
+}
+
 // resumeRun resumes a failed workflow run from a specific step.
 func (s *ClocheServer) resumeRun(ctx context.Context, runID, stepName string) (*pb.RunWorkflowResponse, error) {
 	run, err := s.store.GetRun(ctx, runID)
@@ -316,6 +391,11 @@ func (s *ClocheServer) resumeRun(ctx context.Context, runID, stepName string) (*
 
 	if run.State != domain.RunStateFailed {
 		return nil, fmt.Errorf("run %q is in state %q, only failed runs can be resumed", runID, run.State)
+	}
+
+	// Load step executions — GetRun only loads the run record, not its steps.
+	if caps, err := s.captures.GetCaptures(ctx, runID); err == nil {
+		run.StepExecutions = caps
 	}
 
 	// Determine the resume step: use provided step name, or find first failed step
