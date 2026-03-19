@@ -96,12 +96,14 @@ must still be available for container workflows (failed runs keep their
 containers by default).
 
 Usage:
-  cloche resume <run-id> [step-name]
+  cloche resume <workflow-id>
+  cloche resume <step-id>
 
 Arguments:
-  <run-id>      The run identifier of the failed run.
-  [step-name]   Step to resume from (optional). If omitted, resumes from
-                the first failed step.
+  <workflow-id>  Run ID and workflow name joined by a colon
+                 (e.g. a133:develop). Resumes from the first failed step.
+  <step-id>      Run ID, workflow name, and step name joined by colons
+                 (e.g. a133:develop:review). Resumes from that step.
 
 Step-specific resume behavior:
   script step    Reruns the script fresh. Updated scripts are picked up.
@@ -115,8 +117,8 @@ Prerequisites:
   - For container workflows, the container must still exist.
 
 Examples:
-  cloche resume develop-lush-fern-470c
-  cloche resume develop-lush-fern-470c implement
+  cloche resume a133:develop
+  cloche resume a133:develop:implement
 `,
 
 	"status": `cloche status — Check task or daemon status
