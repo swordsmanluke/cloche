@@ -11,16 +11,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMigrateV2_CreatesTasksFromRuns(t *testing.T) {
+func TestMigrateProjectLogs_CreatesTasksFromRuns(t *testing.T) {
 	store, err := NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
 
 	ctx := context.Background()
+	projectDir := t.TempDir()
 
 	// Create v1-style runs: two runs with same task_id, one without
 	r1 := domain.NewRun("develop-bold-bear", "main")
-	r1.ProjectDir = t.TempDir()
+	r1.ProjectDir = projectDir
 	r1.TaskID = "cloche-123"
 	r1.TaskTitle = "Fix the widget"
 	r1.IsHost = true
@@ -29,7 +30,7 @@ func TestMigrateV2_CreatesTasksFromRuns(t *testing.T) {
 	require.NoError(t, store.CreateRun(ctx, r1))
 
 	r2 := domain.NewRun("develop-calm-fox", "main")
-	r2.ProjectDir = r1.ProjectDir
+	r2.ProjectDir = projectDir
 	r2.TaskID = "cloche-123"
 	r2.TaskTitle = "Fix the widget"
 	r2.IsHost = true
@@ -38,13 +39,13 @@ func TestMigrateV2_CreatesTasksFromRuns(t *testing.T) {
 	require.NoError(t, store.CreateRun(ctx, r2))
 
 	r3 := domain.NewRun("develop-dark-elm", "develop")
-	r3.ProjectDir = r1.ProjectDir
+	r3.ProjectDir = projectDir
 	r3.Start()
 	r3.Complete(domain.RunStateSucceeded)
 	require.NoError(t, store.CreateRun(ctx, r3))
 
-	// Run migration now that data exists
-	require.NoError(t, migrateV2(store.db))
+	// Run per-project migration
+	require.NoError(t, store.MigrateProjectLogs(projectDir))
 
 	// Verify tasks table was populated by migration
 	var taskCount int
@@ -72,7 +73,7 @@ func TestMigrateV2_CreatesTasksFromRuns(t *testing.T) {
 	assert.Equal(t, "user-initiated", userSource)
 }
 
-func TestMigrateV2_MovesLogFiles(t *testing.T) {
+func TestMigrateProjectLogs_MovesLogFiles(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create v1-style log directory
@@ -94,8 +95,8 @@ func TestMigrateV2_MovesLogFiles(t *testing.T) {
 	r.Complete(domain.RunStateSucceeded)
 	require.NoError(t, store.CreateRun(ctx, r))
 
-	// Run migration now that data exists
-	require.NoError(t, migrateV2(store.db))
+	// Run per-project migration
+	require.NoError(t, store.MigrateProjectLogs(dir))
 
 	// Find the attempt ID that was generated
 	var attemptID string
@@ -112,25 +113,25 @@ func TestMigrateV2_MovesLogFiles(t *testing.T) {
 	assert.NoDirExists(t, outputDir)
 }
 
-func TestMigrateV2_Idempotent(t *testing.T) {
+func TestMigrateProjectLogs_Idempotent(t *testing.T) {
 	store, err := NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
 
 	ctx := context.Background()
+	projectDir := t.TempDir()
 
 	r := domain.NewRun("test-run-idem", "develop")
-	r.ProjectDir = t.TempDir()
+	r.ProjectDir = projectDir
 	r.TaskID = "task-idem"
 	r.Start()
 	require.NoError(t, store.CreateRun(ctx, r))
 
-	// Run migration to populate
-	require.NoError(t, migrateV2(store.db))
+	// Run migration
+	require.NoError(t, store.MigrateProjectLogs(projectDir))
 
-	// Run migration again (it should be a no-op)
-	err = migrateV2(store.db)
-	require.NoError(t, err)
+	// Run migration again (should be a no-op)
+	require.NoError(t, store.MigrateProjectLogs(projectDir))
 
 	// Should still have exactly 1 task, 1 attempt
 	var taskCount, attemptCount int
@@ -140,16 +141,17 @@ func TestMigrateV2_Idempotent(t *testing.T) {
 	assert.Equal(t, 1, attemptCount)
 }
 
-func TestMigrateV2_ParentChildLinking(t *testing.T) {
+func TestMigrateProjectLogs_ParentChildLinking(t *testing.T) {
 	store, err := NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
 
 	ctx := context.Background()
+	projectDir := t.TempDir()
 
 	// Parent host run
 	parent := domain.NewRun("main-bold-fox", "main")
-	parent.ProjectDir = t.TempDir()
+	parent.ProjectDir = projectDir
 	parent.TaskID = "task-parent"
 	parent.IsHost = true
 	parent.Start()
@@ -157,14 +159,14 @@ func TestMigrateV2_ParentChildLinking(t *testing.T) {
 
 	// Child container run
 	child := domain.NewRun("develop-calm-owl", "develop")
-	child.ProjectDir = parent.ProjectDir
+	child.ProjectDir = projectDir
 	child.TaskID = "task-parent"
 	child.ParentRunID = "main-bold-fox"
 	child.Start()
 	require.NoError(t, store.CreateRun(ctx, child))
 
-	// Run migration now that data exists
-	require.NoError(t, migrateV2(store.db))
+	// Run per-project migration
+	require.NoError(t, store.MigrateProjectLogs(projectDir))
 
 	// Both should share the same attempt_id
 	var parentAttempt, childAttempt string
@@ -177,4 +179,45 @@ func TestMigrateV2_ParentChildLinking(t *testing.T) {
 	var attemptCount int
 	store.db.QueryRow(`SELECT COUNT(*) FROM attempts`).Scan(&attemptCount)
 	assert.Equal(t, 1, attemptCount)
+}
+
+func TestMigrateProjectLogs_PerProject(t *testing.T) {
+	store, err := NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	projectA := t.TempDir()
+	projectB := t.TempDir()
+
+	// Create runs in two projects
+	rA := domain.NewRun("run-a", "develop")
+	rA.ProjectDir = projectA
+	rA.TaskID = "task-a"
+	rA.Start()
+	require.NoError(t, store.CreateRun(ctx, rA))
+
+	rB := domain.NewRun("run-b", "develop")
+	rB.ProjectDir = projectB
+	rB.TaskID = "task-b"
+	rB.Start()
+	require.NoError(t, store.CreateRun(ctx, rB))
+
+	// Migrate only project A
+	require.NoError(t, store.MigrateProjectLogs(projectA))
+
+	// Project A's run should be migrated
+	var attemptA string
+	store.db.QueryRow(`SELECT attempt_id FROM runs WHERE id = 'run-a'`).Scan(&attemptA)
+	assert.NotEmpty(t, attemptA, "project A run should have attempt_id")
+
+	// Project B's run should NOT be migrated yet
+	var attemptB string
+	store.db.QueryRow(`SELECT attempt_id FROM runs WHERE id = 'run-b'`).Scan(&attemptB)
+	assert.Empty(t, attemptB, "project B run should not have attempt_id yet")
+
+	// Now migrate project B
+	require.NoError(t, store.MigrateProjectLogs(projectB))
+	store.db.QueryRow(`SELECT attempt_id FROM runs WHERE id = 'run-b'`).Scan(&attemptB)
+	assert.NotEmpty(t, attemptB, "project B run should have attempt_id after migration")
 }

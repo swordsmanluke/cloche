@@ -19,6 +19,12 @@ type RunStore interface {
 	ListChildRuns(ctx context.Context, parentRunID string) ([]*domain.Run, error)
 }
 
+// ProjectMigrator is an optional interface that a RunStore may implement
+// to perform per-project data migrations (e.g., moving log files to v2 layout).
+type ProjectMigrator interface {
+	MigrateProjectLogs(projectDir string) error
+}
+
 type CaptureStore interface {
 	SaveCapture(ctx context.Context, runID string, exec *domain.StepExecution) error
 	GetCaptures(ctx context.Context, runID string) ([]*domain.StepExecution, error)

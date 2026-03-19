@@ -8,29 +8,21 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cloche-dev/cloche/internal/domain"
 )
 
-// migrateV2 creates the tasks and attempts tables, populates them from
-// existing run records, and moves log files to the new directory layout.
-// It is idempotent: a _migrations table tracks whether it has already run.
-func migrateV2(db *sql.DB) error {
-	// Create migration tracking table
+// migrateV2Schema creates the tasks, attempts, and _migrations tables and
+// adds the attempt_id column to runs. This is a one-shot global migration
+// that only touches the database schema.
+func migrateV2Schema(db *sql.DB) error {
 	db.Exec(`CREATE TABLE IF NOT EXISTS _migrations (
 		id TEXT PRIMARY KEY,
 		applied_at TEXT NOT NULL
 	)`)
 
-	// Check if already applied
-	var count int
-	row := db.QueryRow(`SELECT COUNT(*) FROM _migrations WHERE id = 'v2-task-oriented'`)
-	if err := row.Scan(&count); err == nil && count > 0 {
-		return nil // already migrated
-	}
-
-	// Create new tables
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS tasks (
 		id TEXT PRIMARY KEY,
 		title TEXT NOT NULL DEFAULT '',
@@ -52,29 +44,83 @@ func migrateV2(db *sql.DB) error {
 		return fmt.Errorf("creating attempts table: %w", err)
 	}
 
-	// Add attempt_id column to runs (idempotent)
 	db.Exec(`ALTER TABLE runs ADD COLUMN attempt_id TEXT NOT NULL DEFAULT ''`)
 
-	// Query all existing runs, grouped by task_id
+	return nil
+}
+
+// migratedProjects tracks which projects have been migrated in this process
+// lifetime, avoiding repeated DB checks for the common case.
+var (
+	migratedProjects   = map[string]bool{}
+	migratedProjectsMu sync.Mutex
+)
+
+// MigrateProjectLogs migrates run data and log files for a single project.
+// It creates task/attempt records for runs that lack them and moves log files
+// from .cloche/<run-id>/output/ to .cloche/logs/<task-id>/<attempt-id>/.
+// Safe to call repeatedly — skips projects that are already migrated.
+func (s *Store) MigrateProjectLogs(projectDir string) error {
+	if projectDir == "" {
+		return nil
+	}
+
+	// Fast path: already migrated in this process lifetime.
+	migratedProjectsMu.Lock()
+	if migratedProjects[projectDir] {
+		migratedProjectsMu.Unlock()
+		return nil
+	}
+	migratedProjectsMu.Unlock()
+
+	migrationID := "v2-logs:" + projectDir
+	var count int
+	row := s.db.QueryRow(`SELECT COUNT(*) FROM _migrations WHERE id = ?`, migrationID)
+	if err := row.Scan(&count); err == nil && count > 0 {
+		migratedProjectsMu.Lock()
+		migratedProjects[projectDir] = true
+		migratedProjectsMu.Unlock()
+		return nil
+	}
+
+	if err := migrateProjectRuns(s.db, projectDir); err != nil {
+		return err
+	}
+
+	s.db.Exec(`INSERT OR IGNORE INTO _migrations (id, applied_at) VALUES (?, ?)`,
+		migrationID, time.Now().UTC().Format(time.RFC3339))
+
+	migratedProjectsMu.Lock()
+	migratedProjects[projectDir] = true
+	migratedProjectsMu.Unlock()
+
+	return nil
+}
+
+// migrateProjectRuns creates task/attempt records and moves log files for
+// all runs belonging to the given project that haven't been migrated yet
+// (i.e., runs with an empty attempt_id).
+func migrateProjectRuns(db *sql.DB, projectDir string) error {
 	rows, err := db.Query(`SELECT id, workflow_name, state, started_at, completed_at,
 		project_dir, task_id, task_title, is_host, parent_run_id
-		FROM runs ORDER BY started_at ASC`)
+		FROM runs WHERE project_dir = ? AND attempt_id = ''
+		ORDER BY started_at ASC`, projectDir)
 	if err != nil {
-		return fmt.Errorf("querying runs: %w", err)
+		return fmt.Errorf("querying unmigrated runs: %w", err)
 	}
 	defer rows.Close()
 
 	type runRecord struct {
-		id           string
-		workflow     string
-		state        string
-		startedAt    string
-		completedAt  string
-		projectDir   string
-		taskID       string
-		taskTitle    string
-		isHost       bool
-		parentRunID  string
+		id          string
+		workflow    string
+		state       string
+		startedAt   string
+		completedAt string
+		projectDir  string
+		taskID      string
+		taskTitle   string
+		isHost      bool
+		parentRunID string
 	}
 
 	var allRuns []runRecord
@@ -85,7 +131,7 @@ func migrateV2(db *sql.DB) error {
 		if err := rows.Scan(&r.id, &r.workflow, &r.state, &r.startedAt,
 			&completedAt, &r.projectDir, &r.taskID, &r.taskTitle,
 			&isHost, &r.parentRunID); err != nil {
-			log.Printf("v2 migration: skipping run (scan error): %v", err)
+			log.Printf("v2 migration [%s]: skipping run (scan error): %v", projectDir, err)
 			continue
 		}
 		r.isHost = isHost == 1
@@ -96,9 +142,6 @@ func migrateV2(db *sql.DB) error {
 	}
 
 	if len(allRuns) == 0 {
-		// No runs to migrate — skip marking as done so migration
-		// re-checks on next startup (cheap, handles upgrades where
-		// the daemon starts before any runs exist).
 		return nil
 	}
 
@@ -112,7 +155,7 @@ func migrateV2(db *sql.DB) error {
 		}
 	}
 
-	// Identify top-level runs (no parent, or parent not in DB)
+	// Identify top-level runs (no parent, or parent not in this batch)
 	var topLevel []runRecord
 	for _, r := range allRuns {
 		if r.parentRunID == "" || runByID[r.parentRunID] == nil {
@@ -120,12 +163,6 @@ func migrateV2(db *sql.DB) error {
 		}
 	}
 
-	// Group top-level runs by task_id. Each top-level run becomes an attempt.
-	// Runs without a task_id get a generated user-initiated task.
-	taskCreated := map[string]bool{}
-	userTaskCounter := 0
-
-	// Sort by started_at for stable attempt numbering
 	sort.SliceStable(topLevel, func(i, j int) bool {
 		return topLevel[i].startedAt < topLevel[j].startedAt
 	})
@@ -136,14 +173,14 @@ func migrateV2(db *sql.DB) error {
 	}
 	defer tx.Rollback()
 
+	taskCreated := map[string]bool{}
+
 	for _, r := range topLevel {
 		taskID := r.taskID
 		taskTitle := r.taskTitle
 		taskSource := "external"
 
-		// Create a user-initiated task for runs without a task ID
 		if taskID == "" {
-			userTaskCounter++
 			taskID = fmt.Sprintf("user-%s", domain.GenerateAttemptID())
 			taskSource = "user-initiated"
 			if taskTitle == "" {
@@ -151,19 +188,17 @@ func migrateV2(db *sql.DB) error {
 			}
 		}
 
-		// Create task record if not yet created
 		if !taskCreated[taskID] {
 			_, err := tx.Exec(`INSERT OR IGNORE INTO tasks (id, title, source, project_dir, created_at)
 				VALUES (?, ?, ?, ?, ?)`,
 				taskID, taskTitle, taskSource, r.projectDir, r.startedAt)
 			if err != nil {
-				log.Printf("v2 migration: failed to create task %s: %v", taskID, err)
+				log.Printf("v2 migration [%s]: failed to create task %s: %v", projectDir, taskID, err)
 				continue
 			}
 			taskCreated[taskID] = true
 		}
 
-		// Create attempt from this top-level run
 		attemptID := domain.GenerateAttemptID()
 		attemptResult := mapRunStateToAttemptResult(r.state)
 
@@ -171,11 +206,10 @@ func migrateV2(db *sql.DB) error {
 			VALUES (?, ?, ?, ?, ?, ?)`,
 			attemptID, taskID, r.startedAt, nullIfEmpty(r.completedAt), attemptResult, r.projectDir)
 		if err != nil {
-			log.Printf("v2 migration: failed to create attempt for run %s: %v", r.id, err)
+			log.Printf("v2 migration [%s]: failed to create attempt for run %s: %v", projectDir, r.id, err)
 			continue
 		}
 
-		// Link this run and its children to the attempt
 		runIDs := []string{r.id}
 		for _, childID := range childrenOf[r.id] {
 			runIDs = append(runIDs, childID)
@@ -185,7 +219,6 @@ func migrateV2(db *sql.DB) error {
 			tx.Exec(`UPDATE runs SET attempt_id = ?, task_id = ? WHERE id = ?`, attemptID, taskID, runID)
 		}
 
-		// Move log files on disk
 		moveRunLogs(r.projectDir, r.id, taskID, attemptID, r.workflow)
 		for _, childID := range childrenOf[r.id] {
 			childRun := runByID[childID]
@@ -199,11 +232,9 @@ func migrateV2(db *sql.DB) error {
 		return fmt.Errorf("committing migration: %w", err)
 	}
 
-	// Mark migration as complete
-	db.Exec(`INSERT INTO _migrations (id, applied_at) VALUES ('v2-task-oriented', ?)`,
-		time.Now().UTC().Format(time.RFC3339))
-
-	log.Printf("v2 migration: migrated %d top-level runs into tasks and attempts", len(topLevel))
+	if len(topLevel) > 0 {
+		log.Printf("v2 migration [%s]: migrated %d runs into tasks and attempts", projectDir, len(topLevel))
+	}
 	return nil
 }
 

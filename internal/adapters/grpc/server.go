@@ -101,6 +101,11 @@ func (s *ClocheServer) SetShutdownFunc(fn func()) {
 }
 
 func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
+	// Ensure per-project log migration has run for this project.
+	if migrator, ok := s.store.(ports.ProjectMigrator); ok {
+		_ = migrator.MigrateProjectLogs(req.ProjectDir)
+	}
+
 	// Check for resume mode via gRPC metadata
 	if resumeRunID := resumeRunIDFromContext(ctx); resumeRunID != "" {
 		return s.resumeRun(ctx, resumeRunID, resumeStepFromContext(ctx))

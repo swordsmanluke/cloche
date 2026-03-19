@@ -115,10 +115,11 @@ func migrate(db *sql.DB) error {
 		return errMQ
 	}
 
-	// v2: Task-oriented migration — creates tasks/attempts tables,
-	// populates from existing runs, moves log files.
-	if err := migrateV2(db); err != nil {
-		return fmt.Errorf("v2 migration: %w", err)
+	// v2: Task-oriented schema migration — creates tasks/attempts tables
+	// and adds attempt_id column. Data migration (creating task/attempt
+	// records, moving log files) happens per-project via MigrateProjectLogs.
+	if err := migrateV2Schema(db); err != nil {
+		return fmt.Errorf("v2 schema migration: %w", err)
 	}
 
 	_, errAL := db.Exec(`CREATE TABLE IF NOT EXISTS attempt_logs (
