@@ -195,28 +195,39 @@ Examples:
   cloche logs a3f7:develop -f -l 50
 `,
 
-	"poll": `cloche poll — Wait for runs to finish
+	"poll": `cloche poll — Wait for runs or steps to finish
 
-Polls the daemon every 2 seconds until all runs reach a terminal state
+Polls the daemon every 2 seconds until all targets reach a terminal state
 (succeeded, failed, or cancelled).
 
-With a single run ID, prints step-level progress (same as before).
-With multiple run IDs, displays a compact status summary.
+Accepts any level of the ID hierarchy:
+  task ID        shandalar-1234          — most recent run for the task
+  attempt ID     a133                    — run for that attempt
+  workflow ID    a133:develop            — specific workflow run
+  step ID        a133:develop:review     — specific step within a run
+
+Polling a step ID waits until that step completes, then exits 0 — useful
+for waiting on a long-running step without waiting for the whole run.
+
+With a single ID, prints step-level progress.
+With multiple IDs, displays a compact status summary.
 
 Usage:
-  cloche poll <run-id> [run-id...]
+  cloche poll <id> [id...]
 
 Arguments:
-  <run-id>    One or more run identifiers.
+  <id>    One or more IDs at any level of the hierarchy.
 
 Exit codes:
-  0    All runs succeeded.
+  0    All runs (or steps) succeeded.
   1    Any run failed, was cancelled, or the container died.
 
 Examples:
-  cloche poll abc123
+  cloche poll a133
+  cloche poll a133:develop
+  cloche poll a133:develop:review
+  cloche poll shandalar-1234
   cloche poll abc123 def456 ghi789
-  cloche run develop -p "Fix bug" && cloche poll "$(cloche run develop -p 'Fix bug')"
 `,
 
 	"list": `cloche list — List tasks

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
@@ -12,7 +13,9 @@ import (
 
 func cmdPoll(client pb.ClocheServiceClient, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "usage: cloche poll <run-id> [run-id...]\n")
+		fmt.Fprintf(os.Stderr, "usage: cloche poll <id> [id...]\n")
+		fmt.Fprintf(os.Stderr, "  <id> may be a task ID, attempt ID, workflow ID (attempt:workflow),\n")
+		fmt.Fprintf(os.Stderr, "  or step ID (attempt:workflow:step)\n")
 		os.Exit(1)
 	}
 
@@ -24,16 +27,29 @@ func cmdPoll(client pb.ClocheServiceClient, args []string) {
 	}
 }
 
-func cmdPollSingle(client pb.ClocheServiceClient, runID string) {
+// extractStepName returns the step name from a step-level ID (3 colon-separated
+// parts), or an empty string if the ID does not specify a step.
+func extractStepName(id string) string {
+	parts := strings.SplitN(id, ":", 3)
+	if len(parts) == 3 {
+		return parts[2]
+	}
+	return ""
+}
+
+func cmdPollSingle(client pb.ClocheServiceClient, id string) {
 	pollInterval := 2 * time.Second
 	containerDeadThreshold := 1 * time.Minute
 
 	var lastStepCount int
 	var lastState string
 
+	// Detect step-level ID: 3 colon-separated parts → last part is step name.
+	stepName := extractStepName(id)
+
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		resp, err := client.GetStatus(ctx, &pb.GetStatusRequest{RunId: runID})
+		resp, err := client.GetStatus(ctx, &pb.GetStatusRequest{Id: id})
 		cancel()
 
 		if err != nil {
@@ -53,10 +69,19 @@ func cmdPollSingle(client pb.ClocheServiceClient, runID string) {
 		}
 		lastStepCount = len(resp.StepExecutions)
 
+		// When polling a specific step, exit as soon as that step completes.
+		if stepName != "" {
+			for _, exec := range resp.StepExecutions {
+				if exec.StepName == stepName && exec.Result != "" {
+					os.Exit(0)
+				}
+			}
+		}
+
 		// Print state changes
 		if resp.State != lastState {
 			ts := time.Now().Format("15:04:05")
-			fmt.Printf("[%s] Run %s is %s\n", ts, runID, resp.State)
+			fmt.Printf("[%s] Run %s is %s\n", ts, resp.RunId, resp.State)
 			lastState = resp.State
 		}
 
@@ -94,21 +119,21 @@ func isTerminalState(state string) bool {
 	return false
 }
 
-// cmdPollMulti polls multiple runs and displays a compact status summary.
+// cmdPollMulti polls multiple IDs and displays a compact status summary.
 // Returns 0 if all runs succeeded, 1 if any failed or were cancelled.
-func cmdPollMulti(client pb.ClocheServiceClient, runIDs []string, stdout, stderr io.Writer) int {
+func cmdPollMulti(client pb.ClocheServiceClient, ids []string, stdout, stderr io.Writer) int {
 	pollInterval := 2 * time.Second
-	states := make(map[string]string, len(runIDs))
+	states := make(map[string]string, len(ids))
 
 	for {
 		changed := false
-		for _, id := range runIDs {
+		for _, id := range ids {
 			if isTerminalState(states[id]) {
 				continue
 			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			resp, err := client.GetStatus(ctx, &pb.GetStatusRequest{RunId: id})
+			resp, err := client.GetStatus(ctx, &pb.GetStatusRequest{Id: id})
 			cancel()
 
 			if err != nil {
@@ -125,7 +150,7 @@ func cmdPollMulti(client pb.ClocheServiceClient, runIDs []string, stdout, stderr
 		}
 
 		if changed {
-			for _, id := range runIDs {
+			for _, id := range ids {
 				fmt.Fprintf(stdout, "%s: %s\n", id, states[id])
 			}
 			fmt.Fprintln(stdout)
@@ -133,7 +158,7 @@ func cmdPollMulti(client pb.ClocheServiceClient, runIDs []string, stdout, stderr
 
 		// Check if all runs are in terminal states
 		allDone := true
-		for _, id := range runIDs {
+		for _, id := range ids {
 			if !isTerminalState(states[id]) && states[id] != "error" {
 				allDone = false
 				break
@@ -141,7 +166,7 @@ func cmdPollMulti(client pb.ClocheServiceClient, runIDs []string, stdout, stderr
 		}
 
 		if allDone {
-			for _, id := range runIDs {
+			for _, id := range ids {
 				s := states[id]
 				if s != "succeeded" {
 					return 1

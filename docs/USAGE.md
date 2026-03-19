@@ -767,12 +767,23 @@ Without `-f`, displays all logs captured to date and exits (even for active runs
 ### `cloche poll`
 
 ```
-cloche poll <run-id> [run-id...]
+cloche poll <id> [id...]
 ```
 
-Block until all specified runs finish. Polls every 2 seconds. Exits 0 if all runs succeeded, 1 if any failed or were cancelled.
+Block until all specified targets finish. Polls every 2 seconds. Exits 0 if all runs succeeded, 1 if any failed or were cancelled.
 
-With a single run ID, prints step-level progress. With multiple run IDs, displays a compact status summary (e.g. `id1: running`) and re-prints whenever a state changes. Use `cloche logs` for detailed output of individual runs.
+Accepts any level of the ID hierarchy:
+
+| Form | Example | Behaviour |
+|------|---------|-----------|
+| Task ID | `shandalar-1234` | waits for the most recent run of that task |
+| Attempt ID | `a133` | waits for that attempt |
+| Workflow ID | `a133:develop` | waits for that specific workflow run |
+| Step ID | `a133:develop:review` | waits until that step completes, then exits 0 |
+
+Polling a step ID is useful for waiting on a long-running step without waiting for the whole run to finish.
+
+With a single ID, prints step-level progress. With multiple IDs, displays a compact status summary (e.g. `id1: running`) and re-prints whenever a state changes. Use `cloche logs` for detailed output of individual runs.
 
 ### `cloche stop`
 

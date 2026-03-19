@@ -32,16 +32,22 @@ func (m *mockClocheClient) GetStatus(_ context.Context, req *pb.GetStatusRequest
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	resps, ok := m.statuses[req.RunId]
-	if !ok {
-		return nil, fmt.Errorf("unknown run: %s", req.RunId)
+	// Prefer the Id field over RunId for lookup.
+	key := req.Id
+	if key == "" {
+		key = req.RunId
 	}
 
-	idx := m.callCount[req.RunId]
+	resps, ok := m.statuses[key]
+	if !ok {
+		return nil, fmt.Errorf("unknown run: %s", key)
+	}
+
+	idx := m.callCount[key]
 	if idx >= len(resps) {
 		idx = len(resps) - 1
 	}
-	m.callCount[req.RunId] = idx + 1
+	m.callCount[key] = idx + 1
 
 	return resps[idx], nil
 }
@@ -197,15 +203,60 @@ func TestCmdPollMulti_OnlyPrintsOnChange(t *testing.T) {
 	}
 }
 
+func TestExtractStepName(t *testing.T) {
+	tests := []struct {
+		id   string
+		want string
+	}{
+		{"a133", ""},
+		{"a133:develop", ""},
+		{"a133:develop:review", "review"},
+		{"shandalar-1234:a133:review", "review"},
+		{"abc", ""},
+		{"abc:def:ghi", "ghi"},
+	}
+	for _, tt := range tests {
+		got := extractStepName(tt.id)
+		if got != tt.want {
+			t.Errorf("extractStepName(%q) = %q, want %q", tt.id, got, tt.want)
+		}
+	}
+}
+
+func TestCmdPollMulti_UsesIdField(t *testing.T) {
+	client := newMockClient()
+	// Keys use the full ID as passed (simulating workflow IDs).
+	client.statuses["a133:develop"] = []*pb.GetStatusResponse{
+		{RunId: "run1", State: "running"},
+		{RunId: "run1", State: "succeeded"},
+	}
+
+	var stdout, stderr bytes.Buffer
+	exitCode := cmdPollMulti(client, []string{"a133:develop"}, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+	if !strings.Contains(stdout.String(), "succeeded") {
+		t.Error("expected succeeded in output")
+	}
+}
+
 func TestPollHelpText(t *testing.T) {
 	text, ok := subcommandHelp["poll"]
 	if !ok {
 		t.Fatal("missing help text for poll subcommand")
 	}
-	if !strings.Contains(text, "run-id...") {
-		t.Error("poll help should mention multiple run IDs")
+	if !strings.Contains(text, "id...") {
+		t.Error("poll help should mention multiple IDs")
 	}
 	if !strings.Contains(text, "multiple") {
 		t.Error("poll help should describe multiple ID behavior")
+	}
+	if !strings.Contains(text, "step ID") {
+		t.Error("poll help should mention step ID")
+	}
+	if !strings.Contains(text, "attempt ID") {
+		t.Error("poll help should mention attempt ID")
 	}
 }
