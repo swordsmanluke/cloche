@@ -7,6 +7,14 @@ import (
 	"github.com/cloche-dev/cloche/internal/domain"
 )
 
+// UsageQuery holds filter parameters for token usage aggregation queries.
+type UsageQuery struct {
+	ProjectDir string    // empty = all projects
+	AgentName  string    // empty = all agents
+	Since      time.Time // zero = no lower bound
+	Until      time.Time // zero = no upper bound
+}
+
 type RunStore interface {
 	CreateRun(ctx context.Context, run *domain.Run) error
 	GetRun(ctx context.Context, id string) (*domain.Run, error)
@@ -17,6 +25,7 @@ type RunStore interface {
 	ListRunsFiltered(ctx context.Context, filter domain.RunListFilter) ([]*domain.Run, error)
 	ListProjects(ctx context.Context) ([]string, error)
 	ListChildRuns(ctx context.Context, parentRunID string) ([]*domain.Run, error)
+	QueryUsage(ctx context.Context, q UsageQuery) ([]domain.UsageSummary, error)
 }
 
 // ProjectMigrator is an optional interface that a RunStore may implement

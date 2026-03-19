@@ -11,6 +11,7 @@ import (
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/engine"
+	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/runcontext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -74,6 +75,9 @@ func (f *fakeStore) ListChildRuns(_ context.Context, parentRunID string) ([]*dom
 		}
 	}
 	return children, nil
+}
+func (f *fakeStore) QueryUsage(_ context.Context, _ ports.UsageQuery) ([]domain.UsageSummary, error) {
+	return nil, nil
 }
 
 func TestExecutor_ScriptStep_Success(t *testing.T) {

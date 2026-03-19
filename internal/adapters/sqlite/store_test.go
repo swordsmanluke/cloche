@@ -1392,6 +1392,198 @@ func TestAttemptLogs_EmptyResults(t *testing.T) {
 	assert.Empty(t, logs)
 }
 
+func TestSaveCapture_WithTokenUsage(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	run := domain.NewRun("usage-1", "develop")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	exec := &domain.StepExecution{
+		StepName:    "implement",
+		Result:      "success",
+		StartedAt:   time.Now().Add(-time.Minute),
+		CompletedAt: time.Now(),
+		Usage: &domain.TokenUsage{
+			InputTokens:  1234,
+			OutputTokens: 567,
+			AgentName:    "claude",
+		},
+	}
+	require.NoError(t, store.SaveCapture(ctx, "usage-1", exec))
+
+	caps, err := store.GetCaptures(ctx, "usage-1")
+	require.NoError(t, err)
+	require.Len(t, caps, 1)
+	require.NotNil(t, caps[0].Usage)
+	assert.Equal(t, int64(1234), caps[0].Usage.InputTokens)
+	assert.Equal(t, int64(567), caps[0].Usage.OutputTokens)
+	assert.Equal(t, "claude", caps[0].Usage.AgentName)
+}
+
+func TestSaveCapture_NilUsage(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	run := domain.NewRun("nousage-1", "develop")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	exec := &domain.StepExecution{
+		StepName:  "build",
+		Result:    "success",
+		StartedAt: time.Now(),
+	}
+	require.NoError(t, store.SaveCapture(ctx, "nousage-1", exec))
+
+	caps, err := store.GetCaptures(ctx, "nousage-1")
+	require.NoError(t, err)
+	require.Len(t, caps, 1)
+	assert.Nil(t, caps[0].Usage)
+}
+
+func TestQueryUsage_Basic(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now()
+
+	// Create runs with captures
+	for _, tc := range []struct {
+		runID, project, agent string
+		input, output         int64
+	}{
+		{"r1", "/proj-a", "claude", 1000, 500},
+		{"r2", "/proj-a", "claude", 2000, 800},
+		{"r3", "/proj-a", "codex", 300, 100},
+		{"r4", "/proj-b", "claude", 5000, 2000},
+	} {
+		r := domain.NewRun(tc.runID, "develop")
+		r.ProjectDir = tc.project
+		r.StartedAt = now.Add(-time.Hour)
+		r.State = domain.RunStateSucceeded
+		require.NoError(t, store.CreateRun(ctx, r))
+		require.NoError(t, store.SaveCapture(ctx, tc.runID, &domain.StepExecution{
+			StepName:    "implement",
+			Result:      "success",
+			StartedAt:   now.Add(-30 * time.Minute),
+			CompletedAt: now.Add(-time.Minute),
+			Usage: &domain.TokenUsage{
+				InputTokens:  tc.input,
+				OutputTokens: tc.output,
+				AgentName:    tc.agent,
+			},
+		}))
+	}
+
+	// Query all agents for proj-a
+	summaries, err := store.QueryUsage(ctx, ports.UsageQuery{
+		ProjectDir: "/proj-a",
+		Since:      now.Add(-2 * time.Hour),
+		Until:      now,
+	})
+	require.NoError(t, err)
+	require.Len(t, summaries, 2) // claude and codex
+
+	byAgent := make(map[string]domain.UsageSummary)
+	for _, s := range summaries {
+		byAgent[s.AgentName] = s
+	}
+
+	claude := byAgent["claude"]
+	assert.Equal(t, int64(3000), claude.InputTokens)
+	assert.Equal(t, int64(1300), claude.OutputTokens)
+	assert.Equal(t, int64(4300), claude.TotalTokens)
+	assert.Equal(t, int64(7200), claude.WindowSeconds)
+	assert.InDelta(t, float64(4300)/2.0, claude.BurnRate, 1.0)
+
+	codex := byAgent["codex"]
+	assert.Equal(t, int64(300), codex.InputTokens)
+	assert.Equal(t, int64(100), codex.OutputTokens)
+	assert.Equal(t, int64(400), codex.TotalTokens)
+}
+
+func TestQueryUsage_FilterByAgent(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now()
+
+	run := domain.NewRun("r1", "develop")
+	run.ProjectDir = "/proj"
+	run.State = domain.RunStateSucceeded
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	for _, tc := range []struct{ agent string; input int64 }{
+		{"claude", 1000},
+		{"codex", 2000},
+	} {
+		require.NoError(t, store.SaveCapture(ctx, "r1", &domain.StepExecution{
+			StepName:    tc.agent + "-step",
+			Result:      "success",
+			StartedAt:   now.Add(-30 * time.Minute),
+			CompletedAt: now.Add(-time.Minute),
+			Usage:       &domain.TokenUsage{InputTokens: tc.input, AgentName: tc.agent},
+		}))
+	}
+
+	summaries, err := store.QueryUsage(ctx, ports.UsageQuery{
+		AgentName: "claude",
+		Since:     now.Add(-time.Hour),
+	})
+	require.NoError(t, err)
+	require.Len(t, summaries, 1)
+	assert.Equal(t, "claude", summaries[0].AgentName)
+	assert.Equal(t, int64(1000), summaries[0].InputTokens)
+}
+
+func TestQueryUsage_Empty(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	summaries, err := store.QueryUsage(context.Background(), ports.UsageQuery{})
+	require.NoError(t, err)
+	assert.Empty(t, summaries)
+}
+
+func TestQueryUsage_ZeroWindowNoBurnRate(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now()
+
+	run := domain.NewRun("r1", "develop")
+	run.State = domain.RunStateSucceeded
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.SaveCapture(ctx, "r1", &domain.StepExecution{
+		StepName:    "step",
+		Result:      "success",
+		StartedAt:   now.Add(-time.Minute),
+		CompletedAt: now,
+		Usage:       &domain.TokenUsage{InputTokens: 100, OutputTokens: 50, AgentName: "claude"},
+	}))
+
+	// No Since/Until — window is 0, BurnRate should be 0
+	summaries, err := store.QueryUsage(ctx, ports.UsageQuery{})
+	require.NoError(t, err)
+	require.Len(t, summaries, 1)
+	assert.Equal(t, int64(0), summaries[0].WindowSeconds)
+	assert.Equal(t, float64(0), summaries[0].BurnRate)
+	assert.Equal(t, int64(150), summaries[0].TotalTokens)
+}
+
 func TestListRunsFiltered_NoFilters(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
