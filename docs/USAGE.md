@@ -640,8 +640,10 @@ cloche init [--workflow <name>] [--base-image <base>]
 | `--workflow <name>` | `develop` | Workflow name. Creates `.cloche/<name>.cloche`. |
 | `--base-image <base>` | `cloche-base:latest` | Base Docker image for the generated Dockerfile. |
 
-Creates `.cloche/` with workflow file, Dockerfile, `config.toml`, prompt templates,
-host workflows, and prompt generation script. Skips existing files.
+Creates `.cloche/` with workflow file, Dockerfile, `config.toml`, prompt templates
+(`implement.md`, `fix.md`, `update-docs.md`, `fix-merge.md`), host workflows, prompt
+generation script (`prepare-prompt.sh`), and merge/cleanup scripts (`prepare-merge.py`,
+`merge.py`, `cleanup.py`). Skips existing files.
 
 Also generates shell completion scripts to `~/.cloche/completions/` (bash and zsh)
 and offers to update `~/.bashrc` or `~/.zshrc` with the appropriate sourcing
