@@ -638,12 +638,13 @@ cloche init [--workflow <name>] [--base-image <base>]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--workflow <name>` | `develop` | Workflow name. Creates `.cloche/<name>.cloche`. |
-| `--base-image <base>` | `cloche-base:latest` | Base Docker image for the generated Dockerfile. |
+| `--base-image <base>` | `cloche-agent:latest` | Base Docker image for the generated Dockerfile. |
 
 Creates `.cloche/` with workflow file, Dockerfile, `config.toml`, prompt templates
-(`implement.md`, `fix.md`, `update-docs.md`, `fix-merge.md`), host workflows, prompt
-generation script (`prepare-prompt.sh`), and merge/cleanup scripts (`prepare-merge.py`,
-`merge.py`, `cleanup.py`). Skips existing files.
+(`implement.md`, `fix-tests.md`, `fix-merge.md`), host workflows (`host.cloche`),
+Python scripts (`get-tasks.py`, `claim-task.py`, `prepare-merge.py`, `merge.py`,
+`release-task.py`, `cleanup.py`, `unclaim.py`), `task_list.json`, and
+`test/cloche/test_cloche.py`. Skips existing files.
 
 Also generates shell completion scripts to `~/.cloche/completions/` (bash and zsh)
 and offers to update `~/.bashrc` or `~/.zshrc` with the appropriate sourcing
@@ -985,8 +986,8 @@ my-project/
 │   ├── config.toml           # Project configuration
 │   ├── prompts/              # Prompt templates
 │   │   ├── implement.md
-│   │   ├── fix.md
-│   │   └── update-docs.md
+│   │   ├── fix-tests.md
+│   │   └── fix-merge.md
 │   ├── scripts/              # Host-side scripts
 │   ├── overrides/            # Files copied on top of /workspace/
 │   │   └── CLAUDE.md         # Container-specific CLAUDE.md (optional)
