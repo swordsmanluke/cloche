@@ -119,16 +119,17 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 	}
 
 	executor := &Executor{
-		ProjectDir: projectDir,
-		MainDir:    MainWorktreeDir(projectDir),
-		Dispatcher: r.Dispatcher,
-		Store:      r.Store,
-		OutputDir:  outputDir,
-		Wires:      wf.Wiring,
-		HostRunID:  orchRunID,
-		TaskID:     r.TaskID,
-		AttemptID:  r.AttemptID,
-		ExtraEnv:   r.ExtraEnv,
+		ProjectDir:   projectDir,
+		MainDir:      MainWorktreeDir(projectDir),
+		Dispatcher:   r.Dispatcher,
+		Store:        r.Store,
+		OutputDir:    outputDir,
+		Wires:        wf.Wiring,
+		HostRunID:    orchRunID,
+		TaskID:       r.TaskID,
+		AttemptID:    r.AttemptID,
+		WorkflowName: wf.Name,
+		ExtraEnv:     r.ExtraEnv,
 	}
 
 	// Configure agent from workflow-level host config
@@ -283,15 +284,16 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 	}
 
 	executor := &Executor{
-		ProjectDir: run.ProjectDir,
-		MainDir:    MainWorktreeDir(run.ProjectDir),
-		Dispatcher: r.Dispatcher,
-		Store:      r.Store,
-		OutputDir:  outputDir,
-		Wires:      wf.Wiring,
-		HostRunID:  run.ID,
-		TaskID:     r.TaskID,
-		ExtraEnv:   extraEnv,
+		ProjectDir:   run.ProjectDir,
+		MainDir:      MainWorktreeDir(run.ProjectDir),
+		Dispatcher:   r.Dispatcher,
+		Store:        r.Store,
+		OutputDir:    outputDir,
+		Wires:        wf.Wiring,
+		HostRunID:    run.ID,
+		TaskID:       r.TaskID,
+		WorkflowName: wf.Name,
+		ExtraEnv:     extraEnv,
 	}
 
 	// Configure agent from workflow-level host config
@@ -449,17 +451,18 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 	saveExtraEnv(oldRun.ProjectDir, oldRun.TaskID, extraEnv)
 
 	executor := &Executor{
-		ProjectDir: oldRun.ProjectDir,
-		MainDir:    MainWorktreeDir(oldRun.ProjectDir),
-		Dispatcher: r.Dispatcher,
-		Store:      r.Store,
-		OutputDir:  newOutputDir,
-		Wires:      wf.Wiring,
-		HostRunID:  newRunID,
-		TaskID:     r.TaskID,
-		AttemptID:  r.AttemptID,
-		ExtraEnv:   extraEnv,
-		ResumeStep: resumeFrom,
+		ProjectDir:   oldRun.ProjectDir,
+		MainDir:      MainWorktreeDir(oldRun.ProjectDir),
+		Dispatcher:   r.Dispatcher,
+		Store:        r.Store,
+		OutputDir:    newOutputDir,
+		Wires:        wf.Wiring,
+		HostRunID:    newRunID,
+		TaskID:       r.TaskID,
+		AttemptID:    r.AttemptID,
+		WorkflowName: wf.Name,
+		ExtraEnv:     extraEnv,
+		ResumeStep:   resumeFrom,
 	}
 
 	if cmd := wf.Config["host.agent_command"]; cmd != "" {

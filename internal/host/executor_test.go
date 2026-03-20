@@ -1910,3 +1910,190 @@ func TestHostStatusHandler_NoLogFileWhenNoOutput(t *testing.T) {
 	_, err := os.Stat(filepath.Join(outputDir, "missing.log"))
 	assert.True(t, os.IsNotExist(err), ".log file should not be created when .out doesn't exist")
 }
+
+// --- Auto-context seeding tests ---
+
+func TestExecutor_SeedsRunContext_OnFirstUse(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir:   tmpDir,
+		OutputDir:    outputDir,
+		TaskID:       "task-seed-test",
+		AttemptID:    "attempt-1",
+		WorkflowName: "main",
+		HostRunID:    "main-run-001",
+	}
+
+	step := &domain.Step{
+		Name:    "greet",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo hi"},
+	}
+
+	_, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+
+	// Run-level keys should be seeded.
+	taskID, ok, err := runcontext.Get(tmpDir, "task-seed-test", "task_id")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "task-seed-test", taskID)
+
+	attemptID, ok, err := runcontext.Get(tmpDir, "task-seed-test", "attempt_id")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "attempt-1", attemptID)
+
+	workflow, ok, err := runcontext.Get(tmpDir, "task-seed-test", "workflow")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "main", workflow)
+
+	runID, ok, err := runcontext.Get(tmpDir, "task-seed-test", "run_id")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "main-run-001", runID)
+}
+
+func TestExecutor_SeedsRunContext_OnlyOnce(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir:   tmpDir,
+		OutputDir:    outputDir,
+		TaskID:       "task-once-test",
+		AttemptID:    "attempt-1",
+		WorkflowName: "main",
+		HostRunID:    "main-run-001",
+	}
+
+	step := &domain.Step{
+		Name:    "step-a",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo hi"},
+	}
+
+	// Execute twice to verify seedOnce fires only once.
+	_, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+
+	// Overwrite workflow key manually to detect re-seeding.
+	require.NoError(t, runcontext.Set(tmpDir, "task-once-test", "workflow", "overwritten"))
+
+	step2 := &domain.Step{
+		Name:    "step-b",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo bye"},
+	}
+	_, err = executor.Execute(context.Background(), step2)
+	require.NoError(t, err)
+
+	// Should still be "overwritten" — seed did not run again.
+	val, ok, err := runcontext.Get(tmpDir, "task-once-test", "workflow")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "overwritten", val)
+}
+
+func TestExecutor_SetsStepResult_AfterExecution(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir:   tmpDir,
+		OutputDir:    outputDir,
+		TaskID:       "task-result-test",
+		WorkflowName: "main",
+		HostRunID:    "main-run-001",
+	}
+
+	step := &domain.Step{
+		Name:    "build",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo built"},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result.Result)
+
+	// Step result key should be set.
+	val, ok, err := runcontext.Get(tmpDir, "task-result-test", "main:build:result")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "success", val)
+}
+
+func TestExecutor_SetsPrevStep_FromContext(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir:   tmpDir,
+		OutputDir:    outputDir,
+		TaskID:       "task-prev-test",
+		WorkflowName: "main",
+		HostRunID:    "main-run-001",
+	}
+
+	step := &domain.Step{
+		Name:    "deploy",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo deploying"},
+	}
+
+	ctx := engine.WithStepTrigger(context.Background(), engine.StepTrigger{
+		PrevStep:   "build",
+		PrevResult: "success",
+	})
+
+	_, err := executor.Execute(ctx, step)
+	require.NoError(t, err)
+
+	prevStep, ok, err := runcontext.Get(tmpDir, "task-prev-test", "prev_step")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "build", prevStep)
+
+	prevResult, ok, err := runcontext.Get(tmpDir, "task-prev-test", "prev_result")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "success", prevResult)
+}
+
+func TestExecutor_SkipsContextSeeding_WhenNoTaskID(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir:   tmpDir,
+		OutputDir:    outputDir,
+		WorkflowName: "main",
+		HostRunID:    "main-run-001",
+		// No TaskID
+	}
+
+	step := &domain.Step{
+		Name:    "greet",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo hi"},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result.Result)
+
+	// No context.json should be created when TaskID is empty.
+	contextPath := filepath.Join(tmpDir, ".cloche", "runs", "", "context.json")
+	_, statErr := os.Stat(contextPath)
+	assert.True(t, os.IsNotExist(statErr), "context.json should not be created without a task ID")
+}

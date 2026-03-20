@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
@@ -63,8 +64,11 @@ type Executor struct {
 	AgentArgs     []string       // workflow-level explicit agent args (overrides defaults)
 	TaskID        string         // optional task ID assigned by the daemon loop
 	AttemptID     string         // optional attempt ID for v2 tracking (propagated to child runs)
+	WorkflowName  string         // workflow name for run context seeding
 	ExtraEnv      []string       // additional KEY=VALUE env vars for all steps
 	ResumeStep    string         // step being resumed (for prompt conversation resume)
+
+	seedOnce sync.Once // ensures SeedRunContext is called exactly once
 }
 
 // scriptDir returns the directory from which scripts should execute.
@@ -80,18 +84,46 @@ var _ engine.StepExecutor = (*Executor)(nil)
 
 // Execute runs a single host workflow step.
 func (e *Executor) Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
+	// Seed run-level context once on first use (logged but not fatal on error).
+	if e.TaskID != "" {
+		e.seedOnce.Do(func() {
+			if err := runcontext.SeedRunContext(e.ProjectDir, e.TaskID, e.AttemptID, e.WorkflowName, e.HostRunID); err != nil {
+				log.Printf("host executor: seeding run context: %v", err)
+			}
+		})
+	}
+
+	// Record the step trigger (prev_step / prev_result) before dispatching.
+	if e.TaskID != "" {
+		trigger, _ := engine.GetStepTrigger(ctx)
+		if err := runcontext.SetPrevStep(e.ProjectDir, e.TaskID, trigger.PrevStep, trigger.PrevResult); err != nil {
+			log.Printf("host executor: setting prev step context for %q: %v", step.Name, err)
+		}
+	}
+
+	var result domain.StepResult
+	var err error
 	switch step.Type {
 	case domain.StepTypeScript:
-		result, err := e.executeScript(ctx, step)
-		return domain.StepResult{Result: result}, err
+		r, e2 := e.executeScript(ctx, step)
+		result, err = domain.StepResult{Result: r}, e2
 	case domain.StepTypeWorkflow:
-		result, err := e.executeWorkflow(ctx, step)
-		return domain.StepResult{Result: result}, err
+		r, e2 := e.executeWorkflow(ctx, step)
+		result, err = domain.StepResult{Result: r}, e2
 	case domain.StepTypeAgent:
-		return e.executeAgent(ctx, step)
+		result, err = e.executeAgent(ctx, step)
 	default:
 		return domain.StepResult{}, fmt.Errorf("unsupported step type %q in host workflow", step.Type)
 	}
+
+	// Record the step result after execution.
+	if e.TaskID != "" && err == nil && result.Result != "" {
+		if setErr := runcontext.SetStepResult(e.ProjectDir, e.TaskID, e.WorkflowName, step.Name, result.Result); setErr != nil {
+			log.Printf("host executor: setting step result context for %q: %v", step.Name, setErr)
+		}
+	}
+
+	return result, err
 }
 
 // executeScript runs a shell command on the host.
