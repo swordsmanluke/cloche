@@ -720,7 +720,7 @@ workflow "develop" {
 ## Container Isolation Model
 
 - **Files in**: `docker cp` copies the project into `/workspace/`. No bind mounts. Override files from `.cloche/overrides/` are applied on top. `.git/` is included.
-- **Files out**: On completion, the daemon extracts results via `docker cp` into a git worktree and commits to a `cloche/<run-id>` branch.
+- **Files out**: On completion, the daemon extracts results via `docker cp` into a git worktree and commits to a `cloche/<run-id>` branch. If the agent made commits inside the container, their messages are preserved in the squash commit (like `git merge --squash`). When no container commits exist, the commit message includes a file-change summary instead.
 - **Auth files**: `~/.claude/` and `~/.claude.json` are copied into each container at `/home/agent/` for Claude Code session reuse. Copied (not bind-mounted) so each container gets its own isolated copy.
 - **Network**: Containers have network access (needed for API calls).
 - **Cleanup**: Containers are removed after successful runs unless `--keep-container` is set. Failed runs always keep their container.
