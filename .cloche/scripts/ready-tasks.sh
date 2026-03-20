@@ -5,8 +5,9 @@
 #   2. All its closed dependencies have a succeeded cloche run
 set -uo pipefail
 
-# bd ready --json outputs a JSON array of ready tasks.
-json=$(bd ready --json 2>/dev/null) || json="[]"
+# bd ready --json outputs a JSON array of ready tasks (open + in_progress).
+# Filter to only open tasks — in_progress means already claimed by a run.
+json=$(bd ready --json 2>/dev/null | jq '[.[] | select(.status == "open")]') || json="[]"
 
 if [ "$json" = "[]" ] || [ -z "$json" ]; then
   exit 0
