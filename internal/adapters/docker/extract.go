@@ -50,8 +50,10 @@ func ExtractResults(ctx context.Context, containerID, projectDir, runID, baseSHA
 	}()
 
 	// 3. Replace worktree contents with the container workspace.
-	// First remove all existing files (preserving .git), then copy from the
-	// container. This ensures file deletions by the agent are captured.
+	// First extract commit messages from the container's git history (before
+	// removing .git), then remove existing files (preserving .git) and copy
+	// from the container. This ensures file deletions by the agent are captured.
+	containerCommits := extractContainerCommits(ctx, tmpDir, baseSHA)
 	os.RemoveAll(filepath.Join(tmpDir, ".git"))
 	entries, _ := os.ReadDir(worktreeDir)
 	for _, e := range entries {
@@ -87,7 +89,7 @@ func ExtractResults(ctx context.Context, containerID, projectDir, runID, baseSHA
 		return fmt.Errorf("git add: %s: %w", out, err)
 	}
 
-	commitMsg := buildCommitMessage(ctx, worktreeDir, gitEnv, runID, workflowName, result)
+	commitMsg := buildCommitMessage(ctx, worktreeDir, gitEnv, runID, workflowName, result, containerCommits)
 	commitCmd := exec.CommandContext(ctx, "git", "commit", "-F", "-", "--allow-empty")
 	commitCmd.Dir = worktreeDir
 	commitCmd.Env = gitEnv
@@ -99,23 +101,12 @@ func ExtractResults(ctx context.Context, containerID, projectDir, runID, baseSHA
 	return nil
 }
 
-// buildCommitMessage generates a descriptive commit message by inspecting the
-// staged diff in the worktree. The title summarizes the workflow result, and
-// the body lists file-level changes grouped by operation (added, modified,
-// deleted, renamed).
-func buildCommitMessage(ctx context.Context, worktreeDir string, gitEnv []string, runID, workflowName, result string) string {
+// buildCommitMessage generates a squash-style commit message. The title
+// summarizes the workflow result. If the agent made commits inside the
+// container, their messages are included (like git merge --squash). Otherwise
+// falls back to a file-change summary.
+func buildCommitMessage(ctx context.Context, worktreeDir string, gitEnv []string, runID, workflowName, result string, containerCommits string) string {
 	title := fmt.Sprintf("cloche run %s: %s (%s)", runID, workflowName, result)
-
-	// Get name-status of staged changes relative to parent
-	nsCmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--name-status")
-	nsCmd.Dir = worktreeDir
-	nsCmd.Env = gitEnv
-	nsOut, err := nsCmd.Output()
-	if err != nil || len(bytes.TrimSpace(nsOut)) == 0 {
-		return title
-	}
-
-	added, modified, deleted, renamed := classifyChanges(string(nsOut))
 
 	// Get diffstat summary line (e.g. "5 files changed, 100 insertions(+), 20 deletions(-)")
 	statCmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--stat", "--stat-width=72")
@@ -129,16 +120,69 @@ func buildCommitMessage(ctx context.Context, worktreeDir string, gitEnv []string
 		body.WriteString(statSummary)
 		body.WriteString("\n\n")
 	}
-	writeChangeSection(&body, "Added", added)
-	writeChangeSection(&body, "Modified", modified)
-	writeChangeSection(&body, "Deleted", deleted)
-	writeChangeSection(&body, "Renamed", renamed)
+
+	// Include container commit messages (squash-style) if available.
+	if containerCommits != "" {
+		body.WriteString("Squashed commits:\n\n")
+		body.WriteString(containerCommits)
+	} else {
+		// No container commits — fall back to file-change summary.
+		nsCmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--name-status")
+		nsCmd.Dir = worktreeDir
+		nsCmd.Env = gitEnv
+		nsOut, err := nsCmd.Output()
+		if err == nil && len(bytes.TrimSpace(nsOut)) > 0 {
+			added, modified, deleted, renamed := classifyChanges(string(nsOut))
+			writeChangeSection(&body, "Added", added)
+			writeChangeSection(&body, "Modified", modified)
+			writeChangeSection(&body, "Deleted", deleted)
+			writeChangeSection(&body, "Renamed", renamed)
+		}
+	}
 
 	if body.Len() == 0 {
 		return title
 	}
 
 	return title + "\n\n" + strings.TrimRight(body.String(), "\n")
+}
+
+// extractContainerCommits reads commit messages from the container's git history
+// since baseSHA. Returns a formatted string with each commit's message, suitable
+// for inclusion in a squash commit. Returns "" if no commits were made or on error.
+func extractContainerCommits(ctx context.Context, containerRepoDir, baseSHA string) string {
+	// Use %x00 as delimiter between commits to handle multi-line messages.
+	logCmd := exec.CommandContext(ctx, "git", "log", "--reverse", "--format=%B%x00", baseSHA+"..HEAD")
+	logCmd.Dir = containerRepoDir
+	out, err := logCmd.Output()
+	if err != nil || len(bytes.TrimSpace(out)) == 0 {
+		return ""
+	}
+
+	raw := strings.TrimSpace(string(out))
+	commits := strings.Split(raw, "\x00")
+
+	var result strings.Builder
+	for _, msg := range commits {
+		msg = strings.TrimSpace(msg)
+		if msg == "" {
+			continue
+		}
+		// Indent each commit message and separate with blank lines.
+		lines := strings.Split(msg, "\n")
+		for i, line := range lines {
+			if i == 0 {
+				result.WriteString("  * ")
+			} else {
+				result.WriteString("    ")
+			}
+			result.WriteString(line)
+			result.WriteString("\n")
+		}
+		result.WriteString("\n")
+	}
+
+	return strings.TrimRight(result.String(), "\n")
 }
 
 // classifyChanges parses git diff --name-status output into categorized file lists.

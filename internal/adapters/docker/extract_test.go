@@ -91,8 +91,31 @@ func TestWriteChangeSectionEmpty(t *testing.T) {
 func TestBuildCommitMessageIntegration(t *testing.T) {
 	// Test that buildCommitMessage returns at least the title when git
 	// commands fail (e.g. not in a real worktree).
-	msg := buildCommitMessage(context.Background(), "/nonexistent", nil, "test-run-id", "develop", "succeeded")
+	msg := buildCommitMessage(context.Background(), "/nonexistent", nil, "test-run-id", "develop", "succeeded", "")
 	if !strings.HasPrefix(msg, "cloche run test-run-id: develop (succeeded)") {
 		t.Errorf("unexpected message: %s", msg)
+	}
+}
+
+func TestBuildCommitMessageWithContainerCommits(t *testing.T) {
+	commits := "  * Fix login validation\n    Check email format before submit\n\n  * Add unit tests"
+	msg := buildCommitMessage(context.Background(), "/nonexistent", nil, "run-1", "develop", "succeeded", commits)
+
+	if !strings.Contains(msg, "Squashed commits:") {
+		t.Error("expected squash header in message")
+	}
+	if !strings.Contains(msg, "Fix login validation") {
+		t.Error("expected container commit message in output")
+	}
+	if !strings.Contains(msg, "Add unit tests") {
+		t.Error("expected second commit message in output")
+	}
+}
+
+func TestExtractContainerCommitsEmpty(t *testing.T) {
+	// Non-existent dir should return empty string, not error.
+	result := extractContainerCommits(context.Background(), "/nonexistent", "abc123")
+	if result != "" {
+		t.Errorf("expected empty string, got %q", result)
 	}
 }
