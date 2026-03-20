@@ -1248,7 +1248,9 @@ my-project/
 └── .git/
 ```
 
-## Daemon Configuration
+## Environment Variable Reference
+
+### Daemon Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -1269,6 +1271,32 @@ my-project/
 |----------|---------|-------------|
 | `CLOCHE_ADDR` | `unix://~/.config/cloche/cloche.sock` | Daemon gRPC address |
 | `CLOCHE_HTTP` | `localhost:8080` | Daemon HTTP address |
+
+### Host Step Runtime Variables
+
+Set by the daemon for each host step script invocation.
+
+| Variable | Description |
+|----------|-------------|
+| `CLOCHE_PROJECT_DIR` | Absolute path to the project directory on the host. |
+| `CLOCHE_RUN_ID` | The run ID for this workflow execution. |
+| `CLOCHE_STEP_OUTPUT` | Path where this step should write its output (for output mappings). |
+| `CLOCHE_PREV_OUTPUT` | Path to the output file from the immediately preceding step. |
+| `CLOCHE_TASK_ID` | Task ID assigned by the daemon (set for `main` and `finalize` phases). |
+| `CLOCHE_MAIN_OUTCOME` | Result of the `main` workflow (`succeeded` or `failed`). Set for `finalize` phase only. |
+| `CLOCHE_MAIN_RUN_ID` | Run ID of the completed `main` workflow. Set for `finalize` phase only. |
+
+### Container Runtime Variables
+
+Injected into the container by the daemon at startup.
+
+| Variable | Description |
+|----------|-------------|
+| `CLOCHE_RUN_ID` | The run ID for this workflow execution. |
+| `CLOCHE_TASK_ID` | Task ID assigned by the daemon. Set when the container run is associated with a task. |
+| `CLOCHE_PROJECT_DIR` | Working directory inside the container (`/workspace`). Set so `cloche get`/`cloche set` work correctly. |
+| `CLOCHE_AGENT_COMMAND` | Overrides the default agent command inside the container. |
+| `ANTHROPIC_API_KEY` | Passed through from the host environment if set. |
 
 ## Dockerfile Requirements
 
