@@ -1107,6 +1107,7 @@ my-project/
 │   ├── host.cloche           # Host orchestration workflows (contain host { } blocks)
 │   ├── Dockerfile            # Container image definition
 │   ├── config.toml           # Project configuration
+│   ├── version               # Schema version marker (used for upgrade checks)
 │   ├── prompts/              # Prompt templates
 │   │   ├── implement.md
 │   │   ├── fix-tests.md
@@ -1123,6 +1124,11 @@ my-project/
 │               ├── full.log                  # Unified log (all steps)
 │               ├── <workflow>-<step>.log     # Per-step script output
 │               └── <workflow>-llm-<step>.log # Per-step LLM conversation
+├── test/
+│   └── cloche/
+│       └── test_cloche.py    # Validation tests for the Cloche setup
+├── .clocheignore             # Workspace file exclusions (patterns to omit from container)
+├── task_list.json            # Sample task file for local development and testing
 ├── src/                      # Project source (untouched by Cloche)
 └── .git/
 ```
