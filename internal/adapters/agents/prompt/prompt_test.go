@@ -237,10 +237,12 @@ func TestExecuteWritesOutputFile(t *testing.T) {
 
 func TestPromptAdapter_IncrementsAttemptCount(t *testing.T) {
 	dir := t.TempDir()
+	taskID := "test-task"
 
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
 		ExplicitArgs: []string{"-c", "cat > /dev/null"},
+		TaskID:       taskID,
 	}
 
 	step := &domain.Step{
@@ -257,7 +259,7 @@ func TestPromptAdapter_IncrementsAttemptCount(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify count is 2
-	countPath := filepath.Join(dir, ".cloche", "attempt_count", "fix")
+	countPath := filepath.Join(dir, ".cloche", "runs", taskID, "attempt_count", "fix")
 	data, err := os.ReadFile(countPath)
 	require.NoError(t, err)
 	assert.Equal(t, "2", string(data))

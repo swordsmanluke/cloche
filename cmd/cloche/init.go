@@ -631,6 +631,8 @@ func cmdInit(args []string) {
 	addGitignoreEntries([]string{
 		".cloche/logs/",
 		".cloche/runs/",
+		".cloche/output/",
+		".cloche/history.log",
 		".gitworktrees/",
 		"task_list.json",
 	})

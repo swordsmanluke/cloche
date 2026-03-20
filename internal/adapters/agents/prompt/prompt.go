@@ -485,27 +485,37 @@ func toolInputSummary(input json.RawMessage) string {
 func assemblePrompt(step *domain.Step, workDir, taskID string) (string, error) {
 	var parts []string
 
+	// Gather substitution values
+	userPrompt := readUserPrompt(workDir, taskID)
+	feedback := readFeedback(workDir)
+
 	// 1. Read system template from step config
 	if tmpl, ok := step.Config["prompt"]; ok {
 		content, err := resolveContent(tmpl, workDir)
 		if err != nil {
 			return "", fmt.Errorf("reading prompt template: %w", err)
 		}
+		// Substitute template placeholders if present
+		if strings.Contains(content, "{task_description}") {
+			content = strings.ReplaceAll(content, "{task_description}", userPrompt)
+			userPrompt = "" // consumed — don't append again
+		}
+		if strings.Contains(content, "{previous_output}") {
+			content = strings.ReplaceAll(content, "{previous_output}", feedback)
+			feedback = "" // consumed — don't append again
+		}
 		parts = append(parts, content)
 	}
 
-	// 2. Read user prompt from .cloche/runs/<task-id>/prompt.txt
-	userPrompt := readUserPrompt(workDir, taskID)
+	// 2. Append user prompt if not already substituted into template
 	if userPrompt != "" {
 		parts = append(parts, "## User Request\n"+userPrompt)
 	}
 
-	// 3. Read feedback from .cloche/output/*.log (opt-in via step config)
-	if step.Config["feedback"] == "true" {
-		feedback := readFeedback(workDir)
-		if feedback != "" {
-			parts = append(parts, "## Validation Output\n"+feedback)
-		}
+	// 3. Read feedback from .cloche/output/*.log (opt-in via step config, or
+	//    already consumed by {previous_output} substitution above)
+	if step.Config["feedback"] == "true" && feedback != "" {
+		parts = append(parts, "## Validation Output\n"+feedback)
 	}
 
 	// 4. Result selection instructions
