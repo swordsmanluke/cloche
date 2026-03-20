@@ -260,15 +260,20 @@ func resumeTaskOrRunFromContext(ctx context.Context) string {
 // This is set by the host executor when dispatching a child container workflow
 // so the container run is linked to the parent host run's attempt.
 func attemptIDFromContext(ctx context.Context) string {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return ""
+	// Check incoming metadata (set by gRPC transport for remote calls).
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if vals := md.Get(host.AttemptIDMetadataKey); len(vals) > 0 {
+			return vals[0]
+		}
 	}
-	vals := md.Get(host.AttemptIDMetadataKey)
-	if len(vals) == 0 {
-		return ""
+	// Check outgoing metadata (set by host executor for in-process calls
+	// where the gRPC transport layer doesn't convert outgoing→incoming).
+	if md, ok := metadata.FromOutgoingContext(ctx); ok {
+		if vals := md.Get(host.AttemptIDMetadataKey); len(vals) > 0 {
+			return vals[0]
+		}
 	}
-	return vals[0]
+	return ""
 }
 
 // ensureTaskAndAttempt creates (or looks up) a Task record and creates a new
