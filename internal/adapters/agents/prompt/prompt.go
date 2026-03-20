@@ -44,15 +44,37 @@ func (a *Adapter) Name() string {
 }
 
 // argsFor returns the arguments for the given command. If ExplicitArgs is set,
-// it is used for all commands. Otherwise, known agents get their default args.
+// it is used as the base, but required flags for known agents are always
+// included (e.g. --output-format stream-json for claude). Otherwise, known
+// agents get their default args.
 func (a *Adapter) argsFor(command string) []string {
 	if a.ExplicitArgs != nil {
-		return a.ExplicitArgs
+		args := a.ExplicitArgs
+		// Ensure required flags for known agents are present.
+		if command == "claude" {
+			if !containsArg(args, "--output-format") {
+				args = append(args, "--output-format", "stream-json")
+			}
+			if !containsArg(args, "--verbose") {
+				args = append(args, "--verbose")
+			}
+		}
+		return args
 	}
 	if args, ok := defaultAgentArgs[command]; ok {
 		return args
 	}
 	return nil
+}
+
+// containsArg checks if an argument list contains a specific flag.
+func containsArg(args []string, flag string) bool {
+	for _, a := range args {
+		if a == flag {
+			return true
+		}
+	}
+	return false
 }
 
 // ParseCommands splits a comma-separated agent_command string into individual
