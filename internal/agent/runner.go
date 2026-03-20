@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/protocol"
+	"github.com/cloche-dev/cloche/internal/runcontext"
 )
 
 type RunnerConfig struct {
@@ -84,6 +86,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	executor := &stepExecutor{
 		workDir:        r.cfg.WorkDir,
 		workflowName:   wf.Name,
+		taskID:         r.cfg.TaskID,
 		generic:        genericAdapter,
 		prompt:         promptAdapter,
 		logStream:      ulog,
@@ -93,6 +96,11 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	eng := engine.New(executor)
 	eng.SetStatusHandler(&statusReporter{writer: statusWriter, logStream: ulog})
+
+	// Seed run-level auto-context keys before execution starts.
+	if err := runcontext.SeedRunContext(r.cfg.WorkDir, r.cfg.TaskID, r.cfg.AttemptID, wf.Name, r.cfg.RunID); err != nil {
+		log.Printf("seeding run context: %v", err)
+	}
 
 	// Resume mode: load completed step results and configure engine
 	if r.cfg.ResumeFromStep != "" {
@@ -146,6 +154,7 @@ func (r *Runner) Run(ctx context.Context) error {
 type stepExecutor struct {
 	workDir        string
 	workflowName   string // used to prefix per-step log files (v2 layout)
+	taskID         string
 	generic        *generic.Adapter
 	prompt         *prompt.Adapter
 	logStream      *logstream.Writer
@@ -154,18 +163,25 @@ type stepExecutor struct {
 }
 
 func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
+	// Seed prev_step/prev_result before executing the step.
+	if trigger, ok := engine.GetStepTrigger(ctx); ok {
+		if err := runcontext.SetPrevStep(e.workDir, e.taskID, trigger.PrevStep, trigger.PrevResult); err != nil {
+			log.Printf("setting prev step context: %v", err)
+		}
+	}
+
+	var sr domain.StepResult
+	var err error
+
 	switch step.Type {
 	case domain.StepTypeScript:
-		sr, err := e.generic.Execute(ctx, step, e.workDir)
+		sr, err = e.generic.Execute(ctx, step, e.workDir)
 		e.logStepOutput(step.Name, logstream.TypeScript)
-		return sr, err
 	case domain.StepTypeAgent:
 		if _, ok := step.Config["run"]; ok {
-			sr, err := e.generic.Execute(ctx, step, e.workDir)
+			sr, err = e.generic.Execute(ctx, step, e.workDir)
 			e.logStepOutput(step.Name, logstream.TypeScript)
-			return sr, err
-		}
-		if _, ok := step.Config["prompt"]; ok {
+		} else if _, ok := step.Config["prompt"]; ok {
 			if cmd := step.Config["agent_command"]; cmd != "" {
 				e.prompt.Commands = prompt.ParseCommands(cmd)
 			}
@@ -177,15 +193,24 @@ func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (domain.S
 				e.prompt.ResumeConversation = true
 				defer func() { e.prompt.ResumeConversation = false }()
 			}
-			sr, err := e.prompt.Execute(ctx, step, e.workDir)
+			sr, err = e.prompt.Execute(ctx, step, e.workDir)
 			e.copyToLLMLog(step.Name)
 			e.logStepOutput(step.Name, logstream.TypeLLM)
-			return sr, err
+		} else {
+			return domain.StepResult{}, fmt.Errorf("agent step %q requires either 'run' or 'prompt' config", step.Name)
 		}
-		return domain.StepResult{}, fmt.Errorf("agent step %q requires either 'run' or 'prompt' config", step.Name)
 	default:
 		return domain.StepResult{}, fmt.Errorf("unknown step type: %s", step.Type)
 	}
+
+	// Record step result after completion.
+	if err == nil && sr.Result != "" {
+		if setErr := runcontext.SetStepResult(e.workDir, e.taskID, e.workflowName, step.Name, sr.Result); setErr != nil {
+			log.Printf("setting step result context: %v", setErr)
+		}
+	}
+
+	return sr, err
 }
 
 // stepLogPath returns the v2 path for a per-step log file.

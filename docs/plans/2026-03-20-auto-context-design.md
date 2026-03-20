@@ -1,7 +1,7 @@
 # Auto-Seeded Run Context Design
 
 **Date:** 2026-03-20
-**Status:** Partially implemented (engine/context.go and engine.go done; runcontext seeding pending)
+**Status:** Implemented
 
 ## Problem
 
