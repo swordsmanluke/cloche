@@ -21,6 +21,7 @@ type ContainerConfig struct {
 	TaskID       string // task ID for runtime state paths (.cloche/runs/<task-id>/)
 	AttemptID    string // attempt ID for unique container naming
 	Cmd          []string // override container command; defaults to ["cloche-agent", WorkflowName]
+	Prompt       string // prompt text to write into .cloche/runs/<task-id>/prompt.txt in container
 }
 
 type ContainerRuntime interface {

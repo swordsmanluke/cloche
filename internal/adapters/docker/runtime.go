@@ -143,6 +143,19 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		}
 	}
 
+	// 3b. Write prompt into container (.cloche/runs/ is excluded by .clocheignore,
+	//      so prompt.txt must be injected separately).
+	if cfg.Prompt != "" && cfg.TaskID != "" {
+		promptDir := filepath.Join(os.TempDir(), "cloche-prompt-"+cfg.RunID)
+		runsDir := filepath.Join(promptDir, ".cloche", "runs", cfg.TaskID)
+		if err := os.MkdirAll(runsDir, 0755); err == nil {
+			_ = os.WriteFile(filepath.Join(runsDir, "prompt.txt"), []byte(cfg.Prompt), 0644)
+			cpCmd := exec.CommandContext(ctx, "docker", "cp", promptDir+"/.", containerID+":/workspace/")
+			_ = cpCmd.Run()
+			os.RemoveAll(promptDir)
+		}
+	}
+
 	// 4. Copy Claude auth files into container (each gets its own copy).
 	// Only copy auth-relevant files — not the full ~/.claude directory
 	// which contains large history, session, and debug data.
