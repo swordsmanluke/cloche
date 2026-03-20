@@ -1094,12 +1094,14 @@ func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 
 	// Fall back to file path conventions.
 	// Try v2 path (.cloche/logs/<taskID>/<attemptID>/<workflow>-<step>.log) first,
+	// then v2 without prefix (host workflows write <step>.log, not <workflow>-<step>.log),
 	// then legacy path (.cloche/<runID>/output/<step>.log).
 	legacyOutputDir := filepath.Join(run.ProjectDir, ".cloche", id, "output")
 	var searchDirs []struct{ dir, prefix string }
 	if run.AttemptID != "" && run.TaskID != "" {
 		v2Dir := filepath.Join(run.ProjectDir, ".cloche", "logs", run.TaskID, run.AttemptID)
 		searchDirs = append(searchDirs, struct{ dir, prefix string }{v2Dir, run.WorkflowName + "-"})
+		searchDirs = append(searchDirs, struct{ dir, prefix string }{v2Dir, ""})
 	}
 	searchDirs = append(searchDirs, struct{ dir, prefix string }{legacyOutputDir, ""})
 

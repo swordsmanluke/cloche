@@ -406,7 +406,7 @@ func TestPhaseLoop_BasicFlow(t *testing.T) {
 		}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		mainCalls.Add(1)
 		mu.Lock()
 		receivedTaskIDs = append(receivedTaskIDs, taskID)
@@ -452,7 +452,7 @@ func TestPhaseLoop_SkipsClosedTasks(t *testing.T) {
 		}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		mainCalls.Add(1)
 		return &RunResult{State: domain.RunStateSucceeded}, nil
 	}
@@ -480,7 +480,7 @@ func TestPhaseLoop_FinalizeRunsOnFailure(t *testing.T) {
 		return []Task{{ID: "task-1", Status: "open"}}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		return &RunResult{RunID: "run-1", State: domain.RunStateFailed}, nil
 	}
 
@@ -522,7 +522,7 @@ func TestPhaseLoop_FinalizeFailureOverridesMainSuccess(t *testing.T) {
 		return nil, nil // no more tasks after first round
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
 	}
 
@@ -564,7 +564,7 @@ func TestPhaseLoop_FinalizeErrorOverridesMainSuccess(t *testing.T) {
 		return []Task{{ID: "task-1", Status: "open"}}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		mainCalls.Add(1)
 		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
 	}
@@ -597,7 +597,7 @@ func TestPhaseLoop_NoFinalize(t *testing.T) {
 		return []Task{{ID: "task-1", Status: "open"}}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		mainCalls.Add(1)
 		time.Sleep(20 * time.Millisecond)
 		return &RunResult{State: domain.RunStateSucceeded}, nil
@@ -627,7 +627,7 @@ func TestPhaseLoop_DedupFiltersOpenTasks(t *testing.T) {
 		return []Task{{ID: "task-1", Status: "open"}}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		mu.Lock()
 		receivedTaskIDs = append(receivedTaskIDs, taskID)
 		mu.Unlock()
@@ -682,7 +682,7 @@ func TestLoop_GetTaskSnapshot_ReturnsLastTasks(t *testing.T) {
 		return tasks, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		time.Sleep(50 * time.Millisecond)
 		return &RunResult{RunID: "run-" + taskID, State: domain.RunStateSucceeded}, nil
 	}
@@ -759,7 +759,7 @@ func TestLoop_GetTaskSnapshot_DedupExpired(t *testing.T) {
 		return tasks, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
 	}
 
@@ -908,7 +908,7 @@ func TestPhaseLoop_StopOnError_HaltsOnFailure(t *testing.T) {
 		}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		mainCalls.Add(1)
 		time.Sleep(20 * time.Millisecond)
 		return &RunResult{RunID: "run-" + taskID, State: domain.RunStateFailed}, nil
@@ -1076,7 +1076,7 @@ func TestPhaseLoop_ConsecutiveFailures_HaltsAfterThreshold(t *testing.T) {
 		return []Task{{ID: fmt.Sprintf("task-%d", mainCalls.Load()+1), Status: "open"}}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		mainCalls.Add(1)
 		time.Sleep(20 * time.Millisecond)
 		return &RunResult{RunID: "run-" + taskID, State: domain.RunStateFailed}, nil
@@ -1147,7 +1147,7 @@ func TestPhaseLoop_CreatesAttemptOnTaskPick(t *testing.T) {
 	var receivedAttemptID string
 	var mu sync.Mutex
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		mu.Lock()
 		receivedAttemptID = attemptID
 		mu.Unlock()
@@ -1197,7 +1197,7 @@ func TestPhaseLoop_AttemptCompletedAsFailed(t *testing.T) {
 		return []Task{{ID: "task-1", Status: "open"}}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		return &RunResult{RunID: "run-1", State: domain.RunStateFailed}, nil
 	}
 
@@ -1227,7 +1227,7 @@ func TestPhaseLoop_AttemptIDPassedToFinalize(t *testing.T) {
 		return []Task{{ID: "task-1", Status: "open"}}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
 	}
 
@@ -1437,7 +1437,7 @@ func TestPhaseLoop_AttemptCompletedWhenMainReturnsNilResult(t *testing.T) {
 		return []Task{{ID: "task-nil", Status: "open"}}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		// Return (nil, nil) — valid but unusual; must not orphan the attempt.
 		return nil, nil
 	}
@@ -1477,7 +1477,7 @@ func TestPhaseLoop_AttemptCompletedOnRetry(t *testing.T) {
 		return []Task{{ID: "task-retry", Status: "open"}}, nil
 	}
 
-	mainFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		n := callCount.Add(1)
 		if n == 1 {
 			return &RunResult{State: domain.RunStateFailed}, nil
