@@ -68,19 +68,24 @@ Shows token usage data for the project:
 Each row shows the agent name (e.g. `claude`), input tokens, output tokens, and combined
 total. Values are formatted with K/M suffixes for readability (e.g. `1.5M`).
 
-#### Tasks
+#### In-progress Tasks
 
-Shows the task pipeline for the project's orchestration loop. For each discovered task
-you can see the task ID, title, current status (`open`, `in-progress`, `closed`), whether
-it is assigned to a run, and a link to the assigned run if one is active.
+Shows tasks that have been assigned to a worker and have an active run currently
+executing. For each task you can see the task ID, title, status, the time it was
+assigned, and a link to the active run.
 
-**Releasing a stale task:** If a task is stuck in `in-progress` with no active run — for
+**Releasing a stale task:** If a task is assigned but its run is no longer active — for
 example after the daemon restarted or a container was lost — a **Release** button appears
 next to it. Clicking Release triggers the project's `release-task` workflow to return the
 task to `open` status in your tracker. (Requires a `release-task` workflow to be defined;
 see [USAGE.md](USAGE.md) for details.)
 
-The task list refreshes automatically every few seconds.
+#### Upcoming Tasks
+
+Shows tasks returned by the orchestration loop's `list-tasks` step that have not yet
+been assigned to a worker. Displays the task ID, title, and current status.
+
+Both task panels refresh automatically every few seconds.
 
 #### Workflow DAG
 

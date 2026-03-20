@@ -744,9 +744,9 @@ function loadTasks() {
             if (tasks) {
                 for (var i = 0; i < tasks.length; i++) {
                     var t = tasks[i];
-                    if (t.status === 'in-progress' || t.status === 'in_progress') {
+                    if (t.assigned && t.run_id && !t.stale) {
                         inProgress.push(t);
-                    } else if (t.status === 'open' || t.status === '') {
+                    } else if (!t.assigned) {
                         upcoming.push(t);
                     }
                 }
