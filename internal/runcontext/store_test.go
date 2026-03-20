@@ -179,6 +179,110 @@ func TestCleanup(t *testing.T) {
 	}
 }
 
+func TestSeedRunContext(t *testing.T) {
+	dir := t.TempDir()
+	taskID := "cloche-abc1"
+
+	if err := SeedRunContext(dir, taskID, "jifo", "develop", "jifo-develop"); err != nil {
+		t.Fatalf("SeedRunContext: %v", err)
+	}
+
+	cases := map[string]string{
+		"task_id":    taskID,
+		"attempt_id": "jifo",
+		"workflow":   "develop",
+		"run_id":     "jifo-develop",
+	}
+	for key, want := range cases {
+		got, ok, err := Get(dir, taskID, key)
+		if err != nil {
+			t.Fatalf("Get(%q): %v", key, err)
+		}
+		if !ok {
+			t.Errorf("key %q missing", key)
+		}
+		if got != want {
+			t.Errorf("key %q = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestSetPrevStep(t *testing.T) {
+	dir := t.TempDir()
+	taskID := "cloche-abc1"
+
+	if err := SetPrevStep(dir, taskID, "implement", "success"); err != nil {
+		t.Fatalf("SetPrevStep: %v", err)
+	}
+
+	step, _, _ := Get(dir, taskID, "prev_step")
+	result, _, _ := Get(dir, taskID, "prev_result")
+	if step != "implement" {
+		t.Errorf("prev_step = %q, want %q", step, "implement")
+	}
+	if result != "success" {
+		t.Errorf("prev_result = %q, want %q", result, "success")
+	}
+}
+
+func TestSetPrevStep_EntryStep(t *testing.T) {
+	dir := t.TempDir()
+	taskID := "cloche-abc1"
+
+	if err := SetPrevStep(dir, taskID, "", ""); err != nil {
+		t.Fatalf("SetPrevStep: %v", err)
+	}
+
+	step, ok, _ := Get(dir, taskID, "prev_step")
+	if !ok {
+		t.Error("expected prev_step key to exist")
+	}
+	if step != "" {
+		t.Errorf("prev_step = %q, want empty string", step)
+	}
+}
+
+func TestSetStepResult(t *testing.T) {
+	dir := t.TempDir()
+	taskID := "cloche-abc1"
+
+	if err := SetStepResult(dir, taskID, "develop", "implement", "success"); err != nil {
+		t.Fatalf("SetStepResult: %v", err)
+	}
+
+	got, ok, err := Get(dir, taskID, "develop:implement:result")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !ok {
+		t.Error("expected develop:implement:result to exist")
+	}
+	if got != "success" {
+		t.Errorf("develop:implement:result = %q, want %q", got, "success")
+	}
+}
+
+func TestSetStepResult_MultipleSteps(t *testing.T) {
+	dir := t.TempDir()
+	taskID := "cloche-abc1"
+
+	if err := SetStepResult(dir, taskID, "develop", "implement", "success"); err != nil {
+		t.Fatalf("SetStepResult implement: %v", err)
+	}
+	if err := SetStepResult(dir, taskID, "main", "commit", "fail"); err != nil {
+		t.Fatalf("SetStepResult commit: %v", err)
+	}
+
+	v1, _, _ := Get(dir, taskID, "develop:implement:result")
+	v2, _, _ := Get(dir, taskID, "main:commit:result")
+	if v1 != "success" {
+		t.Errorf("develop:implement:result = %q, want success", v1)
+	}
+	if v2 != "fail" {
+		t.Errorf("main:commit:result = %q, want fail", v2)
+	}
+}
+
 func TestCleanup_NonexistentDir(t *testing.T) {
 	dir := t.TempDir()
 

@@ -1139,6 +1139,34 @@ the `CLOCHE_TASK_ID` environment variable. Uses `CLOCHE_PROJECT_DIR` if set, oth
 the current working directory. Creates the file and directories if they don't exist.
 Pass `-` as the value to read from stdin (trailing newlines are trimmed).
 
+#### Auto-Seeded Keys
+
+The following keys are written automatically and can be read with `cloche get`:
+
+**Run-level** (set once at run start):
+
+| Key | Value |
+|-----|-------|
+| `task_id` | Task identifier |
+| `attempt_id` | Attempt identifier |
+| `workflow` | Current workflow name |
+| `run_id` | Run identifier |
+
+**Step-level** (updated before each step):
+
+| Key | Value |
+|-----|-------|
+| `prev_step` | Name of the step that triggered this one (empty for the entry step) |
+| `prev_result` | Result of that step (empty for the entry step) |
+
+**Step result tracking** (set after each step completes):
+
+| Key | Value |
+|-----|-------|
+| `<workflow>:<step>:result` | Result code of the completed step (e.g. `develop:implement:result = success`) |
+
+All auto-seeded keys are fully writable — scripts can overwrite them with `cloche set`.
+
 ### `cloche tasks`
 
 ```

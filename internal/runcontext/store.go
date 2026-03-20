@@ -73,6 +73,38 @@ func Set(projectDir, taskID, key, value string) error {
 	return save(path, m)
 }
 
+// SeedRunContext writes the run-level auto-context keys (task_id, attempt_id,
+// workflow, run_id). Called once at run start by both host and container executors.
+func SeedRunContext(projectDir, taskID, attemptID, workflow, runID string) error {
+	pairs := [][2]string{
+		{"task_id", taskID},
+		{"attempt_id", attemptID},
+		{"workflow", workflow},
+		{"run_id", runID},
+	}
+	for _, p := range pairs {
+		if err := Set(projectDir, taskID, p[0], p[1]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SetPrevStep updates prev_step and prev_result before a step executes.
+// For the entry step, pass empty strings for both prevStep and prevResult.
+func SetPrevStep(projectDir, taskID, prevStep, prevResult string) error {
+	if err := Set(projectDir, taskID, "prev_step", prevStep); err != nil {
+		return err
+	}
+	return Set(projectDir, taskID, "prev_result", prevResult)
+}
+
+// SetStepResult records a completed step's result as <workflow>:<step>:result.
+func SetStepResult(projectDir, taskID, workflow, step, result string) error {
+	key := fmt.Sprintf("%s:%s:result", workflow, step)
+	return Set(projectDir, taskID, key, result)
+}
+
 // load reads the context map from disk. Returns an empty map if the file does
 // not exist.
 func load(path string) (map[string]string, error) {
