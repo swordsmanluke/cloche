@@ -84,7 +84,7 @@ Flags:
   --keep-container     Do not remove the container after the run completes.
                        Useful for debugging.
 
-The command prints the run ID, task ID, and attempt ID on success.
+The command prints the workflow ID, task ID, and attempt ID on success.
 Use the task ID with "cloche status", "cloche logs", and "cloche list".
 
 Examples:
@@ -102,13 +102,17 @@ must still be available for container workflows (failed runs keep their
 containers by default).
 
 Usage:
+  cloche resume <task-id>
   cloche resume <workflow-id>
   cloche resume <step-id>
 
 Arguments:
-  <workflow-id>  Run ID and workflow name joined by a colon
+  <task-id>      Bare task ID (no colons, e.g. user-a12z). Resolves to the
+                 latest attempt's failed run and resumes from the first
+                 failed step.
+  <workflow-id>  Attempt ID and workflow name joined by a colon
                  (e.g. a133:develop). Resumes from the first failed step.
-  <step-id>      Run ID, workflow name, and step name joined by colons
+  <step-id>      Attempt ID, workflow name, and step name joined by colons
                  (e.g. a133:develop:review). Resumes from that step.
 
 Step-specific resume behavior:
@@ -253,7 +257,7 @@ Flags:
   --runs             Show flat run listing instead of task-oriented view.
 
 Output columns (default): task ID, status, attempt count, latest attempt ID, title.
-Output columns (--runs):   run ID, workflow, state, type, task ID, title, error.
+Output columns (--runs):   workflow ID, workflow, state, type, task ID, title, error.
 
 Examples:
   cloche list
@@ -579,7 +583,7 @@ Daemon:
 Environment Variables:
   CLOCHE_ADDR          Daemon gRPC address (default: unix://~/.config/cloche/cloche.sock)
   CLOCHE_HTTP          Daemon HTTP address (for health/tasks commands)
-  CLOCHE_RUN_ID        Run ID for get/set commands (set automatically in steps)
+  CLOCHE_RUN_ID        Workflow ID for the current run (set automatically in steps)
   CLOCHE_PROJECT_DIR   Project directory override for get/set commands
 
 Examples:

@@ -475,17 +475,17 @@ what cleanup to perform.
 | `CLOCHE_PROJECT_DIR` | Absolute path to the project directory on the host. |
 | `CLOCHE_STEP_OUTPUT` | Path where this step should write its output (for output mappings). |
 | `CLOCHE_PREV_OUTPUT` | Path to the output file from the immediately preceding step. |
-| `CLOCHE_RUN_ID` | The run ID for this workflow execution. |
+| `CLOCHE_RUN_ID` | Workflow ID for this workflow execution (e.g. `a133:develop`). |
 | `CLOCHE_TASK_ID` | Task ID assigned by the daemon (set for `main` and `finalize` phases). |
 | `CLOCHE_MAIN_OUTCOME` | Result of the `main` workflow (`succeeded` or `failed`). Set for `finalize` phase only. |
-| `CLOCHE_MAIN_RUN_ID` | Run ID of the completed `main` workflow. Set for `finalize` phase only. |
+| `CLOCHE_MAIN_RUN_ID` | Workflow ID of the completed `main` workflow. Set for `finalize` phase only. |
 | Wire-mapped vars | Any env vars declared in wire output mappings. |
 
 ### Container Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `CLOCHE_RUN_ID` | The run ID for this workflow execution. |
+| `CLOCHE_RUN_ID` | Workflow ID for this workflow execution (e.g. `a133:develop`). |
 | `CLOCHE_PROJECT_DIR` | Working directory (set for script steps so `cloche get`/`cloche set` work). |
 | `ANTHROPIC_API_KEY` | Passed through from the host if set. |
 | `CLOCHE_AGENT_COMMAND` | Overrides the default agent command inside the container. |
@@ -599,7 +599,7 @@ of whether `main` succeeded or failed.
 sets two additional environment variables:
 
 - `CLOCHE_MAIN_OUTCOME` — `"succeeded"` or `"failed"`
-- `CLOCHE_MAIN_RUN_ID` — the run ID of the completed `main` workflow
+- `CLOCHE_MAIN_RUN_ID` — the workflow ID of the completed `main` workflow
 
 **How to configure:** Use the outcome to decide what cleanup to perform:
 
@@ -894,7 +894,7 @@ cloche run <workflow>[:<step>] [--prompt "..."] [--title "..."] [--issue ID] [--
 Must be run from inside a git repository. The daemon auto-rebuilds the Docker image
 when `.cloche/Dockerfile` changes.
 
-The command prints the run ID, task ID, and attempt ID on success. Use the task ID
+The command prints the workflow ID, task ID, and attempt ID on success. Use the task ID
 with `cloche status`, `cloche logs`, and `cloche list`.
 
 ### `cloche resume`
@@ -909,9 +909,9 @@ cloche resume <step-id>
 
 | Argument | Description |
 |----------|-------------|
-| `<task-id>` | Bare task or run ID (no colons, e.g. `user-a12z`). Resolves to the latest attempt's failed run and resumes from the first failed step. |
-| `<workflow-id>` | Attempt ID and run ID (workflow name) joined by a colon (e.g. `a133:develop`). Resumes from the first failed step. |
-| `<step-id>` | Attempt ID, run ID (workflow name), and step name joined by colons (e.g. `a133:develop:review`). Resumes from that step. |
+| `<task-id>` | Bare task ID (no colons, e.g. `user-a12z`). Resolves to the latest attempt's failed run and resumes from the first failed step. |
+| `<workflow-id>` | Attempt ID and workflow name joined by a colon (e.g. `a133:develop`). Resumes from the first failed step. |
+| `<step-id>` | Attempt ID, workflow name, and step name joined by colons (e.g. `a133:develop:review`). Resumes from that step. |
 
 **Prerequisites:** The run must be in a failed state. For container workflows, the
 container must still exist (failed runs keep their containers by default).
@@ -923,7 +923,7 @@ When resolving the resume step automatically, the earliest such step is chosen.
 **How resume works:** Resume creates a new Attempt (with a fresh attempt ID) rather
 than modifying the failed run. The previous attempt and its run record remain in their
 failed state for lineage tracing. The new attempt's `PreviousAttemptID` field points
-back to the old attempt. The command returns the new run ID and new attempt ID.
+back to the old attempt. The command returns the new workflow ID and new attempt ID.
 
 - **Host workflows:** Successful step outputs from the previous attempt are copied into
   the new attempt's directory. The new run executes from the resume step forward, with
@@ -980,7 +980,7 @@ show a flat run listing instead of the task-oriented view.
 | `--runs` | Show flat run listing instead of task-oriented view. |
 
 Default output columns: task ID, status, attempt count, latest attempt ID, title.
-With `--runs`: run ID, workflow, state, type, task ID, title, error.
+With `--runs`: workflow ID, workflow, state, type, task ID, title, error.
 
 ### `cloche logs`
 
@@ -1123,7 +1123,7 @@ cloche get <key>
 ```
 
 Get a value from the run context store (`.cloche/<run-id>/context.json`). Requires
-the `CLOCHE_RUN_ID` environment variable. Uses `CLOCHE_PROJECT_DIR` if set, otherwise
+the `CLOCHE_TASK_ID` environment variable. Uses `CLOCHE_PROJECT_DIR` if set, otherwise
 the current working directory. Exits 1 if the key is not found.
 
 ### `cloche set`
@@ -1133,7 +1133,7 @@ cloche set <key> <value|->
 ```
 
 Set a value in the run context store (`.cloche/<run-id>/context.json`). Requires
-the `CLOCHE_RUN_ID` environment variable. Uses `CLOCHE_PROJECT_DIR` if set, otherwise
+the `CLOCHE_TASK_ID` environment variable. Uses `CLOCHE_PROJECT_DIR` if set, otherwise
 the current working directory. Creates the file and directories if they don't exist.
 Pass `-` as the value to read from stdin (trailing newlines are trimmed).
 
