@@ -52,6 +52,7 @@ workflow "develop" {
 | `timeout` | string | Step timeout as Go duration, e.g. `"30m"`, `"2h"`. Default: 30m. |
 | `agent_command` | string | Agent binary name(s), comma-separated for fallback chains, e.g. `"claude,gemini"`. |
 | `agent_args` | string | Override default agent arguments. |
+| `agent` | identifier | Reference a named agent declared in the workflow's `agent` block. Expands into `agent_command` and `agent_args`. Step-level `agent_command`/`agent_args` still override it. |
 | `feedback` | string | Set to `"true"` to include `.cloche/output/*.log` content in the prompt. |
 | `usage_command` | string | Shell command to run after an agent step completes to capture token usage. Output must be JSON: `{"input_tokens": N, "output_tokens": N}`. If absent or the command fails, usage is not tracked. Overrides any adapter-level default (e.g. from `[agents.codex]` in `config.toml`). |
 | `prompt_step` | string | For workflow steps: which preceding step's output to use as the prompt. |
@@ -116,6 +117,75 @@ workflow "main" {
 
 Supported keys: `agent_command`, `agent_args`. Step-level `agent_command` and
 `agent_args` config keys override the workflow-level `host {}` defaults.
+
+### Agent Declarations
+
+Workflows can declare named agents at the workflow level. An `agent` block names a
+reusable agent configuration so that multiple prompt steps can reference it without
+repeating the command and arguments each time.
+
+**Syntax:**
+
+```
+workflow "develop" {
+  agent claude {
+    command = "claude"
+    args    = "-p --output-format stream-json"
+  }
+
+  agent codex {
+    command = "codex"
+    args    = "--full-auto"
+  }
+
+  step implement {
+    prompt  = file(".cloche/prompts/implement.md")
+    agent   = claude
+    results = [success, fail]
+  }
+
+  step review {
+    prompt  = file(".cloche/prompts/review.md")
+    agent   = codex
+    results = [success, fail]
+  }
+
+  implement:success -> review
+  implement:fail    -> abort
+  review:success    -> done
+  review:fail       -> implement
+}
+```
+
+**Agent block fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `command` | yes | The agent binary to run (e.g. `claude`, `codex`, `ollama`). |
+| `args` | no | Arguments passed to the agent command. |
+
+**Using an agent in a step:** Set `agent = <identifier>` on any prompt (agent-type)
+step. The identifier must match a name declared in an `agent` block in the same
+workflow. The `agent` key is not valid on script or workflow steps.
+
+**Resolution order:** `agent = <identifier>` expands the declaration's `command` and
+`args` into the step's `agent_command` and `agent_args`. The full resolution order
+from highest to lowest priority is:
+
+1. Step-level `agent_command` / `agent_args`
+2. `agent = <identifier>` declaration
+3. Workflow-level block (`container { agent_command }` or `host { agent_command }`)
+4. `CLOCHE_AGENT_COMMAND` environment variable
+5. Default: `claude`
+
+**Validation rules:**
+- Referencing an undeclared agent identifier is a **validation error**.
+- Only prompt (agent-type) steps may use the `agent` key — using it on a script or
+  workflow step is a **validation error**.
+- Duplicate agent names within a workflow are a **parse error**.
+- An `agent` block without a `command` field is a **parse error**.
+
+See also: [docs/workflows.md](workflows.md) for full DSL grammar details.
 
 ### Wiring Syntax
 
