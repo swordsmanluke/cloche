@@ -41,7 +41,7 @@ type ListTasksFunc func(ctx context.Context, projectDir string) ([]Task, error)
 
 // MainFunc is called to execute the main workflow for a given task.
 // attemptID is the ID of the Attempt record created for this loop iteration.
-type MainFunc func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error)
+type MainFunc func(ctx context.Context, projectDir string, taskID string, taskTitle string, attemptID string) (*RunResult, error)
 
 // FinalizeFunc is called after the main workflow completes (both success and
 // failure). It receives the task ID, attempt ID, and the outcome of the main phase.
@@ -128,7 +128,7 @@ func NewLoop(cfg LoopConfig, store ports.RunStore, runFn RunFunc) *Loop {
 		}
 		return []Task{{ID: ""}}, nil
 	}
-	l.mainFn = func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+	l.mainFn = func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		return runFn(ctx, projectDir, taskID, attemptID)
 	}
 	return l
@@ -344,7 +344,7 @@ func (l *Loop) runPhased() {
 				}()
 
 				// Phase 2: main — do the work.
-				mainResult, err := l.mainFn(context.Background(), l.config.ProjectDir, tid, aid)
+				mainResult, err := l.mainFn(context.Background(), l.config.ProjectDir, tid, ttitle, aid)
 				if err != nil {
 					log.Printf("orchestration loop: main failed for %s task %s: %v", l.config.ProjectDir, tid, err)
 					if mainResult == nil {

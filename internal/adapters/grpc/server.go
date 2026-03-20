@@ -2019,13 +2019,14 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 
 	// Phase 2: main function
 	_, hasFinalize := hostWFs["finalize"]
-	mainFn := func(ctx context.Context, projDir string, taskID string, attemptID string) (*host.RunResult, error) {
+	mainFn := func(ctx context.Context, projDir string, taskID string, taskTitle string, attemptID string) (*host.RunResult, error) {
 		runner := &host.Runner{
 			Dispatcher:   s,
 			Store:        s.store,
 			Captures:     s.captures,
 			LogBroadcast: s.logBroadcast,
 			TaskID:       taskID,
+			TaskTitle:    taskTitle,
 			AttemptID:    attemptID,
 			SkipCleanup:  hasFinalize, // let finalize clean up
 		}
