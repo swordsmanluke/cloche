@@ -23,6 +23,7 @@ type RunnerConfig struct {
 	StatusOutput   io.Writer
 	RunID          string
 	TaskID         string // task ID for runtime state paths (.cloche/runs/<task-id>/)
+	AttemptID      string // attempt identifier
 	ResumeFromStep string // when non-empty, resume the workflow from this step
 	StartStep      string // when non-empty, start execution at this step instead of the entry step
 }

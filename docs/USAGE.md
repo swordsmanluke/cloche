@@ -486,6 +486,8 @@ what cleanup to perform.
 | Variable | Description |
 |----------|-------------|
 | `CLOCHE_RUN_ID` | Workflow ID for this workflow execution (e.g. `a133:develop`). |
+| `CLOCHE_TASK_ID` | Task ID assigned by the daemon. Set when the container run is associated with a task. |
+| `CLOCHE_ATTEMPT_ID` | Attempt identifier for this container run. Used for unique container naming. |
 | `CLOCHE_PROJECT_DIR` | Working directory (set for script steps so `cloche get`/`cloche set` work). |
 | `ANTHROPIC_API_KEY` | Passed through from the host if set. |
 | `CLOCHE_AGENT_COMMAND` | Overrides the default agent command inside the container. |
@@ -1299,6 +1301,7 @@ Injected into the container by the daemon at startup.
 |----------|-------------|
 | `CLOCHE_RUN_ID` | The run ID for this workflow execution. |
 | `CLOCHE_TASK_ID` | Task ID assigned by the daemon. Set when the container run is associated with a task. |
+| `CLOCHE_ATTEMPT_ID` | Attempt identifier for this container run. Used for unique container naming. |
 | `CLOCHE_PROJECT_DIR` | Working directory inside the container (`/workspace`). Set so `cloche get`/`cloche set` work correctly. |
 | `CLOCHE_AGENT_COMMAND` | Overrides the default agent command inside the container. |
 | `ANTHROPIC_API_KEY` | Passed through from the host environment if set. |

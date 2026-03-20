@@ -52,12 +52,15 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		args = append(args, "--name", containerName)
 	}
 
-	// Pass run ID and task ID into container
+	// Pass run ID, task ID, and attempt ID into container
 	if cfg.RunID != "" {
 		args = append(args, "-e", "CLOCHE_RUN_ID="+cfg.RunID)
 	}
 	if cfg.TaskID != "" {
 		args = append(args, "-e", "CLOCHE_TASK_ID="+cfg.TaskID)
+	}
+	if cfg.AttemptID != "" {
+		args = append(args, "-e", "CLOCHE_ATTEMPT_ID="+cfg.AttemptID)
 	}
 	// Pass ANTHROPIC_API_KEY into container if set
 	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
