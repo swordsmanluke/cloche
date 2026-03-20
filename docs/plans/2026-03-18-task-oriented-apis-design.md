@@ -1,7 +1,7 @@
 # Version 2.0.0: Task-Oriented APIs Design
 
 **Date:** 2026-03-18
-**Status:** Partially Implemented (gRPC API complete: RunWorkflow returns task_id + attempt_id, ListTasks, GetTask, GetAttempt RPCs added, StreamLogs and GetStatus accept hierarchical IDs. Web UI: task list landing page, task drill-down at `/tasks/{id}`, SSE at `/api/attempts/{id}/stream`, v2 log paths, attempt aggregate status, task status reflects latest attempt). CLI and migration work remain.
+**Status:** Partially Implemented (gRPC API complete: RunWorkflow returns task_id + attempt_id, ListTasks, GetTask, GetAttempt RPCs added, StreamLogs and GetStatus accept hierarchical IDs. Web UI: task list landing page, task drill-down at `/tasks/{id}`, SSE at `/api/attempts/{id}/stream`, v2 log paths, attempt aggregate status, task status reflects latest attempt, step-level log routing via step_name inference). CLI and migration work remain.
 
 ## Problem
 
@@ -241,9 +241,13 @@ attempt, not an aggregate across all historical attempts.
     ▶ Attempt c78y (succeeded) 2026-03-18 05:00
 ```
 
-The step detail view (accordion) serves per-step logs from the v2 file paths
-(`.cloche/logs/<task-id>/<attempt-id>/`), with legacy path fallback for older
-runs.
+The step detail view (accordion) shows per-step log output. Each `LogLine`
+emitted by the SSE stream and paginated log API carries a `step_name` field
+inferred by `readVisibleLogLines`: it tracks `step_started: <name>` and
+`step_completed: <name> -> <result>` status entries in the unified `full.log`
+and tags every line between them with the corresponding step name. The frontend
+routes each line to the matching step panel. Lines outside any step boundary
+have an empty `step_name`.
 
 Both SSE endpoints are active: `/api/runs/{id}/stream` (legacy) and the new
 `/api/attempts/{id}/stream` which streams all step output for an attempt.

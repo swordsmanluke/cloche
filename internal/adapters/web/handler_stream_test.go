@@ -530,6 +530,113 @@ func TestAPILogs_FirstPage(t *testing.T) {
 	assert.Equal(t, "line 0", resp.Lines[0].Content)
 }
 
+func TestSSE_CompletedRun_StepNamesInferredFromFullLog(t *testing.T) {
+	h, store, _ := setupHandlerWithBroadcaster(t)
+
+	dir := t.TempDir()
+	ctx := context.Background()
+	run := domain.NewRun("sse-stepnames-1", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.ContainerID = "abc123"
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// full.log with two sequential steps
+	outputDir := filepath.Join(dir, ".cloche", "sse-stepnames-1", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	logContent := "[2026-03-03T10:15:00Z] [status] step_started: build\n" +
+		"[2026-03-03T10:15:01Z] [script] npm run build\n" +
+		"[2026-03-03T10:15:02Z] [llm] Claude: compiling\n" +
+		"[2026-03-03T10:15:03Z] [status] step_completed: build -> success\n" +
+		"[2026-03-03T10:15:04Z] [status] step_started: test\n" +
+		"[2026-03-03T10:15:05Z] [script] npm test\n" +
+		"[2026-03-03T10:15:06Z] [status] step_completed: test -> success\n"
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "full.log"), []byte(logContent), 0644))
+
+	req := httptest.NewRequest("GET", "/api/runs/sse-stepnames-1/stream", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var events []logstream.LogLine
+	for _, line := range strings.Split(w.Body.String(), "\n") {
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+			var ll logstream.LogLine
+			if json.Unmarshal([]byte(data), &ll) == nil {
+				events = append(events, ll)
+			}
+		}
+	}
+
+	require.Len(t, events, 7)
+	// step_started: build — step name is "build"
+	assert.Equal(t, "build", events[0].StepName)
+	// script line during build
+	assert.Equal(t, "build", events[1].StepName)
+	// llm line during build
+	assert.Equal(t, "build", events[2].StepName)
+	// step_completed: build — step name is "build"
+	assert.Equal(t, "build", events[3].StepName)
+	// step_started: test
+	assert.Equal(t, "test", events[4].StepName)
+	// script line during test
+	assert.Equal(t, "test", events[5].StepName)
+	// step_completed: test
+	assert.Equal(t, "test", events[6].StepName)
+}
+
+func TestReadVisibleLogLines_StepNameInference(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "full.log")
+
+	logContent := "[2026-03-03T10:15:00Z] [status] step_started: implement\n" +
+		"[2026-03-03T10:15:01Z] [llm] Reading files...\n" +
+		"[2026-03-03T10:15:02Z] [script] bash -c 'echo hello'\n" +
+		"[2026-03-03T10:15:03Z] [status] step_completed: implement -> success\n" +
+		"[2026-03-03T10:15:04Z] [status] step_started: review\n" +
+		"[2026-03-03T10:15:05Z] [script] review output\n" +
+		"[2026-03-03T10:15:06Z] [status] step_completed: review -> fail\n"
+	require.NoError(t, os.WriteFile(logPath, []byte(logContent), 0644))
+
+	lines, err := readVisibleLogLines(logPath)
+	require.NoError(t, err)
+	require.Len(t, lines, 7)
+
+	assert.Equal(t, "implement", lines[0].StepName) // step_started: implement
+	assert.Equal(t, "implement", lines[1].StepName) // llm line
+	assert.Equal(t, "implement", lines[2].StepName) // script line
+	assert.Equal(t, "implement", lines[3].StepName) // step_completed: implement
+	assert.Equal(t, "review", lines[4].StepName)    // step_started: review
+	assert.Equal(t, "review", lines[5].StepName)    // script line
+	assert.Equal(t, "review", lines[6].StepName)    // step_completed: review
+
+	// Verify content is preserved correctly
+	assert.Equal(t, "step_started: implement", lines[0].Content)
+	assert.Equal(t, "step_completed: implement -> success", lines[3].Content)
+	assert.Equal(t, "step_started: review", lines[4].Content)
+	assert.Equal(t, "step_completed: review -> fail", lines[6].Content)
+}
+
+func TestReadVisibleLogLines_NoStepContext(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "full.log")
+
+	// Lines without step_started context should have empty StepName
+	logContent := "[2026-03-03T10:15:00Z] [status] run started\n" +
+		"[2026-03-03T10:15:01Z] [script] some output\n"
+	require.NoError(t, os.WriteFile(logPath, []byte(logContent), 0644))
+
+	lines, err := readVisibleLogLines(logPath)
+	require.NoError(t, err)
+	require.Len(t, lines, 2)
+
+	assert.Equal(t, "", lines[0].StepName)
+	assert.Equal(t, "", lines[1].StepName)
+}
+
 func TestAPILogs_RunNotFound(t *testing.T) {
 	h, _, _ := setupHandlerWithBroadcaster(t)
 

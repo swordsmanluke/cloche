@@ -1631,7 +1631,8 @@ func (h *Handler) handleAPIAttemptLogs(w http.ResponseWriter, r *http.Request) {
 var logLineRegex = regexp.MustCompile(`^\[([^\]]+)\] \[([^\]]+)\] (.*)$`)
 
 // readVisibleLogLines reads a full.log file and returns all visible (non-empty-type)
-// log lines after parsing and LLM filtering.
+// log lines after parsing and LLM filtering. Each line's StepName is inferred by
+// tracking step_started / step_completed status messages in sequence.
 func readVisibleLogLines(logPath string) ([]logstream.LogLine, error) {
 	f, err := os.Open(logPath)
 	if err != nil {
@@ -1640,10 +1641,32 @@ func readVisibleLogLines(logPath string) ([]logstream.LogLine, error) {
 	defer f.Close()
 
 	var lines []logstream.LogLine
+	var currentStep string
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024) // 1MB max to handle large Claude JSON lines
 	for scanner.Scan() {
 		line := parseFullLogLine(scanner.Text())
+		// Infer step name from sequential status messages so that SSE events
+		// sent for completed runs carry the correct step_name and the frontend
+		// can route each line to the right per-step panel.
+		if line.Type == "status" {
+			if after, ok := strings.CutPrefix(line.Content, "step_started: "); ok {
+				currentStep = after
+				line.StepName = currentStep
+			} else if after, ok := strings.CutPrefix(line.Content, "step_completed: "); ok {
+				// Content is "step_completed: <step> -> <result>"
+				if idx := strings.Index(after, " -> "); idx >= 0 {
+					line.StepName = after[:idx]
+				} else {
+					line.StepName = after
+				}
+				currentStep = ""
+			} else {
+				line.StepName = currentStep
+			}
+		} else {
+			line.StepName = currentStep
+		}
 		line = parseLLMLogLine(line)
 		if line.Type == "" {
 			continue
