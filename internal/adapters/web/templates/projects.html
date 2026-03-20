@@ -1,36 +1,6 @@
 {{define "content"}}
-<h1>Tasks</h1>
-{{if .Tasks}}
-<table class="runs-table" id="tasks-table">
-    <thead>
-        <tr>
-            <th>Task</th>
-            <th>Project</th>
-            <th>Status</th>
-            <th>Attempts</th>
-            <th>Latest</th>
-            <th>Started</th>
-        </tr>
-    </thead>
-    <tbody id="tasks-body">
-    {{range .Tasks}}
-    <tr>
-        <td><a href="/tasks/{{.TaskID}}">{{if .TaskTitle}}{{truncate .TaskTitle 50}}{{else}}{{.TaskID}}{{end}}</a></td>
-        <td>{{if .ProjectLabel}}<a href="/projects/{{.ProjectLabel}}">{{.ProjectLabel}}</a>{{end}}</td>
-        <td><span class="badge badge-{{.Status}}">{{.Status}}</span></td>
-        <td>{{.AttemptCount}}</td>
-        <td><span class="badge badge-{{.LatestResult}}">{{.LatestResult}}</span></td>
-        <td>{{.LatestTime}}</td>
-    </tr>
-    {{end}}
-    </tbody>
-</table>
-{{else}}
-<p class="empty">No tasks yet. Start a workflow run to see tasks here.</p>
-{{end}}
-
 {{if .Projects}}
-<h2 style="margin-top:2rem">Projects</h2>
+<h1>Projects</h1>
 <div class="project-cards">
     {{range .Projects}}
     <div class="project-card">
@@ -60,47 +30,4 @@
     {{end}}
 </div>
 {{end}}
-{{end}}
-
-{{define "scripts"}}
-<script>
-(function() {
-    function poll() {
-        fetch('/api/tasks')
-            .then(function(r) { return r.json(); })
-            .then(function(tasks) {
-                var tbody = document.getElementById('tasks-body');
-                if (!tbody) return;
-                if (!tasks || tasks.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty">No tasks yet.</td></tr>';
-                    return;
-                }
-                var html = '';
-                for (var i = 0; i < tasks.length; i++) {
-                    var t = tasks[i];
-                    var label = t.task_title ? escapeHtml(t.task_title).substring(0, 50) : escapeHtml(t.task_id);
-                    var projectCell = t.project_label
-                        ? '<a href="/projects/' + encodeURIComponent(t.project_label) + '">' + escapeHtml(t.project_label) + '</a>'
-                        : '';
-                    html += '<tr>' +
-                        '<td><a href="/tasks/' + encodeURIComponent(t.task_id) + '">' + label + '</a></td>' +
-                        '<td>' + projectCell + '</td>' +
-                        '<td><span class="badge badge-' + (t.status || '') + '">' + (t.status || '') + '</span></td>' +
-                        '<td>' + (t.attempt_count || 0) + '</td>' +
-                        '<td><span class="badge badge-' + (t.latest_result || '') + '">' + (t.latest_result || '') + '</span></td>' +
-                        '<td>' + escapeHtml(t.latest_time || '') + '</td>' +
-                        '</tr>';
-                }
-                tbody.innerHTML = html;
-            })
-            .catch(function() {});
-    }
-    function escapeHtml(s) {
-        var d = document.createElement('div');
-        d.appendChild(document.createTextNode(s || ''));
-        return d.innerHTML;
-    }
-    setInterval(poll, 5000);
-})();
-</script>
 {{end}}

@@ -266,15 +266,9 @@ func (h *Handler) handleProjectOverview(w http.ResponseWriter, r *http.Request) 
 		return entries[i].Label < entries[j].Label
 	})
 
-	// Build task list from all runs.
-	allRuns, _ := h.store.ListRuns(r.Context(), time.Time{})
-	taskTitles := h.taskTitlesFromRuns(allRuns)
-	tasks := buildTaskSummaries(allRuns, labels, taskTitles)
-
 	data := map[string]any{
 		"Title":    "Projects",
 		"Projects": entries,
-		"Tasks":    tasks,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.pages["projects"].ExecuteTemplate(w, "layout", data); err != nil {

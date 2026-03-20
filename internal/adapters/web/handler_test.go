@@ -854,7 +854,7 @@ func TestProjectOverview_Empty(t *testing.T) {
 	h.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "No tasks yet")
+	assert.NotContains(t, w.Body.String(), "project-card")
 }
 
 func TestHealthColor(t *testing.T) {

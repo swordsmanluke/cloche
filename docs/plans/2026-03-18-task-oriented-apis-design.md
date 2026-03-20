@@ -218,8 +218,9 @@ The existing `-f`, `-l`, `-s`, `--type` flags continue to work.
 
 ### Web UI Changes
 
-**Implemented.** The landing page (`/`) shows a task list with status, attempt
-count, and latest result. A task drill-down page at `/tasks/{id}` shows all
+**Implemented.** The landing page (`/`) shows project badges (health dot,
+pass/total stats, active count, recent run history). The Tasks section has been
+removed from the landing page. A task drill-down page at `/tasks/{id}` shows all
 attempts for a task. The runs list (`/projects/{name}/runs`) groups runs by
 task with attempt headers.
 
