@@ -111,9 +111,10 @@ func TestPromptAdapter_NoFeedbackByDefault(t *testing.T) {
 
 func TestPromptAdapter_RespectsMaxAttempts(t *testing.T) {
 	dir := t.TempDir()
+	taskID := "test-task"
 
 	// Pre-set attempt count to the max
-	attemptDir := filepath.Join(dir, ".cloche", "attempt_count")
+	attemptDir := filepath.Join(dir, ".cloche", "runs", taskID, "attempt_count")
 	require.NoError(t, os.MkdirAll(attemptDir, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(attemptDir, "fix"), []byte("2"), 0644))
 
@@ -121,6 +122,7 @@ func TestPromptAdapter_RespectsMaxAttempts(t *testing.T) {
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
 		ExplicitArgs: []string{"-c", "exit 1"}, // would fail if called
+		TaskID:       taskID,
 	}
 
 	step := &domain.Step{

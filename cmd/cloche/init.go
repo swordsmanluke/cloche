@@ -277,11 +277,15 @@ import os
 import subprocess
 import sys
 
-run_id = os.environ.get("CLOCHE_MAIN_RUN_ID", "")
 project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
 
+# The branch is named after the child container run ID, not the host main run ID.
+run_id = subprocess.run(
+    ["cloche", "get", "child_run_id"], check=True, capture_output=True, text=True,
+).stdout.strip()
+
 if not run_id:
-    print("error: CLOCHE_MAIN_RUN_ID not set", file=sys.stderr)
+    print("error: child_run_id not set in run context", file=sys.stderr)
     sys.exit(1)
 
 branch = f"cloche/{run_id}"
@@ -340,8 +344,12 @@ worktree_dir = subprocess.run(
     ["cloche", "get", "worktree_path"], check=True, capture_output=True, text=True,
 ).stdout.strip()
 
-run_id = os.environ.get("CLOCHE_MAIN_RUN_ID", "")
 project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
+
+# The branch is named after the child container run ID.
+run_id = subprocess.run(
+    ["cloche", "get", "child_run_id"], check=True, capture_output=True, text=True,
+).stdout.strip()
 branch = f"cloche/{run_id}"
 
 env = {**os.environ,
@@ -427,11 +435,16 @@ var cleanupPyScript = `#!/usr/bin/env python3
 import os
 import subprocess
 
-run_id = os.environ.get("CLOCHE_MAIN_RUN_ID", "")
 project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
 
+# The branch is named after the child container run ID.
+result = subprocess.run(
+    ["cloche", "get", "child_run_id"], capture_output=True, text=True,
+)
+run_id = result.stdout.strip() if result.returncode == 0 else ""
+
 if not run_id:
-    print("warning: CLOCHE_MAIN_RUN_ID not set, skipping cleanup")
+    print("warning: child_run_id not set, skipping cleanup")
 else:
     branch = f"cloche/{run_id}"
     worktree_dir = os.path.join(project_dir, ".gitworktrees", "cloche", run_id)
@@ -619,6 +632,7 @@ func cmdInit(args []string) {
 		".cloche/logs/",
 		".cloche/runs/",
 		".gitworktrees/",
+		"task_list.json",
 	})
 
 	// Generate shell completion scripts into ~/.cloche/completions/.

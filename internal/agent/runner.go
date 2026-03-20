@@ -67,7 +67,6 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 
 	// Reset per-run state from any previous run — but preserve outputs when resuming
-	_ = os.RemoveAll(filepath.Join(r.cfg.WorkDir, ".cloche", "attempt_count"))
 	if r.cfg.ResumeFromStep == "" {
 		_ = os.RemoveAll(filepath.Join(r.cfg.WorkDir, ".cloche", "output"))
 	}

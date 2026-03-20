@@ -96,13 +96,13 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	if maxStr, ok := step.Config["max_attempts"]; ok {
 		max, err := strconv.Atoi(maxStr)
 		if err == nil {
-			count := readAttemptCount(workDir, step.Name)
+			count := readAttemptCount(workDir, a.TaskID, step.Name)
 			if count >= max {
 				return domain.StepResult{Result: "give-up"}, nil
 			}
 		}
 	}
-	incrementAttemptCount(workDir, step.Name)
+	incrementAttemptCount(workDir, a.TaskID, step.Name)
 
 	// Build the full prompt
 	var fullPrompt string
@@ -167,7 +167,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	// consecutive failures, not after successful fixes whose downstream
 	// tests fail for unrelated reasons.
 	if result == "success" {
-		resetAttemptCount(workDir, step.Name)
+		resetAttemptCount(workDir, a.TaskID, step.Name)
 	}
 
 	// Write output file
@@ -562,8 +562,8 @@ func readFeedback(workDir string) string {
 	return strings.Join(parts, "\n\n")
 }
 
-func readAttemptCount(workDir, stepName string) int {
-	path := filepath.Join(workDir, ".cloche", "attempt_count", stepName)
+func readAttemptCount(workDir, taskID, stepName string) int {
+	path := filepath.Join(workDir, ".cloche", "runs", taskID, "attempt_count", stepName)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0
@@ -584,14 +584,14 @@ func readUserPrompt(workDir, taskID string) string {
 	return ""
 }
 
-func resetAttemptCount(workDir, stepName string) {
-	path := filepath.Join(workDir, ".cloche", "attempt_count", stepName)
+func resetAttemptCount(workDir, taskID, stepName string) {
+	path := filepath.Join(workDir, ".cloche", "runs", taskID, "attempt_count", stepName)
 	_ = os.Remove(path)
 }
 
-func incrementAttemptCount(workDir, stepName string) {
-	dir := filepath.Join(workDir, ".cloche", "attempt_count")
+func incrementAttemptCount(workDir, taskID, stepName string) {
+	dir := filepath.Join(workDir, ".cloche", "runs", taskID, "attempt_count")
 	_ = os.MkdirAll(dir, 0755)
-	count := readAttemptCount(workDir, stepName) + 1
+	count := readAttemptCount(workDir, taskID, stepName) + 1
 	_ = os.WriteFile(filepath.Join(dir, stepName), []byte(strconv.Itoa(count)), 0644)
 }

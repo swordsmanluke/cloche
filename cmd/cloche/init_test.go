@@ -141,6 +141,9 @@ func TestCmdInit_GitignoreEntries(t *testing.T) {
 	if !strings.Contains(content, ".gitworktrees/") {
 		t.Error(".gitignore should contain .gitworktrees/")
 	}
+	if !strings.Contains(content, "task_list.json") {
+		t.Error(".gitignore should contain task_list.json")
+	}
 	// Old v1 entries should not be present
 	for _, old := range []string{".cloche/*-*-*/", ".cloche/run-*/", ".cloche/attempt_count/"} {
 		if strings.Contains(content, old) {
@@ -313,8 +316,8 @@ func TestCmdInit_PrepareMergeContent(t *testing.T) {
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "prepare-merge.py"))
 	content := string(data)
-	if !strings.Contains(content, "CLOCHE_MAIN_RUN_ID") {
-		t.Error("prepare-merge.py should reference CLOCHE_MAIN_RUN_ID")
+	if !strings.Contains(content, "child_run_id") {
+		t.Error("prepare-merge.py should retrieve child_run_id from run context")
 	}
 	if !strings.Contains(content, "worktree_path") {
 		t.Error("prepare-merge.py should store worktree_path via cloche set")
@@ -355,8 +358,8 @@ func TestCmdInit_CleanupContent(t *testing.T) {
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "cleanup.py"))
 	content := string(data)
-	if !strings.Contains(content, "CLOCHE_MAIN_RUN_ID") {
-		t.Error("cleanup.py should reference CLOCHE_MAIN_RUN_ID")
+	if !strings.Contains(content, "child_run_id") {
+		t.Error("cleanup.py should retrieve child_run_id from run context")
 	}
 	if !strings.Contains(content, `"worktree", "remove"`) {
 		t.Error("cleanup.py should remove the worktree")
