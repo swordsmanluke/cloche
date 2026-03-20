@@ -241,27 +241,27 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 //   - a task ID ("cloche-k4gh") — no colons, resolved server-side
 //   - a run ID ("pqpm-main") — no colons, resolved server-side
 //   - a workflow ID ("a133:develop") — attempt:workflow
+//   - a workflow ID ("TASK-123:a41k:develop") — task:attempt:workflow
 //   - a step ID ("a133:develop:review") — attempt:workflow:step
 //
-// Returns taskOrRunID (for no-colon args), runID, and stepName.
-func parseResumeArg(arg string) (taskOrRunID, runID, stepName string, err error) {
+// Returns taskOrRunID (for no-colon args) or compositeID (for colon args).
+// The step name is embedded in the composite ID and extracted server-side.
+func parseResumeArg(arg string) (taskOrRunID, compositeID string, err error) {
 	if arg == "" {
-		return "", "", "", fmt.Errorf("argument must not be empty")
+		return "", "", fmt.Errorf("argument must not be empty")
 	}
-	parts := strings.SplitN(arg, ":", 3)
-	if len(parts) == 1 {
+	if !strings.Contains(arg, ":") {
 		// No colons — could be a task ID or a run ID. Let the server resolve it.
-		return arg, "", "", nil
+		return arg, "", nil
 	}
-	// Colon-separated: attempt:workflow or attempt:workflow:step
-	runID = parts[0]
-	if runID == "" {
-		return "", "", "", fmt.Errorf("invalid argument %q: run ID must not be empty", arg)
+	// Colon-separated composite ID: pass the full string for server-side resolution.
+	// The server uses resolveRunIDFromID which handles:
+	//   attempt:workflow, task:attempt, attempt:workflow:step, task:attempt:workflow,
+	//   task:attempt:step (all formats).
+	if strings.HasPrefix(arg, ":") {
+		return "", "", fmt.Errorf("invalid argument %q: first component must not be empty", arg)
 	}
-	if len(parts) == 3 {
-		stepName = parts[2]
-	}
-	return "", runID, stepName, nil
+	return "", arg, nil
 }
 
 func cmdResume(ctx context.Context, client pb.ClocheServiceClient, args []string) {
@@ -270,16 +270,17 @@ func cmdResume(ctx context.Context, client pb.ClocheServiceClient, args []string
 		os.Exit(1)
 	}
 
-	taskOrRunID, runID, stepName, err := parseResumeArg(args[0])
+	taskOrRunID, compositeID, err := parseResumeArg(args[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Send resume via gRPC metadata on a RunWorkflow call
+	// Send resume via gRPC metadata on a RunWorkflow call.
+	// Composite IDs (colon-separated) are resolved server-side via resolveRunIDFromID,
+	// which handles attempt:workflow, task:attempt:workflow, attempt:workflow:step, etc.
 	md := metadata.Pairs(
-		"x-cloche-resume-run-id", runID,
-		"x-cloche-resume-step", stepName,
+		"x-cloche-resume-run-id", compositeID,
 		"x-cloche-resume-task-or-run", taskOrRunID,
 	)
 	ctx = metadata.NewOutgoingContext(ctx, md)

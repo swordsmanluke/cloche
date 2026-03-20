@@ -2613,6 +2613,53 @@ func TestServer_ResolveRunIDFromID_TaskAttemptStepBackcompat(t *testing.T) {
 	assert.Equal(t, "implement", step)
 }
 
+func TestServer_ResolveRunIDFromID_TaskAttemptWorkflow(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	srv := server.NewClocheServer(store, nil)
+
+	run := domain.NewRun("develop", "develop")
+	run.TaskID = "TASK-TAW"
+	run.AttemptID = "r5w5"
+	run.ProjectDir = "/proj"
+	run.Start()
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// task_id:attempt_id:workflow_name → resolves to run, no step
+	// (canonical 3-part Workflow ID as displayed by "cloche status")
+	runID, step, err := srv.ResolveRunIDFromID(ctx, "TASK-TAW:r5w5:develop")
+	require.NoError(t, err)
+	assert.Equal(t, "develop", runID)
+	assert.Empty(t, step)
+}
+
+func TestServer_ResolveRunIDFromID_TaskAttemptStepDistinct(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	srv := server.NewClocheServer(store, nil)
+
+	run := domain.NewRun("develop", "develop")
+	run.TaskID = "TASK-TSD"
+	run.AttemptID = "r6w6"
+	run.ProjectDir = "/proj"
+	run.Start()
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// task_id:attempt_id:step_name where step != workflow name → step is preserved
+	runID, step, err := srv.ResolveRunIDFromID(ctx, "TASK-TSD:r6w6:implement")
+	require.NoError(t, err)
+	assert.Equal(t, "develop", runID)
+	assert.Equal(t, "implement", step)
+}
+
 func TestServer_StreamLogs_ByAttemptWorkflowId(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

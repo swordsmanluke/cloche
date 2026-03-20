@@ -107,9 +107,19 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	}
 
 	// Check for resume mode via gRPC metadata.
-	// Two paths: explicit run ID, or task/run ID that needs resolution.
+	// Two paths: composite ID (colon-separated, resolved via resolveRunIDFromID),
+	// or bare task/run ID that needs resolution via resolveResumeTarget.
 	if resumeRunID := resumeRunIDFromContext(ctx); resumeRunID != "" {
-		return s.resumeRun(ctx, resumeRunID, resumeStepFromContext(ctx))
+		resolvedRunID, stepFromID, err := s.resolveRunIDFromID(ctx, resumeRunID)
+		if err != nil {
+			return nil, fmt.Errorf("resolving resume ID %q: %w", resumeRunID, err)
+		}
+		// Explicit step from metadata overrides step embedded in composite ID.
+		step := resumeStepFromContext(ctx)
+		if step == "" {
+			step = stepFromID
+		}
+		return s.resumeRun(ctx, resolvedRunID, step)
 	}
 	if taskOrRunID := resumeTaskOrRunFromContext(ctx); taskOrRunID != "" {
 		runID, err := s.resolveResumeTarget(ctx, taskOrRunID)
@@ -1277,11 +1287,17 @@ func (s *ClocheServer) resolveRunIDFromID(ctx context.Context, id string) (runID
 		if e == nil {
 			return run.ID, parts[2], nil
 		}
-		// Fall back to task_id:attempt_id:step_name
+		// Fall back to task_id:attempt_id (with parts[2] as workflow name or step name)
 		run, e = s.findRunByTaskAndAttempt(ctx, parts[0], parts[1])
 		if e != nil {
 			return "", "", fmt.Errorf("no run found for task %q attempt %q: %w", parts[0], parts[1], e)
 		}
+		// If parts[2] matches the run's workflow name, treat as workflow ID (no step).
+		// This handles the canonical task:attempt:workflow format (e.g. TASK-123:a41k:develop).
+		if parts[2] == run.WorkflowName {
+			return run.ID, "", nil
+		}
+		// Otherwise treat parts[2] as a step name.
 		return run.ID, parts[2], nil
 	}
 

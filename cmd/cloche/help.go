@@ -107,13 +107,15 @@ Usage:
   cloche resume <step-id>
 
 Arguments:
-  <task-id>      Bare task ID (no colons, e.g. user-a12z). Resolves to the
-                 latest attempt's failed run and resumes from the first
-                 failed step.
-  <workflow-id>  Attempt ID and workflow name joined by a colon
-                 (e.g. a133:develop). Resumes from the first failed step.
-  <step-id>      Attempt ID, workflow name, and step name joined by colons
-                 (e.g. a133:develop:review). Resumes from that step.
+  <task-id>      Task identifier (e.g. TASK-123 or cloche-k4gh).
+                 Finds and resumes the latest failed run for that task.
+  <workflow-id>  Colon-separated workflow identifier. Accepted formats:
+                   attempt:workflow         (e.g. a133:develop)
+                   task:attempt:workflow    (e.g. TASK-123:a41k:develop)
+                 Resumes from the first failed step.
+  <step-id>      Colon-separated step identifier. Accepted formats:
+                   attempt:workflow:step    (e.g. a133:develop:review)
+                 Resumes from that specific step.
 
 Step-specific resume behavior:
   script step    Reruns the script fresh. Updated scripts are picked up.
@@ -127,7 +129,9 @@ Prerequisites:
   - For container workflows, the container must still exist.
 
 Examples:
+  cloche resume TASK-123
   cloche resume a133:develop
+  cloche resume TASK-123:a41k:develop
   cloche resume a133:develop:implement
 `,
 

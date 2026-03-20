@@ -909,9 +909,9 @@ cloche resume <step-id>
 
 | Argument | Description |
 |----------|-------------|
-| `<task-id>` | Bare task ID (no colons, e.g. `user-a12z`). Resolves to the latest attempt's failed run and resumes from the first failed step. |
-| `<workflow-id>` | Attempt ID and workflow name joined by a colon (e.g. `a133:develop`). Resumes from the first failed step. |
-| `<step-id>` | Attempt ID, workflow name, and step name joined by colons (e.g. `a133:develop:review`). Resumes from that step. |
+| `<task-id>` | Bare task or run ID (no colons, e.g. `cloche-k4gh`). Resolves to the latest attempt's failed run and resumes from the first failed step. |
+| `<workflow-id>` | Colon-separated workflow identifier. Accepted formats: `attempt:workflow` (e.g. `a133:develop`) or `task:attempt:workflow` (e.g. `TASK-123:a41k:develop`). Resumes from the first failed step. |
+| `<step-id>` | Colon-separated step identifier: `attempt:workflow:step` (e.g. `a133:develop:review`). Resumes from that specific step. |
 
 **Prerequisites:** The run must be in a failed state. For container workflows, the
 container must still exist (failed runs keep their containers by default).
@@ -1122,7 +1122,7 @@ displayed.
 cloche get <key>
 ```
 
-Get a value from the run context store (`.cloche/<run-id>/context.json`). Requires
+Get a value from the run context store (`.cloche/runs/<task-id>/context.json`). Requires
 the `CLOCHE_TASK_ID` environment variable. Uses `CLOCHE_PROJECT_DIR` if set, otherwise
 the current working directory. Exits 1 if the key is not found.
 
@@ -1132,7 +1132,7 @@ the current working directory. Exits 1 if the key is not found.
 cloche set <key> <value|->
 ```
 
-Set a value in the run context store (`.cloche/<run-id>/context.json`). Requires
+Set a value in the run context store (`.cloche/runs/<task-id>/context.json`). Requires
 the `CLOCHE_TASK_ID` environment variable. Uses `CLOCHE_PROJECT_DIR` if set, otherwise
 the current working directory. Creates the file and directories if they don't exist.
 Pass `-` as the value to read from stdin (trailing newlines are trimmed).
@@ -1234,9 +1234,10 @@ my-project/
 │   ├── scripts/              # Host-side scripts
 │   ├── overrides/            # Files copied on top of /workspace/
 │   │   └── CLAUDE.md         # Container-specific CLAUDE.md (optional)
-│   ├── <run-id>/             # Runtime state (gitignored)
-│   │   ├── prompt.txt        # User prompt
-│   │   └── context.json      # Shared key-value store (cloche get/set)
+│   ├── runs/
+│   │   └── <task-id>/        # Runtime state (gitignored)
+│   │       ├── prompt.txt    # User prompt
+│   │       └── context.json  # Shared key-value store (cloche get/set)
 │   └── logs/
 │       └── <task-id>/        # Grouped by task (ticket or user-initiated run)
 │           └── <attempt-id>/ # One directory per attempt
