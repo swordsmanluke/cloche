@@ -3279,3 +3279,160 @@ func TestServer_GetStatus_IncludesTokenFields(t *testing.T) {
 	assert.Equal(t, int64(1234), se.OutputTokens)
 	assert.Equal(t, "claude", se.AgentName)
 }
+
+// ---------------------------------------------------------------------------
+// Tests for log chunking (ResourceExhausted prevention)
+// ---------------------------------------------------------------------------
+
+func TestSplitIntoChunks_SmallContent(t *testing.T) {
+	content := "hello\nworld\n"
+	chunks := server.SplitIntoChunks(content, 1024)
+	require.Len(t, chunks, 1)
+	assert.Equal(t, content, chunks[0])
+}
+
+func TestSplitIntoChunks_ExactBoundary(t *testing.T) {
+	// Content exactly at the limit → single chunk.
+	content := strings.Repeat("a", 512)
+	chunks := server.SplitIntoChunks(content, 512)
+	require.Len(t, chunks, 1)
+	assert.Equal(t, content, chunks[0])
+}
+
+func TestSplitIntoChunks_MultipleChunks(t *testing.T) {
+	// Build content with 10 lines of 100 bytes each → total 1000 bytes.
+	// Chunk at 300 bytes → should produce 4 chunks.
+	line := strings.Repeat("x", 99) + "\n" // 100 bytes per line
+	content := strings.Repeat(line, 10)    // 1000 bytes total
+
+	chunks := server.SplitIntoChunks(content, 300)
+	require.Greater(t, len(chunks), 1)
+
+	// Re-assembling chunks should reproduce original content.
+	var reassembled strings.Builder
+	for _, c := range chunks {
+		reassembled.WriteString(c)
+	}
+	assert.Equal(t, content, reassembled.String())
+}
+
+func TestSplitIntoChunks_ChunkSizeRespected(t *testing.T) {
+	line := strings.Repeat("y", 49) + "\n" // 50 bytes per line
+	content := strings.Repeat(line, 20)    // 1000 bytes total
+	maxSize := 200
+
+	chunks := server.SplitIntoChunks(content, maxSize)
+	for i, chunk := range chunks {
+		// Each chunk except possibly the last must be <= maxSize.
+		// (A single line that alone exceeds maxSize would still be sent whole.)
+		if i < len(chunks)-1 {
+			assert.LessOrEqual(t, len(chunk), maxSize+50 /* one line tolerance */, "chunk %d too large", i)
+		}
+	}
+}
+
+func TestSplitIntoChunks_NoTrailingBlankLine(t *testing.T) {
+	// Content with trailing newline should not produce a spurious trailing chunk.
+	content := "line1\nline2\n"
+	chunks := server.SplitIntoChunks(content, 1024)
+	require.Len(t, chunks, 1)
+	assert.Equal(t, content, chunks[0])
+}
+
+func TestSendContentChunked_SmallContent(t *testing.T) {
+	mock := &mockLogStream{ctx: context.Background()}
+	content := "small log content\n"
+	err := server.SendContentChunked(mock, "full_log", "", "", "", content)
+	require.NoError(t, err)
+	require.Len(t, mock.entries, 1)
+	assert.Equal(t, "full_log", mock.entries[0].Type)
+	assert.Equal(t, content, mock.entries[0].Message)
+}
+
+func TestSendContentChunked_LargeContent(t *testing.T) {
+	mock := &mockLogStream{ctx: context.Background()}
+	// Generate content larger than maxLogChunkSize.
+	line := strings.Repeat("z", 99) + "\n"
+	content := strings.Repeat(line, server.MaxLogChunkSize/100+10)
+
+	err := server.SendContentChunked(mock, "full_log", "step1", "done", "ts", content)
+	require.NoError(t, err)
+	require.Greater(t, len(mock.entries), 1, "large content should be split into multiple messages")
+
+	// First message must carry the original type and all metadata.
+	first := mock.entries[0]
+	assert.Equal(t, "full_log", first.Type)
+	assert.Equal(t, "step1", first.StepName)
+	assert.Equal(t, "done", first.Result)
+	assert.Equal(t, "ts", first.Timestamp)
+
+	// Subsequent messages must be "log_chunk" type.
+	for _, e := range mock.entries[1:] {
+		assert.Equal(t, "log_chunk", e.Type, "continuation chunks must have type log_chunk")
+		assert.Equal(t, "step1", e.StepName)
+	}
+
+	// Individual messages must be within the size limit.
+	for i, e := range mock.entries {
+		assert.LessOrEqual(t, len(e.Message), server.MaxLogChunkSize+200 /* one-line tolerance */, "message %d too large", i)
+	}
+
+	// Reassembling all messages must reproduce the original content.
+	var reassembled strings.Builder
+	for _, e := range mock.entries {
+		reassembled.WriteString(e.Message)
+	}
+	assert.Equal(t, content, reassembled.String())
+}
+
+func TestStreamLogs_LargeFullLog_IsChunked(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	// Create a completed run.
+	run := domain.NewRun("run-large-log-1", "develop")
+	run.ProjectDir = dir
+	run.Start()
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Write a full.log larger than maxLogChunkSize.
+	logDir := filepath.Join(dir, ".cloche", "run-large-log-1", "output")
+	require.NoError(t, os.MkdirAll(logDir, 0755))
+	line := strings.Repeat("L", 99) + "\n"
+	largeLog := strings.Repeat(line, server.MaxLogChunkSize/100+10)
+	require.NoError(t, os.WriteFile(filepath.Join(logDir, "full.log"), []byte(largeLog), 0644))
+
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+
+	mock := &mockLogStream{ctx: context.Background()}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "run-large-log-1"}, mock)
+	require.NoError(t, err)
+
+	// Should have multiple log entries.
+	require.Greater(t, len(mock.entries), 1, "large full.log should be split into multiple messages")
+
+	// First message must be full_log.
+	assert.Equal(t, "full_log", mock.entries[0].Type)
+
+	// Continuation messages must be log_chunk.
+	for _, e := range mock.entries[1:] {
+		if e.Type == "run_completed" {
+			break
+		}
+		assert.Equal(t, "log_chunk", e.Type)
+	}
+
+	// All log content should be present.
+	var totalContent strings.Builder
+	for _, e := range mock.entries {
+		if e.Type == "full_log" || e.Type == "log_chunk" {
+			totalContent.WriteString(e.Message)
+		}
+	}
+	assert.Equal(t, largeLog, totalContent.String())
+}

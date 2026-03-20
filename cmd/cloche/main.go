@@ -871,6 +871,9 @@ func cmdLogs(client pb.ClocheServiceClient, args []string) {
 			}
 		case "full_log":
 			fmt.Print(string(logstream.ParseClaudeStream([]byte(entry.Message))))
+		case "log_chunk":
+			// Continuation chunk from a chunked log response (large files).
+			fmt.Print(string(logstream.ParseClaudeStream([]byte(entry.Message))))
 		case "log":
 			// Live-streamed log line from an active run.
 			fmt.Println(entry.Message)

@@ -1514,10 +1514,7 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 	}
 	if data, readErr := os.ReadFile(fullLogPath); readErr == nil && len(data) > 0 {
 		msg := applyLimit(string(data), limit)
-		if err := stream.Send(&pb.LogEntry{
-			Type:    "full_log",
-			Message: msg,
-		}); err != nil {
+		if err := sendContentChunked(stream, "full_log", "", "", "", msg); err != nil {
 			return err
 		}
 		return s.sendRunCompleted(ctx, req.RunId, stream)
@@ -1561,14 +1558,7 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 					output = string(data)
 				}
 			}
-			entry := &pb.LogEntry{
-				Type:      "step_completed",
-				StepName:  exec.StepName,
-				Result:    exec.Result,
-				Timestamp: exec.CompletedAt.String(),
-				Message:   applyLimit(output, limit),
-			}
-			if err := stream.Send(entry); err != nil {
+			if err := sendContentChunked(stream, "step_completed", exec.StepName, exec.Result, exec.CompletedAt.String(), applyLimit(output, limit)); err != nil {
 				return err
 			}
 		}
@@ -1604,6 +1594,71 @@ func limitFromContext(ctx context.Context) int {
 		return 0
 	}
 	return n
+}
+
+// maxLogChunkSize is the maximum size of a single LogEntry message sent over
+// gRPC. The gRPC default max message size is 4MB; we use 512KB to stay well
+// under that limit and allow for protobuf encoding overhead.
+const maxLogChunkSize = 512 * 1024
+
+// splitIntoChunks splits content into chunks at line boundaries, each at most
+// maxSize bytes. Returns a single-element slice for small content.
+func splitIntoChunks(content string, maxSize int) []string {
+	if len(content) <= maxSize {
+		return []string{content}
+	}
+	lines := strings.Split(content, "\n")
+	// Remove trailing empty string from a terminal newline.
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	var chunks []string
+	var cur strings.Builder
+	for _, line := range lines {
+		lineStr := line + "\n"
+		if cur.Len() > 0 && cur.Len()+len(lineStr) > maxSize {
+			chunks = append(chunks, cur.String())
+			cur.Reset()
+		}
+		cur.WriteString(lineStr)
+	}
+	if cur.Len() > 0 {
+		chunks = append(chunks, cur.String())
+	}
+	if len(chunks) == 0 {
+		return []string{content}
+	}
+	return chunks
+}
+
+// sendContentChunked sends content as one or more LogEntry messages to avoid
+// exceeding the gRPC per-message size limit. The first message uses the
+// provided entry type with all metadata fields; any additional chunks are sent
+// as "log_chunk" entries so the client can append them without re-printing headers.
+func sendContentChunked(stream rpcgrpc.ServerStreamingServer[pb.LogEntry], entryType, stepName, result, timestamp, content string) error {
+	chunks := splitIntoChunks(content, maxLogChunkSize)
+	for i, chunk := range chunks {
+		var entry *pb.LogEntry
+		if i == 0 {
+			entry = &pb.LogEntry{
+				Type:      entryType,
+				StepName:  stepName,
+				Result:    result,
+				Timestamp: timestamp,
+				Message:   chunk,
+			}
+		} else {
+			entry = &pb.LogEntry{
+				Type:     "log_chunk",
+				StepName: stepName,
+				Message:  chunk,
+			}
+		}
+		if err := stream.Send(entry); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // applyLimit returns the last n lines of content. If n <= 0, returns content unchanged.
@@ -1677,10 +1732,7 @@ func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rp
 		fullLogPath := flp885
 		if data, err := os.ReadFile(fullLogPath); err == nil && len(data) > 0 {
 			msg := applyLimit(string(data), limit)
-			if err := stream.Send(&pb.LogEntry{
-				Type:    "full_log",
-				Message: msg,
-			}); err != nil {
+			if err := sendContentChunked(stream, "full_log", "", "", "", msg); err != nil {
 				return err
 			}
 		}
@@ -1714,10 +1766,7 @@ func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rp
 						}
 						fullLogPath := flp919
 						if data, readErr := os.ReadFile(fullLogPath); readErr == nil && len(data) > 0 {
-							_ = stream.Send(&pb.LogEntry{
-								Type:    "full_log",
-								Message: applyLimit(string(data), limit),
-							})
+							_ = sendContentChunked(stream, "full_log", "", "", "", applyLimit(string(data), limit))
 						}
 					}
 				}
@@ -1770,11 +1819,7 @@ func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLog
 				if readErr != nil {
 					continue
 				}
-				if err := stream.Send(&pb.LogEntry{
-					Type:     lf.FileType + "_log",
-					StepName: lf.StepName,
-					Message:  applyLimit(string(data), limit),
-				}); err != nil {
+				if err := sendContentChunked(stream, lf.FileType+"_log", lf.StepName, "", "", applyLimit(string(data), limit)); err != nil {
 					return err
 				}
 			}
@@ -1806,11 +1851,7 @@ func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLog
 			if err != nil || len(data) == 0 {
 				continue
 			}
-			return stream.Send(&pb.LogEntry{
-				Type:     "step_log",
-				StepName: req.StepName,
-				Message:  applyLimit(string(data), limit),
-			})
+			return sendContentChunked(stream, "step_log", req.StepName, "", "", applyLimit(string(data), limit))
 		}
 		return fmt.Errorf("log file not found for step %q", req.StepName)
 	}

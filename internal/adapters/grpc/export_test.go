@@ -3,8 +3,23 @@ package grpc
 import (
 	"context"
 
+	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/domain"
+	rpcgrpc "google.golang.org/grpc"
 )
+
+// SplitIntoChunks exposes splitIntoChunks for testing.
+func SplitIntoChunks(content string, maxSize int) []string {
+	return splitIntoChunks(content, maxSize)
+}
+
+// SendContentChunked exposes sendContentChunked for testing.
+func SendContentChunked(stream rpcgrpc.ServerStreamingServer[pb.LogEntry], entryType, stepName, result, timestamp, content string) error {
+	return sendContentChunked(stream, entryType, stepName, result, timestamp, content)
+}
+
+// MaxLogChunkSize exposes maxLogChunkSize for testing.
+const MaxLogChunkSize = maxLogChunkSize
 
 // AddActiveRun registers a fake active run for testing.
 func (s *ClocheServer) AddActiveRun(runID, containerID string) {
