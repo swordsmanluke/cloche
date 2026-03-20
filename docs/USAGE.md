@@ -721,6 +721,121 @@ workflow "develop" {
 
 Your project directory is never modified by the container.
 
+## Token Usage
+
+Cloche tracks token consumption per agent step and exposes aggregate metrics in `cloche
+status`, the web dashboard, and a dedicated gRPC endpoint.
+
+### What Is Tracked
+
+Each completed agent step records:
+
+| Metric | Description |
+|--------|-------------|
+| `input_tokens` | Tokens sent to the agent (prompt) |
+| `output_tokens` | Tokens returned by the agent (completion) |
+| `agent_name` | Which agent ran the step (e.g. `claude`, `codex`) |
+
+These are stored per step execution and can be aggregated over any time window.
+
+### How Tracking Works Per Agent
+
+**Claude Code** — token usage is extracted automatically from the
+`--output-format stream-json` result event. No extra configuration needed.
+
+**Other agents** — use the `usage_command` step config key (or set it globally in
+`config.toml` under `[agents.<name>]`) to run a shell command after each agent step.
+The command must print JSON to stdout:
+
+```json
+{"input_tokens": 1234, "output_tokens": 567}
+```
+
+If the command is absent or fails, usage for that step is not tracked. Execution
+continues normally regardless.
+
+### Token Usage in `cloche status`
+
+**Overview mode** (`cloche status` with no arguments) shows a per-agent burn rate
+section at the bottom if any usage data exists for the last hour:
+
+```
+Token usage (last 1h):
+  claude     4,521 in / 2,103 out   6,624 total   ~18.2k/hr
+  codex      1,200 in /   890 out   2,090 total   ~5.7k/hr
+```
+
+Each row shows the agent name, input/output token counts, total tokens, and the
+burn rate (total tokens per hour over the last hour). The burn rate uses `~Xk/hr`
+notation for values ≥ 1,000 and `~X/hr` for smaller values. The section is omitted
+entirely when no usage data is available.
+
+**Task status** (`cloche status <task-id>`) includes a `Tokens` line showing total
+consumption across all attempts for that task, broken down by agent:
+
+```
+Tokens:  8,714 (claude: 6,624 / codex: 2,090)
+```
+
+This line is omitted if no usage data exists for the task.
+
+### Token Usage in the Web Dashboard
+
+The project detail page shows a **Token Usage** panel (auto-hidden if empty) that
+refreshes every 30 seconds:
+
+- **Burn rate (last 1h)** — per-agent tokens per hour, formatted as `~Xk/hr` or `~X/hr`
+- **Totals (last 24h)** — per-agent input/output/total token counts
+
+The run detail page shows per-step token counts (input/output) in the steps table
+for any step that reported usage.
+
+### `GetUsage` gRPC Endpoint
+
+The daemon exposes a `GetUsage` RPC on the `ClocheService` for programmatic access:
+
+```protobuf
+rpc GetUsage(GetUsageRequest) returns (GetUsageResponse);
+
+message GetUsageRequest {
+  string project_dir    = 1; // empty = global (all projects)
+  string agent_name     = 2; // empty = all agents
+  int64  window_seconds = 3; // 0 = all time; >0 = seconds back from now
+}
+
+message GetUsageResponse {
+  repeated UsageSummary summaries = 1;
+}
+
+message UsageSummary {
+  string agent_name    = 1;
+  int64  input_tokens  = 2;
+  int64  output_tokens = 3;
+  int64  total_tokens  = 4;
+  double burn_rate     = 5; // tokens per hour (0 when window_seconds = 0)
+}
+```
+
+**Filtering:**
+
+| Field | Effect |
+|-------|--------|
+| `project_dir` | Limit to a single project. Empty returns global totals. |
+| `agent_name` | Limit to a single agent. Empty returns all agents (one summary per agent). |
+| `window_seconds` | Time window ending now. `0` means no time filter (all-time totals, burn rate is 0). |
+
+**Example:** fetch the last-hour burn rate for all agents in the current project:
+
+```go
+resp, err := client.GetUsage(ctx, &pb.GetUsageRequest{
+    ProjectDir:    "/path/to/my-project",
+    WindowSeconds: 3600,
+})
+for _, s := range resp.Summaries {
+    fmt.Printf("%s: %.0f tokens/hr\n", s.AgentName, s.BurnRate)
+}
+```
+
 ## CLI Reference
 
 Every subcommand supports `--help` (or `-h`) to show detailed usage, flags, and
