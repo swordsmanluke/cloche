@@ -49,10 +49,17 @@ func ExtractResults(ctx context.Context, containerID, projectDir, runID, baseSHA
 		rmCmd.Run()
 	}()
 
-	// 3. Copy temp dir contents into worktree root, excluding .git
-	// The container includes .git/ as a full directory, but the worktree has a
-	// .git file pointing back to the main repo. We must not overwrite it.
+	// 3. Replace worktree contents with the container workspace.
+	// First remove all existing files (preserving .git), then copy from the
+	// container. This ensures file deletions by the agent are captured.
 	os.RemoveAll(filepath.Join(tmpDir, ".git"))
+	entries, _ := os.ReadDir(worktreeDir)
+	for _, e := range entries {
+		if e.Name() == ".git" {
+			continue
+		}
+		os.RemoveAll(filepath.Join(worktreeDir, e.Name()))
+	}
 	cpLocalCmd := exec.CommandContext(ctx, "cp", "-a", tmpDir+"/.", worktreeDir+"/")
 	if out, err := cpLocalCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("copying to worktree: %s: %w", out, err)
