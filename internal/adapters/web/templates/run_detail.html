@@ -348,7 +348,6 @@
         d.appendChild(document.createTextNode(s));
         return d.innerHTML;
     }
-})();
 
 // Load earlier log lines
     window.loadEarlierLogs = function() {
@@ -439,41 +438,42 @@
     };
 
     // Toggle step output rows
-document.addEventListener('click', function(e) {
-    var row = e.target.closest('.step-row');
-    if (!row) return;
-    var idx = row.dataset.index;
-    var outputRow = document.getElementById('output-' + idx);
-    if (!outputRow) return;
+    document.addEventListener('click', function(e) {
+        var row = e.target.closest('.step-row');
+        if (!row) return;
+        var idx = row.dataset.index;
+        var outputRow = document.getElementById('output-' + idx);
+        if (!outputRow) return;
 
-    if (outputRow.style.display === 'none') {
-        outputRow.style.display = '';
-        var pre = outputRow.querySelector('.step-output');
-        var stepName = row.dataset.step;
-        var viewer = pre.closest('.step-log-viewer');
-        if (pre.childNodes.length === 0) {
-            // Populate from buffered live lines first
-            var buf = stepLogBuffers[stepName];
-            if (buf && buf.length > 0) {
-                for (var k = 0; k < buf.length; k++) {
-                    appendToElement(viewer, pre, buf[k]);
+        if (outputRow.style.display === 'none') {
+            outputRow.style.display = '';
+            var pre = outputRow.querySelector('.step-output');
+            var stepName = row.dataset.step;
+            var viewer = pre.closest('.step-log-viewer');
+            if (pre.childNodes.length === 0) {
+                // Populate from buffered live lines first
+                var buf = stepLogBuffers[stepName];
+                if (buf && buf.length > 0) {
+                    for (var k = 0; k < buf.length; k++) {
+                        appendToElement(viewer, pre, buf[k]);
+                    }
+                } else {
+                    // No live buffer — fetch from server (completed step)
+                    var runId = row.dataset.runId;
+                    fetch('/api/runs/' + runId + '/steps/' + stepName + '/output')
+                        .then(function(r) {
+                            if (!r.ok) return 'No output available.';
+                            return r.text();
+                        })
+                        .then(function(text) { pre.textContent = text; })
+                        .catch(function() { pre.textContent = 'Failed to load output.'; });
                 }
-            } else {
-                // No live buffer — fetch from server (completed step)
-                var runId = row.dataset.runId;
-                fetch('/api/runs/' + runId + '/steps/' + stepName + '/output')
-                    .then(function(r) {
-                        if (!r.ok) return 'No output available.';
-                        return r.text();
-                    })
-                    .then(function(text) { pre.textContent = text; })
-                    .catch(function() { pre.textContent = 'Failed to load output.'; });
             }
+            if (viewer) viewer.scrollTop = viewer.scrollHeight;
+        } else {
+            outputRow.style.display = 'none';
         }
-        if (viewer) viewer.scrollTop = viewer.scrollHeight;
-    } else {
-        outputRow.style.display = 'none';
-    }
-});
+    });
+})();
 </script>
 {{end}}
