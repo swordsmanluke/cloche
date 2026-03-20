@@ -100,6 +100,10 @@ workflow "develop" {
 
 Supported keys: `image`, `memory`, `network_allow`, `agent_command`, `agent_args`.
 
+> **Note:** `network_allow` is parsed and stored but not yet enforced at runtime — containers
+> currently run with unrestricted network access. Declaring it in your workflow documents intent
+> and will take effect when enforcement is implemented.
+
 ### The `host {}` Block
 
 Declares a workflow as a host workflow. Can appear in any `.cloche` file. Keys are stored
