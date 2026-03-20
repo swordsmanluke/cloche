@@ -14,7 +14,7 @@ func TestStatusWriter_WritesJSONLines(t *testing.T) {
 	w := protocol.NewStatusWriter(&buf)
 
 	w.StepStarted("code")
-	w.StepCompleted("code", "success")
+	w.StepCompleted("code", "success", nil)
 	w.RunCompleted("succeeded")
 
 	msgs, err := protocol.ParseStatusStream(buf.Bytes())

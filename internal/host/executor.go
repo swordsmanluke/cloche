@@ -79,16 +79,18 @@ func (e *Executor) scriptDir() string {
 var _ engine.StepExecutor = (*Executor)(nil)
 
 // Execute runs a single host workflow step.
-func (e *Executor) Execute(ctx context.Context, step *domain.Step) (string, error) {
+func (e *Executor) Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
 	switch step.Type {
 	case domain.StepTypeScript:
-		return e.executeScript(ctx, step)
+		result, err := e.executeScript(ctx, step)
+		return domain.StepResult{Result: result}, err
 	case domain.StepTypeWorkflow:
-		return e.executeWorkflow(ctx, step)
+		result, err := e.executeWorkflow(ctx, step)
+		return domain.StepResult{Result: result}, err
 	case domain.StepTypeAgent:
 		return e.executeAgent(ctx, step)
 	default:
-		return "", fmt.Errorf("unsupported step type %q in host workflow", step.Type)
+		return domain.StepResult{}, fmt.Errorf("unsupported step type %q in host workflow", step.Type)
 	}
 }
 
@@ -242,7 +244,7 @@ func (e *Executor) executeWorkflow(ctx context.Context, step *domain.Step) (stri
 }
 
 // executeAgent runs an agent command on the host using the prompt adapter.
-func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (string, error) {
+func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
 	adapter := prompt.New()
 
 	// Apply workflow-level agent config
@@ -294,9 +296,9 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (string,
 		_ = os.WriteFile(promptPath, []byte(promptContent), 0644)
 	}
 
-	stepResult, err := adapter.Execute(ctx, step, e.ProjectDir)
+	sr, err := adapter.Execute(ctx, step, e.ProjectDir)
 	if err != nil {
-		return "", err
+		return domain.StepResult{}, err
 	}
 
 	// Copy output from adapter's output location to executor's output path
@@ -307,7 +309,7 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (string,
 		}
 	}
 
-	return stepResult.Result, nil
+	return sr, nil
 }
 
 // waitForRun polls the store until the run reaches a terminal state.

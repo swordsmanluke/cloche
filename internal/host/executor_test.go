@@ -104,7 +104,7 @@ func TestExecutor_ScriptStep_Success(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	// Check output was written
 	data, err := os.ReadFile(filepath.Join(outputDir, "greet.log"))
@@ -130,7 +130,7 @@ func TestExecutor_ScriptStep_Failure(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "fail", result)
+	assert.Equal(t, "fail", result.Result)
 }
 
 func TestExecutor_ScriptStep_ResultMarker(t *testing.T) {
@@ -151,7 +151,7 @@ func TestExecutor_ScriptStep_ResultMarker(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "custom", result)
+	assert.Equal(t, "custom", result.Result)
 
 	// Marker line should be stripped from output
 	data, err := os.ReadFile(filepath.Join(outputDir, "marker.log"))
@@ -190,7 +190,7 @@ func TestExecutor_WorkflowStep_Success(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 	assert.Len(t, dispatcher.calls, 1)
 	assert.Equal(t, "develop", dispatcher.calls[0].WorkflowName)
 	assert.Equal(t, tmpDir, dispatcher.calls[0].ProjectDir)
@@ -226,7 +226,7 @@ func TestExecutor_WorkflowStep_Failure(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "fail", result)
+	assert.Equal(t, "fail", result.Result)
 }
 
 func TestExecutor_WorkflowStep_StoresChildRunID(t *testing.T) {
@@ -263,7 +263,7 @@ func TestExecutor_WorkflowStep_StoresChildRunID(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	// Verify child_run_id was stored in run context
 	val, ok, err := runcontext.Get(tmpDir, taskID, "child_run_id")
@@ -308,7 +308,7 @@ func TestExecutor_WorkflowStep_PassesPrompt(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 	assert.Equal(t, "the task prompt", dispatcher.calls[0].Prompt)
 }
 
@@ -430,7 +430,7 @@ func TestExecutor_ScriptStep_EnvironmentVars(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	data, err := os.ReadFile(filepath.Join(outputDir, "env-check.log"))
 	require.NoError(t, err)
@@ -456,7 +456,7 @@ func TestExecutor_ScriptStep_RunIDEnvVar(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	data, err := os.ReadFile(filepath.Join(outputDir, "runid-check.log"))
 	require.NoError(t, err)
@@ -482,7 +482,7 @@ func TestExecutor_ScriptStep_NoRunID(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	data, err := os.ReadFile(filepath.Join(outputDir, "runid-check.log"))
 	require.NoError(t, err)
@@ -509,7 +509,7 @@ func TestExecutor_ScriptStep_TaskIDEnvVar(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	data, err := os.ReadFile(filepath.Join(outputDir, "task-check.log"))
 	require.NoError(t, err)
@@ -535,7 +535,7 @@ func TestExecutor_ScriptStep_NoTaskID(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	data, err := os.ReadFile(filepath.Join(outputDir, "task-check.log"))
 	require.NoError(t, err)
@@ -564,7 +564,7 @@ func TestExecutor_ScriptStep_NoOutputMappings(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 }
 
 func TestExecutor_ScriptStep_OutputMappings_JSONFields(t *testing.T) {
@@ -607,7 +607,7 @@ func TestExecutor_ScriptStep_OutputMappings_JSONFields(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	data, err := os.ReadFile(filepath.Join(outputDir, "use-tasks.log"))
 	require.NoError(t, err)
@@ -661,7 +661,7 @@ func TestExecutor_ScriptStep_OutputMappings_ArrayIndex(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	data, err := os.ReadFile(filepath.Join(outputDir, "process.log"))
 	require.NoError(t, err)
@@ -892,7 +892,7 @@ func TestExecutor_ScriptStep_UsesMainDir(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	data, err := os.ReadFile(filepath.Join(outputDir, "greet.log"))
 	require.NoError(t, err)
@@ -936,7 +936,7 @@ func TestExecutor_ScriptStep_MainDirOverridesProjectDir(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	data, err := os.ReadFile(filepath.Join(outputDir, "hello.log"))
 	require.NoError(t, err)
@@ -963,7 +963,7 @@ func TestExecutor_ScriptStep_FallsBackToProjectDir(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	data, err := os.ReadFile(filepath.Join(outputDir, "pwd-check.log"))
 	require.NoError(t, err)
@@ -991,7 +991,7 @@ func TestExecutor_ScriptStep_ProjectDirEnvVar(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	data, err := os.ReadFile(filepath.Join(outputDir, "env-check.log"))
 	require.NoError(t, err)
@@ -1065,7 +1065,7 @@ func TestExecutor_AgentStep_Success(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	// Check output was copied to executor's output path
 	data, err := os.ReadFile(filepath.Join(outputDir, "implement.log"))
@@ -1099,7 +1099,7 @@ func TestExecutor_AgentStep_Failure(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "fail", result)
+	assert.Equal(t, "fail", result.Result)
 }
 
 func TestExecutor_AgentStep_WorkflowLevelCommand(t *testing.T) {
@@ -1128,7 +1128,7 @@ func TestExecutor_AgentStep_WorkflowLevelCommand(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	data, err := os.ReadFile(filepath.Join(outputDir, "implement.log"))
 	require.NoError(t, err)
@@ -1165,7 +1165,7 @@ func TestExecutor_AgentStep_StepLevelOverridesWorkflow(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	// Step-level agent should have run, not workflow-level
 	data, err := os.ReadFile(filepath.Join(outputDir, "implement.log"))
@@ -1201,7 +1201,7 @@ func TestExecutor_AgentStep_FallbackChain(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	data, err := os.ReadFile(filepath.Join(outputDir, "implement.log"))
 	require.NoError(t, err)
@@ -1242,7 +1242,7 @@ func TestExecutor_AgentStep_PrevOutput(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	// Verify prompt.txt was written with previous step's output
 	promptPath := filepath.Join(tmpDir, ".cloche", "runs", "test-task-id", "prompt.txt")
@@ -1282,7 +1282,7 @@ func TestExecutor_AgentStep_PromptStep(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	// Verify prompt.txt was written with the prompt_step output
 	promptPath := filepath.Join(tmpDir, ".cloche", "runs", "test-task-id", "prompt.txt")
@@ -1619,7 +1619,7 @@ func TestExecutor_ScriptStep_ExtraEnv(t *testing.T) {
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
-	assert.Equal(t, "success", result)
+	assert.Equal(t, "success", result.Result)
 
 	data, err := os.ReadFile(filepath.Join(outputDir, "check-env.log"))
 	require.NoError(t, err)
@@ -1885,7 +1885,7 @@ func TestHostStatusHandler_ReadsStepLogFile(t *testing.T) {
 	}
 
 	step := &domain.Step{Name: "build"}
-	handler.OnStepComplete(nil, step, "success")
+	handler.OnStepComplete(nil, step, "success", nil)
 
 	// Verify only one .log file exists (no duplicate .out file)
 	entries, err := os.ReadDir(outputDir)
@@ -1904,7 +1904,7 @@ func TestHostStatusHandler_NoLogFileWhenNoOutput(t *testing.T) {
 	}
 
 	step := &domain.Step{Name: "missing"}
-	handler.OnStepComplete(nil, step, "success")
+	handler.OnStepComplete(nil, step, "success", nil)
 
 	// No .log file should be created
 	_, err := os.Stat(filepath.Join(outputDir, "missing.log"))

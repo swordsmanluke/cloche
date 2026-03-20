@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	"github.com/cloche-dev/cloche/internal/domain"
 )
 
 type MessageType string
 
 const (
-	MsgStepStarted  MessageType = "step_started"
+	MsgStepStarted   MessageType = "step_started"
 	MsgStepCompleted MessageType = "step_completed"
 	MsgRunCompleted  MessageType = "run_completed"
 	MsgRunTitle      MessageType = "run_title"
@@ -20,11 +22,14 @@ const (
 )
 
 type StatusMessage struct {
-	Type      MessageType `json:"type"`
-	StepName  string      `json:"step_name,omitempty"`
-	Result    string      `json:"result,omitempty"`
-	Message   string      `json:"message,omitempty"`
-	Timestamp time.Time   `json:"timestamp"`
+	Type         MessageType `json:"type"`
+	StepName     string      `json:"step_name,omitempty"`
+	Result       string      `json:"result,omitempty"`
+	Message      string      `json:"message,omitempty"`
+	Timestamp    time.Time   `json:"timestamp"`
+	InputTokens  int64       `json:"input_tokens,omitempty"`
+	OutputTokens int64       `json:"output_tokens,omitempty"`
+	AgentName    string      `json:"agent_name,omitempty"`
 }
 
 // flusher is an optional interface for writers that support explicit flushing.
@@ -45,8 +50,14 @@ func (s *StatusWriter) StepStarted(stepName string) {
 	s.write(StatusMessage{Type: MsgStepStarted, StepName: stepName})
 }
 
-func (s *StatusWriter) StepCompleted(stepName, result string) {
-	s.write(StatusMessage{Type: MsgStepCompleted, StepName: stepName, Result: result})
+func (s *StatusWriter) StepCompleted(stepName, result string, usage *domain.TokenUsage) {
+	msg := StatusMessage{Type: MsgStepCompleted, StepName: stepName, Result: result}
+	if usage != nil {
+		msg.InputTokens = usage.InputTokens
+		msg.OutputTokens = usage.OutputTokens
+		msg.AgentName = usage.AgentName
+	}
+	s.write(msg)
 }
 
 func (s *StatusWriter) RunCompleted(result string) {

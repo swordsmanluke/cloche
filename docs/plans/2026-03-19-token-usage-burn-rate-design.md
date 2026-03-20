@@ -1,7 +1,7 @@
 # Token Usage and Burn Rate Design
 
 **Date:** 2026-03-19
-**Status:** In Progress — storage, query, web UI, gRPC, and CLI layers implemented; capture layer pending
+**Status:** Implemented — all layers complete including protocol threading and capture
 
 ## Problem
 
@@ -28,14 +28,17 @@ New types in `internal/domain/usage.go`:
 type TokenUsage struct {
     InputTokens  int64
     OutputTokens int64
+    AgentName    string // "claude", "codex", etc.
 }
 
 // UsageSummary holds aggregated token usage with burn rate metrics.
 type UsageSummary struct {
-    TotalInputTokens    int64
-    TotalOutputTokens   int64
-    InputTokensPerHour  float64
-    OutputTokensPerHour float64
+    AgentName     string
+    InputTokens   int64
+    OutputTokens  int64
+    TotalTokens   int64
+    WindowSeconds int64   // time window these stats cover
+    BurnRate      float64 // total tokens per hour
 }
 
 // StepResult is the return value of AgentAdapter.Execute, combining the

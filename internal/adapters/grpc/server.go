@@ -739,11 +739,19 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		case protocol.MsgStepCompleted:
 			run.RecordStepComplete(msg.StepName, msg.Result)
 			if s.captures != nil {
-				_ = s.captures.SaveCapture(ctx, runID, &domain.StepExecution{
+				exec := &domain.StepExecution{
 					StepName:    msg.StepName,
 					Result:      msg.Result,
 					CompletedAt: msg.Timestamp,
-				})
+				}
+				if msg.InputTokens > 0 || msg.OutputTokens > 0 || msg.AgentName != "" {
+					exec.Usage = &domain.TokenUsage{
+						InputTokens:  msg.InputTokens,
+						OutputTokens: msg.OutputTokens,
+						AgentName:    msg.AgentName,
+					}
+				}
+				_ = s.captures.SaveCapture(ctx, runID, exec)
 			}
 			if s.logBroadcast != nil {
 				s.logBroadcast.Publish(runID, logstream.LogLine{

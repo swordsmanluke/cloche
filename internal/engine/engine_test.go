@@ -19,11 +19,11 @@ type fakeExecutor struct {
 	called  []string
 }
 
-func (f *fakeExecutor) Execute(_ context.Context, step *domain.Step) (string, error) {
+func (f *fakeExecutor) Execute(_ context.Context, step *domain.Step) (domain.StepResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.called = append(f.called, step.Name)
-	return f.results[step.Name], nil
+	return domain.StepResult{Result: f.results[step.Name]}, nil
 }
 
 func TestEngine_LinearWorkflow(t *testing.T) {
@@ -66,15 +66,15 @@ func TestEngine_RetryLoop(t *testing.T) {
 	}
 
 	callCount := 0
-	dynamicExec := engine.StepExecutorFunc(func(_ context.Context, step *domain.Step) (string, error) {
+	dynamicExec := engine.StepExecutorFunc(func(_ context.Context, step *domain.Step) (domain.StepResult, error) {
 		callCount++
 		if step.Name == "check" && callCount <= 2 {
-			return "fail", nil
+			return domain.StepResult{Result: "fail"}, nil
 		}
 		if step.Name == "code" {
-			return "success", nil
+			return domain.StepResult{Result: "success"}, nil
 		}
-		return "pass", nil
+		return domain.StepResult{Result: "pass"}, nil
 	})
 
 	eng := engine.New(dynamicExec)
@@ -270,12 +270,12 @@ type slowExecutor struct {
 	called []string
 }
 
-func (s *slowExecutor) Execute(ctx context.Context, step *domain.Step) (string, error) {
+func (s *slowExecutor) Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
 	s.mu.Lock()
 	s.called = append(s.called, step.Name)
 	s.mu.Unlock()
 	<-ctx.Done()
-	return "", fmt.Errorf("step %q timed out: %w", step.Name, ctx.Err())
+	return domain.StepResult{}, fmt.Errorf("step %q timed out: %w", step.Name, ctx.Err())
 }
 
 func TestEngine_StepTimeout(t *testing.T) {
@@ -355,11 +355,11 @@ func TestEngine_StepErrorIncludesStepName(t *testing.T) {
 	}
 
 	// Executor that returns an error on the "test" step
-	exec := engine.StepExecutorFunc(func(_ context.Context, step *domain.Step) (string, error) {
+	exec := engine.StepExecutorFunc(func(_ context.Context, step *domain.Step) (domain.StepResult, error) {
 		if step.Name == "test" {
-			return "", fmt.Errorf("tests failed: 3 failures")
+			return domain.StepResult{}, fmt.Errorf("tests failed: 3 failures")
 		}
-		return "success", nil
+		return domain.StepResult{Result: "success"}, nil
 	})
 
 	eng := engine.New(exec)

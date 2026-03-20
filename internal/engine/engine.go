@@ -12,30 +12,30 @@ import (
 
 const DefaultStepTimeout = 30 * time.Minute
 
-// StepExecutor executes a single step and returns the result name.
+// StepExecutor executes a single step and returns the result.
 type StepExecutor interface {
-	Execute(ctx context.Context, step *domain.Step) (string, error)
+	Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error)
 }
 
 // StepExecutorFunc adapts a function to the StepExecutor interface.
-type StepExecutorFunc func(ctx context.Context, step *domain.Step) (string, error)
+type StepExecutorFunc func(ctx context.Context, step *domain.Step) (domain.StepResult, error)
 
-func (f StepExecutorFunc) Execute(ctx context.Context, step *domain.Step) (string, error) {
+func (f StepExecutorFunc) Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
 	return f(ctx, step)
 }
 
 // StatusHandler receives notifications about workflow execution progress.
 type StatusHandler interface {
 	OnStepStart(run *domain.Run, step *domain.Step)
-	OnStepComplete(run *domain.Run, step *domain.Step, result string)
+	OnStepComplete(run *domain.Run, step *domain.Step, result string, usage *domain.TokenUsage)
 	OnRunComplete(run *domain.Run)
 }
 
 type noopStatus struct{}
 
-func (noopStatus) OnStepStart(*domain.Run, *domain.Step)            {}
-func (noopStatus) OnStepComplete(*domain.Run, *domain.Step, string) {}
-func (noopStatus) OnRunComplete(*domain.Run)                        {}
+func (noopStatus) OnStepStart(*domain.Run, *domain.Step)                               {}
+func (noopStatus) OnStepComplete(*domain.Run, *domain.Step, string, *domain.TokenUsage) {}
+func (noopStatus) OnRunComplete(*domain.Run)                                            {}
 
 type Engine struct {
 	executor         StepExecutor
@@ -86,6 +86,7 @@ func (e *Engine) SetPreloadedResults(results map[string]string) {
 type stepResult struct {
 	stepName string
 	result   string
+	usage    *domain.TokenUsage
 	err      error
 }
 
@@ -178,8 +179,8 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 				stepCtx, cancel = context.WithTimeout(ctx, d)
 				defer cancel()
 			}
-			result, err := e.executor.Execute(stepCtx, s)
-			results <- stepResult{stepName: s.Name, result: result, err: err}
+			sr, err := e.executor.Execute(stepCtx, s)
+			results <- stepResult{stepName: s.Name, result: sr.Result, usage: sr.Usage, err: err}
 		}(step)
 
 		return nil
@@ -223,7 +224,7 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 			}
 
 			run.RecordStepComplete(sr.stepName, sr.result)
-			e.status.OnStepComplete(run, step, sr.result)
+			e.status.OnStepComplete(run, step, sr.result, sr.usage)
 
 			// Process wiring: get next steps for this (step, result) pair.
 			nextSteps, wireErr := wf.NextSteps(sr.stepName, sr.result)

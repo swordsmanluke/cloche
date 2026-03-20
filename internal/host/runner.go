@@ -735,7 +735,7 @@ func (h *hostStatusHandler) OnStepStart(_ *domain.Run, step *domain.Step) {
 	}
 }
 
-func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, result string) {
+func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, result string, usage *domain.TokenUsage) {
 	now := time.Now()
 	log.Printf("host workflow [%s]: step %q completed with result %q", h.orchRunID, step.Name, result)
 	if h.store != nil {
@@ -749,6 +749,7 @@ func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, res
 			StepName:    step.Name,
 			Result:      result,
 			CompletedAt: now,
+			Usage:       usage,
 		})
 	}
 	// Read step output for logging/broadcasting.

@@ -152,17 +152,17 @@ type stepExecutor struct {
 	resumeFromStep string // the step being resumed (for prompt resume mode)
 }
 
-func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, error) {
+func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
 	switch step.Type {
 	case domain.StepTypeScript:
 		sr, err := e.generic.Execute(ctx, step, e.workDir)
 		e.logStepOutput(step.Name, logstream.TypeScript)
-		return sr.Result, err
+		return sr, err
 	case domain.StepTypeAgent:
 		if _, ok := step.Config["run"]; ok {
 			sr, err := e.generic.Execute(ctx, step, e.workDir)
 			e.logStepOutput(step.Name, logstream.TypeScript)
-			return sr.Result, err
+			return sr, err
 		}
 		if _, ok := step.Config["prompt"]; ok {
 			if cmd := step.Config["agent_command"]; cmd != "" {
@@ -179,11 +179,11 @@ func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (string, 
 			sr, err := e.prompt.Execute(ctx, step, e.workDir)
 			e.copyToLLMLog(step.Name)
 			e.logStepOutput(step.Name, logstream.TypeLLM)
-			return sr.Result, err
+			return sr, err
 		}
-		return "", fmt.Errorf("agent step %q requires either 'run' or 'prompt' config", step.Name)
+		return domain.StepResult{}, fmt.Errorf("agent step %q requires either 'run' or 'prompt' config", step.Name)
 	default:
-		return "", fmt.Errorf("unknown step type: %s", step.Type)
+		return domain.StepResult{}, fmt.Errorf("unknown step type: %s", step.Type)
 	}
 }
 
@@ -247,8 +247,8 @@ func (s *statusReporter) OnStepStart(_ *domain.Run, step *domain.Step) {
 	s.logStream.Log(logstream.TypeStatus, "step_started: "+step.Name)
 }
 
-func (s *statusReporter) OnStepComplete(_ *domain.Run, step *domain.Step, result string) {
-	s.writer.StepCompleted(step.Name, result)
+func (s *statusReporter) OnStepComplete(_ *domain.Run, step *domain.Step, result string, usage *domain.TokenUsage) {
+	s.writer.StepCompleted(step.Name, result, usage)
 	s.logStream.Log(logstream.TypeStatus, "step_completed: "+step.Name+" -> "+result)
 }
 
