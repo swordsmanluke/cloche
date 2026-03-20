@@ -357,6 +357,87 @@ func TestCmdStatusOverview_ActiveTasksWithNestedRuns(t *testing.T) {
 	}
 }
 
+func TestCmdStatusOverview_ActiveTasksWithAttemptID(t *testing.T) {
+	client := &statusMockClient{
+		versionResp: &pb.GetVersionResponse{Version: "2.0.0"},
+		projectInfoResp: &pb.GetProjectInfoResponse{
+			Name:        "myproject",
+			Concurrency: 2,
+			LoopRunning: true,
+		},
+		listRunsResp: &pb.ListRunsResponse{
+			Runs: []*pb.RunSummary{
+				{RunId: "run-host", State: "running", TaskId: "cloche-1234", WorkflowName: "main", IsHost: true, StartedAt: "2026-03-14 10:00:00 +0000 UTC"},
+				{RunId: "run-container", State: "running", TaskId: "cloche-1234", WorkflowName: "develop", IsHost: false, StartedAt: "2026-03-14 10:02:00 +0000 UTC"},
+			},
+		},
+		listTasksResp: &pb.ListTasksResponse{
+			Tasks: []*pb.TaskSummary{
+				{TaskId: "cloche-1234", Title: "Sample Task layout", Status: "running", LatestAttemptId: "aj19", AttemptCount: 3},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	ctx := context.Background()
+	cmdStatusProject(ctx, client, &buf, "/fake/project")
+
+	out := buf.String()
+	if !strings.Contains(out, "cloche-1234: Sample Task layout") {
+		t.Errorf("expected task header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Attempt 3: aj19") {
+		t.Errorf("expected attempt line with count and ID, got:\n%s", out)
+	}
+	// Host run should show composite ID without dash.
+	if !strings.Contains(out, "cloche-1234:aj19:main") {
+		t.Errorf("expected composite ID for host run, got:\n%s", out)
+	}
+	// Container run should show composite ID with dash prefix.
+	if !strings.Contains(out, "- cloche-1234:aj19:develop") {
+		t.Errorf("expected composite ID with dash for container run, got:\n%s", out)
+	}
+}
+
+func TestCmdStatusOverview_ActiveTasksNoAttemptID(t *testing.T) {
+	// When LatestAttemptId is empty, fall back to old display format.
+	client := &statusMockClient{
+		versionResp: &pb.GetVersionResponse{Version: "2.0.0"},
+		projectInfoResp: &pb.GetProjectInfoResponse{
+			Name:        "myproject",
+			Concurrency: 1,
+			LoopRunning: true,
+		},
+		listRunsResp: &pb.ListRunsResponse{
+			Runs: []*pb.RunSummary{
+				{RunId: "run-1", State: "running", TaskId: "TASK-9", WorkflowName: "develop", StartedAt: "2026-03-14 10:00:00 +0000 UTC"},
+			},
+		},
+		listTasksResp: &pb.ListTasksResponse{
+			Tasks: []*pb.TaskSummary{
+				{TaskId: "TASK-9", Title: "Old task", Status: "running", LatestAttemptId: ""},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	ctx := context.Background()
+	cmdStatusProject(ctx, client, &buf, "/fake/project")
+
+	out := buf.String()
+	if !strings.Contains(out, "TASK-9") {
+		t.Errorf("expected task ID, got:\n%s", out)
+	}
+	// No attempt line expected.
+	if strings.Contains(out, "Attempt") {
+		t.Errorf("expected no Attempt line when no attempt ID, got:\n%s", out)
+	}
+	// Workflow name still shown.
+	if !strings.Contains(out, "develop") {
+		t.Errorf("expected workflow name, got:\n%s", out)
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		name     string

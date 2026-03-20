@@ -595,9 +595,23 @@ func printActiveTasks(ctx context.Context, client pb.ClocheServiceClient, w io.W
 			title = task.TaskId
 		}
 		fmt.Fprintf(w, "  %s: %s\n", task.TaskId, title)
-		for _, run := range runsByTask[task.TaskId] {
-			dur := formatDuration(run.StartedAt)
-			fmt.Fprintf(w, "    %s: %s\n", run.WorkflowName, dur)
+		attemptID := task.LatestAttemptId
+		if attemptID != "" {
+			fmt.Fprintf(w, "    Attempt %d: %s\n", task.AttemptCount, attemptID)
+			for _, run := range runsByTask[task.TaskId] {
+				dur := formatDuration(run.StartedAt)
+				compositeID := fmt.Sprintf("%s:%s:%s", task.TaskId, attemptID, run.WorkflowName)
+				if run.IsHost {
+					fmt.Fprintf(w, "      %s : %s\n", compositeID, dur)
+				} else {
+					fmt.Fprintf(w, "        - %s : %s\n", compositeID, dur)
+				}
+			}
+		} else {
+			for _, run := range runsByTask[task.TaskId] {
+				dur := formatDuration(run.StartedAt)
+				fmt.Fprintf(w, "    %s: %s\n", run.WorkflowName, dur)
+			}
 		}
 	}
 	// Show runs whose task ID isn't in the active tasks list (orphans).
