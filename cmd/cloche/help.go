@@ -21,15 +21,21 @@ Flags:
   --base-image <image>    Base Docker image for the Dockerfile (default: "cloche-base:latest")
 
 What it creates:
-  .cloche/<name>.cloche           Workflow definition
-  .cloche/host.cloche             Host orchestration workflow
-  .cloche/Dockerfile              Container image definition
-  .cloche/config.toml             Project configuration
-  .cloche/prompts/implement.md    Prompt for the implement step
-  .cloche/prompts/fix.md          Prompt for the fix step
-  .cloche/prompts/update-docs.md  Prompt for the update-docs step
-  .cloche/scripts/prepare-prompt.sh  Prompt generation script
-  .cloche/version                 Schema version marker
+  .cloche/<name>.cloche              Workflow definition
+  .cloche/host.cloche                Host orchestration workflow
+  .cloche/Dockerfile                 Container image definition
+  .cloche/config.toml                Project configuration
+  .cloche/prompts/implement.md       Prompt for the implement step
+  .cloche/prompts/fix-tests.md       Prompt for the fix-tests step
+  .cloche/prompts/fix-merge.md       Prompt for resolving merge conflicts
+  .cloche/scripts/get-tasks.py       Read next open task from task tracker
+  .cloche/scripts/claim-task.py      Mark task as in-progress
+  .cloche/scripts/prepare-merge.py   Create worktree and rebase agent branch
+  .cloche/scripts/merge.py           Fast-forward base branch to agent branch
+  .cloche/scripts/release-task.py    Mark completed task as done
+  .cloche/scripts/cleanup.py         Clean up worktree and branch
+  .cloche/scripts/unclaim.py         Reset task to open and stop loop
+  .cloche/version                    Schema version marker
 
 Existing files are never overwritten. Run this command again safely to add
 missing files without losing customizations.
