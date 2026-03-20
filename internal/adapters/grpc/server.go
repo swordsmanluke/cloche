@@ -1992,6 +1992,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	}
 
 	// Phase 2: main function
+	_, hasFinalize := hostWFs["finalize"]
 	mainFn := func(ctx context.Context, projDir string, taskID string, attemptID string) (*host.RunResult, error) {
 		runner := &host.Runner{
 			Dispatcher:   s,
@@ -2000,13 +2001,14 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 			LogBroadcast: s.logBroadcast,
 			TaskID:       taskID,
 			AttemptID:    attemptID,
+			SkipCleanup:  hasFinalize, // let finalize clean up
 		}
 		return runner.RunNamed(ctx, projDir, "main")
 	}
 
 	// Phase 3: finalize function (optional — only if a finalize host workflow exists)
 	var finalizeFn host.FinalizeFunc
-	if _, hasFinalize := hostWFs["finalize"]; hasFinalize {
+	if hasFinalize {
 		finalizeFn = func(ctx context.Context, projDir string, taskID string, attemptID string, mainResult *host.RunResult) (*host.RunResult, error) {
 			mainRunID := ""
 			mainOutcome := "failed"
