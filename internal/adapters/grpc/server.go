@@ -133,8 +133,12 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		return nil, fmt.Errorf("no container runtime configured")
 	}
 
-	// Create or link Task and Attempt records for v2 tracking.
-	attemptID := s.ensureTaskAndAttempt(ctx, req.IssueId, req.Title, req.ProjectDir)
+	// Reuse a propagated attempt ID from a parent host executor, or create
+	// a new Task/Attempt record for standalone container runs.
+	attemptID := attemptIDFromContext(ctx)
+	if attemptID == "" {
+		attemptID = s.ensureTaskAndAttempt(ctx, req.IssueId, req.Title, req.ProjectDir)
+	}
 
 	runID := domain.GenerateRunID(workflowName, attemptID)
 
