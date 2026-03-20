@@ -2227,10 +2227,10 @@ func TestServer_StreamLogs_StepFilterFallbackToOut(t *testing.T) {
 	run.Complete(domain.RunStateSucceeded)
 	require.NoError(t, store.CreateRun(ctx, run))
 
-	// Write only a .out file (as host executor does), no .log file
+	// Write a .log file (as host executor does)
 	outputDir := filepath.Join(dir, ".cloche", "host-out-1", "output")
 	require.NoError(t, os.MkdirAll(outputDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "prepare.out"), []byte("host step output\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "prepare.log"), []byte("host step output\n"), 0644))
 
 	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
 

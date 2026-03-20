@@ -1111,12 +1111,10 @@ func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		for _, ext := range []string{".log", ".out"} {
-			outputPath := filepath.Join(sd.dir, sd.prefix+step+ext)
-			if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
-				writeOutput(data)
-				return
-			}
+		outputPath := filepath.Join(sd.dir, sd.prefix+step+".log")
+		if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
+			writeOutput(data)
+			return
 		}
 	}
 

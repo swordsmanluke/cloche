@@ -545,12 +545,12 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 func copySuccessfulStepOutputs(run *domain.Run, wf *domain.Workflow, resumeFrom, oldDir, newDir string) {
 	preloaded := buildPreloadedResults(run, wf, resumeFrom)
 	for stepName := range preloaded {
-		srcPath := filepath.Join(oldDir, stepName+".out")
+		srcPath := filepath.Join(oldDir, stepName+".log")
 		data, err := os.ReadFile(srcPath)
 		if err != nil {
 			continue // no output file for this step (e.g. workflow steps that only write run ID)
 		}
-		dstPath := filepath.Join(newDir, stepName+".out")
+		dstPath := filepath.Join(newDir, stepName+".log")
 		_ = os.WriteFile(dstPath, data, 0644)
 	}
 }
@@ -753,13 +753,9 @@ func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, res
 	}
 	// Read step output for logging/broadcasting.
 	var stepOutput string
-	outputPath := filepath.Join(h.outputDir, step.Name+".out")
+	outputPath := filepath.Join(h.outputDir, step.Name+".log")
 	if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
 		stepOutput = string(data)
-		// Write a .log copy so that "cloche logs -s <step>" and the web UI
-		// can find per-step log output using the standard .log convention.
-		logPath := filepath.Join(h.outputDir, step.Name+".log")
-		_ = os.WriteFile(logPath, data, 0644)
 	}
 	if h.logWriter != nil {
 		if stepOutput != "" {

@@ -77,7 +77,7 @@ Every step in a host workflow execution writes its output (stdout of `run` steps
 final response of `prompt` steps) to a file:
 
 ```
-.cloche/<orch-run-id>/main/<step_name>.out
+.cloche/<orch-run-id>/main/<step_name>.log
 ```
 
 `<orch-run-id>` is a unique ID for this orchestration invocation, formatted the same
@@ -125,10 +125,10 @@ func (r *HostRunner) RunWorkflow(ctx context.Context, wf *domain.Workflow, task 
 Step execution:
 
 - **`script` step** (`run` key): `exec.Command` with env vars, stdout captured to
-  `<step>.out`, stderr to `<step>.err`. Exit 0 → `success`, non-zero → `fail`.
+  `<step>.log`. Exit 0 → `success`, non-zero → `fail`.
 - **`agent` step** (`prompt` key): invoke `AgentCmd` on host with the prompt file
   contents injected. Capture output. Exit 0 → `success`, non-zero → `fail`.
-- **`workflow` step** (`workflow_name` key): read prompt from prev step's `.out` file
+- **`workflow` step** (`workflow_name` key): read prompt from prev step's `.log` file
   (or `prompt_step` override), call `Dispatch`, then call `WaitRun` to block until
   the container run completes. Map `succeeded` → `success`, `failed`/`cancelled` →
   `fail`.

@@ -335,7 +335,7 @@ func (e *Executor) waitForRun(ctx context.Context, runID string) (domain.RunStat
 
 // stepOutputPath returns the path for a step's output file.
 func (e *Executor) stepOutputPath(stepName string) string {
-	return filepath.Join(e.OutputDir, stepName+".out")
+	return filepath.Join(e.OutputDir, stepName+".log")
 }
 
 // isCodexCommand reports whether any command in the chain is "codex".

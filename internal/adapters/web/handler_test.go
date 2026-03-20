@@ -1877,7 +1877,7 @@ func TestStepOutput_FallsBackToOutFile(t *testing.T) {
 
 	outputDir := filepath.Join(dir, ".cloche", "step-out-host-1", "output")
 	require.NoError(t, os.MkdirAll(outputDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "prepare.out"), []byte("host prepare output"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "prepare.log"), []byte("host prepare output"), 0644))
 
 	req := httptest.NewRequest("GET", "/api/runs/step-out-host-1/steps/prepare/output", nil)
 	w := httptest.NewRecorder()
@@ -1887,8 +1887,8 @@ func TestStepOutput_FallsBackToOutFile(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "host prepare output")
 }
 
-func TestStepOutput_PrefersLogOverOut(t *testing.T) {
-	// When both .log and .out exist, .log should take precedence.
+func TestStepOutput_ReadsLogFile(t *testing.T) {
+	// Step output is read from the .log file.
 	h, store := setupHandler(t)
 
 	dir := t.TempDir()
@@ -1897,7 +1897,6 @@ func TestStepOutput_PrefersLogOverOut(t *testing.T) {
 	outputDir := filepath.Join(dir, ".cloche", "step-out-pref-1", "output")
 	require.NoError(t, os.MkdirAll(outputDir, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "build.log"), []byte("log file content"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "build.out"), []byte("out file content"), 0644))
 
 	req := httptest.NewRequest("GET", "/api/runs/step-out-pref-1/steps/build/output", nil)
 	w := httptest.NewRecorder()
@@ -1905,7 +1904,6 @@ func TestStepOutput_PrefersLogOverOut(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "log file content")
-	assert.NotContains(t, w.Body.String(), "out file content")
 }
 
 // --- Tasks API tests ---

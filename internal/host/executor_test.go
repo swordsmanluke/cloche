@@ -107,7 +107,7 @@ func TestExecutor_ScriptStep_Success(t *testing.T) {
 	assert.Equal(t, "success", result)
 
 	// Check output was written
-	data, err := os.ReadFile(filepath.Join(outputDir, "greet.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "greet.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "hello")
 }
@@ -154,7 +154,7 @@ func TestExecutor_ScriptStep_ResultMarker(t *testing.T) {
 	assert.Equal(t, "custom", result)
 
 	// Marker line should be stripped from output
-	data, err := os.ReadFile(filepath.Join(outputDir, "marker.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "marker.log"))
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), "CLOCHE_RESULT")
 	assert.Contains(t, string(data), "some output")
@@ -278,7 +278,7 @@ func TestExecutor_WorkflowStep_PassesPrompt(t *testing.T) {
 	_ = os.MkdirAll(outputDir, 0755)
 
 	// Write a previous step's output
-	_ = os.WriteFile(filepath.Join(outputDir, "prepare-prompt.out"), []byte("the task prompt"), 0644)
+	_ = os.WriteFile(filepath.Join(outputDir, "prepare-prompt.log"), []byte("the task prompt"), 0644)
 
 	store := &fakeStore{runs: map[string]*domain.Run{
 		"develop-test-run": {
@@ -432,7 +432,7 @@ func TestExecutor_ScriptStep_EnvironmentVars(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
 
-	data, err := os.ReadFile(filepath.Join(outputDir, "env-check.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "env-check.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), tmpDir)
 }
@@ -458,7 +458,7 @@ func TestExecutor_ScriptStep_RunIDEnvVar(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
 
-	data, err := os.ReadFile(filepath.Join(outputDir, "runid-check.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "runid-check.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "develop-swift-oak-a1b2")
 }
@@ -484,7 +484,7 @@ func TestExecutor_ScriptStep_NoRunID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
 
-	data, err := os.ReadFile(filepath.Join(outputDir, "runid-check.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "runid-check.log"))
 	require.NoError(t, err)
 	// When no HostRunID is set, CLOCHE_RUN_ID should not appear in the env
 	assert.Contains(t, string(data), "RUN_ID=\n")
@@ -511,7 +511,7 @@ func TestExecutor_ScriptStep_TaskIDEnvVar(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
 
-	data, err := os.ReadFile(filepath.Join(outputDir, "task-check.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "task-check.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "my-task-42")
 }
@@ -537,7 +537,7 @@ func TestExecutor_ScriptStep_NoTaskID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
 
-	data, err := os.ReadFile(filepath.Join(outputDir, "task-check.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "task-check.log"))
 	require.NoError(t, err)
 	// When no TaskID is set, CLOCHE_TASK_ID should not appear in the env
 	assert.Contains(t, string(data), "TASK_ID=\n")
@@ -574,7 +574,7 @@ func TestExecutor_ScriptStep_OutputMappings_JSONFields(t *testing.T) {
 
 	// Write source step output as JSON
 	sourceJSON := `{"title": "Fix bug", "priority": "high"}`
-	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "get-tasks.out"), []byte(sourceJSON), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "get-tasks.log"), []byte(sourceJSON), 0644))
 
 	executor := &Executor{
 		ProjectDir: tmpDir,
@@ -609,7 +609,7 @@ func TestExecutor_ScriptStep_OutputMappings_JSONFields(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
 
-	data, err := os.ReadFile(filepath.Join(outputDir, "use-tasks.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "use-tasks.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "Fix bug")
 	assert.Contains(t, string(data), "high")
@@ -622,7 +622,7 @@ func TestExecutor_ScriptStep_OutputMappings_ArrayIndex(t *testing.T) {
 
 	// Write source step output as JSON array
 	sourceJSON := `[{"id": "task-1", "title": "First"}, {"id": "task-2", "title": "Second"}]`
-	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "list-tasks.out"), []byte(sourceJSON), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "list-tasks.log"), []byte(sourceJSON), 0644))
 
 	executor := &Executor{
 		ProjectDir: tmpDir,
@@ -663,7 +663,7 @@ func TestExecutor_ScriptStep_OutputMappings_ArrayIndex(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
 
-	data, err := os.ReadFile(filepath.Join(outputDir, "process.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "process.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "task-1")
 	assert.Contains(t, string(data), "Second")
@@ -712,7 +712,7 @@ func TestExecutor_ScriptStep_OutputMappings_NotJSON(t *testing.T) {
 	require.NoError(t, os.MkdirAll(outputDir, 0755))
 
 	// Write non-JSON output
-	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "plain.out"), []byte("not json"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "plain.log"), []byte("not json"), 0644))
 
 	executor := &Executor{
 		ProjectDir: tmpDir,
@@ -816,7 +816,7 @@ func TestRunner_WithTaskID(t *testing.T) {
 
 	// Verify the script saw the task ID.
 	// Use result.OutputDir directly — it is set by the runner to the correct path.
-	data, err := os.ReadFile(filepath.Join(result.OutputDir, "check-task.out"))
+	data, err := os.ReadFile(filepath.Join(result.OutputDir, "check-task.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "daemon-assigned-task-99")
 }
@@ -894,7 +894,7 @@ func TestExecutor_ScriptStep_UsesMainDir(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
 
-	data, err := os.ReadFile(filepath.Join(outputDir, "greet.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "greet.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "from-main")
 }
@@ -938,7 +938,7 @@ func TestExecutor_ScriptStep_MainDirOverridesProjectDir(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
 
-	data, err := os.ReadFile(filepath.Join(outputDir, "hello.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "hello.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "from-main")
 	assert.NotContains(t, string(data), "from-branch")
@@ -965,7 +965,7 @@ func TestExecutor_ScriptStep_FallsBackToProjectDir(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
 
-	data, err := os.ReadFile(filepath.Join(outputDir, "pwd-check.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "pwd-check.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), projectDir)
 }
@@ -993,7 +993,7 @@ func TestExecutor_ScriptStep_ProjectDirEnvVar(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
 
-	data, err := os.ReadFile(filepath.Join(outputDir, "env-check.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "env-check.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), projectDir)
 	assert.NotContains(t, string(data), mainDir)
@@ -1068,7 +1068,7 @@ func TestExecutor_AgentStep_Success(t *testing.T) {
 	assert.Equal(t, "success", result)
 
 	// Check output was copied to executor's output path
-	data, err := os.ReadFile(filepath.Join(outputDir, "implement.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "implement.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "agent did the work")
 }
@@ -1130,7 +1130,7 @@ func TestExecutor_AgentStep_WorkflowLevelCommand(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
 
-	data, err := os.ReadFile(filepath.Join(outputDir, "implement.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "implement.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "workflow agent ran")
 }
@@ -1168,7 +1168,7 @@ func TestExecutor_AgentStep_StepLevelOverridesWorkflow(t *testing.T) {
 	assert.Equal(t, "success", result)
 
 	// Step-level agent should have run, not workflow-level
-	data, err := os.ReadFile(filepath.Join(outputDir, "implement.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "implement.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "step agent")
 	assert.NotContains(t, string(data), "workflow agent")
@@ -1203,7 +1203,7 @@ func TestExecutor_AgentStep_FallbackChain(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
 
-	data, err := os.ReadFile(filepath.Join(outputDir, "implement.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "implement.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "fallback agent ran")
 }
@@ -1214,7 +1214,7 @@ func TestExecutor_AgentStep_PrevOutput(t *testing.T) {
 	require.NoError(t, os.MkdirAll(outputDir, 0755))
 
 	// Write previous step output
-	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "prepare.out"), []byte("the task description"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "prepare.log"), []byte("the task description"), 0644))
 
 	// Create a mock agent that echoes stdin (the prompt) to verify it received it
 	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
@@ -1257,7 +1257,7 @@ func TestExecutor_AgentStep_PromptStep(t *testing.T) {
 	require.NoError(t, os.MkdirAll(outputDir, 0755))
 
 	// Write a specific step's output
-	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "custom-source.out"), []byte("custom prompt content"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "custom-source.log"), []byte("custom prompt content"), 0644))
 
 	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
 	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'done'\n"), 0755))
@@ -1552,7 +1552,7 @@ workflow "finalize" {
 	assert.Equal(t, domain.RunStateSucceeded, result.State)
 
 	// Verify output was captured
-	data, err := os.ReadFile(filepath.Join(result.OutputDir, "fetch.out"))
+	data, err := os.ReadFile(filepath.Join(result.OutputDir, "fetch.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "t1")
 
@@ -1621,7 +1621,7 @@ func TestExecutor_ScriptStep_ExtraEnv(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
 
-	data, err := os.ReadFile(filepath.Join(outputDir, "check-env.out"))
+	data, err := os.ReadFile(filepath.Join(outputDir, "check-env.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "OUTCOME=succeeded")
 	assert.Contains(t, string(data), "RUN=main-run-123")
@@ -1656,7 +1656,7 @@ func TestRunner_ExtraEnv_Propagated(t *testing.T) {
 	assert.Equal(t, domain.RunStateSucceeded, result.State)
 
 	// Verify the env var was available to the script
-	data, err := os.ReadFile(filepath.Join(result.OutputDir, "check.out"))
+	data, err := os.ReadFile(filepath.Join(result.OutputDir, "check.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "OUTCOME=succeeded")
 }
@@ -1717,7 +1717,7 @@ func TestRunner_ExtraEnv_RestoredOnResume(t *testing.T) {
 	assert.Equal(t, domain.RunStateSucceeded, resumeResult.State)
 
 	// Verify the merge step got CLOCHE_MAIN_RUN_ID from restored ExtraEnv
-	data, err := os.ReadFile(filepath.Join(resumeResult.OutputDir, "merge.out"))
+	data, err := os.ReadFile(filepath.Join(resumeResult.OutputDir, "merge.log"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "RUN=develop-original-branch")
 }
@@ -1730,7 +1730,7 @@ func TestReadListTasksOutput_Basic(t *testing.T) {
 	// Write JSONL task output
 	jsonl := `{"id":"task-1","status":"open","title":"Fix bug"}
 {"id":"task-2","status":"closed","title":"Old bug"}`
-	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "fetch.out"), []byte(jsonl), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "fetch.log"), []byte(jsonl), 0644))
 
 	tasks, err := ReadListTasksOutput(outputDir)
 	require.NoError(t, err)
@@ -1751,14 +1751,14 @@ func TestReadListTasksOutput_MultipleFiles_PicksLatest(t *testing.T) {
 	outputDir := t.TempDir()
 
 	// Write an older file
-	oldPath := filepath.Join(outputDir, "old-step.out")
+	oldPath := filepath.Join(outputDir, "old-step.log")
 	require.NoError(t, os.WriteFile(oldPath, []byte(`{"id":"old","status":"open"}`), 0644))
 
 	// Ensure different mod times by sleeping briefly
 	time.Sleep(50 * time.Millisecond)
 
 	// Write a newer file
-	newPath := filepath.Join(outputDir, "new-step.out")
+	newPath := filepath.Join(outputDir, "new-step.log")
 	require.NoError(t, os.WriteFile(newPath, []byte(`{"id":"new","status":"open"}`), 0644))
 
 	tasks, err := ReadListTasksOutput(outputDir)
@@ -1872,13 +1872,13 @@ func TestRunListTasksWorkflow_WithTasks_NoRunRecord(t *testing.T) {
 	assert.NotEmpty(t, result.RunID, "RunID should still be set for output directory resolution")
 }
 
-// TestHostStatusHandler_WritesStepLogFile verifies that OnStepComplete writes
-// a .log copy of the .out file so that "cloche logs -s <step>" works.
-func TestHostStatusHandler_WritesStepLogFile(t *testing.T) {
+// TestHostStatusHandler_ReadsStepLogFile verifies that OnStepComplete reads
+// the .log file so that step output is logged and broadcast.
+func TestHostStatusHandler_ReadsStepLogFile(t *testing.T) {
 	outputDir := t.TempDir()
 
-	// Write a .out file (as the host executor does)
-	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "build.out"), []byte("build output data\n"), 0644))
+	// Write a .log file (as the host executor does)
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "build.log"), []byte("build output data\n"), 0644))
 
 	handler := &hostStatusHandler{
 		outputDir: outputDir,
@@ -1887,14 +1887,15 @@ func TestHostStatusHandler_WritesStepLogFile(t *testing.T) {
 	step := &domain.Step{Name: "build"}
 	handler.OnStepComplete(nil, step, "success")
 
-	// Verify .log file was written
-	logData, err := os.ReadFile(filepath.Join(outputDir, "build.log"))
+	// Verify only one .log file exists (no duplicate .out file)
+	entries, err := os.ReadDir(outputDir)
 	require.NoError(t, err)
-	assert.Equal(t, "build output data\n", string(logData))
+	assert.Len(t, entries, 1, "only one file should exist in output dir")
+	assert.Equal(t, "build.log", entries[0].Name())
 }
 
 // TestHostStatusHandler_NoLogFileWhenNoOutput verifies that OnStepComplete
-// does not create a .log file when there is no .out file.
+// does not create a .log file when there is no output file.
 func TestHostStatusHandler_NoLogFileWhenNoOutput(t *testing.T) {
 	outputDir := t.TempDir()
 

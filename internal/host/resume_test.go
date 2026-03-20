@@ -154,18 +154,18 @@ func TestCopySuccessfulStepOutputs(t *testing.T) {
 	}
 
 	// Write output files for completed steps in the old dir.
-	require.NoError(t, os.WriteFile(filepath.Join(oldDir, "prep.out"), []byte("prep-output"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(oldDir, "build.out"), []byte("build-output"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(oldDir, "prep.log"), []byte("prep-output"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(oldDir, "build.log"), []byte("build-output"), 0644))
 
 	// Resume from "build": only "prep" should be copied (not "build").
 	copySuccessfulStepOutputs(run, wf, "build", oldDir, newDir)
 
-	prepData, err := os.ReadFile(filepath.Join(newDir, "prep.out"))
+	prepData, err := os.ReadFile(filepath.Join(newDir, "prep.log"))
 	require.NoError(t, err)
 	assert.Equal(t, "prep-output", string(prepData))
 
-	_, err = os.ReadFile(filepath.Join(newDir, "build.out"))
-	assert.True(t, os.IsNotExist(err), "build.out should not be copied (it's the resume point)")
+	_, err = os.ReadFile(filepath.Join(newDir, "build.log"))
+	assert.True(t, os.IsNotExist(err), "build.log should not be copied (it's the resume point)")
 }
 
 func TestResumeRunAsNewAttempt_CreatesNewRun(t *testing.T) {
@@ -202,7 +202,7 @@ func TestResumeRunAsNewAttempt_CreatesNewRun(t *testing.T) {
 	// Create old attempt's output dir with step output for "build".
 	oldOutputDir := filepath.Join(dir, ".cloche", "logs", taskID, oldAttemptID)
 	require.NoError(t, os.MkdirAll(oldOutputDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(oldOutputDir, "build.out"), []byte("build ok"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(oldOutputDir, "build.log"), []byte("build ok"), 0644))
 
 	oldRun := domain.NewRun(domain.GenerateRunID("main", oldAttemptID), "main")
 	oldRun.ProjectDir = dir
@@ -241,11 +241,11 @@ func TestResumeRunAsNewAttempt_CreatesNewRun(t *testing.T) {
 	// Result should indicate the run completed (test script echos "done" = success).
 	assert.Equal(t, domain.RunStateSucceeded, result.State)
 
-	// New output dir must exist and contain build.out copied from old attempt.
+	// New output dir must exist and contain build.log copied from old attempt.
 	newOutputDir := filepath.Join(dir, ".cloche", "logs", taskID, newAttemptID)
-	buildOut, err := os.ReadFile(filepath.Join(newOutputDir, "build.out"))
+	buildOut, err := os.ReadFile(filepath.Join(newOutputDir, "build.log"))
 	require.NoError(t, err)
-	assert.Equal(t, "build ok", string(buildOut), "build.out should be copied from previous attempt")
+	assert.Equal(t, "build ok", string(buildOut), "build.log should be copied from previous attempt")
 }
 
 func TestFindFirstFailedStep(t *testing.T) {

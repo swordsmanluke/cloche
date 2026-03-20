@@ -1543,20 +1543,14 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 			var output string
 			v2Dir := runLogDir(run, run.ProjectDir, req.RunId)
 			v2Prefix := run.WorkflowName + "-"
-			for _, ext := range []string{".log", ".out"} {
-				v2Path := filepath.Join(v2Dir, v2Prefix+exec.StepName+ext)
-				if data, err := os.ReadFile(v2Path); err == nil && len(data) > 0 {
-					output = string(data)
-					break
-				}
+			v2Path := filepath.Join(v2Dir, v2Prefix+exec.StepName+".log")
+			if data, err := os.ReadFile(v2Path); err == nil && len(data) > 0 {
+				output = string(data)
 			}
 			if output == "" {
-				for _, ext := range []string{".log", ".out"} {
-					outputPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", exec.StepName+ext)
-					if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
-						output = string(data)
-						break
-					}
+				outputPath := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output", exec.StepName+".log")
+				if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
+					output = string(data)
 				}
 			}
 			entry := &pb.LogEntry{
@@ -1792,12 +1786,10 @@ func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLog
 				filepath.Join(outputDir, "llm-"+req.StepName+".log"),
 			}
 		default:
-			// Try v2 path (workflow-prefixed) then legacy path for .log and .out
+			// Try v2 path (workflow-prefixed) then legacy path
 			candidates = []string{
 				filepath.Join(v2LogDir, wfPrefix+req.StepName+".log"),
-				filepath.Join(v2LogDir, wfPrefix+req.StepName+".out"),
 				filepath.Join(outputDir, req.StepName+".log"),
-				filepath.Join(outputDir, req.StepName+".out"),
 			}
 		}
 

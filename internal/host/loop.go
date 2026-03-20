@@ -602,11 +602,11 @@ func ReadListTasksOutput(outputDir string) ([]Task, error) {
 		return nil, fmt.Errorf("reading list-tasks output dir: %w", err)
 	}
 
-	// Find the most recently modified .out file.
+	// Find the most recently modified .log file.
 	var latest string
 	var latestMod time.Time
 	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != ".out" {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".log" {
 			continue
 		}
 		info, err := e.Info()
