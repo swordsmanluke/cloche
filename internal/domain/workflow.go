@@ -297,7 +297,8 @@ var knownStepConfigKeys = map[string]bool{
 	"results":       true,
 	"feedback":      true,
 	"workflow_name": true,
-	"prompt_step":   true,
+	"prompt_step":     true,
+	"usage_command":   true,
 }
 
 // ValidateConfig checks step config keys against known keys and returns
