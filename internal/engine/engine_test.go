@@ -381,3 +381,62 @@ func TestEngine_StepErrorIncludesStepName(t *testing.T) {
 	require.NotNil(t, testExec, "test step should be in step executions")
 	assert.Equal(t, "error", testExec.Result, "failed step should have 'error' result")
 }
+
+func TestEngine_StepTriggerContext(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "trigger-test",
+		Steps: map[string]*domain.Step{
+			"build": {Name: "build", Type: domain.StepTypeScript, Results: []string{"success"}},
+			"test":  {Name: "test", Type: domain.StepTypeScript, Results: []string{"pass"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "build", Result: "success", To: "test"},
+			{From: "test", Result: "pass", To: domain.StepDone},
+		},
+		EntryStep: "build",
+	}
+
+	type capturedTrigger struct {
+		stepName string
+		trigger  engine.StepTrigger
+		ok       bool
+	}
+	var mu sync.Mutex
+	var captured []capturedTrigger
+
+	exec := engine.StepExecutorFunc(func(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
+		t, ok := engine.GetStepTrigger(ctx)
+		mu.Lock()
+		captured = append(captured, capturedTrigger{stepName: step.Name, trigger: t, ok: ok})
+		mu.Unlock()
+		results := map[string]string{"build": "success", "test": "pass"}
+		return domain.StepResult{Result: results[step.Name]}, nil
+	})
+
+	eng := engine.New(exec)
+	run, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, captured, 2)
+
+	// Find entries by step name (order may vary)
+	byStep := make(map[string]capturedTrigger)
+	for _, c := range captured {
+		byStep[c.stepName] = c
+	}
+
+	// Entry step: trigger present with empty strings
+	buildTrigger := byStep["build"]
+	assert.True(t, buildTrigger.ok, "entry step should have a StepTrigger in context")
+	assert.Equal(t, "", buildTrigger.trigger.PrevStep)
+	assert.Equal(t, "", buildTrigger.trigger.PrevResult)
+
+	// Wired step: trigger with previous step info
+	testTrigger := byStep["test"]
+	assert.True(t, testTrigger.ok, "wired step should have a StepTrigger in context")
+	assert.Equal(t, "build", testTrigger.trigger.PrevStep)
+	assert.Equal(t, "success", testTrigger.trigger.PrevResult)
+}

@@ -147,7 +147,7 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 	// launching the goroutine, so this is safe without a mutex for now.
 	// The goroutines only read the step and send on the channel.
 
-	launchStep := func(stepName string) error {
+	launchStep := func(stepName string, trigger StepTrigger) error {
 		stepCount++
 		if stepCount > e.maxSteps {
 			return fmt.Errorf("workflow exceeded maximum step count (%d)", e.maxSteps)
@@ -172,16 +172,17 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 			return nil
 		}
 
-		go func(s *domain.Step) {
+		go func(s *domain.Step, t StepTrigger) {
 			stepCtx := ctx
 			if d := stepTimeout(s, e.defaultTimeout); d > 0 {
 				var cancel context.CancelFunc
 				stepCtx, cancel = context.WithTimeout(ctx, d)
 				defer cancel()
 			}
+			stepCtx = WithStepTrigger(stepCtx, t)
 			sr, err := e.executor.Execute(stepCtx, s)
 			results <- stepResult{stepName: s.Name, result: sr.Result, usage: sr.Usage, err: err}
-		}(step)
+		}(step, trigger)
 
 		return nil
 	}
@@ -191,7 +192,7 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 	if e.startStep != "" {
 		entryStep = e.startStep
 	}
-	if err := launchStep(entryStep); err != nil {
+	if err := launchStep(entryStep, StepTrigger{}); err != nil {
 		run.Complete(domain.RunStateFailed)
 		return run, err
 	}
@@ -246,7 +247,7 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 					case domain.StepAbort:
 						aborted = true
 					default:
-						if err := launchStep(target); err != nil {
+						if err := launchStep(target, StepTrigger{PrevStep: sr.stepName, PrevResult: sr.result}); err != nil {
 							run.Complete(domain.RunStateFailed)
 							e.status.OnRunComplete(run)
 							return run, err
@@ -283,7 +284,7 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 					case domain.StepAbort:
 						aborted = true
 					default:
-						if err := launchStep(target); err != nil {
+						if err := launchStep(target, StepTrigger{PrevStep: sr.stepName, PrevResult: sr.result}); err != nil {
 							run.Complete(domain.RunStateFailed)
 							e.status.OnRunComplete(run)
 							return run, err

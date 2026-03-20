@@ -1,7 +1,7 @@
 # Auto-Seeded Run Context Design
 
 **Date:** 2026-03-20
-**Status:** Design
+**Status:** Partially implemented (engine/context.go and engine.go done; runcontext seeding pending)
 
 ## Problem
 
@@ -87,7 +87,9 @@ using a package-level key in `engine/context.go`:
 
 ```go
 // engine/context.go
-type stepCtxKey struct{}
+type contextKey int
+
+const stepTriggerKey contextKey = iota
 
 type StepTrigger struct {
     PrevStep   string
@@ -98,9 +100,9 @@ func WithStepTrigger(ctx context.Context, t StepTrigger) context.Context
 func GetStepTrigger(ctx context.Context) (StepTrigger, bool)
 ```
 
-The engine's `launchStep` function wraps the context with the trigger info
-before calling `e.executor.Execute(ctx, step)`. For the entry step, the
-trigger has empty strings.
+The engine's `launchStep` function accepts a `StepTrigger` parameter and
+attaches it to the step's context before calling `e.executor.Execute(ctx, step)`.
+For the entry step, the trigger has empty strings.
 
 **Container agent** (`internal/agent/runner.go`):
 
@@ -120,16 +122,14 @@ resolves wiring. In `Run()`, after processing `sr` (step result) and before
 calling `launchStep(target)`:
 
 ```go
-// In the wiring resolution loop, before launchStep:
-triggerCtx := WithStepTrigger(ctx, StepTrigger{
-    PrevStep:   sr.stepName,
-    PrevResult: sr.result,
-})
-if err := launchStep(triggerCtx, target); err != nil { ... }
+// In the wiring resolution loop:
+if err := launchStep(target, StepTrigger{PrevStep: sr.stepName, PrevResult: sr.result}); err != nil { ... }
 ```
 
-`launchStep` gains a `ctx` parameter and passes it through to `Execute`.
-For the initial entry step launch, use a trigger with empty strings.
+`launchStep` gains a `trigger StepTrigger` parameter. Inside the goroutine it
+calls `WithStepTrigger(stepCtx, t)` to attach the trigger before passing the
+context to `Execute`. For the initial entry step launch, use a zero-value
+`StepTrigger{}` (empty strings).
 
 The engine also calls a new hook on `StatusHandler` after each step:
 
