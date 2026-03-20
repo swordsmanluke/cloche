@@ -390,6 +390,49 @@ function showWorkflow(wf) {
         }
     }
 
+    // --- Find crossing success wires and build success wire columns ---
+    // A success wire "crosses" other step boxes when it skips more than 1 layer (lb > la + 1).
+    var succByDest = {};  // dest -> [wire]
+
+    normWires = normWires.filter(function(wire) {
+        if (!isSuccessResult(wire.result)) return true;
+        var fl = layerOf[wire.from];
+        var tl = layerOf[wire.to] !== undefined ? layerOf[wire.to] : termLayer;
+        if (tl > fl + 1) {
+            if (!succByDest[wire.to]) succByDest[wire.to] = [];
+            succByDest[wire.to].push(wire);
+            return false; // routed through success column
+        }
+        return true; // direct success, drawn as Bezier
+    });
+
+    // Collect crossing success terminal wires (without modifying termWires, to preserve repositioning)
+    var crossTermSuccKeys = {};  // "from:to" -> true
+    for (var sterm in termWires) {
+        termWires[sterm].forEach(function(wire) {
+            if (!isSuccessResult(wire.result)) return;
+            var fl = layerOf[wire.from];
+            if (termLayer > fl + 1) {
+                if (!succByDest[wire.to]) succByDest[wire.to] = [];
+                succByDest[wire.to].push(wire);
+                crossTermSuccKeys[wire.from + ':' + wire.to] = true;
+            }
+        });
+    }
+
+    // Build one success wire column per unique destination
+    var succColStartX = wireColStart + wireColIdx * wireColGap + (wireColIdx > 0 ? 20 : 0);
+    var succColumns = {};  // dest -> { x, dest, wires }
+    var succCI = 0;
+    for (var succDest in succByDest) {
+        succColumns[succDest] = {
+            x: succColStartX + succCI * wireColGap,
+            dest: succDest,
+            wires: succByDest[succDest]
+        };
+        succCI++;
+    }
+
     // Reposition terminals that only receive non-success wires under wire columns
     for (var term in termWires) {
         var tw = termWires[term];
@@ -417,6 +460,9 @@ function showWorkflow(wf) {
     for (var t in terminals) {
         var tx = positions[t].x + nodeW + 10;
         if (tx > maxX) maxX = tx;
+    }
+    for (var sd in succColumns) {
+        if (succColumns[sd].x + 20 > maxX) maxX = succColumns[sd].x + 20;
     }
 
     var svgW = maxX + padL;
@@ -458,7 +504,7 @@ function showWorkflow(wf) {
         var tpos = positions[term];
         if (!tpos) continue;
 
-        tw.filter(function(w) { return isSuccessResult(w.result); }).forEach(function(wire) {
+        tw.filter(function(w) { return isSuccessResult(w.result) && !crossTermSuccKeys[w.from + ':' + w.to]; }).forEach(function(wire) {
             var from = positions[wire.from];
             if (!from) return;
             var color = resultColor(wire.result);
@@ -508,6 +554,47 @@ function showWorkflow(wf) {
             var curveR = 15;
             var dir = termCX > col.x ? 1 : -1;
             svg += '<path d="M' + col.x + ' ' + topY + ' L' + col.x + ' ' + (termTY - curveR) + ' Q' + col.x + ' ' + termTY + ' ' + (col.x + dir * curveR) + ' ' + termTY + ' L' + termCX + ' ' + termTY + '" class="dag-edge" style="stroke:' + color + '" marker-end="' + mkr(color) + '"/>';
+        }
+    }
+
+    // --- Draw success wire columns for crossing success wires ---
+    // Route: source right edge -> horizontal to column -> vertical -> curve to dest top center
+    for (var sd in succColumns) {
+        var scol = succColumns[sd];
+        var dpos = positions[scol.dest];
+        if (!dpos) continue;
+
+        var links = [];
+        scol.wires.forEach(function(wire) {
+            var from = positions[wire.from];
+            if (!from) return;
+            links.push({ srcX: from.x + nodeW, srcY: from.y + nodeH / 2, result: wire.result });
+        });
+        links.sort(function(a, b) { return a.srcY - b.srcY; });
+        if (links.length === 0) continue;
+
+        var sColor = resultColor(scol.wires[0].result);
+
+        // Draw horizontal segments from each source right edge to column + junction dots + labels
+        links.forEach(function(ln) {
+            svg += '<path d="M' + ln.srcX + ' ' + ln.srcY + ' L' + scol.x + ' ' + ln.srcY + '" class="dag-edge" style="stroke:' + sColor + '"/>';
+            svg += '<circle cx="' + scol.x + '" cy="' + ln.srcY + '" r="3" class="dag-link-node" style="fill:' + sColor + '"/>';
+            svg += '<text x="' + (ln.srcX + 6) + '" y="' + (ln.srcY - 6) + '" class="dag-edge-label" style="fill:' + sColor + '">' + ln.result + '</text>';
+        });
+
+        // Draw vertical column line from topmost source down to destination top
+        var topY = links[0].srcY;
+        var destCX = dpos.x + nodeW / 2;
+        var destTY = dpos.y;
+
+        if (Math.abs(scol.x - destCX) < 5) {
+            // Column is directly above destination — straight down
+            svg += '<path d="M' + scol.x + ' ' + topY + ' L' + scol.x + ' ' + destTY + '" class="dag-edge" style="stroke:' + sColor + '" marker-end="' + mkr(sColor) + '"/>';
+        } else {
+            // Column is offset from destination — go down then curve to destination center
+            var curveR = 15;
+            var dir = destCX > scol.x ? 1 : -1;
+            svg += '<path d="M' + scol.x + ' ' + topY + ' L' + scol.x + ' ' + (destTY - curveR) + ' Q' + scol.x + ' ' + destTY + ' ' + (scol.x + dir * curveR) + ' ' + destTY + ' L' + destCX + ' ' + destTY + '" class="dag-edge" style="stroke:' + sColor + '" marker-end="' + mkr(sColor) + '"/>';
         }
     }
 
