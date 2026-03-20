@@ -233,7 +233,11 @@ if output_path:
 `
 
 var claimTaskPyScript = `#!/usr/bin/env python3
-"""Mark the assigned task as in-progress in task_list.json."""
+"""Mark the assigned task as in-progress and pass its description downstream.
+
+Prints the task description to stdout so the next workflow step (develop)
+receives it as the prompt for the coding agent.
+"""
 import json
 import os
 import sys
@@ -253,14 +257,14 @@ with open(task_file) as f:
         if line:
             tasks.append(json.loads(line))
 
-found = False
+target = None
 for task in tasks:
     if task["id"] == task_id:
         task["status"] = "in-progress"
-        found = True
+        target = task
         break
 
-if not found:
+if target is None:
     print(f"error: task {task_id} not found", file=sys.stderr)
     sys.exit(1)
 
@@ -268,7 +272,9 @@ with open(task_file, "w") as f:
     for task in tasks:
         f.write(json.dumps(task) + "\n")
 
-print(f"Claimed task {task_id}")
+# Print description to stdout — the host executor captures it as step output,
+# which the develop step reads as its prompt.
+print(target.get("description", target.get("title", "")))
 `
 
 var prepareMergePyScript = `#!/usr/bin/env python3
