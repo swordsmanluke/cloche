@@ -172,7 +172,7 @@ func TestGenerateCompletionScripts_CreatesFiles(t *testing.T) {
 		t.Errorf("expected %s to exist", bashPath)
 	}
 
-	zshPath := filepath.Join(dir, "_cloche")
+	zshPath := filepath.Join(dir, "cloche.zsh")
 	if _, err := os.Stat(zshPath); os.IsNotExist(err) {
 		t.Errorf("expected %s to exist", zshPath)
 	}
@@ -207,15 +207,12 @@ func TestGenerateCompletionScripts_ZshContent(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	generateCompletionScripts(dir)
 
-	data, err := os.ReadFile(filepath.Join(dir, "_cloche"))
+	data, err := os.ReadFile(filepath.Join(dir, "cloche.zsh"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	content := string(data)
 
-	if !strings.Contains(content, "#compdef cloche") {
-		t.Error("zsh script should have #compdef cloche header")
-	}
 	if !strings.Contains(content, "_cloche()") {
 		t.Error("zsh script should define _cloche function")
 	}
@@ -224,6 +221,9 @@ func TestGenerateCompletionScripts_ZshContent(t *testing.T) {
 	}
 	if !strings.Contains(content, "compadd") {
 		t.Error("zsh script should use compadd")
+	}
+	if !strings.Contains(content, "compdef _cloche cloche") {
+		t.Error("zsh script should register with compdef")
 	}
 }
 

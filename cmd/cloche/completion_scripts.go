@@ -29,17 +29,12 @@ _cloche_complete() {
 complete -F _cloche_complete cloche
 `
 
-// zshCompletionScript is the zsh completion function for cloche.
-// Place it in a directory on fpath, e.g. ~/.cloche/completions/,
-// then add to ~/.zshrc:
-//
-//	fpath=(~/.cloche/completions $fpath)
-//	autoload -U compinit && compinit
-const zshCompletionScript = `#compdef cloche
-# zsh completion for cloche
-# Add to ~/.zshrc:
-#   fpath=(~/.cloche/completions $fpath)
-#   autoload -U compinit && compinit
+// zshCompletionScript is the zsh completion script for cloche.
+// Designed to be sourced directly from ~/.zshrc. Defines the completion
+// function and registers it with compdef — no fpath or compinit required.
+const zshCompletionScript = `# zsh completion for cloche
+# Source this file in your .zshrc:
+#   source ~/.cloche/completions/cloche.zsh
 
 _cloche() {
     local -a completions
@@ -50,7 +45,7 @@ _cloche() {
     return 0
 }
 
-_cloche "$@"
+compdef _cloche cloche
 `
 
 // generateCompletionScripts writes bash and zsh completion scripts to dir
@@ -72,7 +67,7 @@ func generateCompletionScripts(dir string) {
 		fmt.Fprintf(os.Stderr, "  create %s\n", bashPath)
 	}
 
-	zshPath := filepath.Join(dir, "_cloche")
+	zshPath := filepath.Join(dir, "cloche.zsh")
 	if err := os.WriteFile(zshPath, []byte(zshCompletionScript), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "  warning: could not write %s: %v\n", zshPath, err)
 	} else {
@@ -95,21 +90,13 @@ func offerShellIntegration(completionsDir string) {
 	switch shell {
 	case "zsh":
 		rcFile := filepath.Join(home, ".zshrc")
-		fpathLine := fmt.Sprintf("fpath=(%s $fpath)", completionsDir)
-		if alreadyInFile(rcFile, completionsDir) {
+		sourceLine := fmt.Sprintf("source %s", filepath.Join(completionsDir, "cloche.zsh"))
+		if alreadyInFile(rcFile, sourceLine) {
 			return
 		}
 		fmt.Fprintf(os.Stderr, "\nTo enable zsh completions, add to %s:\n", rcFile)
-		fmt.Fprintf(os.Stderr, "  fpath=(%s $fpath)\n", completionsDir)
-		fmt.Fprintf(os.Stderr, "  autoload -U compinit && compinit\n")
-		// If oh-my-zsh is present, insert the fpath line before oh-my-zsh is
-		// sourced so its compinit call picks up the completions directory.
-		// Otherwise, append to the end with an explicit compinit call.
-		if insertBeforeOhMyZsh(rcFile, "\n# cloche shell completions\n"+fpathLine+"\n") {
-			fmt.Fprintf(os.Stderr, "  updated %s (before oh-my-zsh)\n", rcFile)
-		} else {
-			appendToRCFile(rcFile, "\n# cloche shell completions\n"+fpathLine+"\nautoload -U compinit && compinit\n")
-		}
+		fmt.Fprintf(os.Stderr, "  %s\n", sourceLine)
+		appendToRCFile(rcFile, "\n# cloche shell completions\n"+sourceLine+"\n")
 
 	case "bash":
 		rcFile := filepath.Join(home, ".bashrc")
@@ -121,41 +108,6 @@ func offerShellIntegration(completionsDir string) {
 		fmt.Fprintf(os.Stderr, "  %s\n", sourceLine)
 		appendToRCFile(rcFile, "\n# cloche shell completions\n"+sourceLine+"\n")
 	}
-}
-
-// insertBeforeOhMyZsh inserts text into the rc file just before the line that
-// sources oh-my-zsh. Returns true if oh-my-zsh was found and the insertion
-// succeeded.
-func insertBeforeOhMyZsh(rcFile, text string) bool {
-	data, err := os.ReadFile(rcFile)
-	if err != nil {
-		return false
-	}
-
-	content := string(data)
-	lines := strings.Split(content, "\n")
-
-	insertIdx := -1
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "source") && strings.Contains(trimmed, "oh-my-zsh.sh") {
-			insertIdx = i
-			break
-		}
-	}
-	if insertIdx < 0 {
-		return false
-	}
-
-	// Insert text before the oh-my-zsh source line.
-	before := strings.Join(lines[:insertIdx], "\n")
-	after := strings.Join(lines[insertIdx:], "\n")
-	result := before + text + after
-
-	if err := os.WriteFile(rcFile, []byte(result), 0644); err != nil {
-		return false
-	}
-	return true
 }
 
 // alreadyInFile reports whether needle appears anywhere in the named file.
