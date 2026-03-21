@@ -36,6 +36,7 @@ const (
 	ClocheService_GetVersion_FullMethodName      = "/cloche.v1.ClocheService/GetVersion"
 	ClocheService_Complete_FullMethodName        = "/cloche.v1.ClocheService/Complete"
 	ClocheService_GetUsage_FullMethodName        = "/cloche.v1.ClocheService/GetUsage"
+	ClocheService_Console_FullMethodName         = "/cloche.v1.ClocheService/Console"
 )
 
 // ClocheServiceClient is the client API for ClocheService service.
@@ -63,6 +64,10 @@ type ClocheServiceClient interface {
 	Complete(ctx context.Context, in *CompleteRequest, opts ...grpc.CallOption) (*CompleteResponse, error)
 	// GetUsage returns aggregated token usage statistics for a project or globally.
 	GetUsage(ctx context.Context, in *GetUsageRequest, opts ...grpc.CallOption) (*GetUsageResponse, error)
+	// Console starts an interactive terminal session inside a fresh container.
+	// The first ConsoleInput must be a ConsoleStart message. The daemon responds
+	// with ConsoleStarted, streams stdout bytes, and finally sends ConsoleExited.
+	Console(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConsoleInput, ConsoleOutput], error)
 }
 
 type clocheServiceClient struct {
@@ -252,6 +257,19 @@ func (c *clocheServiceClient) GetUsage(ctx context.Context, in *GetUsageRequest,
 	return out, nil
 }
 
+func (c *clocheServiceClient) Console(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConsoleInput, ConsoleOutput], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ClocheService_ServiceDesc.Streams[1], ClocheService_Console_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ConsoleInput, ConsoleOutput]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ClocheService_ConsoleClient = grpc.BidiStreamingClient[ConsoleInput, ConsoleOutput]
+
 // ClocheServiceServer is the server API for ClocheService service.
 // All implementations must embed UnimplementedClocheServiceServer
 // for forward compatibility.
@@ -277,6 +295,10 @@ type ClocheServiceServer interface {
 	Complete(context.Context, *CompleteRequest) (*CompleteResponse, error)
 	// GetUsage returns aggregated token usage statistics for a project or globally.
 	GetUsage(context.Context, *GetUsageRequest) (*GetUsageResponse, error)
+	// Console starts an interactive terminal session inside a fresh container.
+	// The first ConsoleInput must be a ConsoleStart message. The daemon responds
+	// with ConsoleStarted, streams stdout bytes, and finally sends ConsoleExited.
+	Console(grpc.BidiStreamingServer[ConsoleInput, ConsoleOutput]) error
 	mustEmbedUnimplementedClocheServiceServer()
 }
 
@@ -337,6 +359,9 @@ func (UnimplementedClocheServiceServer) Complete(context.Context, *CompleteReque
 }
 func (UnimplementedClocheServiceServer) GetUsage(context.Context, *GetUsageRequest) (*GetUsageResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetUsage not implemented")
+}
+func (UnimplementedClocheServiceServer) Console(grpc.BidiStreamingServer[ConsoleInput, ConsoleOutput]) error {
+	return status.Error(codes.Unimplemented, "method Console not implemented")
 }
 func (UnimplementedClocheServiceServer) mustEmbedUnimplementedClocheServiceServer() {}
 func (UnimplementedClocheServiceServer) testEmbeddedByValue()                       {}
@@ -658,6 +683,13 @@ func _ClocheService_GetUsage_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClocheService_Console_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ClocheServiceServer).Console(&grpc.GenericServerStream[ConsoleInput, ConsoleOutput]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ClocheService_ConsoleServer = grpc.BidiStreamingServer[ConsoleInput, ConsoleOutput]
+
 // ClocheService_ServiceDesc is the grpc.ServiceDesc for ClocheService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -735,6 +767,12 @@ var ClocheService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "StreamLogs",
 			Handler:       _ClocheService_StreamLogs_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "Console",
+			Handler:       _ClocheService_Console_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "cloche.proto",

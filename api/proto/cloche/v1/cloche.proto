@@ -32,6 +32,11 @@ service ClocheService {
   // GetUsage returns aggregated token usage statistics for a project or globally.
   rpc GetUsage(GetUsageRequest) returns (GetUsageResponse);
 
+  // Console starts an interactive terminal session inside a fresh container.
+  // The first ConsoleInput must be a ConsoleStart message. The daemon responds
+  // with ConsoleStarted, streams stdout bytes, and finally sends ConsoleExited.
+  rpc Console(stream ConsoleInput) returns (stream ConsoleOutput);
+
   // ResumeRun is handled via gRPC metadata on the RunWorkflow RPC:
   //   x-cloche-resume-run-id: the run ID to resume
   //   x-cloche-resume-step: optional step name to resume from
@@ -289,4 +294,48 @@ message UsageSummary {
   int64 output_tokens = 3;
   int64 total_tokens = 4;
   double burn_rate = 5; // tokens per hour
+}
+
+// ConsoleInput is sent from the CLI to the daemon over the Console stream.
+// The first message must have payload set to start.
+message ConsoleInput {
+  oneof payload {
+    ConsoleStart start = 1;   // First message: session configuration
+    bytes stdin = 2;          // Subsequent: raw terminal input bytes
+    TerminalSize resize = 3;  // Terminal resize event
+  }
+}
+
+// ConsoleOutput is sent from the daemon to the CLI over the Console stream.
+message ConsoleOutput {
+  oneof payload {
+    ConsoleStarted started = 1; // First response: container info
+    bytes stdout = 2;           // Subsequent: raw terminal output bytes
+    ConsoleExited exited = 3;   // Final message: process exit status
+  }
+}
+
+// ConsoleStart is the first ConsoleInput payload, configuring the session.
+message ConsoleStart {
+  string project_dir = 1;
+  string agent_command = 2;  // empty = use resolution chain
+  uint32 rows = 3;
+  uint32 cols = 4;
+}
+
+// ConsoleStarted is the first ConsoleOutput payload, sent after the container starts.
+message ConsoleStarted {
+  string container_id = 1;
+  string run_id = 2;
+}
+
+// TerminalSize carries terminal dimensions for resize events.
+message TerminalSize {
+  uint32 rows = 1;
+  uint32 cols = 2;
+}
+
+// ConsoleExited is the final ConsoleOutput payload, sent when the agent process exits.
+message ConsoleExited {
+  int32 exit_code = 1;
 }

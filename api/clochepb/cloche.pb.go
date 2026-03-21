@@ -2444,6 +2444,425 @@ func (x *UsageSummary) GetBurnRate() float64 {
 	return 0
 }
 
+// ConsoleInput is sent from the CLI to the daemon over the Console stream.
+// The first message must have payload set to start.
+type ConsoleInput struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Payload:
+	//
+	//	*ConsoleInput_Start
+	//	*ConsoleInput_Stdin
+	//	*ConsoleInput_Resize
+	Payload       isConsoleInput_Payload `protobuf_oneof:"payload"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConsoleInput) Reset() {
+	*x = ConsoleInput{}
+	mi := &file_cloche_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConsoleInput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConsoleInput) ProtoMessage() {}
+
+func (x *ConsoleInput) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConsoleInput.ProtoReflect.Descriptor instead.
+func (*ConsoleInput) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *ConsoleInput) GetPayload() isConsoleInput_Payload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *ConsoleInput) GetStart() *ConsoleStart {
+	if x != nil {
+		if x, ok := x.Payload.(*ConsoleInput_Start); ok {
+			return x.Start
+		}
+	}
+	return nil
+}
+
+func (x *ConsoleInput) GetStdin() []byte {
+	if x != nil {
+		if x, ok := x.Payload.(*ConsoleInput_Stdin); ok {
+			return x.Stdin
+		}
+	}
+	return nil
+}
+
+func (x *ConsoleInput) GetResize() *TerminalSize {
+	if x != nil {
+		if x, ok := x.Payload.(*ConsoleInput_Resize); ok {
+			return x.Resize
+		}
+	}
+	return nil
+}
+
+type isConsoleInput_Payload interface {
+	isConsoleInput_Payload()
+}
+
+type ConsoleInput_Start struct {
+	Start *ConsoleStart `protobuf:"bytes,1,opt,name=start,proto3,oneof"` // First message: session configuration
+}
+
+type ConsoleInput_Stdin struct {
+	Stdin []byte `protobuf:"bytes,2,opt,name=stdin,proto3,oneof"` // Subsequent: raw terminal input bytes
+}
+
+type ConsoleInput_Resize struct {
+	Resize *TerminalSize `protobuf:"bytes,3,opt,name=resize,proto3,oneof"` // Terminal resize event
+}
+
+func (*ConsoleInput_Start) isConsoleInput_Payload() {}
+
+func (*ConsoleInput_Stdin) isConsoleInput_Payload() {}
+
+func (*ConsoleInput_Resize) isConsoleInput_Payload() {}
+
+// ConsoleOutput is sent from the daemon to the CLI over the Console stream.
+type ConsoleOutput struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Payload:
+	//
+	//	*ConsoleOutput_Started
+	//	*ConsoleOutput_Stdout
+	//	*ConsoleOutput_Exited
+	Payload       isConsoleOutput_Payload `protobuf_oneof:"payload"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConsoleOutput) Reset() {
+	*x = ConsoleOutput{}
+	mi := &file_cloche_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConsoleOutput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConsoleOutput) ProtoMessage() {}
+
+func (x *ConsoleOutput) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConsoleOutput.ProtoReflect.Descriptor instead.
+func (*ConsoleOutput) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *ConsoleOutput) GetPayload() isConsoleOutput_Payload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *ConsoleOutput) GetStarted() *ConsoleStarted {
+	if x != nil {
+		if x, ok := x.Payload.(*ConsoleOutput_Started); ok {
+			return x.Started
+		}
+	}
+	return nil
+}
+
+func (x *ConsoleOutput) GetStdout() []byte {
+	if x != nil {
+		if x, ok := x.Payload.(*ConsoleOutput_Stdout); ok {
+			return x.Stdout
+		}
+	}
+	return nil
+}
+
+func (x *ConsoleOutput) GetExited() *ConsoleExited {
+	if x != nil {
+		if x, ok := x.Payload.(*ConsoleOutput_Exited); ok {
+			return x.Exited
+		}
+	}
+	return nil
+}
+
+type isConsoleOutput_Payload interface {
+	isConsoleOutput_Payload()
+}
+
+type ConsoleOutput_Started struct {
+	Started *ConsoleStarted `protobuf:"bytes,1,opt,name=started,proto3,oneof"` // First response: container info
+}
+
+type ConsoleOutput_Stdout struct {
+	Stdout []byte `protobuf:"bytes,2,opt,name=stdout,proto3,oneof"` // Subsequent: raw terminal output bytes
+}
+
+type ConsoleOutput_Exited struct {
+	Exited *ConsoleExited `protobuf:"bytes,3,opt,name=exited,proto3,oneof"` // Final message: process exit status
+}
+
+func (*ConsoleOutput_Started) isConsoleOutput_Payload() {}
+
+func (*ConsoleOutput_Stdout) isConsoleOutput_Payload() {}
+
+func (*ConsoleOutput_Exited) isConsoleOutput_Payload() {}
+
+// ConsoleStart is the first ConsoleInput payload, configuring the session.
+type ConsoleStart struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectDir    string                 `protobuf:"bytes,1,opt,name=project_dir,json=projectDir,proto3" json:"project_dir,omitempty"`
+	AgentCommand  string                 `protobuf:"bytes,2,opt,name=agent_command,json=agentCommand,proto3" json:"agent_command,omitempty"` // empty = use resolution chain
+	Rows          uint32                 `protobuf:"varint,3,opt,name=rows,proto3" json:"rows,omitempty"`
+	Cols          uint32                 `protobuf:"varint,4,opt,name=cols,proto3" json:"cols,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConsoleStart) Reset() {
+	*x = ConsoleStart{}
+	mi := &file_cloche_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConsoleStart) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConsoleStart) ProtoMessage() {}
+
+func (x *ConsoleStart) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConsoleStart.ProtoReflect.Descriptor instead.
+func (*ConsoleStart) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *ConsoleStart) GetProjectDir() string {
+	if x != nil {
+		return x.ProjectDir
+	}
+	return ""
+}
+
+func (x *ConsoleStart) GetAgentCommand() string {
+	if x != nil {
+		return x.AgentCommand
+	}
+	return ""
+}
+
+func (x *ConsoleStart) GetRows() uint32 {
+	if x != nil {
+		return x.Rows
+	}
+	return 0
+}
+
+func (x *ConsoleStart) GetCols() uint32 {
+	if x != nil {
+		return x.Cols
+	}
+	return 0
+}
+
+// ConsoleStarted is the first ConsoleOutput payload, sent after the container starts.
+type ConsoleStarted struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ContainerId   string                 `protobuf:"bytes,1,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
+	RunId         string                 `protobuf:"bytes,2,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConsoleStarted) Reset() {
+	*x = ConsoleStarted{}
+	mi := &file_cloche_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConsoleStarted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConsoleStarted) ProtoMessage() {}
+
+func (x *ConsoleStarted) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConsoleStarted.ProtoReflect.Descriptor instead.
+func (*ConsoleStarted) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *ConsoleStarted) GetContainerId() string {
+	if x != nil {
+		return x.ContainerId
+	}
+	return ""
+}
+
+func (x *ConsoleStarted) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+// TerminalSize carries terminal dimensions for resize events.
+type TerminalSize struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Rows          uint32                 `protobuf:"varint,1,opt,name=rows,proto3" json:"rows,omitempty"`
+	Cols          uint32                 `protobuf:"varint,2,opt,name=cols,proto3" json:"cols,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TerminalSize) Reset() {
+	*x = TerminalSize{}
+	mi := &file_cloche_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TerminalSize) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TerminalSize) ProtoMessage() {}
+
+func (x *TerminalSize) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TerminalSize.ProtoReflect.Descriptor instead.
+func (*TerminalSize) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *TerminalSize) GetRows() uint32 {
+	if x != nil {
+		return x.Rows
+	}
+	return 0
+}
+
+func (x *TerminalSize) GetCols() uint32 {
+	if x != nil {
+		return x.Cols
+	}
+	return 0
+}
+
+// ConsoleExited is the final ConsoleOutput payload, sent when the agent process exits.
+type ConsoleExited struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ExitCode      int32                  `protobuf:"varint,1,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConsoleExited) Reset() {
+	*x = ConsoleExited{}
+	mi := &file_cloche_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConsoleExited) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConsoleExited) ProtoMessage() {}
+
+func (x *ConsoleExited) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConsoleExited.ProtoReflect.Descriptor instead.
+func (*ConsoleExited) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *ConsoleExited) GetExitCode() int32 {
+	if x != nil {
+		return x.ExitCode
+	}
+	return 0
+}
+
 var File_cloche_proto protoreflect.FileDescriptor
 
 const file_cloche_proto_rawDesc = "" +
@@ -2643,7 +3062,32 @@ const file_cloche_proto_rawDesc = "" +
 	"\finput_tokens\x18\x02 \x01(\x03R\vinputTokens\x12#\n" +
 	"\routput_tokens\x18\x03 \x01(\x03R\foutputTokens\x12!\n" +
 	"\ftotal_tokens\x18\x04 \x01(\x03R\vtotalTokens\x12\x1b\n" +
-	"\tburn_rate\x18\x05 \x01(\x01R\bburnRate2\xf3\t\n" +
+	"\tburn_rate\x18\x05 \x01(\x01R\bburnRate\"\x95\x01\n" +
+	"\fConsoleInput\x12/\n" +
+	"\x05start\x18\x01 \x01(\v2\x17.cloche.v1.ConsoleStartH\x00R\x05start\x12\x16\n" +
+	"\x05stdin\x18\x02 \x01(\fH\x00R\x05stdin\x121\n" +
+	"\x06resize\x18\x03 \x01(\v2\x17.cloche.v1.TerminalSizeH\x00R\x06resizeB\t\n" +
+	"\apayload\"\x9f\x01\n" +
+	"\rConsoleOutput\x125\n" +
+	"\astarted\x18\x01 \x01(\v2\x19.cloche.v1.ConsoleStartedH\x00R\astarted\x12\x18\n" +
+	"\x06stdout\x18\x02 \x01(\fH\x00R\x06stdout\x122\n" +
+	"\x06exited\x18\x03 \x01(\v2\x18.cloche.v1.ConsoleExitedH\x00R\x06exitedB\t\n" +
+	"\apayload\"|\n" +
+	"\fConsoleStart\x12\x1f\n" +
+	"\vproject_dir\x18\x01 \x01(\tR\n" +
+	"projectDir\x12#\n" +
+	"\ragent_command\x18\x02 \x01(\tR\fagentCommand\x12\x12\n" +
+	"\x04rows\x18\x03 \x01(\rR\x04rows\x12\x12\n" +
+	"\x04cols\x18\x04 \x01(\rR\x04cols\"J\n" +
+	"\x0eConsoleStarted\x12!\n" +
+	"\fcontainer_id\x18\x01 \x01(\tR\vcontainerId\x12\x15\n" +
+	"\x06run_id\x18\x02 \x01(\tR\x05runId\"6\n" +
+	"\fTerminalSize\x12\x12\n" +
+	"\x04rows\x18\x01 \x01(\rR\x04rows\x12\x12\n" +
+	"\x04cols\x18\x02 \x01(\rR\x04cols\",\n" +
+	"\rConsoleExited\x12\x1b\n" +
+	"\texit_code\x18\x01 \x01(\x05R\bexitCode2\xb5\n" +
+	"\n" +
 	"\rClocheService\x12L\n" +
 	"\vRunWorkflow\x12\x1d.cloche.v1.RunWorkflowRequest\x1a\x1e.cloche.v1.RunWorkflowResponse\x12F\n" +
 	"\tGetStatus\x12\x1b.cloche.v1.GetStatusRequest\x1a\x1c.cloche.v1.GetStatusResponse\x12A\n" +
@@ -2666,7 +3110,8 @@ const file_cloche_proto_rawDesc = "" +
 	"\n" +
 	"GetVersion\x12\x1c.cloche.v1.GetVersionRequest\x1a\x1d.cloche.v1.GetVersionResponse\x12C\n" +
 	"\bComplete\x12\x1a.cloche.v1.CompleteRequest\x1a\x1b.cloche.v1.CompleteResponse\x12C\n" +
-	"\bGetUsage\x12\x1a.cloche.v1.GetUsageRequest\x1a\x1b.cloche.v1.GetUsageResponseB+Z)github.com/cloche-dev/cloche/api/clochepbb\x06proto3"
+	"\bGetUsage\x12\x1a.cloche.v1.GetUsageRequest\x1a\x1b.cloche.v1.GetUsageResponse\x12@\n" +
+	"\aConsole\x12\x17.cloche.v1.ConsoleInput\x1a\x18.cloche.v1.ConsoleOutput(\x010\x01B+Z)github.com/cloche-dev/cloche/api/clochepbb\x06proto3"
 
 var (
 	file_cloche_proto_rawDescOnce sync.Once
@@ -2680,7 +3125,7 @@ func file_cloche_proto_rawDescGZIP() []byte {
 	return file_cloche_proto_rawDescData
 }
 
-var file_cloche_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
+var file_cloche_proto_msgTypes = make([]protoimpl.MessageInfo, 45)
 var file_cloche_proto_goTypes = []any{
 	(*RunWorkflowRequest)(nil),      // 0: cloche.v1.RunWorkflowRequest
 	(*RunWorkflowResponse)(nil),     // 1: cloche.v1.RunWorkflowResponse
@@ -2721,6 +3166,12 @@ var file_cloche_proto_goTypes = []any{
 	(*GetUsageRequest)(nil),         // 36: cloche.v1.GetUsageRequest
 	(*GetUsageResponse)(nil),        // 37: cloche.v1.GetUsageResponse
 	(*UsageSummary)(nil),            // 38: cloche.v1.UsageSummary
+	(*ConsoleInput)(nil),            // 39: cloche.v1.ConsoleInput
+	(*ConsoleOutput)(nil),           // 40: cloche.v1.ConsoleOutput
+	(*ConsoleStart)(nil),            // 41: cloche.v1.ConsoleStart
+	(*ConsoleStarted)(nil),          // 42: cloche.v1.ConsoleStarted
+	(*TerminalSize)(nil),            // 43: cloche.v1.TerminalSize
+	(*ConsoleExited)(nil),           // 44: cloche.v1.ConsoleExited
 }
 var file_cloche_proto_depIdxs = []int32{
 	4,  // 0: cloche.v1.GetStatusResponse.step_executions:type_name -> cloche.v1.StepExecutionStatus
@@ -2729,45 +3180,51 @@ var file_cloche_proto_depIdxs = []int32{
 	27, // 3: cloche.v1.ListTasksResponse.tasks:type_name -> cloche.v1.TaskSummary
 	30, // 4: cloche.v1.GetTaskResponse.attempts:type_name -> cloche.v1.AttemptSummary
 	38, // 5: cloche.v1.GetUsageResponse.summaries:type_name -> cloche.v1.UsageSummary
-	0,  // 6: cloche.v1.ClocheService.RunWorkflow:input_type -> cloche.v1.RunWorkflowRequest
-	2,  // 7: cloche.v1.ClocheService.GetStatus:input_type -> cloche.v1.GetStatusRequest
-	5,  // 8: cloche.v1.ClocheService.StreamLogs:input_type -> cloche.v1.StreamLogsRequest
-	7,  // 9: cloche.v1.ClocheService.StopRun:input_type -> cloche.v1.StopRunRequest
-	13, // 10: cloche.v1.ClocheService.ListRuns:input_type -> cloche.v1.ListRunsRequest
-	26, // 11: cloche.v1.ClocheService.ListTasks:input_type -> cloche.v1.ListTasksRequest
-	29, // 12: cloche.v1.ClocheService.GetTask:input_type -> cloche.v1.GetTaskRequest
-	32, // 13: cloche.v1.ClocheService.GetAttempt:input_type -> cloche.v1.GetAttemptRequest
-	9,  // 14: cloche.v1.ClocheService.Shutdown:input_type -> cloche.v1.ShutdownRequest
-	11, // 15: cloche.v1.ClocheService.DeleteContainer:input_type -> cloche.v1.DeleteContainerRequest
-	16, // 16: cloche.v1.ClocheService.EnableLoop:input_type -> cloche.v1.EnableLoopRequest
-	18, // 17: cloche.v1.ClocheService.DisableLoop:input_type -> cloche.v1.DisableLoopRequest
-	20, // 18: cloche.v1.ClocheService.ResumeLoop:input_type -> cloche.v1.ResumeLoopRequest
-	22, // 19: cloche.v1.ClocheService.GetProjectInfo:input_type -> cloche.v1.GetProjectInfoRequest
-	24, // 20: cloche.v1.ClocheService.GetVersion:input_type -> cloche.v1.GetVersionRequest
-	34, // 21: cloche.v1.ClocheService.Complete:input_type -> cloche.v1.CompleteRequest
-	36, // 22: cloche.v1.ClocheService.GetUsage:input_type -> cloche.v1.GetUsageRequest
-	1,  // 23: cloche.v1.ClocheService.RunWorkflow:output_type -> cloche.v1.RunWorkflowResponse
-	3,  // 24: cloche.v1.ClocheService.GetStatus:output_type -> cloche.v1.GetStatusResponse
-	6,  // 25: cloche.v1.ClocheService.StreamLogs:output_type -> cloche.v1.LogEntry
-	8,  // 26: cloche.v1.ClocheService.StopRun:output_type -> cloche.v1.StopRunResponse
-	14, // 27: cloche.v1.ClocheService.ListRuns:output_type -> cloche.v1.ListRunsResponse
-	28, // 28: cloche.v1.ClocheService.ListTasks:output_type -> cloche.v1.ListTasksResponse
-	31, // 29: cloche.v1.ClocheService.GetTask:output_type -> cloche.v1.GetTaskResponse
-	33, // 30: cloche.v1.ClocheService.GetAttempt:output_type -> cloche.v1.GetAttemptResponse
-	10, // 31: cloche.v1.ClocheService.Shutdown:output_type -> cloche.v1.ShutdownResponse
-	12, // 32: cloche.v1.ClocheService.DeleteContainer:output_type -> cloche.v1.DeleteContainerResponse
-	17, // 33: cloche.v1.ClocheService.EnableLoop:output_type -> cloche.v1.EnableLoopResponse
-	19, // 34: cloche.v1.ClocheService.DisableLoop:output_type -> cloche.v1.DisableLoopResponse
-	21, // 35: cloche.v1.ClocheService.ResumeLoop:output_type -> cloche.v1.ResumeLoopResponse
-	23, // 36: cloche.v1.ClocheService.GetProjectInfo:output_type -> cloche.v1.GetProjectInfoResponse
-	25, // 37: cloche.v1.ClocheService.GetVersion:output_type -> cloche.v1.GetVersionResponse
-	35, // 38: cloche.v1.ClocheService.Complete:output_type -> cloche.v1.CompleteResponse
-	37, // 39: cloche.v1.ClocheService.GetUsage:output_type -> cloche.v1.GetUsageResponse
-	23, // [23:40] is the sub-list for method output_type
-	6,  // [6:23] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	41, // 6: cloche.v1.ConsoleInput.start:type_name -> cloche.v1.ConsoleStart
+	43, // 7: cloche.v1.ConsoleInput.resize:type_name -> cloche.v1.TerminalSize
+	42, // 8: cloche.v1.ConsoleOutput.started:type_name -> cloche.v1.ConsoleStarted
+	44, // 9: cloche.v1.ConsoleOutput.exited:type_name -> cloche.v1.ConsoleExited
+	0,  // 10: cloche.v1.ClocheService.RunWorkflow:input_type -> cloche.v1.RunWorkflowRequest
+	2,  // 11: cloche.v1.ClocheService.GetStatus:input_type -> cloche.v1.GetStatusRequest
+	5,  // 12: cloche.v1.ClocheService.StreamLogs:input_type -> cloche.v1.StreamLogsRequest
+	7,  // 13: cloche.v1.ClocheService.StopRun:input_type -> cloche.v1.StopRunRequest
+	13, // 14: cloche.v1.ClocheService.ListRuns:input_type -> cloche.v1.ListRunsRequest
+	26, // 15: cloche.v1.ClocheService.ListTasks:input_type -> cloche.v1.ListTasksRequest
+	29, // 16: cloche.v1.ClocheService.GetTask:input_type -> cloche.v1.GetTaskRequest
+	32, // 17: cloche.v1.ClocheService.GetAttempt:input_type -> cloche.v1.GetAttemptRequest
+	9,  // 18: cloche.v1.ClocheService.Shutdown:input_type -> cloche.v1.ShutdownRequest
+	11, // 19: cloche.v1.ClocheService.DeleteContainer:input_type -> cloche.v1.DeleteContainerRequest
+	16, // 20: cloche.v1.ClocheService.EnableLoop:input_type -> cloche.v1.EnableLoopRequest
+	18, // 21: cloche.v1.ClocheService.DisableLoop:input_type -> cloche.v1.DisableLoopRequest
+	20, // 22: cloche.v1.ClocheService.ResumeLoop:input_type -> cloche.v1.ResumeLoopRequest
+	22, // 23: cloche.v1.ClocheService.GetProjectInfo:input_type -> cloche.v1.GetProjectInfoRequest
+	24, // 24: cloche.v1.ClocheService.GetVersion:input_type -> cloche.v1.GetVersionRequest
+	34, // 25: cloche.v1.ClocheService.Complete:input_type -> cloche.v1.CompleteRequest
+	36, // 26: cloche.v1.ClocheService.GetUsage:input_type -> cloche.v1.GetUsageRequest
+	39, // 27: cloche.v1.ClocheService.Console:input_type -> cloche.v1.ConsoleInput
+	1,  // 28: cloche.v1.ClocheService.RunWorkflow:output_type -> cloche.v1.RunWorkflowResponse
+	3,  // 29: cloche.v1.ClocheService.GetStatus:output_type -> cloche.v1.GetStatusResponse
+	6,  // 30: cloche.v1.ClocheService.StreamLogs:output_type -> cloche.v1.LogEntry
+	8,  // 31: cloche.v1.ClocheService.StopRun:output_type -> cloche.v1.StopRunResponse
+	14, // 32: cloche.v1.ClocheService.ListRuns:output_type -> cloche.v1.ListRunsResponse
+	28, // 33: cloche.v1.ClocheService.ListTasks:output_type -> cloche.v1.ListTasksResponse
+	31, // 34: cloche.v1.ClocheService.GetTask:output_type -> cloche.v1.GetTaskResponse
+	33, // 35: cloche.v1.ClocheService.GetAttempt:output_type -> cloche.v1.GetAttemptResponse
+	10, // 36: cloche.v1.ClocheService.Shutdown:output_type -> cloche.v1.ShutdownResponse
+	12, // 37: cloche.v1.ClocheService.DeleteContainer:output_type -> cloche.v1.DeleteContainerResponse
+	17, // 38: cloche.v1.ClocheService.EnableLoop:output_type -> cloche.v1.EnableLoopResponse
+	19, // 39: cloche.v1.ClocheService.DisableLoop:output_type -> cloche.v1.DisableLoopResponse
+	21, // 40: cloche.v1.ClocheService.ResumeLoop:output_type -> cloche.v1.ResumeLoopResponse
+	23, // 41: cloche.v1.ClocheService.GetProjectInfo:output_type -> cloche.v1.GetProjectInfoResponse
+	25, // 42: cloche.v1.ClocheService.GetVersion:output_type -> cloche.v1.GetVersionResponse
+	35, // 43: cloche.v1.ClocheService.Complete:output_type -> cloche.v1.CompleteResponse
+	37, // 44: cloche.v1.ClocheService.GetUsage:output_type -> cloche.v1.GetUsageResponse
+	40, // 45: cloche.v1.ClocheService.Console:output_type -> cloche.v1.ConsoleOutput
+	28, // [28:46] is the sub-list for method output_type
+	10, // [10:28] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_cloche_proto_init() }
@@ -2775,13 +3232,23 @@ func file_cloche_proto_init() {
 	if File_cloche_proto != nil {
 		return
 	}
+	file_cloche_proto_msgTypes[39].OneofWrappers = []any{
+		(*ConsoleInput_Start)(nil),
+		(*ConsoleInput_Stdin)(nil),
+		(*ConsoleInput_Resize)(nil),
+	}
+	file_cloche_proto_msgTypes[40].OneofWrappers = []any{
+		(*ConsoleOutput_Started)(nil),
+		(*ConsoleOutput_Stdout)(nil),
+		(*ConsoleOutput_Exited)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cloche_proto_rawDesc), len(file_cloche_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   39,
+			NumMessages:   45,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
