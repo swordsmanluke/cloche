@@ -109,7 +109,21 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 			strings.Join(containerCmd, " "),
 		)
 		args = append(args, cfg.Image, "sh", "-c", wrappedCmd)
+	} else if cfg.Interactive {
+		// Interactive console: same chown + gosu wrapper so auth files
+		// and project files are accessible to the agent user.
+		args = append(args, "--user", "root")
+		wrappedCmd := fmt.Sprintf(
+			"chown -R agent:agent /workspace"+
+				" && chown -R agent:agent /home/agent/.claude 2>/dev/null"+
+				" && f=/home/agent/.claude/settings.json"+
+				` && [ -f "$f" ] && sed -i '/"enabledPlugins"/,/}/d' "$f"`+
+				"; exec gosu agent %s",
+			strings.Join(containerCmd, " "),
+		)
+		args = append(args, cfg.Image, "sh", "-c", wrappedCmd)
 	} else {
+		// Custom command on a non-cloche image (e.g. tests with alpine).
 		args = append(args, cfg.Image)
 		args = append(args, containerCmd...)
 	}
