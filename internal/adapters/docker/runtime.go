@@ -116,6 +116,7 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		wrappedCmd := fmt.Sprintf(
 			"chown -R agent:agent /workspace"+
 				" && chown -R agent:agent /home/agent/.claude 2>/dev/null"+
+				" && chown agent:agent /home/agent/.claude.json 2>/dev/null"+
 				" && f=/home/agent/.claude/settings.json"+
 				` && [ -f "$f" ] && sed -i '/"enabledPlugins"/,/}/d' "$f"`+
 				"; exec gosu agent %s",
@@ -196,9 +197,16 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 			}
 			exec.CommandContext(ctx, "docker", "cp", tmpAuth+"/.", containerID+":/home/agent/.claude/").Run()
 		}
-		// NOTE: ~/.claude.json is NOT copied — it contains 100KB+ of UI
-		// state and cached rate limit info that causes containers to
-		// incorrectly believe they are rate-limited.
+		// ~/.claude.json contains UI state needed by interactive Claude Code
+		// sessions (e.g. "already set up" flag). Copy it for interactive
+		// containers; skip for autonomous runs where it causes cached
+		// rate-limit info to leak between containers.
+		if cfg.Interactive {
+			claudeJSON := home + "/.claude.json"
+			if _, statErr := os.Stat(claudeJSON); statErr == nil {
+				exec.CommandContext(ctx, "docker", "cp", claudeJSON, containerID+":/home/agent/.claude.json").Run()
+			}
+		}
 	}
 
 	// 5. Start the container (skip for interactive — Attach handles start).
