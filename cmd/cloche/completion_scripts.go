@@ -38,14 +38,14 @@ const zshCompletionScript = `# zsh completion for cloche
 
 _cloche() {
     local -a completions
-    IFS=$'\n' completions=($(cloche complete --index $CURRENT -- ${words[@]} 2>/dev/null))
+    IFS=$'\n' completions=($(cloche complete --index $((CURRENT - 1)) -- ${words[@]} 2>/dev/null))
     if (( ${#completions[@]} > 0 )); then
         compadd -a completions
     fi
     return 0
 }
 
-compdef _cloche cloche
+_comps[cloche]=_cloche
 `
 
 // generateCompletionScripts writes bash and zsh completion scripts to dir

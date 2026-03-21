@@ -222,8 +222,8 @@ func TestGenerateCompletionScripts_ZshContent(t *testing.T) {
 	if !strings.Contains(content, "compadd") {
 		t.Error("zsh script should use compadd")
 	}
-	if !strings.Contains(content, "compdef _cloche cloche") {
-		t.Error("zsh script should register with compdef")
+	if !strings.Contains(content, "_comps[cloche]=_cloche") {
+		t.Error("zsh script should register in _comps")
 	}
 }
 
