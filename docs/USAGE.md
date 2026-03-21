@@ -962,7 +962,7 @@ status for that task.
 | Flag | Description |
 |------|-------------|
 | `--all` | Show global stats instead of project-specific stats (overview mode only). |
-| `--no-color` | Disable ANSI color output (also respects the `NO_COLOR` env var). |
+| `--no-color` | Disable ANSI color output (also respects the `NO_COLOR` env var). Set `CLOCHE_FORCE_COLOR=1` to force color on even when stdout is not a terminal. |
 
 ### `cloche list`
 
@@ -1033,7 +1033,7 @@ Polling a step ID is useful for waiting on a long-running step without waiting f
 
 | Flag | Description |
 |------|-------------|
-| `--no-color` | Disable ANSI color output (also respects the `NO_COLOR` env var). |
+| `--no-color` | Disable ANSI color output (also respects the `NO_COLOR` env var). Set `CLOCHE_FORCE_COLOR=1` to force color on even when stdout is not a terminal. |
 
 With a single ID, prints step-level progress. With multiple IDs, displays a compact status summary (e.g. `id1: running`) and re-prints whenever a state changes. Use `cloche logs` for detailed output of individual runs.
 

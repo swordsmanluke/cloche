@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -56,5 +57,78 @@ func TestColorEnabled_NoColorEnv(t *testing.T) {
 
 	if colorEnabled() {
 		t.Error("colorEnabled() should return false when NO_COLOR env var is set")
+	}
+}
+
+func TestColorEnabled_ForceColor(t *testing.T) {
+	orig := noColorFlag
+	defer func() { noColorFlag = orig }()
+	noColorFlag = false
+
+	os.Setenv("CLOCHE_FORCE_COLOR", "1")
+	defer os.Unsetenv("CLOCHE_FORCE_COLOR")
+
+	if !colorEnabled() {
+		t.Error("colorEnabled() should return true when CLOCHE_FORCE_COLOR is set")
+	}
+}
+
+func TestColorEnabled_ForceColorOverridesNoColor(t *testing.T) {
+	orig := noColorFlag
+	defer func() { noColorFlag = orig }()
+	noColorFlag = false
+
+	// --no-color takes precedence over CLOCHE_FORCE_COLOR.
+	noColorFlag = true
+	os.Setenv("CLOCHE_FORCE_COLOR", "1")
+	defer os.Unsetenv("CLOCHE_FORCE_COLOR")
+
+	if colorEnabled() {
+		t.Error("colorEnabled() should return false when noColorFlag is set, even with CLOCHE_FORCE_COLOR")
+	}
+}
+
+func TestColorStatus_WithColor(t *testing.T) {
+	os.Setenv("CLOCHE_FORCE_COLOR", "1")
+	defer os.Unsetenv("CLOCHE_FORCE_COLOR")
+
+	tests := []struct {
+		input    string
+		wantCode string
+	}{
+		{"succeeded", ansiGreen},
+		{"running", ansiGreen},
+		{"failed", ansiRed},
+		{"pending", ansiYellow},
+		{"cancelled", ansiYellow},
+		{"halted", ansiYellow},
+	}
+	for _, tt := range tests {
+		got := colorStatus(tt.input)
+		if !strings.Contains(got, tt.wantCode) {
+			t.Errorf("colorStatus(%q) = %q, want ANSI code %q", tt.input, got, tt.wantCode)
+		}
+		if !strings.Contains(got, ansiReset) {
+			t.Errorf("colorStatus(%q) = %q, missing reset code", tt.input, got)
+		}
+	}
+}
+
+func TestColorID_WithColor(t *testing.T) {
+	os.Setenv("CLOCHE_FORCE_COLOR", "1")
+	defer os.Unsetenv("CLOCHE_FORCE_COLOR")
+
+	got := colorID("TASK-42")
+	if !strings.Contains(got, ansiBold) {
+		t.Errorf("colorID(%q) = %q, missing bold code", "TASK-42", got)
+	}
+	if !strings.Contains(got, ansiCyan) {
+		t.Errorf("colorID(%q) = %q, missing cyan code", "TASK-42", got)
+	}
+	if !strings.Contains(got, "TASK-42") {
+		t.Errorf("colorID(%q) = %q, missing original string", "TASK-42", got)
+	}
+	if !strings.Contains(got, ansiReset) {
+		t.Errorf("colorID(%q) = %q, missing reset code", "TASK-42", got)
 	}
 }

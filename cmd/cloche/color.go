@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"strings"
+
+	"golang.org/x/term"
 )
 
 // noColorFlag is set true when --no-color flag is present or NO_COLOR env var is set.
@@ -17,24 +19,24 @@ const (
 	ansiRed    = "\033[31m"
 )
 
-// isTTY returns true if stdout is a terminal character device.
+// isTTY returns true if stdout is connected to a terminal.
 func isTTY() bool {
-	fi, err := os.Stdout.Stat()
-	if err != nil {
-		return false
-	}
-	return fi.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(int(os.Stdout.Fd()))
 }
 
 // colorEnabled returns true when ANSI color output should be used.
-// Color is disabled if --no-color was passed, NO_COLOR env var is set (per
-// https://no-color.org/), or stdout is not a terminal.
+// Color is disabled if --no-color was passed or NO_COLOR env var is set (per
+// https://no-color.org/). Color is forced on if CLOCHE_FORCE_COLOR is set.
+// Otherwise color is enabled only when stdout is a terminal.
 func colorEnabled() bool {
 	if noColorFlag {
 		return false
 	}
 	if os.Getenv("NO_COLOR") != "" {
 		return false
+	}
+	if os.Getenv("CLOCHE_FORCE_COLOR") != "" {
+		return true
 	}
 	return isTTY()
 }
