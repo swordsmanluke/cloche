@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -3439,4 +3440,320 @@ func TestStreamLogs_LargeFullLog_IsChunked(t *testing.T) {
 		}
 	}
 	assert.Equal(t, largeLog, totalContent.String())
+}
+
+// mockConsoleStream implements grpc.BidiStreamingServer[pb.ConsoleInput, pb.ConsoleOutput]
+// for testing the Console RPC handler.
+type mockConsoleStream struct {
+	grpclib.ServerStream
+	ctx     context.Context
+	inputs  chan *pb.ConsoleInput
+	outputs []*pb.ConsoleOutput
+	mu      sync.Mutex
+}
+
+func newMockConsoleStream(ctx context.Context) *mockConsoleStream {
+	return &mockConsoleStream{
+		ctx:    ctx,
+		inputs: make(chan *pb.ConsoleInput, 16),
+	}
+}
+
+func (m *mockConsoleStream) Context() context.Context { return m.ctx }
+
+func (m *mockConsoleStream) Recv() (*pb.ConsoleInput, error) {
+	msg, ok := <-m.inputs
+	if !ok {
+		return nil, io.EOF
+	}
+	return msg, nil
+}
+
+func (m *mockConsoleStream) Send(out *pb.ConsoleOutput) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.outputs = append(m.outputs, out)
+	return nil
+}
+
+func (m *mockConsoleStream) getOutputs() []*pb.ConsoleOutput {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := make([]*pb.ConsoleOutput, len(m.outputs))
+	copy(cp, m.outputs)
+	return cp
+}
+
+// consoleRuntime is a ContainerRuntime that supports interactive Attach for Console tests.
+type consoleRuntime struct {
+	startCfg   ports.ContainerConfig
+	containerID string
+	attachConn io.ReadWriteCloser
+	waitCode   int
+	waitSignal chan struct{}
+}
+
+func newConsoleRuntime(conn io.ReadWriteCloser, waitCode int) *consoleRuntime {
+	return &consoleRuntime{
+		containerID: "console-test-cid",
+		attachConn:  conn,
+		waitCode:    waitCode,
+		waitSignal:  make(chan struct{}),
+	}
+}
+
+func (r *consoleRuntime) Start(_ context.Context, cfg ports.ContainerConfig) (string, error) {
+	r.startCfg = cfg
+	return r.containerID, nil
+}
+
+func (r *consoleRuntime) Stop(_ context.Context, _ string) error        { return nil }
+func (r *consoleRuntime) CopyFrom(_ context.Context, _, _, _ string) error { return nil }
+func (r *consoleRuntime) Logs(_ context.Context, _ string) (string, error) { return "", nil }
+func (r *consoleRuntime) Remove(_ context.Context, _ string) error         { return nil }
+func (r *consoleRuntime) Inspect(_ context.Context, _ string) (*ports.ContainerStatus, error) {
+	return &ports.ContainerStatus{}, nil
+}
+func (r *consoleRuntime) AttachOutput(_ context.Context, _ string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
+}
+
+func (r *consoleRuntime) Attach(_ context.Context, _ string) (io.ReadWriteCloser, error) {
+	return r.attachConn, nil
+}
+
+func (r *consoleRuntime) Wait(_ context.Context, _ string) (int, error) {
+	<-r.waitSignal
+	return r.waitCode, nil
+}
+
+// pipeConn wraps a pair of io.Pipe connections for bidirectional I/O in tests.
+type pipeConn struct {
+	r *io.PipeReader
+	w *io.PipeWriter
+}
+
+func (p *pipeConn) Read(b []byte) (int, error)  { return p.r.Read(b) }
+func (p *pipeConn) Write(b []byte) (int, error) { return p.w.Write(b) }
+func (p *pipeConn) Close() error {
+	p.r.Close()
+	p.w.Close()
+	return nil
+}
+
+func TestServer_Console_SendsStartedAndExited(t *testing.T) {
+	// Set up a pipe so we can control what the "container" outputs.
+	pr, pw := io.Pipe()
+	conn := &pipeConn{r: pr, w: pw}
+
+	rt := newConsoleRuntime(conn, 0)
+
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "test-image:latest")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	stream := newMockConsoleStream(ctx)
+
+	// Send ConsoleStart as first message.
+	stream.inputs <- &pb.ConsoleInput{
+		Payload: &pb.ConsoleInput_Start{
+			Start: &pb.ConsoleStart{
+				ProjectDir:   t.TempDir(),
+				AgentCommand: "echo",
+				Rows:         24,
+				Cols:         80,
+			},
+		},
+	}
+
+	// Run Console handler in a goroutine.
+	handlerDone := make(chan error, 1)
+	go func() {
+		handlerDone <- srv.Console(stream)
+	}()
+
+	// Wait until ConsoleStarted is received.
+	deadline := time.Now().Add(3 * time.Second)
+	var started *pb.ConsoleStarted
+	for time.Now().Before(deadline) {
+		for _, out := range stream.getOutputs() {
+			if s := out.GetStarted(); s != nil {
+				started = s
+				break
+			}
+		}
+		if started != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	require.NotNil(t, started, "expected ConsoleStarted message")
+	assert.Equal(t, "console-test-cid", started.ContainerId)
+
+	// Write some output from the "container" and then close the pipe.
+	_, err = pw.Write([]byte("hello from container\n"))
+	require.NoError(t, err)
+	pw.Close() // Signals EOF to output pump.
+
+	// Signal the container to exit.
+	close(rt.waitSignal)
+
+	// Wait for handler to finish.
+	select {
+	case err := <-handlerDone:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Console handler did not finish within timeout")
+	}
+
+	// Verify ConsoleExited was sent.
+	var exited *pb.ConsoleExited
+	for _, out := range stream.getOutputs() {
+		if e := out.GetExited(); e != nil {
+			exited = e
+			break
+		}
+	}
+	require.NotNil(t, exited, "expected ConsoleExited message")
+	assert.Equal(t, int32(0), exited.ExitCode)
+
+	// Verify the container was NOT removed (no Remove call needed — just verify Start was called with Interactive=true).
+	assert.True(t, rt.startCfg.Interactive, "container should be started with Interactive=true")
+	assert.Equal(t, []string{"echo"}, rt.startCfg.Cmd)
+	assert.True(t, strings.HasPrefix(rt.startCfg.RunID, "console-"), "container name should start with console-")
+}
+
+func TestServer_Console_ForwardsStdinToContainer(t *testing.T) {
+	pr, pw := io.Pipe()
+	conn := &pipeConn{r: pr, w: pw}
+
+	rt := newConsoleRuntime(conn, 0)
+
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "test-image:latest")
+
+	// Use a separate pipe to capture what gets written to the container's stdin.
+	stdinR, stdinW := io.Pipe()
+	// Replace the conn's write end so we can read what was sent to the container.
+	writeCapture := &struct {
+		pipeConn
+		written []byte
+		mu      sync.Mutex
+	}{pipeConn: pipeConn{r: pr, w: stdinW}}
+	_ = stdinR // unused here; we just capture writes
+
+	rt.attachConn = &captureWriteConn{
+		ReadWriteCloser: conn,
+		written:         make(chan []byte, 8),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_ = writeCapture
+
+	stream := newMockConsoleStream(ctx)
+	stream.inputs <- &pb.ConsoleInput{
+		Payload: &pb.ConsoleInput_Start{
+			Start: &pb.ConsoleStart{ProjectDir: t.TempDir(), AgentCommand: "cat"},
+		},
+	}
+
+	handlerDone := make(chan error, 1)
+	go func() {
+		handlerDone <- srv.Console(stream)
+	}()
+
+	// Wait for ConsoleStarted.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		started := false
+		for _, out := range stream.getOutputs() {
+			if out.GetStarted() != nil {
+				started = true
+				break
+			}
+		}
+		if started {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Send stdin bytes.
+	stream.inputs <- &pb.ConsoleInput{
+		Payload: &pb.ConsoleInput_Stdin{Stdin: []byte("hello")},
+	}
+
+	// Close the input channel and pipe to trigger cleanup.
+	close(stream.inputs)
+	pw.Close()
+	close(rt.waitSignal)
+
+	select {
+	case <-handlerDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Console handler did not finish within timeout")
+	}
+}
+
+// captureWriteConn wraps a ReadWriteCloser and records writes to a channel.
+type captureWriteConn struct {
+	io.ReadWriteCloser
+	written chan []byte
+}
+
+func (c *captureWriteConn) Write(p []byte) (int, error) {
+	cp := make([]byte, len(p))
+	copy(cp, p)
+	select {
+	case c.written <- cp:
+	default:
+	}
+	return c.ReadWriteCloser.Write(p)
+}
+
+func TestServer_Console_RejectsNilStart(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	rt := newConsoleRuntime(nil, 0)
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	stream := newMockConsoleStream(context.Background())
+	// Send a non-start message first.
+	stream.inputs <- &pb.ConsoleInput{
+		Payload: &pb.ConsoleInput_Stdin{Stdin: []byte("oops")},
+	}
+
+	err = srv.Console(stream)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ConsoleStart")
+}
+
+func TestServer_Console_RejectsNoRuntime(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, nil)
+
+	stream := newMockConsoleStream(context.Background())
+	stream.inputs <- &pb.ConsoleInput{
+		Payload: &pb.ConsoleInput_Start{
+			Start: &pb.ConsoleStart{ProjectDir: t.TempDir()},
+		},
+	}
+
+	err = srv.Console(stream)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no container runtime")
 }

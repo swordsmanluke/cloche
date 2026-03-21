@@ -2485,3 +2485,187 @@ func (s *ClocheServer) GetUsage(ctx context.Context, req *pb.GetUsageRequest) (*
 	}
 	return resp, nil
 }
+
+// Console handles a bidirectional streaming RPC that starts an interactive
+// container session and forwards I/O between the gRPC stream and the container.
+func (s *ClocheServer) Console(stream pb.ClocheService_ConsoleServer) error {
+	// First message must be ConsoleStart.
+	in, err := stream.Recv()
+	if err != nil {
+		return fmt.Errorf("receiving ConsoleStart: %w", err)
+	}
+	start := in.GetStart()
+	if start == nil {
+		return fmt.Errorf("first message must be ConsoleStart")
+	}
+	if s.container == nil {
+		return fmt.Errorf("no container runtime configured")
+	}
+
+	projectDir := start.ProjectDir
+	if projectDir == "" {
+		return fmt.Errorf("project_dir is required")
+	}
+
+	agentCmd := resolveConsoleAgentCommand(start.AgentCommand, projectDir)
+
+	ctx := context.Background()
+	image := s.defaultImage
+
+	// Rebuild image if the Dockerfile has changed.
+	if ensurer, ok := s.container.(ports.ImageEnsurer); ok {
+		if err := ensurer.EnsureImage(ctx, projectDir, image); err != nil {
+			return fmt.Errorf("ensuring image: %w", err)
+		}
+	}
+
+	// Use a short random ID for the container name: console-<id>.
+	shortID := domain.GenerateAttemptID()
+	containerName := "console-" + shortID
+
+	containerID, err := s.container.Start(ctx, ports.ContainerConfig{
+		Image:       image,
+		ProjectDir:  projectDir,
+		RunID:       containerName,
+		Interactive: true,
+		Cmd:         []string{agentCmd},
+	})
+	if err != nil {
+		return fmt.Errorf("starting container: %w", err)
+	}
+	// Container is intentionally kept after the session ends (no Remove call).
+
+	conn, err := s.container.Attach(ctx, containerID)
+	if err != nil {
+		return fmt.Errorf("attaching to container: %w", err)
+	}
+
+	var closeOnce sync.Once
+	closeConn := func() { closeOnce.Do(func() { conn.Close() }) }
+	defer closeConn()
+
+	// Apply initial terminal size if provided.
+	if start.Rows > 0 && start.Cols > 0 {
+		if resizer, ok := s.container.(ports.TerminalResizer); ok {
+			_ = resizer.ResizeTerminal(ctx, containerID, int(start.Rows), int(start.Cols))
+		}
+	}
+
+	// Send ConsoleStarted with the container ID.
+	if err := stream.Send(&pb.ConsoleOutput{
+		Payload: &pb.ConsoleOutput_Started{
+			Started: &pb.ConsoleStarted{ContainerId: containerID},
+		},
+	}); err != nil {
+		return fmt.Errorf("sending ConsoleStarted: %w", err)
+	}
+
+	// Output pump: container stdout → gRPC stream.
+	outDone := make(chan struct{})
+	go func() {
+		defer close(outDone)
+		buf := make([]byte, 4096)
+		for {
+			n, readErr := conn.Read(buf)
+			if n > 0 {
+				data := make([]byte, n)
+				copy(data, buf[:n])
+				if sendErr := stream.Send(&pb.ConsoleOutput{
+					Payload: &pb.ConsoleOutput_Stdout{Stdout: data},
+				}); sendErr != nil {
+					return
+				}
+			}
+			if readErr != nil {
+				return
+			}
+		}
+	}()
+
+	// Input pump: gRPC stream → container stdin; resize events → ResizeTerminal.
+	go func() {
+		for {
+			msg, recvErr := stream.Recv()
+			if recvErr != nil {
+				return
+			}
+			switch p := msg.Payload.(type) {
+			case *pb.ConsoleInput_Stdin:
+				if _, wErr := conn.Write(p.Stdin); wErr != nil {
+					return
+				}
+			case *pb.ConsoleInput_Resize:
+				if p.Resize != nil {
+					if resizer, ok := s.container.(ports.TerminalResizer); ok {
+						_ = resizer.ResizeTerminal(ctx, containerID, int(p.Resize.Rows), int(p.Resize.Cols))
+					}
+				}
+			}
+		}
+	}()
+
+	// Wait for container exit in a goroutine so we can also detect stream closure.
+	waitDone := make(chan int, 1)
+	go func() {
+		code, waitErr := s.container.Wait(context.Background(), containerID)
+		if waitErr != nil {
+			code = -1
+			log.Printf("console %s: waiting for container: %v", containerID, waitErr)
+		}
+		waitDone <- code
+	}()
+
+	var exitCode int
+	select {
+	case exitCode = <-waitDone:
+		// Container exited — close conn so the output pump drains and exits.
+		closeConn()
+		<-outDone
+	case <-stream.Context().Done():
+		// Client disconnected — leave the container running per design.
+		return nil
+	case <-outDone:
+		// Output pump exited early (stream send error).
+		return nil
+	}
+
+	_ = stream.Send(&pb.ConsoleOutput{
+		Payload: &pb.ConsoleOutput_Exited{
+			Exited: &pb.ConsoleExited{ExitCode: int32(exitCode)},
+		},
+	})
+	return nil
+}
+
+// resolveConsoleAgentCommand resolves the agent command for a console session.
+// Resolution order: explicit flag → workflow config (container.agent_command)
+// → CLOCHE_AGENT_COMMAND env → default "claude".
+func resolveConsoleAgentCommand(flagCmd, projectDir string) string {
+	if flagCmd != "" {
+		return flagCmd
+	}
+	// Scan container workflow files for container.agent_command config.
+	clochedir := filepath.Join(projectDir, ".cloche")
+	if entries, err := os.ReadDir(clochedir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".cloche") || e.Name() == "host.cloche" {
+				continue
+			}
+			data, readErr := os.ReadFile(filepath.Join(clochedir, e.Name()))
+			if readErr != nil {
+				continue
+			}
+			wf, parseErr := dsl.ParseForContainer(string(data))
+			if parseErr != nil {
+				continue
+			}
+			if cmd := wf.Config["container.agent_command"]; cmd != "" {
+				return cmd
+			}
+		}
+	}
+	if cmd, ok := os.LookupEnv("CLOCHE_AGENT_COMMAND"); ok && cmd != "" {
+		return cmd
+	}
+	return "claude"
+}
