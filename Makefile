@@ -33,6 +33,12 @@ docker-base:
 docker-build: docker-base
 	docker build -t cloche-agent:latest -f .cloche/Dockerfile .
 
+install-sh: build docker-build
+	@# Install binaries
+	@mkdir -p $(PREFIX)/bin
+	@echo "==> Installing to $(PREFIX)/bin/"
+	@install bin/cloche bin/cloched bin/cloche-agent $(PREFIX)/bin/
+
 install: build docker-build
 	@# Stop running daemon (graceful via CLI, fallback to kill)
 	@echo "==> Stopping cloched..."
