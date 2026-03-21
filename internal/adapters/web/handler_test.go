@@ -1832,7 +1832,8 @@ func TestProjectDetail_RendersLayoutEngine(t *testing.T) {
 	assert.Contains(t, body, "wireColStart")            // Wire column start position
 	assert.Contains(t, body, "layerGap")               // Horizontal layer spacing
 	assert.Contains(t, body, "termWires")              // Terminal wire merging
-	assert.Contains(t, body, "nonsuccOffset")          // Offset variable for non-success wires
+	assert.Contains(t, body, "maxOffset")              // Max endpoint offset to eliminate elbow joins
+	assert.Contains(t, body, "orthoPath")              // Orthogonal (right-angle) path helper
 	assert.Contains(t, body, "isSuccessResult")        // Success result detection helper
 	assert.Contains(t, body, "resultColor")            // Color mapping for wire results
 	assert.Contains(t, body, "wireColumns")            // Wire column routing for failure paths

@@ -330,7 +330,7 @@ function showWorkflow(wf) {
     var nodeW = 180, nodeH = 48;
     var layerGap = 80;  // vertical gap between layers
     var nodeGap = 40;   // horizontal gap between nodes in same layer
-    var nonsuccOffset = 35; // horizontal offset for non-success bezier wires
+    var maxOffset = Math.round(nodeW / 6); // max endpoint offset (px) to eliminate elbow joins
     var padL = 30, padT = 30;
 
     var maxInLayer = 1;
@@ -484,21 +484,33 @@ function showWorkflow(wf) {
 
     function mkr(color) { return 'url(#arrow-' + color.replace('#','') + ')'; }
 
-    // --- Draw normal (non-terminal) edges with colored Bezier curves ---
+    // Helper: orthogonal (right-angle) path from (x1,y1) bottom-exit to (x2,y2) top-entry.
+    // If |x2-x1| <= 2*maxOffset, shifts both endpoints to a common x to produce a straight
+    // vertical line (eliminating the elbow join).  Returns {d, lx, ly} where lx/ly is a
+    // good position for an edge label.
+    function orthoPath(x1, y1, x2, y2) {
+        var diff = x2 - x1;
+        if (Math.abs(diff) <= 2 * maxOffset) {
+            var xc = (x1 + x2) / 2;
+            return { d: 'M' + xc + ' ' + y1 + ' L' + xc + ' ' + y2, lx: xc + 6, ly: (y1 + y2) / 2 };
+        }
+        var midY = (y1 + y2) / 2;
+        return { d: 'M' + x1 + ' ' + y1 + ' L' + x1 + ' ' + midY + ' L' + x2 + ' ' + midY + ' L' + x2 + ' ' + y2, lx: (x1 + x2) / 2 + 6, ly: midY };
+    }
+
+    // --- Draw normal (non-terminal) edges with right-angle routing ---
     normWires.forEach(function(wire) {
         var from = positions[wire.from], to = positions[wire.to];
         if (!from || !to) return;
         var color = resultColor(wire.result);
-        var isSucc = isSuccessResult(wire.result);
         var x1 = from.x + nodeW / 2, y1 = from.y + nodeH;
         var x2 = to.x + nodeW / 2, y2 = to.y;
-        var dy = y2 - y1;
-        var off = isSucc ? 0 : nonsuccOffset;
-        svg += '<path d="M' + x1 + ' ' + y1 + ' C' + (x1 + off) + ' ' + (y1 + dy * 0.4) + ' ' + (x2 + off) + ' ' + (y1 + dy * 0.6) + ' ' + x2 + ' ' + y2 + '" class="dag-edge" style="stroke:' + color + '" marker-end="' + mkr(color) + '"/>';
-        svg += '<text x="' + ((x1 + x2) / 2 + off + 6) + '" y="' + (y1 + dy / 2) + '" class="dag-edge-label" style="fill:' + color + '">' + wire.result + '</text>';
+        var r = orthoPath(x1, y1, x2, y2);
+        svg += '<path d="' + r.d + '" class="dag-edge" style="stroke:' + color + '" marker-end="' + mkr(color) + '"/>';
+        svg += '<text x="' + r.lx + '" y="' + r.ly + '" class="dag-edge-label" style="fill:' + color + '">' + wire.result + '</text>';
     });
 
-    // --- Draw success terminal wires with colored Bezier curves ---
+    // --- Draw success terminal wires with right-angle routing ---
     for (var term in termWires) {
         var tw = termWires[term];
         var tpos = positions[term];
@@ -510,9 +522,9 @@ function showWorkflow(wf) {
             var color = resultColor(wire.result);
             var x1 = from.x + nodeW / 2, y1 = from.y + nodeH;
             var x2 = tpos.x + nodeW / 2, y2 = tpos.y;
-            var dy = y2 - y1;
-            svg += '<path d="M' + x1 + ' ' + y1 + ' C' + x1 + ' ' + (y1 + dy * 0.4) + ' ' + x2 + ' ' + (y1 + dy * 0.6) + ' ' + x2 + ' ' + y2 + '" class="dag-edge" style="stroke:' + color + '" marker-end="' + mkr(color) + '"/>';
-            svg += '<text x="' + ((x1 + x2) / 2 + 6) + '" y="' + (y1 + dy / 2) + '" class="dag-edge-label" style="fill:' + color + '">' + wire.result + '</text>';
+            var r = orthoPath(x1, y1, x2, y2);
+            svg += '<path d="' + r.d + '" class="dag-edge" style="stroke:' + color + '" marker-end="' + mkr(color) + '"/>';
+            svg += '<text x="' + r.lx + '" y="' + r.ly + '" class="dag-edge-label" style="fill:' + color + '">' + wire.result + '</text>';
         });
     }
 
@@ -546,14 +558,13 @@ function showWorkflow(wf) {
         var termCX = tpos.x + nodeW / 2;
         var termTY = tpos.y;
 
-        if (Math.abs(col.x - termCX) < 5) {
-            // Wire column is directly above terminal — straight down
+        var termEntry = (Math.abs(termCX - col.x) <= maxOffset) ? col.x : termCX;
+        if (col.x === termEntry) {
+            // Straight down into terminal at offset-adjusted entry point
             svg += '<path d="M' + col.x + ' ' + topY + ' L' + col.x + ' ' + termTY + '" class="dag-edge" style="stroke:' + color + '" marker-end="' + mkr(color) + '"/>';
         } else {
-            // Wire column offset from terminal — go down then curve to terminal center
-            var curveR = 15;
-            var dir = termCX > col.x ? 1 : -1;
-            svg += '<path d="M' + col.x + ' ' + topY + ' L' + col.x + ' ' + (termTY - curveR) + ' Q' + col.x + ' ' + termTY + ' ' + (col.x + dir * curveR) + ' ' + termTY + ' L' + termCX + ' ' + termTY + '" class="dag-edge" style="stroke:' + color + '" marker-end="' + mkr(color) + '"/>';
+            // Right-angle: go down to terminal top, then horizontal to center
+            svg += '<path d="M' + col.x + ' ' + topY + ' L' + col.x + ' ' + termTY + ' L' + termCX + ' ' + termTY + '" class="dag-edge" style="stroke:' + color + '" marker-end="' + mkr(color) + '"/>';
         }
     }
 
@@ -587,14 +598,13 @@ function showWorkflow(wf) {
         var destCX = dpos.x + nodeW / 2;
         var destTY = dpos.y;
 
-        if (Math.abs(scol.x - destCX) < 5) {
-            // Column is directly above destination — straight down
+        var destEntry = (Math.abs(destCX - scol.x) <= maxOffset) ? scol.x : destCX;
+        if (scol.x === destEntry) {
+            // Straight down into destination at offset-adjusted entry point
             svg += '<path d="M' + scol.x + ' ' + topY + ' L' + scol.x + ' ' + destTY + '" class="dag-edge" style="stroke:' + sColor + '" marker-end="' + mkr(sColor) + '"/>';
         } else {
-            // Column is offset from destination — go down then curve to destination center
-            var curveR = 15;
-            var dir = destCX > scol.x ? 1 : -1;
-            svg += '<path d="M' + scol.x + ' ' + topY + ' L' + scol.x + ' ' + (destTY - curveR) + ' Q' + scol.x + ' ' + destTY + ' ' + (scol.x + dir * curveR) + ' ' + destTY + ' L' + destCX + ' ' + destTY + '" class="dag-edge" style="stroke:' + sColor + '" marker-end="' + mkr(sColor) + '"/>';
+            // Right-angle: go down to destination top, then horizontal to center
+            svg += '<path d="M' + scol.x + ' ' + topY + ' L' + scol.x + ' ' + destTY + ' L' + destCX + ' ' + destTY + '" class="dag-edge" style="stroke:' + sColor + '" marker-end="' + mkr(sColor) + '"/>';
         }
     }
 
