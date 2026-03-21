@@ -162,6 +162,9 @@ func TestCompletionFilterPrefix_Empty(t *testing.T) {
 func TestGenerateCompletionScripts_CreatesFiles(t *testing.T) {
 	dir := t.TempDir()
 
+	// Redirect HOME so offerShellIntegration doesn't pollute the real ~/.zshrc.
+	t.Setenv("HOME", t.TempDir())
+
 	generateCompletionScripts(dir)
 
 	bashPath := filepath.Join(dir, "cloche.bash")
@@ -178,6 +181,7 @@ func TestGenerateCompletionScripts_CreatesFiles(t *testing.T) {
 // TestGenerateCompletionScripts_BashContent verifies bash script content.
 func TestGenerateCompletionScripts_BashContent(t *testing.T) {
 	dir := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
 	generateCompletionScripts(dir)
 
 	data, err := os.ReadFile(filepath.Join(dir, "cloche.bash"))
@@ -200,6 +204,7 @@ func TestGenerateCompletionScripts_BashContent(t *testing.T) {
 // TestGenerateCompletionScripts_ZshContent verifies zsh script content.
 func TestGenerateCompletionScripts_ZshContent(t *testing.T) {
 	dir := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
 	generateCompletionScripts(dir)
 
 	data, err := os.ReadFile(filepath.Join(dir, "_cloche"))

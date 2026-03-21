@@ -47,6 +47,7 @@ _cloche() {
     if (( ${#completions[@]} > 0 )); then
         compadd -a completions
     fi
+    return 0
 }
 
 _cloche "$@"
