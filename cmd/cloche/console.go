@@ -45,6 +45,12 @@ func cmdConsole(client pb.ClocheServiceClient, args []string) {
 		os.Exit(1)
 	}
 
+	// Validate: stdin must be a TTY for interactive console.
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		fmt.Fprintf(os.Stderr, "error: stdin is not a TTY; console requires an interactive terminal\n")
+		os.Exit(1)
+	}
+
 	// Detect terminal size.
 	cols, rows, err := term.GetSize(int(os.Stdin.Fd()))
 	if err != nil {

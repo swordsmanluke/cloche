@@ -187,13 +187,15 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		// incorrectly believe they are rate-limited.
 	}
 
-	// 5. Start the container
-	startCmd := exec.CommandContext(ctx, "docker", "start", containerID)
-	var startStderr bytes.Buffer
-	startCmd.Stderr = &startStderr
-	if err := startCmd.Run(); err != nil {
-		exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
-		return "", fmt.Errorf("starting container: %s: %w", startStderr.String(), err)
+	// 5. Start the container (skip for interactive — Attach handles start).
+	if !cfg.Interactive {
+		startCmd := exec.CommandContext(ctx, "docker", "start", containerID)
+		var startStderr bytes.Buffer
+		startCmd.Stderr = &startStderr
+		if err := startCmd.Run(); err != nil {
+			exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
+			return "", fmt.Errorf("starting container: %s: %w", startStderr.String(), err)
+		}
 	}
 
 	return containerID, nil
@@ -335,7 +337,10 @@ func (r *Runtime) CopyTo(ctx context.Context, containerID string, srcPath, dstPa
 // ReadWriteCloser that forwards writes to the container's stdin and reads
 // from its merged stdout/stderr.
 func (r *Runtime) Attach(ctx context.Context, containerID string) (io.ReadWriteCloser, error) {
-	cmd := exec.CommandContext(ctx, "docker", "attach", "--sig-proxy=false", containerID)
+	// Use "docker start -ai" rather than separate start + attach so stdin is
+	// connected from the moment the container process begins. This prevents
+	// agents from seeing "the input device is not a TTY" on startup.
+	cmd := exec.CommandContext(ctx, "docker", "start", "-ai", containerID)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf("creating stdin pipe: %w", err)
