@@ -491,6 +491,39 @@ Examples:
   cloche validate --workflow develop
 `,
 
+	"console": `cloche console — Start an interactive agent session in a container
+
+Launches a fresh container from the project's Docker image (same setup as a
+workflow run: project files copied in, auth credentials injected, overrides
+applied), starts the agent command with a TTY, and connects your terminal
+bidirectionally. The container is always kept after the session ends.
+
+Usage:
+  cloche console [--agent <command>]
+
+Flags:
+  --agent <command>    Override the agent command to run inside the container.
+                       Defaults to the agent resolution chain:
+                         1. workflow-level container.agent_command
+                         2. CLOCHE_AGENT_COMMAND environment variable
+                         3. Default: "claude"
+
+Must be run from inside a git repository with a .cloche/ directory.
+
+On exit, the container ID is printed so you can inspect or clean up:
+  docker exec -it <id> bash
+  docker cp <id>:/workspace/file.txt .
+  cloche delete <id>
+
+Exit codes:
+  Reflects the agent's exit code from inside the container.
+
+Examples:
+  cloche console
+  cloche console --agent bash
+  cloche console --agent "claude --model claude-opus-4-6"
+`,
+
 	"shutdown": `cloche shutdown — Shut down the daemon
 
 Sends a shutdown signal to the Cloche daemon. Refuses to shut down if
@@ -576,6 +609,7 @@ Workflow Runs:
   list       List runs for current project (or all projects)
   stop       Stop a running workflow
   delete     Delete a retained container
+  console    Start an interactive agent session in a container
 
 Orchestration:
   tasks      Show task pipeline and assignment state
