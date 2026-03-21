@@ -32,6 +32,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Pre-scan for --no-color before any other processing.
+	for _, arg := range os.Args[1:] {
+		if arg == "--no-color" {
+			noColorFlag = true
+			break
+		}
+	}
+
 	// Handle version flags before anything else
 	if os.Args[1] == "-v" || os.Args[1] == "--version" {
 		cmdVersion()
@@ -298,9 +306,12 @@ func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string
 	var all bool
 	var positional []string
 	for _, arg := range args {
-		if arg == "--all" {
+		switch arg {
+		case "--all":
 			all = true
-		} else {
+		case "--no-color":
+			// handled globally in main()
+		default:
 			positional = append(positional, arg)
 		}
 	}
@@ -328,11 +339,11 @@ func cmdStatusTaskLatest(ctx context.Context, client pb.ClocheServiceClient, tas
 		os.Exit(1)
 	}
 
-	fmt.Printf("Task:    %s\n", resp.TaskId)
+	fmt.Printf("Task:    %s\n", colorID(resp.TaskId))
 	if resp.Title != "" {
 		fmt.Printf("Title:   %s\n", resp.Title)
 	}
-	fmt.Printf("Status:  %s\n", resp.Status)
+	fmt.Printf("Status:  %s\n", colorStatus(resp.Status))
 	if resp.ProjectDir != "" {
 		fmt.Printf("Project: %s\n", resp.ProjectDir)
 	}
@@ -343,8 +354,8 @@ func cmdStatusTaskLatest(ctx context.Context, client pb.ClocheServiceClient, tas
 	}
 
 	latest := resp.Attempts[len(resp.Attempts)-1]
-	fmt.Printf("Attempt: %s\n", latest.AttemptId)
-	fmt.Printf("Result:  %s\n", latest.Result)
+	fmt.Printf("Attempt: %s\n", colorID(latest.AttemptId))
+	fmt.Printf("Result:  %s\n", colorStatus(latest.Result))
 	if latest.EndedAt != "" && latest.EndedAt != "0001-01-01 00:00:00 +0000 UTC" {
 		fmt.Printf("Ended:   %s\n", latest.EndedAt)
 	}
@@ -595,17 +606,17 @@ func printActiveTasks(ctx context.Context, client pb.ClocheServiceClient, w io.W
 		if title == "" {
 			title = task.TaskId
 		}
-		fmt.Fprintf(w, "  %s: %s\n", task.TaskId, title)
+		fmt.Fprintf(w, "  %s: %s\n", colorID(task.TaskId), title)
 		attemptID := task.LatestAttemptId
 		if attemptID != "" {
-			fmt.Fprintf(w, "    Attempt %d: %s\n", task.AttemptCount, attemptID)
+			fmt.Fprintf(w, "    Attempt %d: %s\n", task.AttemptCount, colorID(attemptID))
 			for _, run := range runsByTask[task.TaskId] {
 				dur := formatDuration(run.StartedAt)
 				compositeID := fmt.Sprintf("%s:%s:%s", task.TaskId, attemptID, run.WorkflowName)
 				if run.IsHost {
-					fmt.Fprintf(w, "      %s : %s\n", compositeID, dur)
+					fmt.Fprintf(w, "      %s : %s\n", colorID(compositeID), dur)
 				} else {
-					fmt.Fprintf(w, "        - %s : %s\n", compositeID, dur)
+					fmt.Fprintf(w, "        - %s : %s\n", colorID(compositeID), dur)
 				}
 			}
 		} else {
@@ -618,7 +629,7 @@ func printActiveTasks(ctx context.Context, client pb.ClocheServiceClient, w io.W
 	// Show runs whose task ID isn't in the active tasks list (orphans).
 	for taskID, runs := range runsByTask {
 		if !knownTaskIDs[taskID] {
-			fmt.Fprintf(w, "  %s: (unknown)\n", taskID)
+			fmt.Fprintf(w, "  %s: (unknown)\n", colorID(taskID))
 			for _, run := range runs {
 				dur := formatDuration(run.StartedAt)
 				fmt.Fprintf(w, "    %s: %s\n", run.WorkflowName, dur)
@@ -628,7 +639,7 @@ func printActiveTasks(ctx context.Context, client pb.ClocheServiceClient, w io.W
 	// Show runs with no task ID at all (legacy).
 	for _, run := range noTaskRuns {
 		dur := formatDuration(run.StartedAt)
-		fmt.Fprintf(w, "  %s: %s\n", run.RunId, dur)
+		fmt.Fprintf(w, "  %s: %s\n", colorID(run.RunId), dur)
 	}
 }
 

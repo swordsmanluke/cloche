@@ -962,6 +962,7 @@ status for that task.
 | Flag | Description |
 |------|-------------|
 | `--all` | Show global stats instead of project-specific stats (overview mode only). |
+| `--no-color` | Disable ANSI color output (also respects the `NO_COLOR` env var). |
 
 ### `cloche list`
 
@@ -1014,7 +1015,7 @@ Without `-f`, displays all logs captured to date and exits (even for active runs
 ### `cloche poll`
 
 ```
-cloche poll <id> [id...]
+cloche poll <id> [id...] [--no-color]
 ```
 
 Block until all specified targets finish. Polls every 2 seconds. Exits 0 if all runs succeeded, 1 if any failed or were cancelled.
@@ -1029,6 +1030,10 @@ Accepts any level of the ID hierarchy:
 | Step ID | `a133:develop:review` | waits until that step completes, then exits 0 |
 
 Polling a step ID is useful for waiting on a long-running step without waiting for the whole run to finish.
+
+| Flag | Description |
+|------|-------------|
+| `--no-color` | Disable ANSI color output (also respects the `NO_COLOR` env var). |
 
 With a single ID, prints step-level progress. With multiple IDs, displays a compact status summary (e.g. `id1: running`) and re-prints whenever a state changes. Use `cloche logs` for detailed output of individual runs.
 

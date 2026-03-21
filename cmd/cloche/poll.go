@@ -12,17 +12,26 @@ import (
 )
 
 func cmdPoll(client pb.ClocheServiceClient, args []string) {
-	if len(args) < 1 {
+	// Filter out --no-color (handled globally) and collect IDs.
+	var ids []string
+	for _, arg := range args {
+		if arg == "--no-color" {
+			continue
+		}
+		ids = append(ids, arg)
+	}
+
+	if len(ids) < 1 {
 		fmt.Fprintf(os.Stderr, "usage: cloche poll <id> [id...]\n")
 		fmt.Fprintf(os.Stderr, "  <id> may be a task ID, attempt ID, workflow ID (attempt:workflow),\n")
 		fmt.Fprintf(os.Stderr, "  or step ID (attempt:workflow:step)\n")
 		os.Exit(1)
 	}
 
-	if len(args) == 1 {
-		cmdPollSingle(client, args[0])
+	if len(ids) == 1 {
+		cmdPollSingle(client, ids[0])
 	} else {
-		exitCode := cmdPollMulti(client, args, os.Stdout, os.Stderr)
+		exitCode := cmdPollMulti(client, ids, os.Stdout, os.Stderr)
 		os.Exit(exitCode)
 	}
 }
@@ -64,7 +73,7 @@ func cmdPollSingle(client pb.ClocheServiceClient, id string) {
 			if exec.Result == "" {
 				fmt.Printf("[%s] Step %q started\n", ts, exec.StepName)
 			} else {
-				fmt.Printf("[%s] Step %q completed: %s\n", ts, exec.StepName, exec.Result)
+				fmt.Printf("[%s] Step %q completed: %s\n", ts, exec.StepName, colorStatus(exec.Result))
 			}
 		}
 		lastStepCount = len(resp.StepExecutions)
@@ -81,7 +90,7 @@ func cmdPollSingle(client pb.ClocheServiceClient, id string) {
 		// Print state changes
 		if resp.State != lastState {
 			ts := time.Now().Format("15:04:05")
-			fmt.Printf("[%s] Run %s is %s\n", ts, resp.RunId, resp.State)
+			fmt.Printf("[%s] Run %s is %s\n", ts, colorID(resp.RunId), colorStatus(resp.State))
 			lastState = resp.State
 		}
 
@@ -151,7 +160,7 @@ func cmdPollMulti(client pb.ClocheServiceClient, ids []string, stdout, stderr io
 
 		if changed {
 			for _, id := range ids {
-				fmt.Fprintf(stdout, "%s: %s\n", id, states[id])
+				fmt.Fprintf(stdout, "%s: %s\n", colorID(id), colorStatus(states[id]))
 			}
 			fmt.Fprintln(stdout)
 		}

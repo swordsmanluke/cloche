@@ -147,7 +147,8 @@ Arguments:
   <task-id>   A task ID. When omitted, shows a daemon status overview.
 
 Flags:
-  --all       Show global stats instead of project-specific stats (overview mode).
+  --all        Show global stats instead of project-specific stats (overview mode).
+  --no-color   Disable ANSI color output (also respects NO_COLOR env var).
 
 Output (task ID):
   Task        Task identifier
@@ -227,10 +228,13 @@ With a single ID, prints step-level progress.
 With multiple IDs, displays a compact status summary.
 
 Usage:
-  cloche poll <id> [id...]
+  cloche poll <id> [id...] [--no-color]
 
 Arguments:
   <id>    One or more IDs at any level of the hierarchy.
+
+Flags:
+  --no-color   Disable ANSI color output (also respects NO_COLOR env var).
 
 Exit codes:
   0    All runs (or steps) succeeded.

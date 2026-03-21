@@ -66,26 +66,3 @@ func cmdHealth(args []string) {
 	w.Flush()
 }
 
-func colorStatus(status string) string {
-	if !isTTY() {
-		return status
-	}
-	switch status {
-	case "green":
-		return "\033[32m" + status + "\033[0m"
-	case "yellow":
-		return "\033[33m" + status + "\033[0m"
-	case "red":
-		return "\033[31m" + status + "\033[0m"
-	default:
-		return status
-	}
-}
-
-func isTTY() bool {
-	fi, err := os.Stdout.Stat()
-	if err != nil {
-		return false
-	}
-	return fi.Mode()&os.ModeCharDevice != 0
-}
