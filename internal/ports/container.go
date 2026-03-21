@@ -22,6 +22,7 @@ type ContainerConfig struct {
 	AttemptID    string // attempt ID for unique container naming
 	Cmd          []string // override container command; defaults to ["cloche-agent", WorkflowName]
 	Prompt       string // prompt text to write into .cloche/runs/<task-id>/prompt.txt in container
+	Interactive  bool   // allocate TTY and keep stdin open (-it flags)
 }
 
 type ContainerRuntime interface {
@@ -33,6 +34,10 @@ type ContainerRuntime interface {
 	Logs(ctx context.Context, containerID string) (string, error)
 	Remove(ctx context.Context, containerID string) error
 	Inspect(ctx context.Context, containerID string) (*ContainerStatus, error)
+	// Attach connects to a running container's stdin/stdout/stderr for
+	// bidirectional I/O. Requires the container to have been started with
+	// Interactive=true in its ContainerConfig.
+	Attach(ctx context.Context, containerID string) (io.ReadWriteCloser, error)
 }
 
 // ImageEnsurer is an optional interface that a ContainerRuntime may implement
@@ -53,4 +58,10 @@ type ContainerCommitter interface {
 // Used to inject updated scripts before resuming a run.
 type ContainerCopier interface {
 	CopyTo(ctx context.Context, containerID string, srcPath, dstPath string) error
+}
+
+// TerminalResizer is an optional interface for resizing the pseudo-TTY of an
+// interactive container. Used to forward SIGWINCH events from the CLI.
+type TerminalResizer interface {
+	ResizeTerminal(ctx context.Context, containerID string, rows, cols int) error
 }

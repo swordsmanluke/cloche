@@ -42,6 +42,10 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		"--log-driver", "json-file",
 	}
 
+	if cfg.Interactive {
+		args = append(args, "-i", "-t")
+	}
+
 	// Name container uniquely. Use task-attempt-workflow when available
 	// (allows concurrent runs of the same workflow), fall back to run ID.
 	containerName := cfg.RunID
@@ -324,6 +328,66 @@ func (r *Runtime) CopyTo(ctx context.Context, containerID string, srcPath, dstPa
 		return fmt.Errorf("copying to container: %s: %w", stderr.String(), err)
 	}
 	return nil
+}
+
+// Attach connects to a running interactive container's stdin/stdout/stderr.
+// The container must have been started with Interactive=true. Returns a
+// ReadWriteCloser that forwards writes to the container's stdin and reads
+// from its merged stdout/stderr.
+func (r *Runtime) Attach(ctx context.Context, containerID string) (io.ReadWriteCloser, error) {
+	cmd := exec.CommandContext(ctx, "docker", "attach", "--sig-proxy=false", containerID)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, fmt.Errorf("creating stdin pipe: %w", err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("creating stdout pipe: %w", err)
+	}
+	// Merge container stderr into the stdout pipe.
+	cmd.Stderr = cmd.Stdout
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("attaching to container: %w", err)
+	}
+
+	return &attachConn{stdin: stdin, stdout: stdout, cmd: cmd}, nil
+}
+
+// ResizeTerminal resizes the pseudo-TTY of a running interactive container
+// using docker exec stty.
+func (r *Runtime) ResizeTerminal(ctx context.Context, containerID string, rows, cols int) error {
+	cmd := exec.CommandContext(ctx, "docker", "exec", containerID,
+		"stty", "rows", strconv.Itoa(rows), "cols", strconv.Itoa(cols))
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("resizing terminal: %s: %w", stderr.String(), err)
+	}
+	return nil
+}
+
+// attachConn implements io.ReadWriteCloser for a docker attach session,
+// forwarding reads from the container's stdout and writes to its stdin.
+type attachConn struct {
+	stdin  io.WriteCloser
+	stdout io.ReadCloser
+	cmd    *exec.Cmd
+}
+
+func (a *attachConn) Read(p []byte) (int, error) {
+	return a.stdout.Read(p)
+}
+
+func (a *attachConn) Write(p []byte) (int, error) {
+	return a.stdin.Write(p)
+}
+
+func (a *attachConn) Close() error {
+	err := a.stdin.Close()
+	a.stdout.Close()
+	a.cmd.Wait()
+	return err
 }
 
 // copyProjectToContainer creates a filtered tar archive of the project

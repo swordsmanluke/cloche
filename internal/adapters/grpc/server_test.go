@@ -2762,6 +2762,10 @@ func (m *mockStopRuntime) Inspect(_ context.Context, _ string) (*ports.Container
 	return &ports.ContainerStatus{}, nil
 }
 
+func (m *mockStopRuntime) Attach(_ context.Context, _ string) (io.ReadWriteCloser, error) {
+	return nil, fmt.Errorf("attach not supported in mock")
+}
+
 func TestServer_StopRun_StopsAllActiveRunsForTask(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

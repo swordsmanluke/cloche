@@ -138,6 +138,10 @@ func (r *Runtime) Wait(ctx context.Context, containerID string) (int, error) {
 	}
 }
 
+func (r *Runtime) Attach(ctx context.Context, containerID string) (io.ReadWriteCloser, error) {
+	return nil, fmt.Errorf("attach not supported in local mode")
+}
+
 func (r *Runtime) Logs(ctx context.Context, containerID string) (string, error) {
 	return "", nil
 }

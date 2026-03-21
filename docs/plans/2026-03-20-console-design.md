@@ -1,7 +1,7 @@
 # Interactive Console Design
 
 **Date:** 2026-03-20
-**Status:** Design
+**Status:** Implemented (container runtime layer complete; gRPC/CLI pending)
 
 ## Problem
 
@@ -137,31 +137,31 @@ facilitates the connection.
 
 ### Container Runtime Changes (`internal/ports/container.go`)
 
-Add a new method to `ContainerRuntime`:
-
-```go
-// StartInteractive creates and starts a container with TTY and stdin attached.
-// Returns the container ID and a bidirectional ReadWriteCloser for the
-// attached I/O stream.
-StartInteractive(ctx context.Context, cfg ContainerConfig) (containerID string, io ReadWriteCloser, err error)
-```
-
-Or alternatively, add an `Interactive bool` field to `ContainerConfig` and have
-`Start` allocate a TTY when set, then use a new `Attach` method:
+`ContainerConfig` gains an `Interactive bool` field. When set, `Start` allocates
+a TTY and keeps stdin open (`-it` flags). `ContainerRuntime` gains two additions:
 
 ```go
 type ContainerConfig struct {
     // ... existing fields ...
-    Interactive bool // allocate TTY and keep stdin open
+    Interactive bool // allocate TTY and keep stdin open (-it flags)
 }
 
-// Attach connects to a running container's stdin/stdout/stderr.
-// Requires the container to have been started with Interactive=true.
+// Attach connects to a running container's stdin/stdout/stderr for
+// bidirectional I/O. Requires the container to have been started with
+// Interactive=true in its ContainerConfig.
 Attach(ctx context.Context, containerID string) (io.ReadWriteCloser, error)
 ```
 
-The second approach is cleaner — it separates creation from attachment and
-reuses the existing `Start` signature.
+Terminal resize is exposed as a separate optional interface so callers can
+check for support at runtime:
+
+```go
+// TerminalResizer is an optional interface for resizing the pseudo-TTY of an
+// interactive container. Used to forward SIGWINCH events from the CLI.
+type TerminalResizer interface {
+    ResizeTerminal(ctx context.Context, containerID string, rows, cols int) error
+}
+```
 
 ### Docker Adapter (`internal/adapters/docker/runtime.go`)
 
@@ -184,9 +184,9 @@ func (r *Runtime) Attach(ctx context.Context, containerID string) (io.ReadWriteC
 The `attachConn` struct implements `io.ReadWriteCloser` by delegating reads to
 stdout and writes to stdin.
 
-**Terminal resize:** Implement via `docker exec <id> stty rows R cols C` or
-the Docker Engine API (`/containers/{id}/resize`). The exec approach avoids
-adding the Docker API client as a dependency.
+**Terminal resize:** Implemented as `ResizeTerminal` (satisfying the optional
+`TerminalResizer` interface) via `docker exec <id> stty rows R cols C`. The
+exec approach avoids adding the Docker Engine API client as a dependency.
 
 ### CLI (`cmd/cloche/main.go`)
 
