@@ -228,7 +228,10 @@ task with attempt headers.
 workflow run within an attempt is still active (running or pending) that state
 takes precedence; otherwise the worst terminal state wins — failed > cancelled >
 succeeded. This means a single failed child run marks the entire attempt as
-failed.
+failed. When multiple runs share the same workflow name (e.g. a finalize workflow
+that was re-run after a failure), only the most recently started run is
+considered — earlier runs of the same workflow are superseded and do not affect
+the aggregate result.
 
 **Task status** always reflects the status of the task's latest (most recent)
 attempt, not an aggregate across all historical attempts.

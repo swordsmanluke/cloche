@@ -491,10 +491,38 @@ func (s *ClocheServer) resumeHostRun(ctx context.Context, run *domain.Run, stepN
 	}
 
 	go func() {
-		runner.ResumeRunAsNewAttempt(context.Background(), run, stepName, newRunID)
+		result, runErr := runner.ResumeRunAsNewAttempt(context.Background(), run, stepName, newRunID)
+		s.completeAttemptFromResult(newAttempt.ID, newAttempt.TaskID, result, runErr)
 	}()
 
 	return &pb.RunWorkflowResponse{RunId: newRunID, AttemptId: newAttempt.ID}, nil
+}
+
+// completeAttemptFromResult marks an attempt as complete based on the outcome
+// of a host run. No-op when attempt tracking is not configured or IDs are empty.
+func (s *ClocheServer) completeAttemptFromResult(attemptID, taskID string, result *host.RunResult, runErr error) {
+	if s.attemptStore == nil || attemptID == "" || taskID == "" {
+		return
+	}
+	ctx := context.Background()
+	attempt, err := s.attemptStore.GetAttempt(ctx, attemptID)
+	if err != nil {
+		log.Printf("server: failed to get attempt %s for completion: %v", attemptID, err)
+		return
+	}
+	var ar domain.AttemptResult
+	switch {
+	case runErr == nil && result != nil && result.State == domain.RunStateSucceeded:
+		ar = domain.AttemptResultSucceeded
+	case runErr == nil && result != nil && result.State == domain.RunStateCancelled:
+		ar = domain.AttemptResultCancelled
+	default:
+		ar = domain.AttemptResultFailed
+	}
+	attempt.Complete(ar)
+	if err := s.attemptStore.SaveAttempt(ctx, attempt); err != nil {
+		log.Printf("server: failed to complete attempt %s: %v", attemptID, err)
+	}
 }
 
 // resumeContainerRun creates a new attempt and run for resuming a failed

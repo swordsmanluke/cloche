@@ -162,14 +162,45 @@ func WorseState(a, b RunState) RunState {
 	return a
 }
 
+// latestByWorkflowName returns runs deduplicated by WorkflowName, keeping
+// only the most recently started run per name. Runs without a WorkflowName
+// are preserved as-is. This ensures that when a workflow is re-run (e.g.
+// a finalize that was resumed after failure), only the latest run counts.
+func latestByWorkflowName(runs []*Run) []*Run {
+	latest := make(map[string]*Run, len(runs))
+	var unnamed []*Run
+	for _, r := range runs {
+		if r.WorkflowName == "" {
+			unnamed = append(unnamed, r)
+			continue
+		}
+		if prev, ok := latest[r.WorkflowName]; !ok || r.StartedAt.After(prev.StartedAt) {
+			latest[r.WorkflowName] = r
+		}
+	}
+	result := make([]*Run, 0, len(latest)+len(unnamed))
+	for _, r := range latest {
+		result = append(result, r)
+	}
+	return append(result, unnamed...)
+}
+
 // AttemptAggregateStatus computes the aggregate status for runs within a single
 // attempt. Active statuses (running, pending) outweigh terminal ones. Among
 // terminal runs, the worst outcome wins: failed > cancelled > succeeded. This
 // ensures that if any run in an attempt fails, the attempt is marked failed.
+//
+// When multiple runs share the same workflow name (e.g. a finalize run that was
+// re-run after a failure), only the most recently started run is considered;
+// earlier runs of the same workflow are superseded and do not affect the result.
 func AttemptAggregateStatus(runs []*Run) RunState {
 	if len(runs) == 0 {
 		return RunStatePending
 	}
+
+	// Deduplicate: keep only the most recent run per workflow name so that
+	// a successfully re-run finalize supersedes the earlier failed one.
+	runs = latestByWorkflowName(runs)
 
 	hasRunning := false
 	hasPending := false

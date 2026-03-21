@@ -242,8 +242,13 @@ func TestTaskAggregateStatus(t *testing.T) {
 
 func TestAttemptAggregateStatus(t *testing.T) {
 	now := time.Now()
+	// Each call to mkRun produces a run with a unique workflow name so that
+	// deduplication in AttemptAggregateStatus does not collapse distinct runs
+	// that happen to be built with the same helper.
+	n := 0
 	mkRun := func(state domain.RunState) *domain.Run {
-		r := domain.NewRun("r", "wf")
+		n++
+		r := domain.NewRun("r", "wf"+string(rune('a'+n-1)))
 		r.State = state
 		r.StartedAt = now
 		return r
@@ -251,6 +256,14 @@ func TestAttemptAggregateStatus(t *testing.T) {
 	mkHostRun := func(state domain.RunState) *domain.Run {
 		r := mkRun(state)
 		r.IsHost = true
+		return r
+	}
+	// mkRunNamed creates a run with an explicit workflow name and start time,
+	// for testing deduplication behaviour.
+	mkRunNamed := func(state domain.RunState, wfName string, startedAt time.Time) *domain.Run {
+		r := domain.NewRun("r", wfName)
+		r.State = state
+		r.StartedAt = startedAt
 		return r
 	}
 
@@ -338,6 +351,38 @@ func TestAttemptAggregateStatus(t *testing.T) {
 				mkRun(domain.RunStateSucceeded),
 			},
 			want: domain.RunStateSucceeded,
+		},
+		{
+			// Regression: when finalize is re-run after a failure, the new
+			// succeeded run supersedes the old failed run. The task should
+			// not remain 'failed' after a successful re-run of the same workflow.
+			name: "re-run finalize supersedes earlier failure",
+			runs: []*domain.Run{
+				mkRunNamed(domain.RunStateSucceeded, "main", now),
+				mkRunNamed(domain.RunStateFailed, "finalize", now.Add(time.Second)),
+				mkRunNamed(domain.RunStateSucceeded, "finalize", now.Add(2*time.Second)),
+			},
+			want: domain.RunStateSucceeded,
+		},
+		{
+			// A re-run that itself fails should still produce failed.
+			name: "re-run finalize that also fails stays failed",
+			runs: []*domain.Run{
+				mkRunNamed(domain.RunStateSucceeded, "main", now),
+				mkRunNamed(domain.RunStateFailed, "finalize", now.Add(time.Second)),
+				mkRunNamed(domain.RunStateFailed, "finalize", now.Add(2*time.Second)),
+			},
+			want: domain.RunStateFailed,
+		},
+		{
+			// A re-run that is still running should report running.
+			name: "re-run finalize still running reports running",
+			runs: []*domain.Run{
+				mkRunNamed(domain.RunStateSucceeded, "main", now),
+				mkRunNamed(domain.RunStateFailed, "finalize", now.Add(time.Second)),
+				mkRunNamed(domain.RunStateRunning, "finalize", now.Add(2*time.Second)),
+			},
+			want: domain.RunStateRunning,
 		},
 	}
 

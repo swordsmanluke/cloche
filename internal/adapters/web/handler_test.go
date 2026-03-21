@@ -2466,7 +2466,9 @@ func TestTaskAggregateStatus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var runs []*domain.Run
 			for i, s := range tt.states {
-				r := domain.NewRun(fmt.Sprintf("r-%d", i), "wf")
+				// Use a distinct workflow name per run so deduplication in
+				// AttemptAggregateStatus does not collapse unrelated runs.
+				r := domain.NewRun(fmt.Sprintf("r-%d", i), fmt.Sprintf("wf-%d", i))
 				r.State = s
 				if tt.times != nil && i < len(tt.times) {
 					r.StartedAt = tt.times[i]
