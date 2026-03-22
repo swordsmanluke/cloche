@@ -82,6 +82,14 @@ func (s *ClocheServer) activityLoggerFor(projectDir string) *activitylog.Logger 
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.activityLoggerLocked(projectDir)
+}
+
+// activityLoggerLocked is like activityLoggerFor but assumes s.mu is already held.
+func (s *ClocheServer) activityLoggerLocked(projectDir string) *activitylog.Logger {
+	if projectDir == "" {
+		return nil
+	}
 	if l, ok := s.activityLoggers[projectDir]; ok {
 		return l
 	}
@@ -2087,7 +2095,7 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 // sentinel task.
 func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir string, dedupTimeout time.Duration) *host.Loop {
 	hostWFs, _ := host.FindHostWorkflows(projectDir)
-	alog := s.activityLoggerFor(projectDir)
+	alog := s.activityLoggerLocked(projectDir)
 
 	// Phase 1: list-tasks function.
 	// If no list-tasks workflow is defined, return a single untracked sentinel
