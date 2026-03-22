@@ -268,8 +268,7 @@ func TestDefaultDBPath(t *testing.T) {
 	assert.True(t, filepath.IsAbs(path))
 }
 
-func TestDefaultSocketAddr(t *testing.T) {
-	addr := DefaultSocketAddr()
-	assert.True(t, len(addr) > 7 && addr[:7] == "unix://")
-	assert.Contains(t, addr, ".config/cloche/cloche.sock")
+func TestDefaultAddr(t *testing.T) {
+	addr := DefaultAddr()
+	assert.Equal(t, "127.0.0.1:50051", addr)
 }

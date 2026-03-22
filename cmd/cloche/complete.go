@@ -89,7 +89,7 @@ func resolveCompletions(index int, words []string) []string {
 func queryDaemonCompletions(index int, words []string, projectDir string) []string {
 	addr := os.Getenv("CLOCHE_ADDR")
 	if addr == "" {
-		addr = config.DefaultSocketAddr()
+		addr = config.DefaultAddr()
 	}
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))

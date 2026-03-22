@@ -140,7 +140,7 @@ func main() {
 	// Commands that need a daemon connection
 	addr := os.Getenv("CLOCHE_ADDR")
 	if addr == "" {
-		addr = config.DefaultSocketAddr()
+		addr = config.DefaultAddr()
 	}
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -1110,7 +1110,7 @@ func resolveRunContext() (taskID, attemptID string, err error) {
 func dialDaemon() (*grpc.ClientConn, error) {
 	addr := os.Getenv("CLOCHE_ADDR")
 	if addr == "" {
-		addr = config.DefaultSocketAddr()
+		addr = config.DefaultAddr()
 	}
 	return grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 }
@@ -1220,7 +1220,7 @@ func cmdVersion() {
 	daemonVersion := "<unavailable>"
 	addr := os.Getenv("CLOCHE_ADDR")
 	if addr == "" {
-		addr = config.DefaultSocketAddr()
+		addr = config.DefaultAddr()
 	}
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err == nil {

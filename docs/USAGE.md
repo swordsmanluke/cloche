@@ -1339,8 +1339,7 @@ my-project/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLOCHE_LISTEN` | `unix://~/.config/cloche/cloche.sock` | Listen address |
-| `CLOCHE_TCP` | `127.0.0.1:50051` | Additional TCP listener address (for container access via `clo`) |
+| `CLOCHE_ADDR` | `127.0.0.1:50051` | gRPC listen address |
 | `CLOCHE_DB` | `~/.config/cloche/cloche.db` | SQLite database path |
 | `CLOCHE_RUNTIME` | `docker` | `docker` or `local` (subprocess, for dev only) |
 | `CLOCHE_IMAGE` | `cloche-agent:latest` | Default Docker image |
@@ -1355,7 +1354,7 @@ my-project/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLOCHE_ADDR` | `unix://~/.config/cloche/cloche.sock` | Daemon gRPC address |
+| `CLOCHE_ADDR` | `127.0.0.1:50051` | Daemon gRPC address |
 | `CLOCHE_HTTP` | `localhost:8080` | Daemon HTTP address |
 
 ### Host Step Runtime Variables

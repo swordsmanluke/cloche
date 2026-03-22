@@ -9,18 +9,12 @@ import (
 
 type DaemonConfig struct {
 	Listen     string `toml:"listen"`
-	TCP        string `toml:"tcp"`
 	HTTP       string `toml:"http"`
 	Image      string `toml:"image"`
 	DB         string `toml:"db"`
 	Runtime    string `toml:"runtime"`
 	AgentPath  string `toml:"agent_path"`
 	LLMCommand string `toml:"llm_command"`
-}
-
-// DefaultTCPAddr returns the default TCP address for the gRPC server.
-func DefaultTCPAddr() string {
-	return "127.0.0.1:50051"
 }
 
 type EvolutionConfig struct {
@@ -145,9 +139,9 @@ func DefaultDBPath() string {
 	return filepath.Join(StateDir(), "cloche.db")
 }
 
-// DefaultSocketAddr returns the default Unix socket address: unix://~/.config/cloche/cloche.sock
-func DefaultSocketAddr() string {
-	return "unix://" + filepath.Join(StateDir(), "cloche.sock")
+// DefaultAddr returns the default gRPC listen address.
+func DefaultAddr() string {
+	return "127.0.0.1:50051"
 }
 
 // LoadGlobalFrom reads the global config from a specific path.

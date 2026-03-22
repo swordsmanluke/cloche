@@ -44,8 +44,7 @@ func main() {
 	}
 
 	dbPath := envOrConfig("CLOCHE_DB", globalCfg.Daemon.DB, config.DefaultDBPath())
-	listenAddr := envOrConfig("CLOCHE_LISTEN", globalCfg.Daemon.Listen, config.DefaultSocketAddr())
-	tcpAddr := envOrConfig("CLOCHE_TCP", globalCfg.Daemon.TCP, config.DefaultTCPAddr())
+	listenAddr := envOrConfig("CLOCHE_ADDR", globalCfg.Daemon.Listen, config.DefaultAddr())
 
 	store, err := sqlite.NewStore(dbPath)
 	if err != nil {
@@ -95,25 +94,10 @@ func main() {
 
 	srv.SetShutdownFunc(func() { grpcServer.GracefulStop() })
 
-	lis, err := listen(listenAddr)
+	lis, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to listen on %s: %v\n", listenAddr, err)
 		os.Exit(1)
-	}
-
-	// Start additional TCP listener so containers can reach the daemon.
-	if tcpAddr != "" {
-		tcpLis, err := listen(tcpAddr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to listen on TCP %s: %v\n", tcpAddr, err)
-		} else {
-			fmt.Fprintf(os.Stderr, "cloched also listening on %s (TCP)\n", tcpAddr)
-			go func() {
-				if err := grpcServer.Serve(tcpLis); err != nil {
-					fmt.Fprintf(os.Stderr, "TCP server error: %v\n", err)
-				}
-			}()
-		}
 	}
 
 	var httpServer *http.Server
@@ -138,24 +122,23 @@ func main() {
 		}()
 	}
 
-	// Auto-execute main workflow for active projects
+	fmt.Fprintf(os.Stderr, "cloched listening on %s\n", listenAddr)
+	go func() {
+		if err := grpcServer.Serve(lis); err != nil {
+			fmt.Fprintf(os.Stderr, "server error: %v\n", err)
+		}
+	}()
+
+	// Auto-execute main workflow for active projects (after gRPC is serving).
 	autoRunActiveProjects(store, srv)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
-	go func() {
-		<-sigCh
-		if httpServer != nil {
-			httpServer.Close()
-		}
-		grpcServer.GracefulStop()
-	}()
-
-	fmt.Fprintf(os.Stderr, "cloched listening on %s\n", listenAddr)
-	if err := grpcServer.Serve(lis); err != nil {
-		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
-		os.Exit(1)
+	<-sigCh
+	if httpServer != nil {
+		httpServer.Close()
 	}
+	grpcServer.GracefulStop()
 }
 
 func initRuntime(cfg *config.Config) (ports.ContainerRuntime, error) {
@@ -220,14 +203,6 @@ func initEvolution(globalCfg *config.Config, evoStore ports.EvolutionStore, capS
 	return trigger
 }
 
-func listen(addr string) (net.Listener, error) {
-	if len(addr) > 7 && addr[:7] == "unix://" {
-		sockPath := addr[7:]
-		os.Remove(sockPath)
-		return net.Listen("unix", sockPath)
-	}
-	return net.Listen("tcp", addr)
-}
 
 // autoRunActiveProjects scans known projects for active = true in their config
 // and starts the orchestration loop for each one via EnableLoop.

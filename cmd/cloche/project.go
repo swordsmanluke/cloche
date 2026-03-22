@@ -28,7 +28,7 @@ func cmdProject(args []string) {
 	// Connect to daemon.
 	addr := os.Getenv("CLOCHE_ADDR")
 	if addr == "" {
-		addr = config.DefaultSocketAddr()
+		addr = config.DefaultAddr()
 	}
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
