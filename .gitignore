@@ -38,3 +38,4 @@ examples/mini-redis/test_runner
 examples/*/.cloche/
 .cloche/logs/
 .cloche/runs/
+.cloche/activity.log
