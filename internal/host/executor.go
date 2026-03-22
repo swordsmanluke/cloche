@@ -169,9 +169,12 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 		cmd.Env = append(cmd.Env, "CLOCHE_RUN_ID="+e.HostRunID)
 	}
 
-	// Pass daemon-assigned task ID if available
+	// Pass daemon-assigned task and attempt IDs if available
 	if e.TaskID != "" {
 		cmd.Env = append(cmd.Env, "CLOCHE_TASK_ID="+e.TaskID)
+	}
+	if e.AttemptID != "" {
+		cmd.Env = append(cmd.Env, "CLOCHE_ATTEMPT_ID="+e.AttemptID)
 	}
 
 	// Pass extra env vars (e.g. finalize phase outcome vars)
