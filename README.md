@@ -18,7 +18,7 @@ covering build from source, `go install`, and other methods.
 Quick version:
 
 ```
-git clone https://github.com/cloche-dev/cloche.git
+git clone https://github.com/swordsmanluke/cloche.git
 cd cloche
 make install
 ```
