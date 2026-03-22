@@ -206,10 +206,14 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		return nil, fmt.Errorf("creating run: %w", err)
 	}
 
-	// Resolve image: request-level override, then server default
+	// Resolve image: request-level override, per-project config, then server default.
 	image := req.Image
 	if image == "" {
-		image = s.defaultImage
+		if projCfg, err := config.Load(req.ProjectDir); err == nil && projCfg.Daemon.Image != "" {
+			image = projCfg.Daemon.Image
+		} else {
+			image = s.defaultImage
+		}
 	}
 
 	// Launch container start + tracking in background so the RPC returns immediately.
@@ -2574,6 +2578,9 @@ func (s *ClocheServer) Console(stream pb.ClocheService_ConsoleServer) error {
 
 	ctx := context.Background()
 	image := s.defaultImage
+	if projCfg, err := config.Load(projectDir); err == nil && projCfg.Daemon.Image != "" {
+		image = projCfg.Daemon.Image
+	}
 
 	// Rebuild image if the Dockerfile has changed.
 	if ensurer, ok := s.container.(ports.ImageEnsurer); ok {

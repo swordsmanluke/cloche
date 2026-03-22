@@ -71,9 +71,12 @@ Do not modify the test files — fix the implementation instead.
 {previous_output}
 `
 
-var defaultConfigTOML = `# Cloche project configuration
+var defaultConfigTOMLTemplate = `# Cloche project configuration
 # Set active = true so cloched picks up tasks automatically.
 active = false
+
+[daemon]
+image = "%s"
 
 # [orchestration]
 # concurrency              = 1
@@ -554,6 +557,14 @@ if __name__ == "__main__":
     unittest.main()
 `
 
+func projectImageName() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "cloche-agent:latest"
+	}
+	return filepath.Base(cwd) + "-cloche-agent:latest"
+}
+
 func cmdInit(args []string) {
 	workflow := "develop"
 	baseImage := "cloche-agent:latest"
@@ -572,6 +583,8 @@ func cmdInit(args []string) {
 			}
 		}
 	}
+
+	imageName := projectImageName()
 
 	clocheDir := ".cloche"
 	workflowFile := filepath.Join(clocheDir, workflow+".cloche")
@@ -604,7 +617,7 @@ func cmdInit(args []string) {
 	}{
 		{workflowFile, fmt.Sprintf(workflowTemplate, workflow), 0644},
 		{filepath.Join(clocheDir, "Dockerfile"), fmt.Sprintf(dockerfileTemplate, baseImage), 0644},
-		{filepath.Join(clocheDir, "config.toml"), defaultConfigTOML, 0644},
+		{filepath.Join(clocheDir, "config.toml"), fmt.Sprintf(defaultConfigTOMLTemplate, imageName), 0644},
 		{filepath.Join(clocheDir, "prompts", "implement.md"), implementPrompt, 0644},
 		{filepath.Join(clocheDir, "prompts", "fix-tests.md"), fixTestsPrompt, 0644},
 		{filepath.Join(clocheDir, "prompts", "fix-merge.md"), fixMergePrompt, 0644},
@@ -657,7 +670,7 @@ func cmdInit(args []string) {
 	fmt.Fprintf(os.Stderr, "  2. Edit %s        — adjust the test command for your project\n", workflowFile)
 	fmt.Fprintf(os.Stderr, "  3. Edit .cloche/Dockerfile            — add your project's dependencies\n")
 	fmt.Fprintf(os.Stderr, "  4. Edit .cloche/scripts/get-tasks.py  — connect to your task tracker\n")
-	fmt.Fprintf(os.Stderr, "  5. docker build -t cloche-agent -f .cloche/Dockerfile .\n")
+	fmt.Fprintf(os.Stderr, "  5. docker build -t %s -f .cloche/Dockerfile .\n", imageName)
 	fmt.Fprintf(os.Stderr, "  6. cloche loop                        — start the orchestration loop\n")
 	fmt.Fprintf(os.Stderr, "\nThe sample tasks in .cloche/task_list.json verify your setup end-to-end.\n")
 	fmt.Fprintf(os.Stderr, "Task #1 asks the agent to create a file; task #2 cleans up after itself.\n")
