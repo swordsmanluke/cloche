@@ -132,6 +132,12 @@ func main() {
 	// Auto-execute main workflow for active projects (after gRPC is serving).
 	autoRunActiveProjects(store, srv)
 
+	// Start background scanner that detects workflows stuck in "running" state
+	// due to undetected container exits (crashes, OOM kills, etc.).
+	scanCtx, scanCancel := context.WithCancel(context.Background())
+	defer scanCancel()
+	srv.StartStuckWorkflowScanner(scanCtx)
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	<-sigCh

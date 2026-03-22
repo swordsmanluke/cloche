@@ -85,6 +85,22 @@ func (s *ClocheServer) activityLoggerFor(projectDir string) *activitylog.Logger 
 	return s.activityLoggerLocked(projectDir)
 }
 
+// haltProjectLoop halts the orchestration loop for the given project directory,
+// if one is active. Used when container failures are detected to prevent
+// the loop from spinning in a failure cycle.
+func (s *ClocheServer) haltProjectLoop(projectDir, reason string) {
+	if projectDir == "" {
+		return
+	}
+	s.mu.Lock()
+	loop, ok := s.loops[projectDir]
+	s.mu.Unlock()
+	if ok && loop != nil {
+		loop.Halt(reason)
+		log.Printf("orchestration loop halted for %s: %s", projectDir, reason)
+	}
+}
+
 // activityLoggerLocked is like activityLoggerFor but assumes s.mu is already held.
 func (s *ClocheServer) activityLoggerLocked(projectDir string) *activitylog.Logger {
 	if projectDir == "" {
@@ -664,8 +680,12 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 				run.Fail(fmt.Sprintf("failed to ensure image: %v", err))
 				_ = s.store.UpdateRun(ctx, run)
 			}
+			if s.logBroadcast != nil {
+				s.logBroadcast.Finish(runID)
+			}
 			log.Printf("run %s: failed to ensure image: %v", runID, err)
-				return
+			s.haltProjectLoop(req.ProjectDir, fmt.Sprintf("image build failed for run %s: %v", runID, err))
+			return
 		}
 	}
 
@@ -704,7 +724,11 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 			run.Fail(fmt.Sprintf("failed to start container: %v", err))
 			_ = s.store.UpdateRun(ctx, run)
 		}
+		if s.logBroadcast != nil {
+			s.logBroadcast.Finish(runID)
+		}
 		log.Printf("run %s: failed to start container: %v", runID, err)
+		s.haltProjectLoop(req.ProjectDir, fmt.Sprintf("container failed to start for run %s: %v", runID, err))
 		return
 	}
 
@@ -750,7 +774,18 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	reader, err := s.container.AttachOutput(ctx, containerID)
 	if err != nil {
 		log.Printf("failed to attach to output for run %s: %v", runID, err)
-			return
+		if run, rerr := s.store.GetRun(ctx, runID); rerr == nil && run != nil && run.State == domain.RunStateRunning {
+			run.Fail(fmt.Sprintf("failed to attach to container output: %v", err))
+			_ = s.store.UpdateRun(ctx, run)
+		}
+		if s.logBroadcast != nil {
+			s.logBroadcast.Finish(runID)
+		}
+		s.mu.Lock()
+		delete(s.runIDs, runID)
+		s.mu.Unlock()
+		s.haltProjectLoop(projectDir, fmt.Sprintf("container output attach failed for run %s: %v", runID, err))
+		return
 	}
 
 	// Parse JSON-lines status messages
@@ -902,6 +937,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		return
 	}
 	if run.State == domain.RunStateRunning {
+		unexpectedExit := false
 		if reportedResult == "succeeded" {
 			run.Complete(domain.RunStateSucceeded)
 		} else if reportedResult != "" {
@@ -913,9 +949,15 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		} else if exitCode == 0 {
 			run.Complete(domain.RunStateSucceeded)
 		} else {
+			// Container exited with a non-zero code without reporting a result —
+			// this is an unexpected crash or abort, not a normal workflow failure.
 			run.Fail(fmt.Sprintf("container exited with code %d", exitCode))
+			unexpectedExit = true
 		}
 		_ = s.store.UpdateRun(ctx, run)
+		if unexpectedExit {
+			s.haltProjectLoop(projectDir, fmt.Sprintf("container exited unexpectedly with code %d for run %s", exitCode, runID))
+		}
 	}
 
 	// Signal live-stream subscribers that this run is done. This must happen
@@ -2772,4 +2814,95 @@ func (s *ClocheServer) ListContextKeys(ctx context.Context, req *pb.ListContextK
 		return nil, err
 	}
 	return &pb.ListContextKeysResponse{Keys: keys}, nil
+}
+
+// stuckContainerThreshold is how long a container must have been dead before
+// the stuck workflow scanner declares the associated run stuck.
+const stuckContainerThreshold = 90 * time.Second
+
+// StartStuckWorkflowScanner starts a background goroutine that periodically
+// detects workflows stuck in "running" state due to undetected container exits
+// (e.g. when AttachOutput or Wait fail silently). Call once after the server
+// is fully initialised. The goroutine runs until ctx is cancelled.
+func (s *ClocheServer) StartStuckWorkflowScanner(ctx context.Context) {
+	go s.runStuckWorkflowScanner(ctx)
+}
+
+func (s *ClocheServer) runStuckWorkflowScanner(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.scanAndResolveStuckWorkflows(ctx)
+		}
+	}
+}
+
+// scanAndResolveStuckWorkflows inspects every actively-tracked container. If a
+// container has been dead longer than stuckContainerThreshold but its run is
+// still "running" in the store, the run is marked failed and the project's
+// orchestration loop is halted to prevent failure loops.
+func (s *ClocheServer) scanAndResolveStuckWorkflows(ctx context.Context) {
+	// Snapshot the run→container map under lock so we don't hold the lock
+	// during slow Inspect/store calls.
+	s.mu.Lock()
+	tracked := make(map[string]string, len(s.runIDs))
+	for runID, cid := range s.runIDs {
+		tracked[runID] = cid
+	}
+	s.mu.Unlock()
+
+	for runID, containerID := range tracked {
+		status, err := s.container.Inspect(ctx, containerID)
+		if err != nil {
+			// Container no longer exists — check if the run is still stuck.
+			run, rerr := s.store.GetRun(ctx, runID)
+			if rerr != nil || run == nil || run.State != domain.RunStateRunning {
+				continue
+			}
+			log.Printf("stuck workflow scanner: container %s not found for run %s; marking failed", containerID, runID)
+			run.Fail("container not found; may have been removed unexpectedly")
+			_ = s.store.UpdateRun(ctx, run)
+			if s.logBroadcast != nil {
+				s.logBroadcast.Finish(runID)
+			}
+			s.mu.Lock()
+			delete(s.runIDs, runID)
+			s.mu.Unlock()
+			s.haltProjectLoop(run.ProjectDir, fmt.Sprintf("container not found for run %s", runID))
+			continue
+		}
+
+		if status.Running {
+			continue // Container is alive; nothing to do.
+		}
+
+		// Container is dead but trackRun hasn't cleaned up yet. Only intervene
+		// if it has been dead long enough that normal cleanup should have finished.
+		if status.FinishedAt.IsZero() || time.Since(status.FinishedAt) < stuckContainerThreshold {
+			continue
+		}
+
+		run, rerr := s.store.GetRun(ctx, runID)
+		if rerr != nil || run == nil || run.State != domain.RunStateRunning {
+			continue
+		}
+
+		log.Printf("stuck workflow scanner: run %s stuck — container %s dead since %v (exit %d); marking failed",
+			runID, containerID, status.FinishedAt.Format(time.RFC3339), status.ExitCode)
+		run.Fail(fmt.Sprintf("container exited with code %d (%s ago) but workflow remained running",
+			status.ExitCode, time.Since(status.FinishedAt).Round(time.Second)))
+		_ = s.store.UpdateRun(ctx, run)
+		if s.logBroadcast != nil {
+			s.logBroadcast.Finish(runID)
+		}
+		s.mu.Lock()
+		delete(s.runIDs, runID)
+		s.mu.Unlock()
+		s.haltProjectLoop(run.ProjectDir, fmt.Sprintf(
+			"stuck workflow detected for run %s: container exited with code %d", runID, status.ExitCode))
+	}
 }

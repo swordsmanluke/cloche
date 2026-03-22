@@ -252,6 +252,13 @@ func (l *Loop) halt(errMsg string) {
 	log.Printf("orchestration loop: halted for %s (stop_on_error): %s", l.config.ProjectDir, errMsg)
 }
 
+// Halt immediately halts the loop with the given reason. Unlike the automatic
+// halting triggered by consecutive failures, this can be called externally to
+// stop the loop on critical infrastructure failures (e.g. container crashes).
+func (l *Loop) Halt(reason string) {
+	l.halt(reason)
+}
+
 // recordConsecutiveFailure increments the consecutive failure counter and
 // returns true if the threshold has been reached.
 func (l *Loop) recordConsecutiveFailure() bool {

@@ -1513,3 +1513,43 @@ func TestPhaseLoop_AttemptCompletedOnRetry(t *testing.T) {
 		assert.NotZero(t, a.EndedAt, "every attempt must be completed, not stuck as running")
 	}
 }
+
+func TestLoop_Halt_SetsHaltedState(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	loop := NewLoop(LoopConfig{ProjectDir: "/tmp/test"}, store, func(_ context.Context, _ string, _ string, _ string) (*RunResult, error) {
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	})
+
+	halted, msg := loop.Halted()
+	assert.False(t, halted, "should not be halted initially")
+	assert.Empty(t, msg)
+
+	loop.Halt("container crashed")
+
+	halted, msg = loop.Halted()
+	assert.True(t, halted, "should be halted after Halt()")
+	assert.Equal(t, "container crashed", msg)
+}
+
+func TestLoop_Halt_PreventsNewWork(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	var called atomic.Int32
+	loop := NewLoop(LoopConfig{
+		ProjectDir:    "/tmp/test",
+		MaxConcurrent: 1,
+	}, store, func(_ context.Context, _ string, _ string, _ string) (*RunResult, error) {
+		called.Add(1)
+		time.Sleep(20 * time.Millisecond)
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	})
+
+	loop.Halt("pre-halted")
+	loop.Start()
+
+	// Give the loop time to attempt launching work.
+	time.Sleep(100 * time.Millisecond)
+	loop.Stop()
+
+	// No work should have been picked up because the loop was halted before starting.
+	assert.Equal(t, int32(0), called.Load(), "halted loop should not launch any runs")
+}

@@ -18,6 +18,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/host"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/protocol"
@@ -3756,4 +3757,321 @@ func TestServer_Console_RejectsNoRuntime(t *testing.T) {
 	err = srv.Console(stream)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no container runtime")
+}
+
+// mockInspectRuntime is a ContainerRuntime that returns a configurable status
+// from Inspect and returns an error from AttachOutput to simulate failures.
+type mockInspectRuntime struct {
+	inspectStatus *ports.ContainerStatus
+	inspectErr    error
+	attachErr     error
+}
+
+func (m *mockInspectRuntime) Start(_ context.Context, _ ports.ContainerConfig) (string, error) {
+	return "cid-inspect", nil
+}
+func (m *mockInspectRuntime) Stop(_ context.Context, _ string) error { return nil }
+func (m *mockInspectRuntime) AttachOutput(_ context.Context, _ string) (io.ReadCloser, error) {
+	if m.attachErr != nil {
+		return nil, m.attachErr
+	}
+	return io.NopCloser(strings.NewReader("")), nil
+}
+func (m *mockInspectRuntime) Wait(_ context.Context, _ string) (int, error) { return 0, nil }
+func (m *mockInspectRuntime) CopyFrom(_ context.Context, _, _, _ string) error { return nil }
+func (m *mockInspectRuntime) Logs(_ context.Context, _ string) (string, error) { return "", nil }
+func (m *mockInspectRuntime) Remove(_ context.Context, _ string) error { return nil }
+func (m *mockInspectRuntime) Inspect(_ context.Context, _ string) (*ports.ContainerStatus, error) {
+	if m.inspectErr != nil {
+		return nil, m.inspectErr
+	}
+	if m.inspectStatus != nil {
+		return m.inspectStatus, nil
+	}
+	return &ports.ContainerStatus{Running: true}, nil
+}
+func (m *mockInspectRuntime) Attach(_ context.Context, _ string) (io.ReadWriteCloser, error) {
+	return nil, fmt.Errorf("attach not supported")
+}
+
+func TestStuckWorkflowScanner_DeadContainerMarksRunFailed(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run in "running" state with a container ID.
+	run := domain.NewRun("stuck-run-1", "develop")
+	run.ProjectDir = "/project/stuck"
+	run.Start()
+	run.ContainerID = "container-stuck-1"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Container is dead and has been for well over the stuck threshold.
+	deadSince := time.Now().Add(-5 * time.Minute)
+	rt := &mockInspectRuntime{
+		inspectStatus: &ports.ContainerStatus{
+			Running:    false,
+			ExitCode:   137,
+			FinishedAt: deadSince,
+		},
+	}
+
+	broadcaster := logstream.NewBroadcaster()
+	broadcaster.Start("stuck-run-1")
+
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+	srv.SetLogBroadcaster(broadcaster)
+	srv.AddActiveRun("stuck-run-1", "container-stuck-1")
+
+	srv.ScanAndResolveStuckWorkflows(ctx)
+
+	// Run should now be failed.
+	updated, err := store.GetRun(ctx, "stuck-run-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateFailed, updated.State)
+	assert.Contains(t, updated.ErrorMessage, "137")
+
+	// Broadcaster should have been finished (no longer active).
+	assert.False(t, broadcaster.IsActive("stuck-run-1"))
+}
+
+func TestStuckWorkflowScanner_LiveContainerNotTouched(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	run := domain.NewRun("live-run-1", "develop")
+	run.ProjectDir = "/project/live"
+	run.Start()
+	run.ContainerID = "container-live-1"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	rt := &mockInspectRuntime{
+		inspectStatus: &ports.ContainerStatus{Running: true},
+	}
+
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+	srv.AddActiveRun("live-run-1", "container-live-1")
+
+	srv.ScanAndResolveStuckWorkflows(ctx)
+
+	// Run should still be running.
+	updated, err := store.GetRun(ctx, "live-run-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateRunning, updated.State)
+}
+
+func TestStuckWorkflowScanner_RecentlyDeadContainerNotTouched(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	run := domain.NewRun("recent-run-1", "develop")
+	run.ProjectDir = "/project/recent"
+	run.Start()
+	run.ContainerID = "container-recent-1"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Container just died (within threshold).
+	rt := &mockInspectRuntime{
+		inspectStatus: &ports.ContainerStatus{
+			Running:    false,
+			ExitCode:   1,
+			FinishedAt: time.Now().Add(-10 * time.Second),
+		},
+	}
+
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+	srv.AddActiveRun("recent-run-1", "container-recent-1")
+
+	srv.ScanAndResolveStuckWorkflows(ctx)
+
+	// Run should still be running (not enough time has passed).
+	updated, err := store.GetRun(ctx, "recent-run-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateRunning, updated.State)
+}
+
+func TestStuckWorkflowScanner_HaltsProjectLoop(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	run := domain.NewRun("stuck-loop-run-1", "develop")
+	run.ProjectDir = "/project/loop"
+	run.Start()
+	run.ContainerID = "container-loop-1"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	deadSince := time.Now().Add(-5 * time.Minute)
+	rt := &mockInspectRuntime{
+		inspectStatus: &ports.ContainerStatus{
+			Running:    false,
+			ExitCode:   1,
+			FinishedAt: deadSince,
+		},
+	}
+
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+	srv.AddActiveRun("stuck-loop-run-1", "container-loop-1")
+
+	// Register a live loop for the project.
+	fakeStore2 := &fakeRunStore{runs: map[string]*domain.Run{}}
+	loop := newTestLoop("/project/loop", fakeStore2)
+	srv.RegisterLoop("/project/loop", loop)
+
+	srv.ScanAndResolveStuckWorkflows(ctx)
+
+	halted, reason := loop.Halted()
+	assert.True(t, halted, "loop should be halted after stuck workflow detected")
+	assert.Contains(t, reason, "stuck-loop-run-1")
+}
+
+func TestTrackRun_AttachOutputFailureMarksRunFailed(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	run := domain.NewRun("attach-fail-run-1", "develop")
+	run.ProjectDir = "/project/attach"
+	run.Start()
+	run.ContainerID = "container-attach-1"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	rt := &mockInspectRuntime{
+		attachErr: fmt.Errorf("connection refused"),
+	}
+
+	broadcaster := logstream.NewBroadcaster()
+	broadcaster.Start("attach-fail-run-1")
+
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+	srv.SetLogBroadcaster(broadcaster)
+	srv.AddActiveRun("attach-fail-run-1", "container-attach-1")
+
+	// trackRun should return promptly after the attach failure.
+	srv.TrackRun("attach-fail-run-1", "container-attach-1", "/project/attach", "develop", false)
+
+	updated, err := store.GetRun(ctx, "attach-fail-run-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateFailed, updated.State)
+	assert.Contains(t, updated.ErrorMessage, "attach")
+
+	// Broadcaster should have been finished.
+	assert.False(t, broadcaster.IsActive("attach-fail-run-1"))
+}
+
+func TestTrackRun_AttachOutputFailureHaltsProjectLoop(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	run := domain.NewRun("attach-halt-run-1", "develop")
+	run.ProjectDir = "/project/attach-halt"
+	run.Start()
+	run.ContainerID = "container-attach-halt-1"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	rt := &mockInspectRuntime{attachErr: fmt.Errorf("no such container")}
+
+	broadcaster := logstream.NewBroadcaster()
+	broadcaster.Start("attach-halt-run-1")
+
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+	srv.SetLogBroadcaster(broadcaster)
+	srv.AddActiveRun("attach-halt-run-1", "container-attach-halt-1")
+
+	fakeStore2 := &fakeRunStore{runs: map[string]*domain.Run{}}
+	loop := newTestLoop("/project/attach-halt", fakeStore2)
+	srv.RegisterLoop("/project/attach-halt", loop)
+
+	srv.TrackRun("attach-halt-run-1", "container-attach-halt-1", "/project/attach-halt", "develop", false)
+
+	halted, reason := loop.Halted()
+	assert.True(t, halted, "loop should be halted after attach failure")
+	assert.Contains(t, reason, "attach-halt-run-1")
+}
+
+// fakeRunStore is a minimal RunStore for loop tests in the grpc package.
+type fakeRunStore struct {
+	mu   sync.Mutex
+	runs map[string]*domain.Run
+}
+
+func (f *fakeRunStore) CreateRun(_ context.Context, r *domain.Run) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cp := *r
+	f.runs[r.ID] = &cp
+	return nil
+}
+func (f *fakeRunStore) GetRun(_ context.Context, id string) (*domain.Run, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	r, ok := f.runs[id]
+	if !ok {
+		return nil, fmt.Errorf("not found: %s", id)
+	}
+	cp := *r
+	return &cp, nil
+}
+func (f *fakeRunStore) GetRunByAttempt(_ context.Context, _, _ string) (*domain.Run, error) {
+	return nil, fmt.Errorf("not found")
+}
+func (f *fakeRunStore) UpdateRun(_ context.Context, r *domain.Run) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cp := *r
+	f.runs[r.ID] = &cp
+	return nil
+}
+func (f *fakeRunStore) DeleteRun(_ context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.runs, id)
+	return nil
+}
+func (f *fakeRunStore) ListRuns(_ context.Context, _ time.Time) ([]*domain.Run, error) {
+	return nil, nil
+}
+func (f *fakeRunStore) ListRunsByProject(_ context.Context, _ string, _ time.Time) ([]*domain.Run, error) {
+	return nil, nil
+}
+func (f *fakeRunStore) ListRunsFiltered(_ context.Context, _ domain.RunListFilter) ([]*domain.Run, error) {
+	return nil, nil
+}
+func (f *fakeRunStore) ListChildRuns(_ context.Context, _ string) ([]*domain.Run, error) {
+	return nil, nil
+}
+func (f *fakeRunStore) ListProjects(_ context.Context) ([]string, error) { return nil, nil }
+func (f *fakeRunStore) GetContextKey(_ context.Context, _, _, _ string) (string, bool, error) {
+	return "", false, nil
+}
+func (f *fakeRunStore) SetContextKey(_ context.Context, _, _, _, _ string) error { return nil }
+func (f *fakeRunStore) ListContextKeys(_ context.Context, _, _ string) ([]string, error) {
+	return nil, nil
+}
+func (f *fakeRunStore) DeleteContextKeys(_ context.Context, _, _ string) error { return nil }
+func (f *fakeRunStore) QueryUsage(_ context.Context, _ ports.UsageQuery) ([]domain.UsageSummary, error) {
+	return nil, nil
+}
+
+// newTestLoop creates a minimal Loop for use in server tests.
+func newTestLoop(projectDir string, store ports.RunStore) *host.Loop {
+	return host.NewLoop(host.LoopConfig{ProjectDir: projectDir, MaxConcurrent: 1}, store,
+		func(_ context.Context, _ string, _ string, _ string) (*host.RunResult, error) {
+			return &host.RunResult{State: domain.RunStateSucceeded}, nil
+		})
 }

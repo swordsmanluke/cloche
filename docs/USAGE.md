@@ -1124,8 +1124,9 @@ up a project by its registered label instead.
 Output includes: config settings (active, concurrency, stagger, dedup, stop_on_error,
 max_consecutive_failures, evolution), orchestrator loop state (running/stopped/halted),
 currently active runs, and known container and host workflow names. When the loop is
-halted due to `stop_on_error` or `max_consecutive_failures`, the halt error message is
-displayed.
+halted due to `stop_on_error`, `max_consecutive_failures`, or a container infrastructure
+failure (image build failure, container crash, unexpected exit, or stuck workflow
+detected), the halt error message is displayed.
 
 ### `cloche get`
 
@@ -1224,9 +1225,9 @@ cloche loop resume
 
 `cloche loop stop` disables the loop. Running tasks are not cancelled.
 
-`cloche loop resume` clears the halted state after a `stop_on_error` or
-`max_consecutive_failures` halt, resets the consecutive failure counter, and allows
-the loop to resume picking up new work.
+`cloche loop resume` clears the halted state after a `stop_on_error`,
+`max_consecutive_failures`, or container infrastructure failure halt, resets the
+consecutive failure counter, and allows the loop to resume picking up new work.
 
 ### `cloche activity`
 

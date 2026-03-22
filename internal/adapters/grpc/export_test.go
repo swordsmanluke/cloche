@@ -5,6 +5,7 @@ import (
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/host"
 	rpcgrpc "google.golang.org/grpc"
 )
 
@@ -41,4 +42,22 @@ func (s *ClocheServer) ResolveResumeTarget(ctx context.Context, id string) (stri
 // PickFailedRun exposes pickFailedRun for testing.
 func PickFailedRun(runs []*domain.Run) (string, error) {
 	return pickFailedRun(runs)
+}
+
+// RegisterLoop registers a host.Loop for the given project directory so that
+// haltProjectLoop can find it during tests.
+func (s *ClocheServer) RegisterLoop(projectDir string, loop *host.Loop) {
+	s.mu.Lock()
+	s.loops[projectDir] = loop
+	s.mu.Unlock()
+}
+
+// ScanAndResolveStuckWorkflows exposes scanAndResolveStuckWorkflows for testing.
+func (s *ClocheServer) ScanAndResolveStuckWorkflows(ctx context.Context) {
+	s.scanAndResolveStuckWorkflows(ctx)
+}
+
+// TrackRun exposes trackRun for testing.
+func (s *ClocheServer) TrackRun(runID, containerID, projectDir, workflowName string, keepContainer bool) {
+	s.trackRun(runID, containerID, projectDir, workflowName, keepContainer)
 }
