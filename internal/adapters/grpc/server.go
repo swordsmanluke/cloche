@@ -16,6 +16,7 @@ import (
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
+	"github.com/cloche-dev/cloche/internal/activitylog"
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
 	"github.com/cloche-dev/cloche/internal/adapters/web"
 	"github.com/cloche-dev/cloche/internal/config"
@@ -44,29 +45,48 @@ type ClocheServer struct {
 	evolution    *evolution.Trigger
 	logBroadcast *logstream.Broadcaster
 	shutdownFn   func()
-	mu           sync.Mutex
-	runIDs       map[string]string      // run_id -> container_id
-	loops        map[string]*host.Loop  // project_dir -> orchestration loop
+	mu              sync.Mutex
+	runIDs          map[string]string               // run_id -> container_id
+	loops           map[string]*host.Loop            // project_dir -> orchestration loop
+	activityLoggers map[string]*activitylog.Logger   // project_dir -> activity logger
 }
 
 func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *ClocheServer {
 	return &ClocheServer{
-		store:     store,
-		container: container,
-		runIDs:    make(map[string]string),
-		loops:     make(map[string]*host.Loop),
+		store:           store,
+		container:       container,
+		runIDs:          make(map[string]string),
+		loops:           make(map[string]*host.Loop),
+		activityLoggers: make(map[string]*activitylog.Logger),
 	}
 }
 
 func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureStore, container ports.ContainerRuntime, defaultImage string) *ClocheServer {
 	return &ClocheServer{
-		store:        store,
-		captures:     captures,
-		container:    container,
-		defaultImage: defaultImage,
-		runIDs:       make(map[string]string),
-		loops:        make(map[string]*host.Loop),
+		store:           store,
+		captures:        captures,
+		container:       container,
+		defaultImage:    defaultImage,
+		runIDs:          make(map[string]string),
+		loops:           make(map[string]*host.Loop),
+		activityLoggers: make(map[string]*activitylog.Logger),
 	}
+}
+
+// activityLoggerFor returns a cached activity logger for the given project directory,
+// creating one on first access. Returns nil if projectDir is empty.
+func (s *ClocheServer) activityLoggerFor(projectDir string) *activitylog.Logger {
+	if projectDir == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if l, ok := s.activityLoggers[projectDir]; ok {
+		return l
+	}
+	l := activitylog.NewLogger(projectDir)
+	s.activityLoggers[projectDir] = l
+	return l
 }
 
 // SetLogStore attaches a log store to the server for indexing extracted log files.
@@ -214,6 +234,7 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 		Store:        s.store,
 		Captures:     s.captures,
 		LogBroadcast: s.logBroadcast,
+		ActivityLog:  s.activityLoggerFor(req.ProjectDir),
 		TaskID:       taskID,
 		AttemptID:    attemptID,
 	}
@@ -486,6 +507,7 @@ func (s *ClocheServer) resumeHostRun(ctx context.Context, run *domain.Run, stepN
 		Store:        s.store,
 		Captures:     s.captures,
 		LogBroadcast: s.logBroadcast,
+		ActivityLog:  s.activityLoggerFor(run.ProjectDir),
 		TaskID:       run.TaskID,
 		AttemptID:    newAttempt.ID,
 	}
@@ -2064,6 +2086,7 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 // sentinel task.
 func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir string, dedupTimeout time.Duration) *host.Loop {
 	hostWFs, _ := host.FindHostWorkflows(projectDir)
+	alog := s.activityLoggerFor(projectDir)
 
 	// Phase 1: list-tasks function.
 	// If no list-tasks workflow is defined, return a single untracked sentinel
@@ -2094,6 +2117,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 			Store:        s.store,
 			Captures:     s.captures,
 			LogBroadcast: s.logBroadcast,
+			ActivityLog:  alog,
 			TaskID:       taskID,
 			TaskTitle:    taskTitle,
 			AttemptID:    attemptID,
@@ -2117,6 +2141,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 				Store:        s.store,
 				Captures:     s.captures,
 				LogBroadcast: s.logBroadcast,
+				ActivityLog:  alog,
 				TaskID:       taskID,
 				AttemptID:    attemptID,
 				ParentRunID:  mainRunID, // nest finalize under the main run in the UI
@@ -2136,6 +2161,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	if s.taskStore != nil {
 		loop.SetTaskStore(s.taskStore)
 	}
+	loop.SetActivityLogger(alog)
 	return loop
 }
 

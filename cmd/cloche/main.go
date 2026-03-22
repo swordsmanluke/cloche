@@ -93,6 +93,13 @@ func main() {
 		}
 		cmdTasks(os.Args[2:])
 		return
+	case "activity":
+		if hasHelpFlag(os.Args[2:]) {
+			printSubcommandHelp("activity")
+			return
+		}
+		cmdActivity(os.Args[2:])
+		return
 	case "workflow":
 		if hasHelpFlag(os.Args[2:]) {
 			printSubcommandHelp("workflow")

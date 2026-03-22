@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloche-dev/cloche/internal/activitylog"
 	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
@@ -27,6 +28,7 @@ type Runner struct {
 	Store         ports.RunStore
 	Captures      ports.CaptureStore       // optional: saves step captures for cloche logs
 	LogBroadcast  *logstream.Broadcaster   // optional: publishes live log lines
+	ActivityLog   *activitylog.Logger      // optional: records step events to .cloche/activity.log
 	TaskID        string                   // optional task ID assigned by the daemon loop
 	TaskTitle     string                   // optional task title for display in the web UI
 	AttemptID     string                   // optional attempt ID for v2 tracking
@@ -168,6 +170,10 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		logBroadcast: r.LogBroadcast,
 		outputDir:    outputDir,
 		logWriter:    ulog,
+		activityLog:  r.ActivityLog,
+		taskID:       r.TaskID,
+		attemptID:    r.AttemptID,
+		workflowName: wf.Name,
 	})
 
 	run, runErr := eng.Run(ctx, wf)
@@ -335,6 +341,10 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 		logBroadcast: r.LogBroadcast,
 		outputDir:    outputDir,
 		logWriter:    ulog,
+		activityLog:  r.ActivityLog,
+		taskID:       r.TaskID,
+		attemptID:    r.AttemptID,
+		workflowName: wf.Name,
 	})
 
 	engRun, runErr := eng.Run(ctx, wf)
@@ -498,6 +508,10 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 		logBroadcast: r.LogBroadcast,
 		outputDir:    newOutputDir,
 		logWriter:    ulog,
+		activityLog:  r.ActivityLog,
+		taskID:       r.TaskID,
+		attemptID:    r.AttemptID,
+		workflowName: wf.Name,
 	})
 
 	engRun, runErr := eng.Run(ctx, wf)
@@ -709,7 +723,11 @@ type hostStatusHandler struct {
 	captures     ports.CaptureStore
 	logBroadcast *logstream.Broadcaster
 	outputDir    string
-	logWriter    *logstream.Writer // persists log entries to full.log
+	logWriter    *logstream.Writer    // persists log entries to full.log
+	activityLog  *activitylog.Logger  // optional: records step events to activity.log
+	taskID       string               // propagated to activity log entries
+	attemptID    string               // propagated to activity log entries
+	workflowName string               // propagated to activity log entries
 }
 
 func (h *hostStatusHandler) OnStepStart(_ *domain.Run, step *domain.Step) {
@@ -738,6 +756,16 @@ func (h *hostStatusHandler) OnStepStart(_ *domain.Run, step *domain.Step) {
 			StepName:  step.Name,
 		})
 	}
+	if h.activityLog != nil {
+		_ = h.activityLog.Append(activitylog.Entry{
+			Timestamp:    now,
+			Kind:         activitylog.KindStepStarted,
+			TaskID:       h.taskID,
+			AttemptID:    h.attemptID,
+			WorkflowName: h.workflowName,
+			StepName:     step.Name,
+		})
+	}
 }
 
 func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, result string, usage *domain.TokenUsage) {
@@ -755,6 +783,17 @@ func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, res
 			Result:      result,
 			CompletedAt: now,
 			Usage:       usage,
+		})
+	}
+	if h.activityLog != nil {
+		_ = h.activityLog.Append(activitylog.Entry{
+			Timestamp:    now,
+			Kind:         activitylog.KindStepCompleted,
+			TaskID:       h.taskID,
+			AttemptID:    h.attemptID,
+			WorkflowName: h.workflowName,
+			StepName:     step.Name,
+			Result:       result,
 		})
 	}
 	// Read step output for logging/broadcasting.

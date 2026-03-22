@@ -1207,6 +1207,34 @@ cloche loop resume
 `max_consecutive_failures` halt, resets the consecutive failure counter, and allows
 the loop to resume picking up new work.
 
+### `cloche activity`
+
+Show the project activity log — attempt and step lifecycle events with timestamps and outcomes.
+
+```
+cloche activity [--project <dir>] [--since <duration|time>] [--until <time>] [--json]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--project <dir>`, `-p` | current directory | Project directory to read the log from. |
+| `--since <value>` | _(all)_ | Show only entries on or after this time. Accepts a Go duration (`24h`, `7d`, `30m`) or an RFC3339 timestamp. |
+| `--until <time>` | _(all)_ | Show only entries on or before this RFC3339 timestamp. |
+| `--json` | false | Output raw JSONL instead of the table view. |
+
+Reads `.cloche/activity.log` (JSONL, one entry per line). The file is created automatically by the orchestration loop and host workflow runs. Output columns: `TIME`, `KIND`, `TASK`, `ATTEMPT`, `WORKFLOW`, `STEP`, `OUTCOME`.
+
+Event kinds: `attempt_started`, `attempt_ended`, `step_started`, `step_completed`.
+
+```
+cloche activity
+cloche activity --since 24h
+cloche activity --since 7d
+cloche activity --since 2026-03-01T00:00:00Z
+cloche activity --project /path/to/project
+cloche activity --json
+```
+
 ### `cloche --version`
 
 Print version information for all Cloche components.
@@ -1273,6 +1301,7 @@ my-project/
 │   │   └── <task-id>/        # Runtime state (gitignored)
 │   │       ├── prompt.txt    # User prompt
 │   │       └── context.json  # Shared key-value store (cloche get/set)
+│   ├── activity.log          # Append-only JSONL activity log (attempt/step events)
 │   └── logs/
 │       └── <task-id>/        # Grouped by task (ticket or user-initiated run)
 │           └── <attempt-id>/ # One directory per attempt

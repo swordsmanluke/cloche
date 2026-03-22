@@ -524,6 +524,45 @@ Examples:
   cloche console --agent "claude --model claude-opus-4-6"
 `,
 
+	"activity": `cloche activity — Show project activity log
+
+Reads the project's .cloche/activity.log file and displays attempt and step
+lifecycle events: when tasks were attempted, which steps fired, their
+timestamps, and the outcome of each step.
+
+Usage:
+  cloche activity [--project <dir>] [--since <duration|time>] [--until <time>] [--json]
+
+Flags:
+  --project <dir>, -p <dir>    Project directory (default: current directory).
+  --since <value>              Show only entries on or after this time.
+                               Accepts a Go duration (e.g. "24h", "7d", "30m")
+                               or an RFC3339 timestamp.
+  --until <time>               Show only entries on or before this RFC3339 time.
+  --json                       Output raw JSONL instead of the table view.
+
+Output columns:
+  TIME        Local timestamp of the event.
+  KIND        attempt_started, attempt_ended, step_started, or step_completed.
+  TASK        Task ID (if known).
+  ATTEMPT     Attempt ID.
+  WORKFLOW    Workflow name (for step events).
+  STEP        Step name (for step events).
+  OUTCOME     Result (for step_completed) or state (for attempt_ended).
+
+The activity log is written to .cloche/activity.log. It is created automatically
+when the orchestration loop or a host workflow run starts and is intended to
+help diagnose which paths through the workflow graph were taken.
+
+Examples:
+  cloche activity
+  cloche activity --since 24h
+  cloche activity --since 7d
+  cloche activity --since 2026-03-01T00:00:00Z
+  cloche activity --project /path/to/project
+  cloche activity --json
+`,
+
 	"shutdown": `cloche shutdown — Shut down the daemon
 
 Sends a shutdown signal to the Cloche daemon. Refuses to shut down if
@@ -614,6 +653,7 @@ Workflow Runs:
 Orchestration:
   tasks      Show task pipeline and assignment state
   loop       Start or stop the orchestration loop
+  activity   Show project activity log (attempt/step timestamps and outcomes)
 
 Context Store (for use inside workflow steps):
   get        Get a value from the run context store

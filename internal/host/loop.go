@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloche-dev/cloche/internal/activitylog"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/ports"
 )
@@ -80,9 +81,10 @@ type Loop struct {
 	mainFn       MainFunc
 	finalizeFn   FinalizeFunc // optional; skipped if nil
 	store        ports.RunStore
-	attemptStore ports.AttemptStore // optional; creates Attempt records when set
-	taskStore    ports.TaskStore    // optional; ensures Task records exist when set
-	assigner     TaskAssigner       // optional; feeds listTasks in NewLoop-created loops
+	attemptStore ports.AttemptStore   // optional; creates Attempt records when set
+	taskStore    ports.TaskStore      // optional; ensures Task records exist when set
+	activityLog  *activitylog.Logger  // optional; records attempt lifecycle events
+	assigner     TaskAssigner         // optional; feeds listTasks in NewLoop-created loops
 	stopCh       chan struct{}
 	resumeCh     chan struct{} // signaled by Resume() to wake the loop
 	mu           sync.Mutex
@@ -175,6 +177,12 @@ func (l *Loop) SetAttemptStore(a ports.AttemptStore) {
 // before creating Attempt records against them.
 func (l *Loop) SetTaskStore(ts ports.TaskStore) {
 	l.taskStore = ts
+}
+
+// SetActivityLogger attaches an activity logger so the loop records attempt
+// lifecycle events (started/ended) to the project's .cloche/activity.log.
+func (l *Loop) SetActivityLogger(al *activitylog.Logger) {
+	l.activityLog = al
 }
 
 // Start begins the orchestration loop. No-op if already running.
@@ -534,6 +542,15 @@ func (l *Loop) createAttemptForTask(taskID, taskTitle, projectDir string) string
 		return ""
 	}
 	log.Printf("orchestration loop: created attempt %s for task %s", attempt.ID, taskID)
+
+	if l.activityLog != nil {
+		_ = l.activityLog.Append(activitylog.Entry{
+			Kind:      activitylog.KindAttemptStarted,
+			TaskID:    taskID,
+			AttemptID: attempt.ID,
+		})
+	}
+
 	return attempt.ID
 }
 
@@ -562,6 +579,15 @@ func (l *Loop) completeAttempt(attemptID string, state domain.RunState) {
 	attempt.Complete(result)
 	if err := l.attemptStore.SaveAttempt(ctx, attempt); err != nil {
 		log.Printf("orchestration loop: failed to complete attempt %s: %v", attemptID, err)
+	}
+
+	if l.activityLog != nil {
+		_ = l.activityLog.Append(activitylog.Entry{
+			Kind:      activitylog.KindAttemptEnded,
+			TaskID:    attempt.TaskID,
+			AttemptID: attemptID,
+			State:     string(result),
+		})
 	}
 }
 
