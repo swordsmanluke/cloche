@@ -195,7 +195,7 @@ workflow "finalize" {
 `
 
 var getTasksPyScript = `#!/usr/bin/env python3
-"""Read the next open task from task_list.json.
+"""Read the next open task from .cloche/task_list.json.
 
 Replace this script with one that reads from your task tracker of choice
 (Linear, Jira, GitHub Issues, etc.) and returns ready tasks as JSONL:
@@ -208,7 +208,7 @@ import json
 import os
 import sys
 
-task_file = os.path.join(os.environ.get("CLOCHE_PROJECT_DIR", "."), "task_list.json")
+task_file = os.path.join(os.environ.get("CLOCHE_PROJECT_DIR", "."), ".cloche", "task_list.json")
 
 with open(task_file) as f:
     for line in f:
@@ -244,7 +244,7 @@ import sys
 
 task_id = os.environ.get("CLOCHE_TASK_ID", "")
 project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
-task_file = os.path.join(project_dir, "task_list.json")
+task_file = os.path.join(project_dir, ".cloche", "task_list.json")
 
 if not task_id:
     print("error: CLOCHE_TASK_ID not set", file=sys.stderr)
@@ -394,14 +394,14 @@ print(f"Merged {branch} ({rebased_head[:8]})")
 `
 
 var releaseTaskPyScript = `#!/usr/bin/env python3
-"""Mark the completed task as done and move it to the end of task_list.json."""
+"""Mark the completed task as done and move it to the end of .cloche/task_list.json."""
 import json
 import os
 import sys
 
 task_id = os.environ.get("CLOCHE_TASK_ID", "")
 project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
-task_file = os.path.join(project_dir, "task_list.json")
+task_file = os.path.join(project_dir, ".cloche", "task_list.json")
 
 if not task_id:
     print("error: CLOCHE_TASK_ID not set", file=sys.stderr)
@@ -487,7 +487,7 @@ import sys
 
 task_id = os.environ.get("CLOCHE_TASK_ID", "")
 project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
-task_file = os.path.join(project_dir, "task_list.json")
+task_file = os.path.join(project_dir, ".cloche", "task_list.json")
 
 if task_id:
     tasks = []
@@ -618,7 +618,7 @@ func cmdInit(args []string) {
 		{filepath.Join(clocheDir, "scripts", "cleanup.py"), cleanupPyScript, 0755},
 		{filepath.Join(clocheDir, "scripts", "unclaim.py"), unclaimPyScript, 0755},
 		{".clocheignore", defaultClocheignore, 0644},
-		{"task_list.json", taskListJSON, 0644},
+		{filepath.Join(clocheDir, "task_list.json"), taskListJSON, 0644},
 		{filepath.Join("test", "cloche", "test_cloche.py"), testClocheScript, 0644},
 	}
 
@@ -640,7 +640,7 @@ func cmdInit(args []string) {
 		".cloche/output/",
 		".cloche/history.log",
 		".gitworktrees/",
-		"task_list.json",
+		".cloche/task_list.json",
 	})
 
 	// Generate shell completion scripts into ~/.cloche/completions/.
@@ -659,7 +659,7 @@ func cmdInit(args []string) {
 	fmt.Fprintf(os.Stderr, "  4. Edit .cloche/scripts/get-tasks.py  — connect to your task tracker\n")
 	fmt.Fprintf(os.Stderr, "  5. docker build -t cloche-agent -f .cloche/Dockerfile .\n")
 	fmt.Fprintf(os.Stderr, "  6. cloche loop                        — start the orchestration loop\n")
-	fmt.Fprintf(os.Stderr, "\nThe sample tasks in task_list.json verify your setup end-to-end.\n")
+	fmt.Fprintf(os.Stderr, "\nThe sample tasks in .cloche/task_list.json verify your setup end-to-end.\n")
 	fmt.Fprintf(os.Stderr, "Task #1 asks the agent to create a file; task #2 cleans up after itself.\n")
 }
 

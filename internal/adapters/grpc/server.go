@@ -2688,8 +2688,12 @@ func (s *ClocheServer) Console(stream pb.ClocheService_ConsoleServer) error {
 		// Client disconnected — leave the container running per design.
 		return nil
 	case <-outDone:
-		// Output pump exited early (stream send error).
-		return nil
+		// Output pump exited (EOF or stream send error) — still wait for container exit.
+		select {
+		case exitCode = <-waitDone:
+		case <-stream.Context().Done():
+			return nil
+		}
 	}
 
 	_ = stream.Send(&pb.ConsoleOutput{

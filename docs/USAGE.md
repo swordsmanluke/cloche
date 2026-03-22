@@ -1314,6 +1314,7 @@ my-project/
 │   ├── scripts/              # Host-side scripts
 │   ├── overrides/            # Files copied on top of /workspace/
 │   │   └── CLAUDE.md         # Container-specific CLAUDE.md (optional)
+│   ├── task_list.json        # Sample task file for local development and testing
 │   ├── runs/
 │   │   └── <task-id>/        # Runtime state (gitignored)
 │   │       └── prompt.txt    # User prompt
@@ -1328,7 +1329,6 @@ my-project/
 │   └── cloche/
 │       └── test_cloche.py    # Validation tests for the Cloche setup
 ├── .clocheignore             # Workspace file exclusions (patterns to omit from container)
-├── task_list.json            # Sample task file for local development and testing
 ├── src/                      # Project source (untouched by Cloche)
 └── .git/
 ```

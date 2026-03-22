@@ -32,7 +32,7 @@ func TestCmdInit_DefaultFlags(t *testing.T) {
 		filepath.Join(".cloche", "scripts", "cleanup.py"),
 		filepath.Join(".cloche", "scripts", "unclaim.py"),
 		".clocheignore",
-		"task_list.json",
+		filepath.Join(".cloche", "task_list.json"),
 		filepath.Join("test", "cloche", "test_cloche.py"),
 	} {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -141,8 +141,8 @@ func TestCmdInit_GitignoreEntries(t *testing.T) {
 	if !strings.Contains(content, ".gitworktrees/") {
 		t.Error(".gitignore should contain .gitworktrees/")
 	}
-	if !strings.Contains(content, "task_list.json") {
-		t.Error(".gitignore should contain task_list.json")
+	if !strings.Contains(content, ".cloche/task_list.json") {
+		t.Error(".gitignore should contain .cloche/task_list.json")
 	}
 	// Old v1 entries should not be present
 	for _, old := range []string{".cloche/*-*-*/", ".cloche/run-*/", ".cloche/attempt_count/"} {
@@ -460,16 +460,16 @@ func TestCmdInit_TaskListJSON(t *testing.T) {
 
 	cmdInit([]string{})
 
-	data, err := os.ReadFile("task_list.json")
+	data, err := os.ReadFile(filepath.Join(".cloche", "task_list.json"))
 	if err != nil {
-		t.Fatal("expected task_list.json to exist")
+		t.Fatal("expected .cloche/task_list.json to exist")
 	}
 	content := string(data)
 	if !strings.Contains(content, "Validate Agent works") {
-		t.Error("task_list.json should contain validation task")
+		t.Error(".cloche/task_list.json should contain validation task")
 	}
 	if !strings.Contains(content, "Clean up cloche test files") {
-		t.Error("task_list.json should contain cleanup task")
+		t.Error(".cloche/task_list.json should contain cleanup task")
 	}
 }
 
