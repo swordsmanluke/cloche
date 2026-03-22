@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -21,8 +22,10 @@ import (
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/version"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	grpcStatus "google.golang.org/grpc/status"
 )
 
 func main() {
@@ -1080,18 +1083,67 @@ func cmdTasks(args []string) {
 }
 
 func cmdShutdown(ctx context.Context, client pb.ClocheServiceClient, args []string) {
-	var force bool
+	var force, restart bool
 	for _, a := range args {
-		if a == "-f" || a == "--force" {
+		switch a {
+		case "-f", "--force":
 			force = true
+		case "-r", "--restart":
+			restart = true
 		}
 	}
+
+	daemonWasRunning := true
 	_, err := client.Shutdown(ctx, &pb.ShutdownRequest{Force: force})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		if restart && grpcStatus.Code(err) == codes.Unavailable {
+			// Daemon isn't running; skip straight to launch.
+			daemonWasRunning = false
+		} else {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		fmt.Println("Daemon shutting down.")
 	}
-	fmt.Println("Daemon shutting down.")
+
+	if restart {
+		if daemonWasRunning {
+			// Give the daemon a moment to release the port.
+			time.Sleep(500 * time.Millisecond)
+		}
+		daemonPath, err := findDaemonBinary()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := launchDaemon(daemonPath); err != nil {
+			fmt.Fprintf(os.Stderr, "error launching daemon: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Daemon launched.")
+	}
+}
+
+// findDaemonBinary returns the path to cloched, expected to live next to the
+// current executable.
+func findDaemonBinary() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("cannot locate current executable: %w", err)
+	}
+	return filepath.Join(filepath.Dir(exe), "cloched"), nil
+}
+
+// launchDaemon starts cloched at daemonPath as a detached process (new
+// session) so the daemon outlives the CLI process.
+func launchDaemon(daemonPath string) error {
+	cmd := exec.Command(daemonPath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	return cmd.Start()
 }
 
 // resolveRunContext returns the task ID and attempt ID for KV context commands.

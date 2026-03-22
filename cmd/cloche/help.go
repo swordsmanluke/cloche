@@ -569,14 +569,19 @@ Sends a shutdown signal to the Cloche daemon. Refuses to shut down if
 there are active runs unless --force is specified.
 
 Usage:
-  cloche shutdown [--force|-f]
+  cloche shutdown [--force|-f] [--restart|-r]
 
 Flags:
-  -f, --force   Shut down even if runs are still active.
+  -f, --force     Shut down even if runs are still active.
+  -r, --restart   Relaunch the daemon after stopping it (or start it if
+                  it is not already running). The new daemon process is
+                  detached so the CLI can exit immediately.
 
 Examples:
   cloche shutdown
   cloche shutdown --force
+  cloche shutdown --restart
+  cloche shutdown --force --restart
 `,
 }
 
