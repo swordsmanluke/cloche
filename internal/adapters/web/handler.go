@@ -121,7 +121,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	}
 
 	pages := map[string]*template.Template{}
-	for _, page := range []string{"projects", "runs", "run_detail", "project_detail", "task_detail"} {
+	for _, page := range []string{"projects", "runs", "run_detail", "project_detail", "task_detail", "failed_tasks"} {
 		clone, err := base.Clone()
 		if err != nil {
 			return nil, fmt.Errorf("clone layout for %s: %w", page, err)
@@ -175,6 +175,8 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/attempts/{id}/stream", h.handleAPIAttemptStream)
 	h.mux.HandleFunc("GET /api/attempts/{id}/logs", h.handleAPIAttemptLogs)
 	h.mux.HandleFunc("GET /tasks/{taskID}", h.handleTaskDetail)
+	h.mux.HandleFunc("GET /failed-tasks", h.handleFailedTasksDashboard)
+	h.mux.HandleFunc("GET /api/failed-tasks", h.handleAPIFailedTasks)
 	h.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
 
 	return h, nil
@@ -2270,6 +2272,157 @@ func (h *Handler) handleAPIReleaseTask(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// --- Failed tasks dashboard ---
+
+// failedOpenTaskEntry holds a summary for the failed-but-still-open tasks dashboard.
+type failedOpenTaskEntry struct {
+	TaskID       string `json:"task_id"`
+	TaskTitle    string `json:"task_title,omitempty"`
+	ProjectLabel string `json:"project_label,omitempty"`
+	FailedCount  int    `json:"failed_count"`
+	LatestRunID  string `json:"latest_run_id"`
+	LatestError  string `json:"latest_error,omitempty"`
+	LatestTime   string `json:"latest_time,omitempty"`
+	OpenInBead   bool   `json:"open_in_bead"`
+}
+
+// buildFailedOpenTasks returns all tasks that have failed runs but have not yet
+// succeeded. For each task the latest top-level run determines recency. If a
+// taskProvider is configured, tasks that appear in the live bead task list are
+// flagged as open in bead.
+func (h *Handler) buildFailedOpenTasks(ctx context.Context) []failedOpenTaskEntry {
+	runs, err := h.store.ListRuns(ctx, time.Time{})
+	if err != nil {
+		return nil
+	}
+
+	projects, _ := h.store.ListProjects(ctx)
+	labels := projectLabels(projects)
+	taskTitles := h.taskTitlesFromRuns(runs)
+
+	// Build bead open-task set across all projects (keyed by task ID).
+	beadOpen := map[string]bool{}
+	if h.taskProvider != nil {
+		seen := map[string]bool{}
+		for _, r := range runs {
+			if r.ProjectDir == "" || seen[r.ProjectDir] {
+				continue
+			}
+			seen[r.ProjectDir] = true
+			for _, te := range h.taskProvider.GetLoopTasks(r.ProjectDir) {
+				beadOpen[te.ID] = true
+			}
+		}
+	}
+
+	// Build parent→children map and collect top-level runs.
+	byID := map[string]*domain.Run{}
+	for _, r := range runs {
+		byID[r.ID] = r
+	}
+	parentMap := map[string][]*domain.Run{}
+	var topLevel []*domain.Run
+	for _, r := range runs {
+		if r.WorkflowName == "list-tasks" {
+			continue
+		}
+		if r.ParentRunID != "" && byID[r.ParentRunID] != nil {
+			parentMap[r.ParentRunID] = append(parentMap[r.ParentRunID], r)
+		} else {
+			topLevel = append(topLevel, r)
+		}
+	}
+
+	// Group top-level runs by task ID (only tasks with a task ID).
+	taskGroups := map[string][]*domain.Run{}
+	taskOrder := []string{}
+	seenTask := map[string]bool{}
+
+	// Sort: most recently started first.
+	sort.SliceStable(topLevel, func(i, j int) bool {
+		return topLevel[i].StartedAt.After(topLevel[j].StartedAt)
+	})
+
+	for _, r := range topLevel {
+		if r.TaskID == "" {
+			continue
+		}
+		taskGroups[r.TaskID] = append(taskGroups[r.TaskID], r)
+		if !seenTask[r.TaskID] {
+			seenTask[r.TaskID] = true
+			taskOrder = append(taskOrder, r.TaskID)
+		}
+	}
+
+	var result []failedOpenTaskEntry
+	for _, tid := range taskOrder {
+		group := taskGroups[tid]
+		if len(group) == 0 {
+			continue
+		}
+		// Determine overall task status from the latest attempt.
+		latestRun := group[0]
+		latestChildren := parentMap[latestRun.ID]
+		latestAttemptRuns := append([]*domain.Run{latestRun}, latestChildren...)
+		status := taskAggregateStatus(latestAttemptRuns)
+
+		// Only include tasks whose latest attempt is failed (not succeeded or running).
+		if status != "failed" {
+			continue
+		}
+
+		// Count how many attempts failed.
+		var failedCount int
+		for _, r := range group {
+			children := parentMap[r.ID]
+			allInAttempt := append([]*domain.Run{r}, children...)
+			if taskAggregateStatus(allInAttempt) == "failed" {
+				failedCount++
+			}
+		}
+
+		result = append(result, failedOpenTaskEntry{
+			TaskID:       tid,
+			TaskTitle:    taskTitles[tid],
+			ProjectLabel: labels[latestRun.ProjectDir],
+			FailedCount:  failedCount,
+			LatestRunID:  latestRun.ID,
+			LatestError:  latestRun.ErrorMessage,
+			LatestTime:   formatTime(latestRun.StartedAt),
+			OpenInBead:   beadOpen[tid],
+		})
+	}
+	return result
+}
+
+// handleFailedTasksDashboard renders the failed-but-still-open tasks dashboard.
+func (h *Handler) handleFailedTasksDashboard(w http.ResponseWriter, r *http.Request) {
+	tasks := h.buildFailedOpenTasks(r.Context())
+	if tasks == nil {
+		tasks = []failedOpenTaskEntry{}
+	}
+	hasBeadProvider := h.taskProvider != nil
+	data := map[string]any{
+		"Title":           "Failed Open Tasks",
+		"Tasks":           tasks,
+		"HasBeadProvider": hasBeadProvider,
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := h.pages["failed_tasks"].ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// handleAPIFailedTasks returns a JSON list of failed-but-still-open tasks.
+func (h *Handler) handleAPIFailedTasks(w http.ResponseWriter, r *http.Request) {
+	tasks := h.buildFailedOpenTasks(r.Context())
+	if tasks == nil {
+		tasks = []failedOpenTaskEntry{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(tasks)
 }
 
 // --- Template helpers ---

@@ -189,6 +189,27 @@ full log output.
 
 ---
 
+### Failed Open Tasks (`/failed-tasks`)
+
+A dashboard that cross-references run history with the live bead task list to surface
+tasks that have been attempted at least once but have never succeeded and are still open.
+
+Each row shows:
+
+- **Task** — the task ID (links to the Task Detail page) and title.
+- **Project** — the project the task belongs to.
+- **Failed Attempts** — how many runs for this task have failed.
+- **Latest Run** — a link to the most recent run.
+- **Latest Failure** — the timestamp of the most recent failed run.
+- **Error** — a truncated excerpt of the error message from the latest failure.
+- **In Bead** *(only shown when a task provider is configured)* — `open` if the task
+  still appears in the bead task list, `—` if not.
+
+The page auto-refreshes every 5 seconds. If there are no failed open tasks, a message
+confirms that all attempted tasks have succeeded or are still running.
+
+---
+
 ## Features at a Glance
 
 | Feature | Where |
@@ -202,3 +223,4 @@ full log output.
 | Run cancel | Run detail → Cancel button |
 | Task/attempt grouping | Runs list |
 | Project health overview | Projects landing page |
+| Failed open tasks dashboard | `/failed-tasks` |

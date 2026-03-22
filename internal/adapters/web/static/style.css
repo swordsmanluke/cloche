@@ -81,12 +81,45 @@ a:hover { text-decoration: underline; }
     margin-bottom: 1.5rem;
 }
 
+.navbar-inner {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.nav-links {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.9rem;
+}
+
+.nav-links a {
+    color: var(--text-muted);
+}
+
+.nav-links a:hover {
+    color: var(--link);
+    text-decoration: none;
+}
+
 .logo {
     font-weight: 700;
     font-size: 1.1rem;
     color: var(--text);
 }
 .logo:hover { text-decoration: none; }
+
+.page-desc {
+    color: var(--text-muted);
+    margin: -0.5rem 0 1rem;
+    font-size: 0.9rem;
+}
+
+.task-title-sub {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+}
 
 h1 {
     font-size: 1.4rem;

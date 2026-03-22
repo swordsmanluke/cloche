@@ -1,0 +1,91 @@
+{{define "content"}}
+<h1>Failed Open Tasks</h1>
+<p class="page-desc">Tasks that have had failed workflow runs and have not yet succeeded.</p>
+
+{{if .Tasks}}
+<table class="runs-table">
+    <thead>
+        <tr>
+            <th>Task</th>
+            <th>Project</th>
+            <th>Failed Attempts</th>
+            <th>Latest Run</th>
+            <th>Latest Failure</th>
+            <th>Error</th>
+            {{if .HasBeadProvider}}<th>In Bead</th>{{end}}
+        </tr>
+    </thead>
+    <tbody>
+    {{range .Tasks}}
+        <tr>
+            <td>
+                <a href="/tasks/{{.TaskID}}">{{.TaskID}}</a>
+                {{if .TaskTitle}}<div class="task-title-sub">{{.TaskTitle}}</div>{{end}}
+            </td>
+            <td>{{.ProjectLabel}}</td>
+            <td><span class="badge badge-failed">{{.FailedCount}}</span></td>
+            <td><a href="/runs/{{.LatestRunID}}">{{.LatestRunID}}</a></td>
+            <td>{{.LatestTime}}</td>
+            <td class="error-cell">{{truncate .LatestError 100}}</td>
+            {{if $.HasBeadProvider}}
+            <td>
+                {{if .OpenInBead}}<span class="badge badge-pending">open</span>{{else}}<span class="badge badge-cancelled">—</span>{{end}}
+            </td>
+            {{end}}
+        </tr>
+    {{end}}
+    </tbody>
+</table>
+{{else}}
+<p class="empty">No failed open tasks. All attempted tasks have succeeded or are still running.</p>
+{{end}}
+{{end}}
+
+{{define "scripts"}}
+<script>
+(function() {
+    function poll() {
+        fetch('/api/failed-tasks')
+            .then(function(r) { return r.json(); })
+            .then(function(tasks) {
+                var tbody = document.querySelector('.runs-table tbody');
+                if (!tbody) return;
+                if (!tasks || tasks.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty">No failed open tasks. All attempted tasks have succeeded or are still running.</td></tr>';
+                    return;
+                }
+                var hasBeadProvider = {{if .HasBeadProvider}}true{{else}}false{{end}};
+                var html = '';
+                for (var i = 0; i < tasks.length; i++) {
+                    var t = tasks[i];
+                    var titleSub = t.task_title ? '<div class="task-title-sub">' + escapeHtml(t.task_title) + '</div>' : '';
+                    var beadCol = hasBeadProvider
+                        ? '<td>' + (t.open_in_bead ? '<span class="badge badge-pending">open</span>' : '<span class="badge badge-cancelled">—</span>') + '</td>'
+                        : '';
+                    var err = t.latest_error || '';
+                    if (err.length > 100) err = err.substring(0, 100) + '...';
+                    html += '<tr>' +
+                        '<td><a href="/tasks/' + escapeHtml(t.task_id) + '">' + escapeHtml(t.task_id) + '</a>' + titleSub + '</td>' +
+                        '<td>' + escapeHtml(t.project_label || '') + '</td>' +
+                        '<td><span class="badge badge-failed">' + (t.failed_count || 0) + '</span></td>' +
+                        '<td><a href="/runs/' + escapeHtml(t.latest_run_id) + '">' + escapeHtml(t.latest_run_id) + '</a></td>' +
+                        '<td>' + escapeHtml(t.latest_time || '') + '</td>' +
+                        '<td class="error-cell">' + escapeHtml(err) + '</td>' +
+                        beadCol +
+                        '</tr>';
+                }
+                tbody.innerHTML = html;
+            })
+            .catch(function() {});
+    }
+
+    function escapeHtml(s) {
+        var d = document.createElement('div');
+        d.appendChild(document.createTextNode(String(s)));
+        return d.innerHTML;
+    }
+
+    setInterval(poll, 5000);
+})();
+</script>
+{{end}}
