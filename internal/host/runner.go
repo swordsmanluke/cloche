@@ -191,17 +191,22 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		result.State = run.State
 	}
 
-	// Persist final state.
+	// Persist final state. Use context.Background() because ctx may have been
+	// cancelled if the run was stopped externally (cloche stop). Skip
+	// overwriting a Cancelled state set by StopRun.
 	if !r.SkipRunRecord {
-		hostRun, _ := r.Store.GetRun(ctx, orchRunID)
+		cleanupCtx := context.Background()
+		hostRun, _ := r.Store.GetRun(cleanupCtx, orchRunID)
 		if hostRun != nil {
-			if runErr != nil {
-				hostRun.Fail(runErr.Error())
-			} else {
-				hostRun.Complete(result.State)
+			if hostRun.State != domain.RunStateCancelled {
+				if runErr != nil {
+					hostRun.Fail(runErr.Error())
+				} else {
+					hostRun.Complete(result.State)
+				}
 			}
 			hostRun.ActiveSteps = nil
-			_ = r.Store.UpdateRun(ctx, hostRun)
+			_ = r.Store.UpdateRun(cleanupCtx, hostRun)
 		}
 	}
 
@@ -361,16 +366,23 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 		result.State = engRun.State
 	}
 
-	// Persist final state
-	hostRun, _ := r.Store.GetRun(ctx, run.ID)
-	if hostRun != nil {
-		if runErr != nil {
-			hostRun.Fail(runErr.Error())
-		} else {
-			hostRun.Complete(result.State)
+	// Persist final state. Use context.Background() because ctx may have been
+	// cancelled if the run was stopped externally (cloche stop). Skip
+	// overwriting a Cancelled state set by StopRun.
+	{
+		cleanupCtx := context.Background()
+		hostRun, _ := r.Store.GetRun(cleanupCtx, run.ID)
+		if hostRun != nil {
+			if hostRun.State != domain.RunStateCancelled {
+				if runErr != nil {
+					hostRun.Fail(runErr.Error())
+				} else {
+					hostRun.Complete(result.State)
+				}
+			}
+			hostRun.ActiveSteps = nil
+			_ = r.Store.UpdateRun(cleanupCtx, hostRun)
 		}
-		hostRun.ActiveSteps = nil
-		_ = r.Store.UpdateRun(ctx, hostRun)
 	}
 
 	// Signal live-stream subscribers that this run is done.
@@ -528,16 +540,23 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 		result.State = engRun.State
 	}
 
-	// Persist final state using the new run record.
-	hostRunFinal, _ := r.Store.GetRun(ctx, newRunID)
-	if hostRunFinal != nil {
-		if runErr != nil {
-			hostRunFinal.Fail(runErr.Error())
-		} else {
-			hostRunFinal.Complete(result.State)
+	// Persist final state using the new run record. Use context.Background()
+	// because ctx may have been cancelled if the run was stopped externally
+	// (cloche stop). Skip overwriting a Cancelled state set by StopRun.
+	{
+		cleanupCtx := context.Background()
+		hostRunFinal, _ := r.Store.GetRun(cleanupCtx, newRunID)
+		if hostRunFinal != nil {
+			if hostRunFinal.State != domain.RunStateCancelled {
+				if runErr != nil {
+					hostRunFinal.Fail(runErr.Error())
+				} else {
+					hostRunFinal.Complete(result.State)
+				}
+			}
+			hostRunFinal.ActiveSteps = nil
+			_ = r.Store.UpdateRun(cleanupCtx, hostRunFinal)
 		}
-		hostRunFinal.ActiveSteps = nil
-		_ = r.Store.UpdateRun(ctx, hostRunFinal)
 	}
 
 	if r.LogBroadcast != nil {

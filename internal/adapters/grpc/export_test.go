@@ -22,10 +22,17 @@ func SendContentChunked(stream rpcgrpc.ServerStreamingServer[pb.LogEntry], entry
 // MaxLogChunkSize exposes maxLogChunkSize for testing.
 const MaxLogChunkSize = maxLogChunkSize
 
-// AddActiveRun registers a fake active run for testing.
+// AddActiveRun registers a fake active container run for testing.
 func (s *ClocheServer) AddActiveRun(runID, containerID string) {
 	s.mu.Lock()
 	s.runIDs[runID] = containerID
+	s.mu.Unlock()
+}
+
+// AddActiveHostRun registers a fake active host run cancel function for testing.
+func (s *ClocheServer) AddActiveHostRun(runID string, cancelFn context.CancelFunc) {
+	s.mu.Lock()
+	s.hostCancels[runID] = cancelFn
 	s.mu.Unlock()
 }
 

@@ -48,6 +48,7 @@ type ClocheServer struct {
 	shutdownFn   func()
 	mu              sync.Mutex
 	runIDs          map[string]string               // run_id -> container_id
+	hostCancels     map[string]context.CancelFunc   // run_id -> cancel fn (for host runs)
 	loops           map[string]*host.Loop            // project_dir -> orchestration loop
 	activityLoggers map[string]*activitylog.Logger   // project_dir -> activity logger
 }
@@ -57,6 +58,7 @@ func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *Cl
 		store:           store,
 		container:       container,
 		runIDs:          make(map[string]string),
+		hostCancels:     make(map[string]context.CancelFunc),
 		loops:           make(map[string]*host.Loop),
 		activityLoggers: make(map[string]*activitylog.Logger),
 	}
@@ -69,6 +71,7 @@ func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureSto
 		container:       container,
 		defaultImage:    defaultImage,
 		runIDs:          make(map[string]string),
+		hostCancels:     make(map[string]context.CancelFunc),
 		loops:           make(map[string]*host.Loop),
 		activityLoggers: make(map[string]*activitylog.Logger),
 	}
@@ -268,8 +271,18 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 		AttemptID:    attemptID,
 	}
 
+	runCtx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	s.hostCancels[runID] = cancel
+	s.mu.Unlock()
 	go func() {
-		runner.RunNamedWithID(context.Background(), req.ProjectDir, hostWorkflowName, runID)
+		defer func() {
+			s.mu.Lock()
+			delete(s.hostCancels, runID)
+			s.mu.Unlock()
+			cancel()
+		}()
+		runner.RunNamedWithID(runCtx, req.ProjectDir, hostWorkflowName, runID)
 	}()
 
 	return &pb.RunWorkflowResponse{RunId: runID}, nil
@@ -541,8 +554,18 @@ func (s *ClocheServer) resumeHostRun(ctx context.Context, run *domain.Run, stepN
 		AttemptID:    newAttempt.ID,
 	}
 
+	resumeCtx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	s.hostCancels[newRunID] = cancel
+	s.mu.Unlock()
 	go func() {
-		result, runErr := runner.ResumeRunAsNewAttempt(context.Background(), run, stepName, newRunID)
+		defer func() {
+			s.mu.Lock()
+			delete(s.hostCancels, newRunID)
+			s.mu.Unlock()
+			cancel()
+		}()
+		result, runErr := runner.ResumeRunAsNewAttempt(resumeCtx, run, stepName, newRunID)
 		s.completeAttemptFromResult(newAttempt.ID, newAttempt.TaskID, result, runErr)
 	}()
 
@@ -2022,6 +2045,7 @@ func (s *ClocheServer) StopRun(ctx context.Context, req *pb.StopRunRequest) (*pb
 
 		s.mu.Lock()
 		containerID, ok := s.runIDs[run.ID]
+		cancelFn, isHostRun := s.hostCancels[run.ID]
 		s.mu.Unlock()
 
 		if ok {
@@ -2032,6 +2056,11 @@ func (s *ClocheServer) StopRun(ctx context.Context, req *pb.StopRunRequest) (*pb
 
 		run.Complete(domain.RunStateCancelled)
 		_ = s.store.UpdateRun(ctx, run)
+
+		if isHostRun {
+			cancelFn()
+		}
+
 		stopped++
 	}
 

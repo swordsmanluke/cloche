@@ -2870,6 +2870,47 @@ func TestServer_StopRun_AlreadyCompletedRunsNotStopped(t *testing.T) {
 	assert.Empty(t, rt.stopped)
 }
 
+func TestServer_StopRun_StopsUserInitiatedHostRun(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Simulate a user-initiated host run: task_id = "user-p8m5", run is host.
+	hostRun := domain.NewRun("p8m5-main", "main")
+	hostRun.TaskID = "user-p8m5"
+	hostRun.IsHost = true
+	hostRun.Start()
+	require.NoError(t, store.CreateRun(ctx, hostRun))
+
+	// Track whether the goroutine cancel was called.
+	cancelled := make(chan struct{})
+	cancelFn := func() { close(cancelled) }
+
+	rt := &mockStopRuntime{}
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+	srv.AddActiveHostRun("p8m5-main", cancelFn)
+
+	_, err = srv.StopRun(ctx, &pb.StopRunRequest{TaskId: "user-p8m5"})
+	require.NoError(t, err)
+
+	// The cancel function must have been called to stop the goroutine.
+	select {
+	case <-cancelled:
+	default:
+		t.Fatal("expected host run cancel function to be called")
+	}
+
+	// No container was stopped (host runs have no container).
+	assert.Empty(t, rt.stopped)
+
+	// The run should be marked Cancelled in the store.
+	r, err := store.GetRun(ctx, "p8m5-main")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateCancelled, r.State)
+}
+
 // TestResumeTarget_TaskID_WithoutAttemptStore verifies that cloche resume
 // accepts v2 task IDs even when the attempt store is not configured. The
 // resolver should fall back to scanning runs by task_id directly.
