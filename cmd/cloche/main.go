@@ -19,7 +19,6 @@ import (
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/logstream"
-	"github.com/cloche-dev/cloche/internal/runcontext"
 	"github.com/cloche-dev/cloche/internal/version"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -1095,22 +1094,25 @@ func cmdShutdown(ctx context.Context, client pb.ClocheServiceClient, args []stri
 	fmt.Println("Daemon shutting down.")
 }
 
-// resolveRunContext returns the project directory and task ID for context
-// commands. The task ID comes from CLOCHE_TASK_ID and the project directory
-// from CLOCHE_PROJECT_DIR (falling back to cwd).
-func resolveRunContext() (projectDir, taskID string, err error) {
+// resolveRunContext returns the task ID and attempt ID for KV context commands.
+// Both come from environment variables set by the daemon when launching host steps.
+func resolveRunContext() (taskID, attemptID string, err error) {
 	taskID = os.Getenv("CLOCHE_TASK_ID")
 	if taskID == "" {
 		return "", "", fmt.Errorf("CLOCHE_TASK_ID environment variable is not set")
 	}
-	projectDir = os.Getenv("CLOCHE_PROJECT_DIR")
-	if projectDir == "" {
-		projectDir, err = os.Getwd()
-		if err != nil {
-			return "", "", fmt.Errorf("getting working directory: %w", err)
-		}
+	attemptID = os.Getenv("CLOCHE_ATTEMPT_ID")
+	return taskID, attemptID, nil
+}
+
+// dialDaemon creates a gRPC connection to the daemon using CLOCHE_ADDR or the
+// default socket address.
+func dialDaemon() (*grpc.ClientConn, error) {
+	addr := os.Getenv("CLOCHE_ADDR")
+	if addr == "" {
+		addr = config.DefaultSocketAddr()
 	}
-	return projectDir, taskID, nil
+	return grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 }
 
 func cmdGet(args []string) {
@@ -1119,47 +1121,92 @@ func cmdGet(args []string) {
 		os.Exit(1)
 	}
 
-	projectDir, taskID, err := resolveRunContext()
+	taskID, attemptID, err := resolveRunContext()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
-	val, ok, err := runcontext.Get(projectDir, taskID, args[0])
+	conn, err := dialDaemon()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error connecting to daemon: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+
+	client := pb.NewClocheServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	resp, err := client.GetContextKey(ctx, &pb.GetContextKeyRequest{
+		TaskId:    taskID,
+		AttemptId: attemptID,
+		Key:       args[0],
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	if !ok {
+	if !resp.Found {
+		fmt.Fprintf(os.Stderr, "key not found: %s\n", args[0])
 		os.Exit(1)
 	}
-	fmt.Println(val)
+	fmt.Println(resp.Value)
 }
 
 func cmdSet(args []string) {
 	if len(args) < 2 {
 		fmt.Fprintf(os.Stderr, "usage: cloche set <key> <value>\n")
 		fmt.Fprintf(os.Stderr, "       cloche set <key> -     (read value from stdin)\n")
+		fmt.Fprintf(os.Stderr, "       cloche set <key> -f <file>\n")
 		os.Exit(1)
 	}
 
-	projectDir, taskID, err := resolveRunContext()
+	taskID, attemptID, err := resolveRunContext()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
-	value := args[1]
-	if value == "-" {
+	key := args[0]
+	var value string
+	switch {
+	case args[1] == "-f" && len(args) >= 3:
+		data, err := os.ReadFile(args[2])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error reading file: %v\n", err)
+			os.Exit(1)
+		}
+		value = string(data)
+	case args[1] == "-":
 		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error reading stdin: %v\n", err)
 			os.Exit(1)
 		}
 		value = strings.TrimRight(string(data), "\n")
+	default:
+		value = args[1]
 	}
 
-	if err := runcontext.Set(projectDir, taskID, args[0], value); err != nil {
+	conn, err := dialDaemon()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error connecting to daemon: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+
+	client := pb.NewClocheServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err = client.SetContextKey(ctx, &pb.SetContextKeyRequest{
+		TaskId:    taskID,
+		AttemptId: attemptID,
+		Key:       key,
+		Value:     value,
+	})
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}

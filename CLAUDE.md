@@ -14,11 +14,12 @@ tasks, validated code pipelines, and self-evolving tooling.
 
 ## Architecture
 
-Three binaries from one Go module:
+Four binaries from one Go module:
 
 - **`cloche`** (CLI) — Short-lived client. Talks to daemon over gRPC. Subcommands: `run`, `resume`, `status`, `list`, `logs`, `stop`, `project`.
 - **`cloched`** (Daemon) — Long-running. Manages container lifecycle, collects status, persists state. Executes host workflows (any workflow with a `host { }` block) step by step on the host machine, dispatching container workflow runs as needed.
 - **`cloche-agent`** (In-Container) — Autonomous. Parses workflow DSL, walks the graph, executes steps, streams status back to daemon. Runs to completion without human intervention.
+- **`clo`** (In-Container CLI) — Lightweight gRPC client baked into container images. Provides `get`/`set`/`keys` commands for reading and writing the daemon's KV store from within a container step.
 
 Hexagonal architecture: domain logic is independent of infrastructure. Ports define
 interfaces (ContainerRuntime, RunStore, CaptureStore, AgentAdapter). Adapters implement
@@ -29,6 +30,7 @@ cmd/
   cloche/           # CLI client
   cloched/          # Daemon
   cloche-agent/     # In-container entrypoint
+  clo/              # In-container KV CLI
 internal/
   domain/           # Core types (Workflow, Step, Result, Run)
   ports/            # Interfaces (store, container, agent, notifier)
@@ -72,7 +74,7 @@ Generic (arbitrary commands) and Claude Code.
 
 ## Versioning
 
-All three binaries share a single version string from `internal/version/VERSION`.
+All four binaries share a single version string from `internal/version/VERSION`.
 Format: `major.minor.build` (semver).
 
 - **Build**: bugfixes, new dashboards, refactors, and everything that isn't a new major
@@ -87,6 +89,7 @@ Format: `major.minor.build` (semver).
 - `cloche -v` / `cloche --version` — prints CLI, daemon, and agent versions.
 - `cloched -v` / `cloched --version` — prints daemon version.
 - `cloche-agent -v` / `cloche-agent --version` — prints agent version.
+- `clo -v` / `clo --version` — prints clo version.
 - The daemon exposes a `GetVersion` gRPC endpoint.
 
 ### Versioning policy for bead tickets

@@ -164,6 +164,18 @@ func migrate(db *sql.DB) error {
 		return err2
 	}
 
+	_, errKV := db.Exec(`CREATE TABLE IF NOT EXISTS context_kv (
+		task_id    TEXT NOT NULL,
+		attempt_id TEXT NOT NULL,
+		key        TEXT NOT NULL,
+		value      TEXT NOT NULL,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (task_id, attempt_id, key)
+	)`)
+	if errKV != nil {
+		return errKV
+	}
+
 	return nil
 }
 
@@ -799,6 +811,56 @@ func nullIfEmptyTime(t time.Time) interface{} {
 		return nil
 	}
 	return t.Format(time.RFC3339Nano)
+}
+
+func (s *Store) GetContextKey(ctx context.Context, taskID, attemptID, key string) (string, bool, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT value FROM context_kv WHERE task_id = ? AND attempt_id = ? AND key = ?`,
+		taskID, attemptID, key)
+	var value string
+	err := row.Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return value, true, nil
+}
+
+func (s *Store) SetContextKey(ctx context.Context, taskID, attemptID, key, value string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO context_kv (task_id, attempt_id, key, value, updated_at)
+		 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(task_id, attempt_id, key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
+		taskID, attemptID, key, value)
+	return err
+}
+
+func (s *Store) ListContextKeys(ctx context.Context, taskID, attemptID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT key FROM context_kv WHERE task_id = ? AND attempt_id = ? ORDER BY key`,
+		taskID, attemptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var keys []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
+}
+
+func (s *Store) DeleteContextKeys(ctx context.Context, taskID, attemptID string) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM context_kv WHERE task_id = ? AND attempt_id = ?`,
+		taskID, attemptID)
+	return err
 }
 
 const maxErrorMessageLen = 1000

@@ -1129,9 +1129,9 @@ displayed.
 cloche get <key>
 ```
 
-Get a value from the run context store (`.cloche/runs/<task-id>/context.json`). Requires
-the `CLOCHE_TASK_ID` environment variable. Uses `CLOCHE_PROJECT_DIR` if set, otherwise
-the current working directory. Exits 1 if the key is not found.
+Get a value from the daemon's gRPC-backed KV store. Requires the `CLOCHE_TASK_ID`
+environment variable (`CLOCHE_ATTEMPT_ID` is also used if set). Exits 1 if the key is
+not found.
 
 ### `cloche set`
 
@@ -1139,10 +1139,10 @@ the current working directory. Exits 1 if the key is not found.
 cloche set <key> <value|->
 ```
 
-Set a value in the run context store (`.cloche/runs/<task-id>/context.json`). Requires
-the `CLOCHE_TASK_ID` environment variable. Uses `CLOCHE_PROJECT_DIR` if set, otherwise
-the current working directory. Creates the file and directories if they don't exist.
+Set a value in the daemon's gRPC-backed KV store. Requires the `CLOCHE_TASK_ID`
+environment variable (`CLOCHE_ATTEMPT_ID` is also used if set).
 Pass `-` as the value to read from stdin (trailing newlines are trimmed).
+Pass `-f <file>` to read the value from a file.
 
 #### Auto-Seeded Keys
 
@@ -1162,7 +1162,7 @@ The following keys are written automatically and can be read with `cloche get`:
 | Key | Value |
 |-----|-------|
 | `prev_step` | Name of the step that triggered this one (empty for the entry step) |
-| `prev_result` | Result of that step (empty for the entry step) |
+| `prev_step_exit` | Result of that step (empty for the entry step) |
 
 **Step result tracking** (set after each step completes):
 
@@ -1171,6 +1171,23 @@ The following keys are written automatically and can be read with `cloche get`:
 | `<workflow>:<step>:result` | Result code of the completed step (e.g. `develop:implement:result = success`) |
 
 All auto-seeded keys are fully writable — scripts can overwrite them with `cloche set`.
+
+### `clo` (In-Container KV CLI)
+
+`clo` is a lightweight binary available inside containers for reading and writing the
+daemon's KV store without needing the full `cloche` client.
+
+```
+clo get <key>              Print value to stdout; exit 1 if not found
+clo set <key> <value>      Set a key
+clo set <key> -            Read value from stdin (trailing newlines trimmed)
+clo set <key> -f <file>    Set a key from file contents
+clo keys                   List all keys in the current attempt namespace
+clo -v / --version         Print version
+```
+
+`clo` reads `CLOCHE_ADDR`, `CLOCHE_TASK_ID`, and `CLOCHE_ATTEMPT_ID` from the
+environment. The Docker adapter sets all three automatically.
 
 ### `cloche tasks`
 
@@ -1299,8 +1316,7 @@ my-project/
 │   │   └── CLAUDE.md         # Container-specific CLAUDE.md (optional)
 │   ├── runs/
 │   │   └── <task-id>/        # Runtime state (gitignored)
-│   │       ├── prompt.txt    # User prompt
-│   │       └── context.json  # Shared key-value store (cloche get/set)
+│   │       └── prompt.txt    # User prompt
 │   ├── activity.log          # Append-only JSONL activity log (attempt/step events)
 │   └── logs/
 │       └── <task-id>/        # Grouped by task (ticket or user-initiated run)
@@ -1324,6 +1340,7 @@ my-project/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLOCHE_LISTEN` | `unix://~/.config/cloche/cloche.sock` | Listen address |
+| `CLOCHE_TCP` | `127.0.0.1:50051` | Additional TCP listener address (for container access via `clo`) |
 | `CLOCHE_DB` | `~/.config/cloche/cloche.db` | SQLite database path |
 | `CLOCHE_RUNTIME` | `docker` | `docker` or `local` (subprocess, for dev only) |
 | `CLOCHE_IMAGE` | `cloche-agent:latest` | Default Docker image |
@@ -1366,12 +1383,14 @@ Injected into the container by the daemon at startup.
 | `CLOCHE_ATTEMPT_ID` | Attempt identifier for this container run. Used for unique container naming. |
 | `CLOCHE_PROJECT_DIR` | Working directory inside the container (`/workspace`). Set so `cloche get`/`cloche set` work correctly. |
 | `CLOCHE_AGENT_COMMAND` | Overrides the default agent command inside the container. |
+| `CLOCHE_ADDR` | Daemon gRPC TCP address (e.g. `host.docker.internal:50051`). Used by `clo get`/`clo set` inside the container. |
 | `ANTHROPIC_API_KEY` | Passed through from the host environment if set. |
 
 ## Dockerfile Requirements
 
 The container image must have:
 - `cloche-agent` binary at `/usr/local/bin/cloche-agent`
+- `clo` binary at `/usr/local/bin/clo`
 - `git` installed
 - An `agent` user (cloche wraps commands with `chown` + `su agent`)
 - `/workspace` as the working directory

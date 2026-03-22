@@ -71,6 +71,16 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		args = append(args, "-e", "ANTHROPIC_API_KEY")
 	}
 
+	// Pass daemon gRPC address so in-container clo commands can reach the daemon.
+	// The host is reachable at host.docker.internal (added via --add-host above).
+	clocheTCPAddr := os.Getenv("CLOCHE_TCP")
+	if clocheTCPAddr == "" {
+		clocheTCPAddr = "127.0.0.1:50051"
+	}
+	// Convert 127.0.0.1:port to host.docker.internal:port for container access.
+	containerAddr := strings.Replace(clocheTCPAddr, "127.0.0.1:", "host.docker.internal:", 1)
+	args = append(args, "-e", "CLOCHE_ADDR="+containerAddr)
+
 	// Claude auth files are copied (not mounted) after docker create so each
 	// container gets its own copy — avoids concurrent write conflicts.
 

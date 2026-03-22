@@ -18,7 +18,6 @@ import (
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/protocol"
-	"github.com/cloche-dev/cloche/internal/runcontext"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -85,19 +84,39 @@ var _ engine.StepExecutor = (*Executor)(nil)
 // Execute runs a single host workflow step.
 func (e *Executor) Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
 	// Seed run-level context once on first use (logged but not fatal on error).
-	if e.TaskID != "" {
+	if e.TaskID != "" && e.Store != nil {
 		e.seedOnce.Do(func() {
-			if err := runcontext.SeedRunContext(e.ProjectDir, e.TaskID, e.AttemptID, e.WorkflowName, e.HostRunID); err != nil {
-				log.Printf("host executor: seeding run context: %v", err)
+			pairs := [][2]string{
+				{"task_id", e.TaskID},
+				{"attempt_id", e.AttemptID},
+				{"workflow", e.WorkflowName},
+				{"run_id", e.HostRunID},
+			}
+			for _, p := range pairs {
+				if err := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, p[0], p[1]); err != nil {
+					log.Printf("host executor: seeding run context key %q: %v", p[0], err)
+				}
 			}
 		})
 	}
 
-	// Record the step trigger (prev_step / prev_result) before dispatching.
-	if e.TaskID != "" {
+	// Update workflow key on every step (handles workflow transitions).
+	if e.TaskID != "" && e.Store != nil {
+		if err := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, "workflow", e.WorkflowName); err != nil {
+			log.Printf("host executor: updating workflow context key: %v", err)
+		}
+	}
+
+	// Record the step trigger (prev_step / prev_step_exit) before dispatching.
+	if e.TaskID != "" && e.Store != nil {
 		trigger, _ := engine.GetStepTrigger(ctx)
-		if err := runcontext.SetPrevStep(e.ProjectDir, e.TaskID, trigger.PrevStep, trigger.PrevResult); err != nil {
-			log.Printf("host executor: setting prev step context for %q: %v", step.Name, err)
+		for _, kv := range [][2]string{
+			{"prev_step", trigger.PrevStep},
+			{"prev_step_exit", trigger.PrevResult},
+		} {
+			if err := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, kv[0], kv[1]); err != nil {
+				log.Printf("host executor: setting %q context for step %q: %v", kv[0], step.Name, err)
+			}
 		}
 	}
 
@@ -117,8 +136,9 @@ func (e *Executor) Execute(ctx context.Context, step *domain.Step) (domain.StepR
 	}
 
 	// Record the step result after execution.
-	if e.TaskID != "" && err == nil && result.Result != "" {
-		if setErr := runcontext.SetStepResult(e.ProjectDir, e.TaskID, e.WorkflowName, step.Name, result.Result); setErr != nil {
+	if e.TaskID != "" && e.Store != nil && err == nil && result.Result != "" {
+		key := fmt.Sprintf("%s:%s:result", e.WorkflowName, step.Name)
+		if setErr := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, key, result.Result); setErr != nil {
 			log.Printf("host executor: setting step result context for %q: %v", step.Name, setErr)
 		}
 	}
@@ -252,7 +272,9 @@ func (e *Executor) executeWorkflow(ctx context.Context, step *domain.Step) (stri
 		}
 		// Store child run ID in context so downstream steps can retrieve it
 		// via "cloche get child_run_id"
-		_ = runcontext.Set(e.ProjectDir, e.TaskID, "child_run_id", resp.RunId)
+		if e.Store != nil {
+			_ = e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, "child_run_id", resp.RunId)
+		}
 	}
 
 	// Write run ID to step output so downstream steps (e.g. merge) can find it
@@ -323,7 +345,7 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 	}
 
 	if promptContent != "" {
-		promptPath := runcontext.PromptPath(e.ProjectDir, e.TaskID)
+		promptPath := filepath.Join(e.ProjectDir, ".cloche", "runs", e.TaskID, "prompt.txt")
 		_ = os.MkdirAll(filepath.Dir(promptPath), 0755)
 		_ = os.WriteFile(promptPath, []byte(promptContent), 0644)
 	}

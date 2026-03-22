@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/adapters/agents/generic"
 	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
 	"github.com/cloche-dev/cloche/internal/domain"
@@ -16,7 +18,8 @@ import (
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/protocol"
-	"github.com/cloche-dev/cloche/internal/runcontext"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type RunnerConfig struct {
@@ -83,10 +86,24 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	genericAdapter.StatusWriter = statusWriter
 
+	// Dial daemon for KV operations if CLOCHE_ADDR is set.
+	var kvClient pb.ClocheServiceClient
+	if addr := os.Getenv("CLOCHE_ADDR"); addr != "" {
+		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			log.Printf("agent: failed to dial daemon for KV at %s: %v", addr, err)
+		} else {
+			kvClient = pb.NewClocheServiceClient(conn)
+			defer conn.Close()
+		}
+	}
+
 	executor := &stepExecutor{
 		workDir:        r.cfg.WorkDir,
 		workflowName:   wf.Name,
 		taskID:         r.cfg.TaskID,
+		attemptID:      r.cfg.AttemptID,
+		kvClient:       kvClient,
 		generic:        genericAdapter,
 		prompt:         promptAdapter,
 		logStream:      ulog,
@@ -98,8 +115,16 @@ func (r *Runner) Run(ctx context.Context) error {
 	eng.SetStatusHandler(&statusReporter{writer: statusWriter, logStream: ulog})
 
 	// Seed run-level auto-context keys before execution starts.
-	if err := runcontext.SeedRunContext(r.cfg.WorkDir, r.cfg.TaskID, r.cfg.AttemptID, wf.Name, r.cfg.RunID); err != nil {
-		log.Printf("seeding run context: %v", err)
+	if kvClient != nil && r.cfg.TaskID != "" {
+		pairs := [][2]string{
+			{"task_id", r.cfg.TaskID},
+			{"attempt_id", r.cfg.AttemptID},
+			{"workflow", wf.Name},
+			{"run_id", r.cfg.RunID},
+		}
+		for _, p := range pairs {
+			executor.setContextKey(ctx, p[0], p[1])
+		}
 	}
 
 	// Resume mode: load completed step results and configure engine
@@ -155,6 +180,8 @@ type stepExecutor struct {
 	workDir        string
 	workflowName   string // used to prefix per-step log files (v2 layout)
 	taskID         string
+	attemptID      string
+	kvClient       pb.ClocheServiceClient // optional: gRPC KV client; nil if CLOCHE_ADDR not set
 	generic        *generic.Adapter
 	prompt         *prompt.Adapter
 	logStream      *logstream.Writer
@@ -162,12 +189,30 @@ type stepExecutor struct {
 	resumeFromStep string // the step being resumed (for prompt resume mode)
 }
 
+// setContextKey calls the daemon's SetContextKey RPC if a KV client is configured.
+func (e *stepExecutor) setContextKey(ctx context.Context, key, value string) {
+	if e.kvClient == nil || e.taskID == "" {
+		return
+	}
+	rCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, err := e.kvClient.SetContextKey(rCtx, &pb.SetContextKeyRequest{
+		TaskId:    e.taskID,
+		AttemptId: e.attemptID,
+		Key:       key,
+		Value:     value,
+	})
+	if err != nil {
+		log.Printf("agent: SetContextKey %q: %v", key, err)
+	}
+}
+
 func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
-	// Seed prev_step/prev_result before executing the step.
+	// Update workflow key and seed prev_step/prev_step_exit before executing the step.
 	if trigger, ok := engine.GetStepTrigger(ctx); ok {
-		if err := runcontext.SetPrevStep(e.workDir, e.taskID, trigger.PrevStep, trigger.PrevResult); err != nil {
-			log.Printf("setting prev step context: %v", err)
-		}
+		e.setContextKey(ctx, "workflow", e.workflowName)
+		e.setContextKey(ctx, "prev_step", trigger.PrevStep)
+		e.setContextKey(ctx, "prev_step_exit", trigger.PrevResult)
 	}
 
 	var sr domain.StepResult
@@ -205,9 +250,8 @@ func (e *stepExecutor) Execute(ctx context.Context, step *domain.Step) (domain.S
 
 	// Record step result after completion.
 	if err == nil && sr.Result != "" {
-		if setErr := runcontext.SetStepResult(e.workDir, e.taskID, e.workflowName, step.Name, sr.Result); setErr != nil {
-			log.Printf("setting step result context: %v", setErr)
-		}
+		key := fmt.Sprintf("%s:%s:result", e.workflowName, step.Name)
+		e.setContextKey(ctx, key, sr.Result)
 	}
 
 	return sr, err

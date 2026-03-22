@@ -26,11 +26,12 @@ import (
 	"github.com/cloche-dev/cloche/internal/host"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
-	"github.com/cloche-dev/cloche/internal/runcontext"
 	"github.com/cloche-dev/cloche/internal/protocol"
 	"github.com/cloche-dev/cloche/internal/version"
 	rpcgrpc "google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 type ClocheServer struct {
@@ -185,7 +186,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 
 	// Write prompt to .cloche/runs/<task-id>/prompt.txt
 	if req.Prompt != "" {
-		promptPath := runcontext.PromptPath(req.ProjectDir, run.TaskID)
+		promptPath := filepath.Join(req.ProjectDir, ".cloche", "runs", run.TaskID, "prompt.txt")
 		if err := os.MkdirAll(filepath.Dir(promptPath), 0755); err != nil {
 			return nil, fmt.Errorf("creating runs dir: %w", err)
 		}
@@ -2722,4 +2723,34 @@ func resolveConsoleAgentCommand(flagCmd, projectDir string) string {
 		return cmd
 	}
 	return "claude"
+}
+
+// GetContextKey retrieves a value from the per-attempt KV namespace.
+func (s *ClocheServer) GetContextKey(ctx context.Context, req *pb.GetContextKeyRequest) (*pb.GetContextKeyResponse, error) {
+	value, found, err := s.store.GetContextKey(ctx, req.TaskId, req.AttemptId, req.Key)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetContextKeyResponse{Value: value, Found: found}, nil
+}
+
+// SetContextKey sets a value in the per-attempt KV namespace.
+// Returns INVALID_ARGUMENT if len(value) > 1024.
+func (s *ClocheServer) SetContextKey(ctx context.Context, req *pb.SetContextKeyRequest) (*pb.SetContextKeyResponse, error) {
+	if len(req.Value) > 1024 {
+		return nil, status.Errorf(codes.InvalidArgument, "value exceeds 1 KB limit (%d bytes)", len(req.Value))
+	}
+	if err := s.store.SetContextKey(ctx, req.TaskId, req.AttemptId, req.Key, req.Value); err != nil {
+		return nil, err
+	}
+	return &pb.SetContextKeyResponse{}, nil
+}
+
+// ListContextKeys returns all keys in the per-attempt KV namespace.
+func (s *ClocheServer) ListContextKeys(ctx context.Context, req *pb.ListContextKeysRequest) (*pb.ListContextKeysResponse, error) {
+	keys, err := s.store.ListContextKeys(ctx, req.TaskId, req.AttemptId)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.ListContextKeysResponse{Keys: keys}, nil
 }

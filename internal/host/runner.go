@@ -16,7 +16,6 @@ import (
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
-	"github.com/cloche-dev/cloche/internal/runcontext"
 )
 
 // Ensure hostStatusHandler implements engine.StatusHandler.
@@ -119,7 +118,7 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		_ = r.Store.UpdateRun(ctx, hostRun)
 
 		// Persist ExtraEnv so resume can restore it (e.g. CLOCHE_MAIN_RUN_ID).
-		saveExtraEnv(projectDir, r.TaskID, r.ExtraEnv)
+		saveExtraEnv(ctx, r.Store, r.TaskID, r.AttemptID, r.ExtraEnv)
 	}
 
 	executor := &Executor{
@@ -217,11 +216,11 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		return result, runErr
 	}
 
-	// Clean up ephemeral runtime state (.cloche/runs/<task-id>/) on success.
+	// Clean up ephemeral runtime state on success.
 	// On failure, keep it so resume can restore ExtraEnv and context.
 	// SkipCleanup is set for the main phase when finalize will follow.
 	if r.TaskID != "" && result.State == domain.RunStateSucceeded && !r.SkipCleanup {
-		_ = runcontext.Cleanup(projectDir, r.TaskID)
+		cleanupRunContext(context.Background(), r.Store, projectDir, r.TaskID, r.AttemptID)
 	}
 
 	log.Printf("host workflow: %q completed for %s with state %s", wf.Name, projectDir, run.State)
@@ -256,17 +255,17 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 	log.Printf("host workflow: resuming %q from step %q for project %s (run %s)", wf.Name, resumeFrom, run.ProjectDir, run.ID)
 
 	// Restore child_run_id from the DB if the context store was cleaned up.
-	// The finalize phase cleans up .cloche/runs/<taskID>/ on success, but
-	// resume needs child_run_id to re-run merge/cleanup steps.
+	// The finalize phase cleans up the KV store on success, but resume needs
+	// child_run_id to re-run merge/cleanup steps.
 	if run.TaskID != "" {
-		if _, ok, _ := runcontext.Get(run.ProjectDir, run.TaskID, "child_run_id"); !ok {
+		if _, ok, _ := r.Store.GetContextKey(ctx, run.TaskID, run.AttemptID, "child_run_id"); !ok {
 			if children, err := r.Store.ListChildRuns(ctx, run.ID); err == nil {
 				// Find the most recent non-host child run (the container
 				// workflow). Host children (like finalize) are not what
 				// the merge script needs.
 				for i := len(children) - 1; i >= 0; i-- {
 					if !children[i].IsHost {
-						_ = runcontext.Set(run.ProjectDir, run.TaskID, "child_run_id", children[i].ID)
+						_ = r.Store.SetContextKey(ctx, run.TaskID, run.AttemptID, "child_run_id", children[i].ID)
 						log.Printf("host workflow: restored child_run_id=%s from DB for resume", children[i].ID)
 						break
 					}
@@ -279,7 +278,7 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 	// CLOCHE_MAIN_RUN_ID are available to re-executed steps.
 	extraEnv := r.ExtraEnv
 	if len(extraEnv) == 0 {
-		extraEnv = loadExtraEnv(run.ProjectDir, run.TaskID)
+		extraEnv = loadExtraEnv(ctx, r.Store, run.TaskID, run.AttemptID)
 	}
 
 	// Reset run state
@@ -386,7 +385,7 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 
 	// Clean up ephemeral runtime state on success.
 	if run.TaskID != "" && result.State == domain.RunStateSucceeded {
-		_ = runcontext.Cleanup(run.ProjectDir, run.TaskID)
+		cleanupRunContext(context.Background(), r.Store, run.ProjectDir, run.TaskID, run.AttemptID)
 	}
 
 	log.Printf("host workflow: resume of %q completed for %s with state %s", wf.Name, run.ProjectDir, engRun.State)
@@ -426,11 +425,11 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 
 	// Restore child_run_id from the DB if the context store was cleaned up.
 	if oldRun.TaskID != "" {
-		if _, ok, _ := runcontext.Get(oldRun.ProjectDir, oldRun.TaskID, "child_run_id"); !ok {
+		if _, ok, _ := r.Store.GetContextKey(ctx, oldRun.TaskID, oldRun.AttemptID, "child_run_id"); !ok {
 			if children, err := r.Store.ListChildRuns(ctx, oldRun.ID); err == nil {
 				for i := len(children) - 1; i >= 0; i-- {
 					if !children[i].IsHost {
-						_ = runcontext.Set(oldRun.ProjectDir, oldRun.TaskID, "child_run_id", children[i].ID)
+						_ = r.Store.SetContextKey(ctx, oldRun.TaskID, r.AttemptID, "child_run_id", children[i].ID)
 						log.Printf("host workflow: restored child_run_id=%s from DB for resume", children[i].ID)
 						break
 					}
@@ -442,7 +441,7 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 	// Restore ExtraEnv from the original run's context.
 	extraEnv := r.ExtraEnv
 	if len(extraEnv) == 0 {
-		extraEnv = loadExtraEnv(oldRun.ProjectDir, oldRun.TaskID)
+		extraEnv = loadExtraEnv(ctx, r.Store, oldRun.TaskID, oldRun.AttemptID)
 	}
 
 	// Create new run record — the old run remains in its failed state.
@@ -460,7 +459,7 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 	_ = r.Store.UpdateRun(ctx, hostRun)
 
 	// Persist ExtraEnv so future resumes can restore it.
-	saveExtraEnv(oldRun.ProjectDir, oldRun.TaskID, extraEnv)
+	saveExtraEnv(ctx, r.Store, oldRun.TaskID, r.AttemptID, extraEnv)
 
 	executor := &Executor{
 		ProjectDir:   oldRun.ProjectDir,
@@ -551,7 +550,7 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 	}
 
 	if oldRun.TaskID != "" && result.State == domain.RunStateSucceeded {
-		_ = runcontext.Cleanup(oldRun.ProjectDir, oldRun.TaskID)
+		cleanupRunContext(context.Background(), r.Store, oldRun.ProjectDir, oldRun.TaskID, r.AttemptID)
 	}
 
 	log.Printf("host workflow: resume of %q (new attempt) completed for %s with state %s", wf.Name, oldRun.ProjectDir, engRun.State)
@@ -640,23 +639,36 @@ func RunListTasksWorkflow(ctx context.Context, runner *Runner, projectDir string
 
 const extraEnvContextKey = "extra_env"
 
-// saveExtraEnv persists the runner's ExtraEnv into the task's context.json so
-// that resume can restore env vars like CLOCHE_MAIN_RUN_ID.
-func saveExtraEnv(projectDir, taskID string, env []string) {
-	if len(env) == 0 {
+// saveExtraEnv persists the runner's ExtraEnv into the KV store so that
+// resume can restore env vars like CLOCHE_MAIN_RUN_ID.
+func saveExtraEnv(ctx context.Context, store ports.RunStore, taskID, attemptID string, env []string) {
+	if len(env) == 0 || store == nil {
 		return
 	}
 	joined := strings.Join(env, "\n")
-	_ = runcontext.Set(projectDir, taskID, extraEnvContextKey, joined)
+	_ = store.SetContextKey(ctx, taskID, attemptID, extraEnvContextKey, joined)
 }
 
-// loadExtraEnv restores ExtraEnv from the task's context.json.
-func loadExtraEnv(projectDir, taskID string) []string {
-	val, ok, err := runcontext.Get(projectDir, taskID, extraEnvContextKey)
+// loadExtraEnv restores ExtraEnv from the KV store.
+func loadExtraEnv(ctx context.Context, store ports.RunStore, taskID, attemptID string) []string {
+	if store == nil {
+		return nil
+	}
+	val, ok, err := store.GetContextKey(ctx, taskID, attemptID, extraEnvContextKey)
 	if err != nil || !ok || val == "" {
 		return nil
 	}
 	return strings.Split(val, "\n")
+}
+
+// cleanupRunContext removes all KV pairs for the attempt and deletes the
+// ephemeral .cloche/runs/<taskID>/ directory (used for prompt.txt).
+func cleanupRunContext(ctx context.Context, store ports.RunStore, projectDir, taskID, attemptID string) {
+	if store != nil {
+		_ = store.DeleteContextKeys(ctx, taskID, attemptID)
+	}
+	runDir := filepath.Join(projectDir, ".cloche", "runs", taskID)
+	_ = os.RemoveAll(runDir)
 }
 
 // findHostWorkflow searches all .cloche files in a project for a host workflow

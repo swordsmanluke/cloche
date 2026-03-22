@@ -2863,6 +2863,318 @@ func (x *ConsoleExited) GetExitCode() int32 {
 	return 0
 }
 
+type GetContextKeyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	AttemptId     string                 `protobuf:"bytes,2,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetContextKeyRequest) Reset() {
+	*x = GetContextKeyRequest{}
+	mi := &file_cloche_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetContextKeyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetContextKeyRequest) ProtoMessage() {}
+
+func (x *GetContextKeyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetContextKeyRequest.ProtoReflect.Descriptor instead.
+func (*GetContextKeyRequest) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *GetContextKeyRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *GetContextKeyRequest) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *GetContextKeyRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+type GetContextKeyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Value         string                 `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
+	Found         bool                   `protobuf:"varint,2,opt,name=found,proto3" json:"found,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetContextKeyResponse) Reset() {
+	*x = GetContextKeyResponse{}
+	mi := &file_cloche_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetContextKeyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetContextKeyResponse) ProtoMessage() {}
+
+func (x *GetContextKeyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetContextKeyResponse.ProtoReflect.Descriptor instead.
+func (*GetContextKeyResponse) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *GetContextKeyResponse) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+func (x *GetContextKeyResponse) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+type SetContextKeyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	AttemptId     string                 `protobuf:"bytes,2,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	Value         string                 `protobuf:"bytes,4,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetContextKeyRequest) Reset() {
+	*x = SetContextKeyRequest{}
+	mi := &file_cloche_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetContextKeyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetContextKeyRequest) ProtoMessage() {}
+
+func (x *SetContextKeyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetContextKeyRequest.ProtoReflect.Descriptor instead.
+func (*SetContextKeyRequest) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *SetContextKeyRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *SetContextKeyRequest) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *SetContextKeyRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *SetContextKeyRequest) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+type SetContextKeyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetContextKeyResponse) Reset() {
+	*x = SetContextKeyResponse{}
+	mi := &file_cloche_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetContextKeyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetContextKeyResponse) ProtoMessage() {}
+
+func (x *SetContextKeyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetContextKeyResponse.ProtoReflect.Descriptor instead.
+func (*SetContextKeyResponse) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{48}
+}
+
+type ListContextKeysRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	AttemptId     string                 `protobuf:"bytes,2,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListContextKeysRequest) Reset() {
+	*x = ListContextKeysRequest{}
+	mi := &file_cloche_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListContextKeysRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListContextKeysRequest) ProtoMessage() {}
+
+func (x *ListContextKeysRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListContextKeysRequest.ProtoReflect.Descriptor instead.
+func (*ListContextKeysRequest) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *ListContextKeysRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *ListContextKeysRequest) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+type ListContextKeysResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Keys          []string               `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListContextKeysResponse) Reset() {
+	*x = ListContextKeysResponse{}
+	mi := &file_cloche_proto_msgTypes[50]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListContextKeysResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListContextKeysResponse) ProtoMessage() {}
+
+func (x *ListContextKeysResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[50]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListContextKeysResponse.ProtoReflect.Descriptor instead.
+func (*ListContextKeysResponse) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{50}
+}
+
+func (x *ListContextKeysResponse) GetKeys() []string {
+	if x != nil {
+		return x.Keys
+	}
+	return nil
+}
+
 var File_cloche_proto protoreflect.FileDescriptor
 
 const file_cloche_proto_rawDesc = "" +
@@ -3086,8 +3398,28 @@ const file_cloche_proto_rawDesc = "" +
 	"\x04rows\x18\x01 \x01(\rR\x04rows\x12\x12\n" +
 	"\x04cols\x18\x02 \x01(\rR\x04cols\",\n" +
 	"\rConsoleExited\x12\x1b\n" +
-	"\texit_code\x18\x01 \x01(\x05R\bexitCode2\xb5\n" +
+	"\texit_code\x18\x01 \x01(\x05R\bexitCode\"`\n" +
+	"\x14GetContextKeyRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
+	"attempt_id\x18\x02 \x01(\tR\tattemptId\x12\x10\n" +
+	"\x03key\x18\x03 \x01(\tR\x03key\"C\n" +
+	"\x15GetContextKeyResponse\x12\x14\n" +
+	"\x05value\x18\x01 \x01(\tR\x05value\x12\x14\n" +
+	"\x05found\x18\x02 \x01(\bR\x05found\"v\n" +
+	"\x14SetContextKeyRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x02 \x01(\tR\tattemptId\x12\x10\n" +
+	"\x03key\x18\x03 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x04 \x01(\tR\x05value\"\x17\n" +
+	"\x15SetContextKeyResponse\"P\n" +
+	"\x16ListContextKeysRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x02 \x01(\tR\tattemptId\"-\n" +
+	"\x17ListContextKeysResponse\x12\x12\n" +
+	"\x04keys\x18\x01 \x03(\tR\x04keys2\xb7\f\n" +
 	"\rClocheService\x12L\n" +
 	"\vRunWorkflow\x12\x1d.cloche.v1.RunWorkflowRequest\x1a\x1e.cloche.v1.RunWorkflowResponse\x12F\n" +
 	"\tGetStatus\x12\x1b.cloche.v1.GetStatusRequest\x1a\x1c.cloche.v1.GetStatusResponse\x12A\n" +
@@ -3111,7 +3443,10 @@ const file_cloche_proto_rawDesc = "" +
 	"GetVersion\x12\x1c.cloche.v1.GetVersionRequest\x1a\x1d.cloche.v1.GetVersionResponse\x12C\n" +
 	"\bComplete\x12\x1a.cloche.v1.CompleteRequest\x1a\x1b.cloche.v1.CompleteResponse\x12C\n" +
 	"\bGetUsage\x12\x1a.cloche.v1.GetUsageRequest\x1a\x1b.cloche.v1.GetUsageResponse\x12@\n" +
-	"\aConsole\x12\x17.cloche.v1.ConsoleInput\x1a\x18.cloche.v1.ConsoleOutput(\x010\x01B+Z)github.com/cloche-dev/cloche/api/clochepbb\x06proto3"
+	"\aConsole\x12\x17.cloche.v1.ConsoleInput\x1a\x18.cloche.v1.ConsoleOutput(\x010\x01\x12R\n" +
+	"\rGetContextKey\x12\x1f.cloche.v1.GetContextKeyRequest\x1a .cloche.v1.GetContextKeyResponse\x12R\n" +
+	"\rSetContextKey\x12\x1f.cloche.v1.SetContextKeyRequest\x1a .cloche.v1.SetContextKeyResponse\x12X\n" +
+	"\x0fListContextKeys\x12!.cloche.v1.ListContextKeysRequest\x1a\".cloche.v1.ListContextKeysResponseB+Z)github.com/cloche-dev/cloche/api/clochepbb\x06proto3"
 
 var (
 	file_cloche_proto_rawDescOnce sync.Once
@@ -3125,7 +3460,7 @@ func file_cloche_proto_rawDescGZIP() []byte {
 	return file_cloche_proto_rawDescData
 }
 
-var file_cloche_proto_msgTypes = make([]protoimpl.MessageInfo, 45)
+var file_cloche_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
 var file_cloche_proto_goTypes = []any{
 	(*RunWorkflowRequest)(nil),      // 0: cloche.v1.RunWorkflowRequest
 	(*RunWorkflowResponse)(nil),     // 1: cloche.v1.RunWorkflowResponse
@@ -3172,6 +3507,12 @@ var file_cloche_proto_goTypes = []any{
 	(*ConsoleStarted)(nil),          // 42: cloche.v1.ConsoleStarted
 	(*TerminalSize)(nil),            // 43: cloche.v1.TerminalSize
 	(*ConsoleExited)(nil),           // 44: cloche.v1.ConsoleExited
+	(*GetContextKeyRequest)(nil),    // 45: cloche.v1.GetContextKeyRequest
+	(*GetContextKeyResponse)(nil),   // 46: cloche.v1.GetContextKeyResponse
+	(*SetContextKeyRequest)(nil),    // 47: cloche.v1.SetContextKeyRequest
+	(*SetContextKeyResponse)(nil),   // 48: cloche.v1.SetContextKeyResponse
+	(*ListContextKeysRequest)(nil),  // 49: cloche.v1.ListContextKeysRequest
+	(*ListContextKeysResponse)(nil), // 50: cloche.v1.ListContextKeysResponse
 }
 var file_cloche_proto_depIdxs = []int32{
 	4,  // 0: cloche.v1.GetStatusResponse.step_executions:type_name -> cloche.v1.StepExecutionStatus
@@ -3202,26 +3543,32 @@ var file_cloche_proto_depIdxs = []int32{
 	34, // 25: cloche.v1.ClocheService.Complete:input_type -> cloche.v1.CompleteRequest
 	36, // 26: cloche.v1.ClocheService.GetUsage:input_type -> cloche.v1.GetUsageRequest
 	39, // 27: cloche.v1.ClocheService.Console:input_type -> cloche.v1.ConsoleInput
-	1,  // 28: cloche.v1.ClocheService.RunWorkflow:output_type -> cloche.v1.RunWorkflowResponse
-	3,  // 29: cloche.v1.ClocheService.GetStatus:output_type -> cloche.v1.GetStatusResponse
-	6,  // 30: cloche.v1.ClocheService.StreamLogs:output_type -> cloche.v1.LogEntry
-	8,  // 31: cloche.v1.ClocheService.StopRun:output_type -> cloche.v1.StopRunResponse
-	14, // 32: cloche.v1.ClocheService.ListRuns:output_type -> cloche.v1.ListRunsResponse
-	28, // 33: cloche.v1.ClocheService.ListTasks:output_type -> cloche.v1.ListTasksResponse
-	31, // 34: cloche.v1.ClocheService.GetTask:output_type -> cloche.v1.GetTaskResponse
-	33, // 35: cloche.v1.ClocheService.GetAttempt:output_type -> cloche.v1.GetAttemptResponse
-	10, // 36: cloche.v1.ClocheService.Shutdown:output_type -> cloche.v1.ShutdownResponse
-	12, // 37: cloche.v1.ClocheService.DeleteContainer:output_type -> cloche.v1.DeleteContainerResponse
-	17, // 38: cloche.v1.ClocheService.EnableLoop:output_type -> cloche.v1.EnableLoopResponse
-	19, // 39: cloche.v1.ClocheService.DisableLoop:output_type -> cloche.v1.DisableLoopResponse
-	21, // 40: cloche.v1.ClocheService.ResumeLoop:output_type -> cloche.v1.ResumeLoopResponse
-	23, // 41: cloche.v1.ClocheService.GetProjectInfo:output_type -> cloche.v1.GetProjectInfoResponse
-	25, // 42: cloche.v1.ClocheService.GetVersion:output_type -> cloche.v1.GetVersionResponse
-	35, // 43: cloche.v1.ClocheService.Complete:output_type -> cloche.v1.CompleteResponse
-	37, // 44: cloche.v1.ClocheService.GetUsage:output_type -> cloche.v1.GetUsageResponse
-	40, // 45: cloche.v1.ClocheService.Console:output_type -> cloche.v1.ConsoleOutput
-	28, // [28:46] is the sub-list for method output_type
-	10, // [10:28] is the sub-list for method input_type
+	45, // 28: cloche.v1.ClocheService.GetContextKey:input_type -> cloche.v1.GetContextKeyRequest
+	47, // 29: cloche.v1.ClocheService.SetContextKey:input_type -> cloche.v1.SetContextKeyRequest
+	49, // 30: cloche.v1.ClocheService.ListContextKeys:input_type -> cloche.v1.ListContextKeysRequest
+	1,  // 31: cloche.v1.ClocheService.RunWorkflow:output_type -> cloche.v1.RunWorkflowResponse
+	3,  // 32: cloche.v1.ClocheService.GetStatus:output_type -> cloche.v1.GetStatusResponse
+	6,  // 33: cloche.v1.ClocheService.StreamLogs:output_type -> cloche.v1.LogEntry
+	8,  // 34: cloche.v1.ClocheService.StopRun:output_type -> cloche.v1.StopRunResponse
+	14, // 35: cloche.v1.ClocheService.ListRuns:output_type -> cloche.v1.ListRunsResponse
+	28, // 36: cloche.v1.ClocheService.ListTasks:output_type -> cloche.v1.ListTasksResponse
+	31, // 37: cloche.v1.ClocheService.GetTask:output_type -> cloche.v1.GetTaskResponse
+	33, // 38: cloche.v1.ClocheService.GetAttempt:output_type -> cloche.v1.GetAttemptResponse
+	10, // 39: cloche.v1.ClocheService.Shutdown:output_type -> cloche.v1.ShutdownResponse
+	12, // 40: cloche.v1.ClocheService.DeleteContainer:output_type -> cloche.v1.DeleteContainerResponse
+	17, // 41: cloche.v1.ClocheService.EnableLoop:output_type -> cloche.v1.EnableLoopResponse
+	19, // 42: cloche.v1.ClocheService.DisableLoop:output_type -> cloche.v1.DisableLoopResponse
+	21, // 43: cloche.v1.ClocheService.ResumeLoop:output_type -> cloche.v1.ResumeLoopResponse
+	23, // 44: cloche.v1.ClocheService.GetProjectInfo:output_type -> cloche.v1.GetProjectInfoResponse
+	25, // 45: cloche.v1.ClocheService.GetVersion:output_type -> cloche.v1.GetVersionResponse
+	35, // 46: cloche.v1.ClocheService.Complete:output_type -> cloche.v1.CompleteResponse
+	37, // 47: cloche.v1.ClocheService.GetUsage:output_type -> cloche.v1.GetUsageResponse
+	40, // 48: cloche.v1.ClocheService.Console:output_type -> cloche.v1.ConsoleOutput
+	46, // 49: cloche.v1.ClocheService.GetContextKey:output_type -> cloche.v1.GetContextKeyResponse
+	48, // 50: cloche.v1.ClocheService.SetContextKey:output_type -> cloche.v1.SetContextKeyResponse
+	50, // 51: cloche.v1.ClocheService.ListContextKeys:output_type -> cloche.v1.ListContextKeysResponse
+	31, // [31:52] is the sub-list for method output_type
+	10, // [10:31] is the sub-list for method input_type
 	10, // [10:10] is the sub-list for extension type_name
 	10, // [10:10] is the sub-list for extension extendee
 	0,  // [0:10] is the sub-list for field type_name
@@ -3248,7 +3595,7 @@ func file_cloche_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cloche_proto_rawDesc), len(file_cloche_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   45,
+			NumMessages:   51,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

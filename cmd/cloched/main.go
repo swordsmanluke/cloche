@@ -45,6 +45,7 @@ func main() {
 
 	dbPath := envOrConfig("CLOCHE_DB", globalCfg.Daemon.DB, config.DefaultDBPath())
 	listenAddr := envOrConfig("CLOCHE_LISTEN", globalCfg.Daemon.Listen, config.DefaultSocketAddr())
+	tcpAddr := envOrConfig("CLOCHE_TCP", globalCfg.Daemon.TCP, config.DefaultTCPAddr())
 
 	store, err := sqlite.NewStore(dbPath)
 	if err != nil {
@@ -98,6 +99,21 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to listen on %s: %v\n", listenAddr, err)
 		os.Exit(1)
+	}
+
+	// Start additional TCP listener so containers can reach the daemon.
+	if tcpAddr != "" {
+		tcpLis, err := listen(tcpAddr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to listen on TCP %s: %v\n", tcpAddr, err)
+		} else {
+			fmt.Fprintf(os.Stderr, "cloched also listening on %s (TCP)\n", tcpAddr)
+			go func() {
+				if err := grpcServer.Serve(tcpLis); err != nil {
+					fmt.Fprintf(os.Stderr, "TCP server error: %v\n", err)
+				}
+			}()
+		}
 	}
 
 	var httpServer *http.Server

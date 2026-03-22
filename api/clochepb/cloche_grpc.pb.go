@@ -37,6 +37,9 @@ const (
 	ClocheService_Complete_FullMethodName        = "/cloche.v1.ClocheService/Complete"
 	ClocheService_GetUsage_FullMethodName        = "/cloche.v1.ClocheService/GetUsage"
 	ClocheService_Console_FullMethodName         = "/cloche.v1.ClocheService/Console"
+	ClocheService_GetContextKey_FullMethodName   = "/cloche.v1.ClocheService/GetContextKey"
+	ClocheService_SetContextKey_FullMethodName   = "/cloche.v1.ClocheService/SetContextKey"
+	ClocheService_ListContextKeys_FullMethodName = "/cloche.v1.ClocheService/ListContextKeys"
 )
 
 // ClocheServiceClient is the client API for ClocheService service.
@@ -68,6 +71,13 @@ type ClocheServiceClient interface {
 	// The first ConsoleInput must be a ConsoleStart message. The daemon responds
 	// with ConsoleStarted, streams stdout bytes, and finally sends ConsoleExited.
 	Console(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConsoleInput, ConsoleOutput], error)
+	// GetContextKey retrieves a value from the per-attempt KV namespace.
+	GetContextKey(ctx context.Context, in *GetContextKeyRequest, opts ...grpc.CallOption) (*GetContextKeyResponse, error)
+	// SetContextKey sets a value in the per-attempt KV namespace.
+	// Returns INVALID_ARGUMENT if len(value) > 1024.
+	SetContextKey(ctx context.Context, in *SetContextKeyRequest, opts ...grpc.CallOption) (*SetContextKeyResponse, error)
+	// ListContextKeys returns all keys in the per-attempt KV namespace.
+	ListContextKeys(ctx context.Context, in *ListContextKeysRequest, opts ...grpc.CallOption) (*ListContextKeysResponse, error)
 }
 
 type clocheServiceClient struct {
@@ -270,6 +280,36 @@ func (c *clocheServiceClient) Console(ctx context.Context, opts ...grpc.CallOpti
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ClocheService_ConsoleClient = grpc.BidiStreamingClient[ConsoleInput, ConsoleOutput]
 
+func (c *clocheServiceClient) GetContextKey(ctx context.Context, in *GetContextKeyRequest, opts ...grpc.CallOption) (*GetContextKeyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetContextKeyResponse)
+	err := c.cc.Invoke(ctx, ClocheService_GetContextKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clocheServiceClient) SetContextKey(ctx context.Context, in *SetContextKeyRequest, opts ...grpc.CallOption) (*SetContextKeyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetContextKeyResponse)
+	err := c.cc.Invoke(ctx, ClocheService_SetContextKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clocheServiceClient) ListContextKeys(ctx context.Context, in *ListContextKeysRequest, opts ...grpc.CallOption) (*ListContextKeysResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListContextKeysResponse)
+	err := c.cc.Invoke(ctx, ClocheService_ListContextKeys_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClocheServiceServer is the server API for ClocheService service.
 // All implementations must embed UnimplementedClocheServiceServer
 // for forward compatibility.
@@ -299,6 +339,13 @@ type ClocheServiceServer interface {
 	// The first ConsoleInput must be a ConsoleStart message. The daemon responds
 	// with ConsoleStarted, streams stdout bytes, and finally sends ConsoleExited.
 	Console(grpc.BidiStreamingServer[ConsoleInput, ConsoleOutput]) error
+	// GetContextKey retrieves a value from the per-attempt KV namespace.
+	GetContextKey(context.Context, *GetContextKeyRequest) (*GetContextKeyResponse, error)
+	// SetContextKey sets a value in the per-attempt KV namespace.
+	// Returns INVALID_ARGUMENT if len(value) > 1024.
+	SetContextKey(context.Context, *SetContextKeyRequest) (*SetContextKeyResponse, error)
+	// ListContextKeys returns all keys in the per-attempt KV namespace.
+	ListContextKeys(context.Context, *ListContextKeysRequest) (*ListContextKeysResponse, error)
 	mustEmbedUnimplementedClocheServiceServer()
 }
 
@@ -362,6 +409,15 @@ func (UnimplementedClocheServiceServer) GetUsage(context.Context, *GetUsageReque
 }
 func (UnimplementedClocheServiceServer) Console(grpc.BidiStreamingServer[ConsoleInput, ConsoleOutput]) error {
 	return status.Error(codes.Unimplemented, "method Console not implemented")
+}
+func (UnimplementedClocheServiceServer) GetContextKey(context.Context, *GetContextKeyRequest) (*GetContextKeyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetContextKey not implemented")
+}
+func (UnimplementedClocheServiceServer) SetContextKey(context.Context, *SetContextKeyRequest) (*SetContextKeyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetContextKey not implemented")
+}
+func (UnimplementedClocheServiceServer) ListContextKeys(context.Context, *ListContextKeysRequest) (*ListContextKeysResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListContextKeys not implemented")
 }
 func (UnimplementedClocheServiceServer) mustEmbedUnimplementedClocheServiceServer() {}
 func (UnimplementedClocheServiceServer) testEmbeddedByValue()                       {}
@@ -690,6 +746,60 @@ func _ClocheService_Console_Handler(srv interface{}, stream grpc.ServerStream) e
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ClocheService_ConsoleServer = grpc.BidiStreamingServer[ConsoleInput, ConsoleOutput]
 
+func _ClocheService_GetContextKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetContextKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).GetContextKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_GetContextKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).GetContextKey(ctx, req.(*GetContextKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClocheService_SetContextKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetContextKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).SetContextKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_SetContextKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).SetContextKey(ctx, req.(*SetContextKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClocheService_ListContextKeys_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListContextKeysRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).ListContextKeys(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_ListContextKeys_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).ListContextKeys(ctx, req.(*ListContextKeysRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClocheService_ServiceDesc is the grpc.ServiceDesc for ClocheService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -760,6 +870,18 @@ var ClocheService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetUsage",
 			Handler:    _ClocheService_GetUsage_Handler,
+		},
+		{
+			MethodName: "GetContextKey",
+			Handler:    _ClocheService_GetContextKey_Handler,
+		},
+		{
+			MethodName: "SetContextKey",
+			Handler:    _ClocheService_SetContextKey_Handler,
+		},
+		{
+			MethodName: "ListContextKeys",
+			Handler:    _ClocheService_ListContextKeys_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

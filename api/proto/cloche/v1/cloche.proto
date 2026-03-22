@@ -42,6 +42,16 @@ service ClocheService {
   //   x-cloche-resume-step: optional step name to resume from
   // When these headers are present, RunWorkflow enters resume mode instead
   // of creating a new run.
+
+  // GetContextKey retrieves a value from the per-attempt KV namespace.
+  rpc GetContextKey(GetContextKeyRequest) returns (GetContextKeyResponse);
+
+  // SetContextKey sets a value in the per-attempt KV namespace.
+  // Returns INVALID_ARGUMENT if len(value) > 1024.
+  rpc SetContextKey(SetContextKeyRequest) returns (SetContextKeyResponse);
+
+  // ListContextKeys returns all keys in the per-attempt KV namespace.
+  rpc ListContextKeys(ListContextKeysRequest) returns (ListContextKeysResponse);
 }
 
 message RunWorkflowRequest {
@@ -338,4 +348,33 @@ message TerminalSize {
 // ConsoleExited is the final ConsoleOutput payload, sent when the agent process exits.
 message ConsoleExited {
   int32 exit_code = 1;
+}
+
+message GetContextKeyRequest {
+  string task_id    = 1;
+  string attempt_id = 2;
+  string key        = 3;
+}
+
+message GetContextKeyResponse {
+  string value = 1;
+  bool   found = 2;
+}
+
+message SetContextKeyRequest {
+  string task_id    = 1;
+  string attempt_id = 2;
+  string key        = 3;
+  string value      = 4;
+}
+
+message SetContextKeyResponse {}
+
+message ListContextKeysRequest {
+  string task_id    = 1;
+  string attempt_id = 2;
+}
+
+message ListContextKeysResponse {
+  repeated string keys = 1;
 }

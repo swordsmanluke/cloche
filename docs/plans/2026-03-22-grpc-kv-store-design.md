@@ -1,7 +1,7 @@
 # gRPC-Backed Key-Value Store for Workflow Steps
 
 **Date:** 2026-03-22
-**Status:** Design
+**Status:** Implemented
 
 ## Problem
 

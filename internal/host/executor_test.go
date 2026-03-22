@@ -12,7 +12,6 @@ import (
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/ports"
-	"github.com/cloche-dev/cloche/internal/runcontext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +33,8 @@ func (f *fakeDispatcher) RunWorkflow(_ context.Context, req *pb.RunWorkflowReque
 
 // fakeStore returns a predetermined run on GetRun.
 type fakeStore struct {
-	runs map[string]*domain.Run
+	runs   map[string]*domain.Run
+	kvData map[string]string
 }
 
 func (f *fakeStore) CreateRun(_ context.Context, run *domain.Run) error {
@@ -84,6 +84,26 @@ func (f *fakeStore) ListChildRuns(_ context.Context, parentRunID string) ([]*dom
 }
 func (f *fakeStore) QueryUsage(_ context.Context, _ ports.UsageQuery) ([]domain.UsageSummary, error) {
 	return nil, nil
+}
+func (f *fakeStore) GetContextKey(_ context.Context, taskID, attemptID, key string) (string, bool, error) {
+	if f.kvData == nil {
+		return "", false, nil
+	}
+	v, ok := f.kvData[taskID+"/"+attemptID+"/"+key]
+	return v, ok, nil
+}
+func (f *fakeStore) SetContextKey(_ context.Context, taskID, attemptID, key, value string) error {
+	if f.kvData == nil {
+		f.kvData = make(map[string]string)
+	}
+	f.kvData[taskID+"/"+attemptID+"/"+key] = value
+	return nil
+}
+func (f *fakeStore) ListContextKeys(_ context.Context, taskID, attemptID string) ([]string, error) {
+	return nil, nil
+}
+func (f *fakeStore) DeleteContextKeys(_ context.Context, taskID, attemptID string) error {
+	return nil
 }
 
 func TestExecutor_ScriptStep_Success(t *testing.T) {
@@ -265,10 +285,10 @@ func TestExecutor_WorkflowStep_StoresChildRunID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", result.Result)
 
-	// Verify child_run_id was stored in run context
-	val, ok, err := runcontext.Get(tmpDir, taskID, "child_run_id")
+	// Verify child_run_id was stored in KV store
+	val, ok, err := store.GetContextKey(context.Background(), taskID, "", "child_run_id")
 	require.NoError(t, err)
-	assert.True(t, ok, "child_run_id should be stored in run context")
+	assert.True(t, ok, "child_run_id should be stored in KV store")
 	assert.Equal(t, "develop-child-run", val)
 }
 
@@ -1917,6 +1937,7 @@ func TestExecutor_SeedsRunContext_OnFirstUse(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
 
+	store := &fakeStore{}
 	executor := &Executor{
 		ProjectDir:   tmpDir,
 		OutputDir:    outputDir,
@@ -1924,6 +1945,7 @@ func TestExecutor_SeedsRunContext_OnFirstUse(t *testing.T) {
 		AttemptID:    "attempt-1",
 		WorkflowName: "main",
 		HostRunID:    "main-run-001",
+		Store:        store,
 	}
 
 	step := &domain.Step{
@@ -1937,22 +1959,22 @@ func TestExecutor_SeedsRunContext_OnFirstUse(t *testing.T) {
 	require.NoError(t, err)
 
 	// Run-level keys should be seeded.
-	taskID, ok, err := runcontext.Get(tmpDir, "task-seed-test", "task_id")
+	taskID, ok, err := store.GetContextKey(context.Background(), "task-seed-test", "attempt-1", "task_id")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "task-seed-test", taskID)
 
-	attemptID, ok, err := runcontext.Get(tmpDir, "task-seed-test", "attempt_id")
+	attemptID, ok, err := store.GetContextKey(context.Background(), "task-seed-test", "attempt-1", "attempt_id")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "attempt-1", attemptID)
 
-	workflow, ok, err := runcontext.Get(tmpDir, "task-seed-test", "workflow")
+	workflow, ok, err := store.GetContextKey(context.Background(), "task-seed-test", "attempt-1", "workflow")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "main", workflow)
 
-	runID, ok, err := runcontext.Get(tmpDir, "task-seed-test", "run_id")
+	runID, ok, err := store.GetContextKey(context.Background(), "task-seed-test", "attempt-1", "run_id")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "main-run-001", runID)
@@ -1962,6 +1984,7 @@ func TestExecutor_SeedsRunContext_OnlyOnce(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
 
+	store := &fakeStore{}
 	executor := &Executor{
 		ProjectDir:   tmpDir,
 		OutputDir:    outputDir,
@@ -1969,6 +1992,7 @@ func TestExecutor_SeedsRunContext_OnlyOnce(t *testing.T) {
 		AttemptID:    "attempt-1",
 		WorkflowName: "main",
 		HostRunID:    "main-run-001",
+		Store:        store,
 	}
 
 	step := &domain.Step{
@@ -1982,8 +2006,8 @@ func TestExecutor_SeedsRunContext_OnlyOnce(t *testing.T) {
 	_, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
 
-	// Overwrite workflow key manually to detect re-seeding.
-	require.NoError(t, runcontext.Set(tmpDir, "task-once-test", "workflow", "overwritten"))
+	// Overwrite run_id key manually to detect re-seeding (run_id is only set in seedOnce).
+	require.NoError(t, store.SetContextKey(context.Background(), "task-once-test", "attempt-1", "run_id", "overwritten"))
 
 	step2 := &domain.Step{
 		Name:    "step-b",
@@ -1994,8 +2018,8 @@ func TestExecutor_SeedsRunContext_OnlyOnce(t *testing.T) {
 	_, err = executor.Execute(context.Background(), step2)
 	require.NoError(t, err)
 
-	// Should still be "overwritten" — seed did not run again.
-	val, ok, err := runcontext.Get(tmpDir, "task-once-test", "workflow")
+	// Should still be "overwritten" — seedOnce did not run again.
+	val, ok, err := store.GetContextKey(context.Background(), "task-once-test", "attempt-1", "run_id")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "overwritten", val)
@@ -2005,12 +2029,14 @@ func TestExecutor_SetsStepResult_AfterExecution(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
 
+	store := &fakeStore{}
 	executor := &Executor{
 		ProjectDir:   tmpDir,
 		OutputDir:    outputDir,
 		TaskID:       "task-result-test",
 		WorkflowName: "main",
 		HostRunID:    "main-run-001",
+		Store:        store,
 	}
 
 	step := &domain.Step{
@@ -2025,7 +2051,7 @@ func TestExecutor_SetsStepResult_AfterExecution(t *testing.T) {
 	assert.Equal(t, "success", result.Result)
 
 	// Step result key should be set.
-	val, ok, err := runcontext.Get(tmpDir, "task-result-test", "main:build:result")
+	val, ok, err := store.GetContextKey(context.Background(), "task-result-test", "", "main:build:result")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "success", val)
@@ -2035,12 +2061,14 @@ func TestExecutor_SetsPrevStep_FromContext(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
 
+	store := &fakeStore{}
 	executor := &Executor{
 		ProjectDir:   tmpDir,
 		OutputDir:    outputDir,
 		TaskID:       "task-prev-test",
 		WorkflowName: "main",
 		HostRunID:    "main-run-001",
+		Store:        store,
 	}
 
 	step := &domain.Step{
@@ -2058,12 +2086,12 @@ func TestExecutor_SetsPrevStep_FromContext(t *testing.T) {
 	_, err := executor.Execute(ctx, step)
 	require.NoError(t, err)
 
-	prevStep, ok, err := runcontext.Get(tmpDir, "task-prev-test", "prev_step")
+	prevStep, ok, err := store.GetContextKey(context.Background(), "task-prev-test", "", "prev_step")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "build", prevStep)
 
-	prevResult, ok, err := runcontext.Get(tmpDir, "task-prev-test", "prev_result")
+	prevResult, ok, err := store.GetContextKey(context.Background(), "task-prev-test", "", "prev_step_exit")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "success", prevResult)
