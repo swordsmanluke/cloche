@@ -75,10 +75,12 @@ Generic (arbitrary commands) and Claude Code.
 All three binaries share a single version string from `internal/version/VERSION`.
 Format: `major.minor.build` (semver).
 
-- **Build**: increment on every compile/release.
-- **Minor**: backward-compatible API updates, feature additions.
-- **Major**: backward-incompatible changes, removing/deprecating APIs, incompatible gRPC
-  API changes, removing cloche commands.
+- **Build**: bugfixes, new dashboards, refactors, and everything that isn't a new major
+  feature.
+- **Minor**: new major features, and any change that would traditionally be a major
+  version bump (backward-incompatible API changes, removing commands, etc.).
+- **Major**: bumped only manually at the maintainer's direction. Multiple
+  backward-incompatible changes may be batched into a single major release.
 
 ### Version commands
 
@@ -89,6 +91,7 @@ Format: `major.minor.build` (semver).
 
 ### Versioning policy for bead tickets
 
-When creating bead tickets, assess whether the change requires a minor or major version
-bump. If so, tag the ticket so the version bump is handled during the _finalize_ workflow
-while merging. Routine bug fixes and internal refactors only bump the build number.
+When creating bead tickets, assess whether the change requires a minor version bump (new
+major feature or backward-incompatible change). If so, tag the ticket so the version bump
+is handled during the _finalize_ workflow while merging. All other changes only bump the
+build number. Never bump the major version unless explicitly told to.
