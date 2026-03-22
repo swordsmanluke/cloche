@@ -33,7 +33,7 @@ func TestCmdInit_DefaultFlags(t *testing.T) {
 		filepath.Join(".cloche", "scripts", "unclaim.py"),
 		".clocheignore",
 		filepath.Join(".cloche", "task_list.json"),
-		filepath.Join("test", "cloche", "test_cloche.py"),
+		filepath.Join("cloche_init_test", "cloche", "test_cloche.py"),
 	} {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			t.Errorf("expected %s to exist", path)
@@ -55,9 +55,9 @@ func TestCmdInit_DefaultFlags(t *testing.T) {
 		t.Error("expected .cloche/scripts/ directory to exist")
 	}
 
-	// Verify test/cloche/ directory was created
-	if info, err := os.Stat(filepath.Join("test", "cloche")); err != nil || !info.IsDir() {
-		t.Error("expected test/cloche/ directory to exist")
+	// Verify cloche_init_test/cloche/ directory was created
+	if info, err := os.Stat(filepath.Join("cloche_init_test", "cloche")); err != nil || !info.IsDir() {
+		t.Error("expected cloche_init_test/cloche/ directory to exist")
 	}
 
 	// Old v1 files should not be created
@@ -490,9 +490,9 @@ func TestCmdInit_TestClocheScript(t *testing.T) {
 
 	cmdInit([]string{})
 
-	data, err := os.ReadFile(filepath.Join("test", "cloche", "test_cloche.py"))
+	data, err := os.ReadFile(filepath.Join("cloche_init_test", "cloche", "test_cloche.py"))
 	if err != nil {
-		t.Fatal("expected test/cloche/test_cloche.py to exist")
+		t.Fatal("expected cloche_init_test/cloche/test_cloche.py to exist")
 	}
 	content := string(data)
 	if !strings.Contains(content, "TestAgentSetup") {

@@ -48,11 +48,11 @@ based on `cloche-agent` with Python3 pre-installed.
 │   └── unclaim.py
 ├── overrides/
 task_list.json
-test/cloche/test_cloche.py
+cloche_init_test/cloche/test_cloche.py
 .clocheignore
 ```
 
-Files at project root: `task_list.json`, `test/cloche/test_cloche.py`,
+Files at project root: `task_list.json`, `cloche_init_test/cloche/test_cloche.py`,
 `.clocheignore`. Everything else under `.cloche/`.
 
 ### Dockerfile
@@ -78,10 +78,10 @@ JSONL format at the project root. Two seed tasks:
 
 ```jsonl
 {"id": "1", "title": "Validate Agent works", "description": "Create a file, ./agent_test containing the string 'I exist!'", "status": "open"}
-{"id": "2", "title": "Clean up cloche test files", "description": "Delete ./agent_test and test/cloche/test_cloche.py - they were created for validation and we're done now", "status": "open"}
+{"id": "2", "title": "Clean up cloche test files", "description": "Delete ./agent_test and cloche_init_test/cloche/test_cloche.py - they were created for validation and we're done now", "status": "open"}
 ```
 
-### test/cloche/test_cloche.py
+### cloche_init_test/cloche/test_cloche.py
 
 A unittest file that validates the agent's work. Created by `init` but **not**
 `./agent_test` — that's the agent's job.
@@ -130,7 +130,7 @@ workflow "develop" {
   }
 
   step test {
-    run     = "python3 -m unittest discover -s test -v 2>&1"
+    run     = "python3 -m unittest discover -s cloche_init_test -v 2>&1"
     results = [success, fail]
   }
 
@@ -723,9 +723,9 @@ Task #1 asks the agent to create a file; task #2 cleans up after itself.
 
 `cmdInit()` updates:
 
-- **Directory creation:** Add `test/cloche/` to the mkdir list.
+- **Directory creation:** Add `cloche_init_test/cloche/` to the mkdir list.
 - **File list:** Replace all template references. Remove `prepare-prompt.sh`,
-  add the seven Python scripts, `task_list.json`, and `test/cloche/test_cloche.py`.
+  add the seven Python scripts, `task_list.json`, and `cloche_init_test/cloche/test_cloche.py`.
 - **Template variables:** Replace all `var` declarations at the top of `init.go`
   with the new content shown above.
 - **Gitignore logic:** Remove `removeGitignoreEntries` call. Update

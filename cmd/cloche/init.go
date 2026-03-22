@@ -19,7 +19,7 @@ var workflowTemplate = `workflow "%s" {
   }
 
   step test {
-    run     = "python3 -m unittest discover -s test -v 2>&1"
+    run     = "python3 -m unittest discover -s cloche_init_test -v 2>&1"
     results = [success, fail]
   }
 
@@ -528,7 +528,7 @@ Do not abort the rebase. If you cannot resolve the conflicts, report failure.
 `
 
 var taskListJSON = `{"id": "1", "title": "Validate Agent works", "description": "Create a file, ./agent_test containing the string 'I exist!'", "status": "open"}
-{"id": "2", "title": "Clean up cloche test files", "description": "Delete ./agent_test and test/cloche/test_cloche.py - they were created for validation and we're done now", "status": "open"}
+{"id": "2", "title": "Clean up cloche test files", "description": "Delete ./agent_test and cloche_init_test/cloche/test_cloche.py - they were created for validation and we're done now", "status": "open"}
 `
 
 var testClocheScript = `#!/usr/bin/env python3
@@ -601,7 +601,7 @@ func cmdInit(args []string) {
 		filepath.Join(clocheDir, "prompts"),
 		filepath.Join(clocheDir, "overrides"),
 		filepath.Join(clocheDir, "scripts"),
-		filepath.Join("test", "cloche"),
+		filepath.Join("cloche_init_test", "cloche"),
 	} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			fmt.Fprintf(os.Stderr, "error creating %s/: %v\n", dir, err)
@@ -632,7 +632,7 @@ func cmdInit(args []string) {
 		{filepath.Join(clocheDir, "scripts", "unclaim.py"), unclaimPyScript, 0755},
 		{".clocheignore", defaultClocheignore, 0644},
 		{filepath.Join(clocheDir, "task_list.json"), taskListJSON, 0644},
-		{filepath.Join("test", "cloche", "test_cloche.py"), testClocheScript, 0644},
+		{filepath.Join("cloche_init_test", "cloche", "test_cloche.py"), testClocheScript, 0644},
 	}
 
 	for _, f := range files {

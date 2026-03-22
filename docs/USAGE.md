@@ -870,7 +870,7 @@ Creates `.cloche/` with workflow file, Dockerfile, `config.toml`, prompt templat
 (`implement.md`, `fix-tests.md`, `fix-merge.md`), host workflows (`host.cloche`),
 Python scripts (`get-tasks.py`, `claim-task.py`, `prepare-merge.py`, `merge.py`,
 `release-task.py`, `cleanup.py`, `unclaim.py`), `task_list.json`, and
-`test/cloche/test_cloche.py`. Skips existing files.
+`cloche_init_test/cloche/test_cloche.py`. Skips existing files.
 
 Also generates shell completion scripts to `~/.cloche/completions/` (bash and zsh)
 and offers to update `~/.bashrc` or `~/.zshrc` with the appropriate sourcing
@@ -1325,7 +1325,7 @@ my-project/
 │               ├── full.log                  # Unified log (all steps)
 │               ├── <workflow>-<step>.log     # Per-step script output
 │               └── <workflow>-llm-<step>.log # Per-step LLM conversation
-├── test/
+├── cloche_init_test/
 │   └── cloche/
 │       └── test_cloche.py    # Validation tests for the Cloche setup
 ├── .clocheignore             # Workspace file exclusions (patterns to omit from container)
