@@ -92,7 +92,14 @@ func main() {
 	grpcServer := grpc.NewServer()
 	pb.RegisterClocheServiceServer(grpcServer, srv)
 
-	srv.SetShutdownFunc(func() { grpcServer.GracefulStop() })
+	shutdownCh := make(chan struct{}, 1)
+	srv.SetShutdownFunc(func() {
+		grpcServer.GracefulStop()
+		select {
+		case shutdownCh <- struct{}{}:
+		default:
+		}
+	})
 
 	lis, err := net.Listen("tcp", listenAddr)
 	if err != nil {
@@ -140,7 +147,10 @@ func main() {
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
-	<-sigCh
+	select {
+	case <-sigCh:
+	case <-shutdownCh:
+	}
 	if httpServer != nil {
 		httpServer.Close()
 	}
