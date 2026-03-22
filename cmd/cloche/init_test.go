@@ -206,6 +206,15 @@ func TestCmdInit_ConfigTOMLOrchestrationSection(t *testing.T) {
 	if !strings.Contains(content, "concurrency") {
 		t.Error("config.toml should contain concurrency setting")
 	}
+	if !strings.Contains(content, "[daemon]") {
+		t.Error("config.toml should contain [daemon] section")
+	}
+	// Image name should be based on directory basename
+	dirName := filepath.Base(dir)
+	expectedImage := dirName + "-cloche-agent:latest"
+	if !strings.Contains(content, expectedImage) {
+		t.Errorf("config.toml should contain project-specific image %q, got:\n%s", expectedImage, content)
+	}
 }
 
 func TestCmdInit_ClocheignoreV2Patterns(t *testing.T) {
