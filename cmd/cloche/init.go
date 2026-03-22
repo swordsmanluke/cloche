@@ -564,7 +564,7 @@ func projectImageName() string {
 	if err != nil {
 		return "cloche-agent:latest"
 	}
-	return filepath.Base(cwd) + "-cloche-agent:latest"
+	return strings.ToLower(filepath.Base(cwd)) + "-cloche-agent:latest"
 }
 
 func cmdInit(args []string) {
