@@ -872,6 +872,10 @@ Python scripts (`get-tasks.py`, `claim-task.py`, `prepare-merge.py`, `merge.py`,
 `release-task.py`, `cleanup.py`, `unclaim.py`), `task_list.json`, and
 `cloche_init_test/cloche/test_cloche.py`. Skips existing files.
 
+Also creates `~/.config/cloche/config` (global daemon config) if it does not already
+exist. The default config enables the web dashboard on `localhost:8080`. Skipped if
+the file already exists.
+
 Also generates shell completion scripts to `~/.cloche/completions/` (bash and zsh)
 and offers to update `~/.bashrc` or `~/.zshrc` with the appropriate sourcing
 snippet. Skipped on Windows.
@@ -1343,7 +1347,7 @@ my-project/
 | `CLOCHE_DB` | `~/.config/cloche/cloche.db` | SQLite database path |
 | `CLOCHE_RUNTIME` | `docker` | `docker` or `local` (subprocess, for dev only) |
 | `CLOCHE_IMAGE` | `cloche-agent:latest` | Default Docker image |
-| `CLOCHE_HTTP` | _(unset)_ | HTTP address for web dashboard. Not started unless set. |
+| `CLOCHE_HTTP` | `localhost:8080` (via global config) | HTTP address for web dashboard. Not started unless set. |
 | `CLOCHE_AGENT_PATH` | _(auto)_ | Path to `cloche-agent` binary (local runtime) |
 | `CLOCHE_LLM_COMMAND` | _(unset)_ | Command for LLM calls (evolution, merge conflicts) |
 | `ANTHROPIC_API_KEY` | _(unset)_ | Passed into Docker containers |

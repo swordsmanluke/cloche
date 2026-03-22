@@ -6,19 +6,28 @@ container controls — all without needing the CLI.
 
 ## Enabling the Dashboard
 
-Set the `CLOCHE_HTTP` environment variable when starting `cloched`:
+`cloche init` creates `~/.config/cloche/config` with the dashboard enabled on
+`localhost:8080` by default. Start the daemon and open `http://localhost:8080`.
+
+To enable it manually, set `http` in `~/.config/cloche/config`:
+
+```toml
+[daemon]
+http = "localhost:8080"
+```
+
+Or pass it as an environment variable:
 
 ```
 CLOCHE_HTTP=localhost:8080 cloched
 ```
 
-Then open `http://localhost:8080` in your browser. The dashboard is not started unless
-`CLOCHE_HTTP` is set. Choose any available port.
+The dashboard is not started if `http` is unset (and `CLOCHE_HTTP` is not set).
+Choose any available port. For a specific interface:
 
-For a specific interface (e.g. only accessible from the local machine):
-
-```
-CLOCHE_HTTP=127.0.0.1:8080 cloched
+```toml
+[daemon]
+http = "127.0.0.1:8080"
 ```
 
 The CLI commands `cloche tasks` and `cloche health` also require `CLOCHE_HTTP` to be set,

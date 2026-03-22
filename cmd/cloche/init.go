@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/cloche-dev/cloche/internal/config"
 )
 
 var workflowTemplate = `workflow "%s" {
@@ -655,6 +657,13 @@ func cmdInit(args []string) {
 		".gitworktrees/",
 		".cloche/task_list.json",
 	})
+
+	// Create global daemon config if it doesn't exist.
+	if cfgPath, err := config.WriteGlobalConfigIfAbsent(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not write global config: %v\n", err)
+	} else {
+		fmt.Fprintf(os.Stderr, "  create %s\n", cfgPath)
+	}
 
 	// Generate shell completion scripts into ~/.cloche/completions/.
 	home := os.Getenv("HOME")

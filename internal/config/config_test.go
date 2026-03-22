@@ -272,3 +272,50 @@ func TestDefaultAddr(t *testing.T) {
 	addr := DefaultAddr()
 	assert.Equal(t, "127.0.0.1:50051", addr)
 }
+
+func TestWriteGlobalConfigIfAbsent_CreatesFile(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	path, err := WriteGlobalConfigIfAbsent()
+	require.NoError(t, err)
+
+	expected := filepath.Join(tmp, ".config", "cloche", "config")
+	assert.Equal(t, expected, path)
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "localhost:8080")
+	assert.Contains(t, string(data), "[daemon]")
+}
+
+func TestWriteGlobalConfigIfAbsent_SkipsExistingFile(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	dir := filepath.Join(tmp, ".config", "cloche")
+	require.NoError(t, os.MkdirAll(dir, 0755))
+	configPath := filepath.Join(dir, "config")
+	require.NoError(t, os.WriteFile(configPath, []byte("custom content"), 0644))
+
+	path, err := WriteGlobalConfigIfAbsent()
+	require.NoError(t, err)
+	assert.Equal(t, configPath, path)
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "custom content", string(data))
+}
+
+func TestWriteGlobalConfigIfAbsent_HTTPDefault(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	_, err := WriteGlobalConfigIfAbsent()
+	require.NoError(t, err)
+
+	path := filepath.Join(tmp, ".config", "cloche", "config")
+	cfg, err := LoadGlobalFrom(path)
+	require.NoError(t, err)
+	assert.Equal(t, "localhost:8080", cfg.Daemon.HTTP)
+}

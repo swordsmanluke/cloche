@@ -144,6 +144,43 @@ func DefaultAddr() string {
 	return "127.0.0.1:50051"
 }
 
+// defaultGlobalConfigContent is written to ~/.config/cloche/config on first init.
+var defaultGlobalConfigContent = `# Cloche global daemon configuration
+# This file is read by cloched on startup.
+# Override any setting with environment variables (CLOCHE_HTTP, CLOCHE_ADDR, etc.).
+
+[daemon]
+# gRPC listen address
+# listen = "127.0.0.1:50051"
+
+# Web dashboard — comment out to disable
+http = "localhost:8080"
+
+# SQLite database path
+# db = "~/.config/cloche/cloche.db"
+`
+
+// WriteGlobalConfigIfAbsent creates ~/.config/cloche/config with default values
+// if the file does not already exist. Returns the path of the config file.
+func WriteGlobalConfigIfAbsent() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(home, ".config", "cloche")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, "config")
+	if _, err := os.Stat(path); err == nil {
+		return path, nil // already exists
+	}
+	if err := os.WriteFile(path, []byte(defaultGlobalConfigContent), 0644); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
 // LoadGlobalFrom reads the global config from a specific path.
 // Useful for testing.
 func LoadGlobalFrom(path string) (*Config, error) {

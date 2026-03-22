@@ -530,6 +530,54 @@ func TestCmdInit_GetTasksContent(t *testing.T) {
 	}
 }
 
+func TestCmdInit_CreatesGlobalConfig(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	cmdInit([]string{})
+
+	cfgPath := filepath.Join(home, ".config", "cloche", "config")
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("expected global config at %s to exist: %v", cfgPath, err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "localhost:8080") {
+		t.Error("global config should contain localhost:8080 for the web UI")
+	}
+	if !strings.Contains(content, "[daemon]") {
+		t.Error("global config should contain [daemon] section")
+	}
+}
+
+func TestCmdInit_SkipsExistingGlobalConfig(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Pre-create a custom global config
+	cfgDir := filepath.Join(home, ".config", "cloche")
+	os.MkdirAll(cfgDir, 0755)
+	cfgPath := filepath.Join(cfgDir, "config")
+	os.WriteFile(cfgPath, []byte("custom"), 0644)
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(cfgPath)
+	if string(data) != "custom" {
+		t.Error("existing global config should not be overwritten")
+	}
+}
+
 func TestCmdInit_UnclaimContent(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
