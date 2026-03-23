@@ -596,6 +596,8 @@ func projectImageName() string {
 func cmdInit(args []string) {
 	workflow := "develop"
 	baseImage := "cloche-agent:latest"
+	noLLM := false
+	agentCommand := ""
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -608,6 +610,13 @@ func cmdInit(args []string) {
 			if i+1 < len(args) {
 				i++
 				baseImage = args[i]
+			}
+		case "--no-llm":
+			noLLM = true
+		case "--agent-command":
+			if i+1 < len(args) {
+				i++
+				agentCommand = args[i]
 			}
 		}
 	}
@@ -696,6 +705,11 @@ func cmdInit(args []string) {
 	if home != "" {
 		completionsDir := filepath.Join(home, ".cloche", "completions")
 		generateCompletionScripts(completionsDir)
+	}
+
+	// LLM-assisted init: fill in TODO(cloche-init) placeholders.
+	if !noLLM {
+		runLLMInitPhase(agentCommand, workflow)
 	}
 
 	cwd, _ := os.Getwd()

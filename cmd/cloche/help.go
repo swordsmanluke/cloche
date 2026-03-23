@@ -11,14 +11,25 @@ var subcommandHelp = map[string]string{
 	"init": `cloche init — Initialize a Cloche project
 
 Creates the .cloche/ directory with a workflow definition, Dockerfile,
-prompt templates, and configuration files.
+prompt templates, and configuration files. After scaffolding, invokes
+the configured LLM to fill in TODO(cloche-init) placeholders based on
+the project's files (go.mod, package.json, Makefile, etc.).
 
 Usage:
-  cloche init [--workflow <name>] [--base-image <image>]
+  cloche init [--workflow <name>] [--base-image <image>] [--agent-command <cmd>] [--no-llm]
 
 Flags:
-  --workflow <name>       Name for the workflow file (default: "develop")
-  --base-image <image>    Base Docker image for the Dockerfile (default: "cloche-base:latest")
+  --workflow <name>         Name for the workflow file (default: "develop")
+  --base-image <image>      Base Docker image for the Dockerfile (default: "cloche-base:latest")
+  --agent-command <cmd>     LLM command for the init analysis phase (overrides config and env)
+  --no-llm                  Skip the LLM-assisted placeholder filling phase
+
+LLM command resolution order:
+  1. --agent-command flag
+  2. CLOCHE_AGENT_COMMAND environment variable
+  3. Global config [daemon] llm_command
+  4. claude if available on PATH
+  Falls back gracefully with a warning if no LLM is available.
 
 What it creates:
   .cloche/<name>.cloche              Workflow definition

@@ -858,13 +858,15 @@ cloche run --help          # same as above
 Scaffold a new Cloche project.
 
 ```
-cloche init [--workflow <name>] [--base-image <base>]
+cloche init [--workflow <name>] [--base-image <base>] [--agent-command <cmd>] [--no-llm]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--workflow <name>` | `develop` | Workflow name. Creates `.cloche/<name>.cloche`. |
 | `--base-image <base>` | `cloche-agent:latest` | Base Docker image for the generated Dockerfile. |
+| `--agent-command <cmd>` | _(see below)_ | LLM command for the init analysis phase (overrides config and env). |
+| `--no-llm` | false | Skip the LLM-assisted placeholder filling phase. |
 
 Creates `.cloche/` with workflow file, Dockerfile, `config.toml`, prompt templates
 (`implement.md`, `fix-tests.md`, `fix-merge.md`), host workflows (`host.cloche`),
@@ -872,14 +874,26 @@ Python scripts (`get-tasks.py`, `claim-task.py`, `prepare-merge.py`, `merge.py`,
 `release-task.py`, `cleanup.py`, `unclaim.py`), `.cloche/task_list.json`, and
 `cloche_init_test/cloche/test_cloche.py`. Skips existing files.
 
-Three generated files contain `TODO(cloche-init)` placeholders that must be filled
-in before the first run:
+Three generated files contain `TODO(cloche-init)` placeholders:
 
 - **`.cloche/Dockerfile`** — dependency installation block with commented examples
   for Python, Node.js, Go, Java, and Ruby.
-- **`.cloche/develop.cloche`** — the `test` step `run` command.
+- **`.cloche/<name>.cloche`** — the `test` step `run` command.
 - **`.cloche/prompts/implement.md`** — the `## Project Context` section describing
   your project's language, test command, and key conventions.
+
+After scaffolding, `cloche init` invokes the configured LLM client to analyze the
+project (reading `go.mod`, `package.json`, `Makefile`, etc.) and fill in these
+placeholders automatically. LLM command resolution order:
+
+1. `--agent-command` flag
+2. `CLOCHE_AGENT_COMMAND` environment variable
+3. Global config `[daemon]` `llm_command`
+4. `claude` if available on PATH
+
+The LLM phase has a 30-second timeout and is non-fatal — if no LLM is available or
+the phase fails, a warning is printed and the placeholders are left for manual
+editing. Use `--no-llm` to skip the phase entirely (for CI or scripted setups).
 
 Use `grep -r 'TODO(cloche-init)' .cloche/` to find any remaining placeholders.
 
