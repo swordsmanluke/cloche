@@ -896,11 +896,12 @@ snippet. Skipped on Windows.
 Diagnose Cloche infrastructure.
 
 ```
-cloche doctor [--verbose]
+cloche doctor [--project <dir>] [--verbose] [--timeout <duration>]
 ```
 
-Runs four checks in order and prints a status line for each. Exits with code 1
-if any check fails.
+Runs checks in order and prints a status line for each. Exits with code 1
+if any check fails. Checks 5–8 only run when the current (or `--project`) directory
+contains a `.cloche/` subdirectory.
 
 | Check | Description |
 |-------|-------------|
@@ -908,12 +909,18 @@ if any check fails.
 | Base image | Checks whether `cloche-base:latest` (or `cloche-agent:latest`) exists locally. |
 | Daemon | Calls `GetVersion` over gRPC to verify the daemon is reachable. Address from `CLOCHE_ADDR` or default `127.0.0.1:50051`. |
 | Agent auth | Checks `ANTHROPIC_API_KEY` or `~/.claude/` session data. Soft check (warning, not fatal). |
+| Project config | Loads `.cloche/config.toml`, reports parse errors, warns if `active = false` or `TODO(cloche-init)` markers remain. |
+| Workflow syntax | Parses all `.cloche/*.cloche` files using the same logic as `cloche validate`. |
+| Project image build | Calls `EnsureImage` to build or confirm the project Docker image. |
+| Agent roundtrip | Starts a short-lived container from the project image, runs a minimal test workflow, and verifies it completes. |
 
 Each failing check prints actionable remediation steps inline.
 
 | Flag | Description |
 |------|-------------|
 | `--verbose`, `-v` | Print details for all checks (version, detected credential source, etc.). |
+| `--project <dir>` | Run against the specified project directory instead of the current working directory. |
+| `--timeout <duration>` | Timeout for the agent roundtrip check (default `60s`). The container is always cleaned up. |
 
 ### `cloche run`
 
