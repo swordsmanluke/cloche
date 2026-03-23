@@ -36,21 +36,22 @@ import (
 
 type ClocheServer struct {
 	pb.UnimplementedClocheServiceServer
-	store        ports.RunStore
-	captures     ports.CaptureStore
-	logStore     ports.LogStore
-	taskStore    ports.TaskStore    // optional; creates Task records
-	attemptStore ports.AttemptStore // optional; creates Attempt records
-	container    ports.ContainerRuntime
-	defaultImage string
-	evolution    *evolution.Trigger
-	logBroadcast *logstream.Broadcaster
-	shutdownFn   func()
+	store         ports.RunStore
+	captures      ports.CaptureStore
+	logStore      ports.LogStore
+	taskStore     ports.TaskStore     // optional; creates Task records
+	attemptStore  ports.AttemptStore  // optional; creates Attempt records
+	activityStore ports.ActivityStore // optional; backs per-project activity loggers
+	container     ports.ContainerRuntime
+	defaultImage  string
+	evolution     *evolution.Trigger
+	logBroadcast  *logstream.Broadcaster
+	shutdownFn    func()
 	mu              sync.Mutex
-	runIDs          map[string]string               // run_id -> container_id
-	hostCancels     map[string]context.CancelFunc   // run_id -> cancel fn (for host runs)
-	loops           map[string]*host.Loop            // project_dir -> orchestration loop
-	activityLoggers map[string]*activitylog.Logger   // project_dir -> activity logger
+	runIDs          map[string]string             // run_id -> container_id
+	hostCancels     map[string]context.CancelFunc // run_id -> cancel fn (for host runs)
+	loops           map[string]*host.Loop         // project_dir -> orchestration loop
+	activityLoggers map[string]*activitylog.Logger // project_dir -> activity logger
 }
 
 func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *ClocheServer {
@@ -106,15 +107,21 @@ func (s *ClocheServer) haltProjectLoop(projectDir, reason string) {
 
 // activityLoggerLocked is like activityLoggerFor but assumes s.mu is already held.
 func (s *ClocheServer) activityLoggerLocked(projectDir string) *activitylog.Logger {
-	if projectDir == "" {
+	if projectDir == "" || s.activityStore == nil {
 		return nil
 	}
 	if l, ok := s.activityLoggers[projectDir]; ok {
 		return l
 	}
-	l := activitylog.NewLogger(projectDir)
+	l := activitylog.NewLogger(projectDir, s.activityStore)
 	s.activityLoggers[projectDir] = l
 	return l
+}
+
+// SetActivityStore attaches an activity store so the server records step and
+// attempt lifecycle events to the daemon's SQLite database.
+func (s *ClocheServer) SetActivityStore(as ports.ActivityStore) {
+	s.activityStore = as
 }
 
 // SetLogStore attaches a log store to the server for indexing extracted log files.

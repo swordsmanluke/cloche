@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cloche-dev/cloche/internal/activitylog"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/ports"
 	_ "modernc.org/sqlite"
@@ -175,6 +176,24 @@ func migrate(db *sql.DB) error {
 	if errKV != nil {
 		return errKV
 	}
+
+	// v5: Activity log table — replaces per-project .cloche/activity.log files.
+	_, errAct := db.Exec(`CREATE TABLE IF NOT EXISTS activity_log (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		ts          TEXT NOT NULL,
+		kind        TEXT NOT NULL,
+		project_dir TEXT NOT NULL,
+		task_id     TEXT NOT NULL DEFAULT '',
+		attempt_id  TEXT NOT NULL DEFAULT '',
+		workflow    TEXT NOT NULL DEFAULT '',
+		step        TEXT NOT NULL DEFAULT '',
+		result      TEXT NOT NULL DEFAULT '',
+		state       TEXT NOT NULL DEFAULT ''
+	)`)
+	if errAct != nil {
+		return errAct
+	}
+	db.Exec(`CREATE INDEX IF NOT EXISTS activity_log_project_ts ON activity_log (project_dir, ts)`)
 
 	return nil
 }
@@ -861,6 +880,53 @@ func (s *Store) DeleteContextKeys(ctx context.Context, taskID, attemptID string)
 		`DELETE FROM context_kv WHERE task_id = ? AND attempt_id = ?`,
 		taskID, attemptID)
 	return err
+}
+
+// AppendActivityEntry inserts one activity log entry for the given project.
+func (s *Store) AppendActivityEntry(ctx context.Context, projectDir string, entry activitylog.Entry) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO activity_log (ts, kind, project_dir, task_id, attempt_id, workflow, step, result, state)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		formatTime(entry.Timestamp), string(entry.Kind), projectDir,
+		entry.TaskID, entry.AttemptID, entry.WorkflowName, entry.StepName, entry.Result, entry.State,
+	)
+	return err
+}
+
+// ReadActivityEntries returns activity log entries for projectDir, optionally
+// filtered by the time range in opts. Results are ordered by timestamp ascending.
+func (s *Store) ReadActivityEntries(ctx context.Context, projectDir string, opts activitylog.ReadOptions) ([]activitylog.Entry, error) {
+	query := `SELECT ts, kind, task_id, attempt_id, workflow, step, result, state
+	          FROM activity_log WHERE project_dir = ?`
+	args := []interface{}{projectDir}
+	if !opts.Since.IsZero() {
+		query += ` AND ts >= ?`
+		args = append(args, formatTime(opts.Since))
+	}
+	if !opts.Until.IsZero() {
+		query += ` AND ts <= ?`
+		args = append(args, formatTime(opts.Until))
+	}
+	query += ` ORDER BY ts ASC, id ASC`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []activitylog.Entry
+	for rows.Next() {
+		var e activitylog.Entry
+		var ts, kind string
+		if err := rows.Scan(&ts, &kind, &e.TaskID, &e.AttemptID, &e.WorkflowName, &e.StepName, &e.Result, &e.State); err != nil {
+			return nil, err
+		}
+		e.Timestamp = parseTime(ts)
+		e.Kind = activitylog.EventKind(kind)
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
 }
 
 const maxErrorMessageLen = 1000

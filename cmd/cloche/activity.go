@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,9 +9,12 @@ import (
 	"time"
 
 	"github.com/cloche-dev/cloche/internal/activitylog"
+	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
+	"github.com/cloche-dev/cloche/internal/config"
 )
 
-// cmdActivity reads the project's .cloche/activity.log and displays it.
+// cmdActivity reads the project's activity log from the daemon's SQLite
+// database and displays it.
 // Usage:
 //
 //	cloche activity [--project <dir>] [--since <duration>] [--until <time>] [--json]
@@ -70,7 +74,15 @@ func cmdActivity(args []string) {
 		opts.Until = t
 	}
 
-	entries, err := activitylog.Read(projectDir, opts)
+	dbPath := envOrDefault("CLOCHE_DB", config.DefaultDBPath())
+	store, err := sqlite.NewStore(dbPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error opening database: %v\n", err)
+		os.Exit(1)
+	}
+	defer store.Close()
+
+	entries, err := store.ReadActivityEntries(context.Background(), projectDir, opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error reading activity log: %v\n", err)
 		os.Exit(1)
@@ -90,6 +102,14 @@ func cmdActivity(args []string) {
 	}
 
 	printActivityEntries(entries)
+}
+
+// envOrDefault returns the value of env var key, or fallback if unset.
+func envOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 // parseSinceArg parses a --since value as either a Go duration (e.g. "24h", "7d")

@@ -81,6 +81,7 @@ func main() {
 	srv.SetLogStore(store)
 	srv.SetTaskStore(store)
 	srv.SetAttemptStore(store)
+	srv.SetActivityStore(store)
 	srv.SetLogBroadcaster(broadcaster)
 
 	// Set up evolution trigger

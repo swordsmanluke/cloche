@@ -1,15 +1,10 @@
-// Package activitylog writes and reads project-owned activity log files that
-// record task/attempt/step lifecycle events with timestamps and outcomes.
-// Each project stores its activity log at .cloche/activity.log (JSONL format).
+// Package activitylog records task/attempt/step lifecycle events with
+// timestamps and outcomes. Entries are persisted via an ActivityStore
+// (backed by the daemon's SQLite database) rather than per-project files.
 package activitylog
 
 import (
-	"bufio"
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
-	"sync"
+	"context"
 	"time"
 )
 
@@ -41,49 +36,7 @@ type Entry struct {
 	State string `json:"state,omitempty"`
 }
 
-// Logger appends activity log entries to a project's .cloche/activity.log file.
-// It is safe for concurrent use.
-type Logger struct {
-	path string
-	mu   sync.Mutex
-}
-
-// NewLogger returns a Logger that writes to .cloche/activity.log inside projectDir.
-func NewLogger(projectDir string) *Logger {
-	return &Logger{
-		path: filepath.Join(projectDir, ".cloche", "activity.log"),
-	}
-}
-
-// Append writes entry to the log file, creating it (and its parent directory)
-// if it does not exist. Timestamp is set to now if zero. Errors are non-fatal
-// (the caller should log them but not fail the workflow).
-func (l *Logger) Append(entry Entry) error {
-	if entry.Timestamp.IsZero() {
-		entry.Timestamp = time.Now()
-	}
-	data, err := json.Marshal(entry)
-	if err != nil {
-		return fmt.Errorf("activitylog: marshaling entry: %w", err)
-	}
-	data = append(data, '\n')
-
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if err := os.MkdirAll(filepath.Dir(l.path), 0755); err != nil {
-		return fmt.Errorf("activitylog: creating log dir: %w", err)
-	}
-	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("activitylog: opening log file: %w", err)
-	}
-	defer f.Close()
-	_, err = f.Write(data)
-	return err
-}
-
-// ReadOptions controls optional time-range filtering for Read.
+// ReadOptions controls optional time-range filtering for activity log reads.
 type ReadOptions struct {
 	// Since, when non-zero, excludes entries before this time.
 	Since time.Time
@@ -91,38 +44,29 @@ type ReadOptions struct {
 	Until time.Time
 }
 
-// Read returns activity log entries for projectDir, optionally filtered by the
-// time range in opts. Returns an empty slice (not an error) when the log file
-// does not exist yet. Malformed lines are silently skipped.
-func Read(projectDir string, opts ReadOptions) ([]Entry, error) {
-	path := filepath.Join(projectDir, ".cloche", "activity.log")
-	f, err := os.Open(path)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("activitylog: opening log: %w", err)
-	}
-	defer f.Close()
+// Appender is the interface used by Logger to persist entries.
+// The sqlite store implements this interface.
+type Appender interface {
+	AppendActivityEntry(ctx context.Context, projectDir string, entry Entry) error
+}
 
-	var entries []Entry
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var e Entry
-		if err := json.Unmarshal(line, &e); err != nil {
-			continue // skip malformed lines
-		}
-		if !opts.Since.IsZero() && e.Timestamp.Before(opts.Since) {
-			continue
-		}
-		if !opts.Until.IsZero() && e.Timestamp.After(opts.Until) {
-			continue
-		}
-		entries = append(entries, e)
+// Logger appends activity log entries for a specific project directory.
+// It is safe for concurrent use (delegating to the underlying store).
+type Logger struct {
+	projectDir string
+	appender   Appender
+}
+
+// NewLogger returns a Logger that writes to appender for projectDir.
+func NewLogger(projectDir string, appender Appender) *Logger {
+	return &Logger{projectDir: projectDir, appender: appender}
+}
+
+// Append writes entry to the store. Timestamp is set to now if zero.
+// Errors are non-fatal; the caller should log them but not fail the workflow.
+func (l *Logger) Append(entry Entry) error {
+	if entry.Timestamp.IsZero() {
+		entry.Timestamp = time.Now()
 	}
-	return entries, scanner.Err()
+	return l.appender.AppendActivityEntry(context.Background(), l.projectDir, entry)
 }

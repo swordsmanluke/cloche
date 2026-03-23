@@ -1,8 +1,7 @@
 package activitylog_test
 
 import (
-	"os"
-	"path/filepath"
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -12,15 +11,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newProjectDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	return dir
+// fakeStore is a simple in-memory Appender for testing.
+type fakeStore struct {
+	mu      sync.Mutex
+	entries map[string][]activitylog.Entry // projectDir -> entries
 }
 
-func TestAppendAndRead(t *testing.T) {
-	projectDir := newProjectDir(t)
-	logger := activitylog.NewLogger(projectDir)
+func (f *fakeStore) AppendActivityEntry(_ context.Context, projectDir string, entry activitylog.Entry) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.entries == nil {
+		f.entries = make(map[string][]activitylog.Entry)
+	}
+	f.entries[projectDir] = append(f.entries[projectDir], entry)
+	return nil
+}
+
+func (f *fakeStore) list(projectDir string) []activitylog.Entry {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]activitylog.Entry(nil), f.entries[projectDir]...)
+}
+
+func TestAppendDelegatesToStore(t *testing.T) {
+	store := &fakeStore{}
+	logger := activitylog.NewLogger("/proj", store)
 
 	now := time.Now().UTC().Truncate(time.Second)
 
@@ -35,8 +50,7 @@ func TestAppendAndRead(t *testing.T) {
 		require.NoError(t, logger.Append(e))
 	}
 
-	got, err := activitylog.Read(projectDir, activitylog.ReadOptions{})
-	require.NoError(t, err)
+	got := store.list("/proj")
 	require.Len(t, got, len(entries))
 
 	for i, e := range entries {
@@ -51,86 +65,45 @@ func TestAppendAndRead(t *testing.T) {
 	}
 }
 
-func TestReadMissingFile(t *testing.T) {
-	projectDir := newProjectDir(t)
-	// No activity.log created yet.
-	entries, err := activitylog.Read(projectDir, activitylog.ReadOptions{})
-	require.NoError(t, err)
-	assert.Empty(t, entries)
-}
-
-func TestReadTimeFilter(t *testing.T) {
-	projectDir := newProjectDir(t)
-	logger := activitylog.NewLogger(projectDir)
-
-	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-
-	all := []activitylog.Entry{
-		{Timestamp: base, Kind: activitylog.KindAttemptStarted, AttemptID: "a1"},
-		{Timestamp: base.Add(10 * time.Minute), Kind: activitylog.KindStepStarted, AttemptID: "a1", StepName: "s1"},
-		{Timestamp: base.Add(20 * time.Minute), Kind: activitylog.KindStepCompleted, AttemptID: "a1", StepName: "s1"},
-		{Timestamp: base.Add(30 * time.Minute), Kind: activitylog.KindAttemptEnded, AttemptID: "a1"},
-	}
-	for _, e := range all {
-		require.NoError(t, logger.Append(e))
-	}
-
-	// Since filter: exclude entries before base+5m
-	since := base.Add(5 * time.Minute)
-	got, err := activitylog.Read(projectDir, activitylog.ReadOptions{Since: since})
-	require.NoError(t, err)
-	assert.Len(t, got, 3) // entries at +10m, +20m, +30m
-
-	// Until filter: exclude entries after base+15m
-	until := base.Add(15 * time.Minute)
-	got, err = activitylog.Read(projectDir, activitylog.ReadOptions{Until: until})
-	require.NoError(t, err)
-	assert.Len(t, got, 2) // entries at 0m and +10m
-
-	// Both filters
-	got, err = activitylog.Read(projectDir, activitylog.ReadOptions{Since: since, Until: until})
-	require.NoError(t, err)
-	assert.Len(t, got, 1) // only +10m
-	assert.Equal(t, activitylog.KindStepStarted, got[0].Kind)
-}
-
-func TestAppendCreatesDir(t *testing.T) {
-	// The .cloche/ directory does not exist yet.
-	projectDir := t.TempDir()
-	logger := activitylog.NewLogger(projectDir)
-	err := logger.Append(activitylog.Entry{Kind: activitylog.KindAttemptStarted, AttemptID: "x"})
-	require.NoError(t, err)
-
-	logPath := filepath.Join(projectDir, ".cloche", "activity.log")
-	_, err = os.Stat(logPath)
-	require.NoError(t, err, "activity.log should have been created")
-}
-
 func TestAppendSetsTimestamp(t *testing.T) {
-	projectDir := newProjectDir(t)
-	logger := activitylog.NewLogger(projectDir)
+	store := &fakeStore{}
+	logger := activitylog.NewLogger("/proj", store)
 
 	before := time.Now()
-	err := logger.Append(activitylog.Entry{Kind: activitylog.KindStepStarted, StepName: "x"})
-	require.NoError(t, err)
+	require.NoError(t, logger.Append(activitylog.Entry{Kind: activitylog.KindStepStarted, StepName: "x"}))
 	after := time.Now()
 
-	entries, err := activitylog.Read(projectDir, activitylog.ReadOptions{})
-	require.NoError(t, err)
-	require.Len(t, entries, 1)
-	assert.False(t, entries[0].Timestamp.IsZero())
-	assert.True(t, !entries[0].Timestamp.Before(before) && !entries[0].Timestamp.After(after.Add(time.Second)))
+	got := store.list("/proj")
+	require.Len(t, got, 1)
+	assert.False(t, got[0].Timestamp.IsZero())
+	assert.True(t, !got[0].Timestamp.Before(before) && !got[0].Timestamp.After(after.Add(time.Second)))
+}
+
+func TestAppendProjectIsolation(t *testing.T) {
+	store := &fakeStore{}
+	loggerA := activitylog.NewLogger("/proj/a", store)
+	loggerB := activitylog.NewLogger("/proj/b", store)
+
+	require.NoError(t, loggerA.Append(activitylog.Entry{Kind: activitylog.KindAttemptStarted, AttemptID: "a1"}))
+	require.NoError(t, loggerB.Append(activitylog.Entry{Kind: activitylog.KindAttemptStarted, AttemptID: "b1"}))
+
+	gotA := store.list("/proj/a")
+	gotB := store.list("/proj/b")
+	require.Len(t, gotA, 1)
+	require.Len(t, gotB, 1)
+	assert.Equal(t, "a1", gotA[0].AttemptID)
+	assert.Equal(t, "b1", gotB[0].AttemptID)
 }
 
 func TestConcurrentAppend(t *testing.T) {
-	projectDir := newProjectDir(t)
-	logger := activitylog.NewLogger(projectDir)
+	store := &fakeStore{}
+	logger := activitylog.NewLogger("/proj", store)
 
 	const n = 50
 	var wg sync.WaitGroup
 	wg.Add(n)
 	for i := 0; i < n; i++ {
-		go func(i int) {
+		go func() {
 			defer wg.Done()
 			err := logger.Append(activitylog.Entry{
 				Kind:      activitylog.KindStepStarted,
@@ -138,30 +111,10 @@ func TestConcurrentAppend(t *testing.T) {
 				AttemptID: "a",
 			})
 			assert.NoError(t, err)
-		}(i)
+		}()
 	}
 	wg.Wait()
 
-	entries, err := activitylog.Read(projectDir, activitylog.ReadOptions{})
-	require.NoError(t, err)
-	assert.Len(t, entries, n, "all concurrent writes should produce valid entries")
-}
-
-func TestReadSkipsMalformedLines(t *testing.T) {
-	projectDir := newProjectDir(t)
-	logPath := filepath.Join(projectDir, ".cloche", "activity.log")
-	require.NoError(t, os.MkdirAll(filepath.Dir(logPath), 0755))
-
-	// Write one valid entry, one malformed line, one valid entry.
-	content := `{"ts":"2026-01-01T00:00:00Z","kind":"attempt_started","attempt_id":"a1"}
-not valid json {{{
-{"ts":"2026-01-01T00:01:00Z","kind":"attempt_ended","attempt_id":"a1","state":"succeeded"}
-`
-	require.NoError(t, os.WriteFile(logPath, []byte(content), 0644))
-
-	entries, err := activitylog.Read(projectDir, activitylog.ReadOptions{})
-	require.NoError(t, err)
-	assert.Len(t, entries, 2)
-	assert.Equal(t, activitylog.KindAttemptStarted, entries[0].Kind)
-	assert.Equal(t, activitylog.KindAttemptEnded, entries[1].Kind)
+	got := store.list("/proj")
+	assert.Len(t, got, n, "all concurrent writes should be recorded")
 }

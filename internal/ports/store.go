@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cloche-dev/cloche/internal/activitylog"
 	"github.com/cloche-dev/cloche/internal/domain"
 )
 
@@ -95,6 +96,12 @@ type EvolutionEntry struct {
 	Classification string
 	ChangesJSON    string
 	KnowledgeDelta string
+}
+
+// ActivityStore persists and retrieves project activity log entries.
+type ActivityStore interface {
+	AppendActivityEntry(ctx context.Context, projectDir string, entry activitylog.Entry) error
+	ReadActivityEntries(ctx context.Context, projectDir string, opts activitylog.ReadOptions) ([]activitylog.Entry, error)
 }
 
 type EvolutionStore interface {

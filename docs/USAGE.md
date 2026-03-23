@@ -1300,7 +1300,7 @@ cloche activity [--project <dir>] [--since <duration|time>] [--until <time>] [--
 | `--until <time>` | _(all)_ | Show only entries on or before this RFC3339 timestamp. |
 | `--json` | false | Output raw JSONL instead of the table view. |
 
-Reads `.cloche/activity.log` (JSONL, one entry per line). The file is created automatically by the orchestration loop and host workflow runs. Output columns: `TIME`, `KIND`, `TASK`, `ATTEMPT`, `WORKFLOW`, `STEP`, `OUTCOME`.
+Reads activity entries from the daemon's SQLite database. Events are recorded automatically by the orchestration loop and host workflow runs. Output columns: `TIME`, `KIND`, `TASK`, `ATTEMPT`, `WORKFLOW`, `STEP`, `OUTCOME`.
 
 Event kinds: `attempt_started`, `attempt_ended`, `step_started`, `step_completed`.
 
