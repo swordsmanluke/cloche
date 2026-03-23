@@ -1212,7 +1212,7 @@ func (s *ClocheServer) Complete(ctx context.Context, req *pb.CompleteRequest) (*
 		}
 
 	case "status":
-		completions = append(completions, s.taskAndAttemptIDs(ctx, projectDir)...)
+		completions = append(completions, s.activeOrRecentTaskAndAttemptIDs(ctx, projectDir)...)
 		completions = append(completions, "--all")
 
 	case "logs":
@@ -1250,16 +1250,50 @@ func (s *ClocheServer) Complete(ctx context.Context, req *pb.CompleteRequest) (*
 		completions = s.workflowNames(projectDir)
 
 	case "poll":
-		completions = s.recentRunIDs(ctx, projectDir)
+		completions = s.activeOrRecentTaskAndAttemptIDs(ctx, projectDir)
 
 	default:
 		// No dynamic completions for other subcommands.
 	}
 
-	return &pb.CompleteResponse{Completions: filterPrefix(completions, cur)}, nil
+	return &pb.CompleteResponse{Completions: fuzzyFilterPrefix(completions, cur)}, nil
+}
+
+// fuzzyFilterPrefix returns items from list that match prefix either by
+// exact string prefix or by prefix-matching any colon-delimited component.
+// This allows partial attempt IDs (e.g. "1fka") to match composite IDs
+// like "task-id:1fka" without requiring the user to know the task ID.
+// If prefix is empty, all items are returned.
+func fuzzyFilterPrefix(list []string, prefix string) []string {
+	if prefix == "" {
+		return list
+	}
+	var out []string
+	for _, s := range list {
+		if MatchesFuzzy(s, prefix) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// MatchesFuzzy returns true if prefix matches the beginning of s, or matches
+// the beginning of any colon-delimited component of s.
+// Exported so it can be exercised directly in tests.
+func MatchesFuzzy(s, prefix string) bool {
+	if strings.HasPrefix(s, prefix) {
+		return true
+	}
+	for _, part := range strings.Split(s, ":") {
+		if strings.HasPrefix(part, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // filterPrefix returns items from list that start with prefix.
+// Kept for use in subcommand completion where component matching is not needed.
 func filterPrefix(list []string, prefix string) []string {
 	if prefix == "" {
 		return list
@@ -1378,6 +1412,64 @@ func (s *ClocheServer) recentRunIDs(ctx context.Context, projectDir string) []st
 	for _, r := range runs {
 		ids = append(ids, r.ID)
 	}
+	return ids
+}
+
+// activeOrRecentRunIDs returns IDs of currently active (running/pending) runs
+// and runs that completed within the last 10 minutes.
+func (s *ClocheServer) activeOrRecentRunIDs(ctx context.Context, projectDir string) []string {
+	since := time.Now().Add(-10 * time.Minute)
+	filter := domain.RunListFilter{ProjectDir: projectDir, Since: since, Limit: 20}
+	runs, err := s.store.ListRunsFiltered(ctx, filter)
+	if err != nil {
+		runs, err = s.store.ListRunsFiltered(ctx, domain.RunListFilter{Since: since, Limit: 20})
+		if err != nil {
+			return nil
+		}
+	}
+	var ids []string
+	for _, r := range runs {
+		ids = append(ids, r.ID)
+	}
+	return ids
+}
+
+// activeOrRecentTaskAndAttemptIDs returns task and attempt IDs for tasks that
+// are currently active (running/pending) or were recently completed within the
+// last 10 minutes. This provides context-appropriate suggestions for commands
+// like "status" and "poll" that operate on in-flight or just-finished work.
+func (s *ClocheServer) activeOrRecentTaskAndAttemptIDs(ctx context.Context, projectDir string) []string {
+	cutoff := time.Now().Add(-10 * time.Minute)
+	var ids []string
+
+	if s.taskStore != nil {
+		tasks, err := s.taskStore.ListTasks(ctx, projectDir)
+		if err == nil {
+			for _, t := range tasks {
+				hasActiveOrRecent := false
+				for _, a := range t.Attempts {
+					if a.Result == domain.AttemptResultRunning || (!a.EndedAt.IsZero() && a.EndedAt.After(cutoff)) {
+						hasActiveOrRecent = true
+						break
+					}
+				}
+				if hasActiveOrRecent {
+					ids = append(ids, t.ID)
+					for _, a := range t.Attempts {
+						if a.Result == domain.AttemptResultRunning || (!a.EndedAt.IsZero() && a.EndedAt.After(cutoff)) {
+							ids = append(ids, t.ID+":"+a.ID)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: active or recently completed run IDs.
+	if len(ids) == 0 {
+		ids = s.activeOrRecentRunIDs(ctx, projectDir)
+	}
+
 	return ids
 }
 

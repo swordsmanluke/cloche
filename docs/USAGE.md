@@ -1362,6 +1362,17 @@ command line. If the daemon is reachable, dynamic candidates (task IDs, workflow
 names, attempt IDs) are returned via the `Complete` gRPC RPC. Otherwise falls
 back to static subcommand and flag completions.
 
+**Context-aware filtering:** The daemon filters candidates based on the subcommand:
+- `status` and `poll` — only suggest tasks that are currently running or completed
+  within the last ~10 minutes.
+- `stop` — only suggests currently running tasks.
+- `logs`, `resume`, `delete` — suggest recent runs (last 20).
+
+**Fuzzy matching:** Candidates are matched against the typed prefix using
+colon-delimited component matching. For example, typing a partial attempt ID
+like `1fka` will expand to the full composite ID `task-abc:1fka`, so you don't
+need to know the task ID prefix to tab-complete an attempt.
+
 The shell integration is set up automatically by `cloche init`, which writes
 `~/.cloche/completions/cloche.bash` (for bash) and `~/.cloche/completions/_cloche`
 (for zsh) and offers to append the sourcing snippet to `~/.bashrc` or `~/.zshrc`.
