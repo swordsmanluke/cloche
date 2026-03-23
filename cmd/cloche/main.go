@@ -123,6 +123,13 @@ func main() {
 		}
 		cmdValidate(os.Args[2:])
 		return
+	case "doctor":
+		if hasHelpFlag(os.Args[2:]) {
+			printSubcommandHelp("doctor")
+			return
+		}
+		cmdDoctor(os.Args[2:])
+		return
 	case "complete":
 		// No help flag handling: complete must be fast and quiet.
 		cmdComplete(os.Args[2:])

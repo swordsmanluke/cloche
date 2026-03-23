@@ -880,6 +880,30 @@ Also generates shell completion scripts to `~/.cloche/completions/` (bash and zs
 and offers to update `~/.bashrc` or `~/.zshrc` with the appropriate sourcing
 snippet. Skipped on Windows.
 
+### `cloche doctor`
+
+Diagnose Cloche infrastructure.
+
+```
+cloche doctor [--verbose]
+```
+
+Runs four checks in order and prints a status line for each. Exits with code 1
+if any check fails.
+
+| Check | Description |
+|-------|-------------|
+| Docker | Runs `docker info` to verify the Docker daemon is reachable. |
+| Base image | Checks whether `cloche-base:latest` (or `cloche-agent:latest`) exists locally. |
+| Daemon | Calls `GetVersion` over gRPC to verify the daemon is reachable. Address from `CLOCHE_ADDR` or default `127.0.0.1:50051`. |
+| Agent auth | Checks `ANTHROPIC_API_KEY` or `~/.claude/` session data. Soft check (warning, not fatal). |
+
+Each failing check prints actionable remediation steps inline.
+
+| Flag | Description |
+|------|-------------|
+| `--verbose`, `-v` | Print details for all checks (version, detected credential source, etc.). |
+
 ### `cloche run`
 
 Launch a workflow run.

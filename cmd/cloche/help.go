@@ -45,6 +45,28 @@ Examples:
   cloche init --workflow build --base-image python:3.12
 `,
 
+	"doctor": `cloche doctor — Diagnose Cloche infrastructure
+
+Checks every layer of the setup stack in order and prints a status line for
+each check. Exits with code 1 if any check fails.
+
+Checks performed:
+  1. Docker daemon reachable
+  2. Base image exists (cloche-base:latest or cloche-agent:latest)
+  3. Daemon reachable via gRPC (GetVersion)
+  4. Agent authentication credentials present (soft check — warning only)
+
+Usage:
+  cloche doctor [--verbose]
+
+Flags:
+  --verbose    Print details for all checks, including timing and config values
+
+Examples:
+  cloche doctor
+  cloche doctor --verbose
+`,
+
 	"health": `cloche health — Show project health summary
 
 Queries the daemon's HTTP API for a summary of all registered projects
@@ -637,6 +659,7 @@ Usage:
 
 Project Setup:
   init       Initialize a Cloche project (.cloche/ directory and templates)
+  doctor     Diagnose infrastructure (Docker, base image, daemon, agent auth)
   health     Show project health summary (pass/fail counts)
   project    Show project info, config, loop state, and workflows
 
