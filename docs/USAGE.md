@@ -869,8 +869,19 @@ cloche init [--workflow <name>] [--base-image <base>]
 Creates `.cloche/` with workflow file, Dockerfile, `config.toml`, prompt templates
 (`implement.md`, `fix-tests.md`, `fix-merge.md`), host workflows (`host.cloche`),
 Python scripts (`get-tasks.py`, `claim-task.py`, `prepare-merge.py`, `merge.py`,
-`release-task.py`, `cleanup.py`, `unclaim.py`), `task_list.json`, and
+`release-task.py`, `cleanup.py`, `unclaim.py`), `.cloche/task_list.json`, and
 `cloche_init_test/cloche/test_cloche.py`. Skips existing files.
+
+Three generated files contain `TODO(cloche-init)` placeholders that must be filled
+in before the first run:
+
+- **`.cloche/Dockerfile`** — dependency installation block with commented examples
+  for Python, Node.js, Go, Java, and Ruby.
+- **`.cloche/develop.cloche`** — the `test` step `run` command.
+- **`.cloche/prompts/implement.md`** — the `## Project Context` section describing
+  your project's language, test command, and key conventions.
+
+Use `grep -r 'TODO(cloche-init)' .cloche/` to find any remaining placeholders.
 
 Also creates `~/.config/cloche/config` (global daemon config) if it does not already
 exist. The default config enables the web dashboard on `localhost:8080`. Skipped if

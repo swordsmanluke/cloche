@@ -185,8 +185,64 @@ func TestCmdInit_DockerfileDefaultBaseImage(t *testing.T) {
 	if !strings.Contains(content, "FROM cloche-agent:latest") {
 		t.Error("Dockerfile should default to cloche-agent:latest base image")
 	}
-	if !strings.Contains(content, "python3") {
-		t.Error("Dockerfile should install python3")
+	if !strings.Contains(content, "TODO(cloche-init)") {
+		t.Error("Dockerfile should contain TODO(cloche-init) placeholder")
+	}
+}
+
+func TestCmdInit_DockerfileRuntimeExamples(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "Dockerfile"))
+	content := string(data)
+	for _, runtime := range []string{"python3", "nodejs", "golang", "default-jdk", "ruby"} {
+		if !strings.Contains(content, runtime) {
+			t.Errorf("Dockerfile should contain commented example for %s", runtime)
+		}
+	}
+}
+
+func TestCmdInit_WorkflowTestStepPlaceholder(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "develop.cloche"))
+	content := string(data)
+	if !strings.Contains(content, "TODO(cloche-init)") {
+		t.Error("develop.cloche test step should contain TODO(cloche-init) placeholder")
+	}
+	if strings.Contains(content, "python3 -m unittest") {
+		t.Error("develop.cloche test step should not contain hardcoded python3 unittest command")
+	}
+}
+
+func TestCmdInit_ImplementPromptPlaceholder(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "prompts", "implement.md"))
+	content := string(data)
+	if !strings.Contains(content, "TODO(cloche-init)") {
+		t.Error("implement.md should contain TODO(cloche-init) placeholder")
+	}
+	if !strings.Contains(content, "Project Context") {
+		t.Error("implement.md should contain a Project Context section")
+	}
+	if !strings.Contains(content, "{task_description}") {
+		t.Error("implement.md should still contain {task_description} placeholder")
 	}
 }
 

@@ -21,7 +21,7 @@ var workflowTemplate = `workflow "%s" {
   }
 
   step test {
-    run     = "python3 -m unittest discover -s cloche_init_test -v 2>&1"
+    run     = "echo 'TODO(cloche-init): replace with your test command'"
     results = [success, fail]
   }
 
@@ -45,9 +45,27 @@ var workflowTemplate = `workflow "%s" {
 var dockerfileTemplate = `FROM %s
 USER root
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 \
- && rm -rf /var/lib/apt/lists/*
+# TODO(cloche-init): install your project's runtime and build dependencies.
+# Uncomment and adapt one of the examples below, or write your own.
+#
+# Python:
+#   RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip \
+#    && rm -rf /var/lib/apt/lists/*
+#
+# Node.js (LTS via NodeSource):
+#   RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+#    && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
+#
+# Go (use the official golang image as base instead):
+#   FROM golang:1.22 AS base
+#
+# Java:
+#   RUN apt-get update && apt-get install -y --no-install-recommends default-jdk \
+#    && rm -rf /var/lib/apt/lists/*
+#
+# Ruby:
+#   RUN apt-get update && apt-get install -y --no-install-recommends ruby ruby-dev \
+#    && rm -rf /var/lib/apt/lists/*
 
 USER agent
 `
@@ -57,6 +75,14 @@ var implementPrompt = `Implement the following change in this project.
 ## Task
 
 {task_description}
+
+## Project Context
+
+TODO(cloche-init): describe your project here so the agent has the context it needs. Examples:
+- Language: Go — run tests with "go test ./..."
+- Language: Node.js/TypeScript — run tests with "npm test"
+- Language: Python — run tests with "pytest"
+- Key constraints: follow existing patterns, don't modify generated files
 
 ## Guidelines
 - Follow existing project conventions
