@@ -961,6 +961,12 @@ func cmdLoop(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 		return
 	}
 
+	// Check for "once" subcommand
+	if len(args) > 0 && args[0] == "once" {
+		cmdLoopOnce(ctx, client, cwd)
+		return
+	}
+
 	// Check for "resume" subcommand
 	if len(args) > 0 && args[0] == "resume" {
 		_, err := client.ResumeLoop(ctx, &pb.ResumeLoopRequest{ProjectDir: cwd})
@@ -1000,6 +1006,70 @@ func cmdLoop(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 		fmt.Printf("Orchestration loop started (max_concurrent=%d).\n", maxConcurrent)
 	} else {
 		fmt.Println("Orchestration loop started (using config defaults).")
+	}
+}
+
+// cmdLoopOnce enables the orchestration loop with max_concurrent=1, waits for
+// exactly one run to reach a terminal state, then disables the loop.
+func cmdLoopOnce(ctx context.Context, client pb.ClocheServiceClient, projectDir string) {
+	// Snapshot current run IDs so we can detect a new one.
+	existing := make(map[string]bool)
+	if resp, err := client.ListRuns(ctx, &pb.ListRunsRequest{ProjectDir: projectDir}); err == nil {
+		for _, r := range resp.Runs {
+			existing[r.RunId] = true
+		}
+	}
+
+	// Enable loop with max_concurrent=1.
+	_, err := client.EnableLoop(ctx, &pb.EnableLoopRequest{
+		ProjectDir:    projectDir,
+		MaxConcurrent: 1,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Orchestration loop started (once mode).")
+
+	// Run the polling loop; stopLoop ensures the loop is always disabled.
+	exitCode := loopOnceWait(ctx, client, projectDir, existing)
+
+	_, _ = client.DisableLoop(ctx, &pb.DisableLoopRequest{ProjectDir: projectDir})
+	fmt.Println("Orchestration loop stopped.")
+	os.Exit(exitCode)
+}
+
+// loopOnceWait polls until a new run reaches a terminal state. Returns 0 on
+// success, 1 on failure/cancellation/error.
+func loopOnceWait(ctx context.Context, client pb.ClocheServiceClient, projectDir string, existing map[string]bool) int {
+	pollInterval := 3 * time.Second
+	for {
+		time.Sleep(pollInterval)
+
+		resp, err := client.ListRuns(ctx, &pb.ListRunsRequest{ProjectDir: projectDir})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error polling runs: %v\n", err)
+			return 1
+		}
+
+		for _, r := range resp.Runs {
+			if existing[r.RunId] {
+				continue
+			}
+			// Found a new run — check its state.
+			switch domain.RunState(r.State) {
+			case domain.RunStateSucceeded:
+				fmt.Printf("Run %s succeeded.\n", r.RunId)
+				return 0
+			case domain.RunStateFailed:
+				fmt.Printf("Run %s failed.\n", r.RunId)
+				return 1
+			case domain.RunStateCancelled:
+				fmt.Printf("Run %s cancelled.\n", r.RunId)
+				return 1
+			}
+			// Still pending/running — keep polling.
+		}
 	}
 }
 

@@ -155,7 +155,7 @@ func staticCompletions(subcommand string, index int, words []string, cur string)
 		}
 
 	case "loop":
-		candidates = []string{"stop", "resume", "--max"}
+		candidates = []string{"once", "stop", "resume", "--max"}
 
 	case "workflow":
 		// Try reading from local .cloche/

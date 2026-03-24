@@ -369,12 +369,17 @@ automatically picks up and runs tasks from the task pipeline.
 
 Usage:
   cloche loop [--max <n>]     Start the orchestration loop
+  cloche loop once            Run one task then stop the loop
   cloche loop stop            Stop the orchestration loop
   cloche loop resume          Resume a halted loop (clear error state)
 
 Flags:
   --max <n>    Maximum number of concurrent runs (default: value from
                .cloche/config.toml).
+
+The "once" subcommand starts the loop, waits for a single task to be
+picked up and completed, then automatically stops the loop. Exits 0
+on success, 1 on failure or cancellation.
 
 When stop_on_error is enabled in .cloche/config.toml, an unrecovered
 error will halt the loop. Use "cloche loop resume" to clear the error
@@ -383,6 +388,7 @@ and resume picking up new work.
 Examples:
   cloche loop
   cloche loop --max 3
+  cloche loop once
   cloche loop stop
   cloche loop resume
 `,
