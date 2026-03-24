@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"text/tabwriter"
+
+	"github.com/cloche-dev/cloche/internal/config"
 )
 
 type healthData struct {
@@ -21,10 +24,25 @@ type projectHealth struct {
 	Health healthData `json:"health"`
 }
 
+// resolveHTTPAddr returns the daemon's HTTP address by checking, in order:
+// 1. CLOCHE_HTTP environment variable
+// 2. [daemon] http in ~/.config/cloche/config
+// Returns empty string if neither is set.
+func resolveHTTPAddr() string {
+	if v := os.Getenv("CLOCHE_HTTP"); v != "" {
+		return strings.TrimPrefix(v, "http://")
+	}
+	if cfg, err := config.LoadGlobal(); err == nil && cfg.Daemon.HTTP != "" {
+		return strings.TrimPrefix(cfg.Daemon.HTTP, "http://")
+	}
+	return ""
+}
+
 func cmdHealth(args []string) {
-	httpAddr := os.Getenv("CLOCHE_HTTP")
+	httpAddr := resolveHTTPAddr()
 	if httpAddr == "" {
-		fmt.Fprintf(os.Stderr, "error: CLOCHE_HTTP not set (e.g. export CLOCHE_HTTP=localhost:8080)\n")
+		fmt.Fprintf(os.Stderr, "error: cannot determine daemon HTTP address\n")
+		fmt.Fprintf(os.Stderr, "hint: set CLOCHE_HTTP or configure [daemon] http in ~/.config/cloche/config\n")
 		os.Exit(1)
 	}
 

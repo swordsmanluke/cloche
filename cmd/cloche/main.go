@@ -1004,12 +1004,10 @@ func cmdLoop(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 }
 
 func cmdTasks(args []string) {
-	// Determine HTTP address from env
-	httpAddr := os.Getenv("CLOCHE_HTTP")
+	httpAddr := resolveHTTPAddr()
 	if httpAddr == "" {
 		httpAddr = "localhost:8080"
 	}
-	httpAddr = strings.TrimPrefix(httpAddr, "http://")
 
 	// Determine project label from --project flag or current directory
 	projectDir := ""
