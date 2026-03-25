@@ -50,6 +50,7 @@ type ClocheServer struct {
 	shutdownFn    func()
 	mu              sync.Mutex
 	runIDs          map[string]string             // run_id -> container_id
+	containerRun    map[string]string             // container_id -> run_id
 	hostCancels     map[string]context.CancelFunc // run_id -> cancel fn (for host runs)
 	loops           map[string]*host.Loop         // project_dir -> orchestration loop
 	activityLoggers map[string]*activitylog.Logger // project_dir -> activity logger
@@ -60,6 +61,7 @@ func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *Cl
 		store:           store,
 		container:       container,
 		runIDs:          make(map[string]string),
+		containerRun:    make(map[string]string),
 		hostCancels:     make(map[string]context.CancelFunc),
 		loops:           make(map[string]*host.Loop),
 		activityLoggers: make(map[string]*activitylog.Logger),
@@ -73,6 +75,7 @@ func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureSto
 		container:       container,
 		defaultImage:    defaultImage,
 		runIDs:          make(map[string]string),
+		containerRun:    make(map[string]string),
 		hostCancels:     make(map[string]context.CancelFunc),
 		loops:           make(map[string]*host.Loop),
 		activityLoggers: make(map[string]*activitylog.Logger),
@@ -164,8 +167,12 @@ func (s *ClocheServer) SetContainerPool(pool *docker.ContainerPool) {
 
 // AgentSession handles the bidirectional gRPC stream between the daemon and an
 // in-container agent. The agent sends AgentReady first, then receives
-// ExecuteStep commands and sends back StepResult messages.
+// ExecuteStep commands and sends back StepResult/StepLog/StepStarted messages.
+// This handler updates run state in the store and broadcasts log lines so that
+// callers watching live output see step events in real time.
 func (s *ClocheServer) AgentSession(stream pb.ClocheService_AgentSessionServer) error {
+	ctx := context.Background()
+
 	// First message must be AgentReady.
 	msg, err := stream.Recv()
 	if err != nil {
@@ -194,30 +201,73 @@ func (s *ClocheServer) AgentSession(stream pb.ClocheService_AgentSessionServer) 
 	// Register the send function with the pool and unblock SessionFor.
 	s.pool.NotifyReadyWithStream(containerID, sendFn)
 
+	// Look up the run ID for this container so we can update run state.
+	s.mu.Lock()
+	runID := s.containerRun[containerID]
+	s.mu.Unlock()
+
+	// pendingStepNames tracks which step name is associated with each request ID.
+	// Populated on StepStarted, consumed on StepResult.
+	pendingStepNames := make(map[string]string) // reqID → stepName
+
 	// Loop receiving messages from the agent.
 	for {
 		msg, err := stream.Recv()
 		if err != nil {
-			// Stream closed: normal shutdown or network error.
 			log.Printf("agent session: stream closed (containerID=%s): %v", containerID, err)
+			// Fail all pending step requests to unblock waiting executors.
+			s.pool.FailPendingRequests(containerID)
+			// Mark any steps that were started but not yet completed as failed.
+			if runID != "" {
+				s.failInFlightSteps(ctx, runID)
+			}
 			return nil
 		}
 
 		switch payload := msg.Payload.(type) {
+		case *pb.AgentMessage_StepStarted:
+			started := payload.StepStarted
+			log.Printf("agent session: step started (containerID=%s stepName=%s requestID=%s)",
+				containerID, started.StepName, started.RequestId)
+			if started.RequestId != "" && started.StepName != "" {
+				pendingStepNames[started.RequestId] = started.StepName
+			}
+			if runID != "" && started.StepName != "" {
+				s.recordStepStart(ctx, runID, started.StepName)
+			}
+
+		case *pb.AgentMessage_StepLog:
+			if s.logBroadcast != nil && payload.StepLog != nil && runID != "" {
+				sl := payload.StepLog
+				ts := time.Now().Format(time.RFC3339)
+				if sl.Timestamp != 0 {
+					ts = time.Unix(0, sl.Timestamp).Format(time.RFC3339)
+				}
+				s.logBroadcast.Publish(runID, logstream.LogLine{
+					Timestamp: ts,
+					Type:      "llm",
+					Content:   sl.Line,
+					StepName:  sl.StepName,
+				})
+			}
+
 		case *pb.AgentMessage_StepResult:
 			result := payload.StepResult
 			log.Printf("agent session: step result (containerID=%s requestID=%s result=%s)",
 				containerID, result.RequestId, result.Result)
+			// Resolve the step name from the pending map populated by StepStarted.
+			stepName := pendingStepNames[result.RequestId]
+			delete(pendingStepNames, result.RequestId)
+			if runID != "" && stepName != "" {
+				s.recordStepComplete(ctx, runID, stepName, result)
+			}
 			s.pool.DeliverResult(containerID, result)
 
-		case *pb.AgentMessage_StepLog:
-			if s.logBroadcast != nil && payload.StepLog != nil {
-				// TODO: associate log line with the correct run ID
-				_ = payload.StepLog
-			}
-
-		case *pb.AgentMessage_StepStarted:
-			// Informational; the engine tracks step state via StepResult.
+		case *pb.AgentMessage_HostRequest:
+			req := payload.HostRequest
+			log.Printf("agent session: host workflow request (containerID=%s workflow=%s requestID=%s)",
+				containerID, req.WorkflowName, req.RequestId)
+			go s.handleHostWorkflowRequest(ctx, runID, req, sendFn)
 
 		case *pb.AgentMessage_Ready:
 			// Duplicate AgentReady: ignore.
@@ -227,6 +277,149 @@ func (s *ClocheServer) AgentSession(stream pb.ClocheService_AgentSessionServer) 
 			// Unknown message type: ignore for forward compatibility.
 		}
 	}
+}
+
+// recordStepStart records that a step has started: updates the run in the store,
+// saves a capture entry, and broadcasts a log line to live-stream subscribers.
+func (s *ClocheServer) recordStepStart(ctx context.Context, runID, stepName string) {
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	run.RecordStepStart(stepName)
+	_ = s.store.UpdateRun(ctx, run)
+	if s.captures != nil {
+		_ = s.captures.SaveCapture(ctx, runID, &domain.StepExecution{
+			StepName:  stepName,
+			StartedAt: now,
+		})
+	}
+	if s.logBroadcast != nil {
+		s.logBroadcast.Publish(runID, logstream.LogLine{
+			Timestamp: now.Format(time.RFC3339),
+			Type:      "status",
+			Content:   "step_started: " + stepName,
+			StepName:  stepName,
+		})
+	}
+}
+
+// recordStepComplete records that a step has completed: updates the run in the
+// store, saves a capture entry with optional token usage, and broadcasts a log
+// line to live-stream subscribers.
+func (s *ClocheServer) recordStepComplete(ctx context.Context, runID, stepName string, result *pb.StepResult) {
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	run.RecordStepComplete(stepName, result.Result)
+	_ = s.store.UpdateRun(ctx, run)
+	if s.captures != nil {
+		exec := &domain.StepExecution{
+			StepName:    stepName,
+			Result:      result.Result,
+			CompletedAt: now,
+		}
+		if result.TokenUsage != nil {
+			exec.Usage = &domain.TokenUsage{
+				InputTokens:  result.TokenUsage.InputTokens,
+				OutputTokens: result.TokenUsage.OutputTokens,
+			}
+		}
+		_ = s.captures.SaveCapture(ctx, runID, exec)
+	}
+	if s.logBroadcast != nil {
+		s.logBroadcast.Publish(runID, logstream.LogLine{
+			Timestamp: now.Format(time.RFC3339),
+			Type:      "status",
+			Content:   "step_completed: " + stepName + " -> " + result.Result,
+			StepName:  stepName,
+		})
+	}
+}
+
+// failInFlightSteps marks every active step in the run as failed. This is
+// called when an agent session disconnects while steps are still in progress.
+func (s *ClocheServer) failInFlightSteps(ctx context.Context, runID string) {
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil || len(run.ActiveSteps) == 0 {
+		return
+	}
+	now := time.Now()
+	for _, stepName := range run.ActiveSteps {
+		run.RecordStepComplete(stepName, "fail")
+		if s.captures != nil {
+			_ = s.captures.SaveCapture(ctx, runID, &domain.StepExecution{
+				StepName:    stepName,
+				Result:      "fail",
+				CompletedAt: now,
+			})
+		}
+	}
+	_ = s.store.UpdateRun(ctx, run)
+}
+
+// handleHostWorkflowRequest dispatches a host workflow on behalf of an
+// in-container agent and sends the result back over the stream. It is always
+// invoked in a separate goroutine so that the AgentSession receive loop is not
+// blocked while the host workflow executes.
+func (s *ClocheServer) handleHostWorkflowRequest(ctx context.Context, containerRunID string, req *pb.HostWorkflowRequest, sendFn func(*pb.DaemonMessage) error) {
+	sendResult := func(result, runID string) {
+		_ = sendFn(&pb.DaemonMessage{
+			Payload: &pb.DaemonMessage_HostResult{
+				HostResult: &pb.HostWorkflowResult{
+					RequestId: req.RequestId,
+					Result:    result,
+					RunId:     runID,
+				},
+			},
+		})
+	}
+
+	// Resolve the parent run to get projectDir, taskID, attemptID.
+	var projectDir, taskID, attemptID string
+	if containerRunID != "" {
+		if run, err := s.store.GetRun(ctx, containerRunID); err == nil {
+			projectDir = run.ProjectDir
+			taskID = run.TaskID
+			attemptID = run.AttemptID
+		}
+	}
+	if projectDir == "" {
+		log.Printf("agent session: host workflow request %s: run %q not found or missing projectDir",
+			req.RequestId, containerRunID)
+		sendResult("fail", "")
+		return
+	}
+
+	childRunID := domain.GenerateRunID(req.WorkflowName, attemptID)
+
+	runner := &host.Runner{
+		Store:        s.store,
+		Captures:     s.captures,
+		LogBroadcast: s.logBroadcast,
+		ActivityLog:  s.activityLoggerFor(projectDir),
+		TaskID:       taskID,
+		AttemptID:    attemptID,
+	}
+	for k, v := range req.Env {
+		runner.ExtraEnv = append(runner.ExtraEnv, k+"="+v)
+	}
+
+	result, err := runner.RunNamedWithID(ctx, projectDir, req.WorkflowName, childRunID)
+	if err != nil {
+		log.Printf("agent session: host workflow %q failed: %v", req.WorkflowName, err)
+		sendResult("fail", childRunID)
+		return
+	}
+
+	outcome := "fail"
+	if result != nil && result.State == domain.RunStateSucceeded {
+		outcome = "success"
+	}
+	sendResult(outcome, childRunID)
 }
 
 func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
@@ -756,6 +949,7 @@ func (s *ClocheServer) launchResumeContainer(run *domain.Run, image string, cmd 
 
 	s.mu.Lock()
 	s.runIDs[run.ID] = containerID
+	s.containerRun[containerID] = run.ID
 	s.mu.Unlock()
 
 	run.ContainerID = containerID
@@ -836,6 +1030,7 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 
 	s.mu.Lock()
 	s.runIDs[runID] = containerID
+	s.containerRun[containerID] = runID
 	s.mu.Unlock()
 
 	run, _ := s.store.GetRun(ctx, runID)
@@ -890,7 +1085,9 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		return
 	}
 
-	// Parse JSON-lines status messages
+	// Drain docker output to a buffer for container.log capture.
+	// Step-level status (started/completed) is now tracked via gRPC AgentSession events.
+	// We still parse run-level metadata (title, result, error) and live log lines.
 	var reportedResult string // captured from MsgRunCompleted, persisted after branch extraction
 	var reportedError string  // captured from MsgError, used to set ErrorMessage on failed runs
 	scanner := bufio.NewScanner(reader)
@@ -901,8 +1098,9 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 			continue
 		}
 
-		// Fast path: log messages don't need store interaction.
-		if msg.Type == protocol.MsgLog {
+		switch msg.Type {
+		case protocol.MsgLog:
+			// Fast path: live log lines published to broadcast (no store interaction).
 			if s.logBroadcast != nil {
 				s.logBroadcast.Publish(runID, logstream.LogLine{
 					Timestamp: msg.Timestamp.Format(time.RFC3339),
@@ -911,74 +1109,20 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 					StepName:  msg.StepName,
 				})
 			}
-			continue
-		}
-
-		run, err := s.store.GetRun(ctx, runID)
-		if err != nil {
-			continue
-		}
-
-		switch msg.Type {
-		case protocol.MsgStepStarted:
-			run.RecordStepStart(msg.StepName)
-			if s.captures != nil {
-				_ = s.captures.SaveCapture(ctx, runID, &domain.StepExecution{
-					StepName:  msg.StepName,
-					StartedAt: msg.Timestamp,
-				})
-			}
-			if s.logBroadcast != nil {
-				s.logBroadcast.Publish(runID, logstream.LogLine{
-					Timestamp: msg.Timestamp.Format(time.RFC3339),
-					Type:      "status",
-					Content:   "step_started: " + msg.StepName,
-					StepName:  msg.StepName,
-				})
-			}
-		case protocol.MsgStepCompleted:
-			run.RecordStepComplete(msg.StepName, msg.Result)
-			if s.captures != nil {
-				exec := &domain.StepExecution{
-					StepName:    msg.StepName,
-					Result:      msg.Result,
-					CompletedAt: msg.Timestamp,
-				}
-				if msg.InputTokens > 0 || msg.OutputTokens > 0 || msg.AgentName != "" {
-					exec.Usage = &domain.TokenUsage{
-						InputTokens:  msg.InputTokens,
-						OutputTokens: msg.OutputTokens,
-						AgentName:    msg.AgentName,
-					}
-				}
-				_ = s.captures.SaveCapture(ctx, runID, exec)
-			}
-			if s.logBroadcast != nil {
-				s.logBroadcast.Publish(runID, logstream.LogLine{
-					Timestamp: msg.Timestamp.Format(time.RFC3339),
-					Type:      "status",
-					Content:   "step_completed: " + msg.StepName + " -> " + msg.Result,
-					StepName:  msg.StepName,
-				})
-			}
-			// Eagerly extract step output so the Web UI can serve it
-			// while the run is still active.
-			if mkErr := os.MkdirAll(outputDst, 0755); mkErr == nil {
-				_ = s.container.CopyFrom(ctx, containerID, "/workspace/.cloche/output/.", outputDst)
-			}
 		case protocol.MsgRunTitle:
-			if run.Title == "" {
+			// Run title: update the run record.
+			run, err := s.store.GetRun(ctx, runID)
+			if err == nil && run.Title == "" {
 				run.Title = msg.Message
+				_ = s.store.UpdateRun(ctx, run)
 			}
 		case protocol.MsgError:
 			reportedError = msg.Message
-			continue // Don't persist; used during finalization
 		case protocol.MsgRunCompleted:
 			reportedResult = msg.Result
-			continue // Don't persist terminal state yet; branch extraction must finish first
+			// Do not persist terminal state yet; branch extraction must finish first.
 		}
-
-		_ = s.store.UpdateRun(ctx, run)
+		// MsgStepStarted and MsgStepCompleted are handled via gRPC AgentSession events.
 	}
 	reader.Close()
 
@@ -1102,9 +1246,10 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		}
 	}
 
-	// Cleanup mapping
+	// Cleanup mappings
 	s.mu.Lock()
 	delete(s.runIDs, runID)
+	delete(s.containerRun, containerID)
 	s.mu.Unlock()
 }
 

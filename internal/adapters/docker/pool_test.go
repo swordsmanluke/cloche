@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
+	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -332,4 +334,48 @@ func TestContainerPool_NotifyReady_CalledTwiceIsNoop(t *testing.T) {
 
 	_, err := pool.SessionFor(ctx, "att-double", ports.ContainerConfig{Image: "img"})
 	require.NoError(t, err)
+}
+
+func TestContainerPool_FailPendingRequests_UnblocksCallers(t *testing.T) {
+	rt := &fakeRuntime{}
+	pool := docker.NewContainerPool(rt)
+	ctx := context.Background()
+
+	// Get a session and register a send function so ExecuteStep can dispatch.
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		id := rt.lastStarted()
+		pool.NotifyReadyWithStream(id, func(_ *pb.DaemonMessage) error { return nil })
+	}()
+
+	sess, err := pool.SessionFor(ctx, "att-fail", ports.ContainerConfig{Image: "img"})
+	require.NoError(t, err)
+	containerID := sess.ContainerID
+
+	// Start an ExecuteStep in a goroutine — it will block waiting for a result.
+	done := make(chan error, 1)
+	go func() {
+		_, execErr := sess.ExecuteStep(context.Background(), &domain.Step{Name: "s1", Type: domain.StepTypeScript})
+		done <- execErr
+	}()
+
+	// Give the goroutine a moment to register its pending channel.
+	time.Sleep(20 * time.Millisecond)
+
+	// FailPendingRequests should unblock the ExecuteStep call.
+	pool.FailPendingRequests(containerID)
+
+	select {
+	case execErr := <-done:
+		assert.NoError(t, execErr, "ExecuteStep should return without error (synthetic fail result)")
+	case <-time.After(2 * time.Second):
+		t.Fatal("ExecuteStep did not unblock after FailPendingRequests")
+	}
+}
+
+func TestContainerPool_FailPendingRequests_UnknownContainerIsNoop(t *testing.T) {
+	rt := &fakeRuntime{}
+	pool := docker.NewContainerPool(rt)
+	// Should not panic.
+	pool.FailPendingRequests("nonexistent-container")
 }

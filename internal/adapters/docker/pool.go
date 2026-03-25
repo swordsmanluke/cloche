@@ -87,6 +87,23 @@ func (cs *ContainerSession) ExecuteStep(ctx context.Context, step *domain.Step) 
 	}
 }
 
+// failAllPending sends a synthetic "fail" StepResult to every pending channel,
+// unblocking any ExecuteStep callers that are waiting for a result. This is
+// called when the agent session disconnects unexpectedly.
+func (cs *ContainerSession) failAllPending() {
+	cs.mu.Lock()
+	pending := cs.pending
+	cs.pending = make(map[string]chan *pb.StepResult)
+	cs.mu.Unlock()
+
+	for reqID, ch := range pending {
+		select {
+		case ch <- &pb.StepResult{RequestId: reqID, Result: "fail"}:
+		default:
+		}
+	}
+}
+
 // deliverResult routes a StepResult to the pending channel for its request ID.
 func (cs *ContainerSession) deliverResult(result *pb.StepResult) {
 	cs.mu.Lock()
@@ -281,6 +298,30 @@ func (p *ContainerPool) DeliverResult(containerID string, result *pb.StepResult)
 		return
 	}
 	entry.sessions[0].deliverResult(result)
+}
+
+// FailPendingRequests sends a synthetic "fail" result to all pending ExecuteStep
+// requests for the given container, unblocking any callers waiting on those
+// channels. This is called when an agent session disconnects unexpectedly.
+func (p *ContainerPool) FailPendingRequests(containerID string) {
+	p.mu.Lock()
+	attemptID := p.containerAttempt[containerID]
+	var sess *ContainerSession
+	if attemptID != "" {
+		if entry, ok := p.attempts[attemptID]; ok {
+			for _, s := range entry.sessions {
+				if s.ContainerID == containerID {
+					sess = s
+					break
+				}
+			}
+		}
+	}
+	p.mu.Unlock()
+
+	if sess != nil {
+		sess.failAllPending()
+	}
 }
 
 // CleanupAttempt stops and removes all containers associated with attemptID.

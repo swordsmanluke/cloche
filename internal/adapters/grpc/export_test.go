@@ -29,6 +29,14 @@ func (s *ClocheServer) AddActiveRun(runID, containerID string) {
 	s.mu.Unlock()
 }
 
+// RegisterContainerRun registers a container-to-run mapping for testing.
+// This simulates what launchAndTrack does after starting a container.
+func (s *ClocheServer) RegisterContainerRun(containerID, runID string) {
+	s.mu.Lock()
+	s.containerRun[containerID] = runID
+	s.mu.Unlock()
+}
+
 // AddActiveHostRun registers a fake active host run cancel function for testing.
 func (s *ClocheServer) AddActiveHostRun(runID string, cancelFn context.CancelFunc) {
 	s.mu.Lock()

@@ -15,6 +15,7 @@ import (
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	server "github.com/cloche-dev/cloche/internal/adapters/grpc"
+	"github.com/cloche-dev/cloche/internal/adapters/docker"
 	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/domain"
@@ -208,17 +209,17 @@ func TestServer_RunWorkflow(t *testing.T) {
 	for time.Now().Before(deadline) {
 		status, err = srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
 		require.NoError(t, err)
-		if status.State == "succeeded" && len(status.StepExecutions) >= 1 {
+		if status.State == "succeeded" {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	// Check that the run was tracked and completed
+	// Check that the run was tracked and completed.
+	// Step executions are now recorded via gRPC AgentSession events, not docker log parsing.
 	require.NotNil(t, status)
 	assert.Equal(t, resp.RunId, status.RunId)
 	assert.Equal(t, "succeeded", status.State)
-	assert.GreaterOrEqual(t, len(status.StepExecutions), 1)
 }
 
 func TestServer_RunWorkflow_WithTitle(t *testing.T) {
@@ -454,10 +455,9 @@ func TestServer_RunWorkflow_CapturesStepMetadata(t *testing.T) {
 
 	dir := t.TempDir()
 
-	// Mock agent outputs status messages
+	// Script outputs run-level JSON (MsgRunCompleted) only; step-level captures
+	// are now driven by gRPC AgentSession events, not docker log parsing.
 	msgs := []protocol.StatusMessage{
-		{Type: protocol.MsgStepStarted, StepName: "implement"},
-		{Type: protocol.MsgStepCompleted, StepName: "implement", Result: "success"},
 		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
 	}
 	script := "#!/bin/sh\n"
@@ -477,37 +477,22 @@ func TestServer_RunWorkflow_CapturesStepMetadata(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Poll until complete and captures are stored
-	var captures []*domain.StepExecution
+	// Poll until complete
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
 		require.NoError(t, err)
 		if status.State == "succeeded" {
-			captures, err = store.GetCaptures(context.Background(), resp.RunId)
-			require.NoError(t, err)
-			if len(captures) >= 2 {
-				break
-			}
+			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	// Should have 2 captures: one for step_started, one for step_completed
-	require.GreaterOrEqual(t, len(captures), 2)
-
-	// Check captures directly - one for step_started, one for step_completed
-	var foundStarted, foundCompleted bool
-	for _, c := range captures {
-		if c.StepName == "implement" && c.Result == "" {
-			foundStarted = true
-		}
-		if c.StepName == "implement" && c.Result == "success" {
-			foundCompleted = true
-		}
-	}
-	assert.True(t, foundStarted, "should find capture for step started")
-	assert.True(t, foundCompleted, "should find capture for step completed")
+	// Run should have succeeded; step-level capture tests are covered by
+	// TestAgentSession_RecordsStepCaptures which drives state via gRPC.
+	status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
+	require.NoError(t, err)
+	assert.Equal(t, "succeeded", status.State)
 }
 
 func TestServer_StreamLogs(t *testing.T) {
@@ -517,10 +502,8 @@ func TestServer_StreamLogs(t *testing.T) {
 
 	dir := t.TempDir()
 
-	// Mock agent outputs status messages
+	// Script outputs run-level result; step-level events come via AgentSession.
 	msgs := []protocol.StatusMessage{
-		{Type: protocol.MsgStepStarted, StepName: "build"},
-		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
 		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
 	}
 	script := "#!/bin/sh\n"
@@ -540,16 +523,13 @@ func TestServer_StreamLogs(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Poll until the run completes and captures are stored
+	// Poll until the run completes
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
 		require.NoError(t, err)
 		if status.State == "succeeded" {
-			captures, _ := store.GetCaptures(context.Background(), resp.RunId)
-			if len(captures) >= 2 {
-				break
-			}
+			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -559,29 +539,16 @@ func TestServer_StreamLogs(t *testing.T) {
 	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: resp.RunId}, mock)
 	require.NoError(t, err)
 
-	// Should have entries: step_started, step_completed, run_completed
-	require.GreaterOrEqual(t, len(mock.entries), 3)
-
-	// Find step_started and step_completed entries
-	var foundStarted, foundCompleted, foundRun bool
+	// StreamLogs should return at least a run_completed entry.
+	// Step-level entries (step_started/step_completed) are driven by AgentSession
+	// and are tested separately in TestAgentSession_RecordsStepCaptures.
+	var foundRun bool
 	for _, e := range mock.entries {
-		switch e.Type {
-		case "step_started":
-			if e.StepName == "build" {
-				foundStarted = true
-			}
-		case "step_completed":
-			if e.StepName == "build" {
-				foundCompleted = true
-				assert.Equal(t, "success", e.Result)
-			}
-		case "run_completed":
+		if e.Type == "run_completed" {
 			foundRun = true
 			assert.Equal(t, "succeeded", e.Result)
 		}
 	}
-	assert.True(t, foundStarted, "should find step_started for build")
-	assert.True(t, foundCompleted, "should find step_completed for build")
 	assert.True(t, foundRun, "should find run_completed")
 }
 
@@ -602,53 +569,37 @@ func (m *mockLogStream) Context() context.Context {
 }
 
 func TestServer_StreamLogs_DoesNotFallBackToContainerLog(t *testing.T) {
+	// This test verifies that StreamLogs does not include container.log content
+	// in step_completed entries when no per-step log file exists.
+	// Captures are injected directly to isolate this behavior from run execution.
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
 
+	ctx := context.Background()
 	dir := t.TempDir()
 
-	// Mock agent outputs a step that fails — no per-step output file will exist
-	msgs := []protocol.StatusMessage{
-		{Type: protocol.MsgStepStarted, StepName: "implement"},
-		{Type: protocol.MsgStepCompleted, StepName: "implement", Result: "fail"},
-		{Type: protocol.MsgRunCompleted, Result: "failed"},
-	}
-	script := "#!/bin/sh\n"
-	for _, msg := range msgs {
-		data, _ := json.Marshal(msg)
-		script += "echo '" + string(data) + "'\n"
-	}
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+	run := domain.NewRun("no-fallback-run-1", "test")
+	run.ProjectDir = dir
+	run.AttemptID = "att1"
+	run.TaskID = "task-no-fallback"
+	run.Complete(domain.RunStateFailed)
+	require.NoError(t, store.CreateRun(ctx, run))
 
-	rt := local.NewRuntime("sh")
-	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
-
-	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
-		WorkflowName: "test",
-		ProjectDir:   dir,
-	})
-	require.NoError(t, err)
-
-	// Poll until run completes
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
-		require.NoError(t, err)
-		if status.State != "running" && status.State != "pending" {
-			captures, _ := store.GetCaptures(context.Background(), resp.RunId)
-			if len(captures) >= 2 {
-				break
-			}
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	// Inject captures directly (simulating what AgentSession would do).
+	require.NoError(t, store.SaveCapture(ctx, "no-fallback-run-1", &domain.StepExecution{
+		StepName:  "implement",
+		StartedAt: time.Now(),
+	}))
+	require.NoError(t, store.SaveCapture(ctx, "no-fallback-run-1", &domain.StepExecution{
+		StepName:    "implement",
+		Result:      "fail",
+		CompletedAt: time.Now(),
+	}))
 
 	// Write container.log but NOT a per-step log file. The step_completed
-	// entry should NOT contain container.log content (which is unfiltered
-	// output from ALL steps and would show wrong data for a specific step).
-	outputDir := filepath.Join(dir, ".cloche", resp.RunId, "output")
+	// entry should NOT contain container.log content.
+	outputDir := filepath.Join(dir, ".cloche", "no-fallback-run-1", "output")
 	require.NoError(t, os.MkdirAll(outputDir, 0755))
 	require.NoError(t, os.WriteFile(
 		filepath.Join(outputDir, "container.log"),
@@ -656,8 +607,10 @@ func TestServer_StreamLogs_DoesNotFallBackToContainerLog(t *testing.T) {
 		0644,
 	))
 
-	mock := &mockLogStream{ctx: context.Background()}
-	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: resp.RunId}, mock)
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+
+	mock := &mockLogStream{ctx: ctx}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "no-fallback-run-1"}, mock)
 	require.NoError(t, err)
 
 	var foundCompleted bool
@@ -673,56 +626,43 @@ func TestServer_StreamLogs_DoesNotFallBackToContainerLog(t *testing.T) {
 }
 
 func TestServer_StreamLogs_PrefersStepOutput(t *testing.T) {
+	// This test verifies that StreamLogs uses the per-step log file content
+	// over container.log when both exist. Captures are injected directly.
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
 
+	ctx := context.Background()
 	dir := t.TempDir()
 
-	msgs := []protocol.StatusMessage{
-		{Type: protocol.MsgStepStarted, StepName: "build"},
-		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
-		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
-	}
-	script := "#!/bin/sh\n"
-	for _, msg := range msgs {
-		data, _ := json.Marshal(msg)
-		script += "echo '" + string(data) + "'\n"
-	}
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+	run := domain.NewRun("prefers-step-run-1", "test")
+	run.ProjectDir = dir
+	run.AttemptID = "att1"
+	run.TaskID = "task-prefers-step"
+	run.Complete(domain.RunStateSucceeded)
+	require.NoError(t, store.CreateRun(ctx, run))
 
-	rt := local.NewRuntime("sh")
-	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+	// Inject captures directly.
+	require.NoError(t, store.SaveCapture(ctx, "prefers-step-run-1", &domain.StepExecution{
+		StepName:  "build",
+		StartedAt: time.Now(),
+	}))
+	require.NoError(t, store.SaveCapture(ctx, "prefers-step-run-1", &domain.StepExecution{
+		StepName:    "build",
+		Result:      "success",
+		CompletedAt: time.Now(),
+	}))
 
-	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
-		WorkflowName: "test",
-		ProjectDir:   dir,
-	})
-	require.NoError(t, err)
-
-	// Poll until complete
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		status, err := srv.GetStatus(context.Background(), &pb.GetStatusRequest{RunId: resp.RunId})
-		require.NoError(t, err)
-		if status.State == "succeeded" {
-			captures, _ := store.GetCaptures(context.Background(), resp.RunId)
-			if len(captures) >= 2 {
-				break
-			}
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-
-	// Write both per-step output AND container.log — per-step should win
-	outputDir := filepath.Join(dir, ".cloche", resp.RunId, "output")
+	// Write both per-step output AND container.log — per-step should win.
+	outputDir := filepath.Join(dir, ".cloche", "prefers-step-run-1", "output")
 	require.NoError(t, os.MkdirAll(outputDir, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "build.log"), []byte("step-specific output"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "container.log"), []byte("full container output"), 0644))
 
-	mock := &mockLogStream{ctx: context.Background()}
-	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: resp.RunId}, mock)
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+
+	mock := &mockLogStream{ctx: ctx}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "prefers-step-run-1"}, mock)
 	require.NoError(t, err)
 
 	var foundCompleted bool
@@ -4044,6 +3984,229 @@ func TestTrackRun_AttachOutputFailureHaltsProjectLoop(t *testing.T) {
 	assert.True(t, halted, "loop should be halted after attach failure")
 	assert.Contains(t, reason, "attach-halt-run-1")
 }
+
+// ---- AgentSession tests ----
+
+// fakeAgentStream implements pb.ClocheService_AgentSessionServer for testing.
+// Recv reads from the in channel; Send appends to sent.
+type fakeAgentStream struct {
+	grpclib.ServerStream
+	ctx  context.Context
+	in   chan *pb.AgentMessage
+	mu   sync.Mutex
+	sent []*pb.DaemonMessage
+}
+
+func newFakeAgentStream(ctx context.Context) *fakeAgentStream {
+	return &fakeAgentStream{ctx: ctx, in: make(chan *pb.AgentMessage, 32)}
+}
+
+func (f *fakeAgentStream) Context() context.Context { return f.ctx }
+
+func (f *fakeAgentStream) Recv() (*pb.AgentMessage, error) {
+	msg, ok := <-f.in
+	if !ok {
+		return nil, io.EOF
+	}
+	return msg, nil
+}
+
+func (f *fakeAgentStream) Send(msg *pb.DaemonMessage) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sent = append(f.sent, msg)
+	return nil
+}
+
+func (f *fakeAgentStream) getSent() []*pb.DaemonMessage {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cp := make([]*pb.DaemonMessage, len(f.sent))
+	copy(cp, f.sent)
+	return cp
+}
+
+// push enqueues an AgentMessage to be returned by Recv.
+func (f *fakeAgentStream) push(msg *pb.AgentMessage) { f.in <- msg }
+
+// close closes the in channel so Recv returns io.EOF.
+func (f *fakeAgentStream) close() { close(f.in) }
+
+func TestAgentSession_NoPool_ReturnsError(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	// Server with no container pool configured.
+	srv := server.NewClocheServer(store, nil)
+
+	stream := newFakeAgentStream(context.Background())
+	stream.push(&pb.AgentMessage{
+		Payload: &pb.AgentMessage_Ready{
+			Ready: &pb.AgentReady{RunId: "ctr-1"},
+		},
+	})
+	stream.close()
+
+	err = srv.AgentSession(stream)
+	require.Error(t, err, "AgentSession should fail when pool is nil")
+}
+
+func TestAgentSession_RecordsStepCaptures(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	run := domain.NewRun("run-captures-1", "develop")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	rt := &fakeDockerRuntime{}
+	pool := newFakePoolWithRuntime(rt)
+	srv := server.NewClocheServerWithCaptures(store, store, rt.asContainerRuntime(), "")
+	srv.SetContainerPool(pool)
+	srv.RegisterContainerRun("ctr-captures-1", "run-captures-1")
+
+	stream := newFakeAgentStream(ctx)
+	stream.push(&pb.AgentMessage{Payload: &pb.AgentMessage_Ready{Ready: &pb.AgentReady{RunId: "ctr-captures-1"}}})
+	stream.push(&pb.AgentMessage{Payload: &pb.AgentMessage_StepStarted{StepStarted: &pb.StepStarted{RequestId: "req-1", StepName: "build"}}})
+	stream.push(&pb.AgentMessage{Payload: &pb.AgentMessage_StepResult{StepResult: &pb.StepResult{RequestId: "req-1", Result: "success"}}})
+	stream.close()
+
+	err = srv.AgentSession(stream)
+	require.NoError(t, err)
+
+	// Verify captures were saved.
+	caps, err := store.GetCaptures(ctx, "run-captures-1")
+	require.NoError(t, err)
+	require.NotEmpty(t, caps, "should have at least one capture")
+	var found bool
+	for _, c := range caps {
+		if c.StepName == "build" && c.Result == "success" {
+			found = true
+		}
+	}
+	assert.True(t, found, "should have a completed 'build' capture with result 'success'")
+}
+
+func TestAgentSession_StepLogBroadcasts(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	run := domain.NewRun("run-log-1", "develop")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	broadcaster := logstream.NewBroadcaster()
+	sub := broadcaster.Subscribe("run-log-1")
+
+	rt := &fakeDockerRuntime{}
+	pool := newFakePoolWithRuntime(rt)
+	srv := server.NewClocheServerWithCaptures(store, store, rt.asContainerRuntime(), "")
+	srv.SetContainerPool(pool)
+	srv.SetLogBroadcaster(broadcaster)
+	srv.RegisterContainerRun("ctr-log-1", "run-log-1")
+
+	stream := newFakeAgentStream(ctx)
+	stream.push(&pb.AgentMessage{Payload: &pb.AgentMessage_Ready{Ready: &pb.AgentReady{RunId: "ctr-log-1"}}})
+	stream.push(&pb.AgentMessage{Payload: &pb.AgentMessage_StepLog{StepLog: &pb.StepLog{StepName: "build", Line: "compiling...\n"}}})
+	stream.close()
+
+	err = srv.AgentSession(stream)
+	require.NoError(t, err)
+
+	// Collect published lines.
+	broadcaster.Finish("run-log-1")
+	var lines []logstream.LogLine
+	for line := range sub.C {
+		lines = append(lines, line)
+	}
+
+	var found bool
+	for _, l := range lines {
+		if l.Type == "llm" && strings.Contains(l.Content, "compiling...") {
+			found = true
+		}
+	}
+	assert.True(t, found, "StepLog should be published to broadcaster")
+}
+
+func TestAgentSession_DisconnectFailsInFlightSteps(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	run := domain.NewRun("run-disconnect-1", "develop")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	rt := &fakeDockerRuntime{}
+	pool := newFakePoolWithRuntime(rt)
+	srv := server.NewClocheServerWithCaptures(store, store, rt.asContainerRuntime(), "")
+	srv.SetContainerPool(pool)
+	srv.RegisterContainerRun("ctr-disconnect-1", "run-disconnect-1")
+
+	stream := newFakeAgentStream(ctx)
+	stream.push(&pb.AgentMessage{Payload: &pb.AgentMessage_Ready{Ready: &pb.AgentReady{RunId: "ctr-disconnect-1"}}})
+	// Start a step but never send the result — then disconnect.
+	stream.push(&pb.AgentMessage{Payload: &pb.AgentMessage_StepStarted{StepStarted: &pb.StepStarted{RequestId: "req-dc", StepName: "build"}}})
+	stream.close()
+
+	err = srv.AgentSession(stream)
+	require.NoError(t, err)
+
+	// The in-flight step should be recorded as failed via failInFlightSteps.
+	caps, err := store.GetCaptures(ctx, "run-disconnect-1")
+	require.NoError(t, err)
+	var failed bool
+	for _, c := range caps {
+		if c.StepName == "build" && c.Result == "fail" {
+			failed = true
+		}
+	}
+	assert.True(t, failed, "in-flight step should be recorded as failed on disconnect")
+}
+
+// fakeDockerRuntime is a no-op ContainerRuntime for AgentSession tests.
+// It wraps a *docker.ContainerPool-compatible interface but does nothing.
+type fakeDockerRuntime struct{}
+
+func (f *fakeDockerRuntime) asContainerRuntime() ports.ContainerRuntime { return nil }
+
+// newFakePoolWithRuntime creates a ContainerPool backed by a real (but unused) runtime.
+// For AgentSession tests the pool is only used to register stream send functions and
+// to call FailPendingRequests; no actual containers are started.
+func newFakePoolWithRuntime(_ *fakeDockerRuntime) *docker.ContainerPool {
+	return docker.NewContainerPool(&nopRuntime{})
+}
+
+// nopRuntime is a ContainerRuntime that never starts containers (for unit tests).
+type nopRuntime struct{}
+
+func (n *nopRuntime) Start(_ context.Context, _ ports.ContainerConfig) (string, error) {
+	return "", fmt.Errorf("nopRuntime: Start not supported")
+}
+func (n *nopRuntime) Stop(_ context.Context, _ string) error     { return nil }
+func (n *nopRuntime) Remove(_ context.Context, _ string) error   { return nil }
+func (n *nopRuntime) Wait(_ context.Context, _ string) (int, error) { return 0, nil }
+func (n *nopRuntime) Logs(_ context.Context, _ string) (string, error) { return "", nil }
+func (n *nopRuntime) AttachOutput(_ context.Context, _ string) (io.ReadCloser, error) {
+	return io.NopCloser(nil), nil
+}
+func (n *nopRuntime) Inspect(_ context.Context, _ string) (*ports.ContainerStatus, error) {
+	return &ports.ContainerStatus{}, nil
+}
+func (n *nopRuntime) Attach(_ context.Context, _ string) (io.ReadWriteCloser, error) {
+	return nil, nil
+}
+func (n *nopRuntime) CopyFrom(_ context.Context, _, _, _ string) error { return nil }
 
 // fakeRunStore is a minimal RunStore for loop tests in the grpc package.
 type fakeRunStore struct {
