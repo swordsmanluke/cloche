@@ -9,16 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/protocol"
-	"google.golang.org/grpc/metadata"
 )
 
 // resolveOutputMappings finds all wires targeting stepName that have output mappings,
@@ -45,16 +42,11 @@ func (e *Executor) resolveOutputMappings(stepName string, wires []domain.Wire) (
 	return env, nil
 }
 
-// RunDispatcher dispatches a container workflow run and returns the run ID.
-type RunDispatcher interface {
-	RunWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error)
-}
-
-// Executor implements engine.StepExecutor for host workflow steps.
+// Executor implements engine.StepExecutor for host workflow steps (scripts and
+// local agents). Workflow_name step dispatch is handled by the DaemonExecutor.
 type Executor struct {
 	ProjectDir    string
 	MainDir       string         // main branch worktree dir; scripts execute from here
-	Dispatcher    RunDispatcher
 	Store         ports.RunStore
 	OutputDir     string         // directory for step output files
 	Wires         []domain.Wire  // workflow wiring (for output mappings)
@@ -125,9 +117,6 @@ func (e *Executor) Execute(ctx context.Context, step *domain.Step) (domain.StepR
 	switch step.Type {
 	case domain.StepTypeScript:
 		r, e2 := e.executeScript(ctx, step)
-		result, err = domain.StepResult{Result: r}, e2
-	case domain.StepTypeWorkflow:
-		r, e2 := e.executeWorkflow(ctx, step)
 		result, err = domain.StepResult{Result: r}, e2
 	case domain.StepTypeAgent:
 		result, err = e.executeAgent(ctx, step)
@@ -224,82 +213,6 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 	return result, nil
 }
 
-// executeWorkflow dispatches a container workflow run and blocks until it completes.
-func (e *Executor) executeWorkflow(ctx context.Context, step *domain.Step) (string, error) {
-	workflowName := step.Config["workflow_name"]
-	if workflowName == "" {
-		return "", fmt.Errorf("workflow step %q missing workflow_name", step.Name)
-	}
-
-	// Read prompt from previous step output or prompt_step override
-	var promptContent string
-	promptSource := step.Config["prompt_step"]
-	if promptSource != "" {
-		data, err := os.ReadFile(e.stepOutputPath(promptSource))
-		if err == nil {
-			promptContent = string(data)
-		}
-	} else if prev := e.findPrevOutput(step); prev != "" {
-		data, err := os.ReadFile(prev)
-		if err == nil {
-			promptContent = string(data)
-		}
-	}
-
-	// Propagate attempt ID to the child run via gRPC metadata so the server
-	// can link the container run to the same attempt as the parent host run.
-	dispatchCtx := ctx
-	if e.AttemptID != "" {
-		md := metadata.Pairs(AttemptIDMetadataKey, e.AttemptID)
-		dispatchCtx = metadata.NewOutgoingContext(ctx, md)
-	}
-
-	resp, err := e.Dispatcher.RunWorkflow(dispatchCtx, &pb.RunWorkflowRequest{
-		WorkflowName: workflowName,
-		ProjectDir:   e.ProjectDir,
-		Prompt:       promptContent,
-		IssueId:      e.TaskID,
-	})
-	if err != nil {
-		return "", fmt.Errorf("dispatching workflow %q: %w", workflowName, err)
-	}
-
-	log.Printf("host executor: dispatched container workflow %q as run %s", workflowName, resp.RunId)
-
-	// Link child run to parent host run and store in run context
-	if e.HostRunID != "" {
-		if childRun, err := e.Store.GetRun(ctx, resp.RunId); err == nil {
-			childRun.ParentRunID = e.HostRunID
-			childRun.TaskID = e.TaskID
-			_ = e.Store.UpdateRun(ctx, childRun)
-		}
-		// Store child run ID in context so downstream steps can retrieve it
-		// via "cloche get child_run_id"
-		if e.Store != nil {
-			_ = e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, "child_run_id", resp.RunId)
-		}
-	}
-
-	// Write run ID to step output so downstream steps (e.g. merge) can find it
-	if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
-		_ = os.WriteFile(e.stepOutputPath(step.Name), []byte(resp.RunId), 0644)
-	}
-
-	// Poll until the run reaches a terminal state
-	state, err := e.waitForRun(ctx, resp.RunId)
-	if err != nil {
-		return "", fmt.Errorf("waiting for workflow %q run %s: %w", workflowName, resp.RunId, err)
-	}
-
-	log.Printf("host executor: workflow %q run %s completed with state %s", workflowName, resp.RunId, state)
-
-	// Map run state to step result
-	if state == domain.RunStateSucceeded {
-		return "success", nil
-	}
-	return "fail", nil
-}
-
 // executeAgent runs an agent command on the host using the prompt adapter.
 func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
 	adapter := prompt.New()
@@ -367,29 +280,6 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 	}
 
 	return sr, nil
-}
-
-// waitForRun polls the store until the run reaches a terminal state.
-func (e *Executor) waitForRun(ctx context.Context, runID string) (domain.RunState, error) {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return "", fmt.Errorf("context cancelled while waiting for run %s: %w", runID, ctx.Err())
-		case <-ticker.C:
-			run, err := e.Store.GetRun(ctx, runID)
-			if err != nil {
-				continue // transient error, retry
-			}
-			switch run.State {
-			case domain.RunStateSucceeded, domain.RunStateFailed, domain.RunStateCancelled:
-				return run.State, nil
-			}
-			// Still pending or running, continue polling
-		}
-	}
 }
 
 // stepOutputPath returns the path for a step's output file.

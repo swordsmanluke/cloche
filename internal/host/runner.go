@@ -23,7 +23,6 @@ var _ engine.StatusHandler = (*hostStatusHandler)(nil)
 
 // Runner executes a host workflow by parsing host.cloche and walking the step graph.
 type Runner struct {
-	Dispatcher    RunDispatcher
 	Store         ports.RunStore
 	Captures      ports.CaptureStore       // optional: saves step captures for cloche logs
 	LogBroadcast  *logstream.Broadcaster   // optional: publishes live log lines
@@ -123,7 +122,6 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 	executor := &Executor{
 		ProjectDir:   projectDir,
 		MainDir:      MainWorktreeDir(projectDir),
-		Dispatcher:   r.Dispatcher,
 		Store:        r.Store,
 		OutputDir:    outputDir,
 		Wires:        wf.Wiring,
@@ -295,7 +293,6 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 	executor := &Executor{
 		ProjectDir:   run.ProjectDir,
 		MainDir:      MainWorktreeDir(run.ProjectDir),
-		Dispatcher:   r.Dispatcher,
 		Store:        r.Store,
 		OutputDir:    outputDir,
 		Wires:        wf.Wiring,
@@ -473,7 +470,6 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 	executor := &Executor{
 		ProjectDir:   oldRun.ProjectDir,
 		MainDir:      MainWorktreeDir(oldRun.ProjectDir),
-		Dispatcher:   r.Dispatcher,
 		Store:        r.Store,
 		OutputDir:    newOutputDir,
 		Wires:        wf.Wiring,

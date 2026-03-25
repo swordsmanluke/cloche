@@ -8,28 +8,12 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// fakeDispatcher records dispatch calls and returns a predetermined run ID.
-type fakeDispatcher struct {
-	calls     []*pb.RunWorkflowRequest
-	runID     string
-	returnErr error
-}
-
-func (f *fakeDispatcher) RunWorkflow(_ context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
-	f.calls = append(f.calls, req)
-	if f.returnErr != nil {
-		return nil, f.returnErr
-	}
-	return &pb.RunWorkflowResponse{RunId: f.runID}, nil
-}
 
 // fakeStore returns a predetermined run on GetRun.
 type fakeStore struct {
@@ -178,218 +162,6 @@ func TestExecutor_ScriptStep_ResultMarker(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), "CLOCHE_RESULT")
 	assert.Contains(t, string(data), "some output")
-}
-
-func TestExecutor_WorkflowStep_Success(t *testing.T) {
-	tmpDir := t.TempDir()
-	outputDir := filepath.Join(tmpDir, "output")
-	_ = os.MkdirAll(outputDir, 0755)
-
-	store := &fakeStore{runs: map[string]*domain.Run{
-		"develop-test-run": {
-			ID:    "develop-test-run",
-			State: domain.RunStateSucceeded,
-		},
-	}}
-
-	dispatcher := &fakeDispatcher{runID: "develop-test-run"}
-
-	executor := &Executor{
-		ProjectDir: tmpDir,
-		Dispatcher: dispatcher,
-		Store:      store,
-		OutputDir:  outputDir,
-	}
-
-	step := &domain.Step{
-		Name:    "develop",
-		Type:    domain.StepTypeWorkflow,
-		Results: []string{"success", "fail"},
-		Config:  map[string]string{"workflow_name": "develop"},
-	}
-
-	result, err := executor.Execute(context.Background(), step)
-	require.NoError(t, err)
-	assert.Equal(t, "success", result.Result)
-	assert.Len(t, dispatcher.calls, 1)
-	assert.Equal(t, "develop", dispatcher.calls[0].WorkflowName)
-	assert.Equal(t, tmpDir, dispatcher.calls[0].ProjectDir)
-}
-
-func TestExecutor_WorkflowStep_Failure(t *testing.T) {
-	tmpDir := t.TempDir()
-	outputDir := filepath.Join(tmpDir, "output")
-	_ = os.MkdirAll(outputDir, 0755)
-
-	store := &fakeStore{runs: map[string]*domain.Run{
-		"develop-test-run": {
-			ID:    "develop-test-run",
-			State: domain.RunStateFailed,
-		},
-	}}
-
-	dispatcher := &fakeDispatcher{runID: "develop-test-run"}
-
-	executor := &Executor{
-		ProjectDir: tmpDir,
-		Dispatcher: dispatcher,
-		Store:      store,
-		OutputDir:  outputDir,
-	}
-
-	step := &domain.Step{
-		Name:    "develop",
-		Type:    domain.StepTypeWorkflow,
-		Results: []string{"success", "fail"},
-		Config:  map[string]string{"workflow_name": "develop"},
-	}
-
-	result, err := executor.Execute(context.Background(), step)
-	require.NoError(t, err)
-	assert.Equal(t, "fail", result.Result)
-}
-
-func TestExecutor_WorkflowStep_StoresChildRunID(t *testing.T) {
-	tmpDir := t.TempDir()
-	outputDir := filepath.Join(tmpDir, "output")
-	_ = os.MkdirAll(outputDir, 0755)
-
-	store := &fakeStore{runs: map[string]*domain.Run{
-		"develop-child-run": {
-			ID:    "develop-child-run",
-			State: domain.RunStateSucceeded,
-		},
-	}}
-
-	dispatcher := &fakeDispatcher{runID: "develop-child-run"}
-	hostRunID := "main-host-run"
-	taskID := "main-task-id"
-
-	executor := &Executor{
-		ProjectDir: tmpDir,
-		Dispatcher: dispatcher,
-		Store:      store,
-		OutputDir:  outputDir,
-		HostRunID:  hostRunID,
-		TaskID:     taskID,
-	}
-
-	step := &domain.Step{
-		Name:    "develop",
-		Type:    domain.StepTypeWorkflow,
-		Results: []string{"success", "fail"},
-		Config:  map[string]string{"workflow_name": "develop"},
-	}
-
-	result, err := executor.Execute(context.Background(), step)
-	require.NoError(t, err)
-	assert.Equal(t, "success", result.Result)
-
-	// Verify child_run_id was stored in KV store
-	val, ok, err := store.GetContextKey(context.Background(), taskID, "", "child_run_id")
-	require.NoError(t, err)
-	assert.True(t, ok, "child_run_id should be stored in KV store")
-	assert.Equal(t, "develop-child-run", val)
-}
-
-func TestExecutor_WorkflowStep_PassesPrompt(t *testing.T) {
-	tmpDir := t.TempDir()
-	outputDir := filepath.Join(tmpDir, "output")
-	_ = os.MkdirAll(outputDir, 0755)
-
-	// Write a previous step's output
-	_ = os.WriteFile(filepath.Join(outputDir, "prepare-prompt.log"), []byte("the task prompt"), 0644)
-
-	store := &fakeStore{runs: map[string]*domain.Run{
-		"develop-test-run": {
-			ID:    "develop-test-run",
-			State: domain.RunStateSucceeded,
-		},
-	}}
-
-	dispatcher := &fakeDispatcher{runID: "develop-test-run"}
-
-	executor := &Executor{
-		ProjectDir: tmpDir,
-		Dispatcher: dispatcher,
-		Store:      store,
-		OutputDir:  outputDir,
-	}
-
-	step := &domain.Step{
-		Name:    "develop",
-		Type:    domain.StepTypeWorkflow,
-		Results: []string{"success", "fail"},
-		Config: map[string]string{
-			"workflow_name": "develop",
-			"prompt_step":   "prepare-prompt",
-		},
-	}
-
-	result, err := executor.Execute(context.Background(), step)
-	require.NoError(t, err)
-	assert.Equal(t, "success", result.Result)
-	assert.Equal(t, "the task prompt", dispatcher.calls[0].Prompt)
-}
-
-func TestEngine_HostWorkflow_Linear(t *testing.T) {
-	tmpDir := t.TempDir()
-	outputDir := filepath.Join(tmpDir, "output")
-
-	store := &fakeStore{runs: map[string]*domain.Run{
-		"develop-test-run": {
-			ID:    "develop-test-run",
-			State: domain.RunStateSucceeded,
-		},
-	}}
-
-	dispatcher := &fakeDispatcher{runID: "develop-test-run"}
-
-	executor := &Executor{
-		ProjectDir: tmpDir,
-		Dispatcher: dispatcher,
-		Store:      store,
-		OutputDir:  outputDir,
-	}
-
-	wf := &domain.Workflow{
-		Name: "main",
-		Steps: map[string]*domain.Step{
-			"prepare": {
-				Name:    "prepare",
-				Type:    domain.StepTypeScript,
-				Results: []string{"success", "fail"},
-				Config:  map[string]string{"run": "echo 'prepared'"},
-			},
-			"develop": {
-				Name:    "develop",
-				Type:    domain.StepTypeWorkflow,
-				Results: []string{"success", "fail"},
-				Config:  map[string]string{"workflow_name": "develop"},
-			},
-			"merge": {
-				Name:    "merge",
-				Type:    domain.StepTypeScript,
-				Results: []string{"success", "fail"},
-				Config:  map[string]string{"run": "echo 'merged'"},
-			},
-		},
-		Wiring: []domain.Wire{
-			{From: "prepare", Result: "success", To: "develop"},
-			{From: "prepare", Result: "fail", To: domain.StepAbort},
-			{From: "develop", Result: "success", To: "merge"},
-			{From: "develop", Result: "fail", To: domain.StepAbort},
-			{From: "merge", Result: "success", To: domain.StepDone},
-			{From: "merge", Result: "fail", To: domain.StepAbort},
-		},
-		EntryStep: "prepare",
-	}
-
-	eng := engine.New(executor)
-	run, err := eng.Run(context.Background(), wf)
-	require.NoError(t, err)
-	assert.Equal(t, domain.RunStateSucceeded, run.State)
-	assert.Len(t, dispatcher.calls, 1)
 }
 
 func TestEngine_HostWorkflow_AbortOnScriptFail(t *testing.T) {
@@ -786,7 +558,6 @@ func TestRunner_RunWithID(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 
 	runner := &Runner{
-		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
 	}
 
@@ -825,7 +596,6 @@ func TestRunner_WithTaskID(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 
 	runner := &Runner{
-		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
 		TaskID:     "daemon-assigned-task-99",
 	}
@@ -863,7 +633,6 @@ func TestRunner_PersistsHostRun(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 
 	runner := &Runner{
-		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
 	}
 
@@ -1396,7 +1165,6 @@ func TestRunner_HostWorkflow_AgentStep(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 
 	runner := &Runner{
-		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
 	}
 
@@ -1441,7 +1209,6 @@ func TestRunner_HostWorkflow_AgentStepOverridesWorkflowCommand(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
 	}
 
@@ -1472,7 +1239,6 @@ func TestRunner_PersistsHostRunOnFailure(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 
 	runner := &Runner{
-		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
 	}
 
@@ -1509,7 +1275,6 @@ func TestRunner_RunNamed_Main(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
 	}
 
@@ -1562,7 +1327,6 @@ workflow "cleanup" {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
 	}
 
@@ -1606,7 +1370,6 @@ func TestRunner_RunNamed_NotFound(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
 	}
 
@@ -1666,7 +1429,6 @@ func TestRunner_ExtraEnv_Propagated(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
 		ExtraEnv:   []string{"MY_CUSTOM_VAR=hello"},
 	}
@@ -1706,7 +1468,6 @@ func TestRunner_ExtraEnv_RestoredOnResume(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
 		ExtraEnv:   []string{"MY_RUN_REF=develop-original-branch"},
 	}
@@ -1728,7 +1489,6 @@ func TestRunner_ExtraEnv_RestoredOnResume(t *testing.T) {
 
 	// Resume from merge with NO ExtraEnv on the runner — it should restore from context
 	resumeRunner := &Runner{
-		Dispatcher: &fakeDispatcher{runID: "test-run-2"},
 		Store:      store,
 	}
 
@@ -1808,7 +1568,6 @@ func TestRunResult_HasOutputDir(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
 	}
 
@@ -1844,7 +1603,6 @@ func TestRunListTasksWorkflow_EmptyResult_NoRunRecord(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
 	}
 
@@ -1878,7 +1636,6 @@ func TestRunListTasksWorkflow_WithTasks_NoRunRecord(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
 	}
 

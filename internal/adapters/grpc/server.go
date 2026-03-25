@@ -269,7 +269,6 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 	runID := domain.GenerateRunID(hostWorkflowName, attemptID)
 
 	runner := &host.Runner{
-		Dispatcher:   s,
 		Store:        s.store,
 		Captures:     s.captures,
 		LogBroadcast: s.logBroadcast,
@@ -552,7 +551,6 @@ func (s *ClocheServer) resumeHostRun(ctx context.Context, run *domain.Run, stepN
 	newRunID := domain.GenerateRunID(run.WorkflowName, newAttempt.ID)
 
 	runner := &host.Runner{
-		Dispatcher:   s,
 		Store:        s.store,
 		Captures:     s.captures,
 		LogBroadcast: s.logBroadcast,
@@ -2263,8 +2261,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	if _, hasListTasks := hostWFs["list-tasks"]; hasListTasks {
 		listTasksFn = func(ctx context.Context, projDir string) ([]host.Task, error) {
 			runner := &host.Runner{
-				Dispatcher: s,
-				Store:      s.store,
+				Store: s.store,
 			}
 			tasks, _, err := host.RunListTasksWorkflow(ctx, runner, projDir)
 			return tasks, err
@@ -2280,8 +2277,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	// Phase 2: main function
 	mainFn := func(ctx context.Context, projDir string, taskID string, taskTitle string, attemptID string) (*host.RunResult, error) {
 		runner := &host.Runner{
-			Dispatcher:   s,
-			Store:        s.store,
+				Store:        s.store,
 			Captures:     s.captures,
 			LogBroadcast: s.logBroadcast,
 			ActivityLog:  alog,
@@ -2352,7 +2348,6 @@ func (s *ClocheServer) GetLoopTasks(projectDir string) []web.TaskEntry {
 // returning it to open status.
 func (s *ClocheServer) ReleaseTask(ctx context.Context, projectDir string, taskID string) error {
 	runner := &host.Runner{
-		Dispatcher:   s,
 		Store:        s.store,
 		Captures:     s.captures,
 		LogBroadcast: s.logBroadcast,
