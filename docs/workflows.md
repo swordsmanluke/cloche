@@ -74,9 +74,10 @@ container. Available in both host and container workflows.
 **script** (has `run`) — Runs a shell command. Used for tests, linters, validators, or
 any deterministic check. Available in both host and container workflows.
 
-**workflow** (has `workflow_name`) — Dispatches a named container workflow run and blocks
-until it completes. Available in container workflows; in host workflows, dispatch is
-handled by the daemon.
+**workflow** (has `workflow_name`) — Triggers a named workflow run and blocks until it
+completes. Available in both host and container workflows. Dispatch is always handled by
+the daemon orchestrator, which resolves the target workflow by name across all `.cloche`
+files and routes it to the host executor or container pool as appropriate.
 
 A step with more than one of `prompt`, `run`, or `workflow_name`, or none of them, is a
 parse error.
@@ -354,10 +355,12 @@ tickets, etc.) belong directly in `main`.
 
 ## Execution Model
 
-**Container workflows** are parsed and executed by `cloche-agent` inside a Docker
-container. The agent walks the graph: execute current step, read its result, follow the
-wiring to the next step. This continues until a terminal (`done` or `abort`) is reached.
-All steps run inside the same container. File state accumulates naturally across steps.
+**Container workflows** are executed by the daemon, which walks the workflow graph and
+dispatches each step to the `cloche-agent` running inside a Docker container. The daemon
+sends `ExecuteStep` commands over a bidirectional `AgentSession` gRPC stream; the agent
+executes the step and sends back a `StepResult`. The daemon then follows the wiring to
+the next step. All steps in the same container ID share one container per attempt.
+File state accumulates naturally across steps.
 
 **Host workflows** (those with a `host { }` block) are parsed and executed by the daemon
 on the host machine. Any `.cloche` file may contain host workflows; the daemon

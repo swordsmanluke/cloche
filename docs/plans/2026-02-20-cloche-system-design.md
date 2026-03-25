@@ -191,11 +191,12 @@ runs against those modifications).
 
 1. `cloched` pulls/builds the container image
 2. Copies project files into the container at `/workspace`
-3. Starts the container with `cloche-agent` as entrypoint, passing the workflow name
-4. `cloche-agent` parses the workflow, walks the graph, executes steps
-5. Agent streams status events to `cloched` via stdout
-6. At step boundaries, modified files are pushed to the host via git (agent-specific branch)
-7. On completion (`done`/`abort`), container is stopped
+3. Starts the container with `cloche-agent` as entrypoint
+4. `cloche-agent` connects to `cloched` via bidirectional `AgentSession` gRPC stream and sends `AgentReady`
+5. `cloched` walks the workflow graph and sends `ExecuteStep` commands to the agent over the stream
+6. Agent executes each step and sends back `StepResult`; log lines are streamed as `StepLog` messages
+7. At step boundaries, modified files are pushed to the host via git (agent-specific branch)
+8. When the workflow reaches a terminal (`done`/`abort`), `cloched` sends `Shutdown` and the container is stopped
 
 ### File Extraction via Git
 
