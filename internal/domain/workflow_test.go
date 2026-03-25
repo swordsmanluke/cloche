@@ -266,7 +266,7 @@ func TestWorkflow_ValidateConfig_UnknownKey(t *testing.T) {
 	assert.Contains(t, warnings[0], "unrecognized")
 }
 
-func TestWorkflow_ValidateLocation_ContainerRejectsWorkflowStep(t *testing.T) {
+func TestWorkflow_ValidateLocation_ContainerAllowsWorkflowStep(t *testing.T) {
 	wf := &domain.Workflow{
 		Name:     "develop",
 		Location: domain.LocationContainer,
@@ -281,9 +281,7 @@ func TestWorkflow_ValidateLocation_ContainerRejectsWorkflowStep(t *testing.T) {
 		EntryStep: "dispatch",
 	}
 	err := wf.ValidateLocation()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "workflow_name")
-	assert.Contains(t, err.Error(), "host workflows")
+	assert.NoError(t, err)
 }
 
 func TestWorkflow_ValidateLocation_HostAllowsWorkflowStep(t *testing.T) {

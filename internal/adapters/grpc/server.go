@@ -1312,28 +1312,13 @@ func (s *ClocheServer) workflowNames(projectDir string) []string {
 	if projectDir == "" {
 		return nil
 	}
-	clocheDir := filepath.Join(projectDir, ".cloche")
-	entries, err := filepath.Glob(filepath.Join(clocheDir, "*.cloche"))
+	wfs, err := host.FindAllWorkflows(projectDir)
 	if err != nil {
 		return nil
 	}
-	seen := make(map[string]bool)
-	var names []string
-	for _, path := range entries {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		wfs, err := dsl.ParseAll(string(data))
-		if err != nil {
-			continue
-		}
-		for name := range wfs {
-			if !seen[name] {
-				seen[name] = true
-				names = append(names, name)
-			}
-		}
+	names := make([]string, 0, len(wfs))
+	for name := range wfs {
+		names = append(names, name)
 	}
 	sort.Strings(names)
 	return names

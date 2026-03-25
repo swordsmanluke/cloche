@@ -423,7 +423,7 @@ func TestParseForHost_AllowsWorkflowSteps(t *testing.T) {
 	assert.Equal(t, domain.StepTypeWorkflow, wf.Steps["develop"].Type)
 }
 
-func TestParseForContainer_RejectsWorkflowSteps(t *testing.T) {
+func TestParseForContainer_AllowsWorkflowSteps(t *testing.T) {
 	input := `workflow "develop" {
   step dispatch {
     workflow_name = "implement"
@@ -432,10 +432,10 @@ func TestParseForContainer_RejectsWorkflowSteps(t *testing.T) {
   dispatch:success -> done
   dispatch:fail    -> abort
 }`
-	_, err := dsl.ParseForContainer(input)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "workflow_name")
-	assert.Contains(t, err.Error(), "host workflows")
+	wf, err := dsl.ParseForContainer(input)
+	require.NoError(t, err)
+	assert.Equal(t, domain.LocationContainer, wf.Location)
+	assert.Equal(t, domain.StepTypeWorkflow, wf.Steps["dispatch"].Type)
 }
 
 func TestParseForContainer_AllowsAgentAndScript(t *testing.T) {

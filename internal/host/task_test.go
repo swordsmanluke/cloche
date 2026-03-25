@@ -187,3 +187,121 @@ func TestTask_IsOpen(t *testing.T) {
 		assert.Equal(t, tt.open, task.IsOpen(), "status=%q", tt.status)
 	}
 }
+
+func TestFindAllWorkflows_SingleFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+
+	content := `workflow "develop" {
+  step code {
+    prompt  = "write code"
+    results = [success, fail]
+  }
+  code:success -> done
+  code:fail    -> abort
+}
+
+workflow "main" {
+  host {}
+  step run {
+    workflow_name = "develop"
+    results       = [success, fail]
+  }
+  run:success -> done
+  run:fail    -> abort
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "workflows.cloche"), []byte(content), 0644))
+
+	all, err := FindAllWorkflows(tmpDir)
+	require.NoError(t, err)
+	assert.Len(t, all, 2)
+	assert.Contains(t, all, "develop")
+	assert.Contains(t, all, "main")
+}
+
+func TestFindAllWorkflows_CrossFileDuplicate(t *testing.T) {
+	tmpDir := t.TempDir()
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+
+	wf := `workflow "develop" {
+  step code {
+    prompt  = "write code"
+    results = [success]
+  }
+  code:success -> done
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(wf), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(wf), 0644))
+
+	_, err := FindAllWorkflows(tmpDir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate workflow name")
+	assert.Contains(t, err.Error(), "develop")
+}
+
+func TestFindAllWorkflows_IncludesContainerAndHost(t *testing.T) {
+	tmpDir := t.TempDir()
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+
+	container := `workflow "develop" {
+  step code {
+    prompt  = "write code"
+    results = [success]
+  }
+  code:success -> done
+}
+`
+	hostWF := `workflow "main" {
+  host {}
+  step run {
+    workflow_name = "develop"
+    results       = [success]
+  }
+  run:success -> done
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(container), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostWF), 0644))
+
+	all, err := FindAllWorkflows(tmpDir)
+	require.NoError(t, err)
+	assert.Len(t, all, 2)
+	assert.Contains(t, all, "develop")
+	assert.Contains(t, all, "main")
+}
+
+func TestFindHostWorkflows_FiltersHostOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+
+	content := `workflow "develop" {
+  step code {
+    prompt  = "write code"
+    results = [success]
+  }
+  code:success -> done
+}
+
+workflow "main" {
+  host {}
+  step run {
+    workflow_name = "develop"
+    results       = [success]
+  }
+  run:success -> done
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "workflows.cloche"), []byte(content), 0644))
+
+	hostWFs, err := FindHostWorkflows(tmpDir)
+	require.NoError(t, err)
+	assert.Len(t, hostWFs, 1)
+	assert.Contains(t, hostWFs, "main")
+	assert.NotContains(t, hostWFs, "develop")
+}

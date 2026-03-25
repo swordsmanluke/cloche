@@ -7,8 +7,8 @@ Cloche workflows define a directed graph of steps connected by named results.
 Cloche distinguishes two workflow locations based on the `host { }` block:
 
 **Container workflows** — The default. Run inside a Docker container via `cloche-agent`.
-Steps may only be `agent` or `script` type. These are the standard workflows for coding
-tasks.
+Steps may be `agent`, `script`, or `workflow` type. These are the standard workflows for
+coding tasks.
 
 **Host workflows** — Declared by including a `host { }` block in the workflow definition.
 Run on the host machine as the daemon process. Steps may be `agent`, `script`, or
@@ -47,8 +47,10 @@ The daemon picks the first task with status `open` (or empty, for backward
 compatibility) and runs `main` with that task ID. Tasks are deduplicated within a
 configurable timeout window to prevent rapid reassignment.
 
-The convention is enforced at parse time: a `workflow_name` step in a container workflow
-file is a parse error.
+Workflow names are **project-unique identifiers**. The daemon scans all `.cloche` files
+via `FindAllWorkflows()` and returns an error if the same workflow name appears in more
+than one file. `FindHostWorkflows()` is a filtered view of this result, returning only
+workflows with a `host {}` block.
 
 ## Concepts
 
@@ -73,8 +75,8 @@ container. Available in both host and container workflows.
 **script** (has `run`) — Runs a shell command. Used for tests, linters, validators, or
 any deterministic check. Available in both host and container workflows.
 
-**workflow** (has `workflow_name`) — Dispatches a named container workflow run and blocks
-until it completes. Only available in host workflows (those with a `host { }` block).
+**workflow** (has `workflow_name`) — Dispatches a named workflow run and blocks until it
+completes. Available in both host and container workflows.
 
 A step with more than one of `prompt`, `run`, or `workflow_name`, or none of them, is a
 parse error.

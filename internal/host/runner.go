@@ -713,8 +713,9 @@ func findHostWorkflow(projectDir, workflowName string) (*domain.Workflow, error)
 	return nil, fmt.Errorf("host workflow %q not found in any .cloche file", workflowName)
 }
 
-// FindHostWorkflows returns all host workflows across all .cloche files.
-func FindHostWorkflows(projectDir string) (map[string]*domain.Workflow, error) {
+// FindAllWorkflows returns all workflows across all .cloche files, keyed by name.
+// Returns an error if the same workflow name appears in more than one file.
+func FindAllWorkflows(projectDir string) (map[string]*domain.Workflow, error) {
 	clocheDir := filepath.Join(projectDir, ".cloche")
 	entries, err := filepath.Glob(filepath.Join(clocheDir, "*.cloche"))
 	if err != nil {
@@ -722,6 +723,9 @@ func FindHostWorkflows(projectDir string) (map[string]*domain.Workflow, error) {
 	}
 
 	all := make(map[string]*domain.Workflow)
+	// Track which file each workflow name came from for duplicate detection.
+	seenIn := make(map[string]string)
+
 	for _, path := range entries {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -731,15 +735,34 @@ func FindHostWorkflows(projectDir string) (map[string]*domain.Workflow, error) {
 		if err != nil {
 			continue
 		}
+		filename := filepath.Base(path)
 		for name, wf := range workflows {
-			if wf.Location == domain.LocationHost {
-				wf.ResolveAgents()
-				all[name] = wf
+			if prev, exists := seenIn[name]; exists {
+				return nil, fmt.Errorf("duplicate workflow name %q: defined in both %s and %s", name, prev, filename)
 			}
+			seenIn[name] = filename
+			wf.ResolveAgents()
+			all[name] = wf
 		}
 	}
 
 	return all, nil
+}
+
+// FindHostWorkflows returns all host workflows across all .cloche files.
+func FindHostWorkflows(projectDir string) (map[string]*domain.Workflow, error) {
+	all, err := FindAllWorkflows(projectDir)
+	if err != nil {
+		return nil, err
+	}
+
+	host := make(map[string]*domain.Workflow, len(all))
+	for name, wf := range all {
+		if wf.Location == domain.LocationHost {
+			host[name] = wf
+		}
+	}
+	return host, nil
 }
 
 // hostStatusHandler logs host workflow step events and persists them to the store.

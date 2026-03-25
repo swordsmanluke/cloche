@@ -291,15 +291,8 @@ func (w *Workflow) ResolveAgents() {
 }
 
 // ValidateLocation checks that step types are compatible with the workflow location.
-// workflow_name steps are only allowed in host workflows.
+// workflow_name steps are allowed in both host and container workflows.
 func (w *Workflow) ValidateLocation() error {
-	if w.Location == LocationContainer {
-		for name, step := range w.Steps {
-			if step.Type == StepTypeWorkflow {
-				return fmt.Errorf("workflow %q: step %q uses workflow_name, which is only allowed in host workflows (host.cloche)", w.Name, name)
-			}
-		}
-	}
 	return nil
 }
 
