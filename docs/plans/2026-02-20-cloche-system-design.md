@@ -41,8 +41,8 @@ Long-running process. Responsibilities:
 - Expose gRPC API for the CLI
 - Persist state via pluggable storage (SQLite initially)
 
-The daemon does NOT interpret workflow logic. It knows "container X is running workflow Y"
-and collects status. The agent is self-directing.
+The daemon owns all workflow graph-walking via `DaemonExecutor`, routing steps to the
+host executor or the in-container agent based on workflow location.
 
 ### cloche-agent (In-Container Runtime)
 
