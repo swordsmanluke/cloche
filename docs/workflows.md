@@ -12,8 +12,7 @@ coding tasks.
 
 **Host workflows** — Declared by including a `host { }` block in the workflow definition.
 Run on the host machine as the daemon process. Steps may be `agent`, `script`, or
-`workflow` type. The `workflow` step type dispatches a container workflow run and waits
-for it to complete. This is the extension point for custom orchestration strategies.
+`workflow` type. This is the extension point for custom orchestration strategies.
 
 Any `.cloche` file can contain host workflows — they are not restricted to a specific
 filename. A single file may contain **multiple named workflows**. The daemon uses up to
@@ -75,8 +74,9 @@ container. Available in both host and container workflows.
 **script** (has `run`) — Runs a shell command. Used for tests, linters, validators, or
 any deterministic check. Available in both host and container workflows.
 
-**workflow** (has `workflow_name`) — Dispatches a named workflow run and blocks until it
-completes. Available in both host and container workflows.
+**workflow** (has `workflow_name`) — Dispatches a named container workflow run and blocks
+until it completes. Available in container workflows; in host workflows, dispatch is
+handled by the daemon.
 
 A step with more than one of `prompt`, `run`, or `workflow_name`, or none of them, is a
 parse error.
@@ -365,7 +365,7 @@ orchestrates them in two phases (list-tasks → main). Script steps run via
 `sh -c` with the
 working directory set to the **main git worktree** (i.e. the main branch checkout), even
 if the project directory is a linked worktree on a different branch. This ensures
-host-workflow scripts from main are used for all runs. Workflow steps dispatch container
-runs via the daemon's standard run pipeline. Environment variables (`CLOCHE_TASK_ID`,
+host-workflow scripts from main are used for all runs. Workflow steps (`workflow_name`)
+dispatch container runs through the daemon. Environment variables (`CLOCHE_TASK_ID`,
 `CLOCHE_PROJECT_DIR`, etc.) are injected into each step; `CLOCHE_PROJECT_DIR` still
 points to the actual project directory.
