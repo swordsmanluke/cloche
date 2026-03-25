@@ -2312,7 +2312,7 @@ func TestRunsList_TaskGrouping(t *testing.T) {
 	main1.Start()
 	require.NoError(t, store.CreateRun(ctx, main1))
 
-	fin1 := domain.NewRun("tg-fin-1", "finalize")
+	fin1 := domain.NewRun("tg-fin-1", "post-merge")
 	fin1.IsHost = true
 	fin1.ProjectDir = "/project"
 	fin1.TaskID = "task-100"
@@ -2622,7 +2622,7 @@ func TestRunsList_HostRunFailedOverridesChildSuccess(t *testing.T) {
 	h, store := setupHandler(t)
 	ctx := context.Background()
 
-	// Host run failed (e.g., finalize/merge step failed).
+	// Host run failed (e.g., merge step failed).
 	hostRun := domain.NewRun("hf-host-1", "main")
 	hostRun.IsHost = true
 	hostRun.ProjectDir = "/project"
@@ -2745,10 +2745,10 @@ func TestGroupAndSortRuns_ParentRunShownAsRow(t *testing.T) {
 	assert.True(t, entries[2].IsChild)
 }
 
-// TestGroupAndSortRuns_FinalizeNestedUnderMain verifies that when finalize
-// has ParentRunID pointing to the main run, all three workflows (main, develop,
-// finalize) appear nested under a single attempt block.
-func TestGroupAndSortRuns_FinalizeNestedUnderMain(t *testing.T) {
+// TestGroupAndSortRuns_ChildRunsNestedUnderMain verifies that when child runs
+// have ParentRunID pointing to the main run, all workflows (main, develop,
+// post-merge) appear nested under a single attempt block.
+func TestGroupAndSortRuns_ChildRunsNestedUnderMain(t *testing.T) {
 	now := time.Now()
 
 	mainRun := domain.NewRun("main-1", "main")
@@ -2763,17 +2763,17 @@ func TestGroupAndSortRuns_FinalizeNestedUnderMain(t *testing.T) {
 	developRun.StartedAt = now.Add(time.Second)
 	developRun.Complete(domain.RunStateSucceeded)
 
-	finalizeRun := domain.NewRun("finalize-1", "finalize")
-	finalizeRun.IsHost = true
-	finalizeRun.TaskID = "task-xyz"
-	finalizeRun.ParentRunID = "main-1" // linked to main run in the UI
-	finalizeRun.StartedAt = now.Add(2 * time.Second)
-	finalizeRun.Complete(domain.RunStateSucceeded)
+	postMergeRun := domain.NewRun("post-merge-1", "post-merge")
+	postMergeRun.IsHost = true
+	postMergeRun.TaskID = "task-xyz"
+	postMergeRun.ParentRunID = "main-1"
+	postMergeRun.StartedAt = now.Add(2 * time.Second)
+	postMergeRun.Complete(domain.RunStateSucceeded)
 
-	runs := []*domain.Run{mainRun, developRun, finalizeRun}
+	runs := []*domain.Run{mainRun, developRun, postMergeRun}
 	entries := groupAndSortRuns(runs, nil, nil)
 
-	// Expect: TaskHeader, one AttemptHeader, main row, develop row, finalize row
+	// Expect: TaskHeader, one AttemptHeader, main row, develop row, post-merge row
 	require.Len(t, entries, 5, "expected TaskHeader + AttemptHeader + 3 run rows")
 
 	assert.True(t, entries[0].TaskHeader)
@@ -2788,7 +2788,7 @@ func TestGroupAndSortRuns_FinalizeNestedUnderMain(t *testing.T) {
 		assert.True(t, e.IsChild)
 		ids = append(ids, e.Run.ID)
 	}
-	assert.ElementsMatch(t, []string{"main-1", "develop-1", "finalize-1"}, ids)
+	assert.ElementsMatch(t, []string{"main-1", "develop-1", "post-merge-1"}, ids)
 }
 
 // TestGroupAndSortRuns_AttemptStatusAggregatesChildren verifies that the
@@ -2804,15 +2804,15 @@ func TestGroupAndSortRuns_AttemptStatusAggregatesChildren(t *testing.T) {
 	mainRun.StartedAt = now
 	mainRun.Complete(domain.RunStateSucceeded)
 
-	// finalize is still running
-	finalizeRun := domain.NewRun("finalize-agg", "finalize")
-	finalizeRun.IsHost = true
-	finalizeRun.TaskID = "task-agg"
-	finalizeRun.ParentRunID = "main-agg"
-	finalizeRun.StartedAt = now.Add(time.Second)
-	finalizeRun.Start()
+	// child workflow is still running
+	childRun := domain.NewRun("post-merge-agg", "post-merge")
+	childRun.IsHost = true
+	childRun.TaskID = "task-agg"
+	childRun.ParentRunID = "main-agg"
+	childRun.StartedAt = now.Add(time.Second)
+	childRun.Start()
 
-	entries := groupAndSortRuns([]*domain.Run{mainRun, finalizeRun}, nil, nil)
+	entries := groupAndSortRuns([]*domain.Run{mainRun, childRun}, nil, nil)
 
 	// Find the AttemptHeader entry
 	var attemptEntry *apiGroupedEntry
@@ -2846,7 +2846,7 @@ func TestGroupAndSortRuns_RunsWithinAttemptSortedNewestFirst(t *testing.T) {
 	child1.Complete(domain.RunStateSucceeded)
 
 	// child2 started 2s after main (newest child)
-	child2 := domain.NewRun("child-ord-2", "finalize")
+	child2 := domain.NewRun("child-ord-2", "post-merge")
 	child2.TaskID = "task-ord"
 	child2.ParentRunID = "main-ord"
 	child2.StartedAt = now.Add(2 * time.Second)

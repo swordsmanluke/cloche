@@ -714,7 +714,7 @@ workflow "main" {
   develop:fail    -> abort
 }
 
-workflow "finalize" {
+workflow "post-merge" {
   step cleanup {
     run     = "echo cleanup"
     results = [success, fail]
@@ -733,8 +733,8 @@ workflow "finalize" {
 	_, ok = workflows["main"]
 	assert.True(t, ok, "should have main workflow")
 
-	_, ok = workflows["finalize"]
-	assert.True(t, ok, "should have finalize workflow")
+	_, ok = workflows["post-merge"]
+	assert.True(t, ok, "should have post-merge workflow")
 }
 
 func TestParseAllForHost_DuplicateName(t *testing.T) {

@@ -2248,7 +2248,7 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 	return &pb.EnableLoopResponse{}, nil
 }
 
-// createPhaseLoop creates a three-phase orchestration loop using host workflows
+// createPhaseLoop creates a two-phase orchestration loop using host workflows
 // from any .cloche file in the project. When a list-tasks workflow exists, tasks
 // are discovered through it; otherwise main runs continuously with an untracked
 // sentinel task.

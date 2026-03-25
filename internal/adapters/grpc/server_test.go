@@ -1843,7 +1843,7 @@ func TestServer_GetProjectInfo_ByDir(t *testing.T) {
   build:fail -> abort
 }
 
-workflow "finalize" {
+workflow "post-merge" {
   step cleanup {
     run = "echo done"
     results = [success]
@@ -1900,7 +1900,7 @@ enabled = false
 	// Workflows.
 	assert.Equal(t, []string{"develop"}, resp.ContainerWorkflows)
 	assert.Contains(t, resp.HostWorkflows, "main")
-	assert.Contains(t, resp.HostWorkflows, "finalize")
+	assert.Contains(t, resp.HostWorkflows, "post-merge")
 }
 
 func TestServer_GetProjectInfo_ByName(t *testing.T) {

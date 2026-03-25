@@ -177,7 +177,7 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 		cmd.Env = append(cmd.Env, "CLOCHE_ATTEMPT_ID="+e.AttemptID)
 	}
 
-	// Pass extra env vars (e.g. finalize phase outcome vars)
+	// Pass extra env vars
 	if len(e.ExtraEnv) > 0 {
 		cmd.Env = append(cmd.Env, e.ExtraEnv...)
 	}

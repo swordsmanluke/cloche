@@ -27,5 +27,4 @@ When bumping **minor**, reset build to 0. When bumping **major**, reset minor an
 ## Rules
 
 - Always bump at least the build number. Every merge gets a version bump.
-- If the main workflow failed (`CLOCHE_MAIN_OUTCOME` is not `succeeded`), report success without bumping — there's nothing to version.
 - Report **success** after committing the bump. Report **fail** only if git operations fail.

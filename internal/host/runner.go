@@ -116,7 +116,7 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		hostRun.Start()
 		_ = r.Store.UpdateRun(ctx, hostRun)
 
-		// Persist ExtraEnv so resume can restore it (e.g. CLOCHE_MAIN_RUN_ID).
+		// Persist ExtraEnv so resume can restore it.
 		saveExtraEnv(ctx, r.Store, r.TaskID, r.AttemptID, r.ExtraEnv)
 	}
 
@@ -277,8 +277,7 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 		}
 	}
 
-	// Restore ExtraEnv from the original run's context so that env vars like
-	// CLOCHE_MAIN_RUN_ID are available to re-executed steps.
+	// Restore ExtraEnv from the original run's context.
 	extraEnv := r.ExtraEnv
 	if len(extraEnv) == 0 {
 		extraEnv = loadExtraEnv(ctx, r.Store, run.TaskID, run.AttemptID)
@@ -657,7 +656,7 @@ func RunListTasksWorkflow(ctx context.Context, runner *Runner, projectDir string
 const extraEnvContextKey = "extra_env"
 
 // saveExtraEnv persists the runner's ExtraEnv into the KV store so that
-// resume can restore env vars like CLOCHE_MAIN_RUN_ID.
+// resume can restore them.
 func saveExtraEnv(ctx context.Context, store ports.RunStore, taskID, attemptID string, env []string) {
 	if len(env) == 0 || store == nil {
 		return

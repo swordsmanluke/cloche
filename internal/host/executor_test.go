@@ -1548,7 +1548,7 @@ workflow "main" {
   work:fail    -> abort
 }
 
-workflow "finalize" {
+workflow "cleanup" {
   host {}
 
   step cleanup {
@@ -1581,8 +1581,8 @@ workflow "finalize" {
 	require.NoError(t, err)
 	assert.Equal(t, domain.RunStateSucceeded, result.State)
 
-	// Run finalize workflow
-	result, err = runner.RunNamed(context.Background(), tmpDir, "finalize")
+	// Run cleanup workflow
+	result, err = runner.RunNamed(context.Background(), tmpDir, "cleanup")
 	require.NoError(t, err)
 	assert.Equal(t, domain.RunStateSucceeded, result.State)
 }
@@ -1625,8 +1625,8 @@ func TestExecutor_ScriptStep_ExtraEnv(t *testing.T) {
 		ProjectDir: tmpDir,
 		OutputDir:  outputDir,
 		ExtraEnv: []string{
-			"CLOCHE_MAIN_OUTCOME=succeeded",
-			"CLOCHE_MAIN_RUN_ID=main-run-123",
+			"MY_CUSTOM_VAR=hello",
+			"MY_RUN_REF=main-run-123",
 		},
 	}
 
@@ -1634,7 +1634,7 @@ func TestExecutor_ScriptStep_ExtraEnv(t *testing.T) {
 		Name:    "check-env",
 		Type:    domain.StepTypeScript,
 		Results: []string{"success", "fail"},
-		Config:  map[string]string{"run": "echo \"OUTCOME=$CLOCHE_MAIN_OUTCOME RUN=$CLOCHE_MAIN_RUN_ID\""},
+		Config:  map[string]string{"run": "echo \"CUSTOM=$MY_CUSTOM_VAR REF=$MY_RUN_REF\""},
 	}
 
 	result, err := executor.Execute(context.Background(), step)
@@ -1643,8 +1643,8 @@ func TestExecutor_ScriptStep_ExtraEnv(t *testing.T) {
 
 	data, err := os.ReadFile(filepath.Join(outputDir, "check-env.log"))
 	require.NoError(t, err)
-	assert.Contains(t, string(data), "OUTCOME=succeeded")
-	assert.Contains(t, string(data), "RUN=main-run-123")
+	assert.Contains(t, string(data), "CUSTOM=hello")
+	assert.Contains(t, string(data), "REF=main-run-123")
 }
 
 func TestRunner_ExtraEnv_Propagated(t *testing.T) {
@@ -1652,11 +1652,11 @@ func TestRunner_ExtraEnv_Propagated(t *testing.T) {
 
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
-	hostCloche := `workflow "finalize" {
+	hostCloche := `workflow "post-merge" {
   host {}
 
   step check {
-    run     = "echo OUTCOME=$CLOCHE_MAIN_OUTCOME"
+    run     = "echo CUSTOM=$MY_CUSTOM_VAR"
     results = [success, fail]
   }
   check:success -> done
@@ -1668,17 +1668,17 @@ func TestRunner_ExtraEnv_Propagated(t *testing.T) {
 	runner := &Runner{
 		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
-		ExtraEnv:   []string{"CLOCHE_MAIN_OUTCOME=succeeded"},
+		ExtraEnv:   []string{"MY_CUSTOM_VAR=hello"},
 	}
 
-	result, err := runner.RunNamed(context.Background(), tmpDir, "finalize")
+	result, err := runner.RunNamed(context.Background(), tmpDir, "post-merge")
 	require.NoError(t, err)
 	assert.Equal(t, domain.RunStateSucceeded, result.State)
 
 	// Verify the env var was available to the script
 	data, err := os.ReadFile(filepath.Join(result.OutputDir, "check.log"))
 	require.NoError(t, err)
-	assert.Contains(t, string(data), "OUTCOME=succeeded")
+	assert.Contains(t, string(data), "CUSTOM=hello")
 }
 
 func TestRunner_ExtraEnv_RestoredOnResume(t *testing.T) {
@@ -1686,7 +1686,7 @@ func TestRunner_ExtraEnv_RestoredOnResume(t *testing.T) {
 
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
-	hostCloche := `workflow "finalize" {
+	hostCloche := `workflow "post-merge" {
   host {}
 
   step route {
@@ -1694,7 +1694,7 @@ func TestRunner_ExtraEnv_RestoredOnResume(t *testing.T) {
     results = [success, fail]
   }
   step merge {
-    run     = "echo RUN=$CLOCHE_MAIN_RUN_ID"
+    run     = "echo REF=$MY_RUN_REF"
     results = [success, fail]
   }
   route:success -> merge
@@ -1708,11 +1708,11 @@ func TestRunner_ExtraEnv_RestoredOnResume(t *testing.T) {
 	runner := &Runner{
 		Dispatcher: &fakeDispatcher{runID: "test-run"},
 		Store:      store,
-		ExtraEnv:   []string{"CLOCHE_MAIN_RUN_ID=develop-original-branch"},
+		ExtraEnv:   []string{"MY_RUN_REF=develop-original-branch"},
 	}
 
 	// Run the workflow — it succeeds and persists ExtraEnv to context.json
-	result, err := runner.RunNamed(context.Background(), tmpDir, "finalize")
+	result, err := runner.RunNamed(context.Background(), tmpDir, "post-merge")
 	require.NoError(t, err)
 	assert.Equal(t, domain.RunStateSucceeded, result.State)
 
@@ -1736,10 +1736,10 @@ func TestRunner_ExtraEnv_RestoredOnResume(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, domain.RunStateSucceeded, resumeResult.State)
 
-	// Verify the merge step got CLOCHE_MAIN_RUN_ID from restored ExtraEnv
+	// Verify the merge step got MY_RUN_REF from restored ExtraEnv
 	data, err := os.ReadFile(filepath.Join(resumeResult.OutputDir, "merge.log"))
 	require.NoError(t, err)
-	assert.Contains(t, string(data), "RUN=develop-original-branch")
+	assert.Contains(t, string(data), "REF=develop-original-branch")
 }
 
 // --- ReadListTasksOutput tests ---

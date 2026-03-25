@@ -353,34 +353,34 @@ func TestAttemptAggregateStatus(t *testing.T) {
 			want: domain.RunStateSucceeded,
 		},
 		{
-			// Regression: when finalize is re-run after a failure, the new
+			// Regression: when a workflow is re-run after a failure, the new
 			// succeeded run supersedes the old failed run. The task should
 			// not remain 'failed' after a successful re-run of the same workflow.
-			name: "re-run finalize supersedes earlier failure",
+			name: "re-run workflow supersedes earlier failure",
 			runs: []*domain.Run{
 				mkRunNamed(domain.RunStateSucceeded, "main", now),
-				mkRunNamed(domain.RunStateFailed, "finalize", now.Add(time.Second)),
-				mkRunNamed(domain.RunStateSucceeded, "finalize", now.Add(2*time.Second)),
+				mkRunNamed(domain.RunStateFailed, "post-merge", now.Add(time.Second)),
+				mkRunNamed(domain.RunStateSucceeded, "post-merge", now.Add(2*time.Second)),
 			},
 			want: domain.RunStateSucceeded,
 		},
 		{
 			// A re-run that itself fails should still produce failed.
-			name: "re-run finalize that also fails stays failed",
+			name: "re-run workflow that also fails stays failed",
 			runs: []*domain.Run{
 				mkRunNamed(domain.RunStateSucceeded, "main", now),
-				mkRunNamed(domain.RunStateFailed, "finalize", now.Add(time.Second)),
-				mkRunNamed(domain.RunStateFailed, "finalize", now.Add(2*time.Second)),
+				mkRunNamed(domain.RunStateFailed, "post-merge", now.Add(time.Second)),
+				mkRunNamed(domain.RunStateFailed, "post-merge", now.Add(2*time.Second)),
 			},
 			want: domain.RunStateFailed,
 		},
 		{
 			// A re-run that is still running should report running.
-			name: "re-run finalize still running reports running",
+			name: "re-run workflow still running reports running",
 			runs: []*domain.Run{
 				mkRunNamed(domain.RunStateSucceeded, "main", now),
-				mkRunNamed(domain.RunStateFailed, "finalize", now.Add(time.Second)),
-				mkRunNamed(domain.RunStateRunning, "finalize", now.Add(2*time.Second)),
+				mkRunNamed(domain.RunStateFailed, "post-merge", now.Add(time.Second)),
+				mkRunNamed(domain.RunStateRunning, "post-merge", now.Add(2*time.Second)),
 			},
 			want: domain.RunStateRunning,
 		},

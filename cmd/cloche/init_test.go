@@ -499,8 +499,8 @@ func TestCmdInit_HostWorkflowV2(t *testing.T) {
 	if !strings.Contains(content, `workflow "main"`) {
 		t.Error("host.cloche should contain main workflow")
 	}
-	if !strings.Contains(content, `workflow "finalize"`) {
-		t.Error("host.cloche should contain finalize workflow")
+	if !strings.Contains(content, "prepare-merge") {
+		t.Error("host.cloche main workflow should contain prepare-merge step")
 	}
 	if !strings.Contains(content, "get-tasks.py") {
 		t.Error("host.cloche should reference get-tasks.py")

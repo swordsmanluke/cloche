@@ -173,12 +173,8 @@ workflow "main" {
 
   claim-task:success -> develop
   claim-task:fail    -> abort
-  develop:success    -> done
-  develop:fail       -> done
-}
-
-workflow "finalize" {
-  host {}
+  develop:success    -> prepare-merge
+  develop:fail       -> unclaim
 
   step prepare-merge {
     run     = "python3 .cloche/scripts/prepare-merge.py"

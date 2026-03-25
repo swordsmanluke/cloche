@@ -330,7 +330,7 @@ func (l *Loop) runPhased() {
 			// Create an Attempt record for this loop iteration.
 			attemptID := l.createAttemptForTask(taskID, taskTitle, l.config.ProjectDir)
 
-			// Launch main + finalize in a goroutine.
+			// Launch main in a goroutine.
 			inFlight++
 			launched++
 			tid := taskID
