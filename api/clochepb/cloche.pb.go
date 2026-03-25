@@ -3175,6 +3175,830 @@ func (x *ListContextKeysResponse) GetKeys() []string {
 	return nil
 }
 
+// AgentMessage is sent from the in-container agent to the daemon over AgentSession.
+type AgentMessage struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Payload:
+	//
+	//	*AgentMessage_Ready
+	//	*AgentMessage_StepResult
+	//	*AgentMessage_StepLog
+	//	*AgentMessage_StepStarted
+	//	*AgentMessage_HostRequest
+	Payload       isAgentMessage_Payload `protobuf_oneof:"payload"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentMessage) Reset() {
+	*x = AgentMessage{}
+	mi := &file_cloche_proto_msgTypes[51]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentMessage) ProtoMessage() {}
+
+func (x *AgentMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[51]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentMessage.ProtoReflect.Descriptor instead.
+func (*AgentMessage) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{51}
+}
+
+func (x *AgentMessage) GetPayload() isAgentMessage_Payload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *AgentMessage) GetReady() *AgentReady {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentMessage_Ready); ok {
+			return x.Ready
+		}
+	}
+	return nil
+}
+
+func (x *AgentMessage) GetStepResult() *StepResult {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentMessage_StepResult); ok {
+			return x.StepResult
+		}
+	}
+	return nil
+}
+
+func (x *AgentMessage) GetStepLog() *StepLog {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentMessage_StepLog); ok {
+			return x.StepLog
+		}
+	}
+	return nil
+}
+
+func (x *AgentMessage) GetStepStarted() *StepStarted {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentMessage_StepStarted); ok {
+			return x.StepStarted
+		}
+	}
+	return nil
+}
+
+func (x *AgentMessage) GetHostRequest() *HostWorkflowRequest {
+	if x != nil {
+		if x, ok := x.Payload.(*AgentMessage_HostRequest); ok {
+			return x.HostRequest
+		}
+	}
+	return nil
+}
+
+type isAgentMessage_Payload interface {
+	isAgentMessage_Payload()
+}
+
+type AgentMessage_Ready struct {
+	Ready *AgentReady `protobuf:"bytes,1,opt,name=ready,proto3,oneof"` // agent is up, ready for commands
+}
+
+type AgentMessage_StepResult struct {
+	StepResult *StepResult `protobuf:"bytes,2,opt,name=step_result,json=stepResult,proto3,oneof"` // step completed with result
+}
+
+type AgentMessage_StepLog struct {
+	StepLog *StepLog `protobuf:"bytes,3,opt,name=step_log,json=stepLog,proto3,oneof"` // real-time log line from step
+}
+
+type AgentMessage_StepStarted struct {
+	StepStarted *StepStarted `protobuf:"bytes,4,opt,name=step_started,json=stepStarted,proto3,oneof"` // step execution began
+}
+
+type AgentMessage_HostRequest struct {
+	HostRequest *HostWorkflowRequest `protobuf:"bytes,5,opt,name=host_request,json=hostRequest,proto3,oneof"` // agent requests host workflow
+}
+
+func (*AgentMessage_Ready) isAgentMessage_Payload() {}
+
+func (*AgentMessage_StepResult) isAgentMessage_Payload() {}
+
+func (*AgentMessage_StepLog) isAgentMessage_Payload() {}
+
+func (*AgentMessage_StepStarted) isAgentMessage_Payload() {}
+
+func (*AgentMessage_HostRequest) isAgentMessage_Payload() {}
+
+// DaemonMessage is sent from the daemon to the in-container agent over AgentSession.
+type DaemonMessage struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Payload:
+	//
+	//	*DaemonMessage_ExecuteStep
+	//	*DaemonMessage_StepCancelled
+	//	*DaemonMessage_HostResult
+	//	*DaemonMessage_Shutdown
+	Payload       isDaemonMessage_Payload `protobuf_oneof:"payload"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DaemonMessage) Reset() {
+	*x = DaemonMessage{}
+	mi := &file_cloche_proto_msgTypes[52]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DaemonMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DaemonMessage) ProtoMessage() {}
+
+func (x *DaemonMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[52]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DaemonMessage.ProtoReflect.Descriptor instead.
+func (*DaemonMessage) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{52}
+}
+
+func (x *DaemonMessage) GetPayload() isDaemonMessage_Payload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *DaemonMessage) GetExecuteStep() *ExecuteStep {
+	if x != nil {
+		if x, ok := x.Payload.(*DaemonMessage_ExecuteStep); ok {
+			return x.ExecuteStep
+		}
+	}
+	return nil
+}
+
+func (x *DaemonMessage) GetStepCancelled() *StepCancelled {
+	if x != nil {
+		if x, ok := x.Payload.(*DaemonMessage_StepCancelled); ok {
+			return x.StepCancelled
+		}
+	}
+	return nil
+}
+
+func (x *DaemonMessage) GetHostResult() *HostWorkflowResult {
+	if x != nil {
+		if x, ok := x.Payload.(*DaemonMessage_HostResult); ok {
+			return x.HostResult
+		}
+	}
+	return nil
+}
+
+func (x *DaemonMessage) GetShutdown() *Shutdown {
+	if x != nil {
+		if x, ok := x.Payload.(*DaemonMessage_Shutdown); ok {
+			return x.Shutdown
+		}
+	}
+	return nil
+}
+
+type isDaemonMessage_Payload interface {
+	isDaemonMessage_Payload()
+}
+
+type DaemonMessage_ExecuteStep struct {
+	ExecuteStep *ExecuteStep `protobuf:"bytes,1,opt,name=execute_step,json=executeStep,proto3,oneof"` // run this step
+}
+
+type DaemonMessage_StepCancelled struct {
+	StepCancelled *StepCancelled `protobuf:"bytes,2,opt,name=step_cancelled,json=stepCancelled,proto3,oneof"` // cancel in-progress step
+}
+
+type DaemonMessage_HostResult struct {
+	HostResult *HostWorkflowResult `protobuf:"bytes,3,opt,name=host_result,json=hostResult,proto3,oneof"` // result of requested host workflow
+}
+
+type DaemonMessage_Shutdown struct {
+	Shutdown *Shutdown `protobuf:"bytes,4,opt,name=shutdown,proto3,oneof"` // graceful shutdown
+}
+
+func (*DaemonMessage_ExecuteStep) isDaemonMessage_Payload() {}
+
+func (*DaemonMessage_StepCancelled) isDaemonMessage_Payload() {}
+
+func (*DaemonMessage_HostResult) isDaemonMessage_Payload() {}
+
+func (*DaemonMessage_Shutdown) isDaemonMessage_Payload() {}
+
+// AgentReady is the first message sent by the agent to signal it is ready.
+type AgentReady struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	AttemptId     string                 `protobuf:"bytes,2,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentReady) Reset() {
+	*x = AgentReady{}
+	mi := &file_cloche_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentReady) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentReady) ProtoMessage() {}
+
+func (x *AgentReady) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentReady.ProtoReflect.Descriptor instead.
+func (*AgentReady) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *AgentReady) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *AgentReady) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+// ExecuteStep is sent by the daemon to instruct the agent to execute a step.
+type ExecuteStep struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	StepName      string                 `protobuf:"bytes,1,opt,name=step_name,json=stepName,proto3" json:"step_name,omitempty"`
+	StepType      string                 `protobuf:"bytes,2,opt,name=step_type,json=stepType,proto3" json:"step_type,omitempty"`                                                       // "agent", "script"
+	Config        map[string]string      `protobuf:"bytes,3,rep,name=config,proto3" json:"config,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // prompt, run, agent_command, etc.
+	Env           map[string]string      `protobuf:"bytes,4,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`       // output-mapped env vars from wiring
+	RequestId     string                 `protobuf:"bytes,5,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`                                                    // correlates with StepResult
+	Resume        bool                   `protobuf:"varint,6,opt,name=resume,proto3" json:"resume,omitempty"`                                                                          // continue existing conversation rather than starting fresh
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExecuteStep) Reset() {
+	*x = ExecuteStep{}
+	mi := &file_cloche_proto_msgTypes[54]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecuteStep) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecuteStep) ProtoMessage() {}
+
+func (x *ExecuteStep) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[54]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecuteStep.ProtoReflect.Descriptor instead.
+func (*ExecuteStep) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{54}
+}
+
+func (x *ExecuteStep) GetStepName() string {
+	if x != nil {
+		return x.StepName
+	}
+	return ""
+}
+
+func (x *ExecuteStep) GetStepType() string {
+	if x != nil {
+		return x.StepType
+	}
+	return ""
+}
+
+func (x *ExecuteStep) GetConfig() map[string]string {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *ExecuteStep) GetEnv() map[string]string {
+	if x != nil {
+		return x.Env
+	}
+	return nil
+}
+
+func (x *ExecuteStep) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *ExecuteStep) GetResume() bool {
+	if x != nil {
+		return x.Resume
+	}
+	return false
+}
+
+// StepResult reports that a step completed.
+type StepResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Result        string                 `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"`                           // "success", "fail", custom result names
+	Output        string                 `protobuf:"bytes,3,opt,name=output,proto3" json:"output,omitempty"`                           // step output content (for output mappings)
+	TokenUsage    *TokenUsage            `protobuf:"bytes,4,opt,name=token_usage,json=tokenUsage,proto3" json:"token_usage,omitempty"` // optional token usage
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StepResult) Reset() {
+	*x = StepResult{}
+	mi := &file_cloche_proto_msgTypes[55]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StepResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StepResult) ProtoMessage() {}
+
+func (x *StepResult) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[55]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StepResult.ProtoReflect.Descriptor instead.
+func (*StepResult) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{55}
+}
+
+func (x *StepResult) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *StepResult) GetResult() string {
+	if x != nil {
+		return x.Result
+	}
+	return ""
+}
+
+func (x *StepResult) GetOutput() string {
+	if x != nil {
+		return x.Output
+	}
+	return ""
+}
+
+func (x *StepResult) GetTokenUsage() *TokenUsage {
+	if x != nil {
+		return x.TokenUsage
+	}
+	return nil
+}
+
+// StepLog carries a single real-time log line from a step.
+type StepLog struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	StepName      string                 `protobuf:"bytes,1,opt,name=step_name,json=stepName,proto3" json:"step_name,omitempty"`
+	Line          string                 `protobuf:"bytes,2,opt,name=line,proto3" json:"line,omitempty"`
+	Timestamp     int64                  `protobuf:"varint,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StepLog) Reset() {
+	*x = StepLog{}
+	mi := &file_cloche_proto_msgTypes[56]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StepLog) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StepLog) ProtoMessage() {}
+
+func (x *StepLog) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[56]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StepLog.ProtoReflect.Descriptor instead.
+func (*StepLog) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{56}
+}
+
+func (x *StepLog) GetStepName() string {
+	if x != nil {
+		return x.StepName
+	}
+	return ""
+}
+
+func (x *StepLog) GetLine() string {
+	if x != nil {
+		return x.Line
+	}
+	return ""
+}
+
+func (x *StepLog) GetTimestamp() int64 {
+	if x != nil {
+		return x.Timestamp
+	}
+	return 0
+}
+
+// StepStarted signals that the agent has begun executing a step.
+type StepStarted struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	StepName      string                 `protobuf:"bytes,2,opt,name=step_name,json=stepName,proto3" json:"step_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StepStarted) Reset() {
+	*x = StepStarted{}
+	mi := &file_cloche_proto_msgTypes[57]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StepStarted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StepStarted) ProtoMessage() {}
+
+func (x *StepStarted) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[57]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StepStarted.ProtoReflect.Descriptor instead.
+func (*StepStarted) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{57}
+}
+
+func (x *StepStarted) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *StepStarted) GetStepName() string {
+	if x != nil {
+		return x.StepName
+	}
+	return ""
+}
+
+// HostWorkflowRequest is sent by the agent to request the daemon run a host workflow.
+type HostWorkflowRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"` // agent-generated, correlates with HostWorkflowResult
+	WorkflowName  string                 `protobuf:"bytes,2,opt,name=workflow_name,json=workflowName,proto3" json:"workflow_name,omitempty"`
+	Env           map[string]string      `protobuf:"bytes,3,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // env vars to pass to host workflow
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HostWorkflowRequest) Reset() {
+	*x = HostWorkflowRequest{}
+	mi := &file_cloche_proto_msgTypes[58]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HostWorkflowRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HostWorkflowRequest) ProtoMessage() {}
+
+func (x *HostWorkflowRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[58]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HostWorkflowRequest.ProtoReflect.Descriptor instead.
+func (*HostWorkflowRequest) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{58}
+}
+
+func (x *HostWorkflowRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *HostWorkflowRequest) GetWorkflowName() string {
+	if x != nil {
+		return x.WorkflowName
+	}
+	return ""
+}
+
+func (x *HostWorkflowRequest) GetEnv() map[string]string {
+	if x != nil {
+		return x.Env
+	}
+	return nil
+}
+
+// HostWorkflowResult is sent by the daemon with the outcome of a requested host workflow.
+type HostWorkflowResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Result        string                 `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"` // "success", "fail"
+	RunId         string                 `protobuf:"bytes,3,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HostWorkflowResult) Reset() {
+	*x = HostWorkflowResult{}
+	mi := &file_cloche_proto_msgTypes[59]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HostWorkflowResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HostWorkflowResult) ProtoMessage() {}
+
+func (x *HostWorkflowResult) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[59]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HostWorkflowResult.ProtoReflect.Descriptor instead.
+func (*HostWorkflowResult) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{59}
+}
+
+func (x *HostWorkflowResult) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *HostWorkflowResult) GetResult() string {
+	if x != nil {
+		return x.Result
+	}
+	return ""
+}
+
+func (x *HostWorkflowResult) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+// StepCancelled is sent by the daemon to cancel an in-progress step.
+type StepCancelled struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StepCancelled) Reset() {
+	*x = StepCancelled{}
+	mi := &file_cloche_proto_msgTypes[60]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StepCancelled) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StepCancelled) ProtoMessage() {}
+
+func (x *StepCancelled) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[60]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StepCancelled.ProtoReflect.Descriptor instead.
+func (*StepCancelled) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{60}
+}
+
+func (x *StepCancelled) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+// Shutdown is sent by the daemon to signal the agent should exit gracefully.
+type Shutdown struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Shutdown) Reset() {
+	*x = Shutdown{}
+	mi := &file_cloche_proto_msgTypes[61]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Shutdown) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Shutdown) ProtoMessage() {}
+
+func (x *Shutdown) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[61]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Shutdown.ProtoReflect.Descriptor instead.
+func (*Shutdown) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{61}
+}
+
+// TokenUsage carries token consumption for a single agent step execution.
+type TokenUsage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InputTokens   int64                  `protobuf:"varint,1,opt,name=input_tokens,json=inputTokens,proto3" json:"input_tokens,omitempty"`
+	OutputTokens  int64                  `protobuf:"varint,2,opt,name=output_tokens,json=outputTokens,proto3" json:"output_tokens,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TokenUsage) Reset() {
+	*x = TokenUsage{}
+	mi := &file_cloche_proto_msgTypes[62]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TokenUsage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TokenUsage) ProtoMessage() {}
+
+func (x *TokenUsage) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[62]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TokenUsage.ProtoReflect.Descriptor instead.
+func (*TokenUsage) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{62}
+}
+
+func (x *TokenUsage) GetInputTokens() int64 {
+	if x != nil {
+		return x.InputTokens
+	}
+	return 0
+}
+
+func (x *TokenUsage) GetOutputTokens() int64 {
+	if x != nil {
+		return x.OutputTokens
+	}
+	return 0
+}
+
 var File_cloche_proto protoreflect.FileDescriptor
 
 const file_cloche_proto_rawDesc = "" +
@@ -3419,7 +4243,79 @@ const file_cloche_proto_rawDesc = "" +
 	"\n" +
 	"attempt_id\x18\x02 \x01(\tR\tattemptId\"-\n" +
 	"\x17ListContextKeysResponse\x12\x12\n" +
-	"\x04keys\x18\x01 \x03(\tR\x04keys2\xb7\f\n" +
+	"\x04keys\x18\x01 \x03(\tR\x04keys\"\xb5\x02\n" +
+	"\fAgentMessage\x12-\n" +
+	"\x05ready\x18\x01 \x01(\v2\x15.cloche.v1.AgentReadyH\x00R\x05ready\x128\n" +
+	"\vstep_result\x18\x02 \x01(\v2\x15.cloche.v1.StepResultH\x00R\n" +
+	"stepResult\x12/\n" +
+	"\bstep_log\x18\x03 \x01(\v2\x12.cloche.v1.StepLogH\x00R\astepLog\x12;\n" +
+	"\fstep_started\x18\x04 \x01(\v2\x16.cloche.v1.StepStartedH\x00R\vstepStarted\x12C\n" +
+	"\fhost_request\x18\x05 \x01(\v2\x1e.cloche.v1.HostWorkflowRequestH\x00R\vhostRequestB\t\n" +
+	"\apayload\"\x8f\x02\n" +
+	"\rDaemonMessage\x12;\n" +
+	"\fexecute_step\x18\x01 \x01(\v2\x16.cloche.v1.ExecuteStepH\x00R\vexecuteStep\x12A\n" +
+	"\x0estep_cancelled\x18\x02 \x01(\v2\x18.cloche.v1.StepCancelledH\x00R\rstepCancelled\x12@\n" +
+	"\vhost_result\x18\x03 \x01(\v2\x1d.cloche.v1.HostWorkflowResultH\x00R\n" +
+	"hostResult\x121\n" +
+	"\bshutdown\x18\x04 \x01(\v2\x13.cloche.v1.ShutdownH\x00R\bshutdownB\t\n" +
+	"\apayload\"B\n" +
+	"\n" +
+	"AgentReady\x12\x15\n" +
+	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x02 \x01(\tR\tattemptId\"\xe0\x02\n" +
+	"\vExecuteStep\x12\x1b\n" +
+	"\tstep_name\x18\x01 \x01(\tR\bstepName\x12\x1b\n" +
+	"\tstep_type\x18\x02 \x01(\tR\bstepType\x12:\n" +
+	"\x06config\x18\x03 \x03(\v2\".cloche.v1.ExecuteStep.ConfigEntryR\x06config\x121\n" +
+	"\x03env\x18\x04 \x03(\v2\x1f.cloche.v1.ExecuteStep.EnvEntryR\x03env\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x05 \x01(\tR\trequestId\x12\x16\n" +
+	"\x06resume\x18\x06 \x01(\bR\x06resume\x1a9\n" +
+	"\vConfigEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a6\n" +
+	"\bEnvEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x93\x01\n" +
+	"\n" +
+	"StepResult\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x16\n" +
+	"\x06result\x18\x02 \x01(\tR\x06result\x12\x16\n" +
+	"\x06output\x18\x03 \x01(\tR\x06output\x126\n" +
+	"\vtoken_usage\x18\x04 \x01(\v2\x15.cloche.v1.TokenUsageR\n" +
+	"tokenUsage\"X\n" +
+	"\aStepLog\x12\x1b\n" +
+	"\tstep_name\x18\x01 \x01(\tR\bstepName\x12\x12\n" +
+	"\x04line\x18\x02 \x01(\tR\x04line\x12\x1c\n" +
+	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp\"I\n" +
+	"\vStepStarted\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1b\n" +
+	"\tstep_name\x18\x02 \x01(\tR\bstepName\"\xcc\x01\n" +
+	"\x13HostWorkflowRequest\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12#\n" +
+	"\rworkflow_name\x18\x02 \x01(\tR\fworkflowName\x129\n" +
+	"\x03env\x18\x03 \x03(\v2'.cloche.v1.HostWorkflowRequest.EnvEntryR\x03env\x1a6\n" +
+	"\bEnvEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"b\n" +
+	"\x12HostWorkflowResult\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x16\n" +
+	"\x06result\x18\x02 \x01(\tR\x06result\x12\x15\n" +
+	"\x06run_id\x18\x03 \x01(\tR\x05runId\".\n" +
+	"\rStepCancelled\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\"\n" +
+	"\n" +
+	"\bShutdown\"T\n" +
+	"\n" +
+	"TokenUsage\x12!\n" +
+	"\finput_tokens\x18\x01 \x01(\x03R\vinputTokens\x12#\n" +
+	"\routput_tokens\x18\x02 \x01(\x03R\foutputTokens2\xfe\f\n" +
 	"\rClocheService\x12L\n" +
 	"\vRunWorkflow\x12\x1d.cloche.v1.RunWorkflowRequest\x1a\x1e.cloche.v1.RunWorkflowResponse\x12F\n" +
 	"\tGetStatus\x12\x1b.cloche.v1.GetStatusRequest\x1a\x1c.cloche.v1.GetStatusResponse\x12A\n" +
@@ -3446,7 +4342,8 @@ const file_cloche_proto_rawDesc = "" +
 	"\aConsole\x12\x17.cloche.v1.ConsoleInput\x1a\x18.cloche.v1.ConsoleOutput(\x010\x01\x12R\n" +
 	"\rGetContextKey\x12\x1f.cloche.v1.GetContextKeyRequest\x1a .cloche.v1.GetContextKeyResponse\x12R\n" +
 	"\rSetContextKey\x12\x1f.cloche.v1.SetContextKeyRequest\x1a .cloche.v1.SetContextKeyResponse\x12X\n" +
-	"\x0fListContextKeys\x12!.cloche.v1.ListContextKeysRequest\x1a\".cloche.v1.ListContextKeysResponseB+Z)github.com/cloche-dev/cloche/api/clochepbb\x06proto3"
+	"\x0fListContextKeys\x12!.cloche.v1.ListContextKeysRequest\x1a\".cloche.v1.ListContextKeysResponse\x12E\n" +
+	"\fAgentSession\x12\x17.cloche.v1.AgentMessage\x1a\x18.cloche.v1.DaemonMessage(\x010\x01B+Z)github.com/cloche-dev/cloche/api/clochepbb\x06proto3"
 
 var (
 	file_cloche_proto_rawDescOnce sync.Once
@@ -3460,7 +4357,7 @@ func file_cloche_proto_rawDescGZIP() []byte {
 	return file_cloche_proto_rawDescData
 }
 
-var file_cloche_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
+var file_cloche_proto_msgTypes = make([]protoimpl.MessageInfo, 66)
 var file_cloche_proto_goTypes = []any{
 	(*RunWorkflowRequest)(nil),      // 0: cloche.v1.RunWorkflowRequest
 	(*RunWorkflowResponse)(nil),     // 1: cloche.v1.RunWorkflowResponse
@@ -3513,6 +4410,21 @@ var file_cloche_proto_goTypes = []any{
 	(*SetContextKeyResponse)(nil),   // 48: cloche.v1.SetContextKeyResponse
 	(*ListContextKeysRequest)(nil),  // 49: cloche.v1.ListContextKeysRequest
 	(*ListContextKeysResponse)(nil), // 50: cloche.v1.ListContextKeysResponse
+	(*AgentMessage)(nil),            // 51: cloche.v1.AgentMessage
+	(*DaemonMessage)(nil),           // 52: cloche.v1.DaemonMessage
+	(*AgentReady)(nil),              // 53: cloche.v1.AgentReady
+	(*ExecuteStep)(nil),             // 54: cloche.v1.ExecuteStep
+	(*StepResult)(nil),              // 55: cloche.v1.StepResult
+	(*StepLog)(nil),                 // 56: cloche.v1.StepLog
+	(*StepStarted)(nil),             // 57: cloche.v1.StepStarted
+	(*HostWorkflowRequest)(nil),     // 58: cloche.v1.HostWorkflowRequest
+	(*HostWorkflowResult)(nil),      // 59: cloche.v1.HostWorkflowResult
+	(*StepCancelled)(nil),           // 60: cloche.v1.StepCancelled
+	(*Shutdown)(nil),                // 61: cloche.v1.Shutdown
+	(*TokenUsage)(nil),              // 62: cloche.v1.TokenUsage
+	nil,                             // 63: cloche.v1.ExecuteStep.ConfigEntry
+	nil,                             // 64: cloche.v1.ExecuteStep.EnvEntry
+	nil,                             // 65: cloche.v1.HostWorkflowRequest.EnvEntry
 }
 var file_cloche_proto_depIdxs = []int32{
 	4,  // 0: cloche.v1.GetStatusResponse.step_executions:type_name -> cloche.v1.StepExecutionStatus
@@ -3525,53 +4437,68 @@ var file_cloche_proto_depIdxs = []int32{
 	43, // 7: cloche.v1.ConsoleInput.resize:type_name -> cloche.v1.TerminalSize
 	42, // 8: cloche.v1.ConsoleOutput.started:type_name -> cloche.v1.ConsoleStarted
 	44, // 9: cloche.v1.ConsoleOutput.exited:type_name -> cloche.v1.ConsoleExited
-	0,  // 10: cloche.v1.ClocheService.RunWorkflow:input_type -> cloche.v1.RunWorkflowRequest
-	2,  // 11: cloche.v1.ClocheService.GetStatus:input_type -> cloche.v1.GetStatusRequest
-	5,  // 12: cloche.v1.ClocheService.StreamLogs:input_type -> cloche.v1.StreamLogsRequest
-	7,  // 13: cloche.v1.ClocheService.StopRun:input_type -> cloche.v1.StopRunRequest
-	13, // 14: cloche.v1.ClocheService.ListRuns:input_type -> cloche.v1.ListRunsRequest
-	26, // 15: cloche.v1.ClocheService.ListTasks:input_type -> cloche.v1.ListTasksRequest
-	29, // 16: cloche.v1.ClocheService.GetTask:input_type -> cloche.v1.GetTaskRequest
-	32, // 17: cloche.v1.ClocheService.GetAttempt:input_type -> cloche.v1.GetAttemptRequest
-	9,  // 18: cloche.v1.ClocheService.Shutdown:input_type -> cloche.v1.ShutdownRequest
-	11, // 19: cloche.v1.ClocheService.DeleteContainer:input_type -> cloche.v1.DeleteContainerRequest
-	16, // 20: cloche.v1.ClocheService.EnableLoop:input_type -> cloche.v1.EnableLoopRequest
-	18, // 21: cloche.v1.ClocheService.DisableLoop:input_type -> cloche.v1.DisableLoopRequest
-	20, // 22: cloche.v1.ClocheService.ResumeLoop:input_type -> cloche.v1.ResumeLoopRequest
-	22, // 23: cloche.v1.ClocheService.GetProjectInfo:input_type -> cloche.v1.GetProjectInfoRequest
-	24, // 24: cloche.v1.ClocheService.GetVersion:input_type -> cloche.v1.GetVersionRequest
-	34, // 25: cloche.v1.ClocheService.Complete:input_type -> cloche.v1.CompleteRequest
-	36, // 26: cloche.v1.ClocheService.GetUsage:input_type -> cloche.v1.GetUsageRequest
-	39, // 27: cloche.v1.ClocheService.Console:input_type -> cloche.v1.ConsoleInput
-	45, // 28: cloche.v1.ClocheService.GetContextKey:input_type -> cloche.v1.GetContextKeyRequest
-	47, // 29: cloche.v1.ClocheService.SetContextKey:input_type -> cloche.v1.SetContextKeyRequest
-	49, // 30: cloche.v1.ClocheService.ListContextKeys:input_type -> cloche.v1.ListContextKeysRequest
-	1,  // 31: cloche.v1.ClocheService.RunWorkflow:output_type -> cloche.v1.RunWorkflowResponse
-	3,  // 32: cloche.v1.ClocheService.GetStatus:output_type -> cloche.v1.GetStatusResponse
-	6,  // 33: cloche.v1.ClocheService.StreamLogs:output_type -> cloche.v1.LogEntry
-	8,  // 34: cloche.v1.ClocheService.StopRun:output_type -> cloche.v1.StopRunResponse
-	14, // 35: cloche.v1.ClocheService.ListRuns:output_type -> cloche.v1.ListRunsResponse
-	28, // 36: cloche.v1.ClocheService.ListTasks:output_type -> cloche.v1.ListTasksResponse
-	31, // 37: cloche.v1.ClocheService.GetTask:output_type -> cloche.v1.GetTaskResponse
-	33, // 38: cloche.v1.ClocheService.GetAttempt:output_type -> cloche.v1.GetAttemptResponse
-	10, // 39: cloche.v1.ClocheService.Shutdown:output_type -> cloche.v1.ShutdownResponse
-	12, // 40: cloche.v1.ClocheService.DeleteContainer:output_type -> cloche.v1.DeleteContainerResponse
-	17, // 41: cloche.v1.ClocheService.EnableLoop:output_type -> cloche.v1.EnableLoopResponse
-	19, // 42: cloche.v1.ClocheService.DisableLoop:output_type -> cloche.v1.DisableLoopResponse
-	21, // 43: cloche.v1.ClocheService.ResumeLoop:output_type -> cloche.v1.ResumeLoopResponse
-	23, // 44: cloche.v1.ClocheService.GetProjectInfo:output_type -> cloche.v1.GetProjectInfoResponse
-	25, // 45: cloche.v1.ClocheService.GetVersion:output_type -> cloche.v1.GetVersionResponse
-	35, // 46: cloche.v1.ClocheService.Complete:output_type -> cloche.v1.CompleteResponse
-	37, // 47: cloche.v1.ClocheService.GetUsage:output_type -> cloche.v1.GetUsageResponse
-	40, // 48: cloche.v1.ClocheService.Console:output_type -> cloche.v1.ConsoleOutput
-	46, // 49: cloche.v1.ClocheService.GetContextKey:output_type -> cloche.v1.GetContextKeyResponse
-	48, // 50: cloche.v1.ClocheService.SetContextKey:output_type -> cloche.v1.SetContextKeyResponse
-	50, // 51: cloche.v1.ClocheService.ListContextKeys:output_type -> cloche.v1.ListContextKeysResponse
-	31, // [31:52] is the sub-list for method output_type
-	10, // [10:31] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	53, // 10: cloche.v1.AgentMessage.ready:type_name -> cloche.v1.AgentReady
+	55, // 11: cloche.v1.AgentMessage.step_result:type_name -> cloche.v1.StepResult
+	56, // 12: cloche.v1.AgentMessage.step_log:type_name -> cloche.v1.StepLog
+	57, // 13: cloche.v1.AgentMessage.step_started:type_name -> cloche.v1.StepStarted
+	58, // 14: cloche.v1.AgentMessage.host_request:type_name -> cloche.v1.HostWorkflowRequest
+	54, // 15: cloche.v1.DaemonMessage.execute_step:type_name -> cloche.v1.ExecuteStep
+	60, // 16: cloche.v1.DaemonMessage.step_cancelled:type_name -> cloche.v1.StepCancelled
+	59, // 17: cloche.v1.DaemonMessage.host_result:type_name -> cloche.v1.HostWorkflowResult
+	61, // 18: cloche.v1.DaemonMessage.shutdown:type_name -> cloche.v1.Shutdown
+	63, // 19: cloche.v1.ExecuteStep.config:type_name -> cloche.v1.ExecuteStep.ConfigEntry
+	64, // 20: cloche.v1.ExecuteStep.env:type_name -> cloche.v1.ExecuteStep.EnvEntry
+	62, // 21: cloche.v1.StepResult.token_usage:type_name -> cloche.v1.TokenUsage
+	65, // 22: cloche.v1.HostWorkflowRequest.env:type_name -> cloche.v1.HostWorkflowRequest.EnvEntry
+	0,  // 23: cloche.v1.ClocheService.RunWorkflow:input_type -> cloche.v1.RunWorkflowRequest
+	2,  // 24: cloche.v1.ClocheService.GetStatus:input_type -> cloche.v1.GetStatusRequest
+	5,  // 25: cloche.v1.ClocheService.StreamLogs:input_type -> cloche.v1.StreamLogsRequest
+	7,  // 26: cloche.v1.ClocheService.StopRun:input_type -> cloche.v1.StopRunRequest
+	13, // 27: cloche.v1.ClocheService.ListRuns:input_type -> cloche.v1.ListRunsRequest
+	26, // 28: cloche.v1.ClocheService.ListTasks:input_type -> cloche.v1.ListTasksRequest
+	29, // 29: cloche.v1.ClocheService.GetTask:input_type -> cloche.v1.GetTaskRequest
+	32, // 30: cloche.v1.ClocheService.GetAttempt:input_type -> cloche.v1.GetAttemptRequest
+	9,  // 31: cloche.v1.ClocheService.Shutdown:input_type -> cloche.v1.ShutdownRequest
+	11, // 32: cloche.v1.ClocheService.DeleteContainer:input_type -> cloche.v1.DeleteContainerRequest
+	16, // 33: cloche.v1.ClocheService.EnableLoop:input_type -> cloche.v1.EnableLoopRequest
+	18, // 34: cloche.v1.ClocheService.DisableLoop:input_type -> cloche.v1.DisableLoopRequest
+	20, // 35: cloche.v1.ClocheService.ResumeLoop:input_type -> cloche.v1.ResumeLoopRequest
+	22, // 36: cloche.v1.ClocheService.GetProjectInfo:input_type -> cloche.v1.GetProjectInfoRequest
+	24, // 37: cloche.v1.ClocheService.GetVersion:input_type -> cloche.v1.GetVersionRequest
+	34, // 38: cloche.v1.ClocheService.Complete:input_type -> cloche.v1.CompleteRequest
+	36, // 39: cloche.v1.ClocheService.GetUsage:input_type -> cloche.v1.GetUsageRequest
+	39, // 40: cloche.v1.ClocheService.Console:input_type -> cloche.v1.ConsoleInput
+	45, // 41: cloche.v1.ClocheService.GetContextKey:input_type -> cloche.v1.GetContextKeyRequest
+	47, // 42: cloche.v1.ClocheService.SetContextKey:input_type -> cloche.v1.SetContextKeyRequest
+	49, // 43: cloche.v1.ClocheService.ListContextKeys:input_type -> cloche.v1.ListContextKeysRequest
+	51, // 44: cloche.v1.ClocheService.AgentSession:input_type -> cloche.v1.AgentMessage
+	1,  // 45: cloche.v1.ClocheService.RunWorkflow:output_type -> cloche.v1.RunWorkflowResponse
+	3,  // 46: cloche.v1.ClocheService.GetStatus:output_type -> cloche.v1.GetStatusResponse
+	6,  // 47: cloche.v1.ClocheService.StreamLogs:output_type -> cloche.v1.LogEntry
+	8,  // 48: cloche.v1.ClocheService.StopRun:output_type -> cloche.v1.StopRunResponse
+	14, // 49: cloche.v1.ClocheService.ListRuns:output_type -> cloche.v1.ListRunsResponse
+	28, // 50: cloche.v1.ClocheService.ListTasks:output_type -> cloche.v1.ListTasksResponse
+	31, // 51: cloche.v1.ClocheService.GetTask:output_type -> cloche.v1.GetTaskResponse
+	33, // 52: cloche.v1.ClocheService.GetAttempt:output_type -> cloche.v1.GetAttemptResponse
+	10, // 53: cloche.v1.ClocheService.Shutdown:output_type -> cloche.v1.ShutdownResponse
+	12, // 54: cloche.v1.ClocheService.DeleteContainer:output_type -> cloche.v1.DeleteContainerResponse
+	17, // 55: cloche.v1.ClocheService.EnableLoop:output_type -> cloche.v1.EnableLoopResponse
+	19, // 56: cloche.v1.ClocheService.DisableLoop:output_type -> cloche.v1.DisableLoopResponse
+	21, // 57: cloche.v1.ClocheService.ResumeLoop:output_type -> cloche.v1.ResumeLoopResponse
+	23, // 58: cloche.v1.ClocheService.GetProjectInfo:output_type -> cloche.v1.GetProjectInfoResponse
+	25, // 59: cloche.v1.ClocheService.GetVersion:output_type -> cloche.v1.GetVersionResponse
+	35, // 60: cloche.v1.ClocheService.Complete:output_type -> cloche.v1.CompleteResponse
+	37, // 61: cloche.v1.ClocheService.GetUsage:output_type -> cloche.v1.GetUsageResponse
+	40, // 62: cloche.v1.ClocheService.Console:output_type -> cloche.v1.ConsoleOutput
+	46, // 63: cloche.v1.ClocheService.GetContextKey:output_type -> cloche.v1.GetContextKeyResponse
+	48, // 64: cloche.v1.ClocheService.SetContextKey:output_type -> cloche.v1.SetContextKeyResponse
+	50, // 65: cloche.v1.ClocheService.ListContextKeys:output_type -> cloche.v1.ListContextKeysResponse
+	52, // 66: cloche.v1.ClocheService.AgentSession:output_type -> cloche.v1.DaemonMessage
+	45, // [45:67] is the sub-list for method output_type
+	23, // [23:45] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_cloche_proto_init() }
@@ -3589,13 +4516,26 @@ func file_cloche_proto_init() {
 		(*ConsoleOutput_Stdout)(nil),
 		(*ConsoleOutput_Exited)(nil),
 	}
+	file_cloche_proto_msgTypes[51].OneofWrappers = []any{
+		(*AgentMessage_Ready)(nil),
+		(*AgentMessage_StepResult)(nil),
+		(*AgentMessage_StepLog)(nil),
+		(*AgentMessage_StepStarted)(nil),
+		(*AgentMessage_HostRequest)(nil),
+	}
+	file_cloche_proto_msgTypes[52].OneofWrappers = []any{
+		(*DaemonMessage_ExecuteStep)(nil),
+		(*DaemonMessage_StepCancelled)(nil),
+		(*DaemonMessage_HostResult)(nil),
+		(*DaemonMessage_Shutdown)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cloche_proto_rawDesc), len(file_cloche_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   51,
+			NumMessages:   66,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

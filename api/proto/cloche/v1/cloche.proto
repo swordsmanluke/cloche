@@ -52,6 +52,11 @@ service ClocheService {
 
   // ListContextKeys returns all keys in the per-attempt KV namespace.
   rpc ListContextKeys(ListContextKeysRequest) returns (ListContextKeysResponse);
+
+  // AgentSession is a bidirectional stream between the daemon and an in-container
+  // agent. The agent connects after container startup; the daemon sends step
+  // execution commands; the agent sends back status events and results.
+  rpc AgentSession(stream AgentMessage) returns (stream DaemonMessage);
 }
 
 message RunWorkflowRequest {
@@ -377,4 +382,90 @@ message ListContextKeysRequest {
 
 message ListContextKeysResponse {
   repeated string keys = 1;
+}
+
+// AgentMessage is sent from the in-container agent to the daemon over AgentSession.
+message AgentMessage {
+  oneof payload {
+    AgentReady          ready        = 1; // agent is up, ready for commands
+    StepResult          step_result  = 2; // step completed with result
+    StepLog             step_log     = 3; // real-time log line from step
+    StepStarted         step_started = 4; // step execution began
+    HostWorkflowRequest host_request = 5; // agent requests host workflow
+  }
+}
+
+// DaemonMessage is sent from the daemon to the in-container agent over AgentSession.
+message DaemonMessage {
+  oneof payload {
+    ExecuteStep        execute_step   = 1; // run this step
+    StepCancelled      step_cancelled = 2; // cancel in-progress step
+    HostWorkflowResult host_result    = 3; // result of requested host workflow
+    Shutdown           shutdown       = 4; // graceful shutdown
+  }
+}
+
+// AgentReady is the first message sent by the agent to signal it is ready.
+message AgentReady {
+  string run_id     = 1;
+  string attempt_id = 2;
+}
+
+// ExecuteStep is sent by the daemon to instruct the agent to execute a step.
+message ExecuteStep {
+  string              step_name  = 1;
+  string              step_type  = 2; // "agent", "script"
+  map<string, string> config     = 3; // prompt, run, agent_command, etc.
+  map<string, string> env        = 4; // output-mapped env vars from wiring
+  string              request_id = 5; // correlates with StepResult
+  bool                resume     = 6; // continue existing conversation rather than starting fresh
+}
+
+// StepResult reports that a step completed.
+message StepResult {
+  string     request_id  = 1;
+  string     result      = 2; // "success", "fail", custom result names
+  string     output      = 3; // step output content (for output mappings)
+  TokenUsage token_usage = 4; // optional token usage
+}
+
+// StepLog carries a single real-time log line from a step.
+message StepLog {
+  string step_name = 1;
+  string line      = 2;
+  int64  timestamp = 3;
+}
+
+// StepStarted signals that the agent has begun executing a step.
+message StepStarted {
+  string request_id = 1;
+  string step_name  = 2;
+}
+
+// HostWorkflowRequest is sent by the agent to request the daemon run a host workflow.
+message HostWorkflowRequest {
+  string              request_id    = 1; // agent-generated, correlates with HostWorkflowResult
+  string              workflow_name = 2;
+  map<string, string> env           = 3; // env vars to pass to host workflow
+}
+
+// HostWorkflowResult is sent by the daemon with the outcome of a requested host workflow.
+message HostWorkflowResult {
+  string request_id = 1;
+  string result     = 2; // "success", "fail"
+  string run_id     = 3;
+}
+
+// StepCancelled is sent by the daemon to cancel an in-progress step.
+message StepCancelled {
+  string request_id = 1;
+}
+
+// Shutdown is sent by the daemon to signal the agent should exit gracefully.
+message Shutdown {}
+
+// TokenUsage carries token consumption for a single agent step execution.
+message TokenUsage {
+  int64 input_tokens  = 1;
+  int64 output_tokens = 2;
 }

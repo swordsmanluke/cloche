@@ -40,6 +40,7 @@ const (
 	ClocheService_GetContextKey_FullMethodName   = "/cloche.v1.ClocheService/GetContextKey"
 	ClocheService_SetContextKey_FullMethodName   = "/cloche.v1.ClocheService/SetContextKey"
 	ClocheService_ListContextKeys_FullMethodName = "/cloche.v1.ClocheService/ListContextKeys"
+	ClocheService_AgentSession_FullMethodName    = "/cloche.v1.ClocheService/AgentSession"
 )
 
 // ClocheServiceClient is the client API for ClocheService service.
@@ -78,6 +79,10 @@ type ClocheServiceClient interface {
 	SetContextKey(ctx context.Context, in *SetContextKeyRequest, opts ...grpc.CallOption) (*SetContextKeyResponse, error)
 	// ListContextKeys returns all keys in the per-attempt KV namespace.
 	ListContextKeys(ctx context.Context, in *ListContextKeysRequest, opts ...grpc.CallOption) (*ListContextKeysResponse, error)
+	// AgentSession is a bidirectional stream between the daemon and an in-container
+	// agent. The agent connects after container startup; the daemon sends step
+	// execution commands; the agent sends back status events and results.
+	AgentSession(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AgentMessage, DaemonMessage], error)
 }
 
 type clocheServiceClient struct {
@@ -310,6 +315,19 @@ func (c *clocheServiceClient) ListContextKeys(ctx context.Context, in *ListConte
 	return out, nil
 }
 
+func (c *clocheServiceClient) AgentSession(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AgentMessage, DaemonMessage], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ClocheService_ServiceDesc.Streams[2], ClocheService_AgentSession_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[AgentMessage, DaemonMessage]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ClocheService_AgentSessionClient = grpc.BidiStreamingClient[AgentMessage, DaemonMessage]
+
 // ClocheServiceServer is the server API for ClocheService service.
 // All implementations must embed UnimplementedClocheServiceServer
 // for forward compatibility.
@@ -346,6 +364,10 @@ type ClocheServiceServer interface {
 	SetContextKey(context.Context, *SetContextKeyRequest) (*SetContextKeyResponse, error)
 	// ListContextKeys returns all keys in the per-attempt KV namespace.
 	ListContextKeys(context.Context, *ListContextKeysRequest) (*ListContextKeysResponse, error)
+	// AgentSession is a bidirectional stream between the daemon and an in-container
+	// agent. The agent connects after container startup; the daemon sends step
+	// execution commands; the agent sends back status events and results.
+	AgentSession(grpc.BidiStreamingServer[AgentMessage, DaemonMessage]) error
 	mustEmbedUnimplementedClocheServiceServer()
 }
 
@@ -418,6 +440,9 @@ func (UnimplementedClocheServiceServer) SetContextKey(context.Context, *SetConte
 }
 func (UnimplementedClocheServiceServer) ListContextKeys(context.Context, *ListContextKeysRequest) (*ListContextKeysResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListContextKeys not implemented")
+}
+func (UnimplementedClocheServiceServer) AgentSession(grpc.BidiStreamingServer[AgentMessage, DaemonMessage]) error {
+	return status.Error(codes.Unimplemented, "method AgentSession not implemented")
 }
 func (UnimplementedClocheServiceServer) mustEmbedUnimplementedClocheServiceServer() {}
 func (UnimplementedClocheServiceServer) testEmbeddedByValue()                       {}
@@ -800,6 +825,13 @@ func _ClocheService_ListContextKeys_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClocheService_AgentSession_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ClocheServiceServer).AgentSession(&grpc.GenericServerStream[AgentMessage, DaemonMessage]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ClocheService_AgentSessionServer = grpc.BidiStreamingServer[AgentMessage, DaemonMessage]
+
 // ClocheService_ServiceDesc is the grpc.ServiceDesc for ClocheService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -893,6 +925,12 @@ var ClocheService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Console",
 			Handler:       _ClocheService_Console_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "AgentSession",
+			Handler:       _ClocheService_AgentSession_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

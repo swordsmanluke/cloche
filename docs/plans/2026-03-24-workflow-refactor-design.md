@@ -153,6 +153,7 @@ message ExecuteStep {
   map<string, string> config = 3; // prompt, run, agent_command, etc.
   map<string, string> env = 4;    // output-mapped env vars from wiring
   string request_id = 5;          // correlates with StepResult
+  bool resume = 6;                // continue existing conversation rather than starting fresh
 }
 
 message StepResult {
