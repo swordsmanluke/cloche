@@ -618,3 +618,39 @@ func TestWorkflow_ValidateConfig_ContainerPrefix(t *testing.T) {
 	warnings := wf.ValidateConfig()
 	assert.Empty(t, warnings)
 }
+
+func TestWorkflow_ContainerID_Default(t *testing.T) {
+	wf := &domain.Workflow{
+		Name:     "dev",
+		Location: domain.LocationContainer,
+		Config:   map[string]string{},
+	}
+	assert.Equal(t, domain.DefaultContainerID, wf.ContainerID())
+}
+
+func TestWorkflow_ContainerID_Explicit(t *testing.T) {
+	wf := &domain.Workflow{
+		Name:     "dev",
+		Location: domain.LocationContainer,
+		Config:   map[string]string{"container.id": "my-env"},
+	}
+	assert.Equal(t, "my-env", wf.ContainerID())
+}
+
+func TestWorkflow_ContainerID_HostWorkflow(t *testing.T) {
+	wf := &domain.Workflow{
+		Name:     "main",
+		Location: domain.LocationHost,
+		Config:   map[string]string{},
+	}
+	assert.Equal(t, "", wf.ContainerID())
+}
+
+func TestWorkflow_ContainerID_EmptyStringTreatedAsDefault(t *testing.T) {
+	wf := &domain.Workflow{
+		Name:     "dev",
+		Location: domain.LocationContainer,
+		Config:   map[string]string{"container.id": ""},
+	}
+	assert.Equal(t, domain.DefaultContainerID, wf.ContainerID())
+}

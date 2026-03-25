@@ -151,6 +151,49 @@ func TestParser_WorkflowWithoutContainerBlock(t *testing.T) {
 	assert.Empty(t, wf.Config["container.image"])
 }
 
+func TestParser_ContainerBlockWithID(t *testing.T) {
+	input := `workflow "dev" {
+  container {
+    id = "dev-env"
+    image = "myimage:latest"
+    memory = "4g"
+  }
+
+  step code {
+    prompt = "write code"
+    results = [success]
+  }
+
+  code:success -> done
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+	assert.Equal(t, "dev-env", wf.Config["container.id"])
+	assert.Equal(t, "myimage:latest", wf.Config["container.image"])
+	assert.Equal(t, "4g", wf.Config["container.memory"])
+}
+
+func TestParser_ContainerBlockIDOnly(t *testing.T) {
+	input := `workflow "test" {
+  container {
+    id = "dev-env"
+  }
+
+  step code {
+    prompt = "write code"
+    results = [success]
+  }
+
+  code:success -> done
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+	assert.Equal(t, "dev-env", wf.Config["container.id"])
+	assert.Empty(t, wf.Config["container.image"])
+}
+
 func TestParser_InfersTypeFromContent(t *testing.T) {
 	input := `workflow "infer" {
   step build {

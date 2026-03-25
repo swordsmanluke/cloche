@@ -93,6 +93,8 @@ func validateProject(projectDir, workflowFilter string) []string {
 	if workflowFilter == "" {
 		crossErrs := validateCrossFile(projectDir, workflows)
 		errs = append(errs, crossErrs...)
+		containerErrs := validateCrossContainerIDs(workflows)
+		errs = append(errs, containerErrs...)
 	}
 
 	return errs
@@ -340,6 +342,102 @@ func extractScriptRef(val string) string {
 		}
 	}
 	return ""
+}
+
+// validateCrossContainerIDs checks that container workflows sharing the same container id
+// have consistent configurations. Exactly one of the following must hold for any group:
+//
+//	(a) all blocks share the exact same config
+//	(b) one has full config and the others only declare id (or use the implicit default)
+//	(c) all only declare id (no container config beyond the id field)
+func validateCrossContainerIDs(workflows map[string]*workflowFileInfo) []string {
+	type wfContainerInfo struct {
+		wfName    string
+		file      string
+		config    map[string]string // container.* keys except container.id
+		hasConfig bool              // true if any container config key beyond id
+	}
+
+	// Group container workflows by their effective container id.
+	groups := make(map[string][]*wfContainerInfo)
+	for _, wfi := range workflows {
+		wf := wfi.workflow
+		if wf.Location != domain.LocationContainer {
+			continue
+		}
+
+		containerID := wf.ContainerID()
+
+		cfg := make(map[string]string)
+		for k, v := range wf.Config {
+			if k == "container.id" || k == "_location_block" {
+				continue
+			}
+			if strings.HasPrefix(k, "container.") {
+				cfg[k] = v
+			}
+		}
+
+		groups[containerID] = append(groups[containerID], &wfContainerInfo{
+			wfName:    wf.Name,
+			file:      wfi.file,
+			config:    cfg,
+			hasConfig: len(cfg) > 0,
+		})
+	}
+
+	// Sort container ids for deterministic output.
+	containerIDs := make([]string, 0, len(groups))
+	for id := range groups {
+		containerIDs = append(containerIDs, id)
+	}
+	sort.Strings(containerIDs)
+
+	var errs []string
+	for _, containerID := range containerIDs {
+		infos := groups[containerID]
+		if len(infos) <= 1 {
+			continue
+		}
+
+		// Collect workflows that have full config (beyond just declaring an id).
+		var withConfig []*wfContainerInfo
+		for _, info := range infos {
+			if info.hasConfig {
+				withConfig = append(withConfig, info)
+			}
+		}
+
+		// Cases (b) and (c): at most one workflow has full config.
+		if len(withConfig) <= 1 {
+			continue
+		}
+
+		// Case (a): multiple have full config — all must be identical.
+		first := withConfig[0]
+		for _, other := range withConfig[1:] {
+			if !containerConfigsEqual(first.config, other.config) {
+				errs = append(errs, fmt.Sprintf(
+					"%s: workflow %q: container id %q: config conflicts with workflow %q in %s",
+					other.file, other.wfName, containerID, first.wfName, first.file))
+			}
+		}
+	}
+
+	sort.Strings(errs)
+	return errs
+}
+
+func containerConfigsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 // validateCrossFile checks that workflows referenced in config exist as files and vice versa.

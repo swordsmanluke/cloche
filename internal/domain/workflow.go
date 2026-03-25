@@ -140,6 +140,11 @@ type Agent struct {
 	Args    string
 }
 
+// DefaultContainerID is the implicit container id for container workflows that do not
+// specify an explicit id. All container workflows using the default share one container
+// per attempt.
+const DefaultContainerID = "_default"
+
 type Workflow struct {
 	Name      string
 	Location  WorkflowLocation  // host or container
@@ -149,6 +154,20 @@ type Workflow struct {
 	Collects  []Collect
 	EntryStep string
 	Config    map[string]string // workflow-level config (e.g. "container.image")
+}
+
+// ContainerID returns the container id for this workflow.
+// For host workflows this returns an empty string.
+// For container workflows it returns the explicit id from the container block,
+// or DefaultContainerID when no id is set.
+func (w *Workflow) ContainerID() string {
+	if w.Location == LocationHost {
+		return ""
+	}
+	if id, ok := w.Config["container.id"]; ok && id != "" {
+		return id
+	}
+	return DefaultContainerID
 }
 
 func (w *Workflow) Validate() error {

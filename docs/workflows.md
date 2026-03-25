@@ -239,7 +239,7 @@ workflow "develop" {
 }
 ```
 
-Supported keys: `image`, `agent_command`, `agent_args`, `network_allow`.
+Supported keys: `id`, `image`, `agent_command`, `agent_args`, `network_allow`.
 
 **`host {}`** — Declares a workflow as a host workflow. Can appear in any `.cloche` file.
 Sets agent defaults for agent steps running on the host machine. An empty `host {}` block
@@ -259,6 +259,48 @@ Supported keys: `agent_command`, `agent_args`.
 Step-level `agent_command` and `agent_args` override workflow-level defaults. The
 resolution order is: step-level > agent declaration > workflow-level block >
 `CLOCHE_AGENT_COMMAND` env var > default `claude`.
+
+## Container IDs
+
+Every container workflow has a **container id** that identifies which shared container it
+uses for a given run attempt. The id is set via the `id` key in the `container {}` block.
+If no `id` is declared, the workflow uses the implicit default id `_default`. All
+container workflows sharing the same id run inside the same container per attempt.
+
+```
+workflow "develop" {
+  container {
+    id    = "dev-env"
+    image = "my-project:latest"
+  }
+  ...
+}
+
+workflow "review" {
+  container {
+    id = "dev-env"   // shares the same container as "develop"
+  }
+  ...
+}
+```
+
+### Cross-Workflow Validation
+
+`cloche validate` enforces that all workflows sharing a container id have consistent
+configuration. Exactly one of the following must hold for any group of workflows with
+the same id:
+
+**(a) All have full config and it is identical** — every workflow in the group provides
+the same set of container config keys with the same values.
+
+**(b) One has full config, others declare only `id`** — exactly one workflow provides
+the image and agent settings; the rest reference the id with no other config.
+
+**(c) All declare only `id`** — none of the workflows provide any container config
+beyond the id field itself.
+
+Any other combination (e.g. two workflows sharing an id with different `image` values)
+is a validation error.
 
 ## Host Workflow Example
 

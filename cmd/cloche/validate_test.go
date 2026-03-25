@@ -392,3 +392,223 @@ func TestValidateProject_NoConfigFile(t *testing.T) {
 		t.Errorf("expected no errors without config.toml, got: %v", errs)
 	}
 }
+
+// --- Cross-container ID validation tests ---
+
+func TestValidateProject_ContainerID_MatchingConfig(t *testing.T) {
+	// Case (a): two workflows share the same container id with identical configs — valid.
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow "dev" {
+  container {
+    id = "shared"
+    image = "myimage:latest"
+  }
+  step code {
+    run = "echo a"
+    results = [success]
+  }
+  code:success -> done
+}`), 0644)
+
+	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow "test" {
+  container {
+    id = "shared"
+    image = "myimage:latest"
+  }
+  step run {
+    run = "echo b"
+    results = [success]
+  }
+  run:success -> done
+}`), 0644)
+
+	errs := validateProject(dir, "")
+	if len(errs) > 0 {
+		t.Errorf("expected no errors for matching container configs, got: %v", errs)
+	}
+}
+
+func TestValidateProject_ContainerID_OneFullOneIDOnly(t *testing.T) {
+	// Case (b): one workflow has full config, the other only declares id — valid.
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow "dev" {
+  container {
+    id = "shared"
+    image = "myimage:latest"
+  }
+  step code {
+    run = "echo a"
+    results = [success]
+  }
+  code:success -> done
+}`), 0644)
+
+	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow "test" {
+  container {
+    id = "shared"
+  }
+  step run {
+    run = "echo b"
+    results = [success]
+  }
+  run:success -> done
+}`), 0644)
+
+	errs := validateProject(dir, "")
+	if len(errs) > 0 {
+		t.Errorf("expected no errors for one full config + one id-only, got: %v", errs)
+	}
+}
+
+func TestValidateProject_ContainerID_AllIDOnly(t *testing.T) {
+	// Case (c): all workflows only declare id — valid.
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow "dev" {
+  container {
+    id = "shared"
+  }
+  step code {
+    run = "echo a"
+    results = [success]
+  }
+  code:success -> done
+}`), 0644)
+
+	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow "test" {
+  container {
+    id = "shared"
+  }
+  step run {
+    run = "echo b"
+    results = [success]
+  }
+  run:success -> done
+}`), 0644)
+
+	errs := validateProject(dir, "")
+	if len(errs) > 0 {
+		t.Errorf("expected no errors for all id-only, got: %v", errs)
+	}
+}
+
+func TestValidateProject_ContainerID_ConflictingConfig(t *testing.T) {
+	// Invalid: two workflows share the same container id with different configs.
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow "dev" {
+  container {
+    id = "shared"
+    image = "image-a:latest"
+  }
+  step code {
+    run = "echo a"
+    results = [success]
+  }
+  code:success -> done
+}`), 0644)
+
+	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow "test" {
+  container {
+    id = "shared"
+    image = "image-b:latest"
+  }
+  step run {
+    run = "echo b"
+    results = [success]
+  }
+  run:success -> done
+}`), 0644)
+
+	errs := validateProject(dir, "")
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e, "container id") && strings.Contains(e, "conflicts") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected container id conflict error, got: %v", errs)
+	}
+}
+
+func TestValidateProject_ContainerID_DefaultSharedValid(t *testing.T) {
+	// Multiple container workflows with no explicit id share _default — valid when one has config.
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow "dev" {
+  container {
+    image = "myimage:latest"
+  }
+  step code {
+    run = "echo a"
+    results = [success]
+  }
+  code:success -> done
+}`), 0644)
+
+	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow "test" {
+  step run {
+    run = "echo b"
+    results = [success]
+  }
+  run:success -> done
+}`), 0644)
+
+	errs := validateProject(dir, "")
+	if len(errs) > 0 {
+		t.Errorf("expected no errors for default container id, got: %v", errs)
+	}
+}
+
+func TestValidateProject_ContainerID_DefaultConflict(t *testing.T) {
+	// Multiple container workflows with no explicit id, conflicting configs — invalid.
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow "dev" {
+  container {
+    image = "image-a:latest"
+  }
+  step code {
+    run = "echo a"
+    results = [success]
+  }
+  code:success -> done
+}`), 0644)
+
+	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow "test" {
+  container {
+    image = "image-b:latest"
+  }
+  step run {
+    run = "echo b"
+    results = [success]
+  }
+  run:success -> done
+}`), 0644)
+
+	errs := validateProject(dir, "")
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e, "container id") && strings.Contains(e, "conflicts") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected container id conflict error for default id, got: %v", errs)
+	}
+}
