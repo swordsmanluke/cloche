@@ -2284,7 +2284,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 			tasks, _, err := host.RunListTasksWorkflow(ctx, runner, projDir)
 			return tasks, err
 		}
-		log.Printf("orchestration loop: three-phase mode enabled for %s (list-tasks + main + finalize, dedup=%s)", projectDir, dedupTimeout)
+		log.Printf("orchestration loop: two-phase mode enabled for %s (list-tasks + main, dedup=%s)", projectDir, dedupTimeout)
 	} else {
 		listTasksFn = func(ctx context.Context, projDir string) ([]host.Task, error) {
 			return []host.Task{{ID: ""}}, nil
@@ -2293,7 +2293,6 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	}
 
 	// Phase 2: main function
-	_, hasFinalize := hostWFs["finalize"]
 	mainFn := func(ctx context.Context, projDir string, taskID string, taskTitle string, attemptID string) (*host.RunResult, error) {
 		runner := &host.Runner{
 			Dispatcher:   s,
@@ -2304,40 +2303,11 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 			TaskID:       taskID,
 			TaskTitle:    taskTitle,
 			AttemptID:    attemptID,
-			SkipCleanup:  hasFinalize, // let finalize clean up
 		}
 		return runner.RunNamed(ctx, projDir, "main")
 	}
 
-	// Phase 3: finalize function (optional — only if a finalize host workflow exists)
-	var finalizeFn host.FinalizeFunc
-	if hasFinalize {
-		finalizeFn = func(ctx context.Context, projDir string, taskID string, attemptID string, mainResult *host.RunResult) (*host.RunResult, error) {
-			mainRunID := ""
-			mainOutcome := "failed"
-			if mainResult != nil {
-				mainRunID = mainResult.RunID
-				mainOutcome = string(mainResult.State)
-			}
-			runner := &host.Runner{
-				Dispatcher:   s,
-				Store:        s.store,
-				Captures:     s.captures,
-				LogBroadcast: s.logBroadcast,
-				ActivityLog:  alog,
-				TaskID:       taskID,
-				AttemptID:    attemptID,
-				ParentRunID:  mainRunID, // nest finalize under the main run in the UI
-				ExtraEnv: []string{
-					"CLOCHE_MAIN_RUN_ID=" + mainRunID,
-					"CLOCHE_MAIN_OUTCOME=" + mainOutcome,
-				},
-			}
-			return runner.RunNamed(ctx, projDir, "finalize")
-		}
-	}
-
-	loop := host.NewPhaseLoop(loopCfg, s.store, listTasksFn, mainFn, finalizeFn)
+	loop := host.NewPhaseLoop(loopCfg, s.store, listTasksFn, mainFn)
 	if s.attemptStore != nil {
 		loop.SetAttemptStore(s.attemptStore)
 	}

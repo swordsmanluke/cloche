@@ -2766,7 +2766,7 @@ func TestGroupAndSortRuns_FinalizeNestedUnderMain(t *testing.T) {
 	finalizeRun := domain.NewRun("finalize-1", "finalize")
 	finalizeRun.IsHost = true
 	finalizeRun.TaskID = "task-xyz"
-	finalizeRun.ParentRunID = "main-1" // linked to main by the finalizeFn
+	finalizeRun.ParentRunID = "main-1" // linked to main run in the UI
 	finalizeRun.StartedAt = now.Add(2 * time.Second)
 	finalizeRun.Complete(domain.RunStateSucceeded)
 

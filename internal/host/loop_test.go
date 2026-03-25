@@ -395,7 +395,7 @@ func TestLoop_NoTaskAssigner_EmptyTaskID(t *testing.T) {
 func TestPhaseLoop_BasicFlow(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 
-	var mainCalls, finalizeCalls atomic.Int32
+	var mainCalls atomic.Int32
 	var receivedTaskIDs []string
 	var mu sync.Mutex
 
@@ -415,16 +415,11 @@ func TestPhaseLoop_BasicFlow(t *testing.T) {
 		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
 	}
 
-	finalizeFn := func(ctx context.Context, projectDir string, taskID string, attemptID string, mainResult *RunResult) (*RunResult, error) {
-		finalizeCalls.Add(1)
-		return &RunResult{State: domain.RunStateSucceeded}, nil
-	}
-
 	loop := NewPhaseLoop(LoopConfig{
 		ProjectDir:    "/tmp/test-project",
 		MaxConcurrent: 1,
 		DedupTimeout:  2 * time.Second,
-	}, store, listTasksFn, mainFn, finalizeFn)
+	}, store, listTasksFn, mainFn)
 
 	loop.Start()
 	time.Sleep(300 * time.Millisecond)
@@ -435,9 +430,6 @@ func TestPhaseLoop_BasicFlow(t *testing.T) {
 	defer mu.Unlock()
 	assert.GreaterOrEqual(t, int(mainCalls.Load()), 1)
 	assert.Equal(t, "task-1", receivedTaskIDs[0])
-
-	// Finalize should have run for each main completion.
-	assert.Equal(t, mainCalls.Load(), finalizeCalls.Load())
 }
 
 func TestPhaseLoop_SkipsClosedTasks(t *testing.T) {
@@ -460,7 +452,7 @@ func TestPhaseLoop_SkipsClosedTasks(t *testing.T) {
 	loop := NewPhaseLoop(LoopConfig{
 		ProjectDir:    "/tmp/test-project",
 		MaxConcurrent: 1,
-	}, store, listTasksFn, mainFn, nil)
+	}, store, listTasksFn, mainFn)
 
 	loop.Start()
 	time.Sleep(200 * time.Millisecond)
@@ -468,153 +460,6 @@ func TestPhaseLoop_SkipsClosedTasks(t *testing.T) {
 
 	// No open tasks → no main runs.
 	assert.Equal(t, int32(0), mainCalls.Load())
-}
-
-func TestPhaseLoop_FinalizeRunsOnFailure(t *testing.T) {
-	store := &fakeStore{runs: map[string]*domain.Run{}}
-
-	var finalizeOutcome string
-	var mu sync.Mutex
-
-	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
-		return []Task{{ID: "task-1", Status: "open"}}, nil
-	}
-
-	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
-		return &RunResult{RunID: "run-1", State: domain.RunStateFailed}, nil
-	}
-
-	finalizeFn := func(ctx context.Context, projectDir string, taskID string, attemptID string, mainResult *RunResult) (*RunResult, error) {
-		mu.Lock()
-		finalizeOutcome = string(mainResult.State)
-		mu.Unlock()
-		return &RunResult{State: domain.RunStateSucceeded}, nil
-	}
-
-	loop := NewPhaseLoop(LoopConfig{
-		ProjectDir:    "/tmp/test-project",
-		MaxConcurrent: 1,
-		DedupTimeout:  2 * time.Second,
-	}, store, listTasksFn, mainFn, finalizeFn)
-
-	loop.Start()
-	time.Sleep(300 * time.Millisecond)
-	loop.Stop()
-
-	// Finalize should have received the failed state.
-	mu.Lock()
-	defer mu.Unlock()
-	assert.Equal(t, "failed", finalizeOutcome)
-}
-
-func TestPhaseLoop_FinalizeFailureOverridesMainSuccess(t *testing.T) {
-	store := &fakeStore{runs: map[string]*domain.Run{}}
-
-	var completionStates []domain.RunState
-	var mu sync.Mutex
-
-	listCallCount := 0
-	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
-		listCallCount++
-		if listCallCount <= 1 {
-			return []Task{{ID: "task-1", Status: "open"}}, nil
-		}
-		return nil, nil // no more tasks after first round
-	}
-
-	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
-		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
-	}
-
-	finalizeFn := func(ctx context.Context, projectDir string, taskID string, attemptID string, mainResult *RunResult) (*RunResult, error) {
-		// Finalize fails (e.g., merge step failed).
-		return &RunResult{State: domain.RunStateFailed}, nil
-	}
-
-	loop := NewPhaseLoop(LoopConfig{
-		ProjectDir:    "/tmp/test-project",
-		MaxConcurrent: 1,
-		DedupTimeout:  2 * time.Second,
-	}, store, listTasksFn, mainFn, finalizeFn)
-
-	// Intercept completions by observing backoff behavior:
-	// If finalize failure is correctly reported, the loop should back off
-	// (not immediately try to fill slots).
-	loop.Start()
-	time.Sleep(300 * time.Millisecond)
-	loop.Stop()
-
-	// Verify through a more direct test: run the phases manually and check
-	// that the overall state reflects the finalize failure.
-	_ = completionStates
-	_ = mu
-
-	// The key assertion is that main succeeded but finalize failed,
-	// so WorseState(succeeded, failed) = failed.
-	got := domain.WorseState(domain.RunStateSucceeded, domain.RunStateFailed)
-	assert.Equal(t, domain.RunStateFailed, got)
-}
-
-func TestPhaseLoop_FinalizeErrorOverridesMainSuccess(t *testing.T) {
-	store := &fakeStore{runs: map[string]*domain.Run{}}
-
-	var mainCalls atomic.Int32
-
-	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
-		return []Task{{ID: "task-1", Status: "open"}}, nil
-	}
-
-	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
-		mainCalls.Add(1)
-		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
-	}
-
-	finalizeFn := func(ctx context.Context, projectDir string, taskID string, attemptID string, mainResult *RunResult) (*RunResult, error) {
-		// Finalize returns an error (infra failure).
-		return nil, fmt.Errorf("finalize infra error")
-	}
-
-	loop := NewPhaseLoop(LoopConfig{
-		ProjectDir:    "/tmp/test-project",
-		MaxConcurrent: 1,
-		DedupTimeout:  2 * time.Second,
-	}, store, listTasksFn, mainFn, finalizeFn)
-
-	loop.Start()
-	time.Sleep(300 * time.Millisecond)
-	loop.Stop()
-
-	// Main should have run at least once.
-	assert.GreaterOrEqual(t, int(mainCalls.Load()), 1)
-}
-
-func TestPhaseLoop_NoFinalize(t *testing.T) {
-	store := &fakeStore{runs: map[string]*domain.Run{}}
-
-	var mainCalls atomic.Int32
-
-	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
-		return []Task{{ID: "task-1", Status: "open"}}, nil
-	}
-
-	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
-		mainCalls.Add(1)
-		time.Sleep(20 * time.Millisecond)
-		return &RunResult{State: domain.RunStateSucceeded}, nil
-	}
-
-	// nil finalize — should be skipped without error
-	loop := NewPhaseLoop(LoopConfig{
-		ProjectDir:    "/tmp/test-project",
-		MaxConcurrent: 1,
-		DedupTimeout:  2 * time.Second,
-	}, store, listTasksFn, mainFn, nil)
-
-	loop.Start()
-	time.Sleep(200 * time.Millisecond)
-	loop.Stop()
-
-	assert.GreaterOrEqual(t, int(mainCalls.Load()), 1)
 }
 
 func TestPhaseLoop_DedupFiltersOpenTasks(t *testing.T) {
@@ -639,7 +484,7 @@ func TestPhaseLoop_DedupFiltersOpenTasks(t *testing.T) {
 		ProjectDir:    "/tmp/test-project",
 		MaxConcurrent: 1,
 		DedupTimeout:  2 * time.Second,
-	}, store, listTasksFn, mainFn, nil)
+	}, store, listTasksFn, mainFn)
 
 	loop.Start()
 	time.Sleep(200 * time.Millisecond)
@@ -691,7 +536,7 @@ func TestLoop_GetTaskSnapshot_ReturnsLastTasks(t *testing.T) {
 		ProjectDir:    "/tmp/test-project",
 		MaxConcurrent: 1,
 		DedupTimeout:  2 * time.Second,
-	}, store, listTasksFn, mainFn, nil)
+	}, store, listTasksFn, mainFn)
 
 	loop.Start()
 	time.Sleep(300 * time.Millisecond)
@@ -767,7 +612,7 @@ func TestLoop_GetTaskSnapshot_DedupExpired(t *testing.T) {
 		ProjectDir:    "/tmp/test-project",
 		MaxConcurrent: 1,
 		DedupTimeout:  10 * time.Millisecond, // very short dedup
-	}, store, listTasksFn, mainFn, nil)
+	}, store, listTasksFn, mainFn)
 
 	loop.Start()
 	time.Sleep(200 * time.Millisecond)
@@ -919,7 +764,7 @@ func TestPhaseLoop_StopOnError_HaltsOnFailure(t *testing.T) {
 		MaxConcurrent: 1,
 		DedupTimeout:  2 * time.Second,
 		StopOnError:   true,
-	}, store, listTasksFn, mainFn, nil)
+	}, store, listTasksFn, mainFn)
 
 	loop.Start()
 	time.Sleep(300 * time.Millisecond)
@@ -1087,7 +932,7 @@ func TestPhaseLoop_ConsecutiveFailures_HaltsAfterThreshold(t *testing.T) {
 		MaxConcurrent:          1,
 		DedupTimeout:           50 * time.Millisecond,
 		MaxConsecutiveFailures: 1,
-	}, store, listTasksFn, mainFn, nil)
+	}, store, listTasksFn, mainFn)
 
 	loop.Start()
 	time.Sleep(300 * time.Millisecond)
@@ -1159,7 +1004,7 @@ func TestPhaseLoop_CreatesAttemptOnTaskPick(t *testing.T) {
 		ProjectDir:    "/tmp/test-project",
 		MaxConcurrent: 1,
 		DedupTimeout:  2 * time.Second,
-	}, store, listTasksFn, mainFn, nil)
+	}, store, listTasksFn, mainFn)
 	loop.SetAttemptStore(attemptStore)
 	loop.SetTaskStore(taskStore)
 
@@ -1205,7 +1050,7 @@ func TestPhaseLoop_AttemptCompletedAsFailed(t *testing.T) {
 		ProjectDir:    "/tmp/test-project",
 		MaxConcurrent: 1,
 		DedupTimeout:  2 * time.Second,
-	}, store, listTasksFn, mainFn, nil)
+	}, store, listTasksFn, mainFn)
 	loop.SetAttemptStore(attemptStore)
 	loop.SetTaskStore(taskStore)
 
@@ -1216,49 +1061,6 @@ func TestPhaseLoop_AttemptCompletedAsFailed(t *testing.T) {
 	attempts := attemptStore.all()
 	require.Len(t, attempts, 1)
 	assert.Equal(t, domain.AttemptResultFailed, attempts[0].Result)
-}
-
-func TestPhaseLoop_AttemptIDPassedToFinalize(t *testing.T) {
-	store := &fakeStore{runs: map[string]*domain.Run{}}
-	attemptStore := newFakeAttemptStore()
-	taskStore := newFakeTaskStore()
-
-	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
-		return []Task{{ID: "task-1", Status: "open"}}, nil
-	}
-
-	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
-		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
-	}
-
-	var finalizeAttemptID string
-	var mu sync.Mutex
-
-	finalizeFn := func(ctx context.Context, projectDir string, taskID string, attemptID string, mainResult *RunResult) (*RunResult, error) {
-		mu.Lock()
-		finalizeAttemptID = attemptID
-		mu.Unlock()
-		return &RunResult{State: domain.RunStateSucceeded}, nil
-	}
-
-	loop := NewPhaseLoop(LoopConfig{
-		ProjectDir:    "/tmp/test-project",
-		MaxConcurrent: 1,
-		DedupTimeout:  2 * time.Second,
-	}, store, listTasksFn, mainFn, finalizeFn)
-	loop.SetAttemptStore(attemptStore)
-	loop.SetTaskStore(taskStore)
-
-	loop.Start()
-	time.Sleep(300 * time.Millisecond)
-	loop.Stop()
-
-	mu.Lock()
-	aid := finalizeAttemptID
-	mu.Unlock()
-
-	assert.NotEmpty(t, aid, "attempt ID should be passed to finalizeFn")
-	// mainFn and finalizeFn should receive the same attempt ID.
 }
 
 func TestLegacyLoop_CreatesAttemptWhenTaskAssignerSet(t *testing.T) {
@@ -1446,7 +1248,7 @@ func TestPhaseLoop_AttemptCompletedWhenMainReturnsNilResult(t *testing.T) {
 		ProjectDir:    "/tmp/test-project",
 		MaxConcurrent: 1,
 		DedupTimeout:  2 * time.Second,
-	}, store, listTasksFn, mainFn, nil)
+	}, store, listTasksFn, mainFn)
 	loop.SetAttemptStore(attemptStore)
 	loop.SetTaskStore(taskStore)
 
@@ -1490,7 +1292,7 @@ func TestPhaseLoop_AttemptCompletedOnRetry(t *testing.T) {
 		MaxConcurrent: 1,
 		DedupTimeout:  50 * time.Millisecond, // short so retry happens after Resume
 		StopOnError:   true,                  // halts after first failure, allowing Resume to wake it
-	}, store, listTasksFn, mainFn, nil)
+	}, store, listTasksFn, mainFn)
 	loop.SetAttemptStore(attemptStore)
 	loop.SetTaskStore(taskStore)
 

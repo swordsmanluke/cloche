@@ -44,10 +44,6 @@ type ListTasksFunc func(ctx context.Context, projectDir string) ([]Task, error)
 // attemptID is the ID of the Attempt record created for this loop iteration.
 type MainFunc func(ctx context.Context, projectDir string, taskID string, taskTitle string, attemptID string) (*RunResult, error)
 
-// FinalizeFunc is called after the main workflow completes (both success and
-// failure). It receives the task ID, attempt ID, and the outcome of the main phase.
-type FinalizeFunc func(ctx context.Context, projectDir string, taskID string, attemptID string, mainResult *RunResult) (*RunResult, error)
-
 // RunFunc is the legacy function signature for launching a host workflow run.
 // When taskID is non-empty, the runner should propagate it as CLOCHE_TASK_ID.
 // attemptID is the ID of the Attempt record for this run (may be empty).
@@ -70,16 +66,14 @@ type TaskStateEntry struct {
 // Loop manages a continuous orchestration loop for a project, keeping up to
 // MaxConcurrent host workflow runs active at all times when work is available.
 //
-// The loop uses a three-phase approach: list-tasks discovers available work,
-// main executes the work for each task, and finalize runs cleanup after each
-// main run (on both success and failure). When no list-tasks function is
+// The loop uses a two-phase approach: list-tasks discovers available work and
+// main executes the work for each task. When no list-tasks function is
 // configured (e.g. via NewLoop without a task assigner), an untracked sentinel
 // task is used so main runs continuously.
 type Loop struct {
 	config       LoopConfig
 	listTasks    ListTasksFunc
 	mainFn       MainFunc
-	finalizeFn   FinalizeFunc // optional; skipped if nil
 	store        ports.RunStore
 	attemptStore ports.AttemptStore   // optional; creates Attempt records when set
 	taskStore    ports.TaskStore      // optional; ensures Task records exist when set
@@ -136,10 +130,9 @@ func NewLoop(cfg LoopConfig, store ports.RunStore, runFn RunFunc) *Loop {
 	return l
 }
 
-// NewPhaseLoop creates a three-phase orchestration loop. The listTasksFn
-// discovers available tasks, mainFn executes the main workflow for a task,
-// and finalizeFn (optional) runs cleanup after main completes.
-func NewPhaseLoop(cfg LoopConfig, store ports.RunStore, listTasksFn ListTasksFunc, mainFn MainFunc, finalizeFn FinalizeFunc) *Loop {
+// NewPhaseLoop creates a two-phase orchestration loop. The listTasksFn
+// discovers available tasks and mainFn executes the main workflow for each task.
+func NewPhaseLoop(cfg LoopConfig, store ports.RunStore, listTasksFn ListTasksFunc, mainFn MainFunc) *Loop {
 	if cfg.MaxConcurrent <= 0 {
 		cfg.MaxConcurrent = defaultMaxConcurrent
 	}
@@ -150,14 +143,13 @@ func NewPhaseLoop(cfg LoopConfig, store ports.RunStore, listTasksFn ListTasksFun
 		cfg.MaxConsecutiveFailures = defaultMaxConsecutiveFailures
 	}
 	return &Loop{
-		config:     cfg,
-		listTasks:  listTasksFn,
-		mainFn:     mainFn,
-		finalizeFn: finalizeFn,
-		store:      store,
-		resumeCh:   make(chan struct{}, 1),
-		dedup:      make(map[string]time.Time),
-		taskRuns:   make(map[string]TaskAssignment),
+		config:    cfg,
+		listTasks: listTasksFn,
+		mainFn:    mainFn,
+		store:     store,
+		resumeCh:  make(chan struct{}, 1),
+		dedup:     make(map[string]time.Time),
+		taskRuns:  make(map[string]TaskAssignment),
 	}
 }
 
@@ -289,10 +281,9 @@ func (l *Loop) run() {
 	l.runPhased()
 }
 
-// runPhased implements the three-phase orchestration loop:
+// runPhased implements the two-phase orchestration loop:
 // 1. list-tasks → discover available work
 // 2. main → execute work for each open task (up to MaxConcurrent)
-// 3. finalize → cleanup after main completes (on both success and failure)
 func (l *Loop) runPhased() {
 	type result struct {
 		state  domain.RunState
@@ -387,19 +378,7 @@ func (l *Loop) runPhased() {
 					}
 				}
 
-				// Phase 3: finalize — cleanup (runs on both success and failure).
-				// The overall state is the worst of main and finalize outcomes.
 				overallState = mainResult.State
-				if l.finalizeFn != nil {
-					finalizeResult, finalizeErr := l.finalizeFn(context.Background(), l.config.ProjectDir, tid, aid, mainResult)
-					if finalizeErr != nil {
-						log.Printf("orchestration loop: finalize failed for %s task %s: %v", l.config.ProjectDir, tid, finalizeErr)
-						overallState = domain.WorseState(overallState, domain.RunStateFailed)
-					} else if finalizeResult != nil {
-						overallState = domain.WorseState(overallState, finalizeResult.State)
-					}
-				}
-				// defer handles completeAttempt and completions
 			}()
 		}
 

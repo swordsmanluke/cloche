@@ -34,7 +34,6 @@ type Runner struct {
 	ParentRunID   string                   // optional parent run ID (links this run to another in the UI)
 	ExtraEnv       []string                 // additional KEY=VALUE env vars passed to all steps
 	SkipRunRecord  bool                     // when true, don't persist a run record to the store
-	SkipCleanup    bool                     // when true, don't clean up .cloche/runs/<task-id>/ on success
 }
 
 // RunResult contains the outcome of a host workflow execution.
@@ -223,8 +222,7 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 
 	// Clean up ephemeral runtime state on success.
 	// On failure, keep it so resume can restore ExtraEnv and context.
-	// SkipCleanup is set for the main phase when finalize will follow.
-	if r.TaskID != "" && result.State == domain.RunStateSucceeded && !r.SkipCleanup {
+	if r.TaskID != "" && result.State == domain.RunStateSucceeded {
 		cleanupRunContext(context.Background(), r.Store, projectDir, r.TaskID, r.AttemptID)
 	}
 
