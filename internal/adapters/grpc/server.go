@@ -43,6 +43,7 @@ type ClocheServer struct {
 	attemptStore  ports.AttemptStore  // optional; creates Attempt records
 	activityStore ports.ActivityStore // optional; backs per-project activity loggers
 	container     ports.ContainerRuntime
+	pool          *docker.ContainerPool // optional; manages agent sessions for DaemonExecutor
 	defaultImage  string
 	evolution     *evolution.Trigger
 	logBroadcast  *logstream.Broadcaster
@@ -153,6 +154,79 @@ func (s *ClocheServer) SetLogBroadcaster(b *logstream.Broadcaster) {
 // SetShutdownFunc sets the callback invoked when the Shutdown RPC is called.
 func (s *ClocheServer) SetShutdownFunc(fn func()) {
 	s.shutdownFn = fn
+}
+
+// SetContainerPool attaches a ContainerPool so the AgentSession handler can
+// register agent streams for step dispatch by the DaemonExecutor.
+func (s *ClocheServer) SetContainerPool(pool *docker.ContainerPool) {
+	s.pool = pool
+}
+
+// AgentSession handles the bidirectional gRPC stream between the daemon and an
+// in-container agent. The agent sends AgentReady first, then receives
+// ExecuteStep commands and sends back StepResult messages.
+func (s *ClocheServer) AgentSession(stream pb.ClocheService_AgentSessionServer) error {
+	// First message must be AgentReady.
+	msg, err := stream.Recv()
+	if err != nil {
+		return fmt.Errorf("receiving AgentReady: %w", err)
+	}
+	ready := msg.GetReady()
+	if ready == nil {
+		return fmt.Errorf("first AgentSession message must be AgentReady")
+	}
+
+	containerID := ready.RunId // RunId carries the container/run identifier
+	log.Printf("agent session: agent ready (containerID=%s attemptID=%s)", containerID, ready.AttemptId)
+
+	if s.pool == nil {
+		return fmt.Errorf("no container pool configured on server")
+	}
+
+	// Protect concurrent sends over the stream.
+	var sendMu sync.Mutex
+	sendFn := func(dmsg *pb.DaemonMessage) error {
+		sendMu.Lock()
+		defer sendMu.Unlock()
+		return stream.Send(dmsg)
+	}
+
+	// Register the send function with the pool and unblock SessionFor.
+	s.pool.NotifyReadyWithStream(containerID, sendFn)
+
+	// Loop receiving messages from the agent.
+	for {
+		msg, err := stream.Recv()
+		if err != nil {
+			// Stream closed: normal shutdown or network error.
+			log.Printf("agent session: stream closed (containerID=%s): %v", containerID, err)
+			return nil
+		}
+
+		switch payload := msg.Payload.(type) {
+		case *pb.AgentMessage_StepResult:
+			result := payload.StepResult
+			log.Printf("agent session: step result (containerID=%s requestID=%s result=%s)",
+				containerID, result.RequestId, result.Result)
+			s.pool.DeliverResult(containerID, result)
+
+		case *pb.AgentMessage_StepLog:
+			if s.logBroadcast != nil && payload.StepLog != nil {
+				// TODO: associate log line with the correct run ID
+				_ = payload.StepLog
+			}
+
+		case *pb.AgentMessage_StepStarted:
+			// Informational; the engine tracks step state via StepResult.
+
+		case *pb.AgentMessage_Ready:
+			// Duplicate AgentReady: ignore.
+			log.Printf("agent session: unexpected duplicate AgentReady (containerID=%s)", containerID)
+
+		default:
+			// Unknown message type: ignore for forward compatibility.
+		}
+	}
 }
 
 func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
@@ -2277,7 +2351,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	// Phase 2: main function
 	mainFn := func(ctx context.Context, projDir string, taskID string, taskTitle string, attemptID string) (*host.RunResult, error) {
 		runner := &host.Runner{
-				Store:        s.store,
+			Store:        s.store,
 			Captures:     s.captures,
 			LogBroadcast: s.logBroadcast,
 			ActivityLog:  alog,

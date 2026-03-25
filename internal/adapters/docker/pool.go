@@ -87,24 +87,20 @@ func (cs *ContainerSession) ExecuteStep(ctx context.Context, step *domain.Step) 
 	}
 }
 
-// NotifyReadyWithStream registers the gRPC send function on the session after
-// the in-container agent sends AgentReady. This enables ExecuteStep to dispatch
-// commands to the agent.
-func (cs *ContainerSession) NotifyReadyWithStream(send func(*pb.DaemonMessage) error) {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-	cs.send = send
-}
-
-// DeliverResult routes an incoming StepResult from the agent to the pending
-// request channel, unblocking the corresponding ExecuteStep call.
-func (cs *ContainerSession) DeliverResult(result *pb.StepResult) {
+// deliverResult routes a StepResult to the pending channel for its request ID.
+func (cs *ContainerSession) deliverResult(result *pb.StepResult) {
 	cs.mu.Lock()
 	ch, ok := cs.pending[result.RequestId]
+	if ok {
+		delete(cs.pending, result.RequestId)
+	}
 	cs.mu.Unlock()
 
 	if ok {
-		ch <- result
+		select {
+		case ch <- result:
+		default:
+		}
 	}
 }
 
@@ -145,9 +141,9 @@ func newPoolEntry() *poolEntry {
 //
 // SessionFor returns the existing session for an attempt or starts a new
 // container and blocks until the agent inside signals AgentReady (via
-// NotifyReady). CleanupAttempt stops and removes all containers belonging to
-// an attempt unless the containers should be kept (failure, --keep-container,
-// or abort).
+// NotifyReadyWithStream). CleanupAttempt stops and removes all containers
+// belonging to an attempt unless the containers should be kept (failure,
+// --keep-container, or abort).
 type ContainerPool struct {
 	mu      sync.Mutex
 	runtime ports.ContainerRuntime
@@ -168,8 +164,8 @@ func NewContainerPool(runtime ports.ContainerRuntime) *ContainerPool {
 
 // SessionFor returns the existing container session for the attempt, or starts
 // a new container using cfg and blocks until the in-container agent sends
-// AgentReady (signalled via NotifyReady). Subsequent calls with the same
-// attemptID return the existing session without starting another container.
+// AgentReady (signalled via NotifyReadyWithStream). Subsequent calls with the
+// same attemptID return the existing session without starting another container.
 func (p *ContainerPool) SessionFor(ctx context.Context, attemptID string, cfg ports.ContainerConfig) (*ContainerSession, error) {
 	if attemptID == "" {
 		return nil, fmt.Errorf("attemptID must not be empty")
@@ -217,8 +213,42 @@ func (p *ContainerPool) SessionFor(ctx context.Context, attemptID string, cfg po
 	}
 }
 
-// NotifyReady signals that the agent running in containerID has sent AgentReady.
-// This unblocks any SessionFor call waiting on that attempt.
+// NotifyReadyWithStream signals that the agent running in containerID has sent
+// AgentReady. It registers the send function on the session so steps can be
+// dispatched to the agent, then unblocks any SessionFor call waiting on the
+// attempt. The send function must be safe to call concurrently.
+func (p *ContainerPool) NotifyReadyWithStream(containerID string, send func(*pb.DaemonMessage) error) {
+	p.mu.Lock()
+	attemptID := p.containerAttempt[containerID]
+	var entry *poolEntry
+	if attemptID != "" {
+		entry = p.attempts[attemptID]
+	}
+	// Register the send function on all sessions for this attempt.
+	if entry != nil {
+		for _, sess := range entry.sessions {
+			sess.mu.Lock()
+			sess.send = send
+			if sess.pending == nil {
+				sess.pending = make(map[string]chan *pb.StepResult)
+			}
+			sess.mu.Unlock()
+		}
+	}
+	p.mu.Unlock()
+
+	if entry == nil {
+		return
+	}
+	entry.readyOnce.Do(func() {
+		close(entry.readyCh)
+	})
+}
+
+// NotifyReady signals that the agent running in containerID has sent AgentReady,
+// without registering a send function. This unblocks any SessionFor call waiting
+// on that attempt. Prefer NotifyReadyWithStream when a gRPC send function is
+// available.
 func (p *ContainerPool) NotifyReady(containerID string) {
 	p.mu.Lock()
 	attemptID := p.containerAttempt[containerID]
@@ -234,6 +264,23 @@ func (p *ContainerPool) NotifyReady(containerID string) {
 	entry.readyOnce.Do(func() {
 		close(entry.readyCh)
 	})
+}
+
+// DeliverResult routes a StepResult to the session that issued the matching
+// ExecuteStep request. The containerID is used to find the attempt and session.
+func (p *ContainerPool) DeliverResult(containerID string, result *pb.StepResult) {
+	p.mu.Lock()
+	attemptID := p.containerAttempt[containerID]
+	var entry *poolEntry
+	if attemptID != "" {
+		entry = p.attempts[attemptID]
+	}
+	p.mu.Unlock()
+
+	if entry == nil || len(entry.sessions) == 0 {
+		return
+	}
+	entry.sessions[0].deliverResult(result)
 }
 
 // CleanupAttempt stops and removes all containers associated with attemptID.

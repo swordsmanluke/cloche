@@ -313,23 +313,34 @@ type ContainerPool struct {
     containerAttempt map[string]string      // key: containerID → attemptID
 }
 
-// ContainerSession holds the container ID for a running agent container.
+// ContainerSession holds the container ID and the gRPC send function for
+// dispatching steps to the in-container agent.
 type ContainerSession struct {
     ContainerID string
+    // send, pending, mu — for step dispatch via ExecuteStep
 }
 
 func (p *ContainerPool) SessionFor(ctx context.Context, attemptID string, cfg ports.ContainerConfig) (*ContainerSession, error)
-func (p *ContainerPool) NotifyReady(containerID string)
+func (p *ContainerPool) NotifyReadyWithStream(containerID string, send func(*pb.DaemonMessage) error)
+func (p *ContainerPool) NotifyReady(containerID string)  // fallback; prefer NotifyReadyWithStream
+func (p *ContainerPool) DeliverResult(containerID string, result *pb.StepResult)
 func (p *ContainerPool) CleanupAttempt(ctx context.Context, attemptID string, keepContainer, runFailed, aborted bool) error
 ```
 
 `SessionFor` returns an existing session if the container is already running, or
 creates a new container and blocks until the in-container agent sends `AgentReady`
-(signalled via `NotifyReady`). Subsequent calls with the same `attemptID` return
-the existing session without starting another container.
+(signalled via `NotifyReadyWithStream`). Subsequent calls with the same `attemptID`
+return the existing session without starting another container.
 
-`NotifyReady` is called by the gRPC server when an agent sends `AgentReady` over
-its session stream. It unblocks any `SessionFor` waiting on that container.
+`NotifyReadyWithStream` is called by the `AgentSession` gRPC handler when an agent
+sends `AgentReady`. It registers the stream's send function on the session (enabling
+`ExecuteStep` dispatch) and unblocks any `SessionFor` waiting on that container.
+`NotifyReady` is a fallback that unblocks `SessionFor` without registering a send
+function.
+
+`DeliverResult` routes an incoming `StepResult` (identified by `containerID`) to
+the pending channel of the session that issued the matching `ExecuteStep`, unblocking
+that `ExecuteStep` call.
 
 `CleanupAttempt` is called when an attempt ends. Containers are stopped and
 removed unless any of the following is true: `keepContainer` (the `--keep-container`
