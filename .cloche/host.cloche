@@ -35,6 +35,16 @@ workflow "main" {
     results = [success, fail]
   }
 
+  step bump-version {
+    prompt  = file(".cloche/prompts/bump-version.md")
+    results = [success, fail]
+  }
+
+  step close-task {
+    run     = "bash .cloche/scripts/close-task.sh"
+    results = [success, fail]
+  }
+
   step cleanup {
     run     = "bash .cloche/scripts/cleanup-run.sh"
     results = [success, fail]
@@ -46,8 +56,12 @@ workflow "main" {
   prepare-prompt:fail    -> abort
   develop:success        -> merge
   develop:fail           -> abort
-  merge:success          -> cleanup
+  merge:success          -> bump-version
   merge:fail             -> abort
+  bump-version:success   -> close-task
+  bump-version:fail      -> close-task
+  close-task:success     -> cleanup
+  close-task:fail        -> cleanup
   cleanup:success        -> done
   cleanup:fail           -> done
 }
@@ -62,25 +76,4 @@ workflow "release-task" {
 
   release-task:success -> done
   release-task:fail    -> abort
-}
-
-workflow "finalize" {
-  host {
-    agent_command = "claude"
-  }
-
-  step bump-version {
-    prompt  = file(".cloche/prompts/bump-version.md")
-    results = [success, fail]
-  }
-
-  step close-task {
-    run     = "bash .cloche/scripts/close-task.sh"
-    results = [success, fail]
-  }
-
-  bump-version:success -> close-task
-  bump-version:fail    -> close-task
-  close-task:success   -> done
-  close-task:fail      -> done
 }

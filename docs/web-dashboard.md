@@ -135,7 +135,7 @@ The runs list groups workflow executions by task and attempt. Each group shows:
   timestamp and aggregate status. The latest attempt is expanded; earlier ones are
   collapsed.
 - **Run rows** within each attempt — the top-level run (e.g. `main`) and any child runs
-  it dispatched (e.g. `develop`, `finalize`).
+  it dispatched (e.g. `develop`).
 
 Click an attempt header to expand or collapse it. Accordion state is preserved across
 automatic page refreshes.
