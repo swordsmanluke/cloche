@@ -17,15 +17,58 @@ func main() {
 		return
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-sigCh
+		cancel()
+	}()
+
+	addr := os.Getenv("CLOCHE_ADDR")
+
+	// Session mode: CLOCHE_ADDR is set and no workflow file argument is provided.
+	// The agent connects to the daemon, sends AgentReady, and awaits ExecuteStep
+	// commands over the bidirectional AgentSession stream.
+	if addr != "" && len(os.Args) < 2 {
+		runID := os.Getenv("CLOCHE_RUN_ID")
+		os.Unsetenv("CLOCHE_RUN_ID")
+		taskID := os.Getenv("CLOCHE_TASK_ID")
+		os.Unsetenv("CLOCHE_TASK_ID")
+		attemptID := os.Getenv("CLOCHE_ATTEMPT_ID")
+		os.Unsetenv("CLOCHE_ATTEMPT_ID")
+
+		workDir, _ := os.Getwd()
+
+		sess := agent.NewSession(agent.SessionConfig{
+			Addr:      addr,
+			RunID:     runID,
+			AttemptID: attemptID,
+			TaskID:    taskID,
+			WorkDir:   workDir,
+		})
+
+		if err := sess.Run(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Workflow file mode: a workflow file path is provided as the first argument.
+	// This mode drives the full workflow engine locally and is retained for
+	// backward compatibility.
 	if len(os.Args) < 2 {
 		fmt.Fprintf(os.Stderr, "usage: cloche-agent <workflow-file> [--resume-from <step>] [--start-step <step>]\n")
+		fmt.Fprintf(os.Stderr, "       cloche-agent  (session mode, requires CLOCHE_ADDR)\n")
 		os.Exit(1)
 	}
 
 	workflowPath := os.Args[1]
 	workDir, _ := os.Getwd()
 
-	// Parse --resume-from and --start-step flags
 	var resumeFromStep, startStep string
 	for i := 2; i < len(os.Args); i++ {
 		if os.Args[i] == "--resume-from" && i+1 < len(os.Args) {
@@ -36,16 +79,6 @@ func main() {
 			startStep = os.Args[i]
 		}
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
-	go func() {
-		<-sigCh
-		cancel()
-	}()
 
 	runID := os.Getenv("CLOCHE_RUN_ID")
 	os.Unsetenv("CLOCHE_RUN_ID")

@@ -46,14 +46,15 @@ and collects status. The agent is self-directing.
 
 ### cloche-agent (In-Container Runtime)
 
-Autonomous process running inside the Docker container. Responsibilities:
-- Parse the workflow DSL (workflow files live in the codebase)
-- Walk the workflow graph, executing steps and following results
-- Invoke coding agents (Claude Code, custom commands) and scripts
-- Stream structured status events back to `cloched`
-- Run to completion (`done` or `abort`) without human intervention
+Long-lived step executor running inside the Docker container. Responsibilities:
+- Connect to the daemon at `CLOCHE_ADDR` via bidirectional `AgentSession` gRPC stream
+- Send `AgentReady` on startup with run/attempt IDs
+- Receive `ExecuteStep` commands from the daemon
+- Dispatch steps to generic (script) or prompt (LLM agent) adapters
+- Stream `StepLog` lines and send `StepResult` back over the stream
+- Exit gracefully on `Shutdown` command or context cancellation
 
-The agent is told which workflow to execute at launch. It handles everything else.
+The daemon owns all workflow graph-walking; the agent executes individual steps on demand.
 
 ## Communication
 
@@ -63,12 +64,12 @@ The agent is told which workflow to execute at launch. It handles everything els
 - Bidirectional streaming for `logs` (tail container output in real-time)
 - Unix socket for local communication, TCP for remote
 
-### Agent <-> Daemon: Structured JSON over stdout
+### Agent <-> Daemon: Bidirectional gRPC Stream
 
-- The agent writes JSON-lines to stdout with status updates
-- `cloched` attaches to the container's stdout stream via Docker API
-- Messages include: step started, step completed (with result name), logs, errors
-- Kill/cancel: daemon sends SIGTERM to container, agent handles graceful shutdown
+- The agent opens an `AgentSession` bidirectional streaming RPC to the daemon
+- Daemon sends commands: `ExecuteStep`, `StepCancelled`, `Shutdown`
+- Agent sends events: `AgentReady`, `StepStarted`, `StepLog`, `StepResult`
+- See `docs/plans/2026-03-24-workflow-refactor-design.md` for full protocol details
 
 ## Workflow DSL
 
