@@ -98,8 +98,15 @@ func (d *DaemonExecutor) Execute(ctx context.Context, step *domain.Step) (domain
 ```
 
 **Files affected:**
-- `internal/engine/engine.go` — Add context plumbing to carry workflow reference
-  into step execution. The engine itself is location-agnostic.
+- `internal/engine/context.go` (new) — `WithWorkflow()`/`WorkflowFromContext()`
+  helpers for attaching a `*domain.Workflow` to the step execution context.
+- `internal/engine/engine.go` — Calls `WithWorkflow(stepCtx, wf)` before invoking
+  `StepExecutor.Execute()` so executors can inspect the workflow location.
+- `internal/adapters/grpc/executor.go` (new) — `DaemonExecutor` implementation:
+  routes host steps to `host.Executor`, container steps to `ContainerPool.SessionFor()`,
+  and `workflow_name` steps recursively via `engine.New(d).Run()`.
+- `internal/adapters/grpc/executor_test.go` (new) — Unit tests for `DaemonExecutor`
+  with mock pool and executor.
 - `internal/host/executor.go` — Remains as the host-side step executor (scripts,
   local agents). Remove the `executeWorkflow` method since workflow dispatch is
   now handled by the daemon orchestrator.
