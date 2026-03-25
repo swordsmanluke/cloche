@@ -300,28 +300,35 @@ A new `ContainerPool` manages container lifecycle per attempt:
 
 ```go
 type ContainerPool struct {
-    mu         sync.Mutex
-    containers map[string]*ManagedContainer // key: attemptID + ":" + containerID
-    runtime    ports.ContainerRuntime
+    mu               sync.Mutex
+    runtime          ports.ContainerRuntime
+    attempts         map[string]*poolEntry  // key: attemptID
+    containerAttempt map[string]string      // key: containerID → attemptID
 }
 
-type ManagedContainer struct {
-    ContainerID string              // Docker container ID
-    Config      ContainerConfig     // image, network, etc.
-    Session     *AgentSession       // bidi gRPC stream to the agent
-    AttemptID   string
+// ContainerSession holds the container ID for a running agent container.
+type ContainerSession struct {
+    ContainerID string
 }
 
-func (p *ContainerPool) SessionFor(attemptID, containerID string, cfg ContainerConfig) (*AgentSession, error)
-func (p *ContainerPool) CleanupAttempt(attemptID string, keep bool)
+func (p *ContainerPool) SessionFor(ctx context.Context, attemptID string, cfg ports.ContainerConfig) (*ContainerSession, error)
+func (p *ContainerPool) NotifyReady(containerID string)
+func (p *ContainerPool) CleanupAttempt(ctx context.Context, attemptID string, keepContainer, runFailed, aborted bool) error
 ```
 
 `SessionFor` returns an existing session if the container is already running, or
-creates a new container + waits for the agent to connect and send `AgentReady`.
+creates a new container and blocks until the in-container agent sends `AgentReady`
+(signalled via `NotifyReady`). Subsequent calls with the same `attemptID` return
+the existing session without starting another container.
 
-`CleanupAttempt` is called when an attempt ends. If `keep` is false (default on
-success), all containers for the attempt are stopped and removed. If `keep` is
-true (`--keep-container` or abort), containers are left for debugging.
+`NotifyReady` is called by the gRPC server when an agent sends `AgentReady` over
+its session stream. It unblocks any `SessionFor` waiting on that container.
+
+`CleanupAttempt` is called when an attempt ends. Containers are stopped and
+removed unless any of the following is true: `keepContainer` (the `--keep-container`
+CLI flag), `runFailed` (the attempt result was failed/cancelled), or `aborted`
+(the attempt was aborted mid-run). In the keep case, containers are left running
+for debugging.
 
 **Files affected:**
 - `internal/dsl/parser.go` — Parse `id` field in `container {}` block
