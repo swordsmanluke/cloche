@@ -180,6 +180,7 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 				defer cancel()
 			}
 			stepCtx = WithStepTrigger(stepCtx, t)
+			stepCtx = WithWorkflow(stepCtx, wf)
 			sr, err := e.executor.Execute(stepCtx, s)
 			results <- stepResult{stepName: s.Name, result: sr.Result, usage: sr.Usage, err: err}
 		}(step, trigger)

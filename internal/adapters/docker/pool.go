@@ -5,14 +5,123 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"sync"
+	"sync/atomic"
 
+	pb "github.com/cloche-dev/cloche/api/clochepb"
+	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/ports"
 )
 
-// ContainerSession holds the container ID for a running agent container.
+// requestCounter is used to generate unique request IDs for step dispatch.
+var requestCounter atomic.Int64
+
+// generateRequestID returns a unique string ID for an ExecuteStep request.
+func generateRequestID() string {
+	return fmt.Sprintf("req-%d-%d", requestCounter.Add(1), rand.Int63n(1<<32))
+}
+
+// ContainerSession holds the container ID for a running agent container and
+// the gRPC send function for dispatching steps to the in-container agent.
 type ContainerSession struct {
 	ContainerID string
+
+	mu      sync.Mutex
+	send    func(*pb.DaemonMessage) error
+	pending map[string]chan *pb.StepResult
+}
+
+// ExecuteStep sends an ExecuteStep command to the in-container agent and blocks
+// until the StepResult is received or the context is cancelled.
+func (cs *ContainerSession) ExecuteStep(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
+	reqID := generateRequestID()
+	ch := make(chan *pb.StepResult, 1)
+
+	cs.mu.Lock()
+	if cs.pending == nil {
+		cs.pending = make(map[string]chan *pb.StepResult)
+	}
+	cs.pending[reqID] = ch
+	cs.mu.Unlock()
+
+	defer func() {
+		cs.mu.Lock()
+		delete(cs.pending, reqID)
+		cs.mu.Unlock()
+	}()
+
+	cs.mu.Lock()
+	sendFn := cs.send
+	cs.mu.Unlock()
+
+	if sendFn == nil {
+		return domain.StepResult{}, fmt.Errorf("container session %s: send function not registered (agent not ready)", cs.ContainerID)
+	}
+
+	if err := sendFn(&pb.DaemonMessage{
+		Payload: &pb.DaemonMessage_ExecuteStep{
+			ExecuteStep: &pb.ExecuteStep{
+				StepName:  step.Name,
+				StepType:  string(step.Type),
+				Config:    step.Config,
+				RequestId: reqID,
+			},
+		},
+	}); err != nil {
+		return domain.StepResult{}, fmt.Errorf("sending ExecuteStep for step %q: %w", step.Name, err)
+	}
+
+	select {
+	case <-ctx.Done():
+		return domain.StepResult{}, ctx.Err()
+	case result := <-ch:
+		var usage *domain.TokenUsage
+		if result.TokenUsage != nil {
+			usage = &domain.TokenUsage{
+				InputTokens:  result.TokenUsage.InputTokens,
+				OutputTokens: result.TokenUsage.OutputTokens,
+			}
+		}
+		return domain.StepResult{Result: result.Result, Usage: usage}, nil
+	}
+}
+
+// NotifyReadyWithStream registers the gRPC send function on the session after
+// the in-container agent sends AgentReady. This enables ExecuteStep to dispatch
+// commands to the agent.
+func (cs *ContainerSession) NotifyReadyWithStream(send func(*pb.DaemonMessage) error) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	cs.send = send
+}
+
+// DeliverResult routes an incoming StepResult from the agent to the pending
+// request channel, unblocking the corresponding ExecuteStep call.
+func (cs *ContainerSession) DeliverResult(result *pb.StepResult) {
+	cs.mu.Lock()
+	ch, ok := cs.pending[result.RequestId]
+	cs.mu.Unlock()
+
+	if ok {
+		ch <- result
+	}
+}
+
+// Shutdown sends a Shutdown message to the in-container agent.
+func (cs *ContainerSession) Shutdown() error {
+	cs.mu.Lock()
+	sendFn := cs.send
+	cs.mu.Unlock()
+
+	if sendFn == nil {
+		return nil
+	}
+	return sendFn(&pb.DaemonMessage{
+		Payload: &pb.DaemonMessage_Shutdown{
+			Shutdown: &pb.Shutdown{},
+		},
+	})
 }
 
 // poolEntry tracks all containers created for a single attempt and a channel
