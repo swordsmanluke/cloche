@@ -355,6 +355,32 @@ func (r *Runtime) Commit(ctx context.Context, containerID string) (string, error
 	return tag, nil
 }
 
+// CommitContainer creates a Docker image from the given container, preserving
+// its filesystem state for cross-attempt resume. The image is tagged as
+// "cloche-resume:<attemptID>-<containerID>" for traceability.
+func (r *Runtime) CommitContainer(ctx context.Context, containerID, attemptID string) (string, error) {
+	tag := "cloche-resume:" + attemptID + "-" + containerID
+	cmd := exec.CommandContext(ctx, "docker", "commit", containerID, tag)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("committing container: %s: %w", stderr.String(), err)
+	}
+	return tag, nil
+}
+
+// RemoveImage removes a Docker image by tag.
+func (r *Runtime) RemoveImage(ctx context.Context, imageTag string) error {
+	cmd := exec.CommandContext(ctx, "docker", "rmi", imageTag)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("removing image %s: %s: %w", imageTag, stderr.String(), err)
+	}
+	return nil
+}
+
 func (r *Runtime) CopyTo(ctx context.Context, containerID string, srcPath, dstPath string) error {
 	cmd := exec.CommandContext(ctx, "docker", "cp", srcPath, containerID+":"+dstPath)
 	var stderr bytes.Buffer

@@ -37,6 +37,10 @@ type DaemonExecutor struct {
 	// allWFs is the full set of workflows (host and container) for the project,
 	// keyed by name. Used to resolve workflow_name step targets.
 	allWFs map[string]*domain.Workflow
+
+	// resumeMode, when true, sets the resume flag on all ExecuteStep messages
+	// so the in-container agent continues an existing LLM conversation.
+	resumeMode bool
 }
 
 // DaemonExecutorConfig holds configuration for constructing a DaemonExecutor.
@@ -47,6 +51,9 @@ type DaemonExecutorConfig struct {
 	AttemptID  string
 	Image      string
 	AllWFs     map[string]*domain.Workflow
+	// ResumeMode, when true, sets resume=true on all ExecuteStep messages so
+	// that the in-container agent continues its previous LLM conversation.
+	ResumeMode bool
 }
 
 // NewDaemonExecutor creates a DaemonExecutor from the given config.
@@ -58,6 +65,7 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 		attemptID:  cfg.AttemptID,
 		image:      cfg.Image,
 		allWFs:     cfg.AllWFs,
+		resumeMode: cfg.ResumeMode,
 	}
 }
 
@@ -139,5 +147,5 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 		return domain.StepResult{}, fmt.Errorf("daemon executor: getting container session for step %q: %w", step.Name, err)
 	}
 
-	return session.ExecuteStep(ctx, step)
+	return session.ExecuteStep(ctx, step, d.resumeMode)
 }

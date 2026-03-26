@@ -908,16 +908,20 @@ back to the old attempt. The command returns the new workflow ID and new attempt
 - **Host workflows:** Successful step outputs from the previous attempt are copied into
   the new attempt's directory. The new run executes from the resume step forward, with
   those copied outputs available for wire output mappings.
-- **Container workflows:** The stopped container is committed to a Docker image to
-  capture the current filesystem state. A new container is launched from that image with
-  `--resume-from <step>`, re-executing from the failed step with workspace state intact.
+- **Container workflows:** Each container from the failed attempt is committed to a
+  Docker image (`docker commit`), capturing its filesystem state. New containers are
+  started from those images (named `cloche-resume:<attemptID>-<containerID>`). The
+  daemon engine re-walks the workflow graph: completed steps are skipped and their
+  results pre-loaded from the database; remaining steps are dispatched to the new
+  containers. Committed images are removed when the new attempt succeeds or the run is
+  explicitly deleted; they are kept on failure so the user can resume again.
 
 **Step-specific resume behavior:**
 
 | Step type | Behavior |
 |-----------|----------|
 | script | Reruns the script fresh. Updated scripts are picked up. |
-| prompt | Resumes the conversation instead of starting a new one. For Claude Code, this uses the `-c` flag with a "retry" prompt. |
+| prompt | Resumes the conversation instead of starting a new one. The agent receives a `resume=true` flag via the `ExecuteStep` message and continues the existing LLM conversation rather than starting fresh. |
 | workflow | Same as script — starts the step again, passing values from previous steps' output. |
 
 Steps that completed successfully before the resume point are skipped; their results

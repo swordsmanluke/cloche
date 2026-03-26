@@ -33,8 +33,10 @@ type ContainerSession struct {
 }
 
 // ExecuteStep sends an ExecuteStep command to the in-container agent and blocks
-// until the StepResult is received or the context is cancelled.
-func (cs *ContainerSession) ExecuteStep(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
+// until the StepResult is received or the context is cancelled. When resume is
+// true, the ExecuteStep message carries the resume flag so the agent continues
+// an existing LLM conversation rather than starting a fresh one.
+func (cs *ContainerSession) ExecuteStep(ctx context.Context, step *domain.Step, resume bool) (domain.StepResult, error) {
 	reqID := generateRequestID()
 	ch := make(chan *pb.StepResult, 1)
 
@@ -66,6 +68,7 @@ func (cs *ContainerSession) ExecuteStep(ctx context.Context, step *domain.Step) 
 				StepType:  string(step.Type),
 				Config:    step.Config,
 				RequestId: reqID,
+				Resume:    resume,
 			},
 		},
 	}); err != nil {
@@ -321,6 +324,71 @@ func (p *ContainerPool) FailPendingRequests(containerID string) {
 
 	if sess != nil {
 		sess.failAllPending()
+	}
+}
+
+// containerResumer is an optional runtime capability for committing containers
+// to images and removing images. Implemented by docker.Runtime for resume support.
+type containerResumer interface {
+	CommitContainer(ctx context.Context, containerID, attemptID string) (string, error)
+	RemoveImage(ctx context.Context, imageTag string) error
+}
+
+// CommitForResume commits all containers associated with attemptID to Docker
+// images, preserving their filesystem state for cross-attempt resume. Returns a
+// map of containerID → imageTag. Returns nil, nil when no containers are
+// registered for the attempt. Returns an error if the runtime does not support
+// commit or if any commit fails.
+func (p *ContainerPool) CommitForResume(ctx context.Context, attemptID string) (map[string]string, error) {
+	p.mu.Lock()
+	entry, exists := p.attempts[attemptID]
+	p.mu.Unlock()
+
+	if !exists {
+		return nil, nil
+	}
+
+	resumer, ok := p.runtime.(containerResumer)
+	if !ok {
+		return nil, fmt.Errorf("container runtime does not support image commit for resume")
+	}
+
+	images := make(map[string]string, len(entry.sessions))
+	for _, sess := range entry.sessions {
+		tag, err := resumer.CommitContainer(ctx, sess.ContainerID, attemptID)
+		if err != nil {
+			return nil, fmt.Errorf("committing container %s: %w", sess.ContainerID, err)
+		}
+		images[sess.ContainerID] = tag
+		log.Printf("pool: committed container %s to image %s for resume", sess.ContainerID, tag)
+	}
+	return images, nil
+}
+
+// StartFromImage starts a new container session for the given key from the
+// specified committed image. Unlike SessionFor, the project directory is not
+// copied into the new container — the committed image already contains the
+// workspace state from the previous run. Blocks until the in-container agent
+// sends AgentReady.
+func (p *ContainerPool) StartFromImage(ctx context.Context, key, image string, cfg ports.ContainerConfig) (*ContainerSession, error) {
+	cfg.Image = image
+	cfg.ProjectDir = "" // committed image already has workspace state
+	return p.SessionFor(ctx, key, cfg)
+}
+
+// RemoveImages removes Docker images created for resume. This is best-effort:
+// errors are logged but do not cause failure.
+func (p *ContainerPool) RemoveImages(ctx context.Context, images map[string]string) {
+	resumer, ok := p.runtime.(containerResumer)
+	if !ok {
+		return
+	}
+	for _, tag := range images {
+		if err := resumer.RemoveImage(ctx, tag); err != nil {
+			log.Printf("pool: failed to remove resume image %s: %v", tag, err)
+		} else {
+			log.Printf("pool: removed resume image %s", tag)
+		}
 	}
 }
 

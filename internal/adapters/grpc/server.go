@@ -22,6 +22,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
+	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/evolution"
 	"github.com/cloche-dev/cloche/internal/host"
 	"github.com/cloche-dev/cloche/internal/logstream"
@@ -872,13 +873,216 @@ func (s *ClocheServer) completeAttemptFromResult(attemptID, taskID string, resul
 }
 
 // resumeContainerRun creates a new attempt and run for resuming a failed
-// container workflow. The committed container image captures workspace state;
-// the new run starts from that image and re-executes from the failed step.
+// container workflow. When a ContainerPool is configured, the daemon-side engine
+// is used: failed containers are committed to images, new containers are started
+// from those images, completed steps are pre-loaded, and the engine re-walks the
+// graph dispatching remaining steps via the pool. Otherwise, falls back to the
+// legacy approach of starting a container with --resume-from.
 func (s *ClocheServer) resumeContainerRun(ctx context.Context, run *domain.Run, stepName string) (*pb.RunWorkflowResponse, error) {
 	if s.container == nil {
 		return nil, fmt.Errorf("no container runtime configured")
 	}
 
+	// Pool-based approach: daemon runs the engine and dispatches steps via pool.
+	if s.pool != nil {
+		return s.resumeContainerRunWithPool(ctx, run, stepName)
+	}
+
+	// Legacy fallback: commit container and start new one with --resume-from.
+	return s.resumeContainerRunLegacy(ctx, run, stepName)
+}
+
+// resumeContainerRunWithPool implements cross-attempt resume using the
+// daemon-side engine + ContainerPool. It:
+//  1. Loads the workflow and builds preloaded results for completed steps.
+//  2. Creates a new attempt with lineage back to the failed one.
+//  3. Commits the failed attempt's containers to Docker images.
+//  4. Starts new containers from committed images via the pool (no project copy).
+//  5. Runs the engine with ResumeMode=true so all ExecuteStep messages carry
+//     resume=true for LLM conversation continuity.
+//  6. Cleans up committed images on successful completion.
+func (s *ClocheServer) resumeContainerRunWithPool(ctx context.Context, run *domain.Run, stepName string) (*pb.RunWorkflowResponse, error) {
+	// Create a new attempt first so lineage is recorded even if later steps fail.
+	newAttempt := s.createResumeAttempt(ctx, run)
+	newRunID := domain.GenerateRunID(run.WorkflowName, newAttempt.ID)
+
+	// Load all workflows to run the engine and build preloaded results.
+	allWFs, err := host.FindAllWorkflows(run.ProjectDir)
+	if err != nil {
+		return nil, fmt.Errorf("loading workflows for resume: %w", err)
+	}
+	wf, ok := allWFs[run.WorkflowName]
+	if !ok {
+		return nil, fmt.Errorf("workflow %q not found in project %s", run.WorkflowName, run.ProjectDir)
+	}
+
+	// Build preloaded results from steps completed before the resume point.
+	preloaded := host.BuildPreloadedResults(run, wf, stepName)
+
+	// Create a new run record; the old run stays failed for lineage tracing.
+	newRun := domain.NewRun(newRunID, run.WorkflowName)
+	newRun.ProjectDir = run.ProjectDir
+	newRun.TaskID = run.TaskID
+	newRun.TaskTitle = run.TaskTitle
+	newRun.AttemptID = newAttempt.ID
+	newRun.ParentRunID = run.ParentRunID
+	if err := s.store.CreateRun(ctx, newRun); err != nil {
+		return nil, fmt.Errorf("creating resume run record: %w", err)
+	}
+
+	// Commit containers from the failed attempt to Docker images (best-effort).
+	committedImages, commitErr := s.pool.CommitForResume(ctx, run.AttemptID)
+	if commitErr != nil {
+		log.Printf("run %s: failed to commit containers for resume (continuing): %v", run.ID, commitErr)
+		committedImages = nil
+	}
+
+	// Resolve the image for new containers: use the committed image when
+	// available, otherwise fall back to the project/server default.
+	image := s.defaultImage
+	if projCfg, err := config.Load(run.ProjectDir); err == nil && projCfg.Daemon.Image != "" {
+		image = projCfg.Daemon.Image
+	}
+	if len(committedImages) > 0 {
+		// All containers in an attempt share the same base image; take the first.
+		for _, tag := range committedImages {
+			image = tag
+			break
+		}
+	}
+
+	go s.runResumedContainerWorkflow(newRun, wf, allWFs, preloaded, image, committedImages)
+
+	return &pb.RunWorkflowResponse{RunId: newRunID, AttemptId: newAttempt.ID}, nil
+}
+
+// runResumedContainerWorkflow runs the daemon-side engine for a resumed
+// container workflow. It pre-starts a container from the committed image via
+// the pool so that AgentSession can register the container-run mapping for log
+// forwarding, then runs the engine. On success, committed images are removed.
+func (s *ClocheServer) runResumedContainerWorkflow(
+	run *domain.Run,
+	wf *domain.Workflow,
+	allWFs map[string]*domain.Workflow,
+	preloaded map[string]string,
+	image string,
+	committedImages map[string]string,
+) {
+	ctx := context.Background()
+
+	// Pre-start the container so we know its ID before the engine launches.
+	// Using the same pool-key format as DaemonExecutor.executeContainerStep so
+	// the engine reuses this session without starting a second container.
+	poolKey := run.AttemptID + ":" + wf.ContainerID()
+	cfg := ports.ContainerConfig{
+		Image:        image,
+		WorkflowName: wf.Name,
+		AttemptID:    run.AttemptID,
+		TaskID:       run.TaskID,
+		NetworkAllow: []string{"*"},
+		// ProjectDir intentionally empty: committed image has the workspace state.
+	}
+
+	session, err := s.pool.StartFromImage(ctx, poolKey, image, cfg)
+	if err != nil {
+		run.Fail(fmt.Sprintf("failed to start resume container: %v", err))
+		_ = s.store.UpdateRun(ctx, run)
+		log.Printf("run %s: failed to start resume container from image %s: %v", run.ID, image, err)
+		s.completeAttemptResult(ctx, run.AttemptID, run.TaskID, domain.AttemptResultFailed)
+		return
+	}
+
+	// Register container-run mapping so AgentSession can forward log lines
+	// and record step events for this run.
+	s.mu.Lock()
+	s.runIDs[run.ID] = session.ContainerID
+	s.containerRun[session.ContainerID] = run.ID
+	s.mu.Unlock()
+
+	run.ContainerID = session.ContainerID
+	run.Start()
+	_ = s.store.UpdateRun(ctx, run)
+
+	if s.logBroadcast != nil {
+		s.logBroadcast.Start(run.ID)
+	}
+
+	// Run the engine with the DaemonExecutor in resume mode.
+	exec := NewDaemonExecutor(DaemonExecutorConfig{
+		Pool:       s.pool,
+		ProjectDir: run.ProjectDir,
+		AttemptID:  run.AttemptID,
+		Image:      image,
+		AllWFs:     allWFs,
+		ResumeMode: true,
+	})
+	eng := engine.New(exec)
+	eng.SetPreloadedResults(preloaded)
+
+	finalRun, runErr := eng.Run(ctx, wf)
+
+	// Persist final run state.
+	storedRun, _ := s.store.GetRun(ctx, run.ID)
+	if storedRun != nil && storedRun.State == domain.RunStateRunning {
+		if runErr == nil && finalRun != nil && finalRun.State == domain.RunStateSucceeded {
+			storedRun.Complete(domain.RunStateSucceeded)
+		} else {
+			errMsg := ""
+			if runErr != nil {
+				errMsg = runErr.Error()
+			}
+			storedRun.Fail(errMsg)
+		}
+		_ = s.store.UpdateRun(ctx, storedRun)
+	}
+
+	if s.logBroadcast != nil {
+		s.logBroadcast.Finish(run.ID)
+	}
+
+	// Clean up committed images on success (best-effort).
+	if runErr == nil && finalRun != nil && finalRun.State == domain.RunStateSucceeded && len(committedImages) > 0 {
+		s.pool.RemoveImages(ctx, committedImages)
+	}
+
+	// Determine final attempt result.
+	ar := domain.AttemptResultFailed
+	if runErr == nil && finalRun != nil && finalRun.State == domain.RunStateSucceeded {
+		ar = domain.AttemptResultSucceeded
+	} else if runErr == nil && finalRun != nil && finalRun.State == domain.RunStateCancelled {
+		ar = domain.AttemptResultCancelled
+	}
+	s.completeAttemptResult(ctx, run.AttemptID, run.TaskID, ar)
+
+	// Cleanup container-run mapping.
+	s.mu.Lock()
+	delete(s.runIDs, run.ID)
+	delete(s.containerRun, session.ContainerID)
+	s.mu.Unlock()
+}
+
+// completeAttemptResult marks an attempt terminal. No-op when attempt tracking
+// is not configured or IDs are empty.
+func (s *ClocheServer) completeAttemptResult(ctx context.Context, attemptID, taskID string, ar domain.AttemptResult) {
+	if s.attemptStore == nil || attemptID == "" || taskID == "" {
+		return
+	}
+	attempt, err := s.attemptStore.GetAttempt(ctx, attemptID)
+	if err != nil {
+		log.Printf("server: failed to get attempt %s for completion: %v", attemptID, err)
+		return
+	}
+	attempt.Complete(ar)
+	if err := s.attemptStore.SaveAttempt(ctx, attempt); err != nil {
+		log.Printf("server: failed to save completed attempt %s: %v", attemptID, err)
+	}
+}
+
+// resumeContainerRunLegacy is the legacy approach for resuming a container run
+// when no ContainerPool is configured. It commits the failed container to an
+// image and starts a new container with --resume-from so the in-container
+// agent handles the workflow engine locally.
+func (s *ClocheServer) resumeContainerRunLegacy(ctx context.Context, run *domain.Run, stepName string) (*pb.RunWorkflowResponse, error) {
 	// Verify container still exists
 	cs, err := s.container.Inspect(ctx, run.ContainerID)
 	if err != nil {

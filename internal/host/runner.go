@@ -585,6 +585,14 @@ func copySuccessfulStepOutputs(run *domain.Run, wf *domain.Workflow, resumeFrom,
 	}
 }
 
+// BuildPreloadedResults creates a map of step results for steps that completed
+// before the resume point. It walks the workflow graph from the entry step,
+// collecting results from the run's StepExecutions. Steps at or beyond
+// resumeFrom are excluded so the engine re-executes them.
+func BuildPreloadedResults(run *domain.Run, wf *domain.Workflow, resumeFrom string) map[string]string {
+	return buildPreloadedResults(run, wf, resumeFrom)
+}
+
 // buildPreloadedResults creates a map of step results for steps that completed
 // before the resume point. It walks the workflow graph from the entry step,
 // collecting results from the run's StepExecutions.
