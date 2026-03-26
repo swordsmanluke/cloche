@@ -2677,10 +2677,15 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 // container pool, while delegating script/agent steps to the host executor.
 func (s *ClocheServer) daemonExecutorFor(projectDir, taskID, attemptID string) engine.StepExecutor {
 	allWFs, _ := host.FindAllWorkflows(projectDir)
+	image := s.defaultImage
+	if projCfg, err := config.Load(projectDir); err == nil && projCfg.Daemon.Image != "" {
+		image = projCfg.Daemon.Image
+	}
 	return NewDaemonExecutor(DaemonExecutorConfig{
 		Pool:       s.pool,
 		ProjectDir: projectDir,
 		AttemptID:  attemptID,
+		Image:      image,
 		AllWFs:     allWFs,
 	})
 }
