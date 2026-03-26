@@ -148,6 +148,9 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 		ProjectDir:   d.projectDir,
 		AttemptID:    d.attemptID,
 		NetworkAllow: []string{"*"},
+		// Start agent in session mode (no workflow file argument) so it
+		// connects to the daemon via gRPC and waits for ExecuteStep commands.
+		Cmd: []string{"cloche-agent"},
 	}
 
 	session, err := d.pool.SessionFor(ctx, poolKey, cfg)

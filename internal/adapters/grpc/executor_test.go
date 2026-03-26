@@ -386,6 +386,10 @@ func TestDaemonExecutor_ProductionWiring(t *testing.T) {
 		"container should be started for the 'develop' workflow")
 	assert.Equal(t, tmpDir, rt.lastConfig.ProjectDir,
 		"container should receive the project directory")
+	assert.Equal(t, []string{"cloche-agent"}, rt.lastConfig.Cmd,
+		"container should start agent in session mode (no workflow file)")
+	assert.Equal(t, "att-1", rt.lastConfig.AttemptID,
+		"container should receive the attempt ID")
 
 	// c) The run should have failed (timeout waiting for AgentReady), not errored
 	//    with "unsupported step type" or "no container pool".
