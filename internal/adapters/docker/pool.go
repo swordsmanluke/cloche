@@ -183,6 +183,24 @@ func NewContainerPool(runtime ports.ContainerRuntime) *ContainerPool {
 	}
 }
 
+// resolveAttempt looks up the attemptID for a containerID. Falls back to prefix
+// matching when an exact lookup misses — Docker hostnames are the short 12-char
+// container ID while the pool stores the full 64-char ID. Must be called with
+// p.mu held.
+func (p *ContainerPool) resolveAttempt(containerID string) string {
+	if aID, ok := p.containerAttempt[containerID]; ok {
+		return aID
+	}
+	if len(containerID) >= 12 {
+		for fullID, aID := range p.containerAttempt {
+			if strings.HasPrefix(fullID, containerID) {
+				return aID
+			}
+		}
+	}
+	return ""
+}
+
 // SessionFor returns the existing container session for the attempt, or starts
 // a new container using cfg and blocks until the in-container agent sends
 // AgentReady (signalled via NotifyReadyWithStream). Subsequent calls with the
@@ -240,17 +258,7 @@ func (p *ContainerPool) SessionFor(ctx context.Context, attemptID string, cfg po
 // attempt. The send function must be safe to call concurrently.
 func (p *ContainerPool) NotifyReadyWithStream(containerID string, send func(*pb.DaemonMessage) error) {
 	p.mu.Lock()
-	attemptID := p.containerAttempt[containerID]
-	// Docker hostnames are the short (12-char) container ID; the pool stores
-	// the full ID. Fall back to prefix matching when exact lookup misses.
-	if attemptID == "" && len(containerID) >= 12 {
-		for fullID, aID := range p.containerAttempt {
-			if strings.HasPrefix(fullID, containerID) {
-				attemptID = aID
-				break
-			}
-		}
-	}
+	attemptID := p.resolveAttempt(containerID)
 	var entry *poolEntry
 	if attemptID != "" {
 		entry = p.attempts[attemptID]
@@ -282,7 +290,7 @@ func (p *ContainerPool) NotifyReadyWithStream(containerID string, send func(*pb.
 // available.
 func (p *ContainerPool) NotifyReady(containerID string) {
 	p.mu.Lock()
-	attemptID := p.containerAttempt[containerID]
+	attemptID := p.resolveAttempt(containerID)
 	var entry *poolEntry
 	if attemptID != "" {
 		entry = p.attempts[attemptID]
@@ -301,7 +309,7 @@ func (p *ContainerPool) NotifyReady(containerID string) {
 // ExecuteStep request. The containerID is used to find the attempt and session.
 func (p *ContainerPool) DeliverResult(containerID string, result *pb.StepResult) {
 	p.mu.Lock()
-	attemptID := p.containerAttempt[containerID]
+	attemptID := p.resolveAttempt(containerID)
 	var entry *poolEntry
 	if attemptID != "" {
 		entry = p.attempts[attemptID]
@@ -319,7 +327,7 @@ func (p *ContainerPool) DeliverResult(containerID string, result *pb.StepResult)
 // channels. This is called when an agent session disconnects unexpectedly.
 func (p *ContainerPool) FailPendingRequests(containerID string) {
 	p.mu.Lock()
-	attemptID := p.containerAttempt[containerID]
+	attemptID := p.resolveAttempt(containerID)
 	var sess *ContainerSession
 	if attemptID != "" {
 		if entry, ok := p.attempts[attemptID]; ok {
