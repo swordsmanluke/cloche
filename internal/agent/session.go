@@ -60,11 +60,14 @@ func (s *Session) Run(ctx context.Context) error {
 		return fmt.Errorf("opening AgentSession: %w", err)
 	}
 
-	// Send AgentReady to signal the daemon we are up.
+	// Send AgentReady to signal the daemon we are up. RunId carries the
+	// container's hostname which Docker sets to the short container ID —
+	// the pool uses this to match the session to the container it started.
+	hostname, _ := os.Hostname()
 	if err := stream.Send(&pb.AgentMessage{
 		Payload: &pb.AgentMessage_Ready{
 			Ready: &pb.AgentReady{
-				RunId:     s.cfg.RunID,
+				RunId:     hostname,
 				AttemptId: s.cfg.AttemptID,
 			},
 		},

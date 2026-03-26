@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -240,6 +241,16 @@ func (p *ContainerPool) SessionFor(ctx context.Context, attemptID string, cfg po
 func (p *ContainerPool) NotifyReadyWithStream(containerID string, send func(*pb.DaemonMessage) error) {
 	p.mu.Lock()
 	attemptID := p.containerAttempt[containerID]
+	// Docker hostnames are the short (12-char) container ID; the pool stores
+	// the full ID. Fall back to prefix matching when exact lookup misses.
+	if attemptID == "" && len(containerID) >= 12 {
+		for fullID, aID := range p.containerAttempt {
+			if strings.HasPrefix(fullID, containerID) {
+				attemptID = aID
+				break
+			}
+		}
+	}
 	var entry *poolEntry
 	if attemptID != "" {
 		entry = p.attempts[attemptID]
