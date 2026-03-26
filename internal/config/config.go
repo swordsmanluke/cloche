@@ -139,9 +139,10 @@ func DefaultDBPath() string {
 	return filepath.Join(StateDir(), "cloche.db")
 }
 
-// DefaultAddr returns the default gRPC listen address.
+// DefaultAddr returns the default gRPC listen address. Binds to all interfaces
+// so in-container agents can reach the daemon via host.docker.internal.
 func DefaultAddr() string {
-	return "127.0.0.1:50051"
+	return "0.0.0.0:50051"
 }
 
 // defaultGlobalConfigContent is written to ~/.config/cloche/config on first init.
@@ -151,7 +152,7 @@ var defaultGlobalConfigContent = `# Cloche global daemon configuration
 
 [daemon]
 # gRPC listen address
-# listen = "127.0.0.1:50051"
+# listen = "0.0.0.0:50051"
 
 # Web dashboard — comment out to disable
 http = "localhost:8080"

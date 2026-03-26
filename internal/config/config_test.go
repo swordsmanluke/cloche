@@ -270,7 +270,7 @@ func TestDefaultDBPath(t *testing.T) {
 
 func TestDefaultAddr(t *testing.T) {
 	addr := DefaultAddr()
-	assert.Equal(t, "127.0.0.1:50051", addr)
+	assert.Equal(t, "0.0.0.0:50051", addr)
 }
 
 func TestWriteGlobalConfigIfAbsent_CreatesFile(t *testing.T) {
