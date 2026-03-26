@@ -202,10 +202,20 @@ func (s *ClocheServer) AgentSession(stream pb.ClocheService_AgentSessionServer) 
 	// Register the send function with the pool and unblock SessionFor.
 	s.pool.NotifyReadyWithStream(containerID, sendFn)
 
-	// Look up the run ID for this container so we can update run state.
-	s.mu.Lock()
-	runID := s.containerRun[containerID]
-	s.mu.Unlock()
+	// Lazily resolve the run ID for this container. The containerRun mapping
+	// may not exist yet at AgentReady time (it's registered by the
+	// DaemonExecutor's onContainerStart callback after SessionFor returns),
+	// so we re-check on each message until found.
+	var runID string
+	resolveRunID := func() string {
+		if runID != "" {
+			return runID
+		}
+		s.mu.Lock()
+		runID = s.containerRun[containerID]
+		s.mu.Unlock()
+		return runID
+	}
 
 	// pendingStepNames tracks which step name is associated with each request ID.
 	// Populated on StepStarted, consumed on StepResult.
@@ -219,8 +229,8 @@ func (s *ClocheServer) AgentSession(stream pb.ClocheService_AgentSessionServer) 
 			// Fail all pending step requests to unblock waiting executors.
 			s.pool.FailPendingRequests(containerID)
 			// Mark any steps that were started but not yet completed as failed.
-			if runID != "" {
-				s.failInFlightSteps(ctx, runID)
+			if rid := resolveRunID(); rid != "" {
+				s.failInFlightSteps(ctx, rid)
 			}
 			return nil
 		}
@@ -233,34 +243,35 @@ func (s *ClocheServer) AgentSession(stream pb.ClocheService_AgentSessionServer) 
 			if started.RequestId != "" && started.StepName != "" {
 				pendingStepNames[started.RequestId] = started.StepName
 			}
-			if runID != "" && started.StepName != "" {
-				s.recordStepStart(ctx, runID, started.StepName)
+			if rid := resolveRunID(); rid != "" && started.StepName != "" {
+				s.recordStepStart(ctx, rid, started.StepName)
 			}
 
 		case *pb.AgentMessage_StepLog:
-			if s.logBroadcast != nil && payload.StepLog != nil && runID != "" {
-				sl := payload.StepLog
-				ts := time.Now().Format(time.RFC3339)
-				if sl.Timestamp != 0 {
-					ts = time.Unix(0, sl.Timestamp).Format(time.RFC3339)
+			if s.logBroadcast != nil && payload.StepLog != nil {
+				if rid := resolveRunID(); rid != "" {
+					sl := payload.StepLog
+					ts := time.Now().Format(time.RFC3339)
+					if sl.Timestamp != 0 {
+						ts = time.Unix(0, sl.Timestamp).Format(time.RFC3339)
+					}
+					s.logBroadcast.Publish(rid, logstream.LogLine{
+						Timestamp: ts,
+						Type:      "llm",
+						Content:   sl.Line,
+						StepName:  sl.StepName,
+					})
 				}
-				s.logBroadcast.Publish(runID, logstream.LogLine{
-					Timestamp: ts,
-					Type:      "llm",
-					Content:   sl.Line,
-					StepName:  sl.StepName,
-				})
 			}
 
 		case *pb.AgentMessage_StepResult:
 			result := payload.StepResult
 			log.Printf("agent session: step result (containerID=%s requestID=%s result=%s)",
 				containerID, result.RequestId, result.Result)
-			// Resolve the step name from the pending map populated by StepStarted.
 			stepName := pendingStepNames[result.RequestId]
 			delete(pendingStepNames, result.RequestId)
-			if runID != "" && stepName != "" {
-				s.recordStepComplete(ctx, runID, stepName, result)
+			if rid := resolveRunID(); rid != "" && stepName != "" {
+				s.recordStepComplete(ctx, rid, stepName, result)
 			}
 			s.pool.DeliverResult(containerID, result)
 
@@ -2681,13 +2692,29 @@ func (s *ClocheServer) daemonExecutorFor(projectDir, taskID, attemptID string) e
 	if projCfg, err := config.Load(projectDir); err == nil && projCfg.Daemon.Image != "" {
 		image = projCfg.Daemon.Image
 	}
-	return NewDaemonExecutor(DaemonExecutorConfig{
+	var de *DaemonExecutor
+	de = NewDaemonExecutor(DaemonExecutorConfig{
 		Pool:       s.pool,
 		ProjectDir: projectDir,
 		AttemptID:  attemptID,
 		Image:      image,
 		AllWFs:     allWFs,
+		OnContainerStart: func(containerID string) {
+			// Register the container → host run mapping so the AgentSession
+			// handler can route StepLog messages to the correct run for
+			// live streaming via cloche logs and the web dashboard.
+			runID := ""
+			if de.hostExec != nil {
+				runID = de.hostExec.HostRunID
+			}
+			if runID != "" {
+				s.mu.Lock()
+				s.containerRun[containerID] = runID
+				s.mu.Unlock()
+			}
+		},
 	})
+	return de
 }
 
 // createPhaseLoop creates a two-phase orchestration loop using host workflows

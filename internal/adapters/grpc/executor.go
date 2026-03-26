@@ -41,6 +41,11 @@ type DaemonExecutor struct {
 	// resumeMode, when true, sets the resume flag on all ExecuteStep messages
 	// so the in-container agent continues an existing LLM conversation.
 	resumeMode bool
+
+	// onContainerStart is called after a container is started with (containerID).
+	// The server uses this to register the container → run mapping so the
+	// AgentSession handler can route StepLog messages to the right run.
+	onContainerStart func(containerID string)
 }
 
 // DaemonExecutorConfig holds configuration for constructing a DaemonExecutor.
@@ -54,18 +59,21 @@ type DaemonExecutorConfig struct {
 	// ResumeMode, when true, sets resume=true on all ExecuteStep messages so
 	// that the in-container agent continues its previous LLM conversation.
 	ResumeMode bool
+	// OnContainerStart is called after a container starts with (containerID).
+	OnContainerStart func(containerID string)
 }
 
 // NewDaemonExecutor creates a DaemonExecutor from the given config.
 func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 	return &DaemonExecutor{
-		hostExec:   cfg.HostExec,
-		pool:       cfg.Pool,
-		projectDir: cfg.ProjectDir,
-		attemptID:  cfg.AttemptID,
-		image:      cfg.Image,
-		allWFs:     cfg.AllWFs,
-		resumeMode: cfg.ResumeMode,
+		hostExec:         cfg.HostExec,
+		pool:             cfg.Pool,
+		projectDir:       cfg.ProjectDir,
+		attemptID:        cfg.AttemptID,
+		image:            cfg.Image,
+		allWFs:           cfg.AllWFs,
+		resumeMode:       cfg.ResumeMode,
+		onContainerStart: cfg.OnContainerStart,
 	}
 }
 
@@ -156,6 +164,10 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 	session, err := d.pool.SessionFor(ctx, poolKey, cfg)
 	if err != nil {
 		return domain.StepResult{}, fmt.Errorf("daemon executor: getting container session for step %q: %w", step.Name, err)
+	}
+
+	if d.onContainerStart != nil {
+		d.onContainerStart(session.ContainerID)
 	}
 
 	return session.ExecuteStep(ctx, step, d.resumeMode)
