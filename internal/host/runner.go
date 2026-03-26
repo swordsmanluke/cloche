@@ -27,6 +27,7 @@ type Runner struct {
 	Captures      ports.CaptureStore       // optional: saves step captures for cloche logs
 	LogBroadcast  *logstream.Broadcaster   // optional: publishes live log lines
 	ActivityLog   *activitylog.Logger      // optional: records step events to .cloche/activity.log
+	Executor      engine.StepExecutor      // optional: custom executor (e.g. DaemonExecutor); when nil, a default host.Executor is created
 	TaskID        string                   // optional task ID assigned by the daemon loop
 	TaskTitle     string                   // optional task title for display in the web UI
 	AttemptID     string                   // optional attempt ID for v2 tracking
@@ -119,7 +120,7 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		saveExtraEnv(ctx, r.Store, r.TaskID, r.AttemptID, r.ExtraEnv)
 	}
 
-	executor := &Executor{
+	hostExec := &Executor{
 		ProjectDir:   projectDir,
 		MainDir:      MainWorktreeDir(projectDir),
 		Store:        r.Store,
@@ -134,10 +135,22 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 
 	// Configure agent from workflow-level host config
 	if cmd := wf.Config["host.agent_command"]; cmd != "" {
-		executor.AgentCommands = prompt.ParseCommands(cmd)
+		hostExec.AgentCommands = prompt.ParseCommands(cmd)
 	}
 	if args := wf.Config["host.agent_args"]; args != "" {
-		executor.AgentArgs = strings.Fields(args)
+		hostExec.AgentArgs = strings.Fields(args)
+	}
+
+	// Use the custom executor if provided (e.g. DaemonExecutor for workflow_name
+	// step routing), otherwise fall back to the plain host executor.
+	var stepExec engine.StepExecutor = hostExec
+	if r.Executor != nil {
+		// Give the composite executor the fully-configured host executor so it
+		// can delegate script/agent steps with correct OutputDir, Wires, etc.
+		if cfg, ok := r.Executor.(engine.HostExecutorConfigurer); ok {
+			cfg.SetHostExecutor(hostExec)
+		}
+		stepExec = r.Executor
 	}
 
 	// Create a logstream.Writer so host runs persist logs to full.log,
@@ -157,7 +170,7 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		r.LogBroadcast.Start(orchRunID)
 	}
 
-	eng := engine.New(executor)
+	eng := engine.New(stepExec)
 	eng.SetStatusHandler(&hostStatusHandler{
 		projectDir:   projectDir,
 		orchRunID:    orchRunID,
@@ -290,7 +303,7 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 		return nil, fmt.Errorf("updating run state: %w", err)
 	}
 
-	executor := &Executor{
+	hostExec := &Executor{
 		ProjectDir:   run.ProjectDir,
 		MainDir:      MainWorktreeDir(run.ProjectDir),
 		Store:        r.Store,
@@ -304,17 +317,25 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 
 	// Configure agent from workflow-level host config
 	if cmd := wf.Config["host.agent_command"]; cmd != "" {
-		executor.AgentCommands = prompt.ParseCommands(cmd)
+		hostExec.AgentCommands = prompt.ParseCommands(cmd)
 	}
 	if args := wf.Config["host.agent_args"]; args != "" {
-		executor.AgentArgs = strings.Fields(args)
+		hostExec.AgentArgs = strings.Fields(args)
 	}
 
 	// Build preloaded results from previously completed steps
 	preloaded := buildPreloadedResults(run, wf, resumeFrom)
 
 	// Configure the executor to know which step is being resumed (for prompt resume)
-	executor.ResumeStep = resumeFrom
+	hostExec.ResumeStep = resumeFrom
+
+	var stepExec engine.StepExecutor = hostExec
+	if r.Executor != nil {
+		if cfg, ok := r.Executor.(engine.HostExecutorConfigurer); ok {
+			cfg.SetHostExecutor(hostExec)
+		}
+		stepExec = r.Executor
+	}
 
 	var ulog *logstream.Writer
 	w, err := logstream.NewAtDir(outputDir)
@@ -329,7 +350,7 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 		r.LogBroadcast.Start(run.ID)
 	}
 
-	eng := engine.New(executor)
+	eng := engine.New(stepExec)
 	eng.SetPreloadedResults(preloaded)
 	eng.SetStatusHandler(&hostStatusHandler{
 		projectDir:   run.ProjectDir,
@@ -467,7 +488,7 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 	// Persist ExtraEnv so future resumes can restore it.
 	saveExtraEnv(ctx, r.Store, oldRun.TaskID, r.AttemptID, extraEnv)
 
-	executor := &Executor{
+	hostExec := &Executor{
 		ProjectDir:   oldRun.ProjectDir,
 		MainDir:      MainWorktreeDir(oldRun.ProjectDir),
 		Store:        r.Store,
@@ -482,10 +503,18 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 	}
 
 	if cmd := wf.Config["host.agent_command"]; cmd != "" {
-		executor.AgentCommands = prompt.ParseCommands(cmd)
+		hostExec.AgentCommands = prompt.ParseCommands(cmd)
 	}
 	if args := wf.Config["host.agent_args"]; args != "" {
-		executor.AgentArgs = strings.Fields(args)
+		hostExec.AgentArgs = strings.Fields(args)
+	}
+
+	var stepExec engine.StepExecutor = hostExec
+	if r.Executor != nil {
+		if cfg, ok := r.Executor.(engine.HostExecutorConfigurer); ok {
+			cfg.SetHostExecutor(hostExec)
+		}
+		stepExec = r.Executor
 	}
 
 	preloaded := buildPreloadedResults(oldRun, wf, resumeFrom)
@@ -502,7 +531,7 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 		r.LogBroadcast.Start(newRunID)
 	}
 
-	eng := engine.New(executor)
+	eng := engine.New(stepExec)
 	eng.SetPreloadedResults(preloaded)
 	eng.SetStatusHandler(&hostStatusHandler{
 		projectDir:   oldRun.ProjectDir,

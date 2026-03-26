@@ -17,6 +17,14 @@ type StepExecutor interface {
 	Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error)
 }
 
+// HostExecutorConfigurer is optionally implemented by composite executors
+// (e.g. DaemonExecutor) that wrap a host executor. The runner calls
+// SetHostExecutor after constructing a fully-configured host executor so the
+// composite executor delegates host steps to it.
+type HostExecutorConfigurer interface {
+	SetHostExecutor(StepExecutor)
+}
+
 // StepExecutorFunc adapts a function to the StepExecutor interface.
 type StepExecutorFunc func(ctx context.Context, step *domain.Step) (domain.StepResult, error)
 

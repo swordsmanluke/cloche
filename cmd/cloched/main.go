@@ -83,6 +83,7 @@ func main() {
 	srv.SetAttemptStore(store)
 	srv.SetActivityStore(store)
 	srv.SetLogBroadcaster(broadcaster)
+	srv.SetContainerPool(docker.NewContainerPool(runtime))
 
 	// Set up evolution trigger
 	evoTrigger := initEvolution(globalCfg, store, store)

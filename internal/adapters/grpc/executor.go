@@ -72,6 +72,14 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 // Ensure DaemonExecutor satisfies engine.StepExecutor.
 var _ engine.StepExecutor = (*DaemonExecutor)(nil)
 
+// SetHostExecutor replaces the host executor with a fully-configured one.
+// Implements engine.HostExecutorConfigurer.
+func (d *DaemonExecutor) SetHostExecutor(exec engine.StepExecutor) {
+	if he, ok := exec.(*host.Executor); ok {
+		d.hostExec = he
+	}
+}
+
 // Execute routes the step to the appropriate executor based on workflow location.
 func (d *DaemonExecutor) Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
 	// workflow_name steps are handled at the daemon level regardless of which

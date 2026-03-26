@@ -402,6 +402,7 @@ func (s *ClocheServer) handleHostWorkflowRequest(ctx context.Context, containerR
 		Captures:     s.captures,
 		LogBroadcast: s.logBroadcast,
 		ActivityLog:  s.activityLoggerFor(projectDir),
+		Executor:     s.daemonExecutorFor(projectDir, taskID, attemptID),
 		TaskID:       taskID,
 		AttemptID:    attemptID,
 	}
@@ -541,6 +542,7 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 		Captures:     s.captures,
 		LogBroadcast: s.logBroadcast,
 		ActivityLog:  s.activityLoggerFor(req.ProjectDir),
+		Executor:     s.daemonExecutorFor(req.ProjectDir, taskID, attemptID),
 		TaskID:       taskID,
 		AttemptID:    attemptID,
 	}
@@ -823,6 +825,7 @@ func (s *ClocheServer) resumeHostRun(ctx context.Context, run *domain.Run, stepN
 		Captures:     s.captures,
 		LogBroadcast: s.logBroadcast,
 		ActivityLog:  s.activityLoggerFor(run.ProjectDir),
+		Executor:     s.daemonExecutorFor(run.ProjectDir, run.TaskID, newAttempt.ID),
 		TaskID:       run.TaskID,
 		AttemptID:    newAttempt.ID,
 	}
@@ -2669,6 +2672,19 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 	return &pb.EnableLoopResponse{}, nil
 }
 
+// daemonExecutorFor creates a DaemonExecutor for the given project and attempt.
+// This routes workflow_name steps to sub-workflows and container steps to the
+// container pool, while delegating script/agent steps to the host executor.
+func (s *ClocheServer) daemonExecutorFor(projectDir, taskID, attemptID string) engine.StepExecutor {
+	allWFs, _ := host.FindAllWorkflows(projectDir)
+	return NewDaemonExecutor(DaemonExecutorConfig{
+		Pool:       s.pool,
+		ProjectDir: projectDir,
+		AttemptID:  attemptID,
+		AllWFs:     allWFs,
+	})
+}
+
 // createPhaseLoop creates a two-phase orchestration loop using host workflows
 // from any .cloche file in the project. When a list-tasks workflow exists, tasks
 // are discovered through it; otherwise main runs continuously with an untracked
@@ -2704,6 +2720,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 			Captures:     s.captures,
 			LogBroadcast: s.logBroadcast,
 			ActivityLog:  alog,
+			Executor:     s.daemonExecutorFor(projDir, taskID, attemptID),
 			TaskID:       taskID,
 			TaskTitle:    taskTitle,
 			AttemptID:    attemptID,
