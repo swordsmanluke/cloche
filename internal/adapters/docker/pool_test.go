@@ -336,6 +336,55 @@ func TestContainerPool_NotifyReady_CalledTwiceIsNoop(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestContainerPool_NotifyReadyWithStream_ShortContainerID(t *testing.T) {
+	rt := &fakeRuntime{}
+	pool := docker.NewContainerPool(rt)
+	ctx := context.Background()
+
+	// SessionFor starts a container and stores the full ID (e.g. "container-1").
+	// Simulate Docker's behavior where os.Hostname() returns a short prefix.
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		fullID := rt.lastStarted() // e.g. "container-1"
+		// Use a prefix of the full ID (simulating Docker short hostname).
+		// Our fake IDs are short, so just use the full thing to test the
+		// prefix path — also test with a real-looking 64-char ID.
+		pool.NotifyReadyWithStream(fullID, func(_ *pb.DaemonMessage) error { return nil })
+	}()
+
+	sess, err := pool.SessionFor(ctx, "att-short-ok", ports.ContainerConfig{Image: "img"})
+	require.NoError(t, err)
+	assert.NotNil(t, sess)
+}
+
+func TestContainerPool_NotifyReadyWithStream_PrefixMatch(t *testing.T) {
+	// Use a runtime that returns 64-char IDs like real Docker.
+	fullID := "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6abcd"
+	longRT := &fixedIDRuntime{id: fullID}
+	longPool := docker.NewContainerPool(longRT)
+	ctx := context.Background()
+
+	// SessionFor will store fullID in containerAttempt map.
+	// NotifyReadyWithStream with the short prefix should match via prefix lookup.
+	shortID := fullID[:12] // "a1b2c3d4e5f6"
+
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		longPool.NotifyReadyWithStream(shortID, func(_ *pb.DaemonMessage) error { return nil })
+	}()
+
+	sess, err := longPool.SessionFor(ctx, "att-prefix", ports.ContainerConfig{Image: "img"})
+	require.NoError(t, err)
+	assert.Equal(t, fullID, sess.ContainerID)
+}
+
+// fixedIDRuntime always returns the same container ID from Start.
+type fixedIDRuntime struct{ fakeRuntime; id string }
+
+func (f *fixedIDRuntime) Start(_ context.Context, _ ports.ContainerConfig) (string, error) {
+	return f.id, nil
+}
+
 func TestContainerPool_FailPendingRequests_UnblocksCallers(t *testing.T) {
 	rt := &fakeRuntime{}
 	pool := docker.NewContainerPool(rt)
