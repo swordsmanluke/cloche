@@ -78,8 +78,10 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	if clocheAddr == "" {
 		clocheAddr = config.DefaultAddr()
 	}
-	// Convert 127.0.0.1:port to host.docker.internal:port for container access.
-	containerAddr := strings.Replace(clocheAddr, "127.0.0.1:", "host.docker.internal:", 1)
+	// Convert localhost addresses to host.docker.internal for container access.
+	containerAddr := clocheAddr
+	containerAddr = strings.Replace(containerAddr, "127.0.0.1:", "host.docker.internal:", 1)
+	containerAddr = strings.Replace(containerAddr, "0.0.0.0:", "host.docker.internal:", 1)
 	args = append(args, "-e", "CLOCHE_ADDR="+containerAddr)
 
 	// Claude auth files are copied (not mounted) after docker create so each
