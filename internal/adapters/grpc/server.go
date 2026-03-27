@@ -2586,6 +2586,16 @@ func (s *ClocheServer) StopRun(ctx context.Context, req *pb.StopRunRequest) (*pb
 		run.Complete(domain.RunStateCancelled)
 		_ = s.store.UpdateRun(ctx, run)
 
+		// Also mark the associated attempt as cancelled so the task
+		// status is updated immediately (task status derives from the
+		// latest attempt result).
+		if s.attemptStore != nil && run.AttemptID != "" {
+			if attempt, aErr := s.attemptStore.GetAttempt(ctx, run.AttemptID); aErr == nil {
+				attempt.Complete(domain.AttemptResultCancelled)
+				_ = s.attemptStore.SaveAttempt(ctx, attempt)
+			}
+		}
+
 		if isHostRun {
 			cancelFn()
 		}
