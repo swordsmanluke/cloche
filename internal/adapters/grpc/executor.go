@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
 	"github.com/cloche-dev/cloche/internal/domain"
@@ -162,15 +164,26 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		poolKey := d.attemptID + ":" + targetWF.ContainerID()
 		succeeded := run.State == domain.RunStateSucceeded
 
-		if baseSHA != "" {
-			if session, err := d.pool.SessionFor(ctx, poolKey, ports.ContainerConfig{}); err == nil {
-				log.Printf("daemon executor: extracting results to branch cloche/%s (baseSHA=%s)", childRunID, baseSHA)
-				if err := docker.ExtractResults(ctx, session.ContainerID, d.projectDir, childRunID, baseSHA, targetName, resultLabel); err != nil {
-					log.Printf("daemon executor: failed to extract results: %v", err)
-				} else {
-					log.Printf("daemon executor: branch cloche/%s created successfully", childRunID)
-				}
+		// Get the session so we can access the container for extraction.
+		session, sessErr := d.pool.SessionFor(ctx, poolKey, ports.ContainerConfig{})
+		if sessErr != nil {
+			log.Printf("daemon executor: could not get session for extraction: %v", sessErr)
+		}
+
+		if baseSHA != "" && session != nil {
+			log.Printf("daemon executor: extracting results to branch cloche/%s (baseSHA=%s)", childRunID, baseSHA)
+			if err := docker.ExtractResults(ctx, session.ContainerID, d.projectDir, childRunID, baseSHA, targetName, resultLabel); err != nil {
+				log.Printf("daemon executor: failed to extract results: %v", err)
+			} else {
+				log.Printf("daemon executor: branch cloche/%s created successfully", childRunID)
 			}
+		}
+
+		// Extract container output logs to the host log directory so that
+		// the host status handler can read them (it looks for <step>.log)
+		// and they survive container cleanup.
+		if session != nil {
+			d.extractContainerLogs(ctx, session.ContainerID, step.Name)
 		}
 
 		// Set child_run_id so downstream host steps (merge-to-base.sh) can
@@ -227,4 +240,45 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 	}
 
 	return session.ExecuteStep(ctx, step, d.resumeMode)
+}
+
+// extractContainerLogs copies output log files from the container to the host
+// log directory. The container's full.log is written as <stepName>.log so the
+// host status handler (which reads <outputDir>/<step>.log on step completion)
+// can pick it up and append it to the host workflow's full.log. Individual
+// container step logs are placed in a <stepName>/ subdirectory.
+func (d *DaemonExecutor) extractContainerLogs(ctx context.Context, containerID, stepName string) {
+	if d.pool == nil || d.taskID == "" || d.attemptID == "" {
+		return
+	}
+
+	hostLogDir := filepath.Join(d.projectDir, ".cloche", "logs", d.taskID, d.attemptID)
+
+	// Extract container output to a step-specific subdirectory so individual
+	// container step logs (implement.log, test.log, etc.) are preserved
+	// without colliding with the host workflow's own log files.
+	subDir := filepath.Join(hostLogDir, stepName)
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		log.Printf("daemon executor: failed to create log subdir %s: %v", subDir, err)
+		return
+	}
+
+	if err := d.pool.CopyFrom(ctx, containerID, "/workspace/.cloche/output/.", subDir); err != nil {
+		log.Printf("daemon executor: failed to extract container logs: %v", err)
+		return
+	}
+
+	// Copy the container's full.log as <stepName>.log in the host log dir.
+	// The host status handler reads this file on step completion and appends
+	// its content to the host workflow's full.log.
+	containerFullLog := filepath.Join(subDir, "full.log")
+	data, err := os.ReadFile(containerFullLog)
+	if err != nil {
+		log.Printf("daemon executor: no full.log in container output: %v", err)
+		return
+	}
+	stepLog := filepath.Join(hostLogDir, stepName+".log")
+	if err := os.WriteFile(stepLog, data, 0644); err != nil {
+		log.Printf("daemon executor: failed to write %s: %v", stepLog, err)
+	}
 }

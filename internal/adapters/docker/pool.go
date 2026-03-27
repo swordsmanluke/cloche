@@ -411,6 +411,12 @@ func (p *ContainerPool) RemoveImages(ctx context.Context, images map[string]stri
 	}
 }
 
+// CopyFrom copies files from a container to the host filesystem, delegating to
+// the underlying ContainerRuntime.
+func (p *ContainerPool) CopyFrom(ctx context.Context, containerID, srcPath, dstPath string) error {
+	return p.runtime.CopyFrom(ctx, containerID, srcPath, dstPath)
+}
+
 // CleanupAttempt stops and optionally removes all containers for attemptID.
 // Containers are always stopped on terminal states. They are only removed
 // when succeeded is true (the workflow reached done). On failure or abort

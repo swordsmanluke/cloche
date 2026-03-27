@@ -2485,8 +2485,9 @@ func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLog
 	}
 
 	// Fall back to file path conventions (try v2 path first, then legacy)
+	v2LogDir := runLogDir(run, run.ProjectDir, req.RunId)
+
 	if req.StepName != "" {
-		v2LogDir := runLogDir(run, run.ProjectDir, req.RunId)
 		wfPrefix := run.WorkflowName + "-"
 		var candidates []string
 		switch req.LogType {
@@ -2511,6 +2512,21 @@ func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLog
 			return sendContentChunked(stream, "step_log", req.StepName, "", "", applyLimit(string(data), limit))
 		}
 		return fmt.Errorf("log file not found for step %q", req.StepName)
+	}
+
+	// Type-only filter (no step name): look for the file directly by type.
+	if req.LogType != "" {
+		candidates := []string{
+			filepath.Join(v2LogDir, req.LogType+".log"),
+			filepath.Join(outputDir, req.LogType+".log"),
+		}
+		for _, logPath := range candidates {
+			data, err := os.ReadFile(logPath)
+			if err != nil || len(data) == 0 {
+				continue
+			}
+			return sendContentChunked(stream, req.LogType+"_log", "", "", "", applyLimit(string(data), limit))
+		}
 	}
 
 	return fmt.Errorf("no log files found matching filter")
