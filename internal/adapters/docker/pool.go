@@ -411,19 +411,19 @@ func (p *ContainerPool) RemoveImages(ctx context.Context, images map[string]stri
 	}
 }
 
-// CleanupAttempt stops and removes all containers associated with attemptID.
-// Containers are kept (not removed) when any of the following is true:
-//   - keepContainer is true (--keep-container CLI flag)
-//   - runFailed is true (the attempt result was failed/cancelled)
-//   - aborted is true (the attempt was aborted mid-run)
-func (p *ContainerPool) CleanupAttempt(ctx context.Context, attemptID string, keepContainer, runFailed, aborted bool) error {
+// CleanupAttempt stops and optionally removes all containers for attemptID.
+// Containers are always stopped on terminal states. They are only removed
+// when succeeded is true (the workflow reached done). On failure or abort
+// the container is stopped but kept for debugging.
+// When keepContainer is true (--keep-container flag), containers are neither
+// stopped nor removed.
+func (p *ContainerPool) CleanupAttempt(ctx context.Context, attemptID string, keepContainer, succeeded bool) error {
 	p.mu.Lock()
 	entry, exists := p.attempts[attemptID]
 	if !exists {
 		p.mu.Unlock()
 		return nil
 	}
-	// Take ownership of the sessions and remove the entry.
 	sessions := entry.sessions
 	for _, sess := range sessions {
 		delete(p.containerAttempt, sess.ContainerID)
@@ -431,21 +431,24 @@ func (p *ContainerPool) CleanupAttempt(ctx context.Context, attemptID string, ke
 	delete(p.attempts, attemptID)
 	p.mu.Unlock()
 
-	keep := keepContainer || runFailed || aborted
-
 	var errs []error
 	for _, sess := range sessions {
-		if keep {
-			log.Printf("pool: keeping container %s for attempt %s", sess.ContainerID, attemptID)
+		if keepContainer {
+			log.Printf("pool: keeping container %s for attempt %s (--keep-container)", sess.ContainerID, attemptID)
 			continue
 		}
-		// Stop before remove so the process has a chance to exit cleanly.
+		// Always stop on terminal states.
 		if err := p.runtime.Stop(ctx, sess.ContainerID); err != nil {
 			log.Printf("pool: stopping container %s: %v", sess.ContainerID, err)
 		}
-		if err := p.runtime.Remove(ctx, sess.ContainerID); err != nil {
-			log.Printf("pool: removing container %s: %v", sess.ContainerID, err)
-			errs = append(errs, fmt.Errorf("removing container %s: %w", sess.ContainerID, err))
+		// Only remove on success; keep stopped containers for debugging on failure.
+		if succeeded {
+			if err := p.runtime.Remove(ctx, sess.ContainerID); err != nil {
+				log.Printf("pool: removing container %s: %v", sess.ContainerID, err)
+				errs = append(errs, fmt.Errorf("removing container %s: %w", sess.ContainerID, err))
+			}
+		} else {
+			log.Printf("pool: stopped container %s for attempt %s (kept for debugging)", sess.ContainerID, attemptID)
 		}
 	}
 

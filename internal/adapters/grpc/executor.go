@@ -156,15 +156,20 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		resultLabel = "succeeded"
 	}
 
-	// For container sub-workflows, extract the workspace to a git branch.
-	if targetWF.Location == domain.LocationContainer && baseSHA != "" {
+	// For container sub-workflows, extract the workspace to a git branch
+	// and clean up the container.
+	if targetWF.Location == domain.LocationContainer {
 		poolKey := d.attemptID + ":" + targetWF.ContainerID()
-		if session, err := d.pool.SessionFor(ctx, poolKey, ports.ContainerConfig{}); err == nil {
-			log.Printf("daemon executor: extracting results to branch cloche/%s (baseSHA=%s)", childRunID, baseSHA)
-			if err := docker.ExtractResults(ctx, session.ContainerID, d.projectDir, childRunID, baseSHA, targetName, resultLabel); err != nil {
-				log.Printf("daemon executor: failed to extract results: %v", err)
-			} else {
-				log.Printf("daemon executor: branch cloche/%s created successfully", childRunID)
+		succeeded := run.State == domain.RunStateSucceeded
+
+		if baseSHA != "" {
+			if session, err := d.pool.SessionFor(ctx, poolKey, ports.ContainerConfig{}); err == nil {
+				log.Printf("daemon executor: extracting results to branch cloche/%s (baseSHA=%s)", childRunID, baseSHA)
+				if err := docker.ExtractResults(ctx, session.ContainerID, d.projectDir, childRunID, baseSHA, targetName, resultLabel); err != nil {
+					log.Printf("daemon executor: failed to extract results: %v", err)
+				} else {
+					log.Printf("daemon executor: branch cloche/%s created successfully", childRunID)
+				}
 			}
 		}
 
@@ -172,6 +177,11 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		// find the branch.
 		if d.store != nil && d.taskID != "" {
 			_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, "child_run_id", childRunID)
+		}
+
+		// Always stop the container on terminal states; only remove on success.
+		if d.pool != nil {
+			_ = d.pool.CleanupAttempt(ctx, poolKey, false, succeeded)
 		}
 	}
 

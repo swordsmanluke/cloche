@@ -234,8 +234,8 @@ func TestContainerPool_CleanupAttempt_RemovesContainers(t *testing.T) {
 	_, err := pool.SessionFor(ctx, "att-cleanup", ports.ContainerConfig{Image: "img"})
 	require.NoError(t, err)
 
-	// Cleanup with no keep flags → container should be stopped and removed.
-	err = pool.CleanupAttempt(ctx, "att-cleanup", false, false, false)
+	// Cleanup on success → container should be stopped and removed.
+	err = pool.CleanupAttempt(ctx, "att-cleanup", false, true)
 	require.NoError(t, err)
 
 	assert.Len(t, rt.stopped, 1)
@@ -255,12 +255,12 @@ func TestContainerPool_CleanupAttempt_KeepOnFailure(t *testing.T) {
 	_, err := pool.SessionFor(ctx, "att-fail", ports.ContainerConfig{Image: "img"})
 	require.NoError(t, err)
 
-	// runFailed = true → keep container.
-	err = pool.CleanupAttempt(ctx, "att-fail", false, true, false)
+	// succeeded=false → stop but keep container for debugging.
+	err = pool.CleanupAttempt(ctx, "att-fail", false, false)
 	require.NoError(t, err)
 
 	assert.Empty(t, rt.removed, "container should be kept on failure")
-	assert.Empty(t, rt.stopped, "container should not be stopped on failure")
+	assert.Len(t, rt.stopped, 1, "container should be stopped on failure")
 }
 
 func TestContainerPool_CleanupAttempt_KeepOnKeepContainerFlag(t *testing.T) {
@@ -276,13 +276,14 @@ func TestContainerPool_CleanupAttempt_KeepOnKeepContainerFlag(t *testing.T) {
 	_, err := pool.SessionFor(ctx, "att-keep", ports.ContainerConfig{Image: "img"})
 	require.NoError(t, err)
 
-	err = pool.CleanupAttempt(ctx, "att-keep", true, false, false)
+	err = pool.CleanupAttempt(ctx, "att-keep", true, true)
 	require.NoError(t, err)
 
 	assert.Empty(t, rt.removed, "container should be kept with --keep-container")
+	assert.Empty(t, rt.stopped, "container should not be stopped with --keep-container")
 }
 
-func TestContainerPool_CleanupAttempt_KeepOnAbort(t *testing.T) {
+func TestContainerPool_CleanupAttempt_StopsButKeepsOnAbort(t *testing.T) {
 	rt := &fakeRuntime{}
 	pool := docker.NewContainerPool(rt)
 
@@ -295,10 +296,11 @@ func TestContainerPool_CleanupAttempt_KeepOnAbort(t *testing.T) {
 	_, err := pool.SessionFor(ctx, "att-abort", ports.ContainerConfig{Image: "img"})
 	require.NoError(t, err)
 
-	err = pool.CleanupAttempt(ctx, "att-abort", false, false, true)
+	err = pool.CleanupAttempt(ctx, "att-abort", false, false)
 	require.NoError(t, err)
 
-	assert.Empty(t, rt.removed, "container should be kept on abort")
+	assert.Len(t, rt.stopped, 1, "container should be stopped on abort")
+	assert.Empty(t, rt.removed, "container should be kept on abort for debugging")
 }
 
 func TestContainerPool_CleanupAttempt_UnknownAttemptIsNoop(t *testing.T) {
@@ -306,7 +308,7 @@ func TestContainerPool_CleanupAttempt_UnknownAttemptIsNoop(t *testing.T) {
 	pool := docker.NewContainerPool(rt)
 
 	// Cleaning up an attempt that was never registered should not error.
-	err := pool.CleanupAttempt(context.Background(), "unknown", false, false, false)
+	err := pool.CleanupAttempt(context.Background(), "unknown", false, false)
 	assert.NoError(t, err)
 }
 
