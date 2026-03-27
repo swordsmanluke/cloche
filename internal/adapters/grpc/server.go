@@ -579,7 +579,19 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 			s.mu.Unlock()
 			cancel()
 		}()
-		runner.RunNamedWithID(runCtx, req.ProjectDir, hostWorkflowName, runID)
+		result, _ := runner.RunNamedWithID(runCtx, req.ProjectDir, hostWorkflowName, runID)
+
+		// Complete the attempt record so it doesn't stay stuck at "running".
+		// The orchestration loop handles this via completeAttempt in its own
+		// goroutine, but direct host workflow runs (cloche run) need to do it
+		// here since they bypass the loop.
+		if s.attemptStore != nil && attemptID != "" {
+			state := domain.RunStateFailed
+			if result != nil {
+				state = result.State
+			}
+			s.completeAttemptRecord(attemptID, state)
+		}
 	}()
 
 	return &pb.RunWorkflowResponse{RunId: runID}, nil
@@ -694,6 +706,31 @@ func (s *ClocheServer) ensureTaskAndAttempt(ctx context.Context, issueID, title,
 	}
 
 	return attemptID
+}
+
+// completeAttemptRecord marks an attempt as finished with the result derived
+// from the run state. Used by runHostWorkflow to finalize attempts for direct
+// (non-loop) host workflow runs.
+func (s *ClocheServer) completeAttemptRecord(attemptID string, state domain.RunState) {
+	ctx := context.Background()
+	attempt, err := s.attemptStore.GetAttempt(ctx, attemptID)
+	if err != nil {
+		log.Printf("server: failed to get attempt %s for completion: %v", attemptID, err)
+		return
+	}
+	var result domain.AttemptResult
+	switch state {
+	case domain.RunStateSucceeded:
+		result = domain.AttemptResultSucceeded
+	case domain.RunStateCancelled:
+		result = domain.AttemptResultCancelled
+	default:
+		result = domain.AttemptResultFailed
+	}
+	attempt.Complete(result)
+	if err := s.attemptStore.SaveAttempt(ctx, attempt); err != nil {
+		log.Printf("server: failed to complete attempt %s: %v", attemptID, err)
+	}
 }
 
 // resolveResumeTarget takes a bare ID (no colons) and resolves it to a
