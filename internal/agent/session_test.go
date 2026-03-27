@@ -118,9 +118,10 @@ func TestSession_AgentReady(t *testing.T) {
 	err := sess.Run(ctx)
 	require.NoError(t, err)
 
+	expectedHostname, _ := os.Hostname()
 	select {
 	case ready := <-srv.gotReady:
-		assert.Equal(t, "run-1", ready.RunId)
+		assert.Equal(t, expectedHostname, ready.RunId)
 		assert.Equal(t, "att-1", ready.AttemptId)
 	default:
 		t.Fatal("AgentReady was not received")

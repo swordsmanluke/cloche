@@ -150,7 +150,7 @@ message DaemonMessage {
 }
 
 message AgentReady {
-  string run_id = 1;
+  string run_id = 1;     // container hostname (Docker sets this to the short container ID)
   string attempt_id = 2;
 }
 
@@ -204,7 +204,7 @@ message Shutdown {}
 
 1. Container starts, `cloche-agent` launches
 2. Agent dials daemon at `CLOCHE_ADDR`, opens `AgentSession` stream
-3. Agent sends `AgentReady` with run/attempt IDs
+3. Agent sends `AgentReady` with the container hostname (Docker short container ID) as `run_id` and the attempt ID
 4. Daemon sends `ExecuteStep` commands as the workflow graph progresses
 5. Agent executes each step (script or LLM agent), streams `StepLog` lines and
    sends `StepResult` on completion
