@@ -2149,7 +2149,7 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.ServerStreamingServer[pb.LogEntry]) error {
 	ctx := stream.Context()
 
-	_ = followFromContext(ctx) // follow is implicit for active runs
+	follow := followFromContext(ctx)
 	limit := limitFromContext(ctx)
 
 	// Resolve run from the Id field if set (colon-delimited: task_id[:attempt_id[:step_name]]).
@@ -2183,11 +2183,9 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 
 	isActive := run.State == domain.RunStateRunning || run.State == domain.RunStatePending
 
-	// Active runs stream live output when the broadcaster is tracking them.
-	// If the broadcaster has no active entry (e.g. daemon restarted while run
-	// was in progress, or Finish was already called during post-run cleanup),
-	// fall through to serve static content instead of hanging forever.
-	if isActive && s.logBroadcast != nil && s.logBroadcast.IsActive(req.RunId) {
+	// Active runs with -f stream live output when the broadcaster is tracking
+	// them. Without -f, fall through to serve static content (full.log snapshot).
+	if isActive && follow && s.logBroadcast != nil && s.logBroadcast.IsActive(req.RunId) {
 		return s.streamFollowLogs(req.RunId, run, stream, limit)
 	}
 
