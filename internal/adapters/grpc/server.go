@@ -718,16 +718,7 @@ func (s *ClocheServer) completeAttemptRecord(attemptID string, state domain.RunS
 		log.Printf("server: failed to get attempt %s for completion: %v", attemptID, err)
 		return
 	}
-	var result domain.AttemptResult
-	switch state {
-	case domain.RunStateSucceeded:
-		result = domain.AttemptResultSucceeded
-	case domain.RunStateCancelled:
-		result = domain.AttemptResultCancelled
-	default:
-		result = domain.AttemptResultFailed
-	}
-	attempt.Complete(result)
+	attempt.Complete(domain.AttemptResultFromRunState(state))
 	if err := s.attemptStore.SaveAttempt(ctx, attempt); err != nil {
 		log.Printf("server: failed to complete attempt %s: %v", attemptID, err)
 	}

@@ -62,6 +62,18 @@ func (a *Attempt) Duration() time.Duration {
 	return a.EndedAt.Sub(a.StartedAt)
 }
 
+// AttemptResultFromRunState maps a RunState to the corresponding AttemptResult.
+func AttemptResultFromRunState(state RunState) AttemptResult {
+	switch state {
+	case RunStateSucceeded:
+		return AttemptResultSucceeded
+	case RunStateCancelled:
+		return AttemptResultCancelled
+	default:
+		return AttemptResultFailed
+	}
+}
+
 // attemptIDAlphabet is the set of characters used for attempt IDs.
 const attemptIDAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 

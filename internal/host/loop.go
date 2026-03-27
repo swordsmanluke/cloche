@@ -553,15 +553,7 @@ func (l *Loop) completeAttempt(attemptID string, state domain.RunState) {
 		log.Printf("orchestration loop: failed to get attempt %s for completion: %v", attemptID, err)
 		return
 	}
-	var result domain.AttemptResult
-	switch state {
-	case domain.RunStateSucceeded:
-		result = domain.AttemptResultSucceeded
-	case domain.RunStateCancelled:
-		result = domain.AttemptResultCancelled
-	default:
-		result = domain.AttemptResultFailed
-	}
+	result := domain.AttemptResultFromRunState(state)
 	attempt.Complete(result)
 	if err := l.attemptStore.SaveAttempt(ctx, attempt); err != nil {
 		log.Printf("orchestration loop: failed to complete attempt %s: %v", attemptID, err)
