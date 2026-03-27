@@ -8,7 +8,7 @@ results to a git branch.
 ## Core Concepts
 
 - **Workflow**: A directed graph of steps connected by named-result wiring.
-- **Step**: A unit of work. Type is inferred: `prompt` = agent step, `run` = script step, `workflow_name` = workflow step (host only).
+- **Step**: A unit of work. Type is inferred: `prompt` = agent step, `run` = script step, `workflow_name` = workflow step.
 - **Result**: A named outcome reported by a step (e.g. `success`, `fail`, `needs-research`). Steps declare their possible results; the engine follows wiring based on the reported result.
 - **Wiring**: Maps `step:result` pairs to the next step. Separate from step definitions.
 - **Terminals**: `done` (success) and `abort` (failure) are built-in terminal targets.
@@ -46,7 +46,7 @@ workflow "develop" {
 |-----|------|-------------|
 | `prompt` | string or `file("path")` | Prompt template. Makes this an agent step. |
 | `run` | string | Shell command. Makes this a script step. |
-| `workflow_name` | string | Container workflow to dispatch. Makes this a workflow step (host only). |
+| `workflow_name` | string | Workflow to dispatch by name. Makes this a workflow step. Available in both host and container workflows. |
 | `results` | ident list | Declared result names, e.g. `[success, fail, give-up]`. |
 | `max_attempts` | integer | Max retries before automatic `give-up` result, e.g. `2`. |
 | `timeout` | string | Step timeout as Go duration, e.g. `"30m"`, `"2h"`. Default: 30m. |
@@ -335,11 +335,11 @@ For detailed container setup instructions per agent:
 ## Workflow Locations
 
 **Container workflows** (the default) run inside Docker via `cloche-agent`. Steps may
-only be `agent` or `script` type.
+be `agent`, `script`, or `workflow` type.
 
 **Host workflows** (declared with a `host { }` block) run on the host machine as the
 daemon. Any `.cloche` file can contain host workflows. Steps may be `agent`, `script`,
-or `workflow` type. The `workflow_name` step type dispatches a container workflow run
+or `workflow` type. The `workflow_name` step type dispatches a named workflow run
 and blocks until it completes. Script steps
 execute with their working directory set to the main git worktree, so host-workflow
 fixes on main are available to in-flight runs even if they branched earlier.
@@ -1152,6 +1152,12 @@ The following keys are written automatically and can be read with `cloche get`:
 | Key | Value |
 |-----|-------|
 | `<workflow>:<step>:result` | Result code of the completed step (e.g. `develop:implement:result = success`) |
+
+**Sub-workflow results** (set after a `workflow_name` step targeting a container workflow completes):
+
+| Key | Value |
+|-----|-------|
+| `child_run_id` | Run ID of the child container workflow; used to locate the `cloche/<run-id>` git branch with extracted results |
 
 All auto-seeded keys are fully writable — scripts can overwrite them with `cloche set`.
 
