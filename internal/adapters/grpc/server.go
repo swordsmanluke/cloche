@@ -2705,7 +2705,9 @@ func (s *ClocheServer) daemonExecutorFor(projectDir, taskID, attemptID string) e
 	var de *DaemonExecutor
 	de = NewDaemonExecutor(DaemonExecutorConfig{
 		Pool:       s.pool,
+		Store:      s.store,
 		ProjectDir: projectDir,
+		TaskID:     taskID,
 		AttemptID:  attemptID,
 		Image:      image,
 		AllWFs:     allWFs,

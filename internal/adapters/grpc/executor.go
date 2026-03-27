@@ -38,6 +38,13 @@ type DaemonExecutor struct {
 	// keyed by name. Used to resolve workflow_name step targets.
 	allWFs map[string]*domain.Workflow
 
+	// store is used to set child_run_id in the KV store after extracting
+	// container results to a git branch.
+	store ports.RunStore
+
+	// taskID is the task ID for KV store operations.
+	taskID string
+
 	// resumeMode, when true, sets the resume flag on all ExecuteStep messages
 	// so the in-container agent continues an existing LLM conversation.
 	resumeMode bool
@@ -52,7 +59,9 @@ type DaemonExecutor struct {
 type DaemonExecutorConfig struct {
 	HostExec   *host.Executor
 	Pool       *docker.ContainerPool
+	Store      ports.RunStore
 	ProjectDir string
+	TaskID     string
 	AttemptID  string
 	Image      string
 	AllWFs     map[string]*domain.Workflow
@@ -68,7 +77,9 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 	return &DaemonExecutor{
 		hostExec:         cfg.HostExec,
 		pool:             cfg.Pool,
+		store:            cfg.Store,
 		projectDir:       cfg.ProjectDir,
+		taskID:           cfg.TaskID,
 		attemptID:        cfg.AttemptID,
 		image:            cfg.Image,
 		allWFs:           cfg.AllWFs,
@@ -110,6 +121,9 @@ func (d *DaemonExecutor) Execute(ctx context.Context, step *domain.Step) (domain
 
 // executeWorkflowStep looks up the target workflow by name, then runs it as a
 // sub-workflow using this same executor, mapping the final state to a step result.
+// For container sub-workflows, it extracts the container's workspace to a git
+// branch and sets child_run_id in the KV store so downstream merge steps can
+// find it.
 func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
 	targetName := step.Config["workflow_name"]
 	if targetName == "" {
@@ -121,7 +135,14 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		return domain.StepResult{}, fmt.Errorf("workflow step %q: workflow %q not found in project", step.Name, targetName)
 	}
 
-	log.Printf("daemon executor: running sub-workflow %q for step %q", targetName, step.Name)
+	// Capture the base SHA before the sub-workflow runs so we can create a
+	// branch from it after the container modifies files.
+	baseSHA := gitHEAD(d.projectDir)
+
+	// Generate a run ID for the child workflow (used as the branch name).
+	childRunID := domain.GenerateRunID(targetName, d.attemptID)
+
+	log.Printf("daemon executor: running sub-workflow %q for step %q (childRunID=%s)", targetName, step.Name, childRunID)
 
 	eng := engine.New(d)
 	run, err := eng.Run(ctx, targetWF)
@@ -130,11 +151,36 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		return domain.StepResult{Result: "fail"}, nil
 	}
 
+	resultLabel := "failed"
+	if run.State == domain.RunStateSucceeded {
+		resultLabel = "succeeded"
+	}
+
+	// For container sub-workflows, extract the workspace to a git branch.
+	if targetWF.Location == domain.LocationContainer && baseSHA != "" {
+		poolKey := d.attemptID + ":" + targetWF.ContainerID()
+		if session, err := d.pool.SessionFor(ctx, poolKey, ports.ContainerConfig{}); err == nil {
+			log.Printf("daemon executor: extracting results to branch cloche/%s (baseSHA=%s)", childRunID, baseSHA)
+			if err := docker.ExtractResults(ctx, session.ContainerID, d.projectDir, childRunID, baseSHA, targetName, resultLabel); err != nil {
+				log.Printf("daemon executor: failed to extract results: %v", err)
+			} else {
+				log.Printf("daemon executor: branch cloche/%s created successfully", childRunID)
+			}
+		}
+
+		// Set child_run_id so downstream host steps (merge-to-base.sh) can
+		// find the branch.
+		if d.store != nil && d.taskID != "" {
+			_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, "child_run_id", childRunID)
+		}
+	}
+
 	if run.State == domain.RunStateSucceeded {
 		return domain.StepResult{Result: "success"}, nil
 	}
 	return domain.StepResult{Result: "fail"}, nil
 }
+
 
 // executeContainerStep obtains a container session for the attempt (starting a
 // new container if needed) and dispatches the step to the in-container agent.
