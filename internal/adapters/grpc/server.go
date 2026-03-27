@@ -213,6 +213,16 @@ func (s *ClocheServer) AgentSession(stream pb.ClocheService_AgentSessionServer) 
 		}
 		s.mu.Lock()
 		runID = s.containerRun[containerID]
+		// The containerRun map is keyed by full 64-char Docker ID, but
+		// containerID here is the short hostname. Fall back to prefix match.
+		if runID == "" && len(containerID) >= 12 {
+			for fullID, rid := range s.containerRun {
+				if strings.HasPrefix(fullID, containerID) {
+					runID = rid
+					break
+				}
+			}
+		}
 		s.mu.Unlock()
 		return runID
 	}
