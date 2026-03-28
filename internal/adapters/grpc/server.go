@@ -2183,10 +2183,13 @@ func (s *ClocheServer) StreamLogs(req *pb.StreamLogsRequest, stream rpcgrpc.Serv
 
 	isActive := run.State == domain.RunStateRunning || run.State == domain.RunStatePending
 
-	// Active runs with -f stream live output when the broadcaster is tracking
-	// them. Without -f, fall through to serve static content (full.log snapshot).
-	if isActive && follow && s.logBroadcast != nil && s.logBroadcast.IsActive(req.RunId) {
-		return s.streamFollowLogs(req.RunId, run, stream, limit)
+	// Active runs: serve broadcast history (which includes both host status
+	// lines and container agent output). With -f, also tail live output.
+	if isActive && s.logBroadcast != nil && s.logBroadcast.IsActive(req.RunId) {
+		if follow {
+			return s.streamFollowLogs(req.RunId, run, stream, limit)
+		}
+		return s.streamBroadcastSnapshot(req.RunId, run, stream, limit)
 	}
 
 	// Check for full.log first — if it exists, serve it as the unified log
@@ -2381,6 +2384,51 @@ func (s *ClocheServer) sendRunCompleted(ctx context.Context, runID string, strea
 
 // streamFollowLogs sends existing log content then tails live output from the
 // broadcaster. It combines snapshot + live streaming (like tail -f).
+// streamBroadcastSnapshot sends the broadcast history for an active run and
+// returns immediately. This is the non-follow path: same content as the
+// beginning of streamFollowLogs, but without the tail loop.
+func (s *ClocheServer) streamBroadcastSnapshot(runID string, run *domain.Run, stream rpcgrpc.ServerStreamingServer[pb.LogEntry], limit int) error {
+	return s.sendBroadcastHistory(runID, run, stream, limit)
+}
+
+// sendBroadcastHistory sends all accumulated broadcast lines for a run.
+// Falls back to full.log when the broadcaster has no history (e.g. daemon
+// restarted mid-run).
+func (s *ClocheServer) sendBroadcastHistory(runID string, run *domain.Run, stream rpcgrpc.ServerStreamingServer[pb.LogEntry], limit int) error {
+	sub, history := s.logBroadcast.SubscribeWithHistory(runID)
+	s.logBroadcast.Unsubscribe(runID, sub)
+
+	if len(history) > 0 {
+		start := 0
+		if limit > 0 && len(history) > limit {
+			start = len(history) - limit
+		}
+		for _, line := range history[start:] {
+			if err := stream.Send(&pb.LogEntry{
+				Type:      "log",
+				StepName:  line.StepName,
+				Message:   line.Content,
+				Timestamp: line.Timestamp,
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	// Fallback: broadcaster has no history (e.g. daemon restarted
+	// mid-run). Send existing full.log content if available.
+	fullLogPath := filepath.Join(runLogDir(run, run.ProjectDir, runID), "full.log")
+	if _, err := os.Stat(fullLogPath); os.IsNotExist(err) {
+		fullLogPath = filepath.Join(run.ProjectDir, ".cloche", runID, "output", "full.log")
+	}
+	if data, err := os.ReadFile(fullLogPath); err == nil && len(data) > 0 {
+		msg := applyLimit(string(data), limit)
+		return sendContentChunked(stream, "full_log", "", "", "", msg)
+	}
+	return nil
+}
+
 func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rpcgrpc.ServerStreamingServer[pb.LogEntry], limit int) error {
 	// Subscribe first so we don't miss lines written between read and subscribe.
 	// SubscribeWithHistory returns all previously published lines, giving
@@ -2408,11 +2456,10 @@ func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rp
 	} else {
 		// Fallback: broadcaster has no history (e.g. daemon restarted
 		// mid-run). Send existing full.log content if available.
-		flp885 := filepath.Join(runLogDir(run, run.ProjectDir, runID), "full.log")
-		if _, err885 := os.Stat(flp885); os.IsNotExist(err885) {
-			flp885 = filepath.Join(run.ProjectDir, ".cloche", runID, "output", "full.log")
+		fullLogPath := filepath.Join(runLogDir(run, run.ProjectDir, runID), "full.log")
+		if _, err := os.Stat(fullLogPath); os.IsNotExist(err) {
+			fullLogPath = filepath.Join(run.ProjectDir, ".cloche", runID, "output", "full.log")
 		}
-		fullLogPath := flp885
 		if data, err := os.ReadFile(fullLogPath); err == nil && len(data) > 0 {
 			msg := applyLimit(string(data), limit)
 			if err := sendContentChunked(stream, "full_log", "", "", "", msg); err != nil {

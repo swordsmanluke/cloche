@@ -1521,7 +1521,7 @@ func TestServer_StreamLogs_LiveStreamingClientDisconnect(t *testing.T) {
 
 // TestServer_StreamLogs_NoFollowActiveRun verifies that without -f, logs for
 // an active run return existing content and exit (snapshot mode).
-func TestServer_StreamLogs_ActiveRunWithoutFollow_ReturnsSnapshot(t *testing.T) {
+func TestServer_StreamLogs_ActiveRunWithoutFollow_ReturnsBroadcastSnapshot(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
@@ -1534,14 +1534,23 @@ func TestServer_StreamLogs_ActiveRunWithoutFollow_ReturnsSnapshot(t *testing.T) 
 	run.ContainerID = "fake"
 	require.NoError(t, store.CreateRun(ctx, run))
 
-	// Write some existing log content.
-	outputDir := filepath.Join(dir, ".cloche", "snapshot-test-1", "output")
-	require.NoError(t, os.MkdirAll(outputDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "full.log"),
-		[]byte("[2026-03-10T10:00:00Z] [status] step_started: build\n"), 0644))
-
 	broadcaster := logstream.NewBroadcaster()
 	broadcaster.Start("snapshot-test-1") // register run as active
+
+	// Publish some lines to the broadcaster history.
+	broadcaster.Publish("snapshot-test-1", logstream.LogLine{
+		Timestamp: "2026-03-10T10:00:00Z",
+		Type:      "status",
+		Content:   "step_started: build",
+		StepName:  "build",
+	})
+	broadcaster.Publish("snapshot-test-1", logstream.LogLine{
+		Timestamp: "2026-03-10T10:01:00Z",
+		Type:      "llm",
+		Content:   "container output line",
+		StepName:  "build",
+	})
+
 	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
 	srv.SetLogBroadcaster(broadcaster)
 
@@ -1549,26 +1558,25 @@ func TestServer_StreamLogs_ActiveRunWithoutFollow_ReturnsSnapshot(t *testing.T) 
 	defer streamCancel()
 	mock := &mockLogStream{ctx: streamCtx}
 
-	// Without -f, should return the static full.log snapshot and exit
+	// Without -f, should return broadcast history snapshot and exit
 	// immediately, NOT block waiting for live output.
 	err = srv.StreamLogs(&pb.StreamLogsRequest{RunId: "snapshot-test-1"}, mock)
 	require.NoError(t, err)
 
-	// Should have: full_log snapshot only (no live lines, no run_completed
-	// since the run is still active).
-	var foundFullLog bool
+	// Should have broadcast history lines but no run_completed (still active).
+	var foundStatus, foundLLM bool
 	for _, e := range mock.entries {
-		switch e.Type {
-		case "full_log":
-			foundFullLog = true
-			assert.Contains(t, e.Message, "step_started: build")
-		case "log":
-			t.Error("should not stream live lines without -f")
-		case "run_completed":
+		switch {
+		case e.Type == "log" && e.Message == "step_started: build":
+			foundStatus = true
+		case e.Type == "log" && e.Message == "container output line":
+			foundLLM = true
+		case e.Type == "run_completed":
 			t.Error("should not send run_completed for active run without -f")
 		}
 	}
-	assert.True(t, foundFullLog, "should send existing full.log snapshot")
+	assert.True(t, foundStatus, "should include status lines from broadcast history")
+	assert.True(t, foundLLM, "should include container output from broadcast history")
 }
 
 // TestServer_StreamLogs_FollowWithExistingLogs verifies that -f sends existing
