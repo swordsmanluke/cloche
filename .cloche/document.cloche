@@ -1,0 +1,23 @@
+workflow "document" {
+  step investigate {
+    prompt = file(".cloche/prompts/document-investigate.md")
+    results = [success, fail]
+  }
+
+  step check-missing {
+    prompt = file(".cloche/prompts/document-check-missing.md")
+    results = [success, fail]
+  }
+
+  step write-docs {
+    prompt = file(".cloche/prompts/document-write-docs.md")
+    results = [success, fail]
+  }
+
+  investigate:success   -> check-missing
+  investigate:fail      -> abort
+  check-missing:success -> write-docs
+  check-missing:fail    -> abort
+  write-docs:success    -> done
+  write-docs:fail       -> abort
+}
