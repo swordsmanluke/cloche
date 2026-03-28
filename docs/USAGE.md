@@ -1199,6 +1199,7 @@ tasks from the pipeline and runs them.
 
 ```
 cloche loop [--max <n>]
+cloche loop once
 cloche loop stop
 cloche loop resume
 ```
@@ -1206,6 +1207,10 @@ cloche loop resume
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--max <n>` | config value | Maximum concurrent runs. Defaults to the value in `.cloche/config.toml`. |
+
+`cloche loop once` starts the loop, waits for a single task to be picked up and
+completed, then automatically stops the loop. Exits 0 on success, 1 on failure or
+cancellation.
 
 `cloche loop stop` disables the loop. Running tasks are not cancelled.
 
