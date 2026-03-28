@@ -146,6 +146,19 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 
 	log.Printf("daemon executor: running sub-workflow %q for step %q (childRunID=%s)", targetName, step.Name, childRunID)
 
+	// For container sub-workflows, register a deferred cleanup so the
+	// container is always stopped even if eng.Run returns an error
+	// (e.g. context cancellation, daemon restart).
+	succeeded := false
+	if targetWF.Location == domain.LocationContainer && d.pool != nil {
+		poolKey := d.attemptID + ":" + targetWF.ContainerID()
+		defer func() {
+			// Use background context: the original ctx may already be cancelled.
+			cleanupCtx := context.Background()
+			_ = d.pool.CleanupAttempt(cleanupCtx, poolKey, false, succeeded)
+		}()
+	}
+
 	eng := engine.New(d)
 	run, err := eng.Run(ctx, targetWF)
 	if err != nil {
@@ -153,16 +166,16 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		return domain.StepResult{Result: "fail"}, nil
 	}
 
+	succeeded = run.State == domain.RunStateSucceeded
 	resultLabel := "failed"
-	if run.State == domain.RunStateSucceeded {
+	if succeeded {
 		resultLabel = "succeeded"
 	}
 
 	// For container sub-workflows, extract the workspace to a git branch
-	// and clean up the container.
+	// and copy logs to the host log directory.
 	if targetWF.Location == domain.LocationContainer {
 		poolKey := d.attemptID + ":" + targetWF.ContainerID()
-		succeeded := run.State == domain.RunStateSucceeded
 
 		// Get the session so we can access the container for extraction.
 		session, sessErr := d.pool.SessionFor(ctx, poolKey, ports.ContainerConfig{})
@@ -192,13 +205,10 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 			_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, "child_run_id", childRunID)
 		}
 
-		// Always stop the container on terminal states; only remove on success.
-		if d.pool != nil {
-			_ = d.pool.CleanupAttempt(ctx, poolKey, false, succeeded)
-		}
+		// Note: CleanupAttempt is called by the deferred function above.
 	}
 
-	if run.State == domain.RunStateSucceeded {
+	if succeeded {
 		return domain.StepResult{Result: "success"}, nil
 	}
 	return domain.StepResult{Result: "fail"}, nil
