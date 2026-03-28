@@ -146,16 +146,19 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 
 	log.Printf("daemon executor: running sub-workflow %q for step %q (childRunID=%s)", targetName, step.Name, childRunID)
 
-	// For container sub-workflows, register a deferred cleanup so the
-	// container is always stopped even if eng.Run returns an error
-	// (e.g. context cancellation, daemon restart).
+	// For container sub-workflows, register a deferred cleanup on failure so
+	// the container is stopped if eng.Run returns an error (e.g. context
+	// cancellation, daemon restart). On success the container stays in the pool
+	// so subsequent sub-workflows sharing the same container.id can reuse it.
 	succeeded := false
 	if targetWF.Location == domain.LocationContainer && d.pool != nil {
 		poolKey := d.attemptID + ":" + targetWF.ContainerID()
 		defer func() {
-			// Use background context: the original ctx may already be cancelled.
-			cleanupCtx := context.Background()
-			_ = d.pool.CleanupAttempt(cleanupCtx, poolKey, false, succeeded)
+			if !succeeded {
+				// Use background context: the original ctx may already be cancelled.
+				cleanupCtx := context.Background()
+				_ = d.pool.CleanupAttempt(cleanupCtx, poolKey, false, false)
+			}
 		}()
 	}
 

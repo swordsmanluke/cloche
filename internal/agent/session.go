@@ -61,14 +61,9 @@ func (s *Session) Run(ctx context.Context) error {
 	}
 
 	// Send AgentReady to signal the daemon we are up. RunId identifies this
-	// agent to the pool. Use the configured RunID when available (e.g. set via
-	// CLOCHE_RUN_ID in tests or local mode); otherwise fall back to the
-	// container's hostname, which Docker sets to the short container ID so the
-	// pool can match via prefix lookup.
-	runID := s.cfg.RunID
-	if runID == "" {
-		runID, _ = os.Hostname()
-	}
+	// agent to the pool. Always use the container's hostname, which Docker sets
+	// to the short container ID so the pool can match via prefix lookup.
+	runID, _ := os.Hostname()
 	if err := stream.Send(&pb.AgentMessage{
 		Payload: &pb.AgentMessage_Ready{
 			Ready: &pb.AgentReady{
