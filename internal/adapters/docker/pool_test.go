@@ -387,6 +387,21 @@ func (f *fixedIDRuntime) Start(_ context.Context, _ ports.ContainerConfig) (stri
 	return f.id, nil
 }
 
+// callbackRuntime calls onStart during Start, before returning the container ID.
+// This simulates the agent connecting faster than SessionFor can register.
+type callbackRuntime struct {
+	fakeRuntime
+	id      string
+	onStart func(id string)
+}
+
+func (r *callbackRuntime) Start(_ context.Context, _ ports.ContainerConfig) (string, error) {
+	if r.onStart != nil {
+		r.onStart(r.id)
+	}
+	return r.id, nil
+}
+
 func TestContainerPool_FailPendingRequests_UnblocksCallers(t *testing.T) {
 	rt := &fakeRuntime{}
 	pool := docker.NewContainerPool(rt)
@@ -598,4 +613,50 @@ func TestContainerPool_RemoveImages_NopWhenRuntimeNotSupported(t *testing.T) {
 	rt := &fakeRuntime{}
 	pool := docker.NewContainerPool(rt)
 	pool.RemoveImages(context.Background(), map[string]string{"ctr1": "some-tag"})
+}
+
+func TestContainerPool_NotifyReadyWithStream_BeforeRegistration(t *testing.T) {
+	// Reproduces the race where the agent sends AgentReady before SessionFor
+	// registers the container in containerAttempt. The notification must be
+	// stashed and applied after registration so SessionFor doesn't block.
+	fullID := "abcdef123456abcdef123456abcdef123456abcdef123456abcdef123456abcd"
+	shortID := fullID[:12] // Docker hostname = short container ID
+
+	var pool *docker.ContainerPool
+	rt := &callbackRuntime{
+		id: fullID,
+		onStart: func(_ string) {
+			// Agent connects during Start, before SessionFor registers.
+			pool.NotifyReadyWithStream(shortID, func(_ *pb.DaemonMessage) error { return nil })
+		},
+	}
+	pool = docker.NewContainerPool(rt)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	sess, err := pool.SessionFor(ctx, "att-early-stream", ports.ContainerConfig{Image: "img"})
+	require.NoError(t, err)
+	assert.Equal(t, fullID, sess.ContainerID)
+}
+
+func TestContainerPool_NotifyReady_BeforeRegistration(t *testing.T) {
+	// Same race as above but with NotifyReady (no stream).
+	fullID := "fedcba654321fedcba654321fedcba654321fedcba654321fedcba654321fedc"
+
+	var pool *docker.ContainerPool
+	rt := &callbackRuntime{
+		id: fullID,
+		onStart: func(id string) {
+			pool.NotifyReady(id)
+		},
+	}
+	pool = docker.NewContainerPool(rt)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	sess, err := pool.SessionFor(ctx, "att-early-ready", ports.ContainerConfig{Image: "img"})
+	require.NoError(t, err)
+	assert.Equal(t, fullID, sess.ContainerID)
 }

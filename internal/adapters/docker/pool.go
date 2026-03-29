@@ -172,6 +172,13 @@ type ContainerPool struct {
 	attempts map[string]*poolEntry
 	// containerAttempt maps containerID -> attemptID for NotifyReady lookups
 	containerAttempt map[string]string
+	// pendingReady stores AgentReady notifications that arrived before
+	// SessionFor registered the container in containerAttempt. This handles
+	// the race where the in-container agent connects faster than SessionFor
+	// can register the mapping after runtime.Start returns.
+	// Key: containerID (typically 12-char Docker hostname).
+	// Value: send function (nil for NotifyReady without stream).
+	pendingReady map[string]func(*pb.DaemonMessage) error
 }
 
 // NewContainerPool creates a ContainerPool backed by the given runtime.
@@ -180,6 +187,7 @@ func NewContainerPool(runtime ports.ContainerRuntime) *ContainerPool {
 		runtime:          runtime,
 		attempts:         make(map[string]*poolEntry),
 		containerAttempt: make(map[string]string),
+		pendingReady:     make(map[string]func(*pb.DaemonMessage) error),
 	}
 }
 
@@ -241,7 +249,35 @@ func (p *ContainerPool) SessionFor(ctx context.Context, attemptID string, cfg po
 	p.mu.Lock()
 	entry.sessions = append(entry.sessions, sess)
 	p.containerAttempt[containerID] = attemptID
+
+	// Check if AgentReady arrived before we registered the container.
+	// This handles the race where the agent connects faster than SessionFor
+	// can populate containerAttempt after runtime.Start returns.
+	var earlySend func(*pb.DaemonMessage) error
+	earlyFound := false
+	for pendingCID, sendFn := range p.pendingReady {
+		if pendingCID == containerID || strings.HasPrefix(containerID, pendingCID) {
+			earlySend = sendFn
+			earlyFound = true
+			delete(p.pendingReady, pendingCID)
+			break
+		}
+	}
+	if earlyFound && earlySend != nil {
+		sess.mu.Lock()
+		sess.send = earlySend
+		if sess.pending == nil {
+			sess.pending = make(map[string]chan *pb.StepResult)
+		}
+		sess.mu.Unlock()
+	}
 	p.mu.Unlock()
+
+	if earlyFound {
+		entry.readyOnce.Do(func() {
+			close(entry.readyCh)
+		})
+	}
 
 	// Wait for the agent inside the container to call back with AgentReady.
 	select {
@@ -273,6 +309,10 @@ func (p *ContainerPool) NotifyReadyWithStream(containerID string, send func(*pb.
 			}
 			sess.mu.Unlock()
 		}
+	} else {
+		// Agent connected before SessionFor registered the container in
+		// containerAttempt. Stash for SessionFor to pick up.
+		p.pendingReady[containerID] = send
 	}
 	p.mu.Unlock()
 
@@ -294,6 +334,10 @@ func (p *ContainerPool) NotifyReady(containerID string) {
 	var entry *poolEntry
 	if attemptID != "" {
 		entry = p.attempts[attemptID]
+	}
+	if entry == nil {
+		// Agent connected before SessionFor registered the container.
+		p.pendingReady[containerID] = nil
 	}
 	p.mu.Unlock()
 
