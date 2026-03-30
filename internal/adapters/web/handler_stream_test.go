@@ -164,26 +164,37 @@ func TestSSE_RunNotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-func TestSSE_NoBroadcaster_ActiveRun(t *testing.T) {
+func TestSSE_NoBroadcaster_ActiveRun_FallsBackToFullLog(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
 
-	// Handler without broadcaster
+	// Handler without broadcaster — should fall back to full.log, not error.
 	h, err := NewHandler(store, store)
 	require.NoError(t, err)
 
+	dir := t.TempDir()
 	ctx := context.Background()
 	run := domain.NewRun("no-bc-1", "develop")
+	run.ProjectDir = dir
 	run.Start()
 	run.ContainerID = "abc123"
 	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Write a full.log so the fallback has something to serve.
+	outputDir := filepath.Join(dir, ".cloche", "no-bc-1", "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "full.log"),
+		[]byte("[2026-03-03T10:15:00Z] [status] step_started: build\n"), 0644))
 
 	req := httptest.NewRequest("GET", "/api/runs/no-bc-1/stream", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "text/event-stream", w.Header().Get("Content-Type"))
+	assert.Contains(t, w.Body.String(), "step_started: build")
+	assert.Contains(t, w.Body.String(), "event: done")
 }
 
 func TestParseFullLogLine(t *testing.T) {

@@ -1368,48 +1368,53 @@ func (h *Handler) handleAPIStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Active run: subscribe to live broadcaster
-	if h.logBroadcast == nil {
-		http.Error(w, "log streaming not available", http.StatusServiceUnavailable)
-		return
-	}
+	// Active run: subscribe to live broadcaster if it has an active entry.
+	// Without IsActive check, SubscribeWithHistory creates an empty
+	// subscription that never receives messages, causing the browser to
+	// hang with no output.
+	if h.logBroadcast != nil && h.logBroadcast.IsActive(id) {
+		sub, history := h.logBroadcast.SubscribeWithHistory(id)
+		defer h.logBroadcast.Unsubscribe(id, sub)
 
-	sub, history := h.logBroadcast.SubscribeWithHistory(id)
-	defer h.logBroadcast.Unsubscribe(id, sub)
-
-	// Send historical lines first so the frontend can populate step buffers
-	// for steps that already completed before this SSE connection opened.
-	for _, line := range history {
-		line = parseLLMLogLine(line)
-		if line.Type == "" {
-			continue
-		}
-		data, _ := json.Marshal(line)
-		fmt.Fprintf(w, "data: %s\n\n", data)
-	}
-	flusher.Flush()
-
-	ctx := r.Context()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case line, ok := <-sub.C:
-			if !ok {
-				// Stream finished (run completed)
-				fmt.Fprintf(w, "event: done\ndata: completed\n\n")
-				flusher.Flush()
-				return
-			}
+		// Send historical lines first so the frontend can populate step buffers
+		// for steps that already completed before this SSE connection opened.
+		for _, line := range history {
 			line = parseLLMLogLine(line)
 			if line.Type == "" {
-				continue // skip protocol-only llm lines
+				continue
 			}
 			data, _ := json.Marshal(line)
 			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
+		}
+		flusher.Flush()
+
+		ctx := r.Context()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case line, ok := <-sub.C:
+				if !ok {
+					// Stream finished (run completed)
+					fmt.Fprintf(w, "event: done\ndata: completed\n\n")
+					flusher.Flush()
+					return
+				}
+				line = parseLLMLogLine(line)
+				if line.Type == "" {
+					continue // skip protocol-only llm lines
+				}
+				data, _ := json.Marshal(line)
+				fmt.Fprintf(w, "data: %s\n\n", data)
+				flusher.Flush()
+			}
 		}
 	}
+
+	// Broadcaster not active for this run — fall back to full.log.
+	h.streamFullLog(w, flusher, run, defaultLogTail)
+	fmt.Fprintf(w, "event: done\ndata: %s\n\n", string(run.State))
+	flusher.Flush()
 }
 
 // handleAPILogs serves paginated log lines as JSON for loading earlier output.
@@ -1524,49 +1529,51 @@ func (h *Handler) handleAPIAttemptStream(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Active attempt — subscribe to broadcaster using the active host run's ID.
-	if h.logBroadcast == nil {
-		http.Error(w, "log streaming not available", http.StatusServiceUnavailable)
-		return
-	}
-
 	streamRunID := activeRun.ID
 	if hostRun != nil && (activeRun.ParentRunID == "" || hostRun.ID == activeRun.ID) {
 		streamRunID = hostRun.ID
 	}
 
-	sub, history := h.logBroadcast.SubscribeWithHistory(streamRunID)
-	defer h.logBroadcast.Unsubscribe(streamRunID, sub)
+	if h.logBroadcast != nil && h.logBroadcast.IsActive(streamRunID) {
+		sub, history := h.logBroadcast.SubscribeWithHistory(streamRunID)
+		defer h.logBroadcast.Unsubscribe(streamRunID, sub)
 
-	for _, line := range history {
-		line = parseLLMLogLine(line)
-		if line.Type == "" {
-			continue
-		}
-		data, _ := json.Marshal(line)
-		fmt.Fprintf(w, "data: %s\n\n", data)
-	}
-	flusher.Flush()
-
-	ctx := r.Context()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case line, ok := <-sub.C:
-			if !ok {
-				fmt.Fprintf(w, "event: done\ndata: completed\n\n")
-				flusher.Flush()
-				return
-			}
+		for _, line := range history {
 			line = parseLLMLogLine(line)
 			if line.Type == "" {
 				continue
 			}
 			data, _ := json.Marshal(line)
 			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
+		}
+		flusher.Flush()
+
+		ctx := r.Context()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case line, ok := <-sub.C:
+				if !ok {
+					fmt.Fprintf(w, "event: done\ndata: completed\n\n")
+					flusher.Flush()
+					return
+				}
+				line = parseLLMLogLine(line)
+				if line.Type == "" {
+					continue
+				}
+				data, _ := json.Marshal(line)
+				fmt.Fprintf(w, "data: %s\n\n", data)
+				flusher.Flush()
+			}
 		}
 	}
+
+	// Broadcaster not active — fall back to full.log.
+	h.streamFullLog(w, flusher, hostRun, defaultLogTail)
+	fmt.Fprintf(w, "event: done\ndata: %s\n\n", string(hostRun.State))
+	flusher.Flush()
 }
 
 // handleAPIAttemptLogs serves paginated log lines for an attempt as JSON.
