@@ -1,16 +1,19 @@
 workflow "document" {
   step investigate {
     prompt = file(".cloche/prompts/document-investigate.md")
+    timeout = "90m"
     results = [success, fail]
   }
 
   step check-missing {
     prompt = file(".cloche/prompts/document-check-missing.md")
+    timeout = "90m"
     results = [success, fail]
   }
 
   step write-docs {
     prompt = file(".cloche/prompts/document-write-docs.md")
+    timeout = "90m"
     results = [success, fail]
   }
 

@@ -27,6 +27,7 @@ workflow "main" {
 
   step develop {
     workflow_name = "develop"
+    timeout       = "90m"
     results       = [success, fail]
   }
 
@@ -37,6 +38,7 @@ workflow "main" {
 
   step bump-version {
     prompt  = file(".cloche/prompts/bump-version.md")
+    timeout = "90m"
     results = [success, fail]
   }
 

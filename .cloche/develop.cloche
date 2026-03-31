@@ -1,6 +1,7 @@
 workflow "develop" {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
+    timeout = "90m"
     results = [success, fail]
   }
 
@@ -16,12 +17,14 @@ workflow "develop" {
 
   step fix {
     prompt = file(".cloche/prompts/fix.md")
+    timeout = "90m"
     max_attempts = 2
     results = [success, fail, give-up]
   }
 
   step update-docs {
     prompt = file(".cloche/prompts/update-docs.md")
+    timeout = "90m"
     results = [success, fail]
   }
 
