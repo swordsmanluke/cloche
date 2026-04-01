@@ -55,6 +55,13 @@ type DaemonExecutor struct {
 	// The server uses this to register the container → run mapping so the
 	// AgentSession handler can route StepLog messages to the right run.
 	onContainerStart func(containerID string)
+
+	// poolKeys tracks container pool keys used by this executor so Close()
+	// can clean them all up after the host workflow finishes.
+	poolKeys map[string]bool
+
+	// closed tracks whether Close() has already been called.
+	closed bool
 }
 
 // DaemonExecutorConfig holds configuration for constructing a DaemonExecutor.
@@ -92,6 +99,22 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 
 // Ensure DaemonExecutor satisfies engine.StepExecutor.
 var _ engine.StepExecutor = (*DaemonExecutor)(nil)
+
+// Close cleans up all container pool entries used by this executor. Successful
+// containers are stopped and removed; failed containers are stopped but kept
+// for debugging. Must be called after the host workflow finishes.
+func (d *DaemonExecutor) Close(succeeded bool) {
+	if d.closed || d.pool == nil {
+		return
+	}
+	d.closed = true
+	ctx := context.Background()
+	for key := range d.poolKeys {
+		if err := d.pool.CleanupAttempt(ctx, key, false, succeeded); err != nil {
+			log.Printf("daemon executor: cleanup pool key %s: %v", key, err)
+		}
+	}
+}
 
 // SetHostExecutor replaces the host executor with a fully-configured one.
 // Implements engine.HostExecutorConfigurer.
@@ -150,9 +173,14 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 	// the container is stopped if eng.Run returns an error (e.g. context
 	// cancellation, daemon restart). On success the container stays in the pool
 	// so subsequent sub-workflows sharing the same container.id can reuse it.
+	// Final cleanup of successful containers happens in Close().
 	succeeded := false
 	if targetWF.Location == domain.LocationContainer && d.pool != nil {
 		poolKey := d.attemptID + ":" + targetWF.ContainerID()
+		if d.poolKeys == nil {
+			d.poolKeys = make(map[string]bool)
+		}
+		d.poolKeys[poolKey] = true
 		defer func() {
 			if !succeeded {
 				// Use background context: the original ctx may already be cancelled.

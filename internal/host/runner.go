@@ -36,6 +36,13 @@ type Runner struct {
 	SkipRunRecord  bool                     // when true, don't persist a run record to the store
 }
 
+// containerCleaner is implemented by executors that manage container lifecycle
+// (e.g. DaemonExecutor). The Runner calls Close after the workflow completes
+// to stop and optionally remove containers.
+type containerCleaner interface {
+	Close(succeeded bool)
+}
+
 // RunResult contains the outcome of a host workflow execution.
 type RunResult struct {
 	RunID        string
@@ -199,6 +206,12 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 	}
 	if run != nil {
 		result.State = run.State
+	}
+
+	// Clean up containers held by the executor (e.g. pool sessions from
+	// container sub-workflows dispatched by the DaemonExecutor).
+	if cc, ok := stepExec.(containerCleaner); ok {
+		cc.Close(result.State == domain.RunStateSucceeded)
 	}
 
 	// Persist final state. Use context.Background() because ctx may have been
@@ -381,6 +394,11 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 		result.State = engRun.State
 	}
 
+	// Clean up containers held by the executor.
+	if cc, ok := stepExec.(containerCleaner); ok {
+		cc.Close(result.State == domain.RunStateSucceeded)
+	}
+
 	// Persist final state. Use context.Background() because ctx may have been
 	// cancelled if the run was stopped externally (cloche stop). Skip
 	// overwriting a Cancelled state set by StopRun.
@@ -560,6 +578,11 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 	}
 	if engRun != nil {
 		result.State = engRun.State
+	}
+
+	// Clean up containers held by the executor.
+	if cc, ok := stepExec.(containerCleaner); ok {
+		cc.Close(result.State == domain.RunStateSucceeded)
 	}
 
 	// Persist final state using the new run record. Use context.Background()
