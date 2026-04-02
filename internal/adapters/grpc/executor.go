@@ -233,7 +233,11 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		// Set child_run_id so downstream host steps (merge-to-base.sh) can
 		// find the branch.
 		if d.store != nil && d.taskID != "" {
-			_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, "child_run_id", childRunID)
+			var kvRunID string
+			if d.hostExec != nil {
+				kvRunID = d.hostExec.HostRunID
+			}
+			_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, kvRunID, "child_run_id", childRunID)
 		}
 
 		// Note: CleanupAttempt is called by the deferred function above.
@@ -260,10 +264,16 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 	// sharing the same container ID reuse the same session within an attempt.
 	poolKey := d.attemptID + ":" + wf.ContainerID()
 
+	var hostRunID string
+	if d.hostExec != nil {
+		hostRunID = d.hostExec.HostRunID
+	}
+
 	cfg := ports.ContainerConfig{
 		Image:        d.image,
 		WorkflowName: wf.Name,
 		ProjectDir:   d.projectDir,
+		RunID:        hostRunID,
 		TaskID:       d.taskID,
 		AttemptID:    d.attemptID,
 		NetworkAllow: []string{"*"},

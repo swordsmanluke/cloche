@@ -28,9 +28,9 @@ type RunStore interface {
 	ListProjects(ctx context.Context) ([]string, error)
 	ListChildRuns(ctx context.Context, parentRunID string) ([]*domain.Run, error)
 	QueryUsage(ctx context.Context, q UsageQuery) ([]domain.UsageSummary, error)
-	GetContextKey(ctx context.Context, taskID, attemptID, key string) (string, bool, error)
-	SetContextKey(ctx context.Context, taskID, attemptID, key, value string) error
-	ListContextKeys(ctx context.Context, taskID, attemptID string) ([]string, error)
+	GetContextKey(ctx context.Context, taskID, attemptID, runID, key string) (string, bool, error)
+	SetContextKey(ctx context.Context, taskID, attemptID, runID, key, value string) error
+	ListContextKeys(ctx context.Context, taskID, attemptID, runID string) ([]string, error)
 	DeleteContextKeys(ctx context.Context, taskID, attemptID string) error
 }
 

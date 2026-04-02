@@ -124,7 +124,7 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		_ = r.Store.UpdateRun(ctx, hostRun)
 
 		// Persist ExtraEnv so resume can restore it.
-		saveExtraEnv(ctx, r.Store, r.TaskID, r.AttemptID, r.ExtraEnv)
+		saveExtraEnv(ctx, r.Store, r.TaskID, r.AttemptID, orchRunID, r.ExtraEnv)
 	}
 
 	hostExec := &Executor{
@@ -285,14 +285,14 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 	// The finalize phase cleans up the KV store on success, but resume needs
 	// child_run_id to re-run merge/cleanup steps.
 	if run.TaskID != "" {
-		if _, ok, _ := r.Store.GetContextKey(ctx, run.TaskID, run.AttemptID, "child_run_id"); !ok {
+		if _, ok, _ := r.Store.GetContextKey(ctx, run.TaskID, run.AttemptID, run.ID, "child_run_id"); !ok {
 			if children, err := r.Store.ListChildRuns(ctx, run.ID); err == nil {
 				// Find the most recent non-host child run (the container
 				// workflow). Host children (like finalize) are not what
 				// the merge script needs.
 				for i := len(children) - 1; i >= 0; i-- {
 					if !children[i].IsHost {
-						_ = r.Store.SetContextKey(ctx, run.TaskID, run.AttemptID, "child_run_id", children[i].ID)
+						_ = r.Store.SetContextKey(ctx, run.TaskID, run.AttemptID, run.ID, "child_run_id", children[i].ID)
 						log.Printf("host workflow: restored child_run_id=%s from DB for resume", children[i].ID)
 						break
 					}
@@ -304,7 +304,7 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 	// Restore ExtraEnv from the original run's context.
 	extraEnv := r.ExtraEnv
 	if len(extraEnv) == 0 {
-		extraEnv = loadExtraEnv(ctx, r.Store, run.TaskID, run.AttemptID)
+		extraEnv = loadExtraEnv(ctx, r.Store, run.TaskID, run.AttemptID, run.ID)
 	}
 
 	// Reset run state
@@ -470,11 +470,11 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 
 	// Restore child_run_id from the DB if the context store was cleaned up.
 	if oldRun.TaskID != "" {
-		if _, ok, _ := r.Store.GetContextKey(ctx, oldRun.TaskID, oldRun.AttemptID, "child_run_id"); !ok {
+		if _, ok, _ := r.Store.GetContextKey(ctx, oldRun.TaskID, oldRun.AttemptID, oldRun.ID, "child_run_id"); !ok {
 			if children, err := r.Store.ListChildRuns(ctx, oldRun.ID); err == nil {
 				for i := len(children) - 1; i >= 0; i-- {
 					if !children[i].IsHost {
-						_ = r.Store.SetContextKey(ctx, oldRun.TaskID, r.AttemptID, "child_run_id", children[i].ID)
+						_ = r.Store.SetContextKey(ctx, oldRun.TaskID, r.AttemptID, newRunID, "child_run_id", children[i].ID)
 						log.Printf("host workflow: restored child_run_id=%s from DB for resume", children[i].ID)
 						break
 					}
@@ -486,7 +486,7 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 	// Restore ExtraEnv from the original run's context.
 	extraEnv := r.ExtraEnv
 	if len(extraEnv) == 0 {
-		extraEnv = loadExtraEnv(ctx, r.Store, oldRun.TaskID, oldRun.AttemptID)
+		extraEnv = loadExtraEnv(ctx, r.Store, oldRun.TaskID, oldRun.AttemptID, oldRun.ID)
 	}
 
 	// Create new run record — the old run remains in its failed state.
@@ -504,7 +504,7 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 	_ = r.Store.UpdateRun(ctx, hostRun)
 
 	// Persist ExtraEnv so future resumes can restore it.
-	saveExtraEnv(ctx, r.Store, oldRun.TaskID, r.AttemptID, extraEnv)
+	saveExtraEnv(ctx, r.Store, oldRun.TaskID, r.AttemptID, newRunID, extraEnv)
 
 	hostExec := &Executor{
 		ProjectDir:   oldRun.ProjectDir,
@@ -713,20 +713,20 @@ const extraEnvContextKey = "extra_env"
 
 // saveExtraEnv persists the runner's ExtraEnv into the KV store so that
 // resume can restore them.
-func saveExtraEnv(ctx context.Context, store ports.RunStore, taskID, attemptID string, env []string) {
+func saveExtraEnv(ctx context.Context, store ports.RunStore, taskID, attemptID, runID string, env []string) {
 	if len(env) == 0 || store == nil {
 		return
 	}
 	joined := strings.Join(env, "\n")
-	_ = store.SetContextKey(ctx, taskID, attemptID, extraEnvContextKey, joined)
+	_ = store.SetContextKey(ctx, taskID, attemptID, runID, extraEnvContextKey, joined)
 }
 
 // loadExtraEnv restores ExtraEnv from the KV store.
-func loadExtraEnv(ctx context.Context, store ports.RunStore, taskID, attemptID string) []string {
+func loadExtraEnv(ctx context.Context, store ports.RunStore, taskID, attemptID, runID string) []string {
 	if store == nil {
 		return nil
 	}
-	val, ok, err := store.GetContextKey(ctx, taskID, attemptID, extraEnvContextKey)
+	val, ok, err := store.GetContextKey(ctx, taskID, attemptID, runID, extraEnvContextKey)
 	if err != nil || !ok || val == "" {
 		return nil
 	}

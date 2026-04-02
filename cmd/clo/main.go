@@ -60,7 +60,7 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  -v / --version         Print version\n")
 }
 
-func dial() (*grpc.ClientConn, string, string) {
+func dial() (*grpc.ClientConn, string, string, string) {
 	addr := os.Getenv("CLOCHE_ADDR")
 	if addr == "" {
 		fmt.Fprintf(os.Stderr, "CLOCHE_ADDR is not set\n")
@@ -72,13 +72,14 @@ func dial() (*grpc.ClientConn, string, string) {
 		os.Exit(1)
 	}
 	attemptID := os.Getenv("CLOCHE_ATTEMPT_ID")
+	runID := os.Getenv("CLOCHE_RUN_ID")
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to connect to daemon at %s: %v\n", addr, err)
 		os.Exit(1)
 	}
-	return conn, taskID, attemptID
+	return conn, taskID, attemptID, runID
 }
 
 func cmdGet(args []string) {
@@ -87,7 +88,7 @@ func cmdGet(args []string) {
 		os.Exit(1)
 	}
 
-	conn, taskID, attemptID := dial()
+	conn, taskID, attemptID, runID := dial()
 	defer conn.Close()
 
 	client := pb.NewClocheServiceClient(conn)
@@ -97,6 +98,7 @@ func cmdGet(args []string) {
 	resp, err := client.GetContextKey(ctx, &pb.GetContextKeyRequest{
 		TaskId:    taskID,
 		AttemptId: attemptID,
+		RunId:     runID,
 		Key:       args[0],
 	})
 	if err != nil {
@@ -143,7 +145,7 @@ func cmdSet(args []string) {
 		value = args[1]
 	}
 
-	conn, taskID, attemptID := dial()
+	conn, taskID, attemptID, runID := dial()
 	defer conn.Close()
 
 	client := pb.NewClocheServiceClient(conn)
@@ -153,6 +155,7 @@ func cmdSet(args []string) {
 	_, err := client.SetContextKey(ctx, &pb.SetContextKeyRequest{
 		TaskId:    taskID,
 		AttemptId: attemptID,
+		RunId:     runID,
 		Key:       key,
 		Value:     value,
 	})
@@ -163,7 +166,7 @@ func cmdSet(args []string) {
 }
 
 func cmdKeys() {
-	conn, taskID, attemptID := dial()
+	conn, taskID, attemptID, runID := dial()
 	defer conn.Close()
 
 	client := pb.NewClocheServiceClient(conn)
@@ -173,6 +176,7 @@ func cmdKeys() {
 	resp, err := client.ListContextKeys(ctx, &pb.ListContextKeysRequest{
 		TaskId:    taskID,
 		AttemptId: attemptID,
+		RunId:     runID,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

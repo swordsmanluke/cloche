@@ -247,6 +247,7 @@ func (s *Session) executeStep(
 		_, _ = kvClient.SetContextKey(rCtx, &pb.SetContextKeyRequest{
 			TaskId:    s.cfg.TaskID,
 			AttemptId: s.cfg.AttemptID,
+			RunId:     s.cfg.RunID,
 			Key:       key,
 			Value:     sr.Result,
 		})

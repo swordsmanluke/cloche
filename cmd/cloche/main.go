@@ -1221,15 +1221,16 @@ func launchDaemon(daemonPath string) error {
 	return cmd.Start()
 }
 
-// resolveRunContext returns the task ID and attempt ID for KV context commands.
-// Both come from environment variables set by the daemon when launching host steps.
-func resolveRunContext() (taskID, attemptID string, err error) {
+// resolveRunContext returns the task ID, attempt ID, and run ID for KV context commands.
+// All come from environment variables set by the daemon when launching host steps.
+func resolveRunContext() (taskID, attemptID, runID string, err error) {
 	taskID = os.Getenv("CLOCHE_TASK_ID")
 	if taskID == "" {
-		return "", "", fmt.Errorf("CLOCHE_TASK_ID environment variable is not set")
+		return "", "", "", fmt.Errorf("CLOCHE_TASK_ID environment variable is not set")
 	}
 	attemptID = os.Getenv("CLOCHE_ATTEMPT_ID")
-	return taskID, attemptID, nil
+	runID = os.Getenv("CLOCHE_RUN_ID")
+	return taskID, attemptID, runID, nil
 }
 
 // dialDaemon creates a gRPC connection to the daemon using CLOCHE_ADDR or the
@@ -1248,7 +1249,7 @@ func cmdGet(args []string) {
 		os.Exit(1)
 	}
 
-	taskID, attemptID, err := resolveRunContext()
+	taskID, attemptID, runID, err := resolveRunContext()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -1268,6 +1269,7 @@ func cmdGet(args []string) {
 	resp, err := client.GetContextKey(ctx, &pb.GetContextKeyRequest{
 		TaskId:    taskID,
 		AttemptId: attemptID,
+		RunId:     runID,
 		Key:       args[0],
 	})
 	if err != nil {
@@ -1289,7 +1291,7 @@ func cmdSet(args []string) {
 		os.Exit(1)
 	}
 
-	taskID, attemptID, err := resolveRunContext()
+	taskID, attemptID, runID, err := resolveRunContext()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -1330,6 +1332,7 @@ func cmdSet(args []string) {
 	_, err = client.SetContextKey(ctx, &pb.SetContextKeyRequest{
 		TaskId:    taskID,
 		AttemptId: attemptID,
+		RunId:     runID,
 		Key:       key,
 		Value:     value,
 	})

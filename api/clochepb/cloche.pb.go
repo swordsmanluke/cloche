@@ -2868,6 +2868,7 @@ type GetContextKeyRequest struct {
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	AttemptId     string                 `protobuf:"bytes,2,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
 	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	RunId         string                 `protobuf:"bytes,4,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2919,6 +2920,13 @@ func (x *GetContextKeyRequest) GetAttemptId() string {
 func (x *GetContextKeyRequest) GetKey() string {
 	if x != nil {
 		return x.Key
+	}
+	return ""
+}
+
+func (x *GetContextKeyRequest) GetRunId() string {
+	if x != nil {
+		return x.RunId
 	}
 	return ""
 }
@@ -2981,6 +2989,7 @@ type SetContextKeyRequest struct {
 	AttemptId     string                 `protobuf:"bytes,2,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
 	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
 	Value         string                 `protobuf:"bytes,4,opt,name=value,proto3" json:"value,omitempty"`
+	RunId         string                 `protobuf:"bytes,5,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3043,6 +3052,13 @@ func (x *SetContextKeyRequest) GetValue() string {
 	return ""
 }
 
+func (x *SetContextKeyRequest) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
 type SetContextKeyResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -3083,6 +3099,7 @@ type ListContextKeysRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	AttemptId     string                 `protobuf:"bytes,2,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	RunId         string                 `protobuf:"bytes,3,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3127,6 +3144,13 @@ func (x *ListContextKeysRequest) GetTaskId() string {
 func (x *ListContextKeysRequest) GetAttemptId() string {
 	if x != nil {
 		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *ListContextKeysRequest) GetRunId() string {
+	if x != nil {
+		return x.RunId
 	}
 	return ""
 }
@@ -4222,26 +4246,29 @@ const file_cloche_proto_rawDesc = "" +
 	"\x04rows\x18\x01 \x01(\rR\x04rows\x12\x12\n" +
 	"\x04cols\x18\x02 \x01(\rR\x04cols\",\n" +
 	"\rConsoleExited\x12\x1b\n" +
-	"\texit_code\x18\x01 \x01(\x05R\bexitCode\"`\n" +
+	"\texit_code\x18\x01 \x01(\x05R\bexitCode\"w\n" +
 	"\x14GetContextKeyRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
 	"attempt_id\x18\x02 \x01(\tR\tattemptId\x12\x10\n" +
-	"\x03key\x18\x03 \x01(\tR\x03key\"C\n" +
+	"\x03key\x18\x03 \x01(\tR\x03key\x12\x15\n" +
+	"\x06run_id\x18\x04 \x01(\tR\x05runId\"C\n" +
 	"\x15GetContextKeyResponse\x12\x14\n" +
 	"\x05value\x18\x01 \x01(\tR\x05value\x12\x14\n" +
-	"\x05found\x18\x02 \x01(\bR\x05found\"v\n" +
+	"\x05found\x18\x02 \x01(\bR\x05found\"\x8d\x01\n" +
 	"\x14SetContextKeyRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
 	"attempt_id\x18\x02 \x01(\tR\tattemptId\x12\x10\n" +
 	"\x03key\x18\x03 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x04 \x01(\tR\x05value\"\x17\n" +
-	"\x15SetContextKeyResponse\"P\n" +
+	"\x05value\x18\x04 \x01(\tR\x05value\x12\x15\n" +
+	"\x06run_id\x18\x05 \x01(\tR\x05runId\"\x17\n" +
+	"\x15SetContextKeyResponse\"g\n" +
 	"\x16ListContextKeysRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
-	"attempt_id\x18\x02 \x01(\tR\tattemptId\"-\n" +
+	"attempt_id\x18\x02 \x01(\tR\tattemptId\x12\x15\n" +
+	"\x06run_id\x18\x03 \x01(\tR\x05runId\"-\n" +
 	"\x17ListContextKeysResponse\x12\x12\n" +
 	"\x04keys\x18\x01 \x03(\tR\x04keys\"\xb5\x02\n" +
 	"\fAgentMessage\x12-\n" +

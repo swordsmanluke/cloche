@@ -85,7 +85,7 @@ func (e *Executor) Execute(ctx context.Context, step *domain.Step) (domain.StepR
 				{"run_id", e.HostRunID},
 			}
 			for _, p := range pairs {
-				if err := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, p[0], p[1]); err != nil {
+				if err := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, e.HostRunID, p[0], p[1]); err != nil {
 					log.Printf("host executor: seeding run context key %q: %v", p[0], err)
 				}
 			}
@@ -94,7 +94,7 @@ func (e *Executor) Execute(ctx context.Context, step *domain.Step) (domain.StepR
 
 	// Update workflow key on every step (handles workflow transitions).
 	if e.TaskID != "" && e.Store != nil {
-		if err := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, "workflow", e.WorkflowName); err != nil {
+		if err := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, e.HostRunID, "workflow", e.WorkflowName); err != nil {
 			log.Printf("host executor: updating workflow context key: %v", err)
 		}
 	}
@@ -106,7 +106,7 @@ func (e *Executor) Execute(ctx context.Context, step *domain.Step) (domain.StepR
 			{"prev_step", trigger.PrevStep},
 			{"prev_step_exit", trigger.PrevResult},
 		} {
-			if err := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, kv[0], kv[1]); err != nil {
+			if err := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, e.HostRunID, kv[0], kv[1]); err != nil {
 				log.Printf("host executor: setting %q context for step %q: %v", kv[0], step.Name, err)
 			}
 		}
@@ -127,7 +127,7 @@ func (e *Executor) Execute(ctx context.Context, step *domain.Step) (domain.StepR
 	// Record the step result after execution.
 	if e.TaskID != "" && e.Store != nil && err == nil && result.Result != "" {
 		key := fmt.Sprintf("%s:%s:result", e.WorkflowName, step.Name)
-		if setErr := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, key, result.Result); setErr != nil {
+		if setErr := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, e.HostRunID, key, result.Result); setErr != nil {
 			log.Printf("host executor: setting step result context for %q: %v", step.Name, setErr)
 		}
 	}

@@ -19,11 +19,11 @@ func TestSetAndGetContextKey(t *testing.T) {
 	s := newTestStoreKV(t)
 	ctx := context.Background()
 
-	if err := s.SetContextKey(ctx, "task1", "attempt1", "branch", "feature-x"); err != nil {
+	if err := s.SetContextKey(ctx, "task1", "attempt1", "run1", "branch", "feature-x"); err != nil {
 		t.Fatalf("SetContextKey: %v", err)
 	}
 
-	val, found, err := s.GetContextKey(ctx, "task1", "attempt1", "branch")
+	val, found, err := s.GetContextKey(ctx, "task1", "attempt1", "run1", "branch")
 	if err != nil {
 		t.Fatalf("GetContextKey: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestGetContextKey_MissingKey(t *testing.T) {
 	s := newTestStoreKV(t)
 	ctx := context.Background()
 
-	_, found, err := s.GetContextKey(ctx, "task1", "attempt1", "nonexistent")
+	_, found, err := s.GetContextKey(ctx, "task1", "attempt1", "run1", "nonexistent")
 	if err != nil {
 		t.Fatalf("GetContextKey: %v", err)
 	}
@@ -52,10 +52,10 @@ func TestSetContextKey_Overwrites(t *testing.T) {
 	s := newTestStoreKV(t)
 	ctx := context.Background()
 
-	_ = s.SetContextKey(ctx, "task1", "attempt1", "k", "v1")
-	_ = s.SetContextKey(ctx, "task1", "attempt1", "k", "v2")
+	_ = s.SetContextKey(ctx, "task1", "attempt1", "run1", "k", "v1")
+	_ = s.SetContextKey(ctx, "task1", "attempt1", "run1", "k", "v2")
 
-	val, _, _ := s.GetContextKey(ctx, "task1", "attempt1", "k")
+	val, _, _ := s.GetContextKey(ctx, "task1", "attempt1", "run1", "k")
 	if val != "v2" {
 		t.Errorf("GetContextKey = %q, want %q", val, "v2")
 	}
@@ -65,11 +65,11 @@ func TestSetContextKey_NamespaceIsolation(t *testing.T) {
 	s := newTestStoreKV(t)
 	ctx := context.Background()
 
-	_ = s.SetContextKey(ctx, "task1", "attempt1", "key", "a1")
-	_ = s.SetContextKey(ctx, "task1", "attempt2", "key", "a2")
+	_ = s.SetContextKey(ctx, "task1", "attempt1", "run1", "key", "a1")
+	_ = s.SetContextKey(ctx, "task1", "attempt2", "run1", "key", "a2")
 
-	v1, _, _ := s.GetContextKey(ctx, "task1", "attempt1", "key")
-	v2, _, _ := s.GetContextKey(ctx, "task1", "attempt2", "key")
+	v1, _, _ := s.GetContextKey(ctx, "task1", "attempt1", "run1", "key")
+	v2, _, _ := s.GetContextKey(ctx, "task1", "attempt2", "run1", "key")
 	if v1 != "a1" {
 		t.Errorf("attempt1 key = %q, want a1", v1)
 	}
@@ -78,15 +78,33 @@ func TestSetContextKey_NamespaceIsolation(t *testing.T) {
 	}
 }
 
+func TestSetContextKey_RunIDIsolation(t *testing.T) {
+	s := newTestStoreKV(t)
+	ctx := context.Background()
+
+	// Same task, attempt, and key — but different run IDs.
+	_ = s.SetContextKey(ctx, "task1", "attempt1", "run-A", "prompt_file", "/path/a")
+	_ = s.SetContextKey(ctx, "task1", "attempt1", "run-B", "prompt_file", "/path/b")
+
+	vA, foundA, _ := s.GetContextKey(ctx, "task1", "attempt1", "run-A", "prompt_file")
+	vB, foundB, _ := s.GetContextKey(ctx, "task1", "attempt1", "run-B", "prompt_file")
+	if !foundA || vA != "/path/a" {
+		t.Errorf("run-A prompt_file = (%q, %v), want (/path/a, true)", vA, foundA)
+	}
+	if !foundB || vB != "/path/b" {
+		t.Errorf("run-B prompt_file = (%q, %v), want (/path/b, true)", vB, foundB)
+	}
+}
+
 func TestListContextKeys(t *testing.T) {
 	s := newTestStoreKV(t)
 	ctx := context.Background()
 
-	_ = s.SetContextKey(ctx, "task1", "attempt1", "b", "2")
-	_ = s.SetContextKey(ctx, "task1", "attempt1", "a", "1")
-	_ = s.SetContextKey(ctx, "task1", "attempt1", "c", "3")
+	_ = s.SetContextKey(ctx, "task1", "attempt1", "run1", "b", "2")
+	_ = s.SetContextKey(ctx, "task1", "attempt1", "run1", "a", "1")
+	_ = s.SetContextKey(ctx, "task1", "attempt1", "run1", "c", "3")
 
-	keys, err := s.ListContextKeys(ctx, "task1", "attempt1")
+	keys, err := s.ListContextKeys(ctx, "task1", "attempt1", "run1")
 	if err != nil {
 		t.Fatalf("ListContextKeys: %v", err)
 	}
@@ -103,18 +121,18 @@ func TestDeleteContextKeys(t *testing.T) {
 	s := newTestStoreKV(t)
 	ctx := context.Background()
 
-	_ = s.SetContextKey(ctx, "task1", "attempt1", "x", "1")
-	_ = s.SetContextKey(ctx, "task1", "attempt1", "y", "2")
+	_ = s.SetContextKey(ctx, "task1", "attempt1", "run1", "x", "1")
+	_ = s.SetContextKey(ctx, "task1", "attempt1", "run1", "y", "2")
 	// Different attempt — must not be deleted.
-	_ = s.SetContextKey(ctx, "task1", "attempt2", "z", "3")
+	_ = s.SetContextKey(ctx, "task1", "attempt2", "run1", "z", "3")
 
 	if err := s.DeleteContextKeys(ctx, "task1", "attempt1"); err != nil {
 		t.Fatalf("DeleteContextKeys: %v", err)
 	}
 
-	_, found1, _ := s.GetContextKey(ctx, "task1", "attempt1", "x")
-	_, found2, _ := s.GetContextKey(ctx, "task1", "attempt1", "y")
-	_, found3, _ := s.GetContextKey(ctx, "task1", "attempt2", "z")
+	_, found1, _ := s.GetContextKey(ctx, "task1", "attempt1", "run1", "x")
+	_, found2, _ := s.GetContextKey(ctx, "task1", "attempt1", "run1", "y")
+	_, found3, _ := s.GetContextKey(ctx, "task1", "attempt2", "run1", "z")
 
 	if found1 || found2 {
 		t.Error("expected attempt1 keys to be deleted")
@@ -136,13 +154,13 @@ func TestSeedAutoKeys(t *testing.T) {
 		{"run_id", "task1-develop"},
 	}
 	for _, p := range pairs {
-		if err := s.SetContextKey(ctx, "task1", "attempt1", p[0], p[1]); err != nil {
+		if err := s.SetContextKey(ctx, "task1", "attempt1", "task1-develop", p[0], p[1]); err != nil {
 			t.Fatalf("SetContextKey %q: %v", p[0], err)
 		}
 	}
 
 	for _, p := range pairs {
-		val, found, err := s.GetContextKey(ctx, "task1", "attempt1", p[0])
+		val, found, err := s.GetContextKey(ctx, "task1", "attempt1", "task1-develop", p[0])
 		if err != nil || !found || val != p[1] {
 			t.Errorf("key %q: got (%q, %v, %v), want (%q, true, nil)", p[0], val, found, err, p[1])
 		}

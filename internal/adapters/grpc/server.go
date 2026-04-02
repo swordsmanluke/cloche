@@ -3449,7 +3449,7 @@ func resolveConsoleAgentCommand(flagCmd, projectDir string) string {
 
 // GetContextKey retrieves a value from the per-attempt KV namespace.
 func (s *ClocheServer) GetContextKey(ctx context.Context, req *pb.GetContextKeyRequest) (*pb.GetContextKeyResponse, error) {
-	value, found, err := s.store.GetContextKey(ctx, req.TaskId, req.AttemptId, req.Key)
+	value, found, err := s.store.GetContextKey(ctx, req.TaskId, req.AttemptId, req.RunId, req.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -3462,7 +3462,7 @@ func (s *ClocheServer) SetContextKey(ctx context.Context, req *pb.SetContextKeyR
 	if len(req.Value) > 1024 {
 		return nil, status.Errorf(codes.InvalidArgument, "value exceeds 1 KB limit (%d bytes)", len(req.Value))
 	}
-	if err := s.store.SetContextKey(ctx, req.TaskId, req.AttemptId, req.Key, req.Value); err != nil {
+	if err := s.store.SetContextKey(ctx, req.TaskId, req.AttemptId, req.RunId, req.Key, req.Value); err != nil {
 		return nil, err
 	}
 	return &pb.SetContextKeyResponse{}, nil
@@ -3470,7 +3470,7 @@ func (s *ClocheServer) SetContextKey(ctx context.Context, req *pb.SetContextKeyR
 
 // ListContextKeys returns all keys in the per-attempt KV namespace.
 func (s *ClocheServer) ListContextKeys(ctx context.Context, req *pb.ListContextKeysRequest) (*pb.ListContextKeysResponse, error) {
-	keys, err := s.store.ListContextKeys(ctx, req.TaskId, req.AttemptId)
+	keys, err := s.store.ListContextKeys(ctx, req.TaskId, req.AttemptId, req.RunId)
 	if err != nil {
 		return nil, err
 	}

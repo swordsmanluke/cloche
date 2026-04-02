@@ -168,13 +168,19 @@ func migrate(db *sql.DB) error {
 	_, errKV := db.Exec(`CREATE TABLE IF NOT EXISTS context_kv (
 		task_id    TEXT NOT NULL,
 		attempt_id TEXT NOT NULL,
+		run_id     TEXT NOT NULL DEFAULT '',
 		key        TEXT NOT NULL,
 		value      TEXT NOT NULL,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		PRIMARY KEY (task_id, attempt_id, key)
+		PRIMARY KEY (task_id, attempt_id, run_id, key)
 	)`)
 	if errKV != nil {
 		return errKV
+	}
+
+	// Migrate existing context_kv tables that lack the run_id column.
+	if err := migrateContextKVRunID(db); err != nil {
+		return fmt.Errorf("context_kv run_id migration: %w", err)
 	}
 
 	// v5: Activity log table — replaces per-project .cloche/activity.log files.
@@ -832,10 +838,10 @@ func nullIfEmptyTime(t time.Time) interface{} {
 	return t.Format(time.RFC3339Nano)
 }
 
-func (s *Store) GetContextKey(ctx context.Context, taskID, attemptID, key string) (string, bool, error) {
+func (s *Store) GetContextKey(ctx context.Context, taskID, attemptID, runID, key string) (string, bool, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT value FROM context_kv WHERE task_id = ? AND attempt_id = ? AND key = ?`,
-		taskID, attemptID, key)
+		`SELECT value FROM context_kv WHERE task_id = ? AND attempt_id = ? AND run_id = ? AND key = ?`,
+		taskID, attemptID, runID, key)
 	var value string
 	err := row.Scan(&value)
 	if err == sql.ErrNoRows {
@@ -847,19 +853,19 @@ func (s *Store) GetContextKey(ctx context.Context, taskID, attemptID, key string
 	return value, true, nil
 }
 
-func (s *Store) SetContextKey(ctx context.Context, taskID, attemptID, key, value string) error {
+func (s *Store) SetContextKey(ctx context.Context, taskID, attemptID, runID, key, value string) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO context_kv (task_id, attempt_id, key, value, updated_at)
-		 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-		 ON CONFLICT(task_id, attempt_id, key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
-		taskID, attemptID, key, value)
+		`INSERT INTO context_kv (task_id, attempt_id, run_id, key, value, updated_at)
+		 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(task_id, attempt_id, run_id, key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
+		taskID, attemptID, runID, key, value)
 	return err
 }
 
-func (s *Store) ListContextKeys(ctx context.Context, taskID, attemptID string) ([]string, error) {
+func (s *Store) ListContextKeys(ctx context.Context, taskID, attemptID, runID string) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT key FROM context_kv WHERE task_id = ? AND attempt_id = ? ORDER BY key`,
-		taskID, attemptID)
+		`SELECT key FROM context_kv WHERE task_id = ? AND attempt_id = ? AND run_id = ? ORDER BY key`,
+		taskID, attemptID, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -873,6 +879,59 @@ func (s *Store) ListContextKeys(ctx context.Context, taskID, attemptID string) (
 		keys = append(keys, k)
 	}
 	return keys, rows.Err()
+}
+
+// migrateContextKVRunID adds run_id to the context_kv primary key by
+// recreating the table. Existing rows get run_id=''. Idempotent.
+func migrateContextKVRunID(db *sql.DB) error {
+	// Check if run_id column already exists.
+	rows, err := db.Query(`PRAGMA table_info(context_kv)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notnull int
+		var dflt interface{}
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == "run_id" {
+			return nil // already migrated
+		}
+	}
+
+	// Recreate table with run_id in the primary key.
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmts := []string{
+		`CREATE TABLE context_kv_new (
+			task_id    TEXT NOT NULL,
+			attempt_id TEXT NOT NULL,
+			run_id     TEXT NOT NULL DEFAULT '',
+			key        TEXT NOT NULL,
+			value      TEXT NOT NULL,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (task_id, attempt_id, run_id, key)
+		)`,
+		`INSERT INTO context_kv_new (task_id, attempt_id, run_id, key, value, updated_at)
+		 SELECT task_id, attempt_id, '', key, value, updated_at FROM context_kv`,
+		`DROP TABLE context_kv`,
+		`ALTER TABLE context_kv_new RENAME TO context_kv`,
+	}
+	for _, stmt := range stmts {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("executing %q: %w", stmt[:40], err)
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Store) DeleteContextKeys(ctx context.Context, taskID, attemptID string) error {

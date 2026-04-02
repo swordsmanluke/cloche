@@ -464,11 +464,11 @@ func (f *fakeRunStore) ListChildRuns(_ context.Context, _ string) ([]*domain.Run
 func (f *fakeRunStore) QueryUsage(_ context.Context, _ ports.UsageQuery) ([]domain.UsageSummary, error) {
 	return nil, nil
 }
-func (f *fakeRunStore) SetContextKey(_ context.Context, _, _, _, _ string) error { return nil }
-func (f *fakeRunStore) GetContextKey(_ context.Context, _, _, _ string) (string, bool, error) {
+func (f *fakeRunStore) SetContextKey(_ context.Context, _, _, _, _, _ string) error { return nil }
+func (f *fakeRunStore) GetContextKey(_ context.Context, _, _, _, _ string) (string, bool, error) {
 	return "", false, nil
 }
-func (f *fakeRunStore) ListContextKeys(_ context.Context, _, _ string) ([]string, error) {
+func (f *fakeRunStore) ListContextKeys(_ context.Context, _, _, _ string) ([]string, error) {
 	return nil, nil
 }
 func (f *fakeRunStore) DeleteContextKeys(_ context.Context, _, _ string) error { return nil }

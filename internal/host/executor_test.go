@@ -69,21 +69,21 @@ func (f *fakeStore) ListChildRuns(_ context.Context, parentRunID string) ([]*dom
 func (f *fakeStore) QueryUsage(_ context.Context, _ ports.UsageQuery) ([]domain.UsageSummary, error) {
 	return nil, nil
 }
-func (f *fakeStore) GetContextKey(_ context.Context, taskID, attemptID, key string) (string, bool, error) {
+func (f *fakeStore) GetContextKey(_ context.Context, taskID, attemptID, runID, key string) (string, bool, error) {
 	if f.kvData == nil {
 		return "", false, nil
 	}
-	v, ok := f.kvData[taskID+"/"+attemptID+"/"+key]
+	v, ok := f.kvData[taskID+"/"+attemptID+"/"+runID+"/"+key]
 	return v, ok, nil
 }
-func (f *fakeStore) SetContextKey(_ context.Context, taskID, attemptID, key, value string) error {
+func (f *fakeStore) SetContextKey(_ context.Context, taskID, attemptID, runID, key, value string) error {
 	if f.kvData == nil {
 		f.kvData = make(map[string]string)
 	}
-	f.kvData[taskID+"/"+attemptID+"/"+key] = value
+	f.kvData[taskID+"/"+attemptID+"/"+runID+"/"+key] = value
 	return nil
 }
-func (f *fakeStore) ListContextKeys(_ context.Context, taskID, attemptID string) ([]string, error) {
+func (f *fakeStore) ListContextKeys(_ context.Context, taskID, attemptID, runID string) ([]string, error) {
 	return nil, nil
 }
 func (f *fakeStore) DeleteContextKeys(_ context.Context, taskID, attemptID string) error {
@@ -1716,22 +1716,22 @@ func TestExecutor_SeedsRunContext_OnFirstUse(t *testing.T) {
 	require.NoError(t, err)
 
 	// Run-level keys should be seeded.
-	taskID, ok, err := store.GetContextKey(context.Background(), "task-seed-test", "attempt-1", "task_id")
+	taskID, ok, err := store.GetContextKey(context.Background(), "task-seed-test", "attempt-1", "main-run-001", "task_id")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "task-seed-test", taskID)
 
-	attemptID, ok, err := store.GetContextKey(context.Background(), "task-seed-test", "attempt-1", "attempt_id")
+	attemptID, ok, err := store.GetContextKey(context.Background(), "task-seed-test", "attempt-1", "main-run-001", "attempt_id")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "attempt-1", attemptID)
 
-	workflow, ok, err := store.GetContextKey(context.Background(), "task-seed-test", "attempt-1", "workflow")
+	workflow, ok, err := store.GetContextKey(context.Background(), "task-seed-test", "attempt-1", "main-run-001", "workflow")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "main", workflow)
 
-	runID, ok, err := store.GetContextKey(context.Background(), "task-seed-test", "attempt-1", "run_id")
+	runID, ok, err := store.GetContextKey(context.Background(), "task-seed-test", "attempt-1", "main-run-001", "run_id")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "main-run-001", runID)
@@ -1764,7 +1764,7 @@ func TestExecutor_SeedsRunContext_OnlyOnce(t *testing.T) {
 	require.NoError(t, err)
 
 	// Overwrite run_id key manually to detect re-seeding (run_id is only set in seedOnce).
-	require.NoError(t, store.SetContextKey(context.Background(), "task-once-test", "attempt-1", "run_id", "overwritten"))
+	require.NoError(t, store.SetContextKey(context.Background(), "task-once-test", "attempt-1", "main-run-001", "run_id", "overwritten"))
 
 	step2 := &domain.Step{
 		Name:    "step-b",
@@ -1776,7 +1776,7 @@ func TestExecutor_SeedsRunContext_OnlyOnce(t *testing.T) {
 	require.NoError(t, err)
 
 	// Should still be "overwritten" — seedOnce did not run again.
-	val, ok, err := store.GetContextKey(context.Background(), "task-once-test", "attempt-1", "run_id")
+	val, ok, err := store.GetContextKey(context.Background(), "task-once-test", "attempt-1", "main-run-001", "run_id")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "overwritten", val)
@@ -1808,7 +1808,7 @@ func TestExecutor_SetsStepResult_AfterExecution(t *testing.T) {
 	assert.Equal(t, "success", result.Result)
 
 	// Step result key should be set.
-	val, ok, err := store.GetContextKey(context.Background(), "task-result-test", "", "main:build:result")
+	val, ok, err := store.GetContextKey(context.Background(), "task-result-test", "", "main-run-001", "main:build:result")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "success", val)
@@ -1843,12 +1843,12 @@ func TestExecutor_SetsPrevStep_FromContext(t *testing.T) {
 	_, err := executor.Execute(ctx, step)
 	require.NoError(t, err)
 
-	prevStep, ok, err := store.GetContextKey(context.Background(), "task-prev-test", "", "prev_step")
+	prevStep, ok, err := store.GetContextKey(context.Background(), "task-prev-test", "", "main-run-001", "prev_step")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "build", prevStep)
 
-	prevResult, ok, err := store.GetContextKey(context.Background(), "task-prev-test", "", "prev_step_exit")
+	prevResult, ok, err := store.GetContextKey(context.Background(), "task-prev-test", "", "main-run-001", "prev_step_exit")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "success", prevResult)

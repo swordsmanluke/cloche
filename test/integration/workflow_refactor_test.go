@@ -187,19 +187,19 @@ func (s *fakeRunStore) ListChildRuns(_ context.Context, parentRunID string) ([]*
 func (s *fakeRunStore) QueryUsage(_ context.Context, _ ports.UsageQuery) ([]domain.UsageSummary, error) {
 	return nil, nil
 }
-func (s *fakeRunStore) GetContextKey(_ context.Context, taskID, attemptID, key string) (string, bool, error) {
+func (s *fakeRunStore) GetContextKey(_ context.Context, taskID, attemptID, runID, key string) (string, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	v, ok := s.kvData[taskID+"/"+attemptID+"/"+key]
+	v, ok := s.kvData[taskID+"/"+attemptID+"/"+runID+"/"+key]
 	return v, ok, nil
 }
-func (s *fakeRunStore) SetContextKey(_ context.Context, taskID, attemptID, key, value string) error {
+func (s *fakeRunStore) SetContextKey(_ context.Context, taskID, attemptID, runID, key, value string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.kvData[taskID+"/"+attemptID+"/"+key] = value
+	s.kvData[taskID+"/"+attemptID+"/"+runID+"/"+key] = value
 	return nil
 }
-func (s *fakeRunStore) ListContextKeys(_ context.Context, _, _ string) ([]string, error) {
+func (s *fakeRunStore) ListContextKeys(_ context.Context, _, _, _ string) ([]string, error) {
 	return nil, nil
 }
 func (s *fakeRunStore) DeleteContextKeys(_ context.Context, _, _ string) error { return nil }
@@ -675,13 +675,13 @@ func TestWorkflowRefactor_KVStateSharing(t *testing.T) {
 	// The host.Executor seeds "task_id", "attempt_id", "workflow", "run_id"
 	// when TaskID is set. Verify these are present.
 	ctx := context.Background()
-	val, ok, err := store.GetContextKey(ctx, "task-1", "att-kv", "attempt_id")
+	val, ok, err := store.GetContextKey(ctx, "task-1", "att-kv", "", "attempt_id")
 	require.NoError(t, err)
 	assert.True(t, ok, "attempt_id should be seeded into the KV store")
 	assert.Equal(t, "att-kv", val)
 
 	// Verify task_id is also seeded.
-	val, ok, err = store.GetContextKey(ctx, "task-1", "att-kv", "task_id")
+	val, ok, err = store.GetContextKey(ctx, "task-1", "att-kv", "", "task_id")
 	require.NoError(t, err)
 	assert.True(t, ok, "task_id should be seeded into the KV store")
 	assert.Equal(t, "task-1", val)

@@ -3,7 +3,7 @@ package integration_test
 // kv_host_container_test.go verifies that KV values set on the host side
 // (via cloche set / store.SetContextKey) are retrievable inside the container
 // (via clo get / store.GetContextKey) — meaning the container is started with
-// the correct CLOCHE_TASK_ID and CLOCHE_ATTEMPT_ID environment variables.
+// the correct CLOCHE_TASK_ID, CLOCHE_ATTEMPT_ID, and CLOCHE_RUN_ID env vars.
 
 import (
 	"context"
@@ -105,14 +105,11 @@ func simulateKVAgents(pool *docker.ContainerPool, rt *kvTestRuntime, stepResults
 // Tests
 // ---------------------------------------------------------------------------
 
-// TestKV_HostToContainer_TaskIDPropagated verifies that when a host workflow
-// dispatches to a container workflow, the container is started with the correct
-// TaskID so that clo get can read CLOCHE_TASK_ID from the environment.
-//
-// This is the regression test for the bug where executeContainerStep did not
-// pass TaskID in ContainerConfig, causing CLOCHE_TASK_ID to be absent in the
-// container environment and making clo get fail with "key not found".
-func TestKV_HostToContainer_TaskIDPropagated(t *testing.T) {
+// TestKV_HostToContainer_TaskIDAndRunIDPropagated verifies that when a host
+// workflow dispatches to a container workflow, the container is started with
+// the correct TaskID and RunID (host's run ID) so that clo get can read
+// CLOCHE_TASK_ID and CLOCHE_RUN_ID from the environment.
+func TestKV_HostToContainer_TaskIDAndRunIDPropagated(t *testing.T) {
 	tmpDir := t.TempDir()
 	rt := newKVTestRuntime()
 	pool := docker.NewContainerPool(rt)
@@ -120,10 +117,11 @@ func TestKV_HostToContainer_TaskIDPropagated(t *testing.T) {
 
 	const taskID = "task-kv-1"
 	const attemptID = "att-kv-1"
+	const hostRunID = "att-kv-1-main"
 
-	// Simulate host-side KV set (what cloche set does):
+	// Simulate host-side KV set (what cloche set does), scoped by run_id:
 	ctx := context.Background()
-	err := store.SetContextKey(ctx, taskID, attemptID, "prompt_file", "/workspace/.cloche/runs/task-kv-1/prompt.txt")
+	err := store.SetContextKey(ctx, taskID, attemptID, hostRunID, "prompt_file", "/workspace/.cloche/runs/task-kv-1/prompt.txt")
 	require.NoError(t, err)
 
 	// Container workflow: one agent step
@@ -149,13 +147,14 @@ func TestKV_HostToContainer_TaskIDPropagated(t *testing.T) {
 	defer close(done)
 	simulateKVAgents(pool, rt, map[string]string{"implement": "success"}, done)
 
-	// Build DaemonExecutor with TaskID.
+	// Build DaemonExecutor with TaskID and host run ID.
 	hostExec := &host.Executor{
 		ProjectDir: tmpDir,
 		OutputDir:  tmpDir + "/output",
 		Store:      store,
 		TaskID:     taskID,
 		AttemptID:  attemptID,
+		HostRunID:  hostRunID,
 	}
 	de := grpcadapter.NewDaemonExecutor(grpcadapter.DaemonExecutorConfig{
 		HostExec:   hostExec,
@@ -174,23 +173,50 @@ func TestKV_HostToContainer_TaskIDPropagated(t *testing.T) {
 	require.NoError(t, runErr)
 	assert.Equal(t, domain.RunStateSucceeded, run.State, "workflow should succeed")
 
-	// --- Core assertion: the container was started with the correct TaskID ---
+	// --- Core assertion: container was started with correct IDs ---
 	configs := rt.capturedConfigs()
 	require.Len(t, configs, 1, "exactly one container should have been started")
 	assert.Equal(t, taskID, configs[0].TaskID,
 		"container must receive TaskID so clo get can read CLOCHE_TASK_ID")
 	assert.Equal(t, attemptID, configs[0].AttemptID,
 		"container must receive AttemptID so clo get can read CLOCHE_ATTEMPT_ID")
+	assert.Equal(t, hostRunID, configs[0].RunID,
+		"container must receive host's RunID so clo get uses same KV scope")
 
-	// --- Verify KV roundtrip: same task/attempt IDs should return the value ---
-	val, found, kvErr := store.GetContextKey(ctx, taskID, attemptID, "prompt_file")
+	// --- Verify KV roundtrip: same IDs should return the value ---
+	val, found, kvErr := store.GetContextKey(ctx, taskID, attemptID, hostRunID, "prompt_file")
 	require.NoError(t, kvErr)
 	assert.True(t, found, "prompt_file key should be found in KV store")
 	assert.Equal(t, "/workspace/.cloche/runs/task-kv-1/prompt.txt", val)
 }
 
+// TestKV_HostToContainer_RunIDIsolation verifies that different runs within
+// the same task+attempt have isolated KV namespaces.
+func TestKV_HostToContainer_RunIDIsolation(t *testing.T) {
+	store := newFakeRunStore()
+	ctx := context.Background()
+
+	const taskID = "task-iso-1"
+	const attemptID = "att-iso-1"
+
+	// Two different runs set the same key.
+	require.NoError(t, store.SetContextKey(ctx, taskID, attemptID, "run-A", "prompt_file", "/path/a"))
+	require.NoError(t, store.SetContextKey(ctx, taskID, attemptID, "run-B", "prompt_file", "/path/b"))
+
+	// Each run sees its own value.
+	vA, foundA, err := store.GetContextKey(ctx, taskID, attemptID, "run-A", "prompt_file")
+	require.NoError(t, err)
+	assert.True(t, foundA)
+	assert.Equal(t, "/path/a", vA)
+
+	vB, foundB, err := store.GetContextKey(ctx, taskID, attemptID, "run-B", "prompt_file")
+	require.NoError(t, err)
+	assert.True(t, foundB)
+	assert.Equal(t, "/path/b", vB)
+}
+
 // TestKV_HostToContainer_StoreRoundtrip verifies that the store-level KV
-// operations work correctly when host and container use the same task/attempt
+// operations work correctly when host and container use the same task/attempt/run
 // IDs, and that different attempts are properly isolated.
 func TestKV_HostToContainer_StoreRoundtrip(t *testing.T) {
 	store := newFakeRunStore()
@@ -198,13 +224,14 @@ func TestKV_HostToContainer_StoreRoundtrip(t *testing.T) {
 
 	const taskID = "task-rt-1"
 	const attemptID = "att-rt-1"
+	const runID = "run-rt-1"
 
 	// Host side: set multiple keys.
-	require.NoError(t, store.SetContextKey(ctx, taskID, attemptID, "prompt_file", "/workspace/prompt.txt"))
-	require.NoError(t, store.SetContextKey(ctx, taskID, attemptID, "branch", "feature-x"))
-	require.NoError(t, store.SetContextKey(ctx, taskID, attemptID, "workflow", "develop"))
+	require.NoError(t, store.SetContextKey(ctx, taskID, attemptID, runID, "prompt_file", "/workspace/prompt.txt"))
+	require.NoError(t, store.SetContextKey(ctx, taskID, attemptID, runID, "branch", "feature-x"))
+	require.NoError(t, store.SetContextKey(ctx, taskID, attemptID, runID, "workflow", "develop"))
 
-	// Container side: retrieve same keys with same task/attempt IDs.
+	// Container side: retrieve same keys with same task/attempt/run IDs.
 	for _, tc := range []struct {
 		key  string
 		want string
@@ -213,14 +240,14 @@ func TestKV_HostToContainer_StoreRoundtrip(t *testing.T) {
 		{"branch", "feature-x"},
 		{"workflow", "develop"},
 	} {
-		val, found, err := store.GetContextKey(ctx, taskID, attemptID, tc.key)
+		val, found, err := store.GetContextKey(ctx, taskID, attemptID, runID, tc.key)
 		require.NoError(t, err, "GetContextKey(%q)", tc.key)
 		assert.True(t, found, "key %q should be found", tc.key)
 		assert.Equal(t, tc.want, val, "key %q value mismatch", tc.key)
 	}
 
 	// Verify namespace isolation: different attempt cannot see these keys.
-	_, found, err := store.GetContextKey(ctx, taskID, "different-attempt", "prompt_file")
+	_, found, err := store.GetContextKey(ctx, taskID, "different-attempt", runID, "prompt_file")
 	require.NoError(t, err)
 	assert.False(t, found, "different attempt should not see the key")
 }

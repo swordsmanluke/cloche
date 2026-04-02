@@ -359,6 +359,7 @@ message GetContextKeyRequest {
   string task_id    = 1;
   string attempt_id = 2;
   string key        = 3;
+  string run_id     = 4;
 }
 
 message GetContextKeyResponse {
@@ -371,6 +372,7 @@ message SetContextKeyRequest {
   string attempt_id = 2;
   string key        = 3;
   string value      = 4;
+  string run_id     = 5;
 }
 
 message SetContextKeyResponse {}
@@ -378,6 +380,7 @@ message SetContextKeyResponse {}
 message ListContextKeysRequest {
   string task_id    = 1;
   string attempt_id = 2;
+  string run_id     = 3;
 }
 
 message ListContextKeysResponse {

@@ -7,7 +7,7 @@ import (
 
 func TestResolveRunContext_MissingTaskID(t *testing.T) {
 	t.Setenv("CLOCHE_TASK_ID", "")
-	_, _, err := resolveRunContext()
+	_, _, _, err := resolveRunContext()
 	if err == nil {
 		t.Fatal("expected error when CLOCHE_TASK_ID is not set")
 	}
@@ -16,8 +16,9 @@ func TestResolveRunContext_MissingTaskID(t *testing.T) {
 func TestResolveRunContext_UsesEnvVars(t *testing.T) {
 	t.Setenv("CLOCHE_TASK_ID", "test-task-1234")
 	t.Setenv("CLOCHE_ATTEMPT_ID", "attempt-5678")
+	t.Setenv("CLOCHE_RUN_ID", "run-9012")
 
-	taskID, attemptID, err := resolveRunContext()
+	taskID, attemptID, runID, err := resolveRunContext()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -27,13 +28,16 @@ func TestResolveRunContext_UsesEnvVars(t *testing.T) {
 	if attemptID != "attempt-5678" {
 		t.Errorf("attemptID = %q, want %q", attemptID, "attempt-5678")
 	}
+	if runID != "run-9012" {
+		t.Errorf("runID = %q, want %q", runID, "run-9012")
+	}
 }
 
 func TestResolveRunContext_EmptyAttemptID(t *testing.T) {
 	t.Setenv("CLOCHE_TASK_ID", "test-task-1234")
 	t.Setenv("CLOCHE_ATTEMPT_ID", "")
 
-	taskID, attemptID, err := resolveRunContext()
+	taskID, attemptID, _, err := resolveRunContext()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
