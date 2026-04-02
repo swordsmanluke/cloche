@@ -264,6 +264,7 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 		Image:        d.image,
 		WorkflowName: wf.Name,
 		ProjectDir:   d.projectDir,
+		TaskID:       d.taskID,
 		AttemptID:    d.attemptID,
 		NetworkAllow: []string{"*"},
 		// Start agent in session mode (no workflow file argument) so it
