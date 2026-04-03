@@ -75,7 +75,6 @@ type Loop struct {
 	listTasks    ListTasksFunc
 	mainFn       MainFunc
 	store        ports.RunStore
-	attemptStore ports.AttemptStore   // optional; creates Attempt records when set
 	taskStore    ports.TaskStore      // optional; ensures Task records exist when set
 	activityLog  *activitylog.Logger  // optional; records attempt lifecycle events
 	assigner     TaskAssigner         // optional; feeds listTasks in NewLoop-created loops
@@ -157,12 +156,6 @@ func NewPhaseLoop(cfg LoopConfig, store ports.RunStore, listTasksFn ListTasksFun
 // with NewLoop. Must be called before Start.
 func (l *Loop) SetTaskAssigner(a TaskAssigner) {
 	l.assigner = a
-}
-
-// SetAttemptStore configures an AttemptStore so the loop creates and completes
-// Attempt records for each task it picks up.
-func (l *Loop) SetAttemptStore(a ports.AttemptStore) {
-	l.attemptStore = a
 }
 
 // SetTaskStore configures a TaskStore so the loop can ensure Task records exist
@@ -499,17 +492,16 @@ func (l *Loop) pickTaskFromPhase() (string, string, bool) {
 
 // createAttemptForTask ensures a Task record exists in the store and creates a
 // new running Attempt for it. Always returns a non-empty attempt ID — a fresh
-// random ID is generated when there is no attempt store or the store save fails,
-// ensuring each concurrent run gets a unique container pool key and KV namespace.
+// random ID is generated when the store save fails, ensuring each concurrent
+// run gets a unique container pool key and KV namespace.
 func (l *Loop) createAttemptForTask(taskID, taskTitle, projectDir string) string {
 	// Always generate a unique attempt ID. Without one, concurrent tasks would
 	// share the same container pool key (attemptID+":"+containerID) and get
 	// routed to the same container, receiving the wrong task's environment vars.
 	attempt := domain.NewAttempt(taskID)
 
-	if l.attemptStore == nil || taskID == "" {
-		// No attempt store (or sentinel task): return the generated ID for pool
-		// key uniqueness without persisting an attempt record.
+	if taskID == "" {
+		// Sentinel task: no record to persist, but still need a unique ID.
 		return attempt.ID
 	}
 
@@ -531,7 +523,7 @@ func (l *Loop) createAttemptForTask(taskID, taskTitle, projectDir string) string
 		}
 	}
 
-	if err := l.attemptStore.SaveAttempt(ctx, attempt); err != nil {
+	if err := l.store.SaveAttempt(ctx, attempt); err != nil {
 		log.Printf("orchestration loop: failed to create attempt for task %s: %v", taskID, err)
 		// Return the generated ID anyway so the pool key is still unique.
 		return attempt.ID
@@ -550,21 +542,20 @@ func (l *Loop) createAttemptForTask(taskID, taskTitle, projectDir string) string
 }
 
 // completeAttempt marks the attempt with the given ID as finished with the
-// result derived from the run state. No-op if attempt tracking is not configured
-// or the attempt ID is empty.
+// result derived from the run state. No-op if the attempt ID is empty.
 func (l *Loop) completeAttempt(attemptID string, state domain.RunState) {
-	if l.attemptStore == nil || attemptID == "" {
+	if attemptID == "" {
 		return
 	}
 	ctx := context.Background()
-	attempt, err := l.attemptStore.GetAttempt(ctx, attemptID)
+	attempt, err := l.store.GetAttempt(ctx, attemptID)
 	if err != nil {
 		log.Printf("orchestration loop: failed to get attempt %s for completion: %v", attemptID, err)
 		return
 	}
 	result := domain.AttemptResultFromRunState(state)
 	attempt.Complete(result)
-	if err := l.attemptStore.SaveAttempt(ctx, attempt); err != nil {
+	if err := l.store.SaveAttempt(ctx, attempt); err != nil {
 		log.Printf("orchestration loop: failed to complete attempt %s: %v", attemptID, err)
 	}
 

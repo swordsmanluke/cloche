@@ -67,7 +67,6 @@ func NewTestEnv(t *testing.T) *TestEnv {
 	srv := adaptgrpc.NewClocheServerWithCaptures(store, store, nil, "test-image:latest")
 	srv.SetLogStore(store)
 	srv.SetTaskStore(store)
-	srv.SetAttemptStore(store)
 	srv.SetActivityStore(store)
 	srv.SetLogBroadcaster(broadcaster)
 

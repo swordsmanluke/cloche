@@ -32,6 +32,10 @@ type RunStore interface {
 	SetContextKey(ctx context.Context, taskID, attemptID, runID, key, value string) error
 	ListContextKeys(ctx context.Context, taskID, attemptID, runID string) ([]string, error)
 	DeleteContextKeys(ctx context.Context, taskID, attemptID string) error
+	SaveAttempt(ctx context.Context, attempt *domain.Attempt) error
+	GetAttempt(ctx context.Context, id string) (*domain.Attempt, error)
+	ListAttempts(ctx context.Context, taskID string) ([]*domain.Attempt, error)
+	FailStaleAttempts(ctx context.Context) (int64, error)
 }
 
 // ProjectMigrator is an optional interface that a RunStore may implement
@@ -70,12 +74,6 @@ type TaskStore interface {
 	ListTasks(ctx context.Context, projectDir string) ([]*domain.Task, error)
 }
 
-type AttemptStore interface {
-	SaveAttempt(ctx context.Context, attempt *domain.Attempt) error
-	GetAttempt(ctx context.Context, id string) (*domain.Attempt, error)
-	ListAttempts(ctx context.Context, taskID string) ([]*domain.Attempt, error)
-	FailStaleAttempts(ctx context.Context) (int64, error)
-}
 
 type AttemptLogEntry struct {
 	ID        int64

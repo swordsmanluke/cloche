@@ -41,7 +41,6 @@ type ClocheServer struct {
 	captures      ports.CaptureStore
 	logStore      ports.LogStore
 	taskStore     ports.TaskStore     // optional; creates Task records
-	attemptStore  ports.AttemptStore  // optional; creates Attempt records
 	activityStore ports.ActivityStore // optional; backs per-project activity loggers
 	container     ports.ContainerRuntime
 	pool          *docker.ContainerPool // optional; manages agent sessions for DaemonExecutor
@@ -137,11 +136,6 @@ func (s *ClocheServer) SetLogStore(ls ports.LogStore) {
 // SetTaskStore attaches a task store so RunWorkflow can create Task records.
 func (s *ClocheServer) SetTaskStore(ts ports.TaskStore) {
 	s.taskStore = ts
-}
-
-// SetAttemptStore attaches an attempt store so RunWorkflow can create Attempt records.
-func (s *ClocheServer) SetAttemptStore(as ports.AttemptStore) {
-	s.attemptStore = as
 }
 
 
@@ -585,7 +579,7 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 		// The orchestration loop handles this via completeAttempt in its own
 		// goroutine, but direct host workflow runs (cloche run) need to do it
 		// here since they bypass the loop.
-		if s.attemptStore != nil && attemptID != "" {
+		if attemptID != "" {
 			state := domain.RunStateFailed
 			if result != nil {
 				state = result.State
@@ -667,7 +661,7 @@ func attemptIDFromContext(ctx context.Context) string {
 func (s *ClocheServer) ensureTaskAndAttempt(ctx context.Context, issueID, title, projectDir string) string {
 	attemptID := domain.GenerateAttemptID()
 
-	if s.taskStore == nil || s.attemptStore == nil {
+	if s.taskStore == nil {
 		return attemptID
 	}
 
@@ -701,7 +695,7 @@ func (s *ClocheServer) ensureTaskAndAttempt(ctx context.Context, issueID, title,
 		StartedAt: time.Now(),
 		Result:    domain.AttemptResultRunning,
 	}
-	if err := s.attemptStore.SaveAttempt(ctx, attempt); err != nil {
+	if err := s.store.SaveAttempt(ctx, attempt); err != nil {
 		log.Printf("server: failed to save attempt %s for task %s: %v", attemptID, taskID, err)
 	}
 
@@ -713,13 +707,13 @@ func (s *ClocheServer) ensureTaskAndAttempt(ctx context.Context, issueID, title,
 // (non-loop) host workflow runs.
 func (s *ClocheServer) completeAttemptRecord(attemptID string, state domain.RunState) {
 	ctx := context.Background()
-	attempt, err := s.attemptStore.GetAttempt(ctx, attemptID)
+	attempt, err := s.store.GetAttempt(ctx, attemptID)
 	if err != nil {
 		log.Printf("server: failed to get attempt %s for completion: %v", attemptID, err)
 		return
 	}
 	attempt.Complete(domain.AttemptResultFromRunState(state))
-	if err := s.attemptStore.SaveAttempt(ctx, attempt); err != nil {
+	if err := s.store.SaveAttempt(ctx, attempt); err != nil {
 		log.Printf("server: failed to complete attempt %s: %v", attemptID, err)
 	}
 }
@@ -760,11 +754,7 @@ func (s *ClocheServer) resolveResumeTarget(ctx context.Context, id string) (stri
 // Host runs are preferred over child container runs so that resume restarts
 // from the correct host-level step.
 func (s *ClocheServer) findFailedRunForTask(ctx context.Context, task *domain.Task) (string, error) {
-	if s.attemptStore == nil {
-		return "", fmt.Errorf("attempt tracking not configured")
-	}
-
-	attempts, err := s.attemptStore.ListAttempts(ctx, task.ID)
+	attempts, err := s.store.ListAttempts(ctx, task.ID)
 	if err != nil || len(attempts) == 0 {
 		return "", fmt.Errorf("no attempts found for task %q", task.ID)
 	}
@@ -855,8 +845,8 @@ func (s *ClocheServer) createResumeAttempt(ctx context.Context, oldRun *domain.R
 		StartedAt:         time.Now(),
 		Result:            domain.AttemptResultRunning,
 	}
-	if s.attemptStore != nil && oldRun.TaskID != "" {
-		if err := s.attemptStore.SaveAttempt(ctx, attempt); err != nil {
+	if oldRun.TaskID != "" {
+		if err := s.store.SaveAttempt(ctx, attempt); err != nil {
 			log.Printf("server: failed to save resume attempt for task %s: %v", oldRun.TaskID, err)
 		}
 	}
@@ -898,13 +888,13 @@ func (s *ClocheServer) resumeHostRun(ctx context.Context, run *domain.Run, stepN
 }
 
 // completeAttemptFromResult marks an attempt as complete based on the outcome
-// of a host run. No-op when attempt tracking is not configured or IDs are empty.
+// of a host run. No-op when IDs are empty.
 func (s *ClocheServer) completeAttemptFromResult(attemptID, taskID string, result *host.RunResult, runErr error) {
-	if s.attemptStore == nil || attemptID == "" || taskID == "" {
+	if attemptID == "" || taskID == "" {
 		return
 	}
 	ctx := context.Background()
-	attempt, err := s.attemptStore.GetAttempt(ctx, attemptID)
+	attempt, err := s.store.GetAttempt(ctx, attemptID)
 	if err != nil {
 		log.Printf("server: failed to get attempt %s for completion: %v", attemptID, err)
 		return
@@ -919,7 +909,7 @@ func (s *ClocheServer) completeAttemptFromResult(attemptID, taskID string, resul
 		ar = domain.AttemptResultFailed
 	}
 	attempt.Complete(ar)
-	if err := s.attemptStore.SaveAttempt(ctx, attempt); err != nil {
+	if err := s.store.SaveAttempt(ctx, attempt); err != nil {
 		log.Printf("server: failed to complete attempt %s: %v", attemptID, err)
 	}
 }
@@ -1113,19 +1103,18 @@ func (s *ClocheServer) runResumedContainerWorkflow(
 	s.mu.Unlock()
 }
 
-// completeAttemptResult marks an attempt terminal. No-op when attempt tracking
-// is not configured or IDs are empty.
+// completeAttemptResult marks an attempt terminal. No-op when IDs are empty.
 func (s *ClocheServer) completeAttemptResult(ctx context.Context, attemptID, taskID string, ar domain.AttemptResult) {
-	if s.attemptStore == nil || attemptID == "" || taskID == "" {
+	if attemptID == "" || taskID == "" {
 		return
 	}
-	attempt, err := s.attemptStore.GetAttempt(ctx, attemptID)
+	attempt, err := s.store.GetAttempt(ctx, attemptID)
 	if err != nil {
 		log.Printf("server: failed to get attempt %s for completion: %v", attemptID, err)
 		return
 	}
 	attempt.Complete(ar)
-	if err := s.attemptStore.SaveAttempt(ctx, attempt); err != nil {
+	if err := s.store.SaveAttempt(ctx, attempt); err != nil {
 		log.Printf("server: failed to save completed attempt %s: %v", attemptID, err)
 	}
 }
@@ -1607,10 +1596,7 @@ func (s *ClocheServer) GetTask(ctx context.Context, req *pb.GetTaskRequest) (*pb
 }
 
 func (s *ClocheServer) GetAttempt(ctx context.Context, req *pb.GetAttemptRequest) (*pb.GetAttemptResponse, error) {
-	if s.attemptStore == nil {
-		return nil, fmt.Errorf("attempt store not configured")
-	}
-	attempt, err := s.attemptStore.GetAttempt(ctx, req.AttemptId)
+	attempt, err := s.store.GetAttempt(ctx, req.AttemptId)
 	if err != nil {
 		return nil, fmt.Errorf("getting attempt: %w", err)
 	}
@@ -1999,16 +1985,14 @@ func (s *ClocheServer) resolveRunIDFromID(ctx context.Context, id string) (runID
 
 // findRunByAttemptID searches for a run whose AttemptID matches the given ID.
 func (s *ClocheServer) findRunByAttemptID(ctx context.Context, attemptID string) (*domain.Run, error) {
-	// If an attempt store is available, look up the task_id first to narrow the search.
-	if s.attemptStore != nil {
-		attempt, err := s.attemptStore.GetAttempt(ctx, attemptID)
+	// Look up the task_id first to narrow the search.
+	attempt, err := s.store.GetAttempt(ctx, attemptID)
+	if err == nil {
+		runs, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{TaskID: attempt.TaskID})
 		if err == nil {
-			runs, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{TaskID: attempt.TaskID})
-			if err == nil {
-				for _, r := range runs {
-					if r.AttemptID == attemptID {
-						return r, nil
-					}
+			for _, r := range runs {
+				if r.AttemptID == attemptID {
+					return r, nil
 				}
 			}
 		}
@@ -2028,16 +2012,14 @@ func (s *ClocheServer) findRunByAttemptID(ctx context.Context, attemptID string)
 
 // findRunByAttemptAndWorkflow returns the run whose AttemptID and WorkflowName match.
 func (s *ClocheServer) findRunByAttemptAndWorkflow(ctx context.Context, attemptID, workflowName string) (*domain.Run, error) {
-	// Use attemptStore to narrow by task if available.
-	if s.attemptStore != nil {
-		attempt, err := s.attemptStore.GetAttempt(ctx, attemptID)
+	// Narrow by task if the attempt record is found.
+	attempt, err := s.store.GetAttempt(ctx, attemptID)
+	if err == nil {
+		runs, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{TaskID: attempt.TaskID})
 		if err == nil {
-			runs, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{TaskID: attempt.TaskID})
-			if err == nil {
-				for _, r := range runs {
-					if r.AttemptID == attemptID && r.WorkflowName == workflowName {
-						return r, nil
-					}
+			for _, r := range runs {
+				if r.AttemptID == attemptID && r.WorkflowName == workflowName {
+					return r, nil
 				}
 			}
 		}
@@ -2678,10 +2660,10 @@ func (s *ClocheServer) StopRun(ctx context.Context, req *pb.StopRunRequest) (*pb
 		// Also mark the associated attempt as cancelled so the task
 		// status is updated immediately (task status derives from the
 		// latest attempt result).
-		if s.attemptStore != nil && run.AttemptID != "" {
-			if attempt, aErr := s.attemptStore.GetAttempt(ctx, run.AttemptID); aErr == nil {
+		if run.AttemptID != "" {
+			if attempt, aErr := s.store.GetAttempt(ctx, run.AttemptID); aErr == nil {
 				attempt.Complete(domain.AttemptResultCancelled)
-				_ = s.attemptStore.SaveAttempt(ctx, attempt)
+				_ = s.store.SaveAttempt(ctx, attempt)
 			}
 		}
 
@@ -2872,9 +2854,6 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	}
 
 	loop := host.NewPhaseLoop(loopCfg, s.store, listTasksFn, mainFn)
-	if s.attemptStore != nil {
-		loop.SetAttemptStore(s.attemptStore)
-	}
 	if s.taskStore != nil {
 		loop.SetTaskStore(s.taskStore)
 	}

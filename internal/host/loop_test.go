@@ -14,69 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeAttemptStore records saved and updated attempts for testing.
-type fakeAttemptStore struct {
-	mu       sync.Mutex
-	attempts map[string]*domain.Attempt
-}
-
-func newFakeAttemptStore() *fakeAttemptStore {
-	return &fakeAttemptStore{attempts: make(map[string]*domain.Attempt)}
-}
-
-func (f *fakeAttemptStore) SaveAttempt(_ context.Context, a *domain.Attempt) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	cp := *a
-	f.attempts[a.ID] = &cp
-	return nil
-}
-
-func (f *fakeAttemptStore) GetAttempt(_ context.Context, id string) (*domain.Attempt, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	a, ok := f.attempts[id]
-	if !ok {
-		return nil, fmt.Errorf("attempt %q not found", id)
-	}
-	cp := *a
-	return &cp, nil
-}
-
-func (f *fakeAttemptStore) ListAttempts(_ context.Context, taskID string) ([]*domain.Attempt, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var out []*domain.Attempt
-	for _, a := range f.attempts {
-		if a.TaskID == taskID {
-			cp := *a
-			out = append(out, &cp)
-		}
-	}
-	return out, nil
-}
-
-func (f *fakeAttemptStore) FailStaleAttempts(_ context.Context) (int64, error) {
-	return 0, nil
-}
-
-func (f *fakeAttemptStore) count() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return len(f.attempts)
-}
-
-func (f *fakeAttemptStore) all() []*domain.Attempt {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := make([]*domain.Attempt, 0, len(f.attempts))
-	for _, a := range f.attempts {
-		cp := *a
-		out = append(out, &cp)
-	}
-	return out
-}
-
 // fakeTaskStore records saved tasks for testing.
 type fakeTaskStore struct {
 	mu    sync.Mutex
@@ -117,7 +54,6 @@ func (f *fakeTaskStore) ListTasks(_ context.Context, _ string) ([]*domain.Task, 
 	return out, nil
 }
 
-var _ ports.AttemptStore = (*fakeAttemptStore)(nil)
 var _ ports.TaskStore = (*fakeTaskStore)(nil)
 
 func TestLoop_StartStop(t *testing.T) {
@@ -982,7 +918,6 @@ func TestLoop_Resume_NopWhenNotHalted(t *testing.T) {
 
 func TestPhaseLoop_CreatesAttemptOnTaskPick(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
-	attemptStore := newFakeAttemptStore()
 	taskStore := newFakeTaskStore()
 
 	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
@@ -1005,7 +940,6 @@ func TestPhaseLoop_CreatesAttemptOnTaskPick(t *testing.T) {
 		MaxConcurrent: 1,
 		DedupTimeout:  2 * time.Second,
 	}, store, listTasksFn, mainFn)
-	loop.SetAttemptStore(attemptStore)
 	loop.SetTaskStore(taskStore)
 
 	loop.Start()
@@ -1013,7 +947,7 @@ func TestPhaseLoop_CreatesAttemptOnTaskPick(t *testing.T) {
 	loop.Stop()
 
 	// An attempt should have been created.
-	require.Equal(t, 1, attemptStore.count(), "expected one attempt to be created")
+	require.Equal(t, 1, store.countAttempts(), "expected one attempt to be created")
 
 	mu.Lock()
 	aid := receivedAttemptID
@@ -1022,7 +956,7 @@ func TestPhaseLoop_CreatesAttemptOnTaskPick(t *testing.T) {
 	assert.NotEmpty(t, aid, "attempt ID should be passed to mainFn")
 
 	// The attempt should be completed (succeeded).
-	attempts := attemptStore.all()
+	attempts := store.allAttempts()
 	require.Len(t, attempts, 1)
 	assert.Equal(t, domain.AttemptResultSucceeded, attempts[0].Result)
 	assert.Equal(t, "task-1", attempts[0].TaskID)
@@ -1035,7 +969,6 @@ func TestPhaseLoop_CreatesAttemptOnTaskPick(t *testing.T) {
 
 func TestPhaseLoop_AttemptCompletedAsFailed(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
-	attemptStore := newFakeAttemptStore()
 	taskStore := newFakeTaskStore()
 
 	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
@@ -1051,21 +984,19 @@ func TestPhaseLoop_AttemptCompletedAsFailed(t *testing.T) {
 		MaxConcurrent: 1,
 		DedupTimeout:  2 * time.Second,
 	}, store, listTasksFn, mainFn)
-	loop.SetAttemptStore(attemptStore)
 	loop.SetTaskStore(taskStore)
 
 	loop.Start()
 	time.Sleep(200 * time.Millisecond)
 	loop.Stop()
 
-	attempts := attemptStore.all()
+	attempts := store.allAttempts()
 	require.Len(t, attempts, 1)
 	assert.Equal(t, domain.AttemptResultFailed, attempts[0].Result)
 }
 
 func TestLegacyLoop_CreatesAttemptWhenTaskAssignerSet(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
-	attemptStore := newFakeAttemptStore()
 	taskStore := newFakeTaskStore()
 
 	assigner := &fakeTaskAssigner{
@@ -1089,7 +1020,6 @@ func TestLegacyLoop_CreatesAttemptWhenTaskAssignerSet(t *testing.T) {
 		DedupTimeout:  2 * time.Second,
 	}, store, runFn)
 	loop.SetTaskAssigner(assigner)
-	loop.SetAttemptStore(attemptStore)
 	loop.SetTaskStore(taskStore)
 
 	loop.Start()
@@ -1101,9 +1031,9 @@ func TestLegacyLoop_CreatesAttemptWhenTaskAssignerSet(t *testing.T) {
 	mu.Unlock()
 
 	assert.NotEmpty(t, aid, "attempt ID should be passed to runFn when task assigner is set")
-	assert.Equal(t, 1, attemptStore.count(), "one attempt should be created")
+	assert.Equal(t, 1, store.countAttempts(), "one attempt should be created")
 
-	attempts := attemptStore.all()
+	attempts := store.allAttempts()
 	require.Len(t, attempts, 1)
 	assert.Equal(t, "task-1", attempts[0].TaskID)
 	assert.Equal(t, domain.AttemptResultSucceeded, attempts[0].Result)
@@ -1111,7 +1041,6 @@ func TestLegacyLoop_CreatesAttemptWhenTaskAssignerSet(t *testing.T) {
 
 func TestLegacyLoop_NoAttemptWhenNoTaskAssigner(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
-	attemptStore := newFakeAttemptStore()
 
 	var receivedAttemptID string
 	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
@@ -1123,7 +1052,6 @@ func TestLegacyLoop_NoAttemptWhenNoTaskAssigner(t *testing.T) {
 		ProjectDir:    "/tmp/test-project",
 		MaxConcurrent: 1,
 	}, store, runFn)
-	loop.SetAttemptStore(attemptStore)
 	// No task assigner — task ID is empty. A transient attempt ID is still
 	// generated for pool key uniqueness, but no record is persisted.
 
@@ -1132,14 +1060,13 @@ func TestLegacyLoop_NoAttemptWhenNoTaskAssigner(t *testing.T) {
 	loop.Stop()
 
 	assert.NotEmpty(t, receivedAttemptID, "attempt ID should be generated even for sentinel tasks")
-	assert.Equal(t, 0, attemptStore.count(), "no attempt records should be created without task assigner")
+	assert.Equal(t, 0, store.countAttempts(), "no attempt records should be created without task assigner")
 }
 
 func TestLegacyLoop_AttemptCompletedOnPanic(t *testing.T) {
 	// Regression test: if runner panics, the attempt must still be completed
 	// (not left permanently stuck as 'running') and the loop must not deadlock.
 	store := &fakeStore{runs: map[string]*domain.Run{}}
-	attemptStore := newFakeAttemptStore()
 	taskStore := newFakeTaskStore()
 
 	assigner := &fakeTaskAssigner{
@@ -1162,7 +1089,6 @@ func TestLegacyLoop_AttemptCompletedOnPanic(t *testing.T) {
 		StopOnError:   true,                  // halts after first failure, allowing Resume to wake it
 	}, store, runFn)
 	loop.SetTaskAssigner(assigner)
-	loop.SetAttemptStore(attemptStore)
 	loop.SetTaskStore(taskStore)
 
 	loop.Start()
@@ -1171,7 +1097,7 @@ func TestLegacyLoop_AttemptCompletedOnPanic(t *testing.T) {
 	require.Equal(t, int32(1), callCount.Load(), "first run should have completed (panicked)")
 
 	// The first attempt must be completed even though runner panicked.
-	attempts := attemptStore.all()
+	attempts := store.allAttempts()
 	require.Len(t, attempts, 1, "one attempt should have been created")
 	assert.NotZero(t, attempts[0].EndedAt, "attempt must be completed, not stuck as running after panic")
 	assert.Equal(t, domain.AttemptResultFailed, attempts[0].Result, "panicked run should map to failed")
@@ -1183,7 +1109,6 @@ func TestLegacyLoop_AttemptCompletedOnRetry(t *testing.T) {
 	// Regression test: when a task is retried after dedup expiry, all attempts
 	// (including the retry) must be completed.
 	store := &fakeStore{runs: map[string]*domain.Run{}}
-	attemptStore := newFakeAttemptStore()
 	taskStore := newFakeTaskStore()
 
 	assigner := &fakeTaskAssigner{
@@ -1206,7 +1131,6 @@ func TestLegacyLoop_AttemptCompletedOnRetry(t *testing.T) {
 		StopOnError:   true,                  // halts after first failure, allowing Resume to wake it
 	}, store, runFn)
 	loop.SetTaskAssigner(assigner)
-	loop.SetAttemptStore(attemptStore)
 	loop.SetTaskStore(taskStore)
 
 	loop.Start()
@@ -1221,7 +1145,7 @@ func TestLegacyLoop_AttemptCompletedOnRetry(t *testing.T) {
 
 	require.GreaterOrEqual(t, int(callCount.Load()), 2, "task should have been attempted at least twice")
 
-	attempts := attemptStore.all()
+	attempts := store.allAttempts()
 	require.GreaterOrEqual(t, len(attempts), 2, "should have at least 2 attempt records")
 	for _, a := range attempts {
 		assert.NotZero(t, a.EndedAt, "every attempt must be completed, not stuck as running")
@@ -1233,7 +1157,6 @@ func TestPhaseLoop_AttemptCompletedWhenMainReturnsNilResult(t *testing.T) {
 	// stuck as 'running'. The goroutine used to dereference mainResult without
 	// guarding for nil, causing a panic that skipped completeAttempt.
 	store := &fakeStore{runs: map[string]*domain.Run{}}
-	attemptStore := newFakeAttemptStore()
 	taskStore := newFakeTaskStore()
 
 	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
@@ -1250,14 +1173,13 @@ func TestPhaseLoop_AttemptCompletedWhenMainReturnsNilResult(t *testing.T) {
 		MaxConcurrent: 1,
 		DedupTimeout:  2 * time.Second,
 	}, store, listTasksFn, mainFn)
-	loop.SetAttemptStore(attemptStore)
 	loop.SetTaskStore(taskStore)
 
 	loop.Start()
 	time.Sleep(300 * time.Millisecond)
 	loop.Stop()
 
-	attempts := attemptStore.all()
+	attempts := store.allAttempts()
 	require.Len(t, attempts, 1)
 	// The attempt must be completed (not left as running).
 	assert.NotZero(t, attempts[0].EndedAt, "attempt must be completed, not stuck as running")
@@ -1272,7 +1194,6 @@ func TestPhaseLoop_AttemptCompletedOnRetry(t *testing.T) {
 	// Resume() to wake it from the 2-minute backoff sleep immediately, allowing
 	// the retry to happen within the test window.
 	store := &fakeStore{runs: map[string]*domain.Run{}}
-	attemptStore := newFakeAttemptStore()
 	taskStore := newFakeTaskStore()
 
 	var callCount atomic.Int32
@@ -1294,7 +1215,6 @@ func TestPhaseLoop_AttemptCompletedOnRetry(t *testing.T) {
 		DedupTimeout:  50 * time.Millisecond, // short so retry happens after Resume
 		StopOnError:   true,                  // halts after first failure, allowing Resume to wake it
 	}, store, listTasksFn, mainFn)
-	loop.SetAttemptStore(attemptStore)
 	loop.SetTaskStore(taskStore)
 
 	loop.Start()
@@ -1310,7 +1230,7 @@ func TestPhaseLoop_AttemptCompletedOnRetry(t *testing.T) {
 
 	require.GreaterOrEqual(t, int(callCount.Load()), 2, "task should have been attempted at least twice")
 
-	attempts := attemptStore.all()
+	attempts := store.allAttempts()
 	require.GreaterOrEqual(t, len(attempts), 2, "should have at least 2 attempt records")
 	for _, a := range attempts {
 		assert.NotZero(t, a.EndedAt, "every attempt must be completed, not stuck as running")
@@ -1318,12 +1238,11 @@ func TestPhaseLoop_AttemptCompletedOnRetry(t *testing.T) {
 }
 
 // TestCreateAttemptForTask_AlwaysNonEmpty verifies that createAttemptForTask
-// always returns a non-empty attempt ID — even without an attempt store — so
-// concurrent tasks each get a unique container pool key and KV namespace.
+// always returns a non-empty attempt ID so concurrent tasks each get a unique
+// container pool key and KV namespace.
 func TestCreateAttemptForTask_AlwaysNonEmpty(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 
-	// Loop without an attempt store (common in simple/dev setups).
 	loop := NewPhaseLoop(LoopConfig{ProjectDir: "/tmp/test"}, store,
 		func(_ context.Context, _ string) ([]Task, error) { return nil, nil },
 		func(_ context.Context, _ string, _ string, _ string, _ string) (*RunResult, error) {
@@ -1331,12 +1250,12 @@ func TestCreateAttemptForTask_AlwaysNonEmpty(t *testing.T) {
 		},
 	)
 
-	// Create two attempts for different tasks without a store.
+	// Create two attempts for different tasks.
 	id1 := loop.createAttemptForTask("task-A", "Task A", "/tmp/test")
 	id2 := loop.createAttemptForTask("task-B", "Task B", "/tmp/test")
 
-	assert.NotEmpty(t, id1, "attempt ID must not be empty even without attempt store")
-	assert.NotEmpty(t, id2, "attempt ID must not be empty even without attempt store")
+	assert.NotEmpty(t, id1, "attempt ID must not be empty")
+	assert.NotEmpty(t, id2, "attempt ID must not be empty")
 	assert.NotEqual(t, id1, id2, "concurrent tasks must receive distinct attempt IDs")
 }
 

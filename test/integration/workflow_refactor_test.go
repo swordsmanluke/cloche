@@ -203,6 +203,14 @@ func (s *fakeRunStore) ListContextKeys(_ context.Context, _, _, _ string) ([]str
 	return nil, nil
 }
 func (s *fakeRunStore) DeleteContextKeys(_ context.Context, _, _ string) error { return nil }
+func (s *fakeRunStore) SaveAttempt(_ context.Context, _ *domain.Attempt) error { return nil }
+func (s *fakeRunStore) GetAttempt(_ context.Context, _ string) (*domain.Attempt, error) {
+	return nil, fmt.Errorf("not found")
+}
+func (s *fakeRunStore) ListAttempts(_ context.Context, _ string) ([]*domain.Attempt, error) {
+	return nil, nil
+}
+func (s *fakeRunStore) FailStaleAttempts(_ context.Context) (int64, error) { return 0, nil }
 
 // ---------------------------------------------------------------------------
 // Agent simulation helpers

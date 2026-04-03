@@ -2242,7 +2242,7 @@ func TestServer_ListTasks_WithTasks(t *testing.T) {
 	ctx := context.Background()
 	srv := server.NewClocheServer(store, nil)
 	srv.SetTaskStore(store)
-	srv.SetAttemptStore(store)
+
 
 	// Create tasks directly in the store
 	taskA := &domain.Task{
@@ -2301,7 +2301,7 @@ func TestServer_GetTask(t *testing.T) {
 	ctx := context.Background()
 	srv := server.NewClocheServer(store, nil)
 	srv.SetTaskStore(store)
-	srv.SetAttemptStore(store)
+
 
 	task := &domain.Task{
 		ID:         "TASK-A",
@@ -2325,16 +2325,15 @@ func TestServer_GetTask(t *testing.T) {
 	assert.Equal(t, "failed", resp.Attempts[0].Result)
 }
 
-func TestServer_GetAttempt_NoStore(t *testing.T) {
+func TestServer_GetAttempt_NotFound(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
 
 	srv := server.NewClocheServer(store, nil)
-	// attemptStore not set
 	_, err = srv.GetAttempt(context.Background(), &pb.GetAttemptRequest{AttemptId: "abc1"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "attempt store not configured")
+	assert.Contains(t, err.Error(), "getting attempt")
 }
 
 func TestServer_GetAttempt(t *testing.T) {
@@ -2345,7 +2344,7 @@ func TestServer_GetAttempt(t *testing.T) {
 	ctx := context.Background()
 	srv := server.NewClocheServer(store, nil)
 	srv.SetTaskStore(store)
-	srv.SetAttemptStore(store)
+
 
 	// Create task, attempt, and a matching run
 	task := &domain.Task{
@@ -2403,7 +2402,7 @@ func TestServer_GetStatus_ByAttemptId(t *testing.T) {
 
 	ctx := context.Background()
 	srv := server.NewClocheServer(store, nil)
-	srv.SetAttemptStore(store)
+
 	srv.SetTaskStore(store)
 
 	// Save task and attempt in store
@@ -2842,8 +2841,8 @@ func TestServer_StopRun_StopsUserInitiatedHostRun(t *testing.T) {
 }
 
 // TestResumeTarget_TaskID_WithoutAttemptStore verifies that cloche resume
-// accepts v2 task IDs even when the attempt store is not configured. The
-// resolver should fall back to scanning runs by task_id directly.
+// accepts v2 task IDs. The run carries a task_id on the run record itself,
+// so the resolver can find it via a task_id scan even without a saved attempt.
 func TestResumeTarget_TaskID_WithoutAttemptStore(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
@@ -2851,7 +2850,7 @@ func TestResumeTarget_TaskID_WithoutAttemptStore(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Create a failed run carrying only a task_id (no attempt store set up).
+	// Create a failed run carrying only a task_id (no attempt record saved).
 	run := domain.NewRun("a12z-develop", "develop")
 	run.TaskID = "user-a12z"
 	run.AttemptID = "a12z"
@@ -2867,7 +2866,6 @@ func TestResumeTarget_TaskID_WithoutAttemptStore(t *testing.T) {
 		CompletedAt: time.Now(),
 	}))
 
-	// Server with NO attemptStore — task IDs must resolve via task_id scan.
 	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
 
 	// Resume by task ID. Use NewIncomingContext so the server's metadata
@@ -2944,7 +2942,7 @@ func TestResumeTarget_TaskID_PrefersHostRun(t *testing.T) {
 
 	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
 	srv.SetTaskStore(store)
-	srv.SetAttemptStore(store)
+
 
 	// Resume by task ID. Use NewIncomingContext so the server's metadata
 	// readers (FromIncomingContext) see the headers.
@@ -3062,7 +3060,7 @@ func TestResume_CreatesNewAttempt_HostRun(t *testing.T) {
 
 	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
 	srv.SetTaskStore(store)
-	srv.SetAttemptStore(store)
+
 
 	md := metadata.Pairs("x-cloche-resume-run-id", hostRun.ID)
 	resumeCtx := metadata.NewIncomingContext(ctx, md)
@@ -3216,7 +3214,7 @@ func TestResume_ContainerRun_WithPool(t *testing.T) {
 
 	srv := server.NewClocheServerWithCaptures(store, store, rt, "default-image")
 	srv.SetTaskStore(store)
-	srv.SetAttemptStore(store)
+
 	srv.SetContainerPool(pool)
 
 	md := metadata.Pairs("x-cloche-resume-run-id", failedRun.ID)
@@ -3276,7 +3274,7 @@ func TestResume_ContainerRun_WithPool_CreatesNewAttempt(t *testing.T) {
 
 	srv := server.NewClocheServerWithCaptures(store, store, rt, "default-image")
 	srv.SetTaskStore(store)
-	srv.SetAttemptStore(store)
+
 	srv.SetContainerPool(pool)
 
 	md := metadata.Pairs("x-cloche-resume-run-id", failedRun.ID)
@@ -4469,6 +4467,14 @@ func (f *fakeRunStore) DeleteContextKeys(_ context.Context, _, _ string) error {
 func (f *fakeRunStore) QueryUsage(_ context.Context, _ ports.UsageQuery) ([]domain.UsageSummary, error) {
 	return nil, nil
 }
+func (f *fakeRunStore) SaveAttempt(_ context.Context, _ *domain.Attempt) error { return nil }
+func (f *fakeRunStore) GetAttempt(_ context.Context, _ string) (*domain.Attempt, error) {
+	return nil, fmt.Errorf("not found")
+}
+func (f *fakeRunStore) ListAttempts(_ context.Context, _ string) ([]*domain.Attempt, error) {
+	return nil, nil
+}
+func (f *fakeRunStore) FailStaleAttempts(_ context.Context) (int64, error) { return 0, nil }
 
 // newTestLoop creates a minimal Loop for use in server tests.
 func newTestLoop(projectDir string, store ports.RunStore) *host.Loop {

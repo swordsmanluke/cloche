@@ -472,6 +472,14 @@ func (f *fakeRunStore) ListContextKeys(_ context.Context, _, _, _ string) ([]str
 	return nil, nil
 }
 func (f *fakeRunStore) DeleteContextKeys(_ context.Context, _, _ string) error { return nil }
+func (f *fakeRunStore) SaveAttempt(_ context.Context, _ *domain.Attempt) error { return nil }
+func (f *fakeRunStore) GetAttempt(_ context.Context, _ string) (*domain.Attempt, error) {
+	return nil, fmt.Errorf("not found")
+}
+func (f *fakeRunStore) ListAttempts(_ context.Context, _ string) ([]*domain.Attempt, error) {
+	return nil, nil
+}
+func (f *fakeRunStore) FailStaleAttempts(_ context.Context) (int64, error) { return 0, nil }
 
 // errContainerRuntime always fails on Start.
 type errContainerRuntime struct{ err error }

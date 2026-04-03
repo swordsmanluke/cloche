@@ -2,9 +2,11 @@ package host
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,31 +19,43 @@ import (
 
 // fakeStore returns a predetermined run on GetRun.
 type fakeStore struct {
-	runs   map[string]*domain.Run
-	kvData map[string]string
+	mu       sync.Mutex
+	runs     map[string]*domain.Run
+	kvData   map[string]string
+	attempts map[string]*domain.Attempt
 }
 
 func (f *fakeStore) CreateRun(_ context.Context, run *domain.Run) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.runs[run.ID] = run
 	return nil
 }
 func (f *fakeStore) GetRun(_ context.Context, id string) (*domain.Run, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if r, ok := f.runs[id]; ok {
 		return r, nil
 	}
 	return nil, os.ErrNotExist
 }
 func (f *fakeStore) GetRunByAttempt(_ context.Context, attemptID, id string) (*domain.Run, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if r, ok := f.runs[id]; ok && r.AttemptID == attemptID {
 		return r, nil
 	}
 	return nil, os.ErrNotExist
 }
 func (f *fakeStore) UpdateRun(_ context.Context, run *domain.Run) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.runs[run.ID] = run
 	return nil
 }
 func (f *fakeStore) DeleteRun(_ context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	delete(f.runs, id)
 	return nil
 }
@@ -58,6 +72,8 @@ func (f *fakeStore) ListProjects(_ context.Context) ([]string, error) {
 	return nil, nil
 }
 func (f *fakeStore) ListChildRuns(_ context.Context, parentRunID string) ([]*domain.Run, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	var children []*domain.Run
 	for _, r := range f.runs {
 		if r.ParentRunID == parentRunID {
@@ -70,6 +86,8 @@ func (f *fakeStore) QueryUsage(_ context.Context, _ ports.UsageQuery) ([]domain.
 	return nil, nil
 }
 func (f *fakeStore) GetContextKey(_ context.Context, taskID, attemptID, runID, key string) (string, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.kvData == nil {
 		return "", false, nil
 	}
@@ -77,6 +95,8 @@ func (f *fakeStore) GetContextKey(_ context.Context, taskID, attemptID, runID, k
 	return v, ok, nil
 }
 func (f *fakeStore) SetContextKey(_ context.Context, taskID, attemptID, runID, key, value string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.kvData == nil {
 		f.kvData = make(map[string]string)
 	}
@@ -88,6 +108,61 @@ func (f *fakeStore) ListContextKeys(_ context.Context, taskID, attemptID, runID 
 }
 func (f *fakeStore) DeleteContextKeys(_ context.Context, taskID, attemptID string) error {
 	return nil
+}
+func (f *fakeStore) SaveAttempt(_ context.Context, a *domain.Attempt) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.attempts == nil {
+		f.attempts = make(map[string]*domain.Attempt)
+	}
+	cp := *a
+	f.attempts[a.ID] = &cp
+	return nil
+}
+func (f *fakeStore) GetAttempt(_ context.Context, id string) (*domain.Attempt, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.attempts == nil {
+		return nil, fmt.Errorf("attempt %q not found", id)
+	}
+	a, ok := f.attempts[id]
+	if !ok {
+		return nil, fmt.Errorf("attempt %q not found", id)
+	}
+	cp := *a
+	return &cp, nil
+}
+func (f *fakeStore) ListAttempts(_ context.Context, taskID string) ([]*domain.Attempt, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []*domain.Attempt
+	for _, a := range f.attempts {
+		if a.TaskID == taskID {
+			cp := *a
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+func (f *fakeStore) FailStaleAttempts(_ context.Context) (int64, error) {
+	return 0, nil
+}
+
+func (f *fakeStore) countAttempts() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.attempts)
+}
+
+func (f *fakeStore) allAttempts() []*domain.Attempt {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*domain.Attempt, 0, len(f.attempts))
+	for _, a := range f.attempts {
+		cp := *a
+		out = append(out, &cp)
+	}
+	return out
 }
 
 func TestExecutor_ScriptStep_Success(t *testing.T) {

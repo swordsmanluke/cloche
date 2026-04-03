@@ -80,7 +80,6 @@ func main() {
 	srv := adaptgrpc.NewClocheServerWithCaptures(store, store, runtime, defaultImage)
 	srv.SetLogStore(store)
 	srv.SetTaskStore(store)
-	srv.SetAttemptStore(store)
 	srv.SetActivityStore(store)
 	srv.SetLogBroadcaster(broadcaster)
 	srv.SetContainerPool(docker.NewContainerPool(runtime))
