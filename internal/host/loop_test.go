@@ -1124,14 +1124,15 @@ func TestLegacyLoop_NoAttemptWhenNoTaskAssigner(t *testing.T) {
 		MaxConcurrent: 1,
 	}, store, runFn)
 	loop.SetAttemptStore(attemptStore)
-	// No task assigner — task ID is empty, no attempt should be created.
+	// No task assigner — task ID is empty. A transient attempt ID is still
+	// generated for pool key uniqueness, but no record is persisted.
 
 	loop.Start()
 	time.Sleep(200 * time.Millisecond)
 	loop.Stop()
 
-	assert.Empty(t, receivedAttemptID, "no attempt ID without task assigner")
-	assert.Equal(t, 0, attemptStore.count(), "no attempts should be created without task assigner")
+	assert.NotEmpty(t, receivedAttemptID, "attempt ID should be generated even for sentinel tasks")
+	assert.Equal(t, 0, attemptStore.count(), "no attempt records should be created without task assigner")
 }
 
 func TestLegacyLoop_AttemptCompletedOnPanic(t *testing.T) {
@@ -1314,6 +1315,94 @@ func TestPhaseLoop_AttemptCompletedOnRetry(t *testing.T) {
 	for _, a := range attempts {
 		assert.NotZero(t, a.EndedAt, "every attempt must be completed, not stuck as running")
 	}
+}
+
+// TestCreateAttemptForTask_AlwaysNonEmpty verifies that createAttemptForTask
+// always returns a non-empty attempt ID — even without an attempt store — so
+// concurrent tasks each get a unique container pool key and KV namespace.
+func TestCreateAttemptForTask_AlwaysNonEmpty(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	// Loop without an attempt store (common in simple/dev setups).
+	loop := NewPhaseLoop(LoopConfig{ProjectDir: "/tmp/test"}, store,
+		func(_ context.Context, _ string) ([]Task, error) { return nil, nil },
+		func(_ context.Context, _ string, _ string, _ string, _ string) (*RunResult, error) {
+			return &RunResult{State: domain.RunStateSucceeded}, nil
+		},
+	)
+
+	// Create two attempts for different tasks without a store.
+	id1 := loop.createAttemptForTask("task-A", "Task A", "/tmp/test")
+	id2 := loop.createAttemptForTask("task-B", "Task B", "/tmp/test")
+
+	assert.NotEmpty(t, id1, "attempt ID must not be empty even without attempt store")
+	assert.NotEmpty(t, id2, "attempt ID must not be empty even without attempt store")
+	assert.NotEqual(t, id1, id2, "concurrent tasks must receive distinct attempt IDs")
+}
+
+// TestPhaseLoop_ConcurrentTasks_UniqueAttemptIDs verifies that when the loop
+// runs multiple tasks concurrently, each task receives a distinct attempt ID.
+// This prevents them from sharing the same container pool key.
+func TestPhaseLoop_ConcurrentTasks_UniqueAttemptIDs(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	var (
+		mu      sync.Mutex
+		seenIDs = make(map[string]string) // taskID → attemptID
+	)
+
+	tasks := []Task{
+		{ID: "task-1", Status: "open"},
+		{ID: "task-2", Status: "open"},
+	}
+
+	// Always return the same two tasks; dedup prevents re-picking.
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return tasks, nil
+	}
+
+	ready := make(chan struct{})
+	var readyOnce sync.Once
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
+		mu.Lock()
+		seenIDs[taskID] = attemptID
+		if len(seenIDs) == 2 {
+			readyOnce.Do(func() { close(ready) })
+		}
+		mu.Unlock()
+		// Hold the slot until both tasks have started.
+		select {
+		case <-ready:
+		case <-time.After(2 * time.Second):
+		}
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-conc",
+		MaxConcurrent: 2,
+		DedupTimeout:  5 * time.Second,
+	}, store, listTasksFn, mainFn)
+	// Intentionally no SetAttemptStore — exercises the no-store path.
+
+	loop.Start()
+	select {
+	case <-ready:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for both tasks to start")
+	}
+	loop.Stop()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	require.Len(t, seenIDs, 2, "both tasks should have run concurrently")
+
+	id1, id2 := seenIDs["task-1"], seenIDs["task-2"]
+	assert.NotEmpty(t, id1, "task-1 must have a non-empty attempt ID")
+	assert.NotEmpty(t, id2, "task-2 must have a non-empty attempt ID")
+	assert.NotEqual(t, id1, id2, "concurrent tasks must receive distinct attempt IDs")
 }
 
 func TestLoop_Halt_SetsHaltedState(t *testing.T) {

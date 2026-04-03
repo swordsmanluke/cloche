@@ -498,12 +498,21 @@ func (l *Loop) pickTaskFromPhase() (string, string, bool) {
 }
 
 // createAttemptForTask ensures a Task record exists in the store and creates a
-// new running Attempt for it. Returns the attempt ID, or "" if attempt tracking
-// is not configured or the task ID is empty.
+// new running Attempt for it. Always returns a non-empty attempt ID — a fresh
+// random ID is generated when there is no attempt store or the store save fails,
+// ensuring each concurrent run gets a unique container pool key and KV namespace.
 func (l *Loop) createAttemptForTask(taskID, taskTitle, projectDir string) string {
+	// Always generate a unique attempt ID. Without one, concurrent tasks would
+	// share the same container pool key (attemptID+":"+containerID) and get
+	// routed to the same container, receiving the wrong task's environment vars.
+	attempt := domain.NewAttempt(taskID)
+
 	if l.attemptStore == nil || taskID == "" {
-		return ""
+		// No attempt store (or sentinel task): return the generated ID for pool
+		// key uniqueness without persisting an attempt record.
+		return attempt.ID
 	}
+
 	ctx := context.Background()
 
 	// Ensure the task exists before creating an attempt that references it.
@@ -522,10 +531,10 @@ func (l *Loop) createAttemptForTask(taskID, taskTitle, projectDir string) string
 		}
 	}
 
-	attempt := domain.NewAttempt(taskID)
 	if err := l.attemptStore.SaveAttempt(ctx, attempt); err != nil {
 		log.Printf("orchestration loop: failed to create attempt for task %s: %v", taskID, err)
-		return ""
+		// Return the generated ID anyway so the pool key is still unique.
+		return attempt.ID
 	}
 	log.Printf("orchestration loop: created attempt %s for task %s", attempt.ID, taskID)
 
