@@ -240,7 +240,7 @@ workflow "develop" {
 }
 ```
 
-Supported keys: `id`, `image`, `agent_command`, `agent_args`, `network_allow`.
+Supported keys: `id`, `image`, `agent_command`, `agent_args`, `network_allow`, `memory`.
 
 **`host {}`** — Declares a workflow as a host workflow. Can appear in any `.cloche` file.
 Sets agent defaults for agent steps running on the host machine. An empty `host {}` block
