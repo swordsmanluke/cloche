@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
 	"github.com/cloche-dev/cloche/internal/domain"
@@ -44,6 +46,10 @@ type DaemonExecutor struct {
 	// container results to a git branch.
 	store ports.RunStore
 
+	// logStore is used to index extracted container step log files so the web
+	// UI can serve them by step name. Optional: indexing is skipped when nil.
+	logStore ports.LogStore
+
 	// taskID is the task ID for KV store operations.
 	taskID string
 
@@ -69,6 +75,7 @@ type DaemonExecutorConfig struct {
 	HostExec   *host.Executor
 	Pool       *docker.ContainerPool
 	Store      ports.RunStore
+	LogStore   ports.LogStore
 	ProjectDir string
 	TaskID     string
 	AttemptID  string
@@ -87,6 +94,7 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 		hostExec:         cfg.HostExec,
 		pool:             cfg.Pool,
 		store:            cfg.Store,
+		logStore:         cfg.LogStore,
 		projectDir:       cfg.ProjectDir,
 		taskID:           cfg.TaskID,
 		attemptID:        cfg.AttemptID,
@@ -228,6 +236,10 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		// and they survive container cleanup.
 		if session != nil {
 			d.extractContainerLogs(ctx, session.ContainerID, step.Name)
+			if d.logStore != nil && d.hostExec != nil && d.hostExec.HostRunID != "" {
+				subDir := filepath.Join(d.projectDir, ".cloche", "logs", d.taskID, d.attemptID, step.Name)
+				d.indexSubworkflowLogs(ctx, d.hostExec.HostRunID, subDir)
+			}
 		}
 
 		// Set child_run_id so downstream host steps (merge-to-base.sh) can
@@ -332,5 +344,61 @@ func (d *DaemonExecutor) extractContainerLogs(ctx context.Context, containerID, 
 	stepLog := filepath.Join(hostLogDir, stepName+".log")
 	if err := os.WriteFile(stepLog, data, 0644); err != nil {
 		log.Printf("daemon executor: failed to write %s: %v", stepLog, err)
+	}
+}
+
+// indexSubworkflowLogs scans the sub-workflow log directory (e.g. develop/) and
+// registers each .log file in the log_files table under hostRunID so the web UI
+// can serve individual container step logs (implement, compile, test, etc.).
+func (d *DaemonExecutor) indexSubworkflowLogs(ctx context.Context, hostRunID, subDir string) {
+	entries, err := os.ReadDir(subDir)
+	if err != nil {
+		log.Printf("daemon executor: failed to read subdir %s for log indexing: %v", subDir, err)
+		return
+	}
+
+	now := time.Now()
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".log") {
+			continue
+		}
+
+		var fileType, stepName string
+		base := strings.TrimSuffix(name, ".log")
+
+		switch {
+		case name == "full.log":
+			fileType = "full"
+		case name == "container.log":
+			continue
+		case strings.HasPrefix(name, "llm-"):
+			fileType = "llm"
+			stepName = strings.TrimPrefix(base, "llm-")
+		default:
+			fileType = "script"
+			stepName = base
+		}
+
+		info, _ := entry.Info()
+		var fileSize int64
+		if info != nil {
+			fileSize = info.Size()
+		}
+
+		logEntry := &ports.LogFileEntry{
+			RunID:     hostRunID,
+			StepName:  stepName,
+			FileType:  fileType,
+			FilePath:  filepath.Join(subDir, name),
+			FileSize:  fileSize,
+			CreatedAt: now,
+		}
+		if err := d.logStore.SaveLogFile(ctx, logEntry); err != nil {
+			log.Printf("daemon executor: failed to index log file %s for run %s: %v", name, hostRunID, err)
+		}
 	}
 }
