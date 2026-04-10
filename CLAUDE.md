@@ -16,7 +16,7 @@ tasks, validated code pipelines, and self-evolving tooling.
 
 Four binaries from one Go module:
 
-- **`cloche`** (CLI) — Short-lived client. Talks to daemon over gRPC. Subcommands: `run`, `resume`, `status`, `list`, `logs`, `stop`, `project`.
+- **`cloche`** (CLI) — Short-lived client. Talks to daemon over gRPC. Subcommands: `run`, `resume`, `status`, `list`, `logs`, `stop`, `delete`, `poll`, `loop`, `shutdown`, `console`, `project`, `init`, `health`, `get`, `set`, `tasks`, `activity`, `workflow`, `validate`, `doctor`.
 - **`cloched`** (Daemon) — Long-running. Manages container lifecycle, collects status, persists state. Executes host workflows (any workflow with a `host { }` block) step by step on the host machine, dispatching container workflow runs as needed.
 - **`cloche-agent`** (In-Container) — Long-lived step executor. Connects to daemon at `CLOCHE_ADDR`, opens a bidirectional `AgentSession` gRPC stream, sends `AgentReady`, then receives `ExecuteStep` commands. Dispatches to generic/prompt adapters, streams `StepLog` lines, and sends `StepResult` back over the stream. Exits on `Shutdown` or context cancellation.
 - **`clo`** (In-Container CLI) — Lightweight gRPC client baked into container images. Provides `get`/`set`/`keys` commands for reading and writing the daemon's KV store from within a container step.
