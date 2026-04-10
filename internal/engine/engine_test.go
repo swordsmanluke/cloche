@@ -440,3 +440,91 @@ func TestEngine_StepTriggerContext(t *testing.T) {
 	assert.Equal(t, "build", testTrigger.trigger.PrevStep)
 	assert.Equal(t, "success", testTrigger.trigger.PrevResult)
 }
+
+
+func TestStepTimeout_HumanStep_Default72h(t *testing.T) {
+	// A human step with no timeout config should use HumanStepDefaultTimeout (72h).
+	// Verify by running a human step whose executor checks the context deadline.
+	humanStep := &domain.Step{
+		Name:    "review",
+		Type:    domain.StepTypeHuman,
+		Results: []string{"approved", "fail"},
+		Config: map[string]string{
+			"script":   "echo 'CLOCHE_RESULT:approved'",
+			"interval": "1ms",
+		},
+	}
+
+	var capturedDeadline time.Time
+	exec := engine.StepExecutorFunc(func(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
+		if dl, ok := ctx.Deadline(); ok {
+			capturedDeadline = dl
+		}
+		return domain.StepResult{Result: "approved"}, nil
+	})
+
+	wf := &domain.Workflow{
+		Name: "test",
+		Steps: map[string]*domain.Step{
+			"review": humanStep,
+		},
+		Wiring: []domain.Wire{
+			{From: "review", Result: "approved", To: domain.StepDone},
+			{From: "review", Result: "fail", To: domain.StepAbort},
+		},
+		EntryStep: "review",
+	}
+
+	eng := engine.New(exec)
+	_, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+
+	// The deadline should be approximately 72h from now.
+	require.False(t, capturedDeadline.IsZero(), "human step should have a context deadline")
+	remaining := time.Until(capturedDeadline)
+	assert.Greater(t, remaining, 71*time.Hour, "human step deadline should be ~72h")
+	assert.Less(t, remaining, 73*time.Hour, "human step deadline should be ~72h")
+}
+
+func TestStepTimeout_HumanStep_ExplicitTimeout(t *testing.T) {
+	// A human step with an explicit timeout should use that timeout, not 72h.
+	humanStep := &domain.Step{
+		Name:    "review",
+		Type:    domain.StepTypeHuman,
+		Results: []string{"approved", "fail"},
+		Config: map[string]string{
+			"script":   "echo 'CLOCHE_RESULT:approved'",
+			"interval": "1ms",
+			"timeout":  "48h",
+		},
+	}
+
+	var capturedDeadline time.Time
+	exec := engine.StepExecutorFunc(func(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
+		if dl, ok := ctx.Deadline(); ok {
+			capturedDeadline = dl
+		}
+		return domain.StepResult{Result: "approved"}, nil
+	})
+
+	wf := &domain.Workflow{
+		Name: "test",
+		Steps: map[string]*domain.Step{
+			"review": humanStep,
+		},
+		Wiring: []domain.Wire{
+			{From: "review", Result: "approved", To: domain.StepDone},
+			{From: "review", Result: "fail", To: domain.StepAbort},
+		},
+		EntryStep: "review",
+	}
+
+	eng := engine.New(exec)
+	_, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+
+	require.False(t, capturedDeadline.IsZero())
+	remaining := time.Until(capturedDeadline)
+	assert.Greater(t, remaining, 47*time.Hour, "explicit timeout of 48h should be used")
+	assert.Less(t, remaining, 49*time.Hour, "explicit timeout of 48h should be used")
+}

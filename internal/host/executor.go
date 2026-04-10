@@ -123,7 +123,7 @@ func (e *Executor) Execute(ctx context.Context, step *domain.Step) (domain.StepR
 	case domain.StepTypeAgent:
 		result, err = e.executeAgent(ctx, step)
 	case domain.StepTypeHuman:
-		r, e2 := e.executeHuman(ctx, step)
+		r, e2 := e.executeHumanStep(ctx, step)
 		result, err = domain.StepResult{Result: r}, e2
 	default:
 		return domain.StepResult{}, fmt.Errorf("unsupported step type %q in host workflow", step.Type)
@@ -216,176 +216,6 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 		result = markerResult
 	}
 	return result, nil
-}
-
-// executeHuman runs a polling script at the configured interval until a human
-// decision is available (the script outputs a wire name via CLOCHE_RESULT),
-// the context is cancelled (timeout), or the script fails.
-//
-// Exit-code semantics:
-//   - exit 0, no wire output  → pending, poll again after interval
-//   - non-zero, no wire output → fail (follow "fail" wire)
-//   - any exit, wire output   → follow named wire
-//
-// If a poll invocation is still running when the next interval fires, that
-// interval is skipped. After 3 consecutive skips (i.e. the invocation has been
-// running for more than 4× the interval) the step is failed with an error log.
-func (e *Executor) executeHuman(ctx context.Context, step *domain.Step) (string, error) {
-	intervalStr := step.Config["interval"]
-	interval, err := time.ParseDuration(intervalStr)
-	if err != nil {
-		return "", fmt.Errorf("human step %q: invalid interval %q: %w", step.Name, intervalStr, err)
-	}
-
-	const maxConsecutiveSkips = 3
-
-	type pollOutcome struct {
-		result string // "pending", a wire name, or "fail"
-		err    error
-	}
-
-	startedAt := time.Now()
-	pollCount := 0
-	consecutiveSkips := 0
-	var inFlight <-chan pollOutcome
-
-	// Persist the initial poll record.
-	if e.HumanPollStore != nil && e.HostRunID != "" {
-		_ = e.HumanPollStore.UpsertHumanPoll(ctx, &ports.HumanPollRecord{
-			RunID:      e.HostRunID,
-			StepName:   step.Name,
-			StartedAt:  startedAt,
-			LastPollAt: startedAt,
-			PollCount:  0,
-		})
-	}
-
-	// Cleanup poll record when the step finishes.
-	defer func() {
-		if e.HumanPollStore != nil && e.HostRunID != "" {
-			_ = e.HumanPollStore.DeleteHumanPoll(context.Background(), e.HostRunID, step.Name)
-		}
-	}()
-
-	runPoll := func() <-chan pollOutcome {
-		ch := make(chan pollOutcome, 1)
-		go func() {
-			r, pollErr := e.runHumanPollScript(ctx, step)
-			ch <- pollOutcome{result: r, err: pollErr}
-		}()
-		return ch
-	}
-
-	// Fire first poll immediately.
-	inFlight = runPoll()
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-
-	for {
-		select {
-		case <-ctx.Done():
-			return "timeout", nil
-
-		case outcome := <-inFlight:
-			inFlight = nil
-			consecutiveSkips = 0
-			if outcome.err != nil {
-				return "fail", outcome.err
-			}
-			// Update last_poll_at in store.
-			pollCount++
-			if e.HumanPollStore != nil && e.HostRunID != "" {
-				_ = e.HumanPollStore.UpsertHumanPoll(ctx, &ports.HumanPollRecord{
-					RunID:      e.HostRunID,
-					StepName:   step.Name,
-					StartedAt:  startedAt,
-					LastPollAt: time.Now(),
-					PollCount:  pollCount,
-				})
-			}
-			if outcome.result != "pending" {
-				// A wire name was returned — decision made.
-				return outcome.result, nil
-			}
-			// Still pending — wait for next tick.
-
-		case <-ticker.C:
-			if inFlight != nil {
-				// Previous poll still running; skip this interval.
-				consecutiveSkips++
-				log.Printf("host executor: human step %q poll still running (skip %d/%d)",
-					step.Name, consecutiveSkips, maxConsecutiveSkips)
-				if consecutiveSkips >= maxConsecutiveSkips {
-					return "", fmt.Errorf("human step %q: poll invocation running for more than 4× the interval (%s); failing step",
-						step.Name, interval)
-				}
-				continue
-			}
-			// Fire next poll.
-			inFlight = runPoll()
-		}
-	}
-}
-
-// runHumanPollScript executes a single poll invocation of a human step script.
-// Returns:
-//   - ("pending", nil) when exit 0 + no wire output
-//   - (wireName, nil) when wire output is present (any exit code)
-//   - ("fail", nil) when non-zero exit + no wire output
-func (e *Executor) runHumanPollScript(ctx context.Context, step *domain.Step) (string, error) {
-	scriptPath := step.Config["script"]
-	cmd := exec.CommandContext(ctx, "sh", "-c", scriptPath)
-	cmd.Dir = e.scriptDir()
-
-	var baseEnv []string
-	for _, ev := range os.Environ() {
-		if !strings.HasPrefix(ev, "CLOCHE_RUN_ID=") {
-			baseEnv = append(baseEnv, ev)
-		}
-	}
-	cmd.Env = append(baseEnv,
-		"CLOCHE_PROJECT_DIR="+e.ProjectDir,
-		"CLOCHE_STEP_OUTPUT="+e.stepOutputPath(step.Name),
-	)
-	if e.HostRunID != "" {
-		cmd.Env = append(cmd.Env, "CLOCHE_RUN_ID="+e.HostRunID)
-	}
-	if e.TaskID != "" {
-		cmd.Env = append(cmd.Env, "CLOCHE_TASK_ID="+e.TaskID)
-	}
-	if e.AttemptID != "" {
-		cmd.Env = append(cmd.Env, "CLOCHE_ATTEMPT_ID="+e.AttemptID)
-	}
-	if len(e.ExtraEnv) > 0 {
-		cmd.Env = append(cmd.Env, e.ExtraEnv...)
-	}
-
-	output, err := cmd.CombinedOutput()
-
-	markerResult, cleanOutput, found := protocol.ExtractResult(output)
-
-	// Write output to file (overwrite each poll so the latest result is visible).
-	if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
-		_ = os.WriteFile(e.stepOutputPath(step.Name), cleanOutput, 0644)
-	}
-
-	if found {
-		// Wire output present regardless of exit code — follow the named wire.
-		return markerResult, nil
-	}
-
-	if err != nil {
-		if _, ok := err.(*exec.ExitError); ok {
-			// Non-zero exit, no wire → fail.
-			return "fail", nil
-		}
-		return "", err
-	}
-
-	// Exit 0, no wire → still pending.
-	return "pending", nil
 }
 
 // executeAgent runs an agent command on the host using the prompt adapter.
@@ -494,6 +324,172 @@ func (e *Executor) findPrevOutput(step *domain.Step) string {
 		}
 	}
 	return ""
+}
+
+// humanPollCheckInterval is how often the polling loop wakes up to check
+// whether it is time to run the next poll invocation.
+const humanPollCheckInterval = 30 * time.Second
+
+// executeHumanStep runs the human step polling loop. It invokes the step's
+// script at the configured interval, interpreting results as follows:
+//   - exit 0, no wire output → pending; keep polling
+//   - exit 0 or non-zero, wire output → follow named wire
+//   - non-zero exit, no wire output → follow "fail" wire
+//
+// If an invocation is still running when the next interval is due, that poll
+// is skipped. If the invocation has been running for longer than 4× the
+// configured interval, the step fails with a log message.
+//
+// The step's timeout (default 72h) is enforced by the context passed in from
+// the engine.
+func (e *Executor) executeHumanStep(ctx context.Context, step *domain.Step) (string, error) {
+	intervalStr := step.Config["interval"]
+	interval, err := time.ParseDuration(intervalStr)
+	if err != nil {
+		return "", fmt.Errorf("human step %q: invalid interval %q: %w", step.Name, intervalStr, err)
+	}
+
+	// Maximum time allowed for a single invocation before the step is failed.
+	maxInvocationTime := 4 * interval
+
+	// checkInterval is how often the loop wakes to decide whether to poll.
+	checkInterval := humanPollCheckInterval
+	if interval < checkInterval {
+		checkInterval = interval / 2
+		if checkInterval < time.Second {
+			checkInterval = time.Second
+		}
+	}
+
+	// Mark the run as waiting so cloche list/status surfaces it distinctly.
+	if e.Store != nil && e.HostRunID != "" {
+		if run, getErr := e.Store.GetRun(ctx, e.HostRunID); getErr == nil {
+			run.State = domain.RunStateWaiting
+			if updateErr := e.Store.UpdateRun(ctx, run); updateErr != nil {
+				log.Printf("host executor: setting run %q to waiting: %v", e.HostRunID, updateErr)
+			}
+		}
+	}
+
+	type pollResult struct {
+		result string
+		err    error
+	}
+
+	// pollCh carries the result of the current invocation goroutine.
+	// Buffered so the goroutine never blocks if we exit early.
+	pollCh := make(chan pollResult, 1)
+
+	invocationRunning := false
+	var invocationStart time.Time
+
+	// Set last poll to interval ago so the first poll fires immediately.
+	lastPoll := time.Now().Add(-interval)
+
+	for {
+		now := time.Now()
+
+		if invocationRunning {
+			// Check whether the current invocation has finished.
+			select {
+			case pr := <-pollCh:
+				invocationRunning = false
+				lastPoll = now
+				if pr.err != nil {
+					return "", pr.err
+				}
+				if pr.result != "" {
+					return pr.result, nil
+				}
+				// Empty result = pending; keep polling.
+			default:
+				// Still running — check for 4× overage.
+				elapsed := now.Sub(invocationStart)
+				if elapsed > maxInvocationTime {
+					log.Printf("human step %q: invocation has been running for %v (>4× interval %v), failing step",
+						step.Name, elapsed.Round(time.Second), interval)
+					return "fail", nil
+				}
+			}
+		} else if now.Sub(lastPoll) >= interval {
+			// Time to start a new poll invocation.
+			invocationRunning = true
+			invocationStart = now
+			log.Printf("human step %q: polling (last=%s interval=%s)", step.Name, lastPoll.Format(time.RFC3339), interval)
+			// Record last poll time in the KV store for observability.
+			if e.Store != nil && e.TaskID != "" {
+				key := fmt.Sprintf("human_step:%s:last_poll", step.Name)
+				_ = e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, e.HostRunID, key, now.Format(time.RFC3339))
+			}
+			go func(s *domain.Step) {
+				result, pollErr := e.runHumanPollScript(ctx, s)
+				pollCh <- pollResult{result: result, err: pollErr}
+			}(step)
+		}
+
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(checkInterval):
+		}
+	}
+}
+
+
+// runHumanPollScript runs a single invocation of the human step's polling script.
+// It returns the wire name if a result marker was found, an empty string when the
+// script exited 0 with no marker (pending), or "fail" on non-zero exit with no marker.
+func (e *Executor) runHumanPollScript(ctx context.Context, step *domain.Step) (string, error) {
+	scriptCmd := step.Config["script"]
+	cmd := exec.CommandContext(ctx, "sh", "-c", scriptCmd)
+	cmd.Dir = e.scriptDir()
+
+	var baseEnv []string
+	for _, ev := range os.Environ() {
+		if !strings.HasPrefix(ev, "CLOCHE_RUN_ID=") {
+			baseEnv = append(baseEnv, ev)
+		}
+	}
+	cmd.Env = append(baseEnv,
+		"CLOCHE_PROJECT_DIR="+e.ProjectDir,
+		"CLOCHE_STEP_OUTPUT="+e.stepOutputPath(step.Name),
+	)
+	if e.HostRunID != "" {
+		cmd.Env = append(cmd.Env, "CLOCHE_RUN_ID="+e.HostRunID)
+	}
+	if e.TaskID != "" {
+		cmd.Env = append(cmd.Env, "CLOCHE_TASK_ID="+e.TaskID)
+	}
+	if e.AttemptID != "" {
+		cmd.Env = append(cmd.Env, "CLOCHE_ATTEMPT_ID="+e.AttemptID)
+	}
+	if len(e.ExtraEnv) > 0 {
+		cmd.Env = append(cmd.Env, e.ExtraEnv...)
+	}
+
+	output, err := cmd.CombinedOutput()
+
+	markerResult, cleanOutput, found := protocol.ExtractResult(output)
+
+	if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
+		_ = os.WriteFile(e.stepOutputPath(step.Name), cleanOutput, 0644)
+	}
+
+	if err != nil {
+		if _, ok := err.(*exec.ExitError); ok {
+			if found {
+				return markerResult, nil
+			}
+			return "fail", nil
+		}
+		return "", err
+	}
+
+	if found {
+		return markerResult, nil
+	}
+	// Exit 0, no marker: pending.
+	return "", nil
 }
 
 // MainWorktreeDir returns the path of the main (non-linked) git worktree for

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cloche-dev/cloche/internal/domain"
 )
@@ -372,8 +373,12 @@ func (p *Parser) parseStep() (*domain.Step, error) {
 		if !hasScript {
 			return nil, fmt.Errorf("step %q: human step requires a 'script' field", step.Name)
 		}
-		if step.Config["interval"] == "" {
+		intervalStr := step.Config["interval"]
+		if intervalStr == "" {
 			return nil, fmt.Errorf("step %q: human step requires an 'interval' field", step.Name)
+		}
+		if _, err := time.ParseDuration(intervalStr); err != nil {
+			return nil, fmt.Errorf("step %q: invalid interval %q: %v", step.Name, intervalStr, err)
 		}
 		if hasPrompt || hasRun || hasWorkflowName {
 			return nil, fmt.Errorf("step %q: human step must not have 'prompt', 'run', or 'workflow_name'", step.Name)

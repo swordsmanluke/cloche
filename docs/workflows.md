@@ -183,7 +183,7 @@ error. An agent declaration without a `command` field is a parse error.
 ## Key Properties
 
 **Step type is inferred from content.** A `prompt` field makes it an agent step; a `run`
-field makes it a script step.
+field makes it a script step. `type = human` is explicit and cannot be inferred.
 
 **Steps declare their possible results.** A step decides at runtime which result to
 report. The graph engine follows the wiring to determine the next step.

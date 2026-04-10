@@ -10,7 +10,10 @@ import (
 	"github.com/cloche-dev/cloche/internal/domain"
 )
 
-const DefaultStepTimeout = 30 * time.Minute
+const (
+	DefaultStepTimeout      = 30 * time.Minute
+	HumanStepDefaultTimeout = 72 * time.Hour
+)
 
 // StepExecutor executes a single step and returns the result.
 type StepExecutor interface {
@@ -349,9 +352,8 @@ func stepTimeout(step *domain.Step, defaultTimeout time.Duration) time.Duration 
 			return d
 		}
 	}
-	// Human steps default to 72h since they wait for external human decisions.
 	if step.Type == domain.StepTypeHuman {
-		return domain.DefaultHumanStepTimeout
+		return HumanStepDefaultTimeout
 	}
 	return defaultTimeout
 }

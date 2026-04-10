@@ -10,6 +10,7 @@ type RunState string
 const (
 	RunStatePending   RunState = "pending"
 	RunStateRunning   RunState = "running"
+	RunStateWaiting   RunState = "waiting" // waiting at a human step for external input
 	RunStateSucceeded RunState = "succeeded"
 	RunStateFailed    RunState = "failed"
 	RunStateCancelled RunState = "cancelled"

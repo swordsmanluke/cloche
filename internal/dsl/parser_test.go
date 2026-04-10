@@ -1030,10 +1030,11 @@ func TestParser_StringMaxAttempts_Rejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "max_attempts must be a numeric value")
 }
 
-func TestParser_HumanStep_Basic(t *testing.T) {
+func TestParser_HumanStep_Valid(t *testing.T) {
 	input := `workflow "review" {
+  host {}
   step create-pr {
-    run = "gh pr create"
+    run     = "gh pr create"
     results = [success, fail]
   }
   step code-review {
@@ -1046,11 +1047,10 @@ func TestParser_HumanStep_Basic(t *testing.T) {
     run = "gh pr merge"
     results = [success]
   }
-
   create-pr:success -> code-review
-  create-pr:fail -> abort
+  create-pr:fail    -> abort
   code-review:approved -> merge
-  code-review:fix -> abort
+  code-review:fix      -> abort
   merge:success -> done
 }`
 
@@ -1083,23 +1083,20 @@ func TestParser_HumanStep_Basic(t *testing.T) {
 func TestParser_HumanStep_WithTimeout(t *testing.T) {
 	input := `workflow "review" {
   host {}
-
-  step gate {
+  step wait {
     type     = human
-    script   = "scripts/gate.sh"
+    script   = "scripts/check.sh"
     interval = "10m"
     timeout  = "48h"
-    results  = [go, abort]
+    results  = [approved]
   }
-
-  gate:go    -> done
-  gate:abort -> abort
+  wait:approved -> done
 }`
 
-	wf, err := dsl.ParseForHost(input)
+	wf, err := dsl.Parse(input)
 	require.NoError(t, err)
 
-	step := wf.Steps["gate"]
+	step := wf.Steps["wait"]
 	require.NotNil(t, step)
 	assert.Equal(t, domain.StepTypeHuman, step.Type)
 	assert.Equal(t, "48h", step.Config["timeout"])
@@ -1107,6 +1104,7 @@ func TestParser_HumanStep_WithTimeout(t *testing.T) {
 
 func TestParser_HumanStep_ExplicitTimeoutWire(t *testing.T) {
 	input := `workflow "review" {
+  host {}
   step code-review {
     type     = human
     script   = "scripts/check.sh"
@@ -1118,7 +1116,6 @@ func TestParser_HumanStep_ExplicitTimeoutWire(t *testing.T) {
     run = "echo escalating"
     results = [success]
   }
-
   code-review:approved -> done
   code-review:fix -> abort
   code-review:timeout -> escalate
@@ -1150,14 +1147,31 @@ func TestParser_HumanStep_ExplicitTimeoutWire(t *testing.T) {
 	}
 }
 
+func TestParser_HumanStep_MissingInterval(t *testing.T) {
+	input := `workflow "review" {
+  host {}
+  step wait {
+    type   = human
+    script = "scripts/check.sh"
+    results = [approved]
+  }
+  wait:approved -> done
+}`
+
+	_, err := dsl.Parse(input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "interval")
+}
+
 func TestParser_HumanStep_MissingScript(t *testing.T) {
-	input := `workflow "bad" {
-  step review {
+	input := `workflow "review" {
+  host {}
+  step wait {
     type     = human
     interval = "5m"
     results  = [approved]
   }
-  review:approved -> done
+  wait:approved -> done
 }`
 
 	_, err := dsl.Parse(input)
@@ -1165,14 +1179,16 @@ func TestParser_HumanStep_MissingScript(t *testing.T) {
 	assert.Contains(t, err.Error(), "script")
 }
 
-func TestParser_HumanStep_MissingInterval(t *testing.T) {
-	input := `workflow "bad" {
-  step review {
-    type   = human
-    script = "scripts/check.sh"
-    results = [approved]
+func TestParser_HumanStep_InvalidInterval(t *testing.T) {
+	input := `workflow "review" {
+  host {}
+  step wait {
+    type     = human
+    script   = "scripts/check.sh"
+    interval = "notaduration"
+    results  = [approved]
   }
-  review:approved -> done
+  wait:approved -> done
 }`
 
 	_, err := dsl.Parse(input)
@@ -1181,24 +1197,27 @@ func TestParser_HumanStep_MissingInterval(t *testing.T) {
 }
 
 func TestParser_HumanStep_ConflictsWithRun(t *testing.T) {
-	input := `workflow "bad" {
-  step review {
+	input := `workflow "review" {
+  host {}
+  step wait {
     type     = human
-    script   = "scripts/check.sh"
     run      = "echo hi"
+    script   = "scripts/check.sh"
     interval = "5m"
     results  = [approved]
   }
-  review:approved -> done
+  wait:approved -> done
 }`
 
 	_, err := dsl.Parse(input)
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "run")
 }
 
 func TestParser_HumanStep_Validate(t *testing.T) {
 	// A valid human step workflow should pass Validate().
 	input := `workflow "review" {
+  host {}
   step review {
     type     = human
     script   = "scripts/check.sh"

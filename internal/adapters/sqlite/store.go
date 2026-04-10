@@ -814,7 +814,7 @@ func (s *Store) FailStaleRuns(ctx context.Context) (int64, error) {
 	now := formatTime(time.Now())
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE runs SET state = 'failed', completed_at = ?, error_message = 'daemon restarted while run was active'
-		 WHERE state IN ('pending', 'running')`,
+		 WHERE state IN ('pending', 'running', 'waiting')`,
 		now,
 	)
 	if err != nil {

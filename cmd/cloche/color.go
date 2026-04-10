@@ -54,7 +54,7 @@ func colorStatus(s string) string {
 		return ansiGreen + s + ansiReset
 	case "failed", "red":
 		return ansiRed + s + ansiReset
-	case "pending", "cancelled", "halted", "yellow":
+	case "pending", "cancelled", "halted", "waiting", "yellow":
 		return ansiYellow + s + ansiReset
 	}
 	return s
