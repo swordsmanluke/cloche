@@ -341,7 +341,8 @@ func generateRunID() string {
 }
 
 // stepTimeout returns the timeout for a step. It checks step.Config["timeout"]
-// first, falling back to the provided default.
+// first, then falls back to a type-specific default (human steps default to
+// domain.DefaultHumanStepTimeout), then the provided global default.
 func stepTimeout(step *domain.Step, defaultTimeout time.Duration) time.Duration {
 	if raw, ok := step.Config["timeout"]; ok {
 		if d, err := time.ParseDuration(raw); err == nil {

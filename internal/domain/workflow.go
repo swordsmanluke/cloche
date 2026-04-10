@@ -319,9 +319,9 @@ var knownStepConfigKeys = map[string]bool{
 	"prompt_step":   true,
 	"usage_command": true,
 	// human step keys
-	"type":     true,
-	"script":   true,
-	"interval": true,
+	"type":          true,
+	"script":        true,
+	"interval":      true,
 }
 
 // ValidateConfig checks step config keys against known keys and returns

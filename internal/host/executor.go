@@ -237,7 +237,17 @@ func (e *Executor) executeHuman(ctx context.Context, step *domain.Step) (string,
 		return "", fmt.Errorf("human step %q: invalid interval %q: %w", step.Name, intervalStr, err)
 	}
 
+	const maxConsecutiveSkips = 3
+
+	type pollOutcome struct {
+		result string // "pending", a wire name, or "fail"
+		err    error
+	}
+
 	startedAt := time.Now()
+	pollCount := 0
+	consecutiveSkips := 0
+	var inFlight <-chan pollOutcome
 
 	// Persist the initial poll record.
 	if e.HumanPollStore != nil && e.HostRunID != "" {
@@ -257,41 +267,35 @@ func (e *Executor) executeHuman(ctx context.Context, step *domain.Step) (string,
 		}
 	}()
 
-	type pollResult struct {
-		result string
-		err    error
+	runPoll := func() <-chan pollOutcome {
+		ch := make(chan pollOutcome, 1)
+		go func() {
+			r, pollErr := e.runHumanPollScript(ctx, step)
+			ch <- pollOutcome{result: r, err: pollErr}
+		}()
+		return ch
 	}
 
-	pollCount := 0
-	consecutiveSkips := 0
-	const maxConsecutiveSkips = 3
+	// Fire first poll immediately.
+	inFlight = runPoll()
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	// Run the first poll immediately.
-	pollCh := make(chan pollResult, 1)
-	pollRunning := true
-	go func() {
-		r, err := e.runHumanPoll(ctx, step)
-		pollCh <- pollResult{result: r, err: err}
-	}()
-	pollCount++
 
 	for {
 		select {
 		case <-ctx.Done():
 			return "timeout", nil
 
-		case pr := <-pollCh:
-			pollRunning = false
+		case outcome := <-inFlight:
+			inFlight = nil
 			consecutiveSkips = 0
-
-			if pr.err != nil {
-				return "fail", nil
+			if outcome.err != nil {
+				return "fail", outcome.err
 			}
-
 			// Update last_poll_at in store.
+			pollCount++
 			if e.HumanPollStore != nil && e.HostRunID != "" {
 				_ = e.HumanPollStore.UpsertHumanPoll(ctx, &ports.HumanPollRecord{
 					RunID:      e.HostRunID,
@@ -301,15 +305,15 @@ func (e *Executor) executeHuman(ctx context.Context, step *domain.Step) (string,
 					PollCount:  pollCount,
 				})
 			}
-
-			if pr.result != "" {
+			if outcome.result != "pending" {
 				// A wire name was returned — decision made.
-				return pr.result, nil
+				return outcome.result, nil
 			}
-			// Exit 0, no wire → still pending; wait for next tick.
+			// Still pending — wait for next tick.
 
 		case <-ticker.C:
-			if pollRunning {
+			if inFlight != nil {
+				// Previous poll still running; skip this interval.
 				consecutiveSkips++
 				log.Printf("host executor: human step %q poll still running (skip %d/%d)",
 					step.Name, consecutiveSkips, maxConsecutiveSkips)
@@ -319,24 +323,20 @@ func (e *Executor) executeHuman(ctx context.Context, step *domain.Step) (string,
 				}
 				continue
 			}
-
-			// Launch next poll.
-			pollRunning = true
-			pollCount++
-			go func() {
-				r, err := e.runHumanPoll(ctx, step)
-				pollCh <- pollResult{result: r, err: err}
-			}()
+			// Fire next poll.
+			inFlight = runPoll()
 		}
 	}
 }
 
-// runHumanPoll executes a single poll invocation of a human step script.
-// Returns the wire name (from CLOCHE_RESULT) on decision, empty string on
-// "still pending" (exit 0, no wire), or an error on script failure.
-func (e *Executor) runHumanPoll(ctx context.Context, step *domain.Step) (string, error) {
-	cmdStr := step.Config["script"]
-	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
+// runHumanPollScript executes a single poll invocation of a human step script.
+// Returns:
+//   - ("pending", nil) when exit 0 + no wire output
+//   - (wireName, nil) when wire output is present (any exit code)
+//   - ("fail", nil) when non-zero exit + no wire output
+func (e *Executor) runHumanPollScript(ctx context.Context, step *domain.Step) (string, error) {
+	scriptPath := step.Config["script"]
+	cmd := exec.CommandContext(ctx, "sh", "-c", scriptPath)
 	cmd.Dir = e.scriptDir()
 
 	var baseEnv []string
@@ -379,13 +379,13 @@ func (e *Executor) runHumanPoll(ctx context.Context, step *domain.Step) (string,
 	if err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
 			// Non-zero exit, no wire → fail.
-			return "", fmt.Errorf("poll script exited with error")
+			return "fail", nil
 		}
 		return "", err
 	}
 
 	// Exit 0, no wire → still pending.
-	return "", nil
+	return "pending", nil
 }
 
 // executeAgent runs an agent command on the host using the prompt adapter.

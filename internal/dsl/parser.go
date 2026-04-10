@@ -195,6 +195,40 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 		}
 	}
 
+	// Post-parse fixup: ensure every human step has a "timeout" result and wire.
+	// If no timeout wire is declared, add an implicit wire to abort.
+	for name, step := range wf.Steps {
+		if step.Type != domain.StepTypeHuman {
+			continue
+		}
+		// Ensure "timeout" is declared in Results.
+		hasTimeoutResult := false
+		for _, r := range step.Results {
+			if r == "timeout" {
+				hasTimeoutResult = true
+				break
+			}
+		}
+		if !hasTimeoutResult {
+			step.Results = append(step.Results, "timeout")
+		}
+		// Add implicit abort wire if no timeout wire is declared.
+		hasTimeoutWire := false
+		for _, w := range wf.Wiring {
+			if w.From == name && w.Result == "timeout" {
+				hasTimeoutWire = true
+				break
+			}
+		}
+		if !hasTimeoutWire {
+			wf.Wiring = append(wf.Wiring, domain.Wire{
+				From:   name,
+				Result: "timeout",
+				To:     domain.StepAbort,
+			})
+		}
+	}
+
 	return wf, nil
 }
 
@@ -342,31 +376,47 @@ func (p *Parser) parseStep() (*domain.Step, error) {
 	_, hasPrompt := step.Config["prompt"]
 	_, hasRun := step.Config["run"]
 	_, hasWorkflowName := step.Config["workflow_name"]
+	_, hasScript := step.Config["script"]
+	isHumanType := step.Config["type"] == "human"
 
-	count := 0
-	if hasPrompt {
-		count++
-	}
-	if hasRun {
-		count++
-	}
-	if hasWorkflowName {
-		count++
-	}
+	if isHumanType {
+		// Human step: requires script and interval.
+		if !hasScript {
+			return nil, fmt.Errorf("step %q: human step requires a 'script' field", step.Name)
+		}
+		if step.Config["interval"] == "" {
+			return nil, fmt.Errorf("step %q: human step requires an 'interval' field", step.Name)
+		}
+		if hasPrompt || hasRun || hasWorkflowName {
+			return nil, fmt.Errorf("step %q: human step must not have 'prompt', 'run', or 'workflow_name'", step.Name)
+		}
+		step.Type = domain.StepTypeHuman
+	} else {
+		count := 0
+		if hasPrompt {
+			count++
+		}
+		if hasRun {
+			count++
+		}
+		if hasWorkflowName {
+			count++
+		}
 
-	if count > 1 {
-		return nil, fmt.Errorf("step %q has multiple of 'prompt', 'run', 'workflow_name'; must have exactly one", step.Name)
-	}
+		if count > 1 {
+			return nil, fmt.Errorf("step %q has multiple of 'prompt', 'run', 'workflow_name'; must have exactly one", step.Name)
+		}
 
-	switch {
-	case hasPrompt:
-		step.Type = domain.StepTypeAgent
-	case hasRun:
-		step.Type = domain.StepTypeScript
-	case hasWorkflowName:
-		step.Type = domain.StepTypeWorkflow
-	default:
-		return nil, fmt.Errorf("step %q has none of 'prompt', 'run', or 'workflow_name'; must have exactly one", step.Name)
+		switch {
+		case hasPrompt:
+			step.Type = domain.StepTypeAgent
+		case hasRun:
+			step.Type = domain.StepTypeScript
+		case hasWorkflowName:
+			step.Type = domain.StepTypeWorkflow
+		default:
+			return nil, fmt.Errorf("step %q has none of 'prompt', 'run', or 'workflow_name'; must have exactly one", step.Name)
+		}
 	}
 
 	return step, nil

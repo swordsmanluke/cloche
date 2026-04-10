@@ -1032,29 +1032,52 @@ func TestParser_StringMaxAttempts_Rejected(t *testing.T) {
 
 func TestParser_HumanStep_Basic(t *testing.T) {
 	input := `workflow "review" {
-  host {}
-
+  step create-pr {
+    run = "gh pr create"
+    results = [success, fail]
+  }
   step code-review {
     type     = human
-    script   = "scripts/check-pr.sh"
+    script   = "scripts/check-pr-review.sh"
     interval = "5m"
-    results  = [approved, fix, timeout]
+    results  = [approved, fix]
+  }
+  step merge {
+    run = "gh pr merge"
+    results = [success]
   }
 
-  code-review:approved -> done
-  code-review:fix      -> abort
-  code-review:timeout  -> abort
+  create-pr:success -> code-review
+  create-pr:fail -> abort
+  code-review:approved -> merge
+  code-review:fix -> abort
+  merge:success -> done
 }`
 
-	wf, err := dsl.ParseForHost(input)
+	wf, err := dsl.Parse(input)
 	require.NoError(t, err)
 
-	step := wf.Steps["code-review"]
-	require.NotNil(t, step)
-	assert.Equal(t, domain.StepTypeHuman, step.Type)
-	assert.Equal(t, "scripts/check-pr.sh", step.Config["script"])
-	assert.Equal(t, "5m", step.Config["interval"])
-	assert.Equal(t, []string{"approved", "fix", "timeout"}, step.Results)
+	review := wf.Steps["code-review"]
+	require.NotNil(t, review)
+	assert.Equal(t, domain.StepTypeHuman, review.Type)
+	assert.Equal(t, "scripts/check-pr-review.sh", review.Config["script"])
+	assert.Equal(t, "5m", review.Config["interval"])
+
+	// Implicit "timeout" result should be added.
+	assert.Contains(t, review.Results, "timeout")
+	// Explicit results preserved.
+	assert.Contains(t, review.Results, "approved")
+	assert.Contains(t, review.Results, "fix")
+
+	// Implicit timeout -> abort wire should be added.
+	foundTimeoutWire := false
+	for _, w := range wf.Wiring {
+		if w.From == "code-review" && w.Result == "timeout" && w.To == domain.StepAbort {
+			foundTimeoutWire = true
+			break
+		}
+	}
+	assert.True(t, foundTimeoutWire, "expected implicit timeout->abort wire")
 }
 
 func TestParser_HumanStep_WithTimeout(t *testing.T) {
@@ -1082,38 +1105,112 @@ func TestParser_HumanStep_WithTimeout(t *testing.T) {
 	assert.Equal(t, "48h", step.Config["timeout"])
 }
 
-func TestParser_HumanStep_MissingScript(t *testing.T) {
+func TestParser_HumanStep_ExplicitTimeoutWire(t *testing.T) {
 	input := `workflow "review" {
-  host {}
-
-  step gate {
+  step code-review {
     type     = human
-    interval = "5m"
-    results  = [go]
+    script   = "scripts/check.sh"
+    interval = "10m"
+    timeout  = "48h"
+    results  = [approved, fix, timeout]
+  }
+  step escalate {
+    run = "echo escalating"
+    results = [success]
   }
 
-  gate:go -> done
+  code-review:approved -> done
+  code-review:fix -> abort
+  code-review:timeout -> escalate
+  escalate:success -> done
 }`
 
-	_, err := dsl.ParseForHost(input)
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+
+	review := wf.Steps["code-review"]
+	require.NotNil(t, review)
+	assert.Equal(t, domain.StepTypeHuman, review.Type)
+	assert.Equal(t, "48h", review.Config["timeout"])
+
+	// Only one timeout wire should exist (the explicit one, no implicit abort added).
+	timeoutWires := 0
+	for _, w := range wf.Wiring {
+		if w.From == "code-review" && w.Result == "timeout" {
+			timeoutWires++
+		}
+	}
+	assert.Equal(t, 1, timeoutWires, "expected exactly one timeout wire (the explicit one)")
+
+	// Explicit wire should go to escalate, not abort.
+	for _, w := range wf.Wiring {
+		if w.From == "code-review" && w.Result == "timeout" {
+			assert.Equal(t, "escalate", w.To)
+		}
+	}
+}
+
+func TestParser_HumanStep_MissingScript(t *testing.T) {
+	input := `workflow "bad" {
+  step review {
+    type     = human
+    interval = "5m"
+    results  = [approved]
+  }
+  review:approved -> done
+}`
+
+	_, err := dsl.Parse(input)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "script")
 }
 
 func TestParser_HumanStep_MissingInterval(t *testing.T) {
-	input := `workflow "review" {
-  host {}
-
-  step gate {
+	input := `workflow "bad" {
+  step review {
     type   = human
-    script = "scripts/gate.sh"
-    results = [go]
+    script = "scripts/check.sh"
+    results = [approved]
   }
-
-  gate:go -> done
+  review:approved -> done
 }`
 
-	_, err := dsl.ParseForHost(input)
+	_, err := dsl.Parse(input)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "interval")
+}
+
+func TestParser_HumanStep_ConflictsWithRun(t *testing.T) {
+	input := `workflow "bad" {
+  step review {
+    type     = human
+    script   = "scripts/check.sh"
+    run      = "echo hi"
+    interval = "5m"
+    results  = [approved]
+  }
+  review:approved -> done
+}`
+
+	_, err := dsl.Parse(input)
+	require.Error(t, err)
+}
+
+func TestParser_HumanStep_Validate(t *testing.T) {
+	// A valid human step workflow should pass Validate().
+	input := `workflow "review" {
+  step review {
+    type     = human
+    script   = "scripts/check.sh"
+    interval = "5m"
+    results  = [approved, fail]
+  }
+
+  review:approved -> done
+  review:fail -> abort
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+	require.NoError(t, wf.Validate())
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -2045,54 +2046,61 @@ func TestExecutor_HumanStep_ImmediateDecision(t *testing.T) {
 	assert.Nil(t, record, "poll record should be deleted after step completion")
 }
 
-// TestExecutor_HumanStep_PendingThenDecision verifies that a human step
-// keeps polling when the script exits 0 with no wire, then resolves when
-// the script outputs a wire result.
-func TestExecutor_HumanStep_PendingThenDecision(t *testing.T) {
+// TestExecutor_HumanStep_PendingThenApproved verifies that the human step
+// polls the script at the configured interval and follows the wire output.
+func TestExecutor_HumanStep_PendingThenApproved(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
 
-	// Write a counter file so the script can change behavior after first call.
-	counterFile := filepath.Join(tmpDir, "count.txt")
+	// Write a counter file so the script can track invocations.
+	counterFile := filepath.Join(tmpDir, "count")
 	require.NoError(t, os.WriteFile(counterFile, []byte("0"), 0644))
 
+	// Script: first two calls return exit 0 (pending), third emits approved wire.
 	scriptPath := filepath.Join(tmpDir, "poll.sh")
-	scriptContent := `#!/bin/sh
-count=$(cat ` + counterFile + `)
-count=$((count + 1))
-echo $count > ` + counterFile + `
-if [ $count -ge 2 ]; then
-  echo 'CLOCHE_RESULT:approved'
+	scriptContent := fmt.Sprintf(`#!/bin/sh
+COUNT=$(cat %s)
+COUNT=$((COUNT + 1))
+echo "$COUNT" > %s
+if [ "$COUNT" -ge 3 ]; then
+  echo "CLOCHE_RESULT:approved"
 fi
-`
+`, counterFile, counterFile)
 	require.NoError(t, os.WriteFile(scriptPath, []byte(scriptContent), 0755))
 
 	executor := &Executor{
 		ProjectDir: tmpDir,
 		OutputDir:  outputDir,
-		HostRunID:  "run-2",
 	}
 
 	step := &domain.Step{
-		Name:    "gate",
+		Name:    "review",
 		Type:    domain.StepTypeHuman,
-		Results: []string{"approved", "timeout"},
+		Results: []string{"approved", "fail", "timeout"},
 		Config: map[string]string{
-			"script":   "sh " + scriptPath,
-			"interval": "50ms", // fast for testing
+			"script":   scriptPath,
+			"interval": "50ms",
 		},
 	}
 
 	result, err := executor.Execute(context.Background(), step)
 	require.NoError(t, err)
 	assert.Equal(t, "approved", result.Result)
+
+	// Verify script ran at least 3 times.
+	data, _ := os.ReadFile(counterFile)
+	count := strings.TrimSpace(string(data))
+	assert.Equal(t, "3", count)
 }
 
 // TestExecutor_HumanStep_ScriptFailure verifies that a non-zero exit with no
-// wire output causes the step to return "fail".
+// wire output causes the human step to follow the fail wire.
 func TestExecutor_HumanStep_ScriptFailure(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
+
+	scriptPath := filepath.Join(tmpDir, "poll.sh")
+	require.NoError(t, os.WriteFile(scriptPath, []byte("#!/bin/sh\nexit 1\n"), 0755))
 
 	executor := &Executor{
 		ProjectDir: tmpDir,
@@ -2100,12 +2108,12 @@ func TestExecutor_HumanStep_ScriptFailure(t *testing.T) {
 	}
 
 	step := &domain.Step{
-		Name:    "bad-poll",
+		Name:    "review",
 		Type:    domain.StepTypeHuman,
-		Results: []string{"approved", "fail"},
+		Results: []string{"approved", "fail", "timeout"},
 		Config: map[string]string{
-			"script":   "exit 1",
-			"interval": "10s",
+			"script":   scriptPath,
+			"interval": "50ms",
 		},
 	}
 
@@ -2114,29 +2122,63 @@ func TestExecutor_HumanStep_ScriptFailure(t *testing.T) {
 	assert.Equal(t, "fail", result.Result)
 }
 
-// TestExecutor_HumanStep_ContextTimeout verifies that the step returns
-// "timeout" when the context deadline is exceeded while polling.
-func TestExecutor_HumanStep_ContextTimeout(t *testing.T) {
+// TestExecutor_HumanStep_WireOutputOnNonZeroExit verifies that wire output
+// takes precedence over a non-zero exit code.
+func TestExecutor_HumanStep_WireOutputOnNonZeroExit(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
+
+	scriptPath := filepath.Join(tmpDir, "poll.sh")
+	require.NoError(t, os.WriteFile(scriptPath,
+		[]byte("#!/bin/sh\necho 'CLOCHE_RESULT:fix'\nexit 1\n"), 0755))
+
 
 	executor := &Executor{
 		ProjectDir: tmpDir,
 		OutputDir:  outputDir,
 	}
 
-	// Script always exits 0 with no wire (pending forever).
 	step := &domain.Step{
-		Name:    "wait-forever",
+		Name:    "review",
 		Type:    domain.StepTypeHuman,
-		Results: []string{"approved", "timeout"},
+		Results: []string{"approved", "fix", "fail", "timeout"},
 		Config: map[string]string{
-			"script":   "exit 0",
+			"script":   scriptPath,
 			"interval": "50ms",
 		},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "fix", result.Result)
+}
+
+// TestExecutor_HumanStep_Timeout verifies that context cancellation causes
+// the human step to return the "timeout" result.
+func TestExecutor_HumanStep_Timeout(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	// Script always returns pending (exit 0, no output).
+	scriptPath := filepath.Join(tmpDir, "poll.sh")
+	require.NoError(t, os.WriteFile(scriptPath, []byte("#!/bin/sh\nexit 0\n"), 0755))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+	}
+
+	step := &domain.Step{
+		Name:    "review",
+		Type:    domain.StepTypeHuman,
+		Results: []string{"approved", "fail", "timeout"},
+		Config: map[string]string{
+			"script":   scriptPath,
+			"interval": "50ms",
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Millisecond)
 	defer cancel()
 
 	result, err := executor.Execute(ctx, step)
@@ -2229,4 +2271,30 @@ func TestEngine_HumanStep_Timeout(t *testing.T) {
 	run, err := eng.Run(context.Background(), wf)
 	require.NoError(t, err)
 	assert.Equal(t, domain.RunStateSucceeded, run.State)
+}
+
+// TestExecutor_HumanStep_InvalidInterval verifies that a missing/invalid
+// interval causes the executor to return an error.
+func TestExecutor_HumanStep_InvalidInterval(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+	}
+
+	step := &domain.Step{
+		Name:    "review",
+		Type:    domain.StepTypeHuman,
+		Results: []string{"approved", "fail", "timeout"},
+		Config: map[string]string{
+			"script":   "scripts/check.sh",
+			"interval": "not-a-duration",
+		},
+	}
+
+	_, err := executor.Execute(context.Background(), step)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid interval")
 }

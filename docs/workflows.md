@@ -11,8 +11,8 @@ Steps may be `agent`, `script`, or `workflow` type. These are the standard workf
 coding tasks.
 
 **Host workflows** — Declared by including a `host { }` block in the workflow definition.
-Run on the host machine as the daemon process. Steps may be `agent`, `script`, or
-`workflow` type. This is the extension point for custom orchestration strategies.
+Run on the host machine as the daemon process. Steps may be `agent`, `script`, `workflow`,
+or `human` type. This is the extension point for custom orchestration strategies.
 
 Any `.cloche` file can contain host workflows — they are not restricted to a specific
 filename. A single file may contain **multiple named workflows**. The daemon uses up to
@@ -56,7 +56,7 @@ workflows with a `host {}` block.
 | Concept  | Description                                                        |
 |----------|--------------------------------------------------------------------|
 | workflow | A named graph of steps connected by result wiring                  |
-| step     | A unit of work (inferred: `prompt` = agent, `run` = script)        |
+| step     | A unit of work (`agent`, `script`, `workflow`, or `human` type)    |
 | result   | A named outcome reported by a step (e.g. "success", "fail")       |
 | wiring   | Maps a step's result to the next step, with optional output mappings |
 | agent    | A named agent declaration with command and arguments               |
@@ -65,7 +65,8 @@ workflows with a `host {}` block.
 
 ## Step Types
 
-Step type is inferred from the fields present in the step body:
+Step type is inferred from the fields present in the step body, except for `human` which
+must be declared explicitly with `type = human`:
 
 **agent** (has `prompt`) — Invokes a coding agent (Claude Code, or any tool conforming
 to the agent adapter interface) with a prompt. The agent works autonomously inside the
@@ -79,13 +80,15 @@ completes. Available in both host and container workflows. Dispatch is always ha
 the daemon orchestrator, which resolves the target workflow by name across all `.cloche`
 files and routes it to the host executor or container pool as appropriate.
 
-**human** (has `type = human`) — Runs a polling script on the host at a fixed interval
-until a human decision is available. The step pauses the workflow while waiting for
-external input (e.g. code review, approval gate, ticket transition). Requires `script`
-and `interval` fields. See [Human Step](#human-step) below.
+**human** (`type = human`) — Polls a script at a fixed interval until a human decision
+is available. Requires `script` (path to the polling script) and `interval` (poll
+frequency, e.g. `"5m"`). The script exit code and stdout determine the outcome: exit 0
+with no wire output means pending (poll again); non-zero exit with no wire output follows
+the `fail` wire; any exit with wire output follows the named wire. Default timeout is 72h.
+Host workflows only. See [Human Step](#human-step) below.
 
-A step with more than one of `prompt`, `run`, or `workflow_name`, or none of them (and
-no explicit `type = human`), is a parse error.
+A step with more than one of `prompt`, `run`, or `workflow_name`, or none of them, is a
+parse error. A `human` step must not include `prompt`, `run`, or `workflow_name`.
 
 ## DSL Syntax
 
