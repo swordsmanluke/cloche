@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
 	"github.com/cloche-dev/cloche/internal/config"
@@ -45,19 +46,20 @@ func (e *Executor) resolveOutputMappings(stepName string, wires []domain.Wire) (
 // Executor implements engine.StepExecutor for host workflow steps (scripts and
 // local agents). Workflow_name step dispatch is handled by the DaemonExecutor.
 type Executor struct {
-	ProjectDir    string
-	MainDir       string         // main branch worktree dir; scripts execute from here
-	Store         ports.RunStore
-	OutputDir     string         // directory for step output files
-	Wires         []domain.Wire  // workflow wiring (for output mappings)
-	HostRunID     string         // ID of the parent host run (set on child runs)
-	AgentCommands []string       // workflow-level agent command fallback chain
-	AgentArgs     []string       // workflow-level explicit agent args (overrides defaults)
-	TaskID        string         // optional task ID assigned by the daemon loop
-	AttemptID     string         // optional attempt ID for v2 tracking (propagated to child runs)
-	WorkflowName  string         // workflow name for run context seeding
-	ExtraEnv      []string       // additional KEY=VALUE env vars for all steps
-	ResumeStep    string         // step being resumed (for prompt conversation resume)
+	ProjectDir      string
+	MainDir         string              // main branch worktree dir; scripts execute from here
+	Store           ports.RunStore
+	HumanPollStore  ports.HumanPollStore // optional: persists human step poll state
+	OutputDir       string              // directory for step output files
+	Wires           []domain.Wire       // workflow wiring (for output mappings)
+	HostRunID       string              // ID of the parent host run (set on child runs)
+	AgentCommands   []string            // workflow-level agent command fallback chain
+	AgentArgs       []string            // workflow-level explicit agent args (overrides defaults)
+	TaskID          string              // optional task ID assigned by the daemon loop
+	AttemptID       string              // optional attempt ID for v2 tracking (propagated to child runs)
+	WorkflowName    string              // workflow name for run context seeding
+	ExtraEnv        []string            // additional KEY=VALUE env vars for all steps
+	ResumeStep      string              // step being resumed (for prompt conversation resume)
 
 	seedOnce sync.Once // ensures SeedRunContext is called exactly once
 }
@@ -120,6 +122,9 @@ func (e *Executor) Execute(ctx context.Context, step *domain.Step) (domain.StepR
 		result, err = domain.StepResult{Result: r}, e2
 	case domain.StepTypeAgent:
 		result, err = e.executeAgent(ctx, step)
+	case domain.StepTypeHuman:
+		r, e2 := e.executeHuman(ctx, step)
+		result, err = domain.StepResult{Result: r}, e2
 	default:
 		return domain.StepResult{}, fmt.Errorf("unsupported step type %q in host workflow", step.Type)
 	}
@@ -211,6 +216,176 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 		result = markerResult
 	}
 	return result, nil
+}
+
+// executeHuman runs a polling script at the configured interval until a human
+// decision is available (the script outputs a wire name via CLOCHE_RESULT),
+// the context is cancelled (timeout), or the script fails.
+//
+// Exit-code semantics:
+//   - exit 0, no wire output  → pending, poll again after interval
+//   - non-zero, no wire output → fail (follow "fail" wire)
+//   - any exit, wire output   → follow named wire
+//
+// If a poll invocation is still running when the next interval fires, that
+// interval is skipped. After 3 consecutive skips (i.e. the invocation has been
+// running for more than 4× the interval) the step is failed with an error log.
+func (e *Executor) executeHuman(ctx context.Context, step *domain.Step) (string, error) {
+	intervalStr := step.Config["interval"]
+	interval, err := time.ParseDuration(intervalStr)
+	if err != nil {
+		return "", fmt.Errorf("human step %q: invalid interval %q: %w", step.Name, intervalStr, err)
+	}
+
+	startedAt := time.Now()
+
+	// Persist the initial poll record.
+	if e.HumanPollStore != nil && e.HostRunID != "" {
+		_ = e.HumanPollStore.UpsertHumanPoll(ctx, &ports.HumanPollRecord{
+			RunID:      e.HostRunID,
+			StepName:   step.Name,
+			StartedAt:  startedAt,
+			LastPollAt: startedAt,
+			PollCount:  0,
+		})
+	}
+
+	// Cleanup poll record when the step finishes.
+	defer func() {
+		if e.HumanPollStore != nil && e.HostRunID != "" {
+			_ = e.HumanPollStore.DeleteHumanPoll(context.Background(), e.HostRunID, step.Name)
+		}
+	}()
+
+	type pollResult struct {
+		result string
+		err    error
+	}
+
+	pollCount := 0
+	consecutiveSkips := 0
+	const maxConsecutiveSkips = 3
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	// Run the first poll immediately.
+	pollCh := make(chan pollResult, 1)
+	pollRunning := true
+	go func() {
+		r, err := e.runHumanPoll(ctx, step)
+		pollCh <- pollResult{result: r, err: err}
+	}()
+	pollCount++
+
+	for {
+		select {
+		case <-ctx.Done():
+			return "timeout", nil
+
+		case pr := <-pollCh:
+			pollRunning = false
+			consecutiveSkips = 0
+
+			if pr.err != nil {
+				return "fail", nil
+			}
+
+			// Update last_poll_at in store.
+			if e.HumanPollStore != nil && e.HostRunID != "" {
+				_ = e.HumanPollStore.UpsertHumanPoll(ctx, &ports.HumanPollRecord{
+					RunID:      e.HostRunID,
+					StepName:   step.Name,
+					StartedAt:  startedAt,
+					LastPollAt: time.Now(),
+					PollCount:  pollCount,
+				})
+			}
+
+			if pr.result != "" {
+				// A wire name was returned — decision made.
+				return pr.result, nil
+			}
+			// Exit 0, no wire → still pending; wait for next tick.
+
+		case <-ticker.C:
+			if pollRunning {
+				consecutiveSkips++
+				log.Printf("host executor: human step %q poll still running (skip %d/%d)",
+					step.Name, consecutiveSkips, maxConsecutiveSkips)
+				if consecutiveSkips >= maxConsecutiveSkips {
+					return "", fmt.Errorf("human step %q: poll invocation running for more than 4× the interval (%s); failing step",
+						step.Name, interval)
+				}
+				continue
+			}
+
+			// Launch next poll.
+			pollRunning = true
+			pollCount++
+			go func() {
+				r, err := e.runHumanPoll(ctx, step)
+				pollCh <- pollResult{result: r, err: err}
+			}()
+		}
+	}
+}
+
+// runHumanPoll executes a single poll invocation of a human step script.
+// Returns the wire name (from CLOCHE_RESULT) on decision, empty string on
+// "still pending" (exit 0, no wire), or an error on script failure.
+func (e *Executor) runHumanPoll(ctx context.Context, step *domain.Step) (string, error) {
+	cmdStr := step.Config["script"]
+	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
+	cmd.Dir = e.scriptDir()
+
+	var baseEnv []string
+	for _, ev := range os.Environ() {
+		if !strings.HasPrefix(ev, "CLOCHE_RUN_ID=") {
+			baseEnv = append(baseEnv, ev)
+		}
+	}
+	cmd.Env = append(baseEnv,
+		"CLOCHE_PROJECT_DIR="+e.ProjectDir,
+		"CLOCHE_STEP_OUTPUT="+e.stepOutputPath(step.Name),
+	)
+	if e.HostRunID != "" {
+		cmd.Env = append(cmd.Env, "CLOCHE_RUN_ID="+e.HostRunID)
+	}
+	if e.TaskID != "" {
+		cmd.Env = append(cmd.Env, "CLOCHE_TASK_ID="+e.TaskID)
+	}
+	if e.AttemptID != "" {
+		cmd.Env = append(cmd.Env, "CLOCHE_ATTEMPT_ID="+e.AttemptID)
+	}
+	if len(e.ExtraEnv) > 0 {
+		cmd.Env = append(cmd.Env, e.ExtraEnv...)
+	}
+
+	output, err := cmd.CombinedOutput()
+
+	markerResult, cleanOutput, found := protocol.ExtractResult(output)
+
+	// Write output to file (overwrite each poll so the latest result is visible).
+	if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
+		_ = os.WriteFile(e.stepOutputPath(step.Name), cleanOutput, 0644)
+	}
+
+	if found {
+		// Wire output present regardless of exit code — follow the named wire.
+		return markerResult, nil
+	}
+
+	if err != nil {
+		if _, ok := err.(*exec.ExitError); ok {
+			// Non-zero exit, no wire → fail.
+			return "", fmt.Errorf("poll script exited with error")
+		}
+		return "", err
+	}
+
+	// Exit 0, no wire → still pending.
+	return "", nil
 }
 
 // executeAgent runs an agent command on the host using the prompt adapter.

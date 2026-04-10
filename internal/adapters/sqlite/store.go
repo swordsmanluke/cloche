@@ -201,6 +201,20 @@ func migrate(db *sql.DB) error {
 	}
 	db.Exec(`CREATE INDEX IF NOT EXISTS activity_log_project_ts ON activity_log (project_dir, ts)`)
 
+	// v6: Human step poll tracking — persists last_poll_at so the daemon can
+	// surface "waiting" status and survive restarts mid-poll.
+	_, errHP := db.Exec(`CREATE TABLE IF NOT EXISTS human_step_polls (
+		run_id      TEXT NOT NULL,
+		step_name   TEXT NOT NULL,
+		started_at  TEXT NOT NULL,
+		last_poll_at TEXT NOT NULL,
+		poll_count  INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY (run_id, step_name)
+	)`)
+	if errHP != nil {
+		return errHP
+	}
+
 	return nil
 }
 
@@ -807,6 +821,78 @@ func (s *Store) FailStaleRuns(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// UpsertHumanPoll inserts or updates the poll record for a human step.
+func (s *Store) UpsertHumanPoll(ctx context.Context, record *ports.HumanPollRecord) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO human_step_polls (run_id, step_name, started_at, last_poll_at, poll_count)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(run_id, step_name) DO UPDATE SET
+		   last_poll_at = excluded.last_poll_at,
+		   poll_count   = excluded.poll_count`,
+		record.RunID, record.StepName,
+		formatTime(record.StartedAt), formatTime(record.LastPollAt),
+		record.PollCount,
+	)
+	return err
+}
+
+// GetHumanPoll retrieves the poll record for a specific (run_id, step_name).
+func (s *Store) GetHumanPoll(ctx context.Context, runID, stepName string) (*ports.HumanPollRecord, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT run_id, step_name, started_at, last_poll_at, poll_count
+		 FROM human_step_polls WHERE run_id = ? AND step_name = ?`,
+		runID, stepName,
+	)
+	r := &ports.HumanPollRecord{}
+	var startedAt, lastPollAt string
+	err := row.Scan(&r.RunID, &r.StepName, &startedAt, &lastPollAt, &r.PollCount)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	r.StartedAt = parseTime(startedAt)
+	r.LastPollAt = parseTime(lastPollAt)
+	return r, nil
+}
+
+// DeleteHumanPoll removes the poll record for a (run_id, step_name). Called
+// when a human step completes (either via decision or failure/timeout).
+func (s *Store) DeleteHumanPoll(ctx context.Context, runID, stepName string) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM human_step_polls WHERE run_id = ? AND step_name = ?`,
+		runID, stepName,
+	)
+	return err
+}
+
+// ListHumanPolls returns all active poll records for the given run.
+func (s *Store) ListHumanPolls(ctx context.Context, runID string) ([]*ports.HumanPollRecord, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT run_id, step_name, started_at, last_poll_at, poll_count
+		 FROM human_step_polls WHERE run_id = ?`,
+		runID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []*ports.HumanPollRecord
+	for rows.Next() {
+		r := &ports.HumanPollRecord{}
+		var startedAt, lastPollAt string
+		if err := rows.Scan(&r.RunID, &r.StepName, &startedAt, &lastPollAt, &r.PollCount); err != nil {
+			return nil, err
+		}
+		r.StartedAt = parseTime(startedAt)
+		r.LastPollAt = parseTime(lastPollAt)
+		records = append(records, r)
+	}
+	return records, rows.Err()
 }
 
 func formatTime(t time.Time) string {

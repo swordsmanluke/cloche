@@ -326,6 +326,18 @@ func (p *Parser) parseStep() (*domain.Step, error) {
 		return nil, err
 	}
 
+	// Human step: explicit type = human with a script field.
+	if step.Config["type"] == "human" {
+		if _, hasScript := step.Config["script"]; !hasScript {
+			return nil, fmt.Errorf("step %q: human step requires a 'script' field", step.Name)
+		}
+		if _, hasInterval := step.Config["interval"]; !hasInterval {
+			return nil, fmt.Errorf("step %q: human step requires an 'interval' field", step.Name)
+		}
+		step.Type = domain.StepTypeHuman
+		return step, nil
+	}
+
 	// Infer step type from content
 	_, hasPrompt := step.Config["prompt"]
 	_, hasRun := step.Config["run"]

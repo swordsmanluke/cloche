@@ -1029,3 +1029,91 @@ func TestParser_StringMaxAttempts_Rejected(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "max_attempts must be a numeric value")
 }
+
+func TestParser_HumanStep_Basic(t *testing.T) {
+	input := `workflow "review" {
+  host {}
+
+  step code-review {
+    type     = human
+    script   = "scripts/check-pr.sh"
+    interval = "5m"
+    results  = [approved, fix, timeout]
+  }
+
+  code-review:approved -> done
+  code-review:fix      -> abort
+  code-review:timeout  -> abort
+}`
+
+	wf, err := dsl.ParseForHost(input)
+	require.NoError(t, err)
+
+	step := wf.Steps["code-review"]
+	require.NotNil(t, step)
+	assert.Equal(t, domain.StepTypeHuman, step.Type)
+	assert.Equal(t, "scripts/check-pr.sh", step.Config["script"])
+	assert.Equal(t, "5m", step.Config["interval"])
+	assert.Equal(t, []string{"approved", "fix", "timeout"}, step.Results)
+}
+
+func TestParser_HumanStep_WithTimeout(t *testing.T) {
+	input := `workflow "review" {
+  host {}
+
+  step gate {
+    type     = human
+    script   = "scripts/gate.sh"
+    interval = "10m"
+    timeout  = "48h"
+    results  = [go, abort]
+  }
+
+  gate:go    -> done
+  gate:abort -> abort
+}`
+
+	wf, err := dsl.ParseForHost(input)
+	require.NoError(t, err)
+
+	step := wf.Steps["gate"]
+	require.NotNil(t, step)
+	assert.Equal(t, domain.StepTypeHuman, step.Type)
+	assert.Equal(t, "48h", step.Config["timeout"])
+}
+
+func TestParser_HumanStep_MissingScript(t *testing.T) {
+	input := `workflow "review" {
+  host {}
+
+  step gate {
+    type     = human
+    interval = "5m"
+    results  = [go]
+  }
+
+  gate:go -> done
+}`
+
+	_, err := dsl.ParseForHost(input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "script")
+}
+
+func TestParser_HumanStep_MissingInterval(t *testing.T) {
+	input := `workflow "review" {
+  host {}
+
+  step gate {
+    type   = human
+    script = "scripts/gate.sh"
+    results = [go]
+  }
+
+  gate:go -> done
+}`
+
+	_, err := dsl.ParseForHost(input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "interval")
+}

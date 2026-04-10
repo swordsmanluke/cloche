@@ -79,8 +79,13 @@ completes. Available in both host and container workflows. Dispatch is always ha
 the daemon orchestrator, which resolves the target workflow by name across all `.cloche`
 files and routes it to the host executor or container pool as appropriate.
 
-A step with more than one of `prompt`, `run`, or `workflow_name`, or none of them, is a
-parse error.
+**human** (has `type = human`) — Runs a polling script on the host at a fixed interval
+until a human decision is available. The step pauses the workflow while waiting for
+external input (e.g. code review, approval gate, ticket transition). Requires `script`
+and `interval` fields. See [Human Step](#human-step) below.
+
+A step with more than one of `prompt`, `run`, or `workflow_name`, or none of them (and
+no explicit `type = human`), is a parse error.
 
 ## DSL Syntax
 
@@ -392,3 +397,40 @@ host-workflow scripts from main are used for all runs. Workflow steps (`workflow
 dispatch container runs through the daemon. Environment variables (`CLOCHE_TASK_ID`,
 `CLOCHE_PROJECT_DIR`, etc.) are injected into each step; `CLOCHE_PROJECT_DIR` still
 points to the actual project directory.
+
+## Human Step
+
+A `human` step polls a script at a fixed interval until a human decision is returned,
+the step times out, or the script fails. It is declared with an explicit `type = human`
+field rather than inferred from content.
+
+**Required fields:** `type = human`, `script`, `interval`
+
+```
+step "code-review" {
+  type     = human
+  script   = "scripts/check-pr-review.sh"
+  interval = "5m"
+  timeout  = "48h"   // optional; default is 72h
+}
+
+code-review:approved -> merge
+code-review:fix      -> address-feedback
+code-review:timeout  -> escalate
+```
+
+**Poll script exit semantics:**
+
+| Exit code | Wire output | Meaning |
+|-----------|-------------|---------|
+| 0         | none        | Pending — poll again after `interval` |
+| non-zero  | none        | Failure — follow the `fail` wire |
+| any       | wire name   | Decision — follow the named wire |
+
+The first poll runs immediately when the step starts; subsequent polls fire after each
+`interval`. If a poll invocation is still running when the next tick fires, that tick is
+skipped. After 3 consecutive skips (poll running for more than 4× the interval) the step
+fails with an error message.
+
+The default timeout for `human` steps is **72h**. If no `timeout` wire is declared,
+timeout follows the implicit `abort` terminal.

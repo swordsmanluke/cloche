@@ -107,3 +107,22 @@ type EvolutionStore interface {
 	GetLastEvolution(ctx context.Context, projectDir, workflowName string) (*EvolutionEntry, error)
 	ListRunsSince(ctx context.Context, projectDir, workflowName, sinceRunID string) ([]*domain.Run, error)
 }
+
+// HumanPollRecord tracks the polling state of a human step within a run.
+type HumanPollRecord struct {
+	RunID      string
+	StepName   string
+	StartedAt  time.Time
+	LastPollAt time.Time
+	PollCount  int
+}
+
+// HumanPollStore persists and retrieves human step poll state.
+// This enables the daemon to surface "waiting" status and survive restarts
+// while a human step is being polled.
+type HumanPollStore interface {
+	UpsertHumanPoll(ctx context.Context, record *HumanPollRecord) error
+	GetHumanPoll(ctx context.Context, runID, stepName string) (*HumanPollRecord, error)
+	DeleteHumanPoll(ctx context.Context, runID, stepName string) error
+	ListHumanPolls(ctx context.Context, runID string) ([]*HumanPollRecord, error)
+}

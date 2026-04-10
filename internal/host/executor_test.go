@@ -1957,3 +1957,276 @@ func TestExecutor_SkipsContextSeeding_WhenNoTaskID(t *testing.T) {
 	_, statErr := os.Stat(contextPath)
 	assert.True(t, os.IsNotExist(statErr), "context.json should not be created without a task ID")
 }
+
+// fakeHumanPollStore is an in-memory implementation of ports.HumanPollStore for tests.
+type fakeHumanPollStore struct {
+	mu      sync.Mutex
+	records map[string]*ports.HumanPollRecord // key: runID+"/"+stepName
+}
+
+func (f *fakeHumanPollStore) key(runID, stepName string) string {
+	return runID + "/" + stepName
+}
+
+func (f *fakeHumanPollStore) UpsertHumanPoll(_ context.Context, r *ports.HumanPollRecord) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cp := *r
+	f.records[f.key(r.RunID, r.StepName)] = &cp
+	return nil
+}
+
+func (f *fakeHumanPollStore) GetHumanPoll(_ context.Context, runID, stepName string) (*ports.HumanPollRecord, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	r, ok := f.records[f.key(runID, stepName)]
+	if !ok {
+		return nil, nil
+	}
+	cp := *r
+	return &cp, nil
+}
+
+func (f *fakeHumanPollStore) DeleteHumanPoll(_ context.Context, runID, stepName string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.records, f.key(runID, stepName))
+	return nil
+}
+
+func (f *fakeHumanPollStore) ListHumanPolls(_ context.Context, runID string) ([]*ports.HumanPollRecord, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []*ports.HumanPollRecord
+	for _, r := range f.records {
+		if r.RunID == runID {
+			cp := *r
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+
+func newFakeHumanPollStore() *fakeHumanPollStore {
+	return &fakeHumanPollStore{records: make(map[string]*ports.HumanPollRecord)}
+}
+
+// TestExecutor_HumanStep_ImmediateDecision checks that a human step that
+// returns a wire result on the first poll completes immediately.
+func TestExecutor_HumanStep_ImmediateDecision(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+	pollStore := newFakeHumanPollStore()
+
+	executor := &Executor{
+		ProjectDir:     tmpDir,
+		OutputDir:      outputDir,
+		HostRunID:      "run-1",
+		HumanPollStore: pollStore,
+	}
+
+	// Script outputs a CLOCHE_RESULT wire on first invocation.
+	step := &domain.Step{
+		Name:    "code-review",
+		Type:    domain.StepTypeHuman,
+		Results: []string{"approved", "fix", "timeout"},
+		Config: map[string]string{
+			"script":   "echo 'CLOCHE_RESULT:approved'",
+			"interval": "10s",
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "approved", result.Result)
+
+	// Poll record should be cleaned up after completion.
+	record, _ := pollStore.GetHumanPoll(context.Background(), "run-1", "code-review")
+	assert.Nil(t, record, "poll record should be deleted after step completion")
+}
+
+// TestExecutor_HumanStep_PendingThenDecision verifies that a human step
+// keeps polling when the script exits 0 with no wire, then resolves when
+// the script outputs a wire result.
+func TestExecutor_HumanStep_PendingThenDecision(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	// Write a counter file so the script can change behavior after first call.
+	counterFile := filepath.Join(tmpDir, "count.txt")
+	require.NoError(t, os.WriteFile(counterFile, []byte("0"), 0644))
+
+	scriptPath := filepath.Join(tmpDir, "poll.sh")
+	scriptContent := `#!/bin/sh
+count=$(cat ` + counterFile + `)
+count=$((count + 1))
+echo $count > ` + counterFile + `
+if [ $count -ge 2 ]; then
+  echo 'CLOCHE_RESULT:approved'
+fi
+`
+	require.NoError(t, os.WriteFile(scriptPath, []byte(scriptContent), 0755))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		HostRunID:  "run-2",
+	}
+
+	step := &domain.Step{
+		Name:    "gate",
+		Type:    domain.StepTypeHuman,
+		Results: []string{"approved", "timeout"},
+		Config: map[string]string{
+			"script":   "sh " + scriptPath,
+			"interval": "50ms", // fast for testing
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "approved", result.Result)
+}
+
+// TestExecutor_HumanStep_ScriptFailure verifies that a non-zero exit with no
+// wire output causes the step to return "fail".
+func TestExecutor_HumanStep_ScriptFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+	}
+
+	step := &domain.Step{
+		Name:    "bad-poll",
+		Type:    domain.StepTypeHuman,
+		Results: []string{"approved", "fail"},
+		Config: map[string]string{
+			"script":   "exit 1",
+			"interval": "10s",
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "fail", result.Result)
+}
+
+// TestExecutor_HumanStep_ContextTimeout verifies that the step returns
+// "timeout" when the context deadline is exceeded while polling.
+func TestExecutor_HumanStep_ContextTimeout(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+	}
+
+	// Script always exits 0 with no wire (pending forever).
+	step := &domain.Step{
+		Name:    "wait-forever",
+		Type:    domain.StepTypeHuman,
+		Results: []string{"approved", "timeout"},
+		Config: map[string]string{
+			"script":   "exit 0",
+			"interval": "50ms",
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	result, err := executor.Execute(ctx, step)
+	require.NoError(t, err)
+	assert.Equal(t, "timeout", result.Result)
+}
+
+// TestExecutor_HumanStep_PollStoreTracking verifies that poll records are
+// written to the HumanPollStore during execution.
+func TestExecutor_HumanStep_PollStoreTracking(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+	pollStore := newFakeHumanPollStore()
+
+	counterFile := filepath.Join(tmpDir, "count.txt")
+	require.NoError(t, os.WriteFile(counterFile, []byte("0"), 0644))
+
+	scriptPath := filepath.Join(tmpDir, "poll.sh")
+	scriptContent := `#!/bin/sh
+count=$(cat ` + counterFile + `)
+count=$((count + 1))
+echo $count > ` + counterFile + `
+if [ $count -ge 3 ]; then
+  echo 'CLOCHE_RESULT:approved'
+fi
+`
+	require.NoError(t, os.WriteFile(scriptPath, []byte(scriptContent), 0755))
+
+	executor := &Executor{
+		ProjectDir:     tmpDir,
+		OutputDir:      outputDir,
+		HostRunID:      "run-track",
+		HumanPollStore: pollStore,
+	}
+
+	step := &domain.Step{
+		Name:    "review",
+		Type:    domain.StepTypeHuman,
+		Results: []string{"approved"},
+		Config: map[string]string{
+			"script":   "sh " + scriptPath,
+			"interval": "50ms",
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "approved", result.Result)
+
+	// Record deleted after completion.
+	record, _ := pollStore.GetHumanPoll(context.Background(), "run-track", "review")
+	assert.Nil(t, record)
+}
+
+// TestEngine_HumanStep_Timeout verifies that the engine handles the timeout
+// wire when a human step's context times out.
+func TestEngine_HumanStep_Timeout(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+	}
+
+	// Create a workflow where the human step wires timeout → done.
+	wf := &domain.Workflow{
+		Name:      "review",
+		Location:  domain.LocationHost,
+		EntryStep: "gate",
+		Steps: map[string]*domain.Step{
+			"gate": {
+				Name:    "gate",
+				Type:    domain.StepTypeHuman,
+				Results: []string{"approved", "timeout"},
+				Config: map[string]string{
+					"script":   "exit 0",
+					"interval": "50ms",
+					"timeout":  "200ms",
+				},
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: "gate", Result: "approved", To: domain.StepDone},
+			{From: "gate", Result: "timeout", To: domain.StepDone},
+		},
+	}
+
+	eng := engine.New(executor)
+	run, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+}

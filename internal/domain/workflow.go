@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 const (
@@ -17,7 +18,13 @@ const (
 	StepTypeAgent    StepType = "agent"
 	StepTypeScript   StepType = "script"
 	StepTypeWorkflow StepType = "workflow"
+	StepTypeHuman    StepType = "human"
 )
+
+// DefaultHumanStepTimeout is the default timeout for human steps when no
+// explicit timeout is configured. Human steps wait for external input (e.g.
+// code review, approval) so they use a much longer default than other step types.
+const DefaultHumanStepTimeout = 72 * time.Hour
 
 // WorkflowLocation indicates where a workflow is intended to run.
 type WorkflowLocation string
@@ -309,8 +316,12 @@ var knownStepConfigKeys = map[string]bool{
 	"results":       true,
 	"feedback":      true,
 	"workflow_name": true,
-	"prompt_step":     true,
-	"usage_command":   true,
+	"prompt_step":   true,
+	"usage_command": true,
+	// human step keys
+	"type":     true,
+	"script":   true,
+	"interval": true,
 }
 
 // ValidateConfig checks step config keys against known keys and returns

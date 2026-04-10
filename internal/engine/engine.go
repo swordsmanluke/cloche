@@ -348,5 +348,9 @@ func stepTimeout(step *domain.Step, defaultTimeout time.Duration) time.Duration 
 			return d
 		}
 	}
+	// Human steps default to 72h since they wait for external human decisions.
+	if step.Type == domain.StepTypeHuman {
+		return domain.DefaultHumanStepTimeout
+	}
 	return defaultTimeout
 }
