@@ -36,6 +36,12 @@ workflow "main" {
     results = [success, fail]
   }
 
+  step fix-merge-conflict {
+    prompt  = file(".cloche/prompts/fix-merge-conflict.md")
+    timeout = "60m"
+    results = [success, fail]
+  }
+
   step bump-version {
     prompt  = file(".cloche/prompts/bump-version.md")
     timeout = "90m"
@@ -58,8 +64,10 @@ workflow "main" {
   prepare-prompt:fail    -> abort
   develop:success        -> merge
   develop:fail           -> abort
-  merge:success          -> bump-version
-  merge:fail             -> abort
+  merge:success                -> bump-version
+  merge:fail                   -> fix-merge-conflict
+  fix-merge-conflict:success   -> bump-version
+  fix-merge-conflict:fail      -> abort
   bump-version:success   -> close-task
   bump-version:fail      -> close-task
   close-task:success     -> cleanup
