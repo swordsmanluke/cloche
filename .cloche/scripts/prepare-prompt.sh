@@ -28,3 +28,6 @@ ${task_body}"
 
 echo "$prompt"
 [ -n "${CLOCHE_STEP_OUTPUT:-}" ] && echo "$prompt" > "$CLOCHE_STEP_OUTPUT"
+
+# Write to KV store so container steps can read it via `clo get task_prompt`
+cloche set task_prompt - <<< "$prompt"

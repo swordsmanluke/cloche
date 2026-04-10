@@ -1,6 +1,10 @@
 # Implement Feature
 
-Implement the following change in this project.
+Implement the following change in this project. Retrieve the task description by running:
+
+```
+clo get task_prompt
+```
 
 ## Guidelines
 - Follow existing project conventions if files already exist
