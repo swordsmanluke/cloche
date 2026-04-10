@@ -98,7 +98,7 @@ workflow "develop" {
 }
 ```
 
-Supported keys: `image`, `memory`, `network_allow`, `agent_command`, `agent_args`.
+Supported keys: `id`, `image`, `memory`, `network_allow`, `agent_command`, `agent_args`.
 
 > **Note:** `network_allow` and `memory` are parsed and stored but not yet enforced at runtime —
 > containers currently run with unrestricted network access and no memory limit. Declaring them in

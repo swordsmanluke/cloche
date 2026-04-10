@@ -221,6 +221,26 @@ If two wires targeting the same step both map the same env var key, validation
 returns an error (the mapping would be ambiguous). The same key may be used on
 wires to different steps without conflict.
 
+## Parallel Branches (Fanout)
+
+Wire one result to multiple targets for concurrent execution:
+
+```
+test:success -> lint
+test:success -> quality
+```
+
+## Collect (Join)
+
+Synchronize parallel branches:
+
+```
+collect all(lint:success, quality:success) -> done
+collect any(lint:success, quality:success) -> done
+```
+
+`all` fires when every condition is met. `any` fires when at least one is.
+
 ## Workflow-Level Configuration Blocks
 
 Workflows support a configuration block at the workflow level to set defaults for all
