@@ -1282,6 +1282,28 @@ Flags:
 - `-r`, `--restart` — Relaunch the daemon after stopping it (or start it if it is not
   already running). The new daemon process is detached so the CLI can exit immediately.
 
+### `cloche console`
+
+Starts an interactive agent session in a fresh container using the project's image and
+setup (project files, auth credentials, overrides) — same environment as a workflow run,
+without running a workflow.
+
+```
+cloche console [--agent <command>]
+```
+
+Flags:
+- `--agent <command>` — Override the agent command to run inside the container. Defaults
+  to the same resolution chain as workflow runs: workflow config → `CLOCHE_AGENT_COMMAND`
+  env var → `claude`.
+
+The terminal is put into raw mode and I/O is forwarded bidirectionally through the daemon.
+Terminal resize events (SIGWINCH) are forwarded automatically. When the session ends, the
+container is kept — it does not appear in `cloche list`, but can be deleted with
+`cloche delete <container-id>` or `docker rm <id>`. The container ID is printed on exit.
+
+Must be run from inside a git repository with a `.cloche/` directory.
+
 ### `cloche complete`
 
 Low-level helper used by shell completion scripts. Not intended for direct use.
