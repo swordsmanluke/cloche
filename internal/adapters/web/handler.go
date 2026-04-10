@@ -54,6 +54,11 @@ func WithTaskProvider(tp TaskProvider) HandlerOption {
 	return func(h *Handler) { h.taskProvider = tp }
 }
 
+// WithOrchestrateFunc sets the function used to trigger the orchestration loop for a project.
+func WithOrchestrateFunc(fn func(ctx context.Context, projectDir string) (int, error)) HandlerOption {
+	return func(h *Handler) { h.orchestrateFn = fn }
+}
+
 //go:embed templates/*.html static/*
 var content embed.FS
 
@@ -91,14 +96,15 @@ type TaskProvider interface {
 }
 
 type Handler struct {
-	store        ports.RunStore
-	captures     ports.CaptureStore
-	logStore     ports.LogStore
-	container    ContainerLogger
-	logBroadcast *logstream.Broadcaster
-	taskProvider TaskProvider
-	pages        map[string]*template.Template
-	mux          *http.ServeMux
+	store         ports.RunStore
+	captures      ports.CaptureStore
+	logStore      ports.LogStore
+	container     ContainerLogger
+	logBroadcast  *logstream.Broadcaster
+	taskProvider  TaskProvider
+	orchestrateFn func(ctx context.Context, projectDir string) (int, error)
+	pages         map[string]*template.Template
+	mux           *http.ServeMux
 }
 
 // NewHandler creates a web dashboard handler.
@@ -169,6 +175,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows/{workflow}/steps/{step}/content", h.handleAPIStepContent)
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks", h.handleAPITasks)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
+	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
 	h.mux.HandleFunc("GET /api/tasks", h.handleAPIAllTasks)
 	h.mux.HandleFunc("GET /api/runs/{id}/logs", h.handleAPILogs)
 	h.mux.HandleFunc("GET /api/runs/{id}/stream", h.handleAPIStream)
@@ -2279,6 +2286,29 @@ func (h *Handler) handleAPIReleaseTask(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// handleAPITriggerOrchestrator triggers the orchestration loop for a project.
+func (h *Handler) handleAPITriggerOrchestrator(w http.ResponseWriter, r *http.Request) {
+	dir, label, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	if h.orchestrateFn == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "orchestrator not configured"})
+		return
+	}
+	n, err := h.orchestrateFn(r.Context(), dir)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"status": "ok", "project": label, "dispatched": n})
 }
 
 // --- Failed tasks dashboard ---

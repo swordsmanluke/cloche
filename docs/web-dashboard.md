@@ -47,6 +47,9 @@ The landing page shows a card for each registered project. Each card displays:
 - **Active run count** — runs currently in progress.
 - **Run history dots** — a mini visual history of recent run outcomes.
 - A **View Runs** link to the filtered runs list for that project.
+- A **Trigger Orchestrator** button that calls `POST /api/projects/{name}/trigger` to
+  kick off the orchestration loop immediately. The button shows "Dispatched N" on success
+  or "No tasks ready" if no tasks were dispatched, then resets after 3 seconds.
 
 Click a project card to go to the Project Detail page.
 
@@ -233,3 +236,4 @@ confirms that all attempted tasks have succeeded or are still running.
 | Task/attempt grouping | Runs list |
 | Project health overview | Projects landing page |
 | Failed open tasks dashboard | `/failed-tasks` |
+| Manual orchestrator trigger | Projects landing page → Trigger Orchestrator button |

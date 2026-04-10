@@ -115,6 +115,13 @@ func main() {
 			web.WithLogStore(store),
 			web.WithLogBroadcaster(broadcaster),
 			web.WithTaskProvider(srv),
+			web.WithOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {
+				_, err := srv.EnableLoop(ctx, &pb.EnableLoopRequest{ProjectDir: projectDir})
+				if err != nil {
+					return 0, err
+				}
+				return 1, nil
+			}),
 		}
 		webHandler, err := web.NewHandler(store, store, webOpts...)
 		if err != nil {

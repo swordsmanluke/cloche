@@ -3085,3 +3085,82 @@ func TestMergeCaptures_WithUsage(t *testing.T) {
 	assert.False(t, entries[1].HasUsage)
 	assert.Empty(t, entries[1].AgentName)
 }
+
+func TestAPITriggerOrchestrator_NoOrchestrateFunc(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/trigger", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotImplemented, w.Code)
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Contains(t, resp["error"], "not configured")
+}
+
+func TestAPITriggerOrchestrator_ProjectNotFound(t *testing.T) {
+	h, _ := setupHandler(t)
+	h.orchestrateFn = func(_ context.Context, _ string) (int, error) { return 1, nil }
+
+	req := httptest.NewRequest("POST", "/api/projects/nonexistent/trigger", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestAPITriggerOrchestrator_Success(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	var calledWith string
+	h.orchestrateFn = func(_ context.Context, projectDir string) (int, error) {
+		calledWith = projectDir
+		return 3, nil
+	}
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/trigger", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "/home/user/projects/myapp", calledWith)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "ok", resp["status"])
+	assert.Equal(t, "myapp", resp["project"])
+	assert.Equal(t, float64(3), resp["dispatched"])
+}
+
+func TestAPITriggerOrchestrator_Error(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	h.orchestrateFn = func(_ context.Context, _ string) (int, error) {
+		return 0, fmt.Errorf("loop failed to start")
+	}
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/trigger", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Contains(t, resp["error"], "loop failed to start")
+}
