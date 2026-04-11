@@ -69,6 +69,11 @@ func WithStopLoopFunc(fn func(ctx context.Context, projectDir string) error) Han
 	return func(h *Handler) { h.stopLoopFn = fn }
 }
 
+// WithStopRunFunc sets the function used to stop all active runs for a task.
+func WithStopRunFunc(fn func(ctx context.Context, taskID string) error) HandlerOption {
+	return func(h *Handler) { h.stopRunFn = fn }
+}
+
 //go:embed templates/*.html static/*
 var content embed.FS
 
@@ -115,6 +120,7 @@ type Handler struct {
 	orchestrateFn func(ctx context.Context, projectDir string) (int, error)
 	loopStatusFn  func(projectDir string) bool
 	stopLoopFn    func(ctx context.Context, projectDir string) error
+	stopRunFn     func(ctx context.Context, taskID string) error
 	pages         map[string]*template.Template
 	mux           *http.ServeMux
 }
@@ -1169,6 +1175,20 @@ func (h *Handler) handleAPIStopRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Prefer the daemon-level stop path (handles both host and container runs).
+	if h.stopRunFn != nil && run.TaskID != "" {
+		if err := h.stopRunFn(r.Context(), run.TaskID); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to stop run: %v", err)})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		return
+	}
+
+	// Fallback: stop container directly (runs launched outside the loop).
 	mgr, ok := h.container.(ContainerManager)
 	if !ok || run.ContainerID == "" {
 		w.Header().Set("Content-Type", "application/json")

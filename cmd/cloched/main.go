@@ -124,6 +124,10 @@ func main() {
 			}),
 			web.WithLoopStatusFunc(srv.LoopRunning),
 			web.WithStopLoopFunc(srv.StopLoop),
+			web.WithStopRunFunc(func(ctx context.Context, taskID string) error {
+				_, err := srv.StopRun(ctx, &pb.StopRunRequest{TaskId: taskID})
+				return err
+			}),
 		}
 		webHandler, err := web.NewHandler(store, store, webOpts...)
 		if err != nil {
