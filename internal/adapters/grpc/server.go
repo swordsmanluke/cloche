@@ -2165,6 +2165,19 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 		}
 	}
 
+	// Populate waiting step details when the run is at a human step.
+	if run.State == domain.RunStateWaiting {
+		if hps, ok := s.store.(ports.HumanPollStore); ok {
+			if polls, err := hps.ListHumanPolls(ctx, run.ID); err == nil && len(polls) > 0 {
+				resp.WaitingStep = polls[0].StepName
+				if !polls[0].LastPollAt.IsZero() {
+					resp.LastPollAt = polls[0].LastPollAt.UTC().Format(time.RFC3339)
+				}
+				resp.PollCount = int32(polls[0].PollCount)
+			}
+		}
+	}
+
 	// Load step executions from captures store if available
 	if s.captures != nil {
 		captures, err := s.captures.GetCaptures(ctx, run.ID)

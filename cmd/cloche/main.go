@@ -379,6 +379,19 @@ func cmdStatusTaskLatest(ctx context.Context, client pb.ClocheServiceClient, tas
 		fmt.Printf("Ended:   %s\n", latest.EndedAt)
 	}
 
+	// If the task is waiting at a human step, surface the step name, elapsed
+	// time since last poll, and poll count from the run's status.
+	if resp.Status == "waiting" && latest.AttemptId != "" {
+		if statusResp, err := client.GetStatus(ctx, &pb.GetStatusRequest{Id: latest.AttemptId}); err == nil && statusResp.WaitingStep != "" {
+			elapsed := formatLastPollElapsed(statusResp.LastPollAt)
+			if elapsed != "" {
+				fmt.Printf("Waiting: %s — last polled %s ago (%d polls)\n", statusResp.WaitingStep, elapsed, statusResp.PollCount)
+			} else {
+				fmt.Printf("Waiting: %s (%d polls)\n", statusResp.WaitingStep, statusResp.PollCount)
+			}
+		}
+	}
+
 	// Show token usage across all attempts for this task.
 	printTaskTokenUsage(ctx, client, taskID, resp.ProjectDir)
 }

@@ -938,7 +938,7 @@ status for that task.
 
 | Argument | Output |
 |----------|--------|
-| Task ID | Task status, title, project, latest attempt ID, result, end timestamp, and total tokens consumed across all attempts (omitted if no usage data). |
+| Task ID | Task status, title, project, latest attempt ID, result, end timestamp, and total tokens consumed across all attempts (omitted if no usage data). When the task is `waiting` at a human step, also shows the step name, time since last poll, and poll count (e.g. `Waiting: code-review — last polled 4m ago (3 polls)`). |
 | _(none)_ | Daemon version, run statistics (past hour), active tasks with attempt IDs and in-progress runs shown as composite IDs (e.g. `cloche-1234:aj19:main`), and per-agent token burn rate for the last hour (omitted if no usage data). In a project directory, also shows project name, concurrency, and loop state. |
 
 | Flag | Description |

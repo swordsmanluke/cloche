@@ -94,6 +94,12 @@ message GetStatusResponse {
   string container_dead_since = 9;
   string title = 10;
   bool is_host = 11;
+  // Populated when state == "waiting": the human step being polled.
+  string waiting_step = 12;
+  // Populated when state == "waiting": RFC3339 timestamp of the last poll invocation.
+  string last_poll_at = 13;
+  // Populated when state == "waiting": number of times the poll script has been invoked.
+  int32 poll_count = 14;
 }
 
 message StepExecutionStatus {

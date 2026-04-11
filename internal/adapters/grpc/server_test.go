@@ -737,6 +737,62 @@ func TestServer_GetStatus_ContainerID(t *testing.T) {
 	assert.Equal(t, "4647e7e70e3fabc123def456", resp.ContainerId)
 }
 
+func TestServer_GetStatus_WaitingStep(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run in the waiting state.
+	run := domain.NewRun("wait-test", "develop")
+	run.Start()
+	run.State = domain.RunStateWaiting
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Record a human poll entry for the run.
+	now := time.Now().UTC().Truncate(time.Second)
+	require.NoError(t, store.UpsertHumanPoll(ctx, &ports.HumanPollRecord{
+		RunID:      "wait-test",
+		StepName:   "code-review",
+		StartedAt:  now.Add(-10 * time.Minute),
+		LastPollAt: now.Add(-4 * time.Minute),
+		PollCount:  3,
+	}))
+
+	srv := server.NewClocheServer(store, nil)
+	resp, err := srv.GetStatus(ctx, &pb.GetStatusRequest{RunId: "wait-test"})
+	require.NoError(t, err)
+
+	assert.Equal(t, "waiting", resp.State)
+	assert.Equal(t, "code-review", resp.WaitingStep)
+	assert.NotEmpty(t, resp.LastPollAt)
+	assert.Equal(t, int32(3), resp.PollCount)
+}
+
+func TestServer_GetStatus_WaitingStep_NotWaiting(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// A running (non-waiting) run should not have waiting step details even if
+	// a stale poll record exists.
+	run := domain.NewRun("run-test", "develop")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	srv := server.NewClocheServer(store, nil)
+	resp, err := srv.GetStatus(ctx, &pb.GetStatusRequest{RunId: "run-test"})
+	require.NoError(t, err)
+
+	assert.Equal(t, "running", resp.State)
+	assert.Empty(t, resp.WaitingStep)
+	assert.Empty(t, resp.LastPollAt)
+	assert.Zero(t, resp.PollCount)
+}
+
 func TestServer_Shutdown(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

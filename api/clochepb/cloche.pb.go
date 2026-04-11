@@ -240,6 +240,9 @@ type GetStatusResponse struct {
 	ContainerDeadSince string                 `protobuf:"bytes,9,opt,name=container_dead_since,json=containerDeadSince,proto3" json:"container_dead_since,omitempty"`
 	Title              string                 `protobuf:"bytes,10,opt,name=title,proto3" json:"title,omitempty"`
 	IsHost             bool                   `protobuf:"varint,11,opt,name=is_host,json=isHost,proto3" json:"is_host,omitempty"`
+	WaitingStep        string                 `protobuf:"bytes,12,opt,name=waiting_step,json=waitingStep,proto3" json:"waiting_step,omitempty"`
+	LastPollAt         string                 `protobuf:"bytes,13,opt,name=last_poll_at,json=lastPollAt,proto3" json:"last_poll_at,omitempty"`
+	PollCount          int32                  `protobuf:"varint,14,opt,name=poll_count,json=pollCount,proto3" json:"poll_count,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -349,6 +352,27 @@ func (x *GetStatusResponse) GetIsHost() bool {
 		return x.IsHost
 	}
 	return false
+}
+
+func (x *GetStatusResponse) GetWaitingStep() string {
+	if x != nil {
+		return x.WaitingStep
+	}
+	return ""
+}
+
+func (x *GetStatusResponse) GetLastPollAt() string {
+	if x != nil {
+		return x.LastPollAt
+	}
+	return ""
+}
+
+func (x *GetStatusResponse) GetPollCount() int32 {
+	if x != nil {
+		return x.PollCount
+	}
+	return 0
 }
 
 type StepExecutionStatus struct {
