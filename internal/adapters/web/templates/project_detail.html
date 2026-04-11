@@ -187,7 +187,7 @@ function showWorkflow(wf) {
     var stepMap = {};
     wf.steps.forEach(function(s) { stepMap[s.name] = s; });
 
-    var wires = wf.wires || [];
+    var wires = (wf.wires || []).filter(function(w) { return !w.implicit; });
 
     // Helper: determine if a result is the success/happy-path
     function isSuccessResult(r) { return r === 'success' || r === 'ok' || r === 'done' || r === 'pass'; }

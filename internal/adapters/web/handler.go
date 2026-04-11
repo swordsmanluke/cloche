@@ -2047,9 +2047,10 @@ func (h *Handler) handleAPIWorkflows(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type apiWire struct {
-		From   string `json:"from"`
-		Result string `json:"result"`
-		To     string `json:"to"`
+		From     string `json:"from"`
+		Result   string `json:"result"`
+		To       string `json:"to"`
+		Implicit bool   `json:"implicit,omitempty"`
 	}
 	type apiStepDef struct {
 		Name    string            `json:"name"`
@@ -2093,7 +2094,7 @@ func (h *Handler) handleAPIWorkflows(w http.ResponseWriter, r *http.Request) {
 
 		var wires []apiWire
 		for _, wire := range wf.Wiring {
-			wires = append(wires, apiWire{From: wire.From, Result: wire.Result, To: wire.To})
+			wires = append(wires, apiWire{From: wire.From, Result: wire.Result, To: wire.To, Implicit: wire.Implicit})
 		}
 
 		workflows = append(workflows, apiWorkflow{
@@ -2133,7 +2134,7 @@ func (h *Handler) handleAPIWorkflows(w http.ResponseWriter, r *http.Request) {
 
 				var wires []apiWire
 				for _, wire := range hwf.Wiring {
-					wires = append(wires, apiWire{From: wire.From, Result: wire.Result, To: wire.To})
+					wires = append(wires, apiWire{From: wire.From, Result: wire.Result, To: wire.To, Implicit: wire.Implicit})
 				}
 
 				workflows = append(workflows, apiWorkflow{

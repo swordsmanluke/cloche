@@ -220,9 +220,10 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 		}
 		if !hasTimeoutWire {
 			wf.Wiring = append(wf.Wiring, domain.Wire{
-				From:   name,
-				Result: "timeout",
-				To:     domain.StepAbort,
+				From:     name,
+				Result:   "timeout",
+				To:       domain.StepAbort,
+				Implicit: true,
 			})
 		}
 	}

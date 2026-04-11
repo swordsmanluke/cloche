@@ -51,6 +51,7 @@ type Wire struct {
 	Result    string
 	To        string
 	OutputMap []OutputMapping
+	Implicit  bool
 }
 
 type SegmentKind int
