@@ -3,7 +3,7 @@
 Implement the following change in this project. Retrieve the task description by running:
 
 ```
-clo get task_prompt
+cat /workspace/$(clo get task_prompt_path)
 ```
 
 ## Guidelines

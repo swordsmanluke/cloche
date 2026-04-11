@@ -29,5 +29,9 @@ ${task_body}"
 echo "$prompt"
 [ -n "${CLOCHE_STEP_OUTPUT:-}" ] && echo "$prompt" > "$CLOCHE_STEP_OUTPUT"
 
-# Write to KV store so container steps can read it via `clo get task_prompt`
-cloche set task_prompt - <<< "$prompt"
+# Write prompt to a file and store the path in KV so container steps can read it.
+# (KV values are limited to 1 KB — too small for task descriptions.)
+prompt_path=".cloche/${CLOCHE_RUN_ID}/task_prompt.md"
+mkdir -p "$(dirname "$prompt_path")"
+echo "$prompt" > "$prompt_path"
+cloche set task_prompt_path "$prompt_path"
