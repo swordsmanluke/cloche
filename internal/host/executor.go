@@ -47,19 +47,20 @@ func (e *Executor) resolveOutputMappings(stepName string, wires []domain.Wire) (
 // local agents). Workflow_name step dispatch is handled by the DaemonExecutor.
 type Executor struct {
 	ProjectDir      string
-	MainDir         string              // main branch worktree dir; scripts execute from here
+	MainDir         string               // main branch worktree dir; scripts execute from here
 	Store           ports.RunStore
 	HumanPollStore  ports.HumanPollStore // optional: persists human step poll state
-	OutputDir       string              // directory for step output files
-	Wires           []domain.Wire       // workflow wiring (for output mappings)
-	HostRunID       string              // ID of the parent host run (set on child runs)
-	AgentCommands   []string            // workflow-level agent command fallback chain
-	AgentArgs       []string            // workflow-level explicit agent args (overrides defaults)
-	TaskID          string              // optional task ID assigned by the daemon loop
-	AttemptID       string              // optional attempt ID for v2 tracking (propagated to child runs)
-	WorkflowName    string              // workflow name for run context seeding
-	ExtraEnv        []string            // additional KEY=VALUE env vars for all steps
-	ResumeStep      string              // step being resumed (for prompt conversation resume)
+	PollCoord       *PollCoordinator     // optional: loop-driven poll coordinator for human steps
+	OutputDir       string               // directory for step output files
+	Wires           []domain.Wire        // workflow wiring (for output mappings)
+	HostRunID       string               // ID of the parent host run (set on child runs)
+	AgentCommands   []string             // workflow-level agent command fallback chain
+	AgentArgs       []string             // workflow-level explicit agent args (overrides defaults)
+	TaskID          string               // optional task ID assigned by the daemon loop
+	AttemptID       string               // optional attempt ID for v2 tracking (propagated to child runs)
+	WorkflowName    string               // workflow name for run context seeding
+	ExtraEnv        []string             // additional KEY=VALUE env vars for all steps
+	ResumeStep      string               // step being resumed (for prompt conversation resume)
 
 	seedOnce sync.Once // ensures SeedRunContext is called exactly once
 }
@@ -326,19 +327,12 @@ func (e *Executor) findPrevOutput(step *domain.Step) string {
 	return ""
 }
 
-// humanPollCheckInterval is how often the polling loop wakes up to check
-// whether it is time to run the next poll invocation.
-const humanPollCheckInterval = 30 * time.Second
-
-// executeHumanStep runs the human step polling loop. It invokes the step's
-// script at the configured interval, interpreting results as follows:
-//   - exit 0, no wire output → pending; keep polling
-//   - exit 0 or non-zero, wire output → follow named wire
-//   - non-zero exit, no wire output → follow "fail" wire
+// executeHumanStep handles a human step. When a PollCoordinator is configured
+// (production/loop-driven mode), the executor registers a session and blocks
+// on a result channel — the loop drives all poll timing via DrivePolls.
 //
-// If an invocation is still running when the next interval is due, that poll
-// is skipped. If the invocation has been running for longer than 4× the
-// configured interval, the step fails with a log message.
+// When no coordinator is set (standalone/test mode), a self-contained polling
+// loop is used for backward compatibility.
 //
 // The step's timeout (default 72h) is enforced by the context passed in from
 // the engine.
@@ -349,18 +343,6 @@ func (e *Executor) executeHumanStep(ctx context.Context, step *domain.Step) (str
 		return "", fmt.Errorf("human step %q: invalid interval %q: %w", step.Name, intervalStr, err)
 	}
 
-	// Maximum time allowed for a single invocation before the step is failed.
-	maxInvocationTime := 4 * interval
-
-	// checkInterval is how often the loop wakes to decide whether to poll.
-	checkInterval := humanPollCheckInterval
-	if interval < checkInterval {
-		checkInterval = interval / 2
-		if checkInterval < time.Second {
-			checkInterval = time.Second
-		}
-	}
-
 	// Mark the run as waiting so cloche list/status surfaces it distinctly.
 	if e.Store != nil && e.HostRunID != "" {
 		if run, getErr := e.Store.GetRun(ctx, e.HostRunID); getErr == nil {
@@ -368,6 +350,66 @@ func (e *Executor) executeHumanStep(ctx context.Context, step *domain.Step) (str
 			if updateErr := e.Store.UpdateRun(ctx, run); updateErr != nil {
 				log.Printf("host executor: setting run %q to waiting: %v", e.HostRunID, updateErr)
 			}
+		}
+	}
+
+	// Record poll state in HumanPollStore for observability.
+	if e.HumanPollStore != nil && e.HostRunID != "" {
+		_ = e.HumanPollStore.UpsertHumanPoll(ctx, &ports.HumanPollRecord{
+			RunID:      e.HostRunID,
+			StepName:   step.Name,
+			StartedAt:  time.Now(),
+			LastPollAt: time.Now(),
+		})
+	}
+
+	invokeFn := func(invCtx context.Context) (string, error) {
+		return e.runHumanPollScript(invCtx, step)
+	}
+
+	if e.PollCoord != nil {
+		// Loop-driven mode: register session and block until the loop delivers
+		// a decision via DrivePolls. The executor goroutine is parked here; the
+		// orchestration loop owns all poll timing.
+		resultCh := e.PollCoord.Register(e.HostRunID, step.Name, invokeFn, interval)
+		defer e.PollCoord.Unregister(e.HostRunID, step.Name)
+		defer func() {
+			if e.HumanPollStore != nil && e.HostRunID != "" {
+				_ = e.HumanPollStore.DeleteHumanPoll(context.Background(), e.HostRunID, step.Name)
+			}
+		}()
+		select {
+		case result := <-resultCh:
+			return result, nil
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+
+	// Standalone mode (no coordinator): self-contained polling loop.
+	// Used when no orchestration loop is configured (e.g. executor unit tests).
+	return e.executeHumanStepStandalone(ctx, step, interval, invokeFn)
+}
+
+// executeHumanStepStandalone is the self-contained polling loop used when no
+// PollCoordinator is configured. It invokes the script at the configured
+// interval, handling overlapping invocations and 4× overage failure.
+func (e *Executor) executeHumanStepStandalone(
+	ctx context.Context,
+	step *domain.Step,
+	interval time.Duration,
+	invokeFn func(context.Context) (string, error),
+) (string, error) {
+	// Maximum time allowed for a single invocation before the step is failed.
+	maxInvocationTime := 4 * interval
+
+	// checkInterval is how often the loop wakes to decide whether to poll.
+	const humanPollCheckInterval = 30 * time.Second
+	checkInterval := humanPollCheckInterval
+	if interval < checkInterval {
+		checkInterval = interval / 2
+		if checkInterval < time.Second {
+			checkInterval = time.Second
 		}
 	}
 
@@ -416,15 +458,10 @@ func (e *Executor) executeHumanStep(ctx context.Context, step *domain.Step) (str
 			invocationRunning = true
 			invocationStart = now
 			log.Printf("human step %q: polling (last=%s interval=%s)", step.Name, lastPoll.Format(time.RFC3339), interval)
-			// Record last poll time in the KV store for observability.
-			if e.Store != nil && e.TaskID != "" {
-				key := fmt.Sprintf("human_step:%s:last_poll", step.Name)
-				_ = e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, e.HostRunID, key, now.Format(time.RFC3339))
-			}
-			go func(s *domain.Step) {
-				result, pollErr := e.runHumanPollScript(ctx, s)
+			go func() {
+				result, pollErr := invokeFn(ctx)
 				pollCh <- pollResult{result: result, err: pollErr}
-			}(step)
+			}()
 		}
 
 		select {

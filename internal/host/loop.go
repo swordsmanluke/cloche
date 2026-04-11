@@ -70,6 +70,10 @@ type TaskStateEntry struct {
 // main executes the work for each task. When no list-tasks function is
 // configured (e.g. via NewLoop without a task assigner), an untracked sentinel
 // task is used so main runs continuously.
+//
+// On each tick the loop also drives human step polling via driveHumanPolls,
+// which calls PollCoordinator.DrivePolls to trigger due poll invocations and
+// deliver decisions to waiting executor goroutines.
 type Loop struct {
 	config       LoopConfig
 	listTasks    ListTasksFunc
@@ -78,6 +82,8 @@ type Loop struct {
 	taskStore    ports.TaskStore      // optional; ensures Task records exist when set
 	activityLog  *activitylog.Logger  // optional; records attempt lifecycle events
 	assigner     TaskAssigner         // optional; feeds listTasks in NewLoop-created loops
+	pollCoord    *PollCoordinator     // optional; drives human step polling on each tick
+	humanPollStore ports.HumanPollStore // optional; persists human step poll state
 	stopCh       chan struct{}
 	resumeCh     chan struct{} // signaled by Resume() to wake the loop
 	mu           sync.Mutex
@@ -168,6 +174,18 @@ func (l *Loop) SetTaskStore(ts ports.TaskStore) {
 // lifecycle events (started/ended) to the project's .cloche/activity.log.
 func (l *Loop) SetActivityLogger(al *activitylog.Logger) {
 	l.activityLog = al
+}
+
+// SetPollCoordinator configures the PollCoordinator so the loop drives human
+// step polling on each tick. Must be called before Start.
+func (l *Loop) SetPollCoordinator(coord *PollCoordinator) {
+	l.pollCoord = coord
+}
+
+// SetHumanPollStore configures the HumanPollStore used by DrivePolls to
+// persist last_poll_at timestamps. Must be called before Start.
+func (l *Loop) SetHumanPollStore(store ports.HumanPollStore) {
+	l.humanPollStore = store
 }
 
 // Start begins the orchestration loop. No-op if already running.
@@ -287,6 +305,9 @@ func (l *Loop) runPhased() {
 	inFlight := 0
 
 	for {
+		// Drive human step polls on each loop tick.
+		l.driveHumanPolls()
+
 		// Fill up to max concurrent slots.
 		launched := 0
 		for inFlight < l.config.MaxConcurrent {
@@ -380,10 +401,12 @@ func (l *Loop) runPhased() {
 			if !l.sleep(capacityPollInterval) {
 				return
 			}
+			// Drive human polls after waking from idle sleep.
+			l.driveHumanPolls()
 			continue
 		}
 
-		// Wait for any run to complete.
+		// Wait for any run to complete (or the poll interval, whichever comes first).
 		select {
 		case r := <-completions:
 			inFlight--
@@ -403,10 +426,24 @@ func (l *Loop) runPhased() {
 			if !l.sleep(idlePollInterval) {
 				return
 			}
+			// Drive human polls after waking from backoff sleep.
+			l.driveHumanPolls()
+		case <-time.After(capacityPollInterval):
+			// Periodic wake to drive human polls even when runs are in flight.
+			l.driveHumanPolls()
 		case <-l.stopCh:
 			return
 		}
 	}
+}
+
+// driveHumanPolls calls DrivePolls on the PollCoordinator if one is configured.
+// Called on each loop tick to drive human step poll timing.
+func (l *Loop) driveHumanPolls() {
+	if l.pollCoord == nil {
+		return
+	}
+	l.pollCoord.DrivePolls(context.Background(), l.humanPollStore)
 }
 
 // GetTaskSnapshot returns the current task pipeline state: the most recently

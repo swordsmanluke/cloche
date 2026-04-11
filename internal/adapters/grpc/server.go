@@ -48,6 +48,7 @@ type ClocheServer struct {
 	evolution     *evolution.Trigger
 	logBroadcast  *logstream.Broadcaster
 	shutdownFn    func()
+	pollCoord     *host.PollCoordinator            // drives human step polling for all projects
 	mu              sync.Mutex
 	runIDs          map[string]string             // run_id -> container_id
 	containerRun    map[string]string             // container_id -> run_id
@@ -60,6 +61,7 @@ func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *Cl
 	return &ClocheServer{
 		store:           store,
 		container:       container,
+		pollCoord:       host.NewPollCoordinator(),
 		runIDs:          make(map[string]string),
 		containerRun:    make(map[string]string),
 		hostCancels:     make(map[string]context.CancelFunc),
@@ -74,6 +76,7 @@ func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureSto
 		captures:        captures,
 		container:       container,
 		defaultImage:    defaultImage,
+		pollCoord:       host.NewPollCoordinator(),
 		runIDs:          make(map[string]string),
 		containerRun:    make(map[string]string),
 		hostCancels:     make(map[string]context.CancelFunc),
@@ -2847,6 +2850,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 			LogBroadcast: s.logBroadcast,
 			ActivityLog:  alog,
 			Executor:     s.daemonExecutorFor(projDir, taskID, attemptID),
+			PollCoord:    s.pollCoord,
 			TaskID:       taskID,
 			TaskTitle:    taskTitle,
 			AttemptID:    attemptID,
@@ -2859,6 +2863,10 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 		loop.SetTaskStore(s.taskStore)
 	}
 	loop.SetActivityLogger(alog)
+	loop.SetPollCoordinator(s.pollCoord)
+	if hps, ok := s.store.(ports.HumanPollStore); ok {
+		loop.SetHumanPollStore(hps)
+	}
 	return loop
 }
 

@@ -1363,3 +1363,107 @@ func TestLoop_Halt_PreventsNewWork(t *testing.T) {
 	// No work should have been picked up because the loop was halted before starting.
 	assert.Equal(t, int32(0), called.Load(), "halted loop should not launch any runs")
 }
+
+// TestLoop_DriveHumanPolls_TriggersOnTick verifies that the orchestration loop
+// calls DrivePolls on its PollCoordinator on each tick. We register a session
+// with a fast interval and verify the poll fires within a reasonable time.
+func TestLoop_DriveHumanPolls_TriggersOnTick(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	coord := NewPollCoordinator()
+
+	// invokeFn returns "approved" immediately.
+	var callCount atomic.Int32
+	invokeFn := func(ctx context.Context) (string, error) {
+		callCount.Add(1)
+		return "approved", nil
+	}
+
+	// Register a session with a very short interval so the first DrivePolls call
+	// triggers it immediately.
+	interval := 10 * time.Millisecond
+	resultCh := coord.Register("run-test", "review", invokeFn, interval)
+
+	// Create a loop that does nothing (runFn just sleeps), but drives polls.
+	loop := NewLoop(LoopConfig{
+		ProjectDir:             "/tmp/test-human-poll",
+		MaxConcurrent:          1,
+		MaxConsecutiveFailures: 100,
+	}, store, func(ctx context.Context, _ string, _ string, _ string) (*RunResult, error) {
+		// Block until context is cancelled so the loop stays alive.
+		<-ctx.Done()
+		return &RunResult{State: domain.RunStateFailed}, nil
+	})
+	loop.SetPollCoordinator(coord)
+	loop.Start()
+	defer loop.Stop()
+
+	// Wait for the coordinator to deliver the result.
+	select {
+	case result := <-resultCh:
+		assert.Equal(t, "approved", result)
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for loop to drive human poll")
+	}
+
+	assert.Equal(t, int32(1), callCount.Load())
+}
+
+// TestLoop_DriveHumanPolls_RespectInterval verifies that the loop-driven
+// coordinator respects the polling interval: a session is not polled until at
+// least interval has passed since the last poll.
+func TestLoop_DriveHumanPolls_RespectInterval(t *testing.T) {
+	coord := NewPollCoordinator()
+
+	var callCount atomic.Int32
+	// invokeFn is pending for the first call, returns a decision on the second.
+	invokeFn := func(ctx context.Context) (string, error) {
+		n := callCount.Add(1)
+		if n >= 2 {
+			return "approved", nil
+		}
+		return "", nil // pending
+	}
+
+	// Use a long interval so we can verify it is respected.
+	interval := 100 * time.Millisecond
+	ch := coord.Register("run1", "review", invokeFn, interval)
+
+	// First DrivePolls triggers immediately (lastPollAt = now - interval).
+	coord.DrivePolls(context.Background(), nil)
+
+	// Wait for first poll to complete (pending).
+	time.Sleep(20 * time.Millisecond)
+	assert.Equal(t, int32(1), callCount.Load(), "first poll should have run")
+
+	// Drive again immediately — interval hasn't elapsed, should not trigger.
+	coord.DrivePolls(context.Background(), nil)
+	time.Sleep(10 * time.Millisecond)
+	assert.Equal(t, int32(1), callCount.Load(), "second poll should not have triggered yet")
+
+	// Wait for interval to elapse.
+	time.Sleep(interval)
+
+	// Now DrivePolls should trigger the second poll.
+	coord.DrivePolls(context.Background(), nil)
+	select {
+	case result := <-ch:
+		assert.Equal(t, "approved", result)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timed out waiting for second poll result")
+	}
+	assert.Equal(t, int32(2), callCount.Load())
+}
+
+// TestLoop_SetPollCoordinator verifies that SetPollCoordinator wires the
+// coordinator into the loop and driveHumanPolls is a no-op without one.
+func TestLoop_SetPollCoordinator_NoOpWhenNil(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	loop := NewLoop(LoopConfig{
+		ProjectDir:    "/tmp/test",
+		MaxConcurrent: 1,
+	}, store, func(_ context.Context, _ string, _ string, _ string) (*RunResult, error) {
+		return &RunResult{State: domain.RunStateFailed}, nil
+	})
+	// No coordinator set — driveHumanPolls should be a no-op (no panic).
+	loop.driveHumanPolls()
+}

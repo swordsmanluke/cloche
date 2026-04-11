@@ -100,18 +100,21 @@ PR_ID=$(cloche get pr-id)
 
 ## Orchestration and State
 
-The orchestration loop gains a new responsibility alongside its existing work (e.g.
-listing tasks): for each active workflow currently sitting at a `human` step, it checks
-the DB for the step's `last_run` timestamp. If `now >= last_run + interval`, it invokes
-the polling script and updates `last_run`. Otherwise it skips until the next tick.
+The orchestration loop drives human step polling via a `PollCoordinator`. When an
+executor reaches a `human` step, it registers a session with the coordinator and blocks
+on a result channel. On each loop tick, the coordinator's `DrivePolls` is called: sessions
+whose `now >= lastPollAt + interval` have their script invoked in a background goroutine.
+When the script returns a decision (non-empty wire name), the result is sent on the
+channel and the executor unblocks.
 
 The `interval` is a "no sooner than" constraint — the orchestrator does not guarantee
 exact timing. The loop must tick frequently enough that the actual trigger time is within
 ~30 seconds of the ideal time.
 
-The DB stores `last_run` per `(run_id, step_name)`. No separate scheduler or timer
-management is required. On daemon restart, the loop naturally re-discovers all pending
-human steps on its next tick and resumes polling from where it left off.
+Poll state (`last_poll_at`, poll count) is stored per `(run_id, step_name)` in
+`HumanPollStore` for observability (e.g. `cloche status`). The coordinator tracks
+`lastPollAt` in memory; the DB record is updated after each pending result. No separate
+scheduler or timer management is required.
 
 `cloche list` and `cloche status` should surface runs waiting at a `human` step
 distinctly — e.g. a `waiting` status alongside the step name and time since last poll.

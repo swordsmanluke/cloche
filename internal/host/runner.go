@@ -28,6 +28,7 @@ type Runner struct {
 	LogBroadcast  *logstream.Broadcaster   // optional: publishes live log lines
 	ActivityLog   *activitylog.Logger      // optional: records step events to .cloche/activity.log
 	Executor      engine.StepExecutor      // optional: custom executor (e.g. DaemonExecutor); when nil, a default host.Executor is created
+	PollCoord     *PollCoordinator         // optional: coordinator for loop-driven human step polling
 	TaskID        string                   // optional task ID assigned by the daemon loop
 	TaskTitle     string                   // optional task title for display in the web UI
 	AttemptID     string                   // optional attempt ID for v2 tracking
@@ -131,6 +132,7 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		ProjectDir:   projectDir,
 		MainDir:      MainWorktreeDir(projectDir),
 		Store:        r.Store,
+		PollCoord:    r.PollCoord,
 		OutputDir:    outputDir,
 		Wires:        wf.Wiring,
 		HostRunID:    orchRunID,
