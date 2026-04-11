@@ -87,6 +87,20 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	// Claude auth files are copied (not mounted) after docker create so each
 	// container gets its own copy — avoids concurrent write conflicts.
 
+	// Bind-mount the host run directory (.cloche/runs/<run-id>) into the container
+	// so that files written by host workflow steps (e.g. task_prompt.md written by
+	// prepare-prompt.sh) are accessible to container steps via clo get task_prompt_path.
+	// .cloche/runs/ is excluded from the project copy by .clocheignore, so without
+	// this mount those files would be invisible inside the container.
+	// ProjectDir is empty for resume containers (committed image has workspace state);
+	// skip the mount in that case.
+	if cfg.ProjectDir != "" && cfg.RunID != "" {
+		hostRunDir := filepath.Join(cfg.ProjectDir, ".cloche", "runs", cfg.RunID)
+		if err := os.MkdirAll(hostRunDir, 0755); err == nil {
+			args = append(args, "-v", hostRunDir+":/workspace/.cloche/runs/"+cfg.RunID)
+		}
+	}
+
 	// Support extra volume mounts via CLOCHE_EXTRA_MOUNTS (comma-separated host:container pairs)
 	if mounts := os.Getenv("CLOCHE_EXTRA_MOUNTS"); mounts != "" {
 		for _, m := range strings.Split(mounts, ",") {
