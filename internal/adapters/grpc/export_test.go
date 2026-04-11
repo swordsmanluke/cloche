@@ -76,3 +76,8 @@ func (s *ClocheServer) ScanAndResolveStuckWorkflows(ctx context.Context) {
 func (s *ClocheServer) TrackRun(runID, containerID, projectDir, workflowName string, keepContainer bool) {
 	s.trackRun(runID, containerID, projectDir, workflowName, keepContainer)
 }
+
+// AgentNameForStep exposes agentNameForStep for testing.
+func AgentNameForStep(projectDir, workflowName, stepName string) string {
+	return agentNameForStep(projectDir, workflowName, stepName)
+}

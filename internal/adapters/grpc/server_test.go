@@ -4528,3 +4528,43 @@ func newTestLoop(projectDir string, store ports.RunStore) *host.Loop {
 			return &host.RunResult{State: domain.RunStateSucceeded}, nil
 		})
 }
+
+func TestAgentNameForStep(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+
+	wf := `workflow "develop" {
+  agent claude {
+    command = "claude"
+  }
+  step build {
+    agent = claude
+    prompt = "build the thing"
+    results = [success, fail]
+  }
+  build:success -> done
+  build:fail -> abort
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"), []byte(wf), 0644))
+
+	t.Run("found", func(t *testing.T) {
+		name := server.AgentNameForStep(dir, "develop", "build")
+		assert.Equal(t, "claude", name)
+	})
+
+	t.Run("unknown step", func(t *testing.T) {
+		name := server.AgentNameForStep(dir, "develop", "nonexistent")
+		assert.Equal(t, "", name)
+	})
+
+	t.Run("missing workflow file", func(t *testing.T) {
+		name := server.AgentNameForStep(dir, "nonexistent", "build")
+		assert.Equal(t, "", name)
+	})
+
+	t.Run("empty args", func(t *testing.T) {
+		name := server.AgentNameForStep("", "develop", "build")
+		assert.Equal(t, "", name)
+	})
+}

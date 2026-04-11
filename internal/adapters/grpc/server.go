@@ -345,6 +345,7 @@ func (s *ClocheServer) recordStepComplete(ctx context.Context, runID, stepName s
 			exec.Usage = &domain.TokenUsage{
 				InputTokens:  result.TokenUsage.InputTokens,
 				OutputTokens: result.TokenUsage.OutputTokens,
+				AgentName:    agentNameForStep(run.ProjectDir, run.WorkflowName, stepName),
 			}
 		}
 		_ = s.captures.SaveCapture(ctx, runID, exec)
@@ -357,6 +358,29 @@ func (s *ClocheServer) recordStepComplete(ctx context.Context, runID, stepName s
 			StepName:  stepName,
 		})
 	}
+}
+
+// agentNameForStep returns the agent name configured for the given step in the
+// workflow file. Returns an empty string if the workflow cannot be loaded or
+// the step has no agent configured.
+func agentNameForStep(projectDir, workflowName, stepName string) string {
+	if projectDir == "" || workflowName == "" || stepName == "" {
+		return ""
+	}
+	wfPath := filepath.Join(projectDir, ".cloche", workflowName+".cloche")
+	data, err := os.ReadFile(wfPath)
+	if err != nil {
+		return ""
+	}
+	wf, err := dsl.ParseForContainer(string(data))
+	if err != nil {
+		return ""
+	}
+	step, ok := wf.Steps[stepName]
+	if !ok {
+		return ""
+	}
+	return step.Config["agent"]
 }
 
 // failInFlightSteps marks every active step in the run as failed. This is

@@ -85,6 +85,7 @@ func (cs *ContainerSession) ExecuteStep(ctx context.Context, step *domain.Step, 
 			usage = &domain.TokenUsage{
 				InputTokens:  result.TokenUsage.InputTokens,
 				OutputTokens: result.TokenUsage.OutputTokens,
+				AgentName:    step.Config["agent"],
 			}
 		}
 		return domain.StepResult{Result: result.Result, Usage: usage}, nil
