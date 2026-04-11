@@ -38,13 +38,12 @@ workflow "main" {
 
   step fix-merge-conflict {
     prompt  = file(".cloche/prompts/fix-merge-conflict.md")
-    timeout = "60m"
+    timeout = "30m"
     results = [success, fail]
   }
 
   step bump-version {
-    prompt  = file(".cloche/prompts/bump-version.md")
-    timeout = "90m"
+    run     = "bumpver"
     results = [success, fail]
   }
 
