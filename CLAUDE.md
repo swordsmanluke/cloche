@@ -56,7 +56,8 @@ my-project/
 │   ├── prompts/             # Prompt templates for agent steps
 │   ├── scripts/             # Host-side scripts (e.g. prepare-prompt.sh)
 │   ├── overrides/           # Files copied on top of /workspace/ in container
-│   └── <run-id>/            # Runtime state (gitignored)
+│   └── runs/                # Runtime state (gitignored)
+│       └── <run-id>/
 ├── src/                     # Existing project source (untouched)
 └── CLAUDE.md
 ```
