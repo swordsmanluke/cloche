@@ -1368,6 +1368,43 @@ my-project/
 └── .git/
 ```
 
+## Project Configuration Reference
+
+`.cloche/config.toml` is the per-project configuration file (created by `cloche init`).
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `active` | `false` | Set to `true` to auto-start the orchestration loop when the daemon starts. |
+
+### `[orchestration]`
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `concurrency` | `1` | Maximum concurrent container runs. |
+| `stagger_seconds` | `1.0` | Delay (seconds) between consecutive run launches. |
+| `dedup_seconds` | `300` | Window (seconds) to suppress re-assigning the same task ID. |
+| `stop_on_error` | `false` | Halt the orchestration loop on the first unrecovered error. |
+| `max_consecutive_failures` | `3` | Halt the loop after this many consecutive failed runs. `cloche loop resume` clears the halt. |
+
+### `[evolution]`
+
+Controls the self-evolving prompt system. Requires `CLOCHE_LLM_COMMAND` to be set;
+evolution is silently disabled when it is not.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Enable or disable evolution for this project. |
+| `debounce_seconds` | `30` | Seconds to wait after a run completes before triggering an evolution pass (debounces rapid successive completions). |
+| `min_confidence` | `"medium"` | Minimum lesson confidence to include in prompts. One of `"low"`, `"medium"`, `"high"`. |
+
+### `[agents.codex]`
+
+Per-agent config for the Codex agent. See [How to set up Codex](agent-setup-codex.md) for full details.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `usage_command` | _(unset)_ | Shell command run after each Codex step to capture token usage. Output must be JSON: `{"input_tokens": N, "output_tokens": N}`. |
+
 ## Environment Variable Reference
 
 ### Daemon Configuration
