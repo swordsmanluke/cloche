@@ -31,7 +31,7 @@ echo "$prompt"
 
 # Write prompt to a file and store the path in KV so container steps can read it.
 # (KV values are limited to 1 KB — too small for task descriptions.)
-prompt_path=".cloche/${CLOCHE_RUN_ID}/task_prompt.md"
+prompt_path=".cloche/runs/${CLOCHE_RUN_ID}/task_prompt.md"
 mkdir -p "$(dirname "$prompt_path")"
 echo "$prompt" > "$prompt_path"
 cloche set task_prompt_path "$prompt_path"
