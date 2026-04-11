@@ -519,6 +519,14 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		return nil, fmt.Errorf("creating run: %w", err)
 	}
 
+	// Set temp_file_dir built-in KV key and create the directory.
+	tempFileDir := filepath.Join(".cloche", "runs", runID)
+	if err := os.MkdirAll(filepath.Join(req.ProjectDir, tempFileDir), 0755); err != nil {
+		log.Printf("run %s: creating temp_file_dir: %v", runID, err)
+	} else if err := s.store.SetContextKey(ctx, run.TaskID, run.AttemptID, runID, "temp_file_dir", tempFileDir); err != nil {
+		log.Printf("run %s: seeding temp_file_dir: %v", runID, err)
+	}
+
 	// Resolve image: request-level override, per-project config, then server default.
 	image := req.Image
 	if image == "" {

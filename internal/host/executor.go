@@ -81,11 +81,16 @@ func (e *Executor) Execute(ctx context.Context, step *domain.Step) (domain.StepR
 	// Seed run-level context once on first use (logged but not fatal on error).
 	if e.TaskID != "" && e.Store != nil {
 		e.seedOnce.Do(func() {
+			tempFileDir := filepath.Join(".cloche", "runs", e.HostRunID)
+			if mkdirErr := os.MkdirAll(filepath.Join(e.ProjectDir, tempFileDir), 0755); mkdirErr != nil {
+				log.Printf("host executor: creating temp_file_dir %q: %v", tempFileDir, mkdirErr)
+			}
 			pairs := [][2]string{
 				{"task_id", e.TaskID},
 				{"attempt_id", e.AttemptID},
 				{"workflow", e.WorkflowName},
 				{"run_id", e.HostRunID},
+				{"temp_file_dir", tempFileDir},
 			}
 			for _, p := range pairs {
 				if err := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, e.HostRunID, p[0], p[1]); err != nil {

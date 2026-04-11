@@ -476,3 +476,27 @@ fails with an error message.
 
 The default timeout for `human` steps is **72h** (versus 30m for agent/script/workflow
 steps). If no `timeout` wire is declared, timeout follows the implicit `abort` terminal.
+
+## Built-in KV Keys
+
+The daemon automatically sets the following KV keys before the first step of every run.
+They are available to host-side scripts via `cloche get <key>` and to container steps
+via `clo get <key>`.
+
+| Key | Value | Description |
+|-----|-------|-------------|
+| `temp_file_dir` | `.cloche/runs/<run-id>` | Scratch directory for temp files too large for the 1 KB KV value limit. The daemon creates this directory at run start. Because it lives inside `.cloche/runs/`, it is already covered by the standard gitignore pattern. |
+| `task_prompt_path` | `.cloche/runs/<run-id>/task_prompt.md` | Set by `prepare-prompt.sh` (or similar host scripts) to point at the task description file. Not set automatically by the daemon. |
+
+Use `temp_file_dir` for intermediate files that need to be passed between steps:
+
+```bash
+# host script — write a large file
+output="$(cloche get temp_file_dir)/review-feedback.md"
+generate-feedback > "$output"
+cloche set review_feedback_path "$output"
+
+# container step — read it back
+feedback_path=$(clo get review_feedback_path)
+cat "$feedback_path"
+```

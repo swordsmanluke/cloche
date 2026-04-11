@@ -31,7 +31,7 @@ echo "$prompt"
 
 # Write prompt to a file and store the path in KV so container steps can read it.
 # (KV values are limited to 1 KB — too small for task descriptions.)
-prompt_path=".cloche/runs/${CLOCHE_RUN_ID}/task_prompt.md"
-mkdir -p "$(dirname "$prompt_path")"
+# temp_file_dir is set by the daemon at run start; its directory is pre-created.
+prompt_path="$(cloche get temp_file_dir)/task_prompt.md"
 echo "$prompt" > "$prompt_path"
 cloche set task_prompt_path "$prompt_path"

@@ -1811,6 +1811,16 @@ func TestExecutor_SeedsRunContext_OnFirstUse(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "main-run-001", runID)
+
+	tempFileDir, ok, err := store.GetContextKey(context.Background(), "task-seed-test", "attempt-1", "main-run-001", "temp_file_dir")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, filepath.Join(".cloche", "runs", "main-run-001"), tempFileDir)
+
+	// Verify the temp_file_dir was created on disk.
+	dirInfo, err := os.Stat(filepath.Join(tmpDir, tempFileDir))
+	require.NoError(t, err)
+	assert.True(t, dirInfo.IsDir())
 }
 
 func TestExecutor_SeedsRunContext_OnlyOnce(t *testing.T) {

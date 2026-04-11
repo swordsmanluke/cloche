@@ -222,6 +222,51 @@ func TestServer_RunWorkflow(t *testing.T) {
 	assert.Equal(t, "succeeded", status.State)
 }
 
+func TestServer_RunWorkflow_SetsTempFileDirKV(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
+		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := local.NewRuntime("sh")
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+	})
+	require.NoError(t, err)
+
+	// temp_file_dir must be set synchronously before RunWorkflow returns.
+	run, err := store.GetRun(context.Background(), resp.RunId)
+	require.NoError(t, err)
+
+	expectedDir := filepath.Join(".cloche", "runs", resp.RunId)
+	val, ok, err := store.GetContextKey(context.Background(), run.TaskID, run.AttemptID, resp.RunId, "temp_file_dir")
+	require.NoError(t, err)
+	assert.True(t, ok, "temp_file_dir KV key should be set")
+	assert.Equal(t, expectedDir, val)
+
+	// Verify the directory was created on disk.
+	dirInfo, statErr := os.Stat(filepath.Join(dir, expectedDir))
+	require.NoError(t, statErr)
+	assert.True(t, dirInfo.IsDir())
+}
+
 func TestServer_RunWorkflow_WithTitle(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
