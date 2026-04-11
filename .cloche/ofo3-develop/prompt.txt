@@ -1,3 +1,0 @@
-## Task: V2: Web UI — task/attempt grouping and drill-down
-
-PARTIALLY DONE: The Web UI groups runs by Task with Attempt headers showing attempt number, status, and time (committed 400137a). What remains: SSE endpoint move to /api/attempts/{id}/stream. Step detail should serve logs from the new .cloche/logs/ paths. Landing page should show a task list view (status, attempt count, latest result) rather than the current runs table. Task drill-down page showing all attempts.
