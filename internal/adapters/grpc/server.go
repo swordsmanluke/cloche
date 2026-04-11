@@ -96,10 +96,10 @@ func (s *ClocheServer) activityLoggerFor(projectDir string) *activitylog.Logger 
 	return s.activityLoggerLocked(projectDir)
 }
 
-// haltProjectLoop halts the orchestration loop for the given project directory,
+// stopProjectLoop stops the orchestration loop for the given project directory,
 // if one is active. Used when container failures are detected to prevent
 // the loop from spinning in a failure cycle.
-func (s *ClocheServer) haltProjectLoop(projectDir, reason string) {
+func (s *ClocheServer) stopProjectLoop(projectDir, reason string) {
 	if projectDir == "" {
 		return
 	}
@@ -107,8 +107,8 @@ func (s *ClocheServer) haltProjectLoop(projectDir, reason string) {
 	loop, ok := s.loops[projectDir]
 	s.mu.Unlock()
 	if ok && loop != nil {
-		loop.Halt(reason)
-		log.Printf("orchestration loop halted for %s: %s", projectDir, reason)
+		loop.Stop()
+		log.Printf("orchestration loop stopped for %s: %s", projectDir, reason)
 	}
 }
 
@@ -1236,7 +1236,7 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 				s.logBroadcast.Finish(runID)
 			}
 			log.Printf("run %s: failed to ensure image: %v", runID, err)
-			s.haltProjectLoop(req.ProjectDir, fmt.Sprintf("image build failed for run %s: %v", runID, err))
+			s.stopProjectLoop(req.ProjectDir, fmt.Sprintf("image build failed for run %s: %v", runID, err))
 			return
 		}
 	}
@@ -1280,7 +1280,7 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 			s.logBroadcast.Finish(runID)
 		}
 		log.Printf("run %s: failed to start container: %v", runID, err)
-		s.haltProjectLoop(req.ProjectDir, fmt.Sprintf("container failed to start for run %s: %v", runID, err))
+		s.stopProjectLoop(req.ProjectDir, fmt.Sprintf("container failed to start for run %s: %v", runID, err))
 		return
 	}
 
@@ -1337,7 +1337,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		s.mu.Lock()
 		delete(s.runIDs, runID)
 		s.mu.Unlock()
-		s.haltProjectLoop(projectDir, fmt.Sprintf("container output attach failed for run %s: %v", runID, err))
+		s.stopProjectLoop(projectDir, fmt.Sprintf("container output attach failed for run %s: %v", runID, err))
 		return
 	}
 
@@ -1458,7 +1458,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		}
 		_ = s.store.UpdateRun(ctx, run)
 		if unexpectedExit {
-			s.haltProjectLoop(projectDir, fmt.Sprintf("container exited unexpectedly with code %d for run %s", exitCode, runID))
+			s.stopProjectLoop(projectDir, fmt.Sprintf("container exited unexpectedly with code %d for run %s", exitCode, runID))
 		}
 	}
 
@@ -2975,24 +2975,6 @@ func (s *ClocheServer) DisableLoop(ctx context.Context, req *pb.DisableLoopReque
 	return &pb.DisableLoopResponse{}, nil
 }
 
-func (s *ClocheServer) ResumeLoop(ctx context.Context, req *pb.ResumeLoopRequest) (*pb.ResumeLoopResponse, error) {
-	projectDir := req.ProjectDir
-	if projectDir == "" {
-		return nil, fmt.Errorf("project_dir is required")
-	}
-
-	s.mu.Lock()
-	loop, ok := s.loops[projectDir]
-	s.mu.Unlock()
-
-	if !ok || loop == nil {
-		return nil, fmt.Errorf("no orchestration loop for %s", projectDir)
-	}
-
-	loop.Resume()
-	return &pb.ResumeLoopResponse{}, nil
-}
-
 func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInfoRequest) (*pb.GetProjectInfoResponse, error) {
 	projectDir := req.ProjectDir
 
@@ -3084,13 +3066,6 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 	sort.Strings(containerWorkflows)
 	sort.Strings(hostWorkflows)
 
-	// Check if loop is halted due to an error.
-	var errorHalted bool
-	var haltError string
-	if loopExists && loop != nil {
-		errorHalted, haltError = loop.Halted()
-	}
-
 	return &pb.GetProjectInfoResponse{
 		ProjectDir:         projectDir,
 		Name:               label,
@@ -3105,8 +3080,6 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 		HostWorkflows:      hostWorkflows,
 		StopOnError:            cfg.Orchestration.StopOnError,
 		MaxConsecutiveFailures: int32(cfg.Orchestration.MaxConsecutiveFailures),
-		ErrorHalted:            errorHalted,
-		HaltError:              haltError,
 	}, nil
 }
 
@@ -3545,7 +3518,7 @@ func (s *ClocheServer) scanAndResolveStuckWorkflows(ctx context.Context) {
 			s.mu.Lock()
 			delete(s.runIDs, runID)
 			s.mu.Unlock()
-			s.haltProjectLoop(run.ProjectDir, fmt.Sprintf("container not found for run %s", runID))
+			s.stopProjectLoop(run.ProjectDir, fmt.Sprintf("container not found for run %s", runID))
 			continue
 		}
 
@@ -3575,7 +3548,7 @@ func (s *ClocheServer) scanAndResolveStuckWorkflows(ctx context.Context) {
 		s.mu.Lock()
 		delete(s.runIDs, runID)
 		s.mu.Unlock()
-		s.haltProjectLoop(run.ProjectDir, fmt.Sprintf(
+		s.stopProjectLoop(run.ProjectDir, fmt.Sprintf(
 			"stuck workflow detected for run %s: container exited with code %d", runID, status.ExitCode))
 	}
 }

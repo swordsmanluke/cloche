@@ -1194,14 +1194,13 @@ state. Requires `CLOCHE_HTTP` (talks to the daemon's web API).
 
 ### `cloche loop`
 
-Start, stop, or resume the daemon's orchestration loop. The loop automatically picks up
+Start or stop the daemon's orchestration loop. The loop automatically picks up
 tasks from the pipeline and runs them.
 
 ```
 cloche loop [--max <n>]
 cloche loop once
 cloche loop stop
-cloche loop resume
 ```
 
 | Flag | Default | Description |
@@ -1214,9 +1213,8 @@ cancellation.
 
 `cloche loop stop` disables the loop. Running tasks are not cancelled.
 
-`cloche loop resume` clears the halted state after a `stop_on_error`,
-`max_consecutive_failures`, or container infrastructure failure halt, resets the
-consecutive failure counter, and allows the loop to resume picking up new work.
+When `stop_on_error` or `max_consecutive_failures` triggers a stop, run `cloche loop`
+again to restart the loop.
 
 ### `cloche activity`
 
@@ -1384,7 +1382,7 @@ my-project/
 | `stagger_seconds` | `1.0` | Delay (seconds) between consecutive run launches. |
 | `dedup_seconds` | `300` | Window (seconds) to suppress re-assigning the same task ID. |
 | `stop_on_error` | `false` | Halt the orchestration loop on the first unrecovered error. |
-| `max_consecutive_failures` | `3` | Halt the loop after this many consecutive failed runs. `cloche loop resume` clears the halt. |
+| `max_consecutive_failures` | `3` | Stop the loop after this many consecutive failed runs. Run `cloche loop` to restart. |
 
 ### `[evolution]`
 

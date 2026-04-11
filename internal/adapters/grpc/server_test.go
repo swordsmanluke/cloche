@@ -4080,7 +4080,7 @@ func TestStuckWorkflowScanner_RecentlyDeadContainerNotTouched(t *testing.T) {
 	assert.Equal(t, domain.RunStateRunning, updated.State)
 }
 
-func TestStuckWorkflowScanner_HaltsProjectLoop(t *testing.T) {
+func TestStuckWorkflowScanner_StopsProjectLoop(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
@@ -4108,13 +4108,12 @@ func TestStuckWorkflowScanner_HaltsProjectLoop(t *testing.T) {
 	// Register a live loop for the project.
 	fakeStore2 := &fakeRunStore{runs: map[string]*domain.Run{}}
 	loop := newTestLoop("/project/loop", fakeStore2)
+	loop.Start()
 	srv.RegisterLoop("/project/loop", loop)
 
 	srv.ScanAndResolveStuckWorkflows(ctx)
 
-	halted, reason := loop.Halted()
-	assert.True(t, halted, "loop should be halted after stuck workflow detected")
-	assert.Contains(t, reason, "stuck-loop-run-1")
+	assert.False(t, loop.Running(), "loop should be stopped after stuck workflow detected")
 }
 
 func TestTrackRun_AttachOutputFailureMarksRunFailed(t *testing.T) {
@@ -4153,7 +4152,7 @@ func TestTrackRun_AttachOutputFailureMarksRunFailed(t *testing.T) {
 	assert.False(t, broadcaster.IsActive("attach-fail-run-1"))
 }
 
-func TestTrackRun_AttachOutputFailureHaltsProjectLoop(t *testing.T) {
+func TestTrackRun_AttachOutputFailureStopsProjectLoop(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
@@ -4177,13 +4176,14 @@ func TestTrackRun_AttachOutputFailureHaltsProjectLoop(t *testing.T) {
 
 	fakeStore2 := &fakeRunStore{runs: map[string]*domain.Run{}}
 	loop := newTestLoop("/project/attach-halt", fakeStore2)
+	loop.Start()
 	srv.RegisterLoop("/project/attach-halt", loop)
 
 	srv.TrackRun("attach-halt-run-1", "container-attach-halt-1", "/project/attach-halt", "develop", false)
 
-	halted, reason := loop.Halted()
-	assert.True(t, halted, "loop should be halted after attach failure")
-	assert.Contains(t, reason, "attach-halt-run-1")
+	// Give TrackRun time to process the attach failure.
+	time.Sleep(100 * time.Millisecond)
+	assert.False(t, loop.Running(), "loop should be stopped after attach failure")
 }
 
 // ---- AgentSession tests ----

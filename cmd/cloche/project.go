@@ -79,16 +79,9 @@ func cmdProject(args []string) {
 	// Orchestrator loop state.
 	loopState := "stopped"
 	if resp.LoopRunning {
-		if resp.ErrorHalted {
-			loopState = "halted"
-		} else {
-			loopState = "running"
-		}
+		loopState = "running"
 	}
 	fmt.Printf("Loop:        %s\n", loopState)
-	if resp.ErrorHalted {
-		fmt.Printf("Halt error:  %s\n", resp.HaltError)
-	}
 	fmt.Println()
 
 	// Active runs.

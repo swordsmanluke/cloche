@@ -535,9 +535,9 @@ if task_id:
 
     print(f"Unclaimed task {task_id}")
 
-# Stop the loop — human must investigate and resume
+# Stop the loop — human must investigate and restart
 subprocess.run(["cloche", "loop", "stop"])
-print("Loop stopped — investigate and run 'cloche loop resume' when ready")
+print("Loop stopped — investigate and run 'cloche loop' when ready")
 `
 
 var fixMergePrompt = `A rebase of the agent's branch onto the base branch has failed due to conflicts.

@@ -564,7 +564,7 @@ func TestLoop_GetTaskSnapshot_DedupExpired(t *testing.T) {
 
 // --- StopOnError tests ---
 
-func TestLoop_StopOnError_HaltsOnFailure(t *testing.T) {
+func TestLoop_StopOnError_StopsOnFailure(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	var called atomic.Int32
 
@@ -574,7 +574,7 @@ func TestLoop_StopOnError_HaltsOnFailure(t *testing.T) {
 		if n == 1 {
 			return &RunResult{State: domain.RunStateFailed}, nil
 		}
-		// Subsequent calls should not happen while halted.
+		// Subsequent calls should not happen after loop stops.
 		return &RunResult{State: domain.RunStateSucceeded}, nil
 	}
 
@@ -585,24 +585,19 @@ func TestLoop_StopOnError_HaltsOnFailure(t *testing.T) {
 	}, store, runFn)
 
 	loop.Start()
-	// Wait for the first run to fail and halt.
+	// Wait for the first run to fail and stop the loop.
 	time.Sleep(300 * time.Millisecond)
 
-	halted, haltErr := loop.Halted()
-	assert.True(t, halted, "loop should be halted after failure")
-	assert.NotEmpty(t, haltErr, "halt error should be set")
-	assert.True(t, loop.Running(), "loop should still be running (not stopped)")
+	assert.False(t, loop.Running(), "loop should be stopped after failure")
 
-	// Only 1 run should have been launched since the loop halts after.
-	assert.Equal(t, int32(1), called.Load(), "only one run should have been launched before halt")
-
-	loop.Stop()
+	// Only 1 run should have been launched since the loop stops after.
+	assert.Equal(t, int32(1), called.Load(), "only one run should have been launched before stop")
 }
 
-func TestLoop_StopOnError_ResumeAllowsNewWork(t *testing.T) {
+func TestLoop_StopOnError_RestartAllowsNewWork(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	var called atomic.Int32
-	var resumeReady atomic.Bool
+	var restartReady atomic.Bool
 
 	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
 		n := called.Add(1)
@@ -610,7 +605,7 @@ func TestLoop_StopOnError_ResumeAllowsNewWork(t *testing.T) {
 		if n == 1 {
 			return &RunResult{State: domain.RunStateFailed}, nil
 		}
-		resumeReady.Store(true)
+		restartReady.Store(true)
 		return &RunResult{State: domain.RunStateSucceeded}, nil
 	}
 
@@ -621,33 +616,27 @@ func TestLoop_StopOnError_ResumeAllowsNewWork(t *testing.T) {
 	}, store, runFn)
 
 	loop.Start()
-	// Wait for the first run to fail and halt.
+	// Wait for the first run to fail and stop the loop.
 	time.Sleep(300 * time.Millisecond)
 
-	halted, _ := loop.Halted()
-	assert.True(t, halted, "loop should be halted after failure")
+	assert.False(t, loop.Running(), "loop should be stopped after failure")
 	assert.Equal(t, int32(1), called.Load())
 
-	// Resume the loop.
-	loop.Resume()
+	// Restart the loop to allow new work.
+	loop.Start()
 
-	halted, _ = loop.Halted()
-	assert.False(t, halted, "loop should no longer be halted after resume")
-
-	// Resume() signals the loop to wake from its sleep, so new work should
-	// be picked up quickly.
 	deadline := time.After(2 * time.Second)
-	for !resumeReady.Load() {
+	for !restartReady.Load() {
 		select {
 		case <-deadline:
-			t.Fatal("timed out waiting for resumed run")
+			t.Fatal("timed out waiting for restarted run")
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
 	loop.Stop()
 
-	// After resume, at least one more run should have been launched.
-	assert.GreaterOrEqual(t, called.Load(), int32(2), "resume should allow new runs")
+	// After restart, at least one more run should have been launched.
+	assert.GreaterOrEqual(t, called.Load(), int32(2), "restart should allow new runs")
 }
 
 func TestLoop_StopOnError_Disabled_ContinuesOnFailure(t *testing.T) {
@@ -669,13 +658,12 @@ func TestLoop_StopOnError_Disabled_ContinuesOnFailure(t *testing.T) {
 	loop.Start()
 	// After first failure, loop backs off for idlePollInterval (2 min), so
 	// we can't easily wait for multiple runs. Instead, verify state after
-	// the first run: loop should not be halted and should still be running.
+	// the first run: loop should still be running (not stopped).
 	time.Sleep(300 * time.Millisecond)
-	loop.Stop()
 
-	halted, _ := loop.Halted()
-	assert.False(t, halted, "loop should not be halted when stop_on_error is disabled")
+	assert.True(t, loop.Running(), "loop should still be running when stop_on_error is disabled")
 	assert.GreaterOrEqual(t, called.Load(), int32(1), "at least one run should have been launched")
+	loop.Stop()
 }
 
 func TestPhaseLoop_StopOnError_HaltsOnFailure(t *testing.T) {
@@ -705,14 +693,10 @@ func TestPhaseLoop_StopOnError_HaltsOnFailure(t *testing.T) {
 	loop.Start()
 	time.Sleep(300 * time.Millisecond)
 
-	halted, haltErr := loop.Halted()
-	assert.True(t, halted, "phased loop should be halted after failure")
-	assert.Contains(t, haltErr, "task-1", "halt error should reference the failed task")
+	assert.False(t, loop.Running(), "phased loop should be stopped after failure")
 
 	// Only task-1 should have been attempted.
 	assert.Equal(t, int32(1), mainCalls.Load())
-
-	loop.Stop()
 }
 
 // --- MaxConsecutiveFailures tests ---
@@ -762,46 +746,8 @@ func TestLoop_ConsecutiveFailures_HaltsLoopOnThreshold(t *testing.T) {
 	loop.Start()
 	time.Sleep(300 * time.Millisecond)
 
-	halted, haltErr := loop.Halted()
-	assert.True(t, halted, "loop should be halted after 1 consecutive failure")
-	assert.Contains(t, haltErr, "consecutive failures")
+	assert.False(t, loop.Running(), "loop should be stopped after 1 consecutive failure")
 	assert.Equal(t, int32(1), called.Load())
-
-	loop.Stop()
-}
-
-func TestLoop_ConsecutiveFailures_ResumeResetsCounter(t *testing.T) {
-	store := &fakeStore{runs: map[string]*domain.Run{}}
-	var called atomic.Int32
-
-	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
-		called.Add(1)
-		time.Sleep(20 * time.Millisecond)
-		return &RunResult{State: domain.RunStateFailed}, nil
-	}
-
-	loop := NewLoop(LoopConfig{
-		ProjectDir:             "/tmp/test-project",
-		MaxConcurrent:          1,
-		MaxConsecutiveFailures: 1,
-	}, store, runFn)
-
-	loop.Start()
-	time.Sleep(300 * time.Millisecond)
-
-	halted, _ := loop.Halted()
-	assert.True(t, halted, "loop should halt after 1 consecutive failure")
-	assert.Equal(t, int32(1), called.Load())
-
-	// Resume clears the counter so it takes another failure to halt.
-	loop.Resume()
-	time.Sleep(300 * time.Millisecond)
-
-	halted, _ = loop.Halted()
-	assert.True(t, halted, "loop should halt again after resume")
-	assert.Equal(t, int32(2), called.Load())
-
-	loop.Stop()
 }
 
 func TestLoop_ConsecutiveFailures_DefaultThreshold(t *testing.T) {
@@ -842,11 +788,8 @@ func TestLoop_ConsecutiveFailures_SuccessResetsInLoop(t *testing.T) {
 	loop.Start()
 	time.Sleep(300 * time.Millisecond)
 
-	halted, _ := loop.Halted()
-	assert.True(t, halted, "loop should halt on second run (first failure after success)")
+	assert.False(t, loop.Running(), "loop should be stopped on second run (first failure after success)")
 	assert.Equal(t, int32(2), called.Load(), "two runs: one success, one failure")
-
-	loop.Stop()
 }
 
 func TestPhaseLoop_ConsecutiveFailures_HaltsAfterThreshold(t *testing.T) {
@@ -873,45 +816,8 @@ func TestPhaseLoop_ConsecutiveFailures_HaltsAfterThreshold(t *testing.T) {
 	loop.Start()
 	time.Sleep(300 * time.Millisecond)
 
-	halted, haltErr := loop.Halted()
-	assert.True(t, halted, "phased loop should be halted after consecutive failures")
-	assert.Contains(t, haltErr, "consecutive failures")
+	assert.False(t, loop.Running(), "phased loop should be stopped after consecutive failures")
 	assert.Equal(t, int32(1), mainCalls.Load())
-
-	loop.Stop()
-}
-
-func TestLoop_Halted_DefaultFalse(t *testing.T) {
-	store := &fakeStore{runs: map[string]*domain.Run{}}
-	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
-		return &RunResult{State: domain.RunStateSucceeded}, nil
-	}
-
-	loop := NewLoop(LoopConfig{
-		ProjectDir:    "/tmp/test-project",
-		MaxConcurrent: 1,
-	}, store, runFn)
-
-	halted, haltErr := loop.Halted()
-	assert.False(t, halted)
-	assert.Empty(t, haltErr)
-}
-
-func TestLoop_Resume_NopWhenNotHalted(t *testing.T) {
-	store := &fakeStore{runs: map[string]*domain.Run{}}
-	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
-		return &RunResult{State: domain.RunStateSucceeded}, nil
-	}
-
-	loop := NewLoop(LoopConfig{
-		ProjectDir:    "/tmp/test-project",
-		MaxConcurrent: 1,
-	}, store, runFn)
-
-	// Resume when not halted should be a no-op (no panic).
-	loop.Resume()
-	halted, _ := loop.Halted()
-	assert.False(t, halted)
 }
 
 // --- Attempt tracking tests ---
@@ -1127,19 +1033,21 @@ func TestLegacyLoop_AttemptCompletedOnRetry(t *testing.T) {
 	loop := NewLoop(LoopConfig{
 		ProjectDir:    "/tmp/test-project",
 		MaxConcurrent: 1,
-		DedupTimeout:  50 * time.Millisecond, // short so retry happens after Resume
-		StopOnError:   true,                  // halts after first failure, allowing Resume to wake it
+		DedupTimeout:  50 * time.Millisecond, // short so retry happens quickly after restart
+		StopOnError:   true,                  // stops after first failure
 	}, store, runFn)
 	loop.SetTaskAssigner(assigner)
 	loop.SetTaskStore(taskStore)
 
 	loop.Start()
-	// Wait for the first run to fail and the loop to halt.
+	// Wait for the first run to fail and the loop to stop.
 	time.Sleep(200 * time.Millisecond)
 	require.Equal(t, int32(1), callCount.Load(), "first run should have completed")
+	assert.False(t, loop.Running(), "loop should have stopped after failure")
 
-	// Resume wakes the loop so the retry is picked up once the dedup has expired.
-	loop.Resume()
+	// Wait for dedup to expire, then restart the loop to pick up the retry.
+	time.Sleep(100 * time.Millisecond)
+	loop.Start()
 	time.Sleep(200 * time.Millisecond)
 	loop.Stop()
 
@@ -1212,19 +1120,20 @@ func TestPhaseLoop_AttemptCompletedOnRetry(t *testing.T) {
 	loop := NewPhaseLoop(LoopConfig{
 		ProjectDir:    "/tmp/test-project",
 		MaxConcurrent: 1,
-		DedupTimeout:  50 * time.Millisecond, // short so retry happens after Resume
-		StopOnError:   true,                  // halts after first failure, allowing Resume to wake it
+		DedupTimeout:  50 * time.Millisecond, // short so retry happens quickly after restart
+		StopOnError:   true,                  // stops after first failure
 	}, store, listTasksFn, mainFn)
 	loop.SetTaskStore(taskStore)
 
 	loop.Start()
-	// Wait for the first run to fail and the loop to halt.
+	// Wait for the first run to fail and the loop to stop.
 	time.Sleep(200 * time.Millisecond)
 	require.Equal(t, int32(1), callCount.Load(), "first run should have completed")
+	assert.False(t, loop.Running(), "loop should have stopped after failure")
 
-	// Resume wakes the loop from its backoff sleep and clears halted state,
-	// allowing the retry to be picked up once the dedup has expired.
-	loop.Resume()
+	// Wait for dedup to expire, then restart the loop to pick up the retry.
+	time.Sleep(100 * time.Millisecond)
+	loop.Start()
 	time.Sleep(200 * time.Millisecond)
 	loop.Stop()
 
@@ -1324,24 +1233,7 @@ func TestPhaseLoop_ConcurrentTasks_UniqueAttemptIDs(t *testing.T) {
 	assert.NotEqual(t, id1, id2, "concurrent tasks must receive distinct attempt IDs")
 }
 
-func TestLoop_Halt_SetsHaltedState(t *testing.T) {
-	store := &fakeStore{runs: map[string]*domain.Run{}}
-	loop := NewLoop(LoopConfig{ProjectDir: "/tmp/test"}, store, func(_ context.Context, _ string, _ string, _ string) (*RunResult, error) {
-		return &RunResult{State: domain.RunStateSucceeded}, nil
-	})
-
-	halted, msg := loop.Halted()
-	assert.False(t, halted, "should not be halted initially")
-	assert.Empty(t, msg)
-
-	loop.Halt("container crashed")
-
-	halted, msg = loop.Halted()
-	assert.True(t, halted, "should be halted after Halt()")
-	assert.Equal(t, "container crashed", msg)
-}
-
-func TestLoop_Halt_PreventsNewWork(t *testing.T) {
+func TestLoop_Stop_PreventsNewWork(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	var called atomic.Int32
 	loop := NewLoop(LoopConfig{
@@ -1353,15 +1245,15 @@ func TestLoop_Halt_PreventsNewWork(t *testing.T) {
 		return &RunResult{State: domain.RunStateSucceeded}, nil
 	})
 
-	loop.Halt("pre-halted")
-	loop.Start()
+	// Stop before starting — should be a no-op that leaves the loop not running.
+	loop.Stop()
+	assert.False(t, loop.Running(), "loop should not be running before Start()")
 
-	// Give the loop time to attempt launching work.
+	loop.Start()
 	time.Sleep(100 * time.Millisecond)
 	loop.Stop()
 
-	// No work should have been picked up because the loop was halted before starting.
-	assert.Equal(t, int32(0), called.Load(), "halted loop should not launch any runs")
+	assert.False(t, loop.Running(), "loop should be stopped after Stop()")
 }
 
 // TestLoop_DriveHumanPolls_TriggersOnTick verifies that the orchestration loop

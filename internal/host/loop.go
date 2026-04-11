@@ -85,12 +85,9 @@ type Loop struct {
 	pollCoord    *PollCoordinator     // optional; drives human step polling on each tick
 	humanPollStore ports.HumanPollStore // optional; persists human step poll state
 	stopCh       chan struct{}
-	resumeCh     chan struct{} // signaled by Resume() to wake the loop
 	mu           sync.Mutex
 	running      bool
-	haltedMu            sync.RWMutex
-	halted              bool   // true when loop is halted due to an unrecovered error
-	haltError           string // the error message that caused the halt
+	failureMu           sync.Mutex
 	consecutiveFailures int    // number of consecutive failed runs
 	dedupMu             sync.Mutex
 	dedup      map[string]time.Time // task ID -> last assignment time
@@ -117,7 +114,6 @@ func NewLoop(cfg LoopConfig, store ports.RunStore, runFn RunFunc) *Loop {
 	l := &Loop{
 		config:   cfg,
 		store:    store,
-		resumeCh: make(chan struct{}, 1),
 		dedup:    make(map[string]time.Time),
 		taskRuns: make(map[string]TaskAssignment),
 	}
@@ -152,7 +148,6 @@ func NewPhaseLoop(cfg LoopConfig, store ports.RunStore, listTasksFn ListTasksFun
 		listTasks: listTasksFn,
 		mainFn:    mainFn,
 		store:     store,
-		resumeCh:  make(chan struct{}, 1),
 		dedup:     make(map[string]time.Time),
 		taskRuns:  make(map[string]TaskAssignment),
 	}
@@ -220,72 +215,20 @@ func (l *Loop) Running() bool {
 	return l.running
 }
 
-// Halted returns whether the loop is halted due to an unrecovered error,
-// along with the error message that caused the halt. When halted, the loop
-// is still running but will not pick up new work.
-func (l *Loop) Halted() (bool, string) {
-	l.haltedMu.RLock()
-	defer l.haltedMu.RUnlock()
-	return l.halted, l.haltError
-}
-
-// Resume clears the halted state so the loop resumes picking up new work.
-func (l *Loop) Resume() {
-	l.haltedMu.Lock()
-	defer l.haltedMu.Unlock()
-	if l.halted {
-		log.Printf("orchestration loop: resumed for %s (was halted: %s)", l.config.ProjectDir, l.haltError)
-		l.halted = false
-		l.haltError = ""
-		l.consecutiveFailures = 0
-		// Wake the loop from any sleep so it picks up work immediately.
-		select {
-		case l.resumeCh <- struct{}{}:
-		default:
-		}
-	}
-}
-
-// halt sets the loop into halted state with the given error message.
-func (l *Loop) halt(errMsg string) {
-	l.haltedMu.Lock()
-	defer l.haltedMu.Unlock()
-	l.halted = true
-	l.haltError = errMsg
-	log.Printf("orchestration loop: halted for %s (stop_on_error): %s", l.config.ProjectDir, errMsg)
-}
-
-// Halt immediately halts the loop with the given reason. Unlike the automatic
-// halting triggered by consecutive failures, this can be called externally to
-// stop the loop on critical infrastructure failures (e.g. container crashes).
-func (l *Loop) Halt(reason string) {
-	l.halt(reason)
-}
-
 // recordConsecutiveFailure increments the consecutive failure counter and
 // returns true if the threshold has been reached.
 func (l *Loop) recordConsecutiveFailure() bool {
-	l.haltedMu.Lock()
-	defer l.haltedMu.Unlock()
-	if l.halted {
-		return false // already halted (e.g. by StopOnError)
-	}
+	l.failureMu.Lock()
+	defer l.failureMu.Unlock()
 	l.consecutiveFailures++
 	return l.consecutiveFailures >= l.config.MaxConsecutiveFailures
 }
 
 // resetConsecutiveFailures resets the consecutive failure counter to zero.
 func (l *Loop) resetConsecutiveFailures() {
-	l.haltedMu.Lock()
-	defer l.haltedMu.Unlock()
+	l.failureMu.Lock()
+	defer l.failureMu.Unlock()
 	l.consecutiveFailures = 0
-}
-
-// isHalted returns true if the loop is currently halted.
-func (l *Loop) isHalted() bool {
-	l.haltedMu.RLock()
-	defer l.haltedMu.RUnlock()
-	return l.halted
 }
 
 func (l *Loop) run() {
@@ -315,11 +258,6 @@ func (l *Loop) runPhased() {
 			case <-l.stopCh:
 				return
 			default:
-			}
-
-			// If halted, don't pick up new work.
-			if l.isHalted() {
-				break
 			}
 
 			// Check how many host runs are active for this project.
@@ -417,10 +355,14 @@ func (l *Loop) runPhased() {
 			}
 			// Run failed or aborted.
 			if l.config.StopOnError {
-				l.halt(r.errMsg)
+				log.Printf("orchestration loop: stopping for %s (stop_on_error): %s", l.config.ProjectDir, r.errMsg)
+				l.Stop()
+				return
 			}
 			if l.recordConsecutiveFailure() {
-				l.halt(fmt.Sprintf("halted after %d consecutive failures: %s", l.config.MaxConsecutiveFailures, r.errMsg))
+				log.Printf("orchestration loop: stopping for %s after %d consecutive failures: %s", l.config.ProjectDir, l.config.MaxConsecutiveFailures, r.errMsg)
+				l.Stop()
+				return
 			}
 			// Back off.
 			if !l.sleep(idlePollInterval) {
@@ -622,13 +564,11 @@ func (l *Loop) countActiveHostRuns() int {
 	return count
 }
 
-// sleep waits for the given duration or until the loop is stopped or resumed.
+// sleep waits for the given duration or until the loop is stopped.
 // Returns false if the loop was stopped.
 func (l *Loop) sleep(d time.Duration) bool {
 	select {
 	case <-time.After(d):
-		return true
-	case <-l.resumeCh:
 		return true
 	case <-l.stopCh:
 		return false

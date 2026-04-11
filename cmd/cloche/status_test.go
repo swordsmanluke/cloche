@@ -180,27 +180,6 @@ func TestCmdStatusOverview_LoopStopped(t *testing.T) {
 	}
 }
 
-func TestCmdStatusOverview_LoopHalted(t *testing.T) {
-	client := &statusMockClient{
-		versionResp: &pb.GetVersionResponse{Version: "1.7.0"},
-		projectInfoResp: &pb.GetProjectInfoResponse{
-			Name:        "test",
-			Concurrency: 2,
-			LoopRunning: true,
-			ErrorHalted: true,
-		},
-		listRunsResp: &pb.ListRunsResponse{},
-	}
-
-	var buf bytes.Buffer
-	ctx := context.Background()
-	cmdStatusProject(ctx, client, &buf, "/fake")
-
-	out := buf.String()
-	if !strings.Contains(out, "Orchestration loop: halted") {
-		t.Errorf("expected loop halted, got:\n%s", out)
-	}
-}
 
 func TestCmdStatusOverview_DaemonVersion(t *testing.T) {
 	client := &statusMockClient{

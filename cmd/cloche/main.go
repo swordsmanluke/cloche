@@ -468,11 +468,7 @@ func cmdStatusProject(ctx context.Context, client pb.ClocheServiceClient, w io.W
 
 	loopStatus := "stopped"
 	if info.LoopRunning {
-		if info.ErrorHalted {
-			loopStatus = "halted"
-		} else {
-			loopStatus = "running"
-		}
+		loopStatus = "running"
 	}
 	fmt.Fprintf(w, "Orchestration loop: %s\n", loopStatus)
 
@@ -964,17 +960,6 @@ func cmdLoop(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 	// Check for "once" subcommand
 	if len(args) > 0 && args[0] == "once" {
 		cmdLoopOnce(ctx, client, cwd)
-		return
-	}
-
-	// Check for "resume" subcommand
-	if len(args) > 0 && args[0] == "resume" {
-		_, err := client.ResumeLoop(ctx, &pb.ResumeLoopRequest{ProjectDir: cwd})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("Orchestration loop resumed.")
 		return
 	}
 
