@@ -121,6 +121,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	var lastStdout []byte
 	var lastUsage *domain.TokenUsage
 	var lastErr error
+	var lastCommand string
 	ran := false
 
 	for _, command := range a.Commands {
@@ -129,6 +130,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		lastStdout = stdout
 		lastUsage = usage
 		lastErr = fallbackErr
+		lastCommand = command
 
 		if fallbackErr == nil {
 			// Definitive result — agent completed (exit 0 or exit non-zero with marker)
@@ -160,6 +162,9 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		}
 		if usageCmd != "" {
 			lastUsage = runUsageCommand(ctx, usageCmd, workDir)
+			if lastUsage != nil {
+				lastUsage.AgentName = lastCommand
+			}
 		}
 	}
 
@@ -212,6 +217,9 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 		stdoutBytes := stdoutBuf.Bytes()
 		result, stdout, fallbackErr = a.classifyResult(command, stdoutBytes, runErr)
 		usage = scanOutputForUsage(stdoutBytes)
+		if usage != nil {
+			usage.AgentName = command
+		}
 		return
 	}
 
@@ -241,6 +249,7 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 
 		// Capture token usage from result events.
 		if u := extractResultUsage(raw); u != nil {
+			u.AgentName = command
 			usage = u
 		}
 

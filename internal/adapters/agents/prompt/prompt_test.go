@@ -551,6 +551,58 @@ func TestPromptAdapter_NoUsageCommandReturnsNilUsage(t *testing.T) {
 	assert.Nil(t, sr.Usage)
 }
 
+func TestPromptAdapter_SetsAgentNameInUsage(t *testing.T) {
+	dir := t.TempDir()
+	// Simulate a claude-style stream-json result with usage data.
+	streamJSON := `{"type":"result","subtype":"success","result":"CLOCHE_RESULT:success","usage":{"input_tokens":100,"output_tokens":50}}`
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo '" + streamJSON + "'"},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result)
+	require.NotNil(t, sr.Usage)
+	assert.Equal(t, "sh", sr.Usage.AgentName)
+	assert.Equal(t, int64(100), sr.Usage.InputTokens)
+	assert.Equal(t, int64(50), sr.Usage.OutputTokens)
+}
+
+func TestPromptAdapter_SetsAgentNameViaUsageCommand(t *testing.T) {
+	dir := t.TempDir()
+	// Command produces no stream-json usage; usage_command provides it.
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok"},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config: map[string]string{
+			"prompt":        "Do something.",
+			"usage_command": `echo '{"input_tokens":200,"output_tokens":75}'`,
+		},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result)
+	require.NotNil(t, sr.Usage)
+	assert.Equal(t, "sh", sr.Usage.AgentName)
+	assert.Equal(t, int64(200), sr.Usage.InputTokens)
+	assert.Equal(t, int64(75), sr.Usage.OutputTokens)
+}
+
 func TestParseCommands(t *testing.T) {
 	tests := []struct {
 		input    string

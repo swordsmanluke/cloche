@@ -85,6 +85,8 @@ func TestExtractResultUsage_WithUsage(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, int64(12345), got.InputTokens)
 	assert.Equal(t, int64(6789), got.OutputTokens)
+	// AgentName is not set by extractResultUsage itself; the caller (tryCommand) sets it.
+	assert.Empty(t, got.AgentName)
 }
 
 func TestExtractResultUsage_NoUsageField(t *testing.T) {
