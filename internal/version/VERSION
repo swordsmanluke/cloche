@@ -1,5 +1,1 @@
-# Format: major.minor.build
-# major: bumped manually only
-# minor: new major features or backward-incompatible changes
-# build: bugfixes, refactors, and all other changes
-3.12.5
+3.12.6
