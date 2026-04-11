@@ -2870,6 +2870,22 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	return loop
 }
 
+// LoopRunning returns whether an orchestration loop is active and running for
+// the given project directory.
+func (s *ClocheServer) LoopRunning(projectDir string) bool {
+	s.mu.Lock()
+	loop, ok := s.loops[projectDir]
+	s.mu.Unlock()
+	return ok && loop != nil && loop.Running()
+}
+
+// StopLoop stops the orchestration loop for a project. It is a no-op if no
+// loop is registered for the project.
+func (s *ClocheServer) StopLoop(ctx context.Context, projectDir string) error {
+	_, err := s.DisableLoop(ctx, &pb.DisableLoopRequest{ProjectDir: projectDir})
+	return err
+}
+
 // GetLoopTasks returns the current task pipeline state for a project's
 // orchestration loop, formatted as web.TaskEntry values. Returns nil if no
 // loop is active for the project.

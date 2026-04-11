@@ -3164,3 +3164,155 @@ func TestAPITriggerOrchestrator_Error(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Contains(t, resp["error"], "loop failed to start")
 }
+
+// --- Loop status and stop tests ---
+
+func TestAPILoopStatus_Running(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	h.loopStatusFn = func(projectDir string) bool {
+		return projectDir == "/home/user/projects/myapp"
+	}
+
+	req := httptest.NewRequest("GET", "/api/projects/myapp/loop/status", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	var resp map[string]bool
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.True(t, resp["running"])
+}
+
+func TestAPILoopStatus_Stopped(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	h.loopStatusFn = func(_ string) bool { return false }
+
+	req := httptest.NewRequest("GET", "/api/projects/myapp/loop/status", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]bool
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.False(t, resp["running"])
+}
+
+func TestAPILoopStatus_NoStatusFunc(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// loopStatusFn is nil — should return running=false.
+	req := httptest.NewRequest("GET", "/api/projects/myapp/loop/status", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]bool
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.False(t, resp["running"])
+}
+
+func TestAPILoopStatus_ProjectNotFound(t *testing.T) {
+	h, _ := setupHandler(t)
+	h.loopStatusFn = func(_ string) bool { return true }
+
+	req := httptest.NewRequest("GET", "/api/projects/nonexistent/loop/status", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestAPILoopStop_Success(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	var stoppedDir string
+	h.stopLoopFn = func(_ context.Context, projectDir string) error {
+		stoppedDir = projectDir
+		return nil
+	}
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/loop/stop", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "/home/user/projects/myapp", stoppedDir)
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "ok", resp["status"])
+	assert.Equal(t, "myapp", resp["project"])
+}
+
+func TestAPILoopStop_NoStopFunc(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/loop/stop", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotImplemented, w.Code)
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Contains(t, resp["error"], "not configured")
+}
+
+func TestAPILoopStop_Error(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	h.stopLoopFn = func(_ context.Context, _ string) error {
+		return fmt.Errorf("stop failed")
+	}
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/loop/stop", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Contains(t, resp["error"], "stop failed")
+}
+
+func TestAPILoopStop_ProjectNotFound(t *testing.T) {
+	h, _ := setupHandler(t)
+	h.stopLoopFn = func(_ context.Context, _ string) error { return nil }
+
+	req := httptest.NewRequest("POST", "/api/projects/nonexistent/loop/stop", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}

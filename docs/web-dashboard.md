@@ -59,6 +59,11 @@ Click a project card to go to the Project Detail page.
 
 A four-panel page for a specific project.
 
+A **Start Loop / Stop Loop** toggle button appears at the top of the page. It polls
+`GET /api/projects/{name}/loop/status` every 5 seconds to reflect the current loop state
+and calls `POST /api/projects/{name}/loop/stop` or
+`POST /api/projects/{name}/trigger` to stop or start the orchestration loop.
+
 #### Project Info
 
 Shows the Docker image (parsed from the project's `Dockerfile`), the project version
@@ -237,3 +242,4 @@ confirms that all attempted tasks have succeeded or are still running.
 | Project health overview | Projects landing page |
 | Failed open tasks dashboard | `/failed-tasks` |
 | Manual orchestrator trigger | Projects landing page → Trigger Orchestrator button |
+| Loop start/stop toggle | Project detail → Start Loop / Stop Loop button |

@@ -59,6 +59,16 @@ func WithOrchestrateFunc(fn func(ctx context.Context, projectDir string) (int, e
 	return func(h *Handler) { h.orchestrateFn = fn }
 }
 
+// WithLoopStatusFunc sets the function used to check whether the orchestration loop is running.
+func WithLoopStatusFunc(fn func(projectDir string) bool) HandlerOption {
+	return func(h *Handler) { h.loopStatusFn = fn }
+}
+
+// WithStopLoopFunc sets the function used to stop the orchestration loop for a project.
+func WithStopLoopFunc(fn func(ctx context.Context, projectDir string) error) HandlerOption {
+	return func(h *Handler) { h.stopLoopFn = fn }
+}
+
 //go:embed templates/*.html static/*
 var content embed.FS
 
@@ -103,6 +113,8 @@ type Handler struct {
 	logBroadcast  *logstream.Broadcaster
 	taskProvider  TaskProvider
 	orchestrateFn func(ctx context.Context, projectDir string) (int, error)
+	loopStatusFn  func(projectDir string) bool
+	stopLoopFn    func(ctx context.Context, projectDir string) error
 	pages         map[string]*template.Template
 	mux           *http.ServeMux
 }
@@ -176,6 +188,8 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks", h.handleAPITasks)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
 	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
+	h.mux.HandleFunc("GET /api/projects/{name}/loop/status", h.handleAPILoopStatus)
+	h.mux.HandleFunc("POST /api/projects/{name}/loop/stop", h.handleAPILoopStop)
 	h.mux.HandleFunc("GET /api/tasks", h.handleAPIAllTasks)
 	h.mux.HandleFunc("GET /api/runs/{id}/logs", h.handleAPILogs)
 	h.mux.HandleFunc("GET /api/runs/{id}/stream", h.handleAPIStream)
@@ -2309,6 +2323,39 @@ func (h *Handler) handleAPITriggerOrchestrator(w http.ResponseWriter, r *http.Re
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"status": "ok", "project": label, "dispatched": n})
+}
+
+// handleAPILoopStatus returns whether the orchestration loop is running for a project.
+func (h *Handler) handleAPILoopStatus(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	running := h.loopStatusFn != nil && h.loopStatusFn(dir)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"running": running})
+}
+
+// handleAPILoopStop stops the orchestration loop for a project.
+func (h *Handler) handleAPILoopStop(w http.ResponseWriter, r *http.Request) {
+	dir, label, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	if h.stopLoopFn == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "loop control not configured"})
+		return
+	}
+	if err := h.stopLoopFn(r.Context(), dir); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "project": label})
 }
 
 // --- Failed tasks dashboard ---

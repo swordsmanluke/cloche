@@ -122,6 +122,8 @@ func main() {
 				}
 				return 1, nil
 			}),
+			web.WithLoopStatusFunc(srv.LoopRunning),
+			web.WithStopLoopFunc(srv.StopLoop),
 		}
 		webHandler, err := web.NewHandler(store, store, webOpts...)
 		if err != nil {
