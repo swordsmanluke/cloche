@@ -202,6 +202,9 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 	}
 
 	if err != nil {
+		if ctx.Err() != nil {
+			return "timeout", nil
+		}
 		if _, ok := err.(*exec.ExitError); ok {
 			result := "fail"
 			if found {
@@ -274,6 +277,9 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 
 	sr, err := adapter.Execute(ctx, step, e.ProjectDir)
 	if err != nil {
+		if ctx.Err() != nil {
+			return domain.StepResult{Result: "timeout"}, nil
+		}
 		return domain.StepResult{}, err
 	}
 
@@ -382,7 +388,7 @@ func (e *Executor) executeHumanStep(ctx context.Context, step *domain.Step) (str
 		case result := <-resultCh:
 			return result, nil
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return "timeout", nil
 		}
 	}
 
@@ -466,7 +472,7 @@ func (e *Executor) executeHumanStepStandalone(
 
 		select {
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return "timeout", nil
 		case <-time.After(checkInterval):
 		}
 	}

@@ -1781,8 +1781,8 @@ func TestWorkflowAPI_ComplexGraph(t *testing.T) {
 	assert.True(t, stepNames["transform"])
 	assert.True(t, stepNames["validate"])
 
-	// Should have 7 wires: analyze has 3, transform has 2, validate has 2
-	assert.Len(t, pipeline.Wires, 7)
+	// Should have 10 wires: 7 explicit + 3 implicit timeout->abort (one per step)
+	assert.Len(t, pipeline.Wires, 10)
 
 	// Count terminal wires: should have wires to both done and abort
 	terminalTargets := map[string]int{}
@@ -1793,8 +1793,8 @@ func TestWorkflowAPI_ComplexGraph(t *testing.T) {
 	}
 	// transform:success->done, validate:success->done = 2 wires to done
 	assert.Equal(t, 2, terminalTargets["done"])
-	// analyze:error->abort, transform:fail->abort, validate:fail->abort = 3 wires to abort
-	assert.Equal(t, 3, terminalTargets["abort"])
+	// analyze:error->abort, transform:fail->abort, validate:fail->abort = 3 explicit + 3 implicit timeout->abort = 6
+	assert.Equal(t, 6, terminalTargets["abort"])
 }
 
 func TestProjectDetail_RendersLayoutEngine(t *testing.T) {

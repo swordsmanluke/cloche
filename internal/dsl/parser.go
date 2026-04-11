@@ -196,12 +196,9 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 		}
 	}
 
-	// Post-parse fixup: ensure every human step has a "timeout" result and wire.
+	// Post-parse fixup: ensure every step has a "timeout" result and wire.
 	// If no timeout wire is declared, add an implicit wire to abort.
 	for name, step := range wf.Steps {
-		if step.Type != domain.StepTypeHuman {
-			continue
-		}
 		// Ensure "timeout" is declared in Results.
 		hasTimeoutResult := false
 		for _, r := range step.Results {

@@ -38,7 +38,7 @@ func TestParser_FullWorkflow(t *testing.T) {
 	code := wf.Steps["code"]
 	require.NotNil(t, code)
 	assert.Equal(t, domain.StepTypeAgent, code.Type)
-	assert.Equal(t, []string{"success", "fail", "retry_with_feedback"}, code.Results)
+	assert.Equal(t, []string{"success", "fail", "retry_with_feedback", "timeout"}, code.Results)
 	assert.Equal(t, `file("prompts/implement.md")`, code.Config["prompt"])
 
 	check := wf.Steps["check"]
@@ -46,7 +46,7 @@ func TestParser_FullWorkflow(t *testing.T) {
 	assert.Equal(t, domain.StepTypeScript, check.Type)
 	assert.Equal(t, "make test && make lint", check.Config["run"])
 
-	assert.Len(t, wf.Wiring, 5)
+	assert.Len(t, wf.Wiring, 7)
 	assert.Equal(t, "code", wf.EntryStep)
 }
 
@@ -311,7 +311,7 @@ func TestParser_WorkflowNameStep(t *testing.T) {
 	require.NotNil(t, develop)
 	assert.Equal(t, domain.StepTypeWorkflow, develop.Type)
 	assert.Equal(t, "develop", develop.Config["workflow_name"])
-	assert.Equal(t, []string{"success", "fail"}, develop.Results)
+	assert.Equal(t, []string{"success", "fail", "timeout"}, develop.Results)
 
 	preparePrompt := wf.Steps["prepare-prompt"]
 	require.NotNil(t, preparePrompt)
@@ -468,7 +468,7 @@ func TestParser_WireNoMappings(t *testing.T) {
 }`
 	wf, err := dsl.Parse(input)
 	require.NoError(t, err)
-	require.Len(t, wf.Wiring, 1)
+	require.Len(t, wf.Wiring, 2)
 	assert.Nil(t, wf.Wiring[0].OutputMap)
 }
 

@@ -70,22 +70,26 @@ must be declared explicitly with `type = human`:
 
 **agent** (has `prompt`) — Invokes a coding agent (Claude Code, or any tool conforming
 to the agent adapter interface) with a prompt. The agent works autonomously inside the
-container. Available in both host and container workflows.
+container. Available in both host and container workflows. Default timeout: 30m.
 
 **script** (has `run`) — Runs a shell command. Used for tests, linters, validators, or
-any deterministic check. Available in both host and container workflows.
+any deterministic check. Available in both host and container workflows. Default timeout: 30m.
 
 **workflow** (has `workflow_name`) — Triggers a named workflow run and blocks until it
 completes. Available in both host and container workflows. Dispatch is always handled by
 the daemon orchestrator, which resolves the target workflow by name across all `.cloche`
-files and routes it to the host executor or container pool as appropriate.
+files and routes it to the host executor or container pool as appropriate. Default timeout: 30m.
 
 **human** (`type = human`) — Polls a script at a fixed interval until a human decision
 is available. Requires `script` (path to the polling script) and `interval` (poll
 frequency, e.g. `"5m"`). The script exit code and stdout determine the outcome: exit 0
 with no wire output means pending (poll again); non-zero exit with no wire output follows
-the `fail` wire; any exit with wire output follows the named wire. Default timeout is 72h.
+the `fail` wire; any exit with wire output follows the named wire. Default timeout: 72h.
 Host workflows only. See [Human Step](#human-step) below.
+
+All step types support a `timeout` config key (any `time.ParseDuration` value, e.g.
+`"45m"`, `"2h"`). When a step exceeds its timeout, it produces a `"timeout"` result. If
+no `timeout` wire is declared, the implicit wire routes to `abort`.
 
 A step with more than one of `prompt`, `run`, or `workflow_name`, or none of them, is a
 parse error. A `human` step must not include `prompt`, `run`, or `workflow_name`.
@@ -435,5 +439,5 @@ The first poll runs immediately when the step starts; subsequent polls fire afte
 skipped. After 3 consecutive skips (poll running for more than 4× the interval) the step
 fails with an error message.
 
-The default timeout for `human` steps is **72h**. If no `timeout` wire is declared,
-timeout follows the implicit `abort` terminal.
+The default timeout for `human` steps is **72h** (versus 30m for agent/script/workflow
+steps). If no `timeout` wire is declared, timeout follows the implicit `abort` terminal.

@@ -2087,7 +2087,7 @@ func TestExecutor_HumanStep_WireOutputOnNonZeroExit(t *testing.T) {
 }
 
 // TestExecutor_HumanStep_ContextTimeout verifies that context cancellation
-// propagates out of the polling loop as an error.
+// routes through the timeout wire rather than returning an error.
 func TestExecutor_HumanStep_ContextTimeout(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
@@ -2100,7 +2100,7 @@ func TestExecutor_HumanStep_ContextTimeout(t *testing.T) {
 	step := &domain.Step{
 		Name:    "review",
 		Type:    domain.StepTypeHuman,
-		Results: []string{"approved", "fail"},
+		Results: []string{"approved", "fail", "timeout"},
 		Config: map[string]string{
 			"script":   "exit 0",
 			"interval": "20ms",
@@ -2110,8 +2110,9 @@ func TestExecutor_HumanStep_ContextTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
 	defer cancel()
 
-	_, err := executor.Execute(ctx, step)
-	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	result, err := executor.Execute(ctx, step)
+	require.NoError(t, err)
+	assert.Equal(t, "timeout", result.Result)
 }
 
 // TestExecutor_HumanStep_MultiPollThenDecision verifies that a script returning
