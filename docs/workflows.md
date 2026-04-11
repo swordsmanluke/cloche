@@ -366,17 +366,52 @@ workflow "main" {
     results       = [success, fail]
   }
 
-  step finalize {
-    run     = "python3 .cloche/scripts/finalize.py"
+  step prepare-merge {
+    run     = "python3 .cloche/scripts/prepare-merge.py"
     results = [success, fail]
   }
 
-  claim-task:success -> develop
-  claim-task:fail    -> abort
-  develop:success    -> finalize
-  develop:fail       -> finalize
-  finalize:success   -> done
-  finalize:fail      -> abort
+  step fix-merge {
+    prompt  = file(".cloche/prompts/fix-merge.md")
+    results = [success, fail]
+  }
+
+  step merge {
+    run     = "python3 .cloche/scripts/merge.py"
+    results = [success, fail]
+  }
+
+  step release-task {
+    run     = "python3 .cloche/scripts/release-task.py"
+    results = [success, fail]
+  }
+
+  step cleanup {
+    run     = "python3 .cloche/scripts/cleanup.py"
+    results = [success, fail]
+  }
+
+  step unclaim {
+    run     = "python3 .cloche/scripts/unclaim.py"
+    results = [success, fail]
+  }
+
+  claim-task:success    -> develop
+  claim-task:fail       -> abort
+  develop:success       -> prepare-merge
+  develop:fail          -> unclaim
+  prepare-merge:success -> merge
+  prepare-merge:fail    -> fix-merge
+  fix-merge:success     -> merge
+  fix-merge:fail        -> unclaim
+  merge:success         -> release-task
+  merge:fail            -> fix-merge
+  release-task:success  -> cleanup
+  release-task:fail     -> unclaim
+  cleanup:success       -> done
+  cleanup:fail          -> unclaim
+  unclaim:success       -> abort
+  unclaim:fail          -> abort
 }
 ```
 
