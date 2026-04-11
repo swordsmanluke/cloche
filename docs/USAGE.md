@@ -132,9 +132,9 @@ repeating the command and arguments each time.
 
 ```
 workflow "develop" {
-  agent claude {
+  agent haiku_claude {
     command = "claude"
-    args    = "-p --output-format stream-json"
+    args    = "-p --dangerously-skip-permissions --model claude-haiku-4-5"
   }
 
   agent codex {
@@ -144,7 +144,7 @@ workflow "develop" {
 
   step implement {
     prompt  = file(".cloche/prompts/implement.md")
-    agent   = claude
+    agent   = haiku_claude
     results = [success, fail]
   }
 
@@ -323,7 +323,7 @@ agent_command = "claude,gemini,codex"
 - **All commands fail to start** — step returns an error
 - **Last command crashes without marker** — step returns `fail`
 
-Known agents (e.g. `claude`) get default arguments (`-p --output-format stream-json --verbose --dangerously-skip-permissions`). Unknown agents receive the prompt on stdin with no flags. Override with `agent_args`.
+Known agents (e.g. `claude`) get default arguments automatically. Unknown agents receive the prompt on stdin with no flags. Some default arguments are overridable via `agent_args`; others are required and always injected. See [Built-in Agents](built-in-agents.md) for the full argument reference.
 
 ### Agent Setup Guides
 

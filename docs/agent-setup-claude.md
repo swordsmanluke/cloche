@@ -61,21 +61,9 @@ step implement {
 }
 ```
 
-Default arguments passed to Claude Code:
-
-```
--p --output-format stream-json --verbose --dangerously-skip-permissions
-```
-
-Override with `agent_args` if needed:
-
-```
-step implement {
-  prompt = file(".cloche/prompts/implement.md")
-  agent_args = "-p --verbose --dangerously-skip-permissions"
-  results = [success, fail]
-}
-```
+Default arguments are passed to Claude Code automatically. Some are overridable via
+`agent_args`; others are required and always injected. See
+[Built-in Agents](built-in-agents.md) for the full argument reference.
 
 ## Using an API Key Instead
 

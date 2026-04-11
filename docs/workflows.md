@@ -138,9 +138,9 @@ config key, avoiding repetition of agent configuration across multiple prompt st
 
 ```
 workflow "develop" {
-  agent claude {
+  agent haiku_claude {
     command = "claude"
-    args = "-p --output-format stream-json"
+    args = "-p --dangerously-skip-permissions --model claude-haiku-4-5"
   }
 
   agent codex {
@@ -150,7 +150,7 @@ workflow "develop" {
 
   step implement {
     prompt = file(".cloche/prompts/implement.md")
-    agent = claude
+    agent = haiku_claude
     results = [success, fail]
   }
 
