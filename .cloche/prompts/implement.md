@@ -6,6 +6,8 @@ Implement the following change in this project. Retrieve the task description by
 cat /workspace/$(clo get task_prompt_path)
 ```
 
+If you cannot find that file or it is empty ABORT and fail.
+
 ## Guidelines
 - Follow existing project conventions if files already exist
 - Write tests for new functionality
