@@ -43,7 +43,7 @@ workflow "main" {
   }
 
   step bump-version {
-    run     = "bumpver"
+    run     = "new_ver=$(bumpver) && git add internal/version/VERSION && git commit -m \"Version $new_ver\""
     results = [success, fail]
   }
 
