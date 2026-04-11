@@ -362,7 +362,7 @@ func TestCmdStatusOverview_ActiveTasksWithAttemptID(t *testing.T) {
 	cmdStatusProject(ctx, client, &buf, "/fake/project")
 
 	out := buf.String()
-	if !strings.Contains(out, "cloche-1234: Sample Task layout") {
+	if !strings.Contains(out, "cloche-1234") || !strings.Contains(out, "Sample Task layout") {
 		t.Errorf("expected task header, got:\n%s", out)
 	}
 	if !strings.Contains(out, "Attempt 3: aj19") {
@@ -414,6 +414,70 @@ func TestCmdStatusOverview_ActiveTasksNoAttemptID(t *testing.T) {
 	// Workflow name still shown.
 	if !strings.Contains(out, "develop") {
 		t.Errorf("expected workflow name, got:\n%s", out)
+	}
+}
+
+func TestCmdStatusOverview_WaitingTask(t *testing.T) {
+	client := &statusMockClient{
+		versionResp: &pb.GetVersionResponse{Version: "2.0.0"},
+		projectInfoResp: &pb.GetProjectInfoResponse{
+			Name:        "myproject",
+			Concurrency: 1,
+			LoopRunning: true,
+		},
+		listRunsResp: &pb.ListRunsResponse{
+			Runs: []*pb.RunSummary{
+				{
+					RunId:        "run-host",
+					State:        "waiting",
+					TaskId:       "cloche-w1",
+					WorkflowName: "host",
+					IsHost:       true,
+					StartedAt:    "2026-03-14 10:00:00 +0000 UTC",
+					WaitingStep:  "human-review",
+					LastPollAt:   "2026-04-11T12:00:00Z",
+				},
+			},
+		},
+		listTasksResp: &pb.ListTasksResponse{
+			Tasks: []*pb.TaskSummary{
+				{
+					TaskId:          "cloche-w1",
+					Title:           "Waiting Task",
+					Status:          "waiting",
+					LatestAttemptId: "b2c3",
+					AttemptCount:    1,
+					WaitingStep:     "human-review",
+					LastPollAt:      "2026-04-11T12:00:00Z",
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	ctx := context.Background()
+	cmdStatusProject(ctx, client, &buf, "/fake/project")
+
+	out := buf.String()
+	if !strings.Contains(out, "waiting") {
+		t.Errorf("expected 'waiting' in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "human-review") {
+		t.Errorf("expected waiting step name 'human-review' in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "cloche-w1") {
+		t.Errorf("expected task ID in output, got:\n%s", out)
+	}
+}
+
+func TestFormatLastPollElapsed(t *testing.T) {
+	// Empty string returns empty.
+	if got := formatLastPollElapsed(""); got != "" {
+		t.Errorf("expected empty for empty input, got %q", got)
+	}
+	// Invalid string returns empty.
+	if got := formatLastPollElapsed("not-a-date"); got != "" {
+		t.Errorf("expected empty for invalid input, got %q", got)
 	}
 }
 

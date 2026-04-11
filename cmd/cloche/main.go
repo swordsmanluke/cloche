@@ -572,21 +572,25 @@ func printActiveTasks(ctx context.Context, client pb.ClocheServiceClient, w io.W
 		os.Exit(1)
 	}
 
-	// Fetch active runs (all time, to include long-running tasks).
-	runsResp, err := client.ListRuns(ctx, &pb.ListRunsRequest{
-		State:      "running",
-		All:        true,
-		ProjectDir: projectDir,
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+	// Fetch active runs (all time, to include long-running tasks) — both running and waiting.
+	var allActiveRuns []*pb.RunSummary
+	for _, state := range []string{"running", "waiting"} {
+		runsResp, err := client.ListRuns(ctx, &pb.ListRunsRequest{
+			State:      state,
+			All:        true,
+			ProjectDir: projectDir,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		allActiveRuns = append(allActiveRuns, runsResp.Runs...)
 	}
 
 	// Group runs by task ID.
 	runsByTask := map[string][]*pb.RunSummary{}
 	var noTaskRuns []*pb.RunSummary
-	for _, run := range runsResp.Runs {
+	for _, run := range allActiveRuns {
 		if run.TaskId != "" {
 			runsByTask[run.TaskId] = append(runsByTask[run.TaskId], run)
 		} else {
@@ -594,10 +598,10 @@ func printActiveTasks(ctx context.Context, client pb.ClocheServiceClient, w io.W
 		}
 	}
 
-	// Filter to running tasks only.
+	// Filter to active tasks (running, waiting, or pending).
 	var activeTasks []*pb.TaskSummary
 	for _, task := range tasksResp.Tasks {
-		if task.Status == "running" || task.Status == "pending" {
+		if task.Status == "running" || task.Status == "waiting" || task.Status == "pending" {
 			activeTasks = append(activeTasks, task)
 		}
 	}
@@ -621,17 +625,39 @@ func printActiveTasks(ctx context.Context, client pb.ClocheServiceClient, w io.W
 		if title == "" {
 			title = task.TaskId
 		}
-		fmt.Fprintf(w, "  %s: %s\n", colorID(task.TaskId), title)
+		taskStatusStr := colorStatus(task.Status)
+		fmt.Fprintf(w, "  %s [%s]: %s\n", colorID(task.TaskId), taskStatusStr, title)
+		// Surface waiting step and time since last poll for waiting tasks.
+		if task.WaitingStep != "" {
+			elapsed := formatLastPollElapsed(task.LastPollAt)
+			if elapsed != "" {
+				fmt.Fprintf(w, "    Waiting: %s (last poll %s ago)\n", task.WaitingStep, elapsed)
+			} else {
+				fmt.Fprintf(w, "    Waiting: %s\n", task.WaitingStep)
+			}
+		}
 		attemptID := task.LatestAttemptId
 		if attemptID != "" {
 			fmt.Fprintf(w, "    Attempt %d: %s\n", task.AttemptCount, colorID(attemptID))
 			for _, run := range runsByTask[task.TaskId] {
 				dur := formatDuration(run.StartedAt)
+				runStatus := ""
+				if run.State == "waiting" {
+					runStatus = " [waiting]"
+					if run.WaitingStep != "" {
+						elapsed := formatLastPollElapsed(run.LastPollAt)
+						if elapsed != "" {
+							runStatus = fmt.Sprintf(" [waiting: %s, poll %s ago]", run.WaitingStep, elapsed)
+						} else {
+							runStatus = fmt.Sprintf(" [waiting: %s]", run.WaitingStep)
+						}
+					}
+				}
 				compositeID := fmt.Sprintf("%s:%s:%s", task.TaskId, attemptID, run.WorkflowName)
 				if run.IsHost {
-					fmt.Fprintf(w, "      %s : %s\n", colorID(compositeID), dur)
+					fmt.Fprintf(w, "      %s : %s%s\n", colorID(compositeID), dur, runStatus)
 				} else {
-					fmt.Fprintf(w, "        - %s : %s\n", colorID(compositeID), dur)
+					fmt.Fprintf(w, "        - %s : %s%s\n", colorID(compositeID), dur, runStatus)
 				}
 			}
 		} else {
@@ -656,6 +682,26 @@ func printActiveTasks(ctx context.Context, client pb.ClocheServiceClient, w io.W
 		dur := formatDuration(run.StartedAt)
 		fmt.Fprintf(w, "  %s: %s\n", colorID(run.RunId), dur)
 	}
+}
+
+// formatLastPollElapsed parses an RFC3339 timestamp and returns a human-readable
+// duration since that time, or empty string if the timestamp is empty or invalid.
+func formatLastPollElapsed(lastPollAt string) string {
+	if lastPollAt == "" {
+		return ""
+	}
+	parsed, err := time.Parse(time.RFC3339, lastPollAt)
+	if err != nil {
+		return ""
+	}
+	d := time.Since(parsed)
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm%ds", int(d.Minutes()), int(d.Seconds())%60)
+	}
+	return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
 }
 
 // formatDuration parses a Go time string and returns a human-readable duration since then.
@@ -750,8 +796,17 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 		if latestAttempt == "" {
 			latestAttempt = "-"
 		}
+		status := task.Status
+		if task.WaitingStep != "" {
+			elapsed := formatLastPollElapsed(task.LastPollAt)
+			if elapsed != "" {
+				status = fmt.Sprintf("%s [%s, poll %s ago]", task.Status, task.WaitingStep, elapsed)
+			} else {
+				status = fmt.Sprintf("%s [%s]", task.Status, task.WaitingStep)
+			}
+		}
 		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n",
-			task.TaskId, task.Status, task.AttemptCount, latestAttempt, title)
+			task.TaskId, status, task.AttemptCount, latestAttempt, title)
 	}
 	w.Flush()
 }

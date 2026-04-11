@@ -976,17 +976,21 @@ func (x *ListRunsResponse) GetRuns() []*RunSummary {
 }
 
 type RunSummary struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
-	WorkflowName  string                 `protobuf:"bytes,2,opt,name=workflow_name,json=workflowName,proto3" json:"workflow_name,omitempty"`
-	State         string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
-	StartedAt     string                 `protobuf:"bytes,4,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
-	ErrorMessage  string                 `protobuf:"bytes,5,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
-	ContainerId   string                 `protobuf:"bytes,6,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
-	Title         string                 `protobuf:"bytes,7,opt,name=title,proto3" json:"title,omitempty"`
-	IsHost        bool                   `protobuf:"varint,8,opt,name=is_host,json=isHost,proto3" json:"is_host,omitempty"`
-	ProjectDir    string                 `protobuf:"bytes,9,opt,name=project_dir,json=projectDir,proto3" json:"project_dir,omitempty"`
-	TaskId        string                 `protobuf:"bytes,10,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	RunId        string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	WorkflowName string                 `protobuf:"bytes,2,opt,name=workflow_name,json=workflowName,proto3" json:"workflow_name,omitempty"`
+	State        string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	StartedAt    string                 `protobuf:"bytes,4,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	ErrorMessage string                 `protobuf:"bytes,5,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	ContainerId  string                 `protobuf:"bytes,6,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
+	Title        string                 `protobuf:"bytes,7,opt,name=title,proto3" json:"title,omitempty"`
+	IsHost       bool                   `protobuf:"varint,8,opt,name=is_host,json=isHost,proto3" json:"is_host,omitempty"`
+	ProjectDir   string                 `protobuf:"bytes,9,opt,name=project_dir,json=projectDir,proto3" json:"project_dir,omitempty"`
+	TaskId       string                 `protobuf:"bytes,10,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	// Populated when state == "waiting": the human step being polled.
+	WaitingStep string `protobuf:"bytes,11,opt,name=waiting_step,json=waitingStep,proto3" json:"waiting_step,omitempty"`
+	// Populated when state == "waiting": RFC3339 timestamp of the last poll invocation.
+	LastPollAt    string `protobuf:"bytes,12,opt,name=last_poll_at,json=lastPollAt,proto3" json:"last_poll_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1087,6 +1091,20 @@ func (x *RunSummary) GetProjectDir() string {
 func (x *RunSummary) GetTaskId() string {
 	if x != nil {
 		return x.TaskId
+	}
+	return ""
+}
+
+func (x *RunSummary) GetWaitingStep() string {
+	if x != nil {
+		return x.WaitingStep
+	}
+	return ""
+}
+
+func (x *RunSummary) GetLastPollAt() string {
+	if x != nil {
+		return x.LastPollAt
 	}
 	return ""
 }
@@ -1705,8 +1723,12 @@ type TaskSummary struct {
 	CreatedAt       string                 `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	LatestAttemptId string                 `protobuf:"bytes,6,opt,name=latest_attempt_id,json=latestAttemptId,proto3" json:"latest_attempt_id,omitempty"`
 	AttemptCount    int32                  `protobuf:"varint,7,opt,name=attempt_count,json=attemptCount,proto3" json:"attempt_count,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Populated when status == "waiting": the human step being polled.
+	WaitingStep string `protobuf:"bytes,8,opt,name=waiting_step,json=waitingStep,proto3" json:"waiting_step,omitempty"`
+	// Populated when status == "waiting": RFC3339 timestamp of the last poll invocation.
+	LastPollAt    string `protobuf:"bytes,9,opt,name=last_poll_at,json=lastPollAt,proto3" json:"last_poll_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TaskSummary) Reset() {
@@ -1786,6 +1808,20 @@ func (x *TaskSummary) GetAttemptCount() int32 {
 		return x.AttemptCount
 	}
 	return 0
+}
+
+func (x *TaskSummary) GetWaitingStep() string {
+	if x != nil {
+		return x.WaitingStep
+	}
+	return ""
+}
+
+func (x *TaskSummary) GetLastPollAt() string {
+	if x != nil {
+		return x.LastPollAt
+	}
+	return ""
 }
 
 type ListTasksResponse struct {
@@ -4098,7 +4134,7 @@ const file_cloche_proto_rawDesc = "" +
 	"\x05limit\x18\x04 \x01(\x05R\x05limit\x12\x17\n" +
 	"\atask_id\x18\x05 \x01(\tR\x06taskId\"=\n" +
 	"\x10ListRunsResponse\x12)\n" +
-	"\x04runs\x18\x01 \x03(\v2\x15.cloche.v1.RunSummaryR\x04runs\"\xae\x02\n" +
+	"\x04runs\x18\x01 \x03(\v2\x15.cloche.v1.RunSummaryR\x04runs\"\xf3\x02\n" +
 	"\n" +
 	"RunSummary\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12#\n" +
@@ -4113,7 +4149,10 @@ const file_cloche_proto_rawDesc = "" +
 	"\vproject_dir\x18\t \x01(\tR\n" +
 	"projectDir\x12\x17\n" +
 	"\atask_id\x18\n" +
-	" \x01(\tR\x06taskId\"[\n" +
+	" \x01(\tR\x06taskId\x12!\n" +
+	"\fwaiting_step\x18\v \x01(\tR\vwaitingStep\x12 \n" +
+	"\flast_poll_at\x18\f \x01(\tR\n" +
+	"lastPollAt\"[\n" +
 	"\x11EnableLoopRequest\x12\x1f\n" +
 	"\vproject_dir\x18\x01 \x01(\tR\n" +
 	"projectDir\x12%\n" +
@@ -4159,7 +4198,7 @@ const file_cloche_proto_rawDesc = "" +
 	"\vproject_dir\x18\x02 \x01(\tR\n" +
 	"projectDir\x12\x14\n" +
 	"\x05state\x18\x03 \x01(\tR\x05state\x12\x14\n" +
-	"\x05limit\x18\x04 \x01(\x05R\x05limit\"\xe5\x01\n" +
+	"\x05limit\x18\x04 \x01(\x05R\x05limit\"\xaa\x02\n" +
 	"\vTaskSummary\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x16\n" +
@@ -4169,7 +4208,10 @@ const file_cloche_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x05 \x01(\tR\tcreatedAt\x12*\n" +
 	"\x11latest_attempt_id\x18\x06 \x01(\tR\x0flatestAttemptId\x12#\n" +
-	"\rattempt_count\x18\a \x01(\x05R\fattemptCount\"A\n" +
+	"\rattempt_count\x18\a \x01(\x05R\fattemptCount\x12!\n" +
+	"\fwaiting_step\x18\b \x01(\tR\vwaitingStep\x12 \n" +
+	"\flast_poll_at\x18\t \x01(\tR\n" +
+	"lastPollAt\"A\n" +
 	"\x11ListTasksResponse\x12,\n" +
 	"\x05tasks\x18\x01 \x03(\v2\x16.cloche.v1.TaskSummaryR\x05tasks\")\n" +
 	"\x0eGetTaskRequest\x12\x17\n" +

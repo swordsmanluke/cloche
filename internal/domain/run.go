@@ -204,17 +204,23 @@ func AttemptAggregateStatus(runs []*Run) RunState {
 	runs = latestByWorkflowName(runs)
 
 	hasRunning := false
+	hasWaiting := false
 	hasPending := false
 	for _, r := range runs {
 		switch r.State {
 		case RunStateRunning:
 			hasRunning = true
+		case RunStateWaiting:
+			hasWaiting = true
 		case RunStatePending:
 			hasPending = true
 		}
 	}
 	if hasRunning {
 		return RunStateRunning
+	}
+	if hasWaiting {
+		return RunStateWaiting
 	}
 	if hasPending {
 		return RunStatePending
@@ -238,19 +244,25 @@ func TaskAggregateStatus(runs []*Run) RunState {
 		return RunStatePending
 	}
 
-	// Active statuses outweigh terminal ones. Prefer running over pending.
+	// Active statuses outweigh terminal ones. Prefer running > waiting > pending.
 	hasRunning := false
+	hasWaiting := false
 	hasPending := false
 	for _, r := range runs {
 		switch r.State {
 		case RunStateRunning:
 			hasRunning = true
+		case RunStateWaiting:
+			hasWaiting = true
 		case RunStatePending:
 			hasPending = true
 		}
 	}
 	if hasRunning {
 		return RunStateRunning
+	}
+	if hasWaiting {
+		return RunStateWaiting
 	}
 	if hasPending {
 		return RunStatePending

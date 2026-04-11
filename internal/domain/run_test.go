@@ -230,6 +230,37 @@ func TestTaskAggregateStatus(t *testing.T) {
 			},
 			want: domain.RunStateRunning,
 		},
+		{
+			name: "waiting is active",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateWaiting, now),
+			},
+			want: domain.RunStateWaiting,
+		},
+		{
+			name: "running outweighs waiting",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateWaiting, now.Add(-1*time.Minute)),
+				mkRun(domain.RunStateRunning, now),
+			},
+			want: domain.RunStateRunning,
+		},
+		{
+			name: "waiting outweighs pending",
+			runs: []*domain.Run{
+				mkRun(domain.RunStatePending, now.Add(-1*time.Minute)),
+				mkRun(domain.RunStateWaiting, now),
+			},
+			want: domain.RunStateWaiting,
+		},
+		{
+			name: "waiting outweighs terminal",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateFailed, now.Add(-2*time.Minute)),
+				mkRun(domain.RunStateWaiting, now),
+			},
+			want: domain.RunStateWaiting,
+		},
 	}
 
 	for _, tt := range tests {
@@ -383,6 +414,35 @@ func TestAttemptAggregateStatus(t *testing.T) {
 				mkRunNamed(domain.RunStateRunning, "post-merge", now.Add(2*time.Second)),
 			},
 			want: domain.RunStateRunning,
+		},
+		{
+			name: "waiting is active",
+			runs: []*domain.Run{mkRun(domain.RunStateWaiting)},
+			want: domain.RunStateWaiting,
+		},
+		{
+			name: "running outweighs waiting",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateWaiting),
+				mkRun(domain.RunStateRunning),
+			},
+			want: domain.RunStateRunning,
+		},
+		{
+			name: "waiting outweighs pending",
+			runs: []*domain.Run{
+				mkRun(domain.RunStatePending),
+				mkRun(domain.RunStateWaiting),
+			},
+			want: domain.RunStateWaiting,
+		},
+		{
+			name: "waiting outweighs terminal",
+			runs: []*domain.Run{
+				mkRun(domain.RunStateFailed),
+				mkRun(domain.RunStateWaiting),
+			},
+			want: domain.RunStateWaiting,
 		},
 	}
 

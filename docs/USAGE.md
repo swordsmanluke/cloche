@@ -960,7 +960,7 @@ show a flat run listing instead of the task-oriented view.
 |------|-------------|
 | `--all` | Show tasks from all projects (default: current project only). |
 | `--project, -p DIR` | Filter by project directory. |
-| `--state, -s STATE` | Filter by task status (`pending`, `running`, `succeeded`, `failed`, `cancelled`). |
+| `--state, -s STATE` | Filter by task status (`pending`, `running`, `waiting`, `succeeded`, `failed`, `cancelled`). |
 | `--limit, -n NUM` | Limit the number of results returned. |
 | `--runs` | Show flat run listing instead of task-oriented view. |
 

@@ -1527,9 +1527,12 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 		return nil, fmt.Errorf("listing runs: %w", err)
 	}
 
+	// Cast store to HumanPollStore once to look up waiting step info.
+	hps, hasHPS := s.store.(ports.HumanPollStore)
+
 	resp := &pb.ListRunsResponse{}
 	for _, run := range runs {
-		resp.Runs = append(resp.Runs, &pb.RunSummary{
+		sum := &pb.RunSummary{
 			RunId:        run.ID,
 			WorkflowName: run.WorkflowName,
 			State:        string(run.State),
@@ -1540,7 +1543,17 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 			IsHost:       run.IsHost,
 			ProjectDir:   run.ProjectDir,
 			TaskId:       run.TaskID,
-		})
+		}
+		// Populate waiting step info for waiting runs.
+		if run.State == domain.RunStateWaiting && hasHPS {
+			if polls, err := hps.ListHumanPolls(ctx, run.ID); err == nil && len(polls) > 0 {
+				sum.WaitingStep = polls[0].StepName
+				if !polls[0].LastPollAt.IsZero() {
+					sum.LastPollAt = polls[0].LastPollAt.UTC().Format(time.RFC3339)
+				}
+			}
+		}
+		resp.Runs = append(resp.Runs, sum)
 	}
 	return resp, nil
 }
@@ -1561,6 +1574,9 @@ func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) 
 		return nil, fmt.Errorf("listing tasks: %w", err)
 	}
 
+	// Cast store to HumanPollStore once for waiting step lookups.
+	hps, hasHPS := s.store.(ports.HumanPollStore)
+
 	resp := &pb.ListTasksResponse{}
 	for _, task := range tasks {
 		sum := &pb.TaskSummary{
@@ -1573,6 +1589,31 @@ func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) 
 		}
 		if la := task.LatestAttempt(); la != nil {
 			sum.LatestAttemptId = la.ID
+		}
+		// For tasks whose latest attempt is still "running", check whether any
+		// associated runs are actually in the "waiting" state (blocked at a human
+		// step). If so, upgrade the task status and populate waiting step info.
+		if task.Status == domain.TaskStatusRunning {
+			waitingRuns, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{
+				TaskID: task.ID,
+				State:  domain.RunStateWaiting,
+			})
+			if err == nil && len(waitingRuns) > 0 {
+				sum.Status = string(domain.TaskStatusWaiting)
+				// Pick the first waiting run and look up its poll record.
+				if hasHPS {
+					for _, wr := range waitingRuns {
+						polls, err := hps.ListHumanPolls(ctx, wr.ID)
+						if err == nil && len(polls) > 0 {
+							sum.WaitingStep = polls[0].StepName
+							if !polls[0].LastPollAt.IsZero() {
+								sum.LastPollAt = polls[0].LastPollAt.UTC().Format(time.RFC3339)
+							}
+							break
+						}
+					}
+				}
+			}
 		}
 		resp.Tasks = append(resp.Tasks, sum)
 	}
