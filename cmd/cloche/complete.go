@@ -171,7 +171,7 @@ func staticCompletions(subcommand string, index int, words []string, cur string)
 		case "--workflow":
 			// no static candidates
 		default:
-			candidates = []string{"--workflow", "--base-image"}
+			candidates = []string{"--new", "-n", "--install-shell-helpers", "--workflow", "--base-image", "--no-llm"}
 		}
 
 	case "validate":

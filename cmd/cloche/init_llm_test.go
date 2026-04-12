@@ -132,7 +132,7 @@ func TestRunLLMInitPhase_UpdatesFiles(t *testing.T) {
 	defer os.Chdir(origDir)
 
 	// Scaffold without LLM first
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	// Verify placeholder is present before LLM run
 	data, _ := os.ReadFile(filepath.Join(".cloche", "Dockerfile"))
@@ -165,7 +165,7 @@ func TestRunLLMInitPhase_NonFatalOnFailure(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	origDockerfile, _ := os.ReadFile(filepath.Join(".cloche", "Dockerfile"))
 
@@ -188,7 +188,7 @@ func TestRunLLMInitPhase_NonFatalOnEmptyResponse(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	origDockerfile, _ := os.ReadFile(filepath.Join(".cloche", "Dockerfile"))
 
@@ -208,7 +208,7 @@ func TestRunLLMInitPhase_NonFatalOnUnparsableResponse(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	origDockerfile, _ := os.ReadFile(filepath.Join(".cloche", "Dockerfile"))
 
@@ -228,7 +228,7 @@ func TestRunLLMInitPhase_OnlyWritesAllowedPaths(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	// Mock LLM that tries to write a disallowed path
 	mockResponse := "```evil/path/../../etc/passwd\nrooted!\n```\n\n" +
@@ -259,7 +259,7 @@ func TestCmdInit_NoLLMFlag_SkipsLLMPhase(t *testing.T) {
 	mockResponse := "```.cloche/Dockerfile\nFROM cloche-agent:latest\nUSER agent\n```\n"
 	mockCmd := writeMockLLMScript(t, mockResponse)
 
-	cmdInit([]string{"--no-llm", "--agent-command", mockCmd})
+	cmdInit([]string{"--new", "--no-llm", "--agent-command", mockCmd})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "Dockerfile"))
 	if !strings.Contains(string(data), "TODO(cloche-init)") {
@@ -277,7 +277,7 @@ func TestCmdInit_AgentCommandFlag_UsedForLLM(t *testing.T) {
 	mockResponse := "```.cloche/Dockerfile\n" + mockDockerfile + "```\n"
 	mockCmd := writeMockLLMScript(t, mockResponse)
 
-	cmdInit([]string{"--agent-command", mockCmd})
+	cmdInit([]string{"--new", "--agent-command", mockCmd})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "Dockerfile"))
 	if !strings.Contains(string(data), "nodejs") {
@@ -291,7 +291,7 @@ func TestRunLLMInitPhase_CustomWorkflow(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm", "--workflow", "build"})
+	cmdInit([]string{"--new", "--no-llm", "--workflow", "build"})
 
 	// Verify the custom workflow file has the placeholder
 	data, _ := os.ReadFile(filepath.Join(".cloche", "build.cloche"))

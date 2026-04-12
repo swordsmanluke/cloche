@@ -100,8 +100,7 @@ Do not modify the test files — fix the implementation instead.
 `
 
 var defaultConfigTOMLTemplate = `# Cloche project configuration
-# Set active = true so cloched picks up tasks automatically.
-active = false
+active = true
 
 [daemon]
 image = "%s"
@@ -589,48 +588,50 @@ func projectImageName() string {
 	return strings.ToLower(filepath.Base(cwd)) + "-cloche-agent:latest"
 }
 
-func cmdInit(args []string) {
-	workflow := "develop"
-	baseImage := "cloche-agent:latest"
-	noLLM := false
-	agentCommand := ""
-
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--workflow":
-			if i+1 < len(args) {
-				i++
-				workflow = args[i]
+// ensureConfigTOML creates .cloche/config.toml with active = true if it does not exist,
+// or updates active = false → active = true in an existing file.
+func ensureConfigTOML(path, imageName string) {
+	if _, err := os.Stat(path); err == nil {
+		// File exists — update active = true if needed.
+		data, err := os.ReadFile(path)
+		if err == nil {
+			content := string(data)
+			updated := false
+			if strings.Contains(content, "active = false") {
+				content = strings.ReplaceAll(content, "active = false", "active = true")
+				updated = true
+			} else if !strings.Contains(content, "active = true") && !strings.Contains(content, "active=true") {
+				// No active key found — prepend it.
+				content = "active = true\n" + content
+				updated = true
 			}
-		case "--base-image":
-			if i+1 < len(args) {
-				i++
-				baseImage = args[i]
-			}
-		case "--no-llm":
-			noLLM = true
-		case "--agent-command":
-			if i+1 < len(args) {
-				i++
-				agentCommand = args[i]
+			if updated {
+				if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+					fmt.Fprintf(os.Stderr, "warning: could not update %s: %v\n", path, err)
+				} else {
+					fmt.Fprintf(os.Stderr, "  update %s\n", path)
+				}
 			}
 		}
+		return
 	}
-
-	imageName := projectImageName()
-
-	clocheDir := ".cloche"
-	workflowFile := filepath.Join(clocheDir, workflow+".cloche")
-
-	// Refuse to overwrite existing workflow
-	if _, err := os.Stat(workflowFile); err == nil {
-		fmt.Fprintf(os.Stderr, "error: %s already exists\n", workflowFile)
+	// File doesn't exist — create it with the full template.
+	content := fmt.Sprintf(defaultConfigTOMLTemplate, imageName)
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "error writing %s: %v\n", path, err)
 		os.Exit(1)
 	}
+	fmt.Fprintf(os.Stderr, "  create %s\n", path)
+}
 
-	// Create directories
+// runNewProjectInit scaffolds workflow files, Dockerfile, prompts, scripts,
+// and other first-time project files. Individual files that already exist are
+// skipped with a warning rather than overwritten.
+func runNewProjectInit(clocheDir, workflow, baseImage string, noLLM bool, agentCommand string) {
+	workflowFile := filepath.Join(clocheDir, workflow+".cloche")
+
+	// Create subdirectories needed by --new.
 	for _, dir := range []string{
-		clocheDir,
 		filepath.Join(clocheDir, "prompts"),
 		filepath.Join(clocheDir, "overrides"),
 		filepath.Join(clocheDir, "scripts"),
@@ -642,7 +643,7 @@ func cmdInit(args []string) {
 		}
 	}
 
-	// Write all files, skipping any that already exist
+	// Write all files, skipping any that already exist.
 	files := []struct {
 		path    string
 		content string
@@ -650,7 +651,6 @@ func cmdInit(args []string) {
 	}{
 		{workflowFile, fmt.Sprintf(workflowTemplate, workflow), 0644},
 		{filepath.Join(clocheDir, "Dockerfile"), fmt.Sprintf(dockerfileTemplate, baseImage), 0644},
-		{filepath.Join(clocheDir, "config.toml"), fmt.Sprintf(defaultConfigTOMLTemplate, imageName), 0644},
 		{filepath.Join(clocheDir, "prompts", "implement.md"), implementPrompt, 0644},
 		{filepath.Join(clocheDir, "prompts", "fix-tests.md"), fixTestsPrompt, 0644},
 		{filepath.Join(clocheDir, "prompts", "fix-merge.md"), fixMergePrompt, 0644},
@@ -680,6 +680,61 @@ func cmdInit(args []string) {
 		fmt.Fprintf(os.Stderr, "  create %s\n", f.path)
 	}
 
+	// LLM-assisted init: fill in TODO(cloche-init) placeholders.
+	if !noLLM {
+		runLLMInitPhase(agentCommand, workflow)
+	}
+}
+
+func cmdInit(args []string) {
+	workflow := "develop"
+	baseImage := "cloche-agent:latest"
+	noLLM := false
+	agentCommand := ""
+	newProject := false
+	installShellHelpers := false
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--workflow":
+			if i+1 < len(args) {
+				i++
+				workflow = args[i]
+			}
+		case "--base-image":
+			if i+1 < len(args) {
+				i++
+				baseImage = args[i]
+			}
+		case "--no-llm":
+			noLLM = true
+		case "--agent-command":
+			if i+1 < len(args) {
+				i++
+				agentCommand = args[i]
+			}
+		case "--new", "-n":
+			newProject = true
+		case "--install-shell-helpers":
+			installShellHelpers = true
+		}
+	}
+
+	imageName := projectImageName()
+	clocheDir := ".cloche"
+
+	// === Core behavior (always) ===
+
+	// 1. Create .cloche/ directory.
+	if err := os.MkdirAll(clocheDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "error creating %s/: %v\n", clocheDir, err)
+		os.Exit(1)
+	}
+
+	// 2. Create or update config.toml with active = true.
+	ensureConfigTOML(filepath.Join(clocheDir, "config.toml"), imageName)
+
+	// 3. Add .gitignore entries for runtime state.
 	addGitignoreEntries([]string{
 		".cloche/logs/",
 		".cloche/runs/",
@@ -689,36 +744,46 @@ func cmdInit(args []string) {
 		".cloche/task_list.json",
 	})
 
-	// Create global daemon config if it doesn't exist.
+	// 4. Create global daemon config if it doesn't exist.
 	if cfgPath, err := config.WriteGlobalConfigIfAbsent(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not write global config: %v\n", err)
 	} else {
 		fmt.Fprintf(os.Stderr, "  create %s\n", cfgPath)
 	}
 
-	// Generate shell completion scripts into ~/.cloche/completions/.
-	home := os.Getenv("HOME")
-	if home != "" {
-		completionsDir := filepath.Join(home, ".cloche", "completions")
-		generateCompletionScripts(completionsDir)
+	// === --new / -n flag ===
+	if newProject {
+		runNewProjectInit(clocheDir, workflow, baseImage, noLLM, agentCommand)
 	}
 
-	// LLM-assisted init: fill in TODO(cloche-init) placeholders.
-	if !noLLM {
-		runLLMInitPhase(agentCommand, workflow)
+	// === --install-shell-helpers flag ===
+	if installShellHelpers {
+		home := os.Getenv("HOME")
+		if home != "" {
+			completionsDir := filepath.Join(home, ".cloche", "completions")
+			generateCompletionScripts(completionsDir)
+		}
 	}
 
 	cwd, _ := os.Getwd()
-	fmt.Fprintf(os.Stderr, "\nInitialized Cloche project in %s\n", filepath.Base(cwd))
-	fmt.Fprintf(os.Stderr, "\nNext steps:\n")
-	fmt.Fprintf(os.Stderr, "  1. Edit .cloche/config.toml           — set active = true\n")
-	fmt.Fprintf(os.Stderr, "  2. Edit %s        — adjust the test command for your project\n", workflowFile)
-	fmt.Fprintf(os.Stderr, "  3. Edit .cloche/Dockerfile            — add your project's dependencies\n")
-	fmt.Fprintf(os.Stderr, "  4. Edit .cloche/scripts/get-tasks.py  — connect to your task tracker\n")
-	fmt.Fprintf(os.Stderr, "  5. docker build -t %s -f .cloche/Dockerfile .\n", imageName)
-	fmt.Fprintf(os.Stderr, "  6. cloche loop                        — start the orchestration loop\n")
-	fmt.Fprintf(os.Stderr, "\nThe sample tasks in .cloche/task_list.json verify your setup end-to-end.\n")
-	fmt.Fprintf(os.Stderr, "Task #1 asks the agent to create a file; task #2 cleans up after itself.\n")
+	if newProject {
+		workflowFile := filepath.Join(clocheDir, workflow+".cloche")
+		fmt.Fprintf(os.Stderr, "\nInitialized Cloche project in %s\n", filepath.Base(cwd))
+		fmt.Fprintf(os.Stderr, "\nNext steps:\n")
+		fmt.Fprintf(os.Stderr, "  1. Edit .cloche/config.toml           — review settings\n")
+		fmt.Fprintf(os.Stderr, "  2. Edit %s        — adjust the test command for your project\n", workflowFile)
+		fmt.Fprintf(os.Stderr, "  3. Edit .cloche/Dockerfile            — add your project's dependencies\n")
+		fmt.Fprintf(os.Stderr, "  4. Edit .cloche/scripts/get-tasks.py  — connect to your task tracker\n")
+		fmt.Fprintf(os.Stderr, "  5. docker build -t %s -f .cloche/Dockerfile .\n", imageName)
+		fmt.Fprintf(os.Stderr, "  6. cloche loop                        — start the orchestration loop\n")
+		fmt.Fprintf(os.Stderr, "\nThe sample tasks in .cloche/task_list.json verify your setup end-to-end.\n")
+		fmt.Fprintf(os.Stderr, "Task #1 asks the agent to create a file; task #2 cleans up after itself.\n")
+	} else {
+		fmt.Fprintf(os.Stderr, "\nProject registered at %s\n", filepath.Base(cwd))
+		if !installShellHelpers {
+			fmt.Fprintf(os.Stderr, "Run 'cloche init --new' to generate workflow files and Dockerfile.\n")
+		}
+	}
 }
 
 func removeGitignoreEntries(entries []string) {

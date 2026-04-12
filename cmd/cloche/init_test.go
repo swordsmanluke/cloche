@@ -13,7 +13,7 @@ func TestCmdInit_DefaultFlags(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	for _, path := range []string{
 		filepath.Join(".cloche", "develop.cloche"),
@@ -78,7 +78,7 @@ func TestCmdInit_CustomFlags(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm", "--workflow", "build", "--base-image", "python:3.12"})
+	cmdInit([]string{"--new", "--no-llm", "--workflow", "build", "--base-image", "python:3.12"})
 
 	if _, err := os.Stat(filepath.Join(".cloche", "build.cloche")); os.IsNotExist(err) {
 		t.Error("expected .cloche/build.cloche to exist")
@@ -107,7 +107,7 @@ func TestCmdInit_SkipsExistingFiles(t *testing.T) {
 	os.MkdirAll(".cloche", 0755)
 	os.WriteFile(filepath.Join(".cloche", "Dockerfile"), []byte("custom"), 0644)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "Dockerfile"))
 	if string(data) != "custom" {
@@ -178,7 +178,7 @@ func TestCmdInit_DockerfileDefaultBaseImage(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "Dockerfile"))
 	content := string(data)
@@ -196,7 +196,7 @@ func TestCmdInit_DockerfileRuntimeExamples(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "Dockerfile"))
 	content := string(data)
@@ -213,7 +213,7 @@ func TestCmdInit_WorkflowTestStepPlaceholder(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "develop.cloche"))
 	content := string(data)
@@ -231,7 +231,7 @@ func TestCmdInit_ImplementPromptPlaceholder(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "prompts", "implement.md"))
 	content := string(data)
@@ -273,13 +273,201 @@ func TestCmdInit_ConfigTOMLOrchestrationSection(t *testing.T) {
 	}
 }
 
-func TestCmdInit_ClocheignoreV2Patterns(t *testing.T) {
+func TestCmdInit_ConfigTOMLActiveTrue(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
 	cmdInit([]string{"--no-llm"})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	if !strings.Contains(content, "active = true") {
+		t.Error("config.toml should contain active = true")
+	}
+	if strings.Contains(content, "active = false") {
+		t.Error("config.toml should not contain active = false")
+	}
+}
+
+func TestCmdInit_BareInit_CoreBehavior(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{"--no-llm"})
+
+	// Core: .cloche/ directory exists
+	if info, err := os.Stat(".cloche"); err != nil || !info.IsDir() {
+		t.Error("expected .cloche/ directory to exist")
+	}
+
+	// Core: config.toml exists with active = true
+	data, err := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	if err != nil {
+		t.Fatal("expected .cloche/config.toml to exist")
+	}
+	if !strings.Contains(string(data), "active = true") {
+		t.Error("config.toml should have active = true")
+	}
+
+	// Core: .gitignore entries added
+	gitignore, err := os.ReadFile(".gitignore")
+	if err != nil {
+		t.Fatal("expected .gitignore to exist")
+	}
+	if !strings.Contains(string(gitignore), ".cloche/runs/") {
+		t.Error(".gitignore should contain .cloche/runs/")
+	}
+
+	// Workflow files should NOT be created without --new
+	for _, path := range []string{
+		filepath.Join(".cloche", "develop.cloche"),
+		filepath.Join(".cloche", "Dockerfile"),
+		filepath.Join(".cloche", "host.cloche"),
+		filepath.Join(".cloche", "prompts", "implement.md"),
+		".clocheignore",
+	} {
+		if _, err := os.Stat(path); err == nil {
+			t.Errorf("expected %s to NOT exist without --new", path)
+		}
+	}
+}
+
+func TestCmdInit_BareInit_UpdatesActiveTrue(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// Pre-create a config.toml with active = false
+	os.MkdirAll(".cloche", 0755)
+	existing := "# Cloche project configuration\nactive = false\n\n[daemon]\nimage = \"myproject-cloche-agent:latest\"\n"
+	os.WriteFile(filepath.Join(".cloche", "config.toml"), []byte(existing), 0644)
+
+	cmdInit([]string{"--no-llm"})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	if !strings.Contains(content, "active = true") {
+		t.Error("config.toml should have active = true after bare init")
+	}
+	if strings.Contains(content, "active = false") {
+		t.Error("config.toml should not contain active = false after bare init")
+	}
+	// Other content should be preserved
+	if !strings.Contains(content, "myproject-cloche-agent:latest") {
+		t.Error("existing config.toml content should be preserved")
+	}
+}
+
+func TestCmdInit_BareInit_IdempotentActiveTrue(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// Pre-create a config.toml that already has active = true
+	os.MkdirAll(".cloche", 0755)
+	existing := "# Cloche project configuration\nactive = true\n\n[daemon]\nimage = \"myproject-cloche-agent:latest\"\n"
+	os.WriteFile(filepath.Join(".cloche", "config.toml"), []byte(existing), 0644)
+
+	cmdInit([]string{"--no-llm"})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	// Should still be active = true, not duplicated
+	if strings.Count(content, "active = true") != 1 {
+		t.Errorf("config.toml should have exactly one active = true, got:\n%s", content)
+	}
+	// Content should be preserved
+	if !strings.Contains(content, "myproject-cloche-agent:latest") {
+		t.Error("existing config.toml content should be preserved")
+	}
+}
+
+func TestCmdInit_NewFlag_CreatesWorkflowFiles(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{"--new", "--no-llm"})
+
+	for _, path := range []string{
+		filepath.Join(".cloche", "develop.cloche"),
+		filepath.Join(".cloche", "Dockerfile"),
+		filepath.Join(".cloche", "host.cloche"),
+		filepath.Join(".cloche", "prompts", "implement.md"),
+		".clocheignore",
+	} {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			t.Errorf("expected %s to exist with --new", path)
+		}
+	}
+}
+
+func TestCmdInit_ShortNewFlag(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{"-n", "--no-llm"})
+
+	// -n is equivalent to --new
+	if _, err := os.Stat(filepath.Join(".cloche", "develop.cloche")); os.IsNotExist(err) {
+		t.Error("expected develop.cloche to exist with -n flag")
+	}
+}
+
+func TestCmdInit_InstallShellHelpers_CreatesCompletionScripts(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	cmdInit([]string{"--install-shell-helpers", "--no-llm"})
+
+	// Completion scripts should be created
+	completionsDir := filepath.Join(home, ".cloche", "completions")
+	for _, script := range []string{"cloche.bash", "cloche.zsh"} {
+		if _, err := os.Stat(filepath.Join(completionsDir, script)); os.IsNotExist(err) {
+			t.Errorf("expected %s to exist with --install-shell-helpers", script)
+		}
+	}
+}
+
+func TestCmdInit_NoInstallShellHelpers_NoCompletionScripts(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Bare init without --install-shell-helpers
+	cmdInit([]string{"--no-llm"})
+
+	completionsDir := filepath.Join(home, ".cloche", "completions")
+	if _, err := os.Stat(completionsDir); err == nil {
+		t.Error("completions directory should not be created without --install-shell-helpers")
+	}
+}
+
+func TestCmdInit_ClocheignoreV2Patterns(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, _ := os.ReadFile(".clocheignore")
 	content := string(data)
@@ -303,7 +491,7 @@ func TestCmdInit_VersionContent(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, err := os.ReadFile(filepath.Join(".cloche", "version"))
 	if err != nil {
@@ -320,7 +508,7 @@ func TestCmdInit_ScriptsExecutable(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	for _, path := range []string{
 		filepath.Join(".cloche", "scripts", "get-tasks.py"),
@@ -348,7 +536,7 @@ func TestCmdInit_MergeCleanupScripts(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	for _, path := range []string{
 		filepath.Join(".cloche", "scripts", "prepare-merge.py"),
@@ -377,7 +565,7 @@ func TestCmdInit_PrepareMergeContent(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "prepare-merge.py"))
 	content := string(data)
@@ -398,7 +586,7 @@ func TestCmdInit_MergeContent(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "merge.py"))
 	content := string(data)
@@ -419,7 +607,7 @@ func TestCmdInit_CleanupContent(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "cleanup.py"))
 	content := string(data)
@@ -440,7 +628,7 @@ func TestCmdInit_FixMergePromptContent(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "prompts", "fix-merge.md"))
 	content := string(data)
@@ -458,7 +646,7 @@ func TestCmdInit_WorkflowTemplateV2(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "develop.cloche"))
 	content := string(data)
@@ -489,7 +677,7 @@ func TestCmdInit_HostWorkflowV2(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "host.cloche"))
 	content := string(data)
@@ -523,7 +711,7 @@ func TestCmdInit_TaskListJSON(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, err := os.ReadFile(filepath.Join(".cloche", "task_list.json"))
 	if err != nil {
@@ -544,7 +732,7 @@ func TestCmdInit_TestClocheScript(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, err := os.ReadFile(filepath.Join("cloche_init_test", "cloche", "test_cloche.py"))
 	if err != nil {
@@ -568,7 +756,7 @@ func TestCmdInit_GetTasksContent(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "get-tasks.py"))
 	content := string(data)
@@ -578,7 +766,7 @@ func TestCmdInit_GetTasksContent(t *testing.T) {
 	if !strings.Contains(content, "CLOCHE_STEP_OUTPUT") {
 		t.Error("get-tasks.py should write to CLOCHE_STEP_OUTPUT")
 	}
-	if !strings.Contains(content, `"status": "open"`) || !strings.Contains(content, `.get("status") == "open"`) {
+	if !strings.Contains(content, `"status") == "open"`) {
 		// Either format is acceptable
 		if !strings.Contains(content, "open") {
 			t.Error("get-tasks.py should filter for open tasks")
@@ -640,7 +828,7 @@ func TestCmdInit_UnclaimContent(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "unclaim.py"))
 	content := string(data)

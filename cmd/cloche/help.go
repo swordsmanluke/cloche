@@ -8,34 +8,46 @@ import (
 // subcommandHelp maps each subcommand to its detailed help text.
 // Help text is formatted for LLM consumption: structured, explicit, with examples.
 var subcommandHelp = map[string]string{
-	"init": `cloche init — Initialize a Cloche project
+	"init": `cloche init — Initialize or re-register a Cloche project
 
-Creates the .cloche/ directory with a workflow definition, Dockerfile,
-prompt templates, and configuration files. After scaffolding, invokes
-the configured LLM to fill in TODO(cloche-init) placeholders based on
-the project's files (go.mod, package.json, Makefile, etc.).
+The bare command is safe to run on any existing project: it ensures
+the .cloche/ directory exists, creates or updates .cloche/config.toml
+(setting active = true), adds .gitignore entries for runtime state, and
+writes the global daemon config if absent.
+
+Use --new for first-time setup to generate workflow files, Dockerfile,
+and prompt/script templates.  Use --install-shell-helpers once per
+machine to install shell tab-completion.
 
 Usage:
-  cloche init [--workflow <name>] [--base-image <image>] [--agent-command <cmd>] [--no-llm]
+  cloche init [-n | --new] [--install-shell-helpers]
+              [--workflow <name>] [--base-image <image>]
+              [--agent-command <cmd>] [--no-llm]
 
 Flags:
-  --workflow <name>         Name for the workflow file (default: "develop")
-  --base-image <image>      Base Docker image for the Dockerfile (default: "cloche-base:latest")
-  --agent-command <cmd>     LLM command for the init analysis phase (overrides config and env)
+  -n, --new                 Generate workflow files, Dockerfile, prompts, and
+                            scripts (first-time project setup). Existing files
+                            are skipped.
+  --install-shell-helpers   Install bash/zsh completion scripts and add a
+                            source line to the shell rc file. One-time per
+                            machine, not per project.
+  --workflow <name>         Workflow file name for --new (default: "develop")
+  --base-image <image>      Base Docker image for --new Dockerfile
+                            (default: "cloche-agent:latest")
+  --agent-command <cmd>     LLM command for the --new analysis phase
+                            (overrides config and env)
   --no-llm                  Skip the LLM-assisted placeholder filling phase
 
-LLM command resolution order:
-  1. --agent-command flag
-  2. CLOCHE_AGENT_COMMAND environment variable
-  3. Global config [daemon] llm_command
-  4. claude if available on PATH
-  Falls back gracefully with a warning if no LLM is available.
+Core behavior (always, no flags needed):
+  .cloche/                   Directory created if missing
+  .cloche/config.toml        Created with active = true, or updated in-place
+  .gitignore                 Runtime-state entries added if missing
+  ~/.config/cloche/config    Global daemon config created if absent
 
-What it creates:
+Additional files created by --new (skipped if already exist):
   .cloche/<name>.cloche              Workflow definition
   .cloche/host.cloche                Host orchestration workflow
   .cloche/Dockerfile                 Container image definition
-  .cloche/config.toml                Project configuration
   .cloche/prompts/implement.md       Prompt for the implement step
   .cloche/prompts/fix-tests.md       Prompt for the fix-tests step
   .cloche/prompts/fix-merge.md       Prompt for resolving merge conflicts
@@ -48,12 +60,18 @@ What it creates:
   .cloche/scripts/unclaim.py         Reset task to open and stop loop
   .cloche/version                    Schema version marker
 
-Existing files are never overwritten. Run this command again safely to add
-missing files without losing customizations.
+LLM command resolution order (--new only):
+  1. --agent-command flag
+  2. CLOCHE_AGENT_COMMAND environment variable
+  3. Global config [daemon] llm_command
+  4. claude if available on PATH
+  Falls back gracefully with a warning if no LLM is available.
 
 Examples:
-  cloche init
-  cloche init --workflow build --base-image python:3.12
+  cloche init                                      # register existing project
+  cloche init --new                                # first-time project setup
+  cloche init --new --workflow build --base-image python:3.12
+  cloche init --install-shell-helpers              # one-time shell completion setup
 `,
 
 	"doctor": `cloche doctor — Diagnose Cloche infrastructure

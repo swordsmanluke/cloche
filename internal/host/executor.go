@@ -155,7 +155,9 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 	// leak from the container environment when HostRunID is not set.
 	var baseEnv []string
 	for _, ev := range os.Environ() {
-		if !strings.HasPrefix(ev, "CLOCHE_RUN_ID=") {
+		if !strings.HasPrefix(ev, "CLOCHE_RUN_ID=") &&
+			!strings.HasPrefix(ev, "CLOCHE_TASK_ID=") &&
+			!strings.HasPrefix(ev, "CLOCHE_ATTEMPT_ID=") {
 			baseEnv = append(baseEnv, ev)
 		}
 	}
@@ -494,7 +496,9 @@ func (e *Executor) runHumanPollScript(ctx context.Context, step *domain.Step) (s
 
 	var baseEnv []string
 	for _, ev := range os.Environ() {
-		if !strings.HasPrefix(ev, "CLOCHE_RUN_ID=") {
+		if !strings.HasPrefix(ev, "CLOCHE_RUN_ID=") &&
+			!strings.HasPrefix(ev, "CLOCHE_TASK_ID=") &&
+			!strings.HasPrefix(ev, "CLOCHE_ATTEMPT_ID=") {
 			baseEnv = append(baseEnv, ev)
 		}
 	}
