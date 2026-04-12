@@ -773,24 +773,35 @@ cloche run --help          # same as above
 
 ### `cloche init`
 
-Scaffold a new Cloche project.
+Set up or refresh a Cloche project. Safe to run on any project, including ones
+already using Cloche — it will not overwrite existing files.
 
 ```
-cloche init [--workflow <name>] [--base-image <base>] [--agent-command <cmd>] [--no-llm]
+cloche init [-n | --new] [--install-shell-helpers]
+            [--workflow <name>] [--base-image <image>]
+            [--agent-command <cmd>] [--no-llm]
 ```
+
+**Core behavior (always, no flags needed):** Creates the `.cloche/` directory
+structure if missing, creates or updates `.cloche/config.toml` (setting
+`active = true`), adds `.gitignore` entries for runtime state, and registers
+the project with the daemon.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--workflow <name>` | `develop` | Workflow name. Creates `.cloche/<name>.cloche`. |
-| `--base-image <base>` | `cloche-agent:latest` | Base Docker image for the generated Dockerfile. |
-| `--agent-command <cmd>` | _(see below)_ | LLM command for the init analysis phase (overrides config and env). |
-| `--no-llm` | false | Skip the LLM-assisted placeholder filling phase. |
+| `-n`, `--new` | false | Generate workflow files, Dockerfile, prompt templates, and scripts. First-project experience. Existing files are skipped. |
+| `--install-shell-helpers` | false | Install shell completion scripts and add sourcing lines to `.bashrc` / `.zshrc`. One-time per-machine setup. |
+| `--workflow <name>` | `develop` | Workflow name (only with `--new`). Creates `.cloche/<name>.cloche`. |
+| `--base-image <base>` | `cloche-agent:latest` | Base Docker image for the generated Dockerfile (only with `--new`). |
+| `--agent-command <cmd>` | _(see below)_ | LLM command for the init analysis phase (only with `--new`; overrides config and env). |
+| `--no-llm` | false | Skip the LLM-assisted placeholder filling phase (only with `--new`). |
 
-Creates `.cloche/` with workflow file, Dockerfile, `config.toml`, prompt templates
-(`implement.md`, `fix-tests.md`, `fix-merge.md`), host workflows (`host.cloche`),
-Python scripts (`get-tasks.py`, `claim-task.py`, `prepare-merge.py`, `merge.py`,
-`release-task.py`, `cleanup.py`, `unclaim.py`), `.cloche/task_list.json`, and
-`cloche_init_test/cloche/test_cloche.py`. Skips existing files.
+**`--new` scaffolding:** Creates `.cloche/` with workflow file, Dockerfile,
+prompt templates (`implement.md`, `fix-tests.md`, `fix-merge.md`), host
+workflows (`host.cloche`), Python scripts (`get-tasks.py`, `claim-task.py`,
+`prepare-merge.py`, `merge.py`, `release-task.py`, `cleanup.py`, `unclaim.py`),
+`.cloche/task_list.json`, and `cloche_init_test/cloche/test_cloche.py`. Skips
+existing files.
 
 Three generated files contain `TODO(cloche-init)` placeholders:
 
@@ -800,9 +811,9 @@ Three generated files contain `TODO(cloche-init)` placeholders:
 - **`.cloche/prompts/implement.md`** — the `## Project Context` section describing
   your project's language, test command, and key conventions.
 
-After scaffolding, `cloche init` invokes the configured LLM client to analyze the
-project (reading `go.mod`, `package.json`, `Makefile`, etc.) and fill in these
-placeholders automatically. LLM command resolution order:
+After scaffolding with `--new`, `cloche init` invokes the configured LLM client
+to analyze the project (reading `go.mod`, `package.json`, `Makefile`, etc.) and
+fill in these placeholders automatically. LLM command resolution order:
 
 1. `--agent-command` flag
 2. `CLOCHE_AGENT_COMMAND` environment variable
@@ -818,10 +829,6 @@ Use `grep -r 'TODO(cloche-init)' .cloche/` to find any remaining placeholders.
 Also creates `~/.config/cloche/config` (global daemon config) if it does not already
 exist. The default config enables the web dashboard on `localhost:8080`. Skipped if
 the file already exists.
-
-Also generates shell completion scripts to `~/.cloche/completions/` (bash and zsh)
-and offers to update `~/.bashrc` or `~/.zshrc` with the appropriate sourcing
-snippet. Skipped on Windows.
 
 ### `cloche doctor`
 
@@ -1326,9 +1333,10 @@ colon-delimited component matching. For example, typing a partial attempt ID
 like `1fka` will expand to the full composite ID `task-abc:1fka`, so you don't
 need to know the task ID prefix to tab-complete an attempt.
 
-The shell integration is set up automatically by `cloche init`, which writes
+The shell integration is set up by running `cloche init --install-shell-helpers`, which writes
 `~/.cloche/completions/cloche.bash` (for bash) and `~/.cloche/completions/_cloche`
 (for zsh) and offers to append the sourcing snippet to `~/.bashrc` or `~/.zshrc`.
+This is a one-time per-machine setup and is not required for each project.
 
 ## Project Layout
 
@@ -1372,7 +1380,7 @@ my-project/
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `active` | `false` | Set to `true` to auto-start the orchestration loop when the daemon starts. |
+| `active` | `true` | Set to `true` to auto-start the orchestration loop when the daemon starts. |
 
 ### `[orchestration]`
 

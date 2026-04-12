@@ -151,15 +151,16 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 	cmdStr := step.Config["run"]
 	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
 	cmd.Dir = e.scriptDir()
-	// Build env from parent, filtering out CLOCHE_RUN_ID so it doesn't
-	// leak from the container environment when HostRunID is not set.
+	// Build env from parent, filtering out CLOCHE_* vars so they don't
+	// leak from the container environment when they are not explicitly set.
 	var baseEnv []string
 	for _, ev := range os.Environ() {
-		if !strings.HasPrefix(ev, "CLOCHE_RUN_ID=") &&
-			!strings.HasPrefix(ev, "CLOCHE_TASK_ID=") &&
-			!strings.HasPrefix(ev, "CLOCHE_ATTEMPT_ID=") {
-			baseEnv = append(baseEnv, ev)
+		if strings.HasPrefix(ev, "CLOCHE_RUN_ID=") ||
+			strings.HasPrefix(ev, "CLOCHE_TASK_ID=") ||
+			strings.HasPrefix(ev, "CLOCHE_ATTEMPT_ID=") {
+			continue
 		}
+		baseEnv = append(baseEnv, ev)
 	}
 	cmd.Env = append(baseEnv,
 		"CLOCHE_PROJECT_DIR="+e.ProjectDir,
@@ -485,7 +486,6 @@ func (e *Executor) executeHumanStepStandalone(
 	}
 }
 
-
 // runHumanPollScript runs a single invocation of the human step's polling script.
 // It returns the wire name if a result marker was found, an empty string when the
 // script exited 0 with no marker (pending), or "fail" on non-zero exit with no marker.
@@ -496,11 +496,12 @@ func (e *Executor) runHumanPollScript(ctx context.Context, step *domain.Step) (s
 
 	var baseEnv []string
 	for _, ev := range os.Environ() {
-		if !strings.HasPrefix(ev, "CLOCHE_RUN_ID=") &&
-			!strings.HasPrefix(ev, "CLOCHE_TASK_ID=") &&
-			!strings.HasPrefix(ev, "CLOCHE_ATTEMPT_ID=") {
-			baseEnv = append(baseEnv, ev)
+		if strings.HasPrefix(ev, "CLOCHE_RUN_ID=") ||
+			strings.HasPrefix(ev, "CLOCHE_TASK_ID=") ||
+			strings.HasPrefix(ev, "CLOCHE_ATTEMPT_ID=") {
+			continue
 		}
+		baseEnv = append(baseEnv, ev)
 	}
 	cmd.Env = append(baseEnv,
 		"CLOCHE_PROJECT_DIR="+e.ProjectDir,

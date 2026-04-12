@@ -252,7 +252,7 @@ func TestCmdInit_ConfigTOMLOrchestrationSection(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
 	content := string(data)
@@ -279,7 +279,7 @@ func TestCmdInit_ConfigTOMLActiveTrue(t *testing.T) {
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{"--new", "--no-llm"})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
 	content := string(data)
@@ -783,7 +783,7 @@ func TestCmdInit_CreatesGlobalConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{})
 
 	cfgPath := filepath.Join(home, ".config", "cloche", "config")
 	data, err := os.ReadFile(cfgPath)
@@ -814,7 +814,7 @@ func TestCmdInit_SkipsExistingGlobalConfig(t *testing.T) {
 	cfgPath := filepath.Join(cfgDir, "config")
 	os.WriteFile(cfgPath, []byte("custom"), 0644)
 
-	cmdInit([]string{"--no-llm"})
+	cmdInit([]string{})
 
 	data, _ := os.ReadFile(cfgPath)
 	if string(data) != "custom" {
@@ -837,5 +837,161 @@ func TestCmdInit_UnclaimContent(t *testing.T) {
 	}
 	if !strings.Contains(content, "open") {
 		t.Error("unclaim.py should reset task to open")
+	}
+}
+
+func TestCmdInit_CoreOnly_NoWorkflowFiles(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// Bare init without --new should NOT create workflow files or Dockerfile.
+	cmdInit([]string{})
+
+	for _, path := range []string{
+		filepath.Join(".cloche", "develop.cloche"),
+		filepath.Join(".cloche", "Dockerfile"),
+		filepath.Join(".cloche", "host.cloche"),
+		".clocheignore",
+		filepath.Join(".cloche", "version"),
+		filepath.Join("cloche_init_test", "cloche", "test_cloche.py"),
+	} {
+		if _, err := os.Stat(path); err == nil {
+			t.Errorf("expected %s to NOT exist without --new flag", path)
+		}
+	}
+
+	// Core directories should be created.
+	for _, d := range []string{
+		".cloche",
+		filepath.Join(".cloche", "prompts"),
+		filepath.Join(".cloche", "overrides"),
+		filepath.Join(".cloche", "scripts"),
+	} {
+		if info, err := os.Stat(d); err != nil || !info.IsDir() {
+			t.Errorf("expected core directory %s to exist", d)
+		}
+	}
+
+	// config.toml should be created.
+	if _, err := os.Stat(filepath.Join(".cloche", "config.toml")); os.IsNotExist(err) {
+		t.Error("expected .cloche/config.toml to exist from core init")
+	}
+}
+
+func TestCmdInit_NewFlag_CreatesWorkflowFiles(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{"--new", "--no-llm"})
+
+	for _, path := range []string{
+		filepath.Join(".cloche", "develop.cloche"),
+		filepath.Join(".cloche", "Dockerfile"),
+		filepath.Join(".cloche", "host.cloche"),
+		".clocheignore",
+		filepath.Join(".cloche", "version"),
+	} {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			t.Errorf("expected %s to exist with --new flag", path)
+		}
+	}
+}
+
+func TestCmdInit_InstallShellHelpers_CreatesCompletionScripts(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SHELL", "/bin/bash")
+
+	cmdInit([]string{"--install-shell-helpers"})
+
+	completionsDir := filepath.Join(home, ".cloche", "completions")
+	if _, err := os.Stat(filepath.Join(completionsDir, "cloche.bash")); os.IsNotExist(err) {
+		t.Error("expected cloche.bash to be created by --install-shell-helpers")
+	}
+	if _, err := os.Stat(filepath.Join(completionsDir, "cloche.zsh")); os.IsNotExist(err) {
+		t.Error("expected cloche.zsh to be created by --install-shell-helpers")
+	}
+}
+
+func TestCmdInit_NoInstallShellHelpers_NoCompletionScripts(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	cmdInit([]string{})
+
+	completionsDir := filepath.Join(home, ".cloche", "completions")
+	if _, err := os.Stat(completionsDir); err == nil {
+		t.Error("completions directory should not be created without --install-shell-helpers")
+	}
+}
+
+func TestCmdInit_ConfigTOMLActiveTrue(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{})
+
+	data, err := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	if err != nil {
+		t.Fatal("expected config.toml to exist")
+	}
+	if !strings.Contains(string(data), "active = true") {
+		t.Error("new config.toml should have active = true")
+	}
+}
+
+func TestCmdInit_EnsuresConfigActive_UpdatesExistingConfig(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// Pre-create config with active = false.
+	os.MkdirAll(".cloche", 0755)
+	os.WriteFile(filepath.Join(".cloche", "config.toml"), []byte("active = false\n[daemon]\nimage = \"test\"\n"), 0644)
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	if !strings.Contains(content, "active = true") {
+		t.Error("existing config should be updated to active = true")
+	}
+	if strings.Contains(content, "active = false") {
+		t.Error("config should not contain active = false after update")
+	}
+}
+
+func TestCmdInit_NewFlag_SkipsExistingWorkflow(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	os.MkdirAll(".cloche", 0755)
+	os.WriteFile(filepath.Join(".cloche", "develop.cloche"), []byte("existing workflow"), 0644)
+
+	// --new on a project with an existing workflow file should skip (not error).
+	cmdInit([]string{"--new", "--no-llm"})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "develop.cloche"))
+	if string(data) != "existing workflow" {
+		t.Error("--new should skip existing workflow file, not overwrite it")
 	}
 }
