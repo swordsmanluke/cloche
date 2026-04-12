@@ -83,7 +83,7 @@ files and routes it to the host executor or container pool as appropriate. Defau
 Requires `poll` (the polling script/command) and `interval` (poll frequency, e.g. `"5m"`).
 The script exit code and stdout determine the outcome: exit 0 with no wire output means
 pending (poll again); non-zero exit with no wire output follows the `fail` wire; any exit
-with wire output follows the named wire. Default timeout: 72h. Host workflows only. See
+with wire output follows the named wire. Default timeout: 72h. See
 [Poll Step](#poll-step) below.
 
 All step types support a `timeout` config key (any `time.ParseDuration` value, e.g.
@@ -447,9 +447,9 @@ until the script reports a decision, the step times out, or the script fails. Ty
 use cases: waiting for a code review, an approval gate, a CI run, or a ticket
 transition.
 
-Host workflows only. Poll steps are not executed inside the container `cloche-agent`
-— they must live in a workflow with a `host { }` block. Attempting to use `poll` in a
-container workflow results in the step being unhandled at runtime.
+Poll steps work in both host and container workflows. In a host workflow, the daemon's
+orchestration loop drives the polling. In a container workflow, the in-container agent
+runs a standalone polling loop.
 
 ### Declaration
 
@@ -523,20 +523,22 @@ explicit `code-review:timeout -> <step>` wire suppresses the implicit `abort` wi
 
 ### Script execution environment
 
-Poll scripts run on the host (not in a container), under `sh -c`, with the working
-directory set to the **main git worktree** of the project (same rule as host-workflow
-script steps). The following environment variables are injected on every invocation:
+Poll scripts run under `sh -c` in both host and container workflows. In a host
+workflow, the working directory is set to the **main git worktree** of the project
+(same rule as host-workflow script steps). In a container workflow, the working
+directory is `/workspace/`. The following environment variables are injected on every
+invocation:
 
-| Variable              | Description |
-|-----------------------|-------------|
-| `CLOCHE_PROJECT_DIR`  | Absolute path to the project directory on the host. |
-| `CLOCHE_STEP_OUTPUT`  | Path where this step's captured output file is written (same file is overwritten on every poll). |
-| `CLOCHE_RUN_ID`       | Run ID for the current workflow run. |
-| `CLOCHE_TASK_ID`      | Task ID being processed (if the workflow was launched from a task). |
-| `CLOCHE_ATTEMPT_ID`   | Attempt ID for the current run attempt. |
+| Variable              | Host | Container | Description |
+|-----------------------|:----:|:---------:|-------------|
+| `CLOCHE_PROJECT_DIR`  | yes  | yes       | Absolute path to the project directory. |
+| `CLOCHE_STEP_OUTPUT`  | yes  | no        | Path where this step's captured output file is written (same file is overwritten on every poll). |
+| `CLOCHE_RUN_ID`       | yes  | yes       | Run ID for the current workflow run. |
+| `CLOCHE_TASK_ID`      | yes  | no        | Task ID being processed (if the workflow was launched from a task). |
+| `CLOCHE_ATTEMPT_ID`   | yes  | no        | Attempt ID for the current run attempt. |
 
-The script inherits the rest of the daemon's environment, minus any existing
-`CLOCHE_RUN_ID` from the daemon process itself.
+The script inherits the rest of the process environment, minus any existing
+`CLOCHE_RUN_ID` from the parent process.
 
 ### Reading run context
 

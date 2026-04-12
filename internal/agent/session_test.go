@@ -421,6 +421,247 @@ check:
 	assert.True(t, found, "expected log line should have been streamed as StepLog")
 }
 
+// ---------------------------------------------------------------------------
+// Poll (human) step tests
+// ---------------------------------------------------------------------------
+
+// TestSession_ExecuteHumanStep_ImmediateDecision verifies that a poll step
+// returns the correct wire result when the script emits a marker immediately.
+func TestSession_ExecuteHumanStep_ImmediateDecision(t *testing.T) {
+	srv := newFakeServer([]*pb.ExecuteStep{
+		{
+			StepName:  "gate",
+			StepType:  "human",
+			Config:    map[string]string{"poll": "echo 'CLOCHE_RESULT:approved'", "interval": "50ms"},
+			RequestId: "req-h1",
+		},
+	})
+	addr := startFakeServer(t, srv)
+
+	dir := t.TempDir()
+	sess := agent.NewSession(agent.SessionConfig{
+		Addr:    addr,
+		RunID:   "run-h1",
+		WorkDir: dir,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err := sess.Run(ctx)
+	require.NoError(t, err)
+
+	select {
+	case result := <-srv.results:
+		assert.Equal(t, "req-h1", result.RequestId)
+		assert.Equal(t, "approved", result.Result)
+	default:
+		t.Fatal("StepResult not received")
+	}
+}
+
+// TestSession_ExecuteHumanStep_PendingThenDecision verifies that the poll step
+// keeps polling until the script emits a result marker after several pending responses.
+func TestSession_ExecuteHumanStep_PendingThenDecision(t *testing.T) {
+	dir := t.TempDir()
+
+	// Script increments a counter file; emits result marker on the 3rd invocation.
+	counterFile := filepath.Join(dir, "counter")
+	require.NoError(t, os.WriteFile(counterFile, []byte("0"), 0644))
+
+	scriptPath := filepath.Join(dir, "poll.sh")
+	script := `#!/bin/sh
+count=$(cat "` + counterFile + `")
+count=$((count + 1))
+echo "$count" > "` + counterFile + `"
+if [ "$count" -ge 3 ]; then
+  echo "CLOCHE_RESULT:approved"
+fi
+`
+	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0755))
+
+	srv := newFakeServer([]*pb.ExecuteStep{
+		{
+			StepName:  "review",
+			StepType:  "human",
+			Config:    map[string]string{"poll": scriptPath, "interval": "50ms"},
+			RequestId: "req-h2",
+		},
+	})
+	addr := startFakeServer(t, srv)
+
+	sess := agent.NewSession(agent.SessionConfig{
+		Addr:    addr,
+		RunID:   "run-h2",
+		WorkDir: dir,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err := sess.Run(ctx)
+	require.NoError(t, err)
+
+	select {
+	case result := <-srv.results:
+		assert.Equal(t, "req-h2", result.RequestId)
+		assert.Equal(t, "approved", result.Result)
+	default:
+		t.Fatal("StepResult not received")
+	}
+
+	// Verify the poll was invoked at least 3 times.
+	data, err := os.ReadFile(counterFile)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "3")
+}
+
+// TestSession_ExecuteHumanStep_FailOnNonZeroExit verifies that a non-zero exit
+// without a result marker produces a "fail" result.
+func TestSession_ExecuteHumanStep_FailOnNonZeroExit(t *testing.T) {
+	srv := newFakeServer([]*pb.ExecuteStep{
+		{
+			StepName:  "gate",
+			StepType:  "human",
+			Config:    map[string]string{"poll": "exit 1", "interval": "50ms"},
+			RequestId: "req-h3",
+		},
+	})
+	addr := startFakeServer(t, srv)
+
+	dir := t.TempDir()
+	sess := agent.NewSession(agent.SessionConfig{
+		Addr:    addr,
+		RunID:   "run-h3",
+		WorkDir: dir,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err := sess.Run(ctx)
+	require.NoError(t, err)
+
+	select {
+	case result := <-srv.results:
+		assert.Equal(t, "req-h3", result.RequestId)
+		assert.Equal(t, "fail", result.Result)
+	default:
+		t.Fatal("StepResult not received")
+	}
+}
+
+// TestSession_ExecuteHumanStep_WireOutputOnNonZeroExit verifies that wire output
+// from a non-zero exit is honored over the default "fail".
+func TestSession_ExecuteHumanStep_WireOutputOnNonZeroExit(t *testing.T) {
+	dir := t.TempDir()
+	scriptPath := filepath.Join(dir, "poll.sh")
+	script := "#!/bin/sh\necho 'CLOCHE_RESULT:fix'\nexit 1\n"
+	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0755))
+
+	srv := newFakeServer([]*pb.ExecuteStep{
+		{
+			StepName:  "gate",
+			StepType:  "human",
+			Config:    map[string]string{"poll": scriptPath, "interval": "50ms"},
+			RequestId: "req-h4",
+		},
+	})
+	addr := startFakeServer(t, srv)
+
+	sess := agent.NewSession(agent.SessionConfig{
+		Addr:    addr,
+		RunID:   "run-h4",
+		WorkDir: dir,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err := sess.Run(ctx)
+	require.NoError(t, err)
+
+	select {
+	case result := <-srv.results:
+		assert.Equal(t, "req-h4", result.RequestId)
+		assert.Equal(t, "fix", result.Result)
+	default:
+		t.Fatal("StepResult not received")
+	}
+}
+
+// TestSession_ExecuteHumanStep_ContextTimeout verifies that context cancellation
+// during a poll step causes the session to exit cleanly without hanging.
+// The poll step internally produces a "timeout" result, but the gRPC stream
+// may close before the result is sent — so we verify clean exit, not the result.
+func TestSession_ExecuteHumanStep_ContextTimeout(t *testing.T) {
+	srv := newFakeServer([]*pb.ExecuteStep{
+		{
+			StepName:  "gate",
+			StepType:  "human",
+			Config:    map[string]string{"poll": "exit 0", "interval": "50ms"},
+			RequestId: "req-h5",
+		},
+	})
+	addr := startFakeServer(t, srv)
+
+	dir := t.TempDir()
+	sess := agent.NewSession(agent.SessionConfig{
+		Addr:    addr,
+		RunID:   "run-h5",
+		WorkDir: dir,
+	})
+
+	// Short timeout so the poll step times out quickly.
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- sess.Run(ctx) }()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("session did not exit within 5s after context cancellation")
+	}
+}
+
+// TestSession_ExecuteHumanStep_InvalidInterval verifies that an invalid interval
+// produces a "fail" result (the error path sets result to "fail").
+func TestSession_ExecuteHumanStep_InvalidInterval(t *testing.T) {
+	srv := newFakeServer([]*pb.ExecuteStep{
+		{
+			StepName:  "gate",
+			StepType:  "human",
+			Config:    map[string]string{"poll": "echo ok", "interval": "not-a-duration"},
+			RequestId: "req-h6",
+		},
+	})
+	addr := startFakeServer(t, srv)
+
+	dir := t.TempDir()
+	sess := agent.NewSession(agent.SessionConfig{
+		Addr:    addr,
+		RunID:   "run-h6",
+		WorkDir: dir,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err := sess.Run(ctx)
+	require.NoError(t, err)
+
+	select {
+	case result := <-srv.results:
+		assert.Equal(t, "req-h6", result.RequestId)
+		assert.Equal(t, "fail", result.Result)
+	default:
+		t.Fatal("StepResult not received")
+	}
+}
+
 // verifyGRPC ensures the test binary can import grpc without issue.
 func init() {
 	_ = grpc.WithTransportCredentials(insecure.NewCredentials())

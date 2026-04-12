@@ -435,7 +435,7 @@ message AgentReady {
 // ExecuteStep is sent by the daemon to instruct the agent to execute a step.
 message ExecuteStep {
   string              step_name  = 1;
-  string              step_type  = 2; // "agent", "script"
+  string              step_type  = 2; // "agent", "script", "human"
   map<string, string> config     = 3; // prompt, run, agent_command, etc.
   map<string, string> env        = 4; // output-mapped env vars from wiring
   string              request_id = 5; // correlates with StepResult

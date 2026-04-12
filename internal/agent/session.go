@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -235,6 +236,9 @@ func (s *Session) executeStep(
 			sessionCopyToLLMLog(s.cfg.WorkDir, step.Name)
 			sessionLogStepOutput(s.cfg.WorkDir, step.Name, ulog, logstream.TypeLLM)
 		}
+	case domain.StepTypeHuman:
+		sr, execErr = s.executeHumanStep(ctx, step, s.cfg.WorkDir)
+		sessionLogStepOutput(s.cfg.WorkDir, step.Name, ulog, logstream.TypeScript)
 	default:
 		execErr = fmt.Errorf("unknown step type: %s", step.Type)
 	}
@@ -301,6 +305,128 @@ func sessionCopyToLLMLog(workDir, stepName string) {
 		return
 	}
 	_ = os.WriteFile(dstPath, data, 0644)
+}
+
+// executeHumanStep runs a poll step inside the container using a standalone
+// polling loop. Modeled on the host executor's executeHumanStepStandalone.
+func (s *Session) executeHumanStep(ctx context.Context, step *domain.Step, workDir string) (domain.StepResult, error) {
+	intervalStr := step.Config["interval"]
+	interval, err := time.ParseDuration(intervalStr)
+	if err != nil {
+		return domain.StepResult{}, fmt.Errorf("human step %q: invalid interval %q: %w", step.Name, intervalStr, err)
+	}
+
+	// Maximum time allowed for a single invocation before the step is failed.
+	maxInvocationTime := 4 * interval
+
+	const defaultCheckInterval = 30 * time.Second
+	checkInterval := defaultCheckInterval
+	if interval < checkInterval {
+		checkInterval = interval / 2
+		if checkInterval < time.Second {
+			checkInterval = time.Second
+		}
+	}
+
+	type pollResult struct {
+		result string
+		err    error
+	}
+
+	// Buffered so the goroutine never blocks if we exit early.
+	pollCh := make(chan pollResult, 1)
+	invocationRunning := false
+	var invocationStart time.Time
+
+	// Set last poll to interval ago so the first poll fires immediately.
+	lastPoll := time.Now().Add(-interval)
+
+	for {
+		now := time.Now()
+
+		if invocationRunning {
+			select {
+			case pr := <-pollCh:
+				invocationRunning = false
+				lastPoll = now
+				if pr.err != nil {
+					return domain.StepResult{}, pr.err
+				}
+				if pr.result != "" {
+					return domain.StepResult{Result: pr.result}, nil
+				}
+				// Empty result = pending; keep polling.
+			default:
+				// Still running — check for 4× overage.
+				elapsed := now.Sub(invocationStart)
+				if elapsed > maxInvocationTime {
+					log.Printf("human step %q: invocation running for %v (>4× interval %v), failing step",
+						step.Name, elapsed.Round(time.Second), interval)
+					return domain.StepResult{Result: "fail"}, nil
+				}
+			}
+		} else if now.Sub(lastPoll) >= interval {
+			// Time to start a new poll invocation.
+			invocationRunning = true
+			invocationStart = now
+			log.Printf("human step %q: polling (last=%s interval=%s)", step.Name, lastPoll.Format(time.RFC3339), interval)
+			go func() {
+				r, pollErr := runPollCommand(ctx, step.Config["poll"], step.Name, s.cfg.RunID, workDir)
+				pollCh <- pollResult{result: r, err: pollErr}
+			}()
+		}
+
+		select {
+		case <-ctx.Done():
+			return domain.StepResult{Result: "timeout"}, nil
+		case <-time.After(checkInterval):
+		}
+	}
+}
+
+// runPollCommand runs a single invocation of a poll step's polling script.
+// Returns the result name (empty if pending) and any error.
+func runPollCommand(ctx context.Context, pollCmd, stepName, runID, workDir string) (string, error) {
+	cmd := exec.CommandContext(ctx, "sh", "-c", pollCmd)
+	cmd.Dir = workDir
+
+	var baseEnv []string
+	for _, ev := range os.Environ() {
+		if !strings.HasPrefix(ev, "CLOCHE_RUN_ID=") {
+			baseEnv = append(baseEnv, ev)
+		}
+	}
+	cmd.Env = append(baseEnv,
+		"CLOCHE_PROJECT_DIR="+workDir,
+	)
+	if runID != "" {
+		cmd.Env = append(cmd.Env, "CLOCHE_RUN_ID="+runID)
+	}
+
+	output, err := cmd.CombinedOutput()
+	markerResult, cleanOutput, found := protocol.ExtractResult(output)
+
+	// Write cleaned output to log file (overwritten on each poll invocation).
+	outputDir := filepath.Join(workDir, ".cloche", "output")
+	if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
+		_ = os.WriteFile(filepath.Join(outputDir, stepName+".log"), cleanOutput, 0644)
+	}
+
+	if err != nil {
+		if _, ok := err.(*exec.ExitError); ok {
+			if found {
+				return markerResult, nil
+			}
+			return "fail", nil
+		}
+		return "", err
+	}
+
+	if found {
+		return markerResult, nil
+	}
+	// Exit 0, no marker: pending.
+	return "", nil
 }
 
 // grpcStatusWriter is an io.Writer that buffers lines from a protocol.StatusWriter
