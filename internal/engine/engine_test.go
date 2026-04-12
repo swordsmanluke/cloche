@@ -450,7 +450,7 @@ func TestStepTimeout_HumanStep_Default72h(t *testing.T) {
 		Type:    domain.StepTypeHuman,
 		Results: []string{"approved", "fail"},
 		Config: map[string]string{
-			"script":   "echo 'CLOCHE_RESULT:approved'",
+			"poll":     "echo 'CLOCHE_RESULT:approved'",
 			"interval": "1ms",
 		},
 	}
@@ -493,7 +493,7 @@ func TestStepTimeout_HumanStep_ExplicitTimeout(t *testing.T) {
 		Type:    domain.StepTypeHuman,
 		Results: []string{"approved", "fail"},
 		Config: map[string]string{
-			"script":   "echo 'CLOCHE_RESULT:approved'",
+			"poll":     "echo 'CLOCHE_RESULT:approved'",
 			"interval": "1ms",
 			"timeout":  "48h",
 		},

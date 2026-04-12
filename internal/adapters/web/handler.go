@@ -2296,7 +2296,7 @@ func (h *Handler) handleAPIStepContent(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(content))
 		return
 	}
-	if script := step.Config["script"]; script != "" {
+	if script := step.Config["poll"]; script != "" {
 		content, _ := resolveFileRef(script, dir)
 		w.Write([]byte(content))
 		return

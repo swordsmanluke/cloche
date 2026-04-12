@@ -37,13 +37,12 @@ backoff — the interval is constant for the lifetime of the step.
 
 ```
 step "code-review" {
-  type     = human
-  script   = "scripts/check-pr-review.sh"
+  poll     = "scripts/check-pr-review.sh"
   interval = "5m"
 }
 ```
 
-The `interval` field is required for `human` steps.
+The `interval` field is required for poll steps.
 
 ## Timeout
 
@@ -51,13 +50,12 @@ All step types support an optional `timeout` field. If the step does not complet
 the timeout duration, the orchestrator follows the `timeout` wire. If no `timeout` wire
 is declared, it implicitly binds to `abort`.
 
-The default timeout for `human` steps is **72h**. Other step types retain whatever
+The default timeout for poll steps is **72h**. Other step types retain whatever
 default is already defined for them.
 
 ```
 step "code-review" {
-  type     = human
-  script   = "scripts/check-pr-review.sh"
+  poll     = "scripts/check-pr-review.sh"
   interval = "5m"
   timeout  = "48h"
 }

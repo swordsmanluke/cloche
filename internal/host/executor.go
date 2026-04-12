@@ -488,7 +488,7 @@ func (e *Executor) executeHumanStepStandalone(
 // It returns the wire name if a result marker was found, an empty string when the
 // script exited 0 with no marker (pending), or "fail" on non-zero exit with no marker.
 func (e *Executor) runHumanPollScript(ctx context.Context, step *domain.Step) (string, error) {
-	scriptCmd := step.Config["script"]
+	scriptCmd := step.Config["poll"]
 	cmd := exec.CommandContext(ctx, "sh", "-c", scriptCmd)
 	cmd.Dir = e.scriptDir()
 

@@ -1030,7 +1030,7 @@ func TestParser_StringMaxAttempts_Rejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "max_attempts must be a numeric value")
 }
 
-func TestParser_HumanStep_Valid(t *testing.T) {
+func TestParser_PollStep_Valid(t *testing.T) {
 	input := `workflow "review" {
   host {}
   step create-pr {
@@ -1038,8 +1038,7 @@ func TestParser_HumanStep_Valid(t *testing.T) {
     results = [success, fail]
   }
   step code-review {
-    type     = human
-    script   = "scripts/check-pr-review.sh"
+    poll     = "scripts/check-pr-review.sh"
     interval = "5m"
     results  = [approved, fix]
   }
@@ -1060,7 +1059,7 @@ func TestParser_HumanStep_Valid(t *testing.T) {
 	review := wf.Steps["code-review"]
 	require.NotNil(t, review)
 	assert.Equal(t, domain.StepTypeHuman, review.Type)
-	assert.Equal(t, "scripts/check-pr-review.sh", review.Config["script"])
+	assert.Equal(t, "scripts/check-pr-review.sh", review.Config["poll"])
 	assert.Equal(t, "5m", review.Config["interval"])
 
 	// Implicit "timeout" result should be added.
@@ -1080,12 +1079,11 @@ func TestParser_HumanStep_Valid(t *testing.T) {
 	assert.True(t, foundTimeoutWire, "expected implicit timeout->abort wire")
 }
 
-func TestParser_HumanStep_WithTimeout(t *testing.T) {
+func TestParser_PollStep_WithTimeout(t *testing.T) {
 	input := `workflow "review" {
   host {}
   step wait {
-    type     = human
-    script   = "scripts/check.sh"
+    poll     = "scripts/check.sh"
     interval = "10m"
     timeout  = "48h"
     results  = [approved]
@@ -1102,12 +1100,11 @@ func TestParser_HumanStep_WithTimeout(t *testing.T) {
 	assert.Equal(t, "48h", step.Config["timeout"])
 }
 
-func TestParser_HumanStep_ExplicitTimeoutWire(t *testing.T) {
+func TestParser_PollStep_ExplicitTimeoutWire(t *testing.T) {
 	input := `workflow "review" {
   host {}
   step code-review {
-    type     = human
-    script   = "scripts/check.sh"
+    poll     = "scripts/check.sh"
     interval = "10m"
     timeout  = "48h"
     results  = [approved, fix, timeout]
@@ -1147,12 +1144,11 @@ func TestParser_HumanStep_ExplicitTimeoutWire(t *testing.T) {
 	}
 }
 
-func TestParser_HumanStep_MissingInterval(t *testing.T) {
+func TestParser_PollStep_MissingInterval(t *testing.T) {
 	input := `workflow "review" {
   host {}
   step wait {
-    type   = human
-    script = "scripts/check.sh"
+    poll    = "scripts/check.sh"
     results = [approved]
   }
   wait:approved -> done
@@ -1163,11 +1159,11 @@ func TestParser_HumanStep_MissingInterval(t *testing.T) {
 	assert.Contains(t, err.Error(), "interval")
 }
 
-func TestParser_HumanStep_MissingScript(t *testing.T) {
+func TestParser_PollStep_MissingPoll(t *testing.T) {
+	// A step with only interval and no type keyword should fail with a clear message.
 	input := `workflow "review" {
   host {}
   step wait {
-    type     = human
     interval = "5m"
     results  = [approved]
   }
@@ -1176,15 +1172,14 @@ func TestParser_HumanStep_MissingScript(t *testing.T) {
 
 	_, err := dsl.Parse(input)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "script")
+	assert.Contains(t, err.Error(), "must have exactly one")
 }
 
-func TestParser_HumanStep_InvalidInterval(t *testing.T) {
+func TestParser_PollStep_InvalidInterval(t *testing.T) {
 	input := `workflow "review" {
   host {}
   step wait {
-    type     = human
-    script   = "scripts/check.sh"
+    poll     = "scripts/check.sh"
     interval = "notaduration"
     results  = [approved]
   }
@@ -1196,13 +1191,12 @@ func TestParser_HumanStep_InvalidInterval(t *testing.T) {
 	assert.Contains(t, err.Error(), "interval")
 }
 
-func TestParser_HumanStep_ConflictsWithRun(t *testing.T) {
+func TestParser_PollStep_ConflictsWithRun(t *testing.T) {
 	input := `workflow "review" {
   host {}
   step wait {
-    type     = human
+    poll     = "scripts/check.sh"
     run      = "echo hi"
-    script   = "scripts/check.sh"
     interval = "5m"
     results  = [approved]
   }
@@ -1211,16 +1205,15 @@ func TestParser_HumanStep_ConflictsWithRun(t *testing.T) {
 
 	_, err := dsl.Parse(input)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "run")
+	assert.Contains(t, err.Error(), "multiple")
 }
 
-func TestParser_HumanStep_Validate(t *testing.T) {
-	// A valid human step workflow should pass Validate().
+func TestParser_PollStep_Validate(t *testing.T) {
+	// A valid poll step workflow should pass Validate().
 	input := `workflow "review" {
   host {}
   step review {
-    type     = human
-    script   = "scripts/check.sh"
+    poll     = "scripts/check.sh"
     interval = "5m"
     results  = [approved, fail]
   }

@@ -319,9 +319,8 @@ var knownStepConfigKeys = map[string]bool{
 	"workflow_name": true,
 	"prompt_step":   true,
 	"usage_command": true,
-	// human step keys
-	"type":          true,
-	"script":        true,
+	// poll step keys
+	"poll":          true,
 	"interval":      true,
 }
 

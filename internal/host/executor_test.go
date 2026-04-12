@@ -1987,7 +1987,7 @@ func TestExecutor_HumanStep_ImmediateDecision(t *testing.T) {
 		Results: []string{"approved", "fail"},
 		Config: map[string]string{
 			// Echo result marker immediately so the first poll resolves.
-			"script":   "echo 'CLOCHE_RESULT:approved'",
+			"poll":     "echo 'CLOCHE_RESULT:approved'",
 			"interval": "50ms",
 		},
 	}
@@ -2024,7 +2024,7 @@ fi
 		Type:    domain.StepTypeHuman,
 		Results: []string{"approved", "fail"},
 		Config: map[string]string{
-			"script":   scriptBody,
+			"poll":     scriptBody,
 			"interval": "20ms",
 		},
 	}
@@ -2055,7 +2055,7 @@ func TestExecutor_HumanStep_FailOnNonZeroExit(t *testing.T) {
 		Type:    domain.StepTypeHuman,
 		Results: []string{"approved", "fail"},
 		Config: map[string]string{
-			"script":   "exit 1",
+			"poll":     "exit 1",
 			"interval": "20ms",
 		},
 	}
@@ -2086,7 +2086,7 @@ func TestExecutor_HumanStep_WireOutputOnNonZeroExit(t *testing.T) {
 		Type:    domain.StepTypeHuman,
 		Results: []string{"approved", "fix", "fail", "timeout"},
 		Config: map[string]string{
-			"script":   scriptPath,
+			"poll":     scriptPath,
 			"interval": "50ms",
 		},
 	}
@@ -2112,7 +2112,7 @@ func TestExecutor_HumanStep_ContextTimeout(t *testing.T) {
 		Type:    domain.StepTypeHuman,
 		Results: []string{"approved", "fail", "timeout"},
 		Config: map[string]string{
-			"script":   "exit 0",
+			"poll":     "exit 0",
 			"interval": "20ms",
 		},
 	}
@@ -2155,7 +2155,7 @@ fi
 		Type:    domain.StepTypeHuman,
 		Results: []string{"approved", "fail"},
 		Config: map[string]string{
-			"script":   scriptPath,
+			"poll":     scriptPath,
 			"interval": "20ms",
 		},
 	}
@@ -2185,7 +2185,7 @@ func TestExecutor_HumanStep_OverlappingInvocation(t *testing.T) {
 		Results: []string{"approved", "fail"},
 		Config: map[string]string{
 			// Sleep 10 seconds — much longer than 4× the 20ms interval.
-			"script":   "sleep 10",
+			"poll":     "sleep 10",
 			"interval": interval.String(),
 		},
 	}
@@ -2215,7 +2215,7 @@ func TestExecutor_HumanStep_InvalidInterval(t *testing.T) {
 		Type:    domain.StepTypeHuman,
 		Results: []string{"approved", "fail", "timeout"},
 		Config: map[string]string{
-			"script":   "scripts/check.sh",
+			"poll":     "scripts/check.sh",
 			"interval": "not-a-duration",
 		},
 	}

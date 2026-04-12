@@ -65,8 +65,7 @@ workflows with a `host {}` block.
 
 ## Step Types
 
-Step type is inferred from the fields present in the step body, except for `human` which
-must be declared explicitly with `type = human`:
+Step type is inferred from the fields present in the step body:
 
 **agent** (has `prompt`) — Invokes a coding agent (Claude Code, or any tool conforming
 to the agent adapter interface) with a prompt. The agent works autonomously inside the
@@ -80,19 +79,19 @@ completes. Available in both host and container workflows. Dispatch is always ha
 the daemon orchestrator, which resolves the target workflow by name across all `.cloche`
 files and routes it to the host executor or container pool as appropriate. Default timeout: 30m.
 
-**human** (`type = human`) — Polls a script at a fixed interval until a human decision
-is available. Requires `script` (path to the polling script) and `interval` (poll
-frequency, e.g. `"5m"`). The script exit code and stdout determine the outcome: exit 0
-with no wire output means pending (poll again); non-zero exit with no wire output follows
-the `fail` wire; any exit with wire output follows the named wire. Default timeout: 72h.
-Host workflows only. See [Human Step](#human-step) below.
+**poll** (has `poll`) — Polls a script at a fixed interval until a decision is available.
+Requires `poll` (the polling script/command) and `interval` (poll frequency, e.g. `"5m"`).
+The script exit code and stdout determine the outcome: exit 0 with no wire output means
+pending (poll again); non-zero exit with no wire output follows the `fail` wire; any exit
+with wire output follows the named wire. Default timeout: 72h. Host workflows only. See
+[Poll Step](#poll-step) below.
 
 All step types support a `timeout` config key (any `time.ParseDuration` value, e.g.
 `"45m"`, `"2h"`). When a step exceeds its timeout, it produces a `"timeout"` result. If
 no `timeout` wire is declared, the implicit wire routes to `abort`.
 
-A step with more than one of `prompt`, `run`, or `workflow_name`, or none of them, is a
-parse error. A `human` step must not include `prompt`, `run`, or `workflow_name`.
+A step with more than one of `prompt`, `run`, `workflow_name`, or `poll`, or none of them,
+is a parse error.
 
 ## DSL Syntax
 
@@ -187,7 +186,7 @@ error. An agent declaration without a `command` field is a parse error.
 ## Key Properties
 
 **Step type is inferred from content.** A `prompt` field makes it an agent step; a `run`
-field makes it a script step. `type = human` is explicit and cannot be inferred.
+field makes it a script step; a `poll` field makes it a poll step.
 
 **Steps declare their possible results.** A step decides at runtime which result to
 report. The graph engine follows the wiring to determine the next step.
@@ -442,40 +441,190 @@ points to the actual project directory.
 
 ## Human Step
 
-A `human` step polls a script at a fixed interval until a human decision is returned,
-the step times out, or the script fails. It is declared with an explicit `type = human`
-field rather than inferred from content.
+A `human` step pauses a workflow until an external decision is available. Instead of
+blocking a long-running process, it polls a user-supplied script at a fixed interval
+until the script reports a decision, the step times out, or the script fails. Typical
+use cases: waiting for a code review, an approval gate, a CI run, or a ticket
+transition.
 
-**Required fields:** `type = human`, `script`, `interval`
+Host workflows only. Poll steps are not executed inside the container `cloche-agent`
+— they must live in a workflow with a `host { }` block. Attempting to use `poll` in a
+container workflow results in the step being unhandled at runtime.
+
+### Declaration
+
+Like other step types, a poll step is inferred from its fields: the presence of `poll`
+makes it a poll step. A poll step must not include `prompt`, `run`, or `workflow_name`
+— those are parse errors (a step can have exactly one type keyword).
+
+| Field      | Required | Description |
+|------------|----------|-------------|
+| `poll`     | yes      | Shell command to invoke on each poll. Run via `sh -c`, so pipes, redirection, and shell builtins all work. Can be a path to a script (`scripts/check.sh`), an inline command (`gh pr view 123 --json state -q .state`), or anything sh accepts. |
+| `interval` | yes      | Poll frequency as a Go duration — any value accepted by [`time.ParseDuration`](https://pkg.go.dev/time#ParseDuration), e.g. `"30s"`, `"5m"`, `"1h"`. Invalid durations fail at parse time. |
+| `timeout`  | no       | Overall step timeout. Default `72h` (vs. `30m` for agent/script/workflow steps). When the step exceeds its timeout it produces a `"timeout"` result. |
+| `results`  | no       | Declared wire names. Always implicitly includes `timeout` if omitted. Your declared list must cover every `CLOCHE_RESULT:<name>` value the script can emit, plus `fail` if your script can exit non-zero without a marker. |
 
 ```
-step "code-review" {
-  type     = human
-  script   = "scripts/check-pr-review.sh"
+step code-review {
+  poll     = "scripts/check-pr-review.sh"
   interval = "5m"
-  timeout  = "48h"   // optional; default is 72h
+  timeout  = "48h"
+  results  = [approved, fix]
 }
 
 code-review:approved -> merge
 code-review:fix      -> address-feedback
-code-review:timeout  -> escalate
+code-review:timeout  -> escalate     // or omit; default routes to abort
 ```
 
-**Poll script exit semantics:**
+### Reporting results
 
-| Exit code | Wire output | Meaning |
-|-----------|-------------|---------|
-| 0         | none        | Pending — poll again after `interval` |
-| non-zero  | none        | Failure — follow the `fail` wire |
-| any       | wire name   | Decision — follow the named wire |
+The polling script reports a decision exactly like a script step: print
+`CLOCHE_RESULT:<wire-name>` on its own line. Markers are read from the script's
+**combined** stdout+stderr; the last marker line wins; marker lines are stripped from
+the captured output before it is written to the step output file.
 
-The first poll runs immediately when the step starts; subsequent polls fire after each
-`interval`. If a poll invocation is still running when the next tick fires, that tick is
-skipped. After 3 consecutive skips (poll running for more than 4× the interval) the step
-fails with an error message.
+**Exit semantics:**
 
-The default timeout for `human` steps is **72h** (versus 30m for agent/script/workflow
-steps). If no `timeout` wire is declared, timeout follows the implicit `abort` terminal.
+| Exit code | `CLOCHE_RESULT` marker | Outcome |
+|-----------|------------------------|---------|
+| 0         | none                   | **Pending** — try again after `interval`. |
+| 0         | `<name>`               | **Decision** — follow the named wire. |
+| non-zero  | none                   | **Failure** — follow the `fail` wire. |
+| non-zero  | `<name>`               | **Decision** — follow the named wire. The non-zero exit is ignored when a marker is present. |
+
+Exit 0 with no marker is what makes a `human` step a `human` step: it's the "not yet"
+signal that tells the orchestrator to keep polling.
+
+### Polling cadence
+
+The first poll fires immediately when the step starts; subsequent polls fire no sooner
+than `interval` after the previous poll completes. The orchestration loop drives polls
+centrally — the executor goroutine is parked on a result channel and does not consume a
+process or thread between polls.
+
+`interval` is a **no-sooner-than** constraint, not a strict schedule. Actual poll times
+depend on the loop tick rate (and on how long the previous invocation took), so expect
+polls to land within ~30s of the ideal time.
+
+**Overlapping invocations.** If a poll is still running when the next interval comes
+due, that interval is skipped. If a single invocation runs longer than 4× `interval`
+(three consecutive skips), the step produces a `fail` result and follows the `fail`
+wire.
+
+### Timeout
+
+The default step timeout is 72 hours. Override it with the `timeout` field, same as any
+other step type. When the timeout expires the step produces a `"timeout"` result.
+
+A `timeout` wire and an implicit `timeout` result are added automatically if you
+don't declare them explicitly — the implicit wire routes to `abort`. Declaring an
+explicit `code-review:timeout -> <step>` wire suppresses the implicit `abort` wire.
+
+### Script execution environment
+
+Poll scripts run on the host (not in a container), under `sh -c`, with the working
+directory set to the **main git worktree** of the project (same rule as host-workflow
+script steps). The following environment variables are injected on every invocation:
+
+| Variable              | Description |
+|-----------------------|-------------|
+| `CLOCHE_PROJECT_DIR`  | Absolute path to the project directory on the host. |
+| `CLOCHE_STEP_OUTPUT`  | Path where this step's captured output file is written (same file is overwritten on every poll). |
+| `CLOCHE_RUN_ID`       | Run ID for the current workflow run. |
+| `CLOCHE_TASK_ID`      | Task ID being processed (if the workflow was launched from a task). |
+| `CLOCHE_ATTEMPT_ID`   | Attempt ID for the current run attempt. |
+
+The script inherits the rest of the daemon's environment, minus any existing
+`CLOCHE_RUN_ID` from the daemon process itself.
+
+### Reading run context
+
+Poll scripts can read values written to the run's KV store by earlier steps via
+`cloche get <key>` (host-side). Container steps in the same run write with
+`clo set <key> <value>`. The KV store is persisted for the lifetime of the run.
+
+```bash
+# In an earlier container step (e.g. create-pr):
+clo set pr_id 1234
+
+# In the polling script:
+pr_id=$(cloche get pr_id)
+state=$(gh pr view "$pr_id" --json state -q .state)
+case "$state" in
+  MERGED) echo "CLOCHE_RESULT:approved" ;;
+  CLOSED) echo "CLOCHE_RESULT:rejected" ;;
+  *)      ;;  # still open → exit 0 with no marker → pending
+esac
+```
+
+### Idempotency
+
+Poll scripts are invoked **once per interval for the lifetime of the step** — which can
+easily be dozens or hundreds of invocations over a 72-hour window. Any side effect
+(posting a comment, sending a notification, creating a ticket) must be guarded so it
+runs at most once. The typical pattern is to use the KV store to record that the side
+effect has occurred:
+
+```bash
+if [ "$(cloche get notified_reviewer)" != "yes" ]; then
+  slack-notify "@reviewer PR ready"
+  cloche set notified_reviewer yes
+fi
+```
+
+### Visibility in `cloche list` / `cloche status`
+
+While a `human` step is active, its run's state is set to `waiting`, which `cloche list`
+and `cloche status` surface distinctly from `running`. The daemon also records
+`last_poll_at` and the step name in the `HumanPollStore` so you can see how long the
+step has been waiting and when it last polled.
+
+### Complete example
+
+```
+workflow "review-and-merge" {
+  host {}
+
+  step create-pr {
+    run     = "python3 .cloche/scripts/create-pr.py"
+    results = [success, fail]
+  }
+
+  step code-review {
+    poll     = "python3 .cloche/scripts/check-review.py"
+    interval = "5m"
+    timeout  = "48h"
+    results  = [approved, changes-requested]
+  }
+
+  step address-feedback {
+    workflow_name = "fix-review-feedback"
+    results       = [success, fail]
+  }
+
+  step merge {
+    run     = "python3 .cloche/scripts/merge-pr.py"
+    results = [success, fail]
+  }
+
+  step escalate {
+    run     = "python3 .cloche/scripts/notify-oncall.py"
+    results = [success]
+  }
+
+  create-pr:success             -> code-review
+  create-pr:fail                -> abort
+  code-review:approved          -> merge
+  code-review:changes-requested -> address-feedback
+  code-review:timeout           -> escalate
+  address-feedback:success      -> code-review      // re-poll after pushing fixes
+  address-feedback:fail         -> abort
+  merge:success                 -> done
+  merge:fail                    -> abort
+  escalate:success              -> abort
+}
+```
 
 ## Built-in KV Keys
 
