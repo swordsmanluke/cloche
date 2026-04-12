@@ -564,6 +564,7 @@ type stepEntry struct {
 	StepName     string
 	Result       string
 	StartedAt    time.Time
+	CompletedAt  time.Time
 	Duration     string
 	AgentName    string
 	InputTokens  int64
@@ -625,6 +626,107 @@ func flattenRun(run *domain.Run, topCaps []*domain.StepExecution, childRuns []*d
 	return result
 }
 
+// matchChildRun finds the child run spawned by parentStep, marking it consumed
+// so repeated workflow steps don't all match the same child.
+//
+// Primary match: child.ParentStepName == parentStep.StepName.
+// Fallback (legacy runs where ParentStepName is empty): child.WorkflowName ==
+// parentStep.StepName AND child.StartedAt falls within
+// [parentStep.StartedAt, parentStep.CompletedAt].  The earliest unmatched
+// child is chosen.
+func matchChildRun(parentStep stepEntry, children []*domain.Run, consumed map[string]bool) *domain.Run {
+	// Primary: explicit parent step name linkage.
+	for _, c := range children {
+		if consumed[c.ID] {
+			continue
+		}
+		if c.ParentStepName != "" && c.ParentStepName == parentStep.StepName {
+			consumed[c.ID] = true
+			return c
+		}
+	}
+
+	// Fallback: legacy runs without ParentStepName.
+	var best *domain.Run
+	for _, c := range children {
+		if consumed[c.ID] || c.ParentStepName != "" {
+			continue
+		}
+		if c.WorkflowName != parentStep.StepName {
+			continue
+		}
+		// Check time range if both bounds are known.
+		if !parentStep.StartedAt.IsZero() && !c.StartedAt.IsZero() {
+			if c.StartedAt.Before(parentStep.StartedAt) {
+				continue
+			}
+			if !parentStep.CompletedAt.IsZero() && c.StartedAt.After(parentStep.CompletedAt) {
+				continue
+			}
+		}
+		if best == nil || c.StartedAt.Before(best.StartedAt) {
+			best = c
+		}
+	}
+	if best != nil {
+		consumed[best.ID] = true
+	}
+	return best
+}
+
+// flattenRun (method) is the recursive variant of the package-level flattenRun.
+// It fetches its own captures and child runs from the stores, then builds a
+// flat []apiStep list where child-run steps are inlined immediately after
+// the workflow step that spawned them, at depth+1.
+func (h *Handler) flattenRun(ctx context.Context, runID string, depth, parentIdx int) ([]apiStep, error) {
+	return h.flattenRunFrom(ctx, runID, depth, parentIdx, 0)
+}
+
+// flattenRunFrom is the inner recursive helper for flattenRun. baseIdx is the
+// global starting index for steps produced by this invocation; it ensures that
+// Index values are globally unique across all levels of recursion.
+func (h *Handler) flattenRunFrom(ctx context.Context, runID string, depth, parentIdx, baseIdx int) ([]apiStep, error) {
+	caps, _ := h.captures.GetCaptures(ctx, runID)
+	childRuns, _ := h.store.ListChildRuns(ctx, runID)
+
+	steps := mergeCaptures(caps)
+	consumed := make(map[string]bool)
+
+	var result []apiStep
+	for _, s := range steps {
+		child := matchChildRun(s, childRuns, consumed)
+		idx := baseIdx + len(result)
+		as := apiStep{
+			StepName:     s.StepName,
+			Result:       s.Result,
+			StartedAt:    formatTime(s.StartedAt),
+			CompletedAt:  formatTime(s.CompletedAt),
+			Duration:     s.Duration,
+			AgentName:    s.AgentName,
+			InputTokens:  s.InputTokens,
+			OutputTokens: s.OutputTokens,
+			HasUsage:     s.HasUsage,
+			Index:        idx,
+			RunID:        runID,
+			Depth:        depth,
+			ParentIndex:  parentIdx,
+			IsWorkflow:   child != nil,
+		}
+		if child != nil {
+			as.ChildRunID = child.ID
+			as.ChildState = string(child.State)
+		}
+		result = append(result, as)
+
+		if child != nil {
+			newBase := baseIdx + len(result)
+			subSteps, _ := h.flattenRunFrom(ctx, child.ID, depth+1, idx, newBase)
+			result = append(result, subSteps...)
+		}
+	}
+	return result, nil
+}
+
 // mergeCaptures collapses started/completed capture pairs into single entries.
 func mergeCaptures(caps []*domain.StepExecution) []stepEntry {
 	var entries []stepEntry
@@ -644,11 +746,12 @@ func mergeCaptures(caps []*domain.StepExecution) []stepEntry {
 			delete(pending, c.StepName)
 		}
 		e := stepEntry{
-			Index:     len(entries),
-			StepName:  c.StepName,
-			Result:    c.Result,
-			StartedAt: startedAt,
-			Duration:  formatDuration(startedAt, c.CompletedAt),
+			Index:       len(entries),
+			StepName:    c.StepName,
+			Result:      c.Result,
+			StartedAt:   startedAt,
+			CompletedAt: c.CompletedAt,
+			Duration:    formatDuration(startedAt, c.CompletedAt),
 		}
 		if c.Usage != nil {
 			e.AgentName = c.Usage.AgentName
@@ -712,22 +815,7 @@ func (h *Handler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	caps, err := h.captures.GetCaptures(r.Context(), id)
-	if err != nil {
-		caps = nil // non-fatal
-	}
-
-	// Fetch child runs and their captures for the tree view.
-	childRuns, _ := h.store.ListChildRuns(r.Context(), id)
-	childCaps := make(map[string][]*domain.StepExecution, len(childRuns))
-	for _, c := range childRuns {
-		cc, err := h.captures.GetCaptures(r.Context(), c.ID)
-		if err == nil {
-			childCaps[c.ID] = cc
-		}
-	}
-
-	steps := flattenRun(run, caps, childRuns, childCaps)
+	steps, _ := h.flattenRun(r.Context(), id, 0, -1)
 
 	// Determine if any step has usage data (for conditional column display).
 	var hasUsage bool
@@ -743,6 +831,9 @@ func (h *Handler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 	if run.ParentRunID != "" {
 		parentRun, _ = h.store.GetRun(r.Context(), run.ParentRunID)
 	}
+
+	// Fetch child runs for the existing flat table links.
+	childRuns, _ := h.store.ListChildRuns(r.Context(), id)
 
 	data := map[string]any{
 		"Title":          "Run " + run.ID,
@@ -791,10 +882,13 @@ type apiStep struct {
 	OutputTokens int64  `json:"output_tokens,omitempty"`
 	HasUsage     bool   `json:"has_usage,omitempty"`
 	// Tree fields
+	Index       int    `json:"index"`
 	RunID       string `json:"run_id"`
 	Depth       int    `json:"depth"`
 	IsWorkflow  bool   `json:"is_workflow,omitempty"`
 	ParentIndex int    `json:"parent_index"`
+	ChildRunID  string `json:"child_run_id,omitempty"`
+	ChildState  string `json:"child_state,omitempty"`
 }
 
 type apiRunDetail struct {
@@ -1107,44 +1201,14 @@ func (h *Handler) handleAPIRunDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	caps, err := h.captures.GetCaptures(r.Context(), id)
-	if err != nil {
-		caps = nil
-	}
-
 	projects, _ := h.store.ListProjects(r.Context())
 	labels := projectLabels(projects)
 
-	// Fetch child runs and their captures for the flattened tree.
+	steps, _ := h.flattenRun(r.Context(), id, 0, -1)
+
+	// Fetch child runs for the ChildRuns field — existing flat table links
+	// still use this during migration to the full tree display.
 	childRuns, _ := h.store.ListChildRuns(r.Context(), id)
-	childCaps := make(map[string][]*domain.StepExecution, len(childRuns))
-	for _, c := range childRuns {
-		cc, cerr := h.captures.GetCaptures(r.Context(), c.ID)
-		if cerr == nil {
-			childCaps[c.ID] = cc
-		}
-	}
-
-	flat := flattenRun(run, caps, childRuns, childCaps)
-	steps := make([]apiStep, len(flat))
-	for i, e := range flat {
-		steps[i] = apiStep{
-			StepName:     e.StepName,
-			Result:       e.Result,
-			StartedAt:    formatTime(e.StartedAt),
-			Duration:     e.Duration,
-			AgentName:    e.AgentName,
-			InputTokens:  e.InputTokens,
-			OutputTokens: e.OutputTokens,
-			HasUsage:     e.HasUsage,
-			RunID:        e.RunID,
-			Depth:        e.Depth,
-			IsWorkflow:   e.IsWorkflow,
-			ParentIndex:  e.ParentIndex,
-		}
-	}
-
-	// Fetch child runs for the API response
 	var apiChildren []apiRun
 	for _, c := range childRuns {
 		apiChildren = append(apiChildren, toAPIRun(c, labels))

@@ -87,7 +87,7 @@
         <tr class="step-row" data-run-id="{{.RunID}}" data-step="{{.StepName}}" data-index="{{.Index}}" data-depth="{{.Depth}}" data-parent-index="{{.ParentIndex}}" data-is-workflow="{{if .IsWorkflow}}1{{else}}0{{end}}">
             <td style="padding-left: calc({{.Depth}} * 1.5em + 0.5em)">{{if .IsWorkflow}}<button class="tree-toggle" aria-label="toggle">▾</button>{{end}}{{.StepName}}</td>
             <td>{{if .Result}}<span class="badge badge-{{if eq .Result "success"}}succeeded{{else if eq .Result "fail"}}failed{{else}}pending{{end}}">{{.Result}}</span>{{else}}<span class="badge badge-running">running</span>{{end}}</td>
-            <td>{{formatTime .StartedAt}}</td>
+            <td>{{.StartedAt}}</td>
             <td>{{.Duration}}</td>
             {{if $hasUsage}}<td>{{if .HasUsage}}{{.AgentName}}{{end}}</td><td>{{if .HasUsage}}{{.InputTokens}}/{{.OutputTokens}}{{end}}</td>{{end}}
         </tr>

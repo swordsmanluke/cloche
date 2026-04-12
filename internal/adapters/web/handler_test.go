@@ -3459,3 +3459,169 @@ func TestAPILoopStop_ProjectNotFound(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
+
+func TestAPIRunDetail_FlattenRunRecursive(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	// Create parent run with a workflow step.
+	parent := domain.NewRun("parent-r1", "host")
+	parent.State = domain.RunStateSucceeded
+	parent.StartedAt = time.Now().Add(-10 * time.Minute)
+	parent.CompletedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, parent))
+
+	// Create child run linked via ParentStepName.
+	child := domain.NewRun("child-r1", "develop")
+	child.State = domain.RunStateSucceeded
+	child.ParentRunID = "parent-r1"
+	child.ParentStepName = "run-develop"
+	child.StartedAt = time.Now().Add(-8 * time.Minute)
+	child.CompletedAt = time.Now().Add(-1 * time.Minute)
+	require.NoError(t, store.CreateRun(ctx, child))
+
+	// Seed step executions for parent run.
+	now := time.Now()
+	require.NoError(t, store.SaveCapture(ctx, "parent-r1", &domain.StepExecution{
+		StepName:    "prepare",
+		Result:      "success",
+		StartedAt:   now.Add(-9 * time.Minute),
+		CompletedAt: now.Add(-8 * time.Minute),
+	}))
+	require.NoError(t, store.SaveCapture(ctx, "parent-r1", &domain.StepExecution{
+		StepName:    "run-develop",
+		Result:      "success",
+		StartedAt:   now.Add(-8 * time.Minute),
+		CompletedAt: now.Add(-1 * time.Minute),
+	}))
+	require.NoError(t, store.SaveCapture(ctx, "parent-r1", &domain.StepExecution{
+		StepName:    "finalize",
+		Result:      "success",
+		StartedAt:   now.Add(-1 * time.Minute),
+		CompletedAt: now,
+	}))
+
+	// Seed step executions for child run.
+	require.NoError(t, store.SaveCapture(ctx, "child-r1", &domain.StepExecution{
+		StepName:    "implement",
+		Result:      "success",
+		StartedAt:   now.Add(-7 * time.Minute),
+		CompletedAt: now.Add(-4 * time.Minute),
+	}))
+	require.NoError(t, store.SaveCapture(ctx, "child-r1", &domain.StepExecution{
+		StepName:    "review",
+		Result:      "done",
+		StartedAt:   now.Add(-4 * time.Minute),
+		CompletedAt: now.Add(-1 * time.Minute),
+	}))
+
+	req := httptest.NewRequest("GET", "/api/runs/parent-r1", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var detail apiRunDetail
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &detail))
+
+	// Expected flat list: prepare(0), run-develop(1), implement(2), review(3), finalize(4)
+	require.Len(t, detail.Steps, 5)
+
+	prepare := detail.Steps[0]
+	assert.Equal(t, "prepare", prepare.StepName)
+	assert.Equal(t, 0, prepare.Depth)
+	assert.Equal(t, "parent-r1", prepare.RunID)
+	assert.Equal(t, -1, prepare.ParentIndex)
+	assert.False(t, prepare.IsWorkflow)
+	assert.Equal(t, 0, prepare.Index)
+
+	runDevelop := detail.Steps[1]
+	assert.Equal(t, "run-develop", runDevelop.StepName)
+	assert.Equal(t, 0, runDevelop.Depth)
+	assert.Equal(t, "parent-r1", runDevelop.RunID)
+	assert.True(t, runDevelop.IsWorkflow)
+	assert.Equal(t, "child-r1", runDevelop.ChildRunID)
+	assert.NotEmpty(t, runDevelop.ChildState)
+	assert.Equal(t, 1, runDevelop.Index)
+
+	implement := detail.Steps[2]
+	assert.Equal(t, "implement", implement.StepName)
+	assert.Equal(t, 1, implement.Depth)
+	assert.Equal(t, "child-r1", implement.RunID)
+	assert.Equal(t, 1, implement.ParentIndex) // parent is run-develop at index 1
+	assert.False(t, implement.IsWorkflow)
+	assert.Equal(t, 2, implement.Index)
+
+	review := detail.Steps[3]
+	assert.Equal(t, "review", review.StepName)
+	assert.Equal(t, 1, review.Depth)
+	assert.Equal(t, "child-r1", review.RunID)
+	assert.Equal(t, 1, review.ParentIndex)
+	assert.Equal(t, 3, review.Index)
+
+	finalize := detail.Steps[4]
+	assert.Equal(t, "finalize", finalize.StepName)
+	assert.Equal(t, 0, finalize.Depth)
+	assert.Equal(t, "parent-r1", finalize.RunID)
+	assert.Equal(t, -1, finalize.ParentIndex)
+	assert.False(t, finalize.IsWorkflow)
+	assert.Equal(t, 4, finalize.Index)
+
+	// ChildRuns field should still be populated for migration compatibility.
+	assert.Len(t, detail.ChildRuns, 1)
+	assert.Equal(t, "child-r1", detail.ChildRuns[0].ID)
+}
+
+func TestAPIRunDetail_FlattenRunLegacyFallback(t *testing.T) {
+	// Verify that legacy runs (no ParentStepName) are matched by workflow name.
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	now := time.Now()
+
+	parent := domain.NewRun("parent-legacy", "host")
+	parent.State = domain.RunStateSucceeded
+	parent.StartedAt = now.Add(-5 * time.Minute)
+	parent.CompletedAt = now
+	require.NoError(t, store.CreateRun(ctx, parent))
+
+	child := domain.NewRun("child-legacy", "develop")
+	child.State = domain.RunStateSucceeded
+	child.ParentRunID = "parent-legacy"
+	// ParentStepName intentionally empty (legacy run).
+	child.StartedAt = now.Add(-3 * time.Minute) // within step's [now-4m, now-1m] window
+	child.CompletedAt = now.Add(-1 * time.Minute)
+	require.NoError(t, store.CreateRun(ctx, child))
+
+	require.NoError(t, store.SaveCapture(ctx, "parent-legacy", &domain.StepExecution{
+		StepName:    "develop",
+		Result:      "success",
+		StartedAt:   now.Add(-4 * time.Minute),
+		CompletedAt: now.Add(-1 * time.Minute),
+	}))
+	require.NoError(t, store.SaveCapture(ctx, "child-legacy", &domain.StepExecution{
+		StepName:    "implement",
+		Result:      "success",
+		StartedAt:   now.Add(-3 * time.Minute),
+		CompletedAt: now.Add(-2 * time.Minute),
+	}))
+
+	req := httptest.NewRequest("GET", "/api/runs/parent-legacy", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var detail apiRunDetail
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &detail))
+
+	require.Len(t, detail.Steps, 2)
+	assert.Equal(t, "develop", detail.Steps[0].StepName)
+	assert.True(t, detail.Steps[0].IsWorkflow)
+	assert.Equal(t, "child-legacy", detail.Steps[0].ChildRunID)
+
+	assert.Equal(t, "implement", detail.Steps[1].StepName)
+	assert.Equal(t, 1, detail.Steps[1].Depth)
+	assert.Equal(t, "child-legacy", detail.Steps[1].RunID)
+	assert.Equal(t, 0, detail.Steps[1].ParentIndex)
+}
