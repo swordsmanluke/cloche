@@ -997,6 +997,7 @@ func TestAPIWorkflows_IncludesHostWorkflows(t *testing.T) {
 
 	// Host workflow
 	hostWf := `workflow "main" {
+    host {}
     step prepare {
         run = "echo prepare"
         results = [ready]
@@ -1044,6 +1045,7 @@ func TestAPIStepContent_HostWorkflow(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
 
 	hostWf := `workflow "main" {
+    host {}
     step prepare {
         run = "echo hello"
         results = [ready]
@@ -1086,6 +1088,7 @@ func TestAPIStepContent_ScriptFileFromCommand(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "scripts", "setup.sh"), []byte("#!/bin/bash\necho setup"), 0o644))
 
 	hostWf := `workflow "main" {
+    host {}
     step setup {
         run = "bash .cloche/scripts/setup.sh"
         results = [success, fail]
@@ -1114,6 +1117,7 @@ func TestAPIStepContent_InlineCommand(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
 
 	hostWf := `workflow "main" {
+    host {}
     step test {
         run = "go test ./... 2>&1"
         results = [success, fail]
@@ -1148,6 +1152,7 @@ func TestAPIStepContent_BinaryFileNotServed(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "test"), binaryContent, 0o755))
 
 	hostWf := `workflow "main" {
+    host {}
     step test {
         run = "go test ./... 2>&1"
         results = [success, fail]
@@ -1177,6 +1182,7 @@ func TestAPIStepContent_FileRefOutsideScripts(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "some-script.sh"), []byte("#!/bin/bash\necho hi"), 0o644))
 
 	hostWf := `workflow "main" {
+    host {}
     step build {
         run = file("some-script.sh")
         results = [success, fail]

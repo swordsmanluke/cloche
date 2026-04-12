@@ -2211,83 +2211,47 @@ func (h *Handler) handleAPIWorkflows(w http.ResponseWriter, r *http.Request) {
 
 	var workflows []apiWorkflow
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".cloche") || e.Name() == "host.cloche" {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".cloche") {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(clocheDir, e.Name()))
 		if err != nil {
 			continue
 		}
-		wf, err := dsl.ParseForContainer(string(data))
+		wfs, err := dsl.ParseAll(string(data))
 		if err != nil {
 			continue
 		}
-		var steps []apiStepDef
-		for _, s := range wf.Steps {
-			steps = append(steps, apiStepDef{
-				Name:    s.Name,
-				Type:    string(s.Type),
-				Results: s.Results,
-				Config:  s.Config,
-			})
-		}
-		// Sort steps by name for consistent ordering
-		sort.Slice(steps, func(i, j int) bool { return steps[i].Name < steps[j].Name })
-
-		var wires []apiWire
-		for _, wire := range wf.Wiring {
-			wires = append(wires, apiWire{From: wire.From, Result: wire.Result, To: wire.To, Implicit: wire.Implicit})
-		}
-
-		workflows = append(workflows, apiWorkflow{
-			Name:      wf.Name,
-			File:      filepath.Join(".cloche", e.Name()),
-			Location:  "container",
-			Steps:     steps,
-			Wires:     wires,
-			EntryStep: wf.EntryStep,
-		})
-	}
-
-	// Parse host workflows from host.cloche
-	hostData, err := os.ReadFile(filepath.Join(clocheDir, "host.cloche"))
-	if err == nil {
-		hostWfs, err := dsl.ParseAllForHost(string(hostData))
-		if err == nil {
-			// Sort host workflow names for consistent ordering
-			var hostNames []string
-			for name := range hostWfs {
-				hostNames = append(hostNames, name)
-			}
-			sort.Strings(hostNames)
-
-			for _, name := range hostNames {
-				hwf := hostWfs[name]
-				var steps []apiStepDef
-				for _, s := range hwf.Steps {
-					steps = append(steps, apiStepDef{
-						Name:    s.Name,
-						Type:    string(s.Type),
-						Results: s.Results,
-						Config:  s.Config,
-					})
-				}
-				sort.Slice(steps, func(i, j int) bool { return steps[i].Name < steps[j].Name })
-
-				var wires []apiWire
-				for _, wire := range hwf.Wiring {
-					wires = append(wires, apiWire{From: wire.From, Result: wire.Result, To: wire.To, Implicit: wire.Implicit})
-				}
-
-				workflows = append(workflows, apiWorkflow{
-					Name:      hwf.Name,
-					File:      filepath.Join(".cloche", "host.cloche"),
-					Location:  "host",
-					Steps:     steps,
-					Wires:     wires,
-					EntryStep: hwf.EntryStep,
+		for _, wf := range wfs {
+			var steps []apiStepDef
+			for _, s := range wf.Steps {
+				steps = append(steps, apiStepDef{
+					Name:    s.Name,
+					Type:    string(s.Type),
+					Results: s.Results,
+					Config:  s.Config,
 				})
 			}
+			sort.Slice(steps, func(i, j int) bool { return steps[i].Name < steps[j].Name })
+
+			var wires []apiWire
+			for _, wire := range wf.Wiring {
+				wires = append(wires, apiWire{From: wire.From, Result: wire.Result, To: wire.To, Implicit: wire.Implicit})
+			}
+
+			location := "container"
+			if wf.Location == domain.LocationHost {
+				location = "host"
+			}
+
+			workflows = append(workflows, apiWorkflow{
+				Name:      wf.Name,
+				File:      filepath.Join(".cloche", e.Name()),
+				Location:  location,
+				Steps:     steps,
+				Wires:     wires,
+				EntryStep: wf.EntryStep,
+			})
 		}
 	}
 
@@ -2303,35 +2267,25 @@ func (h *Handler) handleAPIStepContent(w http.ResponseWriter, r *http.Request) {
 	workflowName := r.PathValue("workflow")
 	stepName := r.PathValue("step")
 
-	// Find the workflow file (container workflows first, then host)
+	// Find the workflow by scanning all .cloche files
 	clocheDir := filepath.Join(dir, ".cloche")
 	var wf *domain.Workflow
 	entries, _ := os.ReadDir(clocheDir)
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".cloche") || e.Name() == "host.cloche" {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".cloche") {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(clocheDir, e.Name()))
 		if err != nil {
 			continue
 		}
-		parsed, err := dsl.ParseForContainer(string(data))
+		wfs, err := dsl.ParseAll(string(data))
 		if err != nil {
 			continue
 		}
-		if parsed.Name == workflowName {
-			wf = parsed
+		if found, ok := wfs[workflowName]; ok {
+			wf = found
 			break
-		}
-	}
-	// Try host workflows if not found in container workflows
-	if wf == nil {
-		hostData, err := os.ReadFile(filepath.Join(clocheDir, "host.cloche"))
-		if err == nil {
-			hostWfs, err := dsl.ParseAllForHost(string(hostData))
-			if err == nil {
-				wf = hostWfs[workflowName]
-			}
 		}
 	}
 	if wf == nil {

@@ -1,0 +1,40 @@
+workflow "demo" {
+  host {}
+  step take_new_task {
+     run = "echo hi"
+     results = [success, fail]
+  }
+  step implement {
+    workflow_name = "develop"
+    results = [ success, fail]
+  }
+  step human-review {
+    poll     = "echo CLOCHE_RESULT:approved"
+    interval = "5m"
+    results  = [approved, fixit]
+  }
+
+  step address-issues {
+    workflow_name = "develop"
+    results = [success, fail]
+  }
+
+  step merge {
+    run = "echo merged"
+    results = [success, fail]
+  }
+
+  take_new_task:success  -> implement
+  implement:success      -> human-review
+  human-review:approved  -> merge
+  human-review:fixit     -> address-issues 
+  address-issues:success -> human-review
+  merge:success -> done
+
+  merge:fail -> abort
+  take_new_task:fail -> abort
+  implement:fail    -> abort
+  human-review:fail -> abort
+  address-issues:fail -> abort
+}
+
