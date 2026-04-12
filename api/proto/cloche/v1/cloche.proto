@@ -184,6 +184,8 @@ message RunSummary {
   string waiting_step = 11;
   // Populated when state == "waiting": RFC3339 timestamp of the last poll invocation.
   string last_poll_at = 12;
+  // Populated when state == "waiting": number of times the poll script has been invoked.
+  int32 poll_count = 13;
 }
 
 message EnableLoopRequest {
@@ -254,6 +256,8 @@ message TaskSummary {
   string waiting_step = 8;
   // Populated when status == "waiting": RFC3339 timestamp of the last poll invocation.
   string last_poll_at = 9;
+  // Populated when status == "waiting": number of times the poll script has been invoked.
+  int32 poll_count = 10;
 }
 
 message ListTasksResponse {

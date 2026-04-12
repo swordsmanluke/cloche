@@ -813,9 +813,9 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 		if task.WaitingStep != "" {
 			elapsed := formatLastPollElapsed(task.LastPollAt)
 			if elapsed != "" {
-				status = fmt.Sprintf("%s [%s, poll %s ago]", task.Status, task.WaitingStep, elapsed)
+				status = fmt.Sprintf("%s [%s, poll %s ago (%d polls)]", task.Status, task.WaitingStep, elapsed, task.PollCount)
 			} else {
-				status = fmt.Sprintf("%s [%s]", task.Status, task.WaitingStep)
+				status = fmt.Sprintf("%s [%s (%d polls)]", task.Status, task.WaitingStep, task.PollCount)
 			}
 		}
 		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n",
@@ -865,8 +865,17 @@ func cmdListRuns(ctx context.Context, client pb.ClocheServiceClient, all bool, p
 		if len(errMsg) > 60 {
 			errMsg = errMsg[:57] + "..."
 		}
+		state := run.State
+		if run.WaitingStep != "" {
+			elapsed := formatLastPollElapsed(run.LastPollAt)
+			if elapsed != "" {
+				state = fmt.Sprintf("%s [%q, poll %s ago (%d polls)]", run.State, run.WaitingStep, elapsed, run.PollCount)
+			} else {
+				state = fmt.Sprintf("%s [%q]", run.State, run.WaitingStep)
+			}
+		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			run.RunId, run.WorkflowName, run.State, runType,
+			run.RunId, run.WorkflowName, state, runType,
 			run.TaskId, title, errMsg)
 	}
 	w.Flush()

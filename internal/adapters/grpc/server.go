@@ -1575,6 +1575,7 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 				if !polls[0].LastPollAt.IsZero() {
 					sum.LastPollAt = polls[0].LastPollAt.UTC().Format(time.RFC3339)
 				}
+				sum.PollCount = int32(polls[0].PollCount)
 			}
 		}
 		resp.Runs = append(resp.Runs, sum)
@@ -1633,6 +1634,7 @@ func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) 
 							if !polls[0].LastPollAt.IsZero() {
 								sum.LastPollAt = polls[0].LastPollAt.UTC().Format(time.RFC3339)
 							}
+							sum.PollCount = int32(polls[0].PollCount)
 							break
 						}
 					}

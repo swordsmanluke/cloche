@@ -240,11 +240,14 @@ type GetStatusResponse struct {
 	ContainerDeadSince string                 `protobuf:"bytes,9,opt,name=container_dead_since,json=containerDeadSince,proto3" json:"container_dead_since,omitempty"`
 	Title              string                 `protobuf:"bytes,10,opt,name=title,proto3" json:"title,omitempty"`
 	IsHost             bool                   `protobuf:"varint,11,opt,name=is_host,json=isHost,proto3" json:"is_host,omitempty"`
-	WaitingStep        string                 `protobuf:"bytes,12,opt,name=waiting_step,json=waitingStep,proto3" json:"waiting_step,omitempty"`
-	LastPollAt         string                 `protobuf:"bytes,13,opt,name=last_poll_at,json=lastPollAt,proto3" json:"last_poll_at,omitempty"`
-	PollCount          int32                  `protobuf:"varint,14,opt,name=poll_count,json=pollCount,proto3" json:"poll_count,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// Populated when state == "waiting": the human step being polled.
+	WaitingStep string `protobuf:"bytes,12,opt,name=waiting_step,json=waitingStep,proto3" json:"waiting_step,omitempty"`
+	// Populated when state == "waiting": RFC3339 timestamp of the last poll invocation.
+	LastPollAt string `protobuf:"bytes,13,opt,name=last_poll_at,json=lastPollAt,proto3" json:"last_poll_at,omitempty"`
+	// Populated when state == "waiting": number of times the poll script has been invoked.
+	PollCount     int32 `protobuf:"varint,14,opt,name=poll_count,json=pollCount,proto3" json:"poll_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetStatusResponse) Reset() {
@@ -1014,7 +1017,9 @@ type RunSummary struct {
 	// Populated when state == "waiting": the human step being polled.
 	WaitingStep string `protobuf:"bytes,11,opt,name=waiting_step,json=waitingStep,proto3" json:"waiting_step,omitempty"`
 	// Populated when state == "waiting": RFC3339 timestamp of the last poll invocation.
-	LastPollAt    string `protobuf:"bytes,12,opt,name=last_poll_at,json=lastPollAt,proto3" json:"last_poll_at,omitempty"`
+	LastPollAt string `protobuf:"bytes,12,opt,name=last_poll_at,json=lastPollAt,proto3" json:"last_poll_at,omitempty"`
+	// Populated when state == "waiting": number of times the poll script has been invoked.
+	PollCount     int32 `protobuf:"varint,13,opt,name=poll_count,json=pollCount,proto3" json:"poll_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1131,6 +1136,13 @@ func (x *RunSummary) GetLastPollAt() string {
 		return x.LastPollAt
 	}
 	return ""
+}
+
+func (x *RunSummary) GetPollCount() int32 {
+	if x != nil {
+		return x.PollCount
+	}
+	return 0
 }
 
 type EnableLoopRequest struct {
@@ -1750,7 +1762,9 @@ type TaskSummary struct {
 	// Populated when status == "waiting": the human step being polled.
 	WaitingStep string `protobuf:"bytes,8,opt,name=waiting_step,json=waitingStep,proto3" json:"waiting_step,omitempty"`
 	// Populated when status == "waiting": RFC3339 timestamp of the last poll invocation.
-	LastPollAt    string `protobuf:"bytes,9,opt,name=last_poll_at,json=lastPollAt,proto3" json:"last_poll_at,omitempty"`
+	LastPollAt string `protobuf:"bytes,9,opt,name=last_poll_at,json=lastPollAt,proto3" json:"last_poll_at,omitempty"`
+	// Populated when status == "waiting": number of times the poll script has been invoked.
+	PollCount     int32 `protobuf:"varint,10,opt,name=poll_count,json=pollCount,proto3" json:"poll_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1846,6 +1860,13 @@ func (x *TaskSummary) GetLastPollAt() string {
 		return x.LastPollAt
 	}
 	return ""
+}
+
+func (x *TaskSummary) GetPollCount() int32 {
+	if x != nil {
+		return x.PollCount
+	}
+	return 0
 }
 
 type ListTasksResponse struct {
@@ -4104,7 +4125,7 @@ const file_cloche_proto_rawDesc = "" +
 	"attempt_id\x18\x03 \x01(\tR\tattemptId\"9\n" +
 	"\x10GetStatusRequest\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\"\xa3\x03\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\"\x87\x04\n" +
 	"\x11GetStatusResponse\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12#\n" +
 	"\rworkflow_name\x18\x02 \x01(\tR\fworkflowName\x12\x14\n" +
@@ -4117,7 +4138,12 @@ const file_cloche_proto_rawDesc = "" +
 	"\x14container_dead_since\x18\t \x01(\tR\x12containerDeadSince\x12\x14\n" +
 	"\x05title\x18\n" +
 	" \x01(\tR\x05title\x12\x17\n" +
-	"\ais_host\x18\v \x01(\bR\x06isHost\"\xf3\x01\n" +
+	"\ais_host\x18\v \x01(\bR\x06isHost\x12!\n" +
+	"\fwaiting_step\x18\f \x01(\tR\vwaitingStep\x12 \n" +
+	"\flast_poll_at\x18\r \x01(\tR\n" +
+	"lastPollAt\x12\x1d\n" +
+	"\n" +
+	"poll_count\x18\x0e \x01(\x05R\tpollCount\"\xf3\x01\n" +
 	"\x13StepExecutionStatus\x12\x1b\n" +
 	"\tstep_name\x18\x01 \x01(\tR\bstepName\x12\x16\n" +
 	"\x06result\x18\x02 \x01(\tR\x06result\x12\x1d\n" +
@@ -4158,7 +4184,7 @@ const file_cloche_proto_rawDesc = "" +
 	"\x05limit\x18\x04 \x01(\x05R\x05limit\x12\x17\n" +
 	"\atask_id\x18\x05 \x01(\tR\x06taskId\"=\n" +
 	"\x10ListRunsResponse\x12)\n" +
-	"\x04runs\x18\x01 \x03(\v2\x15.cloche.v1.RunSummaryR\x04runs\"\xf3\x02\n" +
+	"\x04runs\x18\x01 \x03(\v2\x15.cloche.v1.RunSummaryR\x04runs\"\x92\x03\n" +
 	"\n" +
 	"RunSummary\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12#\n" +
@@ -4176,7 +4202,9 @@ const file_cloche_proto_rawDesc = "" +
 	" \x01(\tR\x06taskId\x12!\n" +
 	"\fwaiting_step\x18\v \x01(\tR\vwaitingStep\x12 \n" +
 	"\flast_poll_at\x18\f \x01(\tR\n" +
-	"lastPollAt\"[\n" +
+	"lastPollAt\x12\x1d\n" +
+	"\n" +
+	"poll_count\x18\r \x01(\x05R\tpollCount\"[\n" +
 	"\x11EnableLoopRequest\x12\x1f\n" +
 	"\vproject_dir\x18\x01 \x01(\tR\n" +
 	"projectDir\x12%\n" +
@@ -4222,7 +4250,7 @@ const file_cloche_proto_rawDesc = "" +
 	"\vproject_dir\x18\x02 \x01(\tR\n" +
 	"projectDir\x12\x14\n" +
 	"\x05state\x18\x03 \x01(\tR\x05state\x12\x14\n" +
-	"\x05limit\x18\x04 \x01(\x05R\x05limit\"\xaa\x02\n" +
+	"\x05limit\x18\x04 \x01(\x05R\x05limit\"\xc9\x02\n" +
 	"\vTaskSummary\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x16\n" +
@@ -4235,7 +4263,10 @@ const file_cloche_proto_rawDesc = "" +
 	"\rattempt_count\x18\a \x01(\x05R\fattemptCount\x12!\n" +
 	"\fwaiting_step\x18\b \x01(\tR\vwaitingStep\x12 \n" +
 	"\flast_poll_at\x18\t \x01(\tR\n" +
-	"lastPollAt\"A\n" +
+	"lastPollAt\x12\x1d\n" +
+	"\n" +
+	"poll_count\x18\n" +
+	" \x01(\x05R\tpollCount\"A\n" +
 	"\x11ListTasksResponse\x12,\n" +
 	"\x05tasks\x18\x01 \x03(\v2\x16.cloche.v1.TaskSummaryR\x05tasks\")\n" +
 	"\x0eGetTaskRequest\x12\x17\n" +
