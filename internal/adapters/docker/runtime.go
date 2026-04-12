@@ -528,9 +528,15 @@ func copyProjectToContainer(ctx context.Context, projectDir, containerID string,
 			return nil
 		}
 
+		// Skip sockets, devices, and other special files that tar cannot represent.
+		mode := info.Mode()
+		if mode&(os.ModeSocket|os.ModeDevice|os.ModeNamedPipe|os.ModeCharDevice) != 0 {
+			return nil
+		}
+
 		// Read symlink target (if any) before creating the header.
 		var link string
-		if info.Mode()&os.ModeSymlink != 0 {
+		if mode&os.ModeSymlink != 0 {
 			link, err = os.Readlink(absPath)
 			if err != nil {
 				return err

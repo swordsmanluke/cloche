@@ -2,3 +2,6 @@
 # prompt files or logs from previous runs.
 .cloche/runs/
 .cloche/logs/
+
+# Unix sockets cannot be archived into containers.
+*.sock
