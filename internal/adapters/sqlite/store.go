@@ -85,6 +85,7 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE runs ADD COLUMN parent_run_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE runs ADD COLUMN task_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE runs ADD COLUMN task_title TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE runs ADD COLUMN parent_step_name TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE step_executions ADD COLUMN input_tokens INTEGER DEFAULT 0`,
 		`ALTER TABLE step_executions ADD COLUMN output_tokens INTEGER DEFAULT 0`,
 		`ALTER TABLE step_executions ADD COLUMN agent_name TEXT DEFAULT ''`,
@@ -220,23 +221,23 @@ func migrate(db *sql.DB) error {
 
 func (s *Store) CreateRun(ctx context.Context, run *domain.Run) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, project_dir, error_message, container_id, base_sha, container_kept, title, is_host, parent_run_id, task_id, task_title, attempt_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, project_dir, error_message, container_id, base_sha, container_kept, title, is_host, parent_run_id, task_id, task_title, attempt_id, parent_step_name)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID, run.WorkflowName, string(run.State), run.ActiveStepsString(),
-		formatTime(run.StartedAt), formatTime(run.CompletedAt), run.ProjectDir, truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID,
+		formatTime(run.StartedAt), formatTime(run.CompletedAt), run.ProjectDir, truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, run.ParentStepName,
 	)
 	return err
 }
 
 // runSelectCols is the standard column list for scanning a Run row.
-const runSelectCols = `pk, id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,''), COALESCE(is_host,0), COALESCE(parent_run_id,''), COALESCE(task_id,''), COALESCE(task_title,''), COALESCE(attempt_id,'')`
+const runSelectCols = `pk, id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,''), COALESCE(is_host,0), COALESCE(parent_run_id,''), COALESCE(task_id,''), COALESCE(task_title,''), COALESCE(attempt_id,''), COALESCE(parent_step_name,'')`
 
 // scanRun scans a single row into a *domain.Run.
 func scanRun(scanner interface{ Scan(...any) error }) (*domain.Run, error) {
 	run := &domain.Run{}
 	var activeSteps, startedAt, completedAt string
 	var containerKept, isHost int
-	err := scanner.Scan(&run.PK, &run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage, &run.ContainerID, &run.BaseSHA, &containerKept, &run.Title, &isHost, &run.ParentRunID, &run.TaskID, &run.TaskTitle, &run.AttemptID)
+	err := scanner.Scan(&run.PK, &run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage, &run.ContainerID, &run.BaseSHA, &containerKept, &run.Title, &isHost, &run.ParentRunID, &run.TaskID, &run.TaskTitle, &run.AttemptID, &run.ParentStepName)
 	if err != nil {
 		return nil, err
 	}
@@ -278,18 +279,18 @@ func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 	// attempt_id+id composite which is unique by schema constraint.
 	if run.PK != 0 {
 		_, err := s.db.ExecContext(ctx,
-			`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ? WHERE pk = ?`,
+			`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ?, parent_step_name = ? WHERE pk = ?`,
 			string(run.State), run.ActiveStepsString(),
 			formatTime(run.StartedAt), formatTime(run.CompletedAt),
-			truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, run.PK,
+			truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, run.ParentStepName, run.PK,
 		)
 		return err
 	}
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ? WHERE attempt_id = ? AND id = ?`,
+		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ?, parent_step_name = ? WHERE attempt_id = ? AND id = ?`,
 		string(run.State), run.ActiveStepsString(),
 		formatTime(run.StartedAt), formatTime(run.CompletedAt),
-		truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID,
+		truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, run.ParentStepName,
 		run.AttemptID, run.ID,
 	)
 	return err

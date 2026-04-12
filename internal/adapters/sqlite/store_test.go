@@ -1644,3 +1644,47 @@ func TestListRunsFiltered_NoFilters(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, runs, 3)
 }
+
+func TestRunParentStepName_RoundTrip(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	run := domain.NewRun("child-run-1", "develop")
+	run.ParentRunID = "parent-run-1"
+	run.ParentStepName = "workflow_name"
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	got, err := store.GetRun(ctx, "child-run-1")
+	require.NoError(t, err)
+	assert.Equal(t, "parent-run-1", got.ParentRunID)
+	assert.Equal(t, "workflow_name", got.ParentStepName)
+
+	// Update and re-read
+	got.ParentStepName = "updated_step"
+	require.NoError(t, store.UpdateRun(ctx, got))
+
+	got2, err := store.GetRun(ctx, "child-run-1")
+	require.NoError(t, err)
+	assert.Equal(t, "updated_step", got2.ParentStepName)
+}
+
+func TestRunParentStepName_NullForLegacyRows(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create a run without setting ParentStepName — simulates pre-migration rows
+	run := domain.NewRun("legacy-run-1", "develop")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	got, err := store.GetRun(ctx, "legacy-run-1")
+	require.NoError(t, err)
+	assert.Equal(t, "", got.ParentStepName)
+}

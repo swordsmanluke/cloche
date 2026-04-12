@@ -100,6 +100,7 @@ func migrateRunsCompositeKey(db *sql.DB) error {
 			task_id      TEXT NOT NULL DEFAULT '',
 			task_title   TEXT NOT NULL DEFAULT '',
 			attempt_id   TEXT NOT NULL DEFAULT '',
+			parent_step_name TEXT NOT NULL DEFAULT '',
 			UNIQUE(attempt_id, id)
 		)`,
 		`INSERT OR IGNORE INTO runs_new

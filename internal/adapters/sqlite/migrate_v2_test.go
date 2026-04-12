@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 func TestMigrateProjectLogs_CreatesTasksFromRuns(t *testing.T) {
@@ -220,4 +222,66 @@ func TestMigrateProjectLogs_PerProject(t *testing.T) {
 	require.NoError(t, store.MigrateProjectLogs(projectB))
 	store.db.QueryRow(`SELECT attempt_id FROM runs WHERE id = 'run-b'`).Scan(&attemptB)
 	assert.NotEmpty(t, attemptB, "project B run should have attempt_id after migration")
+}
+
+// TestMigrateParentStepName_ExistingRowsGetNull verifies that opening a
+// pre-existing database that lacks the parent_step_name column succeeds and
+// that existing rows read back with an empty ParentStepName.
+func TestMigrateParentStepName_ExistingRowsGetNull(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy.db")
+
+	// Build a database that intentionally lacks parent_step_name by using the
+	// old schema (only the columns that existed before this migration).
+	rawDB, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	_, err = rawDB.Exec(`
+		CREATE TABLE runs (
+			pk INTEGER PRIMARY KEY AUTOINCREMENT,
+			id TEXT NOT NULL,
+			workflow_name TEXT NOT NULL,
+			state TEXT NOT NULL,
+			active_steps TEXT,
+			started_at TEXT,
+			completed_at TEXT,
+			project_dir TEXT NOT NULL DEFAULT '',
+			error_message TEXT,
+			container_id TEXT,
+			base_sha TEXT,
+			container_kept INTEGER NOT NULL DEFAULT 0,
+			title TEXT NOT NULL DEFAULT '',
+			is_host INTEGER NOT NULL DEFAULT 0,
+			parent_run_id TEXT NOT NULL DEFAULT '',
+			task_id TEXT NOT NULL DEFAULT '',
+			task_title TEXT NOT NULL DEFAULT '',
+			attempt_id TEXT NOT NULL DEFAULT '',
+			UNIQUE(attempt_id, id)
+		);
+		CREATE TABLE step_executions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			run_id TEXT NOT NULL,
+			step_name TEXT NOT NULL,
+			result TEXT,
+			started_at TEXT NOT NULL,
+			completed_at TEXT,
+			logs TEXT,
+			git_ref TEXT
+		);
+	`)
+	require.NoError(t, err)
+	// Insert a legacy row without parent_step_name; provide all columns that
+	// scanRun reads without COALESCE to avoid NULL scan errors.
+	_, err = rawDB.Exec(`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, project_dir, attempt_id) VALUES ('legacy-1', 'develop', 'pending', '', '', '', '/proj', '')`)
+	require.NoError(t, err)
+	require.NoError(t, rawDB.Close())
+
+	// Open via NewStore — this runs all migrations including adding parent_step_name
+	store, err := NewStore(dbPath)
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	got, err := store.GetRun(ctx, "legacy-1")
+	require.NoError(t, err)
+	assert.Equal(t, "legacy-1", got.ID)
+	assert.Equal(t, "", got.ParentStepName, "legacy row should have empty ParentStepName after migration")
 }
