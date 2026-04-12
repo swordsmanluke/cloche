@@ -85,7 +85,7 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE runs ADD COLUMN parent_run_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE runs ADD COLUMN task_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE runs ADD COLUMN task_title TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE runs ADD COLUMN parent_step_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE runs ADD COLUMN parent_step_name TEXT`,
 		`ALTER TABLE step_executions ADD COLUMN input_tokens INTEGER DEFAULT 0`,
 		`ALTER TABLE step_executions ADD COLUMN output_tokens INTEGER DEFAULT 0`,
 		`ALTER TABLE step_executions ADD COLUMN agent_name TEXT DEFAULT ''`,
@@ -224,7 +224,7 @@ func (s *Store) CreateRun(ctx context.Context, run *domain.Run) error {
 		`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, project_dir, error_message, container_id, base_sha, container_kept, title, is_host, parent_run_id, task_id, task_title, attempt_id, parent_step_name)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID, run.WorkflowName, string(run.State), run.ActiveStepsString(),
-		formatTime(run.StartedAt), formatTime(run.CompletedAt), run.ProjectDir, truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, run.ParentStepName,
+		formatTime(run.StartedAt), formatTime(run.CompletedAt), run.ProjectDir, truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, nullableString(run.ParentStepName),
 	)
 	return err
 }
@@ -282,7 +282,7 @@ func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 			`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ?, parent_step_name = ? WHERE pk = ?`,
 			string(run.State), run.ActiveStepsString(),
 			formatTime(run.StartedAt), formatTime(run.CompletedAt),
-			truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, run.ParentStepName, run.PK,
+			truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, nullableString(run.ParentStepName), run.PK,
 		)
 		return err
 	}
@@ -290,7 +290,7 @@ func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ?, parent_step_name = ? WHERE attempt_id = ? AND id = ?`,
 		string(run.State), run.ActiveStepsString(),
 		formatTime(run.StartedAt), formatTime(run.CompletedAt),
-		truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, run.ParentStepName,
+		truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, nullableString(run.ParentStepName),
 		run.AttemptID, run.ID,
 	)
 	return err
@@ -923,6 +923,14 @@ func nullIfEmptyTime(t time.Time) interface{} {
 		return nil
 	}
 	return t.Format(time.RFC3339Nano)
+}
+
+// nullableString returns nil for an empty string so it is stored as SQL NULL.
+func nullableString(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 func (s *Store) GetContextKey(ctx context.Context, taskID, attemptID, runID, key string) (string, bool, error) {

@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 func TestRunStore_CreateAndGet(t *testing.T) {
@@ -1645,7 +1647,7 @@ func TestListRunsFiltered_NoFilters(t *testing.T) {
 	assert.Len(t, runs, 3)
 }
 
-func TestRunParentStepName_RoundTrip(t *testing.T) {
+func TestRunStore_ParentStepName_RoundTrip(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
@@ -1656,14 +1658,15 @@ func TestRunParentStepName_RoundTrip(t *testing.T) {
 	run.ParentRunID = "parent-run-1"
 	run.ParentStepName = "workflow_name"
 	run.Start()
+
 	require.NoError(t, store.CreateRun(ctx, run))
 
 	got, err := store.GetRun(ctx, "child-run-1")
 	require.NoError(t, err)
-	assert.Equal(t, "parent-run-1", got.ParentRunID)
 	assert.Equal(t, "workflow_name", got.ParentStepName)
+	assert.Equal(t, "parent-run-1", got.ParentRunID)
 
-	// Update and re-read
+	// Update and verify persisted
 	got.ParentStepName = "updated_step"
 	require.NoError(t, store.UpdateRun(ctx, got))
 
@@ -1672,19 +1675,51 @@ func TestRunParentStepName_RoundTrip(t *testing.T) {
 	assert.Equal(t, "updated_step", got2.ParentStepName)
 }
 
-func TestRunParentStepName_NullForLegacyRows(t *testing.T) {
-	store, err := sqlite.NewStore(":memory:")
+func TestRunStore_ParentStepName_NullForLegacyRows(t *testing.T) {
+	// Simulate a database that predates the parent_step_name column by creating
+	// a file-based DB, inserting a row without parent_step_name, then opening
+	// it via NewStore (which runs the migration) and verifying NULL → "".
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "legacy.db")
+
+	// Bootstrap the old schema manually (no parent_step_name column).
+	legacyDB, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	_, err = legacyDB.Exec(`
+		CREATE TABLE IF NOT EXISTS runs (
+			id TEXT PRIMARY KEY,
+			workflow_name TEXT NOT NULL,
+			state TEXT NOT NULL,
+			active_steps TEXT,
+			started_at TEXT,
+			completed_at TEXT,
+			project_dir TEXT NOT NULL DEFAULT '',
+			error_message TEXT,
+			container_id TEXT,
+			base_sha TEXT,
+			container_kept INTEGER NOT NULL DEFAULT 0,
+			title TEXT NOT NULL DEFAULT '',
+			is_host INTEGER NOT NULL DEFAULT 0,
+			parent_run_id TEXT NOT NULL DEFAULT '',
+			task_id TEXT NOT NULL DEFAULT '',
+			task_title TEXT NOT NULL DEFAULT '',
+			attempt_id TEXT NOT NULL DEFAULT ''
+		);
+	`)
+	require.NoError(t, err)
+	_, err = legacyDB.Exec(
+		`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, project_dir) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		"legacy-run-1", "develop", "pending", "", "", "", "/proj",
+	)
+	require.NoError(t, err)
+	require.NoError(t, legacyDB.Close())
+
+	// Open via NewStore — this runs the migration, adding parent_step_name TEXT.
+	store, err := sqlite.NewStore(dbPath)
 	require.NoError(t, err)
 	defer store.Close()
 
-	ctx := context.Background()
-
-	// Create a run without setting ParentStepName — simulates pre-migration rows
-	run := domain.NewRun("legacy-run-1", "develop")
-	run.Start()
-	require.NoError(t, store.CreateRun(ctx, run))
-
-	got, err := store.GetRun(ctx, "legacy-run-1")
+	got, err := store.GetRun(context.Background(), "legacy-run-1")
 	require.NoError(t, err)
-	assert.Equal(t, "", got.ParentStepName)
+	assert.Equal(t, "", got.ParentStepName, "legacy row should yield empty ParentStepName")
 }

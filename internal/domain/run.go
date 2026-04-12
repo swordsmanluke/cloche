@@ -57,7 +57,7 @@ type Run struct {
 	Title          string // One-line summary of the work being done
 	IsHost         bool   // true for host workflow runs (vs container runs)
 	ParentRunID    string // ID of the parent (host) run, empty for top-level runs
-	ParentStepName string // Name of the parent step that spawned this child run
+	ParentStepName string // Name of the parent step that spawned this child run, empty for top-level runs
 	TaskID         string // optional task ID this run is associated with
 	TaskTitle      string // title from the task tracker, for display after the task leaves the active snapshot
 	AttemptID      string // ID of the attempt this run belongs to (v2)
