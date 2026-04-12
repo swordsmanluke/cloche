@@ -176,7 +176,7 @@ func TestRunDetail_AccordionStatePreserved(t *testing.T) {
 	assert.Contains(t, body, "openAccordions")
 	assert.Contains(t, body, "loadedOutputs")
 	// Verify it restores loaded output content after DOM rebuild
-	assert.Contains(t, body, "loadedOutputs[key]")
+	assert.Contains(t, body, "loadedOutputs[noKey]")
 }
 
 func TestRunDetail_LogScrollStabilization(t *testing.T) {
@@ -3084,6 +3084,149 @@ func TestMergeCaptures_WithUsage(t *testing.T) {
 
 	assert.False(t, entries[1].HasUsage)
 	assert.Empty(t, entries[1].AgentName)
+}
+
+func TestFlattenRun_NoChildren(t *testing.T) {
+	now := time.Now()
+	run := domain.NewRun("run-1", "develop")
+	caps := []*domain.StepExecution{
+		{StepName: "implement", Result: "success", StartedAt: now.Add(-2 * time.Minute), CompletedAt: now},
+		{StepName: "review", Result: "done", StartedAt: now.Add(-1 * time.Minute), CompletedAt: now},
+	}
+
+	entries := flattenRun(run, caps, nil, nil)
+	require.Len(t, entries, 2)
+
+	assert.Equal(t, "implement", entries[0].StepName)
+	assert.Equal(t, 0, entries[0].Depth)
+	assert.Equal(t, "run-1", entries[0].RunID)
+	assert.Equal(t, -1, entries[0].ParentIndex)
+	assert.False(t, entries[0].IsWorkflow)
+	assert.Equal(t, 0, entries[0].Index)
+
+	assert.Equal(t, "review", entries[1].StepName)
+	assert.Equal(t, 1, entries[1].Index)
+}
+
+func TestFlattenRun_WithChildRunByParentStepName(t *testing.T) {
+	now := time.Now()
+	run := domain.NewRun("run-1", "host")
+	child := domain.NewRun("child-1", "develop")
+	child.ParentRunID = "run-1"
+	child.ParentStepName = "workflow_name"
+
+	topCaps := []*domain.StepExecution{
+		{StepName: "prepare", Result: "success", StartedAt: now.Add(-5 * time.Minute), CompletedAt: now.Add(-4 * time.Minute)},
+		{StepName: "workflow_name", Result: "success", StartedAt: now.Add(-4 * time.Minute), CompletedAt: now.Add(-1 * time.Minute)},
+		{StepName: "finalize", Result: "success", StartedAt: now.Add(-1 * time.Minute), CompletedAt: now},
+	}
+	childCaps := map[string][]*domain.StepExecution{
+		"child-1": {
+			{StepName: "implement", Result: "success", StartedAt: now.Add(-3 * time.Minute), CompletedAt: now.Add(-2 * time.Minute)},
+			{StepName: "review", Result: "done", StartedAt: now.Add(-2 * time.Minute), CompletedAt: now.Add(-1 * time.Minute)},
+		},
+	}
+
+	entries := flattenRun(run, topCaps, []*domain.Run{child}, childCaps)
+	require.Len(t, entries, 5)
+
+	// prepare at depth 0
+	assert.Equal(t, "prepare", entries[0].StepName)
+	assert.Equal(t, 0, entries[0].Depth)
+	assert.Equal(t, "run-1", entries[0].RunID)
+	assert.False(t, entries[0].IsWorkflow)
+
+	// workflow_name at depth 0, marked as workflow
+	assert.Equal(t, "workflow_name", entries[1].StepName)
+	assert.Equal(t, 0, entries[1].Depth)
+	assert.True(t, entries[1].IsWorkflow)
+	assert.Equal(t, 1, entries[1].Index)
+
+	// implement at depth 1, child run
+	assert.Equal(t, "implement", entries[2].StepName)
+	assert.Equal(t, 1, entries[2].Depth)
+	assert.Equal(t, "child-1", entries[2].RunID)
+	assert.Equal(t, 1, entries[2].ParentIndex) // parent is workflow_name at index 1
+	assert.Equal(t, 2, entries[2].Index)
+
+	// review at depth 1
+	assert.Equal(t, "review", entries[3].StepName)
+	assert.Equal(t, 1, entries[3].Depth)
+	assert.Equal(t, "child-1", entries[3].RunID)
+	assert.Equal(t, 3, entries[3].Index)
+
+	// finalize at depth 0
+	assert.Equal(t, "finalize", entries[4].StepName)
+	assert.Equal(t, 0, entries[4].Depth)
+	assert.Equal(t, 4, entries[4].Index)
+}
+
+func TestFlattenRun_FallbackByWorkflowName(t *testing.T) {
+	// Child run has no ParentStepName set (legacy) — match by workflow name
+	now := time.Now()
+	run := domain.NewRun("run-1", "host")
+	child := domain.NewRun("child-1", "develop") // workflow name matches step name
+	child.ParentRunID = "run-1"
+	// ParentStepName intentionally empty (legacy run)
+
+	topCaps := []*domain.StepExecution{
+		{StepName: "develop", Result: "success", StartedAt: now.Add(-2 * time.Minute), CompletedAt: now},
+	}
+	childCaps := map[string][]*domain.StepExecution{
+		"child-1": {
+			{StepName: "implement", Result: "success", StartedAt: now.Add(-1 * time.Minute), CompletedAt: now},
+		},
+	}
+
+	entries := flattenRun(run, topCaps, []*domain.Run{child}, childCaps)
+	require.Len(t, entries, 2)
+
+	assert.Equal(t, "develop", entries[0].StepName)
+	assert.True(t, entries[0].IsWorkflow)
+
+	assert.Equal(t, "implement", entries[1].StepName)
+	assert.Equal(t, 1, entries[1].Depth)
+	assert.Equal(t, "child-1", entries[1].RunID)
+}
+
+func TestFlattenRun_IndexAssignment(t *testing.T) {
+	now := time.Now()
+	run := domain.NewRun("run-1", "host")
+	child := domain.NewRun("child-1", "develop")
+	child.ParentRunID = "run-1"
+	child.ParentStepName = "step-b"
+
+	topCaps := []*domain.StepExecution{
+		{StepName: "step-a", Result: "success", StartedAt: now.Add(-3 * time.Minute), CompletedAt: now},
+		{StepName: "step-b", Result: "success", StartedAt: now.Add(-2 * time.Minute), CompletedAt: now},
+		{StepName: "step-c", Result: "success", StartedAt: now.Add(-1 * time.Minute), CompletedAt: now},
+	}
+	childCaps := map[string][]*domain.StepExecution{
+		"child-1": {
+			{StepName: "sub-1", Result: "success", StartedAt: now.Add(-90 * time.Second), CompletedAt: now},
+			{StepName: "sub-2", Result: "success", StartedAt: now.Add(-60 * time.Second), CompletedAt: now},
+		},
+	}
+
+	entries := flattenRun(run, topCaps, []*domain.Run{child}, childCaps)
+	require.Len(t, entries, 5)
+
+	// Verify sequential indices
+	for i, e := range entries {
+		assert.Equal(t, i, e.Index, "entry %d has wrong index", i)
+	}
+
+	// step-b is at index 1
+	assert.Equal(t, "step-b", entries[1].StepName)
+	assert.Equal(t, 1, entries[1].Index)
+
+	// sub-1 parent is step-b (index 1)
+	assert.Equal(t, "sub-1", entries[2].StepName)
+	assert.Equal(t, 1, entries[2].ParentIndex)
+
+	// sub-2 parent is step-b (index 1)
+	assert.Equal(t, "sub-2", entries[3].StepName)
+	assert.Equal(t, 1, entries[3].ParentIndex)
 }
 
 func TestAPITriggerOrchestrator_NoOrchestrateFunc(t *testing.T) {

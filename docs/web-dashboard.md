@@ -164,6 +164,10 @@ A table of all steps in the run, with name, result, duration, and (for agent ste
 token usage. Click any row to expand an output panel showing the captured log for that
 step. The output panel streams live during active steps.
 
+For runs that dispatch child workflows, the steps table shows a tree view: child-run
+steps appear directly below the workflow step that spawned them, indented one level. A
+**▾/▸ toggle** button on workflow steps collapses or expands their child steps.
+
 #### Log Viewer
 
 A scrollable log panel at the bottom of the page streams all output for the run in real

@@ -84,8 +84,8 @@
     {{if .Steps}}
         {{$hasUsage := $.HasUsage}}
         {{range .Steps}}
-        <tr class="step-row" data-run-id="{{$.Run.ID}}" data-step="{{.StepName}}" data-index="{{.Index}}">
-            <td>{{.StepName}}</td>
+        <tr class="step-row" data-run-id="{{.RunID}}" data-step="{{.StepName}}" data-index="{{.Index}}" data-depth="{{.Depth}}" data-parent-index="{{.ParentIndex}}" data-is-workflow="{{if .IsWorkflow}}1{{else}}0{{end}}">
+            <td style="padding-left: calc({{.Depth}} * 1.5em + 0.5em)">{{if .IsWorkflow}}<button class="tree-toggle" aria-label="toggle">▾</button>{{end}}{{.StepName}}</td>
             <td>{{if .Result}}<span class="badge badge-{{if eq .Result "success"}}succeeded{{else if eq .Result "fail"}}failed{{else}}pending{{end}}">{{.Result}}</span>{{else}}<span class="badge badge-running">running</span>{{end}}</td>
             <td>{{formatTime .StartedAt}}</td>
             <td>{{.Duration}}</td>
@@ -126,7 +126,7 @@
     var loadEarlierCount = document.getElementById('load-earlier-count');
     var skippedLines = 0;
 
-    // Per-step log line buffers: stepName -> [line, ...]
+    // Per-step log line buffers: "${runId}:${stepName}" -> [line, ...]
     var stepLogBuffers = {};
 
     function appendToElement(container, pre, line) {
@@ -151,10 +151,13 @@
 
         // Buffer and route to per-step accordion
         if (line.step_name) {
-            if (!stepLogBuffers[line.step_name]) {
-                stepLogBuffers[line.step_name] = [];
+            // Key buffers by "runId:stepName" — SSE streams for the top-level run
+            // so we use runID here; sub-step logs arrive via REST fetch.
+            var bufKey = runID + ':' + line.step_name;
+            if (!stepLogBuffers[bufKey]) {
+                stepLogBuffers[bufKey] = [];
             }
-            stepLogBuffers[line.step_name].push(line);
+            stepLogBuffers[bufKey].push(line);
 
             // If the step's accordion pre is visible, append live
             var pres = document.querySelectorAll('.step-output[data-step="' + line.step_name + '"]');
@@ -248,22 +251,46 @@
                         if (data.steps[i].has_usage) { anyUsage = true; break; }
                     }
 
-                    // Capture current accordion state before updating
+                    // Capture current accordion and collapse state before updating.
+                    // Key by "runId:stepName" so same-named steps in different runs don't collide.
                     var openAccordions = {};
+                    var collapsedRows = {};
                     var loadedOutputs = {};
+                    var stepRows = tbody.querySelectorAll('.step-row');
+                    for (var j = 0; j < stepRows.length; j++) {
+                        var sr = stepRows[j];
+                        var srKey = (sr.dataset.runId || '') + ':' + (sr.dataset.step || '');
+                        if (sr.style.display === 'none') {
+                            collapsedRows[srKey] = true;
+                        }
+                    }
                     var outputRows = tbody.querySelectorAll('.output-row');
                     for (var j = 0; j < outputRows.length; j++) {
-                        var id = outputRows[j].id;
-                        if (outputRows[j].style.display !== 'none') {
-                            openAccordions[id] = true;
+                        var orow = outputRows[j];
+                        var oid = orow.id;
+                        var prevSR = orow.previousElementSibling;
+                        var oKey = prevSR ? ((prevSR.dataset.runId || '') + ':' + (prevSR.dataset.step || '')) : oid;
+                        if (orow.style.display !== 'none') {
+                            openAccordions[oKey] = true;
                         }
-                        var pre = outputRows[j].querySelector('.step-output');
+                        var pre = orow.querySelector('.step-output');
                         if (pre && pre.childNodes.length > 0) {
-                            loadedOutputs[id] = pre.innerHTML;
+                            loadedOutputs[oKey] = pre.innerHTML;
+                        }
+                    }
+                    // Track which workflow rows are collapsed (caret shows ▸)
+                    var collapsedWorkflows = {};
+                    var wfRows = tbody.querySelectorAll('.step-row[data-is-workflow="1"]');
+                    for (var j = 0; j < wfRows.length; j++) {
+                        var wfr = wfRows[j];
+                        var tog = wfr.querySelector('.tree-toggle');
+                        if (tog && tog.textContent === '▸') {
+                            var wfKey = (wfr.dataset.runId || '') + ':' + (wfr.dataset.step || '');
+                            collapsedWorkflows[wfKey] = true;
                         }
                     }
 
-                    // Build updated step rows, preserving accordion state
+                    // Build updated step rows, preserving accordion and collapse state
                     var colspan = anyUsage ? '6' : '4';
                     var html = '';
                     for (var i = 0; i < data.steps.length; i++) {
@@ -275,16 +302,32 @@
                         } else {
                             badge = '<span class="badge badge-running">running</span>';
                         }
+                        var stepRunId = s.run_id || runID;
+                        var rowKey = stepRunId + ':' + s.step_name;
                         var outputId = 'output-' + i;
-                        var isOpen = openAccordions[outputId];
+                        var isOpen = openAccordions[rowKey];
+                        var depth = s.depth || 0;
+                        var isWorkflow = s.is_workflow || false;
+                        var parentIndex = (s.parent_index !== undefined) ? s.parent_index : -1;
+
+                        // Determine if this row should be hidden (parent workflow collapsed)
+                        var isHidden = collapsedRows[rowKey] || false;
+                        var rowStyle = isHidden ? ' style="display:none"' : '';
+
+                        var caretHtml = '';
+                        if (isWorkflow) {
+                            var wfKey2 = stepRunId + ':' + s.step_name;
+                            var caret = collapsedWorkflows[wfKey2] ? '▸' : '▾';
+                            caretHtml = '<button class="tree-toggle" aria-label="toggle">' + caret + '</button>';
+                        }
                         var usageCols = '';
                         if (anyUsage) {
                             var agent = s.has_usage ? escapeHtml(s.agent_name || '') : '';
                             var tokens = s.has_usage ? (s.input_tokens || 0) + '/' + (s.output_tokens || 0) : '';
                             usageCols = '<td>' + agent + '</td><td>' + tokens + '</td>';
                         }
-                        html += '<tr class="step-row" data-run-id="' + escapeHtml(runID) + '" data-step="' + escapeHtml(s.step_name) + '" data-index="' + i + '">' +
-                            '<td>' + escapeHtml(s.step_name) + '</td>' +
+                        html += '<tr class="step-row" data-run-id="' + escapeHtml(stepRunId) + '" data-step="' + escapeHtml(s.step_name) + '" data-index="' + i + '" data-depth="' + depth + '" data-parent-index="' + parentIndex + '" data-is-workflow="' + (isWorkflow ? '1' : '0') + '"' + rowStyle + '>' +
+                            '<td style="padding-left: calc(' + depth + ' * 1.5em + 0.5em)">' + caretHtml + escapeHtml(s.step_name) + '</td>' +
                             '<td>' + badge + '</td>' +
                             '<td>' + s.started_at + '</td>' +
                             '<td>' + s.duration + '</td>' +
@@ -297,42 +340,44 @@
                     tbody.innerHTML = html;
 
                     // Restore loaded output content for open accordions
-                    for (var key in loadedOutputs) {
-                        var row = document.getElementById(key);
-                        if (row) {
-                            var pre = row.querySelector('.step-output');
-                            if (pre) {
-                                pre.innerHTML = loadedOutputs[key];
-                            }
+                    var newOutputRows = tbody.querySelectorAll('.output-row');
+                    for (var j = 0; j < newOutputRows.length; j++) {
+                        var norow = newOutputRows[j];
+                        var noPrev = norow.previousElementSibling;
+                        var noKey = noPrev ? ((noPrev.dataset.runId || '') + ':' + (noPrev.dataset.step || '')) : '';
+                        if (noKey && loadedOutputs[noKey]) {
+                            var pre = norow.querySelector('.step-output');
+                            if (pre) pre.innerHTML = loadedOutputs[noKey];
                         }
                     }
 
                     // Re-populate open accordions from step log buffers or fetch
-                    for (var key in openAccordions) {
-                        if (!loadedOutputs[key]) {
-                            var row = document.getElementById(key);
-                            if (row) {
-                                var stepRow = row.previousElementSibling;
-                                if (stepRow && stepRow.dataset.runId && stepRow.dataset.step) {
-                                    (function(r, rid, sname) {
-                                        var pre = r.querySelector('.step-output');
-                                        var viewer = pre.closest('.step-log-viewer');
-                                        var buf = stepLogBuffers[sname];
-                                        if (buf && buf.length > 0) {
-                                            for (var k = 0; k < buf.length; k++) {
-                                                appendToElement(viewer, pre, buf[k]);
-                                            }
-                                        } else {
-                                            fetch('/api/runs/' + rid + '/steps/' + sname + '/output')
-                                                .then(function(resp) {
-                                                    if (!resp.ok) return 'No output available.';
-                                                    return resp.text();
-                                                })
-                                                .then(function(text) { pre.textContent = text; })
-                                                .catch(function() { pre.textContent = 'Failed to load output.'; });
+                    for (var j = 0; j < newOutputRows.length; j++) {
+                        var norow = newOutputRows[j];
+                        if (norow.style.display !== 'none') {
+                            var noPrev = norow.previousElementSibling;
+                            if (!noPrev) continue;
+                            var noKey = (noPrev.dataset.runId || '') + ':' + (noPrev.dataset.step || '');
+                            if (!loadedOutputs[noKey]) {
+                                (function(r, rid, sname) {
+                                    var pre = r.querySelector('.step-output');
+                                    var viewer = pre.closest('.step-log-viewer');
+                                    var bufKey = rid + ':' + sname;
+                                    var buf = stepLogBuffers[bufKey];
+                                    if (buf && buf.length > 0) {
+                                        for (var k = 0; k < buf.length; k++) {
+                                            appendToElement(viewer, pre, buf[k]);
                                         }
-                                    })(row, stepRow.dataset.runId, stepRow.dataset.step);
-                                }
+                                    } else {
+                                        fetch('/api/runs/' + rid + '/steps/' + sname + '/output')
+                                            .then(function(resp) {
+                                                if (!resp.ok) return 'No output available.';
+                                                return resp.text();
+                                            })
+                                            .then(function(text) { pre.textContent = text; })
+                                            .catch(function() { pre.textContent = 'Failed to load output.'; });
+                                    }
+                                })(norow, noPrev.dataset.runId, noPrev.dataset.step);
                             }
                         }
                     }
@@ -437,8 +482,35 @@
             });
     };
 
-    // Toggle step output rows
+    // Toggle step output rows and workflow tree collapse
     document.addEventListener('click', function(e) {
+        // Handle tree-toggle (workflow collapse caret)
+        var toggle = e.target.closest('.tree-toggle');
+        if (toggle) {
+            e.stopPropagation();
+            var row = toggle.closest('.step-row');
+            if (!row) return;
+            var depth = parseInt(row.dataset.depth || '0', 10);
+            var tbody = document.getElementById('steps-body');
+            var rows = tbody.querySelectorAll('.step-row, .output-row');
+            var found = false;
+            var collapsed = toggle.textContent === '▾';
+            toggle.textContent = collapsed ? '▸' : '▾';
+            for (var i = 0; i < rows.length; i++) {
+                if (!found) {
+                    if (rows[i] === row) found = true;
+                    continue;
+                }
+                // Stop at next row with depth <= current
+                if (rows[i].classList.contains('step-row')) {
+                    var d = parseInt(rows[i].dataset.depth || '0', 10);
+                    if (d <= depth) break;
+                }
+                rows[i].style.display = collapsed ? 'none' : '';
+            }
+            return;
+        }
+
         var row = e.target.closest('.step-row');
         if (!row) return;
         var idx = row.dataset.index;
@@ -449,18 +521,19 @@
             outputRow.style.display = '';
             var pre = outputRow.querySelector('.step-output');
             var stepName = row.dataset.step;
+            var stepRunId = row.dataset.runId;
             var viewer = pre.closest('.step-log-viewer');
             if (pre.childNodes.length === 0) {
-                // Populate from buffered live lines first
-                var buf = stepLogBuffers[stepName];
+                // Populate from buffered live lines first (keyed by runId:stepName)
+                var bufKey = stepRunId + ':' + stepName;
+                var buf = stepLogBuffers[bufKey];
                 if (buf && buf.length > 0) {
                     for (var k = 0; k < buf.length; k++) {
                         appendToElement(viewer, pre, buf[k]);
                     }
                 } else {
-                    // No live buffer — fetch from server (completed step)
-                    var runId = row.dataset.runId;
-                    fetch('/api/runs/' + runId + '/steps/' + stepName + '/output')
+                    // No live buffer — fetch from server (completed step or sub-step)
+                    fetch('/api/runs/' + stepRunId + '/steps/' + stepName + '/output')
                         .then(function(r) {
                             if (!r.ok) return 'No output available.';
                             return r.text();
