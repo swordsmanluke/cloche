@@ -1,0 +1,4 @@
+# Runtime state — excluded from container copies so agents don't see stale
+# prompt files or logs from previous runs.
+.cloche/runs/
+.cloche/logs/

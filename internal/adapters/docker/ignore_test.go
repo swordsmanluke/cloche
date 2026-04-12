@@ -12,26 +12,21 @@ import (
 func TestParseClocheignore(t *testing.T) {
 	dir := t.TempDir()
 	content := `# Comment
-shandalar_2015/
-assets/
-.godot/
+
+# Runtime state
+.cloche/runs/
+.cloche/logs/
 
 # Git internals
 .git/
 .gitworktrees/
 
-# Godot engine
-godot
-GodotSharp/
-
 # Build artifacts
 bin/
 obj/
 
-# Cloche run state
-.cloche/*-*-*/
-.cloche/run-*/
-.cloche/attempt_count/
+# Temp files
+*.tmp
 
 # Beads sockets
 .beads/*.sock
@@ -42,36 +37,35 @@ obj/
 	require.NoError(t, err)
 	assert.NotEmpty(t, patterns)
 
-	// Verify a few parsed patterns.
-	// "shandalar_2015/" → dirOnly, matchBase
+	// ".cloche/runs/" → anchored (contains /), dirOnly
 	p := patterns[0]
-	assert.Equal(t, "shandalar_2015", p.pattern)
+	assert.Equal(t, ".cloche/runs", p.pattern)
 	assert.True(t, p.dirOnly)
-	assert.True(t, p.matchBase)
+	assert.True(t, p.anchored)
 	assert.False(t, p.negated)
 
-	// "godot" → not dirOnly, matchBase
-	var godotPattern ignorePattern
+	// "*.tmp" → not dirOnly, matchBase (no slash)
+	var tmpPattern ignorePattern
 	for _, p := range patterns {
-		if p.pattern == "godot" {
-			godotPattern = p
+		if p.pattern == "*.tmp" {
+			tmpPattern = p
 			break
 		}
 	}
-	assert.Equal(t, "godot", godotPattern.pattern)
-	assert.False(t, godotPattern.dirOnly)
-	assert.True(t, godotPattern.matchBase)
+	assert.Equal(t, "*.tmp", tmpPattern.pattern)
+	assert.False(t, tmpPattern.dirOnly)
+	assert.True(t, tmpPattern.matchBase)
 
-	// ".cloche/*-*-*/" → anchored (contains /), dirOnly
-	var clochePattern ignorePattern
+	// ".beads/*.sock" → anchored (contains /), not dirOnly
+	var sockPattern ignorePattern
 	for _, p := range patterns {
-		if p.pattern == ".cloche/*-*-*" {
-			clochePattern = p
+		if p.pattern == ".beads/*.sock" {
+			sockPattern = p
 			break
 		}
 	}
-	assert.True(t, clochePattern.anchored)
-	assert.True(t, clochePattern.dirOnly)
+	assert.True(t, sockPattern.anchored)
+	assert.False(t, sockPattern.dirOnly)
 }
 
 func TestParseClocheignore_Missing(t *testing.T) {
@@ -82,14 +76,11 @@ func TestParseClocheignore_Missing(t *testing.T) {
 
 func TestIsIgnored(t *testing.T) {
 	patterns := []ignorePattern{
-		{pattern: "shandalar_2015", dirOnly: true, matchBase: true},
-		{pattern: "assets", dirOnly: true, matchBase: true},
-		{pattern: ".godot", dirOnly: true, matchBase: true},
+		{pattern: ".cloche/runs", dirOnly: true, anchored: true},
+		{pattern: ".cloche/logs", dirOnly: true, anchored: true},
 		{pattern: ".git", dirOnly: true, matchBase: true},
-		{pattern: "godot", matchBase: true},
-		{pattern: "GodotSharp", dirOnly: true, matchBase: true},
 		{pattern: "bin", dirOnly: true, matchBase: true},
-		{pattern: ".cloche/*-*-*", dirOnly: true, anchored: true},
+		{pattern: "*.tmp", matchBase: true},
 		{pattern: ".beads/*.sock", anchored: true},
 	}
 
@@ -98,41 +89,40 @@ func TestIsIgnored(t *testing.T) {
 		isDir   bool
 		ignored bool
 	}{
-		// Directories that should be ignored.
-		{"shandalar_2015", true, true},
-		{"assets", true, true},
-		{".godot", true, true},
+		// Runtime state directories should be ignored.
+		{".cloche/runs", true, true},
+		{".cloche/logs", true, true},
+
+		// Git and build directories.
 		{".git", true, true},
-		{"GodotSharp", true, true},
 		{"bin", true, true},
 
-		// "godot" as a file (no trailing / in pattern) should also match.
-		{"godot", false, true},
-		// "godot" as a directory should match too.
-		{"godot", true, true},
-
 		// dirOnly patterns should NOT match files.
-		{"shandalar_2015", false, false},
-		{"assets", false, false},
 		{".git", false, false},
+		{"bin", false, false},
 
-		// Nested paths: matchBase matches basename.
+		// matchBase matches basename at any depth.
 		{"subdir/bin", true, true},
-		{"deep/nested/assets", true, true},
+		{"deep/nested/.git", true, true},
 
-		// Anchored pattern with glob.
-		{".cloche/develop-warm-fern-d0c4", true, true},
-		{".cloche/run-abc123", true, false}, // doesn't match *-*-*
+		// *.tmp matches files anywhere.
+		{"foo.tmp", false, true},
+		{"subdir/bar.tmp", false, true},
 
-		// Glob in anchored pattern.
+		// Anchored glob pattern.
 		{".beads/foo.sock", false, true},
 		{".beads/bar.sock", false, true},
 		{".beads/notasock", false, false},
 
-		// Files that should NOT be ignored.
-		{"src/main.go", false, false},
+		// Cloche workflow files should NOT be ignored.
 		{".cloche/develop.cloche", false, false},
-		{"README.md", false, false},
+		{".cloche/host.cloche", false, false},
+		{".cloche/prompts/implement.md", false, false},
+
+		// Source files should NOT be ignored.
+		{"internal/domain/run.go", false, false},
+		{"cmd/cloche/main.go", false, false},
+		{"go.mod", false, false},
 	}
 
 	for _, tt := range tests {
