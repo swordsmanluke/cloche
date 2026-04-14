@@ -191,7 +191,7 @@ reduce the chance of injection overriding them.
 **Validate external inputs in script steps.** Use host-side script steps to sanitize or
 filter task descriptions before passing them to agent steps. For example,
 `.cloche/scripts/prepare-prompt.sh` can strip HTML, limit length, or reject suspicious
-patterns before writing to `$CLOCHE_STEP_OUTPUT`.
+patterns before printing to stdout.
 
 **Limit feedback content.** The `feedback = "true"` step config includes previous output
 logs in the prompt. If those logs contain content from untrusted sources (e.g. test

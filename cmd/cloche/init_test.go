@@ -763,8 +763,8 @@ func TestCmdInit_GetTasksContent(t *testing.T) {
 	if !strings.Contains(content, "task_list.json") {
 		t.Error("get-tasks.py should reference task_list.json")
 	}
-	if !strings.Contains(content, "CLOCHE_STEP_OUTPUT") {
-		t.Error("get-tasks.py should write to CLOCHE_STEP_OUTPUT")
+	if !strings.Contains(content, "print(") {
+		t.Error("get-tasks.py should print task to stdout")
 	}
 	if !strings.Contains(content, `"status") == "open"`) {
 		// Either format is acceptable

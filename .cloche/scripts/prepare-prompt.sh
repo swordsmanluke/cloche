@@ -27,7 +27,6 @@ prompt="## Task: ${task_title}
 ${task_body}"
 
 echo "$prompt"
-[ -n "${CLOCHE_STEP_OUTPUT:-}" ] && echo "$prompt" > "$CLOCHE_STEP_OUTPUT"
 
 # Write prompt to a file and store the path in KV so container steps can read it.
 # (KV values are limited to 1 KB — too small for task descriptions.)

@@ -381,8 +381,8 @@ workflow "main" {
 ```
 
 The daemon runs `list-tasks` to discover work (output is JSONL), picks an open task,
-and runs `main` with `CLOCHE_TASK_ID` set. The `list-tasks` script writes one JSON
-object per line to `$CLOCHE_STEP_OUTPUT`. Post-run cleanup steps (merging, closing
+and runs `main` with `CLOCHE_TASK_ID` set. The `list-tasks` script prints one JSON
+object per line to stdout. Post-run cleanup steps (merging, closing
 tickets, etc.) belong directly in `main`.
 
 ## Execution Model
@@ -498,7 +498,6 @@ invocation:
 | Variable              | Host | Container | Description |
 |-----------------------|:----:|:---------:|-------------|
 | `CLOCHE_PROJECT_DIR`  | yes  | yes       | Absolute path to the project directory. |
-| `CLOCHE_STEP_OUTPUT`  | yes  | no        | Path where this step's captured output file is written (same file is overwritten on every poll). |
 | `CLOCHE_RUN_ID`       | yes  | yes       | Run ID for the current workflow run. |
 | `CLOCHE_TASK_ID`      | yes  | no        | Task ID being processed (if the workflow was launched from a task). |
 | `CLOCHE_ATTEMPT_ID`   | yes  | no        | Attempt ID for the current run attempt. |

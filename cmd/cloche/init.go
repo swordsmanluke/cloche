@@ -243,19 +243,10 @@ with open(task_file) as f:
             continue
         task = json.loads(line)
         if task.get("status") == "open":
-            output = json.dumps(task)
-            print(output)
-            output_path = os.environ.get("CLOCHE_STEP_OUTPUT")
-            if output_path:
-                with open(output_path, "w") as out:
-                    out.write(output + "\n")
+            print(json.dumps(task))
             sys.exit(0)
 
 # No open tasks — exit success with empty output (loop idles)
-output_path = os.environ.get("CLOCHE_STEP_OUTPUT")
-if output_path:
-    with open(output_path, "w") as out:
-        out.write("")
 `
 
 var claimTaskPyScript = `#!/usr/bin/env python3

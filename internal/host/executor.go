@@ -164,7 +164,6 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 	}
 	cmd.Env = append(baseEnv,
 		"CLOCHE_PROJECT_DIR="+e.ProjectDir,
-		"CLOCHE_STEP_OUTPUT="+e.stepOutputPath(step.Name),
 	)
 
 	// Pass run ID for identification
@@ -505,7 +504,6 @@ func (e *Executor) runHumanPollScript(ctx context.Context, step *domain.Step) (s
 	}
 	cmd.Env = append(baseEnv,
 		"CLOCHE_PROJECT_DIR="+e.ProjectDir,
-		"CLOCHE_STEP_OUTPUT="+e.stepOutputPath(step.Name),
 	)
 	if e.HostRunID != "" {
 		cmd.Env = append(cmd.Env, "CLOCHE_RUN_ID="+e.HostRunID)

@@ -422,7 +422,7 @@ workflow "main" {
 }
 ```
 
-The `list-tasks` script writes JSONL to `$CLOCHE_STEP_OUTPUT`. The `main` workflow
+The `list-tasks` script prints JSONL to stdout. The `main` workflow
 receives the task ID and handles all phases of work including any post-run cleanup.
 
 ### Host Step Environment Variables
@@ -430,7 +430,6 @@ receives the task ID and handles all phases of work including any post-run clean
 | Variable | Description |
 |----------|-------------|
 | `CLOCHE_PROJECT_DIR` | Absolute path to the project directory on the host. |
-| `CLOCHE_STEP_OUTPUT` | Path where this step should write its output (for output mappings). |
 | `CLOCHE_PREV_OUTPUT` | Path to the output file from the immediately preceding step. |
 | `CLOCHE_RUN_ID` | Workflow ID for this workflow execution (e.g. `a133:develop`). |
 | `CLOCHE_TASK_ID` | Task ID assigned by the daemon (set for the `main` phase). |
@@ -474,8 +473,8 @@ tracker, project board, ticket queue, etc.) and output a list of available tasks
 **When it runs:** The daemon calls `list-tasks` at the start of each orchestration
 loop iteration, before launching any new `main` runs.
 
-**Output format:** The final step must write JSONL (one JSON object per line) to
-`$CLOCHE_STEP_OUTPUT`. Each line represents a task:
+**Output format:** The final step must print JSONL (one JSON object per line) to
+stdout. Each line represents a task:
 
 ```json
 {"id": "PROJ-42", "status": "open", "title": "Fix login bug", "description": "Users report..."}
@@ -1443,7 +1442,6 @@ Set by the daemon for each host step script invocation.
 |----------|-------------|
 | `CLOCHE_PROJECT_DIR` | Absolute path to the project directory on the host. |
 | `CLOCHE_RUN_ID` | The run ID for this workflow execution. |
-| `CLOCHE_STEP_OUTPUT` | Path where this step should write its output (for output mappings). |
 | `CLOCHE_PREV_OUTPUT` | Path to the output file from the immediately preceding step. |
 | `CLOCHE_TASK_ID` | Task ID assigned by the daemon (set for the `main` phase). |
 
