@@ -60,6 +60,9 @@ func main() {
 
 	// Commands that don't need a daemon connection
 	switch os.Args[1] {
+	case "version":
+		cmdVersion()
+		return
 	case "init":
 		if hasHelpFlag(os.Args[2:]) {
 			printSubcommandHelp("init")

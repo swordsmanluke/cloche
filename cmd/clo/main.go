@@ -31,7 +31,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if os.Args[1] == "-v" || os.Args[1] == "--version" {
+	if os.Args[1] == "-v" || os.Args[1] == "--version" || os.Args[1] == "version" {
 		fmt.Printf("clo %s\n", version.Version())
 		return
 	}

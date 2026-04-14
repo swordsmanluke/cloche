@@ -87,10 +87,10 @@ Format: `major.minor.build` (semver).
 
 ### Version commands
 
-- `cloche -v` / `cloche --version` — prints CLI, daemon, and agent versions.
-- `cloched -v` / `cloched --version` — prints daemon version.
-- `cloche-agent -v` / `cloche-agent --version` — prints agent version.
-- `clo -v` / `clo --version` — prints clo version.
+- `cloche version` / `cloche -v` / `cloche --version` — prints CLI, daemon, and agent versions.
+- `cloched version` / `cloched -v` / `cloched --version` — prints daemon version.
+- `cloche-agent version` / `cloche-agent -v` / `cloche-agent --version` — prints agent version.
+- `clo version` / `clo -v` / `clo --version` — prints clo version.
 - The daemon exposes a `GetVersion` gRPC endpoint.
 
 ### Versioning policy for bead tickets

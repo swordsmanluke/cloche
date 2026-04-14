@@ -1178,7 +1178,7 @@ clo set <key> <value>      Set a key
 clo set <key> -            Read value from stdin (trailing newlines trimmed)
 clo set <key> -f <file>    Set a key from file contents
 clo keys                   List all keys in the current attempt namespace
-clo -v / --version         Print version
+clo -v / --version / version   Print version
 ```
 
 `clo` reads `CLOCHE_ADDR`, `CLOCHE_TASK_ID`, and `CLOCHE_ATTEMPT_ID` from the
@@ -1250,11 +1250,12 @@ cloche activity --project /path/to/project
 cloche activity --json
 ```
 
-### `cloche --version`
+### `cloche version`
 
 Print version information for all Cloche components.
 
 ```
+cloche version
 cloche -v
 cloche --version
 ```
@@ -1268,8 +1269,10 @@ mismatches between components produce warnings on stderr.
 The daemon and agent binaries also support standalone version output:
 
 ```
-cloched -v       # prints daemon version
-cloche-agent -v  # prints agent version
+cloched version       # prints daemon version
+cloched -v            # prints daemon version
+cloche-agent version  # prints agent version
+cloche-agent -v       # prints agent version
 ```
 
 ### `cloche shutdown`

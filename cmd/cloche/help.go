@@ -638,6 +638,18 @@ Examples:
   cloche shutdown --restart
   cloche shutdown --force --restart
 `,
+
+	"version": `cloche version — Print version information
+
+Prints the CLI, daemon, and agent versions. Also warns if the versions
+do not match. This is an alias for cloche --version / cloche -v.
+
+Usage:
+  cloche version
+
+Examples:
+  cloche version
+`,
 }
 
 // printHelp prints the top-level help or subcommand-specific help.
@@ -722,6 +734,7 @@ Context Store (for use inside workflow steps):
 
 Daemon:
   shutdown   Shut down the Cloche daemon
+  version    Print CLI, daemon, and agent version information
 
 Environment Variables:
   CLOCHE_ADDR          Daemon gRPC address (default: 127.0.0.1:50051)
