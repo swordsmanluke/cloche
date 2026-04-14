@@ -469,7 +469,6 @@ func TestParser_WireNoMappings(t *testing.T) {
 	wf, err := dsl.Parse(input)
 	require.NoError(t, err)
 	require.Len(t, wf.Wiring, 2)
-	assert.Nil(t, wf.Wiring[0].OutputMap)
 }
 
 func TestParser_WireBracketSyntaxIsError(t *testing.T) {

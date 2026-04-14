@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -47,79 +46,10 @@ type Step struct {
 }
 
 type Wire struct {
-	From      string
-	Result    string
-	To        string
-	OutputMap []OutputMapping
-	Implicit  bool
-}
-
-type SegmentKind int
-
-const (
-	SegmentField SegmentKind = iota
-	SegmentIndex
-)
-
-type PathSegment struct {
-	Kind  SegmentKind
-	Field string // for SegmentField
-	Index int    // for SegmentIndex
-}
-
-type OutputPath struct {
-	Segments []PathSegment
-}
-
-type OutputMapping struct {
-	EnvVar string
-	Path   OutputPath
-}
-
-// Evaluate navigates the raw output bytes using the path segments.
-// With no segments, it returns the raw output as a string.
-// With segments, it parses the raw bytes as JSON and navigates using
-// field access (SegmentField) and array indexing (SegmentIndex).
-func (p OutputPath) Evaluate(raw []byte) (string, error) {
-	if len(p.Segments) == 0 {
-		return string(raw), nil
-	}
-
-	var val any
-	if err := json.Unmarshal(raw, &val); err != nil {
-		return "", fmt.Errorf("output is not valid JSON")
-	}
-
-	for _, seg := range p.Segments {
-		switch seg.Kind {
-		case SegmentField:
-			m, ok := val.(map[string]any)
-			if !ok {
-				return "", fmt.Errorf("expected object for .%s", seg.Field)
-			}
-			val, ok = m[seg.Field]
-			if !ok {
-				return "", fmt.Errorf("field %q not found", seg.Field)
-			}
-		case SegmentIndex:
-			arr, ok := val.([]any)
-			if !ok {
-				return "", fmt.Errorf("expected array for [%d]", seg.Index)
-			}
-			if seg.Index < 0 || seg.Index >= len(arr) {
-				return "", fmt.Errorf("index %d out of range (len %d)", seg.Index, len(arr))
-			}
-			val = arr[seg.Index]
-		}
-	}
-
-	switch v := val.(type) {
-	case string:
-		return v, nil
-	default:
-		b, _ := json.Marshal(v)
-		return string(b), nil
-	}
+	From     string
+	Result   string
+	To       string
+	Implicit bool
 }
 
 type CollectMode string
@@ -244,20 +174,6 @@ func (w *Workflow) Validate() error {
 	for name := range w.Steps {
 		if !reachable[name] {
 			return fmt.Errorf("workflow %q: step %q is orphaned (unreachable)", w.Name, name)
-		}
-	}
-
-	// Check for duplicate output mapping env vars targeting the same step
-	targetEnvVars := make(map[string]map[string]bool) // step -> env var -> seen
-	for _, wire := range w.Wiring {
-		for _, om := range wire.OutputMap {
-			if targetEnvVars[wire.To] == nil {
-				targetEnvVars[wire.To] = make(map[string]bool)
-			}
-			if targetEnvVars[wire.To][om.EnvVar] {
-				return fmt.Errorf("duplicate output mapping for env var %q targeting step %q", om.EnvVar, wire.To)
-			}
-			targetEnvVars[wire.To][om.EnvVar] = true
 		}
 	}
 

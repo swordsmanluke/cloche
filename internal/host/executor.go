@@ -172,7 +172,7 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 
 	// Write output to file
 	if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
-		_ = os.WriteFile(e.stepOutputPath(step.Name), cleanOutput, 0644)
+		_ = os.WriteFile(e.stepOutputFile(step.Name), cleanOutput, 0644)
 	}
 
 	if err != nil {
@@ -234,7 +234,7 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 	var promptContent string
 	promptSource := step.Config["prompt_step"]
 	if promptSource != "" {
-		if data, err := os.ReadFile(e.stepOutputPath(promptSource)); err == nil {
+		if data, err := os.ReadFile(e.stepOutputFile(promptSource)); err == nil {
 			promptContent = string(data)
 		}
 	} else if prev := e.findPrevOutput(step); prev != "" {
@@ -261,15 +261,15 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 	adapterOutput := filepath.Join(e.ProjectDir, ".cloche", "output", step.Name+".log")
 	if data, readErr := os.ReadFile(adapterOutput); readErr == nil {
 		if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
-			_ = os.WriteFile(e.stepOutputPath(step.Name), data, 0644)
+			_ = os.WriteFile(e.stepOutputFile(step.Name), data, 0644)
 		}
 	}
 
 	return sr, nil
 }
 
-// stepOutputPath returns the path for a step's output file.
-func (e *Executor) stepOutputPath(stepName string) string {
+// stepOutputFile returns the path for a step's output file.
+func (e *Executor) stepOutputFile(stepName string) string {
 	return filepath.Join(e.OutputDir, stepName+".log")
 }
 
@@ -289,7 +289,7 @@ func isCodexCommand(commands []string) bool {
 func (e *Executor) findPrevOutput(step *domain.Step) string {
 	// Explicit prompt_step config takes priority
 	if ps := step.Config["prompt_step"]; ps != "" {
-		path := e.stepOutputPath(ps)
+		path := e.stepOutputFile(ps)
 		if _, err := os.Stat(path); err == nil {
 			return path
 		}
@@ -298,7 +298,7 @@ func (e *Executor) findPrevOutput(step *domain.Step) string {
 	// Walk wiring to find the step that feeds into this one
 	for _, w := range e.Wires {
 		if w.To == step.Name {
-			path := e.stepOutputPath(w.From)
+			path := e.stepOutputFile(w.From)
 			if _, err := os.Stat(path); err == nil {
 				return path
 			}
@@ -490,7 +490,7 @@ func (e *Executor) runHumanPollScript(ctx context.Context, step *domain.Step) (s
 	markerResult, cleanOutput, found := protocol.ExtractResult(output)
 
 	if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
-		_ = os.WriteFile(e.stepOutputPath(step.Name), cleanOutput, 0644)
+		_ = os.WriteFile(e.stepOutputFile(step.Name), cleanOutput, 0644)
 	}
 
 	if err != nil {

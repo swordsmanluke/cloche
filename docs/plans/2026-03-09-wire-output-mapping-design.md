@@ -1,5 +1,7 @@
 # Wire Output Mapping
 
+> **Superseded** (2026-04-14): OutputMapping/OutputPath/PathSegment types were removed; this design was never implemented.
+
 **Date:** 2026-03-09
 **Status:** Proposed
 

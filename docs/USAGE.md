@@ -202,27 +202,6 @@ test:success -> done
 test:fail -> fix
 ```
 
-### Wire Output Mappings
-
-Extract values from a step's JSON output and inject as env vars into the target:
-
-```
-step-a:success -> step-b [ ENV_VAR = output.field, OTHER = output.list[0].name ]
-```
-
-Path expressions:
-
-| Expression | Meaning |
-|---|---|
-| `output` | Raw output (full string) |
-| `output.key` | JSON object field access |
-| `output[N]` | JSON array index (0-based) |
-| `output.a.b.c` | Deeply nested field access |
-| `output.items[0].name` | Mixed field and index chaining |
-
-If the output is valid JSON, path expressions navigate the structure. If it's plain
-text, only bare `output` works.
-
 ### Retry Loops
 
 Wire failures back to earlier steps:
