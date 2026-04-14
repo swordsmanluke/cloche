@@ -1,3 +1,0 @@
-## Task: Use cloche get/set for inter-step data passing in workflows
-
-Update our host.cloche and develop.cloche workflows to use the new 'cloche get'/'cloche set' commands for passing data between steps, instead of relying solely on JSON output mappings. This simplifies the wiring and makes the data flow more explicit.

@@ -1,3 +1,0 @@
-## Task: Support .clocheignore to exclude files from container workspace
-
-Add support for a .clocheignore file at the project root (alongside .cloche/). Files and directories matching patterns in .clocheignore are excluded when copying the project into the Docker container. Uses gitignore-style pattern syntax. This reduces container image size and avoids copying large/irrelevant files (build artifacts, node_modules, datasets, etc.) into the workspace.

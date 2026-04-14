@@ -1,3 +1,0 @@
-## Task: V2: ID format — colon-delimited attempt:workflow:step
-
-Replace the current run ID format (develop-proud-nest-06cd) with colon-delimited IDs: attempt:workflow:step (e.g. a12z:develop:implement). Generate 4-char random alphanumeric attempt IDs, unique within task scope with collision retry. Update ID generation, parsing, and all code that constructs or destructures run IDs.

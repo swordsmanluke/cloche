@@ -1,3 +1,0 @@
-## Task: Add --help support to cloche CLI with LLM-friendly formatting
-
-Add --help support to the cloche CLI. Format help output for LLM consumption, focusing on clarity with instructions and examples for proper usage of each subcommand.

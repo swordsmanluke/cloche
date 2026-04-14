@@ -1,2 +1,0 @@
-✓ Updated issue: cloche-g5c
-[{"id":"cloche-g5c","title":"Remove old 'cloche orchestrate' command","description":"Remove the cloche orchestrate CLI command and its gRPC RPC. cloche loop covers the same intent better. Clean up references in usage text, server handler, and proto."}]

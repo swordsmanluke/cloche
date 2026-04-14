@@ -1,3 +1,0 @@
-## Task: GEPA: Orchestrator population mode
-
-Modify internal/evolution/orchestrator.go to support population mode. Add Population field to Orchestrator. In Run(), at the prompt_improvement branch: if population enabled, call curator.Curate() to get content string, then population.AddCandidate() with content + ancestor lessons instead of writing to base prompt. Add ScoreAndPromote(ctx, run) method: records fitness via EvaluateRun, checks if any candidate meets promotion criteria (min runs + Pareto dominance), calls Population.Promote() if so. Include integration tests with fake LLM.

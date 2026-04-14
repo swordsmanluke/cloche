@@ -1,5 +1,0 @@
-All tests pass. The fix was in `internal/adapters/local/runtime.go` - the background goroutine in `Start()` was calling `cmd.Wait()` immediately, which closes the stdout pipe before the scanner finishes reading all messages. This violated Go's `StdoutPipe` contract: "it is incorrect to call Wait before all reads from the pipe have completed."
-
-The fix moves `cmd.Wait()` into the runtime's `Wait()` method, which is called by `trackRun` only after all pipe reads are complete (the scanner loop finishes first).
-
-CLOCHE_RESULT:success

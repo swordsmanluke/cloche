@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -500,4 +501,137 @@ func (e *errContainerRuntime) Inspect(_ context.Context, _ string) (*ports.Conta
 }
 func (e *errContainerRuntime) Attach(_ context.Context, _ string) (io.ReadWriteCloser, error) {
 	return nil, nil
+}
+
+// copyTrackingRuntime records CopyFrom calls so tests can verify log extraction.
+type copyTrackingRuntime struct {
+	mu          sync.Mutex
+	copyFromSrc []string
+	containerID string
+}
+
+func (r *copyTrackingRuntime) Start(_ context.Context, _ ports.ContainerConfig) (string, error) {
+	r.containerID = "track-container-1"
+	return r.containerID, nil
+}
+func (r *copyTrackingRuntime) Stop(_ context.Context, _ string) error { return nil }
+func (r *copyTrackingRuntime) AttachOutput(_ context.Context, _ string) (io.ReadCloser, error) {
+	return nil, nil
+}
+func (r *copyTrackingRuntime) Wait(_ context.Context, _ string) (int, error) { return 0, nil }
+func (r *copyTrackingRuntime) CopyFrom(_ context.Context, _, src, _ string) error {
+	r.mu.Lock()
+	r.copyFromSrc = append(r.copyFromSrc, src)
+	r.mu.Unlock()
+	return nil
+}
+func (r *copyTrackingRuntime) Logs(_ context.Context, _ string) (string, error)  { return "", nil }
+func (r *copyTrackingRuntime) Remove(_ context.Context, _ string) error           { return nil }
+func (r *copyTrackingRuntime) Inspect(_ context.Context, _ string) (*ports.ContainerStatus, error) {
+	return &ports.ContainerStatus{}, nil
+}
+func (r *copyTrackingRuntime) Attach(_ context.Context, _ string) (io.ReadWriteCloser, error) {
+	return nil, nil
+}
+
+func (r *copyTrackingRuntime) copiedFrom() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result := make([]string, len(r.copyFromSrc))
+	copy(result, r.copyFromSrc)
+	return result
+}
+
+// TestDaemonExecutor_WorkflowStep_ExtractsLogsOnContextError verifies that
+// when eng.Run returns an error (e.g. context timeout), container logs are
+// extracted from any session that was already established before the failure.
+// This prevents logs from being lost when a container sub-workflow times out.
+func TestDaemonExecutor_WorkflowStep_ExtractsLogsOnContextError(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	containerWF := buildContainerWFForTest("develop")
+	allWFs := map[string]*domain.Workflow{"develop": containerWF}
+
+	rt := &copyTrackingRuntime{}
+	pool := docker.NewContainerPool(rt)
+
+	// Pre-establish a container session to simulate a container that was
+	// already running when the context timed out. The pool key matches what
+	// DaemonExecutor constructs: attemptID + ":" + workflow.ContainerID().
+	poolKey := "att-timeout:" + containerWF.ContainerID()
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		pool.NotifyReady(rt.containerID)
+	}()
+	_, err := pool.SessionFor(context.Background(), poolKey, ports.ContainerConfig{Image: "img"})
+	require.NoError(t, err, "pre-establishing session should succeed")
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		Pool:       pool,
+		ProjectDir: tmpDir,
+		TaskID:     "task-timeout",
+		AttemptID:  "att-timeout",
+		AllWFs:     allWFs,
+	})
+
+	step := &domain.Step{
+		Name:    "develop",
+		Type:    domain.StepTypeWorkflow,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"workflow_name": "develop"},
+	}
+
+	mainWF := buildHostWFForTest("main")
+	// Use an already-cancelled context to simulate a timeout forcing eng.Run to fail.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result, execErr := de.Execute(engine.WithWorkflow(ctx, mainWF), step)
+	require.NoError(t, execErr)
+	assert.Equal(t, "fail", result.Result)
+
+	// The CopyFrom path for container log extraction should have been called.
+	copied := rt.copiedFrom()
+	assert.NotEmpty(t, copied, "extractContainerLogs should have called CopyFrom even on context error")
+}
+
+// TestDaemonExecutor_WorkflowStep_NoExtractionWhenNoSession verifies that
+// no log extraction is attempted when the container was never started (i.e.
+// the context was cancelled before the first container step ran).
+func TestDaemonExecutor_WorkflowStep_NoExtractionWhenNoSession(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	containerWF := buildContainerWFForTest("develop")
+	allWFs := map[string]*domain.Workflow{"develop": containerWF}
+
+	rt := &copyTrackingRuntime{}
+	pool := docker.NewContainerPool(rt)
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		Pool:       pool,
+		ProjectDir: tmpDir,
+		TaskID:     "task-no-sess",
+		AttemptID:  "att-no-sess",
+		AllWFs:     allWFs,
+	})
+
+	step := &domain.Step{
+		Name:    "develop",
+		Type:    domain.StepTypeWorkflow,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"workflow_name": "develop"},
+	}
+
+	mainWF := buildHostWFForTest("main")
+	// Already-cancelled context; no container was started.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result, execErr := de.Execute(engine.WithWorkflow(ctx, mainWF), step)
+	require.NoError(t, execErr)
+	assert.Equal(t, "fail", result.Result)
+
+	// No session was ever established, so CopyFrom should NOT have been called.
+	copied := rt.copiedFrom()
+	assert.Empty(t, copied, "CopyFrom must not be called when no container session exists")
 }

@@ -1,3 +1,0 @@
-## Task: Preserve accordion state in web portal log viewer during SSE updates
-
-While viewing logs in the web portal, task-specific log output is displayed inside accordion folds. When the run is active, arriving SSE events cause the page to refresh, which resets accordion state and closes any open accordions. Fix this so accordion open/closed state is preserved even as new log data appends via SSE.

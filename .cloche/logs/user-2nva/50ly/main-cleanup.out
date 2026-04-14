@@ -1,3 +1,0 @@
-✓ Closed cloche-7iq: Closed
-Closed task cloche-7iq
-Cleaned up run Preparingworktree(checkingout'cloche/develop-quiet-star-9fe4')HEADisnowat75413a9clocherundevelop-quiet-star-9fe4:develop(succeeded)Currentbranchcloche/develop-quiet-star-9fe4isuptodate.Updating969c64a..75413a9Fast-forwarddocs/plans/2026-03-06-project-pages-design.md|15+-internal/adapters/web/handler_test.go|126++++++++++internal/adapters/web/static/style.css|6+-.../adapters/web/templates/project_detail.html|266++++++++++++++++-----4fileschanged,352insertions(+),61deletions(-)Deletedbranchcloche/develop-quiet-star-9fe4(was75413a9).Mergedcloche/develop-quiet-star-9fe4intomain(75413a916bed2a0f8f5f42dc0919f5d58c64886b)

@@ -1,3 +1,0 @@
-go test ./... -v
-make: go: No such file or directory
-make: *** [Makefile:11: test] Error 127

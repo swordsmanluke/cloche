@@ -1,3 +1,0 @@
-## Task: Add filter flags to cloche list: --project, --state, --limit, --issue
-
-Add filtering switches to cloche list: --project/-p (filter by project), --state/-s (filter by run state), --limit/-n (limit number of results), --issue/-i (filter by issue/task ID).

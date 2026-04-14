@@ -1,7 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-deft-drift-143e')
-HEAD is now at a7f07dd cloche run develop-deft-drift-143e: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-deft-drift-143e.
-Updating 705930d..dfb5d43
-Fast-forward
-Deleted branch cloche/develop-deft-drift-143e (was dfb5d43).
-Merged cloche/develop-deft-drift-143e into cloche-v2 (dfb5d43e11a9eea87724f59b3233e28bdfb655ae)

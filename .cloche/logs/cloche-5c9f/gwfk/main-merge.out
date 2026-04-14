@@ -1,13 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-calm-moss-8bbb')
-HEAD is now at f7fa2fe cloche run develop-calm-moss-8bbb: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-calm-moss-8bbb.
-Updating 8f0e062..7678887
-Fast-forward
- cmd/cloche/help.go      |  20 +++--
- cmd/cloche/poll.go      |  82 ++++++++++++++++++-
- cmd/cloche/poll_test.go | 211 ++++++++++++++++++++++++++++++++++++++++++++++++
- docs/USAGE.md           |   6 +-
- 4 files changed, 307 insertions(+), 12 deletions(-)
- create mode 100644 cmd/cloche/poll_test.go
-Deleted branch cloche/develop-calm-moss-8bbb (was 7678887).
-Merged cloche/develop-calm-moss-8bbb into main (7678887c4efc715bb23d5aa99f506c803ba260d7)

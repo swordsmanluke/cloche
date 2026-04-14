@@ -1,3 +1,0 @@
-## Task: Daemon-managed task assignment with dedup timeout
-
-Move task assignment responsibility from the main workflow up into the daemon's orchestration loop. The daemon picks the next open task(s) from list-tasks output, spawns main workflow(s) with the task ID set in an env var. The daemon maintains a short timeout window per task ID where it won't try to reassign the same open task, preventing double-pickup when multiple workers are running. The main workflow is still responsible for actually claiming the ticket (e.g. updating status in the task tracker), but the daemon prevents concurrent assignment of the same task.

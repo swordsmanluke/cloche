@@ -1,7 +1,0 @@
-[
-  {
-    "id": "cloche-c4z",
-    "title": "Run context store: CLOCHE_RUN_ID env var, context.json, cloche get/set",
-    "description": "Every step in a workflow (host and container) needs the cloche run ID available as an environment variable (e.g. CLOCHE_RUN_ID) so steps can locate their .cloche/<run-id>/ directory. Add a context.json file in that directory that acts as a key-value store shared across steps. Add 'cloche get <key>' and 'cloche set <key> <value>' CLI commands that read/write context.json, using the CLOCHE_RUN_ID env var to find the right file. This eliminates the need to constantly pass metadata between steps via JSON output mappings."
-  }
-]

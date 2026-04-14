@@ -1,8 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-brave-fox')
-HEAD is now at 1496151 cloche run develop-brave-fox: develop (succeeded)
-Current branch cloche/develop-brave-fox is up to date.
-error: Your local changes to the following files would be overwritten by merge:
-	.cloche/scripts/ready-tasks.sh
-Please commit your changes or stash them before you merge.
-Aborting
-Updating 96adde4..1496151

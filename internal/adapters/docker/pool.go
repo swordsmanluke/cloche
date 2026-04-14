@@ -456,6 +456,19 @@ func (p *ContainerPool) RemoveImages(ctx context.Context, images map[string]stri
 	}
 }
 
+// GetSession returns the existing container session for attemptID without
+// starting a new container. Returns nil if no session exists. Unlike
+// SessionFor, this never blocks or starts a container.
+func (p *ContainerPool) GetSession(attemptID string) *ContainerSession {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	entry, exists := p.attempts[attemptID]
+	if !exists || len(entry.sessions) == 0 {
+		return nil
+	}
+	return entry.sessions[0]
+}
+
 // CopyFrom copies files from a container to the host filesystem, delegating to
 // the underlying ContainerRuntime.
 func (p *ContainerPool) CopyFrom(ctx context.Context, containerID, srcPath, dstPath string) error {

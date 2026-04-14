@@ -1,16 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-sharp-nest-d70d')
-HEAD is now at 23e1086 cloche run develop-sharp-nest-d70d: develop (succeeded)
-Rebasing (1/1)Auto-merging docs/plans/2026-02-24-self-evolution-design.md
-Auto-merging internal/config/config.go
-CONFLICT (content): Merge conflict in internal/config/config.go
-Auto-merging internal/evolution/population.go
-CONFLICT (add/add): Merge conflict in internal/evolution/population.go
-Auto-merging internal/evolution/population_test.go
-CONFLICT (add/add): Merge conflict in internal/evolution/population_test.go
-error: could not apply 23e1086... cloche run develop-sharp-nest-d70d: develop (succeeded)
-hint: Resolve all conflicts manually, mark them as resolved with
-hint: "git add/rm <conflicted_files>", then run "git rebase --continue".
-hint: You can instead skip this commit: run "git rebase --skip".
-hint: To abort and get back to the state before "git rebase", run "git rebase --abort".
-Could not apply 23e1086... cloche run develop-sharp-nest-d70d: develop (succeeded)
-error: rebase failed — branch cloche/develop-sharp-nest-d70d preserved for review

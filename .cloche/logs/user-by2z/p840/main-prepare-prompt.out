@@ -1,3 +1,0 @@
-## Task: Web UI: Script steps should display script file contents on click
-
-On Project detail page, clicking on a workflow step: script steps should display the contents of the script file. Prompt steps already correctly display prompt file contents.

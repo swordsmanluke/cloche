@@ -660,3 +660,59 @@ func TestContainerPool_NotifyReady_BeforeRegistration(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, fullID, sess.ContainerID)
 }
+
+// TestContainerPool_GetSession_ReturnsExistingSession verifies GetSession
+// returns the session without starting a new container.
+func TestContainerPool_GetSession_ReturnsExistingSession(t *testing.T) {
+	rt := &fakeRuntime{}
+	pool := docker.NewContainerPool(rt)
+	ctx := context.Background()
+
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		id := rt.lastStarted()
+		pool.NotifyReady(id)
+	}()
+
+	sess, err := pool.SessionFor(ctx, "att-gs", ports.ContainerConfig{Image: "img"})
+	require.NoError(t, err)
+
+	// GetSession should return the same session without starting another container.
+	got := pool.GetSession("att-gs")
+	require.NotNil(t, got)
+	assert.Equal(t, sess.ContainerID, got.ContainerID)
+	assert.Equal(t, 1, rt.startedCount(), "GetSession must not start a second container")
+}
+
+// TestContainerPool_GetSession_NilForUnknown verifies GetSession returns nil
+// when no session exists for the given attempt.
+func TestContainerPool_GetSession_NilForUnknown(t *testing.T) {
+	rt := &fakeRuntime{}
+	pool := docker.NewContainerPool(rt)
+
+	got := pool.GetSession("nonexistent")
+	assert.Nil(t, got)
+	assert.Equal(t, 0, rt.startedCount(), "GetSession must not start a container")
+}
+
+// TestContainerPool_GetSession_NilAfterCleanup verifies GetSession returns nil
+// after CleanupAttempt removes the pool entry.
+func TestContainerPool_GetSession_NilAfterCleanup(t *testing.T) {
+	rt := &fakeRuntime{}
+	pool := docker.NewContainerPool(rt)
+	ctx := context.Background()
+
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		id := rt.lastStarted()
+		pool.NotifyReady(id)
+	}()
+
+	_, err := pool.SessionFor(ctx, "att-gc", ports.ContainerConfig{Image: "img"})
+	require.NoError(t, err)
+
+	require.NoError(t, pool.CleanupAttempt(ctx, "att-gc", false, false))
+
+	got := pool.GetSession("att-gc")
+	assert.Nil(t, got, "GetSession should return nil after cleanup")
+}

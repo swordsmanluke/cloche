@@ -1,3 +1,0 @@
-✓ Closed cloche-g5c: Closed
-Closed task cloche-g5c
-Cleaned up run Preparingworktree(checkingout'cloche/develop-grand-lark')HEADisnowat197691bclocherundevelop-grand-lark:develop(succeeded)Currentbranchcloche/develop-grand-larkisuptodate.Updatingf9a552a..197691bFast-forwardapi/clochepb/cloche_grpc.pb.go|38---------------api/proto/cloche/v1/cloche.proto|10+---cmd/cloche/main.go|13-----docs/USAGE.md|12-----docs/plans/2026-03-03-next-features-design.md|2+-internal/adapters/grpc/server.go|34-------------internal/adapters/grpc/server_test.go|69---------------------------internal/host/loop.go|2+-8fileschanged,3insertions(+),177deletions(-)Deletedbranchcloche/develop-grand-lark(was197691b).Mergedcloche/develop-grand-larkintomain(197691b3b4ffb8b212ba5db134bc2be8790e5d99)

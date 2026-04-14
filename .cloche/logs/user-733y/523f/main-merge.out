@@ -1,10 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-crisp-moss-34ac')
-HEAD is now at fb17849 cloche run develop-crisp-moss-34ac: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-crisp-moss-34ac.
-Updating f56cd38..b3e301a
-Fast-forward
- internal/host/executor_test.go | 16 ++++++------
- internal/host/runner.go        | 56 ++++++++++++++++++++++--------------------
- 2 files changed, 36 insertions(+), 36 deletions(-)
-Deleted branch cloche/develop-crisp-moss-34ac (was b3e301a).
-Merged cloche/develop-crisp-moss-34ac into main (b3e301aefd336934111b0e58dda8be04ceeab0be)

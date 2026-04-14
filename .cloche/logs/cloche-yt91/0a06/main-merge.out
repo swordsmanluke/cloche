@@ -1,21 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-dark-fern-edc8')
-HEAD is now at 9fb8063 cloche run develop-dark-fern-edc8: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-dark-fern-edc8.
-Updating c3fa0a0..38cd2d6
-Fast-forward
- CLAUDE.md                              |   2 +-
- api/clochepb/cloche.pb.go              |  24 +++++
- api/proto/cloche/v1/cloche.proto       |   3 +
- cmd/cloche/help.go                     |  16 ++-
- cmd/cloche/main.go                     |  45 +++++++-
- docs/USAGE.md                          |  11 +-
- internal/adapters/grpc/server.go       |  21 ++--
- internal/adapters/grpc/server_test.go  |  75 ++++++++++++++
- internal/adapters/sqlite/store.go      |  35 +++++++
- internal/adapters/sqlite/store_test.go | 184 +++++++++++++++++++++++++++++++++
- internal/domain/run.go                 |   9 ++
- internal/host/executor_test.go         |   3 +
- internal/ports/store.go                |   1 +
- 13 files changed, 410 insertions(+), 19 deletions(-)
-Deleted branch cloche/develop-dark-fern-edc8 (was 38cd2d6).
-Merged cloche/develop-dark-fern-edc8 into main (38cd2d6611299c80e3fb586cf44920f08b988934)

@@ -1,3 +1,0 @@
-## Task: CLI/Web UI: show upcoming tasks and assignment state
-
-Once the daemon understands the list-tasks JSONL format, expose task information in the CLI and web dashboard. Show upcoming/open tasks, which tasks are assigned to which runs, and auto-assignment state. This provides visibility into the orchestration loop's task pipeline and helps users see what work is queued, in-progress, and completed.

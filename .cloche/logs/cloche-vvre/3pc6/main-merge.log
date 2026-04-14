@@ -1,7 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-swift-jade-ee2a')
-HEAD is now at 40723ef cloche run develop-swift-jade-ee2a: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-swift-jade-ee2a.
-Updating 8e508c5..56b2702
-Fast-forward
-Deleted branch cloche/develop-swift-jade-ee2a (was 56b2702).
-Merged cloche/develop-swift-jade-ee2a into cloche-v2 (56b2702d237530f615089fc210393dec17c454b9)

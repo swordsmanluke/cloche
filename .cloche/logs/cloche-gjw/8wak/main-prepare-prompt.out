@@ -1,3 +1,0 @@
-## Task: Web UI hangs when clicking workflow steps with large/binary content
-
-Clicking on certain workflow steps in the web UI hangs. e.g. clicking on the 'test' workflow step returns a 15KB response and the web UI stops responding (likely due to the large data response). It eventually renders what appears to be the binary go executable. Fix: when the run target is outside .cloche/scripts/ or is not a text file, (a) don't load it as content, (b) hide the content panel since it's not required.

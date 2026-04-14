@@ -1,7 +1,0 @@
-[
-  {
-    "id": "cloche-jpa",
-    "title": "Web UI: Prompt file accordions show git log instead of file contents",
-    "description": "On Project detail page, the accordion dropdowns for prompt files are showing git log lines instead of the contents of the named prompt file."
-  }
-]

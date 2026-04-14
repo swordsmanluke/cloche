@@ -1,3 +1,0 @@
-## Task: cloche status: 'Runs (past hour)' shows all-time counts instead of last hour
-
-The 'Runs (past hour)' numbers in cloche status display the project's all-time run counts. Fix the query to only count runs whose completed_at falls within the last hour.

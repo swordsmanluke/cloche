@@ -1,9 +1,0 @@
-All three changes look correct:
-
-1. **Daemon description** (lines 36-39): Updated to explain the container retention policy instead of the generic "cleans up resources when runs complete."
-2. **`--keep-container` flag** (line 136): Updated to clarify it forces keeping containers on success, and that failed runs always keep their container.
-3. **Duplicate `cloche init` section**: Removed — the section at lines 105-120 remains as the single authoritative reference.
-
-No changes needed in `docs/workflows.md` — the workflow DSL syntax hasn't changed.
-
-CLOCHE_RESULT:success

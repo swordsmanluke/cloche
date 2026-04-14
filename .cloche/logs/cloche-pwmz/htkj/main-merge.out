@@ -1,7 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-happy-oak-0568')
-HEAD is now at 650699e cloche run develop-happy-oak-0568: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-happy-oak-0568.
-Updating 0088a01..98207bc
-Fast-forward
-Deleted branch cloche/develop-happy-oak-0568 (was 98207bc).
-Merged cloche/develop-happy-oak-0568 into cloche-v2 (98207bccfdb3fdf97b55e2831478a80bd8f4edc5)

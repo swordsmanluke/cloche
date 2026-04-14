@@ -1,7 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-glad-lark-20b6')
-HEAD is now at e8ac4b9 cloche run develop-glad-lark-20b6: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-glad-lark-20b6.
-Updating a673295..2cfd4e8
-Fast-forward
-Deleted branch cloche/develop-glad-lark-20b6 (was 2cfd4e8).
-Merged cloche/develop-glad-lark-20b6 into cloche-v2 (2cfd4e8090de4f8f95ae675261255fe6037ec0fa)

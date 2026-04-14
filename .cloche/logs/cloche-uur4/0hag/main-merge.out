@@ -1,25 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-deft-moss-e584')
-HEAD is now at e6e96d3 cloche run develop-deft-moss-e584: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-deft-moss-e584.
-Updating 7678887..89ad3dc
-Fast-forward
- CLAUDE.md                             |  23 ++++++
- api/clochepb/cloche.pb.go             | 128 +++++++++++++++++++++++++++++-----
- api/clochepb/cloche_grpc.pb.go        |  38 ++++++++++
- api/proto/cloche/v1/cloche.proto      |   8 +++
- cmd/cloche-agent/main.go              |   6 ++
- cmd/cloche/main.go                    |  57 +++++++++++++++
- cmd/cloched/main.go                   |   6 ++
- docs/INSTALL.md                       |   5 +-
- docs/USAGE.md                         |  22 ++++++
- internal/adapters/grpc/server.go      |   5 ++
- internal/adapters/grpc/server_test.go |  12 ++++
- internal/version/VERSION              |   1 +
- internal/version/version.go           |  14 ++++
- internal/version/version_test.go      |  22 ++++++
- 14 files changed, 326 insertions(+), 21 deletions(-)
- create mode 100644 internal/version/VERSION
- create mode 100644 internal/version/version.go
- create mode 100644 internal/version/version_test.go
-Deleted branch cloche/develop-deft-moss-e584 (was 89ad3dc).
-Merged cloche/develop-deft-moss-e584 into main (89ad3dc6ba37e5e82f4e8970f2a84e5b2f1df818)

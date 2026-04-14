@@ -1,3 +1,0 @@
-## Task: V2: gRPC API — task-oriented RPCs
-
-Breaking API changes: RunWorkflow returns task_id + attempt_id. ListRuns becomes ListTasks. Add GetTask(task_id) and GetAttempt(attempt_id) RPCs. StreamLogs accepts colon-delimited IDs at any level. GetStatus accepts task ID, attempt ID, or full step ID. Update proto definitions and server implementation.

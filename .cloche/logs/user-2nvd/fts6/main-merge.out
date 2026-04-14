@@ -1,7 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-happy-vine-8417')
-HEAD is now at d4fe3af cloche run develop-happy-vine-8417: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-happy-vine-8417.
-Updating ce82c9f..d2ff28e
-Fast-forward
-Deleted branch cloche/develop-happy-vine-8417 (was d2ff28e).
-Merged cloche/develop-happy-vine-8417 into main (d2ff28ed6cd63838880ff22e73f7f6f4b1d6e998)

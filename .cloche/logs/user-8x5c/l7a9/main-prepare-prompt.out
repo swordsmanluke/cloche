@@ -1,3 +1,0 @@
-## Task: Web UI: Display host workflows on Project detail page
-
-On Project detail page, only agent (container) workflows are represented. Host workflows need to be displayed as well. Use tabs or similar UI concept to switch between viewed workflows — don't display them all at once.

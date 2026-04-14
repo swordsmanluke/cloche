@@ -1,10 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-quiet-bear-4156')
-HEAD is now at f748a3e cloche run develop-quiet-bear-4156: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-quiet-bear-4156.
-Updating 37d6d3b..ce82c9f
-Fast-forward
- docs/SAFETY.md | 225 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 225 insertions(+)
- create mode 100644 docs/SAFETY.md
-Deleted branch cloche/develop-quiet-bear-4156 (was ce82c9f).
-Merged cloche/develop-quiet-bear-4156 into main (ce82c9f591f2cf96c2110a0af63eed941ba5ee99)

@@ -1,3 +1,0 @@
-## Task: Host workflow scripts must execute from main branch
-
-When running the host workflow, executed scripts must come from main, even if operating in a worktree off a different branch. This ensures host-workflow fixes made on main are available to in-flight runs, even if they branched before the client-side workflow began.

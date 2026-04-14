@@ -1,11 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-lush-flint-6299')
-HEAD is now at a6d8705 cloche run develop-lush-flint-6299: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-lush-flint-6299.
-Updating 59967a2..ac05a0e
-Fast-forward
- internal/adapters/grpc/server.go | 10 ++----
- internal/host/executor_test.go   | 69 ++++++++++++++++++++++++++++++++++++++++
- internal/host/runner.go          | 24 ++++++++++++++
- 3 files changed, 95 insertions(+), 8 deletions(-)
-Deleted branch cloche/develop-lush-flint-6299 (was ac05a0e).
-Merged cloche/develop-lush-flint-6299 into main (ac05a0efbe0383d26ef250371dbc7a27e0623234)

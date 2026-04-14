@@ -1,9 +1,0 @@
-## Task: Add task/issue ID support to cloche run and cloche list
-
-Three related changes:
-
-1. **Add `-i`/`--issue` flag to `cloche run`** — optionally associate a ticket/task ID with a workflow run.
-
-2. **Add a "Task ID" column to `cloche list` output** — if a run has an associated issue ID, display it in the listing.
-
-3. **Fix table column alignment in `cloche list`** — columns are currently close but jagged. Align them properly (e.g. use tabwriter or fixed-width formatting).

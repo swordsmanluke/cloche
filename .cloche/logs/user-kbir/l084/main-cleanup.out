@@ -1,3 +1,0 @@
-✓ Closed cloche-r1j: Closed
-Closed task cloche-r1j
-Cleaned up run Preparingworktree(checkingout'cloche/develop-wise-brook')HEADisnowat96adde4clocherundevelop-wise-brook:develop(succeeded)Currentbranchcloche/develop-wise-brookisuptodate.Updating1462e46..96adde4Fast-forwardinternal/adapters/web/handler.go|48++++++++++internal/adapters/web/handler_test.go|119++++++++++++++++++++++++internal/adapters/web/templates/run_detail.html|23+++++3fileschanged,190insertions(+)Deletedbranchcloche/develop-wise-brook(was96adde4).Mergedcloche/develop-wise-brookintomain(96adde4cac3b82a2d0450074e6aee45ffcdc1846)

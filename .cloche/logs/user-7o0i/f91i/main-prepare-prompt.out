@@ -1,3 +1,0 @@
-## Task: Truncate error_message at write time in RunStore
-
-Failed develop runs are storing entire agent output dumps (up to 54MB) in the error_message column, bloating the database. Cap error_message to ~1000 characters when writing to the store. The full error details are available in step logs — the error_message field should be a concise summary, not a full dump.

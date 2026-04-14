@@ -1,3 +1,0 @@
-## Task: Fix max_attempts to expect numeric value
-
-max_attempts is a numeric value but workflow files have it set as a string like `max_attempts = "3"`. The DSL should expect a number there, not a string value.

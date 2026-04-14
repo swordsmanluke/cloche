@@ -1,7 +1,0 @@
-[
-  {
-    "id": "cloche-x3z",
-    "title": "Suppress empty run history when list-tasks finds no work",
-    "description": "When the list-tasks workflow phase exits cleanly but returns no tasks, the orchestration loop still creates a run entry that clutters the run history. Skip creating a run record (or mark it as skipped/hidden) when list-tasks returns an empty result, so the history only contains runs where actual work was attempted."
-  }
-]

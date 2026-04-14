@@ -2589,9 +2589,43 @@ func (s *ClocheServer) streamFollowLogs(runID string, run *domain.Run, stream rp
 
 // streamFilteredLogs serves log content filtered by step name and/or log type.
 // It uses the log index when available, falling back to file path conventions.
+//
+// Compound step names of the form "subWorkflow:subStep" (e.g. "develop:implement")
+// address individual steps within a sub-workflow's log subdirectory. The
+// log index is bypassed for compound names because it stores simple step names.
 func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLogsRequest, run *domain.Run, stream rpcgrpc.ServerStreamingServer[pb.LogEntry], limit int) error {
 	// Legacy output directory (v1 path); new v2 runs use runLogDir.
 	outputDir := filepath.Join(run.ProjectDir, ".cloche", req.RunId, "output")
+
+	// Fall back to file path conventions (try v2 path first, then legacy)
+	v2LogDir := runLogDir(run, run.ProjectDir, req.RunId)
+
+	// Compound step name: "subWorkflow:subStep" addresses a specific step log
+	// within a sub-workflow's extracted log subdirectory. For example,
+	// "develop:implement" maps to .cloche/logs/<task>/<attempt>/develop/implement.log.
+	if idx := strings.Index(req.StepName, ":"); idx >= 0 {
+		subWorkflow := req.StepName[:idx]
+		subStep := req.StepName[idx+1:]
+		var candidates []string
+		switch req.LogType {
+		case "llm":
+			candidates = []string{
+				filepath.Join(v2LogDir, subWorkflow, "llm-"+subStep+".log"),
+			}
+		default:
+			candidates = []string{
+				filepath.Join(v2LogDir, subWorkflow, subStep+".log"),
+			}
+		}
+		for _, logPath := range candidates {
+			data, err := os.ReadFile(logPath)
+			if err != nil || len(data) == 0 {
+				continue
+			}
+			return sendContentChunked(stream, "step_log", req.StepName, "", "", applyLimit(string(data), limit))
+		}
+		return fmt.Errorf("log file not found for step %q", req.StepName)
+	}
 
 	// Try log index first
 	if s.logStore != nil {
@@ -2629,9 +2663,6 @@ func (s *ClocheServer) streamFilteredLogs(ctx context.Context, req *pb.StreamLog
 			return nil
 		}
 	}
-
-	// Fall back to file path conventions (try v2 path first, then legacy)
-	v2LogDir := runLogDir(run, run.ProjectDir, req.RunId)
 
 	if req.StepName != "" {
 		wfPrefix := run.WorkflowName + "-"

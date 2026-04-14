@@ -1,3 +1,0 @@
-## Task: Move cloche daemon state to ~/.config/cloche/
-
-Keep cloche.db and other daemon files (socket, logs) in ~/.config/cloche/ instead of the current working directory. This ensures that no matter where cloched is invoked from, it shares the same database and state. Currently, running cloched from different directories creates separate databases, leading to fragmented run history and orphaned state.

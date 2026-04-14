@@ -1,3 +1,0 @@
-✓ Closed cloche-vlq: Closed
-Closed task cloche-vlq
-Cleaned up run Preparingworktree(checkingout'cloche/develop-eager-moss-8194')HEADisnowat0e46021clocherundevelop-eager-moss-8194:develop(succeeded)Currentbranchcloche/develop-eager-moss-8194isuptodate.Updating9981cce..0e46021Fast-forwardinternal/adapters/web/handler.go|73+++++++++++++++++++--internal/adapters/web/handler_test.go|105++++++++++++++++++++++++++++++internal/adapters/web/templates/runs.html|21++++++3fileschanged,194insertions(+),5deletions(-)Deletedbranchcloche/develop-eager-moss-8194(was0e46021).Mergedcloche/develop-eager-moss-8194intomain(0e460216251f44e0b672a88bc4f00272dd9592a5)

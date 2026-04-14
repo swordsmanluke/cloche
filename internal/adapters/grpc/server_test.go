@@ -4624,3 +4624,110 @@ func TestAgentNameForStep(t *testing.T) {
 		assert.Equal(t, "", name)
 	})
 }
+
+// TestServer_StreamLogs_CompoundStepName verifies that a compound step name
+// (e.g. "develop:implement") serves logs from the sub-workflow's extracted
+// log subdirectory (.cloche/logs/<task>/<attempt>/develop/implement.log).
+// This is the addressing scheme used when a host workflow step runs a
+// container sub-workflow that times out or fails mid-execution.
+func TestServer_StreamLogs_CompoundStepName(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	// The main host run. Sub-workflow step logs are indexed under this run.
+	run := domain.NewRun("main-csn1", "main")
+	run.TaskID = "TASK-CSN"
+	run.AttemptID = "csn1"
+	run.ProjectDir = dir
+	run.Start()
+	run.Complete(domain.RunStateFailed)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Write the sub-workflow step logs that extractContainerLogs would create:
+	//   .cloche/logs/<taskID>/<attemptID>/develop/implement.log
+	logDir := filepath.Join(dir, ".cloche", "logs", "TASK-CSN", "csn1")
+	subDir := filepath.Join(logDir, "develop")
+	require.NoError(t, os.MkdirAll(subDir, 0755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(subDir, "implement.log"),
+		[]byte("implement step output\n"),
+		0644,
+	))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(subDir, "llm-implement.log"),
+		[]byte("implement llm output\n"),
+		0644,
+	))
+
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+
+	t.Run("compound step name via RunId+StepName", func(t *testing.T) {
+		mock := &mockLogStream{ctx: ctx}
+		err = srv.StreamLogs(&pb.StreamLogsRequest{
+			RunId:    "main-csn1",
+			StepName: "develop:implement",
+		}, mock)
+		require.NoError(t, err)
+		require.Len(t, mock.entries, 1)
+		assert.Equal(t, "step_log", mock.entries[0].Type)
+		assert.Equal(t, "develop:implement", mock.entries[0].StepName)
+		assert.Contains(t, mock.entries[0].Message, "implement step output")
+	})
+
+	t.Run("compound step name with llm log type", func(t *testing.T) {
+		mock := &mockLogStream{ctx: ctx}
+		err = srv.StreamLogs(&pb.StreamLogsRequest{
+			RunId:    "main-csn1",
+			StepName: "develop:implement",
+			LogType:  "llm",
+		}, mock)
+		require.NoError(t, err)
+		require.Len(t, mock.entries, 1)
+		assert.Equal(t, "step_log", mock.entries[0].Type)
+		assert.Contains(t, mock.entries[0].Message, "implement llm output")
+	})
+
+	t.Run("4-part composite id resolves to compound step", func(t *testing.T) {
+		mock := &mockLogStream{ctx: ctx}
+		// TASK-CSN:csn1:develop:implement → main run + step "develop:implement"
+		err = srv.StreamLogs(&pb.StreamLogsRequest{
+			Id: "TASK-CSN:csn1:develop:implement",
+		}, mock)
+		require.NoError(t, err)
+		require.Len(t, mock.entries, 1)
+		assert.Contains(t, mock.entries[0].Message, "implement step output")
+	})
+}
+
+// TestServer_StreamLogs_CompoundStepName_NotFound verifies that a compound
+// step name returns an appropriate error when the log file does not exist.
+func TestServer_StreamLogs_CompoundStepName_NotFound(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	run := domain.NewRun("main-csn2", "main")
+	run.TaskID = "TASK-CSN2"
+	run.AttemptID = "csn2"
+	run.ProjectDir = dir
+	run.Start()
+	run.Complete(domain.RunStateFailed)
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+
+	mock := &mockLogStream{ctx: ctx}
+	err = srv.StreamLogs(&pb.StreamLogsRequest{
+		RunId:    "main-csn2",
+		StepName: "develop:nonexistent",
+	}, mock)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "log file not found")
+}

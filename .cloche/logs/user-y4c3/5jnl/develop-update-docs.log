@@ -1,9 +1,0 @@
-Two updates made to `docs/USAGE.md`:
-
-1. **`cloche logs` section** — Updated usage line to show `[--follow]`, added a flag table documenting `--follow`/`-f` with its behavior (SSE streaming, color-coding, `CLOCHE_HTTP` reference), and clarified the difference between with/without `--follow`.
-
-2. **Client Configuration table** — Added `CLOCHE_HTTP` (`localhost:8080` default) since the CLI uses it for `cloche logs --follow` to connect to the daemon's SSE endpoint.
-
-No changes needed to `docs/workflows.md` — the DSL syntax hasn't changed.
-
-CLOCHE_RESULT:success

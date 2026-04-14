@@ -1,3 +1,0 @@
-## Task: Add cloche workflow command with ASCII-art graph rendering
-
-Add a cloche workflow subcommand for viewing workflow info from the CLI. --project/-p to override cwd and select a different project. Default (no args) lists all workflows by name, grouped by host/container type. cloche workflow [name] renders the workflow as an ASCII-art graph. Colorize wires for visibility: green for success, red for failed, then blue/yellow/orange/magenta for other paths. Allow same-destination wires to merge together to simplify the graph (e.g. multiple links to done can join their wires).

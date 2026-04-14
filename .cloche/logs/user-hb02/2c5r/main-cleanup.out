@@ -1,3 +1,0 @@
-✓ Closed cloche-e55: Closed
-Closed task cloche-e55
-Cleaned up run Preparingworktree(checkingout'cloche/develop-grand-jade')HEADisnowat57731feclocherundevelop-grand-jade:develop(succeeded)Currentbranchcloche/develop-grand-jadeisuptodate.Updating3916a28..57731feFast-forwardinternal/adapters/web/handler.go|89+++++++++++++++++++++++++++++++internal/adapters/web/handler_test.go|60+++++++++++++++++++++internal/adapters/web/templates/runs.html|14+++--3fileschanged,155insertions(+),8deletions(-)Deletedbranchcloche/develop-grand-jade(was57731fe).Mergedcloche/develop-grand-jadeintomain(57731fe6a89305d03f556d17e0ce9f6e7a23f8ef)

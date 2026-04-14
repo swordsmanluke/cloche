@@ -1,3 +1,0 @@
-## Task: GEPA: Population storage CRUD
-
-Create internal/evolution/population.go with Population struct and CRUD operations: AddCandidate (writes candidate file + meta.jsonl), ListCandidates (reads meta.jsonl, filters active), GetContent (reads candidate prompt), Promote (snapshots base, copies winner, archives others), RecordAssignment/GetAssignment (tracks run→candidate mapping in assignments.jsonl). Disk layout: .cloche/evolution/population/<step-name>/candidate-NNN.md + meta.jsonl. Include unit tests.

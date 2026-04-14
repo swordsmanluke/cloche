@@ -1,3 +1,0 @@
-{"type":"error","message":"invalid workflow: workflow \"develop\": step \"check-vet-build-wiring\" is orphaned (unreachable)","timestamp":"2026-03-06T23:31:48.429163108Z"}
-{"type":"run_completed","result":"failed","timestamp":"2026-03-06T23:31:48.429283986Z"}
-error: invalid workflow: workflow "develop": step "check-vet-build-wiring" is orphaned (unreachable)

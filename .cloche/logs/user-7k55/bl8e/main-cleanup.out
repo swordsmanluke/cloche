@@ -1,3 +1,0 @@
-✓ Closed cloche-mga: Closed
-Closed task cloche-mga
-Cleaned up run Preparingworktree(checkingout'cloche/develop-wild-reed-5b80')HEADisnowatfd2b81bclocherundevelop-wild-reed-5b80:develop(succeeded)Rebasing(1/1)[KSuccessfullyrebasedandupdatedrefs/heads/cloche/develop-wild-reed-5b80.Updating0e46021..445fe55Fast-forwardapi/proto/cloche/v1/cloche.proto|2+cmd/cloche/main.go|75+++-------------------docs/USAGE.md|6+-internal/adapters/grpc/server.go|87+++++++++++++++++++++++---internal/adapters/grpc/server_test.go|113+++++++++++++++++++++++++++++++++-5fileschanged,202insertions(+),81deletions(-)Deletedbranchcloche/develop-wild-reed-5b80(was445fe55).Mergedcloche/develop-wild-reed-5b80intomain(445fe55622e6f054777adb56624d8228e575813e)

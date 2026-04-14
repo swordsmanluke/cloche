@@ -1,3 +1,0 @@
-## Task: GEPA: Curator refactor — extract Curate()
-
-Refactor internal/evolution/curator.go: extract core curation logic from Apply() into Curate(ctx, projectDir, lesson) (string, error) that returns updated prompt content as a string instead of writing to disk. Apply() calls Curate() then writes — fully backward compatible. All corruption safeguards (conversational guard, code-fence stripping, sanity check) remain in Curate(). Ensure all existing curator tests pass unchanged.

@@ -1,3 +1,0 @@
-## Task: V2: Automatic v1-to-v2 data migration
-
-On first v2 daemon startup, migrate existing data. Group runs by task_id into Task records (empty task_id gets User-Initiated task). Each run becomes an Attempt. Move log files from .cloche/<run-id>/output/ to .cloche/logs/<task-id>/<attempt-id>/. Migration is idempotent via version marker. Partial failures are logged and skipped.

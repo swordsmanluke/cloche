@@ -1,13 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-fair-hare-8003')
-HEAD is now at ff33b99 cloche run develop-fair-hare-8003: develop (succeeded)
-Rebasing (1/1)Auto-merging docs/workflows.md
-Auto-merging internal/dsl/parser.go
-Auto-merging internal/dsl/parser_test.go
-CONFLICT (content): Merge conflict in internal/dsl/parser_test.go
-error: could not apply ff33b99... cloche run develop-fair-hare-8003: develop (succeeded)
-hint: Resolve all conflicts manually, mark them as resolved with
-hint: "git add/rm <conflicted_files>", then run "git rebase --continue".
-hint: You can instead skip this commit: run "git rebase --skip".
-hint: To abort and get back to the state before "git rebase", run "git rebase --abort".
-Could not apply ff33b99... cloche run develop-fair-hare-8003: develop (succeeded)
-error: rebase failed — branch cloche/develop-fair-hare-8003 preserved for review

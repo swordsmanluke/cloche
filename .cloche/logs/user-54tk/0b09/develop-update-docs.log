@@ -1,3 +1,0 @@
-Added the missing `cloche orchestrate` section to `docs/USAGE.md`. No other discrepancies found — all other subcommands, flags, environment variables, build targets, and workflow DSL syntax are already accurate.
-
-CLOCHE_RESULT:success

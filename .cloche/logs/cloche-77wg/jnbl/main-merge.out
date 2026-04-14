@@ -1,12 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-crisp-lark-4344')
-HEAD is now at f215dc2 cloche run develop-crisp-lark-4344: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-crisp-lark-4344.
-Updating ab002f6..9367002
-Fast-forward
- docs/plans/2026-03-06-project-pages-design.md      | 10 +++-
- internal/adapters/web/handler_test.go              |  4 ++
- internal/adapters/web/static/style.css             |  2 +
- .../adapters/web/templates/project_detail.html     | 56 +++++++++++++++-------
- 4 files changed, 53 insertions(+), 19 deletions(-)
-Deleted branch cloche/develop-crisp-lark-4344 (was 9367002).
-Merged cloche/develop-crisp-lark-4344 into main (9367002c428c73c64f22683a552e38e2d7d7cc40)

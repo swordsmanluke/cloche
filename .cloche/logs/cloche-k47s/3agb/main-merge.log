@@ -1,7 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-quick-sage-09f2')
-HEAD is now at 750ed49 cloche run develop-quick-sage-09f2: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-quick-sage-09f2.
-Updating faa0d16..7d0637c
-Fast-forward
-Deleted branch cloche/develop-quick-sage-09f2 (was 7d0637c).
-Merged cloche/develop-quick-sage-09f2 into cloche-v2 (7d0637cb8d518fdf148d4d415804b7a3765b8515)

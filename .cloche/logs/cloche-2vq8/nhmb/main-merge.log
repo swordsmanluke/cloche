@@ -1,7 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-quick-hare-4a58')
-HEAD is now at 47782c1 cloche run develop-quick-hare-4a58: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-quick-hare-4a58.
-Updating 6b41099..5725fc3
-Fast-forward
-Deleted branch cloche/develop-quick-hare-4a58 (was 5725fc3).
-Merged cloche/develop-quick-hare-4a58 into main (5725fc359c133ea0ea09107a7551b1231c0f0701)

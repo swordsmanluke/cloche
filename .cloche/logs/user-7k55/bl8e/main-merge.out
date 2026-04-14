@@ -1,13 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-wild-reed-5b80')
-HEAD is now at fd2b81b cloche run develop-wild-reed-5b80: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-wild-reed-5b80.
-Updating 0e46021..445fe55
-Fast-forward
- api/proto/cloche/v1/cloche.proto      |   2 +
- cmd/cloche/main.go                    |  75 +++-------------------
- docs/USAGE.md                         |   6 +-
- internal/adapters/grpc/server.go      |  87 +++++++++++++++++++++++---
- internal/adapters/grpc/server_test.go | 113 +++++++++++++++++++++++++++++++++-
- 5 files changed, 202 insertions(+), 81 deletions(-)
-Deleted branch cloche/develop-wild-reed-5b80 (was 445fe55).
-Merged cloche/develop-wild-reed-5b80 into main (445fe55622e6f054777adb56624d8228e575813e)

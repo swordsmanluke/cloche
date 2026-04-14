@@ -1,7 +1,0 @@
-[
-  {
-    "id": "cloche-8j1",
-    "title": "Update examples/ .cloche configs to match current implementation",
-    "description": "Check all examples/ projects' .cloche folders and bring their config and workflows up to snuff with the current implementation. Ensure workflow DSL, prompts, Dockerfiles, and overrides all reflect the latest conventions."
-  }
-]

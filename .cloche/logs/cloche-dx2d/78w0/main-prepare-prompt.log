@@ -1,7 +1,0 @@
-## Task: Support sub-workflow steps in container-side workflows
-
-Container-side workflow DSL should support calling other workflows as steps, matching the capability already available in host-side workflows.
-
-This enables workflow composition: a top-level `develop` workflow could branch to `investigate`, `design`, or `implement` sub-workflows based on ticket type, then rejoin for a shared `commit` step. Sub-workflows run to completion and return a result to the parent, avoiding duplication of common steps like commit across every workflow variant.
-
-**Why:** Current container workflows are flat — all steps must be defined inline. This forces duplication (e.g. every workflow variant needs its own commit step) and makes complex branching workflows unwieldy. Host workflows already support `workflow_name = "..." ` steps; extending this to container workflows unifies the model.

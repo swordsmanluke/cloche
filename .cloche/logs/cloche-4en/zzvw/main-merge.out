@@ -1,9 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-happy-jade-2311')
-HEAD is now at ea81160 cloche run develop-happy-jade-2311: develop (succeeded)
-Current branch cloche/develop-happy-jade-2311 is up to date.
-Updating c5060f2..ea81160
-Fast-forward
- docs/USAGE.md | 145 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 145 insertions(+)
-Deleted branch cloche/develop-happy-jade-2311 (was ea81160).
-Merged cloche/develop-happy-jade-2311 into main (ea811606f33ecaaab4d88f5b6c6aebceba849460)

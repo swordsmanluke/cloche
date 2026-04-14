@@ -1,14 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-firm-dale-9784')
-HEAD is now at 77f5ffc cloche run develop-firm-dale-9784: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-firm-dale-9784.
-Updating f16da65..7a2c92f
-Fast-forward
- cmd/cloche/help.go      | 395 ++++++++++++++++++++++++++++++++++++++++++++++++
- cmd/cloche/help_test.go |  82 ++++++++++
- cmd/cloche/main.go      |  69 +++++----
- docs/USAGE.md           |  25 +++
- 4 files changed, 545 insertions(+), 26 deletions(-)
- create mode 100644 cmd/cloche/help.go
- create mode 100644 cmd/cloche/help_test.go
-Deleted branch cloche/develop-firm-dale-9784 (was 7a2c92f).
-Merged cloche/develop-firm-dale-9784 into main (7a2c92f2480761b78e071f37eb16b01aaf297ca7)

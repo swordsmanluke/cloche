@@ -1,3 +1,0 @@
-## Task: V2: Shell auto-completion for zsh and bash
-
-Generate shell completion scripts during cloche init. Write to ~/.cloche/completions/. Complete subcommands, flags, task IDs, attempt IDs, colon-delimited drill-down (attempt:workflow:step), and workflow names. Dynamic completions query daemon via new Complete gRPC RPC. Offer to update .zshrc/.bashrc. Skip on Windows.

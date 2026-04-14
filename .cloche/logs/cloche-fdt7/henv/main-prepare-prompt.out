@@ -1,7 +1,0 @@
-## Task: Show failed step name and error output in run error section
-
-When a workflow run fails, the error section should display:
-- The name of the step that failed
-- The error message / output from that step
-
-Currently failures show minimal info, making it hard to diagnose without reading full logs.

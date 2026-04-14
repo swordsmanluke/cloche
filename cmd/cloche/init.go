@@ -725,10 +725,17 @@ func cmdInit(args []string) {
 
 	// === Core behavior (always) ===
 
-	// 1. Create .cloche/ directory.
-	if err := os.MkdirAll(clocheDir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "error creating %s/: %v\n", clocheDir, err)
-		os.Exit(1)
+	// 1. Create .cloche/ directory and core subdirectories.
+	for _, dir := range []string{
+		clocheDir,
+		filepath.Join(clocheDir, "prompts"),
+		filepath.Join(clocheDir, "overrides"),
+		filepath.Join(clocheDir, "scripts"),
+	} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "error creating %s/: %v\n", dir, err)
+			os.Exit(1)
+		}
 	}
 
 	// 2. Create or update config.toml with active = true.

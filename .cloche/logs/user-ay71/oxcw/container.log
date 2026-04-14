@@ -1,3 +1,0 @@
-{"type":"error","message":"invalid workflow: workflow \"develop\": step \"check-zero-step-failure-rate\" is orphaned (unreachable)","timestamp":"2026-03-09T22:58:56.353944409Z"}
-{"type":"run_completed","result":"failed","timestamp":"2026-03-09T22:58:56.354057102Z"}
-error: invalid workflow: workflow "develop": step "check-zero-step-failure-rate" is orphaned (unreachable)

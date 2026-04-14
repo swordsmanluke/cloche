@@ -1,7 +1,0 @@
-## Task: Fix cloche self-learning cycle: prompt updates and workflow linking
-
-The cloche self-learning cycle has two issues:
-
-1. When updating prompt/script files, it writes its 'thoughts' or commentary about the changes into the files instead of the actual updated content. The files end up containing meta-commentary rather than usable prompts/scripts.
-
-2. When editing workflows to add new stages, it fails to wire them into the existing workflow graph correctly. New steps are added but not linked via wires to existing steps, causing runs to fail with unlinked node errors.

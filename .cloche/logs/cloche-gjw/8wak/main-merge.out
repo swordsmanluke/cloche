@@ -1,12 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-happy-birch-26e0')
-HEAD is now at 9ee391d cloche run develop-happy-birch-26e0: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-happy-birch-26e0.
-Updating 571c66d..c5060f2
-Fast-forward
- docs/plans/2026-03-06-project-pages-design.md      |  7 +-
- internal/adapters/web/handler.go                   | 47 ++++++++++---
- internal/adapters/web/handler_test.go              | 79 ++++++++++++++++++++--
- .../adapters/web/templates/project_detail.html     |  2 +-
- 4 files changed, 119 insertions(+), 16 deletions(-)
-Deleted branch cloche/develop-happy-birch-26e0 (was c5060f2).
-Merged cloche/develop-happy-birch-26e0 into main (c5060f2ee8461059e2cc7b823306c26494e6cea8)

@@ -202,6 +202,22 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 	run, err := eng.Run(ctx, targetWF)
 	if err != nil {
 		log.Printf("daemon executor: sub-workflow %q failed: %v", targetName, err)
+		// Even on error (e.g. context timeout), try to extract container logs so
+		// they are accessible for post-mortem investigation. The original ctx may
+		// already be cancelled, so use a background context. Only attempt
+		// extraction if a session actually exists (i.e. the container started
+		// before the failure).
+		if targetWF.Location == domain.LocationContainer && d.pool != nil {
+			poolKey := d.attemptID + ":" + targetWF.ContainerID()
+			if session := d.pool.GetSession(poolKey); session != nil {
+				bgCtx := context.Background()
+				d.extractContainerLogs(bgCtx, session.ContainerID, step.Name)
+				if d.logStore != nil && d.hostExec != nil && d.hostExec.HostRunID != "" {
+					subDir := filepath.Join(d.projectDir, ".cloche", "logs", d.taskID, d.attemptID, step.Name)
+					d.indexSubworkflowLogs(bgCtx, d.hostExec.HostRunID, subDir)
+				}
+			}
+		}
 		return domain.StepResult{Result: "fail"}, nil
 	}
 

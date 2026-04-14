@@ -1,3 +1,0 @@
-## Task: cloche status should reflect current concurrency when overridden via cloche loop --max
-
-When the concurrency value is overridden via `cloche loop --max`, `cloche status` output should reflect the current concurrency value rather than the configured default.

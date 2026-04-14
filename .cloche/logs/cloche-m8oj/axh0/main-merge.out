@@ -1,13 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-glad-crane-cf73')
-HEAD is now at 7cb9c0e cloche run develop-glad-crane-cf73: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-glad-crane-cf73.
-Updating 79c03d9..ee466c8
-Fast-forward
- .../2026-02-24-self-evolution-implementation.md    |  13 ++-
- internal/evolution/evolution_test.go               |   2 +-
- internal/evolution/scriptgen.go                    |  47 +++++++-
- internal/evolution/scriptgen_test.go               | 128 +++++++++++++++++++++
- 4 files changed, 181 insertions(+), 9 deletions(-)
- create mode 100644 internal/evolution/scriptgen_test.go
-Deleted branch cloche/develop-glad-crane-cf73 (was ee466c8).
-Merged cloche/develop-glad-crane-cf73 into main (ee466c809be0a2e9f40f175c10e40a6d51b6be1f)

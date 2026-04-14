@@ -1,9 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-wild-hare-58c0')
-HEAD is now at 59967a2 cloche run develop-wild-hare-58c0: develop (succeeded)
-Current branch cloche/develop-wild-hare-58c0 is up to date.
-Updating 445fe55..59967a2
-Fast-forward
- README.md | 121 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 121 insertions(+)
-Deleted branch cloche/develop-wild-hare-58c0 (was 59967a2).
-Merged cloche/develop-wild-hare-58c0 into main (59967a206fc62a458ffdcb0f6ef874031d557270)

@@ -1,3 +1,0 @@
-## Task: Web UI logs don't match CLI logs — shows wrong content
-
-Web UI logs do not match CLI logs. Example: develop-crisp-hare's 'implement' step shows success, but the web UI log output shows a 'limit reached' error that didn't actually happen. The CLI logs show the correct implementation output. The web UI is likely serving stale/wrong log data or mixing up log sources.

@@ -1,3 +1,0 @@
-The only discrepancy was the `cloche logs` section, which was missing the `--step` and `--type` flags added by the log archival feature. I've updated it to match the current CLI surface. Everything else in USAGE.md (init, run, status, list, poll, stop, shutdown, daemon config, build commands, project layout) is already accurate. No changes needed to `docs/workflows.md` — the DSL syntax hasn't changed.
-
-CLOCHE_RESULT:success

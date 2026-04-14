@@ -1,3 +1,0 @@
-## Task: Agent declaration DSL
-
-Extend the Cloche DSL to support declaring an Agent. An Agent contains: identifier, command, and arguments. This allows configuring e.g. a general 'claude' agent along with a 'codex' agent or 'ollama' agent, then referencing which agent executes a prompt step via `agent: <identifier>`. Avoids keeping configuration in sync across every prompt step — define once, reference by identifier. Uses include specifying different arguments for different use cases, simplifying model/agent changes, using local models for lightweight tasks and remote models for heavy tasks.

@@ -1,8 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-fresh-reef-de97')
-HEAD is now at f9ffc5b cloche run develop-fresh-reef-de97: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-fresh-reef-de97.
-error: Your local changes to the following files would be overwritten by merge:
-	internal/host/loop.go
-Please commit your changes or stash them before you merge.
-Aborting
-Updating 7f30702..71e888c

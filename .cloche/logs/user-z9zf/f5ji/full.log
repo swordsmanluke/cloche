@@ -1,3 +1,0 @@
-[2026-03-18T02:26:17Z] [status] step_started: claim-task
-[2026-03-18T02:26:17Z] [script] error: CLOCHE_TASK_ID not set (is the daemon running in three-phase mode?)
-[2026-03-18T02:26:17Z] [status] step_completed: claim-task -> fail

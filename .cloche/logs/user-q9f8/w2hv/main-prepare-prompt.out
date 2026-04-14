@@ -1,3 +1,0 @@
-## Task: Fix step-level log history display in web UI and CLI
-
-Step-level log output (e.g. 'implement', 'test') no longer shows up when expanding a step in the web UI. The main log stream works correctly, but we need to capture and display the full history per step as well. When expanding a step like 'implement', show all logs captured to date for that step, then continue updating with new streaming lines. Same for the CLI — 'cloche logs --step <name>' should show historical logs to date, then stream updates as they arrive.

@@ -1,11 +1,0 @@
-Preparing worktree (checking out 'cloche/develop-quiet-elm-ea16')
-HEAD is now at 22b6d01 cloche run develop-quiet-elm-ea16: develop (succeeded)
-Rebasing (1/1)[KSuccessfully rebased and updated refs/heads/cloche/develop-quiet-elm-ea16.
-Updating 38cd2d6..e7a6b80
-Fast-forward
- internal/adapters/docker/runtime.go   |  2 +-
- internal/adapters/web/handler.go      | 73 ++++++++++++++---------------------
- internal/adapters/web/handler_test.go | 18 +++++----
- 3 files changed, 41 insertions(+), 52 deletions(-)
-Deleted branch cloche/develop-quiet-elm-ea16 (was e7a6b80).
-Merged cloche/develop-quiet-elm-ea16 into main (e7a6b80cabd53d74ffe4e82152f2c096c4e47bd9)
