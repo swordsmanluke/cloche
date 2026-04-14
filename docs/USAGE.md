@@ -433,7 +433,6 @@ receives the task ID and handles all phases of work including any post-run clean
 | `CLOCHE_PREV_OUTPUT` | Path to the output file from the immediately preceding step. |
 | `CLOCHE_RUN_ID` | Workflow ID for this workflow execution (e.g. `a133:develop`). |
 | `CLOCHE_TASK_ID` | Task ID assigned by the daemon (set for the `main` phase). |
-| Wire-mapped vars | Any env vars declared in wire output mappings. |
 
 ### Container Environment Variables
 
@@ -913,7 +912,7 @@ back to the old attempt. The command returns the new workflow ID and new attempt
 
 - **Host workflows:** Successful step outputs from the previous attempt are copied into
   the new attempt's directory. The new run executes from the resume step forward, with
-  those copied outputs available for wire output mappings.
+  those copied outputs available via `CLOCHE_PREV_OUTPUT`.
 - **Container workflows:** Each container from the failed attempt is committed to a
   Docker image (`docker commit`), capturing its filesystem state. New containers are
   started from those images (named `cloche-resume:<attemptID>-<containerID>`). The

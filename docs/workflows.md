@@ -58,7 +58,7 @@ workflows with a `host {}` block.
 | workflow | A named graph of steps connected by result wiring                  |
 | step     | A unit of work (`agent`, `script`, `workflow`, or `human` type)    |
 | result   | A named outcome reported by a step (e.g. "success", "fail")       |
-| wiring   | Maps a step's result to the next step, with optional output mappings |
+| wiring   | Maps a step's result to the next step                              |
 | agent    | A named agent declaration with command and arguments               |
 | done     | Built-in terminal step — successful completion                     |
 | abort    | Built-in terminal step — failure with error reporting              |
@@ -118,7 +118,7 @@ workflow "develop" {
     results = [success, fail, give-up]
   }
 
-  // Wiring: step:result -> next_step [optional output mappings]
+  // Wiring: step:result -> next_step
   implement:success -> test
   implement:fail    -> abort
   test:success      -> done
@@ -198,39 +198,6 @@ Cloche's self-evolution feature.
 **Graphs are validated at parse time.** The parser checks that all declared results are
 wired, no steps are orphaned, and an entry point exists.
 
-## Wire Output Mappings
-
-Wire output mappings are supported in **host workflows only**. They extract values from a
-step's output and inject them as environment variables into the target step:
-
-```
-step-a:success -> step-b [ ENV_VAR = output.field, OTHER = output.list[0].name ]
-```
-
-The general form:
-
-```
-FROM:RESULT -> TO [ KEY = EXPR, KEY = EXPR, ... ]
-```
-
-Where `KEY` is the environment variable name and `EXPR` is an output path expression
-starting with the contextual keyword `output`:
-
-| Expression | Meaning |
-|---|---|
-| `output` | Raw output (full string) |
-| `output.key` | JSON object field access |
-| `output[N]` | JSON array index (0-based) |
-| `output.a.b.c` | Deeply nested field access |
-| `output.items[0].name` | Mixed field and index chaining |
-
-If the source step's output is valid JSON, path expressions navigate the parsed
-structure. If the output is plain text, only bare `output` is valid. The resolved
-value is converted to a string for env var injection.
-
-If two wires targeting the same step both map the same env var key, validation
-returns an error (the mapping would be ambiguous). The same key may be used on
-wires to different steps without conflict.
 ## Parallel Branches (Fanout)
 
 Wire one result to multiple targets for concurrent execution:
