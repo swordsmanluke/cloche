@@ -44,69 +44,62 @@ func TestPromptAdapter_ExecutesCommand(t *testing.T) {
 	assert.Contains(t, string(content), "implemented")
 }
 
-func TestPromptAdapter_IncludesFeedback(t *testing.T) {
+func TestPromptAdapter_PreviousOutputSubstitution(t *testing.T) {
 	dir := t.TempDir()
-
-	// Set up feedback logs
-	outputDir := filepath.Join(dir, ".cloche", "output")
-	require.NoError(t, os.MkdirAll(outputDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "test.log"), []byte("3 failures"), 0644))
 
 	// Mock command that captures stdin to a file so we can inspect it
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
 		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok"},
+		PrevOutput:   "test passed: 42/42",
 	}
 
 	step := &domain.Step{
 		Name:    "fix",
 		Type:    domain.StepTypeAgent,
-		Results: []string{"success", "fail", "give-up"},
-		Config:  map[string]string{"prompt": "Fix the code.", "feedback": "true"},
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Previous results: {previous_output}"},
 	}
 
 	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
 	assert.Equal(t, "success", sr.Result)
 
-	// Verify feedback was included in the prompt
 	captured, err := os.ReadFile(filepath.Join(dir, "captured_prompt.txt"))
 	require.NoError(t, err)
-	assert.Contains(t, string(captured), "Fix the code.")
-	assert.Contains(t, string(captured), "3 failures")
+	assert.Contains(t, string(captured), "test passed: 42/42")
 }
 
-func TestPromptAdapter_NoFeedbackByDefault(t *testing.T) {
+func TestPromptAdapter_PreviousOutputEmptyWhenNotSet(t *testing.T) {
 	dir := t.TempDir()
 
-	// Set up feedback logs
+	// Set up output logs from other steps — these should NOT appear in the prompt
 	outputDir := filepath.Join(dir, ".cloche", "output")
 	require.NoError(t, os.MkdirAll(outputDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "test.log"), []byte("3 failures"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "other-step.log"), []byte("sibling output"), 0644))
 
 	// Mock command that captures stdin to a file so we can inspect it
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
 		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok"},
+		// PrevOutput not set — {previous_output} should substitute empty string
 	}
 
 	step := &domain.Step{
 		Name:    "update-docs",
 		Type:    domain.StepTypeAgent,
 		Results: []string{"success", "fail"},
-		Config:  map[string]string{"prompt": "Update the docs."},
+		Config:  map[string]string{"prompt": "Context: {previous_output}\nUpdate the docs."},
 	}
 
 	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
 	assert.Equal(t, "success", sr.Result)
 
-	// Verify feedback was NOT included in the prompt
 	captured, err := os.ReadFile(filepath.Join(dir, "captured_prompt.txt"))
 	require.NoError(t, err)
 	assert.Contains(t, string(captured), "Update the docs.")
-	assert.NotContains(t, string(captured), "3 failures")
-	assert.NotContains(t, string(captured), "Validation Output")
+	assert.NotContains(t, string(captured), "sibling output")
 }
 
 func TestPromptAdapter_RespectsMaxAttempts(t *testing.T) {

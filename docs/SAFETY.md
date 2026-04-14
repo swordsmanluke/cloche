@@ -193,11 +193,6 @@ filter task descriptions before passing them to agent steps. For example,
 `.cloche/scripts/prepare-prompt.sh` can strip HTML, limit length, or reject suspicious
 patterns before printing to stdout.
 
-**Limit feedback content.** The `feedback = "true"` step config includes previous output
-logs in the prompt. If those logs contain content from untrusted sources (e.g. test
-output that includes user-supplied data), this is another injection surface. Only enable
-feedback when needed.
-
 ## Review Before Merge
 
 Cloche extracts results to git branches, not directly to your main branch. Always review

@@ -231,7 +231,6 @@ var knownStepConfigKeys = map[string]bool{
 	"agent_args":    true,
 	"agent":         true,
 	"results":       true,
-	"feedback":      true,
 	"workflow_name": true,
 	"prompt_step":   true,
 	"usage_command": true,

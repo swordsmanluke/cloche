@@ -53,7 +53,6 @@ workflow "develop" {
 | `agent_command` | string | Agent binary name(s), comma-separated for fallback chains, e.g. `"claude,gemini"`. |
 | `agent_args` | string | Override default agent arguments. |
 | `agent` | identifier | Reference a named agent declared in the workflow's `agent` block. Expands into `agent_command` and `agent_args`. Step-level `agent_command`/`agent_args` still override it. |
-| `feedback` | string | Set to `"true"` to include `.cloche/output/*.log` content in the prompt. |
 | `usage_command` | string | Shell command to run after an agent step completes to capture token usage. Output must be JSON: `{"input_tokens": N, "output_tokens": N}`. If absent or the command fails, usage is not tracked. Overrides any adapter-level default (e.g. from `[agents.codex]` in `config.toml`). |
 | `prompt_step` | string | For workflow steps: which preceding step's output to use as the prompt. |
 
@@ -274,8 +273,7 @@ When an agent step runs, Cloche assembles a prompt from these sections (joined b
 
 1. **Step template**: The step's `prompt` content (inline string or resolved `file("path")`).
 2. **User request**: Content of `.cloche/<run-id>/prompt.txt` (set via `--prompt` flag), prefixed with `## User Request`.
-3. **Validation output** (opt-in): If `feedback = "true"`, reads all `.log` files from `.cloche/output/` and includes them prefixed with `## Validation Output`.
-4. **Result selection**: Lists the step's declared results with instructions to print exactly one `CLOCHE_RESULT:<name>` marker.
+3. **Result selection**: Lists the step's declared results with instructions to print exactly one `CLOCHE_RESULT:<name>` marker.
 
 The assembled prompt is passed to the agent command via stdin.
 

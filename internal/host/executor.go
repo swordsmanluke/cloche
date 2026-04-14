@@ -231,6 +231,8 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 	}
 
 	// Write previous step output as user prompt so the adapter can pick it up.
+	// Also set PrevOutput on the adapter so {previous_output} in templates
+	// substitutes only the immediate predecessor's log content.
 	var promptContent string
 	promptSource := step.Config["prompt_step"]
 	if promptSource != "" {
@@ -242,6 +244,8 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 			promptContent = string(data)
 		}
 	}
+
+	adapter.PrevOutput = promptContent
 
 	if promptContent != "" {
 		promptPath := filepath.Join(e.ProjectDir, ".cloche", "runs", e.TaskID, "prompt.txt")

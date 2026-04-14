@@ -31,6 +31,7 @@ type Adapter struct {
 	StatusWriter       *protocol.StatusWriter // optional: streams live output lines
 	ResumeConversation bool                   // when true, resume previous conversation instead of starting new one
 	UsageCommand       string                 // optional: shell command to run after step to capture token usage JSON
+	PrevOutput         string                 // content of the immediate predecessor step's output log
 }
 
 func New() *Adapter {
@@ -110,7 +111,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		fullPrompt = "retry"
 	} else {
 		var err error
-		fullPrompt, err = assemblePrompt(step, workDir, a.TaskID)
+		fullPrompt, err = assemblePrompt(step, workDir, a.TaskID, a.PrevOutput)
 		if err != nil {
 			return domain.StepResult{}, fmt.Errorf("assembling prompt: %w", err)
 		}
@@ -491,12 +492,11 @@ func toolInputSummary(input json.RawMessage) string {
 	return ""
 }
 
-func assemblePrompt(step *domain.Step, workDir, taskID string) (string, error) {
+func assemblePrompt(step *domain.Step, workDir, taskID string, prevOutput string) (string, error) {
 	var parts []string
 
 	// Gather substitution values
 	userPrompt := readUserPrompt(workDir, taskID)
-	feedback := readFeedback(workDir)
 
 	// 1. Read system template from step config
 	if tmpl, ok := step.Config["prompt"]; ok {
@@ -510,8 +510,7 @@ func assemblePrompt(step *domain.Step, workDir, taskID string) (string, error) {
 			userPrompt = "" // consumed — don't append again
 		}
 		if strings.Contains(content, "{previous_output}") {
-			content = strings.ReplaceAll(content, "{previous_output}", feedback)
-			feedback = "" // consumed — don't append again
+			content = strings.ReplaceAll(content, "{previous_output}", prevOutput)
 		}
 		parts = append(parts, content)
 	}
@@ -521,13 +520,7 @@ func assemblePrompt(step *domain.Step, workDir, taskID string) (string, error) {
 		parts = append(parts, "## User Request\n"+userPrompt)
 	}
 
-	// 3. Read feedback from .cloche/output/*.log (opt-in via step config, or
-	//    already consumed by {previous_output} substitution above)
-	if step.Config["feedback"] == "true" && feedback != "" {
-		parts = append(parts, "## Validation Output\n"+feedback)
-	}
-
-	// 4. Result selection instructions
+	// 3. Result selection instructions
 	if len(step.Results) > 0 {
 		var resultLines []string
 		resultLines = append(resultLines, "## Result Selection")
@@ -555,31 +548,6 @@ func resolveContent(value string, workDir string) (string, error) {
 	return value, nil
 }
 
-func readFeedback(workDir string) string {
-	outputDir := filepath.Join(workDir, ".cloche", "output")
-	entries, err := os.ReadDir(outputDir)
-	if err != nil {
-		return ""
-	}
-
-	var parts []string
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".log") {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(outputDir, entry.Name()))
-		if err != nil {
-			continue
-		}
-		content := strings.TrimSpace(string(data))
-		if content != "" {
-			stepName := strings.TrimSuffix(entry.Name(), ".log")
-			parts = append(parts, fmt.Sprintf("### %s\n```\n%s\n```", stepName, content))
-		}
-	}
-
-	return strings.Join(parts, "\n\n")
-}
 
 func readAttemptCount(workDir, taskID, stepName string) int {
 	path := filepath.Join(workDir, ".cloche", "runs", taskID, "attempt_count", stepName)
