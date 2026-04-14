@@ -179,17 +179,6 @@ func (s *Session) executeStep(
 	ulog *logstream.Writer,
 	send func(*pb.AgentMessage) error,
 ) {
-	// Apply output-mapped env vars from wiring. Steps run sequentially per the
-	// protocol so temporary env mutation is safe.
-	for k, v := range cmd.Env {
-		os.Setenv(k, v)
-	}
-	defer func() {
-		for k := range cmd.Env {
-			os.Unsetenv(k)
-		}
-	}()
-
 	// Signal step start.
 	_ = send(&pb.AgentMessage{
 		Payload: &pb.AgentMessage_StepStarted{

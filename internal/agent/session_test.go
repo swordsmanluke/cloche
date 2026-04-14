@@ -346,40 +346,6 @@ done:
 	assert.Equal(t, "success", results[1].Result)
 }
 
-func TestSession_EnvVarsFromWiring(t *testing.T) {
-	// A script step that reads an env var set via the wiring map.
-	srv := newFakeServer([]*pb.ExecuteStep{
-		{
-			StepName:  "check",
-			StepType:  "script",
-			Config:    map[string]string{"run": `[ "$WIRED_VALUE" = "hello" ] && echo ok || echo fail`},
-			Env:       map[string]string{"WIRED_VALUE": "hello"},
-			RequestId: "req-env",
-		},
-	})
-	addr := startFakeServer(t, srv)
-
-	dir := t.TempDir()
-	sess := agent.NewSession(agent.SessionConfig{
-		Addr:    addr,
-		RunID:   "run-7",
-		WorkDir: dir,
-	})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	err := sess.Run(ctx)
-	require.NoError(t, err)
-
-	select {
-	case result := <-srv.results:
-		assert.Equal(t, "success", result.Result)
-	default:
-		t.Fatal("StepResult not received")
-	}
-}
-
 // TestSession_GRPCStatusWriter_LogForwarding verifies that log lines emitted
 // by an adapter's StatusWriter reach the daemon as StepLog messages.
 func TestSession_GRPCStatusWriter_LogForwarding(t *testing.T) {
