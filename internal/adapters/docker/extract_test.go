@@ -2,10 +2,394 @@ package docker
 
 import (
 	"context"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// setupTestRepo creates a temporary git repository with an initial commit
+// and returns the repo dir and the initial commit SHA.
+func setupTestRepo(t *testing.T) (repoDir, baseSHA string) {
+	t.Helper()
+	dir := t.TempDir()
+
+	gitEnv := append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com",
+	)
+
+	run := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		cmd.Env = gitEnv
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("cmd %v: %s: %v", args, out, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	run("git", "init")
+	run("git", "config", "user.email", "test@test.com")
+	run("git", "config", "user.name", "Test User")
+
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# Test\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	run("git", "add", ".")
+	run("git", "commit", "-m", "initial commit")
+
+	sha := run("git", "rev-parse", "HEAD")
+	return dir, sha
+}
+
+// makeFixtureDir creates a temp dir with some files simulating container workspace output.
+func makeFixtureDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "result.txt"), []byte("extracted content\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// overrideDockerCp overrides the dockerCp hook for the test duration,
+// using a local cp -a from fixtureDir instead of a real Docker daemon.
+func overrideDockerCp(t *testing.T, fixtureDir string) {
+	t.Helper()
+	orig := dockerCp
+	dockerCp = func(ctx context.Context, src, dst string) error {
+		cmd := exec.Command("cp", "-a", fixtureDir+"/.", dst)
+		return cmd.Run()
+	}
+	t.Cleanup(func() { dockerCp = orig })
+}
+
+// branchExists reports whether the named branch exists in the given repo.
+func branchExists(t *testing.T, repoDir, branch string) bool {
+	t.Helper()
+	cmd := exec.Command("git", "show-ref", "--verify", "refs/heads/"+branch)
+	cmd.Dir = repoDir
+	return cmd.Run() == nil
+}
+
+func TestExtractResultsDefaultOptions(t *testing.T) {
+	repoDir, baseSHA := setupTestRepo(t)
+	fixtureDir := makeFixtureDir(t)
+	overrideDockerCp(t, fixtureDir)
+
+	runID := "testrun-default"
+	opts := ExtractOptions{
+		ContainerID:  "fake-container",
+		ProjectDir:   repoDir,
+		RunID:        runID,
+		BaseSHA:      baseSHA,
+		WorkflowName: "develop",
+		Result:       "succeeded",
+	}
+
+	result, err := ExtractResults(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("ExtractResults: %v", err)
+	}
+
+	expectedBranch := "cloche/" + runID
+	if result.Branch != expectedBranch {
+		t.Errorf("Branch = %q, want %q", result.Branch, expectedBranch)
+	}
+	if result.CommitSHA == "" {
+		t.Error("CommitSHA should be non-empty")
+	}
+	// Default targetDir is cleaned up after the function returns (Persist is false).
+	expectedTarget := filepath.Join(repoDir, ".gitworktrees", "cloche", runID)
+	if result.TargetDir != expectedTarget {
+		t.Errorf("TargetDir = %q, want %q", result.TargetDir, expectedTarget)
+	}
+	if _, err := os.Stat(expectedTarget); !os.IsNotExist(err) {
+		t.Error("worktree dir should have been cleaned up after return")
+	}
+	// Branch ref should still exist even after worktree removal.
+	if !branchExists(t, repoDir, expectedBranch) {
+		t.Errorf("branch %q should exist after extract", expectedBranch)
+	}
+}
+
+func TestExtractResultsTargetDirOverride(t *testing.T) {
+	repoDir, baseSHA := setupTestRepo(t)
+	fixtureDir := makeFixtureDir(t)
+	overrideDockerCp(t, fixtureDir)
+
+	customTarget := filepath.Join(t.TempDir(), "my-target")
+	runID := "testrun-targetdir"
+	opts := ExtractOptions{
+		ContainerID:  "fake-container",
+		ProjectDir:   repoDir,
+		RunID:        runID,
+		BaseSHA:      baseSHA,
+		WorkflowName: "develop",
+		Result:       "succeeded",
+		TargetDir:    customTarget,
+	}
+
+	result, err := ExtractResults(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("ExtractResults: %v", err)
+	}
+
+	if result.TargetDir != customTarget {
+		t.Errorf("TargetDir = %q, want %q", result.TargetDir, customTarget)
+	}
+	// Worktree cleaned up since Persist is false.
+	if _, err := os.Stat(customTarget); !os.IsNotExist(err) {
+		t.Error("worktree dir should have been cleaned up after return")
+	}
+	// Branch should still exist.
+	expectedBranch := "cloche/" + runID
+	if !branchExists(t, repoDir, expectedBranch) {
+		t.Errorf("branch %q should exist", expectedBranch)
+	}
+}
+
+func TestExtractResultsBranchOverride(t *testing.T) {
+	repoDir, baseSHA := setupTestRepo(t)
+	fixtureDir := makeFixtureDir(t)
+	overrideDockerCp(t, fixtureDir)
+
+	customBranch := "feature/my-custom-branch"
+	runID := "testrun-branch"
+	opts := ExtractOptions{
+		ContainerID:  "fake-container",
+		ProjectDir:   repoDir,
+		RunID:        runID,
+		BaseSHA:      baseSHA,
+		WorkflowName: "develop",
+		Result:       "succeeded",
+		Branch:       customBranch,
+	}
+
+	result, err := ExtractResults(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("ExtractResults: %v", err)
+	}
+
+	if result.Branch != customBranch {
+		t.Errorf("Branch = %q, want %q", result.Branch, customBranch)
+	}
+	if !branchExists(t, repoDir, customBranch) {
+		t.Errorf("branch %q should exist", customBranch)
+	}
+	// Default cloche/<runID> branch should NOT exist.
+	defaultBranch := "cloche/" + runID
+	if branchExists(t, repoDir, defaultBranch) {
+		t.Errorf("default branch %q should not exist when Branch override is set", defaultBranch)
+	}
+}
+
+func TestExtractResultsNoGit(t *testing.T) {
+	fixtureDir := makeFixtureDir(t)
+	overrideDockerCp(t, fixtureDir)
+
+	targetDir := t.TempDir()
+	// targetDir must be empty for the pre-check to pass; TempDir returns an empty dir.
+	opts := ExtractOptions{
+		ContainerID: "fake-container",
+		RunID:       "testrun-nogit",
+		NoGit:       true,
+		TargetDir:   targetDir,
+	}
+
+	result, err := ExtractResults(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("ExtractResults NoGit: %v", err)
+	}
+
+	if result.TargetDir != targetDir {
+		t.Errorf("TargetDir = %q, want %q", result.TargetDir, targetDir)
+	}
+	if result.Branch != "" {
+		t.Errorf("Branch = %q, want empty in NoGit mode", result.Branch)
+	}
+	if result.CommitSHA != "" {
+		t.Errorf("CommitSHA = %q, want empty in NoGit mode", result.CommitSHA)
+	}
+	// Target should contain the fixture file.
+	if _, err := os.Stat(filepath.Join(targetDir, "result.txt")); err != nil {
+		t.Errorf("result.txt should exist in target dir: %v", err)
+	}
+	// Target must NOT contain a .git directory.
+	if _, err := os.Stat(filepath.Join(targetDir, ".git")); !os.IsNotExist(err) {
+		t.Error("target dir should not contain .git in NoGit mode")
+	}
+}
+
+func TestExtractResultsPersist(t *testing.T) {
+	repoDir, baseSHA := setupTestRepo(t)
+	fixtureDir := makeFixtureDir(t)
+	overrideDockerCp(t, fixtureDir)
+
+	runID := "testrun-persist"
+	opts := ExtractOptions{
+		ContainerID:  "fake-container",
+		ProjectDir:   repoDir,
+		RunID:        runID,
+		BaseSHA:      baseSHA,
+		WorkflowName: "develop",
+		Result:       "succeeded",
+		Persist:      true,
+	}
+
+	result, err := ExtractResults(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("ExtractResults Persist: %v", err)
+	}
+
+	// Worktree directory should still exist because Persist is true.
+	if _, err := os.Stat(result.TargetDir); os.IsNotExist(err) {
+		t.Error("worktree dir should persist after return when Persist is true")
+	}
+	// Clean up the worktree manually so the temp dir is tidy.
+	rmCmd := exec.Command("git", "worktree", "remove", "--force", result.TargetDir)
+	rmCmd.Dir = repoDir
+	rmCmd.Run()
+}
+
+func TestExtractResultsNonemptyTargetDirError(t *testing.T) {
+	repoDir, baseSHA := setupTestRepo(t)
+
+	// Create a non-empty target dir.
+	targetDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(targetDir, "existing.txt"), []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cpCalled := false
+	orig := dockerCp
+	dockerCp = func(ctx context.Context, src, dst string) error {
+		cpCalled = true
+		return nil
+	}
+	t.Cleanup(func() { dockerCp = orig })
+
+	opts := ExtractOptions{
+		ContainerID:  "fake-container",
+		ProjectDir:   repoDir,
+		RunID:        "testrun-nonempty",
+		BaseSHA:      baseSHA,
+		WorkflowName: "develop",
+		Result:       "succeeded",
+		TargetDir:    targetDir,
+	}
+
+	_, err := ExtractResults(context.Background(), opts)
+	if err == nil {
+		t.Fatal("expected error for non-empty TargetDir, got nil")
+	}
+	if !strings.Contains(err.Error(), "not empty") {
+		t.Errorf("error should mention 'not empty', got: %v", err)
+	}
+	if cpCalled {
+		t.Error("docker cp should not have been called when pre-check fails")
+	}
+}
+
+func TestExtractResultsBranchCollisionError(t *testing.T) {
+	repoDir, baseSHA := setupTestRepo(t)
+
+	// Pre-create the branch that we'll try to use.
+	collisionBranch := "feature/already-exists"
+	gitEnv := append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com",
+	)
+	createCmd := exec.Command("git", "branch", collisionBranch)
+	createCmd.Dir = repoDir
+	createCmd.Env = gitEnv
+	if out, err := createCmd.CombinedOutput(); err != nil {
+		t.Fatalf("pre-creating branch: %s: %v", out, err)
+	}
+
+	cpCalled := false
+	orig := dockerCp
+	dockerCp = func(ctx context.Context, src, dst string) error {
+		cpCalled = true
+		return nil
+	}
+	t.Cleanup(func() { dockerCp = orig })
+
+	opts := ExtractOptions{
+		ContainerID:  "fake-container",
+		ProjectDir:   repoDir,
+		RunID:        "testrun-branchcollision",
+		BaseSHA:      baseSHA,
+		WorkflowName: "develop",
+		Result:       "succeeded",
+		Branch:       collisionBranch,
+	}
+
+	_, err := ExtractResults(context.Background(), opts)
+	if err == nil {
+		t.Fatal("expected error for branch collision, got nil")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("error should mention 'already exists', got: %v", err)
+	}
+	if cpCalled {
+		t.Error("docker cp should not have been called when branch pre-check fails")
+	}
+}
+
+func TestExtractResultsNoGitEmptyBaseSHA(t *testing.T) {
+	fixtureDir := makeFixtureDir(t)
+	overrideDockerCp(t, fixtureDir)
+
+	targetDir := t.TempDir()
+	opts := ExtractOptions{
+		ContainerID: "fake-container",
+		RunID:       "testrun-nogit-noshahasemptybassha",
+		NoGit:       true,
+		TargetDir:   targetDir,
+		// BaseSHA deliberately empty — must succeed in NoGit mode.
+	}
+
+	result, err := ExtractResults(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("NoGit with empty BaseSHA should succeed: %v", err)
+	}
+	if result.TargetDir != targetDir {
+		t.Errorf("TargetDir = %q, want %q", result.TargetDir, targetDir)
+	}
+}
+
+func TestExtractResultsNoGitIgnoresBranch(t *testing.T) {
+	fixtureDir := makeFixtureDir(t)
+	overrideDockerCp(t, fixtureDir)
+
+	targetDir := t.TempDir()
+	opts := ExtractOptions{
+		ContainerID: "fake-container",
+		RunID:       "testrun-nogit-branch-ignored",
+		NoGit:       true,
+		TargetDir:   targetDir,
+		Branch:      "feature/should-be-ignored",
+	}
+
+	result, err := ExtractResults(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("NoGit with Branch set should succeed: %v", err)
+	}
+	// Branch should be empty in result regardless of opts.Branch.
+	if result.Branch != "" {
+		t.Errorf("Branch = %q in NoGit mode, want empty", result.Branch)
+	}
+	if result.CommitSHA != "" {
+		t.Errorf("CommitSHA = %q in NoGit mode, want empty", result.CommitSHA)
+	}
+}
+
+// --- Existing helper-function tests (unchanged) ---
 
 func TestClassifyChanges(t *testing.T) {
 	input := `A	src/new_file.go
