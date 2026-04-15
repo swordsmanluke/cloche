@@ -10,6 +10,9 @@ bin/
 /cloched
 /cloche-agent
 
+# protoc installer — protoc should be installed from the system package manager
+protoc-*.zip
+
 # Beads task tracker (managed by bd, not git)
 .beads/
 
