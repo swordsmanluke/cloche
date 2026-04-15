@@ -87,3 +87,8 @@ func AgentNameForStep(projectDir, workflowName, stepName string) string {
 func (s *ClocheServer) SetExtractResultsFn(fn func(ctx context.Context, opts docker.ExtractOptions) (docker.ExtractResult, error)) {
 	s.extractResultsFn = fn
 }
+
+// SetPrepareWorktreeFn overrides the worktree-preparation function for testing.
+func (s *ClocheServer) SetPrepareWorktreeFn(fn func(ctx context.Context, opts docker.PrepareOptions) (docker.ExtractWorktree, error)) {
+	s.prepareWorktreeFn = fn
+}

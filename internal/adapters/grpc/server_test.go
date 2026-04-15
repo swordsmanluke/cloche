@@ -1267,10 +1267,13 @@ func TestServer_ExtractRun_ValidRun(t *testing.T) {
 	srv := server.NewClocheServer(store, rt)
 
 	targetDir := t.TempDir()
+	srv.SetPrepareWorktreeFn(func(_ context.Context, opts docker.PrepareOptions) (docker.ExtractWorktree, error) {
+		return docker.ExtractWorktree{Dir: opts.TargetDir, Branch: opts.Branch}, nil
+	})
 	srv.SetExtractResultsFn(func(_ context.Context, opts docker.ExtractOptions) (docker.ExtractResult, error) {
 		return docker.ExtractResult{
-			TargetDir: opts.TargetDir,
-			Branch:    "cloche/extract-valid-run",
+			TargetDir: opts.WorktreeDir,
+			Branch:    opts.Branch,
 			CommitSHA: "deadbeefcafe",
 		}, nil
 	})

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	osExec "os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -593,6 +594,113 @@ func TestDaemonExecutor_WorkflowStep_ExtractsLogsOnContextError(t *testing.T) {
 	// The CopyFrom path for container log extraction should have been called.
 	copied := rt.copiedFrom()
 	assert.NotEmpty(t, copied, "extractContainerLogs should have called CopyFrom even on context error")
+}
+
+// TestDaemonExecutor_WorkflowStep_PreCreatesWorktree verifies that the first
+// sub-workflow invocation for a given pool key pre-creates an extract worktree
+// and writes child_branch to the KV store, and that a second invocation for
+// the same pool key reuses it instead of creating another.
+func TestDaemonExecutor_WorkflowStep_PreCreatesWorktree(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Minimal git repo so gitHEAD(projectDir) returns a real SHA. Without this
+	// the pre-create path bails out and the hook is never called.
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := execCommand("git", args...)
+		cmd.Dir = tmpDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s: %v", args, out, err)
+		}
+	}
+	runGit("init")
+	runGit("config", "user.email", "test@test")
+	runGit("config", "user.name", "test")
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "README"), []byte("x"), 0644))
+	runGit("add", "README")
+	runGit("commit", "-m", "init")
+
+	containerWF := buildContainerWFForTest("develop")
+	allWFs := map[string]*domain.Workflow{"develop": containerWF}
+
+	rt := &copyTrackingRuntime{}
+	pool := docker.NewContainerPool(rt)
+
+	// Stub both docker hooks so the test doesn't touch real git/docker.
+	prepareCalls := 0
+	origPrepare := prepareExtractWorktreeFn
+	prepareExtractWorktreeFn = func(_ context.Context, opts docker.PrepareOptions) (docker.ExtractWorktree, error) {
+		prepareCalls++
+		return docker.ExtractWorktree{Dir: opts.TargetDir, Branch: opts.Branch}, nil
+	}
+	t.Cleanup(func() { prepareExtractWorktreeFn = origPrepare })
+
+	origExtract := extractResultsFn
+	extractResultsFn = func(_ context.Context, opts docker.ExtractOptions) (docker.ExtractResult, error) {
+		return docker.ExtractResult{TargetDir: opts.WorktreeDir, Branch: opts.Branch}, nil
+	}
+	t.Cleanup(func() { extractResultsFn = origExtract })
+
+	store := &recordingRunStore{ctxKeys: map[string]string{}}
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		Pool:       pool,
+		Store:      store,
+		ProjectDir: tmpDir,
+		TaskID:     "task-pre",
+		AttemptID:  "att-pre",
+		AllWFs:     allWFs,
+	})
+
+	step := &domain.Step{
+		Name:    "develop",
+		Type:    domain.StepTypeWorkflow,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"workflow_name": "develop"},
+	}
+
+	mainWF := buildHostWFForTest("main")
+	// Use cancelled ctx so eng.Run fails fast — we're only verifying the
+	// pre-create side effect, which happens BEFORE eng.Run.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := de.Execute(engine.WithWorkflow(ctx, mainWF), step)
+	require.NoError(t, err)
+
+	// Expectation: prepare called once; KV got child_branch; worktree map populated.
+	assert.Equal(t, 1, prepareCalls, "first invocation should call prepare once")
+	poolKey := "att-pre:" + containerWF.ContainerID()
+	wt, exists := de.worktrees[poolKey]
+	require.True(t, exists, "worktree should be tracked for pool key")
+	expectedBranch := "cloche/att-pre-" + containerWF.ContainerID()
+	assert.Equal(t, expectedBranch, wt.Branch)
+	assert.Equal(t, expectedBranch, store.ctxKeys["child_branch"])
+
+	// Second invocation for the same pool key must NOT re-prepare.
+	_, err = de.Execute(engine.WithWorkflow(ctx, mainWF), step)
+	require.NoError(t, err)
+	assert.Equal(t, 1, prepareCalls, "second invocation must reuse the existing worktree")
+}
+
+// recordingRunStore is a minimal RunStore that only supports SetContextKey —
+// used to assert which KV keys the executor writes. All other methods are no-ops.
+type recordingRunStore struct {
+	ports.RunStore
+	mu      sync.Mutex
+	ctxKeys map[string]string
+}
+
+func (s *recordingRunStore) SetContextKey(_ context.Context, _, _, _, key, value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ctxKeys[key] = value
+	return nil
+}
+
+// execCommand is a thin wrapper so tests don't have to import os/exec at call sites.
+func execCommand(name string, args ...string) *osExec.Cmd {
+	return osExec.Command(name, args...)
 }
 
 // TestDaemonExecutor_WorkflowStep_NoExtractionWhenNoSession verifies that

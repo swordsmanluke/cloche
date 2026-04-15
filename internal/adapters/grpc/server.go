@@ -59,35 +59,48 @@ type ClocheServer struct {
 	// extractResultsFn is the function used to extract run results. Defaults to
 	// docker.ExtractResults; may be overridden in tests.
 	extractResultsFn func(ctx context.Context, opts docker.ExtractOptions) (docker.ExtractResult, error)
+
+	// prepareWorktreeFn creates the extraction worktree+branch for a run.
+	// Defaults to docker.PrepareExtractWorktree; may be overridden in tests.
+	prepareWorktreeFn func(ctx context.Context, opts docker.PrepareOptions) (docker.ExtractWorktree, error)
+
+	// extractWorktrees tracks pre-created worktrees for standalone runs, keyed
+	// by run ID. Populated by launchAndTrack after BaseSHA is recorded; consumed
+	// by the agent-reporting path on run completion.
+	extractWorktrees map[string]docker.ExtractWorktree
 }
 
 func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *ClocheServer {
 	return &ClocheServer{
-		store:            store,
-		container:        container,
-		pollCoord:        host.NewPollCoordinator(),
-		runIDs:           make(map[string]string),
-		containerRun:     make(map[string]string),
-		hostCancels:      make(map[string]context.CancelFunc),
-		loops:            make(map[string]*host.Loop),
-		activityLoggers:  make(map[string]*activitylog.Logger),
-		extractResultsFn: docker.ExtractResults,
+		store:             store,
+		container:         container,
+		pollCoord:         host.NewPollCoordinator(),
+		runIDs:            make(map[string]string),
+		containerRun:      make(map[string]string),
+		hostCancels:       make(map[string]context.CancelFunc),
+		loops:             make(map[string]*host.Loop),
+		activityLoggers:   make(map[string]*activitylog.Logger),
+		extractResultsFn:  docker.ExtractResults,
+		prepareWorktreeFn: docker.PrepareExtractWorktree,
+		extractWorktrees:  make(map[string]docker.ExtractWorktree),
 	}
 }
 
 func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureStore, container ports.ContainerRuntime, defaultImage string) *ClocheServer {
 	return &ClocheServer{
-		store:            store,
-		captures:         captures,
-		container:        container,
-		defaultImage:     defaultImage,
-		pollCoord:        host.NewPollCoordinator(),
-		runIDs:           make(map[string]string),
-		containerRun:     make(map[string]string),
-		hostCancels:      make(map[string]context.CancelFunc),
-		loops:            make(map[string]*host.Loop),
-		activityLoggers:  make(map[string]*activitylog.Logger),
-		extractResultsFn: docker.ExtractResults,
+		store:             store,
+		captures:          captures,
+		container:         container,
+		defaultImage:      defaultImage,
+		pollCoord:         host.NewPollCoordinator(),
+		runIDs:            make(map[string]string),
+		containerRun:      make(map[string]string),
+		hostCancels:       make(map[string]context.CancelFunc),
+		loops:             make(map[string]*host.Loop),
+		activityLoggers:   make(map[string]*activitylog.Logger),
+		extractResultsFn:  docker.ExtractResults,
+		prepareWorktreeFn: docker.PrepareExtractWorktree,
+		extractWorktrees:  make(map[string]docker.ExtractWorktree),
 	}
 }
 
@@ -1327,6 +1340,26 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 		_ = s.store.UpdateRun(ctx, run)
 	}
 
+	// Pre-create the extraction worktree+branch now that we have baseSHA. The
+	// agent-reporting path will extract into it on run completion. Best-effort:
+	// a failure here is logged but does not fail the run (extraction will log
+	// an error later if the worktree is missing).
+	if baseSHA != "" {
+		wt, err := s.prepareWorktreeFn(ctx, docker.PrepareOptions{
+			ProjectDir: req.ProjectDir,
+			BaseSHA:    baseSHA,
+			TargetDir:  filepath.Join(req.ProjectDir, ".gitworktrees", "cloche", runID),
+			Branch:     "cloche/" + runID,
+		})
+		if err != nil {
+			log.Printf("run %s: could not pre-create extract worktree: %v", runID, err)
+		} else {
+			s.mu.Lock()
+			s.extractWorktrees[runID] = wt
+			s.mu.Unlock()
+		}
+	}
+
 	s.trackRun(runID, containerID, req.ProjectDir, workflowName, keepContainer)
 }
 
@@ -1440,7 +1473,8 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 
 	// Extract results to git branch BEFORE finalizing state, so that
 	// WaitRun callers (e.g. host workflow merge step) see branches exist
-	// before the run is marked complete.
+	// before the run is marked complete. The worktree was pre-created in
+	// launchAndTrack when the run started.
 	resultLabel := reportedResult
 	if resultLabel == "" {
 		if exitCode == 0 {
@@ -1451,22 +1485,29 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	}
 	{
 		extractRun, _ := s.store.GetRun(ctx, runID)
-		if extractRun != nil && extractRun.BaseSHA != "" {
-			log.Printf("run %s: extracting results to branch cloche/%s (baseSHA=%s)", runID, runID, extractRun.BaseSHA)
-			if _, err := docker.ExtractResults(ctx, docker.ExtractOptions{
+		s.mu.Lock()
+		wt, hasWorktree := s.extractWorktrees[runID]
+		s.mu.Unlock()
+		switch {
+		case extractRun == nil || extractRun.BaseSHA == "":
+			log.Printf("run %s: skipping branch extraction (baseSHA empty or run not found)", runID)
+		case !hasWorktree:
+			log.Printf("run %s: skipping branch extraction (no pre-created worktree)", runID)
+		default:
+			log.Printf("run %s: extracting results to branch %s (baseSHA=%s)", runID, wt.Branch, extractRun.BaseSHA)
+			if _, err := s.extractResultsFn(ctx, docker.ExtractOptions{
 				ContainerID:  containerID,
-				ProjectDir:   extractRun.ProjectDir,
-				RunID:        runID,
+				WorktreeDir:  wt.Dir,
+				Branch:       wt.Branch,
 				BaseSHA:      extractRun.BaseSHA,
+				RunID:        runID,
 				WorkflowName: workflowName,
 				Result:       resultLabel,
 			}); err != nil {
 				log.Printf("run %s: failed to extract results to branch: %v", runID, err)
 			} else {
-				log.Printf("run %s: branch cloche/%s created successfully", runID, runID)
+				log.Printf("run %s: branch %s updated", runID, wt.Branch)
 			}
-		} else {
-			log.Printf("run %s: skipping branch extraction (baseSHA empty or run not found)", runID)
 		}
 	}
 
@@ -1536,6 +1577,17 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 			log.Printf("run %s: failed to remove container %s: %v", runID, containerID, err)
 		} else {
 			log.Printf("run %s: removed container %s", runID, containerID)
+		}
+		// Remove the pre-created extraction worktree alongside the container.
+		// On failure or --keep-container, keep it around for inspection.
+		s.mu.Lock()
+		wt, hasWorktree := s.extractWorktrees[runID]
+		if hasWorktree {
+			delete(s.extractWorktrees, runID)
+		}
+		s.mu.Unlock()
+		if hasWorktree && runFinal != nil {
+			removeExtractWorktree(ctx, runFinal.ProjectDir, wt)
 		}
 	}
 
@@ -2905,7 +2957,9 @@ func (s *ClocheServer) ExtractRun(ctx context.Context, req *pb.ExtractRunRequest
 		return nil, fmt.Errorf("target %q is not empty", targetDir)
 	}
 
-	// Pre-check: branch must not already exist (git mode only).
+	// Pre-check: branch must not already exist (git mode only). Done inside
+	// PrepareExtractWorktree too, but we want the CLI to see the precise
+	// error message rather than a git-worktree-add failure.
 	if !req.NoGit {
 		checkRef := exec.CommandContext(ctx, "git", "show-ref", "--verify", "refs/heads/"+branch)
 		checkRef.Dir = run.ProjectDir
@@ -2915,19 +2969,30 @@ func (s *ClocheServer) ExtractRun(ctx context.Context, req *pb.ExtractRunRequest
 		}
 	}
 
-	// Call ExtractResults with Persist: true so the worktree stays.
-	result, err := s.extractResultsFn(ctx, docker.ExtractOptions{
+	opts := docker.ExtractOptions{
 		ContainerID:  run.ContainerID,
-		ProjectDir:   run.ProjectDir,
-		RunID:        run.ID,
 		BaseSHA:      run.BaseSHA,
+		RunID:        run.ID,
 		WorkflowName: run.WorkflowName,
 		Result:       string(run.State),
 		TargetDir:    targetDir,
-		Branch:       branch,
 		NoGit:        req.NoGit,
-		Persist:      true,
-	})
+	}
+	if !req.NoGit {
+		wt, err := s.prepareWorktreeFn(ctx, docker.PrepareOptions{
+			ProjectDir: run.ProjectDir,
+			BaseSHA:    run.BaseSHA,
+			TargetDir:  targetDir,
+			Branch:     branch,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("preparing worktree: %w", err)
+		}
+		opts.WorktreeDir = wt.Dir
+		opts.Branch = wt.Branch
+	}
+
+	result, err := s.extractResultsFn(ctx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("extracting run: %w", err)
 	}

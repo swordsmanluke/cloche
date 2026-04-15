@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -66,6 +67,11 @@ type DaemonExecutor struct {
 	// can clean them all up after the host workflow finishes.
 	poolKeys map[string]bool
 
+	// worktrees tracks pre-created extraction worktrees keyed by pool key. One
+	// worktree per container (pool key) — shared across sub-workflows that
+	// reuse the same container.id within an attempt.
+	worktrees map[string]docker.ExtractWorktree
+
 	// closed tracks whether Close() has already been called.
 	closed bool
 }
@@ -102,15 +108,25 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 		allWFs:           cfg.AllWFs,
 		resumeMode:       cfg.ResumeMode,
 		onContainerStart: cfg.OnContainerStart,
+		worktrees:        make(map[string]docker.ExtractWorktree),
 	}
 }
 
 // Ensure DaemonExecutor satisfies engine.StepExecutor.
 var _ engine.StepExecutor = (*DaemonExecutor)(nil)
 
+// Package-level hooks so tests can stub out the docker extract functions
+// without standing up real containers or git operations.
+var (
+	prepareExtractWorktreeFn = docker.PrepareExtractWorktree
+	extractResultsFn         = docker.ExtractResults
+)
+
 // Close cleans up all container pool entries used by this executor. Successful
 // containers are stopped and removed; failed containers are stopped but kept
-// for debugging. Must be called after the host workflow finishes.
+// for debugging. Pre-created extraction worktrees follow the same policy:
+// removed on success, kept on failure. Must be called after the host workflow
+// finishes.
 func (d *DaemonExecutor) Close(succeeded bool) {
 	if d.closed || d.pool == nil {
 		return
@@ -120,6 +136,29 @@ func (d *DaemonExecutor) Close(succeeded bool) {
 	for key := range d.poolKeys {
 		if err := d.pool.CleanupAttempt(ctx, key, false, succeeded); err != nil {
 			log.Printf("daemon executor: cleanup pool key %s: %v", key, err)
+		}
+	}
+	if succeeded {
+		for key, wt := range d.worktrees {
+			removeExtractWorktree(ctx, d.projectDir, wt)
+			delete(d.worktrees, key)
+		}
+	}
+}
+
+// removeExtractWorktree removes a pre-created extraction worktree and its
+// branch. Best-effort: errors are logged but not returned.
+func removeExtractWorktree(ctx context.Context, projectDir string, wt docker.ExtractWorktree) {
+	rmCmd := exec.CommandContext(ctx, "git", "worktree", "remove", "--force", wt.Dir)
+	rmCmd.Dir = projectDir
+	if out, err := rmCmd.CombinedOutput(); err != nil {
+		log.Printf("daemon executor: git worktree remove %s: %s: %v", wt.Dir, out, err)
+	}
+	if wt.Branch != "" {
+		brCmd := exec.CommandContext(ctx, "git", "branch", "-D", wt.Branch)
+		brCmd.Dir = projectDir
+		if out, err := brCmd.CombinedOutput(); err != nil {
+			log.Printf("daemon executor: git branch -D %s: %s: %v", wt.Branch, out, err)
 		}
 	}
 }
@@ -154,9 +193,11 @@ func (d *DaemonExecutor) Execute(ctx context.Context, step *domain.Step) (domain
 
 // executeWorkflowStep looks up the target workflow by name, then runs it as a
 // sub-workflow using this same executor, mapping the final state to a step result.
-// For container sub-workflows, it extracts the container's workspace to a git
-// branch and sets child_run_id in the KV store so downstream merge steps can
-// find it.
+// For container sub-workflows, it pre-creates a shared extraction worktree and
+// branch on first encounter of a pool key (so multiple sub-workflows that reuse
+// the same container.id share one worktree), extracts the container workspace
+// into it after the sub-workflow completes, and sets child_run_id / child_branch
+// in the KV store so downstream merge steps can find the result.
 func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
 	targetName := step.Config["workflow_name"]
 	if targetName == "" {
@@ -168,11 +209,7 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		return domain.StepResult{}, fmt.Errorf("workflow step %q: workflow %q not found in project", step.Name, targetName)
 	}
 
-	// Capture the base SHA before the sub-workflow runs so we can create a
-	// branch from it after the container modifies files.
-	baseSHA := gitHEAD(d.projectDir)
-
-	// Generate a run ID for the child workflow (used as the branch name).
+	// Generate a run ID for the child workflow.
 	childRunID := domain.GenerateRunID(targetName, d.attemptID)
 
 	log.Printf("daemon executor: running sub-workflow %q for step %q (childRunID=%s)", targetName, step.Name, childRunID)
@@ -183,8 +220,9 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 	// so subsequent sub-workflows sharing the same container.id can reuse it.
 	// Final cleanup of successful containers happens in Close().
 	succeeded := false
+	var poolKey string
 	if targetWF.Location == domain.LocationContainer && d.pool != nil {
-		poolKey := d.attemptID + ":" + targetWF.ContainerID()
+		poolKey = d.attemptID + ":" + targetWF.ContainerID()
 		if d.poolKeys == nil {
 			d.poolKeys = make(map[string]bool)
 		}
@@ -196,6 +234,16 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 				_ = d.pool.CleanupAttempt(cleanupCtx, poolKey, false, false)
 			}
 		}()
+
+		// Pre-create the extraction worktree+branch for this pool key on the
+		// first sub-workflow that uses it. Subsequent sub-workflows reusing
+		// the same container share this same worktree — each extraction adds
+		// a commit to the shared branch.
+		if _, exists := d.worktrees[poolKey]; !exists {
+			if err := d.prepareExtractWorktree(ctx, poolKey, targetWF.ContainerID()); err != nil {
+				log.Printf("daemon executor: prepare extract worktree: %v", err)
+			}
+		}
 	}
 
 	eng := engine.New(d)
@@ -208,7 +256,6 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		// extraction if a session actually exists (i.e. the container started
 		// before the failure).
 		if targetWF.Location == domain.LocationContainer && d.pool != nil {
-			poolKey := d.attemptID + ":" + targetWF.ContainerID()
 			if session := d.pool.GetSession(poolKey); session != nil {
 				bgCtx := context.Background()
 				d.extractContainerLogs(bgCtx, session.ContainerID, step.Name)
@@ -227,30 +274,30 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		resultLabel = "succeeded"
 	}
 
-	// For container sub-workflows, extract the workspace to a git branch
-	// and copy logs to the host log directory.
+	// For container sub-workflows, extract the workspace into the pre-created
+	// worktree and copy logs to the host log directory.
 	if targetWF.Location == domain.LocationContainer {
-		poolKey := d.attemptID + ":" + targetWF.ContainerID()
-
 		// Get the session so we can access the container for extraction.
 		session, sessErr := d.pool.SessionFor(ctx, poolKey, ports.ContainerConfig{})
 		if sessErr != nil {
 			log.Printf("daemon executor: could not get session for extraction: %v", sessErr)
 		}
 
-		if baseSHA != "" && session != nil {
-			log.Printf("daemon executor: extracting results to branch cloche/%s (baseSHA=%s)", childRunID, baseSHA)
-			if _, err := docker.ExtractResults(ctx, docker.ExtractOptions{
+		wt, hasWorktree := d.worktrees[poolKey]
+		if hasWorktree && session != nil {
+			log.Printf("daemon executor: extracting results to branch %s", wt.Branch)
+			if _, err := extractResultsFn(ctx, docker.ExtractOptions{
 				ContainerID:  session.ContainerID,
-				ProjectDir:   d.projectDir,
+				WorktreeDir:  wt.Dir,
+				Branch:       wt.Branch,
+				BaseSHA:      gitHEAD(d.projectDir),
 				RunID:        childRunID,
-				BaseSHA:      baseSHA,
 				WorkflowName: targetName,
 				Result:       resultLabel,
 			}); err != nil {
 				log.Printf("daemon executor: failed to extract results: %v", err)
 			} else {
-				log.Printf("daemon executor: branch cloche/%s created successfully", childRunID)
+				log.Printf("daemon executor: branch %s updated", wt.Branch)
 			}
 		}
 
@@ -265,8 +312,8 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 			}
 		}
 
-		// Set child_run_id so downstream host steps (merge-to-base.sh) can
-		// find the branch.
+		// Set child_run_id (latest child) so existing host steps still have
+		// a run handle to work with.
 		if d.store != nil && d.taskID != "" {
 			var kvRunID string
 			if d.hostExec != nil {
@@ -282,6 +329,38 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		return domain.StepResult{Result: "success"}, nil
 	}
 	return domain.StepResult{Result: "fail"}, nil
+}
+
+// prepareExtractWorktree pre-creates the shared extraction worktree+branch for
+// a pool key and records it on the executor. Called once per pool key, on the
+// first sub-workflow that uses the container. Also writes child_branch to the
+// KV store so host-workflow scripts can find the branch.
+func (d *DaemonExecutor) prepareExtractWorktree(ctx context.Context, poolKey, containerID string) error {
+	baseSHA := gitHEAD(d.projectDir)
+	if baseSHA == "" {
+		return fmt.Errorf("could not resolve base SHA for %s", d.projectDir)
+	}
+	name := d.attemptID + "-" + containerID
+	wt, err := prepareExtractWorktreeFn(ctx, docker.PrepareOptions{
+		ProjectDir: d.projectDir,
+		BaseSHA:    baseSHA,
+		TargetDir:  filepath.Join(d.projectDir, ".gitworktrees", "cloche", name),
+		Branch:     "cloche/" + name,
+	})
+	if err != nil {
+		return err
+	}
+	d.worktrees[poolKey] = wt
+	log.Printf("daemon executor: prepared extract worktree at %s on branch %s", wt.Dir, wt.Branch)
+
+	if d.store != nil && d.taskID != "" {
+		var kvRunID string
+		if d.hostExec != nil {
+			kvRunID = d.hostExec.HostRunID
+		}
+		_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, kvRunID, "child_branch", wt.Branch)
+	}
+	return nil
 }
 
 

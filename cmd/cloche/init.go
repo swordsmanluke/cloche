@@ -126,6 +126,9 @@ var defaultClocheignore = `# Files excluded from the container workspace.
 .cloche/logs/
 .cloche/runs/
 
+# Extraction worktrees live on the host.
+.gitworktrees/
+
 # Common large/generated directories
 node_modules/
 .venv/
