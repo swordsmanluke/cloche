@@ -171,7 +171,7 @@ func extractGit(ctx context.Context, opts ExtractOptions) (ExtractResult, error)
 		return ExtractResult{}, fmt.Errorf("copying to worktree: %s: %w", out, err)
 	}
 
-	// 4. Create branch, add, commit
+	// 4. Create branch, add, commit.
 	gitEnv := append(os.Environ(),
 		"GIT_AUTHOR_NAME=cloche", "GIT_AUTHOR_EMAIL=cloche@local",
 		"GIT_COMMITTER_NAME=cloche", "GIT_COMMITTER_EMAIL=cloche@local",
