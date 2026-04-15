@@ -5,6 +5,9 @@ set -euo pipefail
 
 PROJECT_DIR="${CLOCHE_PROJECT_DIR:-.}"
 
+# Ensure we're not using the env token
+unset GITHUB_TOKEN
+
 if ! git -C "$PROJECT_DIR" diff-index --quiet HEAD -- 2>/dev/null || \
    [ -n "$(git -C "$PROJECT_DIR" status --porcelain)" ]; then
   echo "error: working tree has uncommitted changes" >&2
