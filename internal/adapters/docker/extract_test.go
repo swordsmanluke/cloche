@@ -588,14 +588,6 @@ func setupTestGitRepo(t *testing.T) (repoDir, baseSHA string) {
 	return repoDir, strings.TrimSpace(string(out))
 }
 
-// branchExists reports whether branch exists in repoDir.
-func branchExists(t *testing.T, repoDir, branch string) bool {
-	t.Helper()
-	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
-	cmd.Dir = repoDir
-	return cmd.Run() == nil
-}
-
 // TestExtractResultsOptions is a table-driven test covering the new options
 // added to ExtractOptions: TargetDir, Branch, NoGit, and Persist.
 func TestExtractResultsOptions(t *testing.T) {
