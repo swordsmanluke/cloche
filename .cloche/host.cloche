@@ -86,3 +86,66 @@ workflow "release-task" {
   release-task:success -> done
   release-task:fail    -> abort
 }
+
+workflow "changelog" {
+  host {
+    agent_command = "claude"
+  }
+
+  step guard {
+    run     = "bash .cloche/scripts/changelog-guard.sh"
+    results = [success, fail]
+  }
+
+  step collect-commits {
+    run     = "bash .cloche/scripts/changelog-collect-commits.sh"
+    results = [success, fail]
+  }
+
+  step draft {
+    prompt  = file(".cloche/prompts/draft-changelog.md")
+    timeout = "15m"
+    results = [success, fail]
+  }
+
+  step commit {
+    run     = "bash .cloche/scripts/changelog-commit.sh"
+    results = [success, fail]
+  }
+
+  guard:success           -> collect-commits
+  guard:fail              -> abort
+  collect-commits:success -> draft
+  collect-commits:fail    -> abort
+  draft:success           -> commit
+  draft:fail              -> abort
+  commit:success          -> done
+  commit:fail             -> abort
+}
+
+workflow "release" {
+  host {}
+
+  step guard {
+    run     = "bash .cloche/scripts/release-guard.sh"
+    results = [success, fail]
+  }
+
+  step tag {
+    run     = "bash .cloche/scripts/release-tag.sh"
+    results = [success, fail]
+  }
+
+  step publish {
+    run     = "bash .cloche/scripts/release-publish.sh"
+    results = [success, skipped, fail]
+  }
+
+  guard:success   -> tag
+  guard:fail      -> abort
+  tag:success     -> publish
+  tag:fail        -> abort
+  publish:success -> done
+  publish:skipped -> done
+  publish:fail    -> abort
+}

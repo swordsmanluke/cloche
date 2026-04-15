@@ -99,3 +99,66 @@ When creating bead tickets, assess whether the change requires a minor version b
 major feature or backward-incompatible change). If so, tag the ticket so the version bump
 is handled during the _finalize_ workflow while merging. All other changes only bump the
 build number. Never bump the major version unless explicitly told to.
+
+## Cutting a release
+
+Releases are tagged commits on `main` (`v<MAJOR>.<MINOR>.<BUILD>`) with an attached
+CHANGELOG entry and GitHub Release. The process is two host workflows run on demand —
+`changelog` drafts and commits the release notes, `release` tags and publishes.
+
+### Workflow
+
+1. (Optional) Bump minor or major if the release warrants a clean number:
+
+   ```bash
+   bumpver minor && git add internal/version/VERSION && git commit -m "Version $(cat internal/version/VERSION)"
+   ```
+
+2. Generate and commit the changelog:
+
+   ```bash
+   cloche run --workflow changelog
+   ```
+
+   This walks `<last-release-tag>..HEAD`, filters out per-task `Version X.Y.Z` and
+   `cloche run ...` log commits, runs an agent to draft summary + detailed changelogs
+   (flagging breaking changes to the DSL / CLI / protocol), then prepends the drafts
+   to `CHANGELOG.md` and `docs/CHANGELOG-DETAILED.md` and commits them.
+
+   Inspect the committed file (`git show HEAD -- CHANGELOG.md`). If the draft is
+   wrong, either amend manually (`$EDITOR CHANGELOG.md && git commit --amend`) or
+   re-run the workflow — re-running replaces the top entry for the same version
+   rather than stacking.
+
+3. Tag and publish:
+
+   ```bash
+   cloche run --workflow release
+   ```
+
+   Creates an annotated `v<VERSION>` tag with the CHANGELOG entry as its message,
+   pushes `main` and the tag to origin, and creates a GitHub Release via `gh`.
+
+### Dry run
+
+Rehearse the release without touching the remote:
+
+```bash
+CLOCHE_RELEASE_DRY_RUN=1 cloche run --workflow release
+```
+
+The local tag is still created; `publish` emits `skipped`. Clean up with
+`git tag -d v<VERSION>` before the real run.
+
+### Recovery
+
+If `release-tag` succeeds but `release-publish` fails partway (e.g. network error), the
+local tag and commits remain. Finish by hand:
+
+```bash
+VERSION=$(cat internal/version/VERSION)
+git push origin main
+git push origin "v$VERSION"
+gh release create "v$VERSION" --title "v$VERSION" \
+  --notes-file "$(cloche get release_notes_path)"
+```
