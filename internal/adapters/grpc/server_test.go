@@ -1250,6 +1250,135 @@ func TestServer_DeleteContainer_RunWithNoContainer(t *testing.T) {
 	assert.Contains(t, err.Error(), "no associated container")
 }
 
+func TestServer_ExtractRun_ValidRun(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	run := domain.NewRun("extract-valid-run", "develop")
+	run.ContainerID = "container-extract-abc"
+	run.BaseSHA = "abc123sha"
+	run.ProjectDir = t.TempDir()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	rt := &mockInspectRuntime{}
+	srv := server.NewClocheServer(store, rt)
+
+	targetDir := t.TempDir()
+	srv.SetExtractResultsFn(func(_ context.Context, opts docker.ExtractOptions) (docker.ExtractResult, error) {
+		return docker.ExtractResult{
+			TargetDir: opts.TargetDir,
+			Branch:    "cloche/extract-valid-run",
+			CommitSHA: "deadbeefcafe",
+		}, nil
+	})
+
+	resp, err := srv.ExtractRun(ctx, &pb.ExtractRunRequest{
+		Id:    "extract-valid-run",
+		AtDir: targetDir,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, targetDir, resp.TargetDir)
+	assert.Equal(t, "cloche/extract-valid-run", resp.Branch)
+	assert.Equal(t, "deadbeefcafe", resp.CommitSha)
+}
+
+func TestServer_ExtractRun_NonexistentID(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	rt := &mockInspectRuntime{}
+	srv := server.NewClocheServer(store, rt)
+
+	_, err = srv.ExtractRun(context.Background(), &pb.ExtractRunRequest{Id: "no-such-run"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no run for id")
+}
+
+func TestServer_ExtractRun_EmptyContainerID(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Run has no container ID set.
+	run := domain.NewRun("extract-no-cid-run", "develop")
+	run.BaseSHA = "abc123"
+	run.ProjectDir = t.TempDir()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	rt := &mockInspectRuntime{}
+	srv := server.NewClocheServer(store, rt)
+
+	_, err = srv.ExtractRun(ctx, &pb.ExtractRunRequest{Id: "extract-no-cid-run"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "has been removed")
+}
+
+func TestServer_ExtractRun_NoGitWithEmptyBaseSHA_Succeeds(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Run has a container ID but no BaseSHA — NoGit mode should succeed.
+	run := domain.NewRun("extract-nogit-run", "develop")
+	run.ContainerID = "container-nogit"
+	run.BaseSHA = "" // no BaseSHA
+	run.ProjectDir = t.TempDir()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	rt := &mockInspectRuntime{}
+	srv := server.NewClocheServer(store, rt)
+
+	targetDir := t.TempDir()
+	srv.SetExtractResultsFn(func(_ context.Context, opts docker.ExtractOptions) (docker.ExtractResult, error) {
+		return docker.ExtractResult{
+			TargetDir: opts.TargetDir,
+		}, nil
+	})
+
+	resp, err := srv.ExtractRun(ctx, &pb.ExtractRunRequest{
+		Id:    "extract-nogit-run",
+		AtDir: targetDir,
+		NoGit: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, targetDir, resp.TargetDir)
+	assert.Empty(t, resp.Branch)
+	assert.Empty(t, resp.CommitSha)
+}
+
+func TestServer_ExtractRun_GitModeWithEmptyBaseSHA_Fails(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Run has a container ID but no BaseSHA — git mode should fail.
+	run := domain.NewRun("extract-nosha-run", "develop")
+	run.ContainerID = "container-nosha"
+	run.BaseSHA = "" // no BaseSHA
+	run.ProjectDir = t.TempDir()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	rt := &mockInspectRuntime{}
+	srv := server.NewClocheServer(store, rt)
+
+	_, err = srv.ExtractRun(ctx, &pb.ExtractRunRequest{
+		Id:    "extract-nosha-run",
+		NoGit: false,
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no base SHA recorded")
+}
+
 func TestServer_RunWorkflow_EnsureImageFailure(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

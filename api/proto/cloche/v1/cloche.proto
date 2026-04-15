@@ -15,6 +15,7 @@ service ClocheService {
   rpc GetAttempt(GetAttemptRequest) returns (GetAttemptResponse);
   rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
   rpc DeleteContainer(DeleteContainerRequest) returns (DeleteContainerResponse);
+  rpc ExtractRun(ExtractRunRequest) returns (ExtractRunResponse);
 
   rpc EnableLoop(EnableLoopRequest) returns (EnableLoopResponse);
   rpc DisableLoop(DisableLoopRequest) returns (DisableLoopResponse);
@@ -156,6 +157,19 @@ message DeleteContainerRequest {
 }
 
 message DeleteContainerResponse {}
+
+message ExtractRunRequest {
+  string id     = 1; // run/task/attempt/composite
+  string at_dir = 2; // optional override
+  string branch = 3; // optional override
+  bool   no_git = 4;
+}
+
+message ExtractRunResponse {
+  string target_dir = 1;
+  string branch     = 2; // empty when no_git
+  string commit_sha = 3; // empty when no_git
+}
 
 message ListRunsRequest {
   bool all = 1;

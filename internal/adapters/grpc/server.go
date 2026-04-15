@@ -55,33 +55,39 @@ type ClocheServer struct {
 	hostCancels     map[string]context.CancelFunc // run_id -> cancel fn (for host runs)
 	loops           map[string]*host.Loop         // project_dir -> orchestration loop
 	activityLoggers map[string]*activitylog.Logger // project_dir -> activity logger
+
+	// extractResultsFn is the function used to extract run results. Defaults to
+	// docker.ExtractResults; may be overridden in tests.
+	extractResultsFn func(ctx context.Context, opts docker.ExtractOptions) (docker.ExtractResult, error)
 }
 
 func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *ClocheServer {
 	return &ClocheServer{
-		store:           store,
-		container:       container,
-		pollCoord:       host.NewPollCoordinator(),
-		runIDs:          make(map[string]string),
-		containerRun:    make(map[string]string),
-		hostCancels:     make(map[string]context.CancelFunc),
-		loops:           make(map[string]*host.Loop),
-		activityLoggers: make(map[string]*activitylog.Logger),
+		store:            store,
+		container:        container,
+		pollCoord:        host.NewPollCoordinator(),
+		runIDs:           make(map[string]string),
+		containerRun:     make(map[string]string),
+		hostCancels:      make(map[string]context.CancelFunc),
+		loops:            make(map[string]*host.Loop),
+		activityLoggers:  make(map[string]*activitylog.Logger),
+		extractResultsFn: docker.ExtractResults,
 	}
 }
 
 func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureStore, container ports.ContainerRuntime, defaultImage string) *ClocheServer {
 	return &ClocheServer{
-		store:           store,
-		captures:        captures,
-		container:       container,
-		defaultImage:    defaultImage,
-		pollCoord:       host.NewPollCoordinator(),
-		runIDs:          make(map[string]string),
-		containerRun:    make(map[string]string),
-		hostCancels:     make(map[string]context.CancelFunc),
-		loops:           make(map[string]*host.Loop),
-		activityLoggers: make(map[string]*activitylog.Logger),
+		store:            store,
+		captures:         captures,
+		container:        container,
+		defaultImage:     defaultImage,
+		pollCoord:        host.NewPollCoordinator(),
+		runIDs:           make(map[string]string),
+		containerRun:     make(map[string]string),
+		hostCancels:      make(map[string]context.CancelFunc),
+		loops:            make(map[string]*host.Loop),
+		activityLoggers:  make(map[string]*activitylog.Logger),
+		extractResultsFn: docker.ExtractResults,
 	}
 }
 
@@ -2843,6 +2849,93 @@ func (s *ClocheServer) DeleteContainer(ctx context.Context, req *pb.DeleteContai
 	}
 
 	return &pb.DeleteContainerResponse{}, nil
+}
+
+func (s *ClocheServer) ExtractRun(ctx context.Context, req *pb.ExtractRunRequest) (*pb.ExtractRunResponse, error) {
+	if s.container == nil {
+		return nil, fmt.Errorf("no container runtime configured")
+	}
+
+	id := req.Id
+	if id == "" {
+		return nil, fmt.Errorf("id is required")
+	}
+
+	// Resolve the ID to a run using the same resolver as the status command.
+	runID, _, err := s.resolveRunIDFromID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("no run for id %q", id)
+	}
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil {
+		return nil, fmt.Errorf("no run for id %q", id)
+	}
+
+	// Validate: container ID must be set.
+	if run.ContainerID == "" {
+		return nil, fmt.Errorf("container for run %s has been removed; re-run the workflow with --keep-container to retain it", run.ID)
+	}
+
+	// Validate: container must still exist.
+	if _, err := s.container.Inspect(ctx, run.ContainerID); err != nil {
+		return nil, fmt.Errorf("container for run %s has been removed; re-run the workflow with --keep-container to retain it", run.ID)
+	}
+
+	// Validate: BaseSHA required in git mode.
+	if !req.NoGit && run.BaseSHA == "" {
+		return nil, fmt.Errorf("run %s has no base SHA recorded; use --no-git to extract files only", run.ID)
+	}
+
+	// Resolve target dir and branch.
+	targetDir := req.AtDir
+	if targetDir == "" && !req.NoGit {
+		targetDir = filepath.Join(run.ProjectDir, ".gitworktrees", "cloche", run.ID)
+	} else if targetDir == "" {
+		// NoGit requires --at; but validation of that is CLI-side.
+		// If it reaches here without a target dir in no-git mode, synthesize one.
+		targetDir = filepath.Join(run.ProjectDir, ".gitworktrees", "cloche", run.ID)
+	}
+	branch := req.Branch
+	if branch == "" {
+		branch = "cloche/" + run.ID
+	}
+
+	// Pre-check: target dir must be nonexistent or empty.
+	if entries, err := os.ReadDir(targetDir); err == nil && len(entries) > 0 {
+		return nil, fmt.Errorf("target %q is not empty", targetDir)
+	}
+
+	// Pre-check: branch must not already exist (git mode only).
+	if !req.NoGit {
+		checkRef := exec.CommandContext(ctx, "git", "show-ref", "--verify", "refs/heads/"+branch)
+		checkRef.Dir = run.ProjectDir
+		if err := checkRef.Run(); err == nil {
+			// Command succeeded → branch exists.
+			return nil, fmt.Errorf("branch %q already exists", branch)
+		}
+	}
+
+	// Call ExtractResults with Persist: true so the worktree stays.
+	result, err := s.extractResultsFn(ctx, docker.ExtractOptions{
+		ContainerID:  run.ContainerID,
+		ProjectDir:   run.ProjectDir,
+		RunID:        run.ID,
+		BaseSHA:      run.BaseSHA,
+		WorkflowName: run.WorkflowName,
+		TargetDir:    targetDir,
+		Branch:       branch,
+		NoGit:        req.NoGit,
+		Persist:      true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("extracting run: %w", err)
+	}
+
+	return &pb.ExtractRunResponse{
+		TargetDir: result.TargetDir,
+		Branch:    result.Branch,
+		CommitSha: result.CommitSHA,
+	}, nil
 }
 
 func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest) (*pb.EnableLoopResponse, error) {

@@ -1,7 +1,7 @@
 # `cloche extract` Command Design
 
 **Date:** 2026-04-14
-**Status:** Design
+**Status:** Partially Implemented (gRPC layer complete: `ExtractOptions`/`ExtractResult` refactor in `extract.go`, `ExtractRun` RPC in proto + generated pb.go, server handler in `server.go`, callers in `executor.go` updated. CLI (`cmd/cloche/extract.go`, main.go wiring, help entries) remain.)
 
 ## Problem
 
