@@ -31,17 +31,18 @@ raw_list=$(git -C "$PROJECT_DIR" log --pretty=format:'%H%x09%s' "$LAST_TAG..HEAD
 kept=0
 noise=0
 
+# Only true noise: per-task "Version X.Y.Z" bumps, which touch only
+# internal/version/VERSION. Commits with subjects like "cloche run
+# <id>-develop: develop (succeeded)" are squash commits from the develop
+# workflow — their subjects are uninformative but their diffs contain the
+# actual feature work, so we keep them and let the agent summarize via the
+# diff.
 version_re='^Version [0-9]+\.[0-9]+\.[0-9]+$'
-runlog_re='^cloche run [a-z0-9]+-[a-z-]+: .* \((succeeded|failed)\)$'
 
 while IFS=$'\t' read -r sha subject; do
   [ -z "$sha" ] && continue
 
   if [[ "$subject" =~ $version_re ]]; then
-    noise=$((noise + 1))
-    continue
-  fi
-  if [[ "$subject" =~ $runlog_re ]]; then
     noise=$((noise + 1))
     continue
   fi

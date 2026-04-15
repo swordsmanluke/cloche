@@ -139,9 +139,11 @@ snippet hasn't been run); the filtered commit corpus is non-empty.
 - `LAST_TAG = git tag -l 'v*' | sort -V | tail -1`.
 - Raw list from `git log --pretty=format:'%H%x09%s' "$LAST_TAG..HEAD"`.
 - Drop commits whose subject matches `^Version [0-9]+\.[0-9]+\.[0-9]+$`
-  (per-task version bumps) or
-  `^cloche run [a-z0-9]+-[a-z-]+: .* \((succeeded|failed)\)$`
-  (auto-generated run logs).
+  (per-task version bumps — touch only `internal/version/VERSION`).
+  Commits with subjects like `cloche run <id>-<workflow>: <workflow>
+  (succeeded)` are KEPT — they are squash commits from the develop
+  workflow and carry the actual feature code. The agent is instructed to
+  read their diffs rather than their uninformative subject lines.
 - Write filtered SHAs to `$TEMP/commits.txt`, one per line. Append a `!`
   marker to any SHA that touches a path in the **breaking-change watchlist**:
   - `internal/dsl/**`

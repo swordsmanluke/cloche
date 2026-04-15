@@ -27,6 +27,15 @@ Then read:
 - `$CLOCHE_PROJECT_DIR/docs/` — look here for design docs to link from
   Features (see **Doc links**).
 
+## A note on commit subjects
+
+Some commits have subjects of the form `cloche run <id>-<workflow>: <workflow>
+(succeeded)`. These are squash commits produced by Cloche's own develop
+workflow — the subject is auto-generated and does NOT describe the change.
+Read the diff to understand what was actually shipped, then write a
+descriptive bullet of your own. Do not quote the `cloche run ...` subject in
+your output.
+
 ## Classification
 
 Classify every commit in `commits.txt` into exactly one of:
