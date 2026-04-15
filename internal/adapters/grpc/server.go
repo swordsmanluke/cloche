@@ -2922,6 +2922,7 @@ func (s *ClocheServer) ExtractRun(ctx context.Context, req *pb.ExtractRunRequest
 		RunID:        run.ID,
 		BaseSHA:      run.BaseSHA,
 		WorkflowName: run.WorkflowName,
+		Result:       string(run.State),
 		TargetDir:    targetDir,
 		Branch:       branch,
 		NoGit:        req.NoGit,

@@ -1294,8 +1294,9 @@ func TestServer_ExtractRun_NonexistentID(t *testing.T) {
 	srv := server.NewClocheServer(store, rt)
 
 	_, err = srv.ExtractRun(context.Background(), &pb.ExtractRunRequest{Id: "no-such-run"})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no run for id")
+	assert.Contains(t, err.Error(), "no-such-run")
 }
 
 func TestServer_ExtractRun_EmptyContainerID(t *testing.T) {
@@ -1307,16 +1308,17 @@ func TestServer_ExtractRun_EmptyContainerID(t *testing.T) {
 
 	// Run has no container ID set.
 	run := domain.NewRun("extract-no-cid-run", "develop")
-	run.BaseSHA = "abc123"
-	run.ProjectDir = t.TempDir()
+	// ContainerID intentionally left empty
 	require.NoError(t, store.CreateRun(ctx, run))
 
 	rt := &mockInspectRuntime{}
 	srv := server.NewClocheServer(store, rt)
 
 	_, err = srv.ExtractRun(ctx, &pb.ExtractRunRequest{Id: "extract-no-cid-run"})
-	assert.Error(t, err)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "container for run")
 	assert.Contains(t, err.Error(), "has been removed")
+	assert.Contains(t, err.Error(), "--keep-container")
 }
 
 func TestServer_ExtractRun_NoGitWithEmptyBaseSHA_Succeeds(t *testing.T) {
@@ -1375,8 +1377,9 @@ func TestServer_ExtractRun_GitModeWithEmptyBaseSHA_Fails(t *testing.T) {
 		Id:    "extract-nosha-run",
 		NoGit: false,
 	})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no base SHA recorded")
+	assert.Contains(t, err.Error(), "--no-git")
 }
 
 func TestServer_RunWorkflow_EnsureImageFailure(t *testing.T) {

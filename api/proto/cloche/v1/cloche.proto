@@ -17,6 +17,9 @@ service ClocheService {
   rpc DeleteContainer(DeleteContainerRequest) returns (DeleteContainerResponse);
   rpc ExtractRun(ExtractRunRequest) returns (ExtractRunResponse);
 
+  // ExtractRun copies the container workspace to a branch or directory on the host.
+  rpc ExtractRun(ExtractRunRequest) returns (ExtractRunResponse);
+
   rpc EnableLoop(EnableLoopRequest) returns (EnableLoopResponse);
   rpc DisableLoop(DisableLoopRequest) returns (DisableLoopResponse);
   rpc ResumeLoop(ResumeLoopRequest) returns (ResumeLoopResponse);
