@@ -1017,6 +1017,32 @@ cloche delete <container-or-run-id>
 
 Delete a retained Docker container by container ID or run ID.
 
+### `cloche extract`
+
+```
+cloche extract <id> [--at <dir>] [--branch <name>] [--no-git]
+```
+
+Copies the container's `/workspace` into a target directory on the host. The container must still exist — run the workflow with `--keep-container` to retain it.
+
+**Git mode (default):** Creates a git worktree and a branch with the extracted files committed on top of the run's base SHA. The branch and worktree are kept in place after extraction.
+
+**`--no-git` mode:** Performs a plain file copy with no git operations. Requires `--at`.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--at <dir>` | `.gitworktrees/cloche/<runID>` | Target directory (must be empty or nonexistent). Required when `--no-git` is set. |
+| `--branch <name>` | `cloche/<runID>` | Branch name to create (git mode only). |
+| `--no-git` | _(off)_ | Skip worktree, branch, and commit. Only copy files. Requires `--at`. |
+
+`<id>` accepts the same forms as `cloche status` and `cloche logs`: run ID, task ID, attempt ID, or composite `task:attempt`.
+
+On success, prints:
+```
+Extracted to: <absolute-target-dir>
+Branch: <branch-name>        # omitted when --no-git
+```
+
 ### `cloche health`
 
 ```

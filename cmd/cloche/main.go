@@ -143,7 +143,7 @@ func main() {
 	daemonCmds := map[string]bool{
 		"run": true, "resume": true, "status": true, "logs": true, "poll": true,
 		"list": true, "stop": true, "delete": true, "loop": true, "shutdown": true,
-		"console": true,
+		"console": true, "extract": true,
 	}
 	if daemonCmds[os.Args[1]] && hasHelpFlag(os.Args[2:]) {
 		printSubcommandHelp(os.Args[1])
@@ -190,6 +190,8 @@ func main() {
 		cmdShutdown(ctx, client, os.Args[2:])
 	case "console":
 		cmdConsole(client, os.Args[2:])
+	case "extract":
+		cmdExtract(ctx, client, os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", os.Args[1])
 		printTopLevelHelp()

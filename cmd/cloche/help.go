@@ -358,6 +358,46 @@ Examples:
   cloche delete abc123
 `,
 
+	"extract": `cloche extract — Extract container results to a local directory or git worktree
+
+Copies the container's /workspace into a target directory on the host. In
+git mode (default), creates a git worktree and a branch with the extracted
+files committed on top of the run's base SHA. In --no-git mode, performs a
+plain file copy with no git operations.
+
+The container must still exist (run with --keep-container to retain it).
+
+Usage:
+  cloche extract <id> [--at <dir>] [--branch <name>] [--no-git]
+
+Arguments:
+  <id>    Run ID, task ID, attempt ID, or composite (task:attempt). Resolves
+          the same way as cloche status and cloche logs.
+
+Flags:
+  --at <dir>        Target directory (must be empty or nonexistent).
+                    Default (git mode): .gitworktrees/cloche/<runID>.
+                    Required when --no-git is set.
+  --branch <name>   Branch name to create (git mode only).
+                    Default: cloche/<runID>. Ignored with --no-git.
+  --no-git          Skip worktree, branch, and commit. Only copy the
+                    container's /workspace into <dir>. Requires --at.
+
+Output:
+  Extracted to: <absolute-target-dir>
+  Branch: <branch-name>        (omitted when --no-git)
+
+Exit codes:
+  0    Extraction succeeded.
+  1    Error (run not found, container removed, target collision, etc.).
+
+Examples:
+  cloche extract abc123
+  cloche extract abc123 --at /tmp/review --branch fix/foo
+  cloche extract abc123 --no-git --at /tmp/inspect
+  cloche extract TASK-42
+`,
+
 	"tasks": `cloche tasks — Show task pipeline and assignment state
 
 Queries the daemon's HTTP API for the current task list, showing which
@@ -721,6 +761,7 @@ Workflow Runs:
   list       List runs for current project (or all projects)
   stop       Stop a running workflow
   delete     Delete a retained container
+  extract    Extract container results to a local directory or git worktree
   console    Start an interactive agent session in a container
 
 Orchestration:
