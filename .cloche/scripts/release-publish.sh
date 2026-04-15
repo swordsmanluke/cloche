@@ -4,6 +4,9 @@
 # CLOCHE_RELEASE_DRY_RUN=1 for rehearsals.
 set -euo pipefail
 
+# Ensure we're not using the env token
+unset GITHUB_TOKEN
+
 PROJECT_DIR="${CLOCHE_PROJECT_DIR:-.}"
 TAG=$(cloche get release_tag)
 NOTES=$(cloche get release_notes_path)
