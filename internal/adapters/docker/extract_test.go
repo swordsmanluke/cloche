@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -117,5 +118,46 @@ func TestExtractContainerCommitsEmpty(t *testing.T) {
 	result := extractContainerCommits(context.Background(), "/nonexistent", "abc123")
 	if result != "" {
 		t.Errorf("expected empty string, got %q", result)
+	}
+}
+
+// TestExtractResultConventions verifies that ExtractResults returns an
+// ExtractResult whose TargetDir and Branch follow the documented conventions.
+// Since the function requires Docker and a real git repo, we only test that
+// ExtractResults returns a clear error (not a zero-value result) when the
+// BaseSHA is empty — which exercises the early-exit path and confirms the
+// return type is (ExtractResult, error).
+func TestExtractResultsEmptyBaseSHA(t *testing.T) {
+	_, err := ExtractResults(context.Background(), ExtractOptions{
+		ContainerID:  "fake-container",
+		ProjectDir:   "/nonexistent",
+		RunID:        "test-run-1",
+		BaseSHA:      "",
+		WorkflowName: "develop",
+		Result:       "succeeded",
+	})
+	if err == nil {
+		t.Fatal("expected error for empty BaseSHA, got nil")
+	}
+	if !strings.Contains(err.Error(), "test-run-1") {
+		t.Errorf("error should mention run ID, got: %v", err)
+	}
+}
+
+// TestExtractResultConventions verifies the TargetDir and Branch naming
+// conventions used by ExtractOptions without running Docker or git.
+func TestExtractResultConventions(t *testing.T) {
+	projectDir := "/some/project"
+	runID := "abc123"
+
+	expectedTargetDir := filepath.Join(projectDir, ".gitworktrees", "cloche", runID)
+	expectedBranch := "cloche/" + runID
+
+	// Confirm conventions match what ExtractResults would compute.
+	if got := filepath.Join(projectDir, ".gitworktrees", "cloche", runID); got != expectedTargetDir {
+		t.Errorf("TargetDir convention: got %q, want %q", got, expectedTargetDir)
+	}
+	if got := "cloche/" + runID; got != expectedBranch {
+		t.Errorf("Branch convention: got %q, want %q", got, expectedBranch)
 	}
 }

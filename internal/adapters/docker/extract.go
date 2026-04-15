@@ -10,42 +10,59 @@ import (
 	"strings"
 )
 
+// ExtractOptions configures a call to ExtractResults.
+type ExtractOptions struct {
+	ContainerID  string
+	ProjectDir   string
+	RunID        string
+	BaseSHA      string
+	WorkflowName string
+	Result       string
+}
+
+// ExtractResult holds the output of a successful ExtractResults call.
+type ExtractResult struct {
+	TargetDir string
+	Branch    string
+	CommitSHA string
+}
+
 // ExtractResults copies the container workspace to a git branch using worktrees.
 // It creates branch cloche/<runID> based on baseSHA, copies the container's
 // /workspace into the worktree's cloche/ directory, commits, and cleans up.
-func ExtractResults(ctx context.Context, containerID, projectDir, runID, baseSHA, workflowName, result string) error {
-	if baseSHA == "" {
-		return fmt.Errorf("no base SHA recorded for run %s", runID)
+func ExtractResults(ctx context.Context, opts ExtractOptions) (ExtractResult, error) {
+	if opts.BaseSHA == "" {
+		return ExtractResult{}, fmt.Errorf("no base SHA recorded for run %s", opts.RunID)
 	}
 
 	// 1. Copy container workspace to temp dir
-	tmpDir, err := os.MkdirTemp("", "cloche-extract-"+runID+"-")
+	tmpDir, err := os.MkdirTemp("", "cloche-extract-"+opts.RunID+"-")
 	if err != nil {
-		return fmt.Errorf("creating temp dir: %w", err)
+		return ExtractResult{}, fmt.Errorf("creating temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	cpCmd := exec.CommandContext(ctx, "docker", "cp", containerID+":/workspace/.", tmpDir+"/")
+	cpCmd := exec.CommandContext(ctx, "docker", "cp", opts.ContainerID+":/workspace/.", tmpDir+"/")
 	var cpStderr bytes.Buffer
 	cpCmd.Stderr = &cpStderr
 	if err := cpCmd.Run(); err != nil {
-		return fmt.Errorf("docker cp from container: %s: %w", cpStderr.String(), err)
+		return ExtractResult{}, fmt.Errorf("docker cp from container: %s: %w", cpStderr.String(), err)
 	}
 
 	// 2. Create git worktree
-	worktreeDir := filepath.Join(projectDir, ".gitworktrees", "cloche", runID)
+	worktreeDir := filepath.Join(opts.ProjectDir, ".gitworktrees", "cloche", opts.RunID)
 	if err := os.MkdirAll(filepath.Dir(worktreeDir), 0755); err != nil {
-		return fmt.Errorf("creating worktree parent: %w", err)
+		return ExtractResult{}, fmt.Errorf("creating worktree parent: %w", err)
 	}
 
-	addCmd := exec.CommandContext(ctx, "git", "worktree", "add", "--detach", worktreeDir, baseSHA)
-	addCmd.Dir = projectDir
+	addCmd := exec.CommandContext(ctx, "git", "worktree", "add", "--detach", worktreeDir, opts.BaseSHA)
+	addCmd.Dir = opts.ProjectDir
 	if out, err := addCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git worktree add: %s: %w", out, err)
+		return ExtractResult{}, fmt.Errorf("git worktree add: %s: %w", out, err)
 	}
 	defer func() {
 		rmCmd := exec.CommandContext(ctx, "git", "worktree", "remove", "--force", worktreeDir)
-		rmCmd.Dir = projectDir
+		rmCmd.Dir = opts.ProjectDir
 		rmCmd.Run()
 	}()
 
@@ -53,7 +70,7 @@ func ExtractResults(ctx context.Context, containerID, projectDir, runID, baseSHA
 	// First extract commit messages from the container's git history (before
 	// removing .git), then remove existing files (preserving .git) and copy
 	// from the container. This ensures file deletions by the agent are captured.
-	containerCommits := extractContainerCommits(ctx, tmpDir, baseSHA)
+	containerCommits := extractContainerCommits(ctx, tmpDir, opts.BaseSHA)
 	os.RemoveAll(filepath.Join(tmpDir, ".git"))
 	entries, _ := os.ReadDir(worktreeDir)
 	for _, e := range entries {
@@ -64,7 +81,7 @@ func ExtractResults(ctx context.Context, containerID, projectDir, runID, baseSHA
 	}
 	cpLocalCmd := exec.CommandContext(ctx, "cp", "-a", tmpDir+"/.", worktreeDir+"/")
 	if out, err := cpLocalCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("copying to worktree: %s: %w", out, err)
+		return ExtractResult{}, fmt.Errorf("copying to worktree: %s: %w", out, err)
 	}
 
 	// 4. Create branch, add, commit
@@ -73,32 +90,45 @@ func ExtractResults(ctx context.Context, containerID, projectDir, runID, baseSHA
 		"GIT_COMMITTER_NAME=cloche", "GIT_COMMITTER_EMAIL=cloche@local",
 	)
 
-	branch := "cloche/" + runID
+	branch := "cloche/" + opts.RunID
 
 	checkoutCmd := exec.CommandContext(ctx, "git", "checkout", "-b", branch)
 	checkoutCmd.Dir = worktreeDir
 	checkoutCmd.Env = gitEnv
 	if out, err := checkoutCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git checkout -b: %s: %w", out, err)
+		return ExtractResult{}, fmt.Errorf("git checkout -b: %s: %w", out, err)
 	}
 
 	addFilesCmd := exec.CommandContext(ctx, "git", "add", "-A")
 	addFilesCmd.Dir = worktreeDir
 	addFilesCmd.Env = gitEnv
 	if out, err := addFilesCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git add: %s: %w", out, err)
+		return ExtractResult{}, fmt.Errorf("git add: %s: %w", out, err)
 	}
 
-	commitMsg := buildCommitMessage(ctx, worktreeDir, gitEnv, runID, workflowName, result, containerCommits)
+	commitMsg := buildCommitMessage(ctx, worktreeDir, gitEnv, opts.RunID, opts.WorkflowName, opts.Result, containerCommits)
 	commitCmd := exec.CommandContext(ctx, "git", "commit", "-F", "-", "--allow-empty")
 	commitCmd.Dir = worktreeDir
 	commitCmd.Env = gitEnv
 	commitCmd.Stdin = strings.NewReader(commitMsg)
 	if out, err := commitCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git commit: %s: %w", out, err)
+		return ExtractResult{}, fmt.Errorf("git commit: %s: %w", out, err)
 	}
 
-	return nil
+	// 5. Capture the resulting commit SHA.
+	revCmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
+	revCmd.Dir = worktreeDir
+	revOut, err := revCmd.Output()
+	if err != nil {
+		return ExtractResult{}, fmt.Errorf("git rev-parse HEAD: %w", err)
+	}
+	commitSHA := strings.TrimSpace(string(revOut))
+
+	return ExtractResult{
+		TargetDir: worktreeDir,
+		Branch:    branch,
+		CommitSHA: commitSHA,
+	}, nil
 }
 
 // buildCommitMessage generates a squash-style commit message. The title

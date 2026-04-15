@@ -240,7 +240,14 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 
 		if baseSHA != "" && session != nil {
 			log.Printf("daemon executor: extracting results to branch cloche/%s (baseSHA=%s)", childRunID, baseSHA)
-			if err := docker.ExtractResults(ctx, session.ContainerID, d.projectDir, childRunID, baseSHA, targetName, resultLabel); err != nil {
+			if _, err := docker.ExtractResults(ctx, docker.ExtractOptions{
+				ContainerID:  session.ContainerID,
+				ProjectDir:   d.projectDir,
+				RunID:        childRunID,
+				BaseSHA:      baseSHA,
+				WorkflowName: targetName,
+				Result:       resultLabel,
+			}); err != nil {
 				log.Printf("daemon executor: failed to extract results: %v", err)
 			} else {
 				log.Printf("daemon executor: branch cloche/%s created successfully", childRunID)
