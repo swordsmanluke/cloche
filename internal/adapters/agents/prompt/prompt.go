@@ -176,10 +176,10 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		resetAttemptCount(workDir, a.TaskID, step.Name)
 	}
 
-	// Write output file
+	// Append output file, preserving history across loop iterations.
 	outputDir := filepath.Join(workDir, ".cloche", "output")
 	if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
-		_ = os.WriteFile(filepath.Join(outputDir, step.Name+".log"), lastStdout, 0644)
+		appendStepLog(filepath.Join(outputDir, step.Name+".log"), lastStdout)
 	}
 	protocol.AppendHistory(workDir, step.Name, result, true, nil)
 	return domain.StepResult{Result: result, Usage: lastUsage}, nil
@@ -581,4 +581,14 @@ func incrementAttemptCount(workDir, taskID, stepName string) {
 	_ = os.MkdirAll(dir, 0755)
 	count := readAttemptCount(workDir, taskID, stepName) + 1
 	_ = os.WriteFile(filepath.Join(dir, stepName), []byte(strconv.Itoa(count)), 0644)
+}
+
+// appendStepLog appends data to the step log file, preserving prior invocations.
+func appendStepLog(path string, data []byte) {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	_, _ = f.Write(data)
+	_ = f.Close()
 }

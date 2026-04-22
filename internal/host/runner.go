@@ -826,17 +826,18 @@ func FindHostWorkflows(projectDir string) (map[string]*domain.Workflow, error) {
 // It mirrors the container-side status pipeline: saving captures and publishing
 // to the log broadcaster so that cloche logs works identically for host runs.
 type hostStatusHandler struct {
-	projectDir   string
-	orchRunID    string
-	store        ports.RunStore
-	captures     ports.CaptureStore
-	logBroadcast *logstream.Broadcaster
-	outputDir    string
-	logWriter    *logstream.Writer    // persists log entries to full.log
-	activityLog  *activitylog.Logger  // optional: records step events to activity.log
-	taskID       string               // propagated to activity log entries
-	attemptID    string               // propagated to activity log entries
-	workflowName string               // propagated to activity log entries
+	projectDir     string
+	orchRunID      string
+	store          ports.RunStore
+	captures       ports.CaptureStore
+	logBroadcast   *logstream.Broadcaster
+	outputDir      string
+	logWriter      *logstream.Writer   // persists log entries to full.log
+	activityLog    *activitylog.Logger // optional: records step events to activity.log
+	taskID         string              // propagated to activity log entries
+	attemptID      string              // propagated to activity log entries
+	workflowName   string              // propagated to activity log entries
+	stepLogOffsets map[string]int64    // tracks bytes already written to full.log per step
 }
 
 func (h *hostStatusHandler) OnStepStart(_ *domain.Run, step *domain.Step) {
@@ -905,11 +906,20 @@ func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, res
 			Result:       result,
 		})
 	}
-	// Read step output for logging/broadcasting.
+	// Read only new step output (delta since last invocation) for logging/broadcasting.
+	// Step logs accumulate across loop iterations; tracking the offset prevents
+	// duplicating earlier iterations in full.log.
 	var stepOutput string
 	outputPath := filepath.Join(h.outputDir, step.Name+".log")
 	if data, err := os.ReadFile(outputPath); err == nil && len(data) > 0 {
-		stepOutput = string(data)
+		if h.stepLogOffsets == nil {
+			h.stepLogOffsets = make(map[string]int64)
+		}
+		offset := h.stepLogOffsets[step.Name]
+		if newData := data[offset:]; len(newData) > 0 {
+			stepOutput = string(newData)
+			h.stepLogOffsets[step.Name] = int64(len(data))
+		}
 	}
 	if h.logWriter != nil {
 		if stepOutput != "" {

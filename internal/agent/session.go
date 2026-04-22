@@ -37,7 +37,8 @@ type SessionConfig struct {
 // ExecuteStep commands, dispatching them to the appropriate adapter
 // and streaming results back.
 type Session struct {
-	cfg SessionConfig
+	cfg            SessionConfig
+	stepLogOffsets map[string]int64 // tracks bytes already written to full.log per step
 }
 
 // NewSession creates a new Session with the given config.
@@ -215,19 +216,19 @@ func (s *Session) executeStep(
 	switch step.Type {
 	case domain.StepTypeScript:
 		sr, execErr = genericAdapter.Execute(ctx, step, s.cfg.WorkDir)
-		sessionLogStepOutput(s.cfg.WorkDir, step.Name, ulog, logstream.TypeScript)
+		s.sessionLogStepOutput(s.cfg.WorkDir, step.Name, ulog, logstream.TypeScript)
 	case domain.StepTypeAgent:
 		if _, ok := step.Config["run"]; ok {
 			sr, execErr = genericAdapter.Execute(ctx, step, s.cfg.WorkDir)
-			sessionLogStepOutput(s.cfg.WorkDir, step.Name, ulog, logstream.TypeScript)
+			s.sessionLogStepOutput(s.cfg.WorkDir, step.Name, ulog, logstream.TypeScript)
 		} else {
 			sr, execErr = promptAdapter.Execute(ctx, step, s.cfg.WorkDir)
 			sessionCopyToLLMLog(s.cfg.WorkDir, step.Name)
-			sessionLogStepOutput(s.cfg.WorkDir, step.Name, ulog, logstream.TypeLLM)
+			s.sessionLogStepOutput(s.cfg.WorkDir, step.Name, ulog, logstream.TypeLLM)
 		}
 	case domain.StepTypeHuman:
 		sr, execErr = s.executeHumanStep(ctx, step, s.cfg.WorkDir)
-		sessionLogStepOutput(s.cfg.WorkDir, step.Name, ulog, logstream.TypeScript)
+		s.sessionLogStepOutput(s.cfg.WorkDir, step.Name, ulog, logstream.TypeScript)
 	default:
 		execErr = fmt.Errorf("unknown step type: %s", step.Type)
 	}
@@ -274,14 +275,26 @@ func (s *Session) executeStep(
 	})
 }
 
-// sessionLogStepOutput reads the per-step log file and writes it to the unified log.
-func sessionLogStepOutput(workDir, stepName string, ulog *logstream.Writer, typ logstream.EntryType) {
+// sessionLogStepOutput reads the per-step log file and writes only new bytes
+// (since the last call for this step) to the unified log. This ensures each
+// iteration's output appears exactly once in full.log even when the step log
+// accumulates across multiple loop iterations.
+func (s *Session) sessionLogStepOutput(workDir, stepName string, ulog *logstream.Writer, typ logstream.EntryType) {
 	logPath := filepath.Join(workDir, ".cloche", "output", stepName+".log")
 	data, err := os.ReadFile(logPath)
 	if err != nil || len(data) == 0 {
 		return
 	}
-	ulog.Log(typ, string(data))
+	if s.stepLogOffsets == nil {
+		s.stepLogOffsets = make(map[string]int64)
+	}
+	offset := s.stepLogOffsets[stepName]
+	newData := data[offset:]
+	if len(newData) == 0 {
+		return
+	}
+	ulog.Log(typ, string(newData))
+	s.stepLogOffsets[stepName] = int64(len(data))
 }
 
 // sessionCopyToLLMLog copies the step log file to the llm-<step>.log path.
@@ -395,10 +408,14 @@ func runPollCommand(ctx context.Context, pollCmd, stepName, runID, workDir strin
 	output, err := cmd.CombinedOutput()
 	markerResult, cleanOutput, found := protocol.ExtractResult(output)
 
-	// Write cleaned output to log file (overwritten on each poll invocation).
+	// Append cleaned output to log file, preserving history across poll invocations.
 	outputDir := filepath.Join(workDir, ".cloche", "output")
 	if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
-		_ = os.WriteFile(filepath.Join(outputDir, stepName+".log"), cleanOutput, 0644)
+		f, fErr := os.OpenFile(filepath.Join(outputDir, stepName+".log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if fErr == nil {
+			_, _ = f.Write(cleanOutput)
+			_ = f.Close()
+		}
 	}
 
 	if err != nil {

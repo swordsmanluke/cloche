@@ -320,3 +320,30 @@ func TestGenericAdapter_StreamingOnFailure(t *testing.T) {
 	assert.Contains(t, logMessages, "running tests")
 	assert.Contains(t, logMessages, "FAIL: something broke")
 }
+
+// TestGenericAdapter_StepLogAccumulates verifies that invoking a step multiple times
+// appends to the log file rather than overwriting it, preserving full loop history.
+func TestGenericAdapter_StepLogAccumulates(t *testing.T) {
+	dir := t.TempDir()
+	adapter := generic.New()
+	step := &domain.Step{
+		Name:    "fix",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo 'iteration output'"},
+	}
+
+	// Run the same step twice to simulate a loop.
+	_, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	_, err = adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+
+	logPath := filepath.Join(dir, ".cloche", "output", "fix.log")
+	content, err := os.ReadFile(logPath)
+	require.NoError(t, err)
+
+	// Both iterations should be present in the log.
+	occurrences := bytes.Count(content, []byte("iteration output"))
+	assert.Equal(t, 2, occurrences, "step log should contain output from both invocations")
+}

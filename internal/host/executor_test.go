@@ -13,6 +13,7 @@ import (
 
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/engine"
+	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -2055,4 +2056,75 @@ func TestExecutor_HumanStep_InvalidInterval(t *testing.T) {
 	_, err := executor.Execute(context.Background(), step)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid interval")
+}
+
+// TestExecutor_ScriptStep_LogAccumulates verifies that running the same step multiple
+// times in a loop appends to the log file instead of overwriting it.
+func TestExecutor_ScriptStep_LogAccumulates(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+	}
+
+	step := &domain.Step{
+		Name:    "fix",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo 'loop iteration'"},
+	}
+
+	// Execute the step twice, simulating a loop.
+	_, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	_, err = executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "fix.log"))
+	require.NoError(t, err)
+
+	// Both iterations should be present in the accumulated log.
+	occurrences := strings.Count(string(data), "loop iteration")
+	assert.Equal(t, 2, occurrences, "step log should contain output from both invocations")
+}
+
+// TestHostStatusHandler_DeltaLogging verifies that when a step is invoked multiple
+// times (loop), OnStepComplete only writes new bytes to full.log, not accumulated
+// history from prior iterations.
+func TestHostStatusHandler_DeltaLogging(t *testing.T) {
+	outputDir := t.TempDir()
+	logDir := t.TempDir()
+
+	logWriter, err := logstream.NewAtDir(logDir)
+	require.NoError(t, err)
+	defer logWriter.Close()
+
+	handler := &hostStatusHandler{
+		outputDir: outputDir,
+		logWriter: logWriter,
+	}
+
+	// Write iteration 1 output.
+	step := &domain.Step{Name: "fix"}
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "fix.log"), []byte("iter1\n"), 0644))
+	handler.OnStepComplete(nil, step, "fail", nil)
+
+	// Append iteration 2 output (simulating loop iteration).
+	f, err := os.OpenFile(filepath.Join(outputDir, "fix.log"), os.O_APPEND|os.O_WRONLY, 0644)
+	require.NoError(t, err)
+	_, _ = f.WriteString("iter2\n")
+	_ = f.Close()
+	handler.OnStepComplete(nil, step, "fail", nil)
+
+	require.NoError(t, logWriter.Close())
+
+	fullLog, err := os.ReadFile(filepath.Join(logDir, "full.log"))
+	require.NoError(t, err)
+	logged := string(fullLog)
+
+	// Only each iteration's own content should appear once in full.log.
+	assert.Equal(t, 1, strings.Count(logged, "iter1"), "iter1 should appear exactly once")
+	assert.Equal(t, 1, strings.Count(logged, "iter2"), "iter2 should appear exactly once")
 }

@@ -208,9 +208,9 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 	// Extract result marker
 	markerResult, cleanOutput, found := protocol.ExtractResult(output)
 
-	// Write output to file
+	// Append output to file, preserving history across loop iterations.
 	if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
-		_ = os.WriteFile(e.stepOutputFile(step.Name), cleanOutput, 0644)
+		appendStepLog(e.stepOutputFile(step.Name), cleanOutput)
 	}
 
 	if err != nil {
@@ -299,11 +299,11 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 		return domain.StepResult{}, err
 	}
 
-	// Copy output from adapter's output location to executor's output path
+	// Append adapter output to executor's step log, preserving history across loop iterations.
 	adapterOutput := filepath.Join(e.ProjectDir, ".cloche", "output", step.Name+".log")
 	if data, readErr := os.ReadFile(adapterOutput); readErr == nil {
 		if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
-			_ = os.WriteFile(e.stepOutputFile(step.Name), data, 0644)
+			appendStepLog(e.stepOutputFile(step.Name), data)
 		}
 	}
 
@@ -313,6 +313,16 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 // stepOutputFile returns the path for a step's output file.
 func (e *Executor) stepOutputFile(stepName string) string {
 	return filepath.Join(e.OutputDir, stepName+".log")
+}
+
+// appendStepLog appends data to the step log file, preserving prior invocations.
+func appendStepLog(path string, data []byte) {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	_, _ = f.Write(data)
+	_ = f.Close()
 }
 
 // isCodexCommand reports whether any command in the chain is "codex".
@@ -532,8 +542,9 @@ func (e *Executor) runHumanPollScript(ctx context.Context, step *domain.Step) (s
 
 	markerResult, cleanOutput, found := protocol.ExtractResult(output)
 
+	// Append output to file, preserving history across poll invocations.
 	if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
-		_ = os.WriteFile(e.stepOutputFile(step.Name), cleanOutput, 0644)
+		appendStepLog(e.stepOutputFile(step.Name), cleanOutput)
 	}
 
 	if err != nil {

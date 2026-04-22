@@ -1485,9 +1485,9 @@ Set by the daemon for each host step script invocation.
 | `CLOCHE_PREV_OUTPUT` | Path to the output file from the immediately preceding step. |
 | `CLOCHE_TASK_ID` | Task ID assigned by the daemon (set for the `main` phase). |
 | `CLOCHE_ATTEMPT_ID` | Attempt identifier for this run. |
-| `CLOCHE_GIT_AUTHOR_NAME` | Git author/committer name from `[git] name`. Only set when configured. |
-| `CLOCHE_GIT_AUTHOR_EMAIL` | Git author/committer email from `[git] email`. Only set when configured. |
-| `CLOCHE_GIT_SSH_COMMAND` | Pre-composed SSH command from `[git] ssh_key`. Only set when configured. See [`[git]` config](#git) for usage. |
+| `CLOCHE_GIT_AUTHOR_NAME` | Git author/committer name (set when `[git] name` is configured). |
+| `CLOCHE_GIT_AUTHOR_EMAIL` | Git author/committer email (set when `[git] email` is configured). |
+| `CLOCHE_GIT_SSH_COMMAND` | Pre-composed `ssh -i <key> -o IdentitiesOnly=yes` (set when `[git] ssh_key` is configured). Use as `GIT_SSH_COMMAND="$CLOCHE_GIT_SSH_COMMAND" git push …`. |
 
 ### Container Runtime Variables
 

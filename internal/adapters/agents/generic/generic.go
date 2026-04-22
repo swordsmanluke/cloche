@@ -50,10 +50,10 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	// Extract result marker before writing logs
 	markerResult, cleanOutput, found := protocol.ExtractResult(output)
 
-	// Write cleaned output to log file
+	// Append cleaned output to log file, preserving history across loop iterations.
 	outputDir := filepath.Join(workDir, ".cloche", "output")
 	if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
-		_ = os.WriteFile(filepath.Join(outputDir, step.Name+".log"), cleanOutput, 0644)
+		appendStepLog(filepath.Join(outputDir, step.Name+".log"), cleanOutput)
 	}
 
 	isAgent := step.Type == domain.StepTypeAgent
@@ -76,6 +76,16 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	}
 	protocol.AppendHistory(workDir, step.Name, result, isAgent, cleanOutput)
 	return domain.StepResult{Result: result}, nil
+}
+
+// appendStepLog appends data to the step log file, preserving prior invocations.
+func appendStepLog(path string, data []byte) {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	_, _ = f.Write(data)
+	_ = f.Close()
 }
 
 // executeStreaming runs the command and streams output lines through StatusWriter
