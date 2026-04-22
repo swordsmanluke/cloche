@@ -103,6 +103,7 @@ func cmdDoctor(args []string) {
 		dr.checkBaseImage(),
 		dr.checkDaemon(),
 		dr.checkAuth(),
+		dr.checkSSHKey(),
 	}
 
 	// Project-level checks: only when inside a cloche project directory.
@@ -311,6 +312,50 @@ func (dr *doctorRunner) checkAuth() checkResult {
 		remediation: "Set ANTHROPIC_API_KEY for API key auth, or run 'claude' to authenticate interactively.\n" +
 			"If using a different agent, ensure its credentials are configured.",
 	}
+}
+
+// checkSSHKey verifies that the configured [git] ssh_key file exists and is readable.
+// It loads the merged config (global + project) so it catches both sources.
+func (dr *doctorRunner) checkSSHKey() checkResult {
+	label := "Checking git SSH key"
+
+	cfg, err := config.LoadMerged(dr.projectDir)
+	if err != nil {
+		return checkResult{
+			label:       label,
+			status:      checkFail,
+			detail:      "cannot load config: " + err.Error(),
+			remediation: "Fix the parse error in your cloche config.",
+		}
+	}
+
+	keyPath := cfg.Git.SSHKey
+	if keyPath == "" {
+		return checkResult{label: label, status: checkOK, detail: "not configured"}
+	}
+
+	// Expand ~/ the same way the host executor does.
+	if strings.HasPrefix(keyPath, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			keyPath = filepath.Join(home, keyPath[2:])
+		}
+	}
+
+	f, err := os.Open(keyPath)
+	if err != nil {
+		remediation := fmt.Sprintf("ssh_key = %q points to a missing or unreadable file.\n", cfg.Git.SSHKey) +
+			"Generate a key with:  ssh-keygen -t ed25519 -f " + keyPath + "\n" +
+			"Or update ssh_key in ~/.config/cloche/config (global) or .cloche/config.toml (project)."
+		return checkResult{
+			label:       label,
+			status:      checkWarning,
+			detail:      err.Error(),
+			remediation: remediation,
+		}
+	}
+	f.Close()
+
+	return checkResult{label: label, status: checkOK, detail: keyPath}
 }
 
 // checkProjectConfig loads .cloche/config.toml and checks for common issues.

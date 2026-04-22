@@ -193,6 +193,116 @@ func TestDoctorRunner_printResults_withFailure(t *testing.T) {
 	}
 }
 
+// TestCheckSSHKey_notConfigured verifies OK when ssh_key is not set.
+func TestCheckSSHKey_notConfigured(t *testing.T) {
+	dir := t.TempDir()
+	dr := &doctorRunner{projectDir: dir}
+	result := dr.checkSSHKey()
+	if result.status != checkOK {
+		t.Errorf("expected checkOK when ssh_key not set, got %v (detail: %q)", result.status, result.detail)
+	}
+	if result.detail != "not configured" {
+		t.Errorf("expected detail %q, got %q", "not configured", result.detail)
+	}
+}
+
+// TestCheckSSHKey_fileExists verifies OK when ssh_key points to an existing readable file.
+func TestCheckSSHKey_fileExists(t *testing.T) {
+	dir := t.TempDir()
+	keyFile := filepath.Join(dir, "id_ed25519")
+	if err := os.WriteFile(keyFile, []byte("fake-key"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte("[git]\nssh_key = \""+keyFile+"\"\n"), 0644)
+
+	dr := &doctorRunner{projectDir: dir}
+	result := dr.checkSSHKey()
+	if result.status != checkOK {
+		t.Errorf("expected checkOK for existing key file, got %v (detail: %q)", result.status, result.detail)
+	}
+	if result.detail != keyFile {
+		t.Errorf("expected detail to be the key path %q, got %q", keyFile, result.detail)
+	}
+}
+
+// TestCheckSSHKey_fileMissing verifies warning when ssh_key points to a nonexistent file.
+func TestCheckSSHKey_fileMissing(t *testing.T) {
+	dir := t.TempDir()
+	missingKey := filepath.Join(dir, "nonexistent_key")
+
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte("[git]\nssh_key = \""+missingKey+"\"\n"), 0644)
+
+	dr := &doctorRunner{projectDir: dir}
+	result := dr.checkSSHKey()
+	if result.status != checkWarning {
+		t.Errorf("expected checkWarning for missing key file, got %v (detail: %q)", result.status, result.detail)
+	}
+	if result.remediation == "" {
+		t.Error("expected non-empty remediation")
+	}
+	if !strings.Contains(result.remediation, "ssh_key") {
+		t.Errorf("expected remediation to mention ssh_key, got %q", result.remediation)
+	}
+}
+
+// TestCheckSSHKey_tildeExpansion verifies that ~/... paths are expanded before the file check.
+func TestCheckSSHKey_tildeExpansion(t *testing.T) {
+	// Write key to the real home directory to simulate a tilde path resolving to an existing file.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("cannot determine home dir")
+	}
+	keyFile := filepath.Join(home, ".ssh", "cloche_test_key_doctor")
+	// Ensure the file exists for this test and remove it after.
+	os.MkdirAll(filepath.Dir(keyFile), 0700)
+	if err := os.WriteFile(keyFile, []byte("fake"), 0600); err != nil {
+		t.Skipf("cannot write test key file: %v", err)
+	}
+	defer os.Remove(keyFile)
+
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte("[git]\nssh_key = \"~/.ssh/cloche_test_key_doctor\"\n"), 0644)
+
+	dr := &doctorRunner{projectDir: dir}
+	result := dr.checkSSHKey()
+	if result.status != checkOK {
+		t.Errorf("expected checkOK after tilde expansion to existing file, got %v (detail: %q)", result.status, result.detail)
+	}
+}
+
+// TestCheckSSHKey_globalConfig verifies the check picks up ssh_key from the global config.
+func TestCheckSSHKey_globalConfig(t *testing.T) {
+	// Use a temp project dir (no project-level ssh_key).
+	dir := t.TempDir()
+	missingKey := filepath.Join(dir, "global_missing_key")
+
+	// Temporarily redirect HOME so LoadGlobal reads our fake global config.
+	fakeHome := t.TempDir()
+	origHome := os.Getenv("HOME")
+	t.Cleanup(func() { os.Setenv("HOME", origHome) })
+	os.Setenv("HOME", fakeHome)
+
+	globalCfgDir := filepath.Join(fakeHome, ".config", "cloche")
+	os.MkdirAll(globalCfgDir, 0755)
+	os.WriteFile(filepath.Join(globalCfgDir, "config"), []byte("[git]\nssh_key = \""+missingKey+"\"\n"), 0644)
+
+	dr := &doctorRunner{projectDir: dir}
+	result := dr.checkSSHKey()
+	if result.status != checkWarning {
+		t.Errorf("expected checkWarning for missing global ssh_key, got %v (detail: %q)", result.status, result.detail)
+	}
+	if !strings.Contains(result.remediation, "ssh_key") {
+		t.Errorf("expected remediation to mention ssh_key, got %q", result.remediation)
+	}
+}
+
 // TestCheckProjectConfig_noCloche verifies OK when there is no .cloche dir
 // (the function itself should not be called in that case, but it handles it).
 func TestCheckProjectConfig_missingConfigToml(t *testing.T) {

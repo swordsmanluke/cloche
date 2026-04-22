@@ -818,7 +818,7 @@ cloche doctor [--project <dir>] [--verbose] [--timeout <duration>]
 ```
 
 Runs checks in order and prints a status line for each. Exits with code 1
-if any check fails. Checks 5–8 only run when the current (or `--project`) directory
+if any check fails. Checks 6–9 only run when the current (or `--project`) directory
 contains a `.cloche/` subdirectory.
 
 | Check | Description |
@@ -827,10 +827,11 @@ contains a `.cloche/` subdirectory.
 | Base image | Checks whether `cloche-base:latest` (or `cloche-agent:latest`) exists locally. |
 | Daemon | Calls `GetVersion` over gRPC to verify the daemon is reachable. Address from `CLOCHE_ADDR` or default `127.0.0.1:50051`. |
 | Agent auth | Checks `ANTHROPIC_API_KEY` or `~/.claude/` session data. Soft check (warning, not fatal). |
+| Git SSH key | Loads the merged config and verifies the `[git] ssh_key` file exists and is readable, if configured. Soft check (warning, not fatal). |
 | Project config | Loads `.cloche/config.toml`, reports parse errors, warns if `active = false` or `TODO(cloche-init)` markers remain. |
 | Workflow syntax | Parses all `.cloche/*.cloche` files using the same logic as `cloche validate`. |
 | Project image build | Calls `EnsureImage` to build or confirm the project Docker image. |
-| Agent roundtrip | Starts a short-lived container from the project image, runs a minimal test workflow, and verifies it completes. |
+| Agent roundtrip | Starts a short-lived container from the project image, runs a minimal test workflow, and verifies it completes. Only runs if the image build succeeded. |
 
 Each failing check prints actionable remediation steps inline.
 
