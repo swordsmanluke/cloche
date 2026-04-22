@@ -919,3 +919,264 @@ func TestCmdInit_NewFlag_SkipsExistingWorkflow(t *testing.T) {
 		t.Error("--new should skip existing workflow file, not overwrite it")
 	}
 }
+
+func TestCmdInit_ConfigTOML_HasGitSection(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{"--non-interactive"})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	if !strings.Contains(content, "[git]") {
+		t.Error("config.toml should contain [git] section")
+	}
+	if !strings.Contains(content, "# ssh_key") {
+		t.Error("config.toml should contain commented ssh_key field")
+	}
+	if !strings.Contains(content, "# name") {
+		t.Error("config.toml should contain commented name field")
+	}
+	if !strings.Contains(content, "# email") {
+		t.Error("config.toml should contain commented email field")
+	}
+	// All git fields should be commented — none active
+	if strings.Contains(content, "\nssh_key =") {
+		t.Error("config.toml should not have active ssh_key when no key provided")
+	}
+}
+
+func TestCmdInit_NonInteractive_AllGitFieldsCommented(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{"--non-interactive"})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	if strings.Contains(content, "\nssh_key =") {
+		t.Error("--non-interactive without --ssh-key should leave ssh_key commented")
+	}
+	if strings.Contains(content, "\nname =") {
+		t.Error("--non-interactive should leave name commented")
+	}
+	if strings.Contains(content, "\nemail =") {
+		t.Error("--non-interactive should leave email commented")
+	}
+}
+
+func TestCmdInit_SSHKeyFlag_WritesUncommented(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// Create a fake key file to use as the path.
+	keyFile := filepath.Join(dir, "fake_key")
+	os.WriteFile(keyFile, []byte("fake key"), 0600)
+
+	cmdInit([]string{"--non-interactive", "--ssh-key", keyFile})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	if !strings.Contains(content, "ssh_key = ") {
+		t.Error("config.toml should have uncommented ssh_key when --ssh-key is provided")
+	}
+	if !strings.Contains(content, keyFile) {
+		t.Errorf("config.toml should contain the key path %q", keyFile)
+	}
+	// name and email should still be commented.
+	if strings.Contains(content, "\nname =") {
+		t.Error("name should remain commented when only --ssh-key is provided")
+	}
+	if strings.Contains(content, "\nemail =") {
+		t.Error("email should remain commented when only --ssh-key is provided")
+	}
+}
+
+func TestCmdInit_SSHKeyFlag_WithoutNonInteractive(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	keyFile := filepath.Join(dir, "mykey")
+	os.WriteFile(keyFile, []byte("key"), 0600)
+
+	// --ssh-key works without --non-interactive (stdin is not a TTY in tests).
+	cmdInit([]string{"--ssh-key", keyFile})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	if !strings.Contains(content, "ssh_key = ") {
+		t.Error("--ssh-key should write ssh_key uncommented even without --non-interactive")
+	}
+}
+
+func TestCmdInit_InteractivePrompt_No(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	oldTerminal := stdinIsTerminal
+	stdinIsTerminal = func() bool { return true }
+	defer func() { stdinIsTerminal = oldTerminal }()
+
+	oldReader := initStdinReader
+	initStdinReader = strings.NewReader("n\n")
+	defer func() { initStdinReader = oldReader }()
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	if strings.Contains(content, "\nssh_key =") {
+		t.Error("answering 'n' should leave ssh_key commented")
+	}
+}
+
+func TestCmdInit_InteractivePrompt_Skip(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	oldTerminal := stdinIsTerminal
+	stdinIsTerminal = func() bool { return true }
+	defer func() { stdinIsTerminal = oldTerminal }()
+
+	oldReader := initStdinReader
+	initStdinReader = strings.NewReader("y\nskip\n")
+	defer func() { initStdinReader = oldReader }()
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	if strings.Contains(content, "\nssh_key =") {
+		t.Error("answering 'skip' should leave ssh_key commented")
+	}
+}
+
+func TestCmdInit_InteractivePrompt_Existing(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	keyFile := filepath.Join(dir, "existing_key")
+	os.WriteFile(keyFile, []byte("private key"), 0600)
+
+	oldTerminal := stdinIsTerminal
+	stdinIsTerminal = func() bool { return true }
+	defer func() { stdinIsTerminal = oldTerminal }()
+
+	oldReader := initStdinReader
+	initStdinReader = strings.NewReader("y\nexisting\n" + keyFile + "\n")
+	defer func() { initStdinReader = oldReader }()
+
+	cmdInit([]string{})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	if !strings.Contains(content, "ssh_key = ") {
+		t.Error("answering 'existing' with valid path should write ssh_key uncommented")
+	}
+	if !strings.Contains(content, keyFile) {
+		t.Errorf("config.toml should contain the provided key path %q", keyFile)
+	}
+}
+
+func TestCmdInit_InteractivePrompt_Generate(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// Stub ssh-keygen to create the expected key files without running real keygen.
+	var capturedKeyPath, capturedComment string
+	oldKeygen := sshKeygenCmd
+	sshKeygenCmd = func(keyPath, comment string) error {
+		capturedKeyPath = keyPath
+		capturedComment = comment
+		os.WriteFile(keyPath, []byte("private"), 0600)
+		os.WriteFile(keyPath+".pub", []byte("public key data\n"), 0644)
+		return nil
+	}
+	defer func() { sshKeygenCmd = oldKeygen }()
+
+	oldTerminal := stdinIsTerminal
+	stdinIsTerminal = func() bool { return true }
+	defer func() { stdinIsTerminal = oldTerminal }()
+
+	oldReader := initStdinReader
+	initStdinReader = strings.NewReader("y\ngenerate\n")
+	defer func() { initStdinReader = oldReader }()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	os.MkdirAll(filepath.Join(home, ".ssh"), 0700)
+
+	cmdInit([]string{})
+
+	if capturedKeyPath == "" {
+		t.Fatal("ssh-keygen stub was not called")
+	}
+	// Key path should be ~/.ssh/cloche_<basename>.
+	if !strings.Contains(capturedKeyPath, "cloche_") {
+		t.Errorf("key path should contain cloche_ prefix, got %q", capturedKeyPath)
+	}
+	// Comment should follow cloche-bot@<basename> pattern.
+	if !strings.HasPrefix(capturedComment, "cloche-bot@") {
+		t.Errorf("key comment should start with cloche-bot@, got %q", capturedComment)
+	}
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	if !strings.Contains(content, "ssh_key = ") {
+		t.Error("config.toml should have uncommented ssh_key after generate")
+	}
+	if !strings.Contains(content, capturedKeyPath) {
+		t.Errorf("config.toml should contain the generated key path %q", capturedKeyPath)
+	}
+}
+
+func TestCmdInit_NonInteractiveSkipsPrompt(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// Even when stdin looks like a terminal, --non-interactive should skip the prompt.
+	promptCalled := false
+	oldTerminal := stdinIsTerminal
+	stdinIsTerminal = func() bool { return true }
+	defer func() { stdinIsTerminal = oldTerminal }()
+
+	oldReader := initStdinReader
+	// If the prompt is called it would read "y\ngenerate\n" and stub would set promptCalled.
+	initStdinReader = strings.NewReader("y\n")
+	defer func() { initStdinReader = oldReader }()
+
+	oldKeygen := sshKeygenCmd
+	sshKeygenCmd = func(keyPath, comment string) error {
+		promptCalled = true
+		return nil
+	}
+	defer func() { sshKeygenCmd = oldKeygen }()
+
+	cmdInit([]string{"--non-interactive"})
+
+	if promptCalled {
+		t.Error("--non-interactive should not invoke the interactive prompt")
+	}
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	if strings.Contains(content, "\nssh_key =") {
+		t.Error("--non-interactive alone should not write ssh_key")
+	}
+}

@@ -759,6 +759,7 @@ already using Cloche — it will not overwrite existing files.
 cloche init [-n | --new] [--install-shell-helpers]
             [--workflow <name>] [--base-image <image>]
             [--agent-command <cmd>] [--no-llm]
+            [--non-interactive] [--ssh-key <path>]
 ```
 
 **Core behavior (always, no flags needed):** Creates the `.cloche/` directory
@@ -774,6 +775,8 @@ the project with the daemon.
 | `--base-image <base>` | `cloche-agent:latest` | Base Docker image for the generated Dockerfile (only with `--new`). |
 | `--agent-command <cmd>` | _(see below)_ | LLM command for the init analysis phase (only with `--new`; overrides config and env). |
 | `--no-llm` | false | Skip the LLM-assisted placeholder filling phase (only with `--new`). |
+| `--non-interactive` | false | Skip all interactive prompts. Use for CI or scripted init. Leaves `[git]` fields commented when no `--ssh-key` is provided. |
+| `--ssh-key <path>` | _(unset)_ | Write `ssh_key = "<path>"` into `.cloche/config.toml`. Works in both interactive and non-interactive modes. |
 
 **`--new` scaffolding:** Creates `.cloche/` with workflow file, Dockerfile,
 prompt templates (`implement.md`, `fix-tests.md`, `fix-merge.md`), host
