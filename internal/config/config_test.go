@@ -232,6 +232,70 @@ func TestLoadAgentsCodexConfigDefaults(t *testing.T) {
 	assert.Equal(t, "", cfg.Agents.Codex.UsageCommand)
 }
 
+func TestLoadGitConfig(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
+[git]
+name = "project-bot"
+email = "project-bot@example.com"
+`), 0644)
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "project-bot", cfg.Git.Name)
+	assert.Equal(t, "project-bot@example.com", cfg.Git.Email)
+}
+
+func TestLoadGitConfigDefaults(t *testing.T) {
+	dir := t.TempDir()
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "", cfg.Git.Name)
+	assert.Equal(t, "", cfg.Git.Email)
+}
+
+func TestLoadMergedProjectOverridesGlobal(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	globalDir := filepath.Join(home, ".config", "cloche")
+	require.NoError(t, os.MkdirAll(globalDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(globalDir, "config"), []byte(`
+[git]
+name = "global-bot"
+email = "global-bot@example.com"
+`), 0644))
+
+	projectDir := t.TempDir()
+	clocheDir := filepath.Join(projectDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
+[git]
+email = "project-bot@example.com"
+`), 0644))
+
+	cfg, err := LoadMerged(projectDir)
+	require.NoError(t, err)
+	// Name falls through from global (project didn't set it).
+	assert.Equal(t, "global-bot", cfg.Git.Name)
+	// Email is overridden by project.
+	assert.Equal(t, "project-bot@example.com", cfg.Git.Email)
+}
+
+func TestLoadMergedNoFiles(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	cfg, err := LoadMerged(t.TempDir())
+	require.NoError(t, err)
+	assert.Equal(t, "", cfg.Git.Name)
+	assert.Equal(t, "", cfg.Git.Email)
+}
+
 func TestLoadGlobalFromMissing(t *testing.T) {
 	cfg, err := LoadGlobalFrom("/nonexistent/path/config")
 	require.NoError(t, err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"sync"
 	"time"
 
@@ -152,6 +153,7 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 	doneCount := 0
 	aborted := false
 	var runErr error
+	stepLaunchCounts := make(map[string]int)
 
 	// Use a mutex to protect run state from concurrent goroutine access.
 	// Only the main loop should touch the Run, but we record step start before
@@ -168,6 +170,24 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 		if !ok {
 			return fmt.Errorf("step %q not found in workflow", stepName)
 		}
+
+		// Enforce max_attempts: when a step with max_attempts has been launched
+		// that many times already, synthesize "give-up" instead of executing again.
+		if maxAttemptsStr, hasMax := step.Config["max_attempts"]; hasMax {
+			if maxAttempts, parseErr := strconv.Atoi(maxAttemptsStr); parseErr == nil && maxAttempts > 0 {
+				if stepLaunchCounts[stepName] >= maxAttempts {
+					log.Printf("engine: step %q max_attempts (%d) exhausted, synthesizing give-up", step.Name, maxAttempts)
+					activeCount++
+					run.RecordStepStart(step.Name)
+					e.status.OnStepStart(run, step)
+					go func(name string) {
+						results <- stepResult{stepName: name, result: "give-up"}
+					}(step.Name)
+					return nil
+				}
+			}
+		}
+		stepLaunchCounts[stepName]++
 
 		activeCount++
 		run.RecordStepStart(step.Name)

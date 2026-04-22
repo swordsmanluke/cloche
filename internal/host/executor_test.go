@@ -18,6 +18,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGitIdentityEnv(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	projectDir := filepath.Join(home, "proj")
+	clocheDir := filepath.Join(projectDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
+[git]
+name = "cloche-bot"
+email = "cloche-bot@example.com"
+ssh_key = "~/.ssh/cloche_bot"
+`), 0644))
+
+	e := &Executor{ProjectDir: projectDir}
+	env := e.gitIdentityEnv()
+
+	expectKey := filepath.Join(home, ".ssh", "cloche_bot")
+	wantCommand := fmt.Sprintf(`CLOCHE_GIT_SSH_COMMAND=ssh -i %q -o IdentitiesOnly=yes`, expectKey)
+
+	assert.Contains(t, env, "CLOCHE_GIT_AUTHOR_NAME=cloche-bot")
+	assert.Contains(t, env, "CLOCHE_GIT_AUTHOR_EMAIL=cloche-bot@example.com")
+	assert.Contains(t, env, wantCommand)
+}
+
+func TestGitIdentityEnvEmpty(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	e := &Executor{ProjectDir: t.TempDir()}
+	assert.Empty(t, e.gitIdentityEnv())
+}
+
 // fakeStore returns a predetermined run on GetRun.
 type fakeStore struct {
 	mu       sync.Mutex

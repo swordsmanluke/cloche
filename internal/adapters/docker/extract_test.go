@@ -214,6 +214,76 @@ func TestExtractResultsIntoPreparedWorktree(t *testing.T) {
 	}
 }
 
+func TestExtractResultsUsesConfiguredIdentity(t *testing.T) {
+	repoDir, baseSHA := setupTestRepo(t)
+	fixtureDir := makeFixtureDir(t)
+	overrideDockerCp(t, fixtureDir)
+	overrideDockerExec(t, nil)
+
+	runID := "identity-configured"
+	wt := prepareForTest(t, repoDir, baseSHA, runID)
+
+	result, err := ExtractResults(context.Background(), ExtractOptions{
+		ContainerID:  "fake-container",
+		WorktreeDir:  wt.Dir,
+		Branch:       wt.Branch,
+		BaseSHA:      baseSHA,
+		RunID:        runID,
+		WorkflowName: "develop",
+		Result:       "succeeded",
+		AuthorName:   "cloche-bot",
+		AuthorEmail:  "cloche-bot@example.com",
+	})
+	if err != nil {
+		t.Fatalf("ExtractResults: %v", err)
+	}
+
+	cmd := exec.Command("git", "show", "-s", "--format=%an <%ae>", result.CommitSHA)
+	cmd.Dir = repoDir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git show: %v", err)
+	}
+	got := strings.TrimSpace(string(out))
+	if got != "cloche-bot <cloche-bot@example.com>" {
+		t.Errorf("author = %q, want %q", got, "cloche-bot <cloche-bot@example.com>")
+	}
+}
+
+func TestExtractResultsFallsBackToDefaultIdentity(t *testing.T) {
+	repoDir, baseSHA := setupTestRepo(t)
+	fixtureDir := makeFixtureDir(t)
+	overrideDockerCp(t, fixtureDir)
+	overrideDockerExec(t, nil)
+
+	runID := "identity-default"
+	wt := prepareForTest(t, repoDir, baseSHA, runID)
+
+	result, err := ExtractResults(context.Background(), ExtractOptions{
+		ContainerID:  "fake-container",
+		WorktreeDir:  wt.Dir,
+		Branch:       wt.Branch,
+		BaseSHA:      baseSHA,
+		RunID:        runID,
+		WorkflowName: "develop",
+		Result:       "succeeded",
+	})
+	if err != nil {
+		t.Fatalf("ExtractResults: %v", err)
+	}
+
+	cmd := exec.Command("git", "show", "-s", "--format=%an <%ae>", result.CommitSHA)
+	cmd.Dir = repoDir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git show: %v", err)
+	}
+	got := strings.TrimSpace(string(out))
+	if got != "cloche <cloche@local>" {
+		t.Errorf("author = %q, want %q", got, "cloche <cloche@local>")
+	}
+}
+
 func TestExtractResultsRestoresGitPointerWhenContainerHasGit(t *testing.T) {
 	repoDir, baseSHA := setupTestRepo(t)
 

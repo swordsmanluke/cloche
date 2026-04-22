@@ -11,8 +11,8 @@ workflow "develop" {
   }
 
   step test {
-    run = "go test ./... 2>&1; rc=$?; cloche set test_exit_code \"$rc\" 2>/dev/null; exit $rc"
-    results = [success, fail]
+    run = "go test ./... 2>&1; rc=$?; cloche set test_exit_code \"$rc\" 2>/dev/null; [ $rc -eq 127 ] && echo 'CLOCHE_RESULT:env-error'; exit $rc"
+    results = [success, fail, env-error]
   }
 
   step fix {
@@ -34,6 +34,7 @@ workflow "develop" {
   verify-changes:fail -> abort
   test:success -> update-docs
   test:fail -> fix
+  test:env-error -> abort
   fix:success -> test
   fix:fail -> abort
   fix:give-up -> abort

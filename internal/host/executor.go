@@ -50,6 +50,43 @@ func (e *Executor) scriptDir() string {
 	return e.ProjectDir
 }
 
+// gitIdentityEnv returns CLOCHE_GIT_AUTHOR_NAME / CLOCHE_GIT_AUTHOR_EMAIL /
+// CLOCHE_GIT_SSH_COMMAND entries for scripts and agent steps to consume.
+// Workflow scripts that push should invoke
+//
+//	GIT_SSH_COMMAND="$CLOCHE_GIT_SSH_COMMAND" git push …
+//
+// Empty slice when nothing is configured.
+func (e *Executor) gitIdentityEnv() []string {
+	cfg, err := config.LoadMerged(e.ProjectDir)
+	if err != nil {
+		log.Printf("host executor: loading git identity from config: %v", err)
+		return nil
+	}
+	var out []string
+	if cfg.Git.Name != "" {
+		out = append(out, "CLOCHE_GIT_AUTHOR_NAME="+cfg.Git.Name)
+	}
+	if cfg.Git.Email != "" {
+		out = append(out, "CLOCHE_GIT_AUTHOR_EMAIL="+cfg.Git.Email)
+	}
+	if cfg.Git.SSHKey != "" {
+		out = append(out, "CLOCHE_GIT_SSH_COMMAND="+composeSSHCommand(cfg.Git.SSHKey))
+	}
+	return out
+}
+
+// composeSSHCommand builds a GIT_SSH_COMMAND value that uses the given key
+// exclusively. "~" is expanded to the user's home directory.
+func composeSSHCommand(keyPath string) string {
+	if strings.HasPrefix(keyPath, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			keyPath = filepath.Join(home, keyPath[2:])
+		}
+	}
+	return fmt.Sprintf("ssh -i %q -o IdentitiesOnly=yes", keyPath)
+}
+
 var _ engine.StepExecutor = (*Executor)(nil)
 
 // Execute runs a single host workflow step.
@@ -141,6 +178,7 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 	cmd.Env = append(baseEnv,
 		"CLOCHE_PROJECT_DIR="+e.ProjectDir,
 	)
+	cmd.Env = append(cmd.Env, e.gitIdentityEnv()...)
 
 	// Pass run ID for identification
 	if e.HostRunID != "" {
@@ -476,6 +514,7 @@ func (e *Executor) runHumanPollScript(ctx context.Context, step *domain.Step) (s
 	cmd.Env = append(baseEnv,
 		"CLOCHE_PROJECT_DIR="+e.ProjectDir,
 	)
+	cmd.Env = append(cmd.Env, e.gitIdentityEnv()...)
 	if e.HostRunID != "" {
 		cmd.Env = append(cmd.Env, "CLOCHE_RUN_ID="+e.HostRunID)
 	}

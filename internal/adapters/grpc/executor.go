@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
+	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/host"
@@ -286,6 +287,7 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		wt, hasWorktree := d.worktrees[poolKey]
 		if hasWorktree && session != nil {
 			log.Printf("daemon executor: extracting results to branch %s", wt.Branch)
+			authorName, authorEmail := resolveGitIdentity(d.projectDir)
 			if _, err := extractResultsFn(ctx, docker.ExtractOptions{
 				ContainerID:  session.ContainerID,
 				WorktreeDir:  wt.Dir,
@@ -294,6 +296,8 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 				RunID:        childRunID,
 				WorkflowName: targetName,
 				Result:       resultLabel,
+				AuthorName:   authorName,
+				AuthorEmail:  authorEmail,
 			}); err != nil {
 				log.Printf("daemon executor: failed to extract results: %v", err)
 			} else {
@@ -503,4 +507,17 @@ func (d *DaemonExecutor) indexSubworkflowLogs(ctx context.Context, hostRunID, su
 			log.Printf("daemon executor: failed to index log file %s for run %s: %v", name, hostRunID, err)
 		}
 	}
+}
+
+// resolveGitIdentity loads the merged (global+project) git identity for
+// extraction commits. Returns empty strings when no identity is configured,
+// which lets ExtractResults fall back to its built-in "cloche <cloche@local>"
+// default. Load errors are logged and treated as unset.
+func resolveGitIdentity(projectDir string) (name, email string) {
+	cfg, err := config.LoadMerged(projectDir)
+	if err != nil {
+		log.Printf("daemon executor: loading git identity from config: %v", err)
+		return "", ""
+	}
+	return cfg.Git.Name, cfg.Git.Email
 }

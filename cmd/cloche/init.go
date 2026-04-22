@@ -334,9 +334,11 @@ base_branch = subprocess.run(
 
 os.makedirs(os.path.dirname(worktree_dir), exist_ok=True)
 
+git_name = os.environ.get("CLOCHE_GIT_AUTHOR_NAME") or "cloche"
+git_email = os.environ.get("CLOCHE_GIT_AUTHOR_EMAIL") or "cloche@local"
 env = {**os.environ,
-       "GIT_AUTHOR_NAME": "cloche", "GIT_AUTHOR_EMAIL": "cloche@local",
-       "GIT_COMMITTER_NAME": "cloche", "GIT_COMMITTER_EMAIL": "cloche@local"}
+       "GIT_AUTHOR_NAME": git_name, "GIT_AUTHOR_EMAIL": git_email,
+       "GIT_COMMITTER_NAME": git_name, "GIT_COMMITTER_EMAIL": git_email}
 
 subprocess.run(
     ["git", "-C", project_dir, "worktree", "add", worktree_dir, branch],
@@ -378,9 +380,11 @@ run_id = subprocess.run(
 ).stdout.strip()
 branch = f"cloche/{run_id}"
 
+git_name = os.environ.get("CLOCHE_GIT_AUTHOR_NAME") or "cloche"
+git_email = os.environ.get("CLOCHE_GIT_AUTHOR_EMAIL") or "cloche@local"
 env = {**os.environ,
-       "GIT_AUTHOR_NAME": "cloche", "GIT_AUTHOR_EMAIL": "cloche@local",
-       "GIT_COMMITTER_NAME": "cloche", "GIT_COMMITTER_EMAIL": "cloche@local"}
+       "GIT_AUTHOR_NAME": git_name, "GIT_AUTHOR_EMAIL": git_email,
+       "GIT_COMMITTER_NAME": git_name, "GIT_COMMITTER_EMAIL": git_email}
 
 # Get rebased HEAD
 rebased_head = subprocess.run(

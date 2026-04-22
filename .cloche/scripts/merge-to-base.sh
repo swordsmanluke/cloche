@@ -23,10 +23,10 @@ PROJECT_DIR="${CLOCHE_PROJECT_DIR:-.}"
 WORKTREE_DIR="$PROJECT_DIR/.gitworktrees/cloche/$BRANCH_SUFFIX"
 BASE_BRANCH=$(git -C "$PROJECT_DIR" rev-parse --abbrev-ref HEAD)
 
-export GIT_AUTHOR_NAME=cloche
-export GIT_AUTHOR_EMAIL=cloche@local
-export GIT_COMMITTER_NAME=cloche
-export GIT_COMMITTER_EMAIL=cloche@local
+export GIT_AUTHOR_NAME="${CLOCHE_GIT_AUTHOR_NAME:-cloche}"
+export GIT_AUTHOR_EMAIL="${CLOCHE_GIT_AUTHOR_EMAIL:-cloche@local}"
+export GIT_COMMITTER_NAME="${CLOCHE_GIT_AUTHOR_NAME:-cloche}"
+export GIT_COMMITTER_EMAIL="${CLOCHE_GIT_AUTHOR_EMAIL:-cloche@local}"
 
 if ! git -C "$PROJECT_DIR" rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
   echo "error: branch $BRANCH does not exist" >&2

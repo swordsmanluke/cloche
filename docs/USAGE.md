@@ -410,6 +410,10 @@ receives the task ID and handles all phases of work including any post-run clean
 | `CLOCHE_PREV_OUTPUT` | Path to the output file from the immediately preceding step. |
 | `CLOCHE_RUN_ID` | Workflow ID for this workflow execution (e.g. `a133:develop`). |
 | `CLOCHE_TASK_ID` | Task ID assigned by the daemon (set for the `main` phase). |
+| `CLOCHE_ATTEMPT_ID` | Attempt identifier for this run. |
+| `CLOCHE_GIT_AUTHOR_NAME` | Git author/committer name from `[git] name`. Only set when configured. |
+| `CLOCHE_GIT_AUTHOR_EMAIL` | Git author/committer email from `[git] email`. Only set when configured. |
+| `CLOCHE_GIT_SSH_COMMAND` | Pre-composed `ssh -i <key> -o IdentitiesOnly=yes` from `[git] ssh_key`. Only set when configured. Use as `GIT_SSH_COMMAND="$CLOCHE_GIT_SSH_COMMAND" git push …`. |
 
 ### Container Environment Variables
 
@@ -1415,6 +1419,37 @@ Per-agent config for the Codex agent. See [How to set up Codex](agent-setup-code
 |-----|---------|-------------|
 | `usage_command` | _(unset)_ | Shell command run after each Codex step to capture token usage. Output must be JSON: `{"input_tokens": N, "output_tokens": N}`. |
 
+### `[git]`
+
+Identity used for cloche-authored git commits: the extraction commit made when
+results are pulled out of a container, and the scaffolded rebase/merge scripts
+that run on the host. Per-project values override the same keys in the global
+config at `~/.config/cloche/config`. When both are unset, commits attribute to
+`cloche <cloche@local>`.
+
+Use a distinct identity (for example a dedicated GitHub bot account or a
+`users.noreply.github.com` email) to keep agent-authored commits separable from
+your own and to let GitHub treat agent PRs as reviewable by you.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `name` | `cloche` | `GIT_AUTHOR_NAME` / `GIT_COMMITTER_NAME` for cloche-authored commits. |
+| `email` | `cloche@local` | `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` for cloche-authored commits. |
+| `ssh_key` | _(unset)_ | Path to a private key used for `git push` in workflow scripts. `~` is expanded. |
+
+Host scripts receive the resolved identity and push credentials as env vars:
+
+| Env var | When set | Meaning |
+|---------|----------|---------|
+| `CLOCHE_GIT_AUTHOR_NAME` | `[git] name` is configured | Pass to `GIT_AUTHOR_NAME` / `GIT_COMMITTER_NAME` when making commits. |
+| `CLOCHE_GIT_AUTHOR_EMAIL` | `[git] email` is configured | Pass to `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` when making commits. |
+| `CLOCHE_GIT_SSH_COMMAND` | `[git] ssh_key` is configured | Pre-composed `ssh -i <key> -o IdentitiesOnly=yes`. Workflow scripts that push should do `GIT_SSH_COMMAND="$CLOCHE_GIT_SSH_COMMAND" git push …`. |
+
+The convention: any workflow script that commits or pushes on the bot's behalf
+should honor these env vars with a local fallback (so it still works when
+nothing is configured). The scaffolded `prepare-merge`/`merge` scripts follow
+this pattern.
+
 ## Environment Variable Reference
 
 ### Daemon Configuration
@@ -1449,6 +1484,10 @@ Set by the daemon for each host step script invocation.
 | `CLOCHE_RUN_ID` | The run ID for this workflow execution. |
 | `CLOCHE_PREV_OUTPUT` | Path to the output file from the immediately preceding step. |
 | `CLOCHE_TASK_ID` | Task ID assigned by the daemon (set for the `main` phase). |
+| `CLOCHE_ATTEMPT_ID` | Attempt identifier for this run. |
+| `CLOCHE_GIT_AUTHOR_NAME` | Git author/committer name from `[git] name`. Only set when configured. |
+| `CLOCHE_GIT_AUTHOR_EMAIL` | Git author/committer email from `[git] email`. Only set when configured. |
+| `CLOCHE_GIT_SSH_COMMAND` | Pre-composed SSH command from `[git] ssh_key`. Only set when configured. See [`[git]` config](#git) for usage. |
 
 ### Container Runtime Variables
 

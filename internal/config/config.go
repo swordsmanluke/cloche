@@ -44,12 +44,24 @@ type AgentsConfig struct {
 	Codex AgentCodexConfig `toml:"codex"`
 }
 
+// GitConfig controls the git identity used for cloche-authored commits
+// (extraction commits and scaffolded merge scripts). When unset, commits
+// fall back to the built-in "cloche <cloche@local>" identity. SSHKey is a
+// path to a private key used for git push in workflow scripts; the host
+// executor composes it into CLOCHE_GIT_SSH_COMMAND for scripts to consume.
+type GitConfig struct {
+	Name   string `toml:"name"`
+	Email  string `toml:"email"`
+	SSHKey string `toml:"ssh_key"`
+}
+
 type Config struct {
 	Active        bool                `toml:"active"`
 	Daemon        DaemonConfig        `toml:"daemon"`
 	Evolution     EvolutionConfig     `toml:"evolution"`
 	Orchestration OrchestrationConfig `toml:"orchestration"`
 	Agents        AgentsConfig        `toml:"agents"`
+	Git           GitConfig           `toml:"git"`
 }
 
 func defaults() Config {
@@ -115,6 +127,37 @@ func LoadGlobal() (*Config, error) {
 	return &cfg, nil
 }
 
+// LoadMerged returns a Config where global values are overlaid by per-project
+// values. Project settings win when set (non-zero for strings/ints/bools).
+// Missing files are treated as empty overlays.
+func LoadMerged(projectDir string) (*Config, error) {
+	global, err := LoadGlobal()
+	if err != nil {
+		return nil, err
+	}
+	project, err := Load(projectDir)
+	if err != nil {
+		return nil, err
+	}
+	mergeInto(global, project)
+	return global, nil
+}
+
+// mergeInto overlays non-zero fields from src onto dst. Currently only fields
+// that can be meaningfully overridden per-project are merged here; extend as
+// new overrideable settings are added.
+func mergeInto(dst, src *Config) {
+	if src.Git.Name != "" {
+		dst.Git.Name = src.Git.Name
+	}
+	if src.Git.Email != "" {
+		dst.Git.Email = src.Git.Email
+	}
+	if src.Git.SSHKey != "" {
+		dst.Git.SSHKey = src.Git.SSHKey
+	}
+}
+
 // StateDir returns the path to ~/.config/cloche/ and ensures it exists.
 // Falls back to a temp directory if the home directory cannot be determined.
 func StateDir() string {
@@ -159,6 +202,14 @@ http = "localhost:8080"
 
 # SQLite database path
 # db = "~/.config/cloche/cloche.db"
+
+# Git identity used for cloche-authored commits (container extraction and
+# scaffolded merge scripts). When unset, commits attribute to "cloche
+# <cloche@local>". Per-project overrides go in <project>/.cloche/config.toml.
+# [git]
+# name = "cloche-bot"
+# email = "cloche-bot@users.noreply.github.com"
+# ssh_key = "~/.ssh/cloche_bot"  # used by workflow scripts that push
 `
 
 // WriteGlobalConfigIfAbsent creates ~/.config/cloche/config with default values

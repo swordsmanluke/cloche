@@ -45,9 +45,19 @@ type ExtractOptions struct {
 	WorkflowName string
 	Result       string
 
+	// AuthorName / AuthorEmail configure the identity used for the extraction
+	// commit. Empty strings fall back to the built-in "cloche <cloche@local>".
+	AuthorName  string
+	AuthorEmail string
+
 	TargetDir string
 	NoGit     bool
 }
+
+const (
+	defaultExtractAuthorName  = "cloche"
+	defaultExtractAuthorEmail = "cloche@local"
+)
 
 // ExtractResult contains the outcome of a successful ExtractResults call.
 type ExtractResult struct {
@@ -203,9 +213,17 @@ func extractGit(ctx context.Context, opts ExtractOptions) (ExtractResult, error)
 		return ExtractResult{}, fmt.Errorf("restoring worktree .git pointer: %w", err)
 	}
 
+	name := opts.AuthorName
+	if name == "" {
+		name = defaultExtractAuthorName
+	}
+	email := opts.AuthorEmail
+	if email == "" {
+		email = defaultExtractAuthorEmail
+	}
 	gitEnv := append(os.Environ(),
-		"GIT_AUTHOR_NAME=cloche", "GIT_AUTHOR_EMAIL=cloche@local",
-		"GIT_COMMITTER_NAME=cloche", "GIT_COMMITTER_EMAIL=cloche@local",
+		"GIT_AUTHOR_NAME="+name, "GIT_AUTHOR_EMAIL="+email,
+		"GIT_COMMITTER_NAME="+name, "GIT_COMMITTER_EMAIL="+email,
 	)
 
 	addFilesCmd := exec.CommandContext(ctx, "git", "add", "-A")

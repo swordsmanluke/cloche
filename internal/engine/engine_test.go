@@ -442,6 +442,133 @@ func TestEngine_StepTriggerContext(t *testing.T) {
 }
 
 
+func TestEngine_MaxAttempts_SynthesizesGiveUp(t *testing.T) {
+	// Reproduce the develop workflow infinite loop: test always fails and routes
+	// to fix; fix always returns success and routes back to test.
+	// With max_attempts = 2 on fix, the engine must synthesize "give-up" after
+	// 2 real fix invocations and abort instead of looping indefinitely.
+	wf := &domain.Workflow{
+		Name: "retry-loop",
+		Steps: map[string]*domain.Step{
+			"test": {
+				Name:    "test",
+				Type:    domain.StepTypeScript,
+				Results: []string{"success", "fail"},
+				Config:  map[string]string{"run": "echo test"},
+			},
+			"fix": {
+				Name:    "fix",
+				Type:    domain.StepTypeAgent,
+				Results: []string{"success", "fail", "give-up"},
+				Config:  map[string]string{"max_attempts": "2"},
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: "test", Result: "success", To: domain.StepDone},
+			{From: "test", Result: "fail", To: "fix"},
+			{From: "fix", Result: "success", To: "test"},
+			{From: "fix", Result: "fail", To: domain.StepAbort},
+			{From: "fix", Result: "give-up", To: domain.StepAbort},
+		},
+		EntryStep: "test",
+	}
+
+	var mu sync.Mutex
+	callCount := map[string]int{}
+
+	exec := engine.StepExecutorFunc(func(_ context.Context, step *domain.Step) (domain.StepResult, error) {
+		mu.Lock()
+		callCount[step.Name]++
+		mu.Unlock()
+		switch step.Name {
+		case "fix":
+			return domain.StepResult{Result: "success"}, nil
+		default:
+			return domain.StepResult{Result: "fail"}, nil
+		}
+	})
+
+	eng := engine.New(exec)
+	run, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateFailed, run.State)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, 2, callCount["fix"], "fix should execute exactly max_attempts times")
+	// test runs once initially, then once after each fix invocation = 3 total
+	assert.Equal(t, 3, callCount["test"], "test should run once per fix attempt plus once initially")
+}
+
+func TestEngine_MaxAttempts_AllowsUpToLimit(t *testing.T) {
+	// With max_attempts = 3, the step should execute 3 times before giving up.
+	wf := &domain.Workflow{
+		Name: "retry-limit",
+		Steps: map[string]*domain.Step{
+			"work": {
+				Name:    "work",
+				Type:    domain.StepTypeAgent,
+				Results: []string{"success", "fail", "give-up"},
+				Config:  map[string]string{"max_attempts": "3"},
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: "work", Result: "success", To: domain.StepDone},
+			{From: "work", Result: "fail", To: "work"},
+			{From: "work", Result: "give-up", To: domain.StepAbort},
+		},
+		EntryStep: "work",
+	}
+
+	callCount := 0
+	exec := engine.StepExecutorFunc(func(_ context.Context, step *domain.Step) (domain.StepResult, error) {
+		callCount++
+		return domain.StepResult{Result: "fail"}, nil
+	})
+
+	eng := engine.New(exec)
+	run, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateFailed, run.State)
+	assert.Equal(t, 3, callCount, "step should execute exactly 3 times before give-up is synthesized")
+}
+
+func TestEngine_MaxAttempts_SuccessBeforeLimit(t *testing.T) {
+	// If the step succeeds before exhausting max_attempts, no give-up is synthesized.
+	wf := &domain.Workflow{
+		Name: "retry-success",
+		Steps: map[string]*domain.Step{
+			"work": {
+				Name:    "work",
+				Type:    domain.StepTypeAgent,
+				Results: []string{"success", "fail", "give-up"},
+				Config:  map[string]string{"max_attempts": "5"},
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: "work", Result: "success", To: domain.StepDone},
+			{From: "work", Result: "fail", To: "work"},
+			{From: "work", Result: "give-up", To: domain.StepAbort},
+		},
+		EntryStep: "work",
+	}
+
+	callCount := 0
+	exec := engine.StepExecutorFunc(func(_ context.Context, step *domain.Step) (domain.StepResult, error) {
+		callCount++
+		if callCount == 2 {
+			return domain.StepResult{Result: "success"}, nil
+		}
+		return domain.StepResult{Result: "fail"}, nil
+	})
+
+	eng := engine.New(exec)
+	run, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+	assert.Equal(t, 2, callCount, "step should execute only until success")
+}
+
 func TestStepTimeout_HumanStep_Default72h(t *testing.T) {
 	// A human step with no timeout config should use HumanStepDefaultTimeout (72h).
 	// Verify by running a human step whose executor checks the context deadline.

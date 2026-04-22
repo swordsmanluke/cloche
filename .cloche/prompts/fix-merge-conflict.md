@@ -34,8 +34,10 @@ The project root is `$CLOCHE_PROJECT_DIR`.
 3. **Continue the rebase** after all conflicts are resolved:
 
    ```bash
-   GIT_AUTHOR_NAME=cloche GIT_AUTHOR_EMAIL=cloche@local \
-   GIT_COMMITTER_NAME=cloche GIT_COMMITTER_EMAIL=cloche@local \
+   GIT_AUTHOR_NAME="${CLOCHE_GIT_AUTHOR_NAME:-cloche}" \
+   GIT_AUTHOR_EMAIL="${CLOCHE_GIT_AUTHOR_EMAIL:-cloche@local}" \
+   GIT_COMMITTER_NAME="${CLOCHE_GIT_AUTHOR_NAME:-cloche}" \
+   GIT_COMMITTER_EMAIL="${CLOCHE_GIT_AUTHOR_EMAIL:-cloche@local}" \
    git -C "$CLOCHE_PROJECT_DIR/.gitworktrees/merge/<run-id>" rebase --continue
    ```
 
