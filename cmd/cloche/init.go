@@ -13,23 +13,24 @@ import (
 	"golang.org/x/term"
 )
 
-// stdinIsTerminal reports whether stdin is an interactive terminal.
-// Replaced in tests to simulate interactive mode.
-var stdinIsTerminal = func() bool {
-	return term.IsTerminal(int(os.Stdin.Fd()))
-}
+// stdinOverride is set in tests to inject fake stdin, bypassing the TTY check.
+var stdinOverride io.Reader
 
-// initStdinReader is the reader used for interactive prompts.
-// Replaced in tests to inject fake stdin.
-var initStdinReader io.Reader = os.Stdin
-
-// sshKeygenCmd runs ssh-keygen to generate an ed25519 key.
-// Replaced in tests to avoid executing real ssh-keygen.
-var sshKeygenCmd = func(keyPath, comment string) error {
-	cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-f", keyPath, "-C", comment, "-N", "")
-	cmd.Stdout = os.Stdout
+// sshKeygenFunc is the hook used to generate SSH keys; replaced in tests.
+var sshKeygenFunc = func(keyFile, comment string) error {
+	cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-f", keyFile, "-C", comment, "-N", "")
+	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// gitOriginURLFunc is the hook used to get the git remote origin URL; replaced in tests.
+var gitOriginURLFunc = func() (string, error) {
+	out, err := exec.Command("git", "remote", "get-url", "origin").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 var workflowTemplate = `workflow "%s" {
@@ -142,9 +143,9 @@ min_confidence     = "medium"
 max_prompt_bullets = 50
 
 [git]
-# name    = ""  # override global git identity for this project
+# name    = ""     # override global git identity for this project
 # email   = ""
-# ssh_key = ""  # path to private key used for git push
+# ssh_key = ""     # path to private key used for git push
 `
 
 var defaultClocheignore = `# Files excluded from the container workspace.
@@ -606,137 +607,176 @@ if __name__ == "__main__":
     unittest.main()
 `
 
+// sanitizeProjectBasename replaces non-alphanumeric characters with underscores.
+func sanitizeProjectBasename(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('_')
+		}
+	}
+	return b.String()
+}
+
+// parseGitHubOwnerRepo extracts the owner and repo from a GitHub remote URL.
+// Supports both HTTPS (https://github.com/owner/repo[.git]) and
+// SSH (git@github.com:owner/repo[.git]) formats.
+func parseGitHubOwnerRepo(remoteURL string) (owner, repo string) {
+	var path string
+	if after, ok := strings.CutPrefix(remoteURL, "https://github.com/"); ok {
+		path = strings.TrimSuffix(after, ".git")
+	} else if after, ok := strings.CutPrefix(remoteURL, "git@github.com:"); ok {
+		path = strings.TrimSuffix(after, ".git")
+	} else {
+		return "", ""
+	}
+	owner, repo, found := strings.Cut(path, "/")
+	if !found || owner == "" || repo == "" {
+		return "", ""
+	}
+	return owner, repo
+}
+
+// detectGitHubDeployKeyURL returns the GitHub deploy-keys settings URL if the
+// current project's origin remote is a GitHub repository.
+func detectGitHubDeployKeyURL() (string, bool) {
+	remoteURL, err := gitOriginURLFunc()
+	if err != nil {
+		return "", false
+	}
+	owner, repo := parseGitHubOwnerRepo(remoteURL)
+	if owner == "" || repo == "" {
+		return "", false
+	}
+	return fmt.Sprintf("https://github.com/%s/%s/settings/keys", owner, repo), true
+}
+
+// isTerminal reports whether f is connected to a real terminal.
+func isTerminal(f *os.File) bool {
+	return term.IsTerminal(int(f.Fd()))
+}
+
+func getStdin() io.Reader {
+	if stdinOverride != nil {
+		return stdinOverride
+	}
+	return os.Stdin
+}
+
+// writeSSHKeyToConfig writes ssh_key = "<keyPath>" into the [git] section of
+// the given config.toml, replacing the commented placeholder if present.
+func writeSSHKeyToConfig(configPath, keyPath string) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not read %s: %v\n", configPath, err)
+		return
+	}
+	lines := strings.Split(string(data), "\n")
+	replaced := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "# ssh_key =") || strings.HasPrefix(trimmed, "ssh_key =") {
+			lines[i] = fmt.Sprintf(`ssh_key = "%s"`, keyPath)
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		insertIdx := -1
+		for i, line := range lines {
+			if strings.TrimSpace(line) == "[git]" {
+				insertIdx = i + 1
+				break
+			}
+		}
+		newLine := fmt.Sprintf(`ssh_key = "%s"`, keyPath)
+		if insertIdx >= 0 {
+			newLines := make([]string, 0, len(lines)+1)
+			newLines = append(newLines, lines[:insertIdx]...)
+			newLines = append(newLines, newLine)
+			newLines = append(newLines, lines[insertIdx:]...)
+			lines = newLines
+		} else {
+			lines = append(lines, "", "[git]", newLine)
+		}
+	}
+	if err := os.WriteFile(configPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not update %s: %v\n", configPath, err)
+	} else {
+		fmt.Fprintf(os.Stderr, "  update %s (ssh_key)\n", configPath)
+	}
+}
+
+// runSSHKeySetup handles the --ssh-key flag and interactive SSH key prompt.
+func runSSHKeySetup(configPath, sshKeyFlag string, nonInteractive bool, projectName string) {
+	if sshKeyFlag != "" {
+		if _, err := os.Stat(sshKeyFlag); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: ssh key %q not found; skipping config update\n", sshKeyFlag)
+			return
+		}
+		writeSSHKeyToConfig(configPath, sshKeyFlag)
+		return
+	}
+	if nonInteractive {
+		return
+	}
+	if stdinOverride == nil && !isTerminal(os.Stdin) {
+		return
+	}
+	reader := bufio.NewReader(getStdin())
+	fmt.Fprintf(os.Stderr, "\nConfigure a project-specific git push key for this project? [y/N] ")
+	line, _ := reader.ReadString('\n')
+	if strings.ToLower(strings.TrimSpace(line)) != "y" {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "Use an existing key, generate a new one, or skip? [existing/generate/skip] ")
+	line, _ = reader.ReadString('\n')
+	choice := strings.ToLower(strings.TrimSpace(line))
+	switch choice {
+	case "existing":
+		fmt.Fprintf(os.Stderr, "Path to existing SSH private key: ")
+		line, _ = reader.ReadString('\n')
+		keyPath := strings.TrimSpace(line)
+		if _, err := os.Stat(keyPath); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: %q not found; skipping config update\n", keyPath)
+			return
+		}
+		writeSSHKeyToConfig(configPath, keyPath)
+	case "generate":
+		home := os.Getenv("HOME")
+		if home == "" {
+			fmt.Fprintf(os.Stderr, "warning: $HOME not set; cannot generate SSH key\n")
+			return
+		}
+		sanitized := sanitizeProjectBasename(projectName)
+		keyFile := filepath.Join(home, ".ssh", "cloche_"+sanitized)
+		comment := "cloche-bot@" + sanitized
+		if err := sshKeygenFunc(keyFile, comment); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not generate SSH key: %v\n", err)
+			return
+		}
+		os.Chmod(keyFile, 0600)
+		os.Chmod(keyFile+".pub", 0644)
+		writeSSHKeyToConfig(configPath, keyFile)
+		if pubKey, err := os.ReadFile(keyFile + ".pub"); err == nil {
+			fmt.Fprintf(os.Stderr, "\nPublic key to add to GitHub:\n\n%s\n", string(pubKey))
+		}
+		if deployURL, ok := detectGitHubDeployKeyURL(); ok {
+			fmt.Fprintf(os.Stderr, "Add as a deploy key at: %s\n", deployURL)
+		} else {
+			fmt.Fprintf(os.Stderr, "Add as a user key at: https://github.com/settings/ssh/new\n")
+		}
+	}
+}
+
 func projectImageName() string {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "cloche-agent:latest"
 	}
 	return strings.ToLower(filepath.Base(cwd)) + "-cloche-agent:latest"
-}
-
-// projectBasename returns the current directory's base name with
-// non-alphanumeric characters replaced by underscores.
-func projectBasename() string {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "project"
-	}
-	base := filepath.Base(cwd)
-	var sb strings.Builder
-	for _, r := range base {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-			sb.WriteRune(r)
-		} else {
-			sb.WriteRune('_')
-		}
-	}
-	result := sb.String()
-	if result == "" {
-		return "project"
-	}
-	return result
-}
-
-// writeSSHKeyToConfig sets ssh_key in .cloche/config.toml.
-// It replaces an existing commented-out ssh_key line when present,
-// otherwise it appends a [git] section.
-func writeSSHKeyToConfig(path, sshKey string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	content := string(data)
-
-	lines := strings.Split(content, "\n")
-	replaced := false
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "# ssh_key") {
-			lines[i] = fmt.Sprintf("ssh_key = %q", sshKey)
-			replaced = true
-			break
-		}
-	}
-	if replaced {
-		content = strings.Join(lines, "\n")
-	} else if strings.Contains(content, "[git]") {
-		// [git] section exists but no commented ssh_key line — insert after [git] header.
-		lines = strings.Split(content, "\n")
-		for i, line := range lines {
-			if strings.TrimSpace(line) == "[git]" {
-				newLine := fmt.Sprintf("ssh_key = %q", sshKey)
-				lines = append(lines[:i+1], append([]string{newLine}, lines[i+1:]...)...)
-				break
-			}
-		}
-		content = strings.Join(lines, "\n")
-	} else {
-		if !strings.HasSuffix(content, "\n") {
-			content += "\n"
-		}
-		content += fmt.Sprintf("\n[git]\nssh_key = %q\n", sshKey)
-	}
-
-	return os.WriteFile(path, []byte(content), 0644)
-}
-
-// promptForSSHKey runs the interactive SSH key setup flow, reading from r.
-// Returns the selected/generated key path, or empty string if skipped.
-func promptForSSHKey(r io.Reader, basename string) (string, error) {
-	scanner := bufio.NewScanner(r)
-
-	fmt.Fprintf(os.Stderr, "\nConfigure a project-specific git push key for this project? [y/N]: ")
-	if !scanner.Scan() {
-		return "", nil
-	}
-	answer := strings.TrimSpace(scanner.Text())
-	if !strings.EqualFold(answer, "y") && !strings.EqualFold(answer, "yes") {
-		return "", nil
-	}
-
-	fmt.Fprintf(os.Stderr, "Use an existing key, generate a new one, or skip? [existing/generate/skip]: ")
-	if !scanner.Scan() {
-		return "", nil
-	}
-	choice := strings.TrimSpace(strings.ToLower(scanner.Text()))
-
-	switch choice {
-	case "existing":
-		fmt.Fprintf(os.Stderr, "Path to existing private key: ")
-		if !scanner.Scan() {
-			return "", nil
-		}
-		keyPath := strings.TrimSpace(scanner.Text())
-		if f, err := os.Open(keyPath); err != nil {
-			return "", fmt.Errorf("cannot read key file %q: %w", keyPath, err)
-		} else {
-			f.Close()
-		}
-		return keyPath, nil
-
-	case "generate":
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("cannot determine home directory: %w", err)
-		}
-		keyPath := filepath.Join(home, ".ssh", "cloche_"+basename)
-		comment := "cloche-bot@" + basename
-		if err := sshKeygenCmd(keyPath, comment); err != nil {
-			return "", fmt.Errorf("ssh-keygen failed: %w", err)
-		}
-		os.Chmod(keyPath, 0600)
-		os.Chmod(keyPath+".pub", 0644)
-		if pubKey, err := os.ReadFile(keyPath + ".pub"); err == nil {
-			fmt.Fprintf(os.Stderr, "\nPublic key:\n%s\n", pubKey)
-		}
-		fmt.Fprintf(os.Stderr, "Add this key to GitHub:\n")
-		fmt.Fprintf(os.Stderr, "  User key:   https://github.com/settings/ssh/new\n")
-		fmt.Fprintf(os.Stderr, "  Deploy key: https://github.com/<owner>/<repo>/settings/keys\n")
-		return keyPath, nil
-
-	default:
-		return "", nil
-	}
 }
 
 // ensureConfigTOML creates .cloche/config.toml with active = true if it does not exist,
@@ -932,24 +972,10 @@ func cmdInit(args []string) {
 		}
 	}
 
-	// === SSH key setup (last step before output) ===
-	configPath := filepath.Join(clocheDir, "config.toml")
-	if sshKey != "" {
-		if err := writeSSHKeyToConfig(configPath, sshKey); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not write ssh_key to config: %v\n", err)
-		}
-	} else if !nonInteractive && stdinIsTerminal() {
-		basename := projectBasename()
-		if key, err := promptForSSHKey(initStdinReader, basename); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: SSH key setup failed: %v\n", err)
-		} else if key != "" {
-			if err := writeSSHKeyToConfig(configPath, key); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: could not write ssh_key to config: %v\n", err)
-			}
-		}
-	}
-
+	// === SSH key setup (--ssh-key flag or interactive prompt) ===
 	cwd, _ := os.Getwd()
+	runSSHKeySetup(filepath.Join(clocheDir, "config.toml"), sshKey, nonInteractive, filepath.Base(cwd))
+
 	if newProject {
 		workflowFile := filepath.Join(clocheDir, workflow+".cloche")
 		fmt.Fprintf(os.Stderr, "\nInitialized Cloche project in %s\n", filepath.Base(cwd))

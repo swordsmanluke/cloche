@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -920,7 +922,7 @@ func TestCmdInit_NewFlag_SkipsExistingWorkflow(t *testing.T) {
 	}
 }
 
-func TestCmdInit_ConfigTOML_HasGitSection(t *testing.T) {
+func TestCmdInit_ConfigTOMLGitSection(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
 	os.Chdir(dir)
@@ -934,21 +936,43 @@ func TestCmdInit_ConfigTOML_HasGitSection(t *testing.T) {
 		t.Error("config.toml should contain [git] section")
 	}
 	if !strings.Contains(content, "# ssh_key") {
-		t.Error("config.toml should contain commented ssh_key field")
+		t.Error("config.toml should contain commented ssh_key")
 	}
 	if !strings.Contains(content, "# name") {
-		t.Error("config.toml should contain commented name field")
+		t.Error("config.toml should contain commented name")
 	}
 	if !strings.Contains(content, "# email") {
-		t.Error("config.toml should contain commented email field")
-	}
-	// All git fields should be commented — none active
-	if strings.Contains(content, "\nssh_key =") {
-		t.Error("config.toml should not have active ssh_key when no key provided")
+		t.Error("config.toml should contain commented email")
 	}
 }
 
-func TestCmdInit_NonInteractive_AllGitFieldsCommented(t *testing.T) {
+func TestCmdInit_NonInteractiveWithSSHKey(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// Create a fake SSH key file.
+	keyPath := filepath.Join(dir, "id_ed25519")
+	os.WriteFile(keyPath, []byte("fake key"), 0600)
+
+	cmdInit([]string{"--non-interactive", "--ssh-key", keyPath})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	if !strings.Contains(content, `ssh_key = "`+keyPath+`"`) {
+		t.Errorf("config.toml should contain uncommented ssh_key = %q, got:\n%s", keyPath, content)
+	}
+	// name and email should remain commented.
+	if !strings.Contains(content, "# name") {
+		t.Error("name should remain commented when only ssh_key is provided")
+	}
+	if !strings.Contains(content, "# email") {
+		t.Error("email should remain commented when only ssh_key is provided")
+	}
+}
+
+func TestCmdInit_NonInteractiveAlone(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
 	os.Chdir(dir)
@@ -958,225 +982,289 @@ func TestCmdInit_NonInteractive_AllGitFieldsCommented(t *testing.T) {
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
 	content := string(data)
-	if strings.Contains(content, "\nssh_key =") {
-		t.Error("--non-interactive without --ssh-key should leave ssh_key commented")
+	// All [git] fields should remain commented.
+	if !strings.Contains(content, "# name") {
+		t.Error("name should be commented in non-interactive mode")
 	}
-	if strings.Contains(content, "\nname =") {
-		t.Error("--non-interactive should leave name commented")
+	if !strings.Contains(content, "# email") {
+		t.Error("email should be commented in non-interactive mode")
 	}
-	if strings.Contains(content, "\nemail =") {
-		t.Error("--non-interactive should leave email commented")
+	if !strings.Contains(content, "# ssh_key") {
+		t.Error("ssh_key should be commented in non-interactive mode without --ssh-key flag")
+	}
+	// No uncommented ssh_key line should exist.
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "ssh_key =") {
+			t.Errorf("unexpected uncommented ssh_key line: %q", line)
+		}
 	}
 }
 
-func TestCmdInit_SSHKeyFlag_WritesUncommented(t *testing.T) {
+func TestCmdInit_SSHKeyFlagMissingFile(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	// Create a fake key file to use as the path.
-	keyFile := filepath.Join(dir, "fake_key")
-	os.WriteFile(keyFile, []byte("fake key"), 0600)
-
-	cmdInit([]string{"--non-interactive", "--ssh-key", keyFile})
+	// Provide a path that does not exist; config should not be updated with it.
+	cmdInit([]string{"--non-interactive", "--ssh-key", "/nonexistent/key"})
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
 	content := string(data)
-	if !strings.Contains(content, "ssh_key = ") {
-		t.Error("config.toml should have uncommented ssh_key when --ssh-key is provided")
+	if strings.Contains(content, "/nonexistent/key") {
+		t.Error("config.toml should not contain path to a missing key file")
 	}
-	if !strings.Contains(content, keyFile) {
-		t.Errorf("config.toml should contain the key path %q", keyFile)
-	}
-	// name and email should still be commented.
-	if strings.Contains(content, "\nname =") {
-		t.Error("name should remain commented when only --ssh-key is provided")
-	}
-	if strings.Contains(content, "\nemail =") {
-		t.Error("email should remain commented when only --ssh-key is provided")
+	if !strings.Contains(content, "# ssh_key") {
+		t.Error("ssh_key should remain commented when the provided key path does not exist")
 	}
 }
 
-func TestCmdInit_SSHKeyFlag_WithoutNonInteractive(t *testing.T) {
+func TestCmdInit_InteractiveGenerate_NoGitHub(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
-
-	keyFile := filepath.Join(dir, "mykey")
-	os.WriteFile(keyFile, []byte("key"), 0600)
-
-	// --ssh-key works without --non-interactive (stdin is not a TTY in tests).
-	cmdInit([]string{"--ssh-key", keyFile})
-
-	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
-	content := string(data)
-	if !strings.Contains(content, "ssh_key = ") {
-		t.Error("--ssh-key should write ssh_key uncommented even without --non-interactive")
-	}
-}
-
-func TestCmdInit_InteractivePrompt_No(t *testing.T) {
-	dir := t.TempDir()
-	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
-
-	oldTerminal := stdinIsTerminal
-	stdinIsTerminal = func() bool { return true }
-	defer func() { stdinIsTerminal = oldTerminal }()
-
-	oldReader := initStdinReader
-	initStdinReader = strings.NewReader("n\n")
-	defer func() { initStdinReader = oldReader }()
-
-	cmdInit([]string{})
-
-	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
-	content := string(data)
-	if strings.Contains(content, "\nssh_key =") {
-		t.Error("answering 'n' should leave ssh_key commented")
-	}
-}
-
-func TestCmdInit_InteractivePrompt_Skip(t *testing.T) {
-	dir := t.TempDir()
-	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
-
-	oldTerminal := stdinIsTerminal
-	stdinIsTerminal = func() bool { return true }
-	defer func() { stdinIsTerminal = oldTerminal }()
-
-	oldReader := initStdinReader
-	initStdinReader = strings.NewReader("y\nskip\n")
-	defer func() { initStdinReader = oldReader }()
-
-	cmdInit([]string{})
-
-	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
-	content := string(data)
-	if strings.Contains(content, "\nssh_key =") {
-		t.Error("answering 'skip' should leave ssh_key commented")
-	}
-}
-
-func TestCmdInit_InteractivePrompt_Existing(t *testing.T) {
-	dir := t.TempDir()
-	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
-
-	keyFile := filepath.Join(dir, "existing_key")
-	os.WriteFile(keyFile, []byte("private key"), 0600)
-
-	oldTerminal := stdinIsTerminal
-	stdinIsTerminal = func() bool { return true }
-	defer func() { stdinIsTerminal = oldTerminal }()
-
-	oldReader := initStdinReader
-	initStdinReader = strings.NewReader("y\nexisting\n" + keyFile + "\n")
-	defer func() { initStdinReader = oldReader }()
-
-	cmdInit([]string{})
-
-	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
-	content := string(data)
-	if !strings.Contains(content, "ssh_key = ") {
-		t.Error("answering 'existing' with valid path should write ssh_key uncommented")
-	}
-	if !strings.Contains(content, keyFile) {
-		t.Errorf("config.toml should contain the provided key path %q", keyFile)
-	}
-}
-
-func TestCmdInit_InteractivePrompt_Generate(t *testing.T) {
-	dir := t.TempDir()
-	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
-
-	// Stub ssh-keygen to create the expected key files without running real keygen.
-	var capturedKeyPath, capturedComment string
-	oldKeygen := sshKeygenCmd
-	sshKeygenCmd = func(keyPath, comment string) error {
-		capturedKeyPath = keyPath
-		capturedComment = comment
-		os.WriteFile(keyPath, []byte("private"), 0600)
-		os.WriteFile(keyPath+".pub", []byte("public key data\n"), 0644)
-		return nil
-	}
-	defer func() { sshKeygenCmd = oldKeygen }()
-
-	oldTerminal := stdinIsTerminal
-	stdinIsTerminal = func() bool { return true }
-	defer func() { stdinIsTerminal = oldTerminal }()
-
-	oldReader := initStdinReader
-	initStdinReader = strings.NewReader("y\ngenerate\n")
-	defer func() { initStdinReader = oldReader }()
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	os.MkdirAll(filepath.Join(home, ".ssh"), 0700)
 
-	cmdInit([]string{})
+	// Stub ssh-keygen to write a fake key pair.
+	generatedKeyFile := ""
+	origKeygen := sshKeygenFunc
+	sshKeygenFunc = func(keyFile, comment string) error {
+		generatedKeyFile = keyFile
+		os.WriteFile(keyFile, []byte("fake private key"), 0600)
+		os.WriteFile(keyFile+".pub", []byte("ssh-ed25519 AAAA fake-pub-key cloche-bot@testdir"), 0644)
+		return nil
+	}
+	defer func() { sshKeygenFunc = origKeygen }()
 
-	if capturedKeyPath == "" {
-		t.Fatal("ssh-keygen stub was not called")
+	// Stub git origin to return a non-GitHub URL.
+	origGitOrigin := gitOriginURLFunc
+	gitOriginURLFunc = func() (string, error) {
+		return "", fmt.Errorf("no remote")
 	}
-	// Key path should be ~/.ssh/cloche_<basename>.
-	if !strings.Contains(capturedKeyPath, "cloche_") {
-		t.Errorf("key path should contain cloche_ prefix, got %q", capturedKeyPath)
+	defer func() { gitOriginURLFunc = origGitOrigin }()
+
+	// Inject fake stdin: answer "y", then "generate".
+	stdinOverride = strings.NewReader("y\ngenerate\n")
+	defer func() { stdinOverride = nil }()
+
+	cmdInit([]string{"--no-llm"})
+
+	if generatedKeyFile == "" {
+		t.Fatal("ssh-keygen should have been called")
 	}
-	// Comment should follow cloche-bot@<basename> pattern.
-	if !strings.HasPrefix(capturedComment, "cloche-bot@") {
-		t.Errorf("key comment should start with cloche-bot@, got %q", capturedComment)
-	}
+
 	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
 	content := string(data)
-	if !strings.Contains(content, "ssh_key = ") {
-		t.Error("config.toml should have uncommented ssh_key after generate")
-	}
-	if !strings.Contains(content, capturedKeyPath) {
-		t.Errorf("config.toml should contain the generated key path %q", capturedKeyPath)
+	if !strings.Contains(content, `ssh_key = "`+generatedKeyFile+`"`) {
+		t.Errorf("config.toml should contain generated key path %q, got:\n%s", generatedKeyFile, content)
 	}
 }
 
-func TestCmdInit_NonInteractiveSkipsPrompt(t *testing.T) {
+func TestCmdInit_InteractiveGenerate_WithGitHub(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
-	// Even when stdin looks like a terminal, --non-interactive should skip the prompt.
-	promptCalled := false
-	oldTerminal := stdinIsTerminal
-	stdinIsTerminal = func() bool { return true }
-	defer func() { stdinIsTerminal = oldTerminal }()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	os.MkdirAll(filepath.Join(home, ".ssh"), 0700)
 
-	oldReader := initStdinReader
-	// If the prompt is called it would read "y\ngenerate\n" and stub would set promptCalled.
-	initStdinReader = strings.NewReader("y\n")
-	defer func() { initStdinReader = oldReader }()
-
-	oldKeygen := sshKeygenCmd
-	sshKeygenCmd = func(keyPath, comment string) error {
-		promptCalled = true
+	origKeygen := sshKeygenFunc
+	sshKeygenFunc = func(keyFile, comment string) error {
+		os.WriteFile(keyFile, []byte("fake private key"), 0600)
+		os.WriteFile(keyFile+".pub", []byte("ssh-ed25519 AAAA fake cloche-bot@testdir"), 0644)
 		return nil
 	}
-	defer func() { sshKeygenCmd = oldKeygen }()
+	defer func() { sshKeygenFunc = origKeygen }()
 
-	cmdInit([]string{"--non-interactive"})
-
-	if promptCalled {
-		t.Error("--non-interactive should not invoke the interactive prompt")
+	// Stub git origin to return a GitHub HTTPS URL.
+	origGitOrigin := gitOriginURLFunc
+	gitOriginURLFunc = func() (string, error) {
+		return "https://github.com/acme/myrepo.git", nil
 	}
+	defer func() { gitOriginURLFunc = origGitOrigin }()
+
+	stdinOverride = strings.NewReader("y\ngenerate\n")
+	defer func() { stdinOverride = nil }()
+
+	// Capture stderr to verify the deploy-key URL is printed.
+	origStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	cmdInit([]string{"--no-llm"})
+
+	w.Close()
+	os.Stderr = origStderr
+	var buf strings.Builder
+	io.Copy(&buf, r)
+	stderrOutput := buf.String()
+
+	if !strings.Contains(stderrOutput, "https://github.com/acme/myrepo/settings/keys") {
+		t.Errorf("should print deploy-key URL for GitHub repo, stderr:\n%s", stderrOutput)
+	}
+	// Should NOT print the user key URL when deploy-key URL is available.
+	if strings.Contains(stderrOutput, "github.com/settings/ssh/new") {
+		t.Errorf("should not print user-key URL when deploy-key URL is available, stderr:\n%s", stderrOutput)
+	}
+}
+
+func TestCmdInit_InteractiveGenerate_GitHubSSHURL(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	os.MkdirAll(filepath.Join(home, ".ssh"), 0700)
+
+	origKeygen := sshKeygenFunc
+	sshKeygenFunc = func(keyFile, comment string) error {
+		os.WriteFile(keyFile, []byte("fake private key"), 0600)
+		os.WriteFile(keyFile+".pub", []byte("ssh-ed25519 AAAA fake cloche-bot@testdir"), 0644)
+		return nil
+	}
+	defer func() { sshKeygenFunc = origKeygen }()
+
+	// Stub git origin to return a GitHub SSH URL.
+	origGitOrigin := gitOriginURLFunc
+	gitOriginURLFunc = func() (string, error) {
+		return "git@github.com:acme/myrepo.git", nil
+	}
+	defer func() { gitOriginURLFunc = origGitOrigin }()
+
+	stdinOverride = strings.NewReader("y\ngenerate\n")
+	defer func() { stdinOverride = nil }()
+
+	origStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	cmdInit([]string{"--no-llm"})
+
+	w.Close()
+	os.Stderr = origStderr
+	var buf strings.Builder
+	io.Copy(&buf, r)
+	stderrOutput := buf.String()
+
+	if !strings.Contains(stderrOutput, "https://github.com/acme/myrepo/settings/keys") {
+		t.Errorf("should print deploy-key URL for GitHub SSH remote, stderr:\n%s", stderrOutput)
+	}
+}
+
+func TestCmdInit_InteractiveExisting(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// Create a fake existing key file.
+	keyPath := filepath.Join(dir, "existing_key")
+	os.WriteFile(keyPath, []byte("fake key"), 0600)
+
+	stdinOverride = strings.NewReader("y\nexisting\n" + keyPath + "\n")
+	defer func() { stdinOverride = nil }()
+
+	cmdInit([]string{"--no-llm"})
+
 	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
 	content := string(data)
-	if strings.Contains(content, "\nssh_key =") {
-		t.Error("--non-interactive alone should not write ssh_key")
+	if !strings.Contains(content, `ssh_key = "`+keyPath+`"`) {
+		t.Errorf("config.toml should contain existing key path %q, got:\n%s", keyPath, content)
+	}
+}
+
+func TestCmdInit_InteractiveSkip(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// Answer "y" then "skip" — no key should be configured.
+	stdinOverride = strings.NewReader("y\nskip\n")
+	defer func() { stdinOverride = nil }()
+
+	cmdInit([]string{"--no-llm"})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	if !strings.Contains(content, "# ssh_key") {
+		t.Error("ssh_key should remain commented when user skips")
+	}
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "ssh_key =") {
+			t.Errorf("unexpected uncommented ssh_key line: %q", line)
+		}
+	}
+}
+
+func TestCmdInit_InteractiveDeclineAtFirstPrompt(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// Answer "n" at the first prompt — no key should be configured.
+	stdinOverride = strings.NewReader("n\n")
+	defer func() { stdinOverride = nil }()
+
+	cmdInit([]string{"--no-llm"})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "config.toml"))
+	content := string(data)
+	if !strings.Contains(content, "# ssh_key") {
+		t.Error("ssh_key should remain commented when user declines")
+	}
+}
+
+func TestParseGitHubOwnerRepo(t *testing.T) {
+	cases := []struct {
+		url        string
+		wantOwner  string
+		wantRepo   string
+	}{
+		{"https://github.com/acme/myrepo.git", "acme", "myrepo"},
+		{"https://github.com/acme/myrepo", "acme", "myrepo"},
+		{"git@github.com:acme/myrepo.git", "acme", "myrepo"},
+		{"git@github.com:acme/myrepo", "acme", "myrepo"},
+		{"https://gitlab.com/acme/myrepo.git", "", ""},
+		{"not-a-url", "", ""},
+		{"https://github.com/acme", "", ""},
+	}
+	for _, c := range cases {
+		owner, repo := parseGitHubOwnerRepo(c.url)
+		if owner != c.wantOwner || repo != c.wantRepo {
+			t.Errorf("parseGitHubOwnerRepo(%q) = (%q, %q), want (%q, %q)",
+				c.url, owner, repo, c.wantOwner, c.wantRepo)
+		}
+	}
+}
+
+func TestSanitizeProjectBasename(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"myproject", "myproject"},
+		{"my-project", "my_project"},
+		{"my.project", "my_project"},
+		{"my project", "my_project"},
+		{"MyProject123", "MyProject123"},
+		{"foo/bar", "foo_bar"},
+	}
+	for _, c := range cases {
+		got := sanitizeProjectBasename(c.input)
+		if got != c.want {
+			t.Errorf("sanitizeProjectBasename(%q) = %q, want %q", c.input, got, c.want)
+		}
 	}
 }

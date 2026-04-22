@@ -1,7 +1,7 @@
 # Bot Git Identity & Push Credentials Design
 
 **Date:** 2026-04-21
-**Status:** Partially Implemented (config plumbing + host env vars + extraction identity shipped; `cloche init` interactive prompt + flags remain)
+**Status:** Implemented
 
 ## Problem
 
