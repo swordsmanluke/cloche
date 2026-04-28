@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net"
 	"net/http"
@@ -11,9 +12,8 @@ import (
 	"syscall"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
-	"github.com/cloche-dev/cloche/internal/adapters/docker"
-	"github.com/cloche-dev/cloche/internal/version"
 	adaptgrpc "github.com/cloche-dev/cloche/internal/adapters/grpc"
+	"github.com/cloche-dev/cloche/internal/adapters/docker"
 	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/adapters/web"
@@ -21,6 +21,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/evolution"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/cloche-dev/cloche/internal/version"
 	"google.golang.org/grpc"
 )
 
@@ -29,6 +30,10 @@ func main() {
 		fmt.Printf("cloched %s\n", version.Version())
 		return
 	}
+
+	var projectFlag string
+	flag.StringVar(&projectFlag, "project", "", "scope daemon to a single project directory (disables multi-project auto-discover)")
+	flag.Parse()
 
 	// Load global config file (~/.config/cloche/config)
 	globalCfg, err := config.LoadGlobal()
@@ -151,7 +156,11 @@ func main() {
 	}()
 
 	// Auto-execute main workflow for active projects (after gRPC is serving).
-	autoRunActiveProjects(store, srv)
+	enableLoop := func(ctx context.Context, projectDir string) error {
+		_, err := srv.EnableLoop(ctx, &pb.EnableLoopRequest{ProjectDir: projectDir})
+		return err
+	}
+	autoRunActiveProjects(store, enableLoop, projectFlag)
 
 	// Start background scanner that detects workflows stuck in "running" state
 	// due to undetected container exits (crashes, OOM kills, etc.).
@@ -234,10 +243,35 @@ func initEvolution(globalCfg *config.Config, evoStore ports.EvolutionStore, capS
 }
 
 
-// autoRunActiveProjects scans known projects for active = true in their config
-// and starts the orchestration loop for each one via EnableLoop.
-func autoRunActiveProjects(store ports.RunStore, srv *adaptgrpc.ClocheServer) {
+// projectLister is the subset of ports.RunStore needed by autoRunActiveProjects.
+type projectLister interface {
+	ListProjects(ctx context.Context) ([]string, error)
+}
+
+// autoRunActiveProjects starts orchestration loops for discovered projects.
+//
+// enableLoop is called for each project that should be started.
+//
+// projectFilter, if non-empty, scopes the daemon to exactly that one project
+// directory. The database scan and active=true check are skipped entirely; only
+// the specified path is started. If empty, the daemon scans known projects from
+// the store and starts every one whose config.toml has active=true.
+func autoRunActiveProjects(store projectLister, enableLoop func(ctx context.Context, projectDir string) error, projectFilter string) {
 	ctx := context.Background()
+
+	if projectFilter != "" {
+		abs, err := filepath.Abs(projectFilter)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "startup: invalid project path %q: %v\n", projectFilter, err)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "startup: scoped to single project %s\n", abs)
+		if err := enableLoop(ctx, abs); err != nil {
+			fmt.Fprintf(os.Stderr, "startup: failed to enable loop for %s: %v\n", abs, err)
+		}
+		return
+	}
+
 	projects, err := store.ListProjects(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "startup: failed to list projects: %v\n", err)
@@ -250,7 +284,7 @@ func autoRunActiveProjects(store ports.RunStore, srv *adaptgrpc.ClocheServer) {
 			continue
 		}
 
-		// Verify host.cloche exists before launching
+		// Verify host.cloche exists before launching.
 		hostPath := filepath.Join(projectDir, ".cloche", "host.cloche")
 		if _, err := os.Stat(hostPath); err != nil {
 			fmt.Fprintf(os.Stderr, "startup: skipping active project %s: %v\n", projectDir, err)
@@ -258,10 +292,7 @@ func autoRunActiveProjects(store ports.RunStore, srv *adaptgrpc.ClocheServer) {
 		}
 
 		fmt.Fprintf(os.Stderr, "startup: enabling orchestration loop for active project %s\n", projectDir)
-		_, err = srv.EnableLoop(ctx, &pb.EnableLoopRequest{
-			ProjectDir: projectDir,
-		})
-		if err != nil {
+		if err := enableLoop(ctx, projectDir); err != nil {
 			fmt.Fprintf(os.Stderr, "startup: failed to enable loop for %s: %v\n", projectDir, err)
 		}
 	}

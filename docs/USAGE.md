@@ -1454,6 +1454,12 @@ should honor these env vars with a local fallback (so it still works when
 nothing is configured). The scaffolded `prepare-merge`/`merge` scripts follow
 this pattern.
 
+## `cloched` Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--project <dir>` | _(unset)_ | Scope the daemon to a single project directory. Skips the database scan and active-project check; starts the orchestration loop for only that path. Disables multi-project auto-discovery. |
+
 ## Environment Variable Reference
 
 ### Daemon Configuration
