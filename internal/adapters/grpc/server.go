@@ -1466,6 +1466,17 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		}
 	}
 
+	// Persist broadcaster history to disk before the broadcaster is finished.
+	// This is critical for failed/killed runs where the container's full.log may
+	// be empty because the in-flight step never completed and sessionLogStepOutput
+	// was never called. Writing the history now means post-run log retrieval works
+	// even when the step was killed mid-execution.
+	if s.logBroadcast != nil {
+		if history := s.logBroadcast.GetHistory(runID); len(history) > 0 {
+			s.saveBroadcasterHistory(runID, history, outputDst, workflowName)
+		}
+	}
+
 	// Index extracted log files in the log store
 	if s.logStore != nil {
 		s.indexLogFiles(ctx, runID, outputDst, workflowName)
@@ -3410,6 +3421,57 @@ func (s *ClocheServer) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*
 	}
 	go s.shutdownFn()
 	return &pb.ShutdownResponse{}, nil
+}
+
+// saveBroadcasterHistory writes the broadcaster history to disk so log content
+// that was streamed live (but never flushed to disk by the agent, e.g. because
+// the step was killed mid-execution) is preserved for post-run retrieval.
+//
+// It writes two kinds of files, both only when the target is missing or empty:
+//   - full.log: all history lines formatted as "[ts] [type] content\n"
+//   - <workflow>-<step>.log: raw LLM output lines for each step that has broadcaster
+//     content but no existing log file on disk
+func (s *ClocheServer) saveBroadcasterHistory(runID string, history []logstream.LogLine, outputDst, workflowName string) {
+	if err := os.MkdirAll(outputDst, 0755); err != nil {
+		log.Printf("run %s: saveBroadcasterHistory: failed to create dir %s: %v", runID, outputDst, err)
+		return
+	}
+
+	// Write full.log from broadcaster history if the file is missing or empty.
+	fullLogPath := filepath.Join(outputDst, "full.log")
+	if existing, _ := os.ReadFile(fullLogPath); len(existing) == 0 {
+		var sb strings.Builder
+		for _, line := range history {
+			fmt.Fprintf(&sb, "[%s] [%s] %s\n", line.Timestamp, line.Type, line.Content)
+		}
+		if content := sb.String(); content != "" {
+			if err := os.WriteFile(fullLogPath, []byte(content), 0644); err != nil {
+				log.Printf("run %s: saveBroadcasterHistory: failed to write full.log: %v", runID, err)
+			}
+		}
+	}
+
+	// Build per-step LLM output from broadcaster history. Only lines of type
+	// "llm" with a step name carry agent output; status lines are excluded.
+	stepLines := make(map[string][]string)
+	for _, line := range history {
+		if line.StepName != "" && line.Type == "llm" {
+			stepLines[line.StepName] = append(stepLines[line.StepName], line.Content)
+		}
+	}
+
+	// Write a per-step log file for each step that has LLM content in the
+	// broadcaster but no existing file on disk.
+	for stepName, lines := range stepLines {
+		logPath := filepath.Join(outputDst, workflowName+"-"+stepName+".log")
+		if existing, _ := os.ReadFile(logPath); len(existing) > 0 {
+			continue // already written by the agent adapter
+		}
+		content := strings.Join(lines, "\n") + "\n"
+		if err := os.WriteFile(logPath, []byte(content), 0644); err != nil {
+			log.Printf("run %s: saveBroadcasterHistory: failed to write step log for %s: %v", runID, stepName, err)
+		}
+	}
 }
 
 // indexLogFiles scans the extracted output directory and creates log_files index entries.

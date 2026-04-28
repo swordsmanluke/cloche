@@ -7,6 +7,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/host"
+	"github.com/cloche-dev/cloche/internal/logstream"
 	rpcgrpc "google.golang.org/grpc"
 )
 
@@ -81,6 +82,11 @@ func (s *ClocheServer) TrackRun(runID, containerID, projectDir, workflowName str
 // AgentNameForStep exposes agentNameForStep for testing.
 func AgentNameForStep(projectDir, workflowName, stepName string) string {
 	return agentNameForStep(projectDir, workflowName, stepName)
+}
+
+// SaveBroadcasterHistory exposes saveBroadcasterHistory for testing.
+func (s *ClocheServer) SaveBroadcasterHistory(runID string, history []logstream.LogLine, outputDst, workflowName string) {
+	s.saveBroadcasterHistory(runID, history, outputDst, workflowName)
 }
 
 // SetExtractResultsFn overrides the extraction function for testing.

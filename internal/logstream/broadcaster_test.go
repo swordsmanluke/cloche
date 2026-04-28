@@ -161,6 +161,44 @@ func TestBroadcaster_UnsubscribeNonexistent(t *testing.T) {
 	b.Unsubscribe("nonexistent", sub)
 }
 
+func TestBroadcaster_GetHistory(t *testing.T) {
+	b := NewBroadcaster()
+
+	// Unknown run returns nil.
+	assert.Nil(t, b.GetHistory("unknown"))
+
+	b.Start("run-1")
+	assert.Nil(t, b.GetHistory("run-1"), "empty history should return nil")
+
+	lines := []LogLine{
+		{Timestamp: "2026-04-28T10:00:00Z", Type: "status", Content: "step_started: build", StepName: "build"},
+		{Timestamp: "2026-04-28T10:00:01Z", Type: "llm", Content: "Compiling...", StepName: "build"},
+		{Timestamp: "2026-04-28T10:00:02Z", Type: "llm", Content: "Done.", StepName: "build"},
+	}
+	for _, l := range lines {
+		b.Publish("run-1", l)
+	}
+
+	got := b.GetHistory("run-1")
+	require.Equal(t, lines, got)
+
+	// GetHistory returns a copy; mutating it doesn't affect the broadcaster.
+	got[0].Content = "mutated"
+	got2 := b.GetHistory("run-1")
+	assert.Equal(t, "step_started: build", got2[0].Content)
+}
+
+func TestBroadcaster_GetHistoryAfterFinish(t *testing.T) {
+	b := NewBroadcaster()
+	b.Start("run-1")
+	b.Publish("run-1", LogLine{Type: "llm", Content: "hello"})
+
+	b.Finish("run-1")
+
+	// After Finish, history is cleared.
+	assert.Nil(t, b.GetHistory("run-1"))
+}
+
 func TestBroadcaster_LogLineStepName(t *testing.T) {
 	b := NewBroadcaster()
 	sub := b.Subscribe("run-1")

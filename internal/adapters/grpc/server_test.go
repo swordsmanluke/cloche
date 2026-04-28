@@ -4838,6 +4838,142 @@ func TestServer_StreamLogs_CompoundStepName(t *testing.T) {
 	})
 }
 
+// TestSaveBroadcasterHistory_WritesFullLogWhenMissing verifies that the
+// broadcaster history is persisted as full.log when the file does not exist.
+func TestSaveBroadcasterHistory_WritesFullLogWhenMissing(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+	outputDst := filepath.Join(dir, "logs")
+
+	srv := server.NewClocheServer(store, nil)
+
+	history := []logstream.LogLine{
+		{Timestamp: "2026-04-28T10:00:00Z", Type: "status", Content: "step_started: implement", StepName: "implement"},
+		{Timestamp: "2026-04-28T10:00:01Z", Type: "llm", Content: "Analyzing the codebase...", StepName: "implement"},
+		{Timestamp: "2026-04-28T10:00:02Z", Type: "llm", Content: "Making changes...", StepName: "implement"},
+	}
+	srv.SaveBroadcasterHistory("run-1", history, outputDst, "develop")
+
+	data, err := os.ReadFile(filepath.Join(outputDst, "full.log"))
+	require.NoError(t, err)
+	content := string(data)
+	assert.Contains(t, content, "[2026-04-28T10:00:00Z] [status] step_started: implement")
+	assert.Contains(t, content, "[2026-04-28T10:00:01Z] [llm] Analyzing the codebase...")
+	assert.Contains(t, content, "[2026-04-28T10:00:02Z] [llm] Making changes...")
+}
+
+// TestSaveBroadcasterHistory_PreservesExistingFullLog verifies that an existing
+// non-empty full.log is not overwritten.
+func TestSaveBroadcasterHistory_PreservesExistingFullLog(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+	outputDst := filepath.Join(dir, "logs")
+	require.NoError(t, os.MkdirAll(outputDst, 0755))
+
+	existing := "[2026-04-28T09:00:00Z] [script] existing content\n"
+	require.NoError(t, os.WriteFile(filepath.Join(outputDst, "full.log"), []byte(existing), 0644))
+
+	srv := server.NewClocheServer(store, nil)
+
+	history := []logstream.LogLine{
+		{Timestamp: "2026-04-28T10:00:00Z", Type: "llm", Content: "should not overwrite", StepName: "build"},
+	}
+	srv.SaveBroadcasterHistory("run-1", history, outputDst, "develop")
+
+	data, err := os.ReadFile(filepath.Join(outputDst, "full.log"))
+	require.NoError(t, err)
+	assert.Equal(t, existing, string(data), "existing full.log must not be overwritten")
+}
+
+// TestSaveBroadcasterHistory_WritesPerStepLogWhenMissing verifies that LLM
+// output lines for a step are written to a per-step log file when it is absent.
+func TestSaveBroadcasterHistory_WritesPerStepLogWhenMissing(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+	outputDst := filepath.Join(dir, "logs")
+
+	srv := server.NewClocheServer(store, nil)
+
+	history := []logstream.LogLine{
+		{Timestamp: "2026-04-28T10:00:00Z", Type: "status", Content: "step_started: implement", StepName: "implement"},
+		{Timestamp: "2026-04-28T10:00:01Z", Type: "llm", Content: "Line one from LLM", StepName: "implement"},
+		{Timestamp: "2026-04-28T10:00:02Z", Type: "llm", Content: "Line two from LLM", StepName: "implement"},
+		{Timestamp: "2026-04-28T10:00:03Z", Type: "status", Content: "step_completed: implement -> fail", StepName: "implement"},
+	}
+	srv.SaveBroadcasterHistory("run-1", history, outputDst, "develop")
+
+	stepLogPath := filepath.Join(outputDst, "develop-implement.log")
+	data, err := os.ReadFile(stepLogPath)
+	require.NoError(t, err)
+	content := string(data)
+	assert.Contains(t, content, "Line one from LLM")
+	assert.Contains(t, content, "Line two from LLM")
+	assert.NotContains(t, content, "step_started", "status lines must not appear in per-step log")
+}
+
+// TestSaveBroadcasterHistory_PreservesExistingStepLog verifies that an existing
+// non-empty per-step log file is not overwritten.
+func TestSaveBroadcasterHistory_PreservesExistingStepLog(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+	outputDst := filepath.Join(dir, "logs")
+	require.NoError(t, os.MkdirAll(outputDst, 0755))
+
+	existing := "original agent output\n"
+	require.NoError(t, os.WriteFile(filepath.Join(outputDst, "develop-implement.log"), []byte(existing), 0644))
+
+	srv := server.NewClocheServer(store, nil)
+
+	history := []logstream.LogLine{
+		{Timestamp: "2026-04-28T10:00:01Z", Type: "llm", Content: "should not overwrite", StepName: "implement"},
+	}
+	srv.SaveBroadcasterHistory("run-1", history, outputDst, "develop")
+
+	data, err := os.ReadFile(filepath.Join(outputDst, "develop-implement.log"))
+	require.NoError(t, err)
+	assert.Equal(t, existing, string(data), "existing step log must not be overwritten")
+}
+
+// TestSaveBroadcasterHistory_MultipleSteps verifies that per-step log files are
+// created for each step that has LLM output in the broadcaster history.
+func TestSaveBroadcasterHistory_MultipleSteps(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+	outputDst := filepath.Join(dir, "logs")
+
+	srv := server.NewClocheServer(store, nil)
+
+	history := []logstream.LogLine{
+		{Timestamp: "2026-04-28T10:00:00Z", Type: "llm", Content: "build output", StepName: "build"},
+		{Timestamp: "2026-04-28T10:00:01Z", Type: "llm", Content: "test output", StepName: "test"},
+		{Timestamp: "2026-04-28T10:00:02Z", Type: "status", Content: "step_completed: build -> success"},
+	}
+	srv.SaveBroadcasterHistory("run-1", history, outputDst, "ci")
+
+	buildLog, err := os.ReadFile(filepath.Join(outputDst, "ci-build.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(buildLog), "build output")
+
+	testLog, err := os.ReadFile(filepath.Join(outputDst, "ci-test.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(testLog), "test output")
+}
+
 // TestServer_StreamLogs_CompoundStepName_NotFound verifies that a compound
 // step name returns an appropriate error when the log file does not exist.
 func TestServer_StreamLogs_CompoundStepName_NotFound(t *testing.T) {

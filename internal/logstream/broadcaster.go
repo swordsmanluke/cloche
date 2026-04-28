@@ -169,6 +169,21 @@ func (b *Broadcaster) Finish(runID string) {
 	rb.history = nil // free memory; completed runs serve from full.log
 }
 
+// GetHistory returns a snapshot of all log lines published for a run so far.
+// Returns nil if the run is unknown or its history has been cleared.
+func (b *Broadcaster) GetHistory(runID string) []LogLine {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	rb, ok := b.runs[runID]
+	if !ok || len(rb.history) == 0 {
+		return nil
+	}
+	history := make([]LogLine, len(rb.history))
+	copy(history, rb.history)
+	return history
+}
+
 // IsActive reports whether the given run has an active broadcast (not finished).
 func (b *Broadcaster) IsActive(runID string) bool {
 	b.mu.Lock()
