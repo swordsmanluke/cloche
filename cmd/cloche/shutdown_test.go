@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"google.golang.org/grpc"
@@ -196,5 +198,40 @@ func TestFindDaemonBinary_ReturnsPath(t *testing.T) {
 	}
 	if filepath.Base(path) != "cloched" {
 		t.Errorf("expected filename 'cloched', got %q", filepath.Base(path))
+	}
+}
+
+// TestWaitForDaemonExit_NothingListening verifies that waitForDaemonExit
+// returns nil when nothing is listening at the address (daemon already gone).
+func TestWaitForDaemonExit_NothingListening(t *testing.T) {
+	// Bind a port, note the address, then close to ensure nothing listens.
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := lis.Addr().String()
+	lis.Close()
+
+	if err := waitForDaemonExit(addr, 5*time.Second); err != nil {
+		t.Fatalf("expected nil when nothing listens, got: %v", err)
+	}
+}
+
+// TestWaitForDaemonExit_Timeout verifies that waitForDaemonExit returns an
+// error when a server keeps accepting connections past the deadline.
+func TestWaitForDaemonExit_Timeout(t *testing.T) {
+	// Start a real gRPC server with no services registered; GetVersion will
+	// return Unimplemented (not Unavailable), so polling never stops early.
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	srv := grpc.NewServer()
+	go srv.Serve(lis) //nolint:errcheck
+	defer srv.Stop()
+
+	addr := lis.Addr().String()
+	if err := waitForDaemonExit(addr, 300*time.Millisecond); err == nil {
+		t.Fatal("expected error when daemon keeps running past timeout")
 	}
 }

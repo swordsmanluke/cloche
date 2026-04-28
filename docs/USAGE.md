@@ -1296,7 +1296,8 @@ cloche shutdown [--force|-f] [--restart|-r]
 Flags:
 - `-f`, `--force` — Shut down even if runs are still active.
 - `-r`, `--restart` — Relaunch the daemon after stopping it (or start it if it is not
-  already running). The new daemon process is detached so the CLI can exit immediately.
+  already running). The CLI waits for the old daemon to exit before launching the new one
+  (to avoid two daemons running simultaneously), then detaches the new process.
 
 ### `cloche console`
 

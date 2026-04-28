@@ -1251,8 +1251,16 @@ func cmdShutdown(ctx context.Context, client pb.ClocheServiceClient, args []stri
 
 	if restart {
 		if daemonWasRunning {
-			// Give the daemon a moment to release the port.
-			time.Sleep(500 * time.Millisecond)
+			daemonAddr := os.Getenv("CLOCHE_ADDR")
+			if daemonAddr == "" {
+				daemonAddr = config.DefaultAddr()
+			}
+			fmt.Print("Waiting for daemon to exit...")
+			if err := waitForDaemonExit(daemonAddr, 30*time.Second); err != nil {
+				fmt.Fprintf(os.Stderr, "\nerror: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println(" done.")
 		}
 		daemonPath, err := findDaemonBinary()
 		if err != nil {
@@ -1265,6 +1273,29 @@ func cmdShutdown(ctx context.Context, client pb.ClocheServiceClient, args []stri
 		}
 		fmt.Println("Daemon launched.")
 	}
+}
+
+// waitForDaemonExit polls addr until the daemon stops accepting connections,
+// confirming the old process has exited before a replacement is spawned.
+// Returns an error if the daemon is still reachable after the timeout.
+func waitForDaemonExit(addr string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			// Can't even construct a client; treat as gone.
+			return nil
+		}
+		callCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		_, callErr := pb.NewClocheServiceClient(conn).GetVersion(callCtx, &pb.GetVersionRequest{})
+		cancel()
+		conn.Close()
+		if grpcStatus.Code(callErr) == codes.Unavailable {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("daemon did not exit within %v; not restarting to avoid two daemons running simultaneously", timeout)
 }
 
 // findDaemonBinary returns the path to cloched, expected to live next to the
