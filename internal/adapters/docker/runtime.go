@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,6 +28,9 @@ func NewRuntime() (*Runtime, error) {
 }
 
 func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string, error) {
+	startTime := time.Now()
+	log.Printf("runtime.Start: creating container (image=%s workflow=%s attempt=%s)", cfg.Image, cfg.WorkflowName, cfg.AttemptID)
+
 	// Build docker create args
 	containerCmd := cfg.Cmd
 	useDefaultCmd := len(containerCmd) == 0
@@ -165,9 +169,12 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		return "", fmt.Errorf("creating container: %s: %w", stderr.String(), err)
 	}
 	containerID := strings.TrimSpace(stdout.String())
+	log.Printf("runtime.Start: container created %s (%.1fs)", containerID, time.Since(startTime).Seconds())
 
 	// 3. Copy project files into container, respecting .clocheignore
 	if cfg.ProjectDir != "" {
+		t := time.Now()
+		log.Printf("runtime.Start: copying project files into %s", containerID)
 		patterns, err := parseClocheignore(cfg.ProjectDir)
 		if err != nil {
 			exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
@@ -178,10 +185,12 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 			exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
 			return "", err
 		}
+		log.Printf("runtime.Start: project copy done for %s (%.1fs)", containerID, time.Since(t).Seconds())
 
 		// Apply override files from .cloche/overrides/ on top of workspace
 		overridesDir := filepath.Join(cfg.ProjectDir, ".cloche", "overrides")
 		if _, err := os.Stat(overridesDir); err == nil {
+			log.Printf("runtime.Start: applying overrides for %s", containerID)
 			overrideCmd := exec.CommandContext(ctx, "docker", "cp", overridesDir+"/.", containerID+":/workspace/")
 			var cpStderr bytes.Buffer
 			overrideCmd.Stderr = &cpStderr
@@ -189,12 +198,14 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 				// Non-fatal: log but don't fail the run
 				fmt.Fprintf(os.Stderr, "warning: copying overrides: %s\n", cpStderr.String())
 			}
+			log.Printf("runtime.Start: overrides done for %s", containerID)
 		}
 	}
 
 	// 3b. Write prompt into container (.cloche/runs/ is excluded by .clocheignore,
 	//      so prompt.txt must be injected separately).
 	if cfg.Prompt != "" && cfg.TaskID != "" {
+		log.Printf("runtime.Start: writing prompt for %s", containerID)
 		promptDir := filepath.Join(os.TempDir(), "cloche-prompt-"+cfg.RunID)
 		runsDir := filepath.Join(promptDir, ".cloche", "runs", cfg.TaskID)
 		if err := os.MkdirAll(runsDir, 0755); err == nil {
@@ -203,11 +214,13 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 			_ = cpCmd.Run()
 			os.RemoveAll(promptDir)
 		}
+		log.Printf("runtime.Start: prompt done for %s", containerID)
 	}
 
 	// 4. Copy Claude auth files into container (each gets its own copy).
 	// Only copy auth-relevant files — not the full ~/.claude directory
 	// which contains large history, session, and debug data.
+	log.Printf("runtime.Start: copying auth files for %s", containerID)
 	if home, err := os.UserHomeDir(); err == nil {
 		claudeDir := home + "/.claude"
 		// Stage auth files in a temp directory, then docker cp the
@@ -235,9 +248,11 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 			}
 		}
 	}
+	log.Printf("runtime.Start: auth copy done for %s", containerID)
 
 	// 5. Start the container (skip for interactive — Attach handles start).
 	if !cfg.Interactive {
+		log.Printf("runtime.Start: starting container %s", containerID)
 		startCmd := exec.CommandContext(ctx, "docker", "start", containerID)
 		var startStderr bytes.Buffer
 		startCmd.Stderr = &startStderr
@@ -245,9 +260,63 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 			exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
 			return "", fmt.Errorf("starting container: %s: %w", startStderr.String(), err)
 		}
+
+		// Verify the container actually transitioned to running. docker start
+		// can return success while the container remains in "created" state on
+		// some hosts. Catching this here surfaces a concrete error instead of
+		// letting SessionFor hang for the full step timeout.
+		log.Printf("runtime.Start: verifying container %s reached running state", containerID)
+		if err := r.waitForRunning(ctx, containerID); err != nil {
+			exec.CommandContext(context.Background(), "docker", "rm", "-f", containerID).Run()
+			return "", fmt.Errorf("container %s: %w", containerID, err)
+		}
 	}
 
+	log.Printf("runtime.Start: container %s ready (total %.1fs)", containerID, time.Since(startTime).Seconds())
 	return containerID, nil
+}
+
+// waitForRunning polls docker inspect until the container reports Running=true,
+// returning an error if it does not transition within a short window. This
+// catches the "container stuck in Created" failure mode where docker start
+// returns success but the container never actually runs.
+func (r *Runtime) waitForRunning(ctx context.Context, containerID string) error {
+	const attempts = 5
+	const interval = 300 * time.Millisecond
+
+	for i := 0; i < attempts; i++ {
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("waiting for running state: %w", ctx.Err())
+			case <-time.After(interval):
+			}
+		}
+		status, err := r.Inspect(ctx, containerID)
+		if err != nil {
+			if ctx.Err() != nil {
+				return fmt.Errorf("waiting for running state: %w", ctx.Err())
+			}
+			continue // transient inspect error; retry
+		}
+		if status.Running {
+			return nil
+		}
+	}
+
+	if ctx.Err() != nil {
+		return fmt.Errorf("waiting for running state: %w", ctx.Err())
+	}
+
+	// Fetch the actual status string for a meaningful error message.
+	stateCmd := exec.CommandContext(context.Background(), "docker", "inspect",
+		"--format", "{{.State.Status}}", containerID)
+	stateOut, _ := stateCmd.Output()
+	state := strings.TrimSpace(string(stateOut))
+	if state == "" {
+		state = "unknown"
+	}
+	return fmt.Errorf("stuck in %q state after start (not running)", state)
 }
 
 func (r *Runtime) Stop(ctx context.Context, containerID string) error {

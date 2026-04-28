@@ -30,6 +30,7 @@ import (
 // kvTestRuntime wraps the fake runtime pattern but captures the ContainerConfig
 // passed to Start so tests can inspect it.
 type kvTestRuntime struct {
+	blockingWait
 	mu        sync.Mutex
 	configs   []ports.ContainerConfig
 	idCounter int
@@ -52,15 +53,18 @@ func (r *kvTestRuntime) Start(_ context.Context, cfg ports.ContainerConfig) (str
 	case r.started <- id:
 	default:
 	}
+	r.bwInit(id)
 	return id, nil
 }
 
-func (r *kvTestRuntime) Stop(_ context.Context, _ string) error   { return nil }
+func (r *kvTestRuntime) Stop(_ context.Context, id string) error {
+	r.bwHalt(id)
+	return nil
+}
 func (r *kvTestRuntime) Remove(_ context.Context, _ string) error { return nil }
 func (r *kvTestRuntime) AttachOutput(_ context.Context, _ string) (io.ReadCloser, error) {
 	return io.NopCloser(nil), nil
 }
-func (r *kvTestRuntime) Wait(_ context.Context, _ string) (int, error) { return 0, nil }
 func (r *kvTestRuntime) CopyFrom(_ context.Context, _, _, _ string) error { return nil }
 func (r *kvTestRuntime) Logs(_ context.Context, _ string) (string, error) { return "", nil }
 func (r *kvTestRuntime) Inspect(_ context.Context, _ string) (*ports.ContainerStatus, error) {

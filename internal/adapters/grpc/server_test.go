@@ -2899,25 +2899,73 @@ func TestServer_StreamLogs_ByColonDelimitedId(t *testing.T) {
 	assert.True(t, found, "should find full_log entry with colon log content")
 }
 
+// blockingWait provides a Wait that blocks until Stop signals the container
+// exited (or context is cancelled). Embed in fake runtimes; call bwInit(id) in
+// Start and bwHalt(id) in Stop so the pool exit-watcher doesn't fire early.
+type blockingWait struct {
+	bwMu   sync.Mutex
+	bwChs  map[string]chan struct{}
+	bwOnce map[string]*sync.Once
+}
+
+func (b *blockingWait) bwInit(id string) {
+	b.bwMu.Lock()
+	defer b.bwMu.Unlock()
+	if b.bwChs == nil {
+		b.bwChs = make(map[string]chan struct{})
+		b.bwOnce = make(map[string]*sync.Once)
+	}
+	b.bwChs[id] = make(chan struct{})
+	b.bwOnce[id] = &sync.Once{}
+}
+
+func (b *blockingWait) bwHalt(id string) {
+	b.bwMu.Lock()
+	ch := b.bwChs[id]
+	once := b.bwOnce[id]
+	b.bwMu.Unlock()
+	if ch != nil && once != nil {
+		once.Do(func() { close(ch) })
+	}
+}
+
+func (b *blockingWait) Wait(ctx context.Context, id string) (int, error) {
+	b.bwMu.Lock()
+	ch, ok := b.bwChs[id]
+	b.bwMu.Unlock()
+	if !ok {
+		<-ctx.Done()
+		return -1, ctx.Err()
+	}
+	select {
+	case <-ch:
+		return 0, nil
+	case <-ctx.Done():
+		return -1, ctx.Err()
+	}
+}
+
 // mockStopRuntime tracks which container IDs were stopped.
 type mockStopRuntime struct {
+	blockingWait
 	stopped []string
 }
 
 func (m *mockStopRuntime) Start(_ context.Context, _ ports.ContainerConfig) (string, error) {
-	return "cid-new", nil
+	const id = "cid-new"
+	m.bwInit(id)
+	return id, nil
 }
 
 func (m *mockStopRuntime) Stop(_ context.Context, containerID string) error {
 	m.stopped = append(m.stopped, containerID)
+	m.bwHalt(containerID)
 	return nil
 }
 
 func (m *mockStopRuntime) AttachOutput(_ context.Context, _ string) (io.ReadCloser, error) {
 	return nil, nil
 }
-
-func (m *mockStopRuntime) Wait(_ context.Context, _ string) (int, error) { return 0, nil }
 
 func (m *mockStopRuntime) CopyFrom(_ context.Context, _, _, _ string) error { return nil }
 
@@ -4135,22 +4183,27 @@ func TestServer_Console_RejectsNoRuntime(t *testing.T) {
 // mockInspectRuntime is a ContainerRuntime that returns a configurable status
 // from Inspect and returns an error from AttachOutput to simulate failures.
 type mockInspectRuntime struct {
+	blockingWait
 	inspectStatus *ports.ContainerStatus
 	inspectErr    error
 	attachErr     error
 }
 
 func (m *mockInspectRuntime) Start(_ context.Context, _ ports.ContainerConfig) (string, error) {
-	return "cid-inspect", nil
+	const id = "cid-inspect"
+	m.bwInit(id)
+	return id, nil
 }
-func (m *mockInspectRuntime) Stop(_ context.Context, _ string) error { return nil }
+func (m *mockInspectRuntime) Stop(_ context.Context, id string) error {
+	m.bwHalt(id)
+	return nil
+}
 func (m *mockInspectRuntime) AttachOutput(_ context.Context, _ string) (io.ReadCloser, error) {
 	if m.attachErr != nil {
 		return nil, m.attachErr
 	}
 	return io.NopCloser(strings.NewReader("")), nil
 }
-func (m *mockInspectRuntime) Wait(_ context.Context, _ string) (int, error) { return 0, nil }
 func (m *mockInspectRuntime) CopyFrom(_ context.Context, _, _, _ string) error { return nil }
 func (m *mockInspectRuntime) Logs(_ context.Context, _ string) (string, error) { return "", nil }
 func (m *mockInspectRuntime) Remove(_ context.Context, _ string) error { return nil }
@@ -4611,6 +4664,9 @@ type resumableNopRuntime struct {
 	committed     map[string]string
 	removedImages []string
 	idCounter     int
+	// Blocking Wait support — prevents pool exit-watcher from firing before NotifyReady.
+	waitChs  map[string]chan struct{}
+	waitOnce map[string]*sync.Once
 }
 
 func (r *resumableNopRuntime) Start(_ context.Context, _ ports.ContainerConfig) (string, error) {
@@ -4619,7 +4675,40 @@ func (r *resumableNopRuntime) Start(_ context.Context, _ ports.ContainerConfig) 
 	r.idCounter++
 	id := fmt.Sprintf("resume-container-%d", r.idCounter)
 	r.started = append(r.started, id)
+	if r.waitChs == nil {
+		r.waitChs = make(map[string]chan struct{})
+		r.waitOnce = make(map[string]*sync.Once)
+	}
+	r.waitChs[id] = make(chan struct{})
+	r.waitOnce[id] = &sync.Once{}
 	return id, nil
+}
+
+func (r *resumableNopRuntime) Stop(_ context.Context, id string) error {
+	r.mu.Lock()
+	ch := r.waitChs[id]
+	once := r.waitOnce[id]
+	r.mu.Unlock()
+	if ch != nil && once != nil {
+		once.Do(func() { close(ch) })
+	}
+	return nil
+}
+
+func (r *resumableNopRuntime) Wait(ctx context.Context, id string) (int, error) {
+	r.mu.Lock()
+	ch, ok := r.waitChs[id]
+	r.mu.Unlock()
+	if !ok {
+		<-ctx.Done()
+		return -1, ctx.Err()
+	}
+	select {
+	case <-ch:
+		return 0, nil
+	case <-ctx.Done():
+		return -1, ctx.Err()
+	}
 }
 
 func (r *resumableNopRuntime) CommitContainer(_ context.Context, containerID, attemptID string) (string, error) {

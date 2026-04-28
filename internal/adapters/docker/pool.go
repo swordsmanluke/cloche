@@ -155,11 +155,19 @@ type poolEntry struct {
 	// readyOnce ensures the ready channel is closed at most once.
 	readyOnce sync.Once
 	readyCh   chan struct{}
+	// exitCh is closed when the container exits before AgentReady arrives,
+	// allowing SessionFor to fail fast instead of waiting for the step timeout.
+	// exitErr holds the diagnostic message (with container logs) written before
+	// exitCh is closed and safe to read after receiving from exitCh.
+	exitOnce sync.Once
+	exitCh   chan struct{}
+	exitErr  error
 }
 
 func newPoolEntry() *poolEntry {
 	return &poolEntry{
 		readyCh: make(chan struct{}),
+		exitCh:  make(chan struct{}),
 	}
 }
 
@@ -299,6 +307,31 @@ func (p *ContainerPool) SessionFor(ctx context.Context, attemptID string, cfg po
 		})
 	}
 
+	// Watch for early container exit. If the container exits before the
+	// in-container agent sends AgentReady, close exitCh so the select below
+	// fails fast with logs instead of blocking until the step timeout.
+	go func() {
+		_, waitErr := p.runtime.Wait(ctx, containerID)
+		if ctx.Err() != nil {
+			// Context cancelled — the ctx.Done() case in the select handles this.
+			return
+		}
+		_ = waitErr
+		logs, _ := p.runtime.Logs(context.Background(), containerID)
+		msg := fmt.Sprintf("container %s exited before agent was ready", containerID)
+		if logs != "" {
+			const maxLog = 2000
+			if len(logs) > maxLog {
+				logs = "...\n" + logs[len(logs)-maxLog:]
+			}
+			msg += "\nContainer logs:\n" + logs
+		}
+		entry.exitOnce.Do(func() {
+			entry.exitErr = errors.New(msg)
+			close(entry.exitCh)
+		})
+	}()
+
 	// Wait for the agent inside the container to call back with AgentReady.
 	// Use a dedicated short timeout rather than blocking until the step's
 	// full timeout fires (default 30 min) — startup failures are visible
@@ -309,6 +342,12 @@ func (p *ContainerPool) SessionFor(ctx context.Context, attemptID string, cfg po
 	select {
 	case <-entry.readyCh:
 		return sess, nil
+	case <-entry.exitCh:
+		p.mu.Lock()
+		delete(p.attempts, attemptID)
+		delete(p.containerAttempt, containerID)
+		p.mu.Unlock()
+		return nil, fmt.Errorf("session for attempt %s: %w", attemptID, entry.exitErr)
 	case <-ctx.Done():
 		return nil, fmt.Errorf("waiting for AgentReady for attempt %s: %w", attemptID, ctx.Err())
 	case <-readyTimer.C:

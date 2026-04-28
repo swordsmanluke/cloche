@@ -17,6 +17,10 @@ import (
 )
 
 // fakeRuntime is a minimal ContainerRuntime stub for pool tests.
+//
+// Wait blocks until Stop is called for the same container ID (or the context is
+// cancelled). This mirrors real Docker behaviour so the pool's exit-watcher
+// goroutine does not fire before NotifyReady is called in normal tests.
 type fakeRuntime struct {
 	mu         sync.Mutex
 	started    []string // containerIDs returned by Start
@@ -26,6 +30,9 @@ type fakeRuntime struct {
 	removeErr  error
 	idCounter  int
 	logsOutput string // returned by Logs when non-empty
+	// waitChs holds a per-container channel that is closed by Stop.
+	waitChs  map[string]chan struct{}
+	stopOnce map[string]*sync.Once
 }
 
 func (f *fakeRuntime) Start(_ context.Context, _ ports.ContainerConfig) (string, error) {
@@ -37,13 +44,25 @@ func (f *fakeRuntime) Start(_ context.Context, _ ports.ContainerConfig) (string,
 	f.idCounter++
 	id := fmt.Sprintf("container-%d", f.idCounter)
 	f.started = append(f.started, id)
+	if f.waitChs == nil {
+		f.waitChs = make(map[string]chan struct{})
+		f.stopOnce = make(map[string]*sync.Once)
+	}
+	f.waitChs[id] = make(chan struct{})
+	f.stopOnce[id] = &sync.Once{}
 	return id, nil
 }
 
 func (f *fakeRuntime) Stop(_ context.Context, id string) error {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.stopped = append(f.stopped, id)
+	ch := f.waitChs[id]
+	once := f.stopOnce[id]
+	f.mu.Unlock()
+	// Closing the channel unblocks any pending Wait call for this container.
+	if ch != nil && once != nil {
+		once.Do(func() { close(ch) })
+	}
 	return nil
 }
 
@@ -58,7 +77,24 @@ func (f *fakeRuntime) AttachOutput(_ context.Context, _ string) (io.ReadCloser, 
 	return io.NopCloser(nil), nil
 }
 
-func (f *fakeRuntime) Wait(_ context.Context, _ string) (int, error) { return 0, nil }
+// Wait blocks until Stop is called for the container or the context is done.
+// This prevents the exit-watcher goroutine from firing before NotifyReady.
+func (f *fakeRuntime) Wait(ctx context.Context, id string) (int, error) {
+	f.mu.Lock()
+	ch, ok := f.waitChs[id]
+	f.mu.Unlock()
+	if !ok {
+		// No channel registered (Start was overridden in a sub-type).
+		<-ctx.Done()
+		return -1, ctx.Err()
+	}
+	select {
+	case <-ch:
+		return 0, nil
+	case <-ctx.Done():
+		return -1, ctx.Err()
+	}
+}
 
 func (f *fakeRuntime) CopyFrom(_ context.Context, _, _, _ string) error { return nil }
 
@@ -895,4 +931,31 @@ func TestContainerPool_Snapshot_ClearedAfterCleanup(t *testing.T) {
 
 	pool.CleanupAttempt(ctx, "att-cleanup-snap", false, true)
 	assert.Empty(t, pool.Snapshot())
+}
+
+// TestContainerPool_SessionFor_ContainerExitsBeforeAgentReady verifies that
+// SessionFor returns a fast error when the container exits before AgentReady
+// arrives, rather than blocking for the full step timeout.
+func TestContainerPool_SessionFor_ContainerExitsBeforeAgentReady(t *testing.T) {
+	rt := &fakeRuntime{}
+	pool := docker.NewContainerPool(rt)
+
+	// Use a long timeout to prove we fail fast, not because the context expires.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Simulate container crash: stop the container shortly after it starts,
+	// without ever calling NotifyReady.
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		id := rt.lastStarted()
+		if id != "" {
+			rt.Stop(context.Background(), id) // closes the wait channel → Wait returns
+		}
+	}()
+
+	_, err := pool.SessionFor(ctx, "att-exit", ports.ContainerConfig{Image: "img"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exited before agent was ready",
+		"error should indicate the container exited unexpectedly")
 }

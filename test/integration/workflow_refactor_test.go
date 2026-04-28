@@ -30,12 +30,64 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// blockingWait — shared test helper
+// ---------------------------------------------------------------------------
+
+// blockingWait makes fake runtimes' Wait block until Stop is called (or the
+// context is cancelled). Embed in a fake runtime, call bwInit(id) at the end
+// of Start, and bwHalt(id) in Stop. The promoted Wait method satisfies the
+// ContainerRuntime interface.
+type blockingWait struct {
+	mu   sync.Mutex
+	chs  map[string]chan struct{}
+	once map[string]*sync.Once
+}
+
+func (b *blockingWait) bwInit(id string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.chs == nil {
+		b.chs = make(map[string]chan struct{})
+		b.once = make(map[string]*sync.Once)
+	}
+	b.chs[id] = make(chan struct{})
+	b.once[id] = &sync.Once{}
+}
+
+func (b *blockingWait) bwHalt(id string) {
+	b.mu.Lock()
+	ch := b.chs[id]
+	once := b.once[id]
+	b.mu.Unlock()
+	if ch != nil && once != nil {
+		once.Do(func() { close(ch) })
+	}
+}
+
+func (b *blockingWait) Wait(ctx context.Context, id string) (int, error) {
+	b.mu.Lock()
+	ch, ok := b.chs[id]
+	b.mu.Unlock()
+	if !ok {
+		<-ctx.Done()
+		return -1, ctx.Err()
+	}
+	select {
+	case <-ch:
+		return 0, nil
+	case <-ctx.Done():
+		return -1, ctx.Err()
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Fake container runtime
 // ---------------------------------------------------------------------------
 
 // fakeContainerRuntime implements ports.ContainerRuntime (and the private
 // containerResumer interface used by CommitForResume) for integration tests.
 type fakeContainerRuntime struct {
+	blockingWait
 	mu        sync.Mutex
 	started   []string
 	startErr  error
@@ -68,15 +120,18 @@ func (f *fakeContainerRuntime) Start(_ context.Context, _ ports.ContainerConfig)
 	case f.startedCh <- id:
 	default:
 	}
+	f.bwInit(id)
 	return id, nil
 }
 
-func (f *fakeContainerRuntime) Stop(_ context.Context, _ string) error   { return nil }
+func (f *fakeContainerRuntime) Stop(_ context.Context, id string) error {
+	f.bwHalt(id)
+	return nil
+}
 func (f *fakeContainerRuntime) Remove(_ context.Context, _ string) error { return nil }
 func (f *fakeContainerRuntime) AttachOutput(_ context.Context, _ string) (io.ReadCloser, error) {
 	return io.NopCloser(nil), nil
 }
-func (f *fakeContainerRuntime) Wait(_ context.Context, _ string) (int, error) { return 0, nil }
 func (f *fakeContainerRuntime) CopyFrom(_ context.Context, _, _, _ string) error { return nil }
 func (f *fakeContainerRuntime) Logs(_ context.Context, _ string) (string, error) { return "", nil }
 func (f *fakeContainerRuntime) Inspect(_ context.Context, _ string) (*ports.ContainerStatus, error) {

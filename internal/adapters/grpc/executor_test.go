@@ -468,9 +468,56 @@ func TestDaemonExecutor_ProductionWiring(t *testing.T) {
 	_ = result // result may be nil on context cancellation
 }
 
+// blockingWait provides a Wait that blocks until Stop signals the container
+// exited (or context is cancelled). Embed in fake runtimes; call bwInit(id) in
+// Start and bwHalt(id) in Stop so the pool exit-watcher doesn't fire early.
+type blockingWait struct {
+	bwMu   sync.Mutex
+	bwChs  map[string]chan struct{}
+	bwOnce map[string]*sync.Once
+}
+
+func (b *blockingWait) bwInit(id string) {
+	b.bwMu.Lock()
+	defer b.bwMu.Unlock()
+	if b.bwChs == nil {
+		b.bwChs = make(map[string]chan struct{})
+		b.bwOnce = make(map[string]*sync.Once)
+	}
+	b.bwChs[id] = make(chan struct{})
+	b.bwOnce[id] = &sync.Once{}
+}
+
+func (b *blockingWait) bwHalt(id string) {
+	b.bwMu.Lock()
+	ch := b.bwChs[id]
+	once := b.bwOnce[id]
+	b.bwMu.Unlock()
+	if ch != nil && once != nil {
+		once.Do(func() { close(ch) })
+	}
+}
+
+func (b *blockingWait) Wait(ctx context.Context, id string) (int, error) {
+	b.bwMu.Lock()
+	ch, ok := b.bwChs[id]
+	b.bwMu.Unlock()
+	if !ok {
+		<-ctx.Done()
+		return -1, ctx.Err()
+	}
+	select {
+	case <-ch:
+		return 0, nil
+	case <-ctx.Done():
+		return -1, ctx.Err()
+	}
+}
+
 // recordingContainerRuntime records Start calls so tests can verify the image
 // and config passed through the production wiring path.
 type recordingContainerRuntime struct {
+	blockingWait
 	startCalled bool
 	lastConfig  ports.ContainerConfig
 }
@@ -478,13 +525,17 @@ type recordingContainerRuntime struct {
 func (r *recordingContainerRuntime) Start(_ context.Context, cfg ports.ContainerConfig) (string, error) {
 	r.startCalled = true
 	r.lastConfig = cfg
-	return "fake-container-id", nil
+	const id = "fake-container-id"
+	r.bwInit(id)
+	return id, nil
 }
-func (r *recordingContainerRuntime) Stop(_ context.Context, _ string) error { return nil }
+func (r *recordingContainerRuntime) Stop(_ context.Context, id string) error {
+	r.bwHalt(id)
+	return nil
+}
 func (r *recordingContainerRuntime) AttachOutput(_ context.Context, _ string) (io.ReadCloser, error) {
 	return nil, nil
 }
-func (r *recordingContainerRuntime) Wait(_ context.Context, _ string) (int, error) { return 0, nil }
 func (r *recordingContainerRuntime) CopyFrom(_ context.Context, _, _, _ string) error {
 	return nil
 }
@@ -568,6 +619,7 @@ func (e *errContainerRuntime) Attach(_ context.Context, _ string) (io.ReadWriteC
 
 // copyTrackingRuntime records CopyFrom calls so tests can verify log extraction.
 type copyTrackingRuntime struct {
+	blockingWait
 	mu          sync.Mutex
 	copyFromSrc []string
 	containerID string
@@ -575,13 +627,16 @@ type copyTrackingRuntime struct {
 
 func (r *copyTrackingRuntime) Start(_ context.Context, _ ports.ContainerConfig) (string, error) {
 	r.containerID = "track-container-1"
+	r.bwInit(r.containerID)
 	return r.containerID, nil
 }
-func (r *copyTrackingRuntime) Stop(_ context.Context, _ string) error { return nil }
+func (r *copyTrackingRuntime) Stop(_ context.Context, id string) error {
+	r.bwHalt(id)
+	return nil
+}
 func (r *copyTrackingRuntime) AttachOutput(_ context.Context, _ string) (io.ReadCloser, error) {
 	return nil, nil
 }
-func (r *copyTrackingRuntime) Wait(_ context.Context, _ string) (int, error) { return 0, nil }
 func (r *copyTrackingRuntime) CopyFrom(_ context.Context, _, src, _ string) error {
 	r.mu.Lock()
 	r.copyFromSrc = append(r.copyFromSrc, src)
