@@ -1014,7 +1014,7 @@ With a single ID, prints step-level progress. With multiple IDs, displays a comp
 cloche stop <task-id>
 ```
 
-Stop all active runs for a task. Container runs have their container terminated; host runs (including user-initiated runs) have their execution cancelled. All affected run states transition to "cancelled".
+Stop all active runs for a task. Container runs have their container terminated; host runs (including user-initiated runs) have their execution cancelled gracefully — if the active step declares a `fail` result, the engine walks the fail-branch wires (e.g. cleanup or unclaim steps) before the run transitions to `cancelled`.
 
 ### `cloche delete`
 

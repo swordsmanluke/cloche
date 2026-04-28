@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -203,18 +204,18 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 			return nil
 		}
 
-		go func(s *domain.Step, t StepTrigger) {
-			stepCtx := ctx
+		go func(s *domain.Step, t StepTrigger, baseCtx context.Context) {
+			stepCtx := baseCtx
 			if d := stepTimeout(s, e.defaultTimeout); d > 0 {
 				var cancel context.CancelFunc
-				stepCtx, cancel = context.WithTimeout(ctx, d)
+				stepCtx, cancel = context.WithTimeout(baseCtx, d)
 				defer cancel()
 			}
 			stepCtx = WithStepTrigger(stepCtx, t)
 			stepCtx = WithWorkflow(stepCtx, wf)
 			sr, err := e.executor.Execute(stepCtx, s)
 			results <- stepResult{stepName: s.Name, result: sr.Result, usage: sr.Usage, err: err}
-		}(step, trigger)
+		}(step, trigger, ctx)
 
 		return nil
 	}
@@ -230,21 +231,39 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 	}
 
 	// Main event loop.
+	cancelled := false
 	for activeCount > 0 {
 		select {
 		case <-ctx.Done():
-			run.Complete(domain.RunStateCancelled)
-			return run, fmt.Errorf("workflow cancelled: %w", ctx.Err())
+			// Switch to graceful cancellation: replace ctx with a fresh background
+			// context so that cleanup steps (e.g. unclaim) can still execute.
+			// Active steps will return context errors shortly; we drain them below
+			// and synthesize "fail" so that fail-branch wires are walked normally.
+			cancelled = true
+			ctx = context.Background()
 
 		case sr := <-results:
 			activeCount--
 
 			// Step execution error.
 			if sr.err != nil {
-				run.RecordStepComplete(sr.stepName, "error")
-				run.Complete(domain.RunStateFailed)
-				e.status.OnRunComplete(run)
-				return run, fmt.Errorf("step %q execution failed: %w", sr.stepName, sr.err)
+				if cancelled && isContextError(sr.err) {
+					// Treat cancellation as "fail" so fail-branch wires (e.g. unclaim) run.
+					step := wf.Steps[sr.stepName]
+					if isResultDeclared(step, "fail") {
+						sr = stepResult{stepName: sr.stepName, result: "fail"}
+						// Fall through to normal wire processing below.
+					} else {
+						// No "fail" result declared; record and drain without walking wires.
+						run.RecordStepComplete(sr.stepName, "error")
+						continue
+					}
+				} else {
+					run.RecordStepComplete(sr.stepName, "error")
+					run.Complete(domain.RunStateFailed)
+					e.status.OnRunComplete(run)
+					return run, fmt.Errorf("step %q execution failed: %w", sr.stepName, sr.err)
+				}
 			}
 
 			// Validate result is declared in the step's Results list.
@@ -328,6 +347,11 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 	}
 
 	// Determine final state.
+	if cancelled {
+		run.Complete(domain.RunStateCancelled)
+		e.status.OnRunComplete(run)
+		return run, fmt.Errorf("workflow cancelled: %w", context.Canceled)
+	}
 	if aborted || runErr != nil {
 		run.Complete(domain.RunStateFailed)
 	} else if doneCount > 0 {
@@ -361,6 +385,11 @@ func generateRunID() string {
 	defer runMu.Unlock()
 	runCounter++
 	return fmt.Sprintf("run-%d", runCounter)
+}
+
+// isContextError reports whether err is (or wraps) a context cancellation or deadline.
+func isContextError(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 // stepTimeout returns the timeout for a step. It checks step.Config["timeout"]

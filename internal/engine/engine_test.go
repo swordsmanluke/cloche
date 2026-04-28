@@ -655,3 +655,146 @@ func TestStepTimeout_HumanStep_ExplicitTimeout(t *testing.T) {
 	assert.Greater(t, remaining, 47*time.Hour, "explicit timeout of 48h should be used")
 	assert.Less(t, remaining, 49*time.Hour, "explicit timeout of 48h should be used")
 }
+
+// blockingExecutor blocks the named step until the provided channel is closed,
+// then returns an error wrapping context.Canceled to simulate cancellation.
+// All other steps execute immediately using the fakeResults map.
+type blockingExecutor struct {
+	mu          sync.Mutex
+	called      []string
+	blockStep   string
+	blockSignal chan struct{} // close to unblock
+	fakeResults map[string]string
+}
+
+func (b *blockingExecutor) Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
+	b.mu.Lock()
+	b.called = append(b.called, step.Name)
+	b.mu.Unlock()
+
+	if step.Name == b.blockStep {
+		select {
+		case <-b.blockSignal:
+		case <-ctx.Done():
+		}
+		return domain.StepResult{}, fmt.Errorf("step cancelled: %w", context.Canceled)
+	}
+	return domain.StepResult{Result: b.fakeResults[step.Name]}, nil
+}
+
+// TestEngine_CancellationWalksFailWires verifies that when the outer context is
+// cancelled while a step is running, the engine synthesizes "fail" for that step
+// and continues walking the fail-branch wires (e.g. to run an unclaim step)
+// before returning RunStateCancelled.
+func TestEngine_CancellationWalksFailWires(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "cancel-walk",
+		Steps: map[string]*domain.Step{
+			"develop": {Name: "develop", Type: domain.StepTypeAgent, Results: []string{"success", "fail"}},
+			"unclaim": {Name: "unclaim", Type: domain.StepTypeScript, Results: []string{"success", "fail"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "develop", Result: "success", To: domain.StepDone},
+			{From: "develop", Result: "fail", To: "unclaim"},
+			{From: "unclaim", Result: "success", To: domain.StepAbort},
+			{From: "unclaim", Result: "fail", To: domain.StepAbort},
+		},
+		EntryStep: "develop",
+	}
+
+	blockSignal := make(chan struct{})
+	exec := &blockingExecutor{
+		blockStep:   "develop",
+		blockSignal: blockSignal,
+		fakeResults: map[string]string{"unclaim": "success"},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	eng := engine.New(exec)
+
+	var (
+		runResult *domain.Run
+		runErr    error
+		done      = make(chan struct{})
+	)
+	go func() {
+		runResult, runErr = eng.Run(ctx, wf)
+		close(done)
+	}()
+
+	// Wait until develop has started, then cancel.
+	for {
+		exec.mu.Lock()
+		n := len(exec.called)
+		exec.mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+
+	<-done
+
+	require.Error(t, runErr)
+	assert.Equal(t, domain.RunStateCancelled, runResult.State)
+
+	exec.mu.Lock()
+	defer exec.mu.Unlock()
+	assert.Contains(t, exec.called, "develop", "develop step should have been called")
+	assert.Contains(t, exec.called, "unclaim", "unclaim step should have run via the fail wire")
+}
+
+// TestEngine_CancellationNoFailResult verifies that when the cancelled step has no
+// "fail" result declared, the engine still returns RunStateCancelled without panicking
+// or walking any wires.
+func TestEngine_CancellationNoFailResult(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "cancel-no-fail",
+		Steps: map[string]*domain.Step{
+			// Step only declares "success" — no "fail" wire.
+			"work": {Name: "work", Type: domain.StepTypeScript, Results: []string{"success"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "work", Result: "success", To: domain.StepDone},
+		},
+		EntryStep: "work",
+	}
+
+	blockSignal := make(chan struct{})
+	exec := &blockingExecutor{
+		blockStep:   "work",
+		blockSignal: blockSignal,
+		fakeResults: map[string]string{},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	eng := engine.New(exec)
+
+	var (
+		runResult *domain.Run
+		runErr    error
+		done      = make(chan struct{})
+	)
+	go func() {
+		runResult, runErr = eng.Run(ctx, wf)
+		close(done)
+	}()
+
+	// Wait until work has started, then cancel.
+	for {
+		exec.mu.Lock()
+		n := len(exec.called)
+		exec.mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+
+	<-done
+
+	require.Error(t, runErr)
+	assert.Equal(t, domain.RunStateCancelled, runResult.State)
+}
