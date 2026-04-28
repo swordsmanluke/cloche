@@ -1173,6 +1173,7 @@ The following keys are written automatically and can be read with `cloche get`:
 | Key | Value |
 |-----|-------|
 | `child_run_id` | Run ID of the child container workflow; used to locate the `cloche/<run-id>` git branch with extracted results |
+| `child_branch` | Git branch name where the container workspace was extracted (e.g. `cloche/<attemptID>-<containerID>`); set before the sub-workflow runs so merge scripts can reference it before `child_run_id` is available |
 
 All auto-seeded keys are fully writable — scripts can overwrite them with `cloche set`.
 

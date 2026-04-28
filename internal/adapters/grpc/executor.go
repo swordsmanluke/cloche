@@ -387,8 +387,13 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 		hostRunID = d.hostExec.HostRunID
 	}
 
+	image := d.image
+	if wfImage, ok := wf.Config["container.image"]; ok && wfImage != "" {
+		image = wfImage
+	}
+
 	cfg := ports.ContainerConfig{
-		Image:        d.image,
+		Image:        image,
 		WorkflowName: wf.Name,
 		ProjectDir:   d.projectDir,
 		RunID:        hostRunID,

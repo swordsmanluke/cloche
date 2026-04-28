@@ -105,9 +105,11 @@ case is detected in seconds rather than minutes.
 
 ---
 
-## 3. Workflow-level `container { image = "..." }` is ignored for `workflow_name`-dispatched sub-workflows
+## 3. ~~Workflow-level `container { image = "..." }` is ignored for `workflow_name`-dispatched sub-workflows~~ (FIXED)
 
-### Symptom
+**Fixed in:** `internal/adapters/grpc/executor.go` — `executeContainerStep` now reads `wf.Config["container.image"]` and falls back to the daemon default only when the workflow doesn't declare one.
+
+### Symptom (historical)
 
 `develop.cloche`:
 

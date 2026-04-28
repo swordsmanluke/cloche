@@ -279,6 +279,68 @@ func TestDaemonExecutor_ContainerStep_StartError(t *testing.T) {
 	assert.Contains(t, err.Error(), "docker not available")
 }
 
+// TestDaemonExecutor_ContainerStep_UsesWorkflowImage verifies that when the
+// workflow declares container.image, that image is passed to the container
+// runtime instead of the daemon default.
+func TestDaemonExecutor_ContainerStep_UsesWorkflowImage(t *testing.T) {
+	rt := &recordingContainerRuntime{}
+	pool := docker.NewContainerPool(rt)
+
+	wf := buildContainerWFForTest("develop")
+	wf.Config = map[string]string{"container.image": "custom-image:v2"}
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		Pool:       pool,
+		ProjectDir: t.TempDir(),
+		AttemptID:  "att-wf-img",
+		Image:      "daemon-default:latest",
+		AllWFs:     map[string]*domain.Workflow{"develop": wf},
+	})
+
+	step := wf.Steps["step1"]
+	// Pre-cancelled context so SessionFor returns fast after Start is called.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ctx = engine.WithWorkflow(ctx, wf)
+
+	_, err := de.Execute(ctx, step)
+	require.Error(t, err)
+
+	require.True(t, rt.startCalled, "container runtime Start should have been called")
+	assert.Equal(t, "custom-image:v2", rt.lastConfig.Image,
+		"workflow container.image should override the daemon default")
+}
+
+// TestDaemonExecutor_ContainerStep_FallsBackToDaemonImage verifies that when
+// the workflow does not declare container.image, the daemon default is used.
+func TestDaemonExecutor_ContainerStep_FallsBackToDaemonImage(t *testing.T) {
+	rt := &recordingContainerRuntime{}
+	pool := docker.NewContainerPool(rt)
+
+	wf := buildContainerWFForTest("develop")
+	// No container.image in wf.Config — should fall back to daemon default.
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		Pool:       pool,
+		ProjectDir: t.TempDir(),
+		AttemptID:  "att-wf-img-fb",
+		Image:      "daemon-default:latest",
+		AllWFs:     map[string]*domain.Workflow{"develop": wf},
+	})
+
+	step := wf.Steps["step1"]
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ctx = engine.WithWorkflow(ctx, wf)
+
+	_, err := de.Execute(ctx, step)
+	require.Error(t, err)
+
+	require.True(t, rt.startCalled, "container runtime Start should have been called")
+	assert.Equal(t, "daemon-default:latest", rt.lastConfig.Image,
+		"daemon default image should be used when workflow has no container.image")
+}
+
 // TestDaemonExecutor_ProductionWiring validates the full construction path that
 // the daemon uses: daemonExecutorFor → host.Runner.RunNamed → engine. This
 // exercises the wiring that unit tests bypass by constructing DaemonExecutor
