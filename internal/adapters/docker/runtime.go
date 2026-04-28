@@ -509,7 +509,35 @@ func copyProjectToContainer(ctx context.Context, projectDir, containerID string,
 
 	// Write tar archive, skipping ignored files.
 	tw := tar.NewWriter(pipeW)
-	walkErr := filepath.Walk(projectDir, func(absPath string, info os.FileInfo, err error) error {
+	walkErr := writeTarFromProject(tw, projectDir, patterns)
+
+	// Close the tar writer and pipe even if walk failed, so docker cp
+	// exits rather than hanging.
+	tw.Close()
+	pipeW.Close()
+
+	cmdErr := <-errCh
+	if walkErr != nil {
+		return fmt.Errorf("building tar archive: %w", walkErr)
+	}
+	if cmdErr != nil {
+		return fmt.Errorf("copying files to container: %s: %w", stderr.String(), cmdErr)
+	}
+	return nil
+}
+
+// writeTarFromProject walks projectDir and writes matching files into tw,
+// honoring patterns. Symlinks that point outside the project tree are
+// dereferenced — their real content is inlined — so Docker's tarslip
+// protection does not silently drop them and leave the container workspace
+// incomplete.
+func writeTarFromProject(tw *tar.Writer, projectDir string, patterns []ignorePattern) error {
+	absProjectDir, err := filepath.Abs(projectDir)
+	if err != nil {
+		return fmt.Errorf("resolving project dir: %w", err)
+	}
+
+	return filepath.Walk(projectDir, func(absPath string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -541,6 +569,18 @@ func copyProjectToContainer(ctx context.Context, projectDir, containerID string,
 			if err != nil {
 				return err
 			}
+
+			// Resolve the symlink to determine whether its target is inside
+			// the project tree. External symlinks are dereferenced: Docker's
+			// tarslip protection silently rejects tar entries whose link target
+			// escapes the destination directory, causing the copy to truncate.
+			target := link
+			if !filepath.IsAbs(target) {
+				target = filepath.Join(filepath.Dir(absPath), target)
+			}
+			if resolved, resolveErr := filepath.EvalSymlinks(target); resolveErr == nil && !isInsideDir(resolved, absProjectDir) {
+				return addDereferencedEntry(tw, resolved, relPath)
+			}
 		}
 
 		header, err := tar.FileInfoHeader(info, link)
@@ -565,20 +605,106 @@ func copyProjectToContainer(ctx context.Context, projectDir, containerID string,
 		_, err = io.Copy(tw, f)
 		return err
 	})
+}
 
-	// Close the tar writer and pipe even if walk failed, so docker cp
-	// exits rather than hanging.
-	tw.Close()
-	pipeW.Close()
+// isInsideDir reports whether path is inside (or equal to) dir.
+// Both should be absolute, clean paths.
+func isInsideDir(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return false
+	}
+	return !strings.HasPrefix(rel, "..")
+}
 
-	cmdErr := <-errCh
-	if walkErr != nil {
-		return fmt.Errorf("building tar archive: %w", walkErr)
+// addDereferencedEntry inlines the content of an external symlink target into
+// the tar archive under relPath. For files the content is written as a regular
+// file entry; for directories all contents are added recursively. This avoids
+// creating symlink tar entries that Docker's tarslip protection would silently
+// drop when the link target escapes /workspace/.
+func addDereferencedEntry(tw *tar.Writer, resolvedTarget, relPath string) error {
+	info, err := os.Stat(resolvedTarget)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: skipping external symlink %q (target inaccessible: %v)\n", relPath, err)
+		return nil
 	}
-	if cmdErr != nil {
-		return fmt.Errorf("copying files to container: %s: %w", stderr.String(), cmdErr)
+
+	if !info.IsDir() {
+		hdr, herr := tar.FileInfoHeader(info, "")
+		if herr != nil {
+			return fmt.Errorf("creating tar header for %s: %w", relPath, herr)
+		}
+		hdr.Name = relPath
+		if werr := tw.WriteHeader(hdr); werr != nil {
+			return werr
+		}
+		if info.Mode().IsRegular() {
+			f, ferr := os.Open(resolvedTarget)
+			if ferr != nil {
+				return ferr
+			}
+			defer f.Close()
+			_, cerr := io.Copy(tw, f)
+			return cerr
+		}
+		return nil
 	}
-	return nil
+
+	// Directory: walk and include all contents under relPath.
+	return filepath.Walk(resolvedTarget, func(path string, fi os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		sub, _ := filepath.Rel(resolvedTarget, path)
+		sub = filepath.ToSlash(sub)
+
+		var entryPath string
+		if sub == "." {
+			entryPath = relPath
+		} else {
+			entryPath = relPath + "/" + sub
+		}
+
+		fMode := fi.Mode()
+		if fMode&(os.ModeSocket|os.ModeDevice|os.ModeNamedPipe|os.ModeCharDevice) != 0 {
+			if fi.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		var linkTarget string
+		if fMode&os.ModeSymlink != 0 {
+			var lerr error
+			linkTarget, lerr = os.Readlink(path)
+			if lerr != nil {
+				return lerr
+			}
+		}
+
+		hdr, herr := tar.FileInfoHeader(fi, linkTarget)
+		if herr != nil {
+			return fmt.Errorf("creating tar header for %s: %w", entryPath, herr)
+		}
+		hdr.Name = entryPath
+
+		if werr := tw.WriteHeader(hdr); werr != nil {
+			return werr
+		}
+
+		if !fi.Mode().IsRegular() {
+			return nil
+		}
+
+		f, ferr := os.Open(path)
+		if ferr != nil {
+			return ferr
+		}
+		defer f.Close()
+		_, cerr := io.Copy(tw, f)
+		return cerr
+	})
 }
 
 type cmdReadCloser struct {
