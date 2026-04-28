@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -32,7 +34,9 @@ func main() {
 	}
 
 	var projectFlag string
+	var debugAddrFlag string
 	flag.StringVar(&projectFlag, "project", "", "scope daemon to a single project directory (disables multi-project auto-discover)")
+	flag.StringVar(&debugAddrFlag, "debug-addr", "", "enable pprof debug HTTP server on this address (e.g. localhost:7778)")
 	flag.Parse()
 
 	// Load global config file (~/.config/cloche/config)
@@ -146,6 +150,11 @@ func main() {
 				fmt.Fprintf(os.Stderr, "http server error: %v\n", err)
 			}
 		}()
+	}
+
+	// Start debug HTTP server if --debug-addr or CLOCHE_DEBUG or [daemon] debug is set.
+	if debugAddr := envOrConfig("CLOCHE_DEBUG", globalCfg.Daemon.Debug, debugAddrFlag); debugAddr != "" {
+		go startDebugServer(debugAddr, srv)
 	}
 
 	fmt.Fprintf(os.Stderr, "cloched listening on %s\n", listenAddr)
@@ -308,4 +317,33 @@ func envOrConfig(envKey, configVal, fallback string) string {
 		return configVal
 	}
 	return fallback
+}
+
+// startDebugServer starts a pprof + daemon-state HTTP server on addr.
+// It registers standard net/http/pprof endpoints plus a /debug/state endpoint
+// that returns a JSON snapshot of goroutines, active runs, loops, and container
+// sessions. The server runs until the process exits.
+func startDebugServer(addr string, srv *adaptgrpc.ClocheServer) {
+	mux := http.NewServeMux()
+
+	// Standard pprof endpoints (goroutine dumps, heap, CPU, trace, etc.)
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+	// Daemon state snapshot as JSON.
+	mux.HandleFunc("/debug/state", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		snap := srv.DaemonState()
+		if err := json.NewEncoder(w).Encode(snap); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	fmt.Fprintf(os.Stderr, "cloched debug server on http://%s\n", addr)
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		fmt.Fprintf(os.Stderr, "debug server error: %v\n", err)
+	}
 }

@@ -517,6 +517,33 @@ func (p *ContainerPool) CopyFrom(ctx context.Context, containerID, srcPath, dstP
 	return p.runtime.CopyFrom(ctx, containerID, srcPath, dstPath)
 }
 
+// SessionSnapshot summarizes a single container session for debug introspection.
+type SessionSnapshot struct {
+	AttemptID    string
+	ContainerID  string
+	PendingSteps int
+}
+
+// Snapshot returns a point-in-time summary of all active container sessions.
+func (p *ContainerPool) Snapshot() []SessionSnapshot {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]SessionSnapshot, 0, len(p.attempts))
+	for attemptID, entry := range p.attempts {
+		for _, sess := range entry.sessions {
+			sess.mu.Lock()
+			pending := len(sess.pending)
+			sess.mu.Unlock()
+			out = append(out, SessionSnapshot{
+				AttemptID:    attemptID,
+				ContainerID:  sess.ContainerID,
+				PendingSteps: pending,
+			})
+		}
+	}
+	return out
+}
+
 // CleanupAttempt stops and optionally removes all containers for attemptID.
 // Containers are always stopped on terminal states. They are only removed
 // when succeeded is true (the workflow reached done). On failure or abort

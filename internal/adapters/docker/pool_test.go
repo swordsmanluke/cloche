@@ -834,3 +834,65 @@ func TestContainerPool_SessionFor_ContextCancelledBeforeReadyTimeout(t *testing.
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 }
+
+func TestContainerPool_Snapshot_Empty(t *testing.T) {
+	rt := &fakeRuntime{}
+	pool := docker.NewContainerPool(rt)
+	assert.Empty(t, pool.Snapshot())
+}
+
+func TestContainerPool_Snapshot_ActiveSession(t *testing.T) {
+	rt := &fakeRuntime{}
+	pool := docker.NewContainerPool(rt)
+
+	ctx := context.Background()
+
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		rt.mu.Lock()
+		id := ""
+		if len(rt.started) > 0 {
+			id = rt.started[0]
+		}
+		rt.mu.Unlock()
+		if id != "" {
+			pool.NotifyReady(id)
+		}
+	}()
+
+	_, err := pool.SessionFor(ctx, "att-snap", ports.ContainerConfig{Image: "img"})
+	require.NoError(t, err)
+
+	snaps := pool.Snapshot()
+	require.Len(t, snaps, 1)
+	assert.Equal(t, "att-snap", snaps[0].AttemptID)
+	assert.NotEmpty(t, snaps[0].ContainerID)
+	assert.Equal(t, 0, snaps[0].PendingSteps)
+}
+
+func TestContainerPool_Snapshot_ClearedAfterCleanup(t *testing.T) {
+	rt := &fakeRuntime{}
+	pool := docker.NewContainerPool(rt)
+
+	ctx := context.Background()
+
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		rt.mu.Lock()
+		id := ""
+		if len(rt.started) > 0 {
+			id = rt.started[0]
+		}
+		rt.mu.Unlock()
+		if id != "" {
+			pool.NotifyReady(id)
+		}
+	}()
+
+	_, err := pool.SessionFor(ctx, "att-cleanup-snap", ports.ContainerConfig{Image: "img"})
+	require.NoError(t, err)
+	assert.Len(t, pool.Snapshot(), 1)
+
+	pool.CleanupAttempt(ctx, "att-cleanup-snap", false, true)
+	assert.Empty(t, pool.Snapshot())
+}

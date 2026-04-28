@@ -10,6 +10,7 @@ import (
 type DaemonConfig struct {
 	Listen     string `toml:"listen"`
 	HTTP       string `toml:"http"`
+	Debug      string `toml:"debug"`
 	Image      string `toml:"image"`
 	DB         string `toml:"db"`
 	Runtime    string `toml:"runtime"`

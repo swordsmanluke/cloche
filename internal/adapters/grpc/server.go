@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -3889,5 +3890,48 @@ func (s *ClocheServer) scanAndResolveStuckWorkflows(ctx context.Context) {
 		s.mu.Unlock()
 		s.stopProjectLoop(run.ProjectDir, fmt.Sprintf(
 			"stuck workflow detected for run %s: container exited with code %d", runID, status.ExitCode))
+	}
+}
+
+// DaemonStateSnapshot is a point-in-time view of the daemon's runtime state,
+// returned by DaemonState and served at /debug/state on the debug HTTP server.
+type DaemonStateSnapshot struct {
+	GoroutineCount    int                      `json:"goroutine_count"`
+	Goroutines        string                   `json:"goroutines"`
+	ActiveRunIDs      []string                 `json:"active_run_ids"`
+	ActiveLoops       []string                 `json:"active_loops"`
+	ContainerSessions []docker.SessionSnapshot `json:"container_sessions"`
+}
+
+// DaemonState collects a runtime snapshot of the daemon for live introspection.
+// It captures goroutine stacks, active run IDs, orchestration loops, and
+// container session state without blocking any in-flight work.
+func (s *ClocheServer) DaemonState() DaemonStateSnapshot {
+	// Goroutine stacks — 64 KB is enough for most daemons; grows on overflow.
+	buf := make([]byte, 64<<10)
+	n := runtime.Stack(buf, true)
+
+	s.mu.Lock()
+	runIDs := make([]string, 0, len(s.runIDs))
+	for id := range s.runIDs {
+		runIDs = append(runIDs, id)
+	}
+	loops := make([]string, 0, len(s.loops))
+	for dir := range s.loops {
+		loops = append(loops, dir)
+	}
+	s.mu.Unlock()
+
+	var sessions []docker.SessionSnapshot
+	if s.pool != nil {
+		sessions = s.pool.Snapshot()
+	}
+
+	return DaemonStateSnapshot{
+		GoroutineCount:    runtime.NumGoroutine(),
+		Goroutines:        string(buf[:n]),
+		ActiveRunIDs:      runIDs,
+		ActiveLoops:       loops,
+		ContainerSessions: sessions,
 	}
 }

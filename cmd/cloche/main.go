@@ -133,6 +133,9 @@ func main() {
 		}
 		cmdDoctor(os.Args[2:])
 		return
+	case "debug":
+		cmdDebug(os.Args[2:])
+		return
 	case "complete":
 		// No help flag handling: complete must be fast and quiet.
 		cmdComplete(os.Args[2:])

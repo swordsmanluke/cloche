@@ -1322,6 +1322,34 @@ container is kept — it does not appear in `cloche list`, but can be deleted wi
 
 Must be run from inside a git repository with a `.cloche/` directory.
 
+### `cloche debug`
+
+Inspect the running daemon via its debug HTTP server. The debug server must be enabled first.
+
+```
+cloche debug <subcommand> [--debug-addr <addr>]
+```
+
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `goroutines` | Print a full goroutine stack dump from the daemon (pprof output). |
+| `state` | Print a summary of active runs, loops, goroutine count, and container sessions. |
+
+**Debug server address resolution** (first match wins):
+1. `--debug-addr <addr>` flag
+2. `CLOCHE_DEBUG` environment variable
+3. `[daemon] debug` in `~/.config/cloche/config`
+
+**Enable the debug server on cloched:**
+
+```
+cloched --debug-addr localhost:7778
+CLOCHE_DEBUG=localhost:7778 cloched
+# or in ~/.config/cloche/config: [daemon] debug = "localhost:7778"
+```
+
 ### `cloche complete`
 
 Low-level helper used by shell completion scripts. Not intended for direct use.
@@ -1460,6 +1488,7 @@ this pattern.
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--project <dir>` | _(unset)_ | Scope the daemon to a single project directory. Skips the database scan and active-project check; starts the orchestration loop for only that path. Disables multi-project auto-discovery. |
+| `--debug-addr <addr>` | _(unset)_ | Enable the pprof + state debug HTTP server on this address (e.g. `localhost:7778`). Also settable via `CLOCHE_DEBUG` env var or `[daemon] debug` in the global config. |
 
 ## Environment Variable Reference
 
@@ -1477,6 +1506,7 @@ this pattern.
 | `ANTHROPIC_API_KEY` | _(unset)_ | Passed into Docker containers |
 | `CLOCHE_EXTRA_MOUNTS` | _(unset)_ | Extra bind mounts (comma-separated `host:container`) |
 | `CLOCHE_EXTRA_ENV` | _(unset)_ | Extra env vars (comma-separated `KEY=VALUE`) |
+| `CLOCHE_DEBUG` | _(unset)_ | Enable the pprof debug HTTP server on this address (e.g. `localhost:7778`). Equivalent to `--debug-addr`. |
 
 ### Client Configuration
 
