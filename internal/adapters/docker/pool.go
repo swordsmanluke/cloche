@@ -9,11 +9,17 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/ports"
 )
+
+// agentReadyTimeoutDefault is the maximum time SessionFor waits for an
+// in-container agent to send AgentReady before tearing down the container
+// and returning a fast failure.
+const agentReadyTimeoutDefault = 2 * time.Minute
 
 // requestCounter is used to generate unique request IDs for step dispatch.
 var requestCounter atomic.Int64
@@ -180,16 +186,29 @@ type ContainerPool struct {
 	// Key: containerID (typically 12-char Docker hostname).
 	// Value: send function (nil for NotifyReady without stream).
 	pendingReady map[string]func(*pb.DaemonMessage) error
+	// agentReadyTimeout is the maximum time to wait for the in-container agent
+	// to send AgentReady. If the agent doesn't respond within this window,
+	// SessionFor tears down the container and returns a fast failure with
+	// the container's logs included. Defaults to agentReadyTimeoutDefault.
+	agentReadyTimeout time.Duration
 }
 
 // NewContainerPool creates a ContainerPool backed by the given runtime.
 func NewContainerPool(runtime ports.ContainerRuntime) *ContainerPool {
 	return &ContainerPool{
-		runtime:          runtime,
-		attempts:         make(map[string]*poolEntry),
-		containerAttempt: make(map[string]string),
-		pendingReady:     make(map[string]func(*pb.DaemonMessage) error),
+		runtime:           runtime,
+		attempts:          make(map[string]*poolEntry),
+		containerAttempt:  make(map[string]string),
+		pendingReady:      make(map[string]func(*pb.DaemonMessage) error),
+		agentReadyTimeout: agentReadyTimeoutDefault,
 	}
+}
+
+// SetAgentReadyTimeout overrides the AgentReady timeout for this pool.
+// The default is agentReadyTimeoutDefault (2 minutes). Pass a shorter value
+// in tests or when operator configuration demands a tighter startup budget.
+func (p *ContainerPool) SetAgentReadyTimeout(d time.Duration) {
+	p.agentReadyTimeout = d
 }
 
 // resolveAttempt looks up the attemptID for a containerID. Falls back to prefix
@@ -281,11 +300,34 @@ func (p *ContainerPool) SessionFor(ctx context.Context, attemptID string, cfg po
 	}
 
 	// Wait for the agent inside the container to call back with AgentReady.
+	// Use a dedicated short timeout rather than blocking until the step's
+	// full timeout fires (default 30 min) — startup failures are visible
+	// in seconds and should surface quickly.
+	readyTimer := time.NewTimer(p.agentReadyTimeout)
+	defer readyTimer.Stop()
+
 	select {
 	case <-entry.readyCh:
 		return sess, nil
 	case <-ctx.Done():
 		return nil, fmt.Errorf("waiting for AgentReady for attempt %s: %w", attemptID, ctx.Err())
+	case <-readyTimer.C:
+		// Tear down the container and collect its logs for diagnostics.
+		bgCtx := context.Background()
+		logs, _ := p.runtime.Logs(bgCtx, containerID)
+		if stopErr := p.runtime.Stop(bgCtx, containerID); stopErr != nil {
+			log.Printf("pool: stopping timed-out container %s: %v", containerID, stopErr)
+		}
+		p.mu.Lock()
+		delete(p.containerAttempt, containerID)
+		delete(p.attempts, attemptID)
+		p.mu.Unlock()
+
+		msg := fmt.Sprintf("agent in container %s did not send AgentReady within %s (attempt %s)", containerID, p.agentReadyTimeout, attemptID)
+		if logs != "" {
+			msg += "\ncontainer logs:\n" + logs
+		}
+		return nil, fmt.Errorf("%s", msg)
 	}
 }
 

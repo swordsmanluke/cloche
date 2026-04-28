@@ -18,13 +18,14 @@ import (
 
 // fakeRuntime is a minimal ContainerRuntime stub for pool tests.
 type fakeRuntime struct {
-	mu        sync.Mutex
-	started   []string // containerIDs returned by Start
-	stopped   []string
-	removed   []string
-	startErr  error
-	removeErr error
-	idCounter int
+	mu         sync.Mutex
+	started    []string // containerIDs returned by Start
+	stopped    []string
+	removed    []string
+	startErr   error
+	removeErr  error
+	idCounter  int
+	logsOutput string // returned by Logs when non-empty
 }
 
 func (f *fakeRuntime) Start(_ context.Context, _ ports.ContainerConfig) (string, error) {
@@ -61,7 +62,11 @@ func (f *fakeRuntime) Wait(_ context.Context, _ string) (int, error) { return 0,
 
 func (f *fakeRuntime) CopyFrom(_ context.Context, _, _, _ string) error { return nil }
 
-func (f *fakeRuntime) Logs(_ context.Context, _ string) (string, error) { return "", nil }
+func (f *fakeRuntime) Logs(_ context.Context, _ string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.logsOutput, nil
+}
 
 func (f *fakeRuntime) Inspect(_ context.Context, _ string) (*ports.ContainerStatus, error) {
 	return &ports.ContainerStatus{Running: true}, nil
@@ -715,4 +720,117 @@ func TestContainerPool_GetSession_NilAfterCleanup(t *testing.T) {
 
 	got := pool.GetSession("att-gc")
 	assert.Nil(t, got, "GetSession should return nil after cleanup")
+}
+
+func TestContainerPool_SessionFor_AgentReadyTimeout_FailsFast(t *testing.T) {
+	// AgentReady never arrives. SessionFor should fail quickly after the
+	// dedicated ready timeout rather than waiting for the step context deadline.
+	rt := &fakeRuntime{}
+	pool := docker.NewContainerPool(rt)
+	pool.SetAgentReadyTimeout(30 * time.Millisecond)
+
+	// Step context has a generous deadline — timeout must come from the pool.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	_, err := pool.SessionFor(ctx, "att-ready-timeout", ports.ContainerConfig{Image: "img"})
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, context.DeadlineExceeded, "should not be the step-level deadline")
+	assert.Contains(t, err.Error(), "AgentReady")
+	assert.Less(t, elapsed, 2*time.Second, "should fail fast, not wait for step deadline")
+}
+
+func TestContainerPool_SessionFor_AgentReadyTimeout_StopsContainer(t *testing.T) {
+	// When the ready timeout fires, the pool must stop the container so it
+	// doesn't linger after the caller receives an error.
+	rt := &fakeRuntime{}
+	pool := docker.NewContainerPool(rt)
+	pool.SetAgentReadyTimeout(20 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := pool.SessionFor(ctx, "att-stop-on-timeout", ports.ContainerConfig{Image: "img"})
+	require.Error(t, err)
+
+	rt.mu.Lock()
+	stopped := rt.stopped
+	rt.mu.Unlock()
+
+	require.Len(t, stopped, 1, "timed-out container must be stopped")
+}
+
+func TestContainerPool_SessionFor_AgentReadyTimeout_IncludesLogs(t *testing.T) {
+	// When the ready timeout fires and the container produced logs, those logs
+	// must appear in the returned error to aid diagnosis.
+	rt := &fakeRuntime{logsOutput: "panic: agent init failed\ngoroutine 1 [running]"}
+	pool := docker.NewContainerPool(rt)
+	pool.SetAgentReadyTimeout(20 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := pool.SessionFor(ctx, "att-logs-on-timeout", ports.ContainerConfig{Image: "img"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "agent init failed", "container logs must be included in the error")
+}
+
+func TestContainerPool_SessionFor_AgentReadyTimeout_ClearsPoolEntry(t *testing.T) {
+	// After a timeout the pool entry must be removed so a future call with the
+	// same attemptID can start a fresh container.
+	rt := &fakeRuntime{}
+	pool := docker.NewContainerPool(rt)
+	pool.SetAgentReadyTimeout(20 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := pool.SessionFor(ctx, "att-retry", ports.ContainerConfig{Image: "img"})
+	require.Error(t, err)
+
+	// Second call: pool entry was cleared so a new container is started.
+	// Signal AgentReady for the new container so this call succeeds.
+	// Poll until the second container is started before notifying.
+	go func() {
+		for {
+			time.Sleep(5 * time.Millisecond)
+			rt.mu.Lock()
+			count := len(rt.started)
+			var id string
+			if count >= 2 {
+				id = rt.started[1]
+			}
+			rt.mu.Unlock()
+			if id != "" {
+				pool.NotifyReady(id)
+				return
+			}
+		}
+	}()
+
+	sess, err := pool.SessionFor(ctx, "att-retry", ports.ContainerConfig{Image: "img"})
+	require.NoError(t, err, "retry after timeout should start a new container")
+	assert.NotNil(t, sess)
+	assert.Equal(t, 2, rt.startedCount(), "should have started two containers total")
+}
+
+func TestContainerPool_SessionFor_ContextCancelledBeforeReadyTimeout(t *testing.T) {
+	// When the step context is cancelled before the ready timer fires, the error
+	// must wrap context.Canceled (not the ready-timeout message).
+	rt := &fakeRuntime{}
+	pool := docker.NewContainerPool(rt)
+	pool.SetAgentReadyTimeout(10 * time.Second) // much longer than the test
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	_, err := pool.SessionFor(ctx, "att-ctx-cancel-wins", ports.ContainerConfig{Image: "img"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
 }
