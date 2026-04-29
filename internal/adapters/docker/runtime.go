@@ -580,10 +580,16 @@ func copyProjectToContainer(ctx context.Context, projectDir, containerID string,
 	tw := tar.NewWriter(pipeW)
 	walkErr := writeTarFromProject(tw, projectDir, patterns)
 
-	// Close the tar writer and pipe even if walk failed, so docker cp
-	// exits rather than hanging.
-	tw.Close()
-	pipeW.Close()
+	if walkErr != nil {
+		// Tar build failed: do NOT write the end-of-archive marker. Closing
+		// the pipe with an error signals docker cp that the stream is broken,
+		// so it returns a non-zero exit code instead of treating the truncated
+		// archive as successfully complete.
+		pipeW.CloseWithError(walkErr)
+	} else {
+		tw.Close()
+		pipeW.Close()
+	}
 
 	cmdErr := <-errCh
 	if walkErr != nil {
@@ -591,6 +597,13 @@ func copyProjectToContainer(ctx context.Context, projectDir, containerID string,
 	}
 	if cmdErr != nil {
 		return fmt.Errorf("copying files to container: %s: %w", stderr.String(), cmdErr)
+	}
+	// Surface any stderr output as an error even when docker cp exits 0.
+	// docker cp can silently skip or truncate entries (tarslip protection,
+	// ENOSPC mid-stream, Docker version differences) and still exit cleanly,
+	// leaving the container workspace incomplete with no non-zero exit code.
+	if stderrOut := strings.TrimSpace(stderr.String()); stderrOut != "" {
+		return fmt.Errorf("copying files to container: %s", stderrOut)
 	}
 	return nil
 }
