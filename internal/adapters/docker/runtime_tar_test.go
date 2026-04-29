@@ -135,6 +135,89 @@ func TestWriteTarFromProject_BrokenExternalSymlinkSkipped(t *testing.T) {
 	assert.False(t, hasBroken)
 }
 
+func TestWriteTarFromProject_NestedExternalSymlinkInlined(t *testing.T) {
+	// ext2 is a second external location referenced by a symlink inside ext1.
+	ext2 := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(ext2, "deep.txt"), []byte("deep content"), 0644))
+
+	// ext1 is the external directory that the project symlinks to.
+	// It contains a nested symlink that escapes ext1 and points into ext2.
+	ext1 := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(ext1, "local.txt"), []byte("local"), 0644))
+	require.NoError(t, os.Symlink(filepath.Join(ext2, "deep.txt"), filepath.Join(ext1, "nestedlink.txt")))
+
+	projDir := t.TempDir()
+	require.NoError(t, os.Symlink(ext1, filepath.Join(projDir, "extlink")))
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	patterns := []ignorePattern{{pattern: ".git", matchBase: true}}
+	require.NoError(t, writeTarFromProject(tw, projDir, patterns))
+	require.NoError(t, tw.Close())
+
+	files, types := collectTarEntries(t, &buf)
+
+	// The file inside ext1 must be present as a regular file.
+	assert.Equal(t, byte(tar.TypeReg), types["extlink/local.txt"])
+	assert.Equal(t, "local", files["extlink/local.txt"])
+
+	// The nested external symlink must be inlined as a regular file,
+	// not emitted as a symlink entry that Docker's tarslip would drop.
+	assert.Equal(t, byte(tar.TypeReg), types["extlink/nestedlink.txt"])
+	assert.Equal(t, "deep content", files["extlink/nestedlink.txt"])
+}
+
+func TestWriteTarFromProject_NestedExternalDirSymlinkInlined(t *testing.T) {
+	// ext2 is a second external directory referenced by a symlink inside ext1.
+	ext2 := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(ext2, "file.txt"), []byte("ext2 content"), 0644))
+
+	// ext1 contains a symlink to a directory outside ext1.
+	ext1 := t.TempDir()
+	require.NoError(t, os.Symlink(ext2, filepath.Join(ext1, "dirlink")))
+
+	projDir := t.TempDir()
+	require.NoError(t, os.Symlink(ext1, filepath.Join(projDir, "extlink")))
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	patterns := []ignorePattern{{pattern: ".git", matchBase: true}}
+	require.NoError(t, writeTarFromProject(tw, projDir, patterns))
+	require.NoError(t, tw.Close())
+
+	files, types := collectTarEntries(t, &buf)
+
+	// The nested external directory symlink must be inlined as a directory
+	// with its contents as regular files.
+	assert.Equal(t, byte(tar.TypeDir), types["extlink/dirlink"])
+	assert.Equal(t, byte(tar.TypeReg), types["extlink/dirlink/file.txt"])
+	assert.Equal(t, "ext2 content", files["extlink/dirlink/file.txt"])
+}
+
+func TestWriteTarFromProject_NestedInternalSymlinkKept(t *testing.T) {
+	// ext1 contains a symlink that points to a sibling within ext1 (internal).
+	ext1 := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(ext1, "real.txt"), []byte("real"), 0644))
+	// Relative symlink within ext1: should be kept as a symlink entry.
+	require.NoError(t, os.Symlink("real.txt", filepath.Join(ext1, "alias.txt")))
+
+	projDir := t.TempDir()
+	require.NoError(t, os.Symlink(ext1, filepath.Join(projDir, "extlink")))
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	patterns := []ignorePattern{{pattern: ".git", matchBase: true}}
+	require.NoError(t, writeTarFromProject(tw, projDir, patterns))
+	require.NoError(t, tw.Close())
+
+	_, types := collectTarEntries(t, &buf)
+
+	// The real file must be present.
+	assert.Equal(t, byte(tar.TypeReg), types["extlink/real.txt"])
+	// The relative symlink within ext1 is internal and must remain a symlink.
+	assert.Equal(t, byte(tar.TypeSymlink), types["extlink/alias.txt"])
+}
+
 func TestIsInsideDir(t *testing.T) {
 	cases := []struct {
 		path   string

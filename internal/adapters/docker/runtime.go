@@ -750,6 +750,17 @@ func addDereferencedEntry(tw *tar.Writer, resolvedTarget, relPath string) error 
 			if lerr != nil {
 				return lerr
 			}
+			// filepath.Walk does not follow symlinks, so nested symlinks that
+			// escape resolvedTarget must be recursively dereferenced — emitting
+			// them as plain symlink tar entries would re-trigger Docker's
+			// tarslip silent-truncation for any target that escapes /workspace/.
+			absTarget := linkTarget
+			if !filepath.IsAbs(absTarget) {
+				absTarget = filepath.Join(filepath.Dir(path), absTarget)
+			}
+			if innerResolved, innerErr := filepath.EvalSymlinks(absTarget); innerErr == nil && !isInsideDir(innerResolved, resolvedTarget) {
+				return addDereferencedEntry(tw, innerResolved, entryPath)
+			}
 		}
 
 		hdr, herr := tar.FileInfoHeader(fi, linkTarget)
