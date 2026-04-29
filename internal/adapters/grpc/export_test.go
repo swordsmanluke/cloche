@@ -98,3 +98,20 @@ func (s *ClocheServer) SetExtractResultsFn(fn func(ctx context.Context, opts doc
 func (s *ClocheServer) SetPrepareWorktreeFn(fn func(ctx context.Context, opts docker.PrepareOptions) (docker.ExtractWorktree, error)) {
 	s.prepareWorktreeFn = fn
 }
+
+// LoopIsSubpath exposes loopIsSubpath for testing.
+func LoopIsSubpath(parent, child string) bool {
+	return loopIsSubpath(parent, child)
+}
+
+// ActiveLoopDirs returns the set of project directories that currently have
+// active loops registered. Used in tests to verify deduplication behaviour.
+func (s *ClocheServer) ActiveLoopDirs() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	dirs := make([]string, 0, len(s.loops))
+	for d := range s.loops {
+		dirs = append(dirs, d)
+	}
+	return dirs
+}

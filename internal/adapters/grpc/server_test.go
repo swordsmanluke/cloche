@@ -5091,3 +5091,100 @@ func TestServer_StreamLogs_CompoundStepName_NotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "log file not found")
 }
+
+func TestLoopIsSubpath(t *testing.T) {
+	tests := []struct {
+		parent string
+		child  string
+		want   bool
+	}{
+		{"/root/proj", "/root/proj/vendor/sub", true},
+		{"/root/proj", "/root/proj/a/b/c", true},
+		{"/root/proj", "/root/proj", false},
+		{"/root/proj", "/root/proj2", false},
+		{"/root/proj", "/root/other", false},
+		{"/root", "/root/proj", true},
+		{"/root/proj/sub", "/root/proj", false},
+	}
+
+	for _, tc := range tests {
+		got := server.LoopIsSubpath(tc.parent, tc.child)
+		assert.Equal(t, tc.want, got, "LoopIsSubpath(%q, %q)", tc.parent, tc.child)
+	}
+}
+
+// minimalHostWorkflow is a minimal .cloche file that defines a host workflow,
+// satisfying FindHostWorkflows so EnableLoop can proceed.
+const minimalHostWorkflow = `workflow "main" {
+  host {}
+  step run {
+    run     = "echo hi"
+    results = [done]
+  }
+  run:done -> done
+}
+`
+
+// writeHostWorkflow creates .cloche/host.cloche in dir with a minimal host workflow.
+func writeHostWorkflow(t *testing.T, dir string) {
+	t.Helper()
+	clocheDir := filepath.Join(dir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(minimalHostWorkflow), 0644))
+}
+
+func TestEnableLoop_RejectsNestedProjectWhenParentActive(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	parentDir := t.TempDir()
+	childDir := filepath.Join(parentDir, "vendor", "sub")
+	writeHostWorkflow(t, parentDir)
+	writeHostWorkflow(t, childDir)
+
+	srv := server.NewClocheServer(store, nil)
+
+	// Enable parent loop first.
+	_, err = srv.EnableLoop(context.Background(), &pb.EnableLoopRequest{ProjectDir: parentDir})
+	require.NoError(t, err)
+
+	// Attempt to enable a nested child loop — must be rejected.
+	_, err = srv.EnableLoop(context.Background(), &pb.EnableLoopRequest{ProjectDir: childDir})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nested inside")
+
+	// Only the parent loop should be registered.
+	dirs := srv.ActiveLoopDirs()
+	assert.Equal(t, []string{parentDir}, dirs)
+}
+
+func TestEnableLoop_StopsNestedLoopWhenParentEnabled(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	parentDir := t.TempDir()
+	childDir := filepath.Join(parentDir, "vendor", "sub")
+	writeHostWorkflow(t, parentDir)
+
+	srv := server.NewClocheServer(store, nil)
+
+	// Pre-register a nested loop directly (simulating a loop that was started before
+	// the parent was added, e.g. because the parent's project was added later).
+	fakeStore := &fakeRunStore{runs: map[string]*domain.Run{}}
+	nestedLoop := newTestLoop(childDir, fakeStore)
+	nestedLoop.Start()
+	srv.RegisterLoop(childDir, nestedLoop)
+
+	// Enable the parent loop; it should evict the nested loop.
+	_, err = srv.EnableLoop(context.Background(), &pb.EnableLoopRequest{ProjectDir: parentDir})
+	require.NoError(t, err)
+
+	// Nested loop should have been stopped.
+	assert.False(t, nestedLoop.Running(), "nested loop should be stopped after parent loop was enabled")
+
+	// Only the parent loop should remain.
+	dirs := srv.ActiveLoopDirs()
+	assert.Equal(t, []string{parentDir}, dirs)
+}

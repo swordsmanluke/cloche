@@ -11,6 +11,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
+	"strings"
 	"syscall"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
@@ -256,6 +258,10 @@ func autoRunActiveProjects(store ports.RunStore, srv *adaptgrpc.ClocheServer) {
 		return
 	}
 
+	// Filter to only top-level projects; nested .cloche/ configs would otherwise
+	// start duplicate loops that contend for the same task queue.
+	projects = filterNestedProjects(projects)
+
 	for _, projectDir := range projects {
 		cfg, err := config.Load(projectDir)
 		if err != nil || !cfg.Active {
@@ -277,6 +283,47 @@ func autoRunActiveProjects(store ports.RunStore, srv *adaptgrpc.ClocheServer) {
 			fmt.Fprintf(os.Stderr, "startup: failed to enable loop for %s: %v\n", projectDir, err)
 		}
 	}
+}
+
+// filterNestedProjects removes paths that are subdirectories of other paths in
+// the list. When a project root contains nested .cloche/ configs (vendored
+// repos, cloned projects), this prevents launching separate orchestration
+// loops that would contend for the same task queue.
+func filterNestedProjects(dirs []string) []string {
+	sorted := make([]string, len(dirs))
+	copy(sorted, dirs)
+	sort.Strings(sorted)
+
+	var result []string
+	for _, dir := range sorted {
+		nested := false
+		for _, existing := range result {
+			if projectIsSubpath(existing, dir) {
+				nested = true
+				fmt.Fprintf(os.Stderr, "startup: skipping nested project %s (already covered by %s)\n", dir, existing)
+				break
+			}
+		}
+		if !nested {
+			result = append(result, dir)
+		}
+	}
+	return result
+}
+
+// projectIsSubpath reports whether child is strictly inside parent on a
+// path-separator boundary (/root/a is inside /root, but /root/ab is not).
+func projectIsSubpath(parent, child string) bool {
+	parent = filepath.Clean(parent)
+	child = filepath.Clean(child)
+	if parent == child {
+		return false
+	}
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return !strings.HasPrefix(rel, "..")
 }
 
 // envOrConfig returns the env var value if set, otherwise the config file

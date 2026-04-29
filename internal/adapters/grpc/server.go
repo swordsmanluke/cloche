@@ -3061,7 +3061,23 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Stop existing loop if running.
+	// Reject or clean up loops that would contend with this project's loop.
+	// A loop for a parent directory already covers all work under it, so a
+	// nested project loop would scan the same task queue and cause races.
+	for existingDir, existingLoop := range s.loops {
+		if loopIsSubpath(existingDir, projectDir) {
+			// projectDir is inside an existing loop's scope: refuse it.
+			return nil, fmt.Errorf("project %s is nested inside %s which already has an active loop; skipping to prevent duplicate task contention", projectDir, existingDir)
+		}
+		if loopIsSubpath(projectDir, existingDir) {
+			// An existing loop is nested inside the new project: stop it.
+			log.Printf("EnableLoop: stopping nested loop for %s (superseded by parent %s)", existingDir, projectDir)
+			existingLoop.Stop()
+			delete(s.loops, existingDir)
+		}
+	}
+
+	// Stop existing loop for the same directory if running.
 	if existing, ok := s.loops[projectDir]; ok {
 		existing.Stop()
 	}
@@ -3072,6 +3088,22 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 	loop.Start()
 
 	return &pb.EnableLoopResponse{}, nil
+}
+
+// loopIsSubpath reports whether child is strictly inside parent on a
+// path-separator boundary. Used to detect nested project loops that would
+// contend for the same task queue.
+func loopIsSubpath(parent, child string) bool {
+	parent = filepath.Clean(parent)
+	child = filepath.Clean(child)
+	if parent == child {
+		return false
+	}
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return !strings.HasPrefix(rel, "..")
 }
 
 // daemonExecutorFor creates a DaemonExecutor for the given project and attempt.

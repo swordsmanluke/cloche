@@ -1232,6 +1232,10 @@ cancellation.
 When `stop_on_error` or `max_consecutive_failures` triggers a stop, run `cloche loop`
 again to restart the loop.
 
+`cloche loop` fails with an error if the project directory is nested inside another
+project that already has an active loop — use the outermost project's directory to
+avoid duplicate task contention.
+
 ### `cloche activity`
 
 Show the project activity log — attempt and step lifecycle events with timestamps and outcomes.
@@ -1421,7 +1425,7 @@ my-project/
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `active` | `true` | Set to `true` to auto-start the orchestration loop when the daemon starts. |
+| `active` | `true` | Set to `true` to auto-start the orchestration loop when the daemon starts. If multiple active projects are nested (one is a subdirectory of another), only the outermost project's loop is started. |
 
 ### `[orchestration]`
 
