@@ -694,8 +694,7 @@ func isInsideDir(path, dir string) bool {
 func addDereferencedEntry(tw *tar.Writer, resolvedTarget, relPath string) error {
 	info, err := os.Stat(resolvedTarget)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: skipping external symlink %q (target inaccessible: %v)\n", relPath, err)
-		return nil
+		return fmt.Errorf("external symlink %q: target inaccessible: %w", relPath, err)
 	}
 
 	if !info.IsDir() {

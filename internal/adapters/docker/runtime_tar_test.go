@@ -122,7 +122,8 @@ func TestWriteTarFromProject_BrokenExternalSymlinkSkipped(t *testing.T) {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 	patterns := []ignorePattern{{pattern: ".git", matchBase: true}}
-	// Should not return an error for a broken external symlink.
+	// EvalSymlinks fails for broken targets, so addDereferencedEntry is never
+	// reached; the symlink is written as a regular symlink entry without error.
 	require.NoError(t, writeTarFromProject(tw, projDir, patterns))
 	require.NoError(t, tw.Close())
 
@@ -130,7 +131,7 @@ func TestWriteTarFromProject_BrokenExternalSymlinkSkipped(t *testing.T) {
 
 	// The regular file must still be present.
 	assert.Equal(t, "ok", files["ok.txt"])
-	// The broken symlink is skipped — no entry for it.
+	// The broken symlink is not a regular file entry.
 	_, hasBroken := files["broken"]
 	assert.False(t, hasBroken)
 }
@@ -216,6 +217,16 @@ func TestWriteTarFromProject_NestedInternalSymlinkKept(t *testing.T) {
 	assert.Equal(t, byte(tar.TypeReg), types["extlink/real.txt"])
 	// The relative symlink within ext1 is internal and must remain a symlink.
 	assert.Equal(t, byte(tar.TypeSymlink), types["extlink/alias.txt"])
+}
+
+func TestAddDereferencedEntry_InaccessibleTargetErrors(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	// Pass a non-existent resolved target: os.Stat inside addDereferencedEntry
+	// must propagate the error instead of swallowing it.
+	err := addDereferencedEntry(tw, "/nonexistent/cloche-test-target", "link")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "link")
 }
 
 func TestIsInsideDir(t *testing.T) {
