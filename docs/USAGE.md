@@ -1487,7 +1487,6 @@ this pattern.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--project <dir>` | _(unset)_ | Scope the daemon to a single project directory. Skips the database scan and active-project check; starts the orchestration loop for only that path. Disables multi-project auto-discovery. |
 | `--debug-addr <addr>` | _(unset)_ | Enable the pprof + state debug HTTP server on this address (e.g. `localhost:7778`). Also settable via `CLOCHE_DEBUG` env var or `[daemon] debug` in the global config. |
 
 ## Environment Variable Reference

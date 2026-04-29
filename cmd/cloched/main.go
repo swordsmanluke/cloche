@@ -33,9 +33,7 @@ func main() {
 		return
 	}
 
-	var projectFlag string
 	var debugAddrFlag string
-	flag.StringVar(&projectFlag, "project", "", "scope daemon to a single project directory (disables multi-project auto-discover)")
 	flag.StringVar(&debugAddrFlag, "debug-addr", "", "enable pprof debug HTTP server on this address (e.g. localhost:7778)")
 	flag.Parse()
 
@@ -165,11 +163,7 @@ func main() {
 	}()
 
 	// Auto-execute main workflow for active projects (after gRPC is serving).
-	enableLoop := func(ctx context.Context, projectDir string) error {
-		_, err := srv.EnableLoop(ctx, &pb.EnableLoopRequest{ProjectDir: projectDir})
-		return err
-	}
-	autoRunActiveProjects(store, enableLoop, projectFlag)
+	autoRunActiveProjects(store, srv)
 
 	// Start background scanner that detects workflows stuck in "running" state
 	// due to undetected container exits (crashes, OOM kills, etc.).
@@ -252,35 +246,10 @@ func initEvolution(globalCfg *config.Config, evoStore ports.EvolutionStore, capS
 }
 
 
-// projectLister is the subset of ports.RunStore needed by autoRunActiveProjects.
-type projectLister interface {
-	ListProjects(ctx context.Context) ([]string, error)
-}
-
-// autoRunActiveProjects starts orchestration loops for discovered projects.
-//
-// enableLoop is called for each project that should be started.
-//
-// projectFilter, if non-empty, scopes the daemon to exactly that one project
-// directory. The database scan and active=true check are skipped entirely; only
-// the specified path is started. If empty, the daemon scans known projects from
-// the store and starts every one whose config.toml has active=true.
-func autoRunActiveProjects(store projectLister, enableLoop func(ctx context.Context, projectDir string) error, projectFilter string) {
+// autoRunActiveProjects scans known projects for active = true in their config
+// and starts the orchestration loop for each one via EnableLoop.
+func autoRunActiveProjects(store ports.RunStore, srv *adaptgrpc.ClocheServer) {
 	ctx := context.Background()
-
-	if projectFilter != "" {
-		abs, err := filepath.Abs(projectFilter)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "startup: invalid project path %q: %v\n", projectFilter, err)
-			return
-		}
-		fmt.Fprintf(os.Stderr, "startup: scoped to single project %s\n", abs)
-		if err := enableLoop(ctx, abs); err != nil {
-			fmt.Fprintf(os.Stderr, "startup: failed to enable loop for %s: %v\n", abs, err)
-		}
-		return
-	}
-
 	projects, err := store.ListProjects(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "startup: failed to list projects: %v\n", err)
@@ -293,7 +262,7 @@ func autoRunActiveProjects(store projectLister, enableLoop func(ctx context.Cont
 			continue
 		}
 
-		// Verify host.cloche exists before launching.
+		// Verify host.cloche exists before launching
 		hostPath := filepath.Join(projectDir, ".cloche", "host.cloche")
 		if _, err := os.Stat(hostPath); err != nil {
 			fmt.Fprintf(os.Stderr, "startup: skipping active project %s: %v\n", projectDir, err)
@@ -301,7 +270,10 @@ func autoRunActiveProjects(store projectLister, enableLoop func(ctx context.Cont
 		}
 
 		fmt.Fprintf(os.Stderr, "startup: enabling orchestration loop for active project %s\n", projectDir)
-		if err := enableLoop(ctx, projectDir); err != nil {
+		_, err = srv.EnableLoop(ctx, &pb.EnableLoopRequest{
+			ProjectDir: projectDir,
+		})
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "startup: failed to enable loop for %s: %v\n", projectDir, err)
 		}
 	}
