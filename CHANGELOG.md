@@ -1,5 +1,25 @@
 # Cloche Changelog
 
+## v3.14.18 — 2026-05-05
+
+### Features
+
+- New `[git]` config section (`name`, `email`, `ssh_key`) for per-project bot git identity; exports `CLOCHE_GIT_AUTHOR_NAME`, `CLOCHE_GIT_AUTHOR_EMAIL`, and `CLOCHE_GIT_SSH_COMMAND` to host scripts and uses them for extraction commits. ([design](docs/plans/2026-04-21-git-identity-design.md))
+- `cloche init` now offers an interactive SSH key setup flow and accepts `--non-interactive` / `--ssh-key <path>` flags; when the project has a GitHub remote, shows the direct URL for adding a deploy key. ([design](docs/plans/2026-04-21-git-identity-design.md))
+- `cloche doctor` now checks that the configured `[git] ssh_key` file exists and is readable (warning, not fatal).
+- New `cloche debug goroutines` and `cloche debug state` subcommands for runtime introspection of the daemon; requires `cloched --debug-addr <addr>` or `CLOCHE_DEBUG` env var.
+
+### Notable fixes
+
+- `cloche stop` now synthesizes a `fail` result for the active step and walks fail-branch wires (e.g., `unclaim`) before the run transitions to `cancelled`.
+- Step logs from in-flight steps are now flushed to disk on run teardown, so `cloche logs` returns output even when a run fails mid-execution.
+- Workflow-level `container { image = "..." }` is now correctly used when dispatching sub-workflows via `workflow_name`; previously the daemon default was always used instead.
+- `cloche shutdown --restart` now waits for the old daemon to exit before spawning a replacement, preventing two daemons from running simultaneously.
+- Container startup failures now surface within ~2 minutes with diagnostic container logs, instead of blocking silently until the 30-minute step timeout.
+- External directory and file symlinks in a project are now inlined in the container tar archive, preventing Docker tarslip protection from silently truncating the workspace.
+- Step log files now accumulate across loop iterations instead of being overwritten on each pass, preserving the full history in `cloche logs`.
+- Nested `.cloche/` project directories no longer cause the daemon to spawn duplicate orchestration loops that race over the same task queue.
+
 ## v3.14.0 — 2026-04-15
 
 ### Breaking changes
