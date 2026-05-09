@@ -1,0 +1,355 @@
+// Vertical development workflow.
+//
+// Implements a feature top-to-bottom in thin slices, framed by a BDD test plan up
+// front and a documentation pass at the end. Each phase of the workflow ends in a
+// PR that the user must approve before the next phase begins. See
+// docs/design/vertical-workflow.md for the full design.
+//
+// Invoke with a feature task ID:
+//   CLOCHE_TASK_ID=<feature-task-id> cloche run --workflow vertical
+//
+// Optional pre-run config (via task-scoped KV):
+//   CLOCHE_TASK_ID=<feature-task-id> cloche set vertical_base_branch <branch>
+//   (default: "main")
+
+workflow "vertical" {
+  host {
+    agent_command = "claude"
+  }
+
+  // ===== Phase 1: plan and BDD test plan =====
+
+  step plan-feature {
+    prompt  = file(".cloche/prompts/vertical-plan.md")
+    timeout = "30m"
+    results = [success, fail]
+  }
+
+  step bdd-test-plan {
+    workflow_name = "vertical-bdd-test-plan"
+    timeout       = "90m"
+    results       = [success, fail]
+  }
+
+  step open-test-plan-pr {
+    run     = "bash .cloche/scripts/vertical-open-test-plan-pr.sh"
+    results = [success, fail]
+  }
+
+  step poll-test-plan-pr {
+    poll     = "bash .cloche/scripts/vertical-poll-pr.sh"
+    interval = "60s"
+    results  = [approved, feedback, fail]
+  }
+
+  step address-test-plan-feedback {
+    workflow_name = "address-pr-feedback"
+    timeout       = "120m"
+    results       = [success, fail]
+  }
+
+  step record-test-plan {
+    run     = "bash .cloche/scripts/vertical-record-test-plan.sh"
+    results = [success, fail]
+  }
+
+  // ===== Phase 2: layer loop =====
+
+  step pick-next-layer {
+    run     = "bash .cloche/scripts/vertical-pick-layer.sh"
+    results = [has-layer, no-more-layers, fail]
+  }
+
+  step implement-layer {
+    workflow_name = "implement-vertical-layer"
+    timeout       = "240m"
+    results       = [success, fail]
+  }
+
+  step open-pr {
+    run     = "bash .cloche/scripts/vertical-open-pr.sh"
+    results = [success, fail]
+  }
+
+  step poll-pr {
+    poll     = "bash .cloche/scripts/vertical-poll-pr.sh"
+    interval = "60s"
+    results  = [approved, feedback, fail]
+  }
+
+  step address-feedback {
+    workflow_name = "address-pr-feedback"
+    timeout       = "120m"
+    results       = [success, fail]
+  }
+
+  step close-layer {
+    run     = "bash .cloche/scripts/vertical-close-layer.sh"
+    results = [success, fail]
+  }
+
+  // ===== Phase 3: documentation =====
+
+  step update-docs {
+    workflow_name = "vertical-update-docs"
+    timeout       = "60m"
+    results       = [success, fail]
+  }
+
+  step open-docs-pr {
+    run     = "bash .cloche/scripts/vertical-open-docs-pr.sh"
+    results = [success, fail]
+  }
+
+  step poll-docs-pr {
+    poll     = "bash .cloche/scripts/vertical-poll-pr.sh"
+    interval = "60s"
+    results  = [approved, feedback, fail]
+  }
+
+  step address-docs-feedback {
+    workflow_name = "address-pr-feedback"
+    timeout       = "120m"
+    results       = [success, fail]
+  }
+
+  step finalize {
+    run     = "bash .cloche/scripts/vertical-finalize.sh"
+    results = [success, fail]
+  }
+
+  // ===== Wiring =====
+
+  plan-feature:success                -> bdd-test-plan
+  plan-feature:fail                   -> abort
+
+  bdd-test-plan:success               -> open-test-plan-pr
+  bdd-test-plan:fail                  -> abort
+
+  open-test-plan-pr:success           -> poll-test-plan-pr
+  open-test-plan-pr:fail              -> abort
+
+  poll-test-plan-pr:approved          -> record-test-plan
+  poll-test-plan-pr:feedback          -> address-test-plan-feedback
+  poll-test-plan-pr:fail              -> abort
+
+  address-test-plan-feedback:success  -> poll-test-plan-pr
+  address-test-plan-feedback:fail     -> abort
+
+  record-test-plan:success            -> pick-next-layer
+  record-test-plan:fail               -> abort
+
+  pick-next-layer:has-layer           -> implement-layer
+  pick-next-layer:no-more-layers      -> update-docs
+  pick-next-layer:fail                -> abort
+
+  // implement-layer always proceeds to open-pr. implement_status KV distinguishes
+  // success from agent-gave-up (parking lot).
+  implement-layer:success             -> open-pr
+  implement-layer:fail                -> abort
+
+  open-pr:success                     -> poll-pr
+  open-pr:fail                        -> abort
+
+  poll-pr:approved                    -> close-layer
+  poll-pr:feedback                    -> address-feedback
+  poll-pr:fail                        -> abort
+
+  address-feedback:success            -> poll-pr
+  address-feedback:fail               -> abort
+
+  close-layer:success                 -> pick-next-layer
+  close-layer:fail                    -> abort
+
+  update-docs:success                 -> open-docs-pr
+  update-docs:fail                    -> abort
+
+  open-docs-pr:success                -> poll-docs-pr
+  open-docs-pr:fail                   -> abort
+
+  poll-docs-pr:approved               -> finalize
+  poll-docs-pr:feedback               -> address-docs-feedback
+  poll-docs-pr:fail                   -> abort
+
+  address-docs-feedback:success       -> poll-docs-pr
+  address-docs-feedback:fail          -> abort
+
+  finalize:success                    -> done
+  finalize:fail                       -> abort
+}
+
+// ============================================================================
+// Container sub-workflow: write the BDD test plan.
+//
+// Branches off vertical_base_branch as <feature>-test-plan, has the agent write
+// godog .feature files plus stub step definitions that fail loudly, verifies the
+// test plan can be discovered and runs (failing as expected), commits.
+// ============================================================================
+workflow "vertical-bdd-test-plan" {
+  step prepare-branch {
+    run     = "bash .cloche/scripts/vertical-prepare-test-plan-branch.sh"
+    results = [success, fail]
+  }
+
+  step write-plan {
+    prompt  = file(".cloche/prompts/vertical-bdd-test-plan.md")
+    timeout = "60m"
+    results = [success, fail]
+  }
+
+  step verify {
+    run     = "bash .cloche/scripts/verify-changes.sh"
+    results = [success, fail]
+  }
+
+  prepare-branch:success -> write-plan
+  prepare-branch:fail    -> abort
+  write-plan:success     -> verify
+  write-plan:fail        -> abort
+  verify:success         -> done
+  verify:fail            -> abort
+}
+
+// ============================================================================
+// Container sub-workflow: implement one vertical slice.
+//
+// Reads current_layer_id and current_base_branch from KV. Branches off the base,
+// implements that layer (with mocks for downstream), runs tests, fixes failures,
+// runs a self-review pass that catches common errors and corrects them. Always
+// terminates in `done` so the host workflow can route to open-pr regardless of
+// outcome. The implement_status KV value distinguishes success from
+// agent-gave-up.
+// ============================================================================
+workflow "implement-vertical-layer" {
+  step read-layer {
+    run     = "bash .cloche/scripts/vertical-read-layer.sh"
+    results = [success, fail]
+  }
+
+  step implement {
+    prompt  = file(".cloche/prompts/vertical-implement.md")
+    timeout = "120m"
+    results = [success, fail]
+  }
+
+  step verify {
+    run     = "bash .cloche/scripts/verify-changes.sh"
+    results = [success, fail]
+  }
+
+  step test {
+    run     = "go test ./... 2>&1; rc=$?; clo set test_exit_code \"$rc\" 2>/dev/null; exit $rc"
+    results = [success, fail]
+  }
+
+  step fix {
+    prompt       = file(".cloche/prompts/vertical-fix.md")
+    timeout      = "60m"
+    max_attempts = 2
+    results      = [success, fail, give-up]
+  }
+
+  step self-review {
+    prompt       = file(".cloche/prompts/vertical-self-review.md")
+    timeout      = "60m"
+    max_attempts = 2
+    results      = [success, fail, give-up]
+  }
+
+  step mark-success {
+    run     = "clo set implement_status success"
+    results = [success]
+  }
+
+  step mark-stuck {
+    run     = "clo set implement_status stuck"
+    results = [success]
+  }
+
+  read-layer:success   -> implement
+  read-layer:fail      -> abort
+  implement:success    -> verify
+  implement:fail       -> mark-stuck
+  verify:success       -> test
+  verify:fail          -> mark-stuck
+  test:success         -> self-review
+  test:fail            -> fix
+  fix:success          -> test
+  fix:fail             -> mark-stuck
+  fix:give-up          -> mark-stuck
+  self-review:success  -> mark-success
+  self-review:fail     -> mark-stuck
+  self-review:give-up  -> mark-stuck
+  mark-success:success -> done
+  mark-stuck:success   -> done
+}
+
+// ============================================================================
+// Container sub-workflow: address review feedback on the current PR.
+//
+// Generic across phases — works for test-plan, layer, and docs PRs. Pulls open
+// comments, runs an agent to respond to each, runs verify, pushes the branch.
+// ============================================================================
+workflow "address-pr-feedback" {
+  step pull-comments {
+    run     = "bash .cloche/scripts/vertical-pull-comments.sh"
+    results = [success, fail]
+  }
+
+  step respond {
+    prompt  = file(".cloche/prompts/vertical-address-feedback.md")
+    timeout = "90m"
+    results = [success, fail]
+  }
+
+  step verify {
+    run     = "bash .cloche/scripts/verify-changes.sh"
+    results = [success, fail]
+  }
+
+  step push {
+    run     = "bash .cloche/scripts/vertical-push.sh"
+    results = [success, fail]
+  }
+
+  pull-comments:success -> respond
+  pull-comments:fail    -> abort
+  respond:success       -> verify
+  respond:fail          -> abort
+  verify:success        -> push
+  verify:fail           -> abort
+  push:success          -> done
+  push:fail             -> abort
+}
+
+// ============================================================================
+// Container sub-workflow: write project documentation for the feature.
+//
+// Branches off the bottom-most layer's branch as <feature>-docs, has the agent
+// update project docs (NOT inline code comments — those should already be done),
+// commits.
+// ============================================================================
+workflow "vertical-update-docs" {
+  step prepare-branch {
+    run     = "bash .cloche/scripts/vertical-prepare-docs-branch.sh"
+    results = [success, fail]
+  }
+
+  step write-docs {
+    prompt  = file(".cloche/prompts/vertical-update-docs.md")
+    timeout = "45m"
+    results = [success, fail]
+  }
+
+  step verify {
+    run     = "bash .cloche/scripts/verify-changes.sh"
+    results = [success, fail]
+  }
+
+  prepare-branch:success -> write-docs
+  prepare-branch:fail    -> abort
+  write-docs:success     -> verify
+  write-docs:fail        -> abort
+  verify:success         -> done
+  verify:fail            -> abort
+}
