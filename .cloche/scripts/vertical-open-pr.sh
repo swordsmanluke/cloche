@@ -9,6 +9,7 @@
 #   current_pr_number    — KV
 #   current_branch       — KV (layer branch name)
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/agent-creds.sh"
 
 feature_id="${CLOCHE_TASK_ID:-}"
 layer_id=$(cloche get current_layer_id 2>/dev/null || true)
