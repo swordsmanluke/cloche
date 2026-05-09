@@ -10,6 +10,7 @@
 # Writes (KV):
 #   current_pr_number, current_branch
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/agent-creds.sh"
 
 feature_id="${CLOCHE_TASK_ID:-}"
 if [ -z "$feature_id" ]; then

@@ -42,3 +42,7 @@ examples/*/.cloche/
 .cloche/logs/
 .cloche/runs/
 .cloche/activity.log
+
+# Agent credentials baked into the project image at build time.
+# Never commit these — they grant push access to GitHub via the cloche bot user.
+.cloche/credentials/

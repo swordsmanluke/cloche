@@ -10,6 +10,7 @@
 #   vertical_base_branch — target base (default "main")
 #   feature task ID via CLOCHE_TASK_ID
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/agent-creds.sh"
 
 feature_id="${CLOCHE_TASK_ID:-}"
 if [ -z "$feature_id" ]; then

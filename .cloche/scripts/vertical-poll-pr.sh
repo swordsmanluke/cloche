@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # vertical-poll-pr.sh — poll script for the current layer's PR.
 #
+# Source agent credentials so `gh pr view` queries via the bot identity rather
+# than the developer's. (The script only reads — no writes — but consistency
+# avoids mixed identity surprises.)
+#
 # Decision rules:
 #   approved  — at least one APPROVED review, no outstanding CHANGES_REQUESTED
 #   feedback  — any CHANGES_REQUESTED review, or unresolved comments newer than
@@ -12,6 +16,7 @@
 #   current_pr_number — KV
 #   last_addressed_at — KV (unix epoch); set by address-pr-feedback after pushing fixes
 set -uo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/agent-creds.sh" 2>/dev/null || true
 
 pr_number=$(cloche get current_pr_number 2>/dev/null || true)
 if [ -z "$pr_number" ]; then
