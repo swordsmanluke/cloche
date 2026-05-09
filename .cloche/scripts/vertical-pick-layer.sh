@@ -69,9 +69,13 @@ for (( i=0; i<count; i++ )); do
     continue
   fi
 
-  # Check that all dependencies are closed.
+  # Check that all blocking dependencies are closed. We only consider
+  # `dependency_type == "blocks"` — bd surfaces the parent-child relationship
+  # as a dependency too (`dependency_type: "parent-child"`), and the parent
+  # feature task is open for the entire vertical run, so including it would
+  # block every layer indefinitely.
   open_deps=$(bd show "$layer_id" --json 2>/dev/null \
-    | jq -r '.[0].dependencies[]? | select(.status != "closed") | .id' 2>/dev/null) || open_deps=""
+    | jq -r '.[0].dependencies[]? | select(.dependency_type == "blocks") | select(.status != "closed") | .id' 2>/dev/null) || open_deps=""
 
   if [ -n "$open_deps" ]; then
     continue
