@@ -502,7 +502,7 @@ func TestListProjects(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, projects)
 
-	// Create runs for different projects
+	// Create runs for different projects, including worktree paths that should be excluded
 	for _, tc := range []struct {
 		id, project string
 	}{
@@ -510,6 +510,8 @@ func TestListProjects(t *testing.T) {
 		{"r2", "/home/user/alpha"},
 		{"r3", "/home/user/beta"},
 		{"r4", ""},
+		{"r5", "/home/user/alpha/.gitworktrees/cloche/run-abc"},
+		{"r6", "/home/user/beta/.gitworktrees/cloche/run-xyz"},
 	} {
 		r := domain.NewRun(tc.id, "develop")
 		r.ProjectDir = tc.project
