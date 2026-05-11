@@ -105,6 +105,25 @@ func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureSto
 	}
 }
 
+// normalizeProjectDir resolves linked git worktrees back to the main worktree
+// of the repository. RPC handlers that take a project_dir from the caller
+// should run it through this helper so that running cloche from inside
+// .gitworktrees/<name>/ doesn't get the worktree registered as a separate
+// project (see bug cloche-oh5k).
+//
+// Falls back to the original path if it isn't a git repo, is already the main
+// worktree, or git is unavailable.
+func normalizeProjectDir(dir string) string {
+	if dir == "" {
+		return dir
+	}
+	main := host.MainWorktreeDir(dir)
+	if main != dir {
+		log.Printf("normalizing project_dir from linked worktree %s to main worktree %s", dir, main)
+	}
+	return main
+}
+
 // activityLoggerFor returns a cached activity logger for the given project directory,
 // creating one on first access. Returns nil if projectDir is empty.
 func (s *ClocheServer) activityLoggerFor(projectDir string) *activitylog.Logger {
@@ -487,6 +506,8 @@ func (s *ClocheServer) handleHostWorkflowRequest(ctx context.Context, containerR
 }
 
 func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
+	req.ProjectDir = normalizeProjectDir(req.ProjectDir)
+
 	// Ensure per-project log migration has run for this project.
 	if migrator, ok := s.store.(ports.ProjectMigrator); ok {
 		_ = migrator.MigrateProjectLogs(req.ProjectDir)
@@ -1661,6 +1682,8 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 }
 
 func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) (*pb.ListTasksResponse, error) {
+	req.ProjectDir = normalizeProjectDir(req.ProjectDir)
+
 	// Ensure per-project log migration has run.
 	if req.ProjectDir != "" {
 		if migrator, ok := s.store.(ports.ProjectMigrator); ok {
@@ -1789,7 +1812,7 @@ var allSubcmds = []string{
 func (s *ClocheServer) Complete(ctx context.Context, req *pb.CompleteRequest) (*pb.CompleteResponse, error) {
 	words := req.Words
 	idx := int(req.CurIdx)
-	projectDir := req.ProjectDir
+	projectDir := normalizeProjectDir(req.ProjectDir)
 
 	// Determine current token being completed (may be empty if just past a space).
 	cur := ""
@@ -3017,7 +3040,7 @@ func (s *ClocheServer) ExtractRun(ctx context.Context, req *pb.ExtractRunRequest
 }
 
 func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest) (*pb.EnableLoopResponse, error) {
-	projectDir := req.ProjectDir
+	projectDir := normalizeProjectDir(req.ProjectDir)
 	if projectDir == "" {
 		return nil, fmt.Errorf("project_dir is required")
 	}
@@ -3280,7 +3303,7 @@ func (s *ClocheServer) ReleaseTask(ctx context.Context, projectDir string, taskI
 }
 
 func (s *ClocheServer) DisableLoop(ctx context.Context, req *pb.DisableLoopRequest) (*pb.DisableLoopResponse, error) {
-	projectDir := req.ProjectDir
+	projectDir := normalizeProjectDir(req.ProjectDir)
 	if projectDir == "" {
 		return nil, fmt.Errorf("project_dir is required")
 	}
@@ -3297,7 +3320,7 @@ func (s *ClocheServer) DisableLoop(ctx context.Context, req *pb.DisableLoopReque
 }
 
 func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInfoRequest) (*pb.GetProjectInfoResponse, error) {
-	projectDir := req.ProjectDir
+	projectDir := normalizeProjectDir(req.ProjectDir)
 
 	// Resolve by name if provided.
 	if req.Name != "" && projectDir == "" {
@@ -3629,7 +3652,7 @@ func (s *ClocheServer) Console(stream pb.ClocheService_ConsoleServer) error {
 		return fmt.Errorf("no container runtime configured")
 	}
 
-	projectDir := start.ProjectDir
+	projectDir := normalizeProjectDir(start.ProjectDir)
 	if projectDir == "" {
 		return fmt.Errorf("project_dir is required")
 	}

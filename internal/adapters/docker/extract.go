@@ -233,6 +233,23 @@ func extractGit(ctx context.Context, opts ExtractOptions) (ExtractResult, error)
 		return ExtractResult{}, fmt.Errorf("git add: %s: %w", out, err)
 	}
 
+	// Sanity-gate the staged commit. If extraction would mass-delete files
+	// without producing comparable additions, the underlying container almost
+	// certainly didn't have a complete project copy (see bug cloche-9d59).
+	// Committing in that case overwrites the worktree branch with a wholesale
+	// "delete most of the project" commit, poisoning subsequent runs that read
+	// from the same branch. Refuse to commit and surface a clear error so the
+	// caller can decide what to do (typically: log it and fail the run).
+	if dels, adds, err := stagedFileCounts(ctx, opts.WorktreeDir); err == nil {
+		if dels > extractMaxDeletions && dels > adds*2 {
+			return ExtractResult{}, fmt.Errorf(
+				"extraction would delete %d files (with only %d additions); refusing to commit. "+
+					"This usually means the container's /workspace was incomplete — check the project copy. "+
+					"Override with CLOCHE_EXTRACT_ALLOW_MASS_DELETE=1 if the deletions are intentional.",
+				dels, adds)
+		}
+	}
+
 	commitMsg := buildCommitMessage(ctx, opts.WorktreeDir, gitEnv, opts.RunID, opts.WorkflowName, opts.Result, containerCommits)
 	commitCmd := exec.CommandContext(ctx, "git", "commit", "-F", "-", "--allow-empty")
 	commitCmd.Dir = opts.WorktreeDir
@@ -255,6 +272,51 @@ func extractGit(ctx context.Context, opts ExtractOptions) (ExtractResult, error)
 		Branch:    opts.Branch,
 		CommitSHA: commitSHA,
 	}, nil
+}
+
+// extractMaxDeletions is the threshold above which the extraction sanity gate
+// kicks in. Combined with the deletions > additions*2 ratio check, this
+// catches "container was incomplete" cases without flagging legitimate large
+// refactors. Tuned for cloche projects where a typical run touches at most a
+// few dozen files.
+const extractMaxDeletions = 50
+
+// stagedFileCounts returns the number of staged additions and deletions in the
+// given worktree. Used by the extraction sanity gate to detect bad project
+// copies before they get committed (see ExtractResults).
+//
+// Returns 0/0 with no error if `git diff --cached --diff-filter=...` fails
+// for any reason — in that case the caller falls through to the original
+// behavior rather than blocking on a transient git failure.
+func stagedFileCounts(ctx context.Context, worktreeDir string) (deletions, additions int, err error) {
+	if os.Getenv("CLOCHE_EXTRACT_ALLOW_MASS_DELETE") == "1" {
+		// Operator opt-out for legitimate mass-delete refactors.
+		return 0, 0, nil
+	}
+	count := func(filter string) (int, error) {
+		cmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--diff-filter="+filter, "--name-only")
+		cmd.Dir = worktreeDir
+		out, err := cmd.Output()
+		if err != nil {
+			return 0, err
+		}
+		n := 0
+		for _, line := range strings.Split(string(out), "\n") {
+			if strings.TrimSpace(line) != "" {
+				n++
+			}
+		}
+		return n, nil
+	}
+	dels, err := count("D")
+	if err != nil {
+		return 0, 0, err
+	}
+	adds, err := count("A")
+	if err != nil {
+		return 0, 0, err
+	}
+	return dels, adds, nil
 }
 
 // buildCommitMessage generates a squash-style commit message. The title

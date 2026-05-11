@@ -537,6 +537,172 @@ func TestBuildCommitMessageIntegration(t *testing.T) {
 	}
 }
 
+// setupTestRepoWithManyFiles is like setupTestRepo but populates the repo
+// with N tracked files at the initial commit. Used by mass-delete tests.
+func setupTestRepoWithManyFiles(t *testing.T, n int) (repoDir, baseSHA string) {
+	t.Helper()
+	dir := t.TempDir()
+	gitEnv := append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com",
+	)
+	run := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		cmd.Env = gitEnv
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("cmd %v: %s: %v", args, out, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	run("git", "init")
+	run("git", "config", "user.email", "test@test.com")
+	run("git", "config", "user.name", "Test User")
+	for i := 0; i < n; i++ {
+		path := filepath.Join(dir, "file"+itoa(i)+".txt")
+		if err := os.WriteFile(path, []byte("content "+itoa(i)+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("git", "add", ".")
+	run("git", "commit", "-m", "initial commit with many files")
+	return dir, run("git", "rev-parse", "HEAD")
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b []byte
+	for n > 0 {
+		b = append([]byte{byte('0' + n%10)}, b...)
+		n /= 10
+	}
+	return string(b)
+}
+
+// TestExtractResults_RefusesMassDeletion verifies the sanity gate: when the
+// container's /workspace is nearly empty but the worktree branch tracked many
+// files, the extraction must refuse to commit (rather than silently wiping the
+// branch). This guards against bug cloche-9d59 (incomplete project copy).
+func TestExtractResults_RefusesMassDeletion(t *testing.T) {
+	repoDir, baseSHA := setupTestRepoWithManyFiles(t, 80)
+
+	// Container fixture has only one file — i.e. extraction would delete ~80
+	// project files and add 1.
+	emptyish := t.TempDir()
+	if err := os.WriteFile(filepath.Join(emptyish, "lone.txt"), []byte("only thing\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	overrideDockerCp(t, emptyish)
+	overrideDockerExec(t, nil)
+
+	runID := "mass-delete-test"
+	wt := prepareForTest(t, repoDir, baseSHA, runID)
+
+	_, err := ExtractResults(context.Background(), ExtractOptions{
+		ContainerID:  "fake",
+		WorktreeDir:  wt.Dir,
+		Branch:       wt.Branch,
+		BaseSHA:      baseSHA,
+		RunID:        runID,
+		WorkflowName: "develop",
+		Result:       "failed",
+	})
+	if err == nil {
+		t.Fatal("expected ExtractResults to refuse the mass-delete commit")
+	}
+	if !strings.Contains(err.Error(), "would delete") {
+		t.Errorf("error doesn't mention deletion guard: %v", err)
+	}
+
+	// Verify nothing got committed: branch should still be at baseSHA.
+	cmd := exec.Command("git", "rev-parse", "refs/heads/"+wt.Branch)
+	cmd.Dir = repoDir
+	out, runErr := cmd.Output()
+	if runErr != nil {
+		t.Fatalf("git rev-parse %s: %v", wt.Branch, runErr)
+	}
+	got := strings.TrimSpace(string(out))
+	if got != baseSHA {
+		t.Errorf("branch %s moved to %s; expected to stay at baseSHA %s", wt.Branch, got, baseSHA)
+	}
+}
+
+// TestExtractResults_AllowsBalancedRefactor verifies the sanity gate doesn't
+// trip on legitimate large-scale refactors where many files are deleted but
+// many are also added (e.g. a directory rename).
+func TestExtractResults_AllowsBalancedRefactor(t *testing.T) {
+	repoDir, baseSHA := setupTestRepoWithManyFiles(t, 80)
+
+	// Container fixture has 80 different files — 80 deletions + 80 additions.
+	// Ratio is 1:1, well below the deletions > additions*2 trigger.
+	balanced := t.TempDir()
+	for i := 0; i < 80; i++ {
+		path := filepath.Join(balanced, "renamed"+itoa(i)+".txt")
+		if err := os.WriteFile(path, []byte("renamed content "+itoa(i)+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	overrideDockerCp(t, balanced)
+	overrideDockerExec(t, nil)
+
+	runID := "balanced-refactor"
+	wt := prepareForTest(t, repoDir, baseSHA, runID)
+
+	result, err := ExtractResults(context.Background(), ExtractOptions{
+		ContainerID:  "fake",
+		WorktreeDir:  wt.Dir,
+		Branch:       wt.Branch,
+		BaseSHA:      baseSHA,
+		RunID:        runID,
+		WorkflowName: "develop",
+		Result:       "succeeded",
+	})
+	if err != nil {
+		t.Fatalf("ExtractResults: %v", err)
+	}
+	if result.CommitSHA == baseSHA {
+		t.Error("expected a new commit, got baseSHA")
+	}
+}
+
+// TestExtractResults_AllowsOverride verifies that
+// CLOCHE_EXTRACT_ALLOW_MASS_DELETE=1 bypasses the sanity gate, in case an
+// operator legitimately needs to extract a mass deletion.
+func TestExtractResults_AllowsOverride(t *testing.T) {
+	t.Setenv("CLOCHE_EXTRACT_ALLOW_MASS_DELETE", "1")
+	repoDir, baseSHA := setupTestRepoWithManyFiles(t, 80)
+
+	emptyish := t.TempDir()
+	if err := os.WriteFile(filepath.Join(emptyish, "lone.txt"), []byte("only thing\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	overrideDockerCp(t, emptyish)
+	overrideDockerExec(t, nil)
+
+	runID := "override-test"
+	wt := prepareForTest(t, repoDir, baseSHA, runID)
+
+	result, err := ExtractResults(context.Background(), ExtractOptions{
+		ContainerID:  "fake",
+		WorktreeDir:  wt.Dir,
+		Branch:       wt.Branch,
+		BaseSHA:      baseSHA,
+		RunID:        runID,
+		WorkflowName: "develop",
+		Result:       "succeeded",
+	})
+	if err != nil {
+		t.Fatalf("ExtractResults with override: %v", err)
+	}
+	if result.CommitSHA == baseSHA {
+		t.Error("expected commit despite mass deletion (override on)")
+	}
+}
+
 func TestBuildCommitMessageWithContainerCommits(t *testing.T) {
 	commits := "  * Fix login validation\n    Check email format before submit\n\n  * Add unit tests"
 	msg := buildCommitMessage(context.Background(), "/nonexistent", nil, "run-1", "develop", "succeeded", commits)
