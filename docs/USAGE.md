@@ -1210,9 +1210,19 @@ clo -v / --version / version   Print version
 `clo` reads `CLOCHE_ADDR`, `CLOCHE_TASK_ID`, and `CLOCHE_ATTEMPT_ID` from the
 environment. The Docker adapter sets all three automatically.
 
-`clo get` uses the same scope fallback as `cloche get`: per-run → attempt-scoped →
-task-scoped. Values written at task scope before a run starts are visible to container
-steps even though they run under a different run ID.
+#### Scope fallback
+
+`clo get` (and `cloche get`) resolves keys with a three-level fallback so that
+values written at a broader scope are visible to narrower-scoped readers:
+
+1. `(taskID, attemptID, runID)` — exact run-level match
+2. `(taskID, attemptID, "")` — attempt-scoped value
+3. `(taskID, "", "")` — task-scoped value
+
+This means keys pre-seeded before a run starts — e.g.
+`CLOCHE_TASK_ID=<id> cloche set base_branch main` — are readable inside any
+container step of that task, even though the container has a non-empty attempt
+and run ID. Narrower-scope writes always shadow broader-scope ones.
 
 ### `cloche tasks`
 
