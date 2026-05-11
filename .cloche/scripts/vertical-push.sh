@@ -17,5 +17,15 @@ if [ -z "$(git log --oneline "origin/$branch..$branch" 2>/dev/null)" ]; then
 fi
 
 git push origin "$branch"
-clo set last_addressed_at "$(date +%s)"
-echo "Pushed feedback fixes to $branch"
+
+# Write last_addressed_at at TWO scopes so the parent workflow's poll step
+# can read it. `clo` (inside this sub-workflow container) defaults to writing
+# at the child run's scope (taskID, parentAttempt, childRun). The parent's
+# `cloche get` runs at (taskID, parentAttempt, parentRun) which doesn't match.
+# We also write at attempt scope (runID="") so the daemon's KV-fallback finds
+# it on the parent's first lookup miss.
+now=$(date +%s)
+clo set last_addressed_at "$now"
+CLOCHE_RUN_ID="" clo set last_addressed_at "$now"
+
+echo "Pushed feedback fixes to $branch (last_addressed_at=$now)"
