@@ -18,26 +18,32 @@ func initRepositoryScenarios(ctx *godog.ScenarioContext) {
 	ctx.Step(`^a \.cloche file containing:$`, pendingClocheFileContaining)
 	ctx.Step(`^the DSL parser processes the file$`, pendingDSLParserProcesses)
 	ctx.Step(`^no parse error is returned$`, pendingNoParsedError)
-	ctx.Step(`^the parsed file contains a repository named "([^"]*)" with path "([^"]*)"$`, pendingRepoWithPath)
-	ctx.Step(`^the parsed file contains a repository named "([^"]*)" with url "([^"]*)"$`, pendingRepoWithURL)
-	ctx.Step(`^the parsed file contains a repository named "([^"]*)" marked as default$`, pendingRepoIsDefault)
-	ctx.Step(`^the parsed file contains a repository named "([^"]*)"$`, pendingRepoByName)
-	ctx.Step(`^the parsed file contains (\d+) repositor(?:y|ies)$`, pendingRepoCount)
 	ctx.Step(`^step "([^"]*)" in workflow "([^"]*)" has repository "([^"]*)"$`, pendingStepHasRepository)
+	ctx.Step(`^workflow "([^"]*)" declares repos \[([^\]]*)\]$`, pendingWorkflowDeclaredRepos)
+	ctx.Step(`^workflow "([^"]*)" declares (\d+) repos$`, pendingWorkflowRepoCount)
 
-	// CLI project display (L1)
-	ctx.Step(`^the project's \.cloche config declares:$`, pendingProjectConfigDeclares)
-	ctx.Step(`^the project's \.cloche config has no repository blocks$`, pendingProjectConfigNoRepos)
+	// Config.toml parsing
+	ctx.Step(`^a config\.toml containing:$`, pendingConfigTOMLContaining)
+	ctx.Step(`^a config\.toml containing no repository entries$`, pendingConfigTOMLContainingNoRepos)
+	ctx.Step(`^the config is parsed$`, pendingConfigParsed)
+	ctx.Step(`^the config contains a repository named "([^"]*)" with path "([^"]*)"$`, pendingConfigContainsRepoWithPath)
+	ctx.Step(`^the config contains a repository named "([^"]*)" marked as default$`, pendingConfigContainsRepoIsDefault)
+	ctx.Step(`^the config contains a repository named "([^"]*)"$`, pendingConfigContainsRepoByName)
+	ctx.Step(`^the config contains (\d+) repositor(?:y|ies)$`, pendingConfigContainsRepoCount)
+
+	// CLI project display
+	ctx.Step(`^the project's config\.toml declares:$`, pendingProjectConfigTOMLDeclares)
+	ctx.Step(`^the project's config\.toml has no repository entries$`, pendingProjectConfigTOMLNoRepos)
+	ctx.Step(`^the project's config\.toml has a repository entry named "([^"]*)" with path "([^"]*)"$`, pendingProjectConfigTOMLHasRepo)
 	ctx.Step(`^the user runs "([^"]*)"$`, pendingUserRunsCommand)
 	ctx.Step(`^the command succeeds$`, pendingCommandSucceeds)
 	ctx.Step(`^the output contains "([^"]*)"$`, pendingOutputContains)
 	ctx.Step(`^the output does not contain "([^"]*)"$`, pendingOutputNotContains)
+	ctx.Step(`^the output contains a deprecation warning about missing repository configuration$`, pendingOutputContainsDeprecationWarning)
+	ctx.Step(`^the output contains migration instructions for adding repository configuration$`, pendingOutputContainsMigrationInstructions)
 
-	// CLI repos subcommands (L2)
-	ctx.Step(`^the project has a stored repository named "([^"]*)" with path "([^"]*)"$`, pendingStoredRepo)
+	// Backward compatibility
 	ctx.Step(`^the project has no stored repositories$`, pendingNoStoredRepos)
-
-	// Backward compatibility (L2)
 	ctx.Step(`^a project database that has been freshly migrated with no repository rows$`, pendingFreshMigration)
 	ctx.Step(`^the repositories store is first accessed for that project$`, pendingFirstAccess)
 	ctx.Step(`^exactly (\d+) repositor(?:y|ies) (?:is|are) seeded automatically$`, pendingSeededCount)
@@ -56,40 +62,62 @@ func pendingDSLParserProcesses() error {
 }
 
 func pendingNoParsedError() error {
-	return errors.New("pending: L1 DSL parsing implementation")
-}
-
-func pendingRepoWithPath(name, path string) error {
-	return errors.New("pending: L1 DSL parsing implementation")
-}
-
-func pendingRepoWithURL(name, url string) error {
-	return errors.New("pending: L1 DSL parsing implementation")
-}
-
-func pendingRepoIsDefault(name string) error {
-	return errors.New("pending: L1 DSL parsing implementation")
-}
-
-func pendingRepoByName(name string) error {
-	return errors.New("pending: L1 DSL parsing implementation")
-}
-
-func pendingRepoCount(count int) error {
-	return errors.New("pending: L1 DSL parsing implementation")
+	return errors.New("pending: L1 DSL/config parsing implementation")
 }
 
 func pendingStepHasRepository(stepName, workflowName, repoName string) error {
 	return errors.New("pending: L1 DSL parsing implementation")
 }
 
+func pendingWorkflowDeclaredRepos(workflowName, reposList string) error {
+	return errors.New("pending: L1 DSL parsing implementation")
+}
+
+func pendingWorkflowRepoCount(workflowName string, count int) error {
+	return errors.New("pending: L1 DSL parsing implementation")
+}
+
+// ─── Config.toml pending stubs (L1) ──────────────────────────────────────────
+
+func pendingConfigTOMLContaining(content *godog.DocString) error {
+	return errors.New("pending: L1 config.toml parsing implementation")
+}
+
+func pendingConfigTOMLContainingNoRepos() error {
+	return errors.New("pending: L1 config.toml parsing implementation")
+}
+
+func pendingConfigParsed() error {
+	return errors.New("pending: L1 config.toml parsing implementation")
+}
+
+func pendingConfigContainsRepoWithPath(name, path string) error {
+	return errors.New("pending: L1 config.toml parsing implementation")
+}
+
+func pendingConfigContainsRepoIsDefault(name string) error {
+	return errors.New("pending: L1 config.toml parsing implementation")
+}
+
+func pendingConfigContainsRepoByName(name string) error {
+	return errors.New("pending: L1 config.toml parsing implementation")
+}
+
+func pendingConfigContainsRepoCount(count int) error {
+	return errors.New("pending: L1 config.toml parsing implementation")
+}
+
 // ─── CLI pending stubs (L1) ──────────────────────────────────────────────────
 
-func pendingProjectConfigDeclares(config *godog.DocString) error {
+func pendingProjectConfigTOMLDeclares(config *godog.DocString) error {
 	return errors.New("pending: L1 CLI surface implementation")
 }
 
-func pendingProjectConfigNoRepos() error {
+func pendingProjectConfigTOMLNoRepos() error {
+	return errors.New("pending: L1 CLI surface implementation")
+}
+
+func pendingProjectConfigTOMLHasRepo(name, path string) error {
 	return errors.New("pending: L1 CLI surface implementation")
 }
 
@@ -109,14 +137,18 @@ func pendingOutputNotContains(text string) error {
 	return errors.New("pending: L1 CLI surface implementation")
 }
 
+func pendingOutputContainsDeprecationWarning() error {
+	return errors.New("pending: L1 CLI surface implementation")
+}
+
+func pendingOutputContainsMigrationInstructions() error {
+	return errors.New("pending: L1 CLI surface implementation")
+}
+
 // ─── CLI pending stubs (L2) ──────────────────────────────────────────────────
 
 func pendingDaemonRunning() error {
 	return errors.New("pending: L2 runtime/adapter implementation")
-}
-
-func pendingStoredRepo(name, path string) error {
-	return errors.New("pending: L2 domain/persistence implementation")
 }
 
 func pendingNoStoredRepos() error {
