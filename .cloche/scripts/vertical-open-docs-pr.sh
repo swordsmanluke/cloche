@@ -38,18 +38,32 @@ feature_title=$(bd show "$feature_id" --json 2>/dev/null | jq -r '.[0].title // 
 [ -z "$feature_title" ] && feature_title="Feature $feature_id"
 
 body_file="$(cloche get temp_file_dir)/docs-pr-body.md"
-cat > "$body_file" <<EOF
+agent_desc=""
+temp_file_dir=$(cloche get temp_file_dir 2>/dev/null || true)
+if [ -n "$temp_file_dir" ] && [ -f "$temp_file_dir/pr-description.md" ]; then
+  agent_desc=$(cat "$temp_file_dir/pr-description.md")
+fi
+
+if [ -n "$agent_desc" ]; then
+  printf '%s\n\n' "$agent_desc" > "$body_file"
+else
+  cat > "$body_file" <<EOF
 ## Documentation update for: $feature_title
 
-Final PR in the vertical stack for $feature_id. Updates project documentation to
-reflect the new feature.
+Final PR in the vertical stack for \`$feature_id\`. Updates project documentation
+to reflect the new feature. Inline code comments were updated during layer
+implementation; this PR covers project-level docs only (\`docs/\`, \`README.md\`,
+\`CHANGELOG.md\`, etc.).
 
-Inline code comments were updated during layer implementation; this PR covers
-project-level docs only (\`docs/\`, \`README.md\`, \`CHANGELOG.md\`, etc.).
+EOF
+fi
 
-**Approve** to trigger \`finalize\`, which squash-merges the entire stack
-(test plan + all layers + this docs PR) into the user-specified base branch as a
-single commit.
+cat >> "$body_file" <<EOF
+---
+**Feature:** \`$feature_id\` · **Base:** \`$base\` (bottom-most layer)
+
+Approve to trigger \`finalize\` — a single squash-merge of the entire stack
+(test plan + all layers + this docs PR) into the user-specified base branch.
 EOF
 
 existing=$(gh pr list --head "$branch" --json number --jq '.[0].number' 2>/dev/null || true)

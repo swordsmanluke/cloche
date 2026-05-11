@@ -74,9 +74,38 @@ after the current one closes.
 ## Output
 
 Commit your changes to the branch listed in the context file (it is already checked
-out). Use clear, single-purpose commits. The verify, test, and self-review steps
-that run after you exit will catch broken builds, failing tests, and common review
-errors. You'll get a chance to fix them in the `fix` step.
+out). Use clear, single-purpose commits — these become the squash-merge's body so
+they are the durable record of *why* you made each change. Vague subjects like "Add
+layer" or "Implement task" make the resulting PR title useless; subjects like "Wire
+`RepositoryStore` into `project loader`; seed default from project root" describe
+the actual change.
+
+The verify, test, and self-review steps that run after you exit will catch broken
+builds, failing tests, and common review errors. You'll get a chance to fix them in
+the `fix` step.
+
+## PR description
+
+Before exiting, write a focused PR description to
+`$(clo get temp_file_dir)/pr-description.md`. The host's open-pr step picks this up
+verbatim as the PR body, so it's the reviewer's primary lens on your work — make it
+*specific* to what you actually did, not a generic "layer ready" template.
+
+Cover, in this order:
+
+1. **What this PR does** — 2-4 bullets naming the key files / types / endpoints you
+   added or changed and why. Tie each to the layer-task acceptance criteria.
+2. **What's still mocked or pending** — be explicit about anything the next layer
+   will replace, anything you stubbed, anything you noticed but deliberately left.
+3. **Notable design calls** — any deviation from the layer-task description, or a
+   place a reviewer might reasonably want to push back. If the layer-task description
+   was wrong about some interface name / file path and you adjusted, say so.
+4. **How a reviewer can verify** — the one or two commands or paths to inspect (e.g.,
+   `go test ./internal/dsl/... -run TestRepository`, or "open the diff on
+   `internal/adapters/sqlite/repositories.go`").
+
+Keep it tight — usually under 30 lines. No marketing language; this is for the
+reviewer, not a press release.
 
 If you genuinely cannot complete the layer — you hit an unknown, the requirements
 in the task description don't specify enough, you need access to something you don't

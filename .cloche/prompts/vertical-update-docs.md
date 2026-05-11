@@ -52,3 +52,20 @@ docs PR will be small but correct.
 
 Commit your changes to the current branch with a clear message like
 `docs: <feature title>`.
+
+## PR description
+
+Before exiting, write a focused PR description to
+`$(clo get temp_file_dir)/pr-description.md`. The host's open-docs-pr step picks
+this up verbatim as the PR body, so make it specific:
+
+1. **What changed in the docs** — list each file you edited with a one-line
+   summary of the section you touched (e.g., "`docs/workflows.md`: added the
+   `repository` block to the DSL reference under 'Top-level blocks'").
+2. **Anything you noticed but did NOT update** — a stale godoc comment, an
+   outdated example in a code file, etc. State it so the user can decide; do not
+   silently fix it (the layer that touched the code should have).
+3. **CHANGELOG entry** — quote the bullet you added so the reviewer doesn't have
+   to dig.
+
+Keep it tight; usually 10-20 lines is right for a docs PR.

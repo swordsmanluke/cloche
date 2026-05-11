@@ -79,6 +79,28 @@ compile errors are not.
 Commit your changes to the current branch (already checked out) with a clear
 message like `Add BDD test plan for <feature title>`.
 
+## PR description
+
+Before exiting, write a focused PR description to
+`$(clo get temp_file_dir)/pr-description.md`. The host's open-test-plan-pr step
+picks this up verbatim as the PR body, so make it specific to this test plan:
+
+1. **Scope** — 2-4 bullets naming the .feature files you added, with a one-line
+   summary of what each covers (e.g., "DSL parsing of `repository` blocks: single
+   repo, multiple repos, step-level `repository = "name"` field").
+2. **Layer mapping** — which scenarios light up at which layer (L1/L2/...), so the
+   reviewer can sanity-check that the test plan matches the planned layer split.
+3. **Open questions** — any design ambiguity in the feature description that you
+   resolved one way and that a reviewer might reasonably want to flip. If you
+   didn't have to make any judgment calls, say "None — feature description was
+   unambiguous." (Don't pretend.)
+4. **How a reviewer can verify** — `go test ./features/...` and what they should
+   see (e.g., "12 scenarios, all pending").
+
+Keep it tight, under ~30 lines. This is the reviewer's read on whether the
+contract you've written matches the feature they wanted — wishy-washy template
+language ("scenarios that capture the feature's intent") wastes their time.
+
 ## Hard constraints
 
 1. **No implementation code.** Only `.feature` files, step definitions with pending
