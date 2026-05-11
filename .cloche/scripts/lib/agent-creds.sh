@@ -35,6 +35,12 @@ fi
 if [ -f "$_creds_dir/gh_token" ]; then
   GH_TOKEN=$(cat "$_creds_dir/gh_token")
   export GH_TOKEN
+elif [ -f "/home/agent/.gh_token" ]; then
+  # In-container fallback: the Dockerfile bakes the token here and clocheignore
+  # excludes .cloche/credentials/ from the container copy, so /workspace has no
+  # credential dir.
+  GH_TOKEN=$(cat /home/agent/.gh_token)
+  export GH_TOKEN
 fi
 
 if [ -z "${GIT_SSH_COMMAND:-}" ] && [ -z "${GH_TOKEN:-}" ]; then
