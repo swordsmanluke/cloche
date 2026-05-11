@@ -94,5 +94,16 @@ fi
 
 cloche set current_layer_id "$chosen"
 cloche set current_base_branch "$chosen_base"
+
+# Stash the layer's title/description in KV so the in-container read-layer
+# step can compose its prompt without needing the `bd` CLI (which isn't in
+# the agent image). KV reads in the container fall back through scopes thanks
+# to the daemon's KV-fallback, so writing here is enough.
+chosen_json=$(bd show "$chosen" --json 2>/dev/null) || chosen_json=""
+chosen_title=$(echo "$chosen_json" | jq -r '.[0].title // empty' 2>/dev/null)
+chosen_desc=$(echo "$chosen_json" | jq -r '.[0].description // empty' 2>/dev/null)
+cloche set current_layer_title "$chosen_title"
+cloche set current_layer_description "$chosen_desc"
+
 echo "Picked layer $chosen (base: $chosen_base)"
 echo "CLOCHE_RESULT:has-layer"

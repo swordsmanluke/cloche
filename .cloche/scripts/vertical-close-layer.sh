@@ -25,6 +25,11 @@ else
   echo "warning: could not close layer task $layer_id" >&2
 fi
 
+# Stash the most recently closed layer ID so the in-container
+# vertical-prepare-docs-branch script can find the docs PR's base without
+# calling `bd` (which isn't available in the agent image).
+cloche set last_closed_layer_id "$layer_id"
+
 # Clear layer-scoped KV so the next layer's pick/implement starts fresh.
 cloche set current_layer_id ""
 cloche set current_pr_number ""
