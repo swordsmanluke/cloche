@@ -18,15 +18,16 @@ if [ -z "$layer_id" ]; then
   exit 1
 fi
 
-# Look up layer task details from bead. (bd is available in the container — it's
-# part of the dev image.)
-task_json=$(bd show "$layer_id" --json 2>/dev/null) || {
-  echo "error: could not look up layer task $layer_id" >&2
+# Layer title/description are pre-staged in KV by the host's
+# vertical-pick-layer.sh step. We can't call `bd` directly here — the agent
+# image doesn't ship the bd CLI, and the host's bead db is on a unix socket
+# that doesn't reach inside the container.
+layer_title=$(clo get current_layer_title 2>/dev/null || true)
+layer_body=$(clo get current_layer_description 2>/dev/null || true)
+if [ -z "$layer_title" ]; then
+  echo "error: current_layer_title not in KV — did pick-next-layer run?" >&2
   exit 1
-}
-
-layer_title=$(echo "$task_json" | jq -r '.[0].title // empty')
-layer_body=$(echo "$task_json" | jq -r '.[0].description // empty')
+fi
 
 # Make the layer branch off the base.
 layer_branch="vertical/${feature_id}/${layer_id}"

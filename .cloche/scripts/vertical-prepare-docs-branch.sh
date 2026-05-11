@@ -11,13 +11,12 @@ if [ -z "$feature_id" ]; then
   exit 1
 fi
 
-# Find the most recent (bottom-most-stack-position) closed child layer task.
-# Children are returned oldest-first; we want the latest closed one.
-layers_json=$(bd list --parent "$feature_id" --all --json 2>/dev/null) || layers_json="[]"
-last_layer=$(echo "$layers_json" | jq -r '[.[] | select(.status == "closed")] | last.id // empty')
-
+# The bottom-most closed layer is recorded by the host's vertical-close-layer.sh
+# step as it closes each layer. We read it from KV here because the agent
+# image doesn't ship the bd CLI.
+last_layer=$(clo get last_closed_layer_id 2>/dev/null || true)
 if [ -z "$last_layer" ]; then
-  echo "error: no closed layer tasks found for feature $feature_id" >&2
+  echo "error: last_closed_layer_id not set in KV — did close-layer run?" >&2
   exit 1
 fi
 
