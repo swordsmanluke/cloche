@@ -396,7 +396,7 @@ func (s *Store) ListRunsFiltered(ctx context.Context, filter domain.RunListFilte
 
 func (s *Store) ListProjects(ctx context.Context) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT DISTINCT project_dir FROM runs WHERE project_dir != '' ORDER BY project_dir`)
+		`SELECT DISTINCT project_dir FROM runs WHERE project_dir != '' AND project_dir NOT LIKE '%/.gitworktrees/%' ORDER BY project_dir`)
 	if err != nil {
 		return nil, err
 	}
@@ -933,19 +933,40 @@ func nullableString(s string) interface{} {
 	return s
 }
 
+// GetContextKey looks up a key in the per-attempt KV namespace, with fallback
+// to broader scopes so that values pre-seeded at the task level — or set by a
+// parent run — are visible to nested workflow runs whose (attemptID, runID) do
+// not match the writer's. Lookup order:
+//
+//  1. (taskID, attemptID, runID) — exact match (per-run state)
+//  2. (taskID, attemptID, "")    — attempt-scoped state
+//  3. (taskID, "", "")           — task-scoped state (e.g. user-supplied
+//     `CLOCHE_TASK_ID=… cloche set …` pre-run config)
+//
+// The first hit wins.
 func (s *Store) GetContextKey(ctx context.Context, taskID, attemptID, runID, key string) (string, bool, error) {
-	row := s.db.QueryRowContext(ctx,
-		`SELECT value FROM context_kv WHERE task_id = ? AND attempt_id = ? AND run_id = ? AND key = ?`,
-		taskID, attemptID, runID, key)
-	var value string
-	err := row.Scan(&value)
-	if err == sql.ErrNoRows {
-		return "", false, nil
+	scopes := [][2]string{{attemptID, runID}}
+	if runID != "" {
+		scopes = append(scopes, [2]string{attemptID, ""})
 	}
-	if err != nil {
-		return "", false, err
+	if attemptID != "" {
+		scopes = append(scopes, [2]string{"", ""})
 	}
-	return value, true, nil
+	for _, sc := range scopes {
+		row := s.db.QueryRowContext(ctx,
+			`SELECT value FROM context_kv WHERE task_id = ? AND attempt_id = ? AND run_id = ? AND key = ?`,
+			taskID, sc[0], sc[1], key)
+		var value string
+		err := row.Scan(&value)
+		if err == sql.ErrNoRows {
+			continue
+		}
+		if err != nil {
+			return "", false, err
+		}
+		return value, true, nil
+	}
+	return "", false, nil
 }
 
 func (s *Store) SetContextKey(ctx context.Context, taskID, attemptID, runID, key, value string) error {

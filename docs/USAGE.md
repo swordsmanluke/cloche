@@ -1131,6 +1131,11 @@ Get a value from the daemon's gRPC-backed KV store. Requires the `CLOCHE_TASK_ID
 environment variable (`CLOCHE_ATTEMPT_ID` is also used if set). Exits 1 if the key is
 not found.
 
+Lookup falls back through progressively broader scopes: per-run → attempt-scoped →
+task-scoped. This means values written at task scope (e.g. with
+`CLOCHE_TASK_ID=<id> cloche set <key> <value>` before a run starts) are visible to
+nested sub-workflows even when their attempt and run IDs differ from the writer's.
+
 ### `cloche set`
 
 ```
@@ -1193,6 +1198,10 @@ clo -v / --version / version   Print version
 
 `clo` reads `CLOCHE_ADDR`, `CLOCHE_TASK_ID`, and `CLOCHE_ATTEMPT_ID` from the
 environment. The Docker adapter sets all three automatically.
+
+`clo get` uses the same scope fallback as `cloche get`: per-run → attempt-scoped →
+task-scoped. Values written at task scope before a run starts are visible to container
+steps even though they run under a different run ID.
 
 ### `cloche tasks`
 

@@ -142,6 +142,63 @@ func TestDeleteContextKeys(t *testing.T) {
 	}
 }
 
+// Pre-run config set with `CLOCHE_TASK_ID=… cloche set …` lands at
+// (task, "", ""). A nested sub-workflow container reads with non-empty
+// attempt/run IDs. The fallback lets task-scope writes reach those readers.
+func TestGetContextKey_TaskScopeFallback(t *testing.T) {
+	s := newTestStoreKV(t)
+	ctx := context.Background()
+
+	_ = s.SetContextKey(ctx, "task1", "", "", "base_branch", "add_repos")
+
+	val, found, err := s.GetContextKey(ctx, "task1", "att-A", "run-X", "base_branch")
+	if err != nil || !found || val != "add_repos" {
+		t.Errorf("task-scope fallback: got (%q, %v, %v), want (add_repos, true, nil)", val, found, err)
+	}
+}
+
+func TestGetContextKey_AttemptScopeFallback(t *testing.T) {
+	s := newTestStoreKV(t)
+	ctx := context.Background()
+
+	_ = s.SetContextKey(ctx, "task1", "att-A", "", "tmp_dir", "/tmp/att-A")
+
+	val, found, err := s.GetContextKey(ctx, "task1", "att-A", "run-X", "tmp_dir")
+	if err != nil || !found || val != "/tmp/att-A" {
+		t.Errorf("attempt-scope fallback: got (%q, %v, %v), want (/tmp/att-A, true, nil)", val, found, err)
+	}
+}
+
+// Narrower-scope writes shadow broader-scope ones.
+func TestGetContextKey_NarrowerScopeWins(t *testing.T) {
+	s := newTestStoreKV(t)
+	ctx := context.Background()
+
+	_ = s.SetContextKey(ctx, "task1", "", "", "branch", "main")
+	_ = s.SetContextKey(ctx, "task1", "att-A", "run-X", "branch", "feature")
+
+	val, _, _ := s.GetContextKey(ctx, "task1", "att-A", "run-X", "branch")
+	if val != "feature" {
+		t.Errorf("narrower scope should win: got %q, want feature", val)
+	}
+}
+
+// Task-scope writes for one task must not leak to another task.
+func TestGetContextKey_FallbackRespectsTaskIsolation(t *testing.T) {
+	s := newTestStoreKV(t)
+	ctx := context.Background()
+
+	_ = s.SetContextKey(ctx, "task1", "", "", "k", "v1")
+
+	_, found, err := s.GetContextKey(ctx, "task2", "att-A", "run-X", "k")
+	if err != nil {
+		t.Fatalf("GetContextKey: %v", err)
+	}
+	if found {
+		t.Error("task1 task-scoped value must not be visible from task2")
+	}
+}
+
 func TestSeedAutoKeys(t *testing.T) {
 	s := newTestStoreKV(t)
 	ctx := context.Background()
