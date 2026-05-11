@@ -125,4 +125,20 @@ func cmdProject(args []string) {
 	} else {
 		fmt.Println("Host workflows: none")
 	}
+
+	if len(resp.Repositories) > 0 {
+		fmt.Println()
+		fmt.Println("Repositories:")
+		for _, repo := range resp.Repositories {
+			def := ""
+			if repo.Default {
+				def = "  (default)"
+			}
+			if repo.Url != "" {
+				fmt.Printf("  %-20s  %-30s  %s%s\n", repo.Name, repo.Path, repo.Url, def)
+			} else {
+				fmt.Printf("  %-20s  %s%s\n", repo.Name, repo.Path, def)
+			}
+		}
+	}
 }
