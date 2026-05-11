@@ -30,13 +30,17 @@ fi
 
 feature_id="$CLOCHE_TASK_ID"
 
-# Find all child tasks of the feature, ordered by creation time (oldest first).
+# Find all child tasks of the feature. The walk below assumes oldest-first
+# order so that the base branch updates progressively (closed L1 -> base
+# becomes L1's branch, then we pick L2 off L1). `bd list` returns newest
+# first, so sort explicitly by created_at — never trust the default order.
 layers_json=$(bd list --parent "$feature_id" --all --json 2>/dev/null) || layers_json="[]"
 if [ "$layers_json" = "[]" ] || [ -z "$layers_json" ]; then
   echo "error: feature $feature_id has no child layer tasks" >&2
   echo "CLOCHE_RESULT:fail"
   exit 0
 fi
+layers_json=$(echo "$layers_json" | jq 'sort_by(.created_at)')
 
 # Initial base: the test-plan branch (always present after Phase 1) sits between
 # the user-specified vertical_base_branch and L1. record-test-plan sets
