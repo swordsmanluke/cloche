@@ -4,6 +4,27 @@ You are kicking off a vertical-development run for a feature. The feature task I
 in `CLOCHE_TASK_ID`. Read it with `bd show "$CLOCHE_TASK_ID" --json` and study the
 parent feature description carefully.
 
+## Idempotency check first
+
+Vertical runs can be retried — this step may be re-entered for a feature that already
+has its initial layers planned. Before doing anything, run:
+
+```bash
+bd list --parent "$CLOCHE_TASK_ID" --json
+```
+
+If that returns one or more child tasks whose titles look like layer tasks
+(`[<feature-id>/L<n>] ...`) and whose descriptions already specify "what this layer
+ships / mocks / acceptance criteria", **do not create new layer tasks**. Verify the
+existing layers look correct against the feature description, optionally tighten
+their descriptions if something is obviously missing, and exit successfully.
+
+Do not "add a third layer" pre-emptively — later layers are created during
+implementation when the agent on layer N discovers it needs an N+1.
+
+Only when no layer children exist (or the existing ones are clearly stubs / wrong /
+unrelated) should you proceed with the rest of this prompt.
+
 ## Your job
 
 Produce the **first two layer tasks** for this feature, in bead, as children of the
@@ -49,9 +70,11 @@ For each task, the **description** must specify:
 ## Sanity check before you finish
 
 - The feature task itself remains `in_progress`; do NOT close it.
-- `bd list --parent "$CLOCHE_TASK_ID"` shows both new tasks.
-- `bd show <L2-id>` shows the L1 dependency.
+- `bd list --parent "$CLOCHE_TASK_ID"` shows the layer tasks (either the two you
+  just created, or the pre-existing ones you verified during the idempotency
+  check).
+- For any L2 you created, `bd show <L2-id>` shows the L1 dependency.
 - `bd ready` lists L1 (no open deps) but NOT L2 (blocked by L1).
 
-If anything looks wrong, fix it before returning. Once the two layer tasks are in
+If anything looks wrong, fix it before returning. Once the layer tasks are in
 place and correctly wired, exit successfully — the workflow takes over from here.
