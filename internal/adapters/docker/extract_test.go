@@ -478,6 +478,53 @@ func TestClassifyChangesEmpty(t *testing.T) {
 	}
 }
 
+func TestFirstAgentCommitSubject(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "empty",
+			input: "",
+			want:  "",
+		},
+		{
+			name: "skips bookkeeping prefixes, returns last agent subject",
+			input: `  * cloche run i3jb-develop: develop (succeeded)
+
+  * Version 3.14.21
+
+  * Add BDD test plan for Repository
+    Introduces godog scenarios.
+
+  * Address PR feedback on repository BDD test plan`,
+			want: "Address PR feedback on repository BDD test plan",
+		},
+		{
+			name: "single agent commit",
+			input: `  * Wire RepositoryStore into project loader
+    Reads .cloche/config.toml for [[repositories]] entries.`,
+			want: "Wire RepositoryStore into project loader",
+		},
+		{
+			name: "only bookkeeping — returns empty so caller falls back",
+			input: `  * cloche run xyz-develop: develop (succeeded)
+
+  * Version 4.2.0`,
+			want: "",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := firstAgentCommitSubject(tc.input)
+			if got != tc.want {
+				t.Errorf("firstAgentCommitSubject = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestExtractStatSummary(t *testing.T) {
 	tests := []struct {
 		name  string

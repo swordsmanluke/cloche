@@ -292,7 +292,7 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 				ContainerID:  session.ContainerID,
 				WorktreeDir:  wt.Dir,
 				Branch:       wt.Branch,
-				BaseSHA:      gitHEAD(d.projectDir),
+				BaseSHA:      d.resolveSubWorkflowBaseSHA(ctx),
 				RunID:        childRunID,
 				WorkflowName: targetName,
 				Result:       resultLabel,
@@ -335,12 +335,43 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 	return domain.StepResult{Result: "fail"}, nil
 }
 
+// resolveSubWorkflowBaseSHA picks the git SHA the extract worktree for a
+// sub-workflow should be branched from. Sub-workflows often pick their own
+// base at runtime (e.g. vertical's per-layer base = the previously-merged
+// layer's branch), so the host's HEAD is the wrong default — we use it only
+// as a last resort.
+//
+// Lookup order:
+//  1. current_base_branch KV at the host run's scope (set by host steps that
+//     pick a branch — e.g. vertical-pick-layer.sh)
+//  2. host's HEAD on projectDir
+//
+// Branch names are resolved against either the local branch or its origin
+// remote-tracking ref (since freshly pushed branches may not have a local
+// tracking branch on the host).
+func (d *DaemonExecutor) resolveSubWorkflowBaseSHA(ctx context.Context) string {
+	if d.store != nil && d.taskID != "" {
+		var hostRunID string
+		if d.hostExec != nil {
+			hostRunID = d.hostExec.HostRunID
+		}
+		val, found, _ := d.store.GetContextKey(ctx, d.taskID, d.attemptID, hostRunID, "current_base_branch")
+		if found && val != "" {
+			if sha := gitResolveRef(d.projectDir, val); sha != "" {
+				return sha
+			}
+			log.Printf("daemon executor: current_base_branch=%q could not be resolved on host; falling back to HEAD", val)
+		}
+	}
+	return gitHEAD(d.projectDir)
+}
+
 // prepareExtractWorktree pre-creates the shared extraction worktree+branch for
 // a pool key and records it on the executor. Called once per pool key, on the
 // first sub-workflow that uses the container. Also writes child_branch to the
 // KV store so host-workflow scripts can find the branch.
 func (d *DaemonExecutor) prepareExtractWorktree(ctx context.Context, poolKey, containerID string) error {
-	baseSHA := gitHEAD(d.projectDir)
+	baseSHA := d.resolveSubWorkflowBaseSHA(ctx)
 	if baseSHA == "" {
 		return fmt.Errorf("could not resolve base SHA for %s", d.projectDir)
 	}

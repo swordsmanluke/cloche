@@ -815,6 +815,13 @@ func (s *recordingRunStore) SetContextKey(_ context.Context, _, _, _, key, value
 	return nil
 }
 
+func (s *recordingRunStore) GetContextKey(_ context.Context, _, _, _, key string) (string, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	val, ok := s.ctxKeys[key]
+	return val, ok, nil
+}
+
 // execCommand is a thin wrapper so tests don't have to import os/exec at call sites.
 func execCommand(name string, args ...string) *osExec.Cmd {
 	return osExec.Command(name, args...)

@@ -3612,6 +3612,25 @@ func gitHEAD(dir string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// gitResolveRef resolves a ref name to its commit SHA on the project's git
+// repository. Tries the bare ref first, then `origin/<ref>` so callers can
+// pass either a local branch ("add_repos") or a remote-only ref name. Returns
+// "" if neither form resolves.
+func gitResolveRef(dir, ref string) string {
+	for _, candidate := range []string{ref, "origin/" + ref} {
+		cmd := exec.Command("git", "rev-parse", "--verify", "--quiet", candidate)
+		cmd.Dir = dir
+		out, err := cmd.Output()
+		if err == nil {
+			sha := strings.TrimSpace(string(out))
+			if sha != "" {
+				return sha
+			}
+		}
+	}
+	return ""
+}
+
 // GetUsage returns aggregated token usage statistics for a project or globally.
 func (s *ClocheServer) GetUsage(ctx context.Context, req *pb.GetUsageRequest) (*pb.GetUsageResponse, error) {
 	q := ports.UsageQuery{
