@@ -18,15 +18,19 @@ if [ -z "$layer_id" ]; then
   exit 1
 fi
 
-# Layer title/description are pre-staged in KV by the host's
-# vertical-pick-layer.sh step. We can't call `bd` directly here — the agent
-# image doesn't ship the bd CLI, and the host's bead db is on a unix socket
-# that doesn't reach inside the container.
+# Layer title is staged in KV; the description (which can run into a couple
+# of KB of markdown) is written to a file under temp_file_dir by the host's
+# vertical-pick-layer step. The daemon bind-mounts that directory into this
+# container, so we read the file directly by path.
 layer_title=$(clo get current_layer_title 2>/dev/null || true)
-layer_body=$(clo get current_layer_description 2>/dev/null || true)
 if [ -z "$layer_title" ]; then
   echo "error: current_layer_title not in KV — did pick-next-layer run?" >&2
   exit 1
+fi
+layer_desc_path=$(clo get current_layer_description_path 2>/dev/null || true)
+layer_body=""
+if [ -n "$layer_desc_path" ] && [ -f "$layer_desc_path" ]; then
+  layer_body=$(cat "$layer_desc_path")
 fi
 
 # Make the layer branch off the base.

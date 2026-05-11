@@ -95,15 +95,25 @@ fi
 cloche set current_layer_id "$chosen"
 cloche set current_base_branch "$chosen_base"
 
-# Stash the layer's title/description in KV so the in-container read-layer
-# step can compose its prompt without needing the `bd` CLI (which isn't in
-# the agent image). KV reads in the container fall back through scopes thanks
-# to the daemon's KV-fallback, so writing here is enough.
+# The in-container read-layer step can't run `bd` (not in the agent image)
+# and can't fit a 2-KB description into KV (1-KB cap). Stage the metadata
+# as a file under temp_file_dir — that directory is bind-mounted into
+# container steps, so the file is readable as-is on the container side.
 chosen_json=$(bd show "$chosen" --json 2>/dev/null) || chosen_json=""
 chosen_title=$(echo "$chosen_json" | jq -r '.[0].title // empty' 2>/dev/null)
 chosen_desc=$(echo "$chosen_json" | jq -r '.[0].description // empty' 2>/dev/null)
 cloche set current_layer_title "$chosen_title"
-cloche set current_layer_description "$chosen_desc"
 
-echo "Picked layer $chosen (base: $chosen_base)"
+temp_file_dir=$(cloche get temp_file_dir 2>/dev/null || true)
+if [ -z "$temp_file_dir" ]; then
+  echo "error: temp_file_dir not set in KV (daemon should seed this at run start)" >&2
+  echo "CLOCHE_RESULT:fail"
+  exit 0
+fi
+layer_desc_path="${temp_file_dir}/layer-${chosen}.md"
+mkdir -p "$temp_file_dir"
+printf '%s\n' "$chosen_desc" > "$layer_desc_path"
+cloche set current_layer_description_path "$layer_desc_path"
+
+echo "Picked layer $chosen (base: $chosen_base, description -> $layer_desc_path)"
 echo "CLOCHE_RESULT:has-layer"
