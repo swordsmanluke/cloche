@@ -3842,10 +3842,12 @@ func (s *ClocheServer) GetContextKey(ctx context.Context, req *pb.GetContextKeyR
 }
 
 // SetContextKey sets a value in the per-attempt KV namespace.
-// Returns INVALID_ARGUMENT if len(value) > 1024.
+// Returns INVALID_ARGUMENT if len(value) > 1024. Larger payloads should be
+// written to a host file under the run's temp_file_dir (which is bind-mounted
+// into container steps) with the path stashed in KV.
 func (s *ClocheServer) SetContextKey(ctx context.Context, req *pb.SetContextKeyRequest) (*pb.SetContextKeyResponse, error) {
 	if len(req.Value) > 1024 {
-		return nil, status.Errorf(codes.InvalidArgument, "value exceeds 1 KB limit (%d bytes)", len(req.Value))
+		return nil, status.Errorf(codes.InvalidArgument, "value exceeds 1 KB limit (%d bytes); write large payloads to a host file under temp_file_dir and stash the path", len(req.Value))
 	}
 	if err := s.store.SetContextKey(ctx, req.TaskId, req.AttemptId, req.RunId, req.Key, req.Value); err != nil {
 		return nil, err
