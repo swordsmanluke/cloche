@@ -6,7 +6,17 @@
 # Writes:
 #   feedback_path — KV; path to a markdown file containing all open comments
 set -euo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/lib/agent-creds.sh"
+
+# In-container fallback: agent-creds.sh exports GH_TOKEN from the baked-in
+# token file, but this sub-workflow checks out the PR branch (whose tree may
+# pre-date that fix), so re-source it from here defensively.
+if [ -z "${GH_TOKEN:-}" ] && [ -f /home/agent/.gh_token ]; then
+  GH_TOKEN=$(cat /home/agent/.gh_token)
+  export GH_TOKEN
+fi
+# Best-effort sourcing of the lib helper for any other env it may set; tolerate
+# missing or older versions.
+source "$(dirname "${BASH_SOURCE[0]}")/lib/agent-creds.sh" 2>/dev/null || true
 
 pr_number=$(clo get current_pr_number 2>/dev/null || true)
 if [ -z "$pr_number" ]; then
