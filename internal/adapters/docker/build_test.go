@@ -199,6 +199,73 @@ func TestEnsureImage_StoresBaseImageDigest(t *testing.T) {
 	assert.Equal(t, alpineID, label)
 }
 
+func TestEnsureImage_RebuildsWhenSourceDirDiffers(t *testing.T) {
+	if err := exec.Command("docker", "info").Run(); err != nil {
+		t.Skip("Docker not available")
+	}
+
+	// Dir A — first build.
+	dirA := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dirA, ".cloche"), 0755))
+	dockerfile := []byte("FROM alpine:latest\nRUN echo source-dir-test\n")
+	require.NoError(t, os.WriteFile(filepath.Join(dirA, ".cloche", "Dockerfile"), dockerfile, 0644))
+
+	image := "cloche-test-source-dir:latest"
+	exec.Command("docker", "rmi", "-f", image).Run()
+	defer exec.Command("docker", "rmi", "-f", image).Run()
+
+	rt := &Runtime{}
+	require.NoError(t, rt.EnsureImage(context.Background(), dirA, image))
+
+	storedDir, err := rt.ImageSourceDir(context.Background(), image)
+	require.NoError(t, err)
+	assert.Equal(t, dirA, storedDir, "source dir label should point to dir A")
+
+	// Dir B — same Dockerfile content (hash matches), but different source dir.
+	dirB := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dirB, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dirB, ".cloche", "Dockerfile"), dockerfile, 0644))
+
+	// EnsureImage should detect the source dir mismatch and rebuild.
+	require.NoError(t, rt.EnsureImage(context.Background(), dirB, image))
+
+	storedDir, err = rt.ImageSourceDir(context.Background(), image)
+	require.NoError(t, err)
+	assert.Equal(t, dirB, storedDir, "source dir label should be updated to dir B after rebuild")
+}
+
+func TestBuildImage_RemovesTagOnFailure(t *testing.T) {
+	if err := exec.Command("docker", "info").Run(); err != nil {
+		t.Skip("Docker not available")
+	}
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	dockerfilePath := filepath.Join(dir, ".cloche", "Dockerfile")
+
+	image := "cloche-test-build-failure:latest"
+	exec.Command("docker", "rmi", "-f", image).Run()
+	defer exec.Command("docker", "rmi", "-f", image).Run()
+
+	// Build a valid image first so the tag exists.
+	validDockerfile := []byte("FROM alpine:latest\nRUN echo valid\n")
+	require.NoError(t, os.WriteFile(dockerfilePath, validDockerfile, 0644))
+	require.NoError(t, buildImage(context.Background(), dir, dockerfilePath, image, hashBytes(validDockerfile), validDockerfile))
+
+	_, err := imageLabel(context.Background(), image, dockerfileHashLabel)
+	require.NoError(t, err, "image tag should exist after valid build")
+
+	// Now attempt a build with a Dockerfile that fails.
+	badDockerfile := []byte("FROM alpine:latest\nRUN nonexistent-command-xyz-that-will-fail\n")
+	require.NoError(t, os.WriteFile(dockerfilePath, badDockerfile, 0644))
+	err = buildImage(context.Background(), dir, dockerfilePath, image, hashBytes(badDockerfile), badDockerfile)
+	require.Error(t, err, "build should fail")
+
+	// The tag should have been removed after the failed build.
+	_, inspectErr := imageLabel(context.Background(), image, dockerfileHashLabel)
+	require.Error(t, inspectErr, "image tag should be removed after failed build")
+}
+
 func TestEnsureImage_RebuildsWhenDockerfileChanges(t *testing.T) {
 	if err := exec.Command("docker", "info").Run(); err != nil {
 		t.Skip("Docker not available")

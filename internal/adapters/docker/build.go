@@ -12,10 +12,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const dockerfileHashLabel = "cloche.dockerfile.hash"
 const baseImageDigestLabel = "cloche.baseimage.digest"
+const sourceDirLabel = "cloche.source.dir"
 
 // EnsureImage checks whether the Docker image is up-to-date with the project
 // Dockerfile. If the image does not exist or the Dockerfile has changed since
@@ -42,6 +44,12 @@ func (r *Runtime) EnsureImage(ctx context.Context, projectDir, image string) err
 
 	if storedHash != currentHash {
 		log.Printf("image %s is stale (have %s, want %s); rebuilding", image, storedHash[:12], currentHash[:12])
+		return buildImage(ctx, projectDir, dockerfilePath, image, currentHash, content)
+	}
+
+	// Dockerfile hash matches — check if it was built from the same source dir.
+	if storedDir, err := imageLabel(ctx, image, sourceDirLabel); err == nil && storedDir != projectDir {
+		log.Printf("image %s was built from different source dir (%s); rebuilding", image, storedDir)
 		return buildImage(ctx, projectDir, dockerfilePath, image, currentHash, content)
 	}
 
@@ -165,6 +173,7 @@ func buildImage(ctx context.Context, projectDir, dockerfilePath, image, hash str
 		"-t", image,
 		"-f", dockerfilePath,
 		"--label", fmt.Sprintf("%s=%s", dockerfileHashLabel, hash),
+		"--label", fmt.Sprintf("%s=%s", sourceDirLabel, projectDir),
 	}
 
 	// Record the base image digest so we can detect upstream changes later.
@@ -180,9 +189,22 @@ func buildImage(ctx context.Context, projectDir, dockerfilePath, image, hash str
 	cmd.Stdout = os.Stderr // stream build output to daemon stderr
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
+		// Remove the tag so the bad image doesn't persist for future runs.
+		cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanCancel()
+		if rmiErr := exec.CommandContext(cleanCtx, "docker", "rmi", image).Run(); rmiErr != nil {
+			log.Printf("warning: could not remove stale image %s after build failure: %v", image, rmiErr)
+		}
 		return fmt.Errorf("building image %s: %w", image, err)
 	}
 
 	log.Printf("image %s built successfully", image)
 	return nil
+}
+
+// ImageSourceDir returns the source directory label stored on the given image.
+// Returns an error if the image does not exist or the label is absent (e.g. built
+// before this label was introduced).
+func (r *Runtime) ImageSourceDir(ctx context.Context, image string) (string, error) {
+	return imageLabel(ctx, image, sourceDirLabel)
 }

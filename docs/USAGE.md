@@ -821,7 +821,7 @@ cloche doctor [--project <dir>] [--verbose] [--timeout <duration>]
 ```
 
 Runs checks in order and prints a status line for each. Exits with code 1
-if any check fails. Checks 5–8 only run when the current (or `--project`) directory
+if any check fails. Checks 5–9 only run when the current (or `--project`) directory
 contains a `.cloche/` subdirectory.
 
 | Check | Description |
@@ -832,6 +832,7 @@ contains a `.cloche/` subdirectory.
 | Agent auth | Checks `ANTHROPIC_API_KEY` or `~/.claude/` session data. Soft check (warning, not fatal). |
 | Project config | Loads `.cloche/config.toml`, reports parse errors, warns if `active = false` or `TODO(cloche-init)` markers remain. |
 | Workflow syntax | Parses all `.cloche/*.cloche` files using the same logic as `cloche validate`. |
+| Image source dir | Warns (not fatal) when the existing project image was built from a different source directory. The next `EnsureImage` call will rebuild it automatically. |
 | Project image build | Calls `EnsureImage` to build or confirm the project Docker image. |
 | Agent roundtrip | Starts a short-lived container from the project image, runs a minimal test workflow, and verifies it completes. |
 
@@ -1128,8 +1129,18 @@ cloche get <key>
 ```
 
 Get a value from the daemon's gRPC-backed KV store. Requires the `CLOCHE_TASK_ID`
-environment variable (`CLOCHE_ATTEMPT_ID` is also used if set). Exits 1 if the key is
-not found.
+environment variable (`CLOCHE_ATTEMPT_ID` and `CLOCHE_RUN_ID` are also used if set).
+Exits 1 if the key is not found.
+
+Lookup falls back through progressively broader scopes until the key is found:
+
+1. `(taskID, attemptID, runID)` — exact run scope
+2. `(taskID, attemptID, "")` — attempt scope
+3. `(taskID, "", "")` — task scope
+
+This means values pre-seeded with `CLOCHE_TASK_ID=… cloche set …` before a workflow
+starts are visible to steps running inside that workflow, even though those steps carry
+non-empty attempt and run IDs.
 
 Lookup falls back through progressively broader scopes: per-run → attempt-scoped →
 task-scoped. This means values written at task scope (e.g. with

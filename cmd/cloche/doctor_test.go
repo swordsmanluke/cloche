@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -418,6 +419,50 @@ func TestCheckWorkflows_syntaxError(t *testing.T) {
 	}
 	if result.remediation == "" {
 		t.Error("expected non-empty remediation with error details")
+	}
+}
+
+// TestCheckImageSourceDir_dockerNotFound verifies OK when docker is not available.
+func TestCheckImageSourceDir_dockerNotFound(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
+active = true
+[daemon]
+image = "test-image:latest"
+`), 0644)
+
+	origPath := os.Getenv("PATH")
+	t.Cleanup(func() { os.Setenv("PATH", origPath) })
+	os.Setenv("PATH", t.TempDir()) // no docker binary
+
+	dr := &doctorRunner{projectDir: dir, timeout: 60 * time.Second}
+	result := dr.checkImageSourceDir()
+	// Docker not available → treated as OK (checkDocker covers this failure).
+	if result.status != checkOK {
+		t.Errorf("expected checkOK when docker not found, got %v (detail: %q)", result.status, result.detail)
+	}
+}
+
+// TestCheckImageSourceDir_imageAbsent verifies OK when the project image doesn't exist yet.
+func TestCheckImageSourceDir_imageAbsent(t *testing.T) {
+	if err := exec.Command("docker", "info").Run(); err != nil {
+		t.Skip("Docker not available")
+	}
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
+active = true
+[daemon]
+image = "cloche-nonexistent-check-source-dir:latest"
+`), 0644)
+
+	dr := &doctorRunner{projectDir: dir, timeout: 60 * time.Second}
+	result := dr.checkImageSourceDir()
+	if result.status != checkOK {
+		t.Errorf("expected checkOK when image absent, got %v (detail: %q)", result.status, result.detail)
 	}
 }
 
