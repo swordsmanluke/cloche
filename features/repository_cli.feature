@@ -1,79 +1,53 @@
 Feature: Repository CLI surface
   As a developer using Cloche
-  I want to view and manage project repositories via the cloche CLI
-  So that I can configure multi-repo projects without editing config files by hand
+  I want to view project repositories via the cloche CLI
+  So that I can inspect my multi-repo project configuration
 
   Background:
     Given the daemon is running against a test project directory
 
-  # ─── cloche project display (L1) ────────────────────────────────────────────
+  # ─── cloche project display ──────────────────────────────────────────────────
 
-  Scenario: cloche project shows a Repositories section when repositories are declared
-    Given the project's .cloche config declares:
+  Scenario: cloche project shows a Repositories section when repositories are declared in config.toml
+    Given the project's config.toml declares:
       """
-      repository "backend" {
-        path    = "../backend"
-        url     = "https://github.com/org/backend"
-        default = true
-      }
-      repository "frontend" {
-        path = "../frontend"
-      }
+      [[repositories]]
+      name = "backend"
+      path = "./repos/backend"
+      default = true
+
+      [[repositories]]
+      name = "frontend"
+      path = "./repos/frontend"
       """
     When the user runs "cloche project"
     Then the command succeeds
     And the output contains "Repositories:"
     And the output contains "backend"
-    And the output contains "../backend"
-    And the output contains "https://github.com/org/backend"
+    And the output contains "./repos/backend"
     And the output contains "frontend"
 
-  Scenario: cloche project shows no Repositories section for a legacy single-repo project
-    Given the project's .cloche config has no repository blocks
-    When the user runs "cloche project"
-    Then the command succeeds
-    And the output does not contain "Repositories:"
+  # ─── cloche project repos subcommands ───────────────────────────────────────
 
-  # ─── cloche project repos subcommands (L2) ──────────────────────────────────
-
-  Scenario: cloche project repos list shows persisted repositories
-    Given the project has a stored repository named "backend" with path "../backend"
+  Scenario: cloche project repos list shows repositories from config.toml
+    Given the project's config.toml has a repository entry named "backend" with path "./repos/backend"
     When the user runs "cloche project repos list"
     Then the command succeeds
     And the output contains "backend"
-    And the output contains "../backend"
-
-  Scenario: cloche project repos add persists a new repository
-    Given the project has no stored repositories
-    When the user runs "cloche project repos add --name backend --path ../backend --url https://github.com/org/backend --default"
-    Then the command succeeds
-    When the user runs "cloche project repos list"
-    Then the command succeeds
-    And the output contains "backend"
-    And the output contains "../backend"
-    And the output contains "https://github.com/org/backend"
-
-  Scenario: cloche project repos remove deletes a repository
-    Given the project has a stored repository named "backend" with path "../backend"
-    When the user runs "cloche project repos remove --name backend"
-    Then the command succeeds
-    When the user runs "cloche project repos list"
-    Then the command succeeds
-    And the output does not contain "backend"
-
-  Scenario: cloche project shows Repositories from the DB
-    Given the project has a stored repository named "backend" with path "../backend"
-    And the project has a stored repository named "frontend" with path "../frontend"
-    When the user runs "cloche project"
-    Then the command succeeds
-    And the output contains "Repositories:"
-    And the output contains "backend"
-    And the output contains "frontend"
+    And the output contains "./repos/backend"
 
   # ─── Backward compatibility ──────────────────────────────────────────────────
 
+  Scenario: cloche project shows a deprecation warning and migration instructions for a legacy project with no repository config
+    Given the project's config.toml has no repository entries
+    When the user runs "cloche project"
+    Then the command succeeds
+    And the output does not contain "Repositories:"
+    And the output contains a deprecation warning about missing repository configuration
+    And the output contains migration instructions for adding repository configuration
+
   Scenario: Existing single-repo project works without config changes
-    Given the project's .cloche config has no repository blocks
+    Given the project's config.toml has no repository entries
     And the project has no stored repositories
     When the user runs "cloche project"
     Then the command succeeds
