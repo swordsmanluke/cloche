@@ -27,21 +27,32 @@ feature_title=$(bd show "$feature_id" --json 2>/dev/null | jq -r '.[0].title // 
 [ -z "$feature_title" ] && feature_title="Feature $feature_id"
 
 body_file="$(cloche get temp_file_dir)/test-plan-pr-body.md"
-cat > "$body_file" <<EOF
+agent_desc=""
+temp_file_dir=$(cloche get temp_file_dir 2>/dev/null || true)
+if [ -n "$temp_file_dir" ] && [ -f "$temp_file_dir/pr-description.md" ]; then
+  agent_desc=$(cat "$temp_file_dir/pr-description.md")
+fi
+
+if [ -n "$agent_desc" ]; then
+  printf '%s\n\n' "$agent_desc" > "$body_file"
+else
+  cat > "$body_file" <<EOF
 ## BDD test plan for: $feature_title
 
-This is the **first PR** in a vertical-development run for $feature_id. It contains
-only Gherkin \`.feature\` files and stub step definitions — no implementation.
+First PR in the vertical-development stack for \`$feature_id\`. Contains only
+Gherkin \`.feature\` files and pending step stubs — no implementation. Each
+subsequent layer PR makes a subset of these scenarios pass.
 
-The scenarios describe the feature's expected user-facing behavior. They will all
-fail (or be marked pending) right now, by design. Each subsequent layer PR in this
-stack should make a subset of them pass.
+EOF
+fi
 
-**Approve** if the scenarios capture the feature's intent correctly, then the
-implementation layers will begin.
+cat >> "$body_file" <<EOF
+---
+**Feature:** \`$feature_id\` · **Base:** \`$base\`
 
-**Request changes** to add, remove, or rewrite scenarios — the workflow will
-re-run an agent against your feedback and push updates.
+Approve if the scenarios capture the feature you wanted. Leave comments to
+rewrite/add/remove scenarios — \`address-test-plan-feedback\` picks comments up on
+the next 60s poll.
 EOF
 
 existing=$(gh pr list --head "$branch" --json number --jq '.[0].number' 2>/dev/null || true)

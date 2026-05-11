@@ -37,45 +37,65 @@ if [ -z "$layer_title" ]; then
   layer_title="Layer $layer_id"
 fi
 
+# PR body has three pieces, in priority order:
+#   1. The agent's own description (pr-description.md), if it wrote one. This
+#      is the reviewer's primary lens on the work — keep it intact.
+#   2. A metadata footer (task IDs, base branch) so reviewers don't have to
+#      dig for those.
+#   3. For stuck PRs, the agent's give-up note.
+agent_desc=""
+temp_file_dir=$(cloche get temp_file_dir 2>/dev/null || true)
+if [ -n "$temp_file_dir" ] && [ -f "$temp_file_dir/pr-description.md" ]; then
+  agent_desc=$(cat "$temp_file_dir/pr-description.md")
+fi
+
+body_file="$(cloche get temp_file_dir)/pr-body.md"
+
 if [ "$status" = "stuck" ]; then
   title="[stuck] $layer_title"
-  body_file="$(cloche get temp_file_dir)/pr-body.md"
   cat > "$body_file" <<EOF
 ## Status: needs help
 
 The vertical workflow's implement step gave up on this layer. The branch contains
-whatever partial work was completed before giving up.
-
-**Layer task:** $layer_id
-**Parent feature:** $feature_id
-**Base branch:** $base
-
-Review the diff and leave guidance as PR comments — the workflow will pick those up
-on the next poll, run the address-pr-feedback sub-workflow against them, and try
-again. Approve the PR once the layer is in good shape.
+whatever partial work was completed before giving up — review the diff, leave PR
+comments to redirect the next attempt, and the next poll tick will pick those up
+and run address-pr-feedback against them.
 
 EOF
   if [ -f ".cloche/runs/${CLOCHE_RUN_ID}/agent-give-up-reason.md" ]; then
-    echo "## Agent's last note" >> "$body_file"
+    echo "### Agent's give-up note" >> "$body_file"
     echo >> "$body_file"
     cat ".cloche/runs/${CLOCHE_RUN_ID}/agent-give-up-reason.md" >> "$body_file"
+    echo >> "$body_file"
+  fi
+  if [ -n "$agent_desc" ]; then
+    echo "### Partial-work summary (from the agent)" >> "$body_file"
+    echo >> "$body_file"
+    echo "$agent_desc" >> "$body_file"
+    echo >> "$body_file"
   fi
 else
   title="$layer_title"
-  body_file="$(cloche get temp_file_dir)/pr-body.md"
-  cat > "$body_file" <<EOF
+  # Success path: lead with the agent's description; fall back to a default
+  # only if the agent didn't write one (older agent runs, give-up race, etc.).
+  if [ -n "$agent_desc" ]; then
+    printf '%s\n\n' "$agent_desc" > "$body_file"
+  else
+    cat > "$body_file" <<EOF
 ## Layer ready for review
 
-**Layer task:** $layer_id
-**Parent feature:** $feature_id
-**Base branch:** $base
+This PR implements one vertical slice of the parent feature. Anything below this
+layer is mocked — those mocks will be replaced by the next layer's PR.
 
-This PR adds one vertical slice of the parent feature. Anything below this layer is
-mocked — those mocks will be replaced by the next layer's PR.
-
-Approve to unblock the next layer. Leave comments to request changes.
 EOF
+  fi
 fi
+
+# Common metadata footer.
+cat >> "$body_file" <<EOF
+---
+**Layer task:** \`$layer_id\` · **Parent feature:** \`$feature_id\` · **Base:** \`$base\`
+EOF
 
 # If a PR already exists for this branch (re-run), update it instead of creating.
 existing=$(gh pr list --head "$branch" --json number --jq '.[0].number' 2>/dev/null || true)
