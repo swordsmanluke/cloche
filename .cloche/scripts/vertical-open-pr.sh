@@ -10,6 +10,7 @@
 #   current_branch       — KV (layer branch name)
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/agent-creds.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/vertical-extract.sh"
 
 feature_id="${CLOCHE_TASK_ID:-}"
 layer_id=$(cloche get current_layer_id 2>/dev/null || true)
@@ -24,7 +25,10 @@ fi
 branch="vertical/${feature_id}/${layer_id}"
 cloche set current_branch "$branch"
 
-# Push the branch so gh pr create can see it.
+# Push the branch so gh pr create can see it. The daemon's extraction may have
+# placed the sub-workflow's commits on a differently-named local branch; rename
+# first so the push uses the workflow's expected name.
+rename_extracted_to "$branch"
 git push -u origin "$branch"
 
 # Build PR title and body.

@@ -11,6 +11,7 @@
 #   current_pr_number, current_branch
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/agent-creds.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/vertical-extract.sh"
 
 feature_id="${CLOCHE_TASK_ID:-}"
 if [ -z "$feature_id" ]; then
@@ -30,6 +31,7 @@ base="vertical/${feature_id}/${last_layer}"
 branch="vertical/${feature_id}/docs"
 cloche set current_branch "$branch"
 
+rename_extracted_to "$branch"
 git push -u origin "$branch"
 
 feature_title=$(bd show "$feature_id" --json 2>/dev/null | jq -r '.[0].title // empty')
