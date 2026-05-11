@@ -6,6 +6,7 @@
 # Writes:
 #   feedback_path — KV; path to a markdown file containing all open comments
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/agent-creds.sh"
 
 pr_number=$(clo get current_pr_number 2>/dev/null || true)
 if [ -z "$pr_number" ]; then
