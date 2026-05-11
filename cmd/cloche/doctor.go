@@ -111,6 +111,7 @@ func cmdDoctor(args []string) {
 	if info, err := os.Stat(clocheDir); err == nil && info.IsDir() {
 		results = append(results, dr.checkProjectConfig())
 		results = append(results, dr.checkWorkflows())
+		results = append(results, dr.checkImageSourceDir())
 
 		imageResult := dr.checkImageBuild()
 		results = append(results, imageResult)
@@ -439,6 +440,55 @@ func (dr *doctorRunner) checkWorkflows() checkResult {
 	}
 
 	return checkResult{label: label, status: checkOK}
+}
+
+// checkImageSourceDir verifies that the project image was built from the current
+// project directory. It warns when the image exists but carries a source-dir label
+// pointing elsewhere (EnsureImage will rebuild it, but this surfaces the anomaly).
+func (dr *doctorRunner) checkImageSourceDir() checkResult {
+	label := "Checking image source dir"
+
+	cfg, err := config.Load(dr.projectDir)
+	if err != nil {
+		return checkResult{
+			label:  label,
+			status: checkFail,
+			detail: "cannot load config: " + err.Error(),
+		}
+	}
+
+	image := cfg.Daemon.Image
+	if image == "" {
+		image = strings.ToLower(filepath.Base(dr.projectDir)) + "-cloche-agent:latest"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	rt, err := docker.NewRuntime()
+	if err != nil {
+		// Docker not available — skip silently; checkDocker covers this.
+		return checkResult{label: label, status: checkOK, detail: "docker not available"}
+	}
+
+	storedDir, err := rt.ImageSourceDir(ctx, image)
+	if err != nil {
+		// Image absent or label not present — nothing to warn about.
+		return checkResult{label: label, status: checkOK, detail: "image not present or label absent"}
+	}
+
+	if storedDir != dr.projectDir {
+		return checkResult{
+			label:  label,
+			status: checkWarning,
+			detail: fmt.Sprintf("image %s was built from %s (current: %s)", image, storedDir, dr.projectDir),
+			remediation: "The next image build will use the correct source directory.\n" +
+				"To force a rebuild now: cloche doctor --project " + dr.projectDir + "\n" +
+				"To remove the mismatched image manually: docker rmi " + image,
+		}
+	}
+
+	return checkResult{label: label, status: checkOK, detail: image}
 }
 
 // checkImageBuild ensures the project Docker image is built and up-to-date.
