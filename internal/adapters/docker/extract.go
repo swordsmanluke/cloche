@@ -320,11 +320,21 @@ func stagedFileCounts(ctx context.Context, worktreeDir string) (deletions, addit
 }
 
 // buildCommitMessage generates a squash-style commit message. The title
-// summarizes the workflow result. If the agent made commits inside the
-// container, their messages are included (like git merge --squash). Otherwise
-// falls back to a file-change summary.
+// prefers the agent's most recent commit subject — that line was written by
+// the in-container agent and typically describes what the run actually
+// produced ("Add BDD test plan for…", "Wire repository store into project
+// loader") rather than the bookkeeping prefix. Falls back to a generic
+// "cloche run X: Y" framing when no agent commits are present.
+//
+// The body always carries the file-change summary plus the full list of
+// agent commit messages (like `git merge --squash` would), so reviewers can
+// still see every step's wording.
 func buildCommitMessage(ctx context.Context, worktreeDir string, gitEnv []string, runID, workflowName, result string, containerCommits string) string {
-	title := fmt.Sprintf("cloche run %s: %s (%s)", runID, workflowName, result)
+	bookkeeping := fmt.Sprintf("cloche run %s: %s (%s)", runID, workflowName, result)
+	title := firstAgentCommitSubject(containerCommits)
+	if title == "" {
+		title = bookkeeping
+	}
 
 	statCmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--stat", "--stat-width=72")
 	statCmd.Dir = worktreeDir
@@ -333,6 +343,13 @@ func buildCommitMessage(ctx context.Context, worktreeDir string, gitEnv []string
 	statSummary := extractStatSummary(string(statOut))
 
 	var body strings.Builder
+	// Always include the bookkeeping line so the extracted commit still
+	// identifies which run produced it, even when the title is taken from
+	// the agent's commit.
+	if title != bookkeeping {
+		body.WriteString(bookkeeping)
+		body.WriteString("\n\n")
+	}
 	if statSummary != "" {
 		body.WriteString(statSummary)
 		body.WriteString("\n\n")
@@ -360,6 +377,36 @@ func buildCommitMessage(ctx context.Context, worktreeDir string, gitEnv []string
 	}
 
 	return title + "\n\n" + strings.TrimRight(body.String(), "\n")
+}
+
+// firstAgentCommitSubject returns the subject line of the most recent
+// non-bookkeeping commit in `containerCommits` (the squashed-list string
+// `containerCommitsFromDocker` produces). Bookkeeping subjects — `cloche run
+// …` and `Version X.Y.Z` lines that ride along from prior workflow auto-
+// commits — are skipped so the chosen subject describes the actual work the
+// agent did. Returns "" if no qualifying subject exists.
+func firstAgentCommitSubject(containerCommits string) string {
+	if containerCommits == "" {
+		return ""
+	}
+	var lastAgentSubject string
+	for _, raw := range strings.Split(containerCommits, "\n") {
+		line := strings.TrimRight(raw, " ")
+		// Only consider subject lines (those that start with "  * ").
+		const prefix = "  * "
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		subj := strings.TrimSpace(line[len(prefix):])
+		if subj == "" {
+			continue
+		}
+		if strings.HasPrefix(subj, "cloche run ") || strings.HasPrefix(subj, "Version ") {
+			continue
+		}
+		lastAgentSubject = subj
+	}
+	return lastAgentSubject
 }
 
 // containerCommitsFromDocker reads commit messages from the container's git
