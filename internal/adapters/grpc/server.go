@@ -2460,6 +2460,12 @@ func limitFromContext(ctx context.Context) int {
 // under that limit and allow for protobuf encoding overhead.
 const maxLogChunkSize = 512 * 1024
 
+// maxContextValueBytes caps the per-key value size in the daemon's KV store.
+// Big enough to hold task descriptions (which can run into a few KB of
+// markdown) and per-step prompt context, small enough to keep KV from
+// turning into an arbitrary blob store.
+const maxContextValueBytes = 64 * 1024
+
 // splitIntoChunks splits content into chunks at line boundaries, each at most
 // maxSize bytes. Returns a single-element slice for small content.
 func splitIntoChunks(content string, maxSize int) []string {
@@ -3380,8 +3386,9 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 		}
 	}
 
-	// Discover workflows.
+	// Discover workflows and repository blocks from .cloche files.
 	var containerWorkflows, hostWorkflows []string
+	var repositories []*pb.Repository
 	clocheDir := filepath.Join(projectDir, ".cloche")
 	entries, _ := filepath.Glob(filepath.Join(clocheDir, "*.cloche"))
 	for _, path := range entries {
@@ -3404,6 +3411,37 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 				continue
 			}
 			containerWorkflows = append(containerWorkflows, wf.Name)
+			// ParseRepositoriesFrom is more lenient than ParseForContainer and
+			// operates on the same bytes that just parsed successfully, so errors
+			// here are unreachable in practice — best-effort is correct.
+			repos, _ := dsl.ParseRepositoriesFrom(string(data))
+			for _, r := range repos {
+				repositories = append(repositories, &pb.Repository{
+					Name:    r.Name,
+					Path:    r.Path,
+					Url:     r.URL,
+					Default: r.Default,
+				})
+			}
+		}
+	}
+
+	// Also populate repositories from config.toml [[repositories]] entries.
+	for _, r := range cfg.Repositories {
+		// Avoid duplicating repos already found in .cloche DSL files.
+		found := false
+		for _, existing := range repositories {
+			if existing.Name == r.Name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			repositories = append(repositories, &pb.Repository{
+				Name:    r.Name,
+				Path:    r.Path,
+				Default: r.Default,
+			})
 		}
 	}
 
@@ -3411,19 +3449,20 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 	sort.Strings(hostWorkflows)
 
 	return &pb.GetProjectInfoResponse{
-		ProjectDir:         projectDir,
-		Name:               label,
-		Active:             cfg.Active,
-		Concurrency:        int32(cfg.Orchestration.Concurrency),
-		StaggerSeconds:     cfg.Orchestration.StaggerSeconds,
-		DedupSeconds:       cfg.Orchestration.DedupSeconds,
-		EvolutionEnabled:   cfg.Evolution.Enabled,
-		LoopRunning:        loopRunning,
-		ActiveRuns:         activeRuns,
-		ContainerWorkflows: containerWorkflows,
-		HostWorkflows:      hostWorkflows,
+		ProjectDir:             projectDir,
+		Name:                   label,
+		Active:                 cfg.Active,
+		Concurrency:            int32(cfg.Orchestration.Concurrency),
+		StaggerSeconds:         cfg.Orchestration.StaggerSeconds,
+		DedupSeconds:           cfg.Orchestration.DedupSeconds,
+		EvolutionEnabled:       cfg.Evolution.Enabled,
+		LoopRunning:            loopRunning,
+		ActiveRuns:             activeRuns,
+		ContainerWorkflows:     containerWorkflows,
+		HostWorkflows:          hostWorkflows,
 		StopOnError:            cfg.Orchestration.StopOnError,
 		MaxConsecutiveFailures: int32(cfg.Orchestration.MaxConsecutiveFailures),
+		Repositories:           repositories,
 	}, nil
 }
 
@@ -3837,12 +3876,10 @@ func (s *ClocheServer) GetContextKey(ctx context.Context, req *pb.GetContextKeyR
 }
 
 // SetContextKey sets a value in the per-attempt KV namespace.
-// Returns INVALID_ARGUMENT if len(value) > 1024. Larger payloads should be
-// written to a host file under the run's temp_file_dir (which is bind-mounted
-// into container steps) with the path stashed in KV.
+// Returns INVALID_ARGUMENT if len(value) > maxContextValueBytes.
 func (s *ClocheServer) SetContextKey(ctx context.Context, req *pb.SetContextKeyRequest) (*pb.SetContextKeyResponse, error) {
-	if len(req.Value) > 1024 {
-		return nil, status.Errorf(codes.InvalidArgument, "value exceeds 1 KB limit (%d bytes); write large payloads to a host file under temp_file_dir and stash the path", len(req.Value))
+	if len(req.Value) > maxContextValueBytes {
+		return nil, status.Errorf(codes.InvalidArgument, "value exceeds %d byte limit (%d bytes)", maxContextValueBytes, len(req.Value))
 	}
 	if err := s.store.SetContextKey(ctx, req.TaskId, req.AttemptId, req.RunId, req.Key, req.Value); err != nil {
 		return nil, err

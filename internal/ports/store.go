@@ -126,3 +126,13 @@ type HumanPollStore interface {
 	DeleteHumanPoll(ctx context.Context, runID, stepName string) error
 	ListHumanPolls(ctx context.Context, runID string) ([]*HumanPollRecord, error)
 }
+
+// RepositoryStore persists repository records for each project.
+// On first access for a project with no stored repositories, implementations
+// must auto-seed a single default repository pointing at the project root.
+type RepositoryStore interface {
+	SaveRepository(projectDir string, repo domain.Repository) error
+	GetRepository(projectDir, name string) (*domain.Repository, error)
+	ListRepositories(projectDir string) ([]domain.Repository, error)
+	DeleteRepository(projectDir, name string) error
+}

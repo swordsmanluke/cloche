@@ -56,6 +56,13 @@ type GitConfig struct {
 	SSHKey string `toml:"ssh_key"`
 }
 
+// RepositoryConfig describes a repository entry declared in config.toml.
+type RepositoryConfig struct {
+	Name    string `toml:"name"`
+	Path    string `toml:"path"`
+	Default bool   `toml:"default"`
+}
+
 type Config struct {
 	Active        bool                `toml:"active"`
 	Daemon        DaemonConfig        `toml:"daemon"`
@@ -63,6 +70,7 @@ type Config struct {
 	Orchestration OrchestrationConfig `toml:"orchestration"`
 	Agents        AgentsConfig        `toml:"agents"`
 	Git           GitConfig           `toml:"git"`
+	Repositories  []RepositoryConfig  `toml:"repositories"`
 }
 
 func defaults() Config {

@@ -216,6 +216,11 @@ func migrate(db *sql.DB) error {
 		return errHP
 	}
 
+	// v7: Repository store — persists per-project repository records.
+	if err := migrateRepositoriesTable(db); err != nil {
+		return fmt.Errorf("v7 repositories table migration: %w", err)
+	}
+
 	return nil
 }
 
