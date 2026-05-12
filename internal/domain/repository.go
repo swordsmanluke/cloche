@@ -6,7 +6,6 @@ package domain
 type Repository struct {
 	Name      string
 	Path      string
-	RemoteURL string
 	IsDefault bool
 }
 

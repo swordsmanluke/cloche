@@ -231,7 +231,7 @@ func (s *repositoryCtx) theUserRunsCommand(cmd string) error {
 	if len(parts) >= 4 && parts[0] == "cloche" && parts[1] == "project" && parts[2] == "repos" && parts[3] == "list" {
 		projectcli.WriteReposList(resp.Repositories, &buf)
 	} else {
-		bddWriteProjectInfo(resp, &buf)
+		projectcli.WriteProjectInfo(resp, &buf)
 	}
 
 	s.commandOutput = buf.String()
@@ -263,28 +263,6 @@ func (s *repositoryCtx) theOutputNotContains(text string) error {
 func (s *repositoryCtx) theProjectHasNoStoredRepos() error {
 	// No-op for L2: there is no repository store. Repositories come solely from config.toml.
 	return nil
-}
-
-// bddWriteProjectInfo mirrors printProjectInfo in cmd/cloche/project.go.
-func bddWriteProjectInfo(resp *pb.GetProjectInfoResponse, w *bytes.Buffer) {
-	fmt.Fprintf(w, "Project:     %s\n", resp.Name)
-	fmt.Fprintf(w, "Directory:   %s\n", resp.ProjectDir)
-
-	if len(resp.Repositories) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Repositories:")
-		for _, repo := range resp.Repositories {
-			def := ""
-			if repo.Default {
-				def = "  (default)"
-			}
-			if repo.Url != "" {
-				fmt.Fprintf(w, "  %-20s  %-30s  %s%s\n", repo.Name, repo.Path, repo.Url, def)
-			} else {
-				fmt.Fprintf(w, "  %-20s  %s%s\n", repo.Name, repo.Path, def)
-			}
-		}
-	}
 }
 
 // ─── DSL implementations (L1) ────────────────────────────────────────────────
