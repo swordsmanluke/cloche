@@ -23,6 +23,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
+	"github.com/cloche-dev/cloche/internal/project"
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/evolution"
 	"github.com/cloche-dev/cloche/internal/host"
@@ -56,6 +57,7 @@ type ClocheServer struct {
 	hostCancels     map[string]context.CancelFunc // run_id -> cancel fn (for host runs)
 	loops           map[string]*host.Loop         // project_dir -> orchestration loop
 	activityLoggers map[string]*activitylog.Logger // project_dir -> activity logger
+	projects        map[string]*domain.Project    // project_dir -> cached project (refreshed on run)
 
 	// extractResultsFn is the function used to extract run results. Defaults to
 	// docker.ExtractResults; may be overridden in tests.
@@ -81,6 +83,7 @@ func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *Cl
 		hostCancels:       make(map[string]context.CancelFunc),
 		loops:             make(map[string]*host.Loop),
 		activityLoggers:   make(map[string]*activitylog.Logger),
+		projects:          make(map[string]*domain.Project),
 		extractResultsFn:  docker.ExtractResults,
 		prepareWorktreeFn: docker.PrepareExtractWorktree,
 		extractWorktrees:  make(map[string]docker.ExtractWorktree),
@@ -99,10 +102,37 @@ func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureSto
 		hostCancels:       make(map[string]context.CancelFunc),
 		loops:             make(map[string]*host.Loop),
 		activityLoggers:   make(map[string]*activitylog.Logger),
+		projects:          make(map[string]*domain.Project),
 		extractResultsFn:  docker.ExtractResults,
 		prepareWorktreeFn: docker.PrepareExtractWorktree,
 		extractWorktrees:  make(map[string]docker.ExtractWorktree),
 	}
+}
+
+// loadProject returns the cached domain.Project for projectDir, loading it with
+// project.Load if the cache is empty. Errors are non-fatal: the caller receives
+// a project with no repositories rather than an RPC failure.
+func (s *ClocheServer) loadProject(dir string) *domain.Project {
+	s.mu.Lock()
+	p, ok := s.projects[dir]
+	s.mu.Unlock()
+	if ok {
+		return p
+	}
+	return s.refreshProject(dir)
+}
+
+// refreshProject re-loads the project from disk and updates the cache.
+func (s *ClocheServer) refreshProject(dir string) *domain.Project {
+	p, err := project.Load(dir)
+	if err != nil {
+		log.Printf("project.Load %s: %v", dir, err)
+		p = &domain.Project{Dir: dir}
+	}
+	s.mu.Lock()
+	s.projects[dir] = p
+	s.mu.Unlock()
+	return p
 }
 
 // normalizeProjectDir resolves linked git worktrees back to the main worktree
@@ -507,6 +537,10 @@ func (s *ClocheServer) handleHostWorkflowRequest(ctx context.Context, containerR
 
 func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
 	req.ProjectDir = normalizeProjectDir(req.ProjectDir)
+
+	// Refresh the project cache on every run so manual edits to config.toml
+	// between runs are picked up without restarting the daemon.
+	s.refreshProject(req.ProjectDir)
 
 	// Ensure per-project log migration has run for this project.
 	if migrator, ok := s.store.(ports.ProjectMigrator); ok {
@@ -3386,9 +3420,8 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 		}
 	}
 
-	// Discover workflows and repository blocks from .cloche files.
+	// Discover workflows from .cloche files.
 	var containerWorkflows, hostWorkflows []string
-	var repositories []*pb.Repository
 	clocheDir := filepath.Join(projectDir, ".cloche")
 	entries, _ := filepath.Glob(filepath.Join(clocheDir, "*.cloche"))
 	for _, path := range entries {
@@ -3411,38 +3444,18 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 				continue
 			}
 			containerWorkflows = append(containerWorkflows, wf.Name)
-			// ParseRepositoriesFrom is more lenient than ParseForContainer and
-			// operates on the same bytes that just parsed successfully, so errors
-			// here are unreachable in practice — best-effort is correct.
-			repos, _ := dsl.ParseRepositoriesFrom(string(data))
-			for _, r := range repos {
-				repositories = append(repositories, &pb.Repository{
-					Name:    r.Name,
-					Path:    r.Path,
-					Url:     r.URL,
-					Default: r.Default,
-				})
-			}
 		}
 	}
 
-	// Also populate repositories from config.toml [[repositories]] entries.
-	for _, r := range cfg.Repositories {
-		// Avoid duplicating repos already found in .cloche DSL files.
-		found := false
-		for _, existing := range repositories {
-			if existing.Name == r.Name {
-				found = true
-				break
-			}
-		}
-		if !found {
-			repositories = append(repositories, &pb.Repository{
-				Name:    r.Name,
-				Path:    r.Path,
-				Default: r.Default,
-			})
-		}
+	// Load repositories from config.toml via the project loader (cached; refreshed on run).
+	proj := s.loadProject(projectDir)
+	var repositories []*pb.Repository
+	for _, r := range proj.Repositories {
+		repositories = append(repositories, &pb.Repository{
+			Name:    r.Name,
+			Path:    r.Path,
+			Default: r.IsDefault,
+		})
 	}
 
 	sort.Strings(containerWorkflows)
