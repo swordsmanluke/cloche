@@ -74,7 +74,6 @@ func ParseForContainer(input string) (*domain.Workflow, error) {
 // ParseAll parses a .cloche file that may contain multiple workflows.
 // Workflows default to LocationContainer but a "host { }" block overrides
 // the location to LocationHost, so any .cloche file can define host workflows.
-// Top-level repository blocks are silently skipped.
 func ParseAll(input string) (map[string]*domain.Workflow, error) {
 	p := &Parser{lexer: NewLexer(input), location: domain.LocationContainer}
 	p.advance() // load current
@@ -82,12 +81,6 @@ func ParseAll(input string) (map[string]*domain.Workflow, error) {
 
 	workflows := make(map[string]*domain.Workflow)
 	for p.current.Type != TokenEOF {
-		if p.current.Type == TokenIdent && p.current.Literal == "repository" && p.peek.Type == TokenString {
-			if err := p.skipTopLevelBlock(); err != nil {
-				return nil, err
-			}
-			continue
-		}
 		wf, err := p.parseWorkflow()
 		if err != nil {
 			return nil, err
@@ -177,16 +170,6 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 				return nil, err
 			}
 			wf.Collects = append(wf.Collects, collect)
-		} else if p.current.Type == TokenIdent && p.current.Literal == "repos" && p.peek.Type == TokenEquals {
-			p.advance() // consume "repos"
-			if _, err := p.expect(TokenEquals); err != nil {
-				return nil, err
-			}
-			repos, err := p.parseStringList()
-			if err != nil {
-				return nil, fmt.Errorf("parsing repos list: %w", err)
-			}
-			wf.Repos = repos
 		} else if p.current.Type == TokenIdent && p.peek.Type == TokenLBrace {
 			if err := p.parseWorkflowConfig(wf); err != nil {
 				return nil, err
@@ -245,129 +228,6 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 	}
 
 	return wf, nil
-}
-
-// Repository holds a parsed top-level repository block from a .cloche file.
-// Example: repository "backend" { path = "../backend", url = "https://...", default = true }
-type Repository struct {
-	Name    string
-	Path    string
-	URL     string
-	Default bool
-}
-
-// ParseRepositoriesFrom parses all top-level repository blocks in a .cloche file.
-// Workflow blocks are skipped. Returns an empty slice (not an error) when no
-// repository blocks are present.
-func ParseRepositoriesFrom(input string) ([]*Repository, error) {
-	p := &Parser{lexer: NewLexer(input), location: domain.LocationContainer}
-	p.advance()
-	p.advance()
-
-	var repos []*Repository
-	for p.current.Type != TokenEOF {
-		if p.current.Type == TokenIdent && p.current.Literal == "repository" && p.peek.Type == TokenString {
-			repo, err := p.parseRepository()
-			if err != nil {
-				return nil, err
-			}
-			repos = append(repos, repo)
-		} else if p.current.Type == TokenIdent && p.current.Literal == "workflow" {
-			// Skip workflow blocks entirely.
-			if err := p.skipTopLevelBlock(); err != nil {
-				return nil, err
-			}
-		} else {
-			// Unknown top-level construct; stop gracefully.
-			break
-		}
-	}
-	return repos, nil
-}
-
-func (p *Parser) parseRepository() (*Repository, error) {
-	p.advance() // consume "repository"
-
-	nameTok, err := p.expect(TokenString)
-	if err != nil {
-		return nil, fmt.Errorf("expected repository name string: %w", err)
-	}
-
-	if _, err := p.expect(TokenLBrace); err != nil {
-		return nil, err
-	}
-
-	repo := &Repository{Name: nameTok.Literal}
-
-	for p.current.Type != TokenRBrace && p.current.Type != TokenEOF {
-		keyTok, err := p.expect(TokenIdent)
-		if err != nil {
-			return nil, fmt.Errorf("expected field name in repository block: %w", err)
-		}
-		if _, err := p.expect(TokenEquals); err != nil {
-			return nil, err
-		}
-		switch keyTok.Literal {
-		case "path":
-			val, err := p.parseValue()
-			if err != nil {
-				return nil, err
-			}
-			repo.Path = val
-		case "url":
-			val, err := p.parseValue()
-			if err != nil {
-				return nil, err
-			}
-			repo.URL = val
-		case "default":
-			val, err := p.parseValue()
-			if err != nil {
-				return nil, err
-			}
-			repo.Default = val == "true"
-		default:
-			// Skip unknown fields.
-			if _, err := p.parseValue(); err != nil {
-				return nil, err
-			}
-		}
-		// Optional comma between fields (e.g. single-line blocks).
-		if p.current.Type == TokenComma {
-			p.advance()
-		}
-	}
-
-	if _, err := p.expect(TokenRBrace); err != nil {
-		return nil, err
-	}
-
-	return repo, nil
-}
-
-// skipTopLevelBlock skips a top-level block of the form: keyword "name" { ... }
-func (p *Parser) skipTopLevelBlock() error {
-	p.advance() // consume keyword (e.g. "workflow")
-	if p.current.Type == TokenString {
-		p.advance() // consume name string
-	}
-	if p.current.Type != TokenLBrace {
-		return fmt.Errorf("line %d: expected '{' in top-level block", p.current.Line)
-	}
-	depth := 0
-	for p.current.Type != TokenEOF {
-		if p.current.Type == TokenLBrace {
-			depth++
-		} else if p.current.Type == TokenRBrace {
-			depth--
-			if depth == 0 {
-				p.advance()
-				return nil
-			}
-		}
-		p.advance()
-	}
-	return fmt.Errorf("unexpected EOF in block")
 }
 
 func (p *Parser) parseWorkflowConfig(wf *domain.Workflow) error {

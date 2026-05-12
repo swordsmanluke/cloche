@@ -228,13 +228,6 @@ message GetProjectInfoRequest {
   string name = 2;         // Resolve by project label (e.g. "cloche")
 }
 
-message Repository {
-  string name = 1;
-  string path = 2;
-  string url = 3;
-  bool default = 4;
-}
-
 message GetProjectInfoResponse {
   string project_dir = 1;
   string name = 2;
@@ -251,7 +244,6 @@ message GetProjectInfoResponse {
   bool error_halted = 13;       // true when loop is halted due to an unrecovered error
   string halt_error = 14;       // the error that caused the halt
   int32 max_consecutive_failures = 15; // halt loop after N consecutive failures
-  repeated Repository repositories = 16;
 }
 
 message GetVersionRequest {}

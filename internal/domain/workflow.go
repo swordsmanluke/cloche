@@ -92,7 +92,6 @@ type Workflow struct {
 	Collects  []Collect
 	EntryStep string
 	Config    map[string]string // workflow-level config (e.g. "container.image")
-	Repos     []string          // repos = ["name", ...] — repo names this workflow depends on
 }
 
 // ContainerID returns the container id for this workflow.
