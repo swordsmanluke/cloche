@@ -2861,7 +2861,12 @@ func (s *ClocheServer) StopRun(ctx context.Context, req *pb.StopRunRequest) (*pb
 
 	var stopped int
 	for _, run := range activeRuns {
-		if run.State != domain.RunStatePending && run.State != domain.RunStateRunning {
+		// Skip terminal states only. RunStateWaiting (poll/human steps awaiting
+		// external input) is non-terminal and must be stoppable — otherwise a
+		// workflow parked at a poll step appears as "no active runs" to
+		// `cloche stop`, even though it's still consuming resources.
+		switch run.State {
+		case domain.RunStateSucceeded, domain.RunStateFailed, domain.RunStateCancelled:
 			continue
 		}
 

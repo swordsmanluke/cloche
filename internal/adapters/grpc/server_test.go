@@ -3124,6 +3124,46 @@ func TestServer_StopRun_StopsUserInitiatedHostRun(t *testing.T) {
 	assert.Equal(t, domain.RunStateCancelled, r.State)
 }
 
+// TestServer_StopRun_StopsWaitingRun verifies that a run parked at a poll
+// step (RunStateWaiting) can be stopped. Previously the handler only treated
+// Pending and Running as active, so calling stop on a workflow waiting at a
+// poll-pr or human step incorrectly returned "no active runs".
+func TestServer_StopRun_StopsWaitingRun(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// A host workflow parked at a poll step.
+	hostRun := domain.NewRun("wait1-vertical", "vertical")
+	hostRun.TaskID = "user-wait1"
+	hostRun.IsHost = true
+	hostRun.Start()
+	hostRun.State = domain.RunStateWaiting
+	require.NoError(t, store.CreateRun(ctx, hostRun))
+
+	cancelled := make(chan struct{})
+	cancelFn := func() { close(cancelled) }
+
+	rt := &mockStopRuntime{}
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+	srv.AddActiveHostRun("wait1-vertical", cancelFn)
+
+	_, err = srv.StopRun(ctx, &pb.StopRunRequest{TaskId: "user-wait1"})
+	require.NoError(t, err, "stopping a Waiting run should succeed")
+
+	select {
+	case <-cancelled:
+	default:
+		t.Fatal("expected host run cancel function to be called")
+	}
+
+	r, err := store.GetRun(ctx, "wait1-vertical")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateCancelled, r.State)
+}
+
 // TestResumeTarget_TaskID_WithoutAttemptStore verifies that cloche resume
 // accepts v2 task IDs. The run carries a task_id on the run record itself,
 // so the resolver can find it via a task_id scan even without a saved attempt.
