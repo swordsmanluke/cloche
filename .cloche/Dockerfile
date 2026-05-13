@@ -17,35 +17,27 @@ RUN apt-get update \
 
 RUN npm install -g @anthropic-ai/claude-code
 
-# Bake in cloche-bot credentials so the agent can push branches and open PRs as
-# the cloche-bot github user (cloche@perfectlunacy.com), not the developer's own
-# identity. The credentials live in .cloche/credentials/ on the host (gitignored,
-# clocheignored) and are copied into /home/agent/.ssh/ here. The image stays on
-# this host — never push it to a registry.
+# Optionally bake in a fixed git identity + SSH key so the agent can push
+# branches and open PRs as a dedicated bot account instead of the developer's.
+# This is only needed for the cloche project's own `vertical` workflow;
+# downstream users of cloche don't need it.
 #
-# Files in .cloche/credentials/ (only id_ed25519 is required):
-#   id_ed25519       — private SSH key (mode 600)
-#   id_ed25519.pub   — public SSH key (mode 644)
-#   gh_token         — optional; PAT for `gh` CLI (HTTPS) operations
-COPY .cloche/credentials/ /tmp/cloche-credentials/
-RUN install -d -m 700 -o agent -g agent /home/agent/.ssh \
-    && install -m 600 -o agent -g agent /tmp/cloche-credentials/id_ed25519 /home/agent/.ssh/id_ed25519 \
-    && install -m 644 -o agent -g agent /tmp/cloche-credentials/id_ed25519.pub /home/agent/.ssh/id_ed25519.pub \
-    && ssh-keyscan -H github.com >> /home/agent/.ssh/known_hosts 2>/dev/null \
-    && chmod 644 /home/agent/.ssh/known_hosts \
-    && chown agent:agent /home/agent/.ssh/known_hosts \
-    && printf 'Host github.com\n  IdentityFile /home/agent/.ssh/id_ed25519\n  IdentitiesOnly yes\n  User git\n' \
-       > /home/agent/.ssh/config \
-    && chmod 600 /home/agent/.ssh/config \
-    && chown agent:agent /home/agent/.ssh/config \
-    && if [ -f /tmp/cloche-credentials/gh_token ]; then \
-         install -m 600 -o agent -g agent /tmp/cloche-credentials/gh_token /home/agent/.gh_token; \
-       fi \
-    && rm -rf /tmp/cloche-credentials
-
-# Bot git identity for the agent user. Layer agents inherit this when they commit.
-RUN gosu agent git config --global user.email "cloche@perfectlunacy.com" \
-    && gosu agent git config --global user.name "cloche-bot"
+# Configuration lives in .cloche/credentials/gituser.toml (gitignored), which
+# names a key file in the same directory:
+#
+#   name    = "cloche-bot"
+#   email   = "cloche@perfectlunacy.com"
+#   ssh_key = "id_ed25519"
+#
+# When .cloche/credentials/ is empty or gituser.toml is absent, this step
+# completes without configuring any identity — the agent uses whatever the
+# host wires in via [git] in config.toml at run time. The Makefile creates
+# an empty .cloche/credentials/ before `docker build` so the COPY below
+# always has a source. See .cloche/setup-credentials.sh for the full schema.
+COPY .cloche/credentials/    /tmp/cloche-credentials/
+COPY .cloche/setup-credentials.sh /tmp/setup-credentials.sh
+RUN bash /tmp/setup-credentials.sh \
+    && rm -rf /tmp/cloche-credentials /tmp/setup-credentials.sh
 
 # If a gh token was baked in, log gh in and let it set up the HTTPS git credential
 # helper. Failure is non-fatal so images without a token still build (SSH-only

@@ -31,6 +31,10 @@ docker-base:
 		.
 
 docker-build: docker-base
+	@# .cloche/Dockerfile has an optional COPY of .cloche/credentials/. The
+	@# directory is gitignored and only present on cloche developer machines;
+	@# create an empty placeholder so the COPY always has a source.
+	@mkdir -p .cloche/credentials
 	docker build -t cloche-agent:latest -f .cloche/Dockerfile .
 
 install-sh: build docker-build
