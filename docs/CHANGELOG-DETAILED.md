@@ -1,5 +1,11 @@
 # Cloche Detailed Changelog
 
+## v3.15.1 — 2026-05-13
+
+### Breaking
+
+- `27d300a` Bot credential setup for the agent image changed from hard-required bare SSH key files to an optional `gituser.toml`-driven scheme (`name`/`email`/`ssh_key` fields); `make install` now creates an empty `.cloche/credentials/` placeholder so the build works on fresh clones. Migration: if you previously had `.cloche/credentials/id_ed25519` configured, create `.cloche/credentials/gituser.toml` referencing it (see `.cloche/setup-credentials.sh` for the full schema).
+
 ## v3.15.0 — 2026-05-13
 
 ### Features
