@@ -1,5 +1,15 @@
 # Cloche Detailed Changelog
 
+## v3.14.21 — 2026-05-12
+
+### Features
+
+- Adds `[[repositories]]` array-of-tables section to `config.toml` for declaring named source-code repositories (`name`, `path`, `default` fields). Loaded by a new `internal/project` package into `domain.Project`.
+- Adds top-level `repository "name" { path, url, default }` block to the `.cloche` DSL. `ParseRepositoriesFrom` reads repository blocks from a file; `ParseAll` silently skips them so existing workflow parsing is unaffected.
+- Adds `repos = ["name", ...]` workflow-level field to the DSL, stored in `domain.Workflow.Repos`. Documents which repositories a workflow depends on.
+- `cloche project` now includes a `Repositories:` section listing each repository's name, path, URL, and default flag when repositories are declared. New `cloche project repos list` subcommand prints the repository table in isolation.
+- Adds `Repository` proto message to `GetProjectInfoResponse` (field 16); repositories are returned by the `GetProjectInfo` gRPC RPC.
+
 ## v3.14.18 — 2026-05-05
 
 ### Features

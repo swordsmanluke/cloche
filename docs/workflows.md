@@ -183,6 +183,42 @@ full resolution order is: step-level > agent declaration > workflow-level block 
 type) steps may reference an agent. Duplicate agent names within a workflow are a parse
 error. An agent declaration without a `command` field is a parse error.
 
+## Repository Declarations
+
+Repositories are configured in `.cloche/config.toml` as `[[repositories]]` entries.
+Within `.cloche` files, top-level `repository` blocks annotate each repository with a
+remote URL:
+
+```
+repository "backend" {
+  path    = "./repos/backend"
+  url     = "https://github.com/example/backend"
+  default = true
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `path` | yes | Path relative to the project root. |
+| `url` | no | Remote URL (informational). |
+| `default` | no | Mark as the default repository. |
+
+Repository blocks are top-level constructs, not nested inside `workflow` blocks.
+`ParseAll` silently skips them; `ParseRepositoriesFrom` reads only repository blocks
+from a file.
+
+**Workflow-level `repos` field** — workflows can declare which repositories they use:
+
+```
+workflow "develop-backend" {
+  repos = ["backend"]
+  ...
+}
+```
+
+`repos` is a list of repository names. It documents intent and surfaces in
+`cloche project`; the runtime does not enforce it.
+
 ## Key Properties
 
 **Step type is inferred from content.** A `prompt` field makes it an agent step; a `run`

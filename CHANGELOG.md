@@ -1,5 +1,11 @@
 # Cloche Changelog
 
+## v3.14.21 — 2026-05-12
+
+### Features
+
+- Repository support: declare named source-code repositories in `[[repositories]]` config.toml entries; annotate them with remote URLs via top-level `repository "name" { ... }` blocks in `.cloche` files; reference them from workflows with `repos = ["name"]`. `cloche project` now shows a `Repositories:` section; `cloche project repos list` prints the repository table.
+
 ## v3.14.18 — 2026-05-05
 
 ### Features

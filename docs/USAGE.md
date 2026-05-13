@@ -121,6 +121,47 @@ workflow "main" {
 Supported keys: `agent_command`, `agent_args`. Step-level `agent_command` and
 `agent_args` config keys override the workflow-level `host {}` defaults.
 
+### Repository Declarations
+
+Repositories are declared in two places:
+
+**`config.toml`** — declares the repositories available to the project (see
+[`[[repositories]]`](#repositories-1) in the configuration reference below).
+
+**`.cloche` files** — optional top-level `repository` blocks annotate each
+repository with a remote URL. These blocks are file-level (not inside a `workflow`
+block) and are parsed independently from workflows:
+
+```
+repository "backend" {
+  path    = "./repos/backend"
+  url     = "https://github.com/example/backend"
+  default = true
+}
+
+repository "frontend" {
+  path = "./repos/frontend"
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `path` | yes | Path relative to the project root. |
+| `url` | no | Remote URL (informational; not used by the runtime). |
+| `default` | no | Mark as the default repository for runs. Only one repository should be marked default. |
+
+**Workflow-level `repos` field** — workflows may declare which repositories they use:
+
+```
+workflow "develop-backend" {
+  repos = ["backend"]
+  ...
+}
+```
+
+`repos` is a list of repository names declared in `config.toml`. It documents intent
+and is visible in `cloche project`; the runtime does not yet enforce it.
+
 ### Agent Declarations
 
 Workflows can declare named agents at the workflow level. An `agent` block names a
@@ -1106,6 +1147,7 @@ Show project info and config.
 
 ```
 cloche project [--name <label>]
+cloche project repos list [--name <label>]
 ```
 
 By default, looks up the project by the current working directory. Use `--name` to look
@@ -1115,12 +1157,22 @@ up a project by its registered label instead.
 |------|---------|-------------|
 | `--name <label>` | _(cwd lookup)_ | Look up project by label (e.g. `cloche`) instead of directory. |
 
-Output includes: config settings (active, concurrency, stagger, dedup, stop_on_error,
-max_consecutive_failures, evolution), orchestrator loop state (running/stopped/halted),
-currently active runs, and known container and host workflow names. When the loop is
-halted due to `stop_on_error`, `max_consecutive_failures`, or a container infrastructure
-failure (image build failure, container crash, unexpected exit, or stuck workflow
-detected), the halt error message is displayed.
+`cloche project` output includes: config settings (active, concurrency, stagger, dedup,
+stop_on_error, max_consecutive_failures, evolution), orchestrator loop state
+(running/stopped/halted), currently active runs, known container and host workflow names,
+and a `Repositories:` section listing each repository's name, path, and URL when
+repositories are declared in `config.toml`. When the loop is halted due to
+`stop_on_error`, `max_consecutive_failures`, or a container infrastructure failure
+(image build failure, container crash, unexpected exit, or stuck workflow detected), the
+halt error message is displayed.
+
+`cloche project repos list` prints the repository table in isolation:
+
+```
+NAME                  PATH                            FLAGS
+backend               ./repos/backend                 https://github.com/example/backend  default
+frontend              ./repos/frontend
+```
 
 ### `cloche get`
 
@@ -1506,6 +1558,32 @@ The convention: any workflow script that commits or pushes on the bot's behalf
 should honor these env vars with a local fallback (so it still works when
 nothing is configured). The scaffolded `prepare-merge`/`merge` scripts follow
 this pattern.
+
+### `[[repositories]]`
+
+Declares the source-code repositories available to the project. Each entry is a
+TOML array-of-tables item:
+
+```toml
+[[repositories]]
+name    = "backend"
+path    = "./repos/backend"
+default = true
+
+[[repositories]]
+name = "frontend"
+path = "./repos/frontend"
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `name` | _(required)_ | Identifier used to reference this repository from workflow `repos` fields. |
+| `path` | _(required)_ | Path relative to the project root. |
+| `default` | `false` | Mark this repository as the default. At most one repository should be marked default. |
+
+Repositories appear in `cloche project` output and in `cloche project repos list`.
+Remote URL annotation is done via top-level `repository` blocks in `.cloche` files
+(see [Repository Declarations](#repository-declarations) above).
 
 ## `cloched` Flags
 
