@@ -3415,20 +3415,31 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 	sort.Strings(containerWorkflows)
 	sort.Strings(hostWorkflows)
 
+	var repositories []*pb.Repository
+	for _, r := range cfg.Repositories {
+		repositories = append(repositories, &pb.Repository{
+			Name:    r.Name,
+			Path:    r.Path,
+			Url:     r.URL,
+			Default: r.Default,
+		})
+	}
+
 	return &pb.GetProjectInfoResponse{
-		ProjectDir:         projectDir,
-		Name:               label,
-		Active:             cfg.Active,
-		Concurrency:        int32(cfg.Orchestration.Concurrency),
-		StaggerSeconds:     cfg.Orchestration.StaggerSeconds,
-		DedupSeconds:       cfg.Orchestration.DedupSeconds,
-		EvolutionEnabled:   cfg.Evolution.Enabled,
-		LoopRunning:        loopRunning,
-		ActiveRuns:         activeRuns,
-		ContainerWorkflows: containerWorkflows,
-		HostWorkflows:      hostWorkflows,
+		ProjectDir:             projectDir,
+		Name:                   label,
+		Active:                 cfg.Active,
+		Concurrency:            int32(cfg.Orchestration.Concurrency),
+		StaggerSeconds:         cfg.Orchestration.StaggerSeconds,
+		DedupSeconds:           cfg.Orchestration.DedupSeconds,
+		EvolutionEnabled:       cfg.Evolution.Enabled,
+		LoopRunning:            loopRunning,
+		ActiveRuns:             activeRuns,
+		ContainerWorkflows:     containerWorkflows,
+		HostWorkflows:          hostWorkflows,
 		StopOnError:            cfg.Orchestration.StopOnError,
 		MaxConsecutiveFailures: int32(cfg.Orchestration.MaxConsecutiveFailures),
+		Repositories:           repositories,
 	}, nil
 }
 

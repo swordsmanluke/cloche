@@ -92,6 +92,7 @@ type Workflow struct {
 	Collects  []Collect
 	EntryStep string
 	Config    map[string]string // workflow-level config (e.g. "container.image")
+	Repos     []string          // repositories this workflow consumes; names refer to [[repositories]] entries in config.toml
 }
 
 // ContainerID returns the container id for this workflow.
@@ -234,6 +235,7 @@ var knownStepConfigKeys = map[string]bool{
 	"workflow_name": true,
 	"prompt_step":   true,
 	"usage_command": true,
+	"repository":    true,
 	// poll step keys
 	"poll":          true,
 	"interval":      true,

@@ -174,6 +174,10 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 			if err := p.parseWorkflowConfig(wf); err != nil {
 				return nil, err
 			}
+		} else if p.current.Type == TokenIdent && p.peek.Type == TokenEquals {
+			if err := p.parseWorkflowField(wf); err != nil {
+				return nil, err
+			}
 		} else if p.current.Type == TokenIdent && p.peek.Type == TokenColon {
 			wire, err := p.parseWire()
 			if err != nil {
@@ -228,6 +232,32 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 	}
 
 	return wf, nil
+}
+
+// parseWorkflowField handles top-level `key = value` assignments inside a
+// workflow block. Currently the only such field is `repos = ["a", "b"]`,
+// which names the repositories the workflow consumes — repo names must
+// match [[repositories]] entries in the project's config.toml.
+func (p *Parser) parseWorkflowField(wf *domain.Workflow) error {
+	keyTok, err := p.expect(TokenIdent)
+	if err != nil {
+		return fmt.Errorf("expected field name: %w", err)
+	}
+	if _, err := p.expect(TokenEquals); err != nil {
+		return err
+	}
+
+	switch keyTok.Literal {
+	case "repos":
+		repos, err := p.parseStringList()
+		if err != nil {
+			return err
+		}
+		wf.Repos = repos
+		return nil
+	default:
+		return fmt.Errorf("line %d col %d: unknown workflow field %q", keyTok.Line, keyTok.Col, keyTok.Literal)
+	}
 }
 
 func (p *Parser) parseWorkflowConfig(wf *domain.Workflow) error {
