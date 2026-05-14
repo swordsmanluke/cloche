@@ -11,12 +11,11 @@ Feature: Repository configuration and DSL
       [[repositories]]
       name = "backend"
       path = "./repos/backend"
-      default = true
       """
     When the config is parsed
     Then no parse error is returned
     And the config contains a repository named "backend" with path "./repos/backend"
-    And the config contains a repository named "backend" marked as default
+    And the single-entry config has an implicit default repository named "backend"
 
   Scenario: Parse multiple repository entries from config.toml
     Given a config.toml containing:
@@ -24,7 +23,6 @@ Feature: Repository configuration and DSL
       [[repositories]]
       name = "backend"
       path = "./repos/backend"
-      default = true
 
       [[repositories]]
       name = "frontend"

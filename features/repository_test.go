@@ -88,9 +88,8 @@ func (t *testProjectServer) GetProjectInfo(_ context.Context, req *pb.GetProject
 	var pbRepos []*pb.Repository
 	for _, r := range proj.Repositories {
 		pbRepos = append(pbRepos, &pb.Repository{
-			Name:    r.Name,
-			Path:    r.Path,
-			Default: r.IsDefault,
+			Name: r.Name,
+			Path: r.Path,
 		})
 	}
 
@@ -143,7 +142,7 @@ func initRepositoryScenarios(ctx *godog.ScenarioContext) {
 	ctx.Step(`^a config\.toml containing no repository entries$`, s.aConfigTOMLContainingNoRepos)
 	ctx.Step(`^the config is parsed$`, s.theConfigIsParsed)
 	ctx.Step(`^the config contains a repository named "([^"]*)" with path "([^"]*)"$`, s.configContainsRepoWithPath)
-	ctx.Step(`^the config contains a repository named "([^"]*)" marked as default$`, s.configContainsRepoIsDefault)
+	ctx.Step(`^the single-entry config has an implicit default repository named "([^"]*)"$`, s.singleEntryImplicitDefault)
 	ctx.Step(`^the config contains a repository named "([^"]*)"$`, s.configContainsRepoByName)
 	ctx.Step(`^the config contains (\d+) repositor(?:y|ies)$`, s.configContainsRepoCount)
 
@@ -165,7 +164,6 @@ func initRepositoryScenarios(ctx *godog.ScenarioContext) {
 	ctx.Step(`^a project database that has been freshly migrated with no repository rows$`, s.freshMigration)
 	ctx.Step(`^the repositories store is first accessed for that project$`, s.firstAccess)
 	ctx.Step(`^exactly (\d+) repositor(?:y|ies) (?:is|are) seeded automatically$`, s.seededCount)
-	ctx.Step(`^the seeded repository is marked as default$`, s.seededIsDefault)
 	ctx.Step(`^the seeded repository has path equal to the project root directory$`, s.seededPath)
 }
 
@@ -286,14 +284,10 @@ func bddWriteProjectInfo(resp *pb.GetProjectInfoResponse, w *bytes.Buffer) {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Repositories:")
 		for _, repo := range resp.Repositories {
-			def := ""
-			if repo.Default {
-				def = "  (default)"
-			}
 			if repo.Url != "" {
-				fmt.Fprintf(w, "  %-20s  %-30s  %s%s\n", repo.Name, repo.Path, repo.Url, def)
+				fmt.Fprintf(w, "  %-20s  %-30s  %s\n", repo.Name, repo.Path, repo.Url)
 			} else {
-				fmt.Fprintf(w, "  %-20s  %s%s\n", repo.Name, repo.Path, def)
+				fmt.Fprintf(w, "  %-20s  %s\n", repo.Name, repo.Path)
 			}
 		}
 	} else {
@@ -441,13 +435,17 @@ func (s *repositoryCtx) configContainsRepoWithPath(name, path string) error {
 	return fmt.Errorf("no repository named %q with path %q in config", name, path)
 }
 
-func (s *repositoryCtx) configContainsRepoIsDefault(name string) error {
-	for _, r := range s.parsedConfig.Repositories {
-		if r.Name == name && r.Default {
-			return nil
-		}
+// singleEntryImplicitDefault verifies that a single-entry config resolves an implicit default.
+// With exactly one [[repositories]] entry there is no need for a "default" field — the sole
+// entry is the default by definition.
+func (s *repositoryCtx) singleEntryImplicitDefault(name string) error {
+	if len(s.parsedConfig.Repositories) != 1 {
+		return fmt.Errorf("expected exactly 1 repository for implicit default, got %d", len(s.parsedConfig.Repositories))
 	}
-	return fmt.Errorf("no repository named %q marked as default in config", name)
+	if s.parsedConfig.Repositories[0].Name != name {
+		return fmt.Errorf("implicit default repository: expected %q, got %q", name, s.parsedConfig.Repositories[0].Name)
+	}
+	return nil
 }
 
 func (s *repositoryCtx) configContainsRepoCount(count int) error {
@@ -512,14 +510,6 @@ func (s *repositoryCtx) firstAccess() error {
 func (s *repositoryCtx) seededCount(count int) error {
 	if len(s.seededRepos) != count {
 		return fmt.Errorf("expected %d seeded repositories, got %d", count, len(s.seededRepos))
-	}
-	return nil
-}
-
-func (s *repositoryCtx) seededIsDefault() error {
-	// With no explicit default field, the sole seeded entry is the implicit default.
-	if len(s.seededRepos) != 1 {
-		return fmt.Errorf("expected exactly 1 repository (implicit default), got %d", len(s.seededRepos))
 	}
 	return nil
 }

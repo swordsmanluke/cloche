@@ -187,14 +187,10 @@ func printProjectInfo(resp *pb.GetProjectInfoResponse, w io.Writer) {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Repositories:")
 		for _, repo := range resp.Repositories {
-			def := ""
-			if repo.Default {
-				def = "  (default)"
-			}
 			if repo.Url != "" {
-				fmt.Fprintf(w, "  %-20s  %-30s  %s%s\n", repo.Name, repo.Path, repo.Url, def)
+				fmt.Fprintf(w, "  %-20s  %-30s  %s\n", repo.Name, repo.Path, repo.Url)
 			} else {
-				fmt.Fprintf(w, "  %-20s  %s%s\n", repo.Name, repo.Path, def)
+				fmt.Fprintf(w, "  %-20s  %s\n", repo.Name, repo.Path)
 			}
 		}
 	} else {

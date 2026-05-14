@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/project"
 )
 
@@ -44,7 +45,6 @@ func TestLoad_ConfigWithRepositories(t *testing.T) {
 [[repositories]]
 name = "backend"
 path = "./repos/backend"
-default = true
 
 [[repositories]]
 name = "frontend"
@@ -67,9 +67,6 @@ path = "./repos/frontend"
 	if backend.Path != "./repos/backend" {
 		t.Errorf("repo[0].Path: got %q, want %q", backend.Path, "./repos/backend")
 	}
-	if !backend.IsDefault {
-		t.Errorf("repo[0].IsDefault: expected true")
-	}
 
 	frontend := proj.Repositories[1]
 	if frontend.Name != "frontend" {
@@ -78,8 +75,51 @@ path = "./repos/frontend"
 	if frontend.Path != "./repos/frontend" {
 		t.Errorf("repo[1].Path: got %q, want %q", frontend.Path, "./repos/frontend")
 	}
-	if frontend.IsDefault {
-		t.Errorf("repo[1].IsDefault: expected false")
+}
+
+func TestLoad_SingleEntryImplicitDefault(t *testing.T) {
+	dir := setup(t, `
+[[repositories]]
+name = "main"
+path = "./repos/main"
+`)
+
+	proj, err := project.Load(dir)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(proj.Repositories) != 1 {
+		t.Fatalf("expected 1 repository, got %d", len(proj.Repositories))
+	}
+
+	def := domain.DefaultRepository(proj.Repositories)
+	if def == nil {
+		t.Fatal("DefaultRepository: expected non-nil for single-entry project")
+	}
+	if def.Name != "main" {
+		t.Errorf("DefaultRepository.Name: got %q, want %q", def.Name, "main")
+	}
+}
+
+func TestLoad_MultipleEntries_NoImplicitDefault(t *testing.T) {
+	dir := setup(t, `
+[[repositories]]
+name = "backend"
+path = "./repos/backend"
+
+[[repositories]]
+name = "frontend"
+path = "./repos/frontend"
+`)
+
+	proj, err := project.Load(dir)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	def := domain.DefaultRepository(proj.Repositories)
+	if def != nil {
+		t.Errorf("DefaultRepository: expected nil for multi-entry project, got %q", def.Name)
 	}
 }
 

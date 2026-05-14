@@ -13,16 +13,12 @@ func WriteReposList(repos []*pb.Repository, w io.Writer) {
 		fmt.Fprintln(w, "No repositories configured.")
 		return
 	}
-	fmt.Fprintf(w, "%-20s  %-30s  %s\n", "NAME", "PATH", "FLAGS")
+	fmt.Fprintf(w, "%-20s  %-30s  %s\n", "NAME", "PATH", "URL")
 	for _, repo := range repos {
-		flags := ""
-		if repo.Default {
-			flags = "default"
-		}
 		if repo.Url != "" {
-			fmt.Fprintf(w, "%-20s  %-30s  %s  %s\n", repo.Name, repo.Path, repo.Url, flags)
+			fmt.Fprintf(w, "%-20s  %-30s  %s\n", repo.Name, repo.Path, repo.Url)
 		} else {
-			fmt.Fprintf(w, "%-20s  %-30s  %s\n", repo.Name, repo.Path, flags)
+			fmt.Fprintf(w, "%-20s  %s\n", repo.Name, repo.Path)
 		}
 	}
 }

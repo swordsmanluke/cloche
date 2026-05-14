@@ -27,7 +27,6 @@ func Load(dir string) (*domain.Project, error) {
 			Name:      r.Name,
 			Path:      r.Path,
 			RemoteURL: r.URL,
-			IsDefault: r.Default,
 		})
 	}
 

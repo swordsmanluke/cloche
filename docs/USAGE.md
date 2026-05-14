@@ -134,9 +134,8 @@ block) and are parsed independently from workflows:
 
 ```
 repository "backend" {
-  path    = "./repos/backend"
-  url     = "https://github.com/example/backend"
-  default = true
+  path = "./repos/backend"
+  url  = "https://github.com/example/backend"
 }
 
 repository "frontend" {
@@ -148,7 +147,6 @@ repository "frontend" {
 |-------|----------|-------------|
 | `path` | yes | Path relative to the project root. |
 | `url` | no | Remote URL (informational; not used by the runtime). |
-| `default` | no | Mark as the default repository for runs. Only one repository should be marked default. |
 
 **Workflow-level `repos` field** — workflows may declare which repositories they use:
 
@@ -1170,8 +1168,8 @@ exit, or stuck workflow detected), the halt error message is displayed.
 `cloche project repos list` prints the repository table in isolation:
 
 ```
-NAME                  PATH                            FLAGS
-backend               ./repos/backend                 https://github.com/example/backend  default
+NAME                  PATH                            URL
+backend               ./repos/backend                 https://github.com/example/backend
 frontend              ./repos/frontend
 ```
 

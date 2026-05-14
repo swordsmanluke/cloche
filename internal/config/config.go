@@ -60,10 +60,9 @@ type GitConfig struct {
 // .cloche/config.toml via [[repositories]]. Path is stored as declared
 // (relative to the project root).
 type RepositoryConfig struct {
-	Name    string `toml:"name"`
-	Path    string `toml:"path"`
-	URL     string `toml:"url"`
-	Default bool   `toml:"default"`
+	Name string `toml:"name"`
+	Path string `toml:"path"`
+	URL  string `toml:"url"`
 }
 
 type Config struct {

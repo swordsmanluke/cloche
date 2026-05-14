@@ -3446,10 +3446,9 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 	var repositories []*pb.Repository
 	for _, r := range proj.Repositories {
 		repositories = append(repositories, &pb.Repository{
-			Name:    r.Name,
-			Path:    r.Path,
-			Url:     r.RemoteURL,
-			Default: r.IsDefault,
+			Name: r.Name,
+			Path: r.Path,
+			Url:  r.RemoteURL,
 		})
 	}
 

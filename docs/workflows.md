@@ -191,9 +191,8 @@ remote URL:
 
 ```
 repository "backend" {
-  path    = "./repos/backend"
-  url     = "https://github.com/example/backend"
-  default = true
+  path = "./repos/backend"
+  url  = "https://github.com/example/backend"
 }
 ```
 
@@ -201,7 +200,6 @@ repository "backend" {
 |-------|----------|-------------|
 | `path` | yes | Path relative to the project root. |
 | `url` | no | Remote URL (informational). |
-| `default` | no | Mark as the default repository. |
 
 Repository blocks are top-level constructs, not nested inside `workflow` blocks.
 `ParseAll` silently skips them; `ParseRepositoriesFrom` reads only repository blocks

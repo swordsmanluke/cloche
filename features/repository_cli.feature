@@ -14,7 +14,6 @@ Feature: Repository CLI surface
       [[repositories]]
       name = "backend"
       path = "./repos/backend"
-      default = true
 
       [[repositories]]
       name = "frontend"
@@ -58,5 +57,4 @@ Feature: Repository CLI surface
     Given a project database that has been freshly migrated with no repository rows
     When the repositories store is first accessed for that project
     Then exactly 1 repository is seeded automatically
-    And the seeded repository is marked as default
     And the seeded repository has path equal to the project root directory
