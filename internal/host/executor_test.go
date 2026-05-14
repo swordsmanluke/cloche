@@ -1411,6 +1411,55 @@ func TestRunner_ExtraEnv_RestoredOnResume(t *testing.T) {
 	assert.Contains(t, string(data), "REF=develop-original-branch")
 }
 
+// TestExecutor_AgentStep_PropagatesClocheEnv verifies that CLOCHE_TASK_ID,
+// CLOCHE_ATTEMPT_ID, CLOCHE_RUN_ID, and CLOCHE_PROJECT_DIR are passed to the
+// agent process so that `cloche get/set` works inside host prompt steps.
+func TestExecutor_AgentStep_PropagatesClocheEnv(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	// Agent script that echoes the env vars it receives.
+	mockAgent := filepath.Join(tmpDir, "env-agent.sh")
+	script := `#!/bin/sh
+cat > /dev/null
+echo "TASK_ID=$CLOCHE_TASK_ID"
+echo "ATTEMPT_ID=$CLOCHE_ATTEMPT_ID"
+echo "RUN_ID=$CLOCHE_RUN_ID"
+echo "PROJECT_DIR=$CLOCHE_PROJECT_DIR"
+`
+	require.NoError(t, os.WriteFile(mockAgent, []byte(script), 0755))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		HostRunID:  "run-abc",
+		TaskID:     "task-xyz",
+		AttemptID:  "attempt-1",
+	}
+
+	step := &domain.Step{
+		Name:    "env-check",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config: map[string]string{
+			"prompt":        "Check env vars.",
+			"agent_command": mockAgent,
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result.Result)
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "env-check.log"))
+	require.NoError(t, err)
+	output := string(data)
+	assert.Contains(t, output, "TASK_ID=task-xyz")
+	assert.Contains(t, output, "ATTEMPT_ID=attempt-1")
+	assert.Contains(t, output, "RUN_ID=run-abc")
+	assert.Contains(t, output, "PROJECT_DIR="+tmpDir)
+}
+
 // --- ReadListTasksOutput tests ---
 
 func TestReadListTasksOutput_Basic(t *testing.T) {

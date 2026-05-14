@@ -263,6 +263,23 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 
 	adapter.RunID = e.HostRunID
 
+	// Pass CLOCHE_* vars so the agent process can invoke `cloche get/set`.
+	var agentEnv []string
+	if e.ProjectDir != "" {
+		agentEnv = append(agentEnv, "CLOCHE_PROJECT_DIR="+e.ProjectDir)
+	}
+	if e.HostRunID != "" {
+		agentEnv = append(agentEnv, "CLOCHE_RUN_ID="+e.HostRunID)
+	}
+	if e.TaskID != "" {
+		agentEnv = append(agentEnv, "CLOCHE_TASK_ID="+e.TaskID)
+	}
+	if e.AttemptID != "" {
+		agentEnv = append(agentEnv, "CLOCHE_ATTEMPT_ID="+e.AttemptID)
+	}
+	agentEnv = append(agentEnv, e.ExtraEnv...)
+	adapter.ExtraEnv = agentEnv
+
 	// Resume mode: if this is the step being resumed, use conversation resume
 	if e.ResumeStep == step.Name {
 		adapter.ResumeConversation = true

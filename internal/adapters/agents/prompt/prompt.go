@@ -32,6 +32,7 @@ type Adapter struct {
 	ResumeConversation bool                   // when true, resume previous conversation instead of starting new one
 	UsageCommand       string                 // optional: shell command to run after step to capture token usage JSON
 	PrevOutput         string                 // content of the immediate predecessor step's output log
+	ExtraEnv           []string               // additional KEY=VALUE env vars injected into the agent process
 }
 
 func New() *Adapter {
@@ -207,6 +208,9 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = workDir
 	cmd.Stdin = strings.NewReader(prompt)
+	if len(a.ExtraEnv) > 0 {
+		cmd.Env = append(os.Environ(), a.ExtraEnv...)
+	}
 
 	// If we have a StatusWriter, stream stdout line-by-line; otherwise buffer.
 	if a.StatusWriter == nil {

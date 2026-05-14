@@ -438,8 +438,11 @@ working directory set to the **main git worktree** (i.e. the main branch checkou
 if the project directory is a linked worktree on a different branch. This ensures
 host-workflow scripts from main are used for all runs. Workflow steps (`workflow_name`)
 dispatch container runs through the daemon. Environment variables (`CLOCHE_TASK_ID`,
-`CLOCHE_PROJECT_DIR`, etc.) are injected into each step; `CLOCHE_PROJECT_DIR` still
-points to the actual project directory.
+`CLOCHE_PROJECT_DIR`, `CLOCHE_RUN_ID`, `CLOCHE_ATTEMPT_ID`) are injected into all step
+types — script, poll/human, and agent. Agent steps receive these variables directly in
+the agent process, so agents running as host-workflow steps can invoke `cloche get/set`
+to read and write the run's KV store. `CLOCHE_PROJECT_DIR` still points to the actual
+project directory.
 
 ## Human Step
 

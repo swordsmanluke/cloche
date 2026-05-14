@@ -596,6 +596,34 @@ func TestPromptAdapter_SetsAgentNameViaUsageCommand(t *testing.T) {
 	assert.Equal(t, int64(75), sr.Usage.OutputTokens)
 }
 
+func TestPromptAdapter_ExtraEnvPropagatedToAgent(t *testing.T) {
+	dir := t.TempDir()
+
+	// The agent script echoes the value of the injected env var.
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo \"TASK=$CLOCHE_TASK_ID RUN=$CLOCHE_RUN_ID\""},
+		ExtraEnv:     []string{"CLOCHE_TASK_ID=test-task-42", "CLOCHE_RUN_ID=run-99"},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result)
+
+	outputPath := filepath.Join(dir, ".cloche", "output", "implement.log")
+	data, err := os.ReadFile(outputPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "TASK=test-task-42")
+	assert.Contains(t, string(data), "RUN=run-99")
+}
+
 func TestParseCommands(t *testing.T) {
 	tests := []struct {
 		input    string
