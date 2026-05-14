@@ -2001,6 +2001,8 @@ func TestServer_GetProjectInfo_ByDir(t *testing.T) {
 
 	// Host workflow.
 	hostWF := `workflow "main" {
+  host {}
+
   step build {
     run = "make build"
     results = [success, fail]
@@ -2010,6 +2012,8 @@ func TestServer_GetProjectInfo_ByDir(t *testing.T) {
 }
 
 workflow "post-merge" {
+  host {}
+
   step cleanup {
     run = "echo done"
     results = [success]

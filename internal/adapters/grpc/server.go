@@ -3424,25 +3424,20 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 	clocheDir := filepath.Join(projectDir, ".cloche")
 	entries, _ := filepath.Glob(filepath.Join(clocheDir, "*.cloche"))
 	for _, path := range entries {
-		base := filepath.Base(path)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
 		}
-		if base == "host.cloche" {
-			wfs, err := dsl.ParseAllForHost(string(data))
-			if err != nil {
-				continue
-			}
-			for name := range wfs {
+		wfs, err := dsl.ParseAll(string(data))
+		if err != nil {
+			continue
+		}
+		for name, wf := range wfs {
+			if wf.Location == domain.LocationHost {
 				hostWorkflows = append(hostWorkflows, name)
+			} else {
+				containerWorkflows = append(containerWorkflows, name)
 			}
-		} else {
-			wf, err := dsl.ParseForContainer(string(data))
-			if err != nil {
-				continue
-			}
-			containerWorkflows = append(containerWorkflows, wf.Name)
 		}
 	}
 
