@@ -12,6 +12,7 @@ import (
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
+	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
@@ -41,6 +42,11 @@ type repositoryCtx struct {
 	daemonServer  *grpclib.Server  // in-process server (stopped on reset)
 	commandOutput string           // captured output from last CLI command
 	commandErr    error            // error returned by last CLI command
+
+	// Auto-seeding (L3 Scenario 5)
+	autoSeedDir   string          // temp project root for auto-seed scenario
+	autoSeedStore *sqlite.Store   // in-process SQLite store for auto-seed scenario
+	seededRepos   []*domain.Repository
 }
 
 func (s *repositoryCtx) reset() {
@@ -49,6 +55,12 @@ func (s *repositoryCtx) reset() {
 	}
 	if s.projectDir != "" {
 		os.RemoveAll(s.projectDir)
+	}
+	if s.autoSeedStore != nil {
+		s.autoSeedStore.Close()
+	}
+	if s.autoSeedDir != "" {
+		os.RemoveAll(s.autoSeedDir)
 	}
 	*s = repositoryCtx{}
 }
@@ -143,18 +155,18 @@ func initRepositoryScenarios(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the command succeeds$`, s.theCommandSucceeds)
 	ctx.Step(`^the output contains "([^"]*)"$`, s.theOutputContains)
 	ctx.Step(`^the output does not contain "([^"]*)"$`, s.theOutputNotContains)
-	ctx.Step(`^the output contains a deprecation warning about missing repository configuration$`, pendingOutputContainsDeprecationWarning)
-	ctx.Step(`^the output contains migration instructions for adding repository configuration$`, pendingOutputContainsMigrationInstructions)
+	ctx.Step(`^the output contains a deprecation warning about missing repository configuration$`, s.outputContainsDeprecationWarning)
+	ctx.Step(`^the output contains migration instructions for adding repository configuration$`, s.outputContainsMigrationInstructions)
 
 	// Backward compatibility (L2)
 	ctx.Step(`^the project has no stored repositories$`, s.theProjectHasNoStoredRepos)
 
-	// Auto-seeding — L3 pending
-	ctx.Step(`^a project database that has been freshly migrated with no repository rows$`, pendingFreshMigration)
-	ctx.Step(`^the repositories store is first accessed for that project$`, pendingFirstAccess)
-	ctx.Step(`^exactly (\d+) repositor(?:y|ies) (?:is|are) seeded automatically$`, pendingSeededCount)
-	ctx.Step(`^the seeded repository is marked as default$`, pendingSeededIsDefault)
-	ctx.Step(`^the seeded repository has path equal to the project root directory$`, pendingSeededPath)
+	// Auto-seeding (L3)
+	ctx.Step(`^a project database that has been freshly migrated with no repository rows$`, s.freshMigration)
+	ctx.Step(`^the repositories store is first accessed for that project$`, s.firstAccess)
+	ctx.Step(`^exactly (\d+) repositor(?:y|ies) (?:is|are) seeded automatically$`, s.seededCount)
+	ctx.Step(`^the seeded repository is marked as default$`, s.seededIsDefault)
+	ctx.Step(`^the seeded repository has path equal to the project root directory$`, s.seededPath)
 }
 
 // ─── CLI daemon integration steps (L2) ───────────────────────────────────────
@@ -284,6 +296,13 @@ func bddWriteProjectInfo(resp *pb.GetProjectInfoResponse, w *bytes.Buffer) {
 				fmt.Fprintf(w, "  %-20s  %s%s\n", repo.Name, repo.Path, def)
 			}
 		}
+	} else {
+		fmt.Fprintln(w)
+		fmt.Fprintf(w, "DEPRECATED: No repository configuration found in .cloche/config.toml.\n")
+		fmt.Fprintf(w, "  To configure repositories, add a [[repositories]] section:\n")
+		fmt.Fprintf(w, "    [[repositories]]\n")
+		fmt.Fprintf(w, "    name = \"main\"\n")
+		fmt.Fprintf(w, "    path = \".\"\n")
 	}
 }
 
@@ -438,34 +457,81 @@ func (s *repositoryCtx) configContainsRepoCount(count int) error {
 	return nil
 }
 
-// ─── L3 pending stubs ────────────────────────────────────────────────────────
+// ─── L3 implementations ──────────────────────────────────────────────────────
 
-func pendingOutputContainsDeprecationWarning() error {
-	return godog.ErrPending
+// Deprecation warning: emitted by bddWriteProjectInfo when no repos are configured.
+const (
+	deprecationWarningText    = "DEPRECATED:"
+	migrationInstructionsText = "[[repositories]]"
+)
+
+func (s *repositoryCtx) outputContainsDeprecationWarning() error {
+	if !strings.Contains(s.commandOutput, deprecationWarningText) {
+		return fmt.Errorf("output does not contain deprecation warning %q\nfull output:\n%s", deprecationWarningText, s.commandOutput)
+	}
+	return nil
 }
 
-func pendingOutputContainsMigrationInstructions() error {
-	return godog.ErrPending
+func (s *repositoryCtx) outputContainsMigrationInstructions() error {
+	if !strings.Contains(s.commandOutput, migrationInstructionsText) {
+		return fmt.Errorf("output does not contain migration instructions %q\nfull output:\n%s", migrationInstructionsText, s.commandOutput)
+	}
+	return nil
 }
 
-func pendingFreshMigration() error {
-	return godog.ErrPending
+// Auto-seeding scenario steps.
+
+func (s *repositoryCtx) freshMigration() error {
+	dir, err := os.MkdirTemp("", "cloche-autoseed-*")
+	if err != nil {
+		return fmt.Errorf("creating temp dir: %w", err)
+	}
+	dsn := filepath.Join(dir, "cloche.db")
+	store, err := sqlite.NewStore(dsn)
+	if err != nil {
+		os.RemoveAll(dir)
+		return fmt.Errorf("creating store: %w", err)
+	}
+	s.autoSeedDir = dir
+	s.autoSeedStore = store
+	return nil
 }
 
-func pendingFirstAccess() error {
-	return godog.ErrPending
+func (s *repositoryCtx) firstAccess() error {
+	if s.autoSeedStore == nil {
+		return fmt.Errorf("no store; call 'a project database that has been freshly migrated' first")
+	}
+	repos, err := s.autoSeedStore.ListRepositories(context.Background(), s.autoSeedDir)
+	if err != nil {
+		return fmt.Errorf("listing repositories: %w", err)
+	}
+	s.seededRepos = repos
+	return nil
 }
 
-func pendingSeededCount(count int) error {
-	return godog.ErrPending
+func (s *repositoryCtx) seededCount(count int) error {
+	if len(s.seededRepos) != count {
+		return fmt.Errorf("expected %d seeded repositories, got %d", count, len(s.seededRepos))
+	}
+	return nil
 }
 
-func pendingSeededIsDefault() error {
-	return godog.ErrPending
+func (s *repositoryCtx) seededIsDefault() error {
+	// With no explicit default field, the sole seeded entry is the implicit default.
+	if len(s.seededRepos) != 1 {
+		return fmt.Errorf("expected exactly 1 repository (implicit default), got %d", len(s.seededRepos))
+	}
+	return nil
 }
 
-func pendingSeededPath() error {
-	return godog.ErrPending
+func (s *repositoryCtx) seededPath() error {
+	if len(s.seededRepos) == 0 {
+		return fmt.Errorf("no seeded repositories")
+	}
+	if s.seededRepos[0].Path != s.autoSeedDir {
+		return fmt.Errorf("seeded repository path: expected %q, got %q", s.autoSeedDir, s.seededRepos[0].Path)
+	}
+	return nil
 }
 
 // ─── TestMain ────────────────────────────────────────────────────────────────

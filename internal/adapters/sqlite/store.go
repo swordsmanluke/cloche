@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/cloche-dev/cloche/internal/activitylog"
@@ -215,6 +216,20 @@ func migrate(db *sql.DB) error {
 	if errHP != nil {
 		return errHP
 	}
+
+	// v7: Per-project repository table. No `default` column — the sole row is
+	// the implicit default when auto-seeded on first access.
+	_, errRepo := db.Exec(`CREATE TABLE IF NOT EXISTS repositories (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		project_dir TEXT NOT NULL,
+		name        TEXT NOT NULL DEFAULT '',
+		path        TEXT NOT NULL,
+		remote_url  TEXT NOT NULL DEFAULT ''
+	)`)
+	if errRepo != nil {
+		return errRepo
+	}
+	db.Exec(`CREATE INDEX IF NOT EXISTS repositories_project_dir ON repositories(project_dir)`)
 
 	return nil
 }
@@ -1055,6 +1070,46 @@ func (s *Store) DeleteContextKeys(ctx context.Context, taskID, attemptID string)
 		`DELETE FROM context_kv WHERE task_id = ? AND attempt_id = ?`,
 		taskID, attemptID)
 	return err
+}
+
+// ListRepositories returns repositories for the given project directory. On first
+// access (no rows exist), it auto-seeds a single repository whose path is the
+// project root, making it the implicit default by being the only entry.
+func (s *Store) ListRepositories(ctx context.Context, projectDir string) ([]*domain.Repository, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT name, path, remote_url FROM repositories WHERE project_dir = ?`, projectDir)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var repos []*domain.Repository
+	for rows.Next() {
+		r := &domain.Repository{}
+		if err := rows.Scan(&r.Name, &r.Path, &r.RemoteURL); err != nil {
+			return nil, err
+		}
+		repos = append(repos, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(repos) == 0 {
+		seed := &domain.Repository{
+			Name: filepath.Base(projectDir),
+			Path: projectDir,
+		}
+		_, err := s.db.ExecContext(ctx,
+			`INSERT INTO repositories (project_dir, name, path, remote_url) VALUES (?, ?, ?, ?)`,
+			projectDir, seed.Name, seed.Path, seed.RemoteURL)
+		if err != nil {
+			return nil, fmt.Errorf("seeding default repository: %w", err)
+		}
+		repos = []*domain.Repository{seed}
+	}
+
+	return repos, nil
 }
 
 // AppendActivityEntry inserts one activity log entry for the given project.

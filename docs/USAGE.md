@@ -1161,10 +1161,11 @@ up a project by its registered label instead.
 stop_on_error, max_consecutive_failures, evolution), orchestrator loop state
 (running/stopped/halted), currently active runs, known container and host workflow names,
 and a `Repositories:` section listing each repository's name, path, and URL when
-repositories are declared in `config.toml`. When the loop is halted due to
-`stop_on_error`, `max_consecutive_failures`, or a container infrastructure failure
-(image build failure, container crash, unexpected exit, or stuck workflow detected), the
-halt error message is displayed.
+repositories are declared in `config.toml`. When no `[[repositories]]` section is present
+in `config.toml`, a deprecation warning is printed with instructions for adding the
+configuration. When the loop is halted due to `stop_on_error`, `max_consecutive_failures`,
+or a container infrastructure failure (image build failure, container crash, unexpected
+exit, or stuck workflow detected), the halt error message is displayed.
 
 `cloche project repos list` prints the repository table in isolation:
 

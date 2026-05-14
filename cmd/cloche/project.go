@@ -197,5 +197,12 @@ func printProjectInfo(resp *pb.GetProjectInfoResponse, w io.Writer) {
 				fmt.Fprintf(w, "  %-20s  %s%s\n", repo.Name, repo.Path, def)
 			}
 		}
+	} else {
+		fmt.Fprintln(w)
+		fmt.Fprintf(w, "DEPRECATED: No repository configuration found in .cloche/config.toml.\n")
+		fmt.Fprintf(w, "  To configure repositories, add a [[repositories]] section:\n")
+		fmt.Fprintf(w, "    [[repositories]]\n")
+		fmt.Fprintf(w, "    name = \"main\"\n")
+		fmt.Fprintf(w, "    path = \".\"\n")
 	}
 }
