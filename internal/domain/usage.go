@@ -20,6 +20,7 @@ type UsageSummary struct {
 // StepResult is the return value of AgentAdapter.Execute, combining the
 // result string with optional token usage information.
 type StepResult struct {
-	Result string
-	Usage  *TokenUsage
+	Result  string
+	Usage   *TokenUsage
+	Skipped bool // true when the step's skip script decided to bypass execution
 }

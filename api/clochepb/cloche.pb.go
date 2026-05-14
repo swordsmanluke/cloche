@@ -387,6 +387,7 @@ type StepExecutionStatus struct {
 	InputTokens   int64                  `protobuf:"varint,5,opt,name=input_tokens,json=inputTokens,proto3" json:"input_tokens,omitempty"`
 	OutputTokens  int64                  `protobuf:"varint,6,opt,name=output_tokens,json=outputTokens,proto3" json:"output_tokens,omitempty"`
 	AgentName     string                 `protobuf:"bytes,7,opt,name=agent_name,json=agentName,proto3" json:"agent_name,omitempty"`
+	Skipped       bool                   `protobuf:"varint,8,opt,name=skipped,proto3" json:"skipped,omitempty"` // true when the step's skip script bypassed execution
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -468,6 +469,13 @@ func (x *StepExecutionStatus) GetAgentName() string {
 		return x.AgentName
 	}
 	return ""
+}
+
+func (x *StepExecutionStatus) GetSkipped() bool {
+	if x != nil {
+		return x.Skipped
+	}
+	return false
 }
 
 type StreamLogsRequest struct {
@@ -3859,6 +3867,7 @@ type StepResult struct {
 	Result        string                 `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"`                           // "success", "fail", custom result names
 	Output        string                 `protobuf:"bytes,3,opt,name=output,proto3" json:"output,omitempty"`                           // step output content (for output mappings)
 	TokenUsage    *TokenUsage            `protobuf:"bytes,4,opt,name=token_usage,json=tokenUsage,proto3" json:"token_usage,omitempty"` // optional token usage
+	Skipped       bool                   `protobuf:"varint,5,opt,name=skipped,proto3" json:"skipped,omitempty"`                        // true when the step's skip script bypassed execution
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3919,6 +3928,13 @@ func (x *StepResult) GetTokenUsage() *TokenUsage {
 		return x.TokenUsage
 	}
 	return nil
+}
+
+func (x *StepResult) GetSkipped() bool {
+	if x != nil {
+		return x.Skipped
+	}
+	return false
 }
 
 // StepLog carries a single real-time log line from a step.

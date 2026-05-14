@@ -94,7 +94,7 @@ func (cs *ContainerSession) ExecuteStep(ctx context.Context, step *domain.Step, 
 				AgentName:    step.Config["agent"],
 			}
 		}
-		return domain.StepResult{Result: result.Result, Usage: usage}, nil
+		return domain.StepResult{Result: result.Result, Usage: usage, Skipped: result.Skipped}, nil
 	}
 }
 

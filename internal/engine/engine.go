@@ -41,6 +41,9 @@ func (f StepExecutorFunc) Execute(ctx context.Context, step *domain.Step) (domai
 type StatusHandler interface {
 	OnStepStart(run *domain.Run, step *domain.Step)
 	OnStepComplete(run *domain.Run, step *domain.Step, result string, usage *domain.TokenUsage)
+	// OnStepSkipped is called when a step's skip script exits 0, bypassing
+	// execution. wire is the result the skip script chose for routing.
+	OnStepSkipped(run *domain.Run, step *domain.Step, wire string)
 	OnRunComplete(run *domain.Run)
 }
 
@@ -48,6 +51,7 @@ type noopStatus struct{}
 
 func (noopStatus) OnStepStart(*domain.Run, *domain.Step)                               {}
 func (noopStatus) OnStepComplete(*domain.Run, *domain.Step, string, *domain.TokenUsage) {}
+func (noopStatus) OnStepSkipped(*domain.Run, *domain.Step, string)                     {}
 func (noopStatus) OnRunComplete(*domain.Run)                                            {}
 
 type Engine struct {
@@ -101,6 +105,7 @@ type stepResult struct {
 	result   string
 	usage    *domain.TokenUsage
 	err      error
+	skipped  bool // true when the executor's skip script bypassed execution
 }
 
 // collectState tracks the satisfaction state of a single Collect clause.
@@ -172,8 +177,9 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 			return fmt.Errorf("step %q not found in workflow", stepName)
 		}
 
-		// Enforce max_attempts: when a step with max_attempts has been launched
-		// that many times already, synthesize "give-up" instead of executing again.
+		// Enforce max_attempts: when a step with max_attempts has been executed
+		// that many times already (skipped invocations don't count), synthesize
+		// "give-up" instead of executing again.
 		if maxAttemptsStr, hasMax := step.Config["max_attempts"]; hasMax {
 			if maxAttempts, parseErr := strconv.Atoi(maxAttemptsStr); parseErr == nil && maxAttempts > 0 {
 				if stepLaunchCounts[stepName] >= maxAttempts {
@@ -188,7 +194,8 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 				}
 			}
 		}
-		stepLaunchCounts[stepName]++
+		// stepLaunchCounts[stepName] is incremented in the result handler, but
+		// only for non-skipped executions, so it counts real attempts only.
 
 		activeCount++
 		run.RecordStepStart(step.Name)
@@ -214,7 +221,7 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 			stepCtx = WithStepTrigger(stepCtx, t)
 			stepCtx = WithWorkflow(stepCtx, wf)
 			sr, err := e.executor.Execute(stepCtx, s)
-			results <- stepResult{stepName: s.Name, result: sr.Result, usage: sr.Usage, err: err}
+			results <- stepResult{stepName: s.Name, result: sr.Result, usage: sr.Usage, err: err, skipped: sr.Skipped}
 		}(step, trigger, ctx)
 
 		return nil
@@ -244,39 +251,54 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 
 		case sr := <-results:
 			activeCount--
+			step := wf.Steps[sr.stepName]
 
-			// Step execution error.
-			if sr.err != nil {
-				if cancelled && isContextError(sr.err) {
-					// Treat cancellation as "fail" so fail-branch wires (e.g. unclaim) run.
-					step := wf.Steps[sr.stepName]
-					if isResultDeclared(step, "fail") {
-						sr = stepResult{stepName: sr.stepName, result: "fail"}
-						// Fall through to normal wire processing below.
-					} else {
-						// No "fail" result declared; record and drain without walking wires.
-						run.RecordStepComplete(sr.stepName, "error")
-						continue
-					}
-				} else {
-					run.RecordStepComplete(sr.stepName, "error")
+			if sr.skipped {
+				// Skip path: validate the chosen wire, record as skipped, do not
+				// count this invocation against max_attempts.
+				if !isResultDeclared(step, sr.result) {
+					run.RecordStepComplete(sr.stepName, sr.result)
 					run.Complete(domain.RunStateFailed)
 					e.status.OnRunComplete(run)
-					return run, fmt.Errorf("step %q execution failed: %w", sr.stepName, sr.err)
+					return run, fmt.Errorf("step %q skip script returned undeclared wire %q", sr.stepName, sr.result)
 				}
-			}
+				run.RecordStepSkipped(sr.stepName, sr.result)
+				e.status.OnStepSkipped(run, step, sr.result)
+			} else {
+				// Normal execution path: increment attempt count.
+				stepLaunchCounts[sr.stepName]++
 
-			// Validate result is declared in the step's Results list.
-			step := wf.Steps[sr.stepName]
-			if !isResultDeclared(step, sr.result) {
+				// Step execution error.
+				if sr.err != nil {
+					if cancelled && isContextError(sr.err) {
+						// Treat cancellation as "fail" so fail-branch wires (e.g. unclaim) run.
+						if isResultDeclared(step, "fail") {
+							sr = stepResult{stepName: sr.stepName, result: "fail"}
+							// Fall through to validate+record below.
+						} else {
+							// No "fail" result declared; record and drain without walking wires.
+							run.RecordStepComplete(sr.stepName, "error")
+							continue
+						}
+					} else {
+						run.RecordStepComplete(sr.stepName, "error")
+						run.Complete(domain.RunStateFailed)
+						e.status.OnRunComplete(run)
+						return run, fmt.Errorf("step %q execution failed: %w", sr.stepName, sr.err)
+					}
+				}
+
+				// Validate result is declared in the step's Results list.
+				if !isResultDeclared(step, sr.result) {
+					run.RecordStepComplete(sr.stepName, sr.result)
+					run.Complete(domain.RunStateFailed)
+					e.status.OnRunComplete(run)
+					return run, fmt.Errorf("step %q returned undeclared result %q", sr.stepName, sr.result)
+				}
+
 				run.RecordStepComplete(sr.stepName, sr.result)
-				run.Complete(domain.RunStateFailed)
-				e.status.OnRunComplete(run)
-				return run, fmt.Errorf("step %q returned undeclared result %q", sr.stepName, sr.result)
+				e.status.OnStepComplete(run, step, sr.result, sr.usage)
 			}
-
-			run.RecordStepComplete(sr.stepName, sr.result)
-			e.status.OnStepComplete(run, step, sr.result, sr.usage)
 
 			// Process wiring: get next steps for this (step, result) pair.
 			nextSteps, wireErr := wf.NextSteps(sr.stepName, sr.result)

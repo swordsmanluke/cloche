@@ -798,3 +798,252 @@ func TestEngine_CancellationNoFailResult(t *testing.T) {
 	require.Error(t, runErr)
 	assert.Equal(t, domain.RunStateCancelled, runResult.State)
 }
+
+// skipExecutor returns a StepResult with Skipped=true for any step whose
+// config has "skip" set to a non-empty value; otherwise delegates to inner.
+type skipExecutor struct {
+	mu      sync.Mutex
+	called  []string
+	skipped []string
+	// wire is the skip wire to return; defaults to "success"
+	wire string
+}
+
+func (s *skipExecutor) Execute(_ context.Context, step *domain.Step) (domain.StepResult, error) {
+	if skipCmd, ok := step.Config["skip"]; ok && skipCmd != "" {
+		s.mu.Lock()
+		s.skipped = append(s.skipped, step.Name)
+		s.mu.Unlock()
+		wire := s.wire
+		if wire == "" {
+			wire = "success"
+		}
+		return domain.StepResult{Result: wire, Skipped: true}, nil
+	}
+	s.mu.Lock()
+	s.called = append(s.called, step.Name)
+	s.mu.Unlock()
+	return domain.StepResult{Result: "success"}, nil
+}
+
+// skippedStatusHandler records which steps were reported as skipped.
+type skippedStatusHandler struct {
+	noopStatus
+	mu      sync.Mutex
+	skipped []string
+	wires   []string
+}
+
+type noopStatus struct{}
+
+func (noopStatus) OnStepStart(*domain.Run, *domain.Step)                               {}
+func (noopStatus) OnStepComplete(*domain.Run, *domain.Step, string, *domain.TokenUsage) {}
+func (noopStatus) OnStepSkipped(*domain.Run, *domain.Step, string)                     {}
+func (noopStatus) OnRunComplete(*domain.Run)                                            {}
+
+func (h *skippedStatusHandler) OnStepSkipped(_ *domain.Run, step *domain.Step, wire string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.skipped = append(h.skipped, step.Name)
+	h.wires = append(h.wires, wire)
+}
+
+func TestEngine_SkipAlwaysSkips(t *testing.T) {
+	// A step with skip="true" is always skipped by the executor; the engine
+	// should route via the "success" wire and not call OnStepComplete.
+	wf := &domain.Workflow{
+		Name: "skip-test",
+		Steps: map[string]*domain.Step{
+			"prepare": {
+				Name:    "prepare",
+				Type:    domain.StepTypeScript,
+				Results: []string{"success"},
+				Config:  map[string]string{"skip": "true", "run": "exit 0"},
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: "prepare", Result: "success", To: domain.StepDone},
+		},
+		EntryStep: "prepare",
+	}
+
+	exec := &skipExecutor{}
+	sh := &skippedStatusHandler{}
+	eng := engine.New(exec)
+	eng.SetStatusHandler(sh)
+
+	run, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+
+	// The executor should have been invoked (it returns Skipped=true)
+	exec.mu.Lock()
+	assert.Contains(t, exec.skipped, "prepare")
+	assert.NotContains(t, exec.called, "prepare")
+	exec.mu.Unlock()
+
+	// OnStepSkipped should have fired
+	sh.mu.Lock()
+	assert.Equal(t, []string{"prepare"}, sh.skipped)
+	assert.Equal(t, []string{"success"}, sh.wires)
+	sh.mu.Unlock()
+
+	// StepExecution should be recorded with Skipped=true and Result="success"
+	require.Len(t, run.StepExecutions, 1)
+	assert.Equal(t, "success", run.StepExecutions[0].Result)
+	assert.True(t, run.StepExecutions[0].Skipped)
+}
+
+func TestEngine_SkipDoesNotIncrementAttemptCount(t *testing.T) {
+	// Verify that skipped invocations do not consume max_attempts.
+	// Step has max_attempts=1; skip once, then run normally → should succeed.
+	callCount := 0
+	exec := engine.StepExecutorFunc(func(_ context.Context, step *domain.Step) (domain.StepResult, error) {
+		callCount++
+		// First call: skip (simulates the skip script returning exit 0)
+		if callCount == 1 {
+			return domain.StepResult{Result: "success", Skipped: true}, nil
+		}
+		// Second call: run normally
+		return domain.StepResult{Result: "success"}, nil
+	})
+
+	wf := &domain.Workflow{
+		Name: "skip-attempts",
+		Steps: map[string]*domain.Step{
+			"work": {
+				Name:    "work",
+				Type:    domain.StepTypeScript,
+				Results: []string{"success"},
+				Config:  map[string]string{"max_attempts": "1"},
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: "work", Result: "success", To: domain.StepDone},
+		},
+		EntryStep: "work",
+	}
+
+	eng := engine.New(exec)
+	// First run: skip
+	run, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+	assert.Equal(t, 1, callCount) // executor called once (skip)
+
+	// Second run with fresh engine: now runs normally (count=1, max=1 allows it)
+	callCount = 0
+	eng2 := engine.New(engine.StepExecutorFunc(func(_ context.Context, step *domain.Step) (domain.StepResult, error) {
+		callCount++
+		return domain.StepResult{Result: "success"}, nil
+	}))
+	run2, err2 := eng2.Run(context.Background(), wf)
+	require.NoError(t, err2)
+	assert.Equal(t, domain.RunStateSucceeded, run2.State)
+	assert.Equal(t, 1, callCount)
+}
+
+func TestEngine_SkipUndeclaredWireIsError(t *testing.T) {
+	// A skip script returning an undeclared wire should cause the run to fail.
+	exec := engine.StepExecutorFunc(func(_ context.Context, step *domain.Step) (domain.StepResult, error) {
+		return domain.StepResult{Result: "undeclared-wire", Skipped: true}, nil
+	})
+
+	wf := &domain.Workflow{
+		Name: "skip-bad-wire",
+		Steps: map[string]*domain.Step{
+			"step": {
+				Name:    "step",
+				Type:    domain.StepTypeScript,
+				Results: []string{"success"},
+				Config:  map[string]string{"skip": "something"},
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: "step", Result: "success", To: domain.StepDone},
+		},
+		EntryStep: "step",
+	}
+
+	eng := engine.New(exec)
+	run, err := eng.Run(context.Background(), wf)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "undeclared wire")
+	assert.Equal(t, domain.RunStateFailed, run.State)
+}
+
+func TestEngine_SkipCustomWire(t *testing.T) {
+	// A skip script returning a declared custom wire should route via that wire.
+	exec := engine.StepExecutorFunc(func(_ context.Context, step *domain.Step) (domain.StepResult, error) {
+		return domain.StepResult{Result: "already-done", Skipped: true}, nil
+	})
+
+	wf := &domain.Workflow{
+		Name: "skip-custom-wire",
+		Steps: map[string]*domain.Step{
+			"deploy": {
+				Name:    "deploy",
+				Type:    domain.StepTypeScript,
+				Results: []string{"success", "already-done"},
+				Config:  map[string]string{"skip": "check-deployed"},
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: "deploy", Result: "success", To: domain.StepDone},
+			{From: "deploy", Result: "already-done", To: domain.StepDone},
+		},
+		EntryStep: "deploy",
+	}
+
+	eng := engine.New(exec)
+	run, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+
+	require.Len(t, run.StepExecutions, 1)
+	assert.Equal(t, "already-done", run.StepExecutions[0].Result)
+	assert.True(t, run.StepExecutions[0].Skipped)
+}
+
+func TestEngine_SkipResumeReplaysWire(t *testing.T) {
+	// When a step was previously skipped and its result is preloaded for resume,
+	// the engine replays the wire without re-executing (preloaded path).
+	exec := &fakeExecutor{results: map[string]string{
+		"next": "success",
+	}}
+
+	wf := &domain.Workflow{
+		Name: "skip-resume",
+		Steps: map[string]*domain.Step{
+			"first": {
+				Name:    "first",
+				Type:    domain.StepTypeScript,
+				Results: []string{"success"},
+			},
+			"next": {
+				Name:    "next",
+				Type:    domain.StepTypeScript,
+				Results: []string{"success"},
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: "first", Result: "success", To: "next"},
+			{From: "next", Result: "success", To: domain.StepDone},
+		},
+		EntryStep: "first",
+	}
+
+	eng := engine.New(exec)
+	// Preload "first" as if it was previously skipped with wire "success"
+	eng.SetPreloadedResults(map[string]string{"first": "success"})
+
+	run, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+
+	// "first" should not have been executed (preloaded); "next" should have
+	exec.mu.Lock()
+	assert.NotContains(t, exec.called, "first")
+	assert.Contains(t, exec.called, "next")
+	exec.mu.Unlock()
+}

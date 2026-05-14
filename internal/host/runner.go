@@ -945,6 +945,47 @@ func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, res
 	}
 }
 
+func (h *hostStatusHandler) OnStepSkipped(_ *domain.Run, step *domain.Step, wire string) {
+	now := time.Now()
+	log.Printf("host workflow [%s]: step %q skipped, wire %q", h.orchRunID, step.Name, wire)
+	if h.store != nil {
+		if r, err := h.store.GetRun(context.Background(), h.orchRunID); err == nil {
+			r.RecordStepSkipped(step.Name, wire)
+			_ = h.store.UpdateRun(context.Background(), r)
+		}
+	}
+	if h.captures != nil {
+		_ = h.captures.SaveCapture(context.Background(), h.orchRunID, &domain.StepExecution{
+			StepName:    step.Name,
+			Result:      wire,
+			Skipped:     true,
+			CompletedAt: now,
+		})
+	}
+	if h.activityLog != nil {
+		_ = h.activityLog.Append(activitylog.Entry{
+			Timestamp:    now,
+			Kind:         activitylog.KindStepCompleted,
+			TaskID:       h.taskID,
+			AttemptID:    h.attemptID,
+			WorkflowName: h.workflowName,
+			StepName:     step.Name,
+			Result:       domain.StepStatusSkipped,
+		})
+	}
+	if h.logWriter != nil {
+		h.logWriter.Log(logstream.TypeStatus, "step_skipped: "+step.Name+" -> "+wire)
+	}
+	if h.logBroadcast != nil {
+		h.logBroadcast.Publish(h.orchRunID, logstream.LogLine{
+			Timestamp: now.Format(time.RFC3339),
+			Type:      "status",
+			Content:   "step_skipped: " + step.Name + " -> " + wire,
+			StepName:  step.Name,
+		})
+	}
+}
+
 func (h *hostStatusHandler) OnRunComplete(run *domain.Run) {
 	log.Printf("host workflow [%s]: run completed with state %s", h.orchRunID, run.State)
 }

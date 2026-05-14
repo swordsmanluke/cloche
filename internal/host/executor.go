@@ -133,6 +133,15 @@ func (e *Executor) Execute(ctx context.Context, step *domain.Step) (domain.StepR
 		}
 	}
 
+	// Skip check: if the step declares a skip command, run it before the real
+	// step. Exit 0 → skip the step and route via the chosen wire (default
+	// "success"). Non-zero, timeout, or any failure → run the step normally.
+	if skipCmd, hasSkip := step.Config["skip"]; hasSkip && skipCmd != "" {
+		if wire, skipped := e.runSkipScript(ctx, step, skipCmd); skipped {
+			return domain.StepResult{Result: wire, Skipped: true}, nil
+		}
+	}
+
 	var result domain.StepResult
 	var err error
 	switch step.Type {
@@ -232,6 +241,72 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 		result = markerResult
 	}
 	return result, nil
+}
+
+// skipTimeout is the maximum time allowed for a skip script to run.
+// Any script that exceeds this is terminated and the step runs normally.
+const skipTimeout = 90 * time.Second
+
+// runSkipScript runs the skip shell command for a step. It returns
+// (wire, true) when the step should be skipped, or ("", false) when the
+// step should execute normally. Skip output is captured to
+// step.<name>.skip.log. Any failure (timeout, non-zero exit, crash) is
+// treated as "run the step normally".
+func (e *Executor) runSkipScript(ctx context.Context, step *domain.Step, skipCmd string) (string, bool) {
+	skipCtx, cancel := context.WithTimeout(ctx, skipTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(skipCtx, "sh", "-c", skipCmd)
+	cmd.Dir = e.scriptDir()
+
+	var baseEnv []string
+	for _, ev := range os.Environ() {
+		if strings.HasPrefix(ev, "CLOCHE_RUN_ID=") ||
+			strings.HasPrefix(ev, "CLOCHE_TASK_ID=") ||
+			strings.HasPrefix(ev, "CLOCHE_ATTEMPT_ID=") {
+			continue
+		}
+		baseEnv = append(baseEnv, ev)
+	}
+	cmd.Env = append(baseEnv, "CLOCHE_PROJECT_DIR="+e.ProjectDir)
+	cmd.Env = append(cmd.Env, e.gitIdentityEnv()...)
+	if e.HostRunID != "" {
+		cmd.Env = append(cmd.Env, "CLOCHE_RUN_ID="+e.HostRunID)
+	}
+	if e.TaskID != "" {
+		cmd.Env = append(cmd.Env, "CLOCHE_TASK_ID="+e.TaskID)
+	}
+	if e.AttemptID != "" {
+		cmd.Env = append(cmd.Env, "CLOCHE_ATTEMPT_ID="+e.AttemptID)
+	}
+	if len(e.ExtraEnv) > 0 {
+		cmd.Env = append(cmd.Env, e.ExtraEnv...)
+	}
+
+	output, err := cmd.CombinedOutput()
+	markerResult, cleanOutput, found := protocol.ExtractResult(output)
+
+	// Capture skip output to step.<name>.skip.log regardless of outcome.
+	if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
+		appendStepLog(e.skipOutputFile(step.Name), cleanOutput)
+	}
+
+	if err != nil {
+		// Timeout, non-zero exit, or crash: run the step normally.
+		return "", false
+	}
+
+	// Exit 0: skip the step.
+	wire := "success"
+	if found {
+		wire = markerResult
+	}
+	return wire, true
+}
+
+// skipOutputFile returns the path for a step's skip script output file.
+func (e *Executor) skipOutputFile(stepName string) string {
+	return filepath.Join(e.OutputDir, stepName+".skip.log")
 }
 
 // executeAgent runs an agent command on the host using the prompt adapter.

@@ -9,6 +9,10 @@ import (
 const (
 	StepDone  = "done"
 	StepAbort = "abort"
+
+	// StepStatusSkipped is recorded on a StepExecution when the step's skip
+	// script exits 0 and the step is bypassed without executing.
+	StepStatusSkipped = "skipped"
 )
 
 type StepType string
@@ -239,6 +243,8 @@ var knownStepConfigKeys = map[string]bool{
 	// poll step keys
 	"poll":          true,
 	"interval":      true,
+	// skip script: optional shell command run before the step; exit 0 means skip
+	"skip":          true,
 }
 
 // ValidateConfig checks step config keys against known keys and returns

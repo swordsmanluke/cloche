@@ -630,6 +630,63 @@ workflow "review-and-merge" {
 }
 ```
 
+## Skip Scripts
+
+Any step (agent, script, workflow, poll, or human) may declare an optional `skip`
+command. The skip command runs **before** the step's real work and decides whether the
+step should be bypassed entirely.
+
+```
+step create-pr {
+  run  = "scripts/open-pr.sh"
+  skip = "gh pr view --json state -q .state | grep -q OPEN"
+  results = [success, fail]
+}
+```
+
+### Semantics
+
+| Skip outcome | Behaviour |
+|---|---|
+| Exit 0, no marker on stdout | Skip the step. Follow the `success` wire. |
+| Exit 0, `CLOCHE_RESULT:<wire>` emitted | Skip the step. Follow the named wire. |
+| Exit non-zero | Run the step normally. |
+| Timeout (90 s), signal, or crash | Treated as non-zero. Run the step normally. |
+
+The wire name marker reuses the same `CLOCHE_RESULT:<name>` syntax as script and poll
+steps. Marker lines are stripped from captured output.
+
+### Execution location
+
+Skip scripts run **in the same location as the step itself**:
+
+- **Host workflow steps** — the daemon runs the skip script on the host, with the same
+  `CLOCHE_*` environment variables as host script steps.
+- **Container workflow steps** — `cloche-agent` runs the skip script inside the
+  container, in `/workspace/`, with the container's environment and `clo` access to
+  the run's KV store. The container is started before the skip script runs.
+
+### Lifecycle notes
+
+- **`max_attempts`**: a skipped invocation does not consume an attempt. Only actual
+  executions (non-skipped) count against the limit.
+- **Resume**: a previously-skipped step is replayed from its recorded wire on resume.
+  The skip script does not re-run.
+- **Timeout**: the skip script has a hardcoded 90 s timeout. Any failure runs the step
+  normally — a broken gate never silently swallows work.
+- **Status**: skipped steps appear distinctly in `cloche status` and `cloche list`,
+  marked as `skipped` rather than `completed` or `error`.
+- **Logs**: skip output is captured to `step.<name>.skip.log` alongside the step's
+  regular log.
+
+### What skip cannot do
+
+- **Abort the run.** To abort from a skip, emit a wire that the workflow routes to
+  `abort`. The skip script itself cannot abort directly.
+- **Configure the skip timeout.** It is hardcoded at 90 s.
+- **Bypass container startup.** The container is always started before the skip script
+  runs. There is no host-side fast-path.
+
 ## Built-in KV Keys
 
 The daemon automatically sets the following KV keys before the first step of every run.

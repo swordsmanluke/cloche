@@ -395,19 +395,25 @@ func (s *ClocheServer) recordStepStart(ctx context.Context, runID, stepName stri
 
 // recordStepComplete records that a step has completed: updates the run in the
 // store, saves a capture entry with optional token usage, and broadcasts a log
-// line to live-stream subscribers.
+// line to live-stream subscribers. When result.Skipped is true, the step is
+// recorded as skipped rather than completed.
 func (s *ClocheServer) recordStepComplete(ctx context.Context, runID, stepName string, result *pb.StepResult) {
 	run, err := s.store.GetRun(ctx, runID)
 	if err != nil {
 		return
 	}
 	now := time.Now()
-	run.RecordStepComplete(stepName, result.Result)
+	if result.Skipped {
+		run.RecordStepSkipped(stepName, result.Result)
+	} else {
+		run.RecordStepComplete(stepName, result.Result)
+	}
 	_ = s.store.UpdateRun(ctx, run)
 	if s.captures != nil {
 		exec := &domain.StepExecution{
 			StepName:    stepName,
 			Result:      result.Result,
+			Skipped:     result.Skipped,
 			CompletedAt: now,
 		}
 		if result.TokenUsage != nil {
@@ -419,11 +425,15 @@ func (s *ClocheServer) recordStepComplete(ctx context.Context, runID, stepName s
 		}
 		_ = s.captures.SaveCapture(ctx, runID, exec)
 	}
+	statusMsg := "step_completed: " + stepName + " -> " + result.Result
+	if result.Skipped {
+		statusMsg = "step_skipped: " + stepName + " -> " + result.Result
+	}
 	if s.logBroadcast != nil {
 		s.logBroadcast.Publish(runID, logstream.LogLine{
 			Timestamp: now.Format(time.RFC3339),
 			Type:      "status",
-			Content:   "step_completed: " + stepName + " -> " + result.Result,
+			Content:   statusMsg,
 			StepName:  stepName,
 		})
 	}
@@ -2324,6 +2334,7 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 					Result:      exec.Result,
 					StartedAt:   exec.StartedAt.String(),
 					CompletedAt: exec.CompletedAt.String(),
+					Skipped:     exec.Skipped,
 				}
 				if exec.Usage != nil {
 					se.InputTokens = exec.Usage.InputTokens
@@ -2340,6 +2351,7 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 				Result:      exec.Result,
 				StartedAt:   exec.StartedAt.String(),
 				CompletedAt: exec.CompletedAt.String(),
+				Skipped:     exec.Skipped,
 			}
 			if exec.Usage != nil {
 				se.InputTokens = exec.Usage.InputTokens

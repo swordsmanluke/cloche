@@ -210,6 +210,25 @@ func (s *Session) executeStep(
 		defer func() { promptAdapter.ResumeConversation = false }()
 	}
 
+	// Skip check: if the step declares a skip command, run it first.
+	// Exit 0 → skip the step; non-zero / timeout → run normally.
+	if skipCmd, hasSkip := cmd.Config["skip"]; hasSkip && skipCmd != "" {
+		if wire, skipped := s.runSkipScript(ctx, skipCmd, cmd.StepName, ulog); skipped {
+			var tokenUsage *pb.TokenUsage
+			_ = send(&pb.AgentMessage{
+				Payload: &pb.AgentMessage_StepResult{
+					StepResult: &pb.StepResult{
+						RequestId:  cmd.RequestId,
+						Result:     wire,
+						Skipped:    true,
+						TokenUsage: tokenUsage,
+					},
+				},
+			})
+			return
+		}
+	}
+
 	var sr domain.StepResult
 	var execErr error
 
@@ -433,6 +452,55 @@ func runPollCommand(ctx context.Context, pollCmd, stepName, runID, workDir strin
 	}
 	// Exit 0, no marker: pending.
 	return "", nil
+}
+
+// agentSkipTimeout is the maximum time a skip script is allowed to run in the
+// container before it is killed and the step proceeds normally.
+const agentSkipTimeout = 90 * time.Second
+
+// runSkipScript runs a skip shell command inside the container. It returns
+// (wire, true) when the step should be skipped, or ("", false) when the step
+// should run normally. Any failure (non-zero exit, timeout, crash) returns false.
+func (s *Session) runSkipScript(ctx context.Context, skipCmd, stepName string, ulog *logstream.Writer) (string, bool) {
+	skipCtx, cancel := context.WithTimeout(ctx, agentSkipTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(skipCtx, "sh", "-c", skipCmd)
+	cmd.Dir = s.cfg.WorkDir
+
+	var baseEnv []string
+	for _, ev := range os.Environ() {
+		if !strings.HasPrefix(ev, "CLOCHE_RUN_ID=") {
+			baseEnv = append(baseEnv, ev)
+		}
+	}
+	cmd.Env = append(baseEnv, "CLOCHE_PROJECT_DIR="+s.cfg.WorkDir)
+	if s.cfg.RunID != "" {
+		cmd.Env = append(cmd.Env, "CLOCHE_RUN_ID="+s.cfg.RunID)
+	}
+
+	output, err := cmd.CombinedOutput()
+	markerResult, cleanOutput, found := protocol.ExtractResult(output)
+
+	// Capture skip output to step.<name>.skip.log.
+	outputDir := filepath.Join(s.cfg.WorkDir, ".cloche", "output")
+	if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
+		f, fErr := os.OpenFile(filepath.Join(outputDir, stepName+".skip.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if fErr == nil {
+			_, _ = f.Write(cleanOutput)
+			_ = f.Close()
+		}
+	}
+
+	if err != nil {
+		return "", false
+	}
+
+	wire := "success"
+	if found {
+		wire = markerResult
+	}
+	return wire, true
 }
 
 // grpcStatusWriter is an io.Writer that buffers lines from a protocol.StatusWriter

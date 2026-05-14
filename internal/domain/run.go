@@ -29,6 +29,7 @@ type RunListFilter struct {
 type StepExecution struct {
 	StepName    string
 	Result      string
+	Skipped     bool        // true when the step's skip script bypassed execution
 	StartedAt   time.Time
 	CompletedAt time.Time
 	Logs        string
@@ -96,6 +97,26 @@ func (r *Run) RecordStepComplete(stepName, result string) {
 	for i := len(r.StepExecutions) - 1; i >= 0; i-- {
 		if r.StepExecutions[i].StepName == stepName && r.StepExecutions[i].CompletedAt.IsZero() {
 			r.StepExecutions[i].Result = result
+			r.StepExecutions[i].CompletedAt = time.Now()
+			return
+		}
+	}
+}
+
+// RecordStepSkipped marks a step as having been bypassed by its skip script.
+// The wire is the result the skip script chose (used for routing), and Skipped
+// is set to true so the status display can distinguish it from a normal completion.
+func (r *Run) RecordStepSkipped(stepName, wire string) {
+	for i, name := range r.ActiveSteps {
+		if name == stepName {
+			r.ActiveSteps = append(r.ActiveSteps[:i], r.ActiveSteps[i+1:]...)
+			break
+		}
+	}
+	for i := len(r.StepExecutions) - 1; i >= 0; i-- {
+		if r.StepExecutions[i].StepName == stepName && r.StepExecutions[i].CompletedAt.IsZero() {
+			r.StepExecutions[i].Result = wire
+			r.StepExecutions[i].Skipped = true
 			r.StepExecutions[i].CompletedAt = time.Now()
 			return
 		}
