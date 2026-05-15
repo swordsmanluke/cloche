@@ -1,5 +1,25 @@
 # Cloche Detailed Changelog
 
+## v3.15.7 — 2026-05-15
+
+### Breaking
+
+- `cf17793` The `default` field is removed from `[[repositories]]` config entries and from the `Repository` proto message (field 4 is now reserved to prevent future reuse); `cloche project repos list` column header changed from `FLAGS` to `URL`. Migration: remove `default = true` from `[[repositories]]` blocks in `.cloche/config.toml` — the field is silently ignored at parse time but has no effect; the implicit default repository is now the single declared entry when exactly one is configured.
+
+### Features
+
+- `5c08f33` New `skip` step config key accepted on any step type: a shell command run before the step with a 90 s timeout; exit 0 bypasses the step (routing via `success` or a `CLOCHE_RESULT:<wire>` marker on stdout), non-zero exits run the step normally; skip output is captured to `step.<name>.skip.log`; skipped steps appear as `skipped` in `cloche status`/`cloche list` and do not increment the `max_attempts` counter. ([design](docs/design/skip-scripts.md))
+- `5eb58f8` Host-workflow agent steps now receive `CLOCHE_TASK_ID`, `CLOCHE_RUN_ID`, `CLOCHE_ATTEMPT_ID`, and `CLOCHE_PROJECT_DIR` as environment variables via the prompt adapter's new `ExtraEnv` field, enabling `cloche get`/`cloche set` from within host-workflow agent steps.
+- `1fe0cd8` `cloche project` emits a `DEPRECATED:` warning with `[[repositories]]` migration instructions when no repository configuration is found in `config.toml`; `ListRepositories` auto-seeds a single entry (name = project directory basename, path = project root) on first access for projects with no stored repository rows.
+
+### Fixes
+
+- `893a00e` `GetProjectInfo` now uses `dsl.ParseAll` on every `.cloche` file and routes workflows to host or container by inspecting each workflow's `host {}` block; previously only `host.cloche` was parsed for host workflows and other files were always treated as container-workflow sources, causing misclassification for projects that define host workflows outside `host.cloche`.
+
+### Internal
+
+- `893a00e` Added `docs/design/skip-scripts.md` design document describing the skip-scripts feature (semantics, DSL, lifecycle, protocol, implementation surface).
+
 ## v3.15.1 — 2026-05-13
 
 ### Breaking

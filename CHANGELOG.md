@@ -1,5 +1,21 @@
 # Cloche Changelog
 
+## v3.15.7 — 2026-05-15
+
+### Breaking changes
+
+- The `default` field in `[[repositories]]` config entries is removed; `cloche project repos list` now shows a `URL` column header instead of `FLAGS`. Migration: remove `default = true` from any `[[repositories]]` blocks in `.cloche/config.toml`; the default repository is now implicitly the single declared entry.
+
+### Features
+
+- New `skip` step config key: any step type (`agent`, `script`, `workflow`, `poll`, `human`) may declare a shell command that runs before the step executes; exit 0 bypasses the step and routes via the chosen wire (default `success`), non-zero runs the step normally; skipped steps appear as `skipped` in `cloche status` and do not count against `max_attempts`. ([design](docs/design/skip-scripts.md))
+- `CLOCHE_TASK_ID`, `CLOCHE_RUN_ID`, `CLOCHE_ATTEMPT_ID`, and `CLOCHE_PROJECT_DIR` are now injected into agent process environments when an agent step runs inside a host workflow, enabling `cloche get`/`cloche set` calls from within those steps.
+- `cloche project` now shows a deprecation warning with `[[repositories]]` migration instructions when no repository configuration is present in `.cloche/config.toml`; `ListRepositories` auto-seeds a root-path repository on first access for backward compatibility.
+
+### Notable fixes
+
+- `cloche project` (and `GetProjectInfo`) now correctly discovers host workflows from any `.cloche` file by inspecting the `host {}` block rather than treating only `host.cloche` as a source of host workflows.
+
 ## v3.15.1 — 2026-05-13
 
 ### Breaking changes
