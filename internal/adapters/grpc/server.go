@@ -3191,14 +3191,15 @@ func (s *ClocheServer) daemonExecutorFor(projectDir, taskID, attemptID string) e
 	}
 	var de *DaemonExecutor
 	de = NewDaemonExecutor(DaemonExecutorConfig{
-		Pool:       s.pool,
-		Store:      s.store,
-		LogStore:   s.logStore,
-		ProjectDir: projectDir,
-		TaskID:     taskID,
-		AttemptID:  attemptID,
-		Image:      image,
-		AllWFs:     allWFs,
+		Pool:         s.pool,
+		Store:        s.store,
+		LogStore:     s.logStore,
+		LogBroadcast: s.logBroadcast,
+		ProjectDir:   projectDir,
+		TaskID:       taskID,
+		AttemptID:    attemptID,
+		Image:        image,
+		AllWFs:       allWFs,
 		OnContainerStart: func(containerID string) {
 			// Register the container → host run mapping so the AgentSession
 			// handler can route StepLog messages to the correct run for

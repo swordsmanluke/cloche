@@ -64,6 +64,20 @@ func (w *Writer) Log(typ EntryType, message string) {
 	_ = w.file.Sync()
 }
 
+// Append writes raw content directly to the log file without type-prefix
+// wrapping. Use this when the content is already formatted (e.g. forwarding
+// a sub-workflow's full.log whose lines already carry "[ts] [type] content"
+// markers).
+func (w *Writer) Append(content string) {
+	if content == "" {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	_, _ = fmt.Fprint(w.file, content)
+	_ = w.file.Sync()
+}
+
 // Close closes the underlying file.
 func (w *Writer) Close() error {
 	if w.file != nil {

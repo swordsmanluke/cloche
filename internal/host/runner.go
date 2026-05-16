@@ -923,12 +923,25 @@ func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, res
 	}
 	if h.logWriter != nil {
 		if stepOutput != "" {
-			h.logWriter.Log(logstream.TypeScript, stepOutput)
+			if step.Type == domain.StepTypeWorkflow {
+				// Sub-workflow content is already formatted ([ts] [type] content
+				// for container workflows, or aggregated plain text for host
+				// workflows). Append it directly so the outer full.log retains
+				// the original type markers and the web UI/CLI can parse them
+				// without an extra [script] wrapper.
+				h.logWriter.Append(stepOutput)
+			} else {
+				h.logWriter.Log(logstream.TypeScript, stepOutput)
+			}
 		}
 		h.logWriter.Log(logstream.TypeStatus, "step_completed: "+step.Name+" -> "+result)
 	}
 	if h.logBroadcast != nil {
-		if stepOutput != "" {
+		// For workflow steps the inner sub-workflow already broadcast its events
+		// (host sub-workflows via innerHostStatusHandler, container sub-workflows
+		// via AgentSession StepLog messages). Publishing the batch output again
+		// here would duplicate content for live-stream subscribers.
+		if stepOutput != "" && step.Type != domain.StepTypeWorkflow {
 			h.logBroadcast.Publish(h.orchRunID, logstream.LogLine{
 				Timestamp: now.Format(time.RFC3339),
 				Type:      "script",

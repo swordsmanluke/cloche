@@ -16,6 +16,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/host"
+	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -825,6 +826,111 @@ func (s *recordingRunStore) GetContextKey(_ context.Context, _, _, _, key string
 // execCommand is a thin wrapper so tests don't have to import os/exec at call sites.
 func execCommand(name string, args ...string) *osExec.Cmd {
 	return osExec.Command(name, args...)
+}
+
+// TestDaemonExecutor_AggregateHostSubWorkflowLogs verifies that after a host
+// sub-workflow runs, aggregateHostSubWorkflowLogs creates a single log file
+// named after the workflow step containing all inner step outputs.
+func TestDaemonExecutor_AggregateHostSubWorkflowLogs(t *testing.T) {
+	tmpDir := t.TempDir()
+	logDir := filepath.Join(tmpDir, ".cloche", "logs", "task1", "att1")
+	require.NoError(t, os.MkdirAll(logDir, 0755))
+
+	// Write two inner step log files.
+	require.NoError(t, os.WriteFile(filepath.Join(logDir, "checkout.log"), []byte("checkout output\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(logDir, "build.log"), []byte("build output\n"), 0644))
+
+	de := &DaemonExecutor{
+		projectDir: tmpDir,
+		taskID:     "task1",
+		attemptID:  "att1",
+	}
+
+	run := &domain.Run{}
+	run.RecordStepStart("checkout")
+	run.RecordStepComplete("checkout", "success")
+	run.RecordStepStart("build")
+	run.RecordStepComplete("build", "success")
+
+	de.aggregateHostSubWorkflowLogs("finalize", run)
+
+	// The aggregated file should exist and contain both step outputs.
+	data, err := os.ReadFile(filepath.Join(logDir, "finalize.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "checkout output")
+	assert.Contains(t, string(data), "build output")
+}
+
+// TestDaemonExecutor_AggregateHostSubWorkflowLogs_SkipsWhenNoTaskID verifies
+// that aggregation is a no-op when taskID or attemptID is empty.
+func TestDaemonExecutor_AggregateHostSubWorkflowLogs_SkipsWhenNoTaskID(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	de := &DaemonExecutor{
+		projectDir: tmpDir,
+		taskID:     "", // empty → should skip
+		attemptID:  "att1",
+	}
+
+	run := &domain.Run{}
+	run.RecordStepStart("step1")
+	run.RecordStepComplete("step1", "success")
+
+	// Should not panic or create any file.
+	de.aggregateHostSubWorkflowLogs("outer", run)
+	_, err := os.Stat(filepath.Join(tmpDir, "outer.log"))
+	assert.True(t, os.IsNotExist(err))
+}
+
+// TestInnerHostStatusHandler_BroadcastsEvents verifies that the
+// innerHostStatusHandler publishes step_started, script content, and
+// step_completed events to the broadcaster under the given hostRunID.
+func TestInnerHostStatusHandler_BroadcastsEvents(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	broadcaster := logstream.NewBroadcaster()
+	broadcaster.Start("host-run-1")
+
+	// Write a step log file that the handler will read on step completion.
+	logDir := filepath.Join(tmpDir, ".cloche", "logs", "task1", "att1")
+	require.NoError(t, os.MkdirAll(logDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(logDir, "checkout.log"), []byte("git clone ok\n"), 0644))
+
+	h := &innerHostStatusHandler{
+		logBroadcast: broadcaster,
+		hostRunID:    "host-run-1",
+		outputDir:    logDir,
+	}
+
+	sub, _ := broadcaster.SubscribeWithHistory("host-run-1")
+	defer broadcaster.Unsubscribe("host-run-1", sub)
+
+	step := &domain.Step{Name: "checkout", Type: domain.StepTypeScript}
+	h.OnStepStart(nil, step)
+	h.OnStepComplete(nil, step, "success", nil)
+
+	// Collect published lines from channel (non-blocking).
+	var lines []logstream.LogLine
+	for {
+		select {
+		case line, ok := <-sub.C:
+			if !ok {
+				goto done
+			}
+			lines = append(lines, line)
+		default:
+			goto done
+		}
+	}
+done:
+
+	require.GreaterOrEqual(t, len(lines), 3, "expected at least 3 lines (start + script + complete)")
+	assert.Equal(t, "status", lines[0].Type)
+	assert.Contains(t, lines[0].Content, "step_started: checkout")
+	assert.Equal(t, "script", lines[1].Type)
+	assert.Contains(t, lines[1].Content, "git clone ok")
+	assert.Equal(t, "status", lines[2].Type)
+	assert.Contains(t, lines[2].Content, "step_completed: checkout -> success")
 }
 
 // TestDaemonExecutor_WorkflowStep_NoExtractionWhenNoSession verifies that

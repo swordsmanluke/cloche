@@ -15,6 +15,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/host"
+	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
 )
 
@@ -52,6 +53,11 @@ type DaemonExecutor struct {
 	// UI can serve them by step name. Optional: indexing is skipped when nil.
 	logStore ports.LogStore
 
+	// logBroadcast is used to publish live log lines for nested sub-workflow
+	// steps so that cloche logs -f and the web UI show them in real time.
+	// Optional: broadcasting is skipped when nil.
+	logBroadcast *logstream.Broadcaster
+
 	// taskID is the task ID for KV store operations.
 	taskID string
 
@@ -83,6 +89,7 @@ type DaemonExecutorConfig struct {
 	Pool       *docker.ContainerPool
 	Store      ports.RunStore
 	LogStore   ports.LogStore
+	LogBroadcast *logstream.Broadcaster
 	ProjectDir string
 	TaskID     string
 	AttemptID  string
@@ -102,6 +109,7 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 		pool:             cfg.Pool,
 		store:            cfg.Store,
 		logStore:         cfg.LogStore,
+		logBroadcast:     cfg.LogBroadcast,
 		projectDir:       cfg.ProjectDir,
 		taskID:           cfg.TaskID,
 		attemptID:        cfg.AttemptID,
@@ -248,6 +256,16 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 	}
 
 	eng := engine.New(d)
+	// For host sub-workflows attach a lightweight status handler so the inner
+	// steps' events (start, output, completion) are broadcast live to the
+	// parent run's log stream and can be read back from full.log.
+	if targetWF.Location == domain.LocationHost && d.logBroadcast != nil && d.hostExec != nil && d.hostExec.HostRunID != "" {
+		eng.SetStatusHandler(&innerHostStatusHandler{
+			logBroadcast: d.logBroadcast,
+			hostRunID:    d.hostExec.HostRunID,
+			outputDir:    filepath.Join(d.projectDir, ".cloche", "logs", d.taskID, d.attemptID),
+		})
+	}
 	run, err := eng.Run(ctx, targetWF)
 	if err != nil {
 		log.Printf("daemon executor: sub-workflow %q failed: %v", targetName, err)
@@ -273,6 +291,13 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 	resultLabel := "failed"
 	if succeeded {
 		resultLabel = "succeeded"
+	}
+
+	// For host sub-workflows, aggregate inner step logs into <step.Name>.log so
+	// the outer hostStatusHandler.OnStepComplete can read them and append them
+	// to the parent run's full.log.
+	if targetWF.Location == domain.LocationHost {
+		d.aggregateHostSubWorkflowLogs(step.Name, run)
 	}
 
 	// For container sub-workflows, extract the workspace into the pre-created
@@ -544,6 +569,91 @@ func (d *DaemonExecutor) indexSubworkflowLogs(ctx context.Context, hostRunID, su
 		}
 	}
 }
+
+// aggregateHostSubWorkflowLogs concatenates the log files written by a host
+// sub-workflow's individual steps into a single file named <workflowStepName>.log
+// in the shared output directory. This file is then picked up by the outer
+// hostStatusHandler.OnStepComplete so the sub-workflow's content is included
+// in the parent run's full.log.
+func (d *DaemonExecutor) aggregateHostSubWorkflowLogs(workflowStepName string, run *domain.Run) {
+	if d.taskID == "" || d.attemptID == "" || run == nil {
+		return
+	}
+	outputDir := filepath.Join(d.projectDir, ".cloche", "logs", d.taskID, d.attemptID)
+	var sb strings.Builder
+	for _, exec := range run.StepExecutions {
+		logPath := filepath.Join(outputDir, exec.StepName+".log")
+		data, err := os.ReadFile(logPath)
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		sb.Write(data)
+	}
+	if sb.Len() == 0 {
+		return
+	}
+	aggregatedPath := filepath.Join(outputDir, workflowStepName+".log")
+	if err := os.WriteFile(aggregatedPath, []byte(sb.String()), 0644); err != nil {
+		log.Printf("daemon executor: failed to write aggregated log for %s: %v", workflowStepName, err)
+	}
+}
+
+// innerHostStatusHandler is a lightweight engine.StatusHandler attached to the
+// engine running a host sub-workflow. It broadcasts inner step events (start,
+// output, completion) to the parent run's log broadcaster so that live-stream
+// clients see the nested workflow activity in real time.
+type innerHostStatusHandler struct {
+	logBroadcast *logstream.Broadcaster
+	hostRunID    string
+	outputDir    string
+}
+
+func (h *innerHostStatusHandler) OnStepStart(_ *domain.Run, step *domain.Step) {
+	if h.logBroadcast == nil {
+		return
+	}
+	h.logBroadcast.Publish(h.hostRunID, logstream.LogLine{
+		Timestamp: time.Now().Format(time.RFC3339),
+		Type:      "status",
+		Content:   "step_started: " + step.Name,
+		StepName:  step.Name,
+	})
+}
+
+func (h *innerHostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, result string, _ *domain.TokenUsage) {
+	if h.logBroadcast == nil {
+		return
+	}
+	logPath := filepath.Join(h.outputDir, step.Name+".log")
+	if data, err := os.ReadFile(logPath); err == nil && len(data) > 0 {
+		h.logBroadcast.Publish(h.hostRunID, logstream.LogLine{
+			Timestamp: time.Now().Format(time.RFC3339),
+			Type:      "script",
+			Content:   string(data),
+			StepName:  step.Name,
+		})
+	}
+	h.logBroadcast.Publish(h.hostRunID, logstream.LogLine{
+		Timestamp: time.Now().Format(time.RFC3339),
+		Type:      "status",
+		Content:   "step_completed: " + step.Name + " -> " + result,
+		StepName:  step.Name,
+	})
+}
+
+func (h *innerHostStatusHandler) OnStepSkipped(_ *domain.Run, step *domain.Step, wire string) {
+	if h.logBroadcast == nil {
+		return
+	}
+	h.logBroadcast.Publish(h.hostRunID, logstream.LogLine{
+		Timestamp: time.Now().Format(time.RFC3339),
+		Type:      "status",
+		Content:   "step_skipped: " + step.Name + " -> " + wire,
+		StepName:  step.Name,
+	})
+}
+
+func (h *innerHostStatusHandler) OnRunComplete(_ *domain.Run) {}
 
 // resolveGitIdentity loads the merged (global+project) git identity for
 // extraction commits. Returns empty strings when no identity is configured,

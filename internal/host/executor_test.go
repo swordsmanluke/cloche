@@ -1646,6 +1646,88 @@ func TestHostStatusHandler_NoLogFileWhenNoOutput(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), ".log file should not be created when .out doesn't exist")
 }
 
+// TestHostStatusHandler_WorkflowStep_AppendsRawContent verifies that for
+// StepTypeWorkflow steps, OnStepComplete appends the step log file content
+// directly to full.log (without a [script] wrapper) so that nested
+// sub-workflow log lines retain their original [ts] [type] content format.
+func TestHostStatusHandler_WorkflowStep_AppendsRawContent(t *testing.T) {
+	outputDir := t.TempDir()
+
+	logWriter, err := logstream.NewAtDir(outputDir)
+	require.NoError(t, err)
+	defer logWriter.Close()
+
+	// Write the "develop" step log file mimicking extractContainerLogs output
+	// (the container's full.log with its own [ts] [type] content lines).
+	subLog := "[2026-01-01T12:00:00Z] [status] step_started: implement\n" +
+		"[2026-01-01T12:00:01Z] [llm] Hello from nested container\n" +
+		"[2026-01-01T12:00:02Z] [status] step_completed: implement -> success\n"
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "develop.log"), []byte(subLog), 0644))
+
+	handler := &hostStatusHandler{
+		outputDir: outputDir,
+		logWriter: logWriter,
+	}
+
+	step := &domain.Step{Name: "develop", Type: domain.StepTypeWorkflow}
+	handler.OnStepComplete(nil, step, "success", nil)
+	logWriter.Close()
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "full.log"))
+	require.NoError(t, err)
+	content := string(data)
+
+	// The nested content must appear verbatim (not wrapped in [script]).
+	assert.Contains(t, content, "[2026-01-01T12:00:01Z] [llm] Hello from nested container")
+	assert.NotContains(t, content, "[script] [2026-01-01T12:00:01Z]")
+
+	// The step_completed status line must always be written.
+	assert.Contains(t, content, "step_completed: develop -> success")
+}
+
+// TestHostStatusHandler_WorkflowStep_NoBroadcastForContent verifies that for
+// StepTypeWorkflow steps, OnStepComplete does NOT broadcast the batch step
+// content (which would duplicate lines already broadcast by the inner handler
+// or container StepLog messages).
+func TestHostStatusHandler_WorkflowStep_NoBroadcastForContent(t *testing.T) {
+	outputDir := t.TempDir()
+
+	broadcaster := logstream.NewBroadcaster()
+	broadcaster.Start("run-1")
+	sub, _ := broadcaster.SubscribeWithHistory("run-1")
+	defer broadcaster.Unsubscribe("run-1", sub)
+
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "develop.log"), []byte("big blob\n"), 0644))
+
+	handler := &hostStatusHandler{
+		outputDir:    outputDir,
+		logBroadcast: broadcaster,
+		orchRunID:    "run-1",
+	}
+
+	step := &domain.Step{Name: "develop", Type: domain.StepTypeWorkflow}
+	handler.OnStepComplete(nil, step, "success", nil)
+
+	// Drain the subscriber channel.
+	var contents []string
+	for {
+		select {
+		case line, ok := <-sub.C:
+			if !ok {
+				goto done
+			}
+			contents = append(contents, line.Content)
+		default:
+			goto done
+		}
+	}
+done:
+
+	// Only the step_completed status line should be broadcast, not the batch content.
+	require.Len(t, contents, 1)
+	assert.Contains(t, contents[0], "step_completed: develop -> success")
+}
+
 // --- Auto-context seeding tests ---
 
 func TestExecutor_SeedsRunContext_OnFirstUse(t *testing.T) {
