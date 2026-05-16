@@ -1,5 +1,11 @@
 # Cloche Changelog
 
+## v3.15.9 — 2026-05-16
+
+### Notable fixes
+
+- Live log streaming and aggregation for nested host sub-workflow steps: inner step events now appear in `cloche logs -f` in real time, and their output is written to the parent run's `full.log` without a spurious `[script]` wrapper; container sub-workflow output is no longer duplicated in the live stream.
+
 ## v3.15.7 — 2026-05-15
 
 ### Breaking changes

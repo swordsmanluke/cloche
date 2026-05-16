@@ -1,5 +1,11 @@
 # Cloche Detailed Changelog
 
+## v3.15.9 — 2026-05-16
+
+### Fixes
+
+- `7fa9315` Live log streaming and aggregation for nested host sub-workflow steps: `innerHostStatusHandler` now broadcasts inner step start/complete events to the parent run's log broadcaster so `cloche logs -f` reflects them in real time; `aggregateHostSubWorkflowLogs` concatenates per-step log files into a single `<step>.log` so the outer `full.log` receives them; `logstream.Writer.Append` writes pre-formatted log content without adding a `[script]` type wrapper; `hostStatusHandler.OnStepComplete` no longer re-broadcasts batch output for workflow steps (which was already streamed live by the inner handler or container `StepLog` messages), preventing duplicate lines.
+
 ## v3.15.7 — 2026-05-15
 
 ### Breaking
