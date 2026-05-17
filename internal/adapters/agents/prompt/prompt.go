@@ -20,7 +20,8 @@ import (
 // defaultAgentArgs maps known agent commands to their default arguments.
 // Commands not in this map receive no default arguments (prompt on stdin only).
 var defaultAgentArgs = map[string][]string{
-	"claude": {"-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions", "--model", "sonnet"},
+	"claude":   {"-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions", "--model", "sonnet"},
+	"opencode": {"run", "--format", "json", "--dangerously-skip-permissions"},
 }
 
 type Adapter struct {
@@ -59,6 +60,15 @@ func (a *Adapter) argsFor(command string) []string {
 			}
 			if !containsArg(args, "--verbose") {
 				args = append(args, "--verbose")
+			}
+		}
+		if command == "opencode" {
+			// opencode emits its TUI on stderr by default and only the final
+			// model reply on stdout. --format json makes it emit structured
+			// events (text deltas, tool_use, step_finish with usage) on
+			// stdout so the streaming parser can pick them up.
+			if !containsArg(args, "--format") {
+				args = append(args, "--format", "json")
 			}
 		}
 		return args
@@ -356,15 +366,18 @@ func runUsageCommand(ctx context.Context, cmd string, workDir string) *domain.To
 	}
 }
 
-// extractStreamText parses a Claude Code stream-json line and returns text content.
+// extractStreamText parses a streaming-JSON event line and returns text content.
 //
-// Claude Code's stream-json emits these event types:
-//   - "assistant": one per turn, contains message.content[] with text and tool_use blocks
-//   - "result": final event with the full result text (contains CLOCHE_RESULT marker)
+// Supported producers and their event types:
+//   - Claude Code stream-json:
+//       "assistant" — one per turn, message.content[] with text and tool_use blocks
+//       "result"    — final event with the full result text (contains CLOCHE_RESULT marker)
+//   - Opencode --format json:
+//       "text"      — incremental text delta (part.text)
+//       "tool_use"  — tool invocation (part.tool, part.state.input, part.state.output)
 //
-// For assistant events, we extract text blocks and summarize tool_use blocks
-// (e.g. "--- Tool: Read('path') ---"). Each assistant event has a unique uuid
-// for dedup by the caller.
+// For tool_use events we emit a short "--- Tool: name(arg) ---" summary so
+// the live log mirrors the user's view of the agent's actions.
 func extractStreamText(line []byte) string {
 	// Fast path: skip lines that can't contain content we care about.
 	if !bytes.Contains(line, []byte(`"type"`)) {
@@ -383,8 +396,57 @@ func extractStreamText(line []byte) string {
 		return extractAssistantText(line)
 	case "result":
 		return extractResultText(line)
+	case "text":
+		return extractOpencodeText(line)
+	case "tool_use":
+		return extractOpencodeToolUse(line)
 	}
 	return ""
+}
+
+// extractOpencodeText extracts the text delta from an opencode "text" event.
+// Shape: {"type":"text","part":{"text":"..."}}
+//
+// Opencode streams text as small deltas (often without trailing newlines).
+// Unlike Claude's assistant events — which are complete turns and warrant
+// a synthetic trailing \n — opencode deltas must be returned verbatim so the
+// caller's line-buffer can reassemble them into natural lines.
+func extractOpencodeText(line []byte) string {
+	var event struct {
+		Part struct {
+			Text string `json:"text"`
+		} `json:"part"`
+	}
+	if json.Unmarshal(line, &event) != nil {
+		return ""
+	}
+	return event.Part.Text
+}
+
+// extractOpencodeToolUse renders an opencode "tool_use" event as a "--- Tool: ... ---"
+// line, mirroring the format extractAssistantText uses for Claude tool_use blocks.
+// Shape: {"type":"tool_use","part":{"tool":"write","state":{"input":{...}}}}
+func extractOpencodeToolUse(line []byte) string {
+	var event struct {
+		Part struct {
+			Tool  string `json:"tool"`
+			State struct {
+				Input json.RawMessage `json:"input"`
+			} `json:"state"`
+		} `json:"part"`
+	}
+	if json.Unmarshal(line, &event) != nil {
+		return ""
+	}
+	if event.Part.Tool == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("--- Tool: ")
+	b.WriteString(event.Part.Tool)
+	b.WriteString(toolInputSummary(event.Part.State.Input))
+	b.WriteString(" ---\n")
+	return b.String()
 }
 
 // extractAssistantText extracts text and tool-use summaries from an assistant event.
@@ -438,27 +500,56 @@ func extractResultText(line []byte) string {
 	return ""
 }
 
-// extractResultUsage parses a Claude Code stream-json result event and returns
-// token usage if present. Returns nil if the line is not a result event or has
-// no usage field.
+// extractResultUsage parses a streaming-JSON event line and returns token
+// usage if present. Returns nil if the line carries no recognised usage data.
+//
+// Supported event shapes:
+//   - Claude "result": top-level `usage.{input_tokens,output_tokens}`
+//   - Opencode "step_finish": nested `part.tokens.{input,output}`
 func extractResultUsage(line []byte) *domain.TokenUsage {
-	if !bytes.Contains(line, []byte(`"usage"`)) {
+	// Quick filter: Claude uses "usage", opencode uses "tokens" inside step_finish.
+	if !bytes.Contains(line, []byte(`"usage"`)) && !bytes.Contains(line, []byte(`"tokens"`)) {
 		return nil
 	}
-	var event struct {
-		Type  string `json:"type"`
-		Usage *struct {
-			InputTokens  int64 `json:"input_tokens"`
-			OutputTokens int64 `json:"output_tokens"`
-		} `json:"usage"`
+	var envelope struct {
+		Type string `json:"type"`
 	}
-	if json.Unmarshal(line, &event) != nil || event.Type != "result" || event.Usage == nil {
+	if json.Unmarshal(line, &envelope) != nil {
 		return nil
 	}
-	return &domain.TokenUsage{
-		InputTokens:  event.Usage.InputTokens,
-		OutputTokens: event.Usage.OutputTokens,
+	switch envelope.Type {
+	case "result":
+		var event struct {
+			Usage *struct {
+				InputTokens  int64 `json:"input_tokens"`
+				OutputTokens int64 `json:"output_tokens"`
+			} `json:"usage"`
+		}
+		if json.Unmarshal(line, &event) != nil || event.Usage == nil {
+			return nil
+		}
+		return &domain.TokenUsage{
+			InputTokens:  event.Usage.InputTokens,
+			OutputTokens: event.Usage.OutputTokens,
+		}
+	case "step_finish":
+		var event struct {
+			Part struct {
+				Tokens *struct {
+					Input  int64 `json:"input"`
+					Output int64 `json:"output"`
+				} `json:"tokens"`
+			} `json:"part"`
+		}
+		if json.Unmarshal(line, &event) != nil || event.Part.Tokens == nil {
+			return nil
+		}
+		return &domain.TokenUsage{
+			InputTokens:  event.Part.Tokens.Input,
+			OutputTokens: event.Part.Tokens.Output,
+		}
 	}
+	return nil
 }
 
 // scanOutputForUsage scans buffered (non-streaming) output for a result event
@@ -481,8 +572,11 @@ func toolInputSummary(input json.RawMessage) string {
 	if json.Unmarshal(input, &m) != nil {
 		return ""
 	}
-	// Pick the most informative single argument to show.
-	for _, key := range []string{"file_path", "command", "pattern", "prompt", "skill"} {
+	// Pick the most informative single argument to show. The first two keys
+	// in each pair are Claude/opencode variants of the same field (snake/
+	// camelCase). Order matters: tools that take a path get the path shown
+	// over a longer command field.
+	for _, key := range []string{"file_path", "filePath", "command", "pattern", "prompt", "skill"} {
 		if v, ok := m[key]; ok {
 			var s string
 			if json.Unmarshal(v, &s) == nil {

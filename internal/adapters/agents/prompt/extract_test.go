@@ -73,6 +73,54 @@ func TestToolInputSummary_LongValue(t *testing.T) {
 	assert.LessOrEqual(t, len(got), 70)
 }
 
+// Opencode --format json emits a distinct event stream from Claude's
+// stream-json. These tests use fixtures captured from a live `opencode run
+// --format json --model digitalocean/kimi-k2.6` invocation in the container.
+
+func TestExtractStreamText_OpencodeTextEvent(t *testing.T) {
+	line := []byte(`{"type":"text","timestamp":1779036439520,"sessionID":"ses_1","part":{"id":"prt_1","messageID":"msg_1","sessionID":"ses_1","type":"text","text":"Hello world"}}`)
+	got := extractStreamText(line)
+	assert.Equal(t, "Hello world", got)
+}
+
+func TestExtractStreamText_OpencodeTextEventEmpty(t *testing.T) {
+	line := []byte(`{"type":"text","part":{"text":""}}`)
+	got := extractStreamText(line)
+	assert.Empty(t, got)
+}
+
+func TestExtractStreamText_OpencodeToolUse(t *testing.T) {
+	line := []byte(`{"type":"tool_use","timestamp":1779036439520,"sessionID":"ses_1","part":{"type":"tool","tool":"write","callID":"functions.write:0","state":{"status":"completed","input":{"content":"HELLO","filePath":"/tmp/h.txt"},"output":"Wrote file successfully."}}}`)
+	got := extractStreamText(line)
+	assert.Equal(t, "--- Tool: write('/tmp/h.txt') ---\n", got)
+}
+
+func TestExtractStreamText_OpencodeToolUseBash(t *testing.T) {
+	line := []byte(`{"type":"tool_use","part":{"tool":"bash","state":{"input":{"command":"go test ./..."}}}}`)
+	got := extractStreamText(line)
+	assert.Equal(t, "--- Tool: bash('go test ./...') ---\n", got)
+}
+
+func TestExtractStreamText_OpencodeStepStartIgnored(t *testing.T) {
+	line := []byte(`{"type":"step_start","part":{}}`)
+	got := extractStreamText(line)
+	assert.Empty(t, got)
+}
+
+func TestExtractResultUsage_OpencodeStepFinish(t *testing.T) {
+	line := []byte(`{"type":"step_finish","timestamp":1779036439520,"sessionID":"ses_1","part":{"id":"prt_1","reason":"tool-calls","messageID":"msg_1","sessionID":"ses_1","type":"step-finish","tokens":{"total":6687,"input":6620,"output":67,"reasoning":0,"cache":{"write":0,"read":0}},"cost":0.006557}}`)
+	got := extractResultUsage(line)
+	require.NotNil(t, got)
+	assert.Equal(t, int64(6620), got.InputTokens)
+	assert.Equal(t, int64(67), got.OutputTokens)
+}
+
+func TestExtractResultUsage_OpencodeStepFinishNoTokens(t *testing.T) {
+	line := []byte(`{"type":"step_finish","part":{"reason":"stop"}}`)
+	got := extractResultUsage(line)
+	assert.Nil(t, got)
+}
+
 func TestExtractStreamText_TextWithoutTrailingNewline(t *testing.T) {
 	line := []byte(`{"type":"assistant","message":{"content":[{"type":"text","text":"no newline"}]},"uuid":"x"}`)
 	got := extractStreamText(line)
