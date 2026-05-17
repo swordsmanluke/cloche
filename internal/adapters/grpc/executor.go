@@ -532,6 +532,25 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 		Cmd: []string{"cloche-agent"},
 	}
 
+	// Inject workflow-level `container { agent_command = ... }` and
+	// `container { agent_args = ... }` into the step config so the in-container
+	// cloche-agent's prompt adapter picks them up. Without this the adapter
+	// falls back to its built-in default of ["claude"] regardless of what the
+	// .cloche file declares. Step-level overrides win.
+	if step.Config == nil {
+		step.Config = map[string]string{}
+	}
+	if _, has := step.Config["agent_command"]; !has {
+		if cmd := wf.Config["container.agent_command"]; cmd != "" {
+			step.Config["agent_command"] = cmd
+		}
+	}
+	if _, has := step.Config["agent_args"]; !has {
+		if args := wf.Config["container.agent_args"]; args != "" {
+			step.Config["agent_args"] = args
+		}
+	}
+
 	session, err := d.pool.SessionFor(ctx, poolKey, cfg)
 	if err != nil {
 		return domain.StepResult{}, fmt.Errorf("daemon executor: getting container session for step %q: %w", step.Name, err)

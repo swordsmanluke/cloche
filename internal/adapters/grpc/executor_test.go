@@ -343,6 +343,83 @@ func TestDaemonExecutor_ContainerStep_FallsBackToDaemonImage(t *testing.T) {
 		"daemon default image should be used when workflow has no container.image")
 }
 
+// TestDaemonExecutor_ContainerStep_InjectsAgentConfig verifies that the daemon
+// bridges workflow-level `container { agent_command = ... }` and `agent_args`
+// into per-step config before dispatching to the in-container cloche-agent.
+// Without this, the in-container prompt adapter would silently fall back to
+// its built-in default of ["claude"], ignoring whatever .cloche files declare.
+//
+// Step-level overrides must win over the workflow-level defaults.
+func TestDaemonExecutor_ContainerStep_InjectsAgentConfig(t *testing.T) {
+	rt := &recordingContainerRuntime{}
+	pool := docker.NewContainerPool(rt)
+
+	wf := buildContainerWFForTest("develop")
+	wf.Config = map[string]string{
+		"container.agent_command": "opencode",
+		"container.agent_args":    "run --model digitalocean/kimi-k2.6 --dangerously-skip-permissions",
+	}
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		Pool:       pool,
+		ProjectDir: t.TempDir(),
+		AttemptID:  "att-agent-inject",
+		Image:      "daemon-default:latest",
+		AllWFs:     map[string]*domain.Workflow{"develop": wf},
+	})
+
+	step := wf.Steps["step1"]
+	// Pre-cancelled ctx so SessionFor returns fast after Start is called.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ctx = engine.WithWorkflow(ctx, wf)
+
+	_, _ = de.Execute(ctx, step)
+
+	// Injection happens before SessionFor, so the assertion runs regardless of
+	// the cancelled-context error path.
+	assert.Equal(t, "opencode", step.Config["agent_command"],
+		"workflow container.agent_command should propagate to step.Config[agent_command]")
+	assert.Equal(t, "run --model digitalocean/kimi-k2.6 --dangerously-skip-permissions", step.Config["agent_args"],
+		"workflow container.agent_args should propagate to step.Config[agent_args]")
+}
+
+// TestDaemonExecutor_ContainerStep_StepLevelAgentWins verifies that an explicit
+// step-level agent_command takes precedence over the container-block default.
+func TestDaemonExecutor_ContainerStep_StepLevelAgentWins(t *testing.T) {
+	rt := &recordingContainerRuntime{}
+	pool := docker.NewContainerPool(rt)
+
+	wf := buildContainerWFForTest("develop")
+	wf.Config = map[string]string{
+		"container.agent_command": "opencode",
+		"container.agent_args":    "run --model some-default",
+	}
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		Pool:       pool,
+		ProjectDir: t.TempDir(),
+		AttemptID:  "att-agent-step-win",
+		Image:      "daemon-default:latest",
+		AllWFs:     map[string]*domain.Workflow{"develop": wf},
+	})
+
+	step := wf.Steps["step1"]
+	step.Config["agent_command"] = "codex"
+	step.Config["agent_args"] = "--explicit"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ctx = engine.WithWorkflow(ctx, wf)
+
+	_, _ = de.Execute(ctx, step)
+
+	assert.Equal(t, "codex", step.Config["agent_command"],
+		"step-level agent_command should NOT be overwritten by container-block default")
+	assert.Equal(t, "--explicit", step.Config["agent_args"],
+		"step-level agent_args should NOT be overwritten by container-block default")
+}
+
 // TestDaemonExecutor_ProductionWiring validates the full construction path that
 // the daemon uses: daemonExecutorFor → host.Runner.RunNamed → engine. This
 // exercises the wiring that unit tests bypass by constructing DaemonExecutor
