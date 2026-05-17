@@ -191,7 +191,7 @@ The operator can pre-set task-scoped KV before running the workflow:
 
 ```bash
 CLOCHE_TASK_ID=<feature-task-id> cloche set vertical_base_branch <branch>
-CLOCHE_TASK_ID=<feature-task-id> cloche run --workflow vertical
+CLOCHE_TASK_ID=<feature-task-id> cloche run vertical
 ```
 
 `vertical_base_branch` defaults to `main`. There are no env-var-only configuration

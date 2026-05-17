@@ -22,7 +22,7 @@ This project was generated in a single Cloche workflow run. No human wrote any
 of the Ruby code. The command:
 
 ```
-cloche run --workflow develop --prompt '<prompt>'
+cloche run develop --prompt '<prompt>'
 ```
 
 The prompt passed to Cloche:

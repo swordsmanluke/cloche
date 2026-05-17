@@ -37,7 +37,7 @@
 ### Features
 
 - **Repository primitive** (cloche-em50). Declare `[[repositories]]` in `.cloche/config.toml`; workflows reference them via `repos = [...]`; steps pin a specific repo via `repository = "x"`. `cloche project` displays them; new `cloche project repos list` produces a machine-readable view. The container-building runtime will use the workflow's `repos` field to know which repositories to copy into `/workspace/<repo>/`.
-- **Vertical development workflow** for layered feature delivery: `cloche run --workflow vertical` walks a feature through BDD test-plan → layered implementation (PR per layer) → docs → finalize. See `docs/design/vertical-workflow.md`.
+- **Vertical development workflow** for layered feature delivery: `cloche run vertical` walks a feature through BDD test-plan → layered implementation (PR per layer) → docs → finalize. See `docs/design/vertical-workflow.md`.
 - `verify-changes.sh` now runs `go build ./...` so workflow runs fail fast on non-compiling commits.
 - New `[git]` config section (`name`, `email`, `ssh_key`) for per-project bot git identity; exports `CLOCHE_GIT_AUTHOR_NAME`, `CLOCHE_GIT_AUTHOR_EMAIL`, and `CLOCHE_GIT_SSH_COMMAND` to host scripts and uses them for extraction commits. ([design](docs/plans/2026-04-21-git-identity-design.md))
 - `cloche init` now offers an interactive SSH key setup flow and accepts `--non-interactive` / `--ssh-key <path>` flags; when the project has a GitHub remote, shows the direct URL for adding a deploy key. ([design](docs/plans/2026-04-21-git-identity-design.md))

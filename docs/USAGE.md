@@ -1565,9 +1565,8 @@ TOML array-of-tables item:
 
 ```toml
 [[repositories]]
-name    = "backend"
-path    = "./repos/backend"
-default = true
+name = "backend"
+path = "./repos/backend"
 
 [[repositories]]
 name = "frontend"
@@ -1578,7 +1577,6 @@ path = "./repos/frontend"
 |-----|---------|-------------|
 | `name` | _(required)_ | Identifier used to reference this repository from workflow `repos` fields. |
 | `path` | _(required)_ | Path relative to the project root. |
-| `default` | `false` | Mark this repository as the default. At most one repository should be marked default. |
 
 Repositories appear in `cloche project` output and in `cloche project repos list`.
 Remote URL annotation is done via top-level `repository` blocks in `.cloche` files

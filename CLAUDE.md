@@ -117,7 +117,7 @@ CHANGELOG entry and GitHub Release. The process is two host workflows run on dem
 2. Generate and commit the changelog:
 
    ```bash
-   cloche run --workflow changelog
+   cloche run changelog
    ```
 
    This walks `<last-release-tag>..HEAD`, filters out per-task `Version X.Y.Z` and
@@ -133,7 +133,7 @@ CHANGELOG entry and GitHub Release. The process is two host workflows run on dem
 3. Tag and publish:
 
    ```bash
-   cloche run --workflow release
+   cloche run release
    ```
 
    Creates an annotated `v<VERSION>` tag with the CHANGELOG entry as its message,
@@ -144,7 +144,7 @@ CHANGELOG entry and GitHub Release. The process is two host workflows run on dem
 Rehearse the release without touching the remote:
 
 ```bash
-CLOCHE_RELEASE_DRY_RUN=1 cloche run --workflow release
+CLOCHE_RELEASE_DRY_RUN=1 cloche run release
 ```
 
 The local tag is still created; `publish` emits `skipped`. Clean up with

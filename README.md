@@ -85,7 +85,6 @@ workflow "develop" {
 
   step fix {
     prompt = file(".cloche/prompts/fix.md")
-    feedback = "true"
     max_attempts = 2
     results = [success, fail, give-up]
   }
@@ -110,7 +109,7 @@ container configuration.
 ### 4. Run a workflow
 
 ```
-cloche run --workflow develop --prompt "Add a login page with email/password auth"
+cloche run develop --prompt "Add a login page with email/password auth"
 ```
 
 Cloche copies your project into a Docker container, runs the workflow steps, and
