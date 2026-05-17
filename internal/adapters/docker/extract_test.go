@@ -426,17 +426,125 @@ func TestExtractResultsNoGitEmptyBaseSHA(t *testing.T) {
 	}
 }
 
+// TestExtractResultsContainerSubPath verifies that opts.ContainerSubPath
+// scopes both docker cp and the container commit-log read to the named
+// subdirectory of /workspace, leaving the rest of the workspace untouched.
+func TestExtractResultsContainerSubPath(t *testing.T) {
+	repoDir, baseSHA := setupTestRepo(t)
+	wt := prepareForTest(t, repoDir, baseSHA, "sub-1")
+
+	// dockerCp source should target /workspace/repos/cloche/. — capture and
+	// stage some files for the commit so the extraction has something to do.
+	var cpSrc, cpDst string
+	origCp := dockerCp
+	dockerCp = func(_ context.Context, src, dst string) error {
+		cpSrc, cpDst = src, dst
+		if err := os.WriteFile(filepath.Join(dst, "subfile.txt"), []byte("x"), 0644); err != nil {
+			t.Fatalf("seed worktree: %v", err)
+		}
+		return nil
+	}
+	t.Cleanup(func() { dockerCp = origCp })
+
+	// dockerExec for git log should be invoked with -C /workspace/repos/cloche.
+	var execArgs []string
+	origExec := dockerExec
+	dockerExec = func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		execArgs = append([]string(nil), args...)
+		return []byte(""), nil
+	}
+	t.Cleanup(func() { dockerExec = origExec })
+
+	_, err := ExtractResults(context.Background(), ExtractOptions{
+		ContainerID:      "cid",
+		WorktreeDir:      wt.Dir,
+		Branch:           wt.Branch,
+		BaseSHA:          baseSHA,
+		RunID:            "run-sub",
+		WorkflowName:     "develop",
+		Result:           "succeeded",
+		ContainerSubPath: "repos/cloche",
+	})
+	if err != nil {
+		t.Fatalf("ExtractResults: %v", err)
+	}
+
+	wantSrc := "cid:/workspace/repos/cloche/."
+	if cpSrc != wantSrc {
+		t.Errorf("dockerCp src = %q, want %q", cpSrc, wantSrc)
+	}
+	if cpDst != wt.Dir+"/" {
+		t.Errorf("dockerCp dst = %q, want %q", cpDst, wt.Dir+"/")
+	}
+
+	// containerCommitsFromDocker calls dockerExec with: git -C <path> log ...
+	if len(execArgs) < 3 || execArgs[0] != "git" || execArgs[1] != "-C" {
+		t.Fatalf("dockerExec args shape unexpected: %v", execArgs)
+	}
+	if got := execArgs[2]; got != "/workspace/repos/cloche" {
+		t.Errorf("dockerExec git -C path = %q, want %q", got, "/workspace/repos/cloche")
+	}
+}
+
+// TestExtractResultsLegacyNoSubPath verifies that an empty ContainerSubPath
+// preserves pre-multi-repo behavior: docker cp from /workspace/. and the
+// container git log read from /workspace.
+func TestExtractResultsLegacyNoSubPath(t *testing.T) {
+	repoDir, baseSHA := setupTestRepo(t)
+	wt := prepareForTest(t, repoDir, baseSHA, "legacy-1")
+
+	var cpSrc string
+	origCp := dockerCp
+	dockerCp = func(_ context.Context, src, dst string) error {
+		cpSrc = src
+		if err := os.WriteFile(filepath.Join(dst, "f.txt"), []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		return nil
+	}
+	t.Cleanup(func() { dockerCp = origCp })
+
+	var execPath string
+	origExec := dockerExec
+	dockerExec = func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		if len(args) >= 3 && args[0] == "git" && args[1] == "-C" {
+			execPath = args[2]
+		}
+		return []byte(""), nil
+	}
+	t.Cleanup(func() { dockerExec = origExec })
+
+	if _, err := ExtractResults(context.Background(), ExtractOptions{
+		ContainerID:  "cid",
+		WorktreeDir:  wt.Dir,
+		Branch:       wt.Branch,
+		BaseSHA:      baseSHA,
+		RunID:        "run-legacy",
+		WorkflowName: "develop",
+		Result:       "succeeded",
+	}); err != nil {
+		t.Fatalf("ExtractResults: %v", err)
+	}
+
+	if cpSrc != "cid:/workspace/." {
+		t.Errorf("dockerCp src = %q, want %q", cpSrc, "cid:/workspace/.")
+	}
+	if execPath != "/workspace" {
+		t.Errorf("dockerExec git -C path = %q, want %q", execPath, "/workspace")
+	}
+}
+
 func TestContainerCommitsFromDocker(t *testing.T) {
 	// Empty output → empty string.
 	overrideDockerExec(t, []byte(""))
-	if got := containerCommitsFromDocker(context.Background(), "cid", "base"); got != "" {
+	if got := containerCommitsFromDocker(context.Background(), "cid", "base", ""); got != "" {
 		t.Errorf("expected empty for empty docker exec output, got %q", got)
 	}
 
 	// Two commits separated by %x00 (the delimiter git log --format=%B%x00 uses).
 	raw := []byte("Fix login validation\nCheck email format before submit\x00Add unit tests\x00")
 	overrideDockerExec(t, raw)
-	got := containerCommitsFromDocker(context.Background(), "cid", "base")
+	got := containerCommitsFromDocker(context.Background(), "cid", "base", "")
 	if !strings.Contains(got, "Fix login validation") {
 		t.Error("expected first commit subject in output")
 	}

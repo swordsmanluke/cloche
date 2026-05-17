@@ -75,9 +75,11 @@ type DaemonExecutor struct {
 	poolKeys map[string]bool
 
 	// worktrees tracks pre-created extraction worktrees keyed by pool key. One
-	// worktree per container (pool key) — shared across sub-workflows that
-	// reuse the same container.id within an attempt.
-	worktrees map[string]docker.ExtractWorktree
+	// slice per container (pool key) — shared across sub-workflows that reuse
+	// the same container.id within an attempt. Each slice has one entry per
+	// repo the workflow extracts into (legacy single-tree projects produce a
+	// single-element slice with an unnamed repo).
+	worktrees map[string][]repoWorktree
 
 	// closed tracks whether Close() has already been called.
 	closed bool
@@ -117,7 +119,7 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 		allWFs:           cfg.AllWFs,
 		resumeMode:       cfg.ResumeMode,
 		onContainerStart: cfg.OnContainerStart,
-		worktrees:        make(map[string]docker.ExtractWorktree),
+		worktrees:        make(map[string][]repoWorktree),
 	}
 }
 
@@ -148,24 +150,36 @@ func (d *DaemonExecutor) Close(succeeded bool) {
 		}
 	}
 	if succeeded {
-		for key, wt := range d.worktrees {
-			removeExtractWorktree(ctx, d.projectDir, wt)
+		for key, repos := range d.worktrees {
+			for _, p := range repos {
+				removeExtractWorktree(ctx, p.Repo.Path, p.Worktree)
+			}
 			delete(d.worktrees, key)
 		}
 	}
 }
 
+// repoWorktree pairs a resolved repo with the extract worktree+branch the
+// daemon prepared in that repo's git dir.
+type repoWorktree struct {
+	Repo     resolvedRepo
+	Worktree docker.ExtractWorktree
+}
+
 // removeExtractWorktree removes a pre-created extraction worktree and its
-// branch. Best-effort: errors are logged but not returned.
-func removeExtractWorktree(ctx context.Context, projectDir string, wt docker.ExtractWorktree) {
+// branch. The git commands run with cwd = repoDir, which must be the repo
+// whose git tracks the branch/worktree (the wrapper-project root for legacy
+// single-tree mode, or a per-repo path for multi-repo). Best-effort: errors
+// are logged but not returned.
+func removeExtractWorktree(ctx context.Context, repoDir string, wt docker.ExtractWorktree) {
 	rmCmd := exec.CommandContext(ctx, "git", "worktree", "remove", "--force", wt.Dir)
-	rmCmd.Dir = projectDir
+	rmCmd.Dir = repoDir
 	if out, err := rmCmd.CombinedOutput(); err != nil {
 		log.Printf("daemon executor: git worktree remove %s: %s: %v", wt.Dir, out, err)
 	}
 	if wt.Branch != "" {
 		brCmd := exec.CommandContext(ctx, "git", "branch", "-D", wt.Branch)
-		brCmd.Dir = projectDir
+		brCmd.Dir = repoDir
 		if out, err := brCmd.CombinedOutput(); err != nil {
 			log.Printf("daemon executor: git branch -D %s: %s: %v", wt.Branch, out, err)
 		}
@@ -246,11 +260,11 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 
 		// Pre-create the extraction worktree+branch for this pool key on the
 		// first sub-workflow that uses it. Subsequent sub-workflows reusing
-		// the same container share this same worktree — each extraction adds
-		// a commit to the shared branch.
+		// the same container share these same worktrees — each extraction adds
+		// a commit to the shared branch (one per repo).
 		if _, exists := d.worktrees[poolKey]; !exists {
-			if err := d.prepareExtractWorktree(ctx, poolKey, targetWF.ContainerID()); err != nil {
-				log.Printf("daemon executor: prepare extract worktree: %v", err)
+			if err := d.prepareExtractWorktrees(ctx, poolKey, targetWF); err != nil {
+				log.Printf("daemon executor: prepare extract worktrees: %v", err)
 			}
 		}
 	}
@@ -309,24 +323,27 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 			log.Printf("daemon executor: could not get session for extraction: %v", sessErr)
 		}
 
-		wt, hasWorktree := d.worktrees[poolKey]
-		if hasWorktree && session != nil {
-			log.Printf("daemon executor: extracting results to branch %s", wt.Branch)
+		prepared, hasWorktrees := d.worktrees[poolKey]
+		if hasWorktrees && session != nil {
 			authorName, authorEmail := resolveGitIdentity(d.projectDir)
-			if _, err := extractResultsFn(ctx, docker.ExtractOptions{
-				ContainerID:  session.ContainerID,
-				WorktreeDir:  wt.Dir,
-				Branch:       wt.Branch,
-				BaseSHA:      d.resolveSubWorkflowBaseSHA(ctx),
-				RunID:        childRunID,
-				WorkflowName: targetName,
-				Result:       resultLabel,
-				AuthorName:   authorName,
-				AuthorEmail:  authorEmail,
-			}); err != nil {
-				log.Printf("daemon executor: failed to extract results: %v", err)
-			} else {
-				log.Printf("daemon executor: branch %s updated", wt.Branch)
+			for _, p := range prepared {
+				log.Printf("daemon executor: extracting results for repo %q to branch %s", p.Repo.Name, p.Worktree.Branch)
+				if _, err := extractResultsFn(ctx, docker.ExtractOptions{
+					ContainerID:      session.ContainerID,
+					WorktreeDir:      p.Worktree.Dir,
+					Branch:           p.Worktree.Branch,
+					BaseSHA:          d.resolveRepoBaseSHA(ctx, p.Repo.Path),
+					RunID:            childRunID,
+					WorkflowName:     targetName,
+					Result:           resultLabel,
+					ContainerSubPath: p.Repo.SubPath,
+					AuthorName:       authorName,
+					AuthorEmail:      authorEmail,
+				}); err != nil {
+					log.Printf("daemon executor: failed to extract results for repo %q: %v", p.Repo.Name, err)
+				} else {
+					log.Printf("daemon executor: branch %s in %s updated", p.Worktree.Branch, p.Repo.Path)
+				}
 			}
 		}
 
@@ -360,21 +377,21 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 	return domain.StepResult{Result: "fail"}, nil
 }
 
-// resolveSubWorkflowBaseSHA picks the git SHA the extract worktree for a
-// sub-workflow should be branched from. Sub-workflows often pick their own
-// base at runtime (e.g. vertical's per-layer base = the previously-merged
-// layer's branch), so the host's HEAD is the wrong default — we use it only
-// as a last resort.
+// resolveRepoBaseSHA picks the git SHA the extract worktree for a particular
+// repo should be branched from. Sub-workflows often pick their own base at
+// runtime (e.g. vertical's per-layer base = the previously-merged layer's
+// branch), so the host's HEAD is the wrong default — we use it only as a last
+// resort.
 //
 // Lookup order:
 //  1. current_base_branch KV at the host run's scope (set by host steps that
-//     pick a branch — e.g. vertical-pick-layer.sh)
-//  2. host's HEAD on projectDir
+//     pick a branch — e.g. vertical-pick-layer.sh), resolved against repoDir.
+//  2. repoDir's HEAD.
 //
 // Branch names are resolved against either the local branch or its origin
 // remote-tracking ref (since freshly pushed branches may not have a local
 // tracking branch on the host).
-func (d *DaemonExecutor) resolveSubWorkflowBaseSHA(ctx context.Context) string {
+func (d *DaemonExecutor) resolveRepoBaseSHA(ctx context.Context, repoDir string) string {
 	if d.store != nil && d.taskID != "" {
 		var hostRunID string
 		if d.hostExec != nil {
@@ -382,45 +399,98 @@ func (d *DaemonExecutor) resolveSubWorkflowBaseSHA(ctx context.Context) string {
 		}
 		val, found, _ := d.store.GetContextKey(ctx, d.taskID, d.attemptID, hostRunID, "current_base_branch")
 		if found && val != "" {
-			if sha := gitResolveRef(d.projectDir, val); sha != "" {
+			if sha := gitResolveRef(repoDir, val); sha != "" {
 				return sha
 			}
-			log.Printf("daemon executor: current_base_branch=%q could not be resolved on host; falling back to HEAD", val)
+			log.Printf("daemon executor: current_base_branch=%q could not be resolved in %s; falling back to HEAD", val, repoDir)
 		}
 	}
-	return gitHEAD(d.projectDir)
+	return gitHEAD(repoDir)
 }
 
-// prepareExtractWorktree pre-creates the shared extraction worktree+branch for
-// a pool key and records it on the executor. Called once per pool key, on the
-// first sub-workflow that uses the container. Also writes child_branch to the
-// KV store so host-workflow scripts can find the branch.
-func (d *DaemonExecutor) prepareExtractWorktree(ctx context.Context, poolKey, containerID string) error {
-	baseSHA := d.resolveSubWorkflowBaseSHA(ctx)
-	if baseSHA == "" {
-		return fmt.Errorf("could not resolve base SHA for %s", d.projectDir)
+// prepareExtractWorktrees pre-creates one extraction worktree+branch per repo
+// the workflow extracts into, recording them on the executor. Called once per
+// pool key, on the first sub-workflow that uses the container. Writes
+// child_branch:<repo> and child_repo_path:<repo> to the KV store so host-
+// workflow scripts can iterate the branches. Also writes a comma-separated
+// child_repos list and, for compatibility with single-repo / legacy scripts,
+// the bare child_branch key when exactly one worktree was prepared.
+func (d *DaemonExecutor) prepareExtractWorktrees(ctx context.Context, poolKey string, wf *domain.Workflow) error {
+	cfg, err := config.Load(d.projectDir)
+	if err != nil {
+		log.Printf("daemon executor: config.Load(%s): %v — treating as no [[repositories]] declared", d.projectDir, err)
+		cfg = nil
 	}
-	name := d.attemptID + "-" + containerID
-	wt, err := prepareExtractWorktreeFn(ctx, docker.PrepareOptions{
-		ProjectDir: d.projectDir,
-		BaseSHA:    baseSHA,
-		TargetDir:  filepath.Join(d.projectDir, ".gitworktrees", "cloche", name),
-		Branch:     "cloche/" + name,
-	})
+	repos, err := resolveRepos(wf, cfg, d.projectDir)
 	if err != nil {
 		return err
 	}
-	d.worktrees[poolKey] = wt
-	log.Printf("daemon executor: prepared extract worktree at %s on branch %s", wt.Dir, wt.Branch)
 
-	if d.store != nil && d.taskID != "" {
-		var kvRunID string
-		if d.hostExec != nil {
-			kvRunID = d.hostExec.HostRunID
+	branchSuffix := d.attemptID + "-" + wf.ContainerID()
+	branchName := "cloche/" + branchSuffix
+
+	var prepared []repoWorktree
+	for _, r := range repos {
+		baseSHA := d.resolveRepoBaseSHA(ctx, r.Path)
+		if baseSHA == "" {
+			rollbackWorktrees(ctx, prepared)
+			return fmt.Errorf("could not resolve base SHA for repo %q at %s", r.Name, r.Path)
 		}
-		_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, kvRunID, "child_branch", wt.Branch)
+		wt, prepErr := prepareExtractWorktreeFn(ctx, docker.PrepareOptions{
+			ProjectDir: r.Path,
+			BaseSHA:    baseSHA,
+			TargetDir:  filepath.Join(r.Path, ".gitworktrees", "cloche", branchSuffix),
+			Branch:     branchName,
+		})
+		if prepErr != nil {
+			rollbackWorktrees(ctx, prepared)
+			return fmt.Errorf("preparing worktree for repo %q: %w", r.Name, prepErr)
+		}
+		log.Printf("daemon executor: prepared extract worktree at %s on branch %s (repo=%q)", wt.Dir, wt.Branch, r.Name)
+		prepared = append(prepared, repoWorktree{Repo: r, Worktree: wt})
 	}
+	d.worktrees[poolKey] = prepared
+	d.writeRepoBranchKV(ctx, prepared)
 	return nil
+}
+
+// rollbackWorktrees removes any worktrees that were prepared as part of a
+// multi-repo prepare batch that subsequently failed. Best-effort.
+func rollbackWorktrees(ctx context.Context, prepared []repoWorktree) {
+	for _, p := range prepared {
+		removeExtractWorktree(ctx, p.Repo.Path, p.Worktree)
+	}
+}
+
+// writeRepoBranchKV records the prepared extract branches in the KV store so
+// host-workflow scripts can locate them. For each named repo, writes both
+// child_branch:<name> (the branch) and child_repo_path:<name> (the absolute
+// repo path). Writes child_repos as a comma-separated list of names for
+// enumeration. When exactly one worktree was prepared (single-repo or legacy),
+// also writes the bare child_branch key so scripts that haven't been migrated
+// to per-repo keys continue to work.
+func (d *DaemonExecutor) writeRepoBranchKV(ctx context.Context, prepared []repoWorktree) {
+	if d.store == nil || d.taskID == "" {
+		return
+	}
+	var kvRunID string
+	if d.hostExec != nil {
+		kvRunID = d.hostExec.HostRunID
+	}
+	var names []string
+	for _, p := range prepared {
+		if p.Repo.Name != "" {
+			names = append(names, p.Repo.Name)
+			_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, kvRunID, "child_branch:"+p.Repo.Name, p.Worktree.Branch)
+			_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, kvRunID, "child_repo_path:"+p.Repo.Name, p.Repo.Path)
+		}
+	}
+	if len(names) > 0 {
+		_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, kvRunID, "child_repos", strings.Join(names, ","))
+	}
+	if len(prepared) == 1 {
+		_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, kvRunID, "child_branch", prepared[0].Worktree.Branch)
+	}
 }
 
 

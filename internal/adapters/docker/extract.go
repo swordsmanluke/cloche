@@ -45,6 +45,12 @@ type ExtractOptions struct {
 	WorkflowName string
 	Result       string
 
+	// ContainerSubPath, when non-empty, restricts extraction to a subdirectory
+	// of the container's /workspace. Used by multi-repo projects to extract
+	// each repository into its own worktree. Empty = extract the whole
+	// /workspace (single-repo or legacy behavior).
+	ContainerSubPath string
+
 	// AuthorName / AuthorEmail configure the identity used for the extraction
 	// commit. Empty strings fall back to the built-in "cloche <cloche@local>".
 	AuthorName  string
@@ -52,6 +58,16 @@ type ExtractOptions struct {
 
 	TargetDir string
 	NoGit     bool
+}
+
+// containerWorkspacePath returns the absolute container path for a sub. Empty
+// sub or "." resolves to /workspace.
+func containerWorkspacePath(sub string) string {
+	sub = strings.Trim(sub, "/")
+	if sub == "" || sub == "." {
+		return "/workspace"
+	}
+	return "/workspace/" + sub
 }
 
 const (
@@ -168,7 +184,8 @@ func extractNoGit(ctx context.Context, opts ExtractOptions) (ExtractResult, erro
 	if err := os.MkdirAll(opts.TargetDir, 0755); err != nil {
 		return ExtractResult{}, fmt.Errorf("creating target dir: %w", err)
 	}
-	if err := dockerCp(ctx, opts.ContainerID+":/workspace/.", opts.TargetDir+"/"); err != nil {
+	src := opts.ContainerID + ":" + containerWorkspacePath(opts.ContainerSubPath) + "/."
+	if err := dockerCp(ctx, src, opts.TargetDir+"/"); err != nil {
 		return ExtractResult{}, fmt.Errorf("docker cp from container: %w", err)
 	}
 	return ExtractResult{TargetDir: opts.TargetDir}, nil
@@ -188,7 +205,7 @@ func extractGit(ctx context.Context, opts ExtractOptions) (ExtractResult, error)
 		return ExtractResult{}, fmt.Errorf("reading worktree .git pointer: %w", err)
 	}
 
-	containerCommits := containerCommitsFromDocker(ctx, opts.ContainerID, opts.BaseSHA)
+	containerCommits := containerCommitsFromDocker(ctx, opts.ContainerID, opts.BaseSHA, opts.ContainerSubPath)
 
 	entries, err := os.ReadDir(opts.WorktreeDir)
 	if err != nil {
@@ -200,7 +217,8 @@ func extractGit(ctx context.Context, opts ExtractOptions) (ExtractResult, error)
 		}
 	}
 
-	if err := dockerCp(ctx, opts.ContainerID+":/workspace/.", opts.WorktreeDir+"/"); err != nil {
+	cpSrc := opts.ContainerID + ":" + containerWorkspacePath(opts.ContainerSubPath) + "/."
+	if err := dockerCp(ctx, cpSrc, opts.WorktreeDir+"/"); err != nil {
 		return ExtractResult{}, fmt.Errorf("docker cp from container: %w", err)
 	}
 
@@ -413,9 +431,13 @@ func firstAgentCommitSubject(containerCommits string) string {
 // history since baseSHA, using `docker exec git log`. Returns a formatted
 // string with each commit's message, suitable for inclusion in a squash
 // commit. Returns "" if no commits were made or on error.
-func containerCommitsFromDocker(ctx context.Context, containerID, baseSHA string) string {
+//
+// containerSubPath, when non-empty, scopes the log to a subdirectory of
+// /workspace (used for multi-repo projects where each repo has its own git
+// history under /workspace/<sub>).
+func containerCommitsFromDocker(ctx context.Context, containerID, baseSHA, containerSubPath string) string {
 	out, err := dockerExec(ctx, containerID,
-		"git", "-C", "/workspace", "log", "--reverse", "--format=%B%x00", baseSHA+"..HEAD")
+		"git", "-C", containerWorkspacePath(containerSubPath), "log", "--reverse", "--format=%B%x00", baseSHA+"..HEAD")
 	if err != nil || len(bytes.TrimSpace(out)) == 0 {
 		return ""
 	}

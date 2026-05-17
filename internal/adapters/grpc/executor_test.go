@@ -7,6 +7,7 @@ import (
 	"os"
 	osExec "os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -787,12 +788,16 @@ func TestDaemonExecutor_WorkflowStep_PreCreatesWorktree(t *testing.T) {
 	require.NoError(t, err)
 
 	// Expectation: prepare called once; KV got child_branch; worktree map populated.
+	// Legacy single-tree mode (no [[repositories]] in tmpDir's .cloche/config.toml)
+	// produces a single-element slice with an unnamed repo and writes the bare
+	// child_branch key for back-compat.
 	assert.Equal(t, 1, prepareCalls, "first invocation should call prepare once")
 	poolKey := "att-pre:" + containerWF.ContainerID()
-	wt, exists := de.worktrees[poolKey]
+	prepared, exists := de.worktrees[poolKey]
 	require.True(t, exists, "worktree should be tracked for pool key")
+	require.Len(t, prepared, 1, "legacy single-tree mode should produce one worktree")
 	expectedBranch := "cloche/att-pre-" + containerWF.ContainerID()
-	assert.Equal(t, expectedBranch, wt.Branch)
+	assert.Equal(t, expectedBranch, prepared[0].Worktree.Branch)
 	assert.Equal(t, expectedBranch, store.ctxKeys["child_branch"])
 
 	// Second invocation for the same pool key must NOT re-prepare.
@@ -826,6 +831,187 @@ func (s *recordingRunStore) GetContextKey(_ context.Context, _, _, _, key string
 // execCommand is a thin wrapper so tests don't have to import os/exec at call sites.
 func execCommand(name string, args ...string) *osExec.Cmd {
 	return osExec.Command(name, args...)
+}
+
+// initGitRepo creates a git repo at dir with a single commit so gitHEAD returns a valid SHA.
+func initGitRepo(t *testing.T, dir string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(dir, 0755))
+	git := func(args ...string) {
+		t.Helper()
+		cmd := execCommand("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v in %s: %s: %v", args, dir, out, err)
+		}
+	}
+	git("init")
+	git("config", "user.email", "test@test")
+	git("config", "user.name", "test")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "README"), []byte("x"), 0644))
+	git("add", "README")
+	git("commit", "-m", "init")
+}
+
+// writeConfigTOML writes a .cloche/config.toml with the given [[repositories]] entries.
+// Each entry is a pair of (name, relativePath).
+func writeConfigTOML(t *testing.T, projectDir string, repos [][2]string) {
+	t.Helper()
+	clocheDir := filepath.Join(projectDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	var sb strings.Builder
+	for _, r := range repos {
+		fmt.Fprintf(&sb, "[[repositories]]\nname = %q\npath = %q\n\n", r[0], r[1])
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(sb.String()), 0644))
+}
+
+// TestDaemonExecutor_PrepareExtractWorktrees_MultiRepo verifies that with two
+// [[repositories]] entries, prepareExtractWorktrees calls the prepare hook once
+// per repo, populates de.worktrees[poolKey] with two entries (in config order),
+// and writes child_repos, child_branch:<name>, and child_repo_path:<name> KV keys.
+func TestDaemonExecutor_PrepareExtractWorktrees_MultiRepo(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	repo1Dir := filepath.Join(tmpDir, "repos", "alpha")
+	repo2Dir := filepath.Join(tmpDir, "repos", "beta")
+	initGitRepo(t, repo1Dir)
+	initGitRepo(t, repo2Dir)
+
+	writeConfigTOML(t, tmpDir, [][2]string{
+		{"alpha", "./repos/alpha"},
+		{"beta", "./repos/beta"},
+	})
+
+	var preparedDirs []string
+	origPrepare := prepareExtractWorktreeFn
+	prepareExtractWorktreeFn = func(_ context.Context, opts docker.PrepareOptions) (docker.ExtractWorktree, error) {
+		preparedDirs = append(preparedDirs, opts.ProjectDir)
+		return docker.ExtractWorktree{Dir: opts.TargetDir, Branch: opts.Branch}, nil
+	}
+	t.Cleanup(func() { prepareExtractWorktreeFn = origPrepare })
+
+	store := &recordingRunStore{ctxKeys: map[string]string{}}
+	containerWF := buildContainerWFForTest("develop")
+	poolKey := "att-multi:" + containerWF.ContainerID()
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		Store:      store,
+		ProjectDir: tmpDir,
+		TaskID:     "task-multi",
+		AttemptID:  "att-multi",
+		AllWFs:     map[string]*domain.Workflow{"develop": containerWF},
+	})
+
+	err := de.prepareExtractWorktrees(context.Background(), poolKey, containerWF)
+	require.NoError(t, err)
+
+	assert.Len(t, preparedDirs, 2, "prepare should be called once per repo")
+
+	prepared, exists := de.worktrees[poolKey]
+	require.True(t, exists, "worktrees should be tracked for pool key")
+	require.Len(t, prepared, 2, "one worktree per repo")
+	assert.Equal(t, "alpha", prepared[0].Repo.Name)
+	assert.Equal(t, "beta", prepared[1].Repo.Name)
+
+	assert.Equal(t, "alpha,beta", store.ctxKeys["child_repos"])
+	assert.NotEmpty(t, store.ctxKeys["child_branch:alpha"])
+	assert.NotEmpty(t, store.ctxKeys["child_branch:beta"])
+	assert.Equal(t, repo1Dir, store.ctxKeys["child_repo_path:alpha"])
+	assert.Equal(t, repo2Dir, store.ctxKeys["child_repo_path:beta"])
+	// With two repos, bare child_branch is NOT written.
+	_, hasBareBranch := store.ctxKeys["child_branch"]
+	assert.False(t, hasBareBranch, "bare child_branch should not be written for multi-repo")
+}
+
+// TestDaemonExecutor_PrepareExtractWorktrees_RollbackOnFailure verifies that
+// when prepareExtractWorktreeFn succeeds for the first repo but errors for the
+// second, prepareExtractWorktrees returns a wrapped error mentioning the failing
+// repo name, no worktrees entry is kept for the pool key, and no KV keys are written.
+func TestDaemonExecutor_PrepareExtractWorktrees_RollbackOnFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	repo1Dir := filepath.Join(tmpDir, "repos", "alpha")
+	repo2Dir := filepath.Join(tmpDir, "repos", "beta")
+	initGitRepo(t, repo1Dir)
+	initGitRepo(t, repo2Dir)
+
+	writeConfigTOML(t, tmpDir, [][2]string{
+		{"alpha", "./repos/alpha"},
+		{"beta", "./repos/beta"},
+	})
+
+	callCount := 0
+	origPrepare := prepareExtractWorktreeFn
+	prepareExtractWorktreeFn = func(_ context.Context, opts docker.PrepareOptions) (docker.ExtractWorktree, error) {
+		callCount++
+		if callCount == 1 {
+			return docker.ExtractWorktree{Dir: opts.TargetDir + "-first", Branch: opts.Branch}, nil
+		}
+		return docker.ExtractWorktree{}, fmt.Errorf("simulated prepare failure for beta")
+	}
+	t.Cleanup(func() { prepareExtractWorktreeFn = origPrepare })
+
+	store := &recordingRunStore{ctxKeys: map[string]string{}}
+	containerWF := buildContainerWFForTest("develop")
+	poolKey := "att-rollback:" + containerWF.ContainerID()
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		Store:      store,
+		ProjectDir: tmpDir,
+		TaskID:     "task-rollback",
+		AttemptID:  "att-rollback",
+		AllWFs:     map[string]*domain.Workflow{"develop": containerWF},
+	})
+
+	err := de.prepareExtractWorktrees(context.Background(), poolKey, containerWF)
+	require.Error(t, err, "should return error when second prepare fails")
+	assert.Contains(t, err.Error(), "beta", "error should mention the failing repo name")
+
+	_, exists := de.worktrees[poolKey]
+	assert.False(t, exists, "no worktrees entry should remain after rollback")
+
+	assert.Empty(t, store.ctxKeys, "no KV keys should be written after rollback")
+}
+
+// TestDaemonExecutor_PrepareExtractWorktrees_SingleRepoBackCompat verifies that
+// with exactly one [[repositories]] entry, writeRepoBranchKV writes both the
+// namespaced child_branch:<name> AND the bare child_branch key.
+func TestDaemonExecutor_PrepareExtractWorktrees_SingleRepoBackCompat(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	repoDir := filepath.Join(tmpDir, "repos", "main")
+	initGitRepo(t, repoDir)
+
+	writeConfigTOML(t, tmpDir, [][2]string{
+		{"main", "./repos/main"},
+	})
+
+	origPrepare := prepareExtractWorktreeFn
+	prepareExtractWorktreeFn = func(_ context.Context, opts docker.PrepareOptions) (docker.ExtractWorktree, error) {
+		return docker.ExtractWorktree{Dir: opts.TargetDir, Branch: opts.Branch}, nil
+	}
+	t.Cleanup(func() { prepareExtractWorktreeFn = origPrepare })
+
+	store := &recordingRunStore{ctxKeys: map[string]string{}}
+	containerWF := buildContainerWFForTest("develop")
+	poolKey := "att-compat:" + containerWF.ContainerID()
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		Store:      store,
+		ProjectDir: tmpDir,
+		TaskID:     "task-compat",
+		AttemptID:  "att-compat",
+		AllWFs:     map[string]*domain.Workflow{"develop": containerWF},
+	})
+
+	err := de.prepareExtractWorktrees(context.Background(), poolKey, containerWF)
+	require.NoError(t, err)
+
+	namespacedBranch := store.ctxKeys["child_branch:main"]
+	require.NotEmpty(t, namespacedBranch, "child_branch:main should be written")
+	assert.Equal(t, namespacedBranch, store.ctxKeys["child_branch"],
+		"bare child_branch should equal child_branch:main for single-repo back-compat")
 }
 
 // TestDaemonExecutor_AggregateHostSubWorkflowLogs verifies that after a host
