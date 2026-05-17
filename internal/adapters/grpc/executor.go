@@ -456,6 +456,7 @@ func (d *DaemonExecutor) prepareExtractWorktrees(ctx context.Context, poolKey st
 
 // rollbackWorktrees removes any worktrees that were prepared as part of a
 // multi-repo prepare batch that subsequently failed. Best-effort.
+// Calls removeExtractWorktree for each entry; errors are logged, not returned.
 func rollbackWorktrees(ctx context.Context, prepared []repoWorktree) {
 	for _, p := range prepared {
 		removeExtractWorktree(ctx, p.Repo.Path, p.Worktree)
