@@ -103,8 +103,7 @@ Edit the prompt templates in `.cloche/prompts/` to describe the work your agent
 should do. The `file()` function reads prompt content at execution time.
 
 See [docs/workflows.md](docs/workflows.md) for the full DSL reference including
-parallel branches, collect/join, wire output mappings, host workflows, and
-container configuration.
+parallel branches, collect/join, host workflows, and container configuration.
 
 ### 4. Run a workflow
 
