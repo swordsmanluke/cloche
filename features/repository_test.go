@@ -120,6 +120,8 @@ func startTestDaemon(projectDir string) (addr string, srv *grpclib.Server, err e
 // ─── step registrations ──────────────────────────────────────────────────────
 
 func initRepositoryScenarios(ctx *godog.ScenarioContext) {
+	initPromptTemplatingScenarios(ctx)
+
 	s := &repositoryCtx{}
 	ctx.Before(func(_ context.Context, _ *godog.Scenario) (context.Context, error) {
 		s.reset()
