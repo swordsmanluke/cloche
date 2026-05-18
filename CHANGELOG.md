@@ -1,5 +1,16 @@
 # Cloche Changelog
 
+## v3.15.10 — 2026-05-18
+
+### Features
+
+- Multi-repo extraction: container sub-workflows that declare `repos = [...]` now extract changes into per-repository worktrees and branches, with branch and path metadata stored per repo in the KV store. ([design](docs/plans/2026-04-14-cloche-extract-design.md))
+- The streaming prompt adapter now supports opencode as a first-class agent command, parsing structured JSON events (text deltas, tool calls, and token usage) so agent steps using opencode produce complete `implement.log` output.
+
+### Notable fixes
+
+- Container workflows now correctly propagate `container { agent_command = ... }` and `container { agent_args = ... }` into step config instead of silently falling back to Claude.
+
 ## v3.15.9 — 2026-05-16
 
 ### Notable fixes
