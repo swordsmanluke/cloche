@@ -309,6 +309,20 @@ func (e *Executor) skipOutputFile(stepName string) string {
 	return filepath.Join(e.OutputDir, stepName+".skip.log")
 }
 
+// hostKVReader adapts a RunStore into the prompt.KVReader port, bound to a
+// specific task/attempt/run triple so the resolver can look up KV values that
+// earlier steps wrote via `cloche set` or the host executor's seeding path.
+type hostKVReader struct {
+	store     ports.RunStore
+	taskID    string
+	attemptID string
+	runID     string
+}
+
+func (h *hostKVReader) Get(ctx context.Context, key string) (string, bool, error) {
+	return h.store.GetContextKey(ctx, h.taskID, h.attemptID, h.runID, key)
+}
+
 // executeAgent runs an agent command on the host using the prompt adapter.
 func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
 	adapter := prompt.New()
@@ -337,6 +351,16 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 	}
 
 	adapter.RunID = e.HostRunID
+
+	// Wire the real KVReader so {{ $var }} directives can resolve KV-store values.
+	if e.Store != nil && e.TaskID != "" {
+		adapter.KV = &hostKVReader{
+			store:     e.Store,
+			taskID:    e.TaskID,
+			attemptID: e.AttemptID,
+			runID:     e.HostRunID,
+		}
+	}
 
 	// Pass CLOCHE_* vars so the agent process can invoke `cloche get/set`.
 	var agentEnv []string

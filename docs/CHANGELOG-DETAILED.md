@@ -1,5 +1,15 @@
 # Cloche Detailed Changelog
 
+## v3.15.12 — 2026-05-19
+
+### Features
+
+- Prompt files now support `{{ }}` template directives evaluated before the agent is invoked. Three forms: `{{ $name }}` (built-in variable or KV-store lookup), `{{! cmd }}` (sh -c; stdout substituted, stderr to step log, 30 s timeout, non-zero exit fails step), `{{@ path }}` (file contents substituted verbatim). Inner `{{ $var }}` references inside shell and file directives resolve before the outer directive executes. `$$` → `$` inside shell directives only. Unresolvable directives fail the step before the agent runs; error messages name the directive and cause. ([design](docs/plans/2026-05-18-prompt-templating-design.md))
+
+### Internal
+
+- Legacy `{task_description}` and `{previous_output}` placeholders now emit a per-step deprecation warning through the status writer; the substitution itself is unchanged.
+
 ## v3.15.10 — 2026-05-18
 
 ### Features

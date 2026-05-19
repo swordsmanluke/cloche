@@ -114,6 +114,14 @@ func (s *Session) Run(ctx context.Context) error {
 	// KV client reuses the existing connection.
 	kvClient := pb.NewClocheServiceClient(conn)
 
+	// Wire the real KVReader so {{ $var }} directives can resolve KV-store values.
+	promptAdapter.KV = &grpcKVReader{
+		client:    kvClient,
+		taskID:    s.cfg.TaskID,
+		attemptID: s.cfg.AttemptID,
+		runID:     s.cfg.RunID,
+	}
+
 	// Per-step context for cancellation support.
 	var stepMu sync.Mutex
 	var stepCancel context.CancelFunc
@@ -501,6 +509,28 @@ func (s *Session) runSkipScript(ctx context.Context, skipCmd, stepName string, u
 		wire = markerResult
 	}
 	return wire, true
+}
+
+// grpcKVReader adapts a ClocheServiceClient into the prompt.KVReader port.
+// It is bound to a specific task/attempt/run triple at construction time.
+type grpcKVReader struct {
+	client    pb.ClocheServiceClient
+	taskID    string
+	attemptID string
+	runID     string
+}
+
+func (g *grpcKVReader) Get(ctx context.Context, key string) (string, bool, error) {
+	resp, err := g.client.GetContextKey(ctx, &pb.GetContextKeyRequest{
+		TaskId:    g.taskID,
+		AttemptId: g.attemptID,
+		RunId:     g.runID,
+		Key:       key,
+	})
+	if err != nil {
+		return "", false, fmt.Errorf("GetContextKey %q: %w", key, err)
+	}
+	return resp.Value, resp.Found, nil
 }
 
 // grpcStatusWriter is an io.Writer that buffers lines from a protocol.StatusWriter

@@ -1,5 +1,11 @@
 # Cloche Changelog
 
+## v3.15.12 — 2026-05-19
+
+### Features
+
+- Prompt templates: prompt files now support `{{ }}` directives — `{{ $name }}` for built-in variables and KV-store lookups, `{{! cmd }}` to inline shell output, and `{{@ path }}` to inline file contents. Expansion happens before the agent is invoked; any unresolvable directive fails the step early. Legacy `{task_description}` and `{previous_output}` placeholders continue to work with a deprecation warning. ([design](docs/plans/2026-05-18-prompt-templating-design.md))
+
 ## v3.15.10 — 2026-05-18
 
 ### Features
