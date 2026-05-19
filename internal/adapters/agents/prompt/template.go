@@ -79,8 +79,9 @@ func (r *Resolver) evalDirective(ctx context.Context, body string) (string, erro
 
 	case strings.HasPrefix(body, "!"):
 		cmdTemplate := strings.TrimSpace(body[1:])
-		// Resolve inner {{ $var }} before running the shell.
-		resolved, err := r.resolveStr(ctx, cmdTemplate)
+		// Resolve inner {{ $var }} before running the shell, respecting shell
+		// single-quote escaping (quoted regions pass through verbatim).
+		resolved, err := r.resolveCmdTemplate(ctx, cmdTemplate)
 		if err != nil {
 			return "", err
 		}
@@ -118,6 +119,55 @@ func (r *Resolver) lookupVar(ctx context.Context, name string) (string, error) {
 		return "", fmt.Errorf("{{ $%s }}: variable not defined (built-in or KV)", name)
 	}
 	return v, nil
+}
+
+// resolveCmdTemplate resolves {{ $var }} directives in a shell command template.
+// Single-quoted regions ('...') are passed through verbatim so that shell
+// literals like '{{ $task_id }}' are not treated as template directives.
+func (r *Resolver) resolveCmdTemplate(ctx context.Context, cmd string) (string, error) {
+	var b strings.Builder
+	rest := cmd
+	for {
+		openIdx := strings.Index(rest, "{{")
+		quoteIdx := strings.Index(rest, "'")
+
+		if openIdx == -1 {
+			b.WriteString(rest)
+			break
+		}
+
+		// Single-quote before the next {{ — copy the quoted region verbatim.
+		if quoteIdx != -1 && quoteIdx < openIdx {
+			b.WriteString(rest[:quoteIdx])
+			rest = rest[quoteIdx:]
+			closeIdx := strings.Index(rest[1:], "'")
+			if closeIdx == -1 {
+				b.WriteString(rest)
+				break
+			}
+			b.WriteString(rest[:closeIdx+2]) // includes opening and closing '
+			rest = rest[closeIdx+2:]
+			continue
+		}
+
+		// {{ comes first: resolve the directive.
+		b.WriteString(rest[:openIdx])
+		after := rest[openIdx+2:]
+		end := findDirectiveEnd(after)
+		if end == -1 {
+			b.WriteString("{{")
+			rest = after
+			continue
+		}
+		body := strings.TrimSpace(after[:end])
+		rest = after[end+2:]
+		val, err := r.evalDirective(ctx, body)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString(val)
+	}
+	return b.String(), nil
 }
 
 func (r *Resolver) runShell(ctx context.Context, cmd string) (string, error) {

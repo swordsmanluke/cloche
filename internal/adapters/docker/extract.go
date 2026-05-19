@@ -34,6 +34,12 @@ type ExtractWorktree struct {
 // in the commit message — the checkout state of the worktree is what controls
 // which branch the commit lands on.
 //
+// BaseSHA serves two purposes: it scopes the container commit-log read
+// (git log BaseSHA..HEAD) and it positions the worktree via
+// git reset --hard BaseSHA before the wipe-and-copy step. This ensures
+// each extraction commit lands on the SHA that was current at extract time,
+// not the stale SHA from when the worktree was first prepared.
+//
 // In NoGit mode, the extraction is a plain docker cp into TargetDir and no
 // git operations happen.
 type ExtractOptions struct {
@@ -206,6 +212,16 @@ func extractGit(ctx context.Context, opts ExtractOptions) (ExtractResult, error)
 	}
 
 	containerCommits := containerCommitsFromDocker(ctx, opts.ContainerID, opts.BaseSHA, opts.ContainerSubPath)
+
+	// Reset the worktree to BaseSHA before wiping and re-copying. Without
+	// this, a worktree that already has commits (e.g. from a prior sub-workflow
+	// in the same attempt) would commit on top of its current HEAD instead of
+	// on top of the caller-specified base, producing parallel branches.
+	resetCmd := exec.CommandContext(ctx, "git", "reset", "--hard", opts.BaseSHA)
+	resetCmd.Dir = opts.WorktreeDir
+	if out, err := resetCmd.CombinedOutput(); err != nil {
+		return ExtractResult{}, fmt.Errorf("git reset --hard %s: %s: %w", opts.BaseSHA, out, err)
+	}
 
 	entries, err := os.ReadDir(opts.WorktreeDir)
 	if err != nil {
