@@ -88,8 +88,19 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	containerAddr = strings.Replace(containerAddr, "0.0.0.0:", "host.docker.internal:", 1)
 	args = append(args, "-e", "CLOCHE_ADDR="+containerAddr)
 
-	// Claude auth files are copied (not mounted) after docker create so each
-	// container gets its own copy — avoids concurrent write conflicts.
+	// Claude auth: bind-mount ~/.claude/.credentials.json read-only so the
+	// container always sees the host's current OAuth token. Copying it at
+	// container start (as we used to) breaks long-running workflows: when
+	// the host's claude-code session refreshes the token, the in-container
+	// copy is invalidated and subsequent agent steps fail with 401.
+	// settings.json / settings.local.json are still copied below — those
+	// rarely change, and a stale copy is fine.
+	if home, err := os.UserHomeDir(); err == nil {
+		credSrc := filepath.Join(home, ".claude", ".credentials.json")
+		if _, err := os.Stat(credSrc); err == nil {
+			args = append(args, "-v", credSrc+":/home/agent/.claude/.credentials.json:ro")
+		}
+	}
 
 	// Bind-mount the host run directory (.cloche/runs/<run-id>) into the container
 	// so that files written by host workflow steps (e.g. task_prompt.md written by
@@ -217,19 +228,20 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		log.Printf("runtime.Start: prompt done for %s", containerID)
 	}
 
-	// 4. Copy Claude auth files into container (each gets its own copy).
-	// Only copy auth-relevant files — not the full ~/.claude directory
-	// which contains large history, session, and debug data.
+	// 4. Copy Claude settings files into container.
+	// Only copy settings files — .credentials.json is bind-mounted above so
+	// it stays live across host token refreshes. settings.json files rarely
+	// change, so copy semantics are fine.
 	log.Printf("runtime.Start: copying auth files for %s", containerID)
 	if home, err := os.UserHomeDir(); err == nil {
 		claudeDir := home + "/.claude"
-		// Stage auth files in a temp directory, then docker cp the
+		// Stage settings files in a temp directory, then docker cp the
 		// directory into the container. This avoids needing `docker exec`
 		// (container isn't running yet) and ensures the directory exists.
 		tmpAuth, tmpErr := os.MkdirTemp("", "cloche-auth")
 		if tmpErr == nil {
 			defer os.RemoveAll(tmpAuth)
-			for _, name := range []string{".credentials.json", "settings.json", "settings.local.json"} {
+			for _, name := range []string{"settings.json", "settings.local.json"} {
 				src := filepath.Join(claudeDir, name)
 				if data, err := os.ReadFile(src); err == nil {
 					os.WriteFile(filepath.Join(tmpAuth, name), data, 0644)
