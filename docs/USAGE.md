@@ -55,8 +55,9 @@ workflow "develop" {
 | `agent` | identifier | Reference a named agent declared in the workflow's `agent` block. Expands into `agent_command` and `agent_args`. Step-level `agent_command`/`agent_args` still override it. |
 | `usage_command` | string | Shell command to run after an agent step completes to capture token usage. Output must be JSON: `{"input_tokens": N, "output_tokens": N}`. If absent or the command fails, usage is not tracked. Overrides any adapter-level default (e.g. from `[agents.codex]` in `config.toml`). |
 | `prompt_step` | string | For workflow steps: which preceding step's output to use as the prompt. |
+| `skip` | string | Shell command run before the step; exit 0 bypasses the step (follows `success` wire or a `CLOCHE_RESULT:<name>` marker). Exit non-zero runs the step normally. See [Skip Scripts](workflows.md#skip-scripts). |
 
-A step must have exactly one of `prompt`, `run`, or `workflow_name`.
+A step must have exactly one of `prompt`, `run`, `workflow_name`, or `poll`.
 
 ### The `file()` Function
 
@@ -310,19 +311,33 @@ Rules:
 
 When an agent step runs, Cloche assembles a prompt from these sections (joined by blank lines):
 
-1. **Step template**: The step's `prompt` content (inline string or resolved `file("path")`).
-2. **User request**: Content of `.cloche/<run-id>/prompt.txt` (set via `--prompt` flag), prefixed with `## User Request`.
+1. **Step template**: The step's `prompt` content (inline string or resolved `file("path")`), after `{{ }}` template expansion (see below).
+2. **User request**: Content of `.cloche/<run-id>/prompt.txt` (set via `--prompt` flag), prefixed with `## User Request`. Skipped if the template consumed it via `{{ $task_description }}`.
 3. **Result selection**: Lists the step's declared results with instructions to print exactly one `CLOCHE_RESULT:<name>` marker.
 
 The assembled prompt is passed to the agent command via stdin.
+
+### Prompt Template Expansion
+
+Prompt files support `{{ }}` directives that are evaluated before the agent is invoked:
+
+| Form | Meaning |
+|------|---------|
+| `{{ $name }}` | Variable lookup: built-in (`$task_id`, `$run_id`, `$step_name`, `$workdir`, `$prev_output`, `$task_description`), then KV store |
+| `{{! cmd }}` | Run `cmd` via `sh -c`; substitute stdout (30 s timeout) |
+| `{{@ path }}` | Read file at `path`; substitute its contents verbatim |
+| `$$` | Literal `$` inside `{{! ... }}` only |
+
+Any unresolvable directive fails the step before the agent runs. See [Prompt Templates](workflows.md#prompt-templates) in the workflows reference for full details.
 
 ## Agent Command Resolution
 
 Priority (highest to lowest):
 1. Step-level `agent_command`
-2. Workflow-level config block (`container { agent_command }` for container workflows, `host { agent_command }` for host workflows)
-3. `CLOCHE_AGENT_COMMAND` environment variable
-4. Default: `claude`
+2. `agent = <identifier>` declaration (expands to `agent_command` / `agent_args`)
+3. Workflow-level config block (`container { agent_command }` for container workflows, `host { agent_command }` for host workflows)
+4. `CLOCHE_AGENT_COMMAND` environment variable
+5. Default: `claude`
 
 ### Fallback Chains
 
@@ -374,8 +389,8 @@ web dashboard) to release a stale claimed task back to `open` status. A task is
 considered stale when it has `in_progress` status but no active worker is running for
 it (e.g. after a failed run or daemon restart). The workflow receives `CLOCHE_TASK_ID`.
 
-Only `main` is required. If `list-tasks` is absent, the daemon uses a single-workflow
-mode.
+Only `main` is required. If `list-tasks` is absent, the daemon runs `main`
+continuously using an untracked sentinel task.
 
 ### list-tasks Output Format
 
@@ -424,17 +439,52 @@ workflow "main" {
     results       = [success, fail]
   }
 
-  step finalize {
-    run     = "python3 .cloche/scripts/finalize.py"
+  step prepare-merge {
+    run     = "python3 .cloche/scripts/prepare-merge.py"
     results = [success, fail]
   }
 
-  claim-task:success -> develop
-  claim-task:fail    -> abort
-  develop:success    -> finalize
-  develop:fail       -> finalize
-  finalize:success   -> done
-  finalize:fail      -> abort
+  step fix-merge {
+    prompt  = file(".cloche/prompts/fix-merge.md")
+    results = [success, fail]
+  }
+
+  step merge {
+    run     = "python3 .cloche/scripts/merge.py"
+    results = [success, fail]
+  }
+
+  step release-task {
+    run     = "python3 .cloche/scripts/release-task.py"
+    results = [success, fail]
+  }
+
+  step cleanup {
+    run     = "python3 .cloche/scripts/cleanup.py"
+    results = [success, fail]
+  }
+
+  step unclaim {
+    run     = "python3 .cloche/scripts/unclaim.py"
+    results = [success, fail]
+  }
+
+  claim-task:success    -> develop
+  claim-task:fail       -> abort
+  develop:success       -> prepare-merge
+  develop:fail          -> unclaim
+  prepare-merge:success -> merge
+  prepare-merge:fail    -> fix-merge
+  fix-merge:success     -> merge
+  fix-merge:fail        -> unclaim
+  merge:success         -> release-task
+  merge:fail            -> fix-merge
+  release-task:success  -> cleanup
+  release-task:fail     -> unclaim
+  cleanup:success       -> done
+  cleanup:fail          -> unclaim
+  unclaim:success       -> abort
+  unclaim:fail          -> abort
 }
 ```
 
@@ -522,8 +572,8 @@ workflow "list-tasks" {
 }
 ```
 
-**If omitted:** The daemon falls back to single-workflow mode — it runs `main`
-once without task assignment. This is fine for simple use cases where you trigger
+**If omitted:** The daemon runs `main` continuously using an untracked sentinel
+task (no task ID assignment). This is fine for simple use cases where you trigger
 runs manually with `cloche run`.
 
 ### `main` — Executing Work
@@ -821,8 +871,8 @@ the project with the daemon.
 prompt templates (`implement.md`, `fix-tests.md`, `fix-merge.md`), host
 workflows (`host.cloche`), Python scripts (`get-tasks.py`, `claim-task.py`,
 `prepare-merge.py`, `merge.py`, `release-task.py`, `cleanup.py`, `unclaim.py`),
-`.cloche/task_list.json`, and `cloche_init_test/cloche/test_cloche.py`. Skips
-existing files.
+`.cloche/task_list.json`, `.cloche/version`, `.clocheignore` (at project root),
+and `cloche_init_test/cloche/test_cloche.py`. Skips existing files.
 
 Three generated files contain `TODO(cloche-init)` placeholders:
 
@@ -860,7 +910,7 @@ cloche doctor [--project <dir>] [--verbose] [--timeout <duration>]
 ```
 
 Runs checks in order and prints a status line for each. Exits with code 1
-if any check fails. Checks 5–9 only run when the current (or `--project`) directory
+if any check fails. Checks 6–10 only run when the current (or `--project`) directory
 contains a `.cloche/` subdirectory.
 
 | Check | Description |
@@ -869,6 +919,7 @@ contains a `.cloche/` subdirectory.
 | Base image | Checks whether `cloche-base:latest` (or `cloche-agent:latest`) exists locally. |
 | Daemon | Calls `GetVersion` over gRPC to verify the daemon is reachable. Address from `CLOCHE_ADDR` or default `127.0.0.1:50051`. |
 | Agent auth | Checks `ANTHROPIC_API_KEY` or `~/.claude/` session data. Soft check (warning, not fatal). |
+| Git SSH key | Loads the merged config and checks that the `[git] ssh_key` file (if configured) exists and is readable. Soft check (warning, not fatal). |
 | Project config | Loads `.cloche/config.toml`, reports parse errors, warns if `active = false` or `TODO(cloche-init)` markers remain. |
 | Workflow syntax | Parses all `.cloche/*.cloche` files using the same logic as `cloche validate`. |
 | Image source dir | Warns (not fatal) when the existing project image was built from a different source directory. The next `EnsureImage` call will rebuild it automatically. |
@@ -1022,6 +1073,8 @@ Legacy composite `task:attempt[:step]` is also accepted.
 Flags are combinable: `cloche logs a3f7:develop:implement -l 20 -f`
 
 Without `-f`, displays all logs captured to date and exits (even for active runs). With `-f` on an active run, existing logs are sent first, then new output is streamed in real time via gRPC until the run completes.
+
+Log streaming is backed by `internal/logstream`, a broadcaster that fans `StepLog` gRPC events out to multiple concurrent subscribers (CLI follow mode, web dashboard live view). The broadcaster runs for the lifetime of the workflow run and is closed when the run completes or the daemon shuts down. Each log line is parsed for tool-call blocks before being forwarded to subscribers so the web dashboard can format agent output distinctly from plain script output.
 
 ### `cloche poll`
 
@@ -1596,7 +1649,7 @@ Remote URL annotation is done via top-level `repository` blocks in `.cloche` fil
 |----------|---------|-------------|
 | `CLOCHE_ADDR` | `127.0.0.1:50051` | gRPC listen address |
 | `CLOCHE_DB` | `~/.config/cloche/cloche.db` | SQLite database path |
-| `CLOCHE_RUNTIME` | `docker` | `docker` or `local` (subprocess, for dev only) |
+| `CLOCHE_RUNTIME` | `docker` | `docker` or `local`. The `local` runtime launches `cloche-agent` as a subprocess instead of a Docker container, which avoids Docker for fast dev iteration. **Limitations:** `Attach` is unimplemented (returns an error), `Logs` returns empty output, and `Remove` is a no-op. The console command and log streaming from active runs do not work in local mode. Set `CLOCHE_AGENT_PATH` to point at the `cloche-agent` binary when using this mode. |
 | `CLOCHE_IMAGE` | `cloche-agent:latest` | Default Docker image |
 | `CLOCHE_HTTP` | `localhost:8080` (via global config) | HTTP address for web dashboard. Not started unless set. |
 | `CLOCHE_AGENT_PATH` | _(auto)_ | Path to `cloche-agent` binary (local runtime) |
@@ -1655,7 +1708,7 @@ The container image must have:
 ## Build Commands
 
 ```
-make build          # Build all binaries to bin/
+make build          # Build cloche, cloched, cloche-agent to bin/
 make test           # Run all tests
 make test-short     # Run tests (skip slow ones)
 make lint           # Run go vet

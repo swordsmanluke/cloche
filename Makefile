@@ -7,6 +7,7 @@ build:
 	go build -o bin/cloche ./cmd/cloche
 	go build -o bin/cloched ./cmd/cloched
 	go build -o bin/cloche-agent ./cmd/cloche-agent
+	go build -o bin/clo ./cmd/clo
 
 test:
 	go test ./... -v

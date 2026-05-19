@@ -70,6 +70,8 @@ Step type is inferred from the fields present in the step body:
 **agent** (has `prompt`) — Invokes a coding agent (Claude Code, or any tool conforming
 to the agent adapter interface) with a prompt. The agent works autonomously inside the
 container. Available in both host and container workflows. Default timeout: 30m.
+Optional: `usage_command` — a shell command run after the step completes to capture
+token usage; output must be JSON `{"input_tokens": N, "output_tokens": N}`.
 
 **script** (has `run`) — Runs a shell command. Used for tests, linters, validators, or
 any deterministic check. Available in both host and container workflows. Default timeout: 30m.
@@ -78,6 +80,8 @@ any deterministic check. Available in both host and container workflows. Default
 completes. Available in both host and container workflows. Dispatch is always handled by
 the daemon orchestrator, which resolves the target workflow by name across all `.cloche`
 files and routes it to the host executor or container pool as appropriate. Default timeout: 30m.
+Optional: `prompt_step` — the name of a preceding step whose output is passed as the
+prompt to the dispatched workflow, overriding the default prompt selection.
 
 **poll** (has `poll`) — Polls a script at a fixed interval until a decision is available.
 Requires `poll` (the polling script/command) and `interval` (poll frequency, e.g. `"5m"`).
@@ -183,6 +187,73 @@ full resolution order is: step-level > agent declaration > workflow-level block 
 type) steps may reference an agent. Duplicate agent names within a workflow are a parse
 error. An agent declaration without a `command` field is a parse error.
 
+## Prompt Templates
+
+Prompt files referenced by `prompt = file("...")` in an agent step are evaluated as
+templates before the agent is invoked. The `{{ }}` syntax injects runtime values into
+prompts without requiring the agent to fetch them.
+
+### Syntax
+
+| Form | Meaning |
+|------|---------|
+| `{{ $name }}` | Variable lookup: built-in first, then KV store |
+| `{{! cmd }}` | Run `cmd` via `sh -c`; substitute stdout (30 s timeout) |
+| `{{@ path }}` | Read file at `path`; substitute its contents verbatim |
+| `$$` | Literal `$` — only inside `{{! ... }}`; left untouched elsewhere |
+
+Whitespace inside `{{ }}` is trimmed: `{{$x}}` and `{{ $x }}` are equivalent.
+
+Variable references inside directive bodies are resolved before the directive executes:
+`{{@ $temp_file_dir/data.csv }}` expands `$temp_file_dir` first, then reads the
+resulting path. File contents and shell stdout are **not** re-templated.
+
+### Built-in Variables
+
+| Variable | Value |
+|----------|-------|
+| `$task_id` | Task identifier |
+| `$run_id` | Run identifier |
+| `$step_name` | Name of the current step |
+| `$workdir` | Working directory for the step |
+| `$prev_output` | Preceding step's captured stdout |
+| `$task_description` | Content of the user prompt (`--prompt` flag) |
+
+Built-ins shadow any KV key with the same name. All other `{{ $name }}` lookups go to
+the KV store (via the gRPC client — the same store that `clo get` and `cloche get`
+read). A variable that resolves in neither tier fails the step before the agent runs.
+
+### Shell Directive
+
+`{{! cmd }}` runs `cmd` via `sh -c` in the step's working directory. Stdout is trimmed
+of one trailing newline and inserted. Stderr is written to the step log. A non-zero
+exit fails the step before the agent runs.
+
+`$$` is rewritten to `$` after inner variable resolution, so
+`{{! echo $$HOME }}` runs `echo $HOME`.
+
+### File Directive
+
+`{{@ path }}` reads `path` (workDir-relative unless absolute) and inserts its contents
+verbatim. The inserted content is not re-templated.
+
+### Error Behavior
+
+Any unresolvable directive fails the step before the agent is invoked. The attempt
+counter still increments, and `max_attempts` / `give-up` still apply. Error messages
+name the directive and cause:
+
+```
+prompt template: {{ $missing_thing }}: variable not defined (built-in or KV)
+prompt template: {{@ data.csv }}: open data.csv: no such file or directory
+prompt template: {{! curl -fsSL ... }}: exit status 22
+```
+
+### Legacy Placeholders
+
+The single-brace forms `{task_description}` and `{previous_output}` still work but emit
+a deprecation warning per step. Prefer `{{ $task_description }}` and `{{ $prev_output }}`.
+
 ## Repository Declarations
 
 Repositories are configured in `.cloche/config.toml` as `[[repositories]]` entries.
@@ -202,8 +273,8 @@ repository "backend" {
 | `url` | no | Remote URL (informational). |
 
 Repository blocks are top-level constructs, not nested inside `workflow` blocks.
-`ParseAll` silently skips them; `ParseRepositoriesFrom` reads only repository blocks
-from a file.
+They must not appear in files that also contain `workflow` blocks, as the parser
+expects each top-level declaration to begin with the `workflow` keyword.
 
 **Workflow-level `repos` field** — workflows can declare which repositories they use:
 

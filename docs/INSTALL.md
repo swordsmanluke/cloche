@@ -45,6 +45,7 @@ If you have Go installed, you can install the binaries directly:
 go install github.com/swordsmanluke/cloche/cmd/cloche@latest
 go install github.com/swordsmanluke/cloche/cmd/cloched@latest
 go install github.com/swordsmanluke/cloche/cmd/cloche-agent@latest
+go install github.com/swordsmanluke/cloche/cmd/clo@latest
 ```
 
 This places the binaries in `$GOPATH/bin` (or `$HOME/go/bin` by default).
