@@ -34,6 +34,7 @@ type Adapter struct {
 	UsageCommand       string                 // optional: shell command to run after step to capture token usage JSON
 	PrevOutput         string                 // content of the immediate predecessor step's output log
 	ExtraEnv           []string               // additional KEY=VALUE env vars injected into the agent process
+	KV                 KVReader               // optional: KV store for {{ $var }} lookups; nil disables non-builtin vars
 }
 
 func New() *Adapter {
@@ -122,7 +123,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		fullPrompt = "retry"
 	} else {
 		var err error
-		fullPrompt, err = assemblePrompt(step, workDir, a.TaskID, a.PrevOutput)
+		fullPrompt, err = a.assemblePrompt(ctx, step, workDir)
 		if err != nil {
 			return domain.StepResult{}, fmt.Errorf("assembling prompt: %w", err)
 		}
@@ -590,11 +591,10 @@ func toolInputSummary(input json.RawMessage) string {
 	return ""
 }
 
-func assemblePrompt(step *domain.Step, workDir, taskID string, prevOutput string) (string, error) {
+func (a *Adapter) assemblePrompt(ctx context.Context, step *domain.Step, workDir string) (string, error) {
 	var parts []string
 
-	// Gather substitution values
-	userPrompt := readUserPrompt(workDir, taskID)
+	userPrompt := readUserPrompt(workDir, a.TaskID)
 
 	// 1. Read system template from step config
 	if tmpl, ok := step.Config["prompt"]; ok {
@@ -602,14 +602,41 @@ func assemblePrompt(step *domain.Step, workDir, taskID string, prevOutput string
 		if err != nil {
 			return "", fmt.Errorf("reading prompt template: %w", err)
 		}
-		// Substitute template placeholders if present
-		if strings.Contains(content, "{task_description}") {
-			content = strings.ReplaceAll(content, "{task_description}", userPrompt)
-			userPrompt = "" // consumed — don't append again
+
+		// New {{ }} resolver pass.
+		resolver := &Resolver{
+			Builtins: map[string]string{
+				"task_id":          a.TaskID,
+				"run_id":           a.RunID,
+				"step_name":        step.Name,
+				"workdir":          workDir,
+				"prev_output":      a.PrevOutput,
+				"task_description": userPrompt,
+			},
+			KV:      a.KV,
+			WorkDir: workDir,
 		}
-		if strings.Contains(content, "{previous_output}") {
-			content = strings.ReplaceAll(content, "{previous_output}", prevOutput)
+		content, err = resolver.Resolve(ctx, content)
+		if err != nil {
+			return "", fmt.Errorf("prompt template: %w", err)
 		}
+
+		// Legacy single-brace pass with deprecation warnings (once per pattern).
+		warnFn := func(pattern string) {
+			newName := legacyToNewName(pattern)
+			msg := fmt.Sprintf("WARN [step=%s] %s is deprecated; use {{ $%s }}", step.Name, pattern, newName)
+			if a.StatusWriter != nil {
+				a.StatusWriter.Log(step.Name, msg)
+			} else {
+				log.Printf("%s", msg)
+			}
+		}
+		taskDescConsumed := strings.Contains(content, "{task_description}")
+		content = LegacySubstitute(content, userPrompt, a.PrevOutput, warnFn)
+		if taskDescConsumed {
+			userPrompt = "" // consumed — don't append again below
+		}
+
 		parts = append(parts, content)
 	}
 
@@ -630,6 +657,18 @@ func assemblePrompt(step *domain.Step, workDir, taskID string, prevOutput string
 	}
 
 	return strings.Join(parts, "\n\n"), nil
+}
+
+// legacyToNewName maps a legacy placeholder name to the equivalent new-style variable name.
+func legacyToNewName(pattern string) string {
+	switch pattern {
+	case "{task_description}":
+		return "task_description"
+	case "{previous_output}":
+		return "prev_output"
+	default:
+		return strings.Trim(pattern, "{}")
+	}
 }
 
 // resolveContent handles file("path") syntax or returns the string directly.

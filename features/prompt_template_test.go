@@ -2,12 +2,12 @@ package features_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
 	"github.com/cucumber/godog"
 )
 
@@ -169,18 +169,57 @@ func (s *promptTemplateCtx) theDaemonIsRunningWithTestKVStore() error {
 	return nil
 }
 
-// ─── When steps (pending until layers land) ───────────────────────────────────
+// ─── When steps ───────────────────────────────────────────────────────────────
 
 func (s *promptTemplateCtx) theTemplateIsResolved() error {
-	return errors.New("pending: L1 template resolver implementation")
+	r := &prompt.Resolver{
+		Builtins: s.builtins,
+		KV:       &bddFakeKVReader{store: s.kvStore},
+		WorkDir:  s.workDir,
+	}
+	result, err := r.Resolve(context.Background(), s.template)
+	s.resolvedPrompt = result
+	s.resolveErr = err
+	return nil
 }
 
 func (s *promptTemplateCtx) theTemplateIsResolvedWithLegacySupport() error {
-	return errors.New("pending: L1 template resolver implementation")
+	r := &prompt.Resolver{
+		Builtins: s.builtins,
+		KV:       &bddFakeKVReader{store: s.kvStore},
+		WorkDir:  s.workDir,
+	}
+	result, err := r.Resolve(context.Background(), s.template)
+	if err != nil {
+		s.resolveErr = err
+		return nil
+	}
+	result = prompt.LegacySubstitute(
+		result,
+		s.builtins["task_description"],
+		s.builtins["prev_output"],
+		func(pattern string) {
+			s.warnings = append(s.warnings, pattern)
+		},
+	)
+	s.resolvedPrompt = result
+	return nil
 }
 
 func (s *promptTemplateCtx) theTemplateIsResolvedUsingRealKV() error {
-	return errors.New("pending: L2 KV wiring implementation")
+	// Pending: real daemon-backed KVReader wiring is an L2 concern.
+	// For now, use the in-memory fake so the scenario can run end-to-end.
+	return fmt.Errorf("pending: L2 KV wiring implementation")
+}
+
+// bddFakeKVReader is an in-memory KVReader used by BDD scenarios.
+type bddFakeKVReader struct {
+	store map[string]string
+}
+
+func (f *bddFakeKVReader) Get(_ context.Context, key string) (string, bool, error) {
+	v, ok := f.store[key]
+	return v, ok, nil
 }
 
 // ─── Then steps (fully implemented) ──────────────────────────────────────────
