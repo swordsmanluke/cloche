@@ -48,9 +48,10 @@ Feature: Prompt template DSL with {{ }} directives
     Then the resolved prompt contains "analyze"
 
   Scenario: $$ inside shell directive becomes a literal $ for the shell
-    Given a prompt template "{{! echo $$CLOCHE_NONEXISTENT_VAR }}"
+    Given a prompt template "{{! echo $$CLOCHE_BDD_TEST_VAR }}"
+    And "CLOCHE_BDD_TEST_VAR" is an env var with the value "hello-cloche"
     When the template is resolved
-    Then the resolved prompt does not contain "$$CLOCHE_NONEXISTENT_VAR"
+    Then the resolved prompt contains "hello-cloche"
 
   Scenario: Shell directive fails when command exits non-zero
     Given a prompt template "{{! exit 42 }}"

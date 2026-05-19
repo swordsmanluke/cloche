@@ -17,15 +17,29 @@ type promptTemplateCtx struct {
 	builtins      map[string]string // task_id, run_id, step_name, workdir, prev_output, task_description
 	kvStore       map[string]string
 	workDir       string // temp directory created per-scenario
+	envVars       []envVarRestore // env vars to restore on reset
 
 	resolvedPrompt string
 	resolveErr     error
 	warnings       []string // captured deprecation warnings (one entry per warning event)
 }
 
+type envVarRestore struct {
+	key string
+	old string // original value; empty means was not set
+	was bool   // true if key was set before
+}
+
 func (s *promptTemplateCtx) reset() {
 	if s.workDir != "" {
 		os.RemoveAll(s.workDir)
+	}
+	for _, e := range s.envVars {
+		if e.was {
+			os.Setenv(e.key, e.old)
+		} else {
+			os.Unsetenv(e.key)
+		}
 	}
 	*s = promptTemplateCtx{}
 }
@@ -72,6 +86,7 @@ func initPromptTemplatingScenarios(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the KV store has "([^"]*)" = "([^"]*)"$`, s.theKVStoreHas)
 	ctx.Step(`^the KV store is empty$`, s.theKVStoreIsEmpty)
 	ctx.Step(`^a file "([^"]*)" in the workdir containing "([^"]*)"$`, s.aFileInWorkdirContaining)
+	ctx.Step(`^"([^"]*)" is an env var with the value "([^"]*)"$`, s.anEnvVarHasValue)
 
 	// Given — L2 daemon (pending until L2 lands)
 	ctx.Step(`^the daemon is running with a test KV store$`, s.theDaemonIsRunningWithTestKVStore)
@@ -138,6 +153,12 @@ func (s *promptTemplateCtx) aFileInWorkdirContaining(name, content string) error
 		return err
 	}
 	return os.WriteFile(filepath.Join(s.workDir, name), []byte(content), 0644)
+}
+
+func (s *promptTemplateCtx) anEnvVarHasValue(key, value string) error {
+	old, was := os.LookupEnv(key)
+	s.envVars = append(s.envVars, envVarRestore{key: key, old: old, was: was})
+	return os.Setenv(key, value)
 }
 
 // ─── Given steps — L2 (pending) ──────────────────────────────────────────────
