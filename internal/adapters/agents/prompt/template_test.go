@@ -259,6 +259,19 @@ func TestLegacySubstitute_WarnOncePerPattern(t *testing.T) {
 	assert.Equal(t, 1, count)
 }
 
+func TestLegacySubstitute_BothPatterns(t *testing.T) {
+	var warnings []string
+	got := prompt.LegacySubstitute(
+		"{task_description}: {previous_output}", "implement the feature", "tests passed", func(p string) {
+			warnings = append(warnings, p)
+		},
+	)
+	assert.Equal(t, "implement the feature: tests passed", got)
+	assert.Contains(t, warnings, "{task_description}")
+	assert.Contains(t, warnings, "{previous_output}")
+	assert.Len(t, warnings, 2)
+}
+
 func TestLegacySubstitute_NoMatch_NoWarning(t *testing.T) {
 	var warnings []string
 	got := prompt.LegacySubstitute("plain text", "desc", "out", func(p string) {
