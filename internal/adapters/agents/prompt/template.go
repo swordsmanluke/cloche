@@ -8,12 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/cloche-dev/cloche/internal/ports"
 )
 
-// KVReader is the port for looking up a single key from the run's KV store.
-type KVReader interface {
-	Get(ctx context.Context, key string) (value string, found bool, err error)
-}
+// KVReader aliases the canonical port type so existing package-local references
+// and external code that used prompt.KVReader continue to compile unchanged.
+type KVReader = ports.KVReader
 
 // Resolver evaluates {{ }} template directives before the agent is invoked.
 //

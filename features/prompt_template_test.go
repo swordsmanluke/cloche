@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
+	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cucumber/godog"
 )
 
@@ -19,9 +20,25 @@ type promptTemplateCtx struct {
 	workDir       string // temp directory created per-scenario
 	envVars       []envVarRestore // env vars to restore on reset
 
+	// L2: real sqlite-backed KV store for the daemon-integration scenario.
+	store     *sqlite.Store
+	storeTask string // bdd-scoped identifiers for the store namespace
+
 	resolvedPrompt string
 	resolveErr     error
 	warnings       []string // captured deprecation warnings (one entry per warning event)
+}
+
+// storeKVReader adapts a sqlite.Store into the prompt.KVReader port for BDD tests.
+type storeKVReader struct {
+	store     *sqlite.Store
+	taskID    string
+	attemptID string
+	runID     string
+}
+
+func (r *storeKVReader) Get(ctx context.Context, key string) (string, bool, error) {
+	return r.store.GetContextKey(ctx, r.taskID, r.attemptID, r.runID, key)
 }
 
 type envVarRestore struct {
@@ -40,6 +57,9 @@ func (s *promptTemplateCtx) reset() {
 		} else {
 			os.Unsetenv(e.key)
 		}
+	}
+	if s.store != nil {
+		s.store.Close()
 	}
 	*s = promptTemplateCtx{}
 }
@@ -140,6 +160,9 @@ func (s *promptTemplateCtx) theRunHasPreviousOutput(out string) error {
 
 func (s *promptTemplateCtx) theKVStoreHas(key, value string) error {
 	s.kvStore[key] = value
+	if s.store != nil {
+		return s.store.SetContextKey(context.Background(), s.storeTask, "bdd-attempt", "bdd-run", key, value)
+	}
 	return nil
 }
 
@@ -161,11 +184,15 @@ func (s *promptTemplateCtx) anEnvVarHasValue(key, value string) error {
 	return os.Setenv(key, value)
 }
 
-// ─── Given steps — L2 (pending) ──────────────────────────────────────────────
+// ─── Given steps — L2 ────────────────────────────────────────────────────────
 
 func (s *promptTemplateCtx) theDaemonIsRunningWithTestKVStore() error {
-	// The KV store is already populated via theKVStoreHas; the real daemon wiring
-	// (gRPC-backed KVReader) is the L2 concern.
+	store, err := sqlite.NewStore(":memory:")
+	if err != nil {
+		return fmt.Errorf("creating test KV store: %w", err)
+	}
+	s.store = store
+	s.storeTask = "bdd-task"
 	return nil
 }
 
@@ -207,9 +234,24 @@ func (s *promptTemplateCtx) theTemplateIsResolvedWithLegacySupport() error {
 }
 
 func (s *promptTemplateCtx) theTemplateIsResolvedUsingRealKV() error {
-	// Pending: real daemon-backed KVReader wiring is an L2 concern.
-	// For now, use the in-memory fake so the scenario can run end-to-end.
-	return fmt.Errorf("pending: L2 KV wiring implementation")
+	if s.store == nil {
+		return fmt.Errorf("no test store configured; precede with 'the daemon is running with a test KV store'")
+	}
+	kv := &storeKVReader{
+		store:     s.store,
+		taskID:    s.storeTask,
+		attemptID: "bdd-attempt",
+		runID:     "bdd-run",
+	}
+	r := &prompt.Resolver{
+		Builtins: s.builtins,
+		KV:       kv,
+		WorkDir:  s.workDir,
+	}
+	result, err := r.Resolve(context.Background(), s.template)
+	s.resolvedPrompt = result
+	s.resolveErr = err
+	return nil
 }
 
 // bddFakeKVReader is an in-memory KVReader used by BDD scenarios.
