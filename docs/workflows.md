@@ -204,9 +204,17 @@ prompts without requiring the agent to fetch them.
 
 Whitespace inside `{{ }}` is trimmed: `{{$x}}` and `{{ $x }}` are equivalent.
 
-Variable references inside directive bodies are resolved before the directive executes:
-`{{@ $temp_file_dir/data.csv }}` expands `$temp_file_dir` first, then reads the
-resulting path. File contents and shell stdout are **not** re-templated.
+Inside `{{! }}` and `{{@ }}` bodies, bare `$name` references resolve against
+the same built-in / KV tiers as `{{ $name }}`. For example,
+`{{@ $temp_file_dir/data.csv }}` expands `$temp_file_dir` first, then reads
+the resulting path. The `{{` and `}}` characters that happen to appear inside
+a directive body are **literal** — they are not nested directives and flow
+through to the shell or file path verbatim. The parser still balances `{{`/`}}`
+so the outer directive terminates at its real closing pair even when the body
+contains brace pairs (e.g. `{{! echo '{{ $foo }}' }}` with KV `foo=bar` runs
+`echo '{{ bar }}'` and yields `{{ bar }}`).
+
+File contents and shell stdout are **not** re-templated.
 
 ### Built-in Variables
 

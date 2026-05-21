@@ -25,8 +25,15 @@ type KVReader = ports.KVReader
 //	{{@ path }}   — read file at path; substitute contents verbatim
 //	$$            — literal $ inside {{! ... }}; untouched elsewhere
 //
-// File contents and shell stdout are NOT re-templated. Variable references
-// inside directive bodies are resolved before the directive executes.
+// Inside {{! }} and {{@ }} bodies, bare $name references are resolved against
+// the same builtin+KV tiers as {{ $name }}. The `{{` / `}}` characters that
+// happen to appear inside a directive body are LITERAL — they are not nested
+// directives and are passed through to the shell or file path verbatim. The
+// parser still depth-counts `{{` / `}}` so the outer directive terminates at
+// its true closing pair even when the body contains balanced braces (e.g.
+// `{{! echo '{{ $foo }}' }}`).
+//
+// File contents and shell stdout are NOT re-templated.
 type Resolver struct {
 	Builtins map[string]string // built-in vars; shadow KV writes of the same name
 	KV       KVReader          // may be nil; non-builtin lookups fail when nil
@@ -79,8 +86,9 @@ func (r *Resolver) evalDirective(ctx context.Context, body string) (string, erro
 
 	case strings.HasPrefix(body, "!"):
 		cmdTemplate := strings.TrimSpace(body[1:])
-		// Resolve inner {{ $var }} before running the shell.
-		resolved, err := r.resolveStr(ctx, cmdTemplate)
+		// Resolve bare $name references against builtins/KV. `{{` / `}}`
+		// inside the body are literal and flow through to the shell.
+		resolved, err := r.resolveBareVars(ctx, cmdTemplate)
 		if err != nil {
 			return "", err
 		}
@@ -90,8 +98,9 @@ func (r *Resolver) evalDirective(ctx context.Context, body string) (string, erro
 
 	case strings.HasPrefix(body, "@"):
 		pathTemplate := strings.TrimSpace(body[1:])
-		// Resolve inner {{ $var }} before opening the file.
-		resolved, err := r.resolveStr(ctx, pathTemplate)
+		// Resolve bare $name references in the path
+		// (e.g. {{@ $temp_file_dir/data.csv }}).
+		resolved, err := r.resolveBareVars(ctx, pathTemplate)
 		if err != nil {
 			return "", err
 		}
@@ -144,6 +153,53 @@ func (r *Resolver) runShell(ctx context.Context, cmd string) (string, error) {
 	result := string(out)
 	result = strings.TrimRight(result, "\n")
 	return result, nil
+}
+
+// resolveBareVars expands bare $name references (built-in or KV) inside a
+// directive body. $$ is left untouched (it's only meaningful inside {{! ... }}
+// and is passed through verbatim elsewhere), and a bare $ with no following
+// identifier character is also left alone. An identifier that resolves in
+// neither tier is an error, matching {{ $name }} semantics.
+func (r *Resolver) resolveBareVars(ctx context.Context, s string) (string, error) {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		if s[i] != '$' {
+			b.WriteByte(s[i])
+			i++
+			continue
+		}
+		if i+1 < len(s) && s[i+1] == '$' {
+			b.WriteString("$$")
+			i += 2
+			continue
+		}
+		j := i + 1
+		for j < len(s) && isIdentChar(s[j], j == i+1) {
+			j++
+		}
+		if j == i+1 {
+			b.WriteByte('$')
+			i++
+			continue
+		}
+		val, err := r.lookupVar(ctx, s[i+1:j])
+		if err != nil {
+			return "", err
+		}
+		b.WriteString(val)
+		i = j
+	}
+	return b.String(), nil
+}
+
+func isIdentChar(c byte, first bool) bool {
+	if c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+		return true
+	}
+	if first {
+		return false
+	}
+	return c >= '0' && c <= '9'
 }
 
 func (r *Resolver) readFile(path string) (string, error) {

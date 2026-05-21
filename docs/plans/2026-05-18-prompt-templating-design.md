@@ -43,14 +43,15 @@ A single `{{ ... }}` form with a one-character directive prefix:
 
 Whitespace immediately inside `{{ }}` is trimmed: `{{$x}}` and `{{ $x }}` are equivalent.
 
-**Nesting.** Variable references resolve inside other directives before the outer directive executes:
+**Bare `$name` inside directive bodies.** `{{! }}` and `{{@ }}` bodies resolve bare `$name` references against the same built-in / KV tiers as the top-level `{{ $name }}` form. The `{{` / `}}` characters that happen to appear inside a directive body are **literal** — they are not nested directives:
 
 ```
-{{@ $temp_file_dir/data.csv }}
-{{! echo "task is $$TASK from {{ $run_id }}" }}
+{{@ $temp_file_dir/data.csv }}                            # opens $temp_file_dir's value + "/data.csv"
+{{! echo "task is $$TASK from $run_id" }}                 # shell-side $$TASK, KV-side $run_id
+{{! echo '{{ $foo }}' }}   # with KV foo=bar             # runs echo '{{ bar }}'; result "{{ bar }}"
 ```
 
-The order is: scan the template; for each directive, resolve any inner `{{ $name }}` first, then evaluate the outer directive. Output of shell commands and file contents is **not** re-templated.
+The parser still depth-counts `{{` / `}}` so the outer directive terminates at its true closing pair even when the body contains balanced braces (the third example above). Output of shell commands and file contents is **not** re-templated.
 
 **Escape for literal `{{`.** Not in v1. If it becomes a real problem we can add `\{\{` later; today no prompt in the repo uses literal double-braces.
 
@@ -77,7 +78,7 @@ Built-ins are reserved: a workflow author cannot override `$task_id` with `cloch
 
 - **Working directory:** the step's `workDir` (same as `assemblePrompt`'s `workDir`).
 - **Environment:** the same environment the agent process gets, including `Adapter.ExtraEnv`. KV values are not auto-exported as env vars — use `{{ $name }}` inline or pipe `clo get name` inside the command.
-- **`$$`:** inside `{{! ... }}` only, `$$` is rewritten to `$` after `{{ $var }}` inner-resolution but before handing the string to `sh -c`. So `{{! echo $$FOOBAR }}` runs `echo $FOOBAR` (shell expands `$FOOBAR`), while `{{! echo {{ $task_id }} }}` runs `echo <task-id-value>`.
+- **`$$`:** inside `{{! ... }}` only, `$$` is rewritten to `$` after bare-`$name` resolution but before handing the string to `sh -c`. So `{{! echo $$FOOBAR }}` runs `echo $FOOBAR` (shell expands `$FOOBAR`), while `{{! echo $task_id }}` runs `echo <task-id-value>`.
 - **Capture:** stdout is captured and trimmed of one trailing `\n` (most commands emit a trailing newline; users who want it can `echo -n`). stderr is captured into the step log (via the StatusWriter if present), so a workflow author can see what went wrong, but stderr is **not** substituted into the prompt.
 - **Timeout:** 30s default; non-configurable in v1. Long-running data prep belongs in a separate `run` step.
 - **Non-zero exit:** step fails before the agent runs. Error message names the directive and the exit code.
@@ -182,8 +183,8 @@ In `internal/adapters/agents/prompt/template_test.go`:
 - Built-in shadows KV: a `task_id` KV write does not override the built-in.
 - KV miss → error; built-in miss → error.
 - Missing file → error; non-zero shell exit → error; shell timeout → error.
-- Nested `{{ $var }}` inside `{{@ ... }}` resolves before the file is read.
-- Nested `{{ $var }}` inside `{{! ... }}` resolves before `sh -c`.
+- Bare `$var` inside `{{@ ... }}` resolves before the file is read.
+- Bare `$var` inside `{{! ... }}` resolves before `sh -c`; `{{` / `}}` chars in the body flow through to the shell verbatim.
 - `$$` is preserved as `$` only inside `{{! ... }}`, left alone elsewhere.
 - File contents and shell stdout are **not** re-templated even if they contain `{{ ... }}` sequences.
 - Whitespace inside `{{ }}` is tolerated.

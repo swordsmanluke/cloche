@@ -116,11 +116,20 @@ func TestResolver_ShellDirective_Resolves(t *testing.T) {
 	assert.Equal(t, "greetings", got)
 }
 
-func TestResolver_ShellDirective_InnerVarResolvesFirst(t *testing.T) {
+func TestResolver_ShellDirective_BareVarInBody_Resolves(t *testing.T) {
 	r := newResolver(t, map[string]string{"step_name": "analyze"}, nil)
-	got, err := r.Resolve(context.Background(), "{{! echo {{ $step_name }} }}")
+	got, err := r.Resolve(context.Background(), "{{! echo $step_name }}")
 	require.NoError(t, err)
 	assert.Equal(t, "analyze", got)
+}
+
+func TestResolver_ShellDirective_BracesInBody_LiteralToShell(t *testing.T) {
+	// `{{` and `}}` inside a directive body are literal — only bare $var
+	// references resolve. The braces flow through to the shell verbatim.
+	r := newResolver(t, map[string]string{"foo": "bar"}, nil)
+	got, err := r.Resolve(context.Background(), "{{! echo '{{ $foo }}' }}")
+	require.NoError(t, err)
+	assert.Equal(t, "{{ bar }}", got)
 }
 
 func TestResolver_ShellDirective_DollarDollar_BecomesLiteralDollar(t *testing.T) {
@@ -175,7 +184,7 @@ func TestResolver_FileDirective_Resolves(t *testing.T) {
 	assert.Equal(t, "file contents here", got)
 }
 
-func TestResolver_FileDirective_InnerVarInPathResolvesFirst(t *testing.T) {
+func TestResolver_FileDirective_BareVarInPath_Resolves(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "analyze.txt"), []byte("step context loaded"), 0644))
 	r := &prompt.Resolver{
@@ -183,9 +192,51 @@ func TestResolver_FileDirective_InnerVarInPathResolvesFirst(t *testing.T) {
 		WorkDir:  dir,
 		KV:       &fakeKVReader{},
 	}
-	got, err := r.Resolve(context.Background(), "{{@ {{ $step_name }}.txt }}")
+	got, err := r.Resolve(context.Background(), "{{@ $step_name.txt }}")
 	require.NoError(t, err)
 	assert.Equal(t, "step context loaded", got)
+}
+
+func TestResolver_FileDirective_BareBuiltinVarInPath_Resolves(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "result.md"), []byte("bare var path works"), 0644))
+	r := &prompt.Resolver{
+		Builtins: map[string]string{"temp_file_dir": dir},
+		WorkDir:  t.TempDir(),
+		KV:       &fakeKVReader{},
+	}
+	got, err := r.Resolve(context.Background(), "{{@ $temp_file_dir/result.md }}")
+	require.NoError(t, err)
+	assert.Equal(t, "bare var path works", got)
+}
+
+func TestResolver_FileDirective_BareKVVarInPath_Resolves(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "data.csv"), []byte("a,b,c"), 0644))
+	r := &prompt.Resolver{
+		WorkDir: t.TempDir(),
+		KV:      &fakeKVReader{store: map[string]string{"temp_file_dir": dir}},
+	}
+	got, err := r.Resolve(context.Background(), "{{@ $temp_file_dir/data.csv }}")
+	require.NoError(t, err)
+	assert.Equal(t, "a,b,c", got)
+}
+
+func TestResolver_FileDirective_UndefinedBareVarInPath_Errors(t *testing.T) {
+	r := newResolver(t, nil, nil)
+	_, err := r.Resolve(context.Background(), "{{@ $no_such_dir/file.txt }}")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no_such_dir")
+}
+
+func TestResolver_FileDirective_DollarDollarInPath_LeftLiteral(t *testing.T) {
+	// $$ is only meaningful inside {{! ... }}. Inside {{@ ... }} it must
+	// remain verbatim, so the resolver tries to open a literal "$$foo.txt"
+	// path and surfaces the missing-file error with that literal name.
+	r := newResolver(t, map[string]string{"foo": "should-not-be-used"}, nil)
+	_, err := r.Resolve(context.Background(), "{{@ $$foo.txt }}")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "$$foo.txt")
 }
 
 func TestResolver_FileDirective_MissingFile_Errors(t *testing.T) {
@@ -210,9 +261,14 @@ func TestResolver_FileContents_NotReTemplated(t *testing.T) {
 }
 
 func TestResolver_ShellOutput_NotReTemplated(t *testing.T) {
-	r := newResolver(t, nil, nil)
-	// The shell echoes a {{ }} sequence; it must NOT be re-evaluated.
-	got, err := r.Resolve(context.Background(), "{{! echo '{{ $task_id }}' }}")
+	// Shell output is captured verbatim — even if it contains a {{ }} sequence
+	// that references an undefined variable, the resolver must not re-template
+	// it. The {{ }} chars enter the output via `cat` so they are absent from
+	// the source template and can't be pre-resolved during body substitution.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "out.txt"), []byte("{{ $task_id }}"), 0644))
+	r := &prompt.Resolver{WorkDir: dir, KV: &fakeKVReader{}}
+	got, err := r.Resolve(context.Background(), "{{! cat out.txt }}")
 	require.NoError(t, err)
 	assert.Equal(t, "{{ $task_id }}", got)
 }
