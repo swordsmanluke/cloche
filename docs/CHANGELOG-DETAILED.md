@@ -1,5 +1,11 @@
 # Cloche Detailed Changelog
 
+## v3.15.14 — 2026-05-21
+
+### Fixes
+
+- `6186e9a` `{{ $task_id }}` now resolves correctly in agent prompts inside host workflows; the host executor was assigning `adapter.RunID` but omitting `adapter.TaskID`, leaving the variable empty for any agent step in a host workflow.
+
 ## v3.15.13 — 2026-05-21
 
 ### Breaking
