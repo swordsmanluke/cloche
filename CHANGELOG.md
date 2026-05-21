@@ -1,5 +1,11 @@
 # Cloche Changelog
 
+## v3.15.13 — 2026-05-21
+
+### Breaking changes
+
+- Inside `{{! }}` and `{{@ }}` directive bodies, `{{ $name }}` nested syntax no longer resolves; use bare `$name` instead. Migration: replace `{{! echo {{ $var }} }}` with `{{! echo $var }}` and `{{@ {{ $var }}.txt }}` with `{{@ $var.txt }}` in your prompt files.
+
 ## v3.15.12 — 2026-05-21
 
 ### Breaking changes
