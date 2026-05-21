@@ -6,15 +6,15 @@
 
 - `7c7139a` Prompt template directive bodies now resolve bare `$name` references (built-in or KV) instead of full `{{ $name }}` nested directives; `{{` and `}}` characters inside a body are literal and pass through to the shell or file path verbatim; the parser still depth-balances `{{`/`}}` to locate the true outer closing pair. Migration: replace any `{{ $var }}` inside `{{! }}` or `{{@ }}` bodies with bare `$var`. ([design](docs/plans/2026-05-18-prompt-templating-design.md))
 
+## v3.15.12 — 2026-05-19
+
+### Features
+
+- Prompt files now support `{{ }}` template directives evaluated before the agent is invoked. Three forms: `{{ $name }}` (built-in variable or KV-store lookup), `{{! cmd }}` (sh -c; stdout substituted, stderr to step log, 30 s timeout, non-zero exit fails step), `{{@ path }}` (file contents substituted verbatim). Inner `{{ $var }}` references inside shell and file directives resolve before the outer directive executes. `$$` → `$` inside shell directives only. Unresolvable directives fail the step before the agent runs; error messages name the directive and cause. ([design](docs/plans/2026-05-18-prompt-templating-design.md))
+
 ### Internal
 
-- `fb613f6` Correct CHANGELOG.md and docs/CHANGELOG-DETAILED.md for v3.15.12: reclassify the prompt-templating directive-body change from Feature to Breaking and fix the release date.
-
-## v3.15.12 — 2026-05-21
-
-### Breaking
-
-- `7c7139a` Prompt template directive bodies now resolve bare `$name` references (built-in or KV) instead of full `{{ $name }}` nested directives; `{{` and `}}` characters inside a body are literal and pass through to the shell or file path verbatim. The parser still depth-balances `{{`/`}}` so the outer directive terminates at its real closing pair. Migration: update any prompt file that uses `{{ $var }}` inside `{{! }}` or `{{@ }}` bodies to use bare `$var` instead. ([design](docs/plans/2026-05-18-prompt-templating-design.md))
+- Legacy `{task_description}` and `{previous_output}` placeholders now emit a per-step deprecation warning through the status writer; the substitution itself is unchanged.
 
 ## v3.15.10 — 2026-05-18
 

@@ -6,11 +6,11 @@
 
 - Inside `{{! }}` and `{{@ }}` directive bodies, `{{ $name }}` nested syntax no longer resolves; use bare `$name` instead. Migration: replace `{{! echo {{ $var }} }}` with `{{! echo $var }}` and `{{@ {{ $var }}.txt }}` with `{{@ $var.txt }}` in your prompt files.
 
-## v3.15.12 — 2026-05-21
+## v3.15.12 — 2026-05-19
 
-### Breaking changes
+### Features
 
-- Inside `{{! }}` and `{{@ }}` directive bodies, nested `{{ $name }}` syntax no longer resolves; use bare `$name` instead. Migration: replace `{{! echo {{ $var }} }}` with `{{! echo $var }}` and `{{@ {{ $var }}.txt }}` with `{{@ $var.txt }}` in your prompt files.
+- Prompt templates: prompt files now support `{{ }}` directives — `{{ $name }}` for built-in variables and KV-store lookups, `{{! cmd }}` to inline shell output, and `{{@ path }}` to inline file contents. Expansion happens before the agent is invoked; any unresolvable directive fails the step early. Legacy `{task_description}` and `{previous_output}` placeholders continue to work with a deprecation warning. ([design](docs/plans/2026-05-18-prompt-templating-design.md))
 
 ## v3.15.10 — 2026-05-18
 
