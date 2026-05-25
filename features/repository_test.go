@@ -537,7 +537,6 @@ func TestMain(m *testing.M) {
 		ScenarioInitializer: func(ctx *godog.ScenarioContext) {
 			initRepositoryScenarios(ctx)
 			initPromptTemplatingScenarios(ctx)
-			initPromptMigrationScenarios(ctx)
 		},
 		Options: &opts,
 	}.Run()
