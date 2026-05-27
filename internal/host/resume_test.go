@@ -174,7 +174,7 @@ func TestResumeRunAsNewAttempt_CreatesNewRun(t *testing.T) {
 	// Write a minimal host workflow using the correct DSL syntax.
 	clocheDir := filepath.Join(dir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
-	workflowContent := `workflow "main" {
+	workflowContent := `workflow main {
   host {}
 
   step build {

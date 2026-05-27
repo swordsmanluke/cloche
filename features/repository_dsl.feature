@@ -45,7 +45,7 @@ Feature: Repository configuration and DSL
   Scenario: Parse a workflow with a repos declaration
     Given a .cloche file containing:
       """
-      workflow "develop-backend" {
+      workflow develop-backend {
         repos = ["backend"]
         step build {
           run     = "make build"
@@ -62,7 +62,7 @@ Feature: Repository configuration and DSL
   Scenario: Parse a workflow with multiple repo dependencies
     Given a .cloche file containing:
       """
-      workflow "integration-testing" {
+      workflow integration-testing {
         repos = ["candy", "cloche"]
         step test {
           run     = "make test"
@@ -79,7 +79,7 @@ Feature: Repository configuration and DSL
   Scenario: Parse a step with a repository field
     Given a .cloche file containing:
       """
-      workflow "deploy" {
+      workflow deploy {
         repos = ["backend"]
         step build {
           run        = "make build"
@@ -97,7 +97,7 @@ Feature: Repository configuration and DSL
   Scenario: A workflow without a repos declaration parses without error
     Given a .cloche file containing:
       """
-      workflow "develop" {
+      workflow develop {
         step run {
           run     = "echo hi"
           results = [success]
