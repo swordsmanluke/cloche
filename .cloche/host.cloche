@@ -1,4 +1,4 @@
-workflow "list-tasks" {
+workflow list-tasks {
   host {}
 
   step ready-tasks {
@@ -10,7 +10,7 @@ workflow "list-tasks" {
   ready-tasks:fail    -> abort
 }
 
-workflow "main" {
+workflow main {
   host {
     agent_command = "claude"
   }
@@ -75,7 +75,7 @@ workflow "main" {
   cleanup:fail           -> done
 }
 
-workflow "release-task" {
+workflow release-task {
   host {}
 
   step release-task {
@@ -87,7 +87,7 @@ workflow "release-task" {
   release-task:fail    -> abort
 }
 
-workflow "changelog" {
+workflow changelog {
   host {
     agent_command = "claude"
   }
@@ -123,7 +123,7 @@ workflow "changelog" {
   commit:fail             -> abort
 }
 
-workflow "release" {
+workflow release {
   host {}
 
   step guard {

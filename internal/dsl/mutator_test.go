@@ -8,7 +8,7 @@ import (
 )
 
 func TestMutatorAddStep(t *testing.T) {
-	input := `workflow "develop" {
+	input := `workflow develop {
   step test {
     run = "make test"
     results = [success, fail]
@@ -38,7 +38,7 @@ func TestMutatorAddStep(t *testing.T) {
 }
 
 func TestMutatorAddStepAgent(t *testing.T) {
-	input := `workflow "develop" {
+	input := `workflow develop {
   step test {
     run = "make test"
     results = [success, fail]
@@ -67,7 +67,7 @@ func TestMutatorAddStepAgent(t *testing.T) {
 }
 
 func TestMutatorAddWiring(t *testing.T) {
-	input := `workflow "develop" {
+	input := `workflow develop {
   step test {
     run = "make test"
     results = [success, fail]
@@ -100,7 +100,7 @@ func TestMutatorAddWiring(t *testing.T) {
 }
 
 func TestMutatorRewireResult(t *testing.T) {
-	input := `workflow "develop" {
+	input := `workflow develop {
   step test {
     run = "make test"
     results = [success, fail]
@@ -136,7 +136,7 @@ func TestMutatorRewireResult(t *testing.T) {
 }
 
 func TestMutatorRewireResultNotFound(t *testing.T) {
-	input := `workflow "develop" {
+	input := `workflow develop {
   step test {
     run = "make test"
     results = [success, fail]
@@ -153,7 +153,7 @@ func TestMutatorRewireResultNotFound(t *testing.T) {
 }
 
 func TestMutatorUpdateCollect(t *testing.T) {
-	input := `workflow "develop" {
+	input := `workflow develop {
   step test {
     run = "make test"
     results = [success, fail]

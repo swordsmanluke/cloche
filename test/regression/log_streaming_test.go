@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const simpleHostWorkflow = `workflow "simple" {
+const simpleHostWorkflow = `workflow simple {
   host {}
 
   step greet {
@@ -24,7 +24,7 @@ const simpleHostWorkflow = `workflow "simple" {
 }
 `
 
-const multiStepHostWorkflow = `workflow "multi" {
+const multiStepHostWorkflow = `workflow multi {
   host {}
 
   step first {
@@ -173,7 +173,7 @@ func TestRegression_CompletedRun_SSEServesFromDisk(t *testing.T) {
 func TestRegression_HostWorkflow_LiveFollow(t *testing.T) {
 	env := NewTestEnv(t)
 
-	slowWorkflow := `workflow "slow" {
+	slowWorkflow := `workflow slow {
   host {}
 
   step wait {

@@ -35,7 +35,7 @@ func TestCollectorGathersData(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, ".cloche", "prompts", "implement.md"),
 		[]byte("Write good code"), 0644)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
-		[]byte(`workflow "develop" {
+		[]byte(`workflow develop {
   step impl {
     prompt = file(".cloche/prompts/implement.md")
     results = [success]
@@ -59,7 +59,7 @@ func TestCollectorNoKnowledgeBase(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".cloche"), 0755)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
-		[]byte(`workflow "develop" { step s { run = "echo hi" results = [success] } s:success -> done }`), 0644)
+		[]byte(`workflow develop { step s { run = "echo hi" results = [success] } s:success -> done }`), 0644)
 
 	c := &Collector{ProjectDir: dir, WorkflowName: "develop"}
 	data, err := c.Collect(context.Background(), nil, nil)
@@ -671,7 +671,7 @@ func TestOrchestratorEndToEnd(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, ".cloche", "prompts", "implement.md"),
 		[]byte("Write good code.\n"), 0644)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
-		[]byte(`workflow "develop" {
+		[]byte(`workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
@@ -731,7 +731,7 @@ func TestOrchestratorNewStepWiredIntoGraph(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
 	// Knowledge base uses JSONL format (created automatically by UpdateKnowledge)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
-		[]byte(`workflow "develop" {
+		[]byte(`workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
@@ -797,7 +797,7 @@ func TestHandleNewStepSkipsDuplicate(t *testing.T) {
 
 	// Workflow already contains a step named "security-scan"
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
-		[]byte(`workflow "develop" {
+		[]byte(`workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
@@ -859,7 +859,7 @@ func TestHandleNewStepNoDoneEdge(t *testing.T) {
 
 	// Workflow has no -> done edges (all go to abort)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
-		[]byte(`workflow "develop" {
+		[]byte(`workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
@@ -913,7 +913,7 @@ func TestHandleNewStepValidatesResultingWorkflow(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "snapshots"), 0755)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
-		[]byte(`workflow "develop" {
+		[]byte(`workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
@@ -971,7 +971,7 @@ func TestOrchestratorNoLessons(t *testing.T) {
 
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
-		[]byte(`workflow "develop" {
+		[]byte(`workflow develop {
   step s {
     run = "echo hi"
     results = [success]
@@ -1108,7 +1108,7 @@ func TestOrchestratorSkipsAlreadyAppliedLessons(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, ".cloche", "prompts", "implement.md"),
 		[]byte("Write good code.\n"), 0644)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
-		[]byte(`workflow "develop" {
+		[]byte(`workflow develop {
   step s {
     run = "echo hi"
     results = [success]
@@ -1147,7 +1147,7 @@ func TestOrchestratorSecondRunProducesNoChanges(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, ".cloche", "prompts", "implement.md"),
 		[]byte("Write good code.\n"), 0644)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
-		[]byte(`workflow "develop" {
+		[]byte(`workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]

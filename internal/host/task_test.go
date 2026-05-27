@@ -193,7 +193,7 @@ func TestFindAllWorkflows_SingleFile(t *testing.T) {
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 
-	content := `workflow "develop" {
+	content := `workflow develop {
   step code {
     prompt  = "write code"
     results = [success, fail]
@@ -202,7 +202,7 @@ func TestFindAllWorkflows_SingleFile(t *testing.T) {
   code:fail    -> abort
 }
 
-workflow "main" {
+workflow main {
   host {}
   step run {
     workflow_name = "develop"
@@ -226,7 +226,7 @@ func TestFindAllWorkflows_CrossFileDuplicate(t *testing.T) {
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 
-	wf := `workflow "develop" {
+	wf := `workflow develop {
   step code {
     prompt  = "write code"
     results = [success]
@@ -248,7 +248,7 @@ func TestFindAllWorkflows_IncludesContainerAndHost(t *testing.T) {
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 
-	container := `workflow "develop" {
+	container := `workflow develop {
   step code {
     prompt  = "write code"
     results = [success]
@@ -256,7 +256,7 @@ func TestFindAllWorkflows_IncludesContainerAndHost(t *testing.T) {
   code:success -> done
 }
 `
-	hostWF := `workflow "main" {
+	hostWF := `workflow main {
   host {}
   step run {
     workflow_name = "develop"
@@ -280,7 +280,7 @@ func TestFindHostWorkflows_FiltersHostOnly(t *testing.T) {
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 
-	content := `workflow "develop" {
+	content := `workflow develop {
   step code {
     prompt  = "write code"
     results = [success]
@@ -288,7 +288,7 @@ func TestFindHostWorkflows_FiltersHostOnly(t *testing.T) {
   code:success -> done
 }
 
-workflow "main" {
+workflow main {
   host {}
   step run {
     workflow_name = "develop"
