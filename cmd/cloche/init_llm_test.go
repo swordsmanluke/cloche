@@ -46,7 +46,7 @@ func TestParseInitResponse_ParsesFencedBlock(t *testing.T) {
 
 func TestParseInitResponse_MultipleFiles(t *testing.T) {
 	response := "```.cloche/Dockerfile\nFROM cloche-agent:latest\nUSER agent\n```\n\n" +
-		"```.cloche/develop.cloche\nworkflow develop {}\n```\n"
+		"```.cloche/develop.cloche\nworkflow \"develop\" {}\n```\n"
 	result := parseInitResponse(response)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 files, got %d: %v", len(result), result)
@@ -299,7 +299,7 @@ func TestRunLLMInitPhase_CustomWorkflow(t *testing.T) {
 		t.Fatal("build.cloche should have TODO(cloche-init) before LLM run")
 	}
 
-	updatedWorkflow := `workflow build {
+	updatedWorkflow := `workflow "build" {
   step implement {
     prompt  = file(".cloche/prompts/implement.md")
     results = [success, fail]

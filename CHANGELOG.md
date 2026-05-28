@@ -1,5 +1,11 @@
 # Cloche Changelog
 
+## v3.15.14 — 2026-05-21
+
+### Notable fixes
+
+- `{{ $task_id }}` now resolves correctly in agent prompts running inside host workflows; previously the host executor left it empty, breaking any prompt or shell command that embedded it (e.g. `bd show "{{ $task_id }}"`).
+
 ## v3.15.13 — 2026-05-21
 
 ### Breaking changes

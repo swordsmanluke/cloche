@@ -9,7 +9,7 @@ import (
 )
 
 func TestLexer_SimpleWorkflow(t *testing.T) {
-	input := `workflow test {
+	input := `workflow "test" {
   step code {
     run = "echo hello"
     results = [success, fail]
@@ -22,7 +22,7 @@ func TestLexer_SimpleWorkflow(t *testing.T) {
 
 	expected := []dsl.TokenType{
 		dsl.TokenIdent,    // workflow
-		dsl.TokenIdent,    // test
+		dsl.TokenString,   // "test"
 		dsl.TokenLBrace,   // {
 		dsl.TokenIdent,    // step
 		dsl.TokenIdent,    // code
