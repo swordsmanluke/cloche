@@ -36,10 +36,14 @@ type Resolver struct {
 
 // Resolve evaluates all {{ }} directives in src and returns the result.
 func (r *Resolver) Resolve(ctx context.Context, src string) (string, error) {
-	return r.resolveStr(ctx, src)
+	return r.resolveStr(ctx, src, false)
 }
 
-func (r *Resolver) resolveStr(ctx context.Context, src string) (string, error) {
+// resolveStr evaluates directives in src. When lenient is true, undefined
+// variables pass through as {{ $name }} instead of returning an error; this
+// is used when pre-resolving shell command bodies so that {{ }} sequences
+// inside single-quoted shell strings are forwarded to the shell verbatim.
+func (r *Resolver) resolveStr(ctx context.Context, src string, lenient bool) (string, error) {
 	var b strings.Builder
 	rest := src
 	for {
@@ -59,10 +63,11 @@ func (r *Resolver) resolveStr(ctx context.Context, src string) (string, error) {
 			continue
 		}
 
-		body := strings.TrimSpace(after[:end])
+		raw := after[:end] // original, before trimming
+		body := strings.TrimSpace(raw)
 		rest = after[end+2:]
 
-		val, err := r.evalDirective(ctx, body)
+		val, err := r.evalDirective(ctx, body, raw, lenient)
 		if err != nil {
 			return "", err
 		}
@@ -71,16 +76,28 @@ func (r *Resolver) resolveStr(ctx context.Context, src string) (string, error) {
 	return b.String(), nil
 }
 
-func (r *Resolver) evalDirective(ctx context.Context, body string) (string, error) {
+// evalDirective evaluates a single parsed directive. body is the trimmed
+// content; raw is the un-trimmed original (used when passing through
+// undefined variables so whitespace is preserved). lenient suppresses
+// "variable not defined" errors for $-directives.
+func (r *Resolver) evalDirective(ctx context.Context, body, raw string, lenient bool) (string, error) {
 	switch {
 	case strings.HasPrefix(body, "$"):
 		name := strings.TrimSpace(body[1:])
-		return r.lookupVar(ctx, name)
+		v, err := r.lookupVar(ctx, name)
+		if err != nil && lenient {
+			// Undefined variable inside a shell command body: pass through
+			// with original whitespace so the shell receives it verbatim.
+			return "{{" + raw + "}}", nil
+		}
+		return v, err
 
 	case strings.HasPrefix(body, "!"):
 		cmdTemplate := strings.TrimSpace(body[1:])
-		// Resolve inner {{ $var }} before running the shell.
-		resolved, err := r.resolveStr(ctx, cmdTemplate)
+		// Resolve inner {{ $var }} before running the shell. Use lenient mode
+		// so that {{ }} sequences inside shell-quoted strings pass through
+		// to the shell unchanged rather than causing an error.
+		resolved, err := r.resolveStr(ctx, cmdTemplate, true)
 		if err != nil {
 			return "", err
 		}
@@ -91,7 +108,7 @@ func (r *Resolver) evalDirective(ctx context.Context, body string) (string, erro
 	case strings.HasPrefix(body, "@"):
 		pathTemplate := strings.TrimSpace(body[1:])
 		// Resolve inner {{ $var }} before opening the file.
-		resolved, err := r.resolveStr(ctx, pathTemplate)
+		resolved, err := r.resolveStr(ctx, pathTemplate, lenient)
 		if err != nil {
 			return "", err
 		}
