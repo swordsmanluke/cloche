@@ -12,19 +12,30 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
 
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/ports"
 )
 
-type Runtime struct{}
+type containerCredentials struct {
+	watcher    *fsnotify.Watcher
+	stagingDir string
+}
+
+type Runtime struct {
+	mu          sync.Mutex
+	credentials map[string]*containerCredentials // containerID → credential state
+}
 
 func NewRuntime() (*Runtime, error) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		return nil, fmt.Errorf("docker not found in PATH: %w", err)
 	}
-	return &Runtime{}, nil
+	return &Runtime{credentials: make(map[string]*containerCredentials)}, nil
 }
 
 func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string, error) {
@@ -36,6 +47,17 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	useDefaultCmd := len(containerCmd) == 0
 	if useDefaultCmd {
 		containerCmd = []string{"cloche-agent", ".cloche/" + cfg.WorkflowName + ".cloche"}
+	}
+
+	// Create per-container credential staging dir before docker create so the
+	// -v mount flag can be included in the create call.
+	var stagingDir string
+	if home, err := os.UserHomeDir(); err == nil {
+		if sd, err := CreateCredentialStagingDir(filepath.Join(home, ".claude")); err == nil {
+			stagingDir = sd
+		} else {
+			log.Printf("runtime.Start: warning: failed to create credential staging dir: %v", err)
+		}
 	}
 
 	args := []string{
@@ -88,8 +110,16 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	containerAddr = strings.Replace(containerAddr, "0.0.0.0:", "host.docker.internal:", 1)
 	args = append(args, "-e", "CLOCHE_ADDR="+containerAddr)
 
-	// Claude auth files are copied (not mounted) after docker create so each
-	// container gets its own copy — avoids concurrent write conflicts.
+	// Bind-mount the credential staging dir read-only into the container. The
+	// fsnotify watcher (started after docker create) overwrites files in-place
+	// so the container sees refreshed credentials without inode churn. The `:ro`
+	// flag prevents the container from modifying the staging dir; note that the
+	// entrypoint's chown of /home/agent/.claude silently fails on a ro mount but
+	// the `;` separator before `exec gosu agent` ensures the agent still starts,
+	// and the 0644 file permissions allow the agent user to read credentials.
+	if stagingDir != "" {
+		args = append(args, "-v", stagingDir+":/home/agent/.claude/:ro")
+	}
 
 	// Bind-mount the host run directory (.cloche/runs/<run-id>) into the container
 	// so that files written by host workflow steps (e.g. task_prompt.md written by
@@ -217,38 +247,39 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		log.Printf("runtime.Start: prompt done for %s", containerID)
 	}
 
-	// 4. Copy Claude auth files into container (each gets its own copy).
-	// Only copy auth-relevant files — not the full ~/.claude directory
-	// which contains large history, session, and debug data.
-	log.Printf("runtime.Start: copying auth files for %s", containerID)
-	if home, err := os.UserHomeDir(); err == nil {
-		claudeDir := home + "/.claude"
-		// Stage auth files in a temp directory, then docker cp the
-		// directory into the container. This avoids needing `docker exec`
-		// (container isn't running yet) and ensures the directory exists.
-		tmpAuth, tmpErr := os.MkdirTemp("", "cloche-auth")
-		if tmpErr == nil {
-			defer os.RemoveAll(tmpAuth)
-			for _, name := range []string{".credentials.json", "settings.json", "settings.local.json"} {
-				src := filepath.Join(claudeDir, name)
-				if data, err := os.ReadFile(src); err == nil {
-					os.WriteFile(filepath.Join(tmpAuth, name), data, 0644)
-				}
+	// 4. Start fsnotify watcher to keep credential staging dir in sync with the
+	// host's ~/.claude/ directory. Watcher errors are non-fatal — the container
+	// still has the credentials copied at staging-dir creation time.
+	if stagingDir != "" {
+		log.Printf("runtime.Start: starting credential watcher for %s", containerID)
+		if home, err := os.UserHomeDir(); err == nil {
+			claudeDir := filepath.Join(home, ".claude")
+			watcher, watchErr := StartCredentialWatcher(stagingDir, claudeDir, containerID)
+			if watchErr != nil {
+				log.Printf("runtime.Start: warning: container %s: credential watcher not started: %v", containerID, watchErr)
 			}
-			exec.CommandContext(ctx, "docker", "cp", tmpAuth+"/.", containerID+":/home/agent/.claude/").Run()
+			r.mu.Lock()
+			r.credentials[containerID] = &containerCredentials{
+				watcher:    watcher,
+				stagingDir: stagingDir,
+			}
+			r.mu.Unlock()
 		}
-		// ~/.claude.json contains UI state needed by interactive Claude Code
-		// sessions (e.g. "already set up" flag). Copy it for interactive
-		// containers; skip for autonomous runs where it causes cached
-		// rate-limit info to leak between containers.
-		if cfg.Interactive {
-			claudeJSON := home + "/.claude.json"
+	}
+
+	// ~/.claude.json contains UI state needed by interactive Claude Code
+	// sessions (e.g. "already set up" flag). Copy it for interactive
+	// containers; skip for autonomous runs where it causes cached
+	// rate-limit info to leak between containers.
+	if cfg.Interactive {
+		if home, err := os.UserHomeDir(); err == nil {
+			claudeJSON := filepath.Join(home, ".claude.json")
 			if _, statErr := os.Stat(claudeJSON); statErr == nil {
 				exec.CommandContext(ctx, "docker", "cp", claudeJSON, containerID+":/home/agent/.claude.json").Run()
 			}
 		}
 	}
-	log.Printf("runtime.Start: auth copy done for %s", containerID)
+	log.Printf("runtime.Start: auth ready for %s", containerID)
 
 	// 5. Start the container (skip for interactive — Attach handles start).
 	if !cfg.Interactive {
@@ -320,6 +351,22 @@ func (r *Runtime) waitForRunning(ctx context.Context, containerID string) error 
 }
 
 func (r *Runtime) Stop(ctx context.Context, containerID string) error {
+	r.mu.Lock()
+	creds := r.credentials[containerID]
+	if creds != nil {
+		delete(r.credentials, containerID)
+	}
+	r.mu.Unlock()
+
+	if creds != nil {
+		if creds.watcher != nil {
+			creds.watcher.Close()
+		}
+		if creds.stagingDir != "" {
+			os.RemoveAll(creds.stagingDir)
+		}
+	}
+
 	cmd := exec.CommandContext(ctx, "docker", "stop", containerID)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
