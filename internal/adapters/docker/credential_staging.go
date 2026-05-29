@@ -31,7 +31,9 @@ func copyCredentials(srcDir, dstDir string) {
 		if err != nil {
 			continue
 		}
-		_ = os.WriteFile(filepath.Join(dstDir, name), data, 0644)
+		if err := os.WriteFile(filepath.Join(dstDir, name), data, 0644); err != nil {
+			log.Printf("credential staging: writing %s: %v", name, err)
+		}
 	}
 }
 
