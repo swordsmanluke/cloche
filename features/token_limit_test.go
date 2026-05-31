@@ -150,59 +150,59 @@ func (s *tokenLimitCtx) theTokenLimitErrorMentions(keyword string) error {
 // ─── L2: Engine enforcement steps ────────────────────────────────────────────
 
 func (s *tokenLimitCtx) engineWithStepHavingTokenLimit(stepName string, limit int) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineWithTwoStepWorkflowTokenLimit(limit int) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineWithWorkflowTokenLimit(limit int) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) stepCompletesWithOutputTokens(stepName string, outputTokens int) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) stepCompletesWithOutputAndInputTokens(stepName string, outputTokens, inputTokens int) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) eachStepCompletesWithOutputTokens(outputTokens int) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineExecutesTheWorkflow() error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineStepResultIs(stepName, result string) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineStepResultIsNot(stepName, result string) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineRunIsMarkedFailed() error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineRunIsAbortedAfterFirstStep() error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineRunIsNotAborted() error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) executorIsNeverCalledForStep(stepName string) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) noExecutorIsCalled() error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 // ─── Step registration ────────────────────────────────────────────────────────
