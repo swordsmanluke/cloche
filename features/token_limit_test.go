@@ -37,16 +37,17 @@ func (s *tokenLimitCtx) aTokenLimitDSLFileContaining(content *godog.DocString) e
 
 func (s *tokenLimitCtx) theTokenLimitDSLFileIsParsed() error {
 	workflows, err := dsl.ParseAll(s.dslContent)
-	if err == nil {
-		for _, wf := range workflows {
-			if verr := wf.Validate(); verr != nil {
-				err = verr
-				break
-			}
-		}
-	}
 	s.parsedWorkflows = workflows
 	s.dslParseErr = err
+	if err != nil {
+		return nil
+	}
+	for _, wf := range workflows {
+		s.dslParseErr = wf.Validate()
+		if s.dslParseErr != nil {
+			break
+		}
+	}
 	return nil
 }
 
