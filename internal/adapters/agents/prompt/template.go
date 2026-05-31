@@ -36,10 +36,12 @@ type Resolver struct {
 
 // Resolve evaluates all {{ }} directives in src and returns the result.
 func (r *Resolver) Resolve(ctx context.Context, src string) (string, error) {
-	return r.resolveStr(ctx, src)
+	return r.resolveStr(ctx, src, true)
 }
 
-func (r *Resolver) resolveStr(ctx context.Context, src string) (string, error) {
+// resolveStr is the internal recursive resolver. strict=true means unknown
+// variables are an error; strict=false means they pass through as literals.
+func (r *Resolver) resolveStr(ctx context.Context, src string, strict bool) (string, error) {
 	var b strings.Builder
 	rest := src
 	for {
@@ -62,7 +64,7 @@ func (r *Resolver) resolveStr(ctx context.Context, src string) (string, error) {
 		body := strings.TrimSpace(after[:end])
 		rest = after[end+2:]
 
-		val, err := r.evalDirective(ctx, body)
+		val, err := r.evalDirective(ctx, body, strict)
 		if err != nil {
 			return "", err
 		}
@@ -71,16 +73,30 @@ func (r *Resolver) resolveStr(ctx context.Context, src string) (string, error) {
 	return b.String(), nil
 }
 
-func (r *Resolver) evalDirective(ctx context.Context, body string) (string, error) {
+func (r *Resolver) evalDirective(ctx context.Context, body string, strict bool) (string, error) {
 	switch {
 	case strings.HasPrefix(body, "$"):
 		name := strings.TrimSpace(body[1:])
-		return r.lookupVar(ctx, name)
+		v, found, err := r.lookupVar(ctx, name)
+		if err != nil {
+			return "", err
+		}
+		if !found {
+			if strict {
+				return "", fmt.Errorf("{{ $%s }}: variable not defined (built-in or KV)", name)
+			}
+			// Lenient mode: pass the reference through literally so the shell
+			// or outer context sees it untouched.
+			return "{{ $" + name + " }}", nil
+		}
+		return v, nil
 
 	case strings.HasPrefix(body, "!"):
 		cmdTemplate := strings.TrimSpace(body[1:])
-		// Resolve inner {{ $var }} before running the shell.
-		resolved, err := r.resolveStr(ctx, cmdTemplate)
+		// Resolve inner {{ $var }} before running the shell. Use lenient mode so
+		// that unknown variable references pass through as literals; the shell
+		// then echoes them verbatim and the output is not re-templated.
+		resolved, err := r.resolveStr(ctx, cmdTemplate, false)
 		if err != nil {
 			return "", err
 		}
@@ -91,7 +107,7 @@ func (r *Resolver) evalDirective(ctx context.Context, body string) (string, erro
 	case strings.HasPrefix(body, "@"):
 		pathTemplate := strings.TrimSpace(body[1:])
 		// Resolve inner {{ $var }} before opening the file.
-		resolved, err := r.resolveStr(ctx, pathTemplate)
+		resolved, err := r.resolveStr(ctx, pathTemplate, strict)
 		if err != nil {
 			return "", err
 		}
@@ -103,21 +119,21 @@ func (r *Resolver) evalDirective(ctx context.Context, body string) (string, erro
 	}
 }
 
-func (r *Resolver) lookupVar(ctx context.Context, name string) (string, error) {
+// lookupVar returns the value and whether it was found, plus any KV error.
+// A missing variable is not an error here; callers decide whether absence
+// should be treated as an error based on their strict/lenient mode.
+func (r *Resolver) lookupVar(ctx context.Context, name string) (string, bool, error) {
 	if v, ok := r.Builtins[name]; ok {
-		return v, nil
+		return v, true, nil
 	}
 	if r.KV == nil {
-		return "", fmt.Errorf("{{ $%s }}: variable not defined (built-in or KV)", name)
+		return "", false, nil
 	}
 	v, found, err := r.KV.Get(ctx, name)
 	if err != nil {
-		return "", fmt.Errorf("{{ $%s }}: KV lookup: %w", name, err)
+		return "", false, fmt.Errorf("{{ $%s }}: KV lookup: %w", name, err)
 	}
-	if !found {
-		return "", fmt.Errorf("{{ $%s }}: variable not defined (built-in or KV)", name)
-	}
-	return v, nil
+	return v, found, nil
 }
 
 func (r *Resolver) runShell(ctx context.Context, cmd string) (string, error) {
