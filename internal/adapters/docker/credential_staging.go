@@ -64,11 +64,15 @@ func NewCredentialStager(containerID, claudeDir string) (*CredentialStager, erro
 // Close shuts down the fsnotify watcher and removes the staging directory.
 func (s *CredentialStager) Close() {
 	if s.watcher != nil {
-		s.watcher.Close()
+		if err := s.watcher.Close(); err != nil {
+			log.Printf("CredentialStager.Close: watcher: %v", err)
+		}
 		s.watcher = nil
 	}
 	if s.StagingDir != "" {
-		os.RemoveAll(s.StagingDir)
+		if err := os.RemoveAll(s.StagingDir); err != nil {
+			log.Printf("CredentialStager.Close: removing staging dir %s: %v", s.StagingDir, err)
+		}
 		s.StagingDir = ""
 	}
 }
