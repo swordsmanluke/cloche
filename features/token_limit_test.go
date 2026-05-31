@@ -37,6 +37,14 @@ func (s *tokenLimitCtx) aTokenLimitDSLFileContaining(content *godog.DocString) e
 
 func (s *tokenLimitCtx) theTokenLimitDSLFileIsParsed() error {
 	workflows, err := dsl.ParseAll(s.dslContent)
+	if err == nil {
+		for _, wf := range workflows {
+			if verr := wf.Validate(); verr != nil {
+				err = verr
+				break
+			}
+		}
+	}
 	s.parsedWorkflows = workflows
 	s.dslParseErr = err
 	return nil
@@ -50,27 +58,93 @@ func (s *tokenLimitCtx) noTokenLimitParseErrorIsReturned() error {
 }
 
 func (s *tokenLimitCtx) stepHasConfigValue(stepName, workflowName, key, value string) error {
-	return errors.New("pending: L1 DSL implementation")
+	wf, ok := s.parsedWorkflows[workflowName]
+	if !ok {
+		return fmt.Errorf("workflow %q not found", workflowName)
+	}
+	step, ok := wf.Steps[stepName]
+	if !ok {
+		return fmt.Errorf("step %q not found in workflow %q", stepName, workflowName)
+	}
+	got, ok := step.Config[key]
+	if !ok {
+		return fmt.Errorf("step %q in workflow %q has no config key %q", stepName, workflowName, key)
+	}
+	if got != value {
+		return fmt.Errorf("step %q config[%q] = %q, want %q", stepName, key, got, value)
+	}
+	return nil
 }
 
 func (s *tokenLimitCtx) workflowHasConfigValue(workflowName, key, value string) error {
-	return errors.New("pending: L1 DSL implementation")
+	wf, ok := s.parsedWorkflows[workflowName]
+	if !ok {
+		return fmt.Errorf("workflow %q not found", workflowName)
+	}
+	got, ok := wf.Config[key]
+	if !ok {
+		return fmt.Errorf("workflow %q has no config key %q", workflowName, key)
+	}
+	if got != value {
+		return fmt.Errorf("workflow %q config[%q] = %q, want %q", workflowName, key, got, value)
+	}
+	return nil
 }
 
 func (s *tokenLimitCtx) stepHasImplicitResultWiredTo(stepName, workflowName, result, target string) error {
-	return errors.New("pending: L1 DSL implementation")
+	wf, ok := s.parsedWorkflows[workflowName]
+	if !ok {
+		return fmt.Errorf("workflow %q not found", workflowName)
+	}
+	for _, w := range wf.Wiring {
+		if w.From == stepName && w.Result == result && w.Implicit {
+			if w.To != target {
+				return fmt.Errorf("step %q has implicit %q wire to %q, want %q", stepName, result, w.To, target)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("step %q in workflow %q has no implicit %q wire", stepName, workflowName, result)
 }
 
 func (s *tokenLimitCtx) workflowWireFromAnyStepGoesTo(workflowName, result, target string) error {
-	return errors.New("pending: L1 DSL implementation")
+	wf, ok := s.parsedWorkflows[workflowName]
+	if !ok {
+		return fmt.Errorf("workflow %q not found", workflowName)
+	}
+	for stepName := range wf.Steps {
+		found := false
+		for _, w := range wf.Wiring {
+			if w.From == stepName && w.Result == result {
+				if w.To != target {
+					return fmt.Errorf("step %q has %q wire to %q, want %q", stepName, result, w.To, target)
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("step %q in workflow %q has no %q wire", stepName, workflowName, result)
+		}
+	}
+	return nil
 }
 
 func (s *tokenLimitCtx) aTokenLimitParseErrorIsReturned() error {
-	return errors.New("pending: L1 DSL implementation")
+	if s.dslParseErr == nil {
+		return errors.New("expected a parse/validation error but got none")
+	}
+	return nil
 }
 
 func (s *tokenLimitCtx) theTokenLimitErrorMentions(keyword string) error {
-	return errors.New("pending: L1 DSL implementation")
+	if s.dslParseErr == nil {
+		return errors.New("no error to inspect")
+	}
+	if !strings.Contains(s.dslParseErr.Error(), keyword) {
+		return fmt.Errorf("error %q does not mention %q", s.dslParseErr.Error(), keyword)
+	}
+	return nil
 }
 
 // ─── L2: Engine enforcement steps ────────────────────────────────────────────
