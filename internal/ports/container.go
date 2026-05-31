@@ -23,6 +23,14 @@ type ContainerConfig struct {
 	Cmd          []string // override container command; defaults to ["cloche-agent", WorkflowName]
 	Prompt       string // prompt text to write into .cloche/runs/<task-id>/prompt.txt in container
 	Interactive  bool   // allocate TTY and keep stdin open (-it flags)
+
+	// AgentCredsHostDir is the host-side directory containing agent credential
+	// files (e.g. .credentials.json) to copy into the container at start and
+	// re-copy on refresh. Empty means skip credential copying.
+	AgentCredsHostDir string
+	// AgentCredsContainerDir is the container-side destination directory for
+	// credential files. Only used when AgentCredsHostDir is non-empty.
+	AgentCredsContainerDir string
 }
 
 type ContainerRuntime interface {

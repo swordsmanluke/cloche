@@ -1,107 +1,69 @@
 package docker
 
 import (
-	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
 )
 
-// CredentialStager holds the per-container staging directory and fsnotify watcher
-// that keep ~/.claude/.credentials.json current inside long-running containers.
-//
-// When the host OAuth token is atomically refreshed (rename), the watcher re-copies
-// the file into the staging directory in-place (same inode), so the container sees
-// the new credentials without requiring a restart.
-type CredentialStager struct {
-	// StagingDir is the host-side directory bind-mounted into the container at
-	// /home/agent/.claude/. Exported so tests can inspect its contents.
-	StagingDir string
+// CredentialRefresher watches a host-side credential directory and re-delivers
+// .credentials.json to a container whenever the host file changes (e.g. after
+// an OAuth token rotation via atomic rename). The delivery mechanism is
+// injected via copyFn so that unit tests can run without Docker.
+type CredentialRefresher struct {
+	// HostDir is the host-side directory being watched.
+	HostDir      string
+	// ContainerDir is the container-side destination directory for credentials.
+	ContainerDir string
 
-	watcher   *fsnotify.Watcher
-	claudeDir string
+	watcher     *fsnotify.Watcher
+	containerID string
+	copyFn      func(src, containerID, destPath string) error
 }
 
-// NewCredentialStager creates a per-container staging directory, copies the Claude
-// auth files from claudeDir into it, and starts an fsnotify watcher on claudeDir to
-// re-copy .credentials.json on Write or Create events.
-//
-// On watcher startup failure, a warning is logged and the returned stager has no
-// watcher: credentials are staged once but not automatically refreshed.
-// The caller must call Close() when the associated container stops.
-func NewCredentialStager(containerID, claudeDir string) (*CredentialStager, error) {
-	stagingDir, err := os.MkdirTemp("", "cloche-claude-")
+// NewCredentialRefresher creates a watcher that uses docker-cp to re-deliver
+// .credentials.json into containerID at containerDir whenever the file changes
+// in hostDir. Returns nil (with a warning log) if the watcher cannot be set up.
+func NewCredentialRefresher(containerID, hostDir, containerDir string) *CredentialRefresher {
+	return newCredentialRefresher(containerID, hostDir, containerDir, dockerCpCredFile)
+}
+
+// NewCredentialRefresherWithCopy creates a watcher with a custom copy function.
+// Intended for unit tests that need to verify refresh behavior without Docker.
+func NewCredentialRefresherWithCopy(containerID, hostDir, containerDir string, copyFn func(src, containerID, destPath string) error) *CredentialRefresher {
+	return newCredentialRefresher(containerID, hostDir, containerDir, copyFn)
+}
+
+// newCredentialRefresher is the internal constructor; copyFn is injectable for tests.
+func newCredentialRefresher(containerID, hostDir, containerDir string, copyFn func(src, containerID, destPath string) error) *CredentialRefresher {
+	w, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, fmt.Errorf("creating credential staging dir: %w", err)
+		log.Printf("cred-refresh: container %s: warning: could not create watcher: %v", containerID, err)
+		return nil
 	}
-
-	if err := copyCredsToStaging(claudeDir, stagingDir); err != nil {
-		os.RemoveAll(stagingDir)
-		return nil, fmt.Errorf("staging credentials: %w", err)
+	if err := w.Add(hostDir); err != nil {
+		w.Close()
+		log.Printf("cred-refresh: container %s: warning: could not watch %s: %v", containerID, hostDir, err)
+		return nil
 	}
-
-	s := &CredentialStager{StagingDir: stagingDir, claudeDir: claudeDir}
-
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		log.Printf("runtime: container %s: warning: could not create fsnotify watcher: %v", containerID, err)
-		return s, nil
+	cr := &CredentialRefresher{
+		HostDir:      hostDir,
+		ContainerDir: containerDir,
+		watcher:      w,
+		containerID:  containerID,
+		copyFn:       copyFn,
 	}
-
-	if err := watcher.Add(claudeDir); err != nil {
-		watcher.Close()
-		log.Printf("runtime: container %s: warning: could not watch %s: %v", containerID, claudeDir, err)
-		return s, nil
-	}
-
-	s.watcher = watcher
-	go watchAndRefreshCreds(containerID, claudeDir, stagingDir, watcher)
-	return s, nil
+	go cr.run()
+	return cr
 }
 
-// Close shuts down the fsnotify watcher and removes the staging directory.
-func (s *CredentialStager) Close() {
-	if s.watcher != nil {
-		if err := s.watcher.Close(); err != nil {
-			log.Printf("CredentialStager.Close: watcher: %v", err)
-		}
-		s.watcher = nil
-	}
-	if s.StagingDir != "" {
-		if err := os.RemoveAll(s.StagingDir); err != nil {
-			log.Printf("CredentialStager.Close: removing staging dir %s: %v", s.StagingDir, err)
-		}
-		s.StagingDir = ""
-	}
-}
-
-// copyCredsToStaging copies .credentials.json, settings.json, and settings.local.json
-// from claudeDir to stagingDir. Missing files are silently skipped.
-func copyCredsToStaging(claudeDir, stagingDir string) error {
-	for _, name := range []string{".credentials.json", "settings.json", "settings.local.json"} {
-		src := filepath.Join(claudeDir, name)
-		data, err := os.ReadFile(src)
-		if err != nil {
-			continue // file doesn't exist or is unreadable; skip
-		}
-		if err := os.WriteFile(filepath.Join(stagingDir, name), data, 0644); err != nil {
-			return fmt.Errorf("writing %s to staging dir: %w", name, err)
-		}
-	}
-	return nil
-}
-
-// watchAndRefreshCreds listens on the watcher for Write or Create events on
-// .credentials.json in claudeDir and re-copies the file to stagingDir in-place
-// (os.WriteFile, same inode). Atomic host renames emit a Create event for
-// the new file, which triggers the re-copy without inode churn in the container.
-// Watcher errors are logged as warnings and do not terminate the goroutine.
-func watchAndRefreshCreds(containerID, claudeDir, stagingDir string, watcher *fsnotify.Watcher) {
+func (cr *CredentialRefresher) run() {
 	for {
 		select {
-		case event, ok := <-watcher.Events:
+		case event, ok := <-cr.watcher.Events:
 			if !ok {
 				return
 			}
@@ -111,21 +73,38 @@ func watchAndRefreshCreds(containerID, claudeDir, stagingDir string, watcher *fs
 			if !event.Has(fsnotify.Write) && !event.Has(fsnotify.Create) {
 				continue
 			}
-			src := filepath.Join(claudeDir, ".credentials.json")
-			data, err := os.ReadFile(src)
-			if err != nil {
-				log.Printf("runtime: container %s: warning: re-reading .credentials.json: %v", containerID, err)
-				continue
+			src := filepath.Join(cr.HostDir, ".credentials.json")
+			if _, err := os.Stat(src); err != nil {
+				continue // file may not exist transiently during rotation
 			}
-			dst := filepath.Join(stagingDir, ".credentials.json")
-			if err := os.WriteFile(dst, data, 0644); err != nil {
-				log.Printf("runtime: container %s: warning: re-staging .credentials.json: %v", containerID, err)
+			destPath := cr.ContainerDir + ".credentials.json"
+			if err := cr.copyFn(src, cr.containerID, destPath); err != nil {
+				log.Printf("cred-refresh: container %s: warning: re-copy failed: %v", cr.containerID, err)
 			}
-		case err, ok := <-watcher.Errors:
+		case err, ok := <-cr.watcher.Errors:
 			if !ok {
 				return
 			}
-			log.Printf("runtime: container %s: warning: fsnotify error: %v", containerID, err)
+			log.Printf("cred-refresh: container %s: warning: %v", cr.containerID, err)
 		}
 	}
+}
+
+// Close stops the watcher.
+func (cr *CredentialRefresher) Close() {
+	if cr.watcher != nil {
+		if err := cr.watcher.Close(); err != nil {
+			log.Printf("cred-refresh: container %s: close watcher: %v", cr.containerID, err)
+		}
+		cr.watcher = nil
+	}
+}
+
+// dockerCpCredFile is the production copy function: docker cp src containerID:destPath.
+func dockerCpCredFile(src, containerID, destPath string) error {
+	out, err := exec.Command("docker", "cp", src, containerID+":"+destPath).CombinedOutput()
+	if err != nil {
+		log.Printf("cred-refresh: docker cp %s → %s:%s: %s: %v", src, containerID, destPath, string(out), err)
+	}
+	return err
 }

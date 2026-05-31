@@ -551,6 +551,20 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 		}
 	}
 
+	// Set agent credential dirs so the container runtime can copy auth files
+	// without knowing which agent is in use. Defaults to Claude Code's paths;
+	// other agents override via container.agent_command in the workflow.
+	agentCmd := step.Config["agent_command"]
+	if agentCmd == "" {
+		agentCmd = "claude"
+	}
+	if agentCmd == "claude" {
+		if home, homeErr := os.UserHomeDir(); homeErr == nil {
+			cfg.AgentCredsHostDir = filepath.Join(home, ".claude")
+			cfg.AgentCredsContainerDir = "/home/agent/.claude/"
+		}
+	}
+
 	session, err := d.pool.SessionFor(ctx, poolKey, cfg)
 	if err != nil {
 		return domain.StepResult{}, fmt.Errorf("daemon executor: getting container session for step %q: %w", step.Name, err)

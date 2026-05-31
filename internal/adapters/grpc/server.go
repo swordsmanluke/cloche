@@ -3754,13 +3754,20 @@ func (s *ClocheServer) Console(stream pb.ClocheService_ConsoleServer) error {
 	shortID := domain.GenerateAttemptID()
 	containerName := "console-" + shortID
 
-	containerID, err := s.container.Start(ctx, ports.ContainerConfig{
+	consoleCfg := ports.ContainerConfig{
 		Image:       image,
 		ProjectDir:  projectDir,
 		RunID:       containerName,
 		Interactive: true,
 		Cmd:         []string{agentCmd},
-	})
+	}
+	if agentCmd == "claude" || agentCmd == "" {
+		if home, homeErr := os.UserHomeDir(); homeErr == nil {
+			consoleCfg.AgentCredsHostDir = filepath.Join(home, ".claude")
+			consoleCfg.AgentCredsContainerDir = "/home/agent/.claude/"
+		}
+	}
+	containerID, err := s.container.Start(ctx, consoleCfg)
 	if err != nil {
 		return fmt.Errorf("starting container: %w", err)
 	}

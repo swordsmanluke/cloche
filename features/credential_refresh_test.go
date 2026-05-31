@@ -14,20 +14,25 @@ import (
 
 // credRefreshCtx holds per-scenario state for the credential refresh scenarios.
 type credRefreshCtx struct {
-	claudeDir        string                // fake ~/.claude/ for this scenario
-	stager           *docker.CredentialStager
-	initialContent   string // .credentials.json content at container start
-	refreshedContent string // .credentials.json content after atomic refresh
+	claudeDir    string // fake ~/.claude/ for this scenario
+	containerDir string // fake container-side credential dir for this scenario
+	refresher    *docker.CredentialRefresher
+	initialContent   string
+	refreshedContent string
 }
 
 func (s *credRefreshCtx) reset() {
-	if s.stager != nil {
-		s.stager.Close()
-		s.stager = nil
+	if s.refresher != nil {
+		s.refresher.Close()
+		s.refresher = nil
 	}
 	if s.claudeDir != "" {
 		os.RemoveAll(s.claudeDir)
 		s.claudeDir = ""
+	}
+	if s.containerDir != "" {
+		os.RemoveAll(s.containerDir)
+		s.containerDir = ""
 	}
 	s.initialContent = ""
 	s.refreshedContent = ""
@@ -54,20 +59,46 @@ func (s *credRefreshCtx) theHostHasAValidCredentialsFile() error {
 }
 
 func (s *credRefreshCtx) aClocheAttemptIsStarted() error {
-	stager, err := docker.NewCredentialStager("bdd-test-container", s.claudeDir)
+	// Simulate the container-side directory where credentials would be docker-cp'd.
+	dir, err := os.MkdirTemp("", "cloche-bdd-container-*")
 	if err != nil {
-		return fmt.Errorf("staging credentials: %w", err)
+		return fmt.Errorf("creating fake container dir: %w", err)
 	}
-	s.stager = stager
+	s.containerDir = dir
+
+	// Copy initial credentials (simulates the docker-cp at container start).
+	src := filepath.Join(s.claudeDir, ".credentials.json")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("reading initial credentials: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(s.containerDir, ".credentials.json"), data, 0644); err != nil {
+		return fmt.Errorf("writing initial credentials to container dir: %w", err)
+	}
+
+	// Start the watcher with a local-copy function instead of docker-cp, so
+	// the test runs without Docker. The local-copy function writes the file
+	// directly to s.containerDir (simulating what docker cp would do).
+	containerDir := s.containerDir
+	copyFn := func(src, containerID, destPath string) error {
+		data, err := os.ReadFile(src)
+		if err != nil {
+			return err
+		}
+		dest := filepath.Join(containerDir, filepath.Base(destPath))
+		return os.WriteFile(dest, data, 0644)
+	}
+
+	s.refresher = docker.NewCredentialRefresherWithCopy("bdd-test-container", s.claudeDir, s.containerDir+"/", copyFn)
 	return nil
 }
 
 func (s *credRefreshCtx) anAgentStepExecutes() error {
-	// The "agent step" is simulated by reading the credentials from the staging
-	// directory (the bind-mounted path the agent sees at /home/agent/.claude/).
-	_, err := os.ReadFile(filepath.Join(s.stager.StagingDir, ".credentials.json"))
+	// The agent step reads credentials from the container dir (simulating the
+	// container's /home/agent/.claude/.credentials.json).
+	_, err := os.ReadFile(filepath.Join(s.containerDir, ".credentials.json"))
 	if err != nil {
-		return fmt.Errorf("agent cannot read credentials from staging dir: %w", err)
+		return fmt.Errorf("agent cannot read credentials from container dir: %w", err)
 	}
 	return nil
 }
@@ -77,9 +108,9 @@ func (s *credRefreshCtx) stepCompletesWithoutAuthError() error {
 	if expected == "" {
 		expected = s.initialContent
 	}
-	data, err := os.ReadFile(filepath.Join(s.stager.StagingDir, ".credentials.json"))
+	data, err := os.ReadFile(filepath.Join(s.containerDir, ".credentials.json"))
 	if err != nil {
-		return fmt.Errorf("reading credentials from staging dir: %w", err)
+		return fmt.Errorf("reading credentials from container dir: %w", err)
 	}
 	if string(data) != expected {
 		return fmt.Errorf("credentials mismatch: got %q, want %q", string(data), expected)
@@ -90,22 +121,20 @@ func (s *credRefreshCtx) stepCompletesWithoutAuthError() error {
 // ─── Scenario 2: re-authentication after atomic host rename ──────────────────
 
 func (s *credRefreshCtx) attemptInProgressWithCompletedStep() error {
-	// Same setup as scenario 1: ensure the stager is running with initial creds.
 	if err := s.theHostHasAValidCredentialsFile(); err != nil {
 		return err
 	}
 	if err := s.aClocheAttemptIsStarted(); err != nil {
 		return err
 	}
-	// Confirm the initial step succeeds (simulates a completed agent step).
 	return s.anAgentStepExecutes()
 }
 
 func (s *credRefreshCtx) hostAtomicallyReplacesCreds() error {
 	s.refreshedContent = `{"token":"refreshed-token","expiresAt":"2099-06-01T00:00:00Z"}`
 
-	// Write new credentials to a temp file in the same directory, then atomically
-	// rename it to .credentials.json — the same pattern the OAuth client uses.
+	// Write new credentials to a temp file, then atomically rename it — the
+	// same pattern the OAuth client uses.
 	tmpFile := filepath.Join(s.claudeDir, ".credentials.json.tmp")
 	if err := os.WriteFile(tmpFile, []byte(s.refreshedContent), 0644); err != nil {
 		return fmt.Errorf("writing temp credentials: %w", err)
@@ -115,17 +144,17 @@ func (s *credRefreshCtx) hostAtomicallyReplacesCreds() error {
 
 func (s *credRefreshCtx) anotherAgentStepExecutes() error {
 	// Poll until the watcher has re-copied the refreshed credentials into the
-	// staging dir, or until a 3-second deadline is reached.
+	// container dir, or until a 3-second deadline is reached.
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		data, err := os.ReadFile(filepath.Join(s.stager.StagingDir, ".credentials.json"))
+		data, err := os.ReadFile(filepath.Join(s.containerDir, ".credentials.json"))
 		if err == nil && string(data) == s.refreshedContent {
 			return nil
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	data, _ := os.ReadFile(filepath.Join(s.stager.StagingDir, ".credentials.json"))
-	return fmt.Errorf("staging dir not updated within 3s: got %q, want %q", string(data), s.refreshedContent)
+	data, _ := os.ReadFile(filepath.Join(s.containerDir, ".credentials.json"))
+	return fmt.Errorf("container dir not updated within 3s: got %q, want %q", string(data), s.refreshedContent)
 }
 
 // ─── Scenario 3 & 4: L2 — pending ───────────────────────────────────────────
