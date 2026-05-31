@@ -237,7 +237,7 @@ func TestGenerateCompletionScripts_WorkflowNames(t *testing.T) {
 
 	// Create a .cloche dir with a workflow file.
 	os.MkdirAll(".cloche", 0755)
-	os.WriteFile(".cloche/develop.cloche", []byte(`workflow develop {
+	os.WriteFile(".cloche/develop.cloche", []byte(`workflow "develop" {
   step code {
     prompt = "do it"
     results = [success, fail]

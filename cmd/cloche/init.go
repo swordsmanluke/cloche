@@ -33,7 +33,7 @@ var gitOriginURLFunc = func() (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-var workflowTemplate = `workflow %s {
+var workflowTemplate = `workflow "%s" {
   step implement {
     prompt  = file(".cloche/prompts/implement.md")
     results = [success, fail]
@@ -177,7 +177,7 @@ target/
 
 var versionContent = "1\n"
 
-var hostWorkflowTemplate = `workflow list-tasks {
+var hostWorkflowTemplate = `workflow "list-tasks" {
   host {}
 
   step get-tasks {
@@ -189,7 +189,7 @@ var hostWorkflowTemplate = `workflow list-tasks {
   get-tasks:fail    -> abort
 }
 
-workflow main {
+workflow "main" {
   host {}
 
   step claim-task {
