@@ -1,4 +1,4 @@
-workflow document {
+workflow "document" {
   step investigate {
     prompt = file(".cloche/prompts/document-investigate.md")
     timeout = "90m"

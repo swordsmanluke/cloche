@@ -351,6 +351,7 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 	}
 
 	adapter.RunID = e.HostRunID
+	adapter.TaskID = e.TaskID
 
 	// Wire the real KVReader so {{ $var }} directives can resolve KV-store values.
 	if e.Store != nil && e.TaskID != "" {

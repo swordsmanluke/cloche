@@ -1989,7 +1989,7 @@ func TestServer_GetProjectInfo_ByDir(t *testing.T) {
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 
 	// Container workflow.
-	containerWF := `workflow develop {
+	containerWF := `workflow "develop" {
   step code {
     prompt = "write code"
     results = [success, fail]
@@ -2000,7 +2000,7 @@ func TestServer_GetProjectInfo_ByDir(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(containerWF), 0644))
 
 	// Host workflow.
-	hostWF := `workflow main {
+	hostWF := `workflow "main" {
   host {}
 
   step build {
@@ -2011,7 +2011,7 @@ func TestServer_GetProjectInfo_ByDir(t *testing.T) {
   build:fail -> abort
 }
 
-workflow post-merge {
+workflow "post-merge" {
   host {}
 
   step cleanup {
@@ -2084,7 +2084,7 @@ func TestServer_GetProjectInfo_ByName(t *testing.T) {
 	// Create .cloche directory with a workflow.
 	clocheDir := filepath.Join(dir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
-	containerWF := `workflow build {
+	containerWF := `workflow "build" {
   step test {
     run = "make test"
     results = [success, fail]
@@ -4857,7 +4857,7 @@ func TestAgentNameForStep(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
 
-	wf := `workflow develop {
+	wf := `workflow "develop" {
   agent claude {
     command = "claude"
   }
@@ -5159,7 +5159,7 @@ func TestLoopIsSubpath(t *testing.T) {
 
 // minimalHostWorkflow is a minimal .cloche file that defines a host workflow,
 // satisfying FindHostWorkflows so EnableLoop can proceed.
-const minimalHostWorkflow = `workflow main {
+const minimalHostWorkflow = `workflow "main" {
   host {}
   step run {
     run     = "echo hi"
