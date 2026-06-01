@@ -1,4 +1,4 @@
-workflow develop {
+workflow "develop" {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     timeout = "90m"

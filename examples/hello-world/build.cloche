@@ -1,4 +1,4 @@
-workflow hello-world {
+workflow "hello-world" {
   step init {
     run = "echo 'Initializing project...' && mkdir -p src dist"
     results = [success, fail]
