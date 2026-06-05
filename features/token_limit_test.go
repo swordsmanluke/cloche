@@ -225,10 +225,11 @@ func (s *tokenLimitCtx) makeExecutor(usagePerStep map[string]*domain.TokenUsage,
 }
 
 // runEngine runs the engine with the given executor and captures the result.
-func (s *tokenLimitCtx) runEngine(exec engine.StepExecutor) {
+func (s *tokenLimitCtx) runEngine(exec engine.StepExecutor) error {
 	eng := engine.New(exec)
-	run, _ := eng.Run(context.Background(), s.engineWf)
+	run, err := eng.Run(context.Background(), s.engineWf)
 	s.run = run
+	return err
 }
 
 func (s *tokenLimitCtx) stepCompletesWithOutputTokens(stepName string, outputTokens int) error {
@@ -236,8 +237,7 @@ func (s *tokenLimitCtx) stepCompletesWithOutputTokens(stepName string, outputTok
 		map[string]*domain.TokenUsage{stepName: {OutputTokens: int64(outputTokens)}},
 		&domain.TokenUsage{},
 	)
-	s.runEngine(exec)
-	return nil
+	return s.runEngine(exec)
 }
 
 func (s *tokenLimitCtx) stepCompletesWithOutputAndInputTokens(stepName string, outputTokens, inputTokens int) error {
@@ -245,20 +245,17 @@ func (s *tokenLimitCtx) stepCompletesWithOutputAndInputTokens(stepName string, o
 		map[string]*domain.TokenUsage{stepName: {OutputTokens: int64(outputTokens), InputTokens: int64(inputTokens)}},
 		&domain.TokenUsage{},
 	)
-	s.runEngine(exec)
-	return nil
+	return s.runEngine(exec)
 }
 
 func (s *tokenLimitCtx) eachStepCompletesWithOutputTokens(outputTokens int) error {
 	exec := s.makeExecutor(nil, &domain.TokenUsage{OutputTokens: int64(outputTokens)})
-	s.runEngine(exec)
-	return nil
+	return s.runEngine(exec)
 }
 
 func (s *tokenLimitCtx) engineExecutesTheWorkflow() error {
 	exec := s.makeExecutor(nil, &domain.TokenUsage{})
-	s.runEngine(exec)
-	return nil
+	return s.runEngine(exec)
 }
 
 // stepResult returns the recorded result for a step from the run's step executions.
