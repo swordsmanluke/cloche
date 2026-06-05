@@ -858,6 +858,170 @@ func TestExtractResults_AllowsOverride(t *testing.T) {
 	}
 }
 
+// TestExtractGitResetsToBaseSHABeforeCommit verifies that ExtractResults resets
+// the worktree to BaseSHA before committing, even when the branch was advanced
+// beyond BaseSHA by a prior extract (the multi-sub-workflow-same-attempt scenario).
+// Without the git reset --hard BaseSHA step (the L1 fix), the new commit would
+// land on top of the advanced HEAD rather than on the caller-specified base.
+func TestExtractGitResetsToBaseSHABeforeCommit(t *testing.T) {
+	repoDir, baseSHA := setupTestRepo(t)
+	fixtureDir := makeFixtureDir(t)
+	overrideDockerCp(t, fixtureDir)
+	overrideDockerExec(t, nil)
+
+	runID := "reset-anchoring"
+	wt := prepareForTest(t, repoDir, baseSHA, runID)
+
+	gitEnv := append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com",
+	)
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = wt.Dir
+		cmd.Env = gitEnv
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s: %v", args, out, err)
+		}
+	}
+
+	// Advance the worktree branch beyond baseSHA by committing a dummy file,
+	// simulating a prior sub-workflow extract that already ran on this branch.
+	if err := os.WriteFile(filepath.Join(wt.Dir, "prior_extract.txt"), []byte("prior content\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	run("git", "add", "prior_extract.txt")
+	run("git", "commit", "-m", "prior extract commit")
+
+	// Call ExtractResults anchored at baseSHA. The L1 fix (git reset --hard
+	// BaseSHA) must re-anchor the commit so its parent is baseSHA, not the
+	// advanced HEAD. Without the fix the parent would be the prior-extract commit.
+	result, err := ExtractResults(context.Background(), ExtractOptions{
+		ContainerID:  "fake-container",
+		WorktreeDir:  wt.Dir,
+		Branch:       wt.Branch,
+		BaseSHA:      baseSHA,
+		RunID:        runID,
+		WorkflowName: "develop",
+		Result:       "succeeded",
+	})
+	if err != nil {
+		t.Fatalf("ExtractResults: %v", err)
+	}
+
+	cmd := exec.Command("git", "rev-parse", result.CommitSHA+"^")
+	cmd.Dir = repoDir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse parent: %v", err)
+	}
+	parent := strings.TrimSpace(string(out))
+	if parent != baseSHA {
+		t.Errorf("commit parent = %q, want baseSHA %q; reset did not re-anchor correctly", parent, baseSHA)
+	}
+}
+
+// TestExtractMultipleWithChangedBaseSHA verifies that two sequential
+// ExtractResults calls on the same worktree chain correctly when BaseSHA
+// advances between calls. This is the multi-sub-workflow scenario: L1 commits
+// at SHA_A (producing SHA_L1), the branch is then advanced further by another
+// operation, and L2 must still commit directly on top of SHA_L1 (not the
+// further-advanced HEAD) because BaseSHA=SHA_L1 is explicitly passed.
+func TestExtractMultipleWithChangedBaseSHA(t *testing.T) {
+	repoDir, baseSHA := setupTestRepo(t)
+	overrideDockerExec(t, nil)
+
+	runID := "multi-extract"
+	wt := prepareForTest(t, repoDir, baseSHA, runID)
+
+	gitEnv := append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com",
+	)
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = wt.Dir
+		cmd.Env = gitEnv
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s: %v", args, out, err)
+		}
+	}
+
+	fixture1 := t.TempDir()
+	if err := os.WriteFile(filepath.Join(fixture1, "l1.txt"), []byte("l1 content\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	fixture2 := t.TempDir()
+	if err := os.WriteFile(filepath.Join(fixture2, "l2.txt"), []byte("l2 content\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Use a pointer so the same closure serves both extracts.
+	currentFixture := fixture1
+	origCp := dockerCp
+	dockerCp = func(ctx context.Context, src, dst string) error {
+		return exec.Command("cp", "-a", currentFixture+"/.", dst).Run()
+	}
+	t.Cleanup(func() { dockerCp = origCp })
+
+	// L1 extract (analog): commit fixture1 on top of baseSHA.
+	r1, err := ExtractResults(context.Background(), ExtractOptions{
+		ContainerID:  "fake-container",
+		WorktreeDir:  wt.Dir,
+		Branch:       wt.Branch,
+		BaseSHA:      baseSHA,
+		RunID:        runID + "-l1",
+		WorkflowName: "develop",
+		Result:       "succeeded",
+	})
+	if err != nil {
+		t.Fatalf("L1 ExtractResults: %v", err)
+	}
+	shaL1 := r1.CommitSHA
+
+	// Advance the branch past shaL1, simulating another operation (e.g. a
+	// different sub-workflow in the same attempt) landing on the branch between
+	// the two extracts. Without the L1 fix, L2 would commit on top of this
+	// intermediate commit rather than on top of shaL1.
+	if err := os.WriteFile(filepath.Join(wt.Dir, "between.txt"), []byte("between l1 and l2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	run("git", "add", "between.txt")
+	run("git", "commit", "-m", "intermediate commit between L1 and L2")
+
+	// L2 extract (analog): BaseSHA is now shaL1. The reset must bring the
+	// worktree back to shaL1 so shaL2's direct parent is shaL1, not the
+	// intermediate commit above.
+	currentFixture = fixture2
+	r2, err := ExtractResults(context.Background(), ExtractOptions{
+		ContainerID:  "fake-container",
+		WorktreeDir:  wt.Dir,
+		Branch:       wt.Branch,
+		BaseSHA:      shaL1,
+		RunID:        runID + "-l2",
+		WorkflowName: "develop",
+		Result:       "succeeded",
+	})
+	if err != nil {
+		t.Fatalf("L2 ExtractResults: %v", err)
+	}
+	shaL2 := r2.CommitSHA
+
+	// L2's direct parent must be shaL1 — confirming merge-base(L1, L2) == shaL1
+	// and that the chain is L1 → L2, not L1 → intermediate → L2.
+	parentCmd := exec.Command("git", "rev-parse", shaL2+"^")
+	parentCmd.Dir = repoDir
+	pOut, err := parentCmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse L2 parent: %v", err)
+	}
+	if got := strings.TrimSpace(string(pOut)); got != shaL1 {
+		t.Errorf("L2 parent = %q, want SHA_L1 %q; L2 is not chained directly from L1", got, shaL1)
+	}
+}
+
 func TestBuildCommitMessageWithContainerCommits(t *testing.T) {
 	commits := "  * Fix login validation\n    Check email format before submit\n\n  * Add unit tests"
 	msg := buildCommitMessage(context.Background(), "/nonexistent", nil, "run-1", "develop", "succeeded", commits)
