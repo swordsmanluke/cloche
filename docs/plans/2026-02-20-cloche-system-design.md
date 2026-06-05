@@ -179,6 +179,46 @@ internal/adapters/
   any command.
 - **StatusNotifier** — How the agent reports progress. Stdout JSON-lines initially.
 
+### Shared Utilities
+
+```
+internal/protocol/    # Result extraction, JSON status streaming, history logging
+internal/runcontext/  # Path helpers for per-task runtime files under .cloche/runs/<taskID>/
+internal/projectcli/  # CLI output rendering for project subcommands
+```
+
+These packages are shared across the daemon, agent, and CLI binaries and do not belong
+to a single hexagonal layer.
+
+**`internal/protocol`** covers three concerns:
+
+- **Result extraction** — `ExtractResult` scans step output for `CLOCHE_RESULT:<name>`
+  markers (written by scripts or poll commands to signal which wire to follow), strips
+  the marker lines from captured output, and returns the last-seen result name. The
+  constant `ResultPrefix = "CLOCHE_RESULT:"` is the canonical marker prefix.
+
+- **Status streaming** — `StatusWriter` emits newline-delimited JSON `StatusMessage`
+  records to a writer, flushing aggressively for real-time delivery. Message types are
+  `step_started`, `step_completed`, `run_completed`, `run_title`, `log`, and `error`.
+  `ParseStatusStream` decodes a batch of such records (used by the CLI to render status).
+  `StepCompleted` messages optionally carry token-usage metrics (`input_tokens`,
+  `output_tokens`, `agent_name`).
+
+- **History logging** — `AppendHistory` and `AppendHistoryMarker` write timestamped
+  step-completion and workflow-boundary entries to `.cloche/history.log` in the project
+  working directory. Script step output is included indented with `"  | "`; agent step
+  output is omitted (only the header is recorded).
+
+**`internal/runcontext`** provides path helpers for per-task runtime files stored under
+`.cloche/runs/<taskID>/`: `RunDir`, `PromptPath`, and `ContextPath`. The key-value store
+that previously lived in this package has moved to the daemon's gRPC-backed SQLite KV
+store (`GetContextKey`/`SetContextKey` RPCs). `ContextPath` and `Cleanup` remain for
+backward compatibility but are considered deprecated; new code should use the KV store
+RPCs and `os.RemoveAll(RunDir(...))` directly.
+
+**`internal/projectcli`** contains `WriteReposList`, which renders the `cloche project
+repos list` output as a fixed-width table (NAME, PATH, URL columns) to an `io.Writer`.
+
 ## Container Model
 
 ### One Container Per Workflow Run
