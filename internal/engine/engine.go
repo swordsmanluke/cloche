@@ -15,6 +15,9 @@ import (
 const (
 	DefaultStepTimeout      = 30 * time.Minute
 	HumanStepDefaultTimeout = 72 * time.Hour
+
+	DefaultStepTokenLimit     int64 = 500_000
+	DefaultWorkflowTokenLimit int64 = 2_000_000
 )
 
 // StepExecutor executes a single step and returns the result.
@@ -160,6 +163,7 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 	aborted := false
 	var runErr error
 	stepLaunchCounts := make(map[string]int)
+	var workflowOutputTokens int64
 
 	// Use a mutex to protect run state from concurrent goroutine access.
 	// Only the main loop should touch the Run, but we record step start before
@@ -197,6 +201,17 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 		// stepLaunchCounts[stepName] is incremented in the result handler, but
 		// only for non-skipped executions, so it counts real attempts only.
 
+		// token-limit = 0: short-circuit before calling the executor.
+		if stepTokenLimit(step, DefaultStepTokenLimit) == 0 {
+			activeCount++
+			run.RecordStepStart(step.Name)
+			e.status.OnStepStart(run, step)
+			go func(name string) {
+				results <- stepResult{stepName: name, result: "token-limit"}
+			}(step.Name)
+			return nil
+		}
+
 		activeCount++
 		run.RecordStepStart(step.Name)
 		e.status.OnStepStart(run, step)
@@ -225,6 +240,13 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 		}(step, trigger, ctx)
 
 		return nil
+	}
+
+	// Workflow-level token-limit = 0: abort before launching any step.
+	if workflowTokenLimit(wf, DefaultWorkflowTokenLimit) == 0 {
+		run.Complete(domain.RunStateFailed)
+		e.status.OnRunComplete(run)
+		return run, nil
 	}
 
 	// Launch entry step (or override step for single-step runs).
@@ -296,8 +318,21 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 					return run, fmt.Errorf("step %q returned undeclared result %q", sr.stepName, sr.result)
 				}
 
+				// Step-level token-limit enforcement: override result if output tokens exceeded.
+				if limit := stepTokenLimit(step, DefaultStepTokenLimit); limit != -1 && sr.usage != nil && sr.usage.OutputTokens > limit {
+					sr.result = "token-limit"
+				}
+
 				run.RecordStepComplete(sr.stepName, sr.result)
 				e.status.OnStepComplete(run, step, sr.result, sr.usage)
+
+				// Workflow-level token accumulation and enforcement.
+				if sr.usage != nil {
+					workflowOutputTokens += sr.usage.OutputTokens
+					if wfLimit := workflowTokenLimit(wf, DefaultWorkflowTokenLimit); wfLimit != -1 && workflowOutputTokens >= wfLimit {
+						aborted = true
+					}
+				}
 			}
 
 			// Process wiring: get next steps for this (step, result) pair.
@@ -427,4 +462,26 @@ func stepTimeout(step *domain.Step, defaultTimeout time.Duration) time.Duration 
 		return HumanStepDefaultTimeout
 	}
 	return defaultTimeout
+}
+
+// stepTokenLimit returns the output-token limit for a step. Returns the
+// configured value if present, otherwise defaultLimit. -1 means disabled.
+func stepTokenLimit(step *domain.Step, defaultLimit int64) int64 {
+	if raw, ok := step.Config["token-limit"]; ok {
+		if n, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			return n
+		}
+	}
+	return defaultLimit
+}
+
+// workflowTokenLimit returns the cumulative output-token limit for a workflow.
+// Returns the configured value if present, otherwise defaultLimit. -1 means disabled.
+func workflowTokenLimit(wf *domain.Workflow, defaultLimit int64) int64 {
+	if raw, ok := wf.Config["token-limit"]; ok {
+		if n, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			return n
+		}
+	}
+	return defaultLimit
 }

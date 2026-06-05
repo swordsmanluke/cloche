@@ -43,7 +43,7 @@ func TestCmdInit_DefaultFlags(t *testing.T) {
 	}
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "develop.cloche"))
-	if !strings.Contains(string(data), `workflow develop`) {
+	if !strings.Contains(string(data), `workflow "develop"`) {
 		t.Errorf("workflow file missing workflow name")
 	}
 
@@ -95,7 +95,7 @@ func TestCmdInit_CustomFlags(t *testing.T) {
 	}
 
 	data, _ = os.ReadFile(filepath.Join(".cloche", "build.cloche"))
-	if !strings.Contains(string(data), `workflow build`) {
+	if !strings.Contains(string(data), `workflow "build"`) {
 		t.Error("workflow file should contain custom workflow name")
 	}
 }
@@ -683,10 +683,10 @@ func TestCmdInit_HostWorkflowV2(t *testing.T) {
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "host.cloche"))
 	content := string(data)
-	if !strings.Contains(content, `workflow list-tasks`) {
+	if !strings.Contains(content, `workflow "list-tasks"`) {
 		t.Error("host.cloche should contain list-tasks workflow")
 	}
-	if !strings.Contains(content, `workflow main`) {
+	if !strings.Contains(content, `workflow "main"`) {
 		t.Error("host.cloche should contain main workflow")
 	}
 	if !strings.Contains(content, "prepare-merge") {

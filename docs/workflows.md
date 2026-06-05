@@ -94,6 +94,28 @@ All step types support a `timeout` config key (any `time.ParseDuration` value, e
 `"45m"`, `"2h"`). When a step exceeds its timeout, it produces a `"timeout"` result. If
 no `timeout` wire is declared, the implicit wire routes to `abort`.
 
+All step types also support a `token-limit` config key (integer). This caps the maximum
+**output** tokens the step may produce. Input tokens are not counted against the limit.
+When a step exceeds its token-limit, it produces a `"token-limit"` result. If no
+`token-limit` wire is declared, the implicit wire routes to `abort`. You can also set a
+workflow-level `token-limit` to cap cumulative output tokens across all steps.
+
+Default values:
+- Per-step: 500 000 output tokens
+- Workflow-level: 2 000 000 output tokens
+
+Sentinels:
+- `token-limit = -1` — disables enforcement (unlimited output tokens)
+- `token-limit = 0` — aborts immediately without running the step/workflow
+
+You can override the default per-step abort target for all steps at once with a
+workflow-level shorthand wire:
+
+```
+// Route all steps' token-limit result to a recovery step instead of abort
+token-limit -> handle-limit
+```
+
 A step with more than one of `prompt`, `run`, `workflow_name`, or `poll`, or none of them,
 is a parse error.
 

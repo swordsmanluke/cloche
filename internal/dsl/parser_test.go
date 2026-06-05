@@ -10,7 +10,7 @@ import (
 )
 
 func TestParser_FullWorkflow(t *testing.T) {
-	input := `workflow implement-feature {
+	input := `workflow "implement-feature" {
   step code {
     prompt = file("prompts/implement.md")
     results = [success, fail, retry_with_feedback]
@@ -38,7 +38,7 @@ func TestParser_FullWorkflow(t *testing.T) {
 	code := wf.Steps["code"]
 	require.NotNil(t, code)
 	assert.Equal(t, domain.StepTypeAgent, code.Type)
-	assert.Equal(t, []string{"success", "fail", "retry_with_feedback", "timeout"}, code.Results)
+	assert.Equal(t, []string{"success", "fail", "retry_with_feedback", "timeout", "token-limit"}, code.Results)
 	assert.Equal(t, `file("prompts/implement.md")`, code.Config["prompt"])
 
 	check := wf.Steps["check"]
@@ -46,12 +46,13 @@ func TestParser_FullWorkflow(t *testing.T) {
 	assert.Equal(t, domain.StepTypeScript, check.Type)
 	assert.Equal(t, "make test && make lint", check.Config["run"])
 
-	assert.Len(t, wf.Wiring, 7)
+	// 5 explicit wires + 2 implicit timeout->abort + 2 implicit token-limit->abort
+	assert.Len(t, wf.Wiring, 9)
 	assert.Equal(t, "code", wf.EntryStep)
 }
 
 func TestParser_MinimalWorkflow(t *testing.T) {
-	input := `workflow simple {
+	input := `workflow "simple" {
   step build {
     run = "make build"
     results = [success, fail]
@@ -74,7 +75,7 @@ func TestParser_SyntaxError(t *testing.T) {
 }
 
 func TestParser_ContainerBlock(t *testing.T) {
-	input := `workflow test {
+	input := `workflow "test" {
   step code {
     prompt = "do something"
     container {
@@ -95,7 +96,7 @@ func TestParser_ContainerBlock(t *testing.T) {
 }
 
 func TestParser_WorkflowContainerBlock(t *testing.T) {
-	input := `workflow with-image {
+	input := `workflow "with-image" {
   container {
     image = "myregistry/myimage:v2"
   }
@@ -116,7 +117,7 @@ func TestParser_WorkflowContainerBlock(t *testing.T) {
 }
 
 func TestParser_WorkflowContainerBlockMultipleFields(t *testing.T) {
-	input := `workflow full-config {
+	input := `workflow "full-config" {
   container {
     image = "myregistry/myimage:v2"
     memory = "4g"
@@ -137,7 +138,7 @@ func TestParser_WorkflowContainerBlockMultipleFields(t *testing.T) {
 }
 
 func TestParser_WorkflowWithoutContainerBlock(t *testing.T) {
-	input := `workflow no-container {
+	input := `workflow "no-container" {
   step code {
     prompt = "write code"
     results = [success]
@@ -152,7 +153,7 @@ func TestParser_WorkflowWithoutContainerBlock(t *testing.T) {
 }
 
 func TestParser_ContainerBlockWithID(t *testing.T) {
-	input := `workflow dev {
+	input := `workflow "dev" {
   container {
     id = "dev-env"
     image = "myimage:latest"
@@ -175,7 +176,7 @@ func TestParser_ContainerBlockWithID(t *testing.T) {
 }
 
 func TestParser_ContainerBlockIDOnly(t *testing.T) {
-	input := `workflow test {
+	input := `workflow "test" {
   container {
     id = "dev-env"
   }
@@ -195,7 +196,7 @@ func TestParser_ContainerBlockIDOnly(t *testing.T) {
 }
 
 func TestParser_InfersTypeFromContent(t *testing.T) {
-	input := `workflow infer {
+	input := `workflow "infer" {
   step build {
     run = "make build"
     results = [success]
@@ -215,7 +216,7 @@ func TestParser_InfersTypeFromContent(t *testing.T) {
 }
 
 func TestParser_AmbiguousStepType(t *testing.T) {
-	input := `workflow bad {
+	input := `workflow "bad" {
   step both {
     run = "make test"
     prompt = "also a prompt"
@@ -230,7 +231,7 @@ func TestParser_AmbiguousStepType(t *testing.T) {
 }
 
 func TestParser_NoStepType(t *testing.T) {
-	input := `workflow bad {
+	input := `workflow "bad" {
   step neither {
     results = [success]
   }
@@ -243,7 +244,7 @@ func TestParser_NoStepType(t *testing.T) {
 }
 
 func TestParser_CollectAll(t *testing.T) {
-	input := `workflow parallel {
+	input := `workflow "parallel" {
   step code {
     prompt = "write code"
     results = [success]
@@ -284,7 +285,7 @@ func TestParser_CollectAll(t *testing.T) {
 }
 
 func TestParser_WorkflowNameStep(t *testing.T) {
-	input := `workflow main {
+	input := `workflow "main" {
   step prepare-prompt {
     run     = "bash scripts/prepare.sh"
     results = [success, fail]
@@ -311,7 +312,7 @@ func TestParser_WorkflowNameStep(t *testing.T) {
 	require.NotNil(t, develop)
 	assert.Equal(t, domain.StepTypeWorkflow, develop.Type)
 	assert.Equal(t, "develop", develop.Config["workflow_name"])
-	assert.Equal(t, []string{"success", "fail", "timeout"}, develop.Results)
+	assert.Equal(t, []string{"success", "fail", "timeout", "token-limit"}, develop.Results)
 
 	preparePrompt := wf.Steps["prepare-prompt"]
 	require.NotNil(t, preparePrompt)
@@ -319,7 +320,7 @@ func TestParser_WorkflowNameStep(t *testing.T) {
 }
 
 func TestParser_WorkflowNameWithPromptStep(t *testing.T) {
-	input := `workflow orch {
+	input := `workflow "orch" {
   step prep {
     run     = "echo hello"
     results = [success, fail]
@@ -347,7 +348,7 @@ func TestParser_WorkflowNameWithPromptStep(t *testing.T) {
 }
 
 func TestParser_WorkflowNameWithPromptErrors(t *testing.T) {
-	input := `workflow bad {
+	input := `workflow "bad" {
   step both {
     workflow_name = "develop"
     prompt        = "also a prompt"
@@ -362,7 +363,7 @@ func TestParser_WorkflowNameWithPromptErrors(t *testing.T) {
 }
 
 func TestParser_WorkflowNameWithRunErrors(t *testing.T) {
-	input := `workflow bad {
+	input := `workflow "bad" {
   step both {
     workflow_name = "develop"
     run           = "make test"
@@ -377,7 +378,7 @@ func TestParser_WorkflowNameWithRunErrors(t *testing.T) {
 }
 
 func TestParser_CollectAny(t *testing.T) {
-	input := `workflow race {
+	input := `workflow "race" {
   step fast {
     run = "echo fast"
     results = [success]
@@ -403,7 +404,7 @@ func TestParser_CollectAny(t *testing.T) {
 }
 
 func TestParseForHost_AllowsWorkflowSteps(t *testing.T) {
-	input := `workflow main {
+	input := `workflow "main" {
   step prepare {
     run     = "bash scripts/prepare.sh"
     results = [success, fail]
@@ -424,7 +425,7 @@ func TestParseForHost_AllowsWorkflowSteps(t *testing.T) {
 }
 
 func TestParseForContainer_AllowsWorkflowSteps(t *testing.T) {
-	input := `workflow develop {
+	input := `workflow "develop" {
   step dispatch {
     workflow_name = "implement"
     results       = [success, fail]
@@ -439,7 +440,7 @@ func TestParseForContainer_AllowsWorkflowSteps(t *testing.T) {
 }
 
 func TestParseForContainer_AllowsAgentAndScript(t *testing.T) {
-	input := `workflow develop {
+	input := `workflow "develop" {
   step code {
     prompt = "write code"
     results = [success, fail]
@@ -459,7 +460,7 @@ func TestParseForContainer_AllowsAgentAndScript(t *testing.T) {
 }
 
 func TestParser_WireNoMappings(t *testing.T) {
-	input := `workflow simple {
+	input := `workflow "simple" {
   step a {
     run = "echo a"
     results = [success]
@@ -468,11 +469,12 @@ func TestParser_WireNoMappings(t *testing.T) {
 }`
 	wf, err := dsl.Parse(input)
 	require.NoError(t, err)
-	require.Len(t, wf.Wiring, 2)
+	// 1 explicit wire + 1 implicit timeout->abort + 1 implicit token-limit->abort
+	require.Len(t, wf.Wiring, 3)
 }
 
 func TestParser_WireBracketSyntaxIsError(t *testing.T) {
-	input := `workflow bad {
+	input := `workflow "bad" {
   step a {
     run = "echo a"
     results = [success]
@@ -489,7 +491,7 @@ func TestParser_WireBracketSyntaxIsError(t *testing.T) {
 }
 
 func TestParse_WithoutLocation_NoEnforcement(t *testing.T) {
-	input := `workflow any {
+	input := `workflow "any" {
   step dispatch {
     workflow_name = "develop"
     results       = [success]
@@ -505,7 +507,7 @@ func TestParse_WithoutLocation_NoEnforcement(t *testing.T) {
 // --- ParseAllForHost tests ---
 
 func TestParseAllForHost_SingleWorkflow(t *testing.T) {
-	input := `workflow main {
+	input := `workflow "main" {
   step greet {
     run     = "echo hi"
     results = [success, fail]
@@ -524,7 +526,7 @@ func TestParseAllForHost_SingleWorkflow(t *testing.T) {
 }
 
 func TestParseAllForHost_MultipleWorkflows(t *testing.T) {
-	input := `workflow list-tasks {
+	input := `workflow "list-tasks" {
   step fetch {
     run     = "bash scripts/list-tasks.sh"
     results = [success, fail]
@@ -533,7 +535,7 @@ func TestParseAllForHost_MultipleWorkflows(t *testing.T) {
   fetch:fail    -> abort
 }
 
-workflow main {
+workflow "main" {
   step prepare {
     run     = "echo preparing"
     results = [success, fail]
@@ -548,7 +550,7 @@ workflow main {
   develop:fail    -> abort
 }
 
-workflow post-merge {
+workflow "post-merge" {
   step cleanup {
     run     = "echo cleanup"
     results = [success, fail]
@@ -572,14 +574,14 @@ workflow post-merge {
 }
 
 func TestParseAllForHost_DuplicateName(t *testing.T) {
-	input := `workflow main {
+	input := `workflow "main" {
   step a {
     run = "echo a"
     results = [success]
   }
   a:success -> done
 }
-workflow main {
+workflow "main" {
   step b {
     run = "echo b"
     results = [success]
@@ -599,14 +601,14 @@ func TestParseAllForHost_Empty(t *testing.T) {
 }
 
 func TestParseAllForHost_AllHostLocation(t *testing.T) {
-	input := `workflow list-tasks {
+	input := `workflow "list-tasks" {
   step fetch {
     run = "echo fetch"
     results = [success]
   }
   fetch:success -> done
 }
-workflow main {
+workflow "main" {
   step work {
     run = "echo work"
     results = [success]
@@ -622,7 +624,7 @@ workflow main {
 }
 
 func TestParseAll_HostBlockSetsLocation(t *testing.T) {
-	input := `workflow main {
+	input := `workflow "main" {
   host {
     agent_command = "claude"
   }
@@ -638,7 +640,7 @@ func TestParseAll_HostBlockSetsLocation(t *testing.T) {
 }
 
 func TestParseAll_NoHostBlockDefaultsToContainer(t *testing.T) {
-	input := `workflow build {
+	input := `workflow "build" {
   step compile {
     run = "make"
     results = [success]
@@ -651,7 +653,7 @@ func TestParseAll_NoHostBlockDefaultsToContainer(t *testing.T) {
 }
 
 func TestParse_RejectsHostAndContainerBlocks(t *testing.T) {
-	input := `workflow bad {
+	input := `workflow "bad" {
   host {}
   container {
     image = "foo"
@@ -670,7 +672,7 @@ func TestParse_RejectsHostAndContainerBlocks(t *testing.T) {
 // --- Agent declaration tests ---
 
 func TestParser_AgentDeclaration(t *testing.T) {
-	input := `workflow develop {
+	input := `workflow "develop" {
   agent claude {
     command = "claude"
     args = "-p --output-format stream-json"
@@ -702,7 +704,7 @@ func TestParser_AgentDeclaration(t *testing.T) {
 }
 
 func TestParser_MultipleAgents(t *testing.T) {
-	input := `workflow develop {
+	input := `workflow "develop" {
   agent claude {
     command = "claude"
     args = "-p --verbose"
@@ -743,7 +745,7 @@ func TestParser_MultipleAgents(t *testing.T) {
 }
 
 func TestParser_AgentCommandOnly(t *testing.T) {
-	input := `workflow simple {
+	input := `workflow "simple" {
   agent ollama {
     command = "ollama"
   }
@@ -767,7 +769,7 @@ func TestParser_AgentCommandOnly(t *testing.T) {
 }
 
 func TestParser_AgentMissingCommand(t *testing.T) {
-	input := `workflow bad {
+	input := `workflow "bad" {
   agent nocommand {
     args = "--verbose"
   }
@@ -786,7 +788,7 @@ func TestParser_AgentMissingCommand(t *testing.T) {
 }
 
 func TestParser_DuplicateAgent(t *testing.T) {
-	input := `workflow bad {
+	input := `workflow "bad" {
   agent claude {
     command = "claude"
   }
@@ -808,7 +810,7 @@ func TestParser_DuplicateAgent(t *testing.T) {
 }
 
 func TestParser_AgentUnknownField(t *testing.T) {
-	input := `workflow bad {
+	input := `workflow "bad" {
   agent claude {
     command = "claude"
     unknown = "value"
@@ -828,7 +830,7 @@ func TestParser_AgentUnknownField(t *testing.T) {
 }
 
 func TestParser_NumericMaxAttempts(t *testing.T) {
-	input := `workflow retry {
+	input := `workflow "retry" {
   step code {
     prompt = "write code"
     max_attempts = 3
@@ -848,7 +850,7 @@ func TestParser_NumericMaxAttempts(t *testing.T) {
 }
 
 func TestParser_StringMaxAttempts_Rejected(t *testing.T) {
-	input := `workflow retry {
+	input := `workflow "retry" {
   step code {
     prompt = "write code"
     max_attempts = "3"
@@ -865,7 +867,7 @@ func TestParser_StringMaxAttempts_Rejected(t *testing.T) {
 }
 
 func TestParser_PollStep_Valid(t *testing.T) {
-	input := `workflow review {
+	input := `workflow "review" {
   host {}
   step create-pr {
     run     = "gh pr create"
@@ -914,7 +916,7 @@ func TestParser_PollStep_Valid(t *testing.T) {
 }
 
 func TestParser_PollStep_WithTimeout(t *testing.T) {
-	input := `workflow review {
+	input := `workflow "review" {
   host {}
   step wait {
     poll     = "scripts/check.sh"
@@ -935,7 +937,7 @@ func TestParser_PollStep_WithTimeout(t *testing.T) {
 }
 
 func TestParser_PollStep_ExplicitTimeoutWire(t *testing.T) {
-	input := `workflow review {
+	input := `workflow "review" {
   host {}
   step code-review {
     poll     = "scripts/check.sh"
@@ -979,7 +981,7 @@ func TestParser_PollStep_ExplicitTimeoutWire(t *testing.T) {
 }
 
 func TestParser_PollStep_MissingInterval(t *testing.T) {
-	input := `workflow review {
+	input := `workflow "review" {
   host {}
   step wait {
     poll    = "scripts/check.sh"
@@ -995,7 +997,7 @@ func TestParser_PollStep_MissingInterval(t *testing.T) {
 
 func TestParser_PollStep_MissingPoll(t *testing.T) {
 	// A step with only interval and no type keyword should fail with a clear message.
-	input := `workflow review {
+	input := `workflow "review" {
   host {}
   step wait {
     interval = "5m"
@@ -1010,7 +1012,7 @@ func TestParser_PollStep_MissingPoll(t *testing.T) {
 }
 
 func TestParser_PollStep_InvalidInterval(t *testing.T) {
-	input := `workflow review {
+	input := `workflow "review" {
   host {}
   step wait {
     poll     = "scripts/check.sh"
@@ -1026,7 +1028,7 @@ func TestParser_PollStep_InvalidInterval(t *testing.T) {
 }
 
 func TestParser_PollStep_ConflictsWithRun(t *testing.T) {
-	input := `workflow review {
+	input := `workflow "review" {
   host {}
   step wait {
     poll     = "scripts/check.sh"
@@ -1044,7 +1046,7 @@ func TestParser_PollStep_ConflictsWithRun(t *testing.T) {
 
 func TestParser_PollStep_Validate(t *testing.T) {
 	// A valid poll step workflow should pass Validate().
-	input := `workflow review {
+	input := `workflow "review" {
   host {}
   step review {
     poll     = "scripts/check.sh"
@@ -1059,4 +1061,143 @@ func TestParser_PollStep_Validate(t *testing.T) {
 	wf, err := dsl.Parse(input)
 	require.NoError(t, err)
 	require.NoError(t, wf.Validate())
+}
+
+func TestParser_TokenLimit_StepLevel(t *testing.T) {
+	input := `workflow "build" {
+  step analyze {
+    run = "echo analyze"
+    results = [success]
+    token-limit = 750000
+  }
+  analyze:success -> done
+}`
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+	require.NoError(t, wf.Validate())
+
+	step := wf.Steps["analyze"]
+	require.NotNil(t, step)
+	assert.Equal(t, "750000", step.Config["token-limit"])
+}
+
+func TestParser_TokenLimit_WorkflowLevel(t *testing.T) {
+	input := `workflow "build" {
+  token-limit = 1000000
+  step analyze {
+    run = "echo analyze"
+    results = [success]
+  }
+  analyze:success -> done
+}`
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+	require.NoError(t, wf.Validate())
+
+	assert.Equal(t, "1000000", wf.Config["token-limit"])
+}
+
+func TestParser_TokenLimit_ImplicitResultAndWire(t *testing.T) {
+	input := `workflow "build" {
+  step analyze {
+    run = "echo analyze"
+    results = [success]
+  }
+  analyze:success -> done
+}`
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+
+	step := wf.Steps["analyze"]
+	require.NotNil(t, step)
+	assert.Contains(t, step.Results, "token-limit")
+
+	foundWire := false
+	for _, w := range wf.Wiring {
+		if w.From == "analyze" && w.Result == "token-limit" && w.To == domain.StepAbort && w.Implicit {
+			foundWire = true
+			break
+		}
+	}
+	assert.True(t, foundWire, "expected implicit token-limit->abort wire")
+}
+
+func TestParser_TokenLimit_ExplicitDefaultWireOverridesImplicit(t *testing.T) {
+	input := `workflow "build" {
+  step analyze {
+    run = "echo analyze"
+    results = [success]
+  }
+  step next-step {
+    run = "echo continue"
+    results = [success]
+  }
+  analyze:success -> done
+  next-step:success -> done
+  token-limit -> next-step
+}`
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+
+	for stepName := range wf.Steps {
+		found := false
+		for _, w := range wf.Wiring {
+			if w.From == stepName && w.Result == "token-limit" {
+				assert.Equal(t, "next-step", w.To,
+					"expected step %q token-limit wire to go to next-step", stepName)
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "step %q has no token-limit wire", stepName)
+	}
+}
+
+func TestParser_TokenLimit_NonNumericFails(t *testing.T) {
+	input := `workflow "build" {
+  step analyze {
+    run = "echo analyze"
+    results = [success]
+    token-limit = abc
+  }
+  analyze:success -> done
+}`
+	wf, err := dsl.Parse(input)
+	if err == nil {
+		err = wf.Validate()
+	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "token-limit")
+}
+
+func TestParser_TokenLimit_BelowMinusFails(t *testing.T) {
+	input := `workflow "build" {
+  step analyze {
+    run = "echo analyze"
+    results = [success]
+    token-limit = -2
+  }
+  analyze:success -> done
+}`
+	wf, err := dsl.Parse(input)
+	if err == nil {
+		err = wf.Validate()
+	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "token-limit")
+}
+
+func TestParser_TokenLimit_MinusOneIsValid(t *testing.T) {
+	input := `workflow "build" {
+  step analyze {
+    run = "echo analyze"
+    results = [success]
+    token-limit = -1
+  }
+  analyze:success -> done
+}`
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+	require.NoError(t, wf.Validate())
+	assert.Equal(t, "-1", wf.Steps["analyze"].Config["token-limit"])
 }

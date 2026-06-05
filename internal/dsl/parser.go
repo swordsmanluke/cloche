@@ -128,9 +128,9 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 		return nil, err
 	}
 
-	nameTok, err := p.expect(TokenIdent)
+	nameTok, err := p.expect(TokenString)
 	if err != nil {
-		return nil, fmt.Errorf("expected workflow name: %w", err)
+		return nil, fmt.Errorf("expected workflow name string: %w", err)
 	}
 
 	if _, err := p.expect(TokenLBrace); err != nil {
@@ -184,6 +184,13 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 				return nil, err
 			}
 			wf.Wiring = append(wf.Wiring, wire)
+		} else if p.current.Type == TokenIdent && p.peek.Type == TokenArrow {
+			// Shorthand default result wire: "result -> target"
+			// Sets the default wiring target for all steps on that result.
+			// Currently supported: token-limit
+			if err := p.parseDefaultResultWire(wf); err != nil {
+				return nil, err
+			}
 		} else {
 			return nil, fmt.Errorf("line %d col %d: unexpected token %q", p.current.Line, p.current.Col, p.current.Literal)
 		}
@@ -231,6 +238,41 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 		}
 	}
 
+	// Post-parse fixup: ensure every step has a "token-limit" result and wire.
+	// A workflow-level "token-limit -> <step>" declaration overrides the default
+	// abort target for all steps that lack an explicit per-step wire.
+	tokenLimitDefault := domain.StepAbort
+	if target, ok := wf.Config["_token_limit_default_wire"]; ok {
+		tokenLimitDefault = target
+	}
+	for name, step := range wf.Steps {
+		hasResult := false
+		for _, r := range step.Results {
+			if r == "token-limit" {
+				hasResult = true
+				break
+			}
+		}
+		if !hasResult {
+			step.Results = append(step.Results, "token-limit")
+		}
+		hasWire := false
+		for _, w := range wf.Wiring {
+			if w.From == name && w.Result == "token-limit" {
+				hasWire = true
+				break
+			}
+		}
+		if !hasWire {
+			wf.Wiring = append(wf.Wiring, domain.Wire{
+				From:     name,
+				Result:   "token-limit",
+				To:       tokenLimitDefault,
+				Implicit: true,
+			})
+		}
+	}
+
 	return wf, nil
 }
 
@@ -254,6 +296,13 @@ func (p *Parser) parseWorkflowField(wf *domain.Workflow) error {
 			return err
 		}
 		wf.Repos = repos
+		return nil
+	case "token-limit":
+		val, err := p.parseTokenLimitValue()
+		if err != nil {
+			return err
+		}
+		wf.Config["token-limit"] = val
 		return nil
 	default:
 		return fmt.Errorf("line %d col %d: unknown workflow field %q", keyTok.Line, keyTok.Col, keyTok.Literal)
@@ -475,6 +524,12 @@ func (p *Parser) parseStepField(step *domain.Step, prefix string) error {
 			return err
 		}
 		step.Config[key] = strings.Join(values, ",")
+	} else if key == "token-limit" {
+		val, err := p.parseTokenLimitValue()
+		if err != nil {
+			return err
+		}
+		step.Config[key] = val
 	} else {
 		if key == "max_attempts" && p.current.Type != TokenInt {
 			return fmt.Errorf("max_attempts must be a numeric value, not a string (line %d, col %d)", p.current.Line, p.current.Col)
@@ -589,6 +644,23 @@ func (p *Parser) parseValue() (string, error) {
 	return "", fmt.Errorf("line %d col %d: expected value, got %q", p.current.Line, p.current.Col, p.current.Literal)
 }
 
+// parseTokenLimitValue reads a token-limit value: an optional leading "-"
+// (TokenIllegal) followed by a TokenInt, or any other value token (which
+// domain.Validate will later reject as non-numeric).
+func (p *Parser) parseTokenLimitValue() (string, error) {
+	if p.current.Type == TokenIllegal && p.current.Literal == "-" {
+		line, col := p.current.Line, p.current.Col
+		p.advance() // consume '-'
+		if p.current.Type != TokenInt {
+			return "", fmt.Errorf("line %d col %d: expected integer after \"-\" in token-limit value", line, col)
+		}
+		val := "-" + p.current.Literal
+		p.advance()
+		return val, nil
+	}
+	return p.parseValue()
+}
+
 func (p *Parser) parseWire() (domain.Wire, error) {
 	fromTok := p.current
 	p.advance()
@@ -616,6 +688,28 @@ func (p *Parser) parseWire() (domain.Wire, error) {
 		Result: resultTok.Literal,
 		To:     toTok.Literal,
 	}, nil
+}
+
+// parseDefaultResultWire parses a workflow-level "result -> target" shorthand
+// that sets the default wiring target for all steps on the named result.
+// Currently only "token-limit" is supported.
+func (p *Parser) parseDefaultResultWire(wf *domain.Workflow) error {
+	resultTok := p.current
+	p.advance() // consume result name
+	if _, err := p.expect(TokenArrow); err != nil {
+		return err
+	}
+	toTok, err := p.expect(TokenIdent)
+	if err != nil {
+		return err
+	}
+	switch resultTok.Literal {
+	case "token-limit":
+		wf.Config["_token_limit_default_wire"] = toTok.Literal
+	default:
+		return fmt.Errorf("line %d col %d: unsupported default result wire %q", resultTok.Line, resultTok.Col, resultTok.Literal)
+	}
+	return nil
 }
 
 func (p *Parser) parseCollect() (domain.Collect, error) {
