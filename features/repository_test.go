@@ -538,6 +538,7 @@ func TestMain(m *testing.M) {
 			initRepositoryScenarios(ctx)
 			initPromptTemplatingScenarios(ctx)
 			initTokenLimitScenarios(ctx)
+			initCredentialsMountScenarios(ctx)
 		},
 		Options: &opts,
 	}.Run()
