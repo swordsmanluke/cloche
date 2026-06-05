@@ -2,6 +2,10 @@
 
 ## v3.15.14 — 2026-05-21
 
+### Features
+
+- `2b0265a` `2fb02d0` DSL parser now accepts `token-limit = <int>` on steps and workflows; domain layer stores it as `step.Config["token-limit"]` / `wf.Config["token-limit"]`. Engine enforces per-step output-token ceiling via `stepTokenLimit` resolver (default 500 000): steps whose `OutputTokens` exceed the limit receive a `token-limit` result (implicitly wired to `abort`). A running workflow-level accumulator aborts the run when cumulative `OutputTokens` hits the workflow ceiling (default 2 000 000). Sentinels: `-1` disables enforcement; `0` aborts immediately without executing the step/workflow.
+
 ### Fixes
 
 - `6186e9a` `{{ $task_id }}` now resolves correctly in agent prompts inside host workflows; the host executor was assigning `adapter.RunID` but omitting `adapter.TaskID`, leaving the variable empty for any agent step in a host workflow.

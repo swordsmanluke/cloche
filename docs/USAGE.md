@@ -50,6 +50,7 @@ workflow "develop" {
 | `results` | ident list | Declared result names, e.g. `[success, fail, give-up]`. |
 | `max_attempts` | integer | Max retries before automatic `give-up` result, e.g. `2`. |
 | `timeout` | string | Step timeout as Go duration, e.g. `"30m"`, `"2h"`. Default: 30m. |
+| `token-limit` | integer | Maximum **output** tokens for this step. Produces a `"token-limit"` result (implicitly wired to `abort`) when exceeded. Default: 500 000. `-1` disables enforcement; `0` aborts immediately without running the step. |
 | `agent_command` | string | Agent binary name(s), comma-separated for fallback chains, e.g. `"claude,gemini"`. |
 | `agent_args` | string | Override default agent arguments. |
 | `agent` | identifier | Reference a named agent declared in the workflow's `agent` block. Expands into `agent_command` and `agent_args`. Step-level `agent_command`/`agent_args` still override it. |

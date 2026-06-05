@@ -2,6 +2,10 @@
 
 ## v3.15.14 — 2026-05-21
 
+### Features
+
+- Steps and workflows now support a `token-limit` config key that caps output tokens: a step exceeding its per-step ceiling (default 500 000) produces a `token-limit` result (implicitly wired to `abort`); cumulative output across all steps is checked against the workflow-level ceiling (default 2 000 000). Set `-1` to disable enforcement or `0` to abort immediately without running.
+
 ### Notable fixes
 
 - `{{ $task_id }}` now resolves correctly in agent prompts running inside host workflows; previously the host executor left it empty, breaking any prompt or shell command that embedded it (e.g. `bd show "{{ $task_id }}"`).
