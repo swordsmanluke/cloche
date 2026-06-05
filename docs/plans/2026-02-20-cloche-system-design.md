@@ -232,6 +232,34 @@ Each step execution is captured for later inspection and replay.
 Metadata in the store (SQLite initially). Git refs serve as pointers to actual file
 states — no duplication of file content.
 
+## Runtime Infrastructure
+
+Internal packages supporting logging, event tracking, and step-protocol concerns.
+
+### activitylog
+
+`internal/activitylog` records task and step lifecycle events with timestamps and outcomes. The daemon writes one `Entry` per event (`KindAttemptStarted`, `KindAttemptEnded`, `KindStepStarted`, `KindStepCompleted`) via `Logger.Append`. Entries are persisted through an `Appender` interface backed by the daemon's SQLite store. Errors are non-fatal — callers should log failures but must not abort workflow execution. The `cloche activity` command reads these entries to display the project activity log.
+
+### logstream
+
+`internal/logstream` provides unified log writing and real-time broadcasting:
+
+- **Writer** — mutex-protected; appends timestamped, type-prefixed lines to `full.log`. The in-container agent writes to `.cloche/output/full.log` inside the workspace; the host runner writes to `.cloche/logs/<taskID>/<attemptID>/full.log` on the host. Entry types: `status`, `script`, `llm`.
+- **Broadcaster** — fans log lines from active runs out to multiple concurrent subscribers (CLI follow mode, web dashboard live view). `Start` registers a run; `Publish` fans out non-blocking with a 256-entry per-subscriber buffer; `Finish` closes all subscriber channels and clears buffered history. Late subscribers receive a gap-free snapshot of prior lines via `SubscribeWithHistory`. One broadcaster instance is shared across all runs in the daemon.
+- **ParseClaudeLine / ParseClaudeStream** — parse Claude Code `stream-json` output into human-readable text, extracting assistant messages and formatting tool-call summaries. Each broadcast line is passed through the parser before being forwarded to the web dashboard.
+
+### protocol
+
+`internal/protocol` defines runtime communication contracts shared across binaries:
+
+- **Status messages** (`status.go`) — JSON-serialized events for real-time workflow progress. `StatusWriter` encodes events (step started/completed, run completed, token usage) to a stream; `ParseStatusStream` decodes them. Used by `cloche-agent` to report progress back to the daemon.
+- **Result extraction** (`result.go`) — scans step output for `CLOCHE_RESULT:<name>` markers (the last one wins), strips all markers from the captured output, and returns the result name. This is the implementation layer for the result protocol described in the user documentation.
+- **History log** (`history.go`) — appends human-readable step and workflow lifecycle entries to `.cloche/history.log`. Script steps include cleaned, indented output; agent steps record a header only.
+
+### runcontext
+
+`internal/runcontext` provides path helpers for the per-task runtime directory `.cloche/runs/<taskID>/`. Functions: `RunDir`, `PromptPath`, `ContextPath`, `Cleanup`. The key-value context that formerly lived in `context.json` has migrated to the daemon's gRPC-backed SQLite store; this package is now primarily a path-construction utility retained for backward compatibility. New code should use the KV store directly.
+
 ## MVP Scope (v0.1)
 
 ### In Scope
