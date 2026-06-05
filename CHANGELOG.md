@@ -1,5 +1,15 @@
 # Cloche Changelog
 
+## Unreleased
+
+### Breaking changes
+
+- Prompt template `{{! }}` and `{{@ }}` directive bodies now resolve inner `{{ $var }}` references before executing the shell command or opening the file. Bare `$name` references inside bodies no longer resolve. Migration: replace `{{! echo $task_id }}` with `{{! echo {{ $task_id }} }}` and `{{@ $var/path }}` with `{{@ {{ $var }}/path }}`.
+
+### Notable fixes
+
+- Multi-sub-workflow extraction now stacks correctly: `extractGit` resets the worktree to `BaseSHA` before wipe-and-copy, so each sub-workflow's commit lands on its specified base instead of the stale HEAD from the prior extract. Without this, sequential layer PRs produced parallel branches and add/add merge conflicts.
+
 ## v3.15.12 — 2026-05-19
 
 ### Features

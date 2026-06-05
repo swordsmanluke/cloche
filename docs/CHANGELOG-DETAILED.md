@@ -1,5 +1,16 @@
 # Cloche Detailed Changelog
 
+## Unreleased
+
+### Breaking
+
+- `7c89e2b` Prompt template directive bodies now use full `{{ $var }}` syntax for inner variable resolution instead of bare `$name`. `resolveBareVars` is replaced by `resolveCmdTemplate` (for `{{! }}`, which respects shell single-quote escaping) and `resolveStr` (for `{{@ }}`). Migration: inside `{{! ... }}` and `{{@ ... }}` bodies, replace bare `$name` with `{{ $name }}`.
+
+### Fixes
+
+- `7c89e2b` `extractGit` now calls `git reset --hard BaseSHA` before the wipe-and-copy step. Without this reset, a worktree that already held commits from an earlier sub-workflow in the same attempt would commit on top of its current HEAD rather than on `BaseSHA`, producing parallel branches instead of a linear stack and add/add merge conflicts between layer PRs. BDD coverage: `features/extract_base_sha_reresolution.feature`.
+- `d39b302` Added unit regression tests `TestExtractGitResetsToBaseSHABeforeCommit` and `TestExtractMultipleWithChangedBaseSHA` in `internal/adapters/docker/extract_test.go`; both fail on pre-fix code and pass with the `git reset` step in place.
+
 ## v3.15.12 — 2026-05-19
 
 ### Features
