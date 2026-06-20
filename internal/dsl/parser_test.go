@@ -38,7 +38,7 @@ func TestParser_FullWorkflow(t *testing.T) {
 	code := wf.Steps["code"]
 	require.NotNil(t, code)
 	assert.Equal(t, domain.StepTypeAgent, code.Type)
-	assert.Equal(t, []string{"success", "fail", "retry_with_feedback", "timeout", "token-limit"}, code.Results)
+	assert.Equal(t, []string{"success", "fail", "retry_with_feedback", "timeout"}, code.Results)
 	assert.Equal(t, `file("prompts/implement.md")`, code.Config["prompt"])
 
 	check := wf.Steps["check"]
@@ -46,8 +46,7 @@ func TestParser_FullWorkflow(t *testing.T) {
 	assert.Equal(t, domain.StepTypeScript, check.Type)
 	assert.Equal(t, "make test && make lint", check.Config["run"])
 
-	// 5 explicit wires + 2 implicit timeout->abort + 2 implicit token-limit->abort
-	assert.Len(t, wf.Wiring, 9)
+	assert.Len(t, wf.Wiring, 7)
 	assert.Equal(t, "code", wf.EntryStep)
 }
 
@@ -312,7 +311,7 @@ func TestParser_WorkflowNameStep(t *testing.T) {
 	require.NotNil(t, develop)
 	assert.Equal(t, domain.StepTypeWorkflow, develop.Type)
 	assert.Equal(t, "develop", develop.Config["workflow_name"])
-	assert.Equal(t, []string{"success", "fail", "timeout", "token-limit"}, develop.Results)
+	assert.Equal(t, []string{"success", "fail", "timeout"}, develop.Results)
 
 	preparePrompt := wf.Steps["prepare-prompt"]
 	require.NotNil(t, preparePrompt)
@@ -469,8 +468,7 @@ func TestParser_WireNoMappings(t *testing.T) {
 }`
 	wf, err := dsl.Parse(input)
 	require.NoError(t, err)
-	// 1 explicit wire + 1 implicit timeout->abort + 1 implicit token-limit->abort
-	require.Len(t, wf.Wiring, 3)
+	require.Len(t, wf.Wiring, 2)
 }
 
 func TestParser_WireBracketSyntaxIsError(t *testing.T) {
@@ -1061,143 +1059,4 @@ func TestParser_PollStep_Validate(t *testing.T) {
 	wf, err := dsl.Parse(input)
 	require.NoError(t, err)
 	require.NoError(t, wf.Validate())
-}
-
-func TestParser_TokenLimit_StepLevel(t *testing.T) {
-	input := `workflow "build" {
-  step analyze {
-    run = "echo analyze"
-    results = [success]
-    token-limit = 750000
-  }
-  analyze:success -> done
-}`
-	wf, err := dsl.Parse(input)
-	require.NoError(t, err)
-	require.NoError(t, wf.Validate())
-
-	step := wf.Steps["analyze"]
-	require.NotNil(t, step)
-	assert.Equal(t, "750000", step.Config["token-limit"])
-}
-
-func TestParser_TokenLimit_WorkflowLevel(t *testing.T) {
-	input := `workflow "build" {
-  token-limit = 1000000
-  step analyze {
-    run = "echo analyze"
-    results = [success]
-  }
-  analyze:success -> done
-}`
-	wf, err := dsl.Parse(input)
-	require.NoError(t, err)
-	require.NoError(t, wf.Validate())
-
-	assert.Equal(t, "1000000", wf.Config["token-limit"])
-}
-
-func TestParser_TokenLimit_ImplicitResultAndWire(t *testing.T) {
-	input := `workflow "build" {
-  step analyze {
-    run = "echo analyze"
-    results = [success]
-  }
-  analyze:success -> done
-}`
-	wf, err := dsl.Parse(input)
-	require.NoError(t, err)
-
-	step := wf.Steps["analyze"]
-	require.NotNil(t, step)
-	assert.Contains(t, step.Results, "token-limit")
-
-	foundWire := false
-	for _, w := range wf.Wiring {
-		if w.From == "analyze" && w.Result == "token-limit" && w.To == domain.StepAbort && w.Implicit {
-			foundWire = true
-			break
-		}
-	}
-	assert.True(t, foundWire, "expected implicit token-limit->abort wire")
-}
-
-func TestParser_TokenLimit_ExplicitDefaultWireOverridesImplicit(t *testing.T) {
-	input := `workflow "build" {
-  step analyze {
-    run = "echo analyze"
-    results = [success]
-  }
-  step next-step {
-    run = "echo continue"
-    results = [success]
-  }
-  analyze:success -> done
-  next-step:success -> done
-  token-limit -> next-step
-}`
-	wf, err := dsl.Parse(input)
-	require.NoError(t, err)
-
-	for stepName := range wf.Steps {
-		found := false
-		for _, w := range wf.Wiring {
-			if w.From == stepName && w.Result == "token-limit" {
-				assert.Equal(t, "next-step", w.To,
-					"expected step %q token-limit wire to go to next-step", stepName)
-				found = true
-				break
-			}
-		}
-		assert.True(t, found, "step %q has no token-limit wire", stepName)
-	}
-}
-
-func TestParser_TokenLimit_NonNumericFails(t *testing.T) {
-	input := `workflow "build" {
-  step analyze {
-    run = "echo analyze"
-    results = [success]
-    token-limit = abc
-  }
-  analyze:success -> done
-}`
-	wf, err := dsl.Parse(input)
-	if err == nil {
-		err = wf.Validate()
-	}
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "token-limit")
-}
-
-func TestParser_TokenLimit_BelowMinusFails(t *testing.T) {
-	input := `workflow "build" {
-  step analyze {
-    run = "echo analyze"
-    results = [success]
-    token-limit = -2
-  }
-  analyze:success -> done
-}`
-	wf, err := dsl.Parse(input)
-	if err == nil {
-		err = wf.Validate()
-	}
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "token-limit")
-}
-
-func TestParser_TokenLimit_MinusOneIsValid(t *testing.T) {
-	input := `workflow "build" {
-  step analyze {
-    run = "echo analyze"
-    results = [success]
-    token-limit = -1
-  }
-  analyze:success -> done
-}`
-	wf, err := dsl.Parse(input)
-	require.NoError(t, err)
-	require.NoError(t, wf.Validate())
-	assert.Equal(t, "-1", wf.Steps["analyze"].Config["token-limit"])
 }

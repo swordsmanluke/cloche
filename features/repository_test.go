@@ -535,9 +535,11 @@ func TestMain(m *testing.M) {
 	status := godog.TestSuite{
 		Name: "cloche",
 		ScenarioInitializer: func(ctx *godog.ScenarioContext) {
+			InitializeScenario(ctx)
 			initRepositoryScenarios(ctx)
 			initPromptTemplatingScenarios(ctx)
 			initTokenLimitScenarios(ctx)
+			initVerticalDesignPrepScenarios(ctx)
 		},
 		Options: &opts,
 	}.Run()
