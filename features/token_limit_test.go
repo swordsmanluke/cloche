@@ -2,7 +2,6 @@ package features_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -50,85 +49,151 @@ func (s *tokenLimitCtx) noTokenLimitParseErrorIsReturned() error {
 }
 
 func (s *tokenLimitCtx) stepHasConfigValue(stepName, workflowName, key, value string) error {
-	return errors.New("pending: L1 DSL implementation")
+	wf, ok := s.parsedWorkflows[workflowName]
+	if !ok {
+		return fmt.Errorf("workflow %q not found", workflowName)
+	}
+	step, ok := wf.Steps[stepName]
+	if !ok {
+		return fmt.Errorf("step %q not found in workflow %q", stepName, workflowName)
+	}
+	got, ok := step.Config[key]
+	if !ok {
+		return fmt.Errorf("step %q in workflow %q has no config key %q", stepName, workflowName, key)
+	}
+	if got != value {
+		return fmt.Errorf("step %q config[%q] = %q, want %q", stepName, key, got, value)
+	}
+	return nil
 }
 
 func (s *tokenLimitCtx) workflowHasConfigValue(workflowName, key, value string) error {
-	return errors.New("pending: L1 DSL implementation")
+	wf, ok := s.parsedWorkflows[workflowName]
+	if !ok {
+		return fmt.Errorf("workflow %q not found", workflowName)
+	}
+	got, ok := wf.Config[key]
+	if !ok {
+		return fmt.Errorf("workflow %q has no config key %q", workflowName, key)
+	}
+	if got != value {
+		return fmt.Errorf("workflow %q config[%q] = %q, want %q", workflowName, key, got, value)
+	}
+	return nil
 }
 
 func (s *tokenLimitCtx) stepHasImplicitResultWiredTo(stepName, workflowName, result, target string) error {
-	return errors.New("pending: L1 DSL implementation")
+	wf, ok := s.parsedWorkflows[workflowName]
+	if !ok {
+		return fmt.Errorf("workflow %q not found", workflowName)
+	}
+	for _, w := range wf.Wiring {
+		if w.From == stepName && w.Result == result && w.Implicit {
+			if w.To == target {
+				return nil
+			}
+			return fmt.Errorf("step %q has implicit %q wire but goes to %q, want %q", stepName, result, w.To, target)
+		}
+	}
+	return fmt.Errorf("step %q in workflow %q has no implicit %q result wired to %q", stepName, workflowName, result, target)
 }
 
 func (s *tokenLimitCtx) workflowWireFromAnyStepGoesTo(workflowName, result, target string) error {
-	return errors.New("pending: L1 DSL implementation")
+	wf, ok := s.parsedWorkflows[workflowName]
+	if !ok {
+		return fmt.Errorf("workflow %q not found", workflowName)
+	}
+	for name := range wf.Steps {
+		found := false
+		for _, w := range wf.Wiring {
+			if w.From == name && w.Result == result {
+				if w.To != target {
+					return fmt.Errorf("step %q wire %q goes to %q, want %q", name, result, w.To, target)
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("step %q in workflow %q has no %q wire", name, workflowName, result)
+		}
+	}
+	return nil
 }
 
 func (s *tokenLimitCtx) aTokenLimitParseErrorIsReturned() error {
-	return errors.New("pending: L1 DSL implementation")
+	if s.dslParseErr == nil {
+		return fmt.Errorf("expected a parse error but got none")
+	}
+	return nil
 }
 
 func (s *tokenLimitCtx) theTokenLimitErrorMentions(keyword string) error {
-	return errors.New("pending: L1 DSL implementation")
+	if s.dslParseErr == nil {
+		return fmt.Errorf("no parse error to check")
+	}
+	if !strings.Contains(s.dslParseErr.Error(), keyword) {
+		return fmt.Errorf("error %q does not mention %q", s.dslParseErr.Error(), keyword)
+	}
+	return nil
 }
 
 // ─── L2: Engine enforcement steps ────────────────────────────────────────────
 
 func (s *tokenLimitCtx) engineWithStepHavingTokenLimit(stepName string, limit int) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineWithTwoStepWorkflowTokenLimit(limit int) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineWithWorkflowTokenLimit(limit int) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) stepCompletesWithOutputTokens(stepName string, outputTokens int) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) stepCompletesWithOutputAndInputTokens(stepName string, outputTokens, inputTokens int) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) eachStepCompletesWithOutputTokens(outputTokens int) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineExecutesTheWorkflow() error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineStepResultIs(stepName, result string) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineStepResultIsNot(stepName, result string) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineRunIsMarkedFailed() error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineRunIsAbortedAfterFirstStep() error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) engineRunIsNotAborted() error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) executorIsNeverCalledForStep(stepName string) error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 func (s *tokenLimitCtx) noExecutorIsCalled() error {
-	return errors.New("pending: L2 engine implementation")
+	return godog.ErrPending
 }
 
 // ─── Step registration ────────────────────────────────────────────────────────

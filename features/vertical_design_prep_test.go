@@ -2,138 +2,223 @@ package features_test
 
 import (
 	"context"
-	"errors"
-	"strings"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strconv"
 
+	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cucumber/godog"
 )
 
-// designPrepCtx holds per-scenario state for vertical design-prep BDD scenarios.
-type designPrepCtx struct {
-	// L1: DSL parsing
-	dslContent     string
-	dslValidateErr error
+// verticalDesignPrepCtx holds per-scenario state for vertical design-prep BDD scenarios.
+type verticalDesignPrepCtx struct {
+	// L1: DSL topology
+	verticalDSLContent  string
+	verticalDSLParseErr error
+	parsedWorkflows     map[string]*domain.Workflow
 
-	// L2: Runtime simulation
+	// L2: skip-check classifier
 	ticketDescription string
 	designDocPath     string
-	designDocStatus   string
-	designDocContent  string
-	checkResult       string
-	prBody            string
+	classifierResult  string
+
+	// L2: script behavior simulation
+	featureName       string
+	remoteHasBranches []string
+	kvStore           map[string]string
 	mergeOrder        []string
+	testPlanBase      string
+	tempDir           string
 }
 
-func (s *designPrepCtx) reset() {
-	*s = designPrepCtx{}
+func (s *verticalDesignPrepCtx) reset() {
+	if s.tempDir != "" {
+		os.RemoveAll(s.tempDir)
+	}
+	*s = verticalDesignPrepCtx{
+		kvStore: make(map[string]string),
+	}
 }
 
-// ─── L1: DSL parsing steps ───────────────────────────────────────────────────
-
-func (s *designPrepCtx) aVerticalDSLFileContainingPhase05Step() error {
-	return errors.New("pending: L1 workflow wiring implementation")
+// verticalClocheDir returns the path to the .cloche/ directory inside the
+// repos/cloche project (two directories up from this source file: features/ → project root).
+func verticalClocheDir() string {
+	_, thisFile, _, _ := runtime.Caller(0)
+	// thisFile: .../repos/cloche/features/vertical_design_prep_test.go
+	// up 2 levels: features → repos/cloche
+	root := filepath.Dir(filepath.Dir(thisFile))
+	return filepath.Join(root, ".cloche")
 }
 
-func (s *designPrepCtx) theDesignPrepDSLFileIsValidated() error {
-	return errors.New("pending: L1 workflow wiring implementation")
+// ─── L1: DSL topology steps ──────────────────────────────────────────────────
+
+func (s *verticalDesignPrepCtx) theVerticalWorkflowDSL() error {
+	path := filepath.Join(verticalClocheDir(), "vertical.cloche")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("reading vertical.cloche at %s: %w", path, err)
+	}
+	s.verticalDSLContent = string(data)
+	return nil
 }
 
-func (s *designPrepCtx) noDesignPrepValidationErrorIsReturned() error {
-	return errors.New("pending: L1 workflow wiring implementation")
+func (s *verticalDesignPrepCtx) theVerticalDSLIsParsed() error {
+	workflows, err := dsl.ParseAll(s.verticalDSLContent)
+	s.parsedWorkflows = workflows
+	s.verticalDSLParseErr = err
+	return nil
 }
 
-func (s *designPrepCtx) inDesignPrepWorkflowStepRoutesTo(fromStep, result, toStep string) error {
-	return errors.New("pending: L1 workflow wiring implementation")
+func (s *verticalDesignPrepCtx) noVerticalDSLParseError() error {
+	if s.verticalDSLParseErr != nil {
+		return fmt.Errorf("unexpected DSL parse error: %w", s.verticalDSLParseErr)
+	}
+	return nil
 }
 
-func (s *designPrepCtx) inDesignPrepWorkflowStepHasMaxAttempts(stepName string, maxAttempts int) error {
-	return errors.New("pending: L1 workflow wiring implementation")
+func (s *verticalDesignPrepCtx) verticalWorkflowContainsStep(stepName string) error {
+	wf, ok := s.parsedWorkflows["vertical"]
+	if !ok {
+		return fmt.Errorf("workflow %q not found in vertical.cloche", "main")
+	}
+	if _, exists := wf.Steps[stepName]; !exists {
+		return fmt.Errorf("step %q not found in the main vertical workflow", stepName)
+	}
+	return nil
 }
 
-// ─── L2: Runtime skip-check and script behavior steps ────────────────────────
-
-func (s *designPrepCtx) aTicketDescriptionReferencesDesignDoc(docPath string) error {
-	return errors.New("pending: L2 runtime implementation")
+func (s *verticalDesignPrepCtx) verticalWorkflowWireGoesTo(fromStep, onResult, toStep string) error {
+	wf, ok := s.parsedWorkflows["vertical"]
+	if !ok {
+		return fmt.Errorf("workflow %q not found in vertical.cloche", "main")
+	}
+	for _, w := range wf.Wiring {
+		if w.From == fromStep && w.Result == onResult {
+			if w.To != toStep {
+				return fmt.Errorf("wire from %q on %q goes to %q, want %q", fromStep, onResult, w.To, toStep)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("no wire from %q on %q found in the main vertical workflow", fromStep, onResult)
 }
 
-func (s *designPrepCtx) thatDesignDocExistsWithStatus(status string) error {
-	return errors.New("pending: L2 runtime implementation")
+func (s *verticalDesignPrepCtx) addressDesignFeedbackHasMaxAttempts(stepName string, maxAttempts int) error {
+	wf, ok := s.parsedWorkflows["vertical"]
+	if !ok {
+		return fmt.Errorf("workflow %q not found in vertical.cloche", "main")
+	}
+	step, exists := wf.Steps[stepName]
+	if !exists {
+		return fmt.Errorf("step %q not found in the main vertical workflow", stepName)
+	}
+	got, ok := step.Config["max_attempts"]
+	if !ok {
+		return fmt.Errorf("step %q has no max_attempts configured", stepName)
+	}
+	if got != strconv.Itoa(maxAttempts) {
+		return fmt.Errorf("step %q max_attempts = %s, want %d", stepName, got, maxAttempts)
+	}
+	return nil
 }
 
-func (s *designPrepCtx) aTicketDescriptionWithNoDocsPlansReference() error {
-	return errors.New("pending: L2 runtime implementation")
+// ─── L2: Skip-check classifier steps ─────────────────────────────────────────
+
+func (s *verticalDesignPrepCtx) aDesignCheckTicketDescriptionReferencing(docPath string) error {
+	s.designDocPath = docPath
+	s.ticketDescription = "This feature ships Phase 0.5. See " + docPath + " for the design."
+	return nil
 }
 
-func (s *designPrepCtx) checkDesignNeededEvaluatesTheTicket() error {
-	return errors.New("pending: L2 runtime implementation")
+func (s *verticalDesignPrepCtx) aDesignCheckTicketDescriptionWithNoDocsPlanReference() error {
+	s.ticketDescription = "Simple feature with no design doc reference."
+	s.designDocPath = ""
+	return nil
 }
 
-func (s *designPrepCtx) theCheckDesignNeededResultIs(result string) error {
-	return errors.New("pending: L2 runtime implementation")
+func (s *verticalDesignPrepCtx) thatDesignDocFileExistsAndContainsApproved(keyword string) error {
+	return godog.ErrPending
 }
 
-func (s *designPrepCtx) aDesignDocContaining(content *godog.DocString) error {
-	return errors.New("pending: L2 runtime implementation")
+func (s *verticalDesignPrepCtx) thatDesignDocFileExistsButDoesNotContain(keyword string) error {
+	return godog.ErrPending
 }
 
-func (s *designPrepCtx) theDesignPRIsOpened() error {
-	return errors.New("pending: L2 runtime implementation")
+func (s *verticalDesignPrepCtx) theDesignNeededClassifierRuns() error {
+	return godog.ErrPending
 }
 
-func (s *designPrepCtx) thePRBodyContains(text string) error {
-	return errors.New("pending: L2 runtime implementation")
+func (s *verticalDesignPrepCtx) theClassifierResultIs(result string) error {
+	return godog.ErrPending
 }
 
-func (s *designPrepCtx) aVerticalStackWhereDesignBranchExistsOnRemote() error {
-	return errors.New("pending: L2 runtime implementation")
+// ─── L2: Script behavior steps ───────────────────────────────────────────────
+
+func (s *verticalDesignPrepCtx) aVerticalFeatureNamed(featureName string) error {
+	s.featureName = featureName
+	return nil
 }
 
-func (s *designPrepCtx) finalizeRuns() error {
-	return errors.New("pending: L2 runtime implementation")
+func (s *verticalDesignPrepCtx) theRemoteHasABranch(branchName string) error {
+	s.remoteHasBranches = append(s.remoteHasBranches, branchName)
+	return nil
 }
 
-func (s *designPrepCtx) theMergeOrderBeginsWithDesignBranch() error {
-	return errors.New("pending: L2 runtime implementation")
+func (s *verticalDesignPrepCtx) theKVStoreHasKeySetTo(key, value string) error {
+	s.kvStore[key] = value
+	return nil
 }
 
-func (s *designPrepCtx) theDesignBranchIsMergedBeforeTestPlanBranch() error {
-	return errors.New("pending: L2 runtime implementation")
+func (s *verticalDesignPrepCtx) verticalFinalizeRunsFor(featureName string) error {
+	return godog.ErrPending
+}
+
+func (s *verticalDesignPrepCtx) theDesignBranchIsMergedBeforeTestPlan() error {
+	return godog.ErrPending
+}
+
+func (s *verticalDesignPrepCtx) thePrepareTestPlanBranchScriptRunsFor(featureName string) error {
+	return godog.ErrPending
+}
+
+func (s *verticalDesignPrepCtx) theNewTestPlanBranchIsCreatedOff(baseBranch string) error {
+	return godog.ErrPending
 }
 
 // ─── Step registration ────────────────────────────────────────────────────────
 
 func initVerticalDesignPrepScenarios(ctx *godog.ScenarioContext) {
-	s := &designPrepCtx{}
+	s := &verticalDesignPrepCtx{kvStore: make(map[string]string)}
 	ctx.Before(func(_ context.Context, _ *godog.Scenario) (context.Context, error) {
 		s.reset()
 		return nil, nil
 	})
 
-	// L1: DSL parsing
-	ctx.Step(`^a vertical DSL file containing the Phase 0\.5 check-design-needed step$`, s.aVerticalDSLFileContainingPhase05Step)
-	ctx.Step(`^the design-prep DSL file is validated$`, s.theDesignPrepDSLFileIsValidated)
-	ctx.Step(`^no design-prep validation error is returned$`, s.noDesignPrepValidationErrorIsReturned)
-	ctx.Step(`^in the design-prep workflow "([^"]*)" on "([^"]*)" routes to "([^"]*)"$`, s.inDesignPrepWorkflowStepRoutesTo)
-	ctx.Step(`^in the design-prep workflow step "([^"]*)" has max_attempts of (\d+)$`, s.inDesignPrepWorkflowStepHasMaxAttempts)
+	// L1: DSL topology
+	ctx.Step(`^the vertical workflow DSL$`, s.theVerticalWorkflowDSL)
+	ctx.Step(`^the vertical DSL is parsed$`, s.theVerticalDSLIsParsed)
+	ctx.Step(`^no vertical DSL parse error is returned$`, s.noVerticalDSLParseError)
+	ctx.Step(`^the vertical workflow contains step "([^"]*)"$`, s.verticalWorkflowContainsStep)
+	ctx.Step(`^in the vertical workflow the wire from "([^"]*)" on "([^"]*)" goes to "([^"]*)"$`, s.verticalWorkflowWireGoesTo)
+	ctx.Step(`^step "([^"]*)" in the vertical workflow has max_attempts of (\d+)$`, s.addressDesignFeedbackHasMaxAttempts)
 
-	// L2: Runtime skip-check
-	ctx.Step(`^a ticket description that references "([^"]*)"$`, s.aTicketDescriptionReferencesDesignDoc)
-	ctx.Step(`^that design doc exists with status "([^"]*)"$`, s.thatDesignDocExistsWithStatus)
-	ctx.Step(`^a ticket description with no docs/plans reference$`, s.aTicketDescriptionWithNoDocsPlansReference)
-	ctx.Step(`^check-design-needed evaluates the ticket$`, s.checkDesignNeededEvaluatesTheTicket)
-	ctx.Step(`^the check-design-needed result is "([^"]*)"$`, s.theCheckDesignNeededResultIs)
+	// L2: Skip-check classifier
+	ctx.Step(`^a design-check ticket description referencing "([^"]*)"$`, s.aDesignCheckTicketDescriptionReferencing)
+	ctx.Step(`^a design-check ticket description with no docs/plans reference$`, s.aDesignCheckTicketDescriptionWithNoDocsPlanReference)
+	ctx.Step(`^that design doc file exists and contains "([^"]*)"$`, s.thatDesignDocFileExistsAndContainsApproved)
+	ctx.Step(`^that design doc file exists but does not contain "([^"]*)"$`, s.thatDesignDocFileExistsButDoesNotContain)
+	ctx.Step(`^the design-needed classifier runs$`, s.theDesignNeededClassifierRuns)
+	ctx.Step(`^the classifier result is "([^"]*)"$`, s.theClassifierResultIs)
 
-	// L2: PR body
-	ctx.Step(`^a design doc containing:$`, s.aDesignDocContaining)
-	ctx.Step(`^the design PR is opened$`, s.theDesignPRIsOpened)
-	ctx.Step(`^the PR body contains "([^"]*)"$`, s.thePRBodyContains)
-
-	// L2: Finalize merge order
-	ctx.Step(`^a vertical stack where the design branch exists on the remote$`, s.aVerticalStackWhereDesignBranchExistsOnRemote)
-	ctx.Step(`^finalize runs$`, s.finalizeRuns)
-	ctx.Step(`^the merge order begins with the design branch$`, s.theMergeOrderBeginsWithDesignBranch)
-	ctx.Step(`^the design branch is merged before the test-plan branch$`, s.theDesignBranchIsMergedBeforeTestPlanBranch)
+	// L2: Script behaviors
+	ctx.Step(`^a vertical feature named "([^"]*)"$`, s.aVerticalFeatureNamed)
+	ctx.Step(`^the remote has a branch "([^"]*)"$`, s.theRemoteHasABranch)
+	ctx.Step(`^the KV store has "([^"]*)" set to "([^"]*)"$`, s.theKVStoreHasKeySetTo)
+	ctx.Step(`^vertical-finalize runs for "([^"]*)"$`, s.verticalFinalizeRunsFor)
+	ctx.Step(`^the design branch is merged before the test-plan branch$`, s.theDesignBranchIsMergedBeforeTestPlan)
+	ctx.Step(`^the prepare-test-plan-branch script runs for "([^"]*)"$`, s.thePrepareTestPlanBranchScriptRunsFor)
+	ctx.Step(`^the new test-plan branch is created off "([^"]*)"$`, s.theNewTestPlanBranchIsCreatedOff)
 }
-
-// suppress unused import warning during the pending phase
-var _ = strings.Contains

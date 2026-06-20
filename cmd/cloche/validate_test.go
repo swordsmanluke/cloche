@@ -19,7 +19,7 @@ func setupValidProject(t *testing.T) string {
 concurrency = 2
 `), 0644)
 
-	os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(`workflow develop {
+	os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(`workflow "develop" {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
@@ -98,7 +98,7 @@ func TestValidateProject_UnwiredResult(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "test.cloche"), []byte(`workflow test {
+	os.WriteFile(filepath.Join(clocheDir, "test.cloche"), []byte(`workflow "test" {
   step a {
     run = "echo hello"
     results = [success, fail]
@@ -123,7 +123,7 @@ func TestValidateProject_OrphanStep(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "test.cloche"), []byte(`workflow test {
+	os.WriteFile(filepath.Join(clocheDir, "test.cloche"), []byte(`workflow "test" {
   step a {
     run = "echo a"
     results = [success]
@@ -153,7 +153,7 @@ func TestValidateProject_MissingPromptFile(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "test.cloche"), []byte(`workflow test {
+	os.WriteFile(filepath.Join(clocheDir, "test.cloche"), []byte(`workflow "test" {
   step impl {
     prompt = file("prompts/missing.md")
     results = [success, fail]
@@ -179,7 +179,7 @@ func TestValidateProject_MissingScript(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "test.cloche"), []byte(`workflow test {
+	os.WriteFile(filepath.Join(clocheDir, "test.cloche"), []byte(`workflow "test" {
   step prep {
     run = "bash .cloche/scripts/missing.sh"
     results = [success, fail]
@@ -230,7 +230,7 @@ func TestValidateProject_CrossFileWorkflowRef(t *testing.T) {
 	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`active = true`), 0644)
 
 	// Host workflow references a workflow that doesn't exist
-	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow main {
+	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow "main" {
   host {}
   step dev {
     workflow_name = "nonexistent"
@@ -259,7 +259,7 @@ func TestValidateProject_ValidHostWithContainerRef(t *testing.T) {
 
 	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`active = true`), 0644)
 
-	os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(`workflow develop {
+	os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(`workflow "develop" {
   step impl {
     run = "echo go"
     results = [success, fail]
@@ -268,7 +268,7 @@ func TestValidateProject_ValidHostWithContainerRef(t *testing.T) {
   impl:fail -> abort
 }`), 0644)
 
-	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow main {
+	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow "main" {
   host {}
   step dev {
     workflow_name = "develop"
@@ -289,7 +289,7 @@ func TestValidateProject_DuplicateWorkflowAcrossFiles(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	wfContent := []byte(`workflow dup {
+	wfContent := []byte(`workflow "dup" {
   step a {
     run = "echo a"
     results = [success]
@@ -358,7 +358,7 @@ func TestValidateProject_ValidScriptRef(t *testing.T) {
 
 	os.WriteFile(filepath.Join(clocheDir, "scripts", "prepare.sh"), []byte("#!/bin/bash\necho hi"), 0644)
 
-	os.WriteFile(filepath.Join(clocheDir, "test.cloche"), []byte(`workflow test {
+	os.WriteFile(filepath.Join(clocheDir, "test.cloche"), []byte(`workflow "test" {
   step prep {
     run = "bash .cloche/scripts/prepare.sh"
     results = [success, fail]
@@ -378,7 +378,7 @@ func TestValidateProject_NoConfigFile(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "test.cloche"), []byte(`workflow test {
+	os.WriteFile(filepath.Join(clocheDir, "test.cloche"), []byte(`workflow "test" {
   step a {
     run = "echo a"
     results = [success]
@@ -401,7 +401,7 @@ func TestValidateProject_ContainerID_MatchingConfig(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow dev {
+	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow "dev" {
   container {
     id = "shared"
     image = "myimage:latest"
@@ -413,7 +413,7 @@ func TestValidateProject_ContainerID_MatchingConfig(t *testing.T) {
   code:success -> done
 }`), 0644)
 
-	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow test {
+	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow "test" {
   container {
     id = "shared"
     image = "myimage:latest"
@@ -437,7 +437,7 @@ func TestValidateProject_ContainerID_OneFullOneIDOnly(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow dev {
+	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow "dev" {
   container {
     id = "shared"
     image = "myimage:latest"
@@ -449,7 +449,7 @@ func TestValidateProject_ContainerID_OneFullOneIDOnly(t *testing.T) {
   code:success -> done
 }`), 0644)
 
-	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow test {
+	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow "test" {
   container {
     id = "shared"
   }
@@ -472,7 +472,7 @@ func TestValidateProject_ContainerID_AllIDOnly(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow dev {
+	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow "dev" {
   container {
     id = "shared"
   }
@@ -483,7 +483,7 @@ func TestValidateProject_ContainerID_AllIDOnly(t *testing.T) {
   code:success -> done
 }`), 0644)
 
-	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow test {
+	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow "test" {
   container {
     id = "shared"
   }
@@ -506,7 +506,7 @@ func TestValidateProject_ContainerID_ConflictingConfig(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow dev {
+	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow "dev" {
   container {
     id = "shared"
     image = "image-a:latest"
@@ -518,7 +518,7 @@ func TestValidateProject_ContainerID_ConflictingConfig(t *testing.T) {
   code:success -> done
 }`), 0644)
 
-	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow test {
+	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow "test" {
   container {
     id = "shared"
     image = "image-b:latest"
@@ -548,7 +548,7 @@ func TestValidateProject_ContainerID_DefaultSharedValid(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow dev {
+	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow "dev" {
   container {
     image = "myimage:latest"
   }
@@ -559,7 +559,7 @@ func TestValidateProject_ContainerID_DefaultSharedValid(t *testing.T) {
   code:success -> done
 }`), 0644)
 
-	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow test {
+	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow "test" {
   step run {
     run = "echo b"
     results = [success]
@@ -579,7 +579,7 @@ func TestValidateProject_ContainerID_DefaultConflict(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow dev {
+	os.WriteFile(filepath.Join(clocheDir, "a.cloche"), []byte(`workflow "dev" {
   container {
     image = "image-a:latest"
   }
@@ -590,7 +590,7 @@ func TestValidateProject_ContainerID_DefaultConflict(t *testing.T) {
   code:success -> done
 }`), 0644)
 
-	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow test {
+	os.WriteFile(filepath.Join(clocheDir, "b.cloche"), []byte(`workflow "test" {
   container {
     image = "image-b:latest"
   }

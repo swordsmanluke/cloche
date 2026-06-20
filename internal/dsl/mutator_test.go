@@ -8,7 +8,7 @@ import (
 )
 
 func TestMutatorAddStep(t *testing.T) {
-	input := `workflow develop {
+	input := `workflow "develop" {
   step test {
     run = "make test"
     results = [success, fail]
@@ -38,7 +38,7 @@ func TestMutatorAddStep(t *testing.T) {
 }
 
 func TestMutatorAddStepAgent(t *testing.T) {
-	input := `workflow develop {
+	input := `workflow "develop" {
   step test {
     run = "make test"
     results = [success, fail]
@@ -67,7 +67,7 @@ func TestMutatorAddStepAgent(t *testing.T) {
 }
 
 func TestMutatorAddWiring(t *testing.T) {
-	input := `workflow develop {
+	input := `workflow "develop" {
   step test {
     run = "make test"
     results = [success, fail]
@@ -95,12 +95,12 @@ func TestMutatorAddWiring(t *testing.T) {
 
 	wf, err := Parse(result)
 	require.NoError(t, err)
-	// Original 2 wires + 3 new = 5, plus 2 implicit timeout->abort wires = 7
-	assert.Len(t, wf.Wiring, 7)
+	// Original 2 wires + 3 new = 5, plus 2 implicit timeout->abort + 2 implicit token-limit->abort wires = 9
+	assert.Len(t, wf.Wiring, 9)
 }
 
 func TestMutatorRewireResult(t *testing.T) {
-	input := `workflow develop {
+	input := `workflow "develop" {
   step test {
     run = "make test"
     results = [success, fail]
@@ -136,7 +136,7 @@ func TestMutatorRewireResult(t *testing.T) {
 }
 
 func TestMutatorRewireResultNotFound(t *testing.T) {
-	input := `workflow develop {
+	input := `workflow "develop" {
   step test {
     run = "make test"
     results = [success, fail]
@@ -153,7 +153,7 @@ func TestMutatorRewireResultNotFound(t *testing.T) {
 }
 
 func TestMutatorUpdateCollect(t *testing.T) {
-	input := `workflow develop {
+	input := `workflow "develop" {
   step test {
     run = "make test"
     results = [success, fail]

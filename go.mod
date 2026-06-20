@@ -4,7 +4,6 @@ go 1.25.3
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/cucumber/godog v0.15.1
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/grpc v1.79.1
 	google.golang.org/protobuf v1.36.11
@@ -13,6 +12,7 @@ require (
 
 require (
 	github.com/cucumber/gherkin/go/v26 v26.2.0 // indirect
+	github.com/cucumber/godog v0.15.1 // indirect
 	github.com/cucumber/messages/go/v21 v21.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect

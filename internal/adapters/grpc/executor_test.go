@@ -438,7 +438,7 @@ func TestDaemonExecutor_ProductionWiring(t *testing.T) {
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 
 	// Host workflow: script step → workflow_name step dispatching "develop"
-	hostCloche := `workflow main {
+	hostCloche := `workflow "main" {
   host {}
 
   step setup {
@@ -459,7 +459,7 @@ func TestDaemonExecutor_ProductionWiring(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
 
 	// Container workflow targeted by the workflow_name step
-	containerCloche := `workflow develop {
+	containerCloche := `workflow "develop" {
   step build {
     run     = "echo building"
     results = [success, fail]
