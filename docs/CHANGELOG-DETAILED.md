@@ -1,5 +1,17 @@
 # Cloche Detailed Changelog
 
+## Unreleased
+
+### Features
+
+- Vertical workflow: removed all human-approved PR gates. The three gate pairs (`open-test-plan-pr`/`poll-test-plan-pr`, `open-pr`/`poll-pr`, `open-docs-pr`/`poll-docs-pr`) and their corresponding `address-*-feedback` steps are replaced by `publish-test-plan`, `publish-layer`, and `publish-docs` script steps that push the branch to origin and advance immediately. The `address-pr-feedback` container sub-workflow is removed entirely.
+- `check-layer-status` step added after `publish-layer`: reads `implement_status` KV; `ok` continues to `close-layer`; `stuck` prints the `stuck-report.md` from `temp_file_dir` to logs then routes to job failure (`unclaim`) so a human investigates. The partial work is on the published branch.
+- `document-stuck` step added to `implement-vertical-layer` sub-workflow: every stuck path (implement/verify/fix/self-review fail or give-up) routes through `document-stuck` first to consolidate any earlier give-up note into a single help-needed report before `mark-stuck`.
+- `finalize` rewritten: builds the full branch stack (test-plan → closed layers in creation order → docs), rebases the top-of-stack branch onto `origin/<base>` (handles base movement during the run), fast-forward-merges base to the rebased top, pushes base, then deletes all stack branches from origin. On rebase conflict, fails loudly with manual-resolution instructions. Removed the `git merge --squash` + single-commit approach.
+- `vertical-publish-branch.sh` new script (replaces `vertical-open-*-pr.sh`, `vertical-push.sh`): pushes a named stack branch to origin for a given phase (`test-plan` | `layer` | `docs`); uses `rename_extracted_to` to translate the daemon's extraction branch name back to the expected stack name.
+- `vertical-check-layer-status.sh` new script: implements the `check-layer-status` step logic described above.
+- `vertical-document-stuck.md` new prompt: consolidates any earlier give-up or partial notes into a concise self-contained `stuck-report.md` for the human investigator.
+
 ## v3.15.14 — 2026-05-21
 
 ### Fixes

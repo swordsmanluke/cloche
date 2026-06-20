@@ -1,5 +1,11 @@
 # Cloche Changelog
 
+## Unreleased
+
+### Features
+
+- **Vertical workflow: no PR gates.** The test-plan, layer, and docs phases now push their branches directly to origin and advance automatically; the `open-*-pr` / `poll-*-pr` / `address-*-feedback` steps and the `address-pr-feedback` sub-workflow have been removed. Stuck layers fail the job immediately with a `document-stuck` help-needed report surfaced in `cloche logs`, rather than opening a stalled PR. `finalize` now fast-forward-merges the rebased stack into the base branch and deletes the stack branches from origin. ([design](docs/design/vertical-workflow.md))
+
 ## v3.15.14 — 2026-05-21
 
 ### Notable fixes
