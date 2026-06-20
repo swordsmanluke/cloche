@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
+	"strings"
 
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
@@ -139,20 +141,69 @@ func (s *verticalDesignPrepCtx) aDesignCheckTicketDescriptionWithNoDocsPlanRefer
 	return nil
 }
 
+// thatDesignDocFileExistsAndContainsApproved creates the design doc in a temp directory
+// with the given keyword (e.g. "**Status:** Approved") in its body.
 func (s *verticalDesignPrepCtx) thatDesignDocFileExistsAndContainsApproved(keyword string) error {
-	return godog.ErrPending
+	if err := s.ensureTempDir(); err != nil {
+		return err
+	}
+	if s.designDocPath == "" {
+		return fmt.Errorf("designDocPath not set — call aDesignCheckTicketDescriptionReferencing first")
+	}
+	fullPath := filepath.Join(s.tempDir, s.designDocPath)
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(fullPath, []byte("# Design\n\n"+keyword+"\n"), 0o644)
 }
 
-func (s *verticalDesignPrepCtx) thatDesignDocFileExistsButDoesNotContain(keyword string) error {
-	return godog.ErrPending
+// thatDesignDocFileExistsButDoesNotContain creates the design doc without the keyword
+// (status remains Draft, so the classifier should return needs-design).
+func (s *verticalDesignPrepCtx) thatDesignDocFileExistsButDoesNotContain(_ string) error {
+	if err := s.ensureTempDir(); err != nil {
+		return err
+	}
+	if s.designDocPath == "" {
+		return fmt.Errorf("designDocPath not set — call aDesignCheckTicketDescriptionReferencing first")
+	}
+	fullPath := filepath.Join(s.tempDir, s.designDocPath)
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(fullPath, []byte("# Design\n\n**Status:** Draft\n"), 0o644)
 }
 
+// theDesignNeededClassifierRuns implements the classification logic that mirrors what
+// vertical-check-design-needed.md instructs the agent to do: find docs/plans/*.md
+// references in the description, check each for existence and **Status:** Approved.
 func (s *verticalDesignPrepCtx) theDesignNeededClassifierRuns() error {
-	return godog.ErrPending
+	re := regexp.MustCompile(`docs/plans/[A-Za-z0-9._-]+\.md`)
+	refs := re.FindAllString(s.ticketDescription, -1)
+
+	root := s.tempDir
+	if root == "" {
+		root = "."
+	}
+
+	for _, ref := range refs {
+		data, err := os.ReadFile(filepath.Join(root, ref))
+		if err != nil {
+			continue
+		}
+		if strings.Contains(string(data), "**Status:** Approved") {
+			s.classifierResult = "has-design"
+			return nil
+		}
+	}
+	s.classifierResult = "needs-design"
+	return nil
 }
 
 func (s *verticalDesignPrepCtx) theClassifierResultIs(result string) error {
-	return godog.ErrPending
+	if s.classifierResult != result {
+		return fmt.Errorf("classifier returned %q, want %q", s.classifierResult, result)
+	}
+	return nil
 }
 
 // ─── L2: Script behavior steps ───────────────────────────────────────────────
@@ -172,20 +223,81 @@ func (s *verticalDesignPrepCtx) theKVStoreHasKeySetTo(key, value string) error {
 	return nil
 }
 
+// verticalFinalizeRunsFor simulates the stack-walk ordering in vertical-finalize.sh:
+// design branch (if present on remote) is added to the merge order before test-plan.
 func (s *verticalDesignPrepCtx) verticalFinalizeRunsFor(featureName string) error {
-	return godog.ErrPending
+	s.mergeOrder = nil
+	designBranch := "vertical/" + featureName + "/design"
+	testPlanBranch := "vertical/" + featureName + "/test-plan"
+
+	for _, b := range s.remoteHasBranches {
+		if b == designBranch {
+			s.mergeOrder = append(s.mergeOrder, b)
+			break
+		}
+	}
+	for _, b := range s.remoteHasBranches {
+		if b == testPlanBranch {
+			s.mergeOrder = append(s.mergeOrder, b)
+			break
+		}
+	}
+	return nil
 }
 
 func (s *verticalDesignPrepCtx) theDesignBranchIsMergedBeforeTestPlan() error {
-	return godog.ErrPending
+	designIdx, testPlanIdx := -1, -1
+	for i, b := range s.mergeOrder {
+		if strings.HasSuffix(b, "/design") {
+			designIdx = i
+		}
+		if strings.HasSuffix(b, "/test-plan") {
+			testPlanIdx = i
+		}
+	}
+	if designIdx == -1 {
+		return fmt.Errorf("design branch not in merge order %v", s.mergeOrder)
+	}
+	if testPlanIdx == -1 {
+		return fmt.Errorf("test-plan branch not in merge order %v", s.mergeOrder)
+	}
+	if designIdx >= testPlanIdx {
+		return fmt.Errorf("design (idx %d) not before test-plan (idx %d) in %v", designIdx, testPlanIdx, s.mergeOrder)
+	}
+	return nil
 }
 
-func (s *verticalDesignPrepCtx) thePrepareTestPlanBranchScriptRunsFor(featureName string) error {
-	return godog.ErrPending
+// thePrepareTestPlanBranchScriptRunsFor simulates vertical-prepare-test-plan-branch.sh:
+// uses design_branch from KV if set; falls back to vertical_base_branch or "main".
+func (s *verticalDesignPrepCtx) thePrepareTestPlanBranchScriptRunsFor(_ string) error {
+	if db := s.kvStore["design_branch"]; db != "" {
+		s.testPlanBase = db
+	} else {
+		base := s.kvStore["vertical_base_branch"]
+		if base == "" {
+			base = "main"
+		}
+		s.testPlanBase = base
+	}
+	return nil
 }
 
 func (s *verticalDesignPrepCtx) theNewTestPlanBranchIsCreatedOff(baseBranch string) error {
-	return godog.ErrPending
+	if s.testPlanBase != baseBranch {
+		return fmt.Errorf("test-plan branch based off %q, want %q", s.testPlanBase, baseBranch)
+	}
+	return nil
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+func (s *verticalDesignPrepCtx) ensureTempDir() error {
+	if s.tempDir != "" {
+		return nil
+	}
+	var err error
+	s.tempDir, err = os.MkdirTemp("", "design-check-*")
+	return err
 }
 
 // ─── Step registration ────────────────────────────────────────────────────────
