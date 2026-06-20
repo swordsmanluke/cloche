@@ -19,9 +19,11 @@ cd cloche
 make install
 ```
 
-`make install` builds all three binaries (`cloche`, `cloched`, `cloche-agent`),
-builds the `cloche-agent:latest` Docker image, installs the binaries to
-`~/.local/bin/`, and starts the daemon. You can change the install prefix:
+`make install` builds all four binaries (`cloche`, `cloched`, `cloche-agent`, `clo`),
+builds the `cloche-agent:latest` Docker image, installs `cloche`, `cloched`, and
+`cloche-agent` to `~/.local/bin/`, and starts the daemon. (`clo` is baked into
+container images and is not installed to the host prefix.) You can change the install
+prefix:
 
 ```
 make install PREFIX=/usr/local
@@ -35,17 +37,17 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ### Build Requirements
 
-- Go 1.25+
+- Go 1.25.3+
 
 ## `go install`
 
 If you have Go installed, you can install the binaries directly:
 
 ```
-go install github.com/swordsmanluke/cloche/cmd/cloche@latest
-go install github.com/swordsmanluke/cloche/cmd/cloched@latest
-go install github.com/swordsmanluke/cloche/cmd/cloche-agent@latest
-go install github.com/swordsmanluke/cloche/cmd/clo@latest
+go install github.com/cloche-dev/cloche/cmd/cloche@latest
+go install github.com/cloche-dev/cloche/cmd/cloched@latest
+go install github.com/cloche-dev/cloche/cmd/cloche-agent@latest
+go install github.com/cloche-dev/cloche/cmd/clo@latest
 ```
 
 This places the binaries in `$GOPATH/bin` (or `$HOME/go/bin` by default).

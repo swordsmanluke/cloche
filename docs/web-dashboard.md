@@ -30,8 +30,9 @@ Choose any available port. For a specific interface:
 http = "127.0.0.1:8080"
 ```
 
-The CLI commands `cloche tasks` and `cloche health` also require `CLOCHE_HTTP` to be set,
-since they talk to the daemon's HTTP API.
+The CLI command `cloche health` also requires `CLOCHE_HTTP` to be set, since it talks
+to the daemon's HTTP API. `cloche tasks` falls back to `localhost:8080` when `CLOCHE_HTTP`
+is unset.
 
 ---
 
@@ -187,12 +188,12 @@ Shows the state of the Docker container for this run:
 | State | Meaning |
 |-------|---------|
 | Container running | The run is active. |
-| Container stopped | The run ended but the container is retained. |
-| Container available | Container is retained and can be inspected. |
+| Container stopped | The run ended and the container was not retained (already cleaned up or will be). |
+| Container available | The run ended and the container is retained; it can be inspected or deleted. |
 | Container removed | The container has been deleted. |
 
-A **Delete container** button appears when the container is retained (stopped or
-available). Use it to free disk space once you no longer need the container.
+A **Delete container** button appears when the container is retained (`available`). Use
+it to free disk space once you no longer need the container.
 
 #### Cancelling a Run
 

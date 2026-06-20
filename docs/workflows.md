@@ -264,27 +264,10 @@ a deprecation warning per step. Prefer `{{ $task_description }}` and `{{ $prev_o
 
 ## Repository Declarations
 
-Repositories are configured in `.cloche/config.toml` as `[[repositories]]` entries.
-Within `.cloche` files, top-level `repository` blocks annotate each repository with a
-remote URL:
+Repositories are configured in `.cloche/config.toml` as `[[repositories]]` entries, not
+in `.cloche` workflow files. There is no `repository` DSL block.
 
-```
-repository "backend" {
-  path = "./repos/backend"
-  url  = "https://github.com/example/backend"
-}
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `path` | yes | Path relative to the project root. |
-| `url` | no | Remote URL (informational). |
-
-Repository blocks are top-level constructs, not nested inside `workflow` blocks.
-They must not appear in files that also contain `workflow` blocks, as the parser
-expects each top-level declaration to begin with the `workflow` keyword.
-
-**Workflow-level `repos` field** — workflows can declare which repositories they use:
+Workflows can declare which repositories they use via the `repos` field:
 
 ```
 workflow "develop-backend" {
@@ -293,8 +276,8 @@ workflow "develop-backend" {
 }
 ```
 
-`repos` is a list of repository names. It documents intent and surfaces in
-`cloche project`; the runtime does not enforce it.
+`repos` is a list of repository names matching entries in `config.toml`. It documents
+intent and surfaces in `cloche project`; the runtime does not enforce it.
 
 ## Key Properties
 
@@ -330,6 +313,46 @@ collect any(lint:success, quality:success) -> done
 ```
 
 `all` fires when every condition is met. `any` fires when at least one is.
+
+## Token Limits
+
+Cloche can automatically abort a run when an agent exhausts a token budget. Token limits
+are injected implicitly — every step automatically gains a `token-limit` result and wire
+that routes to `abort` unless overridden.
+
+**Workflow-level token limit** — set a per-run token budget at the top of a `workflow`
+block:
+
+```
+workflow "develop" {
+  token-limit = 100000
+  ...
+}
+```
+
+This stores the budget in `wf.Config["token-limit"]` and is available to the runtime.
+
+**Step-level token limit** — override the budget for a specific step:
+
+```
+step implement {
+  prompt      = file(".cloche/prompts/implement.md")
+  token-limit = 50000
+  results     = [success, fail]
+}
+```
+
+**Overriding the abort target** — by default, a token-limit event routes to `abort`. Use
+a global wire directive to redirect it to a different step (e.g. a cleanup or summary
+step):
+
+```
+token-limit -> release-task
+```
+
+This directive appears at the workflow level alongside other wiring lines, not inside a
+`step` block. When set, every step whose `token-limit` result has not been wired
+explicitly will route to `release-task` instead of `abort`.
 
 ## Workflow-Level Configuration Blocks
 
