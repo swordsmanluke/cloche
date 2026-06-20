@@ -2,8 +2,6 @@ package features_test
 
 import (
 	"errors"
-	"os"
-	"testing"
 
 	"github.com/cucumber/godog"
 )
@@ -88,21 +86,3 @@ func neitherExtractionFails() error {
 	return errors.New("pending: L1 implementation")
 }
 
-func TestMain(m *testing.M) {
-	opts := godog.Options{
-		Format: "pretty",
-		Paths:  []string{"."},
-	}
-
-	status := godog.TestSuite{
-		Name:                "extract-base-sha-reresolution",
-		ScenarioInitializer: InitializeScenario,
-		Options:             &opts,
-	}.Run()
-
-	if st := m.Run(); st > status {
-		status = st
-	}
-
-	os.Exit(status)
-}

@@ -98,9 +98,9 @@ func (r *Resolver) evalDirective(ctx context.Context, body string) (string, erro
 
 	case strings.HasPrefix(body, "@"):
 		pathTemplate := strings.TrimSpace(body[1:])
-		// Resolve {{ $name }} and bare $name references in the path
-		// (e.g. {{@ $temp_file_dir/data.csv }} or {{@ {{ $step_name }}.txt }}).
-		resolved, err := r.resolveVarsInPath(ctx, pathTemplate)
+		// Resolve bare $name references in the path
+		// (e.g. {{@ $temp_file_dir/data.csv }}).
+		resolved, err := r.resolveBareVars(ctx, pathTemplate)
 		if err != nil {
 			return "", err
 		}
@@ -190,48 +190,6 @@ func (r *Resolver) resolveBareVars(ctx context.Context, s string) (string, error
 		i = j
 	}
 	return b.String(), nil
-}
-
-// resolveVarsInPath resolves {{ $name }} and bare $name references in a file
-// path template. Unlike resolveBareVars used for shell directives, this fully
-// strips the {{ }} delimiters so the result is a clean path (e.g.
-// "{{ $step_name }}.txt" with step_name="analyze" → "analyze.txt").
-func (r *Resolver) resolveVarsInPath(ctx context.Context, s string) (string, error) {
-	// First pass: resolve {{ $name }} directives (strips the {{ }} delimiters).
-	var b strings.Builder
-	rest := s
-	for {
-		open := strings.Index(rest, "{{")
-		if open == -1 {
-			b.WriteString(rest)
-			break
-		}
-		b.WriteString(rest[:open])
-		after := rest[open+2:]
-		end := findDirectiveEnd(after)
-		if end == -1 {
-			b.WriteString("{{")
-			rest = after
-			continue
-		}
-		innerBody := strings.TrimSpace(after[:end])
-		if strings.HasPrefix(innerBody, "$") {
-			name := strings.TrimSpace(innerBody[1:])
-			val, err := r.lookupVar(ctx, name)
-			if err != nil {
-				return "", err
-			}
-			b.WriteString(val)
-		} else {
-			// Non-variable directive inside a path — pass through literally.
-			b.WriteString("{{")
-			b.WriteString(after[:end])
-			b.WriteString("}}")
-		}
-		rest = after[end+2:]
-	}
-	// Second pass: resolve any remaining bare $name references.
-	return r.resolveBareVars(ctx, b.String())
 }
 
 func isIdentChar(c byte, first bool) bool {

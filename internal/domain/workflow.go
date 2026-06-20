@@ -2,7 +2,6 @@ package domain
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -195,33 +194,6 @@ func (w *Workflow) Validate() error {
 		}
 	}
 
-	// Validate token-limit in step configs: must be an integer >= -1.
-	for name, step := range w.Steps {
-		if tl, ok := step.Config["token-limit"]; ok {
-			if err := validateTokenLimit(tl); err != nil {
-				return fmt.Errorf("workflow %q: step %q: %w", w.Name, name, err)
-			}
-		}
-	}
-
-	// Validate workflow-level token-limit: must be an integer >= -1.
-	if tl, ok := w.Config["token-limit"]; ok {
-		if err := validateTokenLimit(tl); err != nil {
-			return fmt.Errorf("workflow %q: %w", w.Name, err)
-		}
-	}
-
-	return nil
-}
-
-func validateTokenLimit(s string) error {
-	n, err := strconv.Atoi(s)
-	if err != nil {
-		return fmt.Errorf("token-limit must be an integer, got %q", s)
-	}
-	if n < -1 {
-		return fmt.Errorf("token-limit must be >= -1, got %d", n)
-	}
 	return nil
 }
 
@@ -260,7 +232,6 @@ var knownStepConfigKeys = map[string]bool{
 	"run":           true,
 	"max_attempts":  true,
 	"timeout":       true,
-	"token-limit":   true,
 	"agent_command": true,
 	"agent_args":    true,
 	"agent":         true,
