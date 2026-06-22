@@ -64,7 +64,7 @@ func TestRegression_HostWorkflow_StatusTransitions(t *testing.T) {
 func TestRegression_HostWorkflow_StepFailure(t *testing.T) {
 	env := NewTestEnv(t)
 
-	failWorkflow := `workflow "failing" {
+	failWorkflow := `workflow failing {
   host {}
 
   step bad-step {

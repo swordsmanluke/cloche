@@ -436,7 +436,7 @@ func TestOrchestratorReflectorProducesDuplicateLessons(t *testing.T) {
 	// lessonAlreadyPresent returns true and the curator skips the update.
 	kb := "# Knowledge Base: develop\n\n## Learned (2026-03-15)\n- [L001] high: Always sanitize user inputs (run-1, run-2)\n"
 	dir := setupOrchestratorDir(t,
-		`workflow "develop" {
+		`workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
@@ -481,7 +481,7 @@ func TestOrchestratorHandleNewStepAlreadyExists(t *testing.T) {
 	// existing step. The mutator's AddStep should fail because the
 	// workflow already contains a step with that name.
 	dir := setupOrchestratorDir(t,
-		`workflow "develop" {
+		`workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
@@ -536,7 +536,7 @@ func TestOrchestratorWorkflowValidAfterMultipleEvolutionCycles(t *testing.T) {
 	// Run N evolution cycles adding new steps and verify the workflow
 	// remains valid after each cycle.
 	dir := setupOrchestratorDir(t,
-		`workflow "develop" {
+		`workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
@@ -591,7 +591,7 @@ func TestOrchestratorErrorInOneLessonDoesNotPreventOthers(t *testing.T) {
 	// The `continue` on line 90 of orchestrator.go silently swallows errors.
 	// Verify that if one lesson fails, other lessons still get applied.
 	dir := setupOrchestratorDir(t,
-		`workflow "develop" {
+		`workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
@@ -649,7 +649,7 @@ func TestOrchestratorSavesToEvolutionStore(t *testing.T) {
 	// are produced. Note: with zero lessons the orchestrator returns early
 	// before the store-save path.
 	dir := setupOrchestratorDir(t,
-		`workflow "develop" {
+		`workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
@@ -697,7 +697,7 @@ func TestCollectorWithEvolutionStoreMock(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".cloche", "evolution", "knowledge"), 0755)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
-		[]byte(`workflow "develop" { step s { run = "echo hi" results = [success] } s:success -> done }`), 0644)
+		[]byte(`workflow develop { step s { run = "echo hi" results = [success] } s:success -> done }`), 0644)
 
 	runs := []*domain.Run{
 		{ID: "run-5", WorkflowName: "develop", ProjectDir: dir},
@@ -725,7 +725,7 @@ func TestCollectorListRunsSinceCalledWithCorrectRunID(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".cloche"), 0755)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
-		[]byte(`workflow "develop" { step s { run = "echo hi" results = [success] } s:success -> done }`), 0644)
+		[]byte(`workflow develop { step s { run = "echo hi" results = [success] } s:success -> done }`), 0644)
 
 	evoStore := &mockEvolutionStore{
 		lastEvolution: &ports.EvolutionEntry{
@@ -751,7 +751,7 @@ func TestCollectorListRunsSinceEmptyWhenNoLastEvolution(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".cloche"), 0755)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
-		[]byte(`workflow "develop" { step s { run = "echo hi" results = [success] } s:success -> done }`), 0644)
+		[]byte(`workflow develop { step s { run = "echo hi" results = [success] } s:success -> done }`), 0644)
 
 	// No last evolution — sinceRunID should be empty.
 	evoStore := &mockEvolutionStore{
@@ -771,7 +771,7 @@ func TestCollectorWithCaptureStoreMock(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, ".cloche"), 0755)
 	os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"),
-		[]byte(`workflow "develop" { step s { run = "echo hi" results = [success] } s:success -> done }`), 0644)
+		[]byte(`workflow develop { step s { run = "echo hi" results = [success] } s:success -> done }`), 0644)
 
 	runs := []*domain.Run{
 		{ID: "run-10", WorkflowName: "develop"},
@@ -809,7 +809,7 @@ func TestCollectorWithCaptureStoreMock(t *testing.T) {
 func TestIntegration_CorruptPromptDetectedAndFixed(t *testing.T) {
 	// Full cycle: corrupt a prompt → run evolution → verify it produces a fix.
 	dir := setupOrchestratorDir(t,
-		`workflow "develop" {
+		`workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
@@ -857,7 +857,7 @@ func TestIntegration_CorruptPromptDetectedAndFixed(t *testing.T) {
 func TestIntegration_StabilityNoCyclesNoDrift(t *testing.T) {
 	// Stability test: run N evolution cycles where the reflector finds no
 	// lessons. The workflow should remain unchanged.
-	workflow := `workflow "develop" {
+	workflow := `workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]
@@ -903,7 +903,7 @@ func TestIntegration_FullCycleWithStores(t *testing.T) {
 	// End-to-end with actual store mocks: collect → classify → reflect →
 	// apply → save to store.
 	dir := setupOrchestratorDir(t,
-		`workflow "develop" {
+		`workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]

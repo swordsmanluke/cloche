@@ -954,7 +954,7 @@ func TestAPIStepContent_FileRef(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "prompts"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "prompts", "implement.md"), []byte("Build the feature."), 0o644))
 
-	workflowContent := `workflow "develop" {
+	workflowContent := `workflow develop {
     step implement {
         prompt = file(".cloche/prompts/implement.md")
         results = [success, fail]
@@ -984,7 +984,7 @@ func TestAPIWorkflows_IncludesHostWorkflows(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
 
 	// Container workflow
-	containerWf := `workflow "develop" {
+	containerWf := `workflow develop {
     step implement {
         prompt = "Build it"
         results = [success, fail]
@@ -996,7 +996,7 @@ func TestAPIWorkflows_IncludesHostWorkflows(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"), []byte(containerWf), 0o644))
 
 	// Host workflow
-	hostWf := `workflow "main" {
+	hostWf := `workflow main {
     host {}
     step prepare {
         run = "echo prepare"
@@ -1044,7 +1044,7 @@ func TestAPIStepContent_HostWorkflow(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
 
-	hostWf := `workflow "main" {
+	hostWf := `workflow main {
     host {}
     step prepare {
         run = "echo hello"
@@ -1087,7 +1087,7 @@ func TestAPIStepContent_ScriptFileFromCommand(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "scripts"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "scripts", "setup.sh"), []byte("#!/bin/bash\necho setup"), 0o644))
 
-	hostWf := `workflow "main" {
+	hostWf := `workflow main {
     host {}
     step setup {
         run = "bash .cloche/scripts/setup.sh"
@@ -1116,7 +1116,7 @@ func TestAPIStepContent_InlineCommand(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
 
-	hostWf := `workflow "main" {
+	hostWf := `workflow main {
     host {}
     step test {
         run = "go test ./... 2>&1"
@@ -1151,7 +1151,7 @@ func TestAPIStepContent_BinaryFileNotServed(t *testing.T) {
 	binaryContent[1] = 0x00 // null byte makes it binary
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "test"), binaryContent, 0o755))
 
-	hostWf := `workflow "main" {
+	hostWf := `workflow main {
     host {}
     step test {
         run = "go test ./... 2>&1"
@@ -1181,7 +1181,7 @@ func TestAPIStepContent_FileRefOutsideScripts(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "some-script.sh"), []byte("#!/bin/bash\necho hi"), 0o644))
 
-	hostWf := `workflow "main" {
+	hostWf := `workflow main {
     host {}
     step build {
         run = file("some-script.sh")
@@ -1723,7 +1723,7 @@ func TestWorkflowAPI_ComplexGraph(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
 
 	// Complex workflow with branching: A -> B, A -> C, B -> done, C -> done, A -> abort
-	wf := `workflow "pipeline" {
+	wf := `workflow pipeline {
     step analyze {
         prompt = "Analyze the input"
         results = [pass, fail, error]
@@ -1787,8 +1787,8 @@ func TestWorkflowAPI_ComplexGraph(t *testing.T) {
 	assert.True(t, stepNames["transform"])
 	assert.True(t, stepNames["validate"])
 
-	// Should have 10 wires: 7 explicit + 3 implicit timeout->abort (one per step)
-	assert.Len(t, pipeline.Wires, 10)
+	// Should have 13 wires: 7 explicit + 3 implicit timeout->abort + 3 implicit token-limit->abort
+	assert.Len(t, pipeline.Wires, 13)
 
 	// Count terminal wires: should have wires to both done and abort
 	terminalTargets := map[string]int{}
@@ -1799,8 +1799,8 @@ func TestWorkflowAPI_ComplexGraph(t *testing.T) {
 	}
 	// transform:success->done, validate:success->done = 2 wires to done
 	assert.Equal(t, 2, terminalTargets["done"])
-	// analyze:error->abort, transform:fail->abort, validate:fail->abort = 3 explicit + 3 implicit timeout->abort = 6
-	assert.Equal(t, 6, terminalTargets["abort"])
+	// 3 explicit abort + 3 implicit timeout->abort + 3 implicit token-limit->abort = 9
+	assert.Equal(t, 9, terminalTargets["abort"])
 }
 
 func TestProjectDetail_RendersLayoutEngine(t *testing.T) {
@@ -1810,7 +1810,7 @@ func TestProjectDetail_RendersLayoutEngine(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
 
-	wf := `workflow "develop" {
+	wf := `workflow develop {
     step implement {
         prompt = "Build it"
         results = [success, fail]

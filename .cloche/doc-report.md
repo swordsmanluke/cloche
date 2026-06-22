@@ -28,21 +28,17 @@
 
 - **Lines ~272–273 (Repository Declarations)**: Says "`ParseAll` silently skips them [repository blocks]; `ParseRepositoriesFrom` reads only repository blocks from a file." Both claims are wrong: (1) `ParseRepositoriesFrom` does not exist anywhere in the codebase (grep of the entire repo returns no matches); (2) `ParseAll` in `internal/dsl/parser.go:77–99` calls `parseWorkflow()` in a loop which calls `expectIdent("workflow")`—encountering a `repository` token at top level would return an error, not silently skip it.
 
-- **Line ~86 vs line ~59 (Step type naming inconsistency)**: The Concepts table (line ~59) correctly lists the step as "`human` type" matching `domain.StepTypeHuman = "human"`. But the Step Types section (line ~86) boldfaces the name as "**poll**", and the Human Step section (lines ~538–539) also uses "poll step" as a synonym. These three names — `human`, `poll`, and "poll step" — refer to the same DSL construct but are used interchangeably with no explanation that they are synonyms. Source: `internal/domain/workflow.go` defines `StepTypeHuman StepType = "human"`; `internal/dsl/parser.go:431` assigns this type when a `poll` field is present.
-
 ## docs/SAFETY.md
 
 Verified against source. No concrete inaccuracies found.
 
 ## docs/web-dashboard.md
 
-- **Line ~33**: Says "The CLI commands `cloche tasks` and `cloche health` also require `CLOCHE_HTTP` to be set." This is incorrect for `cloche tasks`: `cmd/cloche/main.go:1149` shows it defaults to `localhost:8080` when `CLOCHE_HTTP` is unset. Only `cloche health` fails without `CLOCHE_HTTP` (verified at `cmd/cloche/health.go:42–46`). The hint on error at `main.go:1173` mentions setting `CLOCHE_HTTP`, but the command does not *require* it.
+Verified against source. No concrete inaccuracies found.
 
 ## docs/agent-setup-claude.md
 
-- **Lines ~14–15**: Says "Cloche automatically copies your host's `~/.claude/` directory and `~/.claude.json` file into each container." Two inaccuracies:
-  1. The full `~/.claude/` directory is **not** copied. Only three specific files are staged and copied: `.credentials.json`, `settings.json`, and `settings.local.json`. Source: `internal/adapters/docker/runtime.go:232`. The runtime comment at line 221 explicitly notes this: "Only copy auth-relevant files — not the full ~/.claude directory which contains large history, session, and debug data."
-  2. `~/.claude.json` is **only** copied for interactive containers (`cfg.Interactive`), not for all containers. Source: `internal/adapters/docker/runtime.go:244`. It is skipped for autonomous runs to prevent rate-limit cache leakage between containers (per the inline comment).
+Verified against source. No concrete inaccuracies found.
 
 ## docs/agent-setup-codex.md
 
@@ -54,9 +50,9 @@ Verified against source. No concrete inaccuracies found.
 
 ## Summary
 
-- **15 errors found across 5 files**: INSTALL.md (2 — both fixed), USAGE.md (8), workflows.md (3), web-dashboard.md (1), agent-setup-claude.md (2).
+- **12 errors found across 3 files**: INSTALL.md (2 — both fixed), USAGE.md (8), workflows.md (2).
 - Most critical (fixed): wrong GitHub org (`swordsmanluke`) in INSTALL.md install instructions; `clo` missing from `make build` (Makefile bug — fixed).
-- Remaining open: `ParseRepositoriesFrom` doesn't exist; Host Workflow Example doesn't match the actual generated scaffold; `cloche tasks` doesn't require `CLOCHE_HTTP`; `~/.claude/` copy is partial not full; `~/.claude.json` only copied for interactive containers; poll/human step naming inconsistency in workflows.md; see USAGE.md items above.
+- Remaining: `ParseRepositoriesFrom` doesn't exist; Host Workflow Example doesn't match the actual generated scaffold; see USAGE.md items above.
 
 ## Missing Documentation
 

@@ -84,7 +84,7 @@ func setupTestProject(t *testing.T, dir string) {
 
 	files := map[string]string{
 		".cloche/prompts/implement.md": "Write good code.\n",
-		".cloche/develop.cloche": `workflow "develop" {
+		".cloche/develop.cloche": `workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]

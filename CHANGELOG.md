@@ -2,9 +2,10 @@
 
 ## Unreleased
 
-### Notable fixes
+### Features
 
-- Re-dispatching a vertical run is now idempotent for the `bdd-test-plan` and `update-docs` phases. If a previous run already committed test-plan or docs work to the base branch, the agent finding nothing new to add is treated as success rather than a "no changes made" failure. Layer phases are unaffected and still fail loudly on no-op.
+- **Vertical workflow: no PR gates.** The test-plan, layer, and docs phases now push their branches directly to origin and advance automatically; the `open-*-pr` / `poll-*-pr` / `address-*-feedback` steps and the `address-pr-feedback` sub-workflow have been removed. Stuck layers fail the job immediately with a `document-stuck` help-needed report surfaced in `cloche logs`, rather than opening a stalled PR. `finalize` now fast-forward-merges the rebased stack into the base branch and deletes the stack branches from origin. ([design](docs/design/vertical-workflow.md))
+- **`token-limit` config key.** Steps and workflows now support a `token-limit` config key that caps **output** tokens: a step exceeding its per-step ceiling (default 500 000) produces a `token-limit` result (implicitly wired to `abort`); cumulative output across all steps is checked against the workflow-level ceiling (default 2 000 000). Set `-1` to disable enforcement or `0` to abort immediately without running. Input tokens are not counted.
 
 ## v3.15.14 — 2026-05-21
 

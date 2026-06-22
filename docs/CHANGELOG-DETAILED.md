@@ -2,9 +2,16 @@
 
 ## Unreleased
 
-### Fixes
+### Features
 
-- `verify-changes.sh` gains `--allow-no-op`: when passed, detecting no new commits or uncommitted changes exits 0 with a "deliverable already present" message rather than failing. The compile check still runs. `vertical-bdd-test-plan` and `vertical-update-docs` now invoke `verify-changes.sh --allow-no-op` so that re-dispatching a vertical run whose test-plan or docs phase already committed work in the base branch succeeds rather than erroring with "no code changes". Layer phases continue to omit the flag and fail loudly on no-op.
+- Vertical workflow: removed all human-approved PR gates. The three gate pairs (`open-test-plan-pr`/`poll-test-plan-pr`, `open-pr`/`poll-pr`, `open-docs-pr`/`poll-docs-pr`) and their corresponding `address-*-feedback` steps are replaced by `publish-test-plan`, `publish-layer`, and `publish-docs` script steps that push the branch to origin and advance immediately. The `address-pr-feedback` container sub-workflow is removed entirely.
+- `check-layer-status` step added after `publish-layer`: reads `implement_status` KV; `ok` continues to `close-layer`; `stuck` prints the `stuck-report.md` from `temp_file_dir` to logs then routes to job failure (`unclaim`) so a human investigates. The partial work is on the published branch.
+- `document-stuck` step added to `implement-vertical-layer` sub-workflow: every stuck path (implement/verify/fix/self-review fail or give-up) routes through `document-stuck` first to consolidate any earlier give-up note into a single help-needed report before `mark-stuck`.
+- `finalize` rewritten: builds the full branch stack (test-plan → closed layers in creation order → docs), rebases the top-of-stack branch onto `origin/<base>` (handles base movement during the run), fast-forward-merges base to the rebased top, pushes base, then deletes all stack branches from origin. On rebase conflict, fails loudly with manual-resolution instructions. Removed the `git merge --squash` + single-commit approach.
+- `vertical-publish-branch.sh` new script (replaces `vertical-open-*-pr.sh`, `vertical-push.sh`): pushes a named stack branch to origin for a given phase (`test-plan` | `layer` | `docs`); uses `rename_extracted_to` to translate the daemon's extraction branch name back to the expected stack name.
+- `vertical-check-layer-status.sh` new script: implements the `check-layer-status` step logic described above.
+- `vertical-document-stuck.md` new prompt: consolidates any earlier give-up or partial notes into a concise self-contained `stuck-report.md` for the human investigator.
+- `token-limit` output-token ceiling. The DSL parser accepts `token-limit = <int>` on steps and workflows; the domain layer stores it as `step.Config["token-limit"]` / `wf.Config["token-limit"]`. The engine (`835e557`) enforces a per-step output-token ceiling via the `stepTokenLimit` resolver (default 500 000): steps whose `OutputTokens` exceed the limit receive a `token-limit` result (implicitly wired to `abort`). A running workflow-level accumulator aborts the run when cumulative `OutputTokens` reaches the workflow ceiling (default 2 000 000). Sentinels: `-1` disables enforcement; `0` aborts immediately without executing the step/workflow. Input tokens are excluded from the ceiling.
 
 ## v3.15.14 — 2026-05-21
 

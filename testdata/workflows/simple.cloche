@@ -1,4 +1,4 @@
-workflow "simple-build" {
+workflow simple-build {
   step build {
     run = "echo 'building...'"
     results = [success, fail]

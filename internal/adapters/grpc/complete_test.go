@@ -80,7 +80,7 @@ func TestServer_Complete_WorkflowNames(t *testing.T) {
 	dir := t.TempDir()
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
-	os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(`workflow "develop" {
+	os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(`workflow develop {
   step code {
     prompt = "do it"
     results = [success, fail]

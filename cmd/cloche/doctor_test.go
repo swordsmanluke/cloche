@@ -349,7 +349,7 @@ image = "myproject-cloche-agent:latest"
 `), 0644)
 	// Write a workflow file with a TODO marker.
 	os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(`
-workflow "develop" {
+workflow develop {
   step test {
     # TODO(cloche-init): Replace with your test command
     run     = "echo test"
@@ -388,7 +388,7 @@ func TestCheckWorkflows_valid(t *testing.T) {
 	dir := t.TempDir()
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
-	os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(`workflow "develop" {
+	os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(`workflow develop {
   step build {
     run     = "echo building"
     results = [success, fail]
