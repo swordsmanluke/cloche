@@ -11,6 +11,7 @@
 - `vertical-publish-branch.sh` new script (replaces `vertical-open-*-pr.sh`, `vertical-push.sh`): pushes a named stack branch to origin for a given phase (`test-plan` | `layer` | `docs`); uses `rename_extracted_to` to translate the daemon's extraction branch name back to the expected stack name.
 - `vertical-check-layer-status.sh` new script: implements the `check-layer-status` step logic described above.
 - `vertical-document-stuck.md` new prompt: consolidates any earlier give-up or partial notes into a concise self-contained `stuck-report.md` for the human investigator.
+- `token-limit` output-token ceiling. The DSL parser accepts `token-limit = <int>` on steps and workflows; the domain layer stores it as `step.Config["token-limit"]` / `wf.Config["token-limit"]`. The engine (`835e557`) enforces a per-step output-token ceiling via the `stepTokenLimit` resolver (default 500 000): steps whose `OutputTokens` exceed the limit receive a `token-limit` result (implicitly wired to `abort`). A running workflow-level accumulator aborts the run when cumulative `OutputTokens` reaches the workflow ceiling (default 2 000 000). Sentinels: `-1` disables enforcement; `0` aborts immediately without executing the step/workflow. Input tokens are excluded from the ceiling.
 
 ## v3.15.14 — 2026-05-21
 
