@@ -12,7 +12,7 @@
 //   CLOCHE_TASK_ID=<feature-task-id> cloche set vertical_base_branch <branch>
 //   (default: "main")
 
-workflow vertical {
+workflow "vertical" {
   host {
     agent_command = "claude"
   }
@@ -261,7 +261,7 @@ workflow vertical {
 // godog .feature files plus stub step definitions that fail loudly, verifies the
 // test plan can be discovered and runs (failing as expected), commits.
 // ============================================================================
-workflow vertical-bdd-test-plan {
+workflow "vertical-bdd-test-plan" {
   step prepare-branch {
     run     = "bash .cloche/scripts/vertical-prepare-test-plan-branch.sh"
     results = [success, fail]
@@ -296,7 +296,7 @@ workflow vertical-bdd-test-plan {
 // outcome. The implement_status KV value distinguishes success from
 // agent-gave-up.
 // ============================================================================
-workflow implement-vertical-layer {
+workflow "implement-vertical-layer" {
   step read-layer {
     run     = "bash .cloche/scripts/vertical-read-layer.sh"
     results = [success, fail]
@@ -366,7 +366,7 @@ workflow implement-vertical-layer {
 // Generic across phases — works for test-plan, layer, and docs PRs. Pulls open
 // comments, runs an agent to respond to each, runs verify, pushes the branch.
 // ============================================================================
-workflow address-pr-feedback {
+workflow "address-pr-feedback" {
   step pull-comments {
     run     = "bash .cloche/scripts/vertical-pull-comments.sh"
     results = [success, fail]
@@ -405,7 +405,7 @@ workflow address-pr-feedback {
 // update project docs (NOT inline code comments — those should already be done),
 // commits.
 // ============================================================================
-workflow vertical-update-docs {
+workflow "vertical-update-docs" {
   step prepare-branch {
     run     = "bash .cloche/scripts/vertical-prepare-docs-branch.sh"
     results = [success, fail]

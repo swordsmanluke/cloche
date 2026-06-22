@@ -170,7 +170,7 @@ func (s *tokenLimitCtx) parseSingleStepWorkflow(dslContent string) error {
 }
 
 func (s *tokenLimitCtx) engineWithStepHavingTokenLimit(stepName string, limit int) error {
-	return s.parseSingleStepWorkflow(fmt.Sprintf(`workflow test {
+	return s.parseSingleStepWorkflow(fmt.Sprintf(`workflow "test" {
   step %s {
     run = "echo test"
     results = [success]
@@ -181,7 +181,7 @@ func (s *tokenLimitCtx) engineWithStepHavingTokenLimit(stepName string, limit in
 }
 
 func (s *tokenLimitCtx) engineWithTwoStepWorkflowTokenLimit(limit int) error {
-	return s.parseSingleStepWorkflow(fmt.Sprintf(`workflow test {
+	return s.parseSingleStepWorkflow(fmt.Sprintf(`workflow "test" {
   token-limit = %d
   step step1 {
     run = "echo step1"
@@ -197,7 +197,7 @@ func (s *tokenLimitCtx) engineWithTwoStepWorkflowTokenLimit(limit int) error {
 }
 
 func (s *tokenLimitCtx) engineWithWorkflowTokenLimit(limit int) error {
-	return s.parseSingleStepWorkflow(fmt.Sprintf(`workflow test {
+	return s.parseSingleStepWorkflow(fmt.Sprintf(`workflow "test" {
   token-limit = %d
   step work {
     run = "echo work"
