@@ -23,6 +23,11 @@ service ClocheService {
   rpc DisableLoop(DisableLoopRequest) returns (DisableLoopResponse);
   rpc ResumeLoop(ResumeLoopRequest) returns (ResumeLoopResponse);
 
+  // QuiesceRuns parks all resumable runs so they do not fire automatically on
+  // daemon restart. Intended for use before rebuilding or restarting the daemon.
+  // L1: stub (always succeeds, no state change). L2: updates run states in store.
+  rpc QuiesceRuns(QuiesceRunsRequest) returns (QuiesceRunsResponse);
+
   rpc GetProjectInfo(GetProjectInfoRequest) returns (GetProjectInfoResponse);
 
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
@@ -223,6 +228,15 @@ message ResumeLoopRequest {
 }
 
 message ResumeLoopResponse {}
+
+message QuiesceRunsRequest {
+  string project_dir = 1;
+}
+
+message QuiesceRunsResponse {
+  // Number of runs that were parked. L1: always 0 (stub). L2: real count.
+  int32 parked_count = 1;
+}
 
 message GetProjectInfoRequest {
   string project_dir = 1;  // Resolve by absolute path (default: cwd)

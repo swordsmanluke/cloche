@@ -531,6 +531,7 @@ func cmdStatusProject(ctx context.Context, client pb.ClocheServiceClient, w io.W
 		loopStatus = "running"
 	}
 	fmt.Fprintf(w, "Orchestration loop: %s\n", loopStatus)
+	fmt.Fprintf(w, "Resumable runs: %d\n", fakeResumableCount())
 
 	// Fetch runs for the past hour to compute success rate.
 	listResp, err := client.ListRuns(ctx, &pb.ListRunsRequest{ProjectDir: projectDir})
@@ -1072,12 +1073,33 @@ func cmdLoop(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 
 	// Check for "stop" subcommand
 	if len(args) > 0 && args[0] == "stop" {
+		quiesce := false
+		for _, a := range args[1:] {
+			if a == "--quiesce" {
+				quiesce = true
+			}
+		}
 		_, err := client.DisableLoop(ctx, &pb.DisableLoopRequest{ProjectDir: cwd})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("Orchestration loop stopped.")
+		if quiesce {
+			if err := cmdLoopQuiesce(ctx, newQuiesceRunner(), cwd, os.Stdout); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+		}
+		return
+	}
+
+	// Check for "quiesce" subcommand
+	if len(args) > 0 && args[0] == "quiesce" {
+		if err := cmdLoopQuiesce(ctx, newQuiesceRunner(), cwd, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 

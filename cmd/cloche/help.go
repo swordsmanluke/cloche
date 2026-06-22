@@ -434,9 +434,11 @@ Starts or stops the daemon's orchestration loop, which automatically
 picks up and runs tasks from the task pipeline.
 
 Usage:
-  cloche loop [--max <n>]     Start the orchestration loop
-  cloche loop once            Run one task then stop the loop
-  cloche loop stop            Stop the orchestration loop
+  cloche loop [--max <n>]        Start the orchestration loop
+  cloche loop once               Run one task then stop the loop
+  cloche loop stop [--quiesce]   Stop the orchestration loop
+  cloche loop quiesce            Park resumable runs so they don't
+                                 fire automatically on daemon restart
 
 Flags:
   --max <n>    Maximum number of concurrent runs (default: value from
@@ -445,6 +447,16 @@ Flags:
 The "once" subcommand starts the loop, waits for a single task to be
 picked up and completed, then automatically stops the loop. Exits 0
 on success, 1 on failure or cancellation.
+
+The "quiesce" subcommand cancels or parks any resumable runs so they
+will not fire automatically if the daemon restarts. Use this before
+rebuilding or restarting the daemon. Prints "N resumable runs parked".
+
+The --quiesce flag on "stop" is a shorthand that stops the loop and
+immediately quiesces pending runs in one command.
+
+When the loop is stopped, "cloche loop status" shows how many runs
+are resumable and would fire if the daemon restarted without quiescing.
 
 When stop_on_error or max_consecutive_failures is configured in
 .cloche/config.toml, an unrecovered error will stop the loop. Run
@@ -455,6 +467,8 @@ Examples:
   cloche loop --max 3
   cloche loop once
   cloche loop stop
+  cloche loop stop --quiesce
+  cloche loop quiesce
 `,
 
 	"get": `cloche get — Get a value from the run context store
