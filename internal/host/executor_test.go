@@ -451,7 +451,7 @@ func TestRunner_RunWithID(t *testing.T) {
 	// Write a simple host.cloche
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
-	hostCloche := `workflow "main" {
+	hostCloche := `workflow main {
   host {}
 
   step greet {
@@ -489,7 +489,7 @@ func TestRunner_WithTaskID(t *testing.T) {
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 	// The script echoes the daemon-assigned CLOCHE_TASK_ID env var
-	hostCloche := `workflow "main" {
+	hostCloche := `workflow main {
   host {}
 
   step check-task {
@@ -526,7 +526,7 @@ func TestRunner_PersistsHostRun(t *testing.T) {
 	// Write a simple host.cloche
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
-	hostCloche := `workflow "main" {
+	hostCloche := `workflow main {
   host {}
 
   step prepare {
@@ -1056,7 +1056,7 @@ func TestRunner_HostWorkflow_AgentStep(t *testing.T) {
 	// Write a host.cloche with an agent step
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
-	hostCloche := `workflow "main" {
+	hostCloche := `workflow main {
   host {
     agent_command = "` + mockAgent + `"
   }
@@ -1100,7 +1100,7 @@ func TestRunner_HostWorkflow_AgentStepOverridesWorkflowCommand(t *testing.T) {
 
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
-	hostCloche := `workflow "main" {
+	hostCloche := `workflow main {
   host {
     agent_command = "` + workflowAgent + `"
   }
@@ -1132,7 +1132,7 @@ func TestRunner_PersistsHostRunOnFailure(t *testing.T) {
 	// Write a host.cloche that will fail
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
-	hostCloche := `workflow "main" {
+	hostCloche := `workflow main {
   host {}
 
   step bad {
@@ -1170,7 +1170,7 @@ func TestRunner_RunNamed_Main(t *testing.T) {
 
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
-	hostCloche := `workflow "main" {
+	hostCloche := `workflow main {
   host {}
 
   step greet {
@@ -1200,7 +1200,7 @@ func TestRunner_RunNamed_MultiWorkflow(t *testing.T) {
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 
 	// host.cloche with three workflows
-	hostCloche := `workflow "list-tasks" {
+	hostCloche := `workflow list-tasks {
   host {}
 
   step fetch {
@@ -1211,7 +1211,7 @@ func TestRunner_RunNamed_MultiWorkflow(t *testing.T) {
   fetch:fail    -> abort
 }
 
-workflow "main" {
+workflow main {
   host {}
 
   step work {
@@ -1222,7 +1222,7 @@ workflow "main" {
   work:fail    -> abort
 }
 
-workflow "cleanup" {
+workflow cleanup {
   host {}
 
   step cleanup {
@@ -1265,7 +1265,7 @@ func TestRunner_RunNamed_NotFound(t *testing.T) {
 
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
-	hostCloche := `workflow "main" {
+	hostCloche := `workflow main {
   host {}
 
   step greet {
@@ -1324,7 +1324,7 @@ func TestRunner_ExtraEnv_Propagated(t *testing.T) {
 
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
-	hostCloche := `workflow "post-merge" {
+	hostCloche := `workflow post-merge {
   host {}
 
   step check {
@@ -1357,7 +1357,7 @@ func TestRunner_ExtraEnv_RestoredOnResume(t *testing.T) {
 
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
-	hostCloche := `workflow "post-merge" {
+	hostCloche := `workflow post-merge {
   host {}
 
   step route {
@@ -1512,7 +1512,7 @@ func TestRunResult_HasOutputDir(t *testing.T) {
 
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
-	hostCloche := `workflow "main" {
+	hostCloche := `workflow main {
   host {}
 
   step greet {
@@ -1547,7 +1547,7 @@ func TestRunListTasksWorkflow_EmptyResult_NoRunRecord(t *testing.T) {
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 
 	// list-tasks workflow that outputs no tasks (empty line)
-	hostCloche := `workflow "list-tasks" {
+	hostCloche := `workflow list-tasks {
   host {}
 
   step fetch {
@@ -1580,7 +1580,7 @@ func TestRunListTasksWorkflow_WithTasks_NoRunRecord(t *testing.T) {
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
 
 	// list-tasks workflow that outputs one task
-	hostCloche := `workflow "list-tasks" {
+	hostCloche := `workflow list-tasks {
   host {}
 
   step fetch {

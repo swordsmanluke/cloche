@@ -1,4 +1,4 @@
-workflow "demo" {
+workflow demo {
   host {}
   step take_new_task {
      run = "echo hi"

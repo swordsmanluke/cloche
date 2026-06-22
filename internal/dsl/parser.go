@@ -129,9 +129,9 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 		return nil, err
 	}
 
-	nameTok, err := p.expect(TokenString)
+	nameTok, err := p.expect(TokenIdent)
 	if err != nil {
-		return nil, fmt.Errorf("expected workflow name string: %w", err)
+		return nil, fmt.Errorf("expected workflow name: %w", err)
 	}
 
 	if _, err := p.expect(TokenLBrace); err != nil {

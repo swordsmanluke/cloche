@@ -8,7 +8,7 @@ Feature: token-limit config on steps and workflows
   Scenario: step-level token-limit is parsed into step config
     Given a token-limit DSL file containing:
       """
-      workflow "build" {
+      workflow build {
         step analyze {
           run = "echo analyze"
           results = [success]
@@ -24,7 +24,7 @@ Feature: token-limit config on steps and workflows
   Scenario: workflow-level token-limit is parsed into workflow config
     Given a token-limit DSL file containing:
       """
-      workflow "build" {
+      workflow build {
         token-limit = 1000000
         step analyze {
           run = "echo analyze"
@@ -40,7 +40,7 @@ Feature: token-limit config on steps and workflows
   Scenario: every step gets an implicit token-limit result wired to abort
     Given a token-limit DSL file containing:
       """
-      workflow "build" {
+      workflow build {
         step analyze {
           run = "echo analyze"
           results = [success]
@@ -55,7 +55,7 @@ Feature: token-limit config on steps and workflows
   Scenario: an explicit token-limit wire in the workflow overrides the implicit one
     Given a token-limit DSL file containing:
       """
-      workflow "build" {
+      workflow build {
         step analyze {
           run = "echo analyze"
           results = [success]
@@ -76,7 +76,7 @@ Feature: token-limit config on steps and workflows
   Scenario: non-numeric token-limit value fails validation
     Given a token-limit DSL file containing:
       """
-      workflow "build" {
+      workflow build {
         step analyze {
           run = "echo analyze"
           results = [success]
@@ -92,7 +92,7 @@ Feature: token-limit config on steps and workflows
   Scenario: token-limit value less than -1 fails validation
     Given a token-limit DSL file containing:
       """
-      workflow "build" {
+      workflow build {
         step analyze {
           run = "echo analyze"
           results = [success]

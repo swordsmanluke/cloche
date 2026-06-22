@@ -151,7 +151,7 @@ func TestRenderWorkflowGraph_NoColor(t *testing.T) {
 	output := renderWorkflowGraph(wf, false)
 
 	// Check header
-	if !strings.Contains(output, `workflow "test-wf" (container)`) {
+	if !strings.Contains(output, `workflow test-wf (container)`) {
 		t.Error("missing workflow header")
 	}
 
@@ -363,7 +363,7 @@ func TestDiscoverWorkflows(t *testing.T) {
 	os.MkdirAll(clocheDir, 0755)
 
 	// Write a container workflow
-	os.WriteFile(filepath.Join(clocheDir, "build.cloche"), []byte(`workflow "build" {
+	os.WriteFile(filepath.Join(clocheDir, "build.cloche"), []byte(`workflow build {
   step compile {
     run = "make"
     results = [success, fail]
@@ -373,7 +373,7 @@ func TestDiscoverWorkflows(t *testing.T) {
 }`), 0644)
 
 	// Write a host workflow with two workflows
-	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow "plan" {
+	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow plan {
   host {}
   step pick {
     run = "echo pick"
@@ -382,7 +382,7 @@ func TestDiscoverWorkflows(t *testing.T) {
   pick:success -> done
 }
 
-workflow "run" {
+workflow run {
   host {}
   step exec {
     run = "echo run"
@@ -443,7 +443,7 @@ func TestLoadWorkflow_Container(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "deploy.cloche"), []byte(`workflow "deploy" {
+	os.WriteFile(filepath.Join(clocheDir, "deploy.cloche"), []byte(`workflow deploy {
   step ship {
     run = "echo ship"
     results = [success, fail]
@@ -469,7 +469,7 @@ func TestLoadWorkflow_Host(t *testing.T) {
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
 
-	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow "orchestrate" {
+	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow orchestrate {
   host {}
   step dispatch {
     run = "echo go"

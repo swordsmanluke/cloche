@@ -191,7 +191,7 @@ func renderWorkflowGraph(w *domain.Workflow, color bool) string {
 	var buf strings.Builder
 
 	// Header
-	fmt.Fprintf(&buf, "workflow %q (%s)\n\n", w.Name, w.Location)
+	fmt.Fprintf(&buf, "workflow %s (%s)\n\n", w.Name, w.Location)
 
 	order := bfsOrder(w)
 	if len(order) == 0 {
