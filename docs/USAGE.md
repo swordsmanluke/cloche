@@ -1076,7 +1076,7 @@ Flags are combinable: `cloche logs a3f7:develop:implement -l 20 -f`
 
 Without `-f`, displays all logs captured to date and exits (even for active runs). With `-f` on an active run, existing logs are sent first, then new output is streamed in real time via gRPC until the run completes.
 
-Log streaming is backed by `internal/logstream`, a broadcaster that fans `StepLog` gRPC events out to multiple concurrent subscribers (CLI follow mode, web dashboard live view). The broadcaster runs for the lifetime of the workflow run and is closed when the run completes or the daemon shuts down. Each log line is parsed for tool-call blocks before being forwarded to subscribers so the web dashboard can format agent output distinctly from plain script output.
+Log streaming is backed by `internal/logstream`. Inside the container, a `Writer` records timestamped, type-prefixed entries (`status`, `script`, `llm`) to `full.log`. On the daemon side, a `Broadcaster` fans log lines to multiple concurrent subscribers (CLI follow mode, web dashboard live view), retaining an in-memory history for each active run; the history is released when the run finishes. The broadcaster runs for the lifetime of the workflow run and is closed when the run completes or the daemon shuts down. Each log line is parsed for tool-call blocks (`ParseClaudeStream`) before being forwarded to subscribers so the web dashboard can format agent output distinctly from plain script output.
 
 ### `cloche poll`
 
