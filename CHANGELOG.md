@@ -6,6 +6,7 @@
 
 - **Vertical workflow: no PR gates.** The test-plan, layer, and docs phases now push their branches directly to origin and advance automatically; the `open-*-pr` / `poll-*-pr` / `address-*-feedback` steps and the `address-pr-feedback` sub-workflow have been removed. Stuck layers fail the job immediately with a `document-stuck` help-needed report surfaced in `cloche logs`, rather than opening a stalled PR. `finalize` now fast-forward-merges the rebased stack into the base branch and deletes the stack branches from origin. ([design](docs/design/vertical-workflow.md))
 - **`token-limit` config key.** Steps and workflows now support a `token-limit` config key that caps **output** tokens: a step exceeding its per-step ceiling (default 500 000) produces a `token-limit` result (implicitly wired to `abort`); cumulative output across all steps is checked against the workflow-level ceiling (default 2 000 000). Set `-1` to disable enforcement or `0` to abort immediately without running. Input tokens are not counted.
+- **Loop resume gate (`cloche loop quiesce`).** When the orchestration loop is stopped, the daemon no longer auto-resumes in-flight runs on restart. A new `cloche loop quiesce` subcommand (and `--quiesce` flag on `cloche loop stop`) parks all resumable runs so they do not fire on the next daemon startup; `cloche loop status` reports the count of parked runs. Parked runs appear as state `parked` in `cloche list --runs`. Running `cloche loop` (start) clears the stopped flag and restores normal auto-resume behavior.
 
 ## v3.15.14 — 2026-05-21
 

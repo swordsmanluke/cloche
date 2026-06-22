@@ -1020,7 +1020,7 @@ status for that task.
 | Argument | Output |
 |----------|--------|
 | Task ID | Task status, title, project, latest attempt ID, result, end timestamp, and total tokens consumed across all attempts (omitted if no usage data). When the task is `waiting` at a human step, also shows the step name, time since last poll, and poll count (e.g. `Waiting: code-review — last polled 4m ago (3 polls)`). |
-| _(none)_ | Daemon version, run statistics (past hour), active tasks with attempt IDs and in-progress runs shown as composite IDs (e.g. `cloche-1234:aj19:main`), and per-agent token burn rate for the last hour (omitted if no usage data). In a project directory, also shows project name, concurrency, and loop state. |
+| _(none)_ | Daemon version, run statistics (past hour), active tasks with attempt IDs and in-progress runs shown as composite IDs (e.g. `cloche-1234:aj19:main`), and per-agent token burn rate for the last hour (omitted if no usage data). In a project directory, also shows project name, concurrency, loop state, and the count of resumable (parked) runs. |
 
 | Flag | Description |
 |------|-------------|
@@ -1041,7 +1041,7 @@ show a flat run listing instead of the task-oriented view.
 |------|-------------|
 | `--all` | Show tasks from all projects (default: current project only). |
 | `--project, -p DIR` | Filter by project directory. |
-| `--state, -s STATE` | Filter by task status (`pending`, `running`, `waiting`, `succeeded`, `failed`, `cancelled`). |
+| `--state, -s STATE` | Filter by task status (`pending`, `running`, `waiting`, `succeeded`, `failed`, `cancelled`, `parked`). |
 | `--limit, -n NUM` | Limit the number of results returned. |
 | `--runs` | Show flat run listing instead of task-oriented view. |
 
@@ -1346,7 +1346,9 @@ tasks from the pipeline and runs them.
 ```
 cloche loop [--max <n>]
 cloche loop once
-cloche loop stop
+cloche loop stop [--quiesce]
+cloche loop quiesce
+cloche loop status
 ```
 
 | Flag | Default | Description |
@@ -1357,7 +1359,20 @@ cloche loop stop
 completed, then automatically stops the loop. Exits 0 on success, 1 on failure or
 cancellation.
 
-`cloche loop stop` disables the loop. Running tasks are not cancelled.
+`cloche loop stop` disables the loop. Running tasks are not cancelled. The stopped
+state is persisted to `.cloche/.loop-stopped`; if the daemon restarts while the loop
+is stopped, in-flight runs are **not** auto-resumed.
+
+`cloche loop stop --quiesce` stops the loop and immediately parks all resumable runs
+in one command.
+
+`cloche loop quiesce` parks all resumable (`pending`, `running`, `waiting`) runs so
+they will not fire automatically if the daemon restarts. Prints `N resumable runs
+parked`. Use this before rebuilding or restarting the daemon. Parked runs have state
+`parked` and can be inspected with `cloche list --runs`.
+
+`cloche loop status` shows the current loop state, including a `Resumable runs` count
+of parked runs that would otherwise fire on daemon restart.
 
 When `stop_on_error` or `max_consecutive_failures` triggers a stop, run `cloche loop`
 again to restart the loop.
