@@ -1479,10 +1479,35 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 		}
 	}
 
+	// Seed the container from a CLEAN per-run snapshot of the project at
+	// baseSHA rather than the live working tree. Host workflow steps mutate the
+	// shared working tree (git checkout, etc.); copying the live tree would
+	// leak a stale/dirty state into the container, which then commits and
+	// finalizes it back over main. The snapshot is the tracked tree exactly as
+	// committed at baseSHA — no working-tree mutations, no untracked files.
+	//
+	// run.ProjectDir stays req.ProjectDir; only the container seed source
+	// changes. On any failure (non-git dir, empty baseSHA, archive error) we
+	// fall back to the live tree so nothing breaks.
+	seedDir := req.ProjectDir
+	if baseSHA != "" {
+		snapDir, cleanup, snapErr := materializeCleanSnapshot(ctx, req.ProjectDir, baseSHA)
+		if snapErr != nil {
+			log.Printf("run %s: clean snapshot at %s failed, falling back to live tree: %v", runID, baseSHA, snapErr)
+		} else {
+			seedDir = snapDir
+			// copyProjectToContainer runs synchronously inside Start, so the
+			// snapshot is fully consumed by the time Start returns.
+			defer cleanup()
+		}
+	} else {
+		log.Printf("run %s: no baseSHA resolved for %s, seeding container from live tree", runID, req.ProjectDir)
+	}
+
 	containerID, err := s.container.Start(ctx, ports.ContainerConfig{
 		Image:        image,
 		WorkflowName: workflowName,
-		ProjectDir:   req.ProjectDir,
+		ProjectDir:   seedDir,
 		RunID:        runID,
 		TaskID:       taskID,
 		AttemptID:    attemptID,
