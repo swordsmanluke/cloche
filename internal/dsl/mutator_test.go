@@ -95,8 +95,8 @@ func TestMutatorAddWiring(t *testing.T) {
 
 	wf, err := Parse(result)
 	require.NoError(t, err)
-	// Original 2 wires + 3 new = 5, plus 2 implicit timeout->abort + 2 implicit token-limit->abort wires = 9
-	assert.Len(t, wf.Wiring, 9)
+	// Original 2 wires + 3 new = 5, plus 2 implicit timeout->abort wires = 7
+	assert.Len(t, wf.Wiring, 7)
 }
 
 func TestMutatorRewireResult(t *testing.T) {

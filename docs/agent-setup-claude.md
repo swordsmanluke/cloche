@@ -11,14 +11,12 @@ This guide covers configuring Cloche containers to use
 
 ## How Authentication Works
 
-Cloche copies three specific files from your host's `~/.claude/` directory
-(`.credentials.json`, `settings.json`, `settings.local.json`) into each container at
-`/home/agent/.claude/`. For interactive containers, `~/.claude.json` is also copied to
-`/home/agent/.claude.json`; it is skipped for autonomous (non-interactive) runs. This
+Cloche automatically copies your host's `~/.claude/` directory and `~/.claude.json`
+file into each container at `/home/agent/.claude` and `/home/agent/.claude.json`. This
 reuses your existing Claude Code session so containers authenticate without needing an
 API key.
 
-Files are copied (not bind-mounted) so each container gets its own copy, avoiding
+The files are copied (not bind-mounted) so each container gets its own copy, avoiding
 concurrent write conflicts when multiple runs execute in parallel.
 
 ## Dockerfile
