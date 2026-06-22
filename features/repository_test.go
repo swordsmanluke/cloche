@@ -539,6 +539,7 @@ func TestMain(m *testing.M) {
 			initPromptTemplatingScenarios(ctx)
 			initTokenLimitScenarios(ctx)
 			initVerticalDesignPrepScenarios(ctx)
+			initResumeRebuildDesignScenarios(ctx)
 		},
 		Options: &opts,
 	}.Run()
