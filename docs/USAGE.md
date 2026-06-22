@@ -50,7 +50,6 @@ workflow "develop" {
 | `results` | ident list | Declared result names, e.g. `[success, fail, give-up]`. |
 | `max_attempts` | integer | Max retries before automatic `give-up` result, e.g. `2`. |
 | `timeout` | string | Step timeout as Go duration, e.g. `"30m"`, `"2h"`. Default: 30m. |
-| `token-limit` | integer | Maximum **output** tokens for this step. Produces a `"token-limit"` result (implicitly wired to `abort`) when exceeded. Default: 500 000. `-1` disables enforcement; `0` aborts immediately without running the step. |
 | `agent_command` | string | Agent binary name(s), comma-separated for fallback chains, e.g. `"claude,gemini"`. |
 | `agent_args` | string | Override default agent arguments. |
 | `agent` | identifier | Reference a named agent declared in the workflow's `agent` block. Expands into `agent_command` and `agent_args`. Step-level `agent_command`/`agent_args` still override it. |
@@ -918,7 +917,7 @@ contains a `.cloche/` subdirectory.
 |-------|-------------|
 | Docker | Runs `docker info` to verify the Docker daemon is reachable. |
 | Base image | Checks whether `cloche-base:latest` (or `cloche-agent:latest`) exists locally. |
-| Daemon | Calls `GetVersion` over gRPC to verify the daemon is reachable. Address from `CLOCHE_ADDR` or default `0.0.0.0:50051`. |
+| Daemon | Calls `GetVersion` over gRPC to verify the daemon is reachable. Address from `CLOCHE_ADDR` or default `127.0.0.1:50051`. |
 | Agent auth | Checks `ANTHROPIC_API_KEY` or `~/.claude/` session data. Soft check (warning, not fatal). |
 | Git SSH key | Loads the merged config and checks that the `[git] ssh_key` file (if configured) exists and is readable. Soft check (warning, not fatal). |
 | Project config | Loads `.cloche/config.toml`, reports parse errors, warns if `active = false` or `TODO(cloche-init)` markers remain. |
@@ -1051,7 +1050,7 @@ With `--runs`: workflow ID, workflow, state, type, task ID, title, error.
 ### `cloche logs`
 
 ```
-cloche logs <id> [--type <full|script|llm>] [--step <name>] [-f] [-l <n>]
+cloche logs <id> [--type <full|script|llm>] [-f] [-l <n>]
 ```
 
 The first argument accepts any level of the ID hierarchy:
@@ -1068,7 +1067,6 @@ Legacy composite `task:attempt[:step]` is also accepted.
 | Flag | Description |
 |------|-------------|
 | `--type <full\|script\|llm>` | Log type filter. |
-| `--step, -s <name>` | Filter logs to only those from the named step. |
 | `--follow, -f` | Follow mode: display existing logs then continue streaming new lines as they arrive (like `tail -f`). |
 | `--limit, -l <n>` | Display only the last n lines of output. |
 
@@ -1228,10 +1226,6 @@ backend               ./repos/backend                 https://github.com/example
 frontend              ./repos/frontend
 ```
 
-**Project CLI rendering.** `cloche project repos list` output is rendered by
-`internal/projectcli` (`WriteReposList`), which formats the repository list as a
-fixed-width table. The package is an internal rendering helper with no public API.
-
 ### `cloche get`
 
 ```
@@ -1317,8 +1311,8 @@ clo keys                   List all keys in the current attempt namespace
 clo -v / --version / version   Print version
 ```
 
-`clo` reads `CLOCHE_ADDR`, `CLOCHE_TASK_ID`, `CLOCHE_ATTEMPT_ID`, and `CLOCHE_RUN_ID`
-from the environment. The Docker adapter sets all four automatically.
+`clo` reads `CLOCHE_ADDR`, `CLOCHE_TASK_ID`, and `CLOCHE_ATTEMPT_ID` from the
+environment. The Docker adapter sets all three automatically.
 
 `clo get` uses the same scope fallback as `cloche get`: per-run → attempt-scoped →
 task-scoped. Values written at task scope before a run starts are visible to container
@@ -1384,14 +1378,6 @@ cloche activity [--project <dir>] [--since <duration|time>] [--until <time>] [--
 Reads activity entries from the daemon's SQLite database. Events are recorded automatically by the orchestration loop and host workflow runs. Output columns: `TIME`, `KIND`, `TASK`, `ATTEMPT`, `WORKFLOW`, `STEP`, `OUTCOME`.
 
 Event kinds: `attempt_started`, `attempt_ended`, `step_started`, `step_completed`.
-
-**Activity log subsystem.** Implemented in `internal/activitylog/`. A `Logger` wraps an
-`Appender` (the SQLite `ActivityStore`) and records `Entry` values for each event. Each
-entry carries a timestamp, the event kind, and relevant IDs (task, attempt, workflow,
-step). `step_completed` entries also include the result name (e.g. `success`, `fail`).
-`attempt_ended` entries include the final attempt state (e.g. `succeeded`, `failed`).
-All writes go through the daemon's store; the log is per-project (keyed by project
-directory).
 
 ```
 cloche activity
@@ -1476,7 +1462,7 @@ cloche debug <subcommand> [--debug-addr <addr>]
 
 | Subcommand | Description |
 |------------|-------------|
-| `goroutines` (alias: `dump`) | Print a full goroutine stack dump from the daemon (pprof output). |
+| `goroutines` | Print a full goroutine stack dump from the daemon (pprof output). |
 | `state` | Print a summary of active runs, loops, goroutine count, and container sessions. |
 
 **Debug server address resolution** (first match wins):
@@ -1497,7 +1483,7 @@ CLOCHE_DEBUG=localhost:7778 cloched
 Low-level helper used by shell completion scripts. Not intended for direct use.
 
 ```
-cloche complete --index <n> [-i <n>] -- <word0> <word1> ...
+cloche complete --index <n> -- <word0> <word1> ...
 ```
 
 Prints one completion candidate per line for the word at position `<n>` in the
@@ -1661,7 +1647,7 @@ Remote URL annotation is done via top-level `repository` blocks in `.cloche` fil
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLOCHE_ADDR` | `0.0.0.0:50051` | gRPC listen address |
+| `CLOCHE_ADDR` | `127.0.0.1:50051` | gRPC listen address |
 | `CLOCHE_DB` | `~/.config/cloche/cloche.db` | SQLite database path |
 | `CLOCHE_RUNTIME` | `docker` | `docker` or `local`. The `local` runtime launches `cloche-agent` as a subprocess instead of a Docker container, which avoids Docker for fast dev iteration. **Limitations:** `Attach` is unimplemented (returns an error), `Logs` returns empty output, and `Remove` is a no-op. The console command and log streaming from active runs do not work in local mode. Set `CLOCHE_AGENT_PATH` to point at the `cloche-agent` binary when using this mode. |
 | `CLOCHE_IMAGE` | `cloche-agent:latest` | Default Docker image |
@@ -1677,7 +1663,7 @@ Remote URL annotation is done via top-level `repository` blocks in `.cloche` fil
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLOCHE_ADDR` | `0.0.0.0:50051` | Daemon gRPC address |
+| `CLOCHE_ADDR` | `127.0.0.1:50051` | Daemon gRPC address |
 | `CLOCHE_HTTP` | `localhost:8080` | Daemon HTTP address |
 
 ### Host Step Runtime Variables

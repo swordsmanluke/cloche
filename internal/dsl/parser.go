@@ -2,7 +2,6 @@ package dsl
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -185,12 +184,6 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 				return nil, err
 			}
 			wf.Wiring = append(wf.Wiring, wire)
-		} else if p.current.Type == TokenIdent && p.peek.Type == TokenArrow {
-			result, target, err := p.parseGlobalWire()
-			if err != nil {
-				return nil, err
-			}
-			wf.Config["_wire."+result] = target
 		} else {
 			return nil, fmt.Errorf("line %d col %d: unexpected token %q", p.current.Line, p.current.Col, p.current.Literal)
 		}
@@ -238,40 +231,6 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 		}
 	}
 
-	// Post-parse fixup: ensure every step has a "token-limit" result and wire.
-	// A global wire directive "token-limit -> <step>" overrides the default abort target.
-	tokenLimitTarget := domain.StepAbort
-	if override, ok := wf.Config["_wire.token-limit"]; ok {
-		tokenLimitTarget = override
-	}
-	for name, step := range wf.Steps {
-		hasResult := false
-		for _, r := range step.Results {
-			if r == "token-limit" {
-				hasResult = true
-				break
-			}
-		}
-		if !hasResult {
-			step.Results = append(step.Results, "token-limit")
-		}
-		hasWire := false
-		for _, w := range wf.Wiring {
-			if w.From == name && w.Result == "token-limit" {
-				hasWire = true
-				break
-			}
-		}
-		if !hasWire {
-			wf.Wiring = append(wf.Wiring, domain.Wire{
-				From:     name,
-				Result:   "token-limit",
-				To:       tokenLimitTarget,
-				Implicit: true,
-			})
-		}
-	}
-
 	return wf, nil
 }
 
@@ -295,28 +254,6 @@ func (p *Parser) parseWorkflowField(wf *domain.Workflow) error {
 			return err
 		}
 		wf.Repos = repos
-		return nil
-	case "token-limit":
-		negative := false
-		if p.current.Type == TokenIllegal && p.current.Literal == "-" {
-			negative = true
-			p.advance()
-		}
-		if p.current.Type != TokenInt {
-			return fmt.Errorf("line %d col %d: token-limit must be an integer, got %q",
-				p.current.Line, p.current.Col, p.current.Literal)
-		}
-		numStr := p.current.Literal
-		p.advance()
-		if negative {
-			numStr = "-" + numStr
-		}
-		n, err := strconv.ParseInt(numStr, 10, 64)
-		if err != nil || n < -1 {
-			return fmt.Errorf("line %d col %d: token-limit must be -1 or greater, got %q",
-				keyTok.Line, keyTok.Col, numStr)
-		}
-		wf.Config["token-limit"] = numStr
 		return nil
 	default:
 		return fmt.Errorf("line %d col %d: unknown workflow field %q", keyTok.Line, keyTok.Col, keyTok.Literal)
@@ -538,26 +475,6 @@ func (p *Parser) parseStepField(step *domain.Step, prefix string) error {
 			return err
 		}
 		step.Config[key] = strings.Join(values, ",")
-	} else if key == "token-limit" {
-		negative := false
-		if p.current.Type == TokenIllegal && p.current.Literal == "-" {
-			negative = true
-			p.advance()
-		}
-		if p.current.Type != TokenInt {
-			return fmt.Errorf("line %d col %d: token-limit must be an integer, got %q",
-				p.current.Line, p.current.Col, p.current.Literal)
-		}
-		numStr := p.current.Literal
-		p.advance()
-		if negative {
-			numStr = "-" + numStr
-		}
-		n, err := strconv.ParseInt(numStr, 10, 64)
-		if err != nil || n < -1 {
-			return fmt.Errorf("token-limit must be -1 or greater, got %q", numStr)
-		}
-		step.Config[key] = numStr
 	} else {
 		if key == "max_attempts" && p.current.Type != TokenInt {
 			return fmt.Errorf("max_attempts must be a numeric value, not a string (line %d, col %d)", p.current.Line, p.current.Col)
@@ -699,24 +616,6 @@ func (p *Parser) parseWire() (domain.Wire, error) {
 		Result: resultTok.Literal,
 		To:     toTok.Literal,
 	}, nil
-}
-
-// parseGlobalWire parses a "result -> target" directive at workflow level.
-// This declares a default wire target for the named result across all steps.
-func (p *Parser) parseGlobalWire() (result, target string, err error) {
-	resultTok := p.current
-	p.advance() // consume result ident
-
-	if _, err := p.expect(TokenArrow); err != nil {
-		return "", "", err
-	}
-
-	toTok, err := p.expect(TokenIdent)
-	if err != nil {
-		return "", "", fmt.Errorf("expected target step: %w", err)
-	}
-
-	return resultTok.Literal, toTok.Literal, nil
 }
 
 func (p *Parser) parseCollect() (domain.Collect, error) {

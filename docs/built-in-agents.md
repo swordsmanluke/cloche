@@ -10,7 +10,6 @@ default arguments; the prompt is passed on stdin and the command is invoked as-i
 | Command | Default args | Required args |
 |---------|-------------|---------------|
 | `claude` | `-p --dangerously-skip-permissions --model sonnet` | `--output-format stream-json --verbose` |
-| `opencode` | `run --format json --dangerously-skip-permissions` | _(none)_ |
 
 ## How `agent_args` Interacts with Defaults and Required Args
 
@@ -117,24 +116,6 @@ explicitly if you want them (which you almost always do for `claude`).
 Step-level `agent_command` and `agent_args` override the agent declaration. See
 [USAGE.md — Agent Declarations](USAGE.md#agent-declarations) for the full resolution
 order.
-
-## `opencode`
-
-`opencode` is a known agent. Set `agent_command = "opencode"` (or pass `--agent-command
-opencode` at the CLI) to use it.
-
-### Default invocation
-
-```
-opencode run --format json --dangerously-skip-permissions
-```
-
-The prompt is passed on stdin.
-
-### Overriding arguments
-
-Use `agent_args` to replace the default args. Unlike `claude`, `opencode` has no required
-args, so `agent_args` is passed through verbatim.
 
 ## Unknown Agents
 

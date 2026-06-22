@@ -1,60 +1,77 @@
-Feature: MCP mode design document (inverted-control interactive agent execution)
-  As a cloche contributor
-  I want a complete design doc for MCP mode at docs/plans/2026-05-28-mcp-mode.md
-  So that implementation can proceed from a reviewed, unambiguous specification
+Feature: MCP mode — inverted-control interactive agent execution
+  As a workflow author
+  I want to run prompt steps against a long-lived interactive Claude session
+  So that I can use shared conversation context and interactive tooling across an entire run
 
-  # ─── L1: Core architectural decisions ────────────────────────────────────────
+  # ─── Mode selection ──────────────────────────────────────────────────────────
 
-  Scenario: Design doc exists at the expected path
-    Given the MCP mode design doc
-    When the design doc is read
-    Then no read error is returned
+  Scenario: A project declares MCP mode and port in its config
+    Given a project config with mcp_mode enabled and mcp_port set to 9200
+    When the project config is loaded
+    Then no MCP config error is returned
+    And the project is configured for MCP mode on port 9200
 
-  Scenario: Server hosting decision is documented with rationale
-    Given the MCP mode design doc
-    When the design doc is read
-    Then the design doc contains a server hosting decision
+  Scenario: Two MCP projects on the same daemon use different ports
+    Given a daemon with project "alpha" on mcp_port 9200 and project "beta" on mcp_port 9201
+    When both projects are running MCP sessions concurrently
+    Then the daemon routes each session by port without collision
 
-  Scenario: MCP tool surface defines init, poll, and submit-result
-    Given the MCP mode design doc
-    When the design doc is read
-    Then the design doc defines the "init" MCP tool
-    And the design doc defines the "poll" MCP tool
-    And the design doc defines the "submit-result" MCP tool
+  # ─── Workflow step syntax ─────────────────────────────────────────────────────
 
-  Scenario: Result protocol replacing CLOCHE_RESULT stdout marker is defined
-    Given the MCP mode design doc
-    When the design doc is read
-    Then the design doc defines the result protocol replacing CLOCHE_RESULT
+  Scenario: A workflow step forwards a prompt to the agent via "clo mcp"
+    Given an MCP-mode project with an active interactive agent session
+    When a workflow step executes "clo mcp" with a prompt body
+    Then the daemon caches the prompt until the MCP client requests it
 
-  # ─── L2: Full design completeness ────────────────────────────────────────────
+  Scenario: The agent receives the cached prompt via the cloche MCP next_step tool
+    Given the daemon has cached a prompt from a "clo mcp" step
+    When the interactive agent calls the cloche MCP next_step tool
+    Then the agent receives the prompt text for the pending step
 
-  Scenario: Concurrency model is addressed
-    Given the MCP mode design doc
-    When the design doc is read
-    Then the design doc addresses the concurrency model
+  # ─── Interactive agent startup ────────────────────────────────────────────────
 
-  Scenario: Conversation continuity across prompt steps is addressed
-    Given the MCP mode design doc
-    When the design doc is read
-    Then the design doc addresses conversation continuity
+  Scenario: Starting a workflow run under an MCP project launches an interactive agent
+    Given an MCP-mode project with a workflow containing a prompt step
+    When the daemon starts the workflow run
+    Then an interactive Claude session is started inside the container
+    And the container's AGENTS.md instructs the agent to loop on next_step requests
 
-  Scenario: Mode selection per project and per run is defined
-    Given the MCP mode design doc
-    When the design doc is read
-    Then the design doc defines how a user opts in to MCP mode
+  Scenario: The interactive agent's MCP is configured to connect to the daemon port
+    Given the daemon started an interactive agent for an MCP project on port 9200
+    When the agent initialises its MCP connection
+    Then the MCP client connects to the daemon on port 9200
 
-  Scenario: Token usage and log streaming flow is specified
-    Given the MCP mode design doc
-    When the design doc is read
-    Then the design doc specifies token and log flow back to the engine
+  # ─── Control-flow: next_step and submit-result ───────────────────────────────
 
-  Scenario: Human-in-the-loop integration is covered
-    Given the MCP mode design doc
-    When the design doc is read
-    Then the design doc covers human-in-the-loop integration
+  Scenario: The agent advances the run by submitting a named result to the daemon
+    Given the interactive agent has received a prompt step with wires "success" and "fail"
+    When the agent calls the cloche MCP submit-result tool with named result "success"
+    Then the run advances to the step wired to "success"
 
-  Scenario: Design doc status is promoted beyond the pre-design Captured state
-    Given the MCP mode design doc
-    When the design doc is read
-    Then the design doc status is not "Captured (pre-design)"
+  Scenario: The agent loops back to next_step after submitting a result
+    Given the agent has just submitted a result for a completed prompt step
+    When the agent calls the cloche MCP next_step tool again
+    Then the agent receives the next pending prompt step
+
+  # ─── Script steps are unaffected ─────────────────────────────────────────────
+
+  Scenario: Script steps in an MCP-mode workflow run directly without agent interaction
+    Given an MCP-mode run reaches a script step
+    When the script step executes
+    Then the script step completes without a next_step or submit-result call
+
+  # ─── Conversation continuity ─────────────────────────────────────────────────
+
+  Scenario: Subsequent next_step calls in the same session carry accumulated context
+    Given an MCP session is active with two sequential prompt steps
+    And the agent has submitted the first prompt step with result "done"
+    When the agent calls the cloche MCP next_step tool for the second step
+    Then the agent receives the second prompt within the same conversation context
+
+  # ─── Result protocol replaces CLOCHE_RESULT stdout marker ────────────────────
+
+  Scenario: A result submitted via submit-result wires the workflow without stdout markers
+    Given an MCP session has a prompt step pending
+    When the agent calls the cloche MCP submit-result tool with named result "fail"
+    Then the run follows the "fail" wire
+    And no CLOCHE_RESULT marker appears in the captured output

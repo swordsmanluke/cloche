@@ -2,185 +2,16 @@ package features_test
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
-	"strings"
+	"errors"
 
 	"github.com/cucumber/godog"
 )
 
-const mcpModeDocRelPath = "docs/plans/2026-05-28-mcp-mode.md"
-
-// mcpModeCtx holds per-scenario state for MCP mode design doc BDD scenarios.
-type mcpModeCtx struct {
-	docContent string
-	readErr    error
-}
+type mcpModeCtx struct{}
 
 func (s *mcpModeCtx) reset() {
 	*s = mcpModeCtx{}
 }
-
-func mcpModeRepoRoot() string {
-	_, thisFile, _, _ := runtime.Caller(0)
-	return filepath.Dir(filepath.Dir(thisFile))
-}
-
-// ─── Given / When ────────────────────────────────────────────────────────────
-
-func (s *mcpModeCtx) theMCPModeDesignDoc() error {
-	return nil // path is fixed; just signals intent
-}
-
-func (s *mcpModeCtx) theDesignDocIsRead() error {
-	path := filepath.Join(mcpModeRepoRoot(), mcpModeDocRelPath)
-	data, err := os.ReadFile(path)
-	s.readErr = err
-	if err == nil {
-		s.docContent = string(data)
-	}
-	return nil
-}
-
-// ─── Then ─────────────────────────────────────────────────────────────────────
-
-func (s *mcpModeCtx) noReadErrorIsReturned() error {
-	if s.readErr != nil {
-		return fmt.Errorf("could not read %s: %w", mcpModeDocRelPath, s.readErr)
-	}
-	return nil
-}
-
-func (s *mcpModeCtx) docContainsServerHostingDecision() error {
-	if err := s.requireDoc(); err != nil {
-		return err
-	}
-	low := strings.ToLower(s.docContent)
-	// The doc must address where the MCP server runs: daemon / cloched or in-container
-	hasDaemon := strings.Contains(low, "daemon") || strings.Contains(low, "cloched")
-	hasServerSection := strings.Contains(low, "mcp server") || strings.Contains(low, "server hosting") || strings.Contains(low, "where the mcp")
-	if !hasDaemon || !hasServerSection {
-		return fmt.Errorf("%s does not contain a server hosting decision (need MCP server location + 'daemon'/'cloched' mention)", mcpModeDocRelPath)
-	}
-	return nil
-}
-
-func (s *mcpModeCtx) docDefinesMCPTool(toolName string) error {
-	if err := s.requireDoc(); err != nil {
-		return err
-	}
-	low := strings.ToLower(s.docContent)
-	// accept "submit-result" or "submit_result"
-	needle := strings.ToLower(strings.ReplaceAll(toolName, "-", "_"))
-	alt := strings.ToLower(toolName)
-	if !strings.Contains(low, needle) && !strings.Contains(low, alt) {
-		return fmt.Errorf("%s does not define MCP tool %q", mcpModeDocRelPath, toolName)
-	}
-	return nil
-}
-
-func (s *mcpModeCtx) docDefinesResultProtocol() error {
-	if err := s.requireDoc(); err != nil {
-		return err
-	}
-	low := strings.ToLower(s.docContent)
-	// The doc must reference the CLOCHE_RESULT marker it is replacing
-	if !strings.Contains(low, "cloche_result") {
-		return fmt.Errorf("%s does not reference CLOCHE_RESULT (the stdout marker being replaced)", mcpModeDocRelPath)
-	}
-	// And must propose an alternative result mechanism
-	if !strings.Contains(low, "result protocol") && !strings.Contains(low, "submit") {
-		return fmt.Errorf("%s does not define a result protocol to replace CLOCHE_RESULT", mcpModeDocRelPath)
-	}
-	return nil
-}
-
-func (s *mcpModeCtx) docAddressesConcurrencyModel() error {
-	if err := s.requireDoc(); err != nil {
-		return err
-	}
-	low := strings.ToLower(s.docContent)
-	if !strings.Contains(low, "concurren") {
-		return fmt.Errorf("%s does not address the concurrency model", mcpModeDocRelPath)
-	}
-	return nil
-}
-
-func (s *mcpModeCtx) docAddressesConversationContinuity() error {
-	if err := s.requireDoc(); err != nil {
-		return err
-	}
-	low := strings.ToLower(s.docContent)
-	if !strings.Contains(low, "continuity") && !strings.Contains(low, "conversation continuity") {
-		return fmt.Errorf("%s does not address conversation continuity", mcpModeDocRelPath)
-	}
-	return nil
-}
-
-func (s *mcpModeCtx) docDefinesModeSelection() error {
-	if err := s.requireDoc(); err != nil {
-		return err
-	}
-	low := strings.ToLower(s.docContent)
-	hasOptIn := strings.Contains(low, "opt in") || strings.Contains(low, "opt-in") ||
-		strings.Contains(low, "mode selection") || strings.Contains(low, "mcp_mode") ||
-		strings.Contains(low, "mcp mode") && strings.Contains(low, "config")
-	if !hasOptIn {
-		return fmt.Errorf("%s does not define how a user opts in to MCP mode", mcpModeDocRelPath)
-	}
-	return nil
-}
-
-func (s *mcpModeCtx) docSpecifiesTokenAndLogFlow() error {
-	if err := s.requireDoc(); err != nil {
-		return err
-	}
-	low := strings.ToLower(s.docContent)
-	hasTokens := strings.Contains(low, "token")
-	hasLogs := strings.Contains(low, "log") || strings.Contains(low, "stream")
-	if !hasTokens || !hasLogs {
-		return fmt.Errorf("%s does not specify token and log flow (need both 'token' and 'log'/'stream')", mcpModeDocRelPath)
-	}
-	return nil
-}
-
-func (s *mcpModeCtx) docCoversHumanInTheLoop() error {
-	if err := s.requireDoc(); err != nil {
-		return err
-	}
-	low := strings.ToLower(s.docContent)
-	if !strings.Contains(low, "human") {
-		return fmt.Errorf("%s does not cover human-in-the-loop integration", mcpModeDocRelPath)
-	}
-	return nil
-}
-
-func (s *mcpModeCtx) docStatusIsNotCaptured(forbiddenStatus string) error {
-	if err := s.requireDoc(); err != nil {
-		return err
-	}
-	low := strings.ToLower(s.docContent)
-	if strings.Contains(low, strings.ToLower(forbiddenStatus)) {
-		return fmt.Errorf("%s still has status %q — must be promoted to Design or RFC", mcpModeDocRelPath, forbiddenStatus)
-	}
-	return nil
-}
-
-// ─── Helper ───────────────────────────────────────────────────────────────────
-
-func (s *mcpModeCtx) requireDoc() error {
-	if s.readErr != nil {
-		return fmt.Errorf("design doc not readable (%s): %w", mcpModeDocRelPath, s.readErr)
-	}
-	if s.docContent == "" {
-		return fmt.Errorf("design doc not loaded — did you call 'the design doc is read'?")
-	}
-	return nil
-}
-
-// ─── Step registration ────────────────────────────────────────────────────────
 
 func initMCPModeScenarios(ctx *godog.ScenarioContext) {
 	s := &mcpModeCtx{}
@@ -189,21 +20,157 @@ func initMCPModeScenarios(ctx *godog.ScenarioContext) {
 		return nil, nil
 	})
 
-	// Given / When
-	ctx.Step(`^the MCP mode design doc$`, s.theMCPModeDesignDoc)
-	ctx.Step(`^the design doc is read$`, s.theDesignDocIsRead)
+	// Mode selection
+	ctx.Step(`^a workflow file with mode set to "([^"]*)"$`, s.aWorkflowFileWithMode)
+	ctx.Step(`^the MCP workflow file is parsed$`, s.theMCPWorkflowFileIsParsed)
+	ctx.Step(`^no MCP DSL error is returned$`, s.noMCPDSLErrorIsReturned)
+	ctx.Step(`^the parsed workflow has mode "([^"]*)"$`, s.theParsedWorkflowHasMode)
+	ctx.Step(`^a running daemon with a test project for MCP$`, s.aRunningDaemonForMCP)
+	ctx.Step(`^the user starts "([^"]*)"$`, s.theUserStartsCommand)
+	ctx.Step(`^the MCP-mode run is created successfully$`, s.theMCPModeRunIsCreated)
 
-	// Then — L1
-	ctx.Step(`^no read error is returned$`, s.noReadErrorIsReturned)
-	ctx.Step(`^the design doc contains a server hosting decision$`, s.docContainsServerHostingDecision)
-	ctx.Step(`^the design doc defines the "([^"]*)" MCP tool$`, s.docDefinesMCPTool)
-	ctx.Step(`^the design doc defines the result protocol replacing CLOCHE_RESULT$`, s.docDefinesResultProtocol)
+	// MCP server startup and handshake
+	ctx.Step(`^an MCP-mode run is in progress at the daemon address$`, s.anMCPModeRunIsInProgress)
+	ctx.Step(`^the interactive Claude agent calls the MCP init tool$`, s.agentCallsMCPInit)
+	ctx.Step(`^the agent receives a valid MCP session token$`, s.agentReceivesSessionToken)
 
-	// Then — L2
-	ctx.Step(`^the design doc addresses the concurrency model$`, s.docAddressesConcurrencyModel)
-	ctx.Step(`^the design doc addresses conversation continuity$`, s.docAddressesConversationContinuity)
-	ctx.Step(`^the design doc defines how a user opts in to MCP mode$`, s.docDefinesModeSelection)
-	ctx.Step(`^the design doc specifies token and log flow back to the engine$`, s.docSpecifiesTokenAndLogFlow)
-	ctx.Step(`^the design doc covers human-in-the-loop integration$`, s.docCoversHumanInTheLoop)
-	ctx.Step(`^the design doc status is not "([^"]*)"$`, s.docStatusIsNotCaptured)
+	// Control-flow: poll and submit-result
+	ctx.Step(`^an MCP session is active with a prompt step pending$`, s.mcpSessionWithPromptStepPending)
+	ctx.Step(`^the agent calls the MCP poll tool$`, s.agentCallsMCPPoll)
+	ctx.Step(`^the agent receives the prompt text for the pending step$`, s.agentReceivesPromptText)
+	ctx.Step(`^an MCP session has a prompt step in-flight with wires "([^"]*)" and "([^"]*)"$`, s.mcpSessionWithWiredStep)
+	ctx.Step(`^the agent calls the MCP submit-result tool with named result "([^"]*)"$`, s.agentSubmitsNamedResult)
+	ctx.Step(`^the run advances to the step wired to "([^"]*)"$`, s.runAdvancesToWiredStep)
+
+	// Script steps unaffected
+	ctx.Step(`^an MCP-mode run reaches a script step$`, s.mcpRunReachesScriptStep)
+	ctx.Step(`^the script step executes$`, s.scriptStepExecutes)
+	ctx.Step(`^the script step completes without requiring a submit-result call$`, s.scriptStepCompletesWithoutMCP)
+
+	// Conversation continuity
+	ctx.Step(`^an MCP session is active with two sequential prompt steps$`, s.mcpSessionWithTwoSteps)
+	ctx.Step(`^the agent has submitted the first prompt step with result "([^"]*)"$`, s.firstStepSubmitted)
+	ctx.Step(`^the agent calls the MCP poll tool for the next step$`, s.agentPollsForNextStep)
+	ctx.Step(`^the agent receives the second prompt including prior conversation context$`, s.agentReceivesSecondStepWithContext)
+
+	// Result protocol
+	ctx.Step(`^an MCP session has a prompt step pending$`, s.mcpSessionHasPromptStepPending)
+	ctx.Step(`^the run follows the "([^"]*)" wire$`, s.runFollowsWire)
+	ctx.Step(`^no CLOCHE_RESULT marker appears in the captured output$`, s.noCLOCHE_RESULTMarker)
+}
+
+// ─── Mode selection stubs ─────────────────────────────────────────────────────
+
+func (s *mcpModeCtx) aWorkflowFileWithMode(_ string) error {
+	return errors.New("pending: MCP DSL mode field implementation")
+}
+
+func (s *mcpModeCtx) theMCPWorkflowFileIsParsed() error {
+	return errors.New("pending: MCP DSL mode field implementation")
+}
+
+func (s *mcpModeCtx) noMCPDSLErrorIsReturned() error {
+	return errors.New("pending: MCP DSL mode field implementation")
+}
+
+func (s *mcpModeCtx) theParsedWorkflowHasMode(_ string) error {
+	return errors.New("pending: MCP DSL mode field implementation")
+}
+
+func (s *mcpModeCtx) aRunningDaemonForMCP() error {
+	return errors.New("pending: MCP mode run creation implementation")
+}
+
+func (s *mcpModeCtx) theUserStartsCommand(_ string) error {
+	return errors.New("pending: MCP mode run creation implementation")
+}
+
+func (s *mcpModeCtx) theMCPModeRunIsCreated() error {
+	return errors.New("pending: MCP mode run creation implementation")
+}
+
+// ─── MCP server startup and handshake stubs ───────────────────────────────────
+
+func (s *mcpModeCtx) anMCPModeRunIsInProgress() error {
+	return errors.New("pending: MCP server implementation")
+}
+
+func (s *mcpModeCtx) agentCallsMCPInit() error {
+	return errors.New("pending: MCP server implementation")
+}
+
+func (s *mcpModeCtx) agentReceivesSessionToken() error {
+	return errors.New("pending: MCP server implementation")
+}
+
+// ─── Control-flow stubs ───────────────────────────────────────────────────────
+
+func (s *mcpModeCtx) mcpSessionWithPromptStepPending() error {
+	return errors.New("pending: MCP poll/submit-result implementation")
+}
+
+func (s *mcpModeCtx) agentCallsMCPPoll() error {
+	return errors.New("pending: MCP poll/submit-result implementation")
+}
+
+func (s *mcpModeCtx) agentReceivesPromptText() error {
+	return errors.New("pending: MCP poll/submit-result implementation")
+}
+
+func (s *mcpModeCtx) mcpSessionWithWiredStep(_, _ string) error {
+	return errors.New("pending: MCP poll/submit-result implementation")
+}
+
+func (s *mcpModeCtx) agentSubmitsNamedResult(_ string) error {
+	return errors.New("pending: MCP poll/submit-result implementation")
+}
+
+func (s *mcpModeCtx) runAdvancesToWiredStep(_ string) error {
+	return errors.New("pending: MCP poll/submit-result implementation")
+}
+
+// ─── Script steps unaffected stubs ───────────────────────────────────────────
+
+func (s *mcpModeCtx) mcpRunReachesScriptStep() error {
+	return errors.New("pending: MCP mode script step pass-through implementation")
+}
+
+func (s *mcpModeCtx) scriptStepExecutes() error {
+	return errors.New("pending: MCP mode script step pass-through implementation")
+}
+
+func (s *mcpModeCtx) scriptStepCompletesWithoutMCP() error {
+	return errors.New("pending: MCP mode script step pass-through implementation")
+}
+
+// ─── Conversation continuity stubs ───────────────────────────────────────────
+
+func (s *mcpModeCtx) mcpSessionWithTwoSteps() error {
+	return errors.New("pending: MCP conversation continuity implementation")
+}
+
+func (s *mcpModeCtx) firstStepSubmitted(_ string) error {
+	return errors.New("pending: MCP conversation continuity implementation")
+}
+
+func (s *mcpModeCtx) agentPollsForNextStep() error {
+	return errors.New("pending: MCP conversation continuity implementation")
+}
+
+func (s *mcpModeCtx) agentReceivesSecondStepWithContext() error {
+	return errors.New("pending: MCP conversation continuity implementation")
+}
+
+// ─── Result protocol stubs ────────────────────────────────────────────────────
+
+func (s *mcpModeCtx) mcpSessionHasPromptStepPending() error {
+	return errors.New("pending: MCP result protocol implementation")
+}
+
+func (s *mcpModeCtx) runFollowsWire(_ string) error {
+	return errors.New("pending: MCP result protocol implementation")
+}
+
+func (s *mcpModeCtx) noCLOCHE_RESULTMarker() error {
+	return errors.New("pending: MCP result protocol implementation")
 }
