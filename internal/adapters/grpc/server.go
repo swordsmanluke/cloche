@@ -354,9 +354,8 @@ func (s *ClocheServer) AgentSession(stream pb.ClocheService_AgentSessionServer) 
 			// later resume can re-apply it onto a freshly-built container. Only for
 			// container runs; skipped/failed steps are not snapshotted. Best-effort:
 			// run in a goroutine so the receive loop never blocks.
-			if rid := resolveRunID(); rid != "" && stepName != "" &&
-				result.Result != "fail" && result.Result != "error" && !result.Skipped {
-				if run, err := s.store.GetRun(ctx, rid); err == nil && run != nil && !run.IsHost {
+			if rid := resolveRunID(); rid != "" && stepName != "" {
+				if run, err := s.store.GetRun(ctx, rid); err == nil && shouldCaptureSnapshot(result, run) {
 					cid := containerID
 					sn := stepName
 					projectDir := run.ProjectDir
@@ -774,6 +773,18 @@ const (
 	resumeClean
 )
 
+// modeUsesCommit reports whether the mode reuses the failed attempt's committed
+// container image (resumeReuse) versus rebuilding fresh (resumeRebuild/clean).
+func modeUsesCommit(mode resumeRebuildMode) bool {
+	return mode == resumeReuse
+}
+
+// modeUsesSnapshot reports whether the mode re-applies the latest workspace
+// snapshot. True for rebuild and reuse; false for clean.
+func modeUsesSnapshot(mode resumeRebuildMode) bool {
+	return mode != resumeClean
+}
+
 // resumeRebuildModeFromContext reads the x-cloche-resume-rebuild metadata value
 // and maps it to a resumeRebuildMode. Defaults to resumeRebuild when absent or
 // unrecognized.
@@ -1163,10 +1174,9 @@ func (s *ClocheServer) resumeContainerRunWithPool(ctx context.Context, run *doma
 		image = projCfg.Daemon.Image
 	}
 
-	switch mode {
-	case resumeReuse:
+	if modeUsesCommit(mode) {
 		// Legacy behavior: commit the failed attempt's containers to images and
-		// reuse them, re-applying the latest workspace snapshot.
+		// reuse them.
 		var commitErr error
 		committedImages, commitErr = s.pool.CommitForResume(ctx, run.AttemptID)
 		if commitErr != nil {
@@ -1180,20 +1190,14 @@ func (s *ClocheServer) resumeContainerRunWithPool(ctx context.Context, run *doma
 				break
 			}
 		}
-		snapshotPath = latestSnapshotPath(run.ProjectDir, run.TaskID, run.AttemptID)
-
-	case resumeClean:
-		// Rebuild the container fresh; do NOT re-apply any snapshot. Skip the
-		// commit so Dockerfile changes take effect.
+	} else {
+		// Rebuild the container fresh from the config image; skip the commit so
+		// Dockerfile changes take effect.
 		s.ensureResumeImage(ctx, run.ProjectDir, image)
 		committedImages = nil
-		snapshotPath = ""
+	}
 
-	default: // resumeRebuild
-		// Rebuild the container fresh and re-apply the latest workspace snapshot.
-		// Skip the commit so Dockerfile changes take effect.
-		s.ensureResumeImage(ctx, run.ProjectDir, image)
-		committedImages = nil
+	if modeUsesSnapshot(mode) {
 		snapshotPath = latestSnapshotPath(run.ProjectDir, run.TaskID, run.AttemptID)
 	}
 

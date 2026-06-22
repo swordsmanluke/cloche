@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -422,7 +423,10 @@ func TestContainerPool_NotifyReadyWithStream_PrefixMatch(t *testing.T) {
 }
 
 // fixedIDRuntime always returns the same container ID from Start.
-type fixedIDRuntime struct{ fakeRuntime; id string }
+type fixedIDRuntime struct {
+	fakeRuntime
+	id string
+}
 
 func (f *fixedIDRuntime) Start(_ context.Context, _ ports.ContainerConfig) (string, error) {
 	return f.id, nil
@@ -958,4 +962,83 @@ func TestContainerPool_SessionFor_ContainerExitsBeforeAgentReady(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "exited before agent was ready",
 		"error should indicate the container exited unexpectedly")
+}
+
+// tarRuntime extends fakeRuntime with tar-stream copy methods so it satisfies
+// the tarCopier interface exercised by CopyTarFrom/CopyTarTo.
+type tarRuntime struct {
+	fakeRuntime
+	mu sync.Mutex
+
+	fromCalledID string
+	fromSrc      string
+	fromPayload  string // written to w on CopyTarFrom
+	fromErr      error
+
+	toCalledID string
+	toDst      string
+	toReceived string // contents read from r on CopyTarTo
+	toErr      error
+}
+
+func (r *tarRuntime) CopyTarFrom(_ context.Context, containerID, srcPath string, w io.Writer) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.fromCalledID = containerID
+	r.fromSrc = srcPath
+	if r.fromErr != nil {
+		return r.fromErr
+	}
+	_, err := io.WriteString(w, r.fromPayload)
+	return err
+}
+
+func (r *tarRuntime) CopyTarTo(_ context.Context, containerID string, rd io.Reader, dst string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.toCalledID = containerID
+	r.toDst = dst
+	if r.toErr != nil {
+		return r.toErr
+	}
+	b, err := io.ReadAll(rd)
+	r.toReceived = string(b)
+	return err
+}
+
+func TestContainerPool_CopyTarFrom_Delegates(t *testing.T) {
+	rt := &tarRuntime{fromPayload: "tar-bytes"}
+	pool := docker.NewContainerPool(rt)
+
+	var buf strings.Builder
+	err := pool.CopyTarFrom(context.Background(), "cid-1", "/workspace", &buf)
+	require.NoError(t, err)
+	assert.Equal(t, "cid-1", rt.fromCalledID)
+	assert.Equal(t, "/workspace", rt.fromSrc)
+	assert.Equal(t, "tar-bytes", buf.String())
+}
+
+func TestContainerPool_CopyTarTo_Delegates(t *testing.T) {
+	rt := &tarRuntime{}
+	pool := docker.NewContainerPool(rt)
+
+	err := pool.CopyTarTo(context.Background(), "cid-2", strings.NewReader("payload"), "/workspace/")
+	require.NoError(t, err)
+	assert.Equal(t, "cid-2", rt.toCalledID)
+	assert.Equal(t, "/workspace/", rt.toDst)
+	assert.Equal(t, "payload", rt.toReceived)
+}
+
+func TestContainerPool_CopyTar_RuntimeNotSupported(t *testing.T) {
+	// fakeRuntime does NOT implement tarCopier.
+	rt := &fakeRuntime{}
+	pool := docker.NewContainerPool(rt)
+
+	err := pool.CopyTarFrom(context.Background(), "cid", "/workspace", io.Discard)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not support tar copy")
+
+	err = pool.CopyTarTo(context.Background(), "cid", strings.NewReader(""), "/workspace/")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not support tar copy")
 }

@@ -6,8 +6,31 @@ import (
 	"path/filepath"
 	"time"
 
+	pb "github.com/cloche-dev/cloche/api/clochepb"
+	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/runcontext"
 )
+
+// shouldCaptureSnapshot reports whether a step result warrants a workspace
+// snapshot: the run must be a non-host container run, and the step must have
+// succeeded (not failed/errored and not skipped).
+func shouldCaptureSnapshot(result *pb.StepResult, run *domain.Run) bool {
+	if result == nil || run == nil {
+		return false
+	}
+	if run.IsHost {
+		return false
+	}
+	// Without a project directory there is nowhere stable to store the snapshot;
+	// skip rather than writing a relative path into the daemon's cwd.
+	if run.ProjectDir == "" {
+		return false
+	}
+	if result.Skipped {
+		return false
+	}
+	return result.Result != "fail" && result.Result != "error"
+}
 
 // snapshotDir returns the per-attempt directory that holds workspace snapshots
 // for a resumable run: .cloche/runs/<taskID>/snapshots/<attemptID>/.

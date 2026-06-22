@@ -125,3 +125,49 @@ func TestParseResumeArg_StepNameWithColon(t *testing.T) {
 		t.Errorf("expected compositeID %q, got %q", "a133:develop:step:extra", compositeID)
 	}
 }
+
+func TestParseResumeFlags_Default(t *testing.T) {
+	mode, pos, err := parseResumeFlags([]string{"TASK-123"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mode != "rebuild" {
+		t.Errorf("expected mode %q, got %q", "rebuild", mode)
+	}
+	if len(pos) != 1 || pos[0] != "TASK-123" {
+		t.Errorf("expected positional [TASK-123], got %v", pos)
+	}
+}
+
+func TestParseResumeFlags_NoRebuild(t *testing.T) {
+	mode, pos, err := parseResumeFlags([]string{"--no-rebuild", "TASK-123"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mode != "reuse" {
+		t.Errorf("expected mode %q, got %q", "reuse", mode)
+	}
+	if len(pos) != 1 || pos[0] != "TASK-123" {
+		t.Errorf("expected positional [TASK-123], got %v", pos)
+	}
+}
+
+func TestParseResumeFlags_Clean(t *testing.T) {
+	mode, pos, err := parseResumeFlags([]string{"TASK-123", "--clean"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mode != "clean" {
+		t.Errorf("expected mode %q, got %q", "clean", mode)
+	}
+	if len(pos) != 1 || pos[0] != "TASK-123" {
+		t.Errorf("expected positional [TASK-123], got %v", pos)
+	}
+}
+
+func TestParseResumeFlags_BothMutuallyExclusive(t *testing.T) {
+	_, _, err := parseResumeFlags([]string{"--no-rebuild", "--clean", "TASK-123"})
+	if err == nil {
+		t.Fatal("expected error when both --no-rebuild and --clean are set")
+	}
+}
