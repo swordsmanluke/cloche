@@ -94,35 +94,13 @@ All step types support a `timeout` config key (any `time.ParseDuration` value, e
 `"45m"`, `"2h"`). When a step exceeds its timeout, it produces a `"timeout"` result. If
 no `timeout` wire is declared, the implicit wire routes to `abort`.
 
-All step types also support a `token-limit` config key (integer). This caps the maximum
-**output** tokens the step may produce. Input tokens are not counted against the limit.
-When a step exceeds its token-limit, it produces a `"token-limit"` result. If no
-`token-limit` wire is declared, the implicit wire routes to `abort`. You can also set a
-workflow-level `token-limit` to cap cumulative output tokens across all steps.
-
-Default values:
-- Per-step: 500 000 output tokens
-- Workflow-level: 2 000 000 output tokens
-
-Sentinels:
-- `token-limit = -1` — disables enforcement (unlimited output tokens)
-- `token-limit = 0` — aborts immediately without running the step/workflow
-
-You can override the default per-step abort target for all steps at once with a
-workflow-level shorthand wire:
-
-```
-// Route all steps' token-limit result to a recovery step instead of abort
-token-limit -> handle-limit
-```
-
 A step with more than one of `prompt`, `run`, `workflow_name`, or `poll`, or none of them,
 is a parse error.
 
 ## DSL Syntax
 
 ```
-workflow "develop" {
+workflow develop {
   container {
     image = "my-project:latest"
     agent_command = "claude"
@@ -162,7 +140,7 @@ Workflows can declare named agents at the workflow level. An agent specifies a `
 config key, avoiding repetition of agent configuration across multiple prompt steps.
 
 ```
-workflow "develop" {
+workflow develop {
   agent haiku_claude {
     command = "claude"
     args = "-p --dangerously-skip-permissions --model claude-haiku-4-5"
@@ -286,20 +264,37 @@ a deprecation warning per step. Prefer `{{ $task_description }}` and `{{ $prev_o
 
 ## Repository Declarations
 
-Repositories are configured in `.cloche/config.toml` as `[[repositories]]` entries, not
-in `.cloche` workflow files. There is no `repository` DSL block.
-
-Workflows can declare which repositories they use via the `repos` field:
+Repositories are configured in `.cloche/config.toml` as `[[repositories]]` entries.
+Within `.cloche` files, top-level `repository` blocks annotate each repository with a
+remote URL:
 
 ```
-workflow "develop-backend" {
+repository "backend" {
+  path = "./repos/backend"
+  url  = "https://github.com/example/backend"
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `path` | yes | Path relative to the project root. |
+| `url` | no | Remote URL (informational). |
+
+Repository blocks are top-level constructs, not nested inside `workflow` blocks.
+They must not appear in files that also contain `workflow` blocks, as the parser
+expects each top-level declaration to begin with the `workflow` keyword.
+
+**Workflow-level `repos` field** — workflows can declare which repositories they use:
+
+```
+workflow develop-backend {
   repos = ["backend"]
   ...
 }
 ```
 
-`repos` is a list of repository names matching entries in `config.toml`. It documents
-intent and surfaces in `cloche project`; the runtime does not enforce it.
+`repos` is a list of repository names. It documents intent and surfaces in
+`cloche project`; the runtime does not enforce it.
 
 ## Key Properties
 
@@ -336,46 +331,6 @@ collect any(lint:success, quality:success) -> done
 
 `all` fires when every condition is met. `any` fires when at least one is.
 
-## Token Limits
-
-Cloche can automatically abort a run when an agent exhausts a token budget. Token limits
-are injected implicitly — every step automatically gains a `token-limit` result and wire
-that routes to `abort` unless overridden.
-
-**Workflow-level token limit** — set a per-run token budget at the top of a `workflow`
-block:
-
-```
-workflow "develop" {
-  token-limit = 100000
-  ...
-}
-```
-
-This stores the budget in `wf.Config["token-limit"]` and is available to the runtime.
-
-**Step-level token limit** — override the budget for a specific step:
-
-```
-step implement {
-  prompt      = file(".cloche/prompts/implement.md")
-  token-limit = 50000
-  results     = [success, fail]
-}
-```
-
-**Overriding the abort target** — by default, a token-limit event routes to `abort`. Use
-a global wire directive to redirect it to a different step (e.g. a cleanup or summary
-step):
-
-```
-token-limit -> release-task
-```
-
-This directive appears at the workflow level alongside other wiring lines, not inside a
-`step` block. When set, every step whose `token-limit` result has not been wired
-explicitly will route to `release-task` instead of `abort`.
-
 ## Workflow-Level Configuration Blocks
 
 Workflows support a configuration block at the workflow level to set defaults for all
@@ -385,7 +340,7 @@ steps. The block name depends on the workflow location:
 network allowlist.
 
 ```
-workflow "develop" {
+workflow develop {
   container {
     image = "my-project:latest"
     agent_command = "claude"
@@ -402,7 +357,7 @@ Sets agent defaults for agent steps running on the host machine. An empty `host 
 (no keys) is valid and simply marks the workflow as host-side.
 
 ```
-workflow "main" {
+workflow main {
   host {
     agent_command = "claude"
   }
@@ -424,7 +379,7 @@ If no `id` is declared, the workflow uses the implicit default id `_default`. Al
 container workflows sharing the same id run inside the same container per attempt.
 
 ```
-workflow "develop" {
+workflow develop {
   container {
     id    = "dev-env"
     image = "my-project:latest"
@@ -432,7 +387,7 @@ workflow "develop" {
   ...
 }
 
-workflow "review" {
+workflow review {
   container {
     id = "dev-env"   // shares the same container as "develop"
   }
@@ -464,7 +419,7 @@ A two-phase host workflow setup with `list-tasks` and `main` (this is the defaul
 scaffold generated by `cloche init`):
 
 ```
-workflow "list-tasks" {
+workflow list-tasks {
   host {}
 
   step get-tasks {
@@ -476,7 +431,7 @@ workflow "list-tasks" {
   get-tasks:fail    -> abort
 }
 
-workflow "main" {
+workflow main {
   host {}
 
   step claim-task {
@@ -711,7 +666,7 @@ step has been waiting and when it last polled.
 ### Complete example
 
 ```
-workflow "review-and-merge" {
+workflow review-and-merge {
   host {}
 
   step create-pr {

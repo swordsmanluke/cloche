@@ -537,8 +537,6 @@ func TestMain(m *testing.M) {
 		ScenarioInitializer: func(ctx *godog.ScenarioContext) {
 			initRepositoryScenarios(ctx)
 			initPromptTemplatingScenarios(ctx)
-			initTokenLimitScenarios(ctx)
-			initVerticalDesignPrepScenarios(ctx)
 			initStepTokenMetricsScenarios(ctx)
 		},
 		Options: &opts,

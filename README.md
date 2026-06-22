@@ -72,7 +72,7 @@ a directed graph of steps connected by result wiring. Steps are either agent
 prompts or shell commands:
 
 ```
-workflow "develop" {
+workflow develop {
   step implement {
     prompt = file(".cloche/prompts/implement.md")
     results = [success, fail]

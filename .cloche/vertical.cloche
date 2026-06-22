@@ -12,58 +12,9 @@
 //   CLOCHE_TASK_ID=<feature-task-id> cloche set vertical_base_branch <branch>
 //   (default: "main")
 
-workflow vertical {
+workflow "vertical" {
   host {
     agent_command = "claude"
-  }
-
-  // ===== Phase 0: claim =====
-
-  step claim {
-    run     = "bash .cloche/scripts/claim-task.sh"
-    results = [success, fail]
-  }
-
-  // ===== Phase 0.5: design-prep =====
-
-  step check-design-needed {
-    prompt  = file(".cloche/prompts/vertical-check-design-needed.md")
-    timeout = "15m"
-    results = [has-design, needs-design, fail]
-  }
-
-  step prepare-design-branch {
-    run     = "bash .cloche/scripts/vertical-prepare-design-branch.sh"
-    results = [success, fail]
-  }
-
-  step write-design {
-    prompt  = file(".cloche/prompts/vertical-write-design.md")
-    timeout = "60m"
-    results = [success, fail]
-  }
-
-  step open-design-pr {
-    run     = "bash .cloche/scripts/vertical-open-design-pr.sh"
-    results = [success, fail]
-  }
-
-  step poll-design-pr {
-    poll     = "bash .cloche/scripts/vertical-poll-pr.sh"
-    interval = "60s"
-    results  = [approved, feedback, fail]
-  }
-
-  step address-design-feedback {
-    prompt       = file(".cloche/prompts/vertical-address-design-feedback.md")
-    timeout      = "60m"
-    max_attempts = 10
-    results      = [success, fail, give-up]
-  }
-
-  step record-design {
-    run     = "bash .cloche/scripts/vertical-record-design.sh"
-    results = [success, fail]
   }
 
   // ===== Phase 1: plan and BDD test plan =====
@@ -169,33 +120,6 @@ workflow vertical {
 
   // ===== Wiring =====
 
-  claim:success                       -> check-design-needed
-  claim:fail                          -> abort
-
-  check-design-needed:has-design      -> plan-feature
-  check-design-needed:needs-design    -> prepare-design-branch
-  check-design-needed:fail            -> abort
-
-  prepare-design-branch:success       -> write-design
-  prepare-design-branch:fail          -> abort
-
-  write-design:success                -> open-design-pr
-  write-design:fail                   -> abort
-
-  open-design-pr:success              -> poll-design-pr
-  open-design-pr:fail                 -> abort
-
-  poll-design-pr:approved             -> record-design
-  poll-design-pr:feedback             -> address-design-feedback
-  poll-design-pr:fail                 -> abort
-
-  address-design-feedback:success     -> poll-design-pr
-  address-design-feedback:fail        -> abort
-  address-design-feedback:give-up     -> abort
-
-  record-design:success               -> plan-feature
-  record-design:fail                  -> abort
-
   plan-feature:success                -> bdd-test-plan
   plan-feature:fail                   -> abort
 
@@ -261,7 +185,7 @@ workflow vertical {
 // godog .feature files plus stub step definitions that fail loudly, verifies the
 // test plan can be discovered and runs (failing as expected), commits.
 // ============================================================================
-workflow vertical-bdd-test-plan {
+workflow "vertical-bdd-test-plan" {
   step prepare-branch {
     run     = "bash .cloche/scripts/vertical-prepare-test-plan-branch.sh"
     results = [success, fail]
@@ -296,7 +220,7 @@ workflow vertical-bdd-test-plan {
 // outcome. The implement_status KV value distinguishes success from
 // agent-gave-up.
 // ============================================================================
-workflow implement-vertical-layer {
+workflow "implement-vertical-layer" {
   step read-layer {
     run     = "bash .cloche/scripts/vertical-read-layer.sh"
     results = [success, fail]
@@ -366,7 +290,7 @@ workflow implement-vertical-layer {
 // Generic across phases — works for test-plan, layer, and docs PRs. Pulls open
 // comments, runs an agent to respond to each, runs verify, pushes the branch.
 // ============================================================================
-workflow address-pr-feedback {
+workflow "address-pr-feedback" {
   step pull-comments {
     run     = "bash .cloche/scripts/vertical-pull-comments.sh"
     results = [success, fail]
@@ -405,7 +329,7 @@ workflow address-pr-feedback {
 // update project docs (NOT inline code comments — those should already be done),
 // commits.
 // ============================================================================
-workflow vertical-update-docs {
+workflow "vertical-update-docs" {
   step prepare-branch {
     run     = "bash .cloche/scripts/vertical-prepare-docs-branch.sh"
     results = [success, fail]

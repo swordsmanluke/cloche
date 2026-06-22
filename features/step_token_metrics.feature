@@ -1,52 +1,72 @@
-Feature: Per-step token metrics design doc
-  As a cloche maintainer planning to implement per-step token metrics
-  I want a complete design document at docs/plans/2026-05-28-step-token-metrics.md
-  So that the schema, storage, query shapes, and CLI surface are fully specified before implementation begins
+Feature: Per-step token metrics
+  As a developer using Cloche
+  I want to query token usage broken down by workflow step
+  So that I can identify which steps are most expensive and track changes over time
 
-  # ─── L1: Schema and identity foundations ─────────────────────────────────────
+  Background:
+    Given the daemon is running against a test project directory
 
-  Scenario: Design doc exists at the expected path
-    Given the step-token-metrics design doc
-    Then the doc file exists
+  # ─── Slice by step ───────────────────────────────────────────────────────────
 
-  Scenario: Design doc has a Step Identifier section that names the canonical key
-    Given the step-token-metrics design doc
-    Then the doc contains a "Step Identifier" section
-    And the "Step Identifier" section names the canonical key fields
+  Scenario: cloche metrics shows token totals for a specific workflow step
+    Given the project has completed runs of the "develop" workflow
+    And the "implement" step used 10000 input tokens and 2000 output tokens in one run
+    And the "implement" step used 8000 input tokens and 1800 output tokens in another run
+    When the user runs "cloche metrics --workflow develop --step implement"
+    Then the command succeeds
+    And the output contains "implement"
+    And the output contains "18,000"
+    And the output contains "3,800"
 
-  Scenario: Design doc has a Schema section listing input and output token fields
-    Given the step-token-metrics design doc
-    Then the doc contains a "Schema" section
-    And the "Schema" section lists "input_tokens" and "output_tokens" fields
+  Scenario: cloche metrics --step filters to only that step
+    Given the project has completed runs of the "develop" workflow
+    And the "implement" step used 10000 input tokens and 2000 output tokens
+    And the "test" step used 5000 input tokens and 1000 output tokens
+    When the user runs "cloche metrics --workflow develop --step implement"
+    Then the command succeeds
+    And the output contains "implement"
+    And the output does not contain "test"
 
-  Scenario: Design doc addresses host-vs-container prompt step coverage
-    Given the step-token-metrics design doc
-    Then the doc contains a "Host vs Container" section
+  # ─── Aggregate by workflow ────────────────────────────────────────────────────
 
-  # ─── L2: Query shapes and CLI surface ────────────────────────────────────────
+  Scenario: cloche metrics without --step shows all steps sorted by token total
+    Given the project has completed runs of the "develop" workflow
+    And the "implement" step used 100000 input tokens and 20000 output tokens
+    And the "test" step used 10000 input tokens and 2000 output tokens
+    When the user runs "cloche metrics --workflow develop"
+    Then the command succeeds
+    And the output contains "implement"
+    And the output contains "test"
+    And "implement" appears before "test" in the output
 
-  Scenario: Design doc specifies slice-by-step query with a concrete SQL example
-    Given the step-token-metrics design doc
-    Then the doc contains a slice-by-step query example
+  # ─── Trend over time ─────────────────────────────────────────────────────────
 
-  Scenario: Design doc specifies aggregate-by-workflow query with a concrete SQL example
-    Given the step-token-metrics design doc
-    Then the doc contains an aggregate-by-workflow query example
+  Scenario: cloche metrics --trend shows daily token breakdown for a step
+    Given the project has completed runs of the "develop" workflow on multiple days
+    And the "implement" step used 10000 tokens on "2026-05-22"
+    And the "implement" step used 12000 tokens on "2026-05-23"
+    When the user runs "cloche metrics --workflow develop --step implement --trend"
+    Then the command succeeds
+    And the output contains "2026-05-22"
+    And the output contains "2026-05-23"
 
-  Scenario: Design doc specifies trend-over-time query with a concrete SQL example
-    Given the step-token-metrics design doc
-    Then the doc contains a trend-over-time query example
+  # ─── Output formats ──────────────────────────────────────────────────────────
 
-  Scenario: Design doc CLI section specifies cloche metrics or clo metric command forms
-    Given the step-token-metrics design doc
-    Then the doc contains a "CLI" section
-    And the "CLI" section references "cloche metrics" or "clo metric"
+  Scenario: cloche metrics --format json outputs valid JSON
+    Given the project has completed runs of the "develop" workflow
+    And the "implement" step used 10000 input tokens and 2000 output tokens
+    When the user runs "cloche metrics --workflow develop --step implement --format json"
+    Then the command succeeds
+    And the output is valid JSON
+    And the JSON output contains a "total_tokens" field
 
-  Scenario: Design doc storage section reconciles with the metrics-reporting proposal
-    Given the step-token-metrics design doc
-    Then the doc contains a "Storage" section
-    And the "Storage" section references the metrics table
+  # ─── Time filtering ──────────────────────────────────────────────────────────
 
-  Scenario: No open questions remain unresolved after both layers
-    Given the step-token-metrics design doc
-    Then the doc has no unresolved open questions
+  Scenario: cloche metrics --since filters out older runs
+    Given the project has completed runs of the "develop" workflow
+    And the "implement" step used 10000 tokens on "2026-04-01"
+    And the "implement" step used 5000 tokens on "2026-05-15"
+    When the user runs "cloche metrics --workflow develop --step implement --since 2026-05-01"
+    Then the command succeeds
+    And the output shows a total of 5000 tokens
+    And the output does not show a total of 15000 tokens
