@@ -2,25 +2,30 @@ package features_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
+	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cucumber/godog"
 )
 
 // tokenLimitCtx holds per-scenario state for token-limit BDD scenarios.
 type tokenLimitCtx struct {
+	// L1 state
 	dslContent      string
 	parsedWorkflows map[string]*domain.Workflow
 	dslParseErr     error
 
-	// Engine simulation state (L2)
-	executorCallCount int
-	stepResults       map[string]string // step name -> result string
-	runFailed         bool
-	runAborted        bool
+	// L2 state
+	engineWf         *domain.Workflow
+	run              *domain.Run
+	mu               sync.Mutex
+	executorCallCount int            // total across all steps
+	executorCallsByStep map[string]int // per-step call counts
 }
 
 func (s *tokenLimitCtx) reset() {
@@ -38,6 +43,15 @@ func (s *tokenLimitCtx) theTokenLimitDSLFileIsParsed() error {
 	workflows, err := dsl.ParseAll(s.dslContent)
 	s.parsedWorkflows = workflows
 	s.dslParseErr = err
+	if err != nil {
+		return nil
+	}
+	for _, wf := range workflows {
+		s.dslParseErr = wf.Validate()
+		if s.dslParseErr != nil {
+			break
+		}
+	}
 	return nil
 }
 
@@ -89,13 +103,13 @@ func (s *tokenLimitCtx) stepHasImplicitResultWiredTo(stepName, workflowName, res
 	}
 	for _, w := range wf.Wiring {
 		if w.From == stepName && w.Result == result && w.Implicit {
-			if w.To == target {
-				return nil
+			if w.To != target {
+				return fmt.Errorf("step %q has implicit %q wire to %q, want %q", stepName, result, w.To, target)
 			}
-			return fmt.Errorf("step %q has implicit %q wire but goes to %q, want %q", stepName, result, w.To, target)
+			return nil
 		}
 	}
-	return fmt.Errorf("step %q in workflow %q has no implicit %q result wired to %q", stepName, workflowName, result, target)
+	return fmt.Errorf("step %q in workflow %q has no implicit %q wire", stepName, workflowName, result)
 }
 
 func (s *tokenLimitCtx) workflowWireFromAnyStepGoesTo(workflowName, result, target string) error {
@@ -103,19 +117,19 @@ func (s *tokenLimitCtx) workflowWireFromAnyStepGoesTo(workflowName, result, targ
 	if !ok {
 		return fmt.Errorf("workflow %q not found", workflowName)
 	}
-	for name := range wf.Steps {
+	for stepName := range wf.Steps {
 		found := false
 		for _, w := range wf.Wiring {
-			if w.From == name && w.Result == result {
+			if w.From == stepName && w.Result == result {
 				if w.To != target {
-					return fmt.Errorf("step %q wire %q goes to %q, want %q", name, result, w.To, target)
+					return fmt.Errorf("step %q has %q wire to %q, want %q", stepName, result, w.To, target)
 				}
 				found = true
 				break
 			}
 		}
 		if !found {
-			return fmt.Errorf("step %q in workflow %q has no %q wire", name, workflowName, result)
+			return fmt.Errorf("step %q in workflow %q has no %q wire", stepName, workflowName, result)
 		}
 	}
 	return nil
@@ -123,14 +137,14 @@ func (s *tokenLimitCtx) workflowWireFromAnyStepGoesTo(workflowName, result, targ
 
 func (s *tokenLimitCtx) aTokenLimitParseErrorIsReturned() error {
 	if s.dslParseErr == nil {
-		return fmt.Errorf("expected a parse error but got none")
+		return errors.New("expected a parse/validation error but got none")
 	}
 	return nil
 }
 
 func (s *tokenLimitCtx) theTokenLimitErrorMentions(keyword string) error {
 	if s.dslParseErr == nil {
-		return fmt.Errorf("no parse error to check")
+		return errors.New("no error to inspect")
 	}
 	if !strings.Contains(s.dslParseErr.Error(), keyword) {
 		return fmt.Errorf("error %q does not mention %q", s.dslParseErr.Error(), keyword)
@@ -140,60 +154,186 @@ func (s *tokenLimitCtx) theTokenLimitErrorMentions(keyword string) error {
 
 // ─── L2: Engine enforcement steps ────────────────────────────────────────────
 
+// parseSingleStepWorkflow parses a DSL string and stores the resulting workflow.
+func (s *tokenLimitCtx) parseSingleStepWorkflow(dslContent string) error {
+	workflows, err := dsl.ParseAll(dslContent)
+	if err != nil {
+		return err
+	}
+	wf := workflows["test"]
+	if wf == nil {
+		return errors.New("workflow 'test' not found after parsing")
+	}
+	s.engineWf = wf
+	s.executorCallsByStep = make(map[string]int)
+	return nil
+}
+
 func (s *tokenLimitCtx) engineWithStepHavingTokenLimit(stepName string, limit int) error {
-	return godog.ErrPending
+	return s.parseSingleStepWorkflow(fmt.Sprintf(`workflow "test" {
+  step %s {
+    run = "echo test"
+    results = [success]
+    token-limit = %d
+  }
+  %s:success -> done
+}`, stepName, limit, stepName))
 }
 
 func (s *tokenLimitCtx) engineWithTwoStepWorkflowTokenLimit(limit int) error {
-	return godog.ErrPending
+	return s.parseSingleStepWorkflow(fmt.Sprintf(`workflow "test" {
+  token-limit = %d
+  step step1 {
+    run = "echo step1"
+    results = [success]
+  }
+  step step2 {
+    run = "echo step2"
+    results = [success]
+  }
+  step1:success -> step2
+  step2:success -> done
+}`, limit))
 }
 
 func (s *tokenLimitCtx) engineWithWorkflowTokenLimit(limit int) error {
-	return godog.ErrPending
+	return s.parseSingleStepWorkflow(fmt.Sprintf(`workflow "test" {
+  token-limit = %d
+  step work {
+    run = "echo work"
+    results = [success]
+  }
+  work:success -> done
+}`, limit))
+}
+
+// makeExecutor builds a counting executor that returns controlled token usage.
+// usagePerStep maps step names to specific usage; defaultUsage applies to all others.
+func (s *tokenLimitCtx) makeExecutor(usagePerStep map[string]*domain.TokenUsage, defaultUsage *domain.TokenUsage) engine.StepExecutor {
+	return engine.StepExecutorFunc(func(_ context.Context, step *domain.Step) (domain.StepResult, error) {
+		s.mu.Lock()
+		s.executorCallCount++
+		s.executorCallsByStep[step.Name]++
+		s.mu.Unlock()
+
+		usage := defaultUsage
+		if u, ok := usagePerStep[step.Name]; ok {
+			usage = u
+		}
+		return domain.StepResult{Result: "success", Usage: usage}, nil
+	})
+}
+
+// runEngine runs the engine with the given executor and captures the result.
+func (s *tokenLimitCtx) runEngine(exec engine.StepExecutor) error {
+	eng := engine.New(exec)
+	run, err := eng.Run(context.Background(), s.engineWf)
+	s.run = run
+	return err
 }
 
 func (s *tokenLimitCtx) stepCompletesWithOutputTokens(stepName string, outputTokens int) error {
-	return godog.ErrPending
+	exec := s.makeExecutor(
+		map[string]*domain.TokenUsage{stepName: {OutputTokens: int64(outputTokens)}},
+		&domain.TokenUsage{},
+	)
+	return s.runEngine(exec)
 }
 
 func (s *tokenLimitCtx) stepCompletesWithOutputAndInputTokens(stepName string, outputTokens, inputTokens int) error {
-	return godog.ErrPending
+	exec := s.makeExecutor(
+		map[string]*domain.TokenUsage{stepName: {OutputTokens: int64(outputTokens), InputTokens: int64(inputTokens)}},
+		&domain.TokenUsage{},
+	)
+	return s.runEngine(exec)
 }
 
 func (s *tokenLimitCtx) eachStepCompletesWithOutputTokens(outputTokens int) error {
-	return godog.ErrPending
+	exec := s.makeExecutor(nil, &domain.TokenUsage{OutputTokens: int64(outputTokens)})
+	return s.runEngine(exec)
 }
 
 func (s *tokenLimitCtx) engineExecutesTheWorkflow() error {
-	return godog.ErrPending
+	exec := s.makeExecutor(nil, &domain.TokenUsage{})
+	return s.runEngine(exec)
+}
+
+// stepResult returns the recorded result for a step from the run's step executions.
+func (s *tokenLimitCtx) lastStepResult(stepName string) (string, error) {
+	if s.run == nil {
+		return "", errors.New("engine has not been run yet")
+	}
+	for i := len(s.run.StepExecutions) - 1; i >= 0; i-- {
+		if s.run.StepExecutions[i].StepName == stepName {
+			return s.run.StepExecutions[i].Result, nil
+		}
+	}
+	return "", fmt.Errorf("step %q not found in run executions", stepName)
 }
 
 func (s *tokenLimitCtx) engineStepResultIs(stepName, result string) error {
-	return godog.ErrPending
+	got, err := s.lastStepResult(stepName)
+	if err != nil {
+		return err
+	}
+	if got != result {
+		return fmt.Errorf("step %q result = %q, want %q", stepName, got, result)
+	}
+	return nil
 }
 
 func (s *tokenLimitCtx) engineStepResultIsNot(stepName, result string) error {
-	return godog.ErrPending
+	got, err := s.lastStepResult(stepName)
+	if err != nil {
+		return err
+	}
+	if got == result {
+		return fmt.Errorf("step %q result = %q, expected it not to be", stepName, result)
+	}
+	return nil
 }
 
 func (s *tokenLimitCtx) engineRunIsMarkedFailed() error {
-	return godog.ErrPending
+	if s.run == nil || s.run.State != domain.RunStateFailed {
+		state := domain.RunState("(nil)")
+		if s.run != nil {
+			state = s.run.State
+		}
+		return fmt.Errorf("expected run state %q, got %q", domain.RunStateFailed, state)
+	}
+	return nil
 }
 
 func (s *tokenLimitCtx) engineRunIsAbortedAfterFirstStep() error {
-	return godog.ErrPending
+	// Verify the run ended as failed due to the workflow token-limit accumulator.
+	return s.engineRunIsMarkedFailed()
 }
 
 func (s *tokenLimitCtx) engineRunIsNotAborted() error {
-	return godog.ErrPending
+	if s.run != nil && s.run.State == domain.RunStateFailed {
+		return fmt.Errorf("expected run not to be aborted, got state %q", s.run.State)
+	}
+	return nil
 }
 
 func (s *tokenLimitCtx) executorIsNeverCalledForStep(stepName string) error {
-	return godog.ErrPending
+	s.mu.Lock()
+	count := s.executorCallsByStep[stepName]
+	s.mu.Unlock()
+	if count != 0 {
+		return fmt.Errorf("executor was called %d time(s) for step %q, expected 0", count, stepName)
+	}
+	return nil
 }
 
 func (s *tokenLimitCtx) noExecutorIsCalled() error {
-	return godog.ErrPending
+	s.mu.Lock()
+	count := s.executorCallCount
+	s.mu.Unlock()
+	if count != 0 {
+		return fmt.Errorf("executor was called %d time(s), expected 0", count)
+	}
+	return nil
 }
 
 // ─── Step registration ────────────────────────────────────────────────────────
@@ -233,5 +373,3 @@ func initTokenLimitScenarios(ctx *godog.ScenarioContext) {
 	ctx.Step(`^no executor is called$`, s.noExecutorIsCalled)
 }
 
-// suppress unused import warning during the pending phase
-var _ = strings.Contains
