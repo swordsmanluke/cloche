@@ -56,6 +56,7 @@ workflow "develop" {
 | `usage_command` | string | Shell command to run after an agent step completes to capture token usage. Output must be JSON: `{"input_tokens": N, "output_tokens": N}`. If absent or the command fails, usage is not tracked. Overrides any adapter-level default (e.g. from `[agents.codex]` in `config.toml`). |
 | `prompt_step` | string | For workflow steps: which preceding step's output to use as the prompt. |
 | `skip` | string | Shell command run before the step; exit 0 bypasses the step (follows `success` wire or a `CLOCHE_RESULT:<name>` marker). Exit non-zero runs the step normally. See [Skip Scripts](workflows.md#skip-scripts). |
+| `repository` | string | Associates the step with a named repository declared in `config.toml`. Stored in the step's config map; the runtime does not enforce it yet. Suppresses "unknown key" warnings from `cloche validate`. |
 
 A step must have exactly one of `prompt`, `run`, `workflow_name`, or `poll`.
 

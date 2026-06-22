@@ -284,6 +284,18 @@ Repository blocks are top-level constructs, not nested inside `workflow` blocks.
 They must not appear in files that also contain `workflow` blocks, as the parser
 expects each top-level declaration to begin with the `workflow` keyword.
 
+**Step-level `repository` config key** — individual steps may declare which repository they operate on:
+
+```
+step implement {
+  prompt     = file(".cloche/prompts/implement.md")
+  repository = "backend"
+  results    = [success, fail]
+}
+```
+
+`repository` must be the name of a repository declared in `config.toml`. It is stored in the step's config map and suppresses "unknown key" warnings from `cloche validate`. The runtime does not yet read or enforce it.
+
 **Workflow-level `repos` field** — workflows can declare which repositories they use:
 
 ```
