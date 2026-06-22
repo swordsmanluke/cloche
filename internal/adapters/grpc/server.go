@@ -23,12 +23,12 @@ import (
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
-	"github.com/cloche-dev/cloche/internal/project"
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/evolution"
 	"github.com/cloche-dev/cloche/internal/host"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/cloche-dev/cloche/internal/project"
 	"github.com/cloche-dev/cloche/internal/protocol"
 	"github.com/cloche-dev/cloche/internal/version"
 	rpcgrpc "google.golang.org/grpc"
@@ -39,25 +39,25 @@ import (
 
 type ClocheServer struct {
 	pb.UnimplementedClocheServiceServer
-	store         ports.RunStore
-	captures      ports.CaptureStore
-	logStore      ports.LogStore
-	taskStore     ports.TaskStore     // optional; creates Task records
-	activityStore ports.ActivityStore // optional; backs per-project activity loggers
-	container     ports.ContainerRuntime
-	pool          *docker.ContainerPool // optional; manages agent sessions for DaemonExecutor
-	defaultImage  string
-	evolution     *evolution.Trigger
-	logBroadcast  *logstream.Broadcaster
-	shutdownFn    func()
-	pollCoord     *host.PollCoordinator            // drives human step polling for all projects
+	store           ports.RunStore
+	captures        ports.CaptureStore
+	logStore        ports.LogStore
+	taskStore       ports.TaskStore     // optional; creates Task records
+	activityStore   ports.ActivityStore // optional; backs per-project activity loggers
+	container       ports.ContainerRuntime
+	pool            *docker.ContainerPool // optional; manages agent sessions for DaemonExecutor
+	defaultImage    string
+	evolution       *evolution.Trigger
+	logBroadcast    *logstream.Broadcaster
+	shutdownFn      func()
+	pollCoord       *host.PollCoordinator // drives human step polling for all projects
 	mu              sync.Mutex
-	runIDs          map[string]string             // run_id -> container_id
-	containerRun    map[string]string             // container_id -> run_id
-	hostCancels     map[string]context.CancelFunc // run_id -> cancel fn (for host runs)
-	loops           map[string]*host.Loop         // project_dir -> orchestration loop
+	runIDs          map[string]string              // run_id -> container_id
+	containerRun    map[string]string              // container_id -> run_id
+	hostCancels     map[string]context.CancelFunc  // run_id -> cancel fn (for host runs)
+	loops           map[string]*host.Loop          // project_dir -> orchestration loop
 	activityLoggers map[string]*activitylog.Logger // project_dir -> activity logger
-	projects        map[string]*domain.Project    // project_dir -> cached project (refreshed on run)
+	projects        map[string]*domain.Project     // project_dir -> cached project (refreshed on run)
 
 	// extractResultsFn is the function used to extract run results. Defaults to
 	// docker.ExtractResults; may be overridden in tests.
@@ -210,7 +210,6 @@ func (s *ClocheServer) SetTaskStore(ts ports.TaskStore) {
 	s.taskStore = ts
 }
 
-
 // SetEvolution attaches an evolution trigger to the server.
 func (s *ClocheServer) SetEvolution(trigger *evolution.Trigger) {
 	s.evolution = trigger
@@ -350,6 +349,26 @@ func (s *ClocheServer) AgentSession(stream pb.ClocheService_AgentSessionServer) 
 				s.recordStepComplete(ctx, rid, stepName, result)
 			}
 			s.pool.DeliverResult(containerID, result)
+
+			// Snapshot the container's /workspace/ after each successful step so a
+			// later resume can re-apply it onto a freshly-built container. Only for
+			// container runs; skipped/failed steps are not snapshotted. Best-effort:
+			// run in a goroutine so the receive loop never blocks.
+			if rid := resolveRunID(); rid != "" && stepName != "" &&
+				result.Result != "fail" && result.Result != "error" && !result.Skipped {
+				if run, err := s.store.GetRun(ctx, rid); err == nil && run != nil && !run.IsHost {
+					cid := containerID
+					sn := stepName
+					projectDir := run.ProjectDir
+					taskID := run.TaskID
+					attemptID := run.AttemptID
+					go func() {
+						if err := s.captureWorkspaceSnapshot(context.Background(), cid, projectDir, taskID, attemptID, sn); err != nil {
+							log.Printf("agent session: workspace snapshot failed (containerID=%s step=%s): %v", cid, sn, err)
+						}
+					}()
+				}
+			}
 
 		case *pb.AgentMessage_HostRequest:
 			req := payload.HostRequest

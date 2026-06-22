@@ -476,6 +476,35 @@ func (r *Runtime) CopyTo(ctx context.Context, containerID string, srcPath, dstPa
 	return nil
 }
 
+// CopyTarFrom streams a tar archive of srcPath from the container to w using
+// "docker cp containerID:srcPath -". The archive contains the contents of
+// srcPath (a directory) and can be re-injected with CopyTarTo.
+func (r *Runtime) CopyTarFrom(ctx context.Context, containerID, srcPath string, w io.Writer) error {
+	cmd := exec.CommandContext(ctx, "docker", "cp", containerID+":"+srcPath, "-")
+	var stderr bytes.Buffer
+	cmd.Stdout = w
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("copying tar from container: %s: %w", stderr.String(), err)
+	}
+	return nil
+}
+
+// CopyTarTo streams a tar archive from r into the container at dst using
+// "docker cp - containerID:dst". The destination directory must already exist
+// (docker cp - auto-extracts the archive into dst). Mirrors the project-copy
+// path that pipes a tar stream into "docker cp -".
+func (r *Runtime) CopyTarTo(ctx context.Context, containerID string, rd io.Reader, dst string) error {
+	cmd := exec.CommandContext(ctx, "docker", "cp", "-", containerID+":"+dst)
+	var stderr bytes.Buffer
+	cmd.Stdin = rd
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("copying tar to container: %s: %w", stderr.String(), err)
+	}
+	return nil
+}
+
 // Attach connects to a running interactive container's stdin/stdout/stderr.
 // The container must have been started with Interactive=true. Returns a
 // ReadWriteCloser that forwards writes to the container's stdin and reads

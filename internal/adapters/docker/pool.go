@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"strings"
@@ -554,6 +555,33 @@ func (p *ContainerPool) GetSession(attemptID string) *ContainerSession {
 // the underlying ContainerRuntime.
 func (p *ContainerPool) CopyFrom(ctx context.Context, containerID, srcPath, dstPath string) error {
 	return p.runtime.CopyFrom(ctx, containerID, srcPath, dstPath)
+}
+
+// tarCopier is an optional runtime capability for streaming tar archives in and
+// out of a container. Used to snapshot and re-apply the workspace on resume.
+type tarCopier interface {
+	CopyTarFrom(ctx context.Context, containerID, srcPath string, w io.Writer) error
+	CopyTarTo(ctx context.Context, containerID string, r io.Reader, dst string) error
+}
+
+// CopyTarFrom streams a tar archive of srcPath from the container to w,
+// delegating to the underlying runtime if it supports tar streaming.
+func (p *ContainerPool) CopyTarFrom(ctx context.Context, containerID, srcPath string, w io.Writer) error {
+	tc, ok := p.runtime.(tarCopier)
+	if !ok {
+		return fmt.Errorf("container runtime does not support tar copy")
+	}
+	return tc.CopyTarFrom(ctx, containerID, srcPath, w)
+}
+
+// CopyTarTo streams a tar archive from r into the container at dst, delegating
+// to the underlying runtime if it supports tar streaming.
+func (p *ContainerPool) CopyTarTo(ctx context.Context, containerID string, r io.Reader, dst string) error {
+	tc, ok := p.runtime.(tarCopier)
+	if !ok {
+		return fmt.Errorf("container runtime does not support tar copy")
+	}
+	return tc.CopyTarTo(ctx, containerID, r, dst)
 }
 
 // SessionSnapshot summarizes a single container session for debug introspection.
