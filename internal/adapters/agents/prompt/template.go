@@ -98,13 +98,12 @@ func (r *Resolver) evalDirective(ctx context.Context, body string) (string, erro
 
 	case strings.HasPrefix(body, "@"):
 		pathTemplate := strings.TrimSpace(body[1:])
-		// First resolve {{ }} directives (e.g. {{@ {{ $step }}.txt }}), then
-		// bare $name references (e.g. {{@ $temp_file_dir/data.csv }}).
-		withDirectives, err := r.resolveStr(ctx, pathTemplate)
+		// Resolve {{ $name }} directives in the path first, then bare $name refs.
+		resolved, err := r.resolveStr(ctx, pathTemplate)
 		if err != nil {
 			return "", err
 		}
-		resolved, err := r.resolveBareVars(ctx, withDirectives)
+		resolved, err = r.resolveBareVars(ctx, resolved)
 		if err != nil {
 			return "", err
 		}

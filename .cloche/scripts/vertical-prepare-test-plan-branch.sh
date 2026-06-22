@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# vertical-prepare-test-plan-branch.sh — create the test-plan branch off the
-# user-specified base.
+# vertical-prepare-test-plan-branch.sh — create the test-plan branch.
+#
+# Base priority:
+#   1. design_branch (KV) — set when Phase 0.5 ran and the design PR was approved.
+#   2. vertical_base_branch (KV) — for the has-design shortcut (design already exists).
+#   3. "main" — fallback.
 #
 # Runs in-container.
 set -euo pipefail
@@ -11,7 +15,12 @@ if [ -z "$feature_id" ]; then
   exit 1
 fi
 
-base=$(clo get vertical_base_branch 2>/dev/null || echo "main")
+# Use design_branch when Phase 0.5 ran; fall back to vertical_base_branch or "main".
+base=$(clo get design_branch 2>/dev/null || true)
+if [ -z "$base" ]; then
+  base=$(clo get vertical_base_branch 2>/dev/null || echo "main")
+fi
+
 branch="vertical/${feature_id}/test-plan"
 
 git fetch origin "$base":"$base" 2>/dev/null || git fetch origin "$base"

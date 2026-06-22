@@ -38,7 +38,7 @@ all environment variables.
 dispatches work to an isolated container. Use it:
 
 ```
-workflow main {
+workflow "main" {
   step prepare-prompt {
     run = ".cloche/scripts/prepare-prompt.sh"
     results = [success, fail]
@@ -76,7 +76,7 @@ accepts a `network_allow` list in the `container {}` block to declare intended e
 restrictions:
 
 ```
-workflow develop {
+workflow "develop" {
   container {
     image         = "my-project:latest"
     network_allow = ["api.anthropic.com", "github.com"]
@@ -161,9 +161,12 @@ this directory — it is checked into version control.
 containers. Other environment variables must be explicitly passed via `CLOCHE_EXTRA_ENV`.
 Only pass what the agent needs.
 
-**Git credentials.** Cloche copies `~/.claude` and `~/.claude.json` into containers for
-agent authentication. These are copied (not mounted) so concurrent runs do not conflict.
-Be aware that these files are present in the container filesystem during the run.
+**Claude credentials.** Cloche copies three specific files from `~/.claude/`
+(`.credentials.json`, `settings.json`, `settings.local.json`) into containers for agent
+authentication. For interactive containers, `~/.claude.json` is also copied; it is
+skipped for autonomous runs. Files are copied (not mounted) so concurrent runs do not
+conflict. Be aware that these files are present in the container filesystem during the
+run.
 
 **Do not bake secrets into Docker images.** Use environment variables or runtime
 injection rather than embedding API keys, tokens, or passwords in your Dockerfile or

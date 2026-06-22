@@ -1,4 +1,4 @@
-workflow "develop" {
+workflow develop {
   step implement {
     prompt = file("prompts/implement.md")
     results = [success, fail]

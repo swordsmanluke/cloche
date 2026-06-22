@@ -2,17 +2,16 @@
 
 ## Unreleased
 
-### Breaking
+### Features
 
-- `e663576` Workflow names in `.cloche` files are now parsed as bare identifiers (`TokenIdent`), not quoted strings (`TokenString`). `internal/dsl/parser.go` changed `p.expect(TokenString)` → `p.expect(TokenIdent)` in `parseWorkflow`. All `.cloche` files, examples, documentation, and test fixtures updated. Any file containing `workflow "name" {` will fail to parse with "expected workflow name".
-
-### Design
-
-- `3c1eacf` Per-step token metrics design doc complete (`docs/plans/2026-05-28-step-token-metrics.md`). Resolves OQ-1 (identity key `workflow:step`), OQ-2 (query `step_executions` directly, add two indexes), OQ-3 (host and container steps both populate `Usage` via `prompt.Adapter`), OQ-4 (three SQL query shapes), OQ-5 (CLI: `cloche metrics --workflow W [--step S] [--trend] [--since T] [--format table|json|csv]`), OQ-6 (read-only addition; new `QueryStepTokens` + `MetricsStore` port + `GetStepMetrics` RPC + `cloche metrics` subcommand). BDD scenarios in `features/step_token_metrics.feature` return `godog.ErrPending` until implementation.
-
-### Fixes
-
-- `e15d84c` `{{@ }}` directive: `resolveBareVars` only handled bare `$name` syntax, leaving `{{ $name }}` braces literal in the file path. Fix: run `resolveStr` first to expand full `{{ }}` directives, then `resolveBareVars` for bare `$name`. Satisfies both `{{@ {{ $step_name }}.txt }}` and `{{@ $step_name.txt }}` forms.
+- Vertical workflow: removed all human-approved PR gates. The three gate pairs (`open-test-plan-pr`/`poll-test-plan-pr`, `open-pr`/`poll-pr`, `open-docs-pr`/`poll-docs-pr`) and their corresponding `address-*-feedback` steps are replaced by `publish-test-plan`, `publish-layer`, and `publish-docs` script steps that push the branch to origin and advance immediately. The `address-pr-feedback` container sub-workflow is removed entirely.
+- `check-layer-status` step added after `publish-layer`: reads `implement_status` KV; `ok` continues to `close-layer`; `stuck` prints the `stuck-report.md` from `temp_file_dir` to logs then routes to job failure (`unclaim`) so a human investigates. The partial work is on the published branch.
+- `document-stuck` step added to `implement-vertical-layer` sub-workflow: every stuck path (implement/verify/fix/self-review fail or give-up) routes through `document-stuck` first to consolidate any earlier give-up note into a single help-needed report before `mark-stuck`.
+- `finalize` rewritten: builds the full branch stack (test-plan → closed layers in creation order → docs), rebases the top-of-stack branch onto `origin/<base>` (handles base movement during the run), fast-forward-merges base to the rebased top, pushes base, then deletes all stack branches from origin. On rebase conflict, fails loudly with manual-resolution instructions. Removed the `git merge --squash` + single-commit approach.
+- `vertical-publish-branch.sh` new script (replaces `vertical-open-*-pr.sh`, `vertical-push.sh`): pushes a named stack branch to origin for a given phase (`test-plan` | `layer` | `docs`); uses `rename_extracted_to` to translate the daemon's extraction branch name back to the expected stack name.
+- `vertical-check-layer-status.sh` new script: implements the `check-layer-status` step logic described above.
+- `vertical-document-stuck.md` new prompt: consolidates any earlier give-up or partial notes into a concise self-contained `stuck-report.md` for the human investigator.
+- `token-limit` output-token ceiling. The DSL parser accepts `token-limit = <int>` on steps and workflows; the domain layer stores it as `step.Config["token-limit"]` / `wf.Config["token-limit"]`. The engine (`835e557`) enforces a per-step output-token ceiling via the `stepTokenLimit` resolver (default 500 000): steps whose `OutputTokens` exceed the limit receive a `token-limit` result (implicitly wired to `abort`). A running workflow-level accumulator aborts the run when cumulative `OutputTokens` reaches the workflow ceiling (default 2 000 000). Sentinels: `-1` disables enforcement; `0` aborts immediately without executing the step/workflow. Input tokens are excluded from the ceiling.
 
 ## v3.15.14 — 2026-05-21
 

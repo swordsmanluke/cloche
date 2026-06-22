@@ -549,7 +549,7 @@ func (dr *doctorRunner) checkImageBuild() checkResult {
 }
 
 // testWorkflowContent is the minimal workflow used for the agent roundtrip check.
-const testWorkflowContent = `workflow "doctor-test" {
+const testWorkflowContent = `workflow doctor-test {
   step test {
     run     = "echo ok > /tmp/doctor-test"
     results = [success, fail]

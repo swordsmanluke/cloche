@@ -2,39 +2,31 @@
 
 ## docs/INSTALL.md
 
-- **Lines ~18, ~46–48**: The `git clone` URL and all `go install` paths reference `github.com/swordsmanluke/cloche`, but `go.mod` declares the module as `github.com/cloche-dev/cloche`. `go install` uses the module path, not the VCS host, so `go install github.com/swordsmanluke/cloche/...@latest` would fail. The correct paths are `go install github.com/cloche-dev/cloche/cmd/cloche@latest`, etc.
-  - Source: `/workspace/repos/cloche/go.mod` line 1: `module github.com/cloche-dev/cloche`
-
-- **Line ~22**: Says "`make install` builds all three binaries (`cloche`, `cloched`, `cloche-agent`)". The `build` target in the Makefile actually builds **four** binaries — it also builds `clo` (`go build -o bin/clo ./cmd/clo`). The `install` target only installs three (intentionally — `clo` is an in-container binary), but the description should say four are built.
-  - Source: `/workspace/repos/cloche/Makefile` `build` target
+- **Line ~17**: Previously flagged as using `cloche-dev` in clone URLs and `go install` paths — **fixed**. The VCS URL is `https://github.com/swordsmanluke/cloche.git` and `go install` paths use `github.com/swordsmanluke/cloche/cmd/...`. Note: `go.mod` declares `module github.com/cloche-dev/cloche` as the module path, which is a separate inconsistency between the module path and the VCS host; that is a future cleanup task and does not affect cloning or installing from the correct repo.
 
 ## docs/USAGE.md
 
-- **Lines 26, 36, 103, 287, 417, 430, 565, 596, 619, 668, and every other DSL example**: Workflow names are shown unquoted throughout (e.g., `workflow develop {`, `workflow list-tasks {`, `workflow main {`). The parser's `parseWorkflow` calls `p.expect(TokenString)`, which requires a **quoted** string token. Unquoted identifiers (`TokenIdent`) produce a parse error at that position. Every real `.cloche` file in the repository uses quoted names (`workflow "develop" {`, `workflow "main" {`, etc.).
-  - Source: `internal/dsl/parser.go:131`: `nameTok, err := p.expect(TokenString)`
-  - Source: All `.cloche` files in the repo (e.g., `.cloche/host.cloche`, `.cloche/develop.cloche`, `examples/*/develop.cloche`)
+- **Line ~59 (Step Configuration table conclusion)**: Says "A step must have exactly one of `prompt`, `run`, or `workflow_name`." Missing `poll`. Source: `internal/dsl/parser.go:393–433` explicitly parses `poll` steps and assigns `StepTypeHuman`. The statement and the table above it omit `poll` and `interval` as valid step fields.
 
-- **Lines 920, 1650, 1666**: The default value of `CLOCHE_ADDR` is listed as `127.0.0.1:50051` in three separate places (doctor check description and both env var tables). The actual default returned by `config.DefaultAddr()` is `0.0.0.0:50051`, which binds all interfaces so in-container agents can reach the daemon via `host.docker.internal`.
-  - Source: `internal/config/config.go:197–199`
+- **Lines ~44–57 (Step Configuration table)**: The `skip` key is missing from the table. `docs/workflows.md` has a full "Skip Scripts" section documenting this field, and the table under "Workflow DSL" in USAGE.md should include it.
 
-- **Lines 127–145 (Repository Declarations section)**: Describes optional top-level `repository` blocks in `.cloche` files that are "parsed independently from workflows." No such parser exists. The DSL's `ParseAll` function iterates only `workflow` declarations and returns an error (`"no workflows found"`) for any file that contains none. There is no `parseRepository` function in the codebase. `FindAllWorkflows` silently skips files that fail to parse, so a `.cloche` file with only `repository` blocks would be silently ignored at runtime. Remote URLs for repositories can be configured directly in `config.toml` via the `url` key in `[[repositories]]` entries.
-  - Source: `internal/dsl/parser.go:77–99` (`ParseAll` calls `p.parseWorkflow()` in a loop)
-  - Source: `internal/host/runner.go:790–793` (parse errors cause the file to be silently skipped)
-  - Source: `internal/config/config.go:63–66` (`RepositoryConfig` has a `url` toml field)
+- **Lines ~879–897 (`cloche doctor` check table)**: The table lists 9 checks but `cmd/cloche/doctor.go:101–107` runs 10: `checkDocker`, `checkBaseImage`, `checkDaemon`, `checkAuth`, **`checkSSHKey`** (missing from table), then 5 project-level checks. The SSH key check runs unconditionally before any project-level checks and is not mentioned in the table at all.
 
-- **Line 1711**: `make build # Build cloche, cloched, cloche-agent to bin/` — omits `clo` from the list of binaries built.
-  - Source: `/workspace/repos/cloche/Makefile` `build` target: also runs `go build -o bin/clo ./cmd/clo`
+- **Line ~877**: Says "Checks 5–9 only run when the current (or `--project`) directory contains a `.cloche/` subdirectory." Because `checkSSHKey` (check 5) is unconditional, the project-level checks are actually 6–10, not 5–9.
 
-- **Lines 1313–1314 (`clo` section)**: "clo reads `CLOCHE_ADDR`, `CLOCHE_TASK_ID`, and `CLOCHE_ATTEMPT_ID` from the environment." The `clo` binary also reads `CLOCHE_RUN_ID` and passes it to KV scope resolution (used for per-run scope lookups).
-  - Source: `cmd/clo/main.go`: `runID := os.Getenv("CLOCHE_RUN_ID")`
+- **Lines ~412–452 ("Host Workflow Example")**: The heading says "this is the default scaffold generated by `cloche init`" but the shown `main` workflow has only `claim-task`, `develop`, and `finalize` steps (with a `finalize.py` script that does not exist anywhere). The actual scaffold template in `cmd/cloche/init.go:180–253` generates eight steps in `main`: `claim-task`, `develop`, `prepare-merge`, `fix-merge`, `merge`, `release-task`, `cleanup`, `unclaim`. No `finalize.py` script is generated.
+
+- **Line ~837 (`--new` scaffolding description)**: Says the `--new` flag creates the listed files but omits two files that `runNewProjectInit` in `cmd/cloche/init.go:856–858` actually writes: `.clocheignore` (at project root) and `.cloche/version`.
+
+- **Lines ~332–338 ("Agent Command Resolution" priority list)**: Lists 4 priority levels (step-level `agent_command`, workflow-level config block, `CLOCHE_AGENT_COMMAND` env var, default `claude`) but omits the `agent = <identifier>` declaration as priority level 2. The "Agent Declarations" section later in the same file (lines 213–222) correctly shows all 5 levels. The abbreviated list is misleading when `agent` blocks are in use.
+
+- **Line ~1672 (`make build` build commands)**: Says `# Build all binaries to bin/` but `Makefile:6–9` only builds `cloche`, `cloched`, and `cloche-agent`. The `clo` binary (documented in CLAUDE.md as one of the four binaries) is not built by this target. **This is confirmed as a Makefile bug and has been fixed**: `go build -o bin/clo ./cmd/clo` has been added to the `build` target. The `install` and `install-sh` targets are intentionally left unchanged — `clo` is an in-container binary and is not installed to the host.
+
+- **Line ~538 (`list-tasks` absent fallback)**: Says "If omitted: The daemon falls back to single-workflow mode — it runs `main` once without task assignment." But `internal/host/loop.go:72–75` says "When no list-tasks function is configured…an untracked sentinel task is used so main runs **continuously**." The daemon runs `main` in a continuous loop, not once.
 
 ## docs/workflows.md
 
-- **Lines 103–134 (DSL Syntax section) and all other examples in the file**: Same as USAGE.md — workflow names are shown unquoted (e.g., `workflow develop {`). The parser requires quoted strings.
-  - Source: same as USAGE.md finding above
-
-- **Lines 267–297 (Repository Declarations section)**: States repository blocks in `.cloche` files work if they are in separate files from `workflow` blocks. The constraint is documented, but the underlying premise — that a file with only `repository` blocks can be parsed at all — is incorrect. `ParseAll` requires at least one `workflow` block per file and errors otherwise. There is no parser support for `repository` blocks in `.cloche` files.
-  - Source: `internal/dsl/parser.go:96–98`: returns `"no workflows found"` for files with no `workflow` blocks
+- **Lines ~272–273 (Repository Declarations)**: Says "`ParseAll` silently skips them [repository blocks]; `ParseRepositoriesFrom` reads only repository blocks from a file." Both claims are wrong: (1) `ParseRepositoriesFrom` does not exist anywhere in the codebase (grep of the entire repo returns no matches); (2) `ParseAll` in `internal/dsl/parser.go:77–99` calls `parseWorkflow()` in a loop which calls `expectIdent("workflow")`—encountering a `repository` token at top level would return an error, not silently skip it.
 
 ## docs/SAFETY.md
 
@@ -50,48 +42,34 @@ Verified against source. No concrete inaccuracies found.
 
 ## docs/agent-setup-codex.md
 
-Verified against source. The workflow example correctly uses `workflow "develop" {` with quotes — this file is accurate.
+Verified against source. No concrete inaccuracies found.
 
----
+## docs/built-in-agents.md
+
+Verified against source. No concrete inaccuracies found.
 
 ## Summary
 
-9 errors found across 3 files:
-
-| # | File | Issue |
-|---|------|-------|
-| 1 | INSTALL.md | Wrong GitHub org and module path in clone/install commands (`swordsmanluke` → `cloche-dev`) |
-| 2 | INSTALL.md | `make install` description says "three binaries"; build produces four (including `clo`) |
-| 3 | USAGE.md | All DSL examples show unquoted workflow names; parser requires quoted strings |
-| 4 | USAGE.md | Default `CLOCHE_ADDR` listed as `127.0.0.1:50051`; actual default is `0.0.0.0:50051` |
-| 5 | USAGE.md | `repository` blocks in `.cloche` files described as parseable; no parser support exists |
-| 6 | USAGE.md | `make build` description omits `clo` binary |
-| 7 | USAGE.md | `clo` env var list omits `CLOCHE_RUN_ID` |
-| 8 | workflows.md | All DSL examples show unquoted workflow names (same as USAGE.md) |
-| 9 | workflows.md | `repository` blocks in separate `.cloche` files implied to work; no parser support exists |
-
----
+- **12 errors found across 3 files**: INSTALL.md (2 — both fixed), USAGE.md (8), workflows.md (2).
+- Most critical (fixed): wrong GitHub org (`swordsmanluke`) in INSTALL.md install instructions; `clo` missing from `make build` (Makefile bug — fixed).
+- Remaining: `ParseRepositoriesFrom` doesn't exist; Host Workflow Example doesn't match the actual generated scaffold; see USAGE.md items above.
 
 ## Missing Documentation
 
 ### Undocumented Commands
 
-All registered `cloche` subcommands (`run`, `resume`, `status`, `list`, `logs`, `poll`, `stop`, `delete`, `extract`, `loop`, `shutdown`, `console`, `init`, `doctor`, `health`, `workflow`, `validate`, `project`, `get`, `set`, `tasks`, `activity`, `version`, `debug`, `complete`) have at least a one-line description in `docs/USAGE.md`. No commands are missing from usage documentation.
+No genuinely undocumented commands found. All subcommands registered in `cmd/cloche/main.go` (`run`, `resume`, `status`, `list`, `logs`, `poll`, `stop`, `delete`, `loop`, `shutdown`, `console`, `extract`, `version`, `init`, `health`, `get`, `set`, `tasks`, `activity`, `workflow`, `project`, `validate`, `doctor`, `debug`, `complete`) have at least a one-line description in `docs/USAGE.md`.
+
+Note: `completionSubcommands` in `cmd/cloche/complete.go:17–21` omits `activity`, `console`, `doctor`, `extract`, and `version` from the tab-completion list — these commands won't be suggested by shell completion — but they are documented.
 
 ### Undocumented Subsystems
 
-- `internal/activitylog/` — no design or reference documentation. The `cloche activity` CLI command is documented in `docs/USAGE.md`, but the package's internals — event kinds (`KindAttemptStarted`, `KindAttemptEnded`, `KindStepStarted`, `KindStepEnded`), the `ActivityStore` interface, and its SQLite backing — are not described anywhere in `docs/`.
+- `internal/adapters/local/` — Local subprocess runtime (enabled via `CLOCHE_RUNTIME=local`): the only documentation is a single parenthetical in the env var table ("subprocess, for dev only"). No design doc, no setup instructions, no description of behavior or limitations. In particular, `Attach` is unimplemented (returns an error), `Logs` returns empty, and `Remove` is a no-op — constraints invisible to anyone trying to use this mode.
 
-- `internal/projectcli/` — no design or reference documentation. This package provides rendering helpers for `cloche project repos list` output (`WriteReposList`). The command behaviour is documented in `docs/USAGE.md` but the package is never mentioned as an architectural component in any design or reference doc.
+- `internal/logstream/` — Log streaming and broadcasting subsystem: provides the broadcaster pattern that fans gRPC `StepLog` events out to multiple subscribers and the log-line parser that formats tool-call blocks from agent output. No design or reference documentation exists for this subsystem. It underlies `cloche logs --follow` and live streaming in the web dashboard but its architecture, the broadcaster lifetime model, and the parse format are undocumented.
 
 ### Undocumented DSL Features
 
-All DSL keywords, block types, step fields, and template directives supported by the parser are covered in `docs/workflows.md`:
+- `usage_command` — Valid step config key, parsed and stored by `internal/dsl/parser.go` (stored generically in `step.Config`), consumed at runtime to capture per-step token usage after an agent step completes. Documented in `docs/USAGE.md` (step configuration table, line ~56) but entirely absent from `docs/workflows.md`, which is the DSL reference.
 
-- Block types: `workflow`, `agent`, `step`, `collect`, `host`, `container` — all documented.
-- Step fields: `prompt`, `run`, `workflow_name`, `poll`, `interval`, `timeout`, `max_attempts`, `agent`, `agent_command`, `agent_args`, `usage_command`, `prompt_step`, `results` — all documented.
-- Wiring syntax: `->` arrow, `result:` colon notation, `all`/`any` collect conditions — all documented.
-- Template directives: `{{! cmd }}`, `{{@ path }}`, `$$` — all documented.
-- Built-in result terminals: `done`, `abort`, `timeout`, `give-up` convention — all documented.
-
-No DSL features are missing from `docs/workflows.md`.
+- `prompt_step` — Valid step config key for `workflow_name` steps: overrides which preceding step's output is passed as the prompt to the dispatched container workflow. Parsed by `internal/dsl/parser.go`, consumed in `internal/host/executor.go:391,459`. Documented in `docs/USAGE.md` (step configuration table, line ~57) but absent from `docs/workflows.md`. The host-workflow design plan (`docs/plans/2026-03-06-host-workflow-design.md:63`) mentions it but the canonical DSL reference does not.

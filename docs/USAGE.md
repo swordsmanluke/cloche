@@ -50,6 +50,7 @@ workflow "develop" {
 | `results` | ident list | Declared result names, e.g. `[success, fail, give-up]`. |
 | `max_attempts` | integer | Max retries before automatic `give-up` result, e.g. `2`. |
 | `timeout` | string | Step timeout as Go duration, e.g. `"30m"`, `"2h"`. Default: 30m. |
+| `token-limit` | integer | Maximum **output** tokens for this step. Produces a `"token-limit"` result (implicitly wired to `abort`) when exceeded. Default: 500 000. `-1` disables enforcement; `0` aborts immediately without running the step. |
 | `agent_command` | string | Agent binary name(s), comma-separated for fallback chains, e.g. `"claude,gemini"`. |
 | `agent_args` | string | Override default agent arguments. |
 | `agent` | identifier | Reference a named agent declared in the workflow's `agent` block. Expands into `agent_command` and `agent_args`. Step-level `agent_command`/`agent_args` still override it. |
@@ -124,9 +125,30 @@ Supported keys: `agent_command`, `agent_args`. Step-level `agent_command` and
 
 ### Repository Declarations
 
-Repositories are declared in `config.toml` as `[[repositories]]` entries (see
-[`[[repositories]]`](#repositories-1) in the configuration reference below). The
-`url` field on each entry is optional and informational.
+Repositories are declared in two places:
+
+**`config.toml`** — declares the repositories available to the project (see
+[`[[repositories]]`](#repositories-1) in the configuration reference below).
+
+**`.cloche` files** — optional top-level `repository` blocks annotate each
+repository with a remote URL. These blocks are file-level (not inside a `workflow`
+block) and are parsed independently from workflows:
+
+```
+repository "backend" {
+  path = "./repos/backend"
+  url  = "https://github.com/example/backend"
+}
+
+repository "frontend" {
+  path = "./repos/frontend"
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `path` | yes | Path relative to the project root. |
+| `url` | no | Remote URL (informational; not used by the runtime). |
 
 **Workflow-level `repos` field** — workflows may declare which repositories they use:
 
@@ -1029,7 +1051,7 @@ With `--runs`: workflow ID, workflow, state, type, task ID, title, error.
 ### `cloche logs`
 
 ```
-cloche logs <id> [--type <full|script|llm>] [-f] [-l <n>]
+cloche logs <id> [--type <full|script|llm>] [--step <name>] [-f] [-l <n>]
 ```
 
 The first argument accepts any level of the ID hierarchy:
@@ -1046,6 +1068,7 @@ Legacy composite `task:attempt[:step]` is also accepted.
 | Flag | Description |
 |------|-------------|
 | `--type <full\|script\|llm>` | Log type filter. |
+| `--step, -s <name>` | Filter logs to only those from the named step. |
 | `--follow, -f` | Follow mode: display existing logs then continue streaming new lines as they arrive (like `tail -f`). |
 | `--limit, -l <n>` | Display only the last n lines of output. |
 
@@ -1205,6 +1228,10 @@ backend               ./repos/backend                 https://github.com/example
 frontend              ./repos/frontend
 ```
 
+**Project CLI rendering.** `cloche project repos list` output is rendered by
+`internal/projectcli` (`WriteReposList`), which formats the repository list as a
+fixed-width table. The package is an internal rendering helper with no public API.
+
 ### `cloche get`
 
 ```
@@ -1358,6 +1385,14 @@ Reads activity entries from the daemon's SQLite database. Events are recorded au
 
 Event kinds: `attempt_started`, `attempt_ended`, `step_started`, `step_completed`.
 
+**Activity log subsystem.** Implemented in `internal/activitylog/`. A `Logger` wraps an
+`Appender` (the SQLite `ActivityStore`) and records `Entry` values for each event. Each
+entry carries a timestamp, the event kind, and relevant IDs (task, attempt, workflow,
+step). `step_completed` entries also include the result name (e.g. `success`, `fail`).
+`attempt_ended` entries include the final attempt state (e.g. `succeeded`, `failed`).
+All writes go through the daemon's store; the log is per-project (keyed by project
+directory).
+
 ```
 cloche activity
 cloche activity --since 24h
@@ -1441,7 +1476,7 @@ cloche debug <subcommand> [--debug-addr <addr>]
 
 | Subcommand | Description |
 |------------|-------------|
-| `goroutines` | Print a full goroutine stack dump from the daemon (pprof output). |
+| `goroutines` (alias: `dump`) | Print a full goroutine stack dump from the daemon (pprof output). |
 | `state` | Print a summary of active runs, loops, goroutine count, and container sessions. |
 
 **Debug server address resolution** (first match wins):
@@ -1462,7 +1497,7 @@ CLOCHE_DEBUG=localhost:7778 cloched
 Low-level helper used by shell completion scripts. Not intended for direct use.
 
 ```
-cloche complete --index <n> -- <word0> <word1> ...
+cloche complete --index <n> [-i <n>] -- <word0> <word1> ...
 ```
 
 Prints one completion candidate per line for the word at position `<n>` in the
@@ -1599,7 +1634,6 @@ TOML array-of-tables item:
 [[repositories]]
 name = "backend"
 path = "./repos/backend"
-url = "https://github.com/example/backend"
 
 [[repositories]]
 name = "frontend"
@@ -1610,9 +1644,10 @@ path = "./repos/frontend"
 |-----|---------|-------------|
 | `name` | _(required)_ | Identifier used to reference this repository from workflow `repos` fields. |
 | `path` | _(required)_ | Path relative to the project root. |
-| `url` | _(unset)_ | Remote URL (informational; not used by the runtime). |
 
 Repositories appear in `cloche project` output and in `cloche project repos list`.
+Remote URL annotation is done via top-level `repository` blocks in `.cloche` files
+(see [Repository Declarations](#repository-declarations) above).
 
 ## `cloched` Flags
 
@@ -1687,7 +1722,7 @@ The container image must have:
 ## Build Commands
 
 ```
-make build          # Build cloche, cloched, cloche-agent, clo to bin/
+make build          # Build cloche, cloched, cloche-agent to bin/
 make test           # Run all tests
 make test-short     # Run tests (skip slow ones)
 make lint           # Run go vet
