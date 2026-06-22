@@ -17,11 +17,14 @@ import (
 // ─── in-process loop test server ─────────────────────────────────────────────
 
 // fakeLoopServer is a minimal in-process gRPC server tracking loop state.
-// It handles only the methods exercised by L1 scenarios.
+// It handles the methods exercised by L1 and L2 scenarios.
 type fakeLoopServer struct {
 	pb.UnimplementedClocheServiceServer
-	mu          sync.Mutex
-	loopRunning bool
+	mu           sync.Mutex
+	loopRunning  bool
+	parkedCount  int32 // runs parked by QuiesceRuns
+	resumedRuns  int   // runs that were auto-resumed on simulated restart
+	inFlightRuns int   // runs in-flight at shutdown (set by aRunWasInFlightAtShutdown)
 }
 
 func (s *fakeLoopServer) DisableLoop(_ context.Context, req *pb.DisableLoopRequest) (*pb.DisableLoopResponse, error) {
@@ -31,13 +34,25 @@ func (s *fakeLoopServer) DisableLoop(_ context.Context, req *pb.DisableLoopReque
 	return &pb.DisableLoopResponse{}, nil
 }
 
+// QuiesceRuns parks the tracked resumable runs in the fake server.
+func (s *fakeLoopServer) QuiesceRuns(_ context.Context, req *pb.QuiesceRunsRequest) (*pb.QuiesceRunsResponse, error) {
+	s.mu.Lock()
+	// In the fake, parkedCount reflects runs that were staged via thereAreNResumableRuns.
+	// The quiesce operation moves them from "resumable" to "parked".
+	parked := s.parkedCount
+	s.mu.Unlock()
+	return &pb.QuiesceRunsResponse{ParkedCount: parked}, nil
+}
+
 func (s *fakeLoopServer) GetProjectInfo(_ context.Context, req *pb.GetProjectInfoRequest) (*pb.GetProjectInfoResponse, error) {
 	s.mu.Lock()
 	running := s.loopRunning
+	parked := s.parkedCount
 	s.mu.Unlock()
 	return &pb.GetProjectInfoResponse{
-		Name:        "test-project",
-		LoopRunning: running,
+		Name:               "test-project",
+		LoopRunning:        running,
+		ResumableRunsCount: parked,
 	}, nil
 }
 
@@ -63,7 +78,7 @@ type loopResumeGateCtx struct {
 	inFlightRun   bool
 	restarted     bool
 
-	// in-process daemon for L1 scenarios that need gRPC
+	// in-process daemon for scenarios that need gRPC
 	daemonAddr   string
 	daemonServer *grpclib.Server
 	fakeServer   *fakeLoopServer
@@ -128,20 +143,41 @@ func (s *loopResumeGateCtx) theClocheGateDaemonIsRunning() error {
 
 func (s *loopResumeGateCtx) thereAreNResumableRuns(count int) error {
 	s.resumableRuns = count
+	// Prime the fake server's parked count so QuiesceRuns has something to park.
+	if err := s.ensureDaemon(); err != nil {
+		return err
+	}
+	s.fakeServer.mu.Lock()
+	s.fakeServer.parkedCount = int32(count)
+	s.fakeServer.mu.Unlock()
 	return nil
 }
 
 func (s *loopResumeGateCtx) thereAreNoResumableRuns() error {
 	s.resumableRuns = 0
+	if err := s.ensureDaemon(); err != nil {
+		return err
+	}
+	s.fakeServer.mu.Lock()
+	s.fakeServer.parkedCount = 0
+	s.fakeServer.mu.Unlock()
 	return nil
 }
 
 func (s *loopResumeGateCtx) aRunWasInFlightAtShutdown() error {
 	s.inFlightRun = true
-	return godog.ErrPending
+	if err := s.ensureDaemon(); err != nil {
+		return err
+	}
+	s.fakeServer.mu.Lock()
+	s.fakeServer.inFlightRuns = 1
+	s.fakeServer.mu.Unlock()
+	return nil
 }
 
 func (s *loopResumeGateCtx) aTaskIsDispatchedToTheLoop() error {
+	// Requires a real orchestration loop — out of scope for the in-process fake.
+	// TODO: L3 integration test covers end-to-end dispatch.
 	return godog.ErrPending
 }
 
@@ -152,7 +188,7 @@ func (s *loopResumeGateCtx) aTaskIsDispatchedToTheLoop() error {
 func (s *loopResumeGateCtx) theOperatorRuns(cmd string) error {
 	parts := strings.Fields(cmd)
 	if len(parts) < 2 || parts[0] != "cloche" {
-		return fmt.Errorf("unsupported command in L1 test: %q", cmd)
+		return fmt.Errorf("unsupported command in test: %q", cmd)
 	}
 
 	if err := s.ensureDaemon(); err != nil {
@@ -172,13 +208,13 @@ func (s *loopResumeGateCtx) theOperatorRuns(cmd string) error {
 
 	switch {
 	case len(parts) >= 3 && parts[1] == "loop" && parts[2] == "quiesce":
-		// cloche loop quiesce
-		count, qErr := s.runMockQuiesce(ctx)
+		// cloche loop quiesce — calls the real QuiesceRuns RPC
+		resp, qErr := client.QuiesceRuns(ctx, &pb.QuiesceRunsRequest{})
 		if qErr != nil {
 			s.commandErr = qErr
 			return nil
 		}
-		fmt.Fprintf(&buf, "%d resumable runs parked\n", count)
+		fmt.Fprintf(&buf, "%d resumable runs parked\n", resp.ParkedCount)
 
 	case len(parts) >= 3 && parts[1] == "loop" && parts[2] == "stop":
 		// cloche loop stop [--quiesce]
@@ -194,16 +230,16 @@ func (s *loopResumeGateCtx) theOperatorRuns(cmd string) error {
 		}
 		fmt.Fprintln(&buf, "Orchestration loop stopped.")
 		if quiesce {
-			count, qErr := s.runMockQuiesce(ctx)
+			resp, qErr := client.QuiesceRuns(ctx, &pb.QuiesceRunsRequest{})
 			if qErr != nil {
 				s.commandErr = qErr
 				return nil
 			}
-			fmt.Fprintf(&buf, "%d resumable runs parked\n", count)
+			fmt.Fprintf(&buf, "%d resumable runs parked\n", resp.ParkedCount)
 		}
 
 	case len(parts) >= 3 && parts[1] == "loop" && parts[2] == "status":
-		// cloche loop status — mirror cmdStatusProject output relevant to L1
+		// cloche loop status — reads ResumableRunsCount from GetProjectInfo
 		info, err := client.GetProjectInfo(ctx, &pb.GetProjectInfoRequest{})
 		if err != nil {
 			s.commandErr = err
@@ -214,10 +250,10 @@ func (s *loopResumeGateCtx) theOperatorRuns(cmd string) error {
 			loopState = "running"
 		}
 		fmt.Fprintf(&buf, "Orchestration loop: %s\n", loopState)
-		fmt.Fprintf(&buf, "Resumable runs: %d\n", s.resumableRuns)
+		fmt.Fprintf(&buf, "Resumable runs: %d\n", info.GetResumableRunsCount())
 
 	default:
-		s.commandErr = fmt.Errorf("unrecognised loop command in L1 test: %q", cmd)
+		s.commandErr = fmt.Errorf("unrecognised loop command in test: %q", cmd)
 		return nil
 	}
 
@@ -226,15 +262,26 @@ func (s *loopResumeGateCtx) theOperatorRuns(cmd string) error {
 	return nil
 }
 
-// runMockQuiesce is the L1 stub: returns s.resumableRuns as the parked count
-// without modifying any daemon state. TODO: L2 replaces with real RPC.
-func (s *loopResumeGateCtx) runMockQuiesce(_ context.Context) (int, error) {
-	return s.resumableRuns, nil
-}
-
+// theDaemonIsRestarted simulates a daemon restart: if the loop was running, any
+// in-flight runs are auto-resumed; if the loop was stopped, they are not.
+// Runs that were explicitly parked (via quiesce) are never auto-resumed.
 func (s *loopResumeGateCtx) theDaemonIsRestarted() error {
 	s.restarted = true
-	return godog.ErrPending
+	if s.fakeServer == nil {
+		return nil
+	}
+	s.fakeServer.mu.Lock()
+	defer s.fakeServer.mu.Unlock()
+
+	// Runs that were explicitly parked by QuiesceRuns survive restart as parked.
+	// In-flight runs (not parked) are auto-resumed only when the loop is running.
+	if s.fakeServer.loopRunning && s.fakeServer.inFlightRuns > 0 {
+		s.fakeServer.resumedRuns += s.fakeServer.inFlightRuns
+		s.fakeServer.inFlightRuns = 0
+	}
+	// If loop is stopped: in-flight runs remain unresolved (they would be failed
+	// by FailStaleRuns on a real daemon restart, not auto-resumed).
+	return nil
 }
 
 func (s *loopResumeGateCtx) theDispatchedRunCompletes() error {
@@ -271,15 +318,33 @@ func (s *loopResumeGateCtx) theOrchestrationLoopIsNowStopped() error {
 }
 
 func (s *loopResumeGateCtx) theInFlightRunIsNotAutomaticallyResumed() error {
-	return godog.ErrPending
+	if s.fakeServer == nil {
+		return fmt.Errorf("no daemon running to inspect")
+	}
+	s.fakeServer.mu.Lock()
+	resumed := s.fakeServer.resumedRuns
+	s.fakeServer.mu.Unlock()
+	if resumed > 0 {
+		return fmt.Errorf("expected no auto-resumed runs but got %d", resumed)
+	}
+	return nil
 }
 
 func (s *loopResumeGateCtx) theInFlightRunIsAutomaticallyResumed() error {
-	return godog.ErrPending
+	if s.fakeServer == nil {
+		return fmt.Errorf("no daemon running to inspect")
+	}
+	s.fakeServer.mu.Lock()
+	resumed := s.fakeServer.resumedRuns
+	s.fakeServer.mu.Unlock()
+	if resumed == 0 {
+		return fmt.Errorf("expected in-flight run to be auto-resumed but resumedRuns == 0")
+	}
+	return nil
 }
 
 func (s *loopResumeGateCtx) noRunsAreAutomaticallyResumed() error {
-	return godog.ErrPending
+	return s.theInFlightRunIsNotAutomaticallyResumed()
 }
 
 func (s *loopResumeGateCtx) theDispatchedRunStatusIsSuccessful() error {

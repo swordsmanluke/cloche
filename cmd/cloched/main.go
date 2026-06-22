@@ -275,6 +275,13 @@ func autoRunActiveProjects(store ports.RunStore, srv *adaptgrpc.ClocheServer) {
 			continue
 		}
 
+		// If the operator explicitly stopped the loop before this restart, do not
+		// auto-enable it. The flag file is written by DisableLoop and cleared by EnableLoop.
+		if adaptgrpc.LoopWasExplicitlyStopped(projectDir) {
+			fmt.Fprintf(os.Stderr, "startup: loop was explicitly stopped for %s — skipping auto-enable\n", projectDir)
+			continue
+		}
+
 		fmt.Fprintf(os.Stderr, "startup: enabling orchestration loop for active project %s\n", projectDir)
 		_, err = srv.EnableLoop(ctx, &pb.EnableLoopRequest{
 			ProjectDir: projectDir,

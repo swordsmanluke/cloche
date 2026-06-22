@@ -531,7 +531,7 @@ func cmdStatusProject(ctx context.Context, client pb.ClocheServiceClient, w io.W
 		loopStatus = "running"
 	}
 	fmt.Fprintf(w, "Orchestration loop: %s\n", loopStatus)
-	fmt.Fprintf(w, "Resumable runs: %d\n", fakeResumableCount())
+	fmt.Fprintf(w, "Resumable runs: %d\n", info.GetResumableRunsCount())
 
 	// Fetch runs for the past hour to compute success rate.
 	listResp, err := client.ListRuns(ctx, &pb.ListRunsRequest{ProjectDir: projectDir})
@@ -1086,7 +1086,7 @@ func cmdLoop(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 		}
 		fmt.Println("Orchestration loop stopped.")
 		if quiesce {
-			if err := cmdLoopQuiesce(ctx, newQuiesceRunner(), cwd, os.Stdout); err != nil {
+			if err := cmdLoopQuiesce(ctx, newQuiesceRunner(client), cwd, os.Stdout); err != nil {
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
 				os.Exit(1)
 			}
@@ -1096,7 +1096,7 @@ func cmdLoop(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 
 	// Check for "quiesce" subcommand
 	if len(args) > 0 && args[0] == "quiesce" {
-		if err := cmdLoopQuiesce(ctx, newQuiesceRunner(), cwd, os.Stdout); err != nil {
+		if err := cmdLoopQuiesce(ctx, newQuiesceRunner(client), cwd, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
@@ -1106,6 +1106,12 @@ func cmdLoop(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 	// Check for "once" subcommand
 	if len(args) > 0 && args[0] == "once" {
 		cmdLoopOnce(ctx, client, cwd)
+		return
+	}
+
+	// Check for "status" subcommand
+	if len(args) > 0 && args[0] == "status" {
+		cmdStatusProject(ctx, client, os.Stdout, cwd)
 		return
 	}
 

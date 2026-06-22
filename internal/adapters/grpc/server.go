@@ -3232,6 +3232,9 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 		return nil, fmt.Errorf("project_dir is required")
 	}
 
+	// Clear any "loop stopped" flag — the operator is explicitly starting the loop.
+	removeLoopStoppedFlag(projectDir)
+
 	// Ensure per-project log migration has run.
 	if migrator, ok := s.store.(ports.ProjectMigrator); ok {
 		_ = migrator.MigrateProjectLogs(projectDir)
@@ -3504,7 +3507,56 @@ func (s *ClocheServer) DisableLoop(ctx context.Context, req *pb.DisableLoopReque
 		delete(s.loops, projectDir)
 	}
 
+	// Persist the "loop stopped" flag so the daemon knows not to auto-restart the
+	// loop on next startup when the operator has explicitly stopped it.
+	if err := writeLoopStoppedFlag(projectDir); err != nil {
+		return nil, fmt.Errorf("persisting loop-stopped flag: %w", err)
+	}
+
 	return &pb.DisableLoopResponse{}, nil
+}
+
+// loopStoppedFlagPath returns the path of the flag file that records an explicit loop stop.
+func loopStoppedFlagPath(projectDir string) string {
+	return filepath.Join(projectDir, ".cloche", ".loop-stopped")
+}
+
+func writeLoopStoppedFlag(projectDir string) error {
+	return os.WriteFile(loopStoppedFlagPath(projectDir), []byte("stopped\n"), 0o644)
+}
+
+func removeLoopStoppedFlag(projectDir string) {
+	_ = os.Remove(loopStoppedFlagPath(projectDir))
+}
+
+// LoopWasExplicitlyStopped reports whether the operator ran "cloche loop stop"
+// since the last "cloche loop [enable]". The flag file persists across daemon restarts.
+func LoopWasExplicitlyStopped(projectDir string) bool {
+	_, err := os.Stat(loopStoppedFlagPath(projectDir))
+	return err == nil
+}
+
+// QuiesceRuns parks all resumable (pending/running/waiting) runs for a project so they
+// are not failed or auto-resumed on the next daemon restart. Returns the count parked.
+func (s *ClocheServer) QuiesceRuns(ctx context.Context, req *pb.QuiesceRunsRequest) (*pb.QuiesceRunsResponse, error) {
+	projectDir := normalizeProjectDir(req.ProjectDir)
+	if projectDir == "" {
+		return nil, fmt.Errorf("project_dir is required")
+	}
+
+	type parker interface {
+		ParkRunsByProject(ctx context.Context, projectDir string) (int64, error)
+	}
+	p, ok := s.store.(parker)
+	if !ok {
+		return nil, fmt.Errorf("store does not support ParkRunsByProject")
+	}
+
+	n, err := p.ParkRunsByProject(ctx, projectDir)
+	if err != nil {
+		return nil, fmt.Errorf("parking runs: %w", err)
+	}
+	return &pb.QuiesceRunsResponse{ParkedCount: int32(n)}, nil
 }
 
 func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInfoRequest) (*pb.GetProjectInfoResponse, error) {
@@ -3604,6 +3656,15 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 	sort.Strings(containerWorkflows)
 	sort.Strings(hostWorkflows)
 
+	// Count parked runs for this project.
+	var parkedCount int32
+	type counter interface {
+		CountParkedRunsByProject(ctx context.Context, projectDir string) (int32, error)
+	}
+	if c, ok := s.store.(counter); ok {
+		parkedCount, _ = c.CountParkedRunsByProject(ctx, projectDir) // advisory display; 0 on error is safe
+	}
+
 	return &pb.GetProjectInfoResponse{
 		ProjectDir:             projectDir,
 		Name:                   label,
@@ -3619,6 +3680,7 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 		StopOnError:            cfg.Orchestration.StopOnError,
 		MaxConsecutiveFailures: int32(cfg.Orchestration.MaxConsecutiveFailures),
 		Repositories:           repositories,
+		ResumableRunsCount:     parkedCount,
 	}, nil
 }
 

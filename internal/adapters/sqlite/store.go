@@ -839,6 +839,31 @@ func (s *Store) FailStaleRuns(ctx context.Context) (int64, error) {
 	return res.RowsAffected()
 }
 
+// ParkRunsByProject marks all resumable (pending/running/waiting) runs in a project
+// as 'parked' so they are not failed at daemon restart and can be reviewed by the operator.
+func (s *Store) ParkRunsByProject(ctx context.Context, projectDir string) (int64, error) {
+	now := formatTime(time.Now())
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE runs SET state = 'parked', completed_at = ?
+		 WHERE project_dir = ? AND state IN ('pending', 'running', 'waiting')`,
+		now, projectDir,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// CountParkedRunsByProject returns the number of runs in 'parked' state for the project.
+func (s *Store) CountParkedRunsByProject(ctx context.Context, projectDir string) (int32, error) {
+	var count int32
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM runs WHERE project_dir = ? AND state = 'parked'`,
+		projectDir,
+	).Scan(&count)
+	return count, err
+}
+
 // UpsertHumanPoll inserts or updates the poll record for a human step.
 func (s *Store) UpsertHumanPoll(ctx context.Context, record *ports.HumanPollRecord) error {
 	_, err := s.db.ExecContext(ctx,

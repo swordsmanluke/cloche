@@ -14,6 +14,9 @@ const (
 	RunStateSucceeded RunState = "succeeded"
 	RunStateFailed    RunState = "failed"
 	RunStateCancelled RunState = "cancelled"
+	// RunStateParked marks runs that were explicitly quiesced (cloche loop quiesce) so they
+	// are not failed at daemon restart and can be inspected or unparked by the operator.
+	RunStateParked RunState = "parked"
 )
 
 // RunListFilter holds optional filters for listing runs.
