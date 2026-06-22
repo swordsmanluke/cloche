@@ -148,14 +148,22 @@ Examples:
 
 	"resume": `cloche resume — Resume a failed workflow run
 
-Re-attempts a failed workflow run from a specific step. The container
-must still be available for container workflows (failed runs keep their
-containers by default).
+Re-attempts a failed workflow run from a specific step. By default the
+container is rebuilt fresh from the project config image (picking up any
+Dockerfile fixes) and the latest workspace snapshot from the failed run is
+re-applied before the failed step is retried.
 
 Usage:
-  cloche resume <task-id>
-  cloche resume <workflow-id>
-  cloche resume <step-id>
+  cloche resume [--no-rebuild|--clean] <task-id>
+  cloche resume [--no-rebuild|--clean] <workflow-id>
+  cloche resume [--no-rebuild|--clean] <step-id>
+
+Flags:
+  --no-rebuild   Reuse the committed container from the failed run instead
+                 of rebuilding; the workspace snapshot is still re-applied.
+  --clean        Rebuild the container fresh but start from a clean
+                 workspace (do not re-apply the snapshot).
+                 --no-rebuild and --clean are mutually exclusive.
 
 Arguments:
   <task-id>      Task identifier (e.g. TASK-123 or cloche-k4gh).

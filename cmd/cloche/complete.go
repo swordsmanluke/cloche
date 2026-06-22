@@ -157,6 +157,9 @@ func staticCompletions(subcommand string, index int, words []string, cur string)
 	case "loop":
 		candidates = []string{"once", "stop", "resume", "--max"}
 
+	case "resume":
+		candidates = []string{"--no-rebuild", "--clean"}
+
 	case "workflow":
 		// Try reading from local .cloche/
 		candidates = localWorkflowNames()

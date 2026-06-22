@@ -202,7 +202,6 @@ func main() {
 	}
 }
 
-
 func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	var workflowSpec, prompt, title, issueID string
 	var keepContainer bool
@@ -299,13 +298,52 @@ func parseResumeArg(arg string) (taskOrRunID, compositeID string, err error) {
 	return "", arg, nil
 }
 
+// parseResumeFlags separates --no-rebuild / --clean flags from positional args
+// and maps them to a rebuild mode string sent to the server:
+//   - default (no flag): "rebuild" — rebuild container fresh, re-apply snapshot
+//   - --no-rebuild:      "reuse"   — reuse committed container + snapshot
+//   - --clean:           "clean"   — rebuild container, no snapshot
+//
+// --no-rebuild and --clean are mutually exclusive.
+func parseResumeFlags(args []string) (rebuildMode string, positional []string, err error) {
+	noRebuild := false
+	clean := false
+	for _, a := range args {
+		switch a {
+		case "--no-rebuild":
+			noRebuild = true
+		case "--clean":
+			clean = true
+		default:
+			positional = append(positional, a)
+		}
+	}
+	if noRebuild && clean {
+		return "", nil, fmt.Errorf("--no-rebuild and --clean are mutually exclusive")
+	}
+	switch {
+	case noRebuild:
+		rebuildMode = "reuse"
+	case clean:
+		rebuildMode = "clean"
+	default:
+		rebuildMode = "rebuild"
+	}
+	return rebuildMode, positional, nil
+}
+
 func cmdResume(ctx context.Context, client pb.ClocheServiceClient, args []string) {
-	if len(args) != 1 {
-		fmt.Fprintf(os.Stderr, "usage: cloche resume <task-id|run-id|workflow-id|step-id>\n")
+	rebuildMode, positional, err := parseResumeFlags(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if len(positional) != 1 {
+		fmt.Fprintf(os.Stderr, "usage: cloche resume [--no-rebuild|--clean] <task-id|run-id|workflow-id|step-id>\n")
 		os.Exit(1)
 	}
 
-	taskOrRunID, compositeID, err := parseResumeArg(args[0])
+	taskOrRunID, compositeID, err := parseResumeArg(positional[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -317,6 +355,7 @@ func cmdResume(ctx context.Context, client pb.ClocheServiceClient, args []string
 	md := metadata.Pairs(
 		"x-cloche-resume-run-id", compositeID,
 		"x-cloche-resume-task-or-run", taskOrRunID,
+		"x-cloche-resume-rebuild", rebuildMode,
 	)
 	ctx = metadata.NewOutgoingContext(ctx, md)
 

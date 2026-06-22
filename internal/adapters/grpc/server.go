@@ -579,6 +579,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	// Check for resume mode via gRPC metadata.
 	// Two paths: composite ID (colon-separated, resolved via resolveRunIDFromID),
 	// or bare task/run ID that needs resolution via resolveResumeTarget.
+	rebuildMode := resumeRebuildModeFromContext(ctx)
 	if resumeRunID := resumeRunIDFromContext(ctx); resumeRunID != "" {
 		resolvedRunID, stepFromID, err := s.resolveRunIDFromID(ctx, resumeRunID)
 		if err != nil {
@@ -589,14 +590,14 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		if step == "" {
 			step = stepFromID
 		}
-		return s.resumeRun(ctx, resolvedRunID, step)
+		return s.resumeRun(ctx, resolvedRunID, step, rebuildMode)
 	}
 	if taskOrRunID := resumeTaskOrRunFromContext(ctx); taskOrRunID != "" {
 		runID, err := s.resolveResumeTarget(ctx, taskOrRunID)
 		if err != nil {
 			return nil, err
 		}
-		return s.resumeRun(ctx, runID, "")
+		return s.resumeRun(ctx, runID, "", rebuildMode)
 	}
 
 	// Parse optional step from workflow_name ("workflow:step" format).
@@ -754,6 +755,45 @@ func resumeStepFromContext(ctx context.Context) string {
 		return ""
 	}
 	return vals[0]
+}
+
+// resumeRebuildMode selects how a resumed container run reconstructs its
+// workspace and container.
+type resumeRebuildMode int
+
+const (
+	// resumeRebuild (default): rebuild the container fresh from the project
+	// config image (picking up Dockerfile fixes) and re-apply the latest
+	// workspace snapshot from the failed attempt.
+	resumeRebuild resumeRebuildMode = iota
+	// resumeReuse: reuse the committed container image from the failed attempt
+	// and re-apply the latest workspace snapshot (legacy behavior).
+	resumeReuse
+	// resumeClean: rebuild the container fresh but start from a clean workspace
+	// (no snapshot re-application).
+	resumeClean
+)
+
+// resumeRebuildModeFromContext reads the x-cloche-resume-rebuild metadata value
+// and maps it to a resumeRebuildMode. Defaults to resumeRebuild when absent or
+// unrecognized.
+func resumeRebuildModeFromContext(ctx context.Context) resumeRebuildMode {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return resumeRebuild
+	}
+	vals := md.Get("x-cloche-resume-rebuild")
+	if len(vals) == 0 {
+		return resumeRebuild
+	}
+	switch vals[0] {
+	case "reuse":
+		return resumeReuse
+	case "clean":
+		return resumeClean
+	default:
+		return resumeRebuild
+	}
 }
 
 // resumeTaskOrRunFromContext extracts a task-or-run ID from gRPC metadata.
@@ -942,8 +982,10 @@ func pickFailedRun(runs []*domain.Run) (string, error) {
 	return "", fmt.Errorf("no failed runs found")
 }
 
-// resumeRun resumes a failed workflow run from a specific step.
-func (s *ClocheServer) resumeRun(ctx context.Context, runID, stepName string) (*pb.RunWorkflowResponse, error) {
+// resumeRun resumes a failed workflow run from a specific step. The rebuild
+// mode controls container/workspace reconstruction for container runs; it is
+// ignored for host runs.
+func (s *ClocheServer) resumeRun(ctx context.Context, runID, stepName string, mode resumeRebuildMode) (*pb.RunWorkflowResponse, error) {
 	run, err := s.store.GetRun(ctx, runID)
 	if err != nil {
 		return nil, fmt.Errorf("run %q not found: %w", runID, err)
@@ -969,7 +1011,7 @@ func (s *ClocheServer) resumeRun(ctx context.Context, runID, stepName string) (*
 	if run.IsHost {
 		return s.resumeHostRun(ctx, run, stepName)
 	}
-	return s.resumeContainerRun(ctx, run, stepName)
+	return s.resumeContainerRun(ctx, run, stepName, mode)
 }
 
 // createResumeAttempt creates a new Attempt that records lineage back to the
@@ -1059,14 +1101,14 @@ func (s *ClocheServer) completeAttemptFromResult(attemptID, taskID string, resul
 // from those images, completed steps are pre-loaded, and the engine re-walks the
 // graph dispatching remaining steps via the pool. Otherwise, falls back to the
 // legacy approach of starting a container with --resume-from.
-func (s *ClocheServer) resumeContainerRun(ctx context.Context, run *domain.Run, stepName string) (*pb.RunWorkflowResponse, error) {
+func (s *ClocheServer) resumeContainerRun(ctx context.Context, run *domain.Run, stepName string, mode resumeRebuildMode) (*pb.RunWorkflowResponse, error) {
 	if s.container == nil {
 		return nil, fmt.Errorf("no container runtime configured")
 	}
 
 	// Pool-based approach: daemon runs the engine and dispatches steps via pool.
 	if s.pool != nil {
-		return s.resumeContainerRunWithPool(ctx, run, stepName)
+		return s.resumeContainerRunWithPool(ctx, run, stepName, mode)
 	}
 
 	// Legacy fallback: commit container and start new one with --resume-from.
@@ -1082,7 +1124,7 @@ func (s *ClocheServer) resumeContainerRun(ctx context.Context, run *domain.Run, 
 //  5. Runs the engine with ResumeMode=true so all ExecuteStep messages carry
 //     resume=true for LLM conversation continuity.
 //  6. Cleans up committed images on successful completion.
-func (s *ClocheServer) resumeContainerRunWithPool(ctx context.Context, run *domain.Run, stepName string) (*pb.RunWorkflowResponse, error) {
+func (s *ClocheServer) resumeContainerRunWithPool(ctx context.Context, run *domain.Run, stepName string, mode resumeRebuildMode) (*pb.RunWorkflowResponse, error) {
 	// Create a new attempt first so lineage is recorded even if later steps fail.
 	newAttempt := s.createResumeAttempt(ctx, run)
 	newRunID := domain.GenerateRunID(run.WorkflowName, newAttempt.ID)
@@ -1111,30 +1153,65 @@ func (s *ClocheServer) resumeContainerRunWithPool(ctx context.Context, run *doma
 		return nil, fmt.Errorf("creating resume run record: %w", err)
 	}
 
-	// Commit containers from the failed attempt to Docker images (best-effort).
-	committedImages, commitErr := s.pool.CommitForResume(ctx, run.AttemptID)
-	if commitErr != nil {
-		log.Printf("run %s: failed to commit containers for resume (continuing): %v", run.ID, commitErr)
-		committedImages = nil
-	}
+	var committedImages map[string]string
+	var snapshotPath string
 
-	// Resolve the image for new containers: use the committed image when
-	// available, otherwise fall back to the project/server default.
+	// Resolve the base image from project config (then server default). This is
+	// the image rebuild/clean modes use so Dockerfile fixes are picked up.
 	image := s.defaultImage
 	if projCfg, err := config.Load(run.ProjectDir); err == nil && projCfg.Daemon.Image != "" {
 		image = projCfg.Daemon.Image
 	}
-	if len(committedImages) > 0 {
-		// All containers in an attempt share the same base image; take the first.
-		for _, tag := range committedImages {
-			image = tag
-			break
+
+	switch mode {
+	case resumeReuse:
+		// Legacy behavior: commit the failed attempt's containers to images and
+		// reuse them, re-applying the latest workspace snapshot.
+		var commitErr error
+		committedImages, commitErr = s.pool.CommitForResume(ctx, run.AttemptID)
+		if commitErr != nil {
+			log.Printf("run %s: failed to commit containers for resume (continuing): %v", run.ID, commitErr)
+			committedImages = nil
 		}
+		if len(committedImages) > 0 {
+			// All containers in an attempt share the same base image; take the first.
+			for _, tag := range committedImages {
+				image = tag
+				break
+			}
+		}
+		snapshotPath = latestSnapshotPath(run.ProjectDir, run.TaskID, run.AttemptID)
+
+	case resumeClean:
+		// Rebuild the container fresh; do NOT re-apply any snapshot. Skip the
+		// commit so Dockerfile changes take effect.
+		s.ensureResumeImage(ctx, run.ProjectDir, image)
+		committedImages = nil
+		snapshotPath = ""
+
+	default: // resumeRebuild
+		// Rebuild the container fresh and re-apply the latest workspace snapshot.
+		// Skip the commit so Dockerfile changes take effect.
+		s.ensureResumeImage(ctx, run.ProjectDir, image)
+		committedImages = nil
+		snapshotPath = latestSnapshotPath(run.ProjectDir, run.TaskID, run.AttemptID)
 	}
 
-	go s.runResumedContainerWorkflow(newRun, wf, allWFs, preloaded, image, committedImages)
+	go s.runResumedContainerWorkflow(newRun, wf, allWFs, preloaded, image, committedImages, snapshotPath)
 
 	return &pb.RunWorkflowResponse{RunId: newRunID, AttemptId: newAttempt.ID}, nil
+}
+
+// ensureResumeImage rebuilds the project image if the runtime supports it and
+// the Dockerfile has changed since the last build. Best-effort: logs on error.
+func (s *ClocheServer) ensureResumeImage(ctx context.Context, projectDir, image string) {
+	ensurer, ok := s.container.(ports.ImageEnsurer)
+	if !ok {
+		return
+	}
+	if err := ensurer.EnsureImage(ctx, projectDir, image); err != nil {
+		log.Printf("resume: EnsureImage(%s) failed (continuing): %v", image, err)
+	}
 }
 
 // runResumedContainerWorkflow runs the daemon-side engine for a resumed
@@ -1148,6 +1225,7 @@ func (s *ClocheServer) runResumedContainerWorkflow(
 	preloaded map[string]string,
 	image string,
 	committedImages map[string]string,
+	snapshotPath string,
 ) {
 	ctx := context.Background()
 
@@ -1186,6 +1264,16 @@ func (s *ClocheServer) runResumedContainerWorkflow(
 
 	if s.logBroadcast != nil {
 		s.logBroadcast.Start(run.ID)
+	}
+
+	// Re-apply the latest workspace snapshot from the failed attempt onto the
+	// freshly-built container before any step runs. Best-effort: log on error.
+	if snapshotPath != "" {
+		if err := s.injectWorkspaceSnapshot(ctx, session.ContainerID, snapshotPath); err != nil {
+			log.Printf("run %s: failed to inject workspace snapshot %s (continuing): %v", run.ID, snapshotPath, err)
+		} else {
+			log.Printf("run %s: injected workspace snapshot %s", run.ID, snapshotPath)
+		}
 	}
 
 	// Run the engine with the DaemonExecutor in resume mode.
