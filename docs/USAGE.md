@@ -1007,7 +1007,7 @@ status for that task.
 | Flag | Description |
 |------|-------------|
 | `--all` | Show global stats instead of project-specific stats (overview mode only). |
-| `--no-color` | Disable ANSI color output (also respects the `NO_COLOR` env var). Set `CLOCHE_FORCE_COLOR=1` to force color on even when stdout is not a terminal. |
+| `--no-color` | Disable ANSI color output. Set `CLOCHE_FORCE_COLOR=1` to force color on even when stdout is not a terminal. |
 
 ### `cloche list`
 
@@ -1243,6 +1243,7 @@ nested sub-workflows even when their attempt and run IDs differ from the writer'
 
 ```
 cloche set <key> <value|->
+cloche set <key> -f <file>
 ```
 
 Set a value in the daemon's gRPC-backed KV store. Requires the `CLOCHE_TASK_ID`
@@ -1295,7 +1296,7 @@ clo get <key>              Print value to stdout; exit 1 if not found
 clo set <key> <value>      Set a key
 clo set <key> -            Read value from stdin (trailing newlines trimmed)
 clo set <key> -f <file>    Set a key from file contents
-clo keys                   List all keys in the current attempt namespace
+clo keys                   List all keys in the current run namespace
 clo -v / --version / version   Print version
 ```
 
@@ -1565,7 +1566,7 @@ my-project/
 | `concurrency` | `1` | Maximum concurrent container runs. |
 | `stagger_seconds` | `1.0` | Delay (seconds) between consecutive run launches. |
 | `list_tasks_command` | _(unset)_ | Shell command to list open tasks (must output a JSON array). Overrides the default `list-tasks` workflow. |
-| `dedup_seconds` | `300` | Window (seconds) to suppress re-assigning the same task ID. |
+| `dedup_seconds` | `0` | Window (seconds) to suppress re-assigning the same task ID. |
 | `stop_on_error` | `false` | Halt the orchestration loop on the first unrecovered error. |
 | `max_consecutive_failures` | `3` | Stop the loop after this many consecutive failed runs. Run `cloche loop` to restart. |
 
@@ -1735,7 +1736,7 @@ The container image must have:
 ## Build Commands
 
 ```
-make build          # Build cloche, cloched, cloche-agent to bin/
+make build          # Build cloche, cloched, cloche-agent, clo to bin/
 make test           # Run all tests
 make test-short     # Run tests (skip slow ones)
 make lint           # Run go vet

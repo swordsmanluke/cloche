@@ -19,10 +19,10 @@ cd cloche
 make install
 ```
 
-`make install` builds all four binaries (`cloche`, `cloched`, `cloche-agent`, `clo`),
-builds the `cloche-agent:latest` Docker image, installs `cloche`, `cloched`, and
-`cloche-agent` to `~/.local/bin/`, and starts the daemon. (`clo` is baked into
-container images and is not installed to the host prefix.) You can change the install
+`make install` builds `cloche`, `cloched`, `cloche-agent`, and `clo`, builds the
+`cloche-agent:latest` Docker image, installs `cloche`, `cloched`, and `cloche-agent`
+to `~/.local/bin/`, and starts the daemon. (`clo` is baked into container images and
+is not installed to the host prefix.) You can change the install
 prefix:
 
 ```

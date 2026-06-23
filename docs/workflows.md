@@ -209,9 +209,8 @@ Step-level `agent_command` and `agent_args` still override the agent declaration
 full resolution order is: step-level > agent declaration > workflow-level block >
 `CLOCHE_AGENT_COMMAND` env var > default `claude`.
 
-**Validation:** Referencing an undeclared agent is a validation error. Only prompt (agent
-type) steps may reference an agent. Duplicate agent names within a workflow are a parse
-error. An agent declaration without a `command` field is a parse error.
+**Validation:** Duplicate agent names within a workflow are a parse error. An agent
+declaration without a `command` field is a parse error.
 
 ## Prompt Templates
 
@@ -405,7 +404,7 @@ workflow "develop" {
 }
 ```
 
-Supported keys: `id`, `image`, `agent_command`, `agent_args`, `network_allow`, `memory`.
+Recognized keys: `id`, `image`, `agent_command`, `agent_args`, `network_allow`, `memory`. Unknown keys are silently ignored.
 
 **`host {}`** — Declares a workflow as a host workflow. Can appear in any `.cloche` file.
 Sets agent defaults for agent steps running on the host machine. An empty `host {}` block
@@ -420,7 +419,7 @@ workflow "main" {
 }
 ```
 
-Supported keys: `agent_command`, `agent_args`.
+Recognized keys: `agent_command`, `agent_args`. Unknown keys are silently ignored.
 
 Step-level `agent_command` and `agent_args` override workflow-level defaults. The
 resolution order is: step-level > agent declaration > workflow-level block >
