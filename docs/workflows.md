@@ -380,6 +380,12 @@ This directive appears at the workflow level alongside other wiring lines, not i
 `step` block. When set, every step whose `token-limit` result has not been wired
 explicitly will route to `release-task` instead of `abort`.
 
+> **Note:** Only `token-limit ->` is supported as a global wire shorthand. A
+> `timeout -> <target>` line at the workflow level is parsed without error but has no
+> effect — the runtime only consults the global wire config for `token-limit`. To
+> redirect timeout events for a specific step, use a step-level wire:
+> `<stepname>:timeout -> <target>`.
+
 ## Workflow-Level Configuration Blocks
 
 Workflows support a configuration block at the workflow level to set defaults for all
@@ -419,6 +425,38 @@ Supported keys: `agent_command`, `agent_args`.
 Step-level `agent_command` and `agent_args` override workflow-level defaults. The
 resolution order is: step-level > agent declaration > workflow-level block >
 `CLOCHE_AGENT_COMMAND` env var > default `claude`.
+
+**Step-level `container {}`** — A `container { … }` block may also appear inside an
+individual step body. Keys set there override the workflow-level `container {}` defaults
+for that step only. The keys are stored with a `"container."` prefix on the step's
+config map. This is useful for giving a single step a different image or network policy.
+
+```
+workflow "develop" {
+  container {
+    image = "my-project:latest"
+    agent_command = "claude"
+  }
+
+  step research {
+    prompt = file(".cloche/prompts/research.md")
+    container {
+      network_allow = "api.example.com"
+    }
+    results = [success, fail]
+  }
+
+  step implement {
+    prompt = file(".cloche/prompts/implement.md")
+    results = [success, fail]
+  }
+
+  research:success -> implement
+  research:fail    -> abort
+  implement:success -> done
+  implement:fail    -> abort
+}
+```
 
 ## Container IDs
 

@@ -10,7 +10,7 @@ default arguments; the prompt is passed on stdin and the command is invoked as-i
 | Command | Default args | Required args |
 |---------|-------------|---------------|
 | `claude` | `-p --dangerously-skip-permissions --model sonnet` | `--output-format stream-json --verbose` |
-| `opencode` | `run --format json --dangerously-skip-permissions` | _(none)_ |
+| `opencode` | `run --format json --dangerously-skip-permissions` | `--format json` |
 
 ## How `agent_args` Interacts with Defaults and Required Args
 
@@ -133,8 +133,10 @@ The prompt is passed on stdin.
 
 ### Overriding arguments
 
-Use `agent_args` to replace the default args. Unlike `claude`, `opencode` has no required
-args, so `agent_args` is passed through verbatim.
+Use `agent_args` to replace the default args. Like `claude`, `opencode` has one required
+arg — `--format json` — which Cloche always injects if not already present in
+`agent_args`. This ensures structured events are emitted on stdout so the streaming
+parser can extract results and token usage.
 
 ## Unknown Agents
 
