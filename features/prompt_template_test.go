@@ -14,11 +14,11 @@ import (
 
 // promptTemplateCtx holds per-scenario state for prompt-templating BDD scenarios.
 type promptTemplateCtx struct {
-	template      string
-	builtins      map[string]string // task_id, run_id, step_name, workdir, prev_output, task_description
-	kvStore       map[string]string
-	workDir       string // temp directory created per-scenario
-	envVars       []envVarRestore // env vars to restore on reset
+	template string
+	builtins map[string]string // task_id, run_id, step_name, workdir, prev_output, task_description
+	kvStore  map[string]string
+	workDir  string          // temp directory created per-scenario
+	envVars  []envVarRestore // env vars to restore on reset
 
 	// L2: real sqlite-backed KV store for the daemon-integration scenario.
 	store     *sqlite.Store
@@ -76,6 +76,8 @@ func (s *promptTemplateCtx) ensureWorkDir() error {
 	s.builtins["workdir"] = dir
 	return nil
 }
+
+func init() { registerScenarios(initPromptTemplatingScenarios) }
 
 func initPromptTemplatingScenarios(ctx *godog.ScenarioContext) {
 	s := &promptTemplateCtx{}

@@ -252,6 +252,8 @@ func (s *runStateStepViewCtx) nestingStrategySectionDescribesLongNameHandling() 
 
 // ─── Step registration ────────────────────────────────────────────────────────
 
+func init() { registerScenarios(initRunStateStepViewScenarios) }
+
 func initRunStateStepViewScenarios(ctx *godog.ScenarioContext) {
 	s := &runStateStepViewCtx{}
 	ctx.Before(func(_ context.Context, _ *godog.Scenario) (context.Context, error) {

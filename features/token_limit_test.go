@@ -21,10 +21,10 @@ type tokenLimitCtx struct {
 	dslParseErr     error
 
 	// L2 state
-	engineWf         *domain.Workflow
-	run              *domain.Run
-	mu               sync.Mutex
-	executorCallCount int            // total across all steps
+	engineWf            *domain.Workflow
+	run                 *domain.Run
+	mu                  sync.Mutex
+	executorCallCount   int            // total across all steps
 	executorCallsByStep map[string]int // per-step call counts
 }
 
@@ -338,6 +338,8 @@ func (s *tokenLimitCtx) noExecutorIsCalled() error {
 
 // ─── Step registration ────────────────────────────────────────────────────────
 
+func init() { registerScenarios(initTokenLimitScenarios) }
+
 func initTokenLimitScenarios(ctx *godog.ScenarioContext) {
 	s := &tokenLimitCtx{}
 	ctx.Before(func(_ context.Context, _ *godog.Scenario) (context.Context, error) {
@@ -372,4 +374,3 @@ func initTokenLimitScenarios(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the executor is never called for step "([^"]*)"$`, s.executorIsNeverCalledForStep)
 	ctx.Step(`^no executor is called$`, s.noExecutorIsCalled)
 }
-

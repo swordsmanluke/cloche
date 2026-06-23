@@ -344,6 +344,8 @@ func (s *loopResumeGateCtx) theDispatchedRunStatusIsSuccessful() error {
 
 // ─── Scenario initializer ────────────────────────────────────────────────────
 
+func init() { registerScenarios(initLoopResumeGateScenarios) }
+
 func initLoopResumeGateScenarios(ctx *godog.ScenarioContext) {
 	s := &loopResumeGateCtx{}
 	ctx.Before(func(_ context.Context, _ *godog.Scenario) (context.Context, error) {

@@ -302,6 +302,8 @@ func (s *verticalDesignPrepCtx) ensureTempDir() error {
 
 // ─── Step registration ────────────────────────────────────────────────────────
 
+func init() { registerScenarios(initVerticalDesignPrepScenarios) }
+
 func initVerticalDesignPrepScenarios(ctx *godog.ScenarioContext) {
 	s := &verticalDesignPrepCtx{kvStore: make(map[string]string)}
 	ctx.Before(func(_ context.Context, _ *godog.Scenario) (context.Context, error) {

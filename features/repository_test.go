@@ -37,15 +37,15 @@ type repositoryCtx struct {
 	dslParseErr     error
 
 	// CLI / daemon integration (L2)
-	projectDir    string           // temp project root for CLI tests
-	daemonAddr    string           // address of the in-process test gRPC server
-	daemonServer  *grpclib.Server  // in-process server (stopped on reset)
-	commandOutput string           // captured output from last CLI command
-	commandErr    error            // error returned by last CLI command
+	projectDir    string          // temp project root for CLI tests
+	daemonAddr    string          // address of the in-process test gRPC server
+	daemonServer  *grpclib.Server // in-process server (stopped on reset)
+	commandOutput string          // captured output from last CLI command
+	commandErr    error           // error returned by last CLI command
 
 	// Auto-seeding (L3 Scenario 5)
-	autoSeedDir   string          // temp project root for auto-seed scenario
-	autoSeedStore *sqlite.Store   // in-process SQLite store for auto-seed scenario
+	autoSeedDir   string        // temp project root for auto-seed scenario
+	autoSeedStore *sqlite.Store // in-process SQLite store for auto-seed scenario
 	seededRepos   []*domain.Repository
 }
 
@@ -118,6 +118,8 @@ func startTestDaemon(projectDir string) (addr string, srv *grpclib.Server, err e
 }
 
 // ─── step registrations ──────────────────────────────────────────────────────
+
+func init() { registerScenarios(initRepositoryScenarios) }
 
 func initRepositoryScenarios(ctx *godog.ScenarioContext) {
 	s := &repositoryCtx{}
@@ -534,15 +536,11 @@ func TestMain(m *testing.M) {
 
 	status := godog.TestSuite{
 		Name: "cloche",
-		ScenarioInitializer: func(ctx *godog.ScenarioContext) {
-			initRepositoryScenarios(ctx)
-			initPromptTemplatingScenarios(ctx)
-			initTokenLimitScenarios(ctx)
-			initVerticalDesignPrepScenarios(ctx)
-			initLoopResumeGateScenarios(ctx)
-			initRunStateStepViewScenarios(ctx)
-		},
-		Options: &opts,
+		// Each feature self-registers its scenarios via init() (see
+		// scenario_registry_test.go). Do NOT add init*Scenarios calls here —
+		// that shared list caused merge conflicts between concurrent features.
+		ScenarioInitializer: applyScenarioInitializers,
+		Options:             &opts,
 	}.Run()
 
 	if st := m.Run(); st > status {
