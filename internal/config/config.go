@@ -45,6 +45,13 @@ type AgentsConfig struct {
 	Codex AgentCodexConfig `toml:"codex"`
 }
 
+// AgentConfig controls how prompt steps are dispatched.
+// Mode "prompt" (default) launches a headless claude -p process;
+// mode "mcp" parks prompt steps until an MCP client claims and completes them.
+type AgentConfig struct {
+	Mode string `toml:"mode"` // "prompt" (default) or "mcp"
+}
+
 // GitConfig controls the git identity used for cloche-authored commits
 // (extraction commits and scaffolded merge scripts). When unset, commits
 // fall back to the built-in "cloche <cloche@local>" identity. SSHKey is a
@@ -71,12 +78,16 @@ type Config struct {
 	Evolution     EvolutionConfig     `toml:"evolution"`
 	Orchestration OrchestrationConfig `toml:"orchestration"`
 	Agents        AgentsConfig        `toml:"agents"`
+	Agent         AgentConfig         `toml:"agent"`
 	Git           GitConfig           `toml:"git"`
 	Repositories  []RepositoryConfig  `toml:"repositories"`
 }
 
 func defaults() Config {
 	return Config{
+		Agent: AgentConfig{
+			Mode: "prompt",
+		},
 		Evolution: EvolutionConfig{
 			Enabled:          true,
 			DebounceSeconds:  30,

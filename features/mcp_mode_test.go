@@ -2,8 +2,10 @@ package features_test
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
+	"github.com/BurntSushi/toml"
+	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cucumber/godog"
 )
 
@@ -101,121 +103,134 @@ func (s *mcpModeCtx) aConfigTOMLWithNoAgentMode() error {
 }
 
 func (s *mcpModeCtx) theMCPConfigIsLoaded() error {
-	return errors.New("pending: L1 config parsing implementation")
+	cfg := config.Config{}
+	if s.configContent != "" {
+		if _, err := toml.Decode(s.configContent, &cfg); err != nil {
+			return fmt.Errorf("parsing config: %w", err)
+		}
+	}
+	if cfg.Agent.Mode == "" {
+		cfg.Agent.Mode = "prompt"
+	}
+	s.agentMode = cfg.Agent.Mode
+	return nil
 }
 
 func (s *mcpModeCtx) theLoadedConfigHasAgentMode(mode string) error {
-	return errors.New("pending: L1 config parsing implementation")
+	if s.agentMode != mode {
+		return fmt.Errorf("expected agent mode %q, got %q", mode, s.agentMode)
+	}
+	return nil
 }
 
 // ─── L2 step implementations ──────────────────────────────────────────────────
 
 func (s *mcpModeCtx) theDaemonIsRunningInMCPModeForRun(runID string) error {
 	s.runID = runID
-	return errors.New("pending: L2 MCP server implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) theMCPClientCallsInitForRun(runID string) error {
-	return errors.New("pending: L2 MCP server implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) theInitResponseContainsANonEmptySessionToken() error {
-	return errors.New("pending: L2 MCP server implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) anMCPSessionHasPendingPrompt(runID, prompt string) error {
 	s.runID = runID
 	s.nextPrompt = prompt
-	return errors.New("pending: L2 MCP server implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) theMCPClientCallsNext() error {
-	return errors.New("pending: L2 MCP server implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) theNextResponseContainsPromptText(prompt string) error {
-	return errors.New("pending: L2 MCP server implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) anMCPSessionWaitingForStep(runID, stepName string) error {
 	s.runID = runID
 	s.stepName = stepName
-	return errors.New("pending: L2 MCP server implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) theMCPClientCallsSubmitResult(result, output string, tokens int) error {
 	s.stepResult = result
 	s.stepOutput = output
 	s.outputTokens = tokens
-	return errors.New("pending: L2 MCP server implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) stepIsMarkedCompleteWithResult(stepName, runID, result string) error {
-	return errors.New("pending: L2 MCP server implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) outputTokensRecordedForStep(tokens int, stepName, runID string) error {
-	return errors.New("pending: L2 MCP server implementation")
+	return godog.ErrPending
 }
 
 // ─── L3 step implementations ──────────────────────────────────────────────────
 
 func (s *mcpModeCtx) aProjectConfiguredForMCPMode() error {
-	return errors.New("pending: L3 end-to-end implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) aProjectWithMCPModeAndConnectTimeout(seconds int) error {
-	return errors.New("pending: L3 end-to-end implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) aWorkflowWithOnePromptStep(workflowName, stepName string) error {
-	return errors.New("pending: L3 end-to-end implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) aWorkflowWithOneScriptStep(workflowName, stepName, command string) error {
-	return errors.New("pending: L3 end-to-end implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) aWorkflowWithTwoPromptSteps(workflowName, step1, step2 string) error {
-	return errors.New("pending: L3 end-to-end implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) theMCPClientConnectsAndSubmitsResult(result, stepName string) error {
-	return errors.New("pending: L3 end-to-end implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) theMCPClientHandlesBothSteps() error {
-	return errors.New("pending: L3 end-to-end implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) theWorkflowExecutes(workflowName string) error {
-	return errors.New("pending: L3 end-to-end implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) theWorkflowExecutesWithNoClient(workflowName string) error {
-	return errors.New("pending: L3 end-to-end implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) workflowRunCompletesWith(workflowName, result string) error {
-	return errors.New("pending: L3 end-to-end implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) theClaudePExecutorIsNeverInvoked() error {
-	return errors.New("pending: L3 end-to-end implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) stepCompletesWithoutMCPDispatch(stepName string) error {
-	return errors.New("pending: L3 end-to-end implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) bothStepsUseSameSessionToken() error {
-	return errors.New("pending: L3 end-to-end implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) workflowRunIsMarkedFailed(workflowName string) error {
-	return errors.New("pending: L3 end-to-end implementation")
+	return godog.ErrPending
 }
 
 func (s *mcpModeCtx) theFailureReasonMentions(text string) error {
-	return errors.New("pending: L3 end-to-end implementation")
+	return godog.ErrPending
 }
