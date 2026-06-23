@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Internal
+
+- **Per-step token metrics: design complete.** No per-step token data survives a restart today — it is computed on-read and never persisted. The `docs/plans/2026-05-28-step-token-metrics.md` design doc is now fully specified: step identity key (`workflow_name + step_name` pair), `metrics` table schema, host-vs-container coverage confirmation, three query shapes (slice-by-step, aggregate-by-workflow, trend-over-time), and `cloche metrics tokens` CLI surface. BDD acceptance scenarios added. This unblocks the implementation layer. ([design](docs/plans/2026-05-28-step-token-metrics.md))
+
 ### Features
 
 - **Vertical workflow: no PR gates.** The test-plan, layer, and docs phases now push their branches directly to origin and advance automatically; the `open-*-pr` / `poll-*-pr` / `address-*-feedback` steps and the `address-pr-feedback` sub-workflow have been removed. Stuck layers fail the job immediately with a `document-stuck` help-needed report surfaced in `cloche logs`, rather than opening a stalled PR. `finalize` now fast-forward-merges the rebased stack into the base branch and deletes the stack branches from origin. ([design](docs/design/vertical-workflow.md))

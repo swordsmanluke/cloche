@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Internal
+
+- Per-step token metrics design doc finalized (`docs/plans/2026-05-28-step-token-metrics.md`): status upgraded from "Captured (pre-design)" to "Design". Added Step Identifier (canonical key is `(workflow_name, step_name)`, reconciled with run-state-step-view display FQN), Schema (concrete `metrics` table fields + index), Host vs Container (both paths confirmed), Storage, Query Shapes (slice-by-step / aggregate-by-workflow / trend-over-time SQL examples), and CLI Surface (`cloche metrics tokens` command forms). Open questions section removed. BDD acceptance scenarios added in `features/step_token_metrics.feature`. ([design](docs/plans/2026-05-28-step-token-metrics.md))
+
 ### Features
 
 - Vertical workflow: removed all human-approved PR gates. The three gate pairs (`open-test-plan-pr`/`poll-test-plan-pr`, `open-pr`/`poll-pr`, `open-docs-pr`/`poll-docs-pr`) and their corresponding `address-*-feedback` steps are replaced by `publish-test-plan`, `publish-layer`, and `publish-docs` script steps that push the branch to origin and advance immediately. The `address-pr-feedback` container sub-workflow is removed entirely.
