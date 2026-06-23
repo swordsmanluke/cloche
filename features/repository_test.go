@@ -540,6 +540,7 @@ func TestMain(m *testing.M) {
 			initTokenLimitScenarios(ctx)
 			initVerticalDesignPrepScenarios(ctx)
 			initLoopResumeGateScenarios(ctx)
+			initRunStateStepViewScenarios(ctx)
 		},
 		Options: &opts,
 	}.Run()
