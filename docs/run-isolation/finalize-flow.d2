@@ -1,0 +1,24 @@
+# finalize: sync-forward-before-merge-back.
+# All working-tree git ops happen in a throwaway per-attempt worktree; the base
+# branch is never checked out, so conflicts surface on the feature branch and
+# main is only advanced by a fast-forward refspec push.
+
+direction: down
+
+start: finalize starts {shape: oval; style.fill: "#eef4ff"}
+fetch: "Fetch latest origin/<base> + origin/<top>"
+wt: "Create throwaway worktree\ngit worktree add -B <top> origin/<top>\n(shared checkout untouched)" {style.fill: "#f3fff0"}
+rebase: "Rebase <top> onto origin/<base>\n— SYNC-FORWARD —\n(stack now includes the latest base)"
+conflict: "Conflict?" {shape: diamond; style.fill: "#fff8ec"}
+fail: "Abort rebase, fail loud.\nConflict is on the FEATURE branch\nin the worktree — base UNTOUCHED.\nHuman resolves + re-runs." {shape: hexagon; style.fill: "#ffecec"}
+push: "git push origin HEAD:refs/heads/<base>\n(fast-forward, NO force)"
+pushq: "Push rejected?\n(base moved again)" {shape: diamond; style.fill: "#fff8ec"}
+failpush: "Fail — re-run finalize\nto rebase onto the new base.\nNothing forced onto base." {shape: hexagon; style.fill: "#ffecec"}
+done: "Delete merged stack branches,\nclose feature task,\nremove worktree" {shape: oval; style.fill: "#f3fff0"}
+
+start -> fetch -> wt -> rebase -> conflict
+conflict -> fail: yes
+conflict -> push: "no (clean)"
+push -> pushq
+pushq -> failpush: yes
+pushq -> done: "no (merged)"

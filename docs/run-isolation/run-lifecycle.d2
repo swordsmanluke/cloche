@@ -1,0 +1,42 @@
+# Per-run isolation: how a vertical run is isolated from the shared checkout
+# and from the base branch, so concurrent/resumed runs cannot corrupt main.
+
+direction: right
+
+shared: Shared repos/cloche checkout {
+  style.fill: "#eef4ff"
+  tree: "Working tree\n(stays on main — never\nmutated by a run)"
+  git: ".git\n(refs + history)"
+}
+
+snapshot: "Clean per-run snapshot\n(input isolation)" {
+  shape: page
+  style.fill: "#f3fff0"
+  body: "git archive <baseSHA>\n→ temp dir\n(tracked files only —\nno dirty/untracked state)"
+}
+
+container: Container (one per run) {
+  style.fill: "#fff8ec"
+  ws: "/workspace\n(seeded from snapshot)"
+  exec: "Workflow steps\n(agent + scripts)"
+  snaps: "per-step workspace\nsnapshots (.tar)\n→ resume input"
+}
+
+extract: "Per-run extract worktree\n(output isolation)" {
+  shape: page
+  style.fill: "#f3fff0"
+  body: ".gitworktrees/cloche/<run>\n@ baseSHA → feature branch"
+}
+
+origin: origin (GitHub) {
+  style.fill: "#f7eeff"
+  stack: "vertical/<feature>/* stack\n(test-plan ← layers ← docs)"
+  main: main
+}
+
+shared.git -> snapshot.body: "1. git archive baseSHA"
+snapshot.body -> container.ws: "2. docker cp (clean)"
+container.exec -> container.snaps: "capture after each\nsuccessful step"
+container.ws -> extract.body: "3. extract commits\n(daemon)"
+extract.body -> origin.stack: "4. publish-branch\n(push, ref-only)"
+origin.stack -> origin.main: "5. finalize\n(isolated worktree +\nsync-forward + push refspec)"

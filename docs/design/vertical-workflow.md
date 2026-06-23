@@ -1,5 +1,12 @@
 # Cloche: Vertical Development Workflow
 
+> **See also:** [Run Isolation & Safety](../run-isolation/index.md) documents the
+> per-run isolation that makes this workflow safe to run concurrently — the clean
+> per-run container snapshot, the throwaway-worktree `finalize` with
+> sync-forward-before-merge-back, `close-on-publish`, `--allow-no-op` idempotent
+> re-runs, and resume-rebuild. This document describes the *workflow shape*; that
+> one describes how a run is kept from corrupting the base branch.
+
 ## Motivation
 
 Most development workflows in Cloche today implement a *whole feature* in a single
