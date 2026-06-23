@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/cucumber/godog"
 )
@@ -50,85 +51,148 @@ func (s *stepTokenMetricsCtx) theStepTokenMetricsDesignDocFileExists() error {
 }
 
 func (s *stepTokenMetricsCtx) theDesignDocHasStepIdentifierSection() error {
-	return errors.New("pending: L1 implementation — no Step Identifier section yet")
+	if !strings.Contains(s.docContent, "## Step Identifier") {
+		return errors.New("design doc has no '## Step Identifier' section")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) stepIdentifierSectionDefinesCanonicalKey() error {
-	return errors.New("pending: L1 implementation — canonical key not yet defined")
+	if !strings.Contains(s.docContent, "workflow_name") || !strings.Contains(s.docContent, "step_name") {
+		return errors.New("step identifier section does not define canonical key as (workflow_name, step_name)")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) stepIdentifierSectionReconcilesWithRunStateView() error {
-	return errors.New("pending: L1 implementation — reconciliation with run-state-step-view not documented")
+	if !strings.Contains(s.docContent, "run-state-step-view") {
+		return errors.New("step identifier section does not reference run-state-step-view design")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) theDesignDocHasSchemaSection() error {
-	return errors.New("pending: L1 implementation — no Schema section yet")
+	if !strings.Contains(s.docContent, "## Schema") {
+		return errors.New("design doc has no '## Schema' section")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) schemaIncludesInputTokensField() error {
-	return errors.New("pending: L1 implementation — input_tokens field not yet in schema")
+	if !strings.Contains(s.docContent, "input_tokens") {
+		return errors.New("schema does not include input_tokens field")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) schemaIncludesOutputTokensField() error {
-	return errors.New("pending: L1 implementation — output_tokens field not yet in schema")
+	if !strings.Contains(s.docContent, "output_tokens") {
+		return errors.New("schema does not include output_tokens field")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) schemaIncludesTimestampField() error {
-	return errors.New("pending: L1 implementation — timestamp field not yet in schema")
+	if !strings.Contains(s.docContent, "timestamp") {
+		return errors.New("schema does not include timestamp field")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) schemaIncludesWorkflowNameScopeField() error {
-	return errors.New("pending: L1 implementation — workflow name scope field not yet in schema")
+	if !strings.Contains(s.docContent, "workflow_name") {
+		return errors.New("schema does not include workflow_name scope field")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) schemaIncludesStepNameScopeField() error {
-	return errors.New("pending: L1 implementation — step name scope field not yet in schema")
+	if !strings.Contains(s.docContent, "step_name") {
+		return errors.New("schema does not include step_name scope field")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) theDesignDocHasHostVsContainerSection() error {
-	return errors.New("pending: L1 implementation — no Host vs Container section yet")
+	if !strings.Contains(s.docContent, "## Host vs Container") {
+		return errors.New("design doc has no '## Host vs Container' section")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) hostVsContainerSectionConfirmsOrDocumentsGaps() error {
-	return errors.New("pending: L1 implementation — host vs container coverage not documented")
+	hasConfirmation := strings.Contains(s.docContent, "Coverage is complete") ||
+		strings.Contains(s.docContent, "coverage is complete") ||
+		strings.Contains(s.docContent, "Gap")
+	if !hasConfirmation {
+		return errors.New("host vs container section does not confirm coverage or document gaps")
+	}
+	return nil
 }
 
 // ─── L2: Query shapes and CLI surface steps ───────────────────────────────────
 
 func (s *stepTokenMetricsCtx) theDesignDocHasQueryShapesSection() error {
-	return errors.New("pending: L2 implementation — no Query Shapes section yet")
+	if !strings.Contains(s.docContent, "## Query Shapes") {
+		return errors.New("design doc has no '## Query Shapes' section")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) queryShapesSectionIncludesSliceByStep() error {
-	return errors.New("pending: L2 implementation — slice-by-step query not yet specified")
+	if !strings.Contains(s.docContent, "slice-by-step") && !strings.Contains(s.docContent, "slice by step") {
+		return errors.New("query shapes section does not include a slice-by-step query")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) queryShapesSectionIncludesAggregateByWorkflow() error {
-	return errors.New("pending: L2 implementation — aggregate-by-workflow query not yet specified")
+	if !strings.Contains(s.docContent, "aggregate-by-workflow") && !strings.Contains(s.docContent, "aggregate by workflow") {
+		return errors.New("query shapes section does not include an aggregate-by-workflow query")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) queryShapesSectionIncludesTrendOverTime() error {
-	return errors.New("pending: L2 implementation — trend-over-time query not yet specified")
+	if !strings.Contains(s.docContent, "trend-over-time") && !strings.Contains(s.docContent, "trend over time") {
+		return errors.New("query shapes section does not include a trend-over-time query")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) theDesignDocHasCLISurfaceSection() error {
-	return errors.New("pending: L2 implementation — no CLI Surface section yet")
+	if !strings.Contains(s.docContent, "## CLI Surface") {
+		return errors.New("design doc has no '## CLI Surface' section")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) cliSurfaceSectionNamesMetricsCommand() error {
-	return errors.New("pending: L2 implementation — cloche metrics command not yet documented")
+	if !strings.Contains(s.docContent, "cloche metrics") {
+		return errors.New("CLI surface section does not name a 'cloche metrics' command")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) theDesignDocHasStorageSection() error {
-	return errors.New("pending: L2 implementation — no Storage section yet")
+	if !strings.Contains(s.docContent, "## Storage") {
+		return errors.New("design doc has no '## Storage' section")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) storageSectionReferencesMetricsTable() error {
-	return errors.New("pending: L2 implementation — storage section not reconciled with metrics-reporting design")
+	if !strings.Contains(s.docContent, "metrics") {
+		return errors.New("storage section does not reference the metrics table")
+	}
+	return nil
 }
 
 func (s *stepTokenMetricsCtx) noUnresolvedOpenQuestions() error {
-	return errors.New("pending: L2 implementation — open questions not yet resolved in design doc")
+	if strings.Contains(s.docContent, "## Open Questions") {
+		return errors.New("design doc still has an unresolved 'Open Questions' section")
+	}
+	return nil
 }
 
 // ─── Step registration ────────────────────────────────────────────────────────
