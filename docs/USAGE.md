@@ -1584,6 +1584,22 @@ evolution is silently disabled when it is not.
 | `max_candidates` | `5` | Maximum number of prompt candidates to evaluate per evolution pass. |
 | `min_runs_to_promote` | `5` | Minimum completed runs before a candidate can be promoted to the active prompt. |
 
+### `[agent]`
+
+Controls how prompt steps are dispatched.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `mode` | `"prompt"` | Dispatch mode for prompt (agent-type) steps. `"prompt"` launches a headless `claude -p` process inside the container. `"mcp"` parks prompt steps until an interactive MCP client calls `init`, `next`, and `submit-result` on the daemon's MCP server (`/mcp`). Script steps are unaffected by this setting. |
+
+```toml
+# .cloche/config.toml
+[agent]
+mode = "mcp"   # "prompt" (default) or "mcp"
+```
+
+See [`docs/plans/2026-05-28-mcp-mode.md`](plans/2026-05-28-mcp-mode.md) for the full design, including the MCP tool surface (`init`, `next`, `submit-result`), session lifecycle, and token reporting.
+
 ### `[agents.codex]`
 
 Per-agent config for the Codex agent. See [How to set up Codex](agent-setup-codex.md) for full details.
