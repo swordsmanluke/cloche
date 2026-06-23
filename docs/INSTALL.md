@@ -14,7 +14,7 @@ All installation methods require:
 Clone the repository, build the binaries and Docker image, and install them:
 
 ```
-git clone https://github.com/swordsmanluke/cloche.git
+git clone https://github.com/cloche-dev/cloche.git
 cd cloche
 make install
 ```
@@ -56,7 +56,7 @@ You still need to build the Docker image separately. Clone the repository and
 run:
 
 ```
-git clone https://github.com/swordsmanluke/cloche.git
+git clone https://github.com/cloche-dev/cloche.git
 cd cloche
 make docker-build
 ```
@@ -67,13 +67,13 @@ make docker-build
 > describes the planned installation method for when releases are published.
 
 Download pre-built binaries from the
-[GitHub Releases](https://github.com/swordsmanluke/cloche/releases) page. Each
+[GitHub Releases](https://github.com/cloche-dev/cloche/releases) page. Each
 release will include archives for common platforms (Linux amd64, Linux arm64,
 macOS amd64, macOS arm64).
 
 ```
 # Example: Linux amd64
-curl -LO https://github.com/swordsmanluke/cloche/releases/latest/download/cloche-linux-amd64.tar.gz
+curl -LO https://github.com/cloche-dev/cloche/releases/latest/download/cloche-linux-amd64.tar.gz
 tar xzf cloche-linux-amd64.tar.gz
 sudo install cloche cloched cloche-agent /usr/local/bin/
 ```
@@ -82,7 +82,7 @@ You still need to build the Docker image. Clone the repo and run
 `make docker-build`:
 
 ```
-git clone https://github.com/swordsmanluke/cloche.git
+git clone https://github.com/cloche-dev/cloche.git
 cd cloche
 make docker-build
 ```

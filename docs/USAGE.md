@@ -56,6 +56,7 @@ workflow "develop" {
 | `agent` | identifier | Reference a named agent declared in the workflow's `agent` block. Expands into `agent_command` and `agent_args`. Step-level `agent_command`/`agent_args` still override it. |
 | `usage_command` | string | Shell command to run after an agent step completes to capture token usage. Output must be JSON: `{"input_tokens": N, "output_tokens": N}`. If absent or the command fails, usage is not tracked. Overrides any adapter-level default (e.g. from `[agents.codex]` in `config.toml`). |
 | `prompt_step` | string | For workflow steps: which preceding step's output to use as the prompt. |
+| `repository` | string | Repository name (from `[[repositories]]` in `config.toml`) to pin this step to a specific repository. When set, the runtime selects that repository's workspace for the step. |
 | `skip` | string | Shell command run before the step; exit 0 bypasses the step (follows `success` wire or a `CLOCHE_RESULT:<name>` marker). Exit non-zero runs the step normally. See [Skip Scripts](workflows.md#skip-scripts). |
 
 A step must have exactly one of `prompt`, `run`, `workflow_name`, or `poll`.
@@ -125,30 +126,9 @@ Supported keys: `agent_command`, `agent_args`. Step-level `agent_command` and
 
 ### Repository Declarations
 
-Repositories are declared in two places:
-
-**`config.toml`** — declares the repositories available to the project (see
-[`[[repositories]]`](#repositories-1) in the configuration reference below).
-
-**`.cloche` files** — optional top-level `repository` blocks annotate each
-repository with a remote URL. These blocks are file-level (not inside a `workflow`
-block) and are parsed independently from workflows:
-
-```
-repository "backend" {
-  path = "./repos/backend"
-  url  = "https://github.com/example/backend"
-}
-
-repository "frontend" {
-  path = "./repos/frontend"
-}
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `path` | yes | Path relative to the project root. |
-| `url` | no | Remote URL (informational; not used by the runtime). |
+Repositories are declared in `config.toml` via `[[repositories]]` entries (see
+[`[[repositories]]`](#repositories-1) in the configuration reference below). There is
+no `repository` block in the `.cloche` DSL.
 
 **Workflow-level `repos` field** — workflows may declare which repositories they use:
 
@@ -629,6 +609,8 @@ daemon sets `CLOCHE_TASK_ID` to the task being released.
 
 ```
 workflow "release-task" {
+  host {}
+
   step release-task {
     run     = "bash .cloche/scripts/release-task.sh"
     results = [success, fail]
@@ -708,7 +690,7 @@ workflow "develop" {
 
 - **Files in**: `docker cp` copies the project into `/workspace/`. No bind mounts. Override files from `.cloche/overrides/` are applied on top. `.git/` is included.
 - **Files out**: On completion, the daemon extracts results via `docker cp` into a git worktree and commits to a `cloche/<run-id>` branch. If the agent made commits inside the container, their messages are preserved in the squash commit (like `git merge --squash`). When no container commits exist, the commit message includes a file-change summary instead.
-- **Auth files**: `~/.claude/` and `~/.claude.json` are copied into each container at `/home/agent/` for Claude Code session reuse. Copied (not bind-mounted) so each container gets its own isolated copy.
+- **Auth files**: Three files from `~/.claude/` (`.credentials.json`, `settings.json`, `settings.local.json`) are copied into each container at `/home/agent/.claude/` for Claude Code session reuse. `~/.claude.json` is additionally copied for interactive containers only. Copied (not bind-mounted) so each container gets its own isolated copy.
 - **Network**: Containers have network access (needed for API calls).
 - **Cleanup**: Containers are removed after successful runs unless `--keep-container` is set. Failed runs always keep their container.
 
@@ -1346,8 +1328,7 @@ tasks from the pipeline and runs them.
 ```
 cloche loop [--max <n>]
 cloche loop once
-cloche loop stop [--quiesce]
-cloche loop quiesce
+cloche loop stop [--hard]
 cloche loop status
 ```
 
@@ -1363,13 +1344,10 @@ cancellation.
 state is persisted to `.cloche/.loop-stopped`; if the daemon restarts while the loop
 is stopped, in-flight runs are **not** auto-resumed.
 
-`cloche loop stop --quiesce` stops the loop and immediately parks all resumable runs
-in one command.
-
-`cloche loop quiesce` parks all resumable (`pending`, `running`, `waiting`) runs so
-they will not fire automatically if the daemon restarts. Prints `N resumable runs
-parked`. Use this before rebuilding or restarting the daemon. Parked runs have state
-`parked` and can be inspected with `cloche list --runs`.
+`cloche loop stop --hard` stops the loop and immediately parks all resumable
+(`pending`, `running`, `waiting`) runs so they will not fire automatically if the
+daemon restarts. Parked runs have state `parked` and can be inspected with
+`cloche list --runs`. Use this before rebuilding or restarting the daemon.
 
 `cloche loop status` shows the current loop state, including a `Resumable runs` count
 of parked runs that would otherwise fire on daemon restart.
@@ -1586,6 +1564,7 @@ my-project/
 |-----|---------|-------------|
 | `concurrency` | `1` | Maximum concurrent container runs. |
 | `stagger_seconds` | `1.0` | Delay (seconds) between consecutive run launches. |
+| `list_tasks_command` | _(unset)_ | Shell command to list open tasks (must output a JSON array). Overrides the default `list-tasks` workflow. |
 | `dedup_seconds` | `300` | Window (seconds) to suppress re-assigning the same task ID. |
 | `stop_on_error` | `false` | Halt the orchestration loop on the first unrecovered error. |
 | `max_consecutive_failures` | `3` | Stop the loop after this many consecutive failed runs. Run `cloche loop` to restart. |
@@ -1600,6 +1579,10 @@ evolution is silently disabled when it is not.
 | `enabled` | `true` | Enable or disable evolution for this project. |
 | `debounce_seconds` | `30` | Seconds to wait after a run completes before triggering an evolution pass (debounces rapid successive completions). |
 | `min_confidence` | `"medium"` | Minimum lesson confidence to include in prompts. One of `"low"`, `"medium"`, `"high"`. |
+| `max_prompt_bullets` | `50` | Maximum number of lesson bullets injected into agent prompts. |
+| `population_enabled` | `false` | Enable population-based candidate selection (experimental). |
+| `max_candidates` | `5` | Maximum number of prompt candidates to evaluate per evolution pass. |
+| `min_runs_to_promote` | `5` | Minimum completed runs before a candidate can be promoted to the active prompt. |
 
 ### `[agents.codex]`
 
@@ -1623,8 +1606,8 @@ your own and to let GitHub treat agent PRs as reviewable by you.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `name` | `cloche` | `GIT_AUTHOR_NAME` / `GIT_COMMITTER_NAME` for cloche-authored commits. |
-| `email` | `cloche@local` | `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` for cloche-authored commits. |
+| `name` | _(unset)_ | `GIT_AUTHOR_NAME` / `GIT_COMMITTER_NAME` for cloche-authored commits. When unset, the runtime falls back to `cloche`. |
+| `email` | _(unset)_ | `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` for cloche-authored commits. When unset, the runtime falls back to `cloche@local`. |
 | `ssh_key` | _(unset)_ | Path to a private key used for `git push` in workflow scripts. `~` is expanded. |
 
 Host scripts receive the resolved identity and push credentials as env vars:
@@ -1659,10 +1642,9 @@ path = "./repos/frontend"
 |-----|---------|-------------|
 | `name` | _(required)_ | Identifier used to reference this repository from workflow `repos` fields. |
 | `path` | _(required)_ | Path relative to the project root. |
+| `url` | _(unset)_ | Remote URL (informational; not used by the runtime). |
 
 Repositories appear in `cloche project` output and in `cloche project repos list`.
-Remote URL annotation is done via top-level `repository` blocks in `.cloche` files
-(see [Repository Declarations](#repository-declarations) above).
 
 ## `cloched` Flags
 

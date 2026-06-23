@@ -12,7 +12,7 @@ coding tasks.
 
 **Host workflows** — Declared by including a `host { }` block in the workflow definition.
 Run on the host machine as the daemon process. Steps may be `agent`, `script`, `workflow`,
-or `human` type. This is the extension point for custom orchestration strategies.
+or `poll` type. This is the extension point for custom orchestration strategies.
 
 Any `.cloche` file can contain host workflows — they are not restricted to a specific
 filename. A single file may contain **multiple named workflows**. The daemon uses up to
@@ -56,7 +56,7 @@ workflows with a `host {}` block.
 | Concept  | Description                                                        |
 |----------|--------------------------------------------------------------------|
 | workflow | A named graph of steps connected by result wiring                  |
-| step     | A unit of work (`agent`, `script`, `workflow`, or `human` type)    |
+| step     | A unit of work (`agent`, `script`, `workflow`, or `poll` type)     |
 | result   | A named outcome reported by a step (e.g. "success", "fail")       |
 | wiring   | Maps a step's result to the next step                              |
 | agent    | A named agent declaration with command and arguments               |
@@ -89,6 +89,10 @@ The script exit code and stdout determine the outcome: exit 0 with no wire outpu
 pending (poll again); non-zero exit with no wire output follows the `fail` wire; any exit
 with wire output follows the named wire. Default timeout: 72h. See
 [Poll Step](#poll-step) below.
+
+All step types support an optional `repository` config key (string). Setting it to a
+repository name (as declared in `[[repositories]]` in `config.toml`) pins the step to
+that specific repository's workspace. When omitted, the runtime uses the project default.
 
 All step types support a `timeout` config key (any `time.ParseDuration` value, e.g.
 `"45m"`, `"2h"`). When a step exceeds its timeout, it produces a `"timeout"` result. If
@@ -561,14 +565,14 @@ if the project directory is a linked worktree on a different branch. This ensure
 host-workflow scripts from main are used for all runs. Workflow steps (`workflow_name`)
 dispatch container runs through the daemon. Environment variables (`CLOCHE_TASK_ID`,
 `CLOCHE_PROJECT_DIR`, `CLOCHE_RUN_ID`, `CLOCHE_ATTEMPT_ID`) are injected into all step
-types — script, poll/human, and agent. Agent steps receive these variables directly in
+types — script, poll, and agent. Agent steps receive these variables directly in
 the agent process, so agents running as host-workflow steps can invoke `cloche get/set`
 to read and write the run's KV store. `CLOCHE_PROJECT_DIR` still points to the actual
 project directory.
 
-## Human Step
+## Poll Step
 
-A `human` step pauses a workflow until an external decision is available. Instead of
+A `poll` step pauses a workflow until an external decision is available. Instead of
 blocking a long-running process, it polls a user-supplied script at a fixed interval
 until the script reports a decision, the step times out, or the script fails. Typical
 use cases: waiting for a code review, an approval gate, a CI run, or a ticket
@@ -620,7 +624,7 @@ the captured output before it is written to the step output file.
 | non-zero  | none                   | **Failure** — follow the `fail` wire. |
 | non-zero  | `<name>`               | **Decision** — follow the named wire. The non-zero exit is ignored when a marker is present. |
 
-Exit 0 with no marker is what makes a `human` step a `human` step: it's the "not yet"
+Exit 0 with no marker is what makes a `poll` step a `poll` step: it's the "not yet"
 signal that tells the orchestrator to keep polling.
 
 ### Polling cadence
@@ -703,7 +707,7 @@ fi
 
 ### Visibility in `cloche list` / `cloche status`
 
-While a `human` step is active, its run's state is set to `waiting`, which `cloche list`
+While a `poll` step is active, its run's state is set to `waiting`, which `cloche list`
 and `cloche status` surface distinctly from `running`. The daemon also records
 `last_poll_at` and the step name in the `HumanPollStore` so you can see how long the
 step has been waiting and when it last polled.
@@ -756,7 +760,7 @@ workflow "review-and-merge" {
 
 ## Skip Scripts
 
-Any step (agent, script, workflow, poll, or human) may declare an optional `skip`
+Any step (agent, script, workflow, or poll) may declare an optional `skip`
 command. The skip command runs **before** the step's real work and decides whether the
 step should be bypassed entirely.
 
