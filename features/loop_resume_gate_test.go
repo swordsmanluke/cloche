@@ -207,21 +207,12 @@ func (s *loopResumeGateCtx) theOperatorRuns(cmd string) error {
 	var buf bytes.Buffer
 
 	switch {
-	case len(parts) >= 3 && parts[1] == "loop" && parts[2] == "quiesce":
-		// cloche loop quiesce — calls the real QuiesceRuns RPC
-		resp, qErr := client.QuiesceRuns(ctx, &pb.QuiesceRunsRequest{})
-		if qErr != nil {
-			s.commandErr = qErr
-			return nil
-		}
-		fmt.Fprintf(&buf, "%d resumable runs parked\n", resp.ParkedCount)
-
 	case len(parts) >= 3 && parts[1] == "loop" && parts[2] == "stop":
-		// cloche loop stop [--quiesce]
-		quiesce := false
+		// cloche loop stop [--hard]
+		hard := false
 		for _, p := range parts[3:] {
-			if p == "--quiesce" {
-				quiesce = true
+			if p == "--hard" {
+				hard = true
 			}
 		}
 		if _, err := client.DisableLoop(ctx, &pb.DisableLoopRequest{}); err != nil {
@@ -229,13 +220,13 @@ func (s *loopResumeGateCtx) theOperatorRuns(cmd string) error {
 			return nil
 		}
 		fmt.Fprintln(&buf, "Orchestration loop stopped.")
-		if quiesce {
+		if hard {
 			resp, qErr := client.QuiesceRuns(ctx, &pb.QuiesceRunsRequest{})
 			if qErr != nil {
 				s.commandErr = qErr
 				return nil
 			}
-			fmt.Fprintf(&buf, "%d resumable runs parked\n", resp.ParkedCount)
+			fmt.Fprintf(&buf, "Shut down %d running task(s) (parked; will not resume on restart)\n", resp.ParkedCount)
 		}
 
 	case len(parts) >= 3 && parts[1] == "loop" && parts[2] == "status":

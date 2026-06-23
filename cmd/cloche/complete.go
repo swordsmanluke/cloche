@@ -155,7 +155,7 @@ func staticCompletions(subcommand string, index int, words []string, cur string)
 		}
 
 	case "loop":
-		candidates = []string{"once", "stop", "resume", "--max"}
+		candidates = []string{"once", "stop", "resume", "--max", "--hard"}
 
 	case "resume":
 		candidates = []string{"--no-rebuild", "--clean"}

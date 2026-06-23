@@ -6,26 +6,27 @@ Feature: Loop resume gate — daemon restart is gated on loop state
 
   # ─── L1: CLI surface ─────────────────────────────────────────────────────────
 
-  Scenario: cloche loop quiesce prints confirmation with run count
-    Given the orchestration loop is stopped
-    And there are 3 resumable runs
-    When the operator runs "cloche loop quiesce"
-    Then the loop command succeeds
-    And the loop command output contains "resumable runs parked"
-
-  Scenario: cloche loop quiesce with no resumable runs reports zero
-    Given the orchestration loop is stopped
-    And there are no resumable runs
-    When the operator runs "cloche loop quiesce"
-    Then the loop command succeeds
-    And the loop command output contains "0 resumable runs parked"
-
-  Scenario: cloche loop stop --quiesce chains stop and quiesce in one command
+  Scenario: cloche loop stop --hard shuts down resumable runs and reports the count
     Given the orchestration loop is running
-    When the operator runs "cloche loop stop --quiesce"
+    And there are 3 resumable runs
+    When the operator runs "cloche loop stop --hard"
     Then the loop command succeeds
     And the orchestration loop is now stopped
-    And the loop command output contains "resumable runs parked"
+    And the loop command output contains "Shut down 3 running task"
+
+  Scenario: cloche loop stop --hard with no resumable runs reports zero
+    Given the orchestration loop is running
+    And there are no resumable runs
+    When the operator runs "cloche loop stop --hard"
+    Then the loop command succeeds
+    And the loop command output contains "Shut down 0 running task"
+
+  Scenario: plain cloche loop stop halts the loop without shutting down runs
+    Given the orchestration loop is running
+    When the operator runs "cloche loop stop"
+    Then the loop command succeeds
+    And the orchestration loop is now stopped
+    And the loop command output contains "Orchestration loop stopped"
 
   Scenario: cloche loop status shows a resumable runs field
     Given the cloche daemon is running
@@ -47,17 +48,17 @@ Feature: Loop resume gate — daemon restart is gated on loop state
     When the daemon is restarted
     Then the in-flight run is automatically resumed
 
-  Scenario: cloche loop quiesce marks runs as parked so they survive daemon restart
-    Given the orchestration loop is stopped
+  Scenario: cloche loop stop --hard marks runs as parked so they survive daemon restart
+    Given the orchestration loop is running
     And there are 2 resumable runs
-    When the operator runs "cloche loop quiesce"
+    When the operator runs "cloche loop stop --hard"
     And the daemon is restarted
     Then no runs are automatically resumed
 
-  Scenario: cloche loop status shows accurate parked-run count after quiesce
-    Given the orchestration loop is stopped
+  Scenario: cloche loop status shows accurate parked-run count after a hard stop
+    Given the orchestration loop is running
     And there are 2 resumable runs
-    When the operator runs "cloche loop quiesce"
+    When the operator runs "cloche loop stop --hard"
     And the operator runs "cloche loop status"
     Then the loop command output contains "2"
     And the loop command output contains "resumable runs"

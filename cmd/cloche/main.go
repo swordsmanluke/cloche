@@ -1073,10 +1073,10 @@ func cmdLoop(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 
 	// Check for "stop" subcommand
 	if len(args) > 0 && args[0] == "stop" {
-		quiesce := false
+		hard := false
 		for _, a := range args[1:] {
-			if a == "--quiesce" {
-				quiesce = true
+			if a == "--hard" {
+				hard = true
 			}
 		}
 		_, err := client.DisableLoop(ctx, &pb.DisableLoopRequest{ProjectDir: cwd})
@@ -1085,20 +1085,13 @@ func cmdLoop(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 			os.Exit(1)
 		}
 		fmt.Println("Orchestration loop stopped.")
-		if quiesce {
-			if err := cmdLoopQuiesce(ctx, newQuiesceRunner(client), cwd, os.Stdout); err != nil {
+		// --hard additionally shuts down in-flight/resumable runs so they will
+		// not auto-resume when the daemon is restarted (e.g. for a rebuild).
+		if hard {
+			if err := cmdLoopHardStop(ctx, newHardStopRunner(client), cwd, os.Stdout); err != nil {
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
 				os.Exit(1)
 			}
-		}
-		return
-	}
-
-	// Check for "quiesce" subcommand
-	if len(args) > 0 && args[0] == "quiesce" {
-		if err := cmdLoopQuiesce(ctx, newQuiesceRunner(client), cwd, os.Stdout); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
 		}
 		return
 	}
