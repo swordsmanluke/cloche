@@ -13,6 +13,28 @@
 - **Loop resume gate (`cloche loop quiesce`).** When the orchestration loop is stopped, the daemon no longer auto-resumes in-flight runs on restart. A new `cloche loop quiesce` subcommand (and `--quiesce` flag on `cloche loop stop`) parks all resumable runs so they do not fire on the next daemon startup; `cloche loop status` reports the count of parked runs. Parked runs appear as state `parked` in `cloche list --runs`. Running `cloche loop` (start) clears the stopped flag and restores normal auto-resume behavior.
 - **MCP mode (`[agent] mode = "mcp"`).** Prompt steps can now be executed by an interactive MCP client instead of a headless `claude -p` process. Set `[agent] mode = "mcp"` in `.cloche/config.toml`; the daemon parks each prompt step until a client calls `init` (to register), `next` (to pull the rendered prompt), and `submit-result` (to push the result back). Script steps are unaffected. The `[agent]` config section is backward-compatible — omitting it keeps the default `"prompt"` mode. ([design](docs/plans/2026-05-28-mcp-mode.md))
 
+## v3.18.2 — 2026-07-01
+
+### Breaking changes
+
+- Workflow blocks in `.cloche` files now require bare identifiers instead of quoted strings (`workflow name {` replaces `workflow "name" {`), aligning workflow names with the existing step and agent name syntax. Migration: in every `.cloche` file, change `workflow "name" {` to `workflow name {`. `workflow_name = "..."` inside step config and any prose references that use quoted names are unaffected.
+
+### Features
+
+- **`token-limit` config key.** Agent steps and workflows can now be bounded by an output-token ceiling to prevent runaway runs from consuming excessive budget. Declare `token-limit = N` on a step or workflow block; a step that exceeds its ceiling produces a `token-limit` result (implicit wire to `abort`); cumulative output across all steps is checked against the workflow-level ceiling. Per-step default is 500 000 output tokens; workflow default is 2 000 000; use `-1` to disable enforcement or `0` to abort immediately without running the step.
+
+- **`cloche loop stop --hard`.** A new `--hard` flag on `cloche loop stop` parks all in-flight and resumable runs so they do not auto-resume on the next daemon restart. Plain `cloche loop stop` continues to halt new dispatch but leaves runs resumable; `cloche loop stop --hard` is the correct command before rebuilding or restarting the daemon. `cloche loop status` reports the count of parked runs.
+
+- **`cloche resume` now rebuilds the container fresh and re-applies workspace state.** Resuming a failed run previously reused the exact container image from the original attempt, so Dockerfile fixes had no effect without starting a brand-new run. By default, `cloche resume` now rebuilds the container from the project image (picking up any Dockerfile changes) and re-applies the latest workspace snapshot from the failed attempt before the failed step is retried. Use `--no-rebuild` to keep the previous behavior (reuse committed container plus snapshot), or `--clean` to rebuild fresh without re-applying the snapshot. ([design](docs/plans/2026-05-28-resume-rebuild-preserve-workspace.md))
+
+- **Vertical workflow: design-preparation phase (Phase 0.5).** When a feature requires architectural decision-making before implementation, the vertical workflow now runs a design stage that writes a design document, opens a pull request for human review, incorporates reviewer feedback, and records the approved design before proceeding to the BDD test-plan phase. ([design](docs/design/vertical-workflow.md))
+
+- **Vertical workflow: no PR gates for implementation layers.** Layer, test-plan, and docs phases now push branches directly to origin and advance automatically without waiting for a GitHub pull request review; the `open-*-pr`, `poll-*-pr`, and `address-*-feedback` steps are removed from those phases. A layer that gets stuck fails immediately with a `document-stuck` report visible in `cloche logs`, rather than blocking on a stalled PR; `finalize` fast-forward-merges the rebased stack into the base branch and deletes the stack branches from origin. ([design](docs/design/vertical-workflow.md))
+
+### Notable fixes
+
+- Containers are now seeded from a clean `git archive` snapshot at baseSHA rather than from the live working tree. Host workflow steps check out branches in the project's shared working tree; seeding from that mutable directory caused stale or mid-checkout state to be committed into the container, which was then finalized back over `main` and repeatedly corrupted it. The daemon now materializes a clean snapshot via `git archive` before each container start and falls back to the live tree if the archive step fails (non-git directory, empty baseSHA, or archive error).
+
 ## v3.15.14 — 2026-05-21
 
 ### Notable fixes

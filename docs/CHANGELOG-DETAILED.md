@@ -19,6 +19,72 @@
 - Loop resume gate. `DisableLoop` now writes a `.cloche/.loop-stopped` flag file; the daemon's startup/resume path checks `LoopWasExplicitlyStopped` before auto-resuming pending/running/waiting runs — if the loop was explicitly stopped, those runs are left alone rather than re-dispatched. `EnableLoop` removes the flag. New `QuiesceRuns` gRPC RPC (proto + server + SQLite): marks all `pending`/`running`/`waiting` runs for the project as `parked` (new `RunStateParked` domain constant); parked runs are excluded from auto-resume and fail-stale logic. `GetProjectInfo` response gains `resumable_runs_count` (count of parked runs from `CountParkedRunsByProject`). CLI: `cloche loop quiesce` calls `QuiesceRuns` and prints `N resumable runs parked`; `cloche loop stop --quiesce` chains stop + quiesce; `cloche loop status` routes to `cmdStatusProject` which now prints `Resumable runs: N`. Help text and examples updated.
 - MCP mode for interactive agent execution. New `[agent]` TOML section with a single `mode` key (`"prompt"` default, or `"mcp"`). In MCP mode, prompt steps are not dispatched to `claude -p`; instead the daemon parks the step and exposes it through three MCP tools on the daemon's HTTP port (`/mcp` path): `init` (registers the interactive client for a run and returns a session token), `next` (returns the next pending step's rendered prompt; long-polls up to 30 s if no step is ready), and `submit-result` (marks the step complete and records `output_tokens`). Script steps are unaffected. The `mcpSessionStore` is an in-process map of `runID → channel` so results flow directly to the blocked engine goroutine. `internal/config/config.go` gains `AgentConfig{Mode string}` and `Config.Agent AgentConfig`; default is `"prompt"`. A run that reaches its first prompt step with no `init` call within `connect_timeout` (default 120 s) fails with `"MCP client did not connect"`. BDD scenarios covering all three layers (config, tool surface, end-to-end execution) are in `features/mcp_mode.feature`. ([design](../plans/2026-05-28-mcp-mode.md))
 
+## v3.18.2 — 2026-07-01
+
+### Breaking
+
+- `e663576` DSL: workflow blocks require bare identifiers (`workflow name {` instead of `workflow "name" {`). Migration: remove quotes from the workflow name in all `.cloche` files; `workflow_name = "..."` step fields are unaffected.
+- `0631f26` Re-applies the above DSL identifier change on main after it had been on a merged feature branch.
+- `4f5ec20` Re-applies the DSL identifier change a second time after a vertical-layer squash commit (`5e3fccd`) accidentally reverted it; also re-patches `.cloche` scaffold files, all test fixtures, and examples.
+
+### Features
+
+- `389bfda` Add `token-limit` config key to DSL and domain layer (L1): parser support, domain validation, implicit `token-limit → abort` wires on every step, workflow-level shorthand wire, and `docs/workflows.md` reference section.
+- `835e557` Token-limit L2: engine enforcement for per-step output-token ceilings and cumulative workflow ceiling; `token-limit = 0` short-circuit aborts without invoking the executor; defaults 500 000/step and 2 000 000/workflow; `-1` disables.
+- `b7622b2` Loop resume gate L1: add `QuiesceRuns` gRPC RPC to the proto and a stub server handler; wire `cloche loop quiesce` subcommand and `--quiesce` flag on `cloche loop stop` to the new RPC.
+- `5a24b73` Loop resume gate L2: implement `QuiesceRuns` RPC to mark resumable runs as parked in the SQLite store; `cloche loop status` reports the parked count; BDD step definitions implemented.
+- `a20cbbb` Rename operator surface from `cloche loop quiesce` / `--quiesce` to `cloche loop stop --hard`; help text, shell completion, and BDD scenarios updated; the underlying `QuiesceRuns` gRPC wire is unchanged.
+- `550201f` Resume rebuild infrastructure: tar-stream workspace snapshot capture/inject helpers (`internal/adapters/grpc/snapshot.go`), design doc, and Docker pool `CommitForResume` helper.
+- `d74ceb9` Resume rebuild: `--no-rebuild` / `--clean` flags on `cloche resume`; server-side rebuild fork that defaults to rebuilding the container fresh and re-applying the latest workspace snapshot; `ensureResumeImage` hook for runtimes that support image rebuilding.
+- `5e3fccd` Vertical workflow: add design-preparation phase (Phase 0.5) with scripts (`vertical-prepare-design-branch.sh`, `vertical-open-design-pr.sh`, `vertical-record-design.sh`) and stub prompts for design doc authoring, PR open/review, and feedback addressing; also extends `.cloche/vertical.cloche` and removes the legacy PR-gate steps from implementation layers. Note: this commit also accidentally reverted the DSL identifier change (fixed by `4f5ec20`).
+- `546a93a` Vertical workflow: expand and refine the design-prep prompts (`vertical-write-design.md`, `vertical-address-design-feedback.md`, `vertical-check-design-needed.md`) and scripts (`vertical-finalize.sh`, `vertical-open-design-pr.sh`); implement `vertical_design_prep_test.go` BDD step definitions.
+- `c61eef4` BDD scenarios self-register via `func init() { registerScenarios(...) }` into a package-level registry; `TestMain` iterates the registry instead of a hardcoded list, so concurrent feature branches no longer conflict on the same line.
+
+### Fixes
+
+- `34e44f5` Containers are now seeded from a `git archive` snapshot at baseSHA rather than the live working tree, preventing host-workflow branch checkouts from corrupting subsequent container seeds and causing `finalize` to write stale state back to `main`.
+- `317a722` Fix `token_limit.feature` DSL inline snippets to use bare identifier workflow names after the parser change in `0631f26`.
+- `e68ad53` Fix three test failures introduced by the token-limit L1 layer (`389bfda`).
+
+### UI/UX
+
+- `8a5358f` Update GitHub repository URLs in `docs/INSTALL.md` and `docs/USAGE.md` from `swordsmanluke/cloche` to `cloche-dev/cloche` after the GitHub org rename.
+
+### Internal
+
+- `b7f431d` Add `docs/run-isolation/` guide: overview index, architecture walkthrough with implementation anchors, and D2 source + SVG diagrams for the per-run lifecycle and finalize flow.
+- `428b1f1` Squash: vertical update-docs pass (`6hcr-vertical-update-docs`); documentation updates for recently-landed vertical workflow changes.
+- `1ffd322` No-op squash placeholder (`6hcr-implement-vertical-layer`, second attempt); empty diff, no file changes.
+- `89111e3` Add design docs `docs/plans/2026-05-28-run-state-step-view.md` and `docs/plans/2026-05-28-step-token-metrics.md`; expand `run_state_step_view_test.go` with L2 BDD stub step definitions.
+- `9ba4db2` Add BDD test plan for the run-state per-step view design doc.
+- `a532c9c` Add BDD test plan for the per-step token metrics design doc.
+- `5e99727` Tests for workspace snapshot helpers, rebuild-mode predicate helpers (`modeUsesCommit`, `modeUsesSnapshot`, `shouldCaptureSnapshot`), and `parseResumeFlags` flag parsing.
+- `c72ce8f` Update `docs/design/vertical-workflow.md`: document the drop-PR-gates and fail-stop-stuck-layers changes (more complete pass).
+- `c92b72b` Update `docs/design/vertical-workflow.md`: document drop-PR-gates and fail-stop-stuck-layers changes (earlier pass).
+- `2d43cea` Add BDD test plan for vertical workflow design-prep stage (Phase 0.5).
+- `e999c53` Refactor `theTokenLimitDSLFileIsParsed` to use early returns for readability.
+- `bb2c806` Extract `validateTokenLimit` helper to eliminate DRY violation identified in self-review.
+- `ac42e25` Add BDD test plan for extract-base-SHA re-resolution feature (`features/extract_base_sha_reresolution.feature`); subsequently removed by `5e3fccd`.
+- `b461e14` Merge pull request #36 (token-limit test plan branch into vertical stack).
+- `33a092b` Squash: BDD test plan for token-limit config feature (`cavf-vertical-bdd-test-plan`).
+- `2fc4cc6` Merge pull request #19 (vertical test-plan branch into main).
+- `57d3f60` Add BDD test plan for token-limit config feature (`features/token_limit.feature`, `features/token_limit_test.go` stubs).
+- `3ebdba3` Add BDD test plan for loop resume gate.
+- `982a18e` Add BDD test plan for run-state per-step view design doc (earlier attempt, superseded by `9ba4db2`).
+- `50c0f2c` Docs: vertical test-plan/docs phases are now idempotent on re-dispatch (more complete pass).
+- `44e7664` Docs: vertical test-plan/docs phases idempotent on re-dispatch (earlier pass).
+- `240be52` Docs: DSL identifier workflow names reference, step-token-metrics design, and `{{@ }}` fix notes (more complete pass).
+- `111becd` Docs: DSL identifier workflow names, step-token-metrics design, `{{@ }}` fix (earlier pass).
+- `e42286b` Docs: `token-limit` config key in DSL reference (`docs/workflows.md`) and usage guide.
+- `65a9ffe` Docs: loop resume gate with `cloche loop quiesce` terminology (later superseded by `--hard` rename).
+- `7ff70f0` Docs: loop resume gate (earlier pass).
+- `08d6a37` Recovery: restore main to commit a131835 content (second stale-finalize reversion).
+- `ebe9b2a` Recovery: restore main to commit a131835 (first stale-finalize reversion after a whole-tree corruption).
+- `c6041a7` Version bump to 3.18.2.
+- `a61e535` Version bump to 3.18.1.
+- `ef5795d` Version bump to 3.18.0.
+- `01291cf` Version bump to 3.17.0.
+
 ## v3.15.14 — 2026-05-21
 
 ### Fixes
