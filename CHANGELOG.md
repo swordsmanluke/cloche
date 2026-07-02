@@ -1,18 +1,5 @@
 # Cloche Changelog
 
-## Unreleased
-
-### Internal
-
-- **Per-step token metrics: design complete.** No per-step token data survives a restart today — it is computed on-read and never persisted. The `docs/plans/2026-05-28-step-token-metrics.md` design doc is now fully specified: step identity key (`workflow_name + step_name` pair), `metrics` table schema, host-vs-container coverage confirmation, three query shapes (slice-by-step, aggregate-by-workflow, trend-over-time), and `cloche metrics tokens` CLI surface. BDD acceptance scenarios added. This unblocks the implementation layer. ([design](docs/plans/2026-05-28-step-token-metrics.md))
-
-### Features
-
-- **Vertical workflow: no PR gates.** The test-plan, layer, and docs phases now push their branches directly to origin and advance automatically; the `open-*-pr` / `poll-*-pr` / `address-*-feedback` steps and the `address-pr-feedback` sub-workflow have been removed. Stuck layers fail the job immediately with a `document-stuck` help-needed report surfaced in `cloche logs`, rather than opening a stalled PR. `finalize` now fast-forward-merges the rebased stack into the base branch and deletes the stack branches from origin. ([design](docs/design/vertical-workflow.md))
-- **`token-limit` config key.** Steps and workflows now support a `token-limit` config key that caps **output** tokens: a step exceeding its per-step ceiling (default 500 000) produces a `token-limit` result (implicitly wired to `abort`); cumulative output across all steps is checked against the workflow-level ceiling (default 2 000 000). Set `-1` to disable enforcement or `0` to abort immediately without running. Input tokens are not counted.
-- **Loop resume gate (`cloche loop quiesce`).** When the orchestration loop is stopped, the daemon no longer auto-resumes in-flight runs on restart. A new `cloche loop quiesce` subcommand (and `--quiesce` flag on `cloche loop stop`) parks all resumable runs so they do not fire on the next daemon startup; `cloche loop status` reports the count of parked runs. Parked runs appear as state `parked` in `cloche list --runs`. Running `cloche loop` (start) clears the stopped flag and restores normal auto-resume behavior.
-- **MCP mode (`[agent] mode = "mcp"`).** Prompt steps can now be executed by an interactive MCP client instead of a headless `claude -p` process. Set `[agent] mode = "mcp"` in `.cloche/config.toml`; the daemon parks each prompt step until a client calls `init` (to register), `next` (to pull the rendered prompt), and `submit-result` (to push the result back). Script steps are unaffected. The `[agent]` config section is backward-compatible — omitting it keeps the default `"prompt"` mode. ([design](docs/plans/2026-05-28-mcp-mode.md))
-
 ## v3.18.2 — 2026-07-01
 
 ### Breaking changes
