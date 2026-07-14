@@ -1139,10 +1139,12 @@ func cmdLoop(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 	}
 }
 
-// cmdLoopOnce enables the orchestration loop with max_concurrent=1, waits for
-// exactly one run to reach a terminal state, then disables the loop.
+// cmdLoopOnce enables the orchestration loop in once mode: the daemon launches
+// the next ready task, then stops the loop itself, leaving the launched run to
+// continue in the background. The CLI waits only long enough to report whether
+// a task was launched.
 func cmdLoopOnce(ctx context.Context, client pb.ClocheServiceClient, projectDir string) {
-	// Snapshot current run IDs so we can detect a new one.
+	// Snapshot current run IDs so we can identify the newly launched one.
 	existing := make(map[string]bool)
 	if resp, err := client.ListRuns(ctx, &pb.ListRunsRequest{ProjectDir: projectDir}); err == nil {
 		for _, r := range resp.Runs {
@@ -1150,10 +1152,9 @@ func cmdLoopOnce(ctx context.Context, client pb.ClocheServiceClient, projectDir 
 		}
 	}
 
-	// Enable loop with max_concurrent=1.
 	_, err := client.EnableLoop(ctx, &pb.EnableLoopRequest{
-		ProjectDir:    projectDir,
-		MaxConcurrent: 1,
+		ProjectDir: projectDir,
+		Once:       true,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -1161,46 +1162,74 @@ func cmdLoopOnce(ctx context.Context, client pb.ClocheServiceClient, projectDir 
 	}
 	fmt.Println("Orchestration loop started (once mode).")
 
-	// Run the polling loop; stopLoop ensures the loop is always disabled.
-	exitCode := loopOnceWait(ctx, client, projectDir, existing)
-
-	_, _ = client.DisableLoop(ctx, &pb.DisableLoopRequest{ProjectDir: projectDir})
-	fmt.Println("Orchestration loop stopped.")
-	os.Exit(exitCode)
+	os.Exit(loopOnceWait(client, projectDir, existing))
 }
 
-// loopOnceWait polls until a new run reaches a terminal state. Returns 0 on
-// success, 1 on failure/cancellation/error.
-func loopOnceWait(ctx context.Context, client pb.ClocheServiceClient, projectDir string, existing map[string]bool) int {
-	pollInterval := 3 * time.Second
-	for {
+// loopOnceWait watches for the once-mode outcome: a newly launched run (exit 0)
+// or the loop stopping itself with nothing launched (exit 1). The daemon owns
+// the loop lifecycle in once mode, so even if this polling is interrupted the
+// loop still stops on its own. Uses fresh per-RPC contexts rather than the
+// shared command context so the wait is not capped by its 30s deadline.
+func loopOnceWait(client pb.ClocheServiceClient, projectDir string, existing map[string]bool) int {
+	const (
+		pollInterval = time.Second
+		maxWait      = 10 * time.Minute
+		// Grace period after the loop stops: the run record is created by the
+		// launched goroutine and may become visible slightly after the stop.
+		stopGrace = 5 * time.Second
+	)
+
+	rpc := func(fn func(ctx context.Context) error) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return fn(ctx)
+	}
+
+	deadline := time.Now().Add(maxWait)
+	var stoppedAt time.Time
+	for time.Now().Before(deadline) {
 		time.Sleep(pollInterval)
 
-		resp, err := client.ListRuns(ctx, &pb.ListRunsRequest{ProjectDir: projectDir})
+		var runs *pb.ListRunsResponse
+		err := rpc(func(ctx context.Context) error {
+			var err error
+			runs, err = client.ListRuns(ctx, &pb.ListRunsRequest{ProjectDir: projectDir})
+			return err
+		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error polling runs: %v\n", err)
 			return 1
 		}
-
-		for _, r := range resp.Runs {
-			if existing[r.RunId] {
-				continue
-			}
-			// Found a new run — check its state.
-			switch domain.RunState(r.State) {
-			case domain.RunStateSucceeded:
-				fmt.Printf("Run %s succeeded.\n", r.RunId)
+		for _, r := range runs.Runs {
+			if !existing[r.RunId] {
+				if r.TaskId != "" {
+					fmt.Printf("Launched run %s (task %s). Loop stopped.\n", r.RunId, r.TaskId)
+				} else {
+					fmt.Printf("Launched run %s. Loop stopped.\n", r.RunId)
+				}
 				return 0
-			case domain.RunStateFailed:
-				fmt.Printf("Run %s failed.\n", r.RunId)
-				return 1
-			case domain.RunStateCancelled:
-				fmt.Printf("Run %s cancelled.\n", r.RunId)
+			}
+		}
+
+		// No new run yet — check whether the loop already stopped itself.
+		var info *pb.GetProjectInfoResponse
+		err = rpc(func(ctx context.Context) error {
+			var err error
+			info, err = client.GetProjectInfo(ctx, &pb.GetProjectInfoRequest{ProjectDir: projectDir})
+			return err
+		})
+		if err == nil && !info.LoopRunning {
+			if stoppedAt.IsZero() {
+				stoppedAt = time.Now()
+			} else if time.Since(stoppedAt) > stopGrace {
+				fmt.Println("No ready tasks — nothing launched. Loop stopped.")
 				return 1
 			}
-			// Still pending/running — keep polling.
 		}
 	}
+
+	fmt.Fprintln(os.Stderr, "timed out waiting for the loop to launch a task; it will stop on its own after one pass (check with: cloche list)")
+	return 1
 }
 
 func cmdTasks(args []string) {

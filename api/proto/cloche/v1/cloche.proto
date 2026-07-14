@@ -213,6 +213,10 @@ message RunSummary {
 message EnableLoopRequest {
   string project_dir = 1;
   int32 max_concurrent = 2;
+  // When set, the loop launches at most one task and then stops itself,
+  // leaving the launched run to continue. If no task is assignable on the
+  // first pass, the loop stops without launching anything.
+  bool once = 3;
 }
 
 message EnableLoopResponse {}

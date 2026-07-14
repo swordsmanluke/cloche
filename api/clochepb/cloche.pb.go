@@ -1285,6 +1285,10 @@ type EnableLoopRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ProjectDir    string                 `protobuf:"bytes,1,opt,name=project_dir,json=projectDir,proto3" json:"project_dir,omitempty"`
 	MaxConcurrent int32                  `protobuf:"varint,2,opt,name=max_concurrent,json=maxConcurrent,proto3" json:"max_concurrent,omitempty"`
+	// When set, the loop launches at most one task and then stops itself,
+	// leaving the launched run to continue. If no task is assignable on the
+	// first pass, the loop stops without launching anything.
+	Once          bool `protobuf:"varint,3,opt,name=once,proto3" json:"once,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1331,6 +1335,13 @@ func (x *EnableLoopRequest) GetMaxConcurrent() int32 {
 		return x.MaxConcurrent
 	}
 	return 0
+}
+
+func (x *EnableLoopRequest) GetOnce() bool {
+	if x != nil {
+		return x.Once
+	}
+	return false
 }
 
 type EnableLoopResponse struct {
@@ -4517,11 +4528,12 @@ const file_cloche_proto_rawDesc = "" +
 	"\flast_poll_at\x18\f \x01(\tR\n" +
 	"lastPollAt\x12\x1d\n" +
 	"\n" +
-	"poll_count\x18\r \x01(\x05R\tpollCount\"[\n" +
+	"poll_count\x18\r \x01(\x05R\tpollCount\"o\n" +
 	"\x11EnableLoopRequest\x12\x1f\n" +
 	"\vproject_dir\x18\x01 \x01(\tR\n" +
 	"projectDir\x12%\n" +
-	"\x0emax_concurrent\x18\x02 \x01(\x05R\rmaxConcurrent\"\x14\n" +
+	"\x0emax_concurrent\x18\x02 \x01(\x05R\rmaxConcurrent\x12\x12\n" +
+	"\x04once\x18\x03 \x01(\bR\x04once\"\x14\n" +
 	"\x12EnableLoopResponse\"5\n" +
 	"\x12DisableLoopRequest\x12\x1f\n" +
 	"\vproject_dir\x18\x01 \x01(\tR\n" +

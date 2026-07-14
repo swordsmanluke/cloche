@@ -435,7 +435,7 @@ picks up and runs tasks from the task pipeline.
 
 Usage:
   cloche loop [--max <n>]     Start the orchestration loop
-  cloche loop once            Run one task then stop the loop
+  cloche loop once            Launch the next ready task, leave the loop stopped
   cloche loop stop [--hard]   Stop the orchestration loop
 
 Flags:
@@ -444,9 +444,10 @@ Flags:
   --hard       On "stop": also shut down in-flight/resumable runs so they
                do not auto-resume when the daemon next restarts.
 
-The "once" subcommand starts the loop, waits for a single task to be
-picked up and completed, then automatically stops the loop. Exits 0
-on success, 1 on failure or cancellation.
+The "once" subcommand launches the next ready task and then stops the
+loop, leaving the launched run to continue in the background. Exits 0
+once a task is launched, or 1 if nothing was assignable. Track the run
+with "cloche poll" or "cloche list".
 
 Plain "cloche loop stop" only halts new dispatch — runs already in flight
 remain resumable and will fire again when the daemon restarts (e.g. for a

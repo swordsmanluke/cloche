@@ -1359,3 +1359,80 @@ func TestLoop_SetPollCoordinator_NoOpWhenNil(t *testing.T) {
 	// No coordinator set — driveHumanPolls should be a no-op (no panic).
 	loop.driveHumanPolls()
 }
+
+// TestPhaseLoop_Once_LaunchesOneTaskThenStops verifies once mode: with multiple
+// open tasks available, the loop launches exactly one and stops itself, while
+// the launched run continues to completion.
+func TestPhaseLoop_Once_LaunchesOneTaskThenStops(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	var mainCalls atomic.Int32
+	mainDone := make(chan struct{})
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{
+			{ID: "task-1", Status: "open", Title: "First"},
+			{ID: "task-2", Status: "open", Title: "Second"},
+		}, nil
+	}
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
+		mainCalls.Add(1)
+		// Outlive the loop stop to prove the launched run keeps going.
+		time.Sleep(100 * time.Millisecond)
+		close(mainDone)
+		return &RunResult{RunID: "run-once", State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 2,
+		Once:          true,
+	}, store, listTasksFn, mainFn)
+
+	loop.Start()
+
+	// The loop should stop itself promptly after launching one task.
+	require.Eventually(t, func() bool { return !loop.Running() }, 2*time.Second, 10*time.Millisecond,
+		"once-mode loop should stop itself after launching a task")
+
+	// The launched run continues past the stop.
+	select {
+	case <-mainDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("launched run did not complete after loop stopped")
+	}
+
+	// Give any (erroneous) second launch a chance to happen, then assert one.
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, int32(1), mainCalls.Load(), "once mode should launch exactly one task")
+}
+
+// TestPhaseLoop_Once_NoTasks_Stops verifies once mode stops the loop without
+// launching anything when no task is assignable on the first pass.
+func TestPhaseLoop_Once_NoTasks_Stops(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+
+	var mainCalls atomic.Int32
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{{ID: "task-1", Status: "closed"}}, nil
+	}
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
+		mainCalls.Add(1)
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		Once:          true,
+	}, store, listTasksFn, mainFn)
+
+	loop.Start()
+
+	require.Eventually(t, func() bool { return !loop.Running() }, 2*time.Second, 10*time.Millisecond,
+		"once-mode loop should stop itself when nothing is assignable")
+	assert.Equal(t, int32(0), mainCalls.Load())
+}

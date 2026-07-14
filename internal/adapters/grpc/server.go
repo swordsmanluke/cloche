@@ -3269,6 +3269,7 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 		DedupTimeout:           dedupTimeout,
 		StopOnError:            projCfg.Orchestration.StopOnError,
 		MaxConsecutiveFailures: projCfg.Orchestration.MaxConsecutiveFailures,
+		Once:                   req.Once,
 	}
 
 	s.mu.Lock()

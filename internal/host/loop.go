@@ -34,6 +34,7 @@ type LoopConfig struct {
 	DedupTimeout           time.Duration // how long to suppress reassignment of the same task ID
 	StopOnError            bool          // halt loop on unrecovered error (allow in-flight work to finish)
 	MaxConsecutiveFailures int           // halt loop after N consecutive failures (default: 3, must be > 0)
+	Once                   bool          // launch at most one task, then stop (launched run continues)
 }
 
 // ListTasksFunc is called to discover available tasks. It should run the
@@ -332,9 +333,25 @@ func (l *Loop) runPhased() {
 
 				overallState = mainResult.State
 			}()
+
+			// Once mode: one task launched — stop the loop. The launched
+			// goroutine continues to completion (completions is buffered, so
+			// its final send never blocks).
+			if l.config.Once {
+				log.Printf("orchestration loop: once mode — launched task %q for %s, stopping loop", tid, l.config.ProjectDir)
+				l.Stop()
+				return
+			}
 		}
 
 		if inFlight == 0 {
+			// Once mode: nothing assignable on the first pass — stop rather
+			// than idle-wait for work to appear.
+			if l.config.Once {
+				log.Printf("orchestration loop: once mode — nothing launched for %s (no assignable tasks or at capacity), stopping loop", l.config.ProjectDir)
+				l.Stop()
+				return
+			}
 			// Nothing in flight and couldn't launch anything — wait before checking again.
 			if !l.sleep(capacityPollInterval) {
 				return
