@@ -1,5 +1,11 @@
 # Cloche Detailed Changelog
 
+## v3.18.3 — 2026-07-14
+
+### Breaking
+
+- `aa1ca01` `cloche loop once` no longer blocks until the launched run completes. The old implementation waited for a new run to reach a terminal state on the CLI's 30s command context, so any task longer than 30s killed the wait with a context-deadline error and could leave the loop running while the CLI wrongly reported it stopped. Once mode is now driven by the daemon (`EnableLoopRequest.once`): it launches at most one task then stops itself, and the CLI only watches briefly to report whether a task was launched (exit 0) or nothing was assignable (exit 1). Migration: use `cloche poll` or `cloche list` to track the launched run's outcome instead of relying on `cloche loop once`'s exit code for success/failure.
+
 ## v3.18.2 — 2026-07-01
 
 ### Breaking

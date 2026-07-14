@@ -1,5 +1,11 @@
 # Cloche Changelog
 
+## v3.18.3 — 2026-07-14
+
+### Breaking changes
+
+- `cloche loop once` now launches the next ready task and stops the loop immediately, rather than blocking until that run finishes. Migration: scripts that relied on `cloche loop once` blocking until completion and exiting with the run's success/failure status must instead track the launched run separately with `cloche poll` or `cloche list`; exit 0 now means "a task was launched," exit 1 means "nothing was assignable."
+
 ## v3.18.2 — 2026-07-01
 
 ### Breaking changes
