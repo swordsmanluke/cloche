@@ -210,6 +210,16 @@ func DefaultAddr() string {
 	return "0.0.0.0:50051"
 }
 
+// DefaultLogPath returns the default path for the daemon's stdout/stderr log:
+// ~/.config/cloche/cloched.log. Honors CLOCHE_LOG if set, so `cloche shutdown
+// --restart` and `cloched` agree on where daemon output goes.
+func DefaultLogPath() string {
+	if p := os.Getenv("CLOCHE_LOG"); p != "" {
+		return p
+	}
+	return filepath.Join(StateDir(), "cloched.log")
+}
+
 // defaultGlobalConfigContent is written to ~/.config/cloche/config on first init.
 var defaultGlobalConfigContent = `# Cloche global daemon configuration
 # This file is read by cloched on startup.

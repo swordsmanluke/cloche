@@ -1337,9 +1337,9 @@ cloche loop status
 |------|---------|-------------|
 | `--max <n>` | config value | Maximum concurrent runs. Defaults to the value in `.cloche/config.toml`. |
 
-`cloche loop once` starts the loop, waits for a single task to be picked up and
-completed, then automatically stops the loop. Exits 0 on success, 1 on failure or
-cancellation.
+`cloche loop once` launches the next ready task, then stops the loop itself, leaving
+the launched run to continue in the background. Exits 0 once a task is launched, or 1
+if nothing was assignable. Track the run with `cloche poll` or `cloche list`.
 
 `cloche loop stop` disables the loop. Running tasks are not cancelled. The stopped
 state is persisted to `.cloche/.loop-stopped`; if the daemon restarts while the loop
@@ -1434,7 +1434,9 @@ Flags:
 - `-f`, `--force` — Shut down even if runs are still active.
 - `-r`, `--restart` — Relaunch the daemon after stopping it (or start it if it is not
   already running). The CLI waits for the old daemon to exit before launching the new one
-  (to avoid two daemons running simultaneously), then detaches the new process.
+  (to avoid two daemons running simultaneously), then detaches the new process. The new
+  daemon's stdout/stderr are redirected to `~/.config/cloche/cloched.log` (override with
+  `CLOCHE_LOG`).
 
 ### `cloche console`
 

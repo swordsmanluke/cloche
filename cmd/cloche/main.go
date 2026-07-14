@@ -1363,7 +1363,7 @@ func cmdShutdown(ctx context.Context, client pb.ClocheServiceClient, args []stri
 			fmt.Fprintf(os.Stderr, "error launching daemon: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Println("Daemon launched.")
+		fmt.Printf("Daemon launched. Logging to %s\n", config.DefaultLogPath())
 	}
 }
 
@@ -1401,13 +1401,27 @@ func findDaemonBinary() (string, error) {
 }
 
 // launchDaemon starts cloched at daemonPath as a detached process (new
-// session) so the daemon outlives the CLI process.
+// session) so the daemon outlives the CLI process. Stdout/stderr are
+// redirected to the daemon log file (config.DefaultLogPath, overridable via
+// CLOCHE_LOG) rather than discarded, so a restarted daemon's output remains
+// available for debugging.
 func launchDaemon(daemonPath string) error {
 	cmd := exec.Command(daemonPath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stdin = nil
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+
+	logPath := config.DefaultLogPath()
+	if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
+		return fmt.Errorf("creating daemon log directory: %w", err)
+	}
+	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("opening daemon log file %s: %w", logPath, err)
+	}
+	defer logFile.Close()
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+
 	return cmd.Start()
 }
 

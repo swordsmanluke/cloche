@@ -55,6 +55,12 @@ func main() {
 	dbPath := envOrConfig("CLOCHE_DB", globalCfg.Daemon.DB, config.DefaultDBPath())
 	listenAddr := envOrConfig("CLOCHE_ADDR", globalCfg.Daemon.Listen, config.DefaultAddr())
 
+	// Announce where `cloche shutdown --restart` will redirect stdout/stderr
+	// for a future relaunch, so users know where to look even if this
+	// process's own output isn't currently going there (e.g. started
+	// manually in a terminal).
+	fmt.Fprintf(os.Stderr, "startup: daemon restart log location: %s (override with CLOCHE_LOG)\n", config.DefaultLogPath())
+
 	store, err := sqlite.NewStore(dbPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to open store: %v\n", err)

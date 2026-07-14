@@ -691,7 +691,9 @@ Flags:
   -f, --force     Shut down even if runs are still active.
   -r, --restart   Relaunch the daemon after stopping it (or start it if
                   it is not already running). The new daemon process is
-                  detached so the CLI can exit immediately.
+                  detached so the CLI can exit immediately. Its stdout/stderr
+                  are redirected to ~/.config/cloche/cloched.log (override
+                  with CLOCHE_LOG).
 
 Examples:
   cloche shutdown

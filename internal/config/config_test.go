@@ -337,6 +337,18 @@ func TestDefaultAddr(t *testing.T) {
 	assert.Equal(t, "0.0.0.0:50051", addr)
 }
 
+func TestDefaultLogPath(t *testing.T) {
+	path := DefaultLogPath()
+	assert.Contains(t, path, "cloched.log")
+	assert.Contains(t, path, ".config/cloche")
+	assert.True(t, filepath.IsAbs(path))
+}
+
+func TestDefaultLogPath_HonorsEnvOverride(t *testing.T) {
+	t.Setenv("CLOCHE_LOG", "/tmp/custom-cloched.log")
+	assert.Equal(t, "/tmp/custom-cloched.log", DefaultLogPath())
+}
+
 func TestWriteGlobalConfigIfAbsent_CreatesFile(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)

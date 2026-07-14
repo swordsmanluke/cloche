@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -186,6 +187,63 @@ func TestLaunchDaemon_InvalidPath(t *testing.T) {
 	err := launchDaemon("/nonexistent/path/to/cloched")
 	if err == nil {
 		t.Fatal("expected error for non-existent binary, got nil")
+	}
+}
+
+// TestLaunchDaemon_RedirectsOutputToLogFile verifies that launchDaemon no
+// longer discards the relaunched daemon's stdout/stderr to /dev/null, but
+// instead redirects it to the file named by CLOCHE_LOG.
+func TestLaunchDaemon_RedirectsOutputToLogFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process detach test not supported on Windows")
+	}
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "fakecloched.go")
+	if err := os.WriteFile(src, []byte(`package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() {
+	fmt.Fprintln(os.Stdout, "stdout line")
+	fmt.Fprintln(os.Stderr, "stderr line")
+}
+`), 0644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	binary := filepath.Join(dir, "fakecloched")
+	if out, err := exec.Command("go", "build", "-o", binary, src).CombinedOutput(); err != nil {
+		t.Fatalf("build helper: %v\n%s", err, out)
+	}
+
+	logPath := filepath.Join(dir, "cloched.log")
+	t.Setenv("CLOCHE_LOG", logPath)
+
+	if err := launchDaemon(binary); err != nil {
+		t.Fatalf("launchDaemon: %v", err)
+	}
+
+	// Give the detached child a moment to run and flush its output.
+	var contents []byte
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		b, err := os.ReadFile(logPath)
+		if err == nil && len(b) > 0 {
+			contents = b
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if !strings.Contains(string(contents), "stdout line") {
+		t.Errorf("expected log file to contain stdout output, got: %q", contents)
+	}
+	if !strings.Contains(string(contents), "stderr line") {
+		t.Errorf("expected log file to contain stderr output, got: %q", contents)
 	}
 }
 
