@@ -53,11 +53,32 @@ type AgentConfig struct {
 }
 
 // HelpConfig controls the help channel: how long an AskHelp call blocks in
-// place before parking (parking itself lands in a later phase) and how long
-// archived threads are retained before the daemon's daily sweep deletes them.
+// place before parking (parking itself lands in a later phase), how long
+// archived threads are retained before the daemon's daily sweep deletes them,
+// and which user-side HelpChannel integrations (e.g. Slack) are configured.
 type HelpConfig struct {
-	ParkAfter string `toml:"park_after"` // duration string, e.g. "5m"; default 5m
-	Retention string `toml:"retention"`  // duration string, e.g. "720h"; default 720h (30 days)
+	ParkAfter string              `toml:"park_after"` // duration string, e.g. "5m"; default 5m
+	Retention string              `toml:"retention"`  // duration string, e.g. "720h"; default 720h (30 days)
+	Channels  []HelpChannelConfig `toml:"channel"`    // [[help.channel]] entries; unknown Type fails daemon start
+}
+
+// HelpChannelConfig configures one user-side HelpChannel integration.
+// Corresponds to a `[[help.channel]]` table in the daemon config, e.g.:
+//
+//	[[help.channel]]
+//	type          = "slack"
+//	channel       = "#cloche"
+//	token_env     = "SLACK_BOT_TOKEN"
+//	app_token_env = "SLACK_APP_TOKEN"
+type HelpChannelConfig struct {
+	Type        string `toml:"type"` // "slack" (only supported type so far)
+	Channel     string `toml:"channel"`
+	TokenEnv    string `toml:"token_env"`
+	AppTokenEnv string `toml:"app_token_env"`
+	// ChannelMap optionally routes distinct cloche channels (project names) to
+	// distinct Slack channels, e.g. { mazd = "#mazd-cloche" }. Cloche channels
+	// absent from the map fall back to Channel.
+	ChannelMap map[string]string `toml:"channel_map"`
 }
 
 // GitConfig controls the git identity used for cloche-authored commits
@@ -255,6 +276,16 @@ http = "localhost:8080"
 # name = "cloche-bot"
 # email = "cloche-bot@users.noreply.github.com"
 # ssh_key = "~/.ssh/cloche_bot"  # used by workflow scripts that push
+
+# Help channel: agent questions always flow via "cloche threads"; configuring
+# a channel below also delivers them to it (e.g. Slack via Socket Mode).
+# [[help.channel]]
+# type          = "slack"
+# channel       = "#cloche"           # default Slack channel
+# token_env     = "SLACK_BOT_TOKEN"   # env var holding the bot token (xoxb-...)
+# app_token_env = "SLACK_APP_TOKEN"   # env var holding the app-level token (xapp-...)
+# [help.channel.channel_map]          # optional: route cloche channels to distinct Slack channels
+# mazd = "#mazd-cloche"
 `
 
 // WriteGlobalConfigIfAbsent creates ~/.config/cloche/config with default values

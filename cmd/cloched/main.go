@@ -20,6 +20,7 @@ import (
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
 	adaptgrpc "github.com/cloche-dev/cloche/internal/adapters/grpc"
+	helpslack "github.com/cloche-dev/cloche/internal/adapters/help/slack"
 	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/adapters/web"
@@ -109,10 +110,26 @@ func main() {
 	}
 
 	// Set up the help channel router (AskHelp/ListThreads/GetThread/ReplyThread).
+	// The CLI channel (`cloche threads`) is always available and needs no
+	// setup here; configured integrations (e.g. Slack) fan out in addition.
 	parkAfter := parseDurationOr(globalCfg.Help.ParkAfter, help.DefaultParkAfter)
 	retention := parseDurationOr(globalCfg.Help.Retention, help.DefaultRetention)
-	helpRouter := help.NewRouter(store, parkAfter)
+	helpChannels := initHelpChannels(globalCfg, store)
+	helpRouter := help.NewRouter(store, parkAfter, helpChannels...)
 	srv.SetHelpRouter(helpRouter)
+
+	// Run each configured HelpChannel's Socket/event loop for the daemon's
+	// lifetime. A channel that fails to connect (bad token, network down)
+	// only logs — the CLI channel keeps working regardless.
+	helpChannelsCtx, helpChannelsCancel := context.WithCancel(context.Background())
+	defer helpChannelsCancel()
+	for _, ch := range helpChannels {
+		go func(c ports.HelpChannel) {
+			if err := c.Start(helpChannelsCtx, helpRouter); err != nil && helpChannelsCtx.Err() == nil {
+				fmt.Fprintf(os.Stderr, "help channel %s stopped: %v\n", c.Name(), err)
+			}
+		}(ch)
+	}
 
 	// Mint the daemon-lifetime secret used to authenticate the ask_user MCP
 	// tool (see internal/mcpauth). Only docker containers get the resulting
@@ -247,6 +264,35 @@ func initRuntime(cfg *config.Config) (ports.ContainerRuntime, error) {
 	default:
 		return nil, fmt.Errorf("unknown runtime: %s", runtimeType)
 	}
+}
+
+// initHelpChannels constructs the HelpChannel integrations declared in the
+// daemon config's [[help.channel]] entries. An unknown channel type is a
+// config mistake and fails daemon start; a known type that fails to
+// initialize (e.g. missing token env var) only logs a warning and is
+// skipped, since the CLI channel (`cloche threads`) always works regardless.
+func initHelpChannels(globalCfg *config.Config, store ports.HelpStore) []ports.HelpChannel {
+	var channels []ports.HelpChannel
+	for _, chCfg := range globalCfg.Help.Channels {
+		switch chCfg.Type {
+		case "slack":
+			ch, err := helpslack.New(helpslack.Config{
+				Channel:     chCfg.Channel,
+				TokenEnv:    chCfg.TokenEnv,
+				AppTokenEnv: chCfg.AppTokenEnv,
+				ChannelMap:  chCfg.ChannelMap,
+			}, store)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: slack help channel disabled: %v\n", err)
+				continue
+			}
+			channels = append(channels, ch)
+		default:
+			fmt.Fprintf(os.Stderr, "failed to start: unknown help channel type %q\n", chCfg.Type)
+			os.Exit(1)
+		}
+	}
+	return channels
 }
 
 func initEvolution(globalCfg *config.Config, evoStore ports.EvolutionStore, capStore ports.CaptureStore) *evolution.Trigger {

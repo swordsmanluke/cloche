@@ -321,3 +321,16 @@ func (s *Store) ResolveExternal(ctx context.Context, channelName, externalID str
 	}
 	return threadID, err
 }
+
+// GetExternalID is the reverse lookup of ResolveExternal: given an internal
+// thread ID, returns the external id bound for that channel, or "" if unbound.
+func (s *Store) GetExternalID(ctx context.Context, threadID, channelName string) (string, error) {
+	var externalID string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT external_id FROM help_bindings WHERE thread_id = ? AND channel_name = ?`,
+		threadID, channelName).Scan(&externalID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return externalID, err
+}

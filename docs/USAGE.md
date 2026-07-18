@@ -1651,6 +1651,33 @@ Controls the help channel (`clo ask` / `ask_user` MCP tool / `cloche threads`).
 | `park_after` | `"5m"` | Duration string. How long an `AskHelp` call blocks in place before parking the run. Parking itself is not yet implemented (phase 1): calls simply keep blocking. |
 | `retention` | `"720h"` | Duration string. How long archived threads (from completed tasks) are kept before the daemon's daily sweep deletes them. |
 
+Questions always flow via `cloche threads`, which needs no configuration. To
+also deliver them to a user-side integration, add one or more `[[help.channel]]`
+tables (daemon config only):
+
+```toml
+# ~/.config/cloche/config
+[[help.channel]]
+type          = "slack"
+channel       = "#cloche"           # default Slack channel
+token_env     = "SLACK_BOT_TOKEN"   # env var holding the bot token (xoxb-...)
+app_token_env = "SLACK_APP_TOKEN"   # env var holding the app-level token (xapp-...)
+
+[help.channel.channel_map]          # optional: route cloche channels to distinct Slack channels
+mazd = "#mazd-cloche"
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `type` | _(required)_ | Channel integration type. `"slack"` is the only supported type so far; an unknown type fails daemon start. |
+| `channel` | _(unset)_ | Default Slack channel to post to. |
+| `token_env` | _(unset)_ | Env var holding the Slack bot token. |
+| `app_token_env` | _(unset)_ | Env var holding the Slack app-level token (Socket Mode). |
+| `channel_map` | _(unset)_ | Table mapping cloche-side channel names (project names) to distinct Slack channels; cloche channels absent from the map fall back to `channel`. |
+
+A channel that fails to initialize (e.g. missing token env var) only logs a
+warning and is skipped — the CLI channel keeps working regardless.
+
 See [`docs/plans/2026-07-17-help-channel-design.md`](plans/2026-07-17-help-channel-design.md) for the full design.
 
 ### `[git]`

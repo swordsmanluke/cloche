@@ -158,4 +158,7 @@ type HelpStore interface {
 	// Channel bindings: map external ids (e.g. Slack thread_ts) to thread ids.
 	BindExternal(ctx context.Context, threadID, channelName, externalID string) error
 	ResolveExternal(ctx context.Context, channelName, externalID string) (threadID string, err error)
+	// GetExternalID is the reverse lookup of ResolveExternal: given an internal
+	// thread ID, returns the external id bound for that channel, or "" if unbound.
+	GetExternalID(ctx context.Context, threadID, channelName string) (externalID string, err error)
 }

@@ -243,3 +243,27 @@ func TestHelpStore_BindAndResolveExternal(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "", missing)
 }
+
+func TestHelpStore_GetExternalID(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	require.NoError(t, store.CreateThread(ctx, newHelpThread("thread-1", "cloche", "a-1", "task-a", "run-1")))
+
+	unbound, err := store.GetExternalID(ctx, "thread-1", "slack")
+	require.NoError(t, err)
+	assert.Equal(t, "", unbound)
+
+	require.NoError(t, store.BindExternal(ctx, "thread-1", "slack", "1234.5678"))
+
+	got, err := store.GetExternalID(ctx, "thread-1", "slack")
+	require.NoError(t, err)
+	assert.Equal(t, "1234.5678", got)
+
+	// A different channel name for the same thread is not bound.
+	other, err := store.GetExternalID(ctx, "thread-1", "discord")
+	require.NoError(t, err)
+	assert.Equal(t, "", other)
+}

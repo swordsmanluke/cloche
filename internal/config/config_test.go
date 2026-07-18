@@ -258,6 +258,49 @@ func TestLoadGitConfigDefaults(t *testing.T) {
 	assert.Equal(t, "", cfg.Git.Email)
 }
 
+func TestLoadHelpChannelConfig(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
+[help]
+park_after = "10m"
+retention  = "48h"
+
+[[help.channel]]
+type          = "slack"
+channel       = "#cloche"
+token_env     = "SLACK_BOT_TOKEN"
+app_token_env = "SLACK_APP_TOKEN"
+
+[help.channel.channel_map]
+mazd = "#mazd-cloche"
+`), 0644)
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "10m", cfg.Help.ParkAfter)
+	assert.Equal(t, "48h", cfg.Help.Retention)
+	require.Len(t, cfg.Help.Channels, 1)
+	ch := cfg.Help.Channels[0]
+	assert.Equal(t, "slack", ch.Type)
+	assert.Equal(t, "#cloche", ch.Channel)
+	assert.Equal(t, "SLACK_BOT_TOKEN", ch.TokenEnv)
+	assert.Equal(t, "SLACK_APP_TOKEN", ch.AppTokenEnv)
+	assert.Equal(t, map[string]string{"mazd": "#mazd-cloche"}, ch.ChannelMap)
+}
+
+func TestLoadHelpChannelConfigDefaults(t *testing.T) {
+	dir := t.TempDir()
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "5m", cfg.Help.ParkAfter)
+	assert.Equal(t, "720h", cfg.Help.Retention)
+	assert.Empty(t, cfg.Help.Channels)
+}
+
 func TestLoadMergedProjectOverridesGlobal(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
