@@ -16,6 +16,9 @@ import (
 // and external code that used prompt.KVReader continue to compile unchanged.
 type KVReader = ports.KVReader
 
+// KVWriter aliases the canonical port type (see ports.KVWriter).
+type KVWriter = ports.KVWriter
+
 // Resolver evaluates {{ }} template directives before the agent is invoked.
 //
 // Supported forms:

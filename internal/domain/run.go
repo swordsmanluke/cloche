@@ -32,7 +32,7 @@ type RunListFilter struct {
 type StepExecution struct {
 	StepName    string
 	Result      string
-	Skipped     bool        // true when the step's skip script bypassed execution
+	Skipped     bool // true when the step's skip script bypassed execution
 	StartedAt   time.Time
 	CompletedAt time.Time
 	Logs        string
@@ -45,7 +45,7 @@ func (e *StepExecution) Duration() time.Duration {
 }
 
 type Run struct {
-	PK             int64  // internal DB primary key; zero for unsaved runs
+	PK             int64 // internal DB primary key; zero for unsaved runs
 	ID             string
 	WorkflowName   string
 	State          RunState
@@ -65,6 +65,13 @@ type Run struct {
 	TaskID         string // optional task ID this run is associated with
 	TaskTitle      string // title from the task tracker, for display after the task leaves the active snapshot
 	AttemptID      string // ID of the attempt this run belongs to (v2)
+
+	// ParkedThreadID and ParkedTitle identify the help thread a parked run is
+	// awaiting a reply on. Set when State == RunStateParked as a result of the
+	// help-channel park mechanism (as opposed to an operator quiesce, which
+	// leaves these empty). Survive daemon restart via the runs table.
+	ParkedThreadID string
+	ParkedTitle    string
 }
 
 func NewRun(id, workflowName string) *Run {
@@ -164,6 +171,18 @@ func (r *Run) FindFirstFailedStep() string {
 	return ""
 }
 
+// FindParkedStep returns the name of the step that produced the reserved
+// "parked" result, or "" if none is found. Used to resume a parked run from
+// exactly the step that was suspended.
+func (r *Run) FindParkedStep() string {
+	for _, exec := range r.StepExecutions {
+		if exec.Result == StepParked {
+			return exec.StepName
+		}
+	}
+	return ""
+}
+
 // stateSeverity returns a severity score for terminal RunStates.
 // Higher values indicate worse outcomes.
 func stateSeverity(s RunState) int {
@@ -231,6 +250,7 @@ func AttemptAggregateStatus(runs []*Run) RunState {
 	hasRunning := false
 	hasWaiting := false
 	hasPending := false
+	hasParked := false
 	for _, r := range runs {
 		switch r.State {
 		case RunStateRunning:
@@ -239,6 +259,8 @@ func AttemptAggregateStatus(runs []*Run) RunState {
 			hasWaiting = true
 		case RunStatePending:
 			hasPending = true
+		case RunStateParked:
+			hasParked = true
 		}
 	}
 	if hasRunning {
@@ -246,6 +268,9 @@ func AttemptAggregateStatus(runs []*Run) RunState {
 	}
 	if hasWaiting {
 		return RunStateWaiting
+	}
+	if hasParked {
+		return RunStateParked
 	}
 	if hasPending {
 		return RunStatePending
@@ -273,6 +298,7 @@ func TaskAggregateStatus(runs []*Run) RunState {
 	hasRunning := false
 	hasWaiting := false
 	hasPending := false
+	hasParked := false
 	for _, r := range runs {
 		switch r.State {
 		case RunStateRunning:
@@ -281,6 +307,8 @@ func TaskAggregateStatus(runs []*Run) RunState {
 			hasWaiting = true
 		case RunStatePending:
 			hasPending = true
+		case RunStateParked:
+			hasParked = true
 		}
 	}
 	if hasRunning {
@@ -288,6 +316,9 @@ func TaskAggregateStatus(runs []*Run) RunState {
 	}
 	if hasWaiting {
 		return RunStateWaiting
+	}
+	if hasParked {
+		return RunStateParked
 	}
 	if hasPending {
 		return RunStatePending

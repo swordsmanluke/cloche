@@ -183,6 +183,136 @@ func domainRunID(i int) string {
 	return "run-seq-" + string(rune('a'+i))
 }
 
+func TestRouter_ParkAfterExpiryInvokesParkFuncAndReturnsParked(t *testing.T) {
+	// A very short parkAfter so the test doesn't wait an hour (newTestRouter's default).
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { store.Close() })
+	router := help.NewRouter(store, 20*time.Millisecond)
+
+	type parkCall struct {
+		runID, threadID, title string
+	}
+	parkCh := make(chan parkCall, 1)
+	router.SetParkFunc(func(ctx context.Context, runID, threadID, title string) {
+		parkCh <- parkCall{runID, threadID, title}
+	})
+
+	ctx := context.Background()
+	resultCh := make(chan help.AskResult, 1)
+	go func() {
+		res, _ := router.Ask(ctx, help.AskParams{
+			RunID: "run-park-1", Channel: "cloche", Question: "Unanswered question?", Title: "Unanswered",
+		})
+		resultCh <- res
+	}()
+
+	select {
+	case call := <-parkCh:
+		assert.Equal(t, "run-park-1", call.runID)
+		assert.NotEmpty(t, call.threadID)
+		assert.Equal(t, "Unanswered", call.title)
+	case <-time.After(2 * time.Second):
+		t.Fatal("parkFunc was not called after park_after elapsed")
+	}
+
+	select {
+	case res := <-resultCh:
+		assert.True(t, res.Parked)
+		assert.Empty(t, res.Answer)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Ask did not return after parking")
+	}
+}
+
+func TestRouter_NoParkBlocksPastParkAfter(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { store.Close() })
+	router := help.NewRouter(store, 20*time.Millisecond)
+
+	parked := false
+	router.SetParkFunc(func(ctx context.Context, runID, threadID, title string) {
+		parked = true
+	})
+
+	ctx := context.Background()
+	resultCh := make(chan help.AskResult, 1)
+	go func() {
+		res, _ := router.Ask(ctx, help.AskParams{
+			RunID: "run-nopark-1", Channel: "cloche", Question: "Cannot replay safely?", NoPark: true,
+		})
+		resultCh <- res
+	}()
+
+	require.Eventually(t, func() bool {
+		threads, err := router.ListThreads(ctx, ports.HelpThreadFilter{})
+		return err == nil && len(threads) == 1
+	}, time.Second, 5*time.Millisecond)
+
+	// Well past park_after: NoPark must keep blocking rather than parking.
+	time.Sleep(100 * time.Millisecond)
+	assert.False(t, parked, "NoPark ask should not invoke parkFunc")
+
+	threads, err := router.ListThreads(ctx, ports.HelpThreadFilter{})
+	require.NoError(t, err)
+	require.NoError(t, router.Reply(ctx, threads[0].ID, "Blocked answer", "cli"))
+
+	select {
+	case res := <-resultCh:
+		assert.Equal(t, "Blocked answer", res.Answer)
+		assert.False(t, res.Parked)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Ask did not return after reply")
+	}
+}
+
+func TestRouter_IdempotentReplayReturnsAnswerInstantly(t *testing.T) {
+	router, _ := newTestRouter(t)
+	ctx := context.Background()
+
+	resultCh := make(chan help.AskResult, 1)
+	go func() {
+		res, _ := router.Ask(ctx, help.AskParams{
+			RunID: "run-replay-1", Channel: "cloche", Question: "Which schema?", AskKey: "schema-choice",
+		})
+		resultCh <- res
+	}()
+	require.Eventually(t, func() bool {
+		threads, err := router.ListThreads(ctx, ports.HelpThreadFilter{})
+		return err == nil && len(threads) == 1
+	}, time.Second, 5*time.Millisecond)
+	threads, err := router.ListThreads(ctx, ports.HelpThreadFilter{})
+	require.NoError(t, err)
+	require.NoError(t, router.Reply(ctx, threads[0].ID, "Schema B", "cli"))
+	first := <-resultCh
+	assert.Equal(t, "Schema B", first.Answer)
+
+	// A generic step replaying from scratch re-issues the identical ask (same
+	// run, same ask_key, no thread_id since it doesn't persist one). It must
+	// get the answer back instantly without blocking or opening a new thread.
+	replayDone := make(chan help.AskResult, 1)
+	go func() {
+		res, _ := router.Ask(ctx, help.AskParams{
+			RunID: "run-replay-1", Channel: "cloche", Question: "Which schema?", AskKey: "schema-choice",
+		})
+		replayDone <- res
+	}()
+
+	select {
+	case res := <-replayDone:
+		assert.Equal(t, "Schema B", res.Answer)
+		assert.Equal(t, first.ThreadID, res.ThreadID)
+		assert.False(t, res.Parked)
+	case <-time.After(time.Second):
+		t.Fatal("replayed ask did not return instantly")
+	}
+
+	all, err := router.ListThreads(ctx, ports.HelpThreadFilter{All: true})
+	require.NoError(t, err)
+	assert.Len(t, all, 1, "replay must not open a second thread")
+}
+
 func TestRouter_ArchiveTaskThreads(t *testing.T) {
 	router, _ := newTestRouter(t)
 	ctx := context.Background()

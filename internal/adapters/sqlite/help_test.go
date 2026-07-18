@@ -267,3 +267,49 @@ func TestHelpStore_GetExternalID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "", other)
 }
+
+func TestHelpStore_FindAskAnswer(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	thread := newHelpThread("thread-1", "cloche", "schema-choice-1", "task-a", "run-1")
+	require.NoError(t, store.CreateThread(ctx, thread))
+
+	// No reply yet: not found.
+	_, _, found, err := store.FindAskAnswer(ctx, "run-1", "schema-choice")
+	require.NoError(t, err)
+	assert.False(t, found)
+
+	require.NoError(t, store.AppendMessage(ctx, &domain.HelpMessage{
+		ID: "msg-ask", ThreadID: thread.ID, Author: domain.MessageAuthorAgent,
+		Body: "Which schema?", AskKey: "schema-choice", CreatedAt: time.Now(),
+	}))
+
+	// Ask recorded but still no reply.
+	_, _, found, err = store.FindAskAnswer(ctx, "run-1", "schema-choice")
+	require.NoError(t, err)
+	assert.False(t, found)
+
+	require.NoError(t, store.AppendMessage(ctx, &domain.HelpMessage{
+		ID: "msg-reply", ThreadID: thread.ID, Author: domain.MessageAuthorUser,
+		Body: "Schema B", CreatedAt: time.Now(),
+	}))
+
+	answer, threadID, found, err := store.FindAskAnswer(ctx, "run-1", "schema-choice")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, "Schema B", answer)
+	assert.Equal(t, thread.ID, threadID)
+
+	// A different ask_key on the same run must not match.
+	_, _, found, err = store.FindAskAnswer(ctx, "run-1", "other-key")
+	require.NoError(t, err)
+	assert.False(t, found)
+
+	// A different run must not match even with the same ask_key.
+	_, _, found, err = store.FindAskAnswer(ctx, "run-2", "schema-choice")
+	require.NoError(t, err)
+	assert.False(t, found)
+}

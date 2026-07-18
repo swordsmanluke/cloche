@@ -133,6 +133,26 @@ func (cs *ContainerSession) deliverResult(result *pb.StepResult) {
 	}
 }
 
+// ParkStep sends a ParkStep message to the in-container agent, telling it to
+// terminate the in-progress step subprocess and reply with
+// StepResult{result: "parked"} instead of the step's normal result. The reply
+// arrives through the normal deliverResult path, unblocking whichever
+// ExecuteStep call is pending.
+func (cs *ContainerSession) ParkStep(stepName string) error {
+	cs.mu.Lock()
+	sendFn := cs.send
+	cs.mu.Unlock()
+
+	if sendFn == nil {
+		return fmt.Errorf("container session %s: send function not registered (agent not ready)", cs.ContainerID)
+	}
+	return sendFn(&pb.DaemonMessage{
+		Payload: &pb.DaemonMessage_ParkStep{
+			ParkStep: &pb.ParkStep{StepName: stepName},
+		},
+	})
+}
+
 // Shutdown sends a Shutdown message to the in-container agent.
 func (cs *ContainerSession) Shutdown() error {
 	cs.mu.Lock()
@@ -478,6 +498,32 @@ func (p *ContainerPool) FailPendingRequests(containerID string) {
 type containerResumer interface {
 	CommitContainer(ctx context.Context, containerID, attemptID string) (string, error)
 	RemoveImage(ctx context.Context, imageTag string) error
+}
+
+// taggedCommitter is an optional runtime capability for committing a
+// container to an image under a caller-chosen tag (as opposed to
+// containerResumer's derived naming). Implemented by docker.Runtime for the
+// help-channel park mechanism.
+type taggedCommitter interface {
+	CommitContainerAs(ctx context.Context, containerID, tag string) (string, error)
+}
+
+// CommitContainerAs commits a single container (identified by containerID) to
+// an image under the exact tag given, for the help-channel park mechanism.
+func (p *ContainerPool) CommitContainerAs(ctx context.Context, containerID, tag string) (string, error) {
+	committer, ok := p.runtime.(taggedCommitter)
+	if !ok {
+		return "", fmt.Errorf("container runtime does not support tagged image commit")
+	}
+	return committer.CommitContainerAs(ctx, containerID, tag)
+}
+
+// AttemptKeyForContainer returns the pool key (attemptID/poolKey) a container
+// was registered under, or "" if the container is not known to the pool.
+func (p *ContainerPool) AttemptKeyForContainer(containerID string) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.resolveAttempt(containerID)
 }
 
 // CommitForResume commits all containers associated with attemptID to Docker

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
@@ -121,10 +122,17 @@ func (s *Session) Run(ctx context.Context) error {
 		attemptID: s.cfg.AttemptID,
 		runID:     s.cfg.RunID,
 	}
+	promptAdapter.KVWriter = &grpcKVWriter{
+		client:    kvClient,
+		taskID:    s.cfg.TaskID,
+		attemptID: s.cfg.AttemptID,
+		runID:     s.cfg.RunID,
+	}
 
 	// Per-step context for cancellation support.
 	var stepMu sync.Mutex
 	var stepCancel context.CancelFunc
+	var stepParked atomic.Bool
 
 	for {
 		msg, err := stream.Recv()
@@ -140,6 +148,7 @@ func (s *Session) Run(ctx context.Context) error {
 			cmd := payload.ExecuteStep
 
 			stepCtx, cancel := context.WithCancel(ctx)
+			stepParked.Store(false)
 			stepMu.Lock()
 			if stepCancel != nil {
 				// Safety: cancel any previously active step (shouldn't happen per protocol).
@@ -148,16 +157,25 @@ func (s *Session) Run(ctx context.Context) error {
 			stepCancel = cancel
 			stepMu.Unlock()
 
-			// Execute in a goroutine so we can receive StepCancelled concurrently.
+			// Execute in a goroutine so we can receive StepCancelled/ParkStep concurrently.
 			go func(c *pb.ExecuteStep, sCtx context.Context, sCancel context.CancelFunc) {
 				defer sCancel()
-				s.executeStep(sCtx, c, genericAdapter, promptAdapter, kvClient, ulog, send)
+				s.executeStep(sCtx, c, genericAdapter, promptAdapter, kvClient, ulog, send, &stepParked)
 			}(cmd, stepCtx, cancel)
 
 		case *pb.DaemonMessage_StepCancelled:
 			stepMu.Lock()
 			if stepCancel != nil {
 				log.Printf("agent: cancelling step (request_id=%s)", payload.StepCancelled.RequestId)
+				stepCancel()
+			}
+			stepMu.Unlock()
+
+		case *pb.DaemonMessage_ParkStep:
+			stepParked.Store(true)
+			stepMu.Lock()
+			if stepCancel != nil {
+				log.Printf("agent: parking step %q (help-channel ask unanswered)", payload.ParkStep.StepName)
 				stepCancel()
 			}
 			stepMu.Unlock()
@@ -187,6 +205,7 @@ func (s *Session) executeStep(
 	kvClient pb.ClocheServiceClient,
 	ulog *logstream.Writer,
 	send func(*pb.AgentMessage) error,
+	parked *atomic.Bool,
 ) {
 	// Signal step start.
 	_ = send(&pb.AgentMessage{
@@ -274,9 +293,14 @@ func (s *Session) executeStep(
 		})
 	}
 
-	// Determine final result and send StepResult.
+	// Determine final result and send StepResult. A ParkStep signal overrides
+	// whatever the adapter returned (typically a context-cancellation error,
+	// since parking kills the step subprocess) with the reserved "parked"
+	// result so the daemon suspends the run instead of failing it.
 	result := sr.Result
-	if execErr != nil {
+	if parked != nil && parked.Load() {
+		result = domain.StepParked
+	} else if execErr != nil {
 		if result == "" {
 			result = "fail"
 		}
@@ -531,6 +555,29 @@ func (g *grpcKVReader) Get(ctx context.Context, key string) (string, bool, error
 		return "", false, fmt.Errorf("GetContextKey %q: %w", key, err)
 	}
 	return resp.Value, resp.Found, nil
+}
+
+// grpcKVWriter adapts a ClocheServiceClient into the prompt.KVWriter port.
+// It is bound to a specific task/attempt/run triple at construction time.
+type grpcKVWriter struct {
+	client    pb.ClocheServiceClient
+	taskID    string
+	attemptID string
+	runID     string
+}
+
+func (g *grpcKVWriter) Set(ctx context.Context, key, value string) error {
+	_, err := g.client.SetContextKey(ctx, &pb.SetContextKeyRequest{
+		TaskId:    g.taskID,
+		AttemptId: g.attemptID,
+		RunId:     g.runID,
+		Key:       key,
+		Value:     value,
+	})
+	if err != nil {
+		return fmt.Errorf("SetContextKey %q: %w", key, err)
+	}
+	return nil
 }
 
 // grpcStatusWriter is an io.Writer that buffers lines from a protocol.StatusWriter

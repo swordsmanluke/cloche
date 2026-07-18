@@ -35,6 +35,7 @@ type Adapter struct {
 	PrevOutput         string                 // content of the immediate predecessor step's output log
 	ExtraEnv           []string               // additional KEY=VALUE env vars injected into the agent process
 	KV                 KVReader               // optional: KV store for {{ $var }} lookups; nil disables non-builtin vars
+	KVWriter           KVWriter               // optional: persists Claude's session_id so a later park+resume can `claude --resume`
 }
 
 func New() *Adapter {
@@ -42,6 +43,18 @@ func New() *Adapter {
 		Commands: []string{"claude"},
 	}
 }
+
+// KV keys used to hand a park+resume off between the daemon and the
+// in-container prompt adapter. kvAgentSessionID is written by this adapter as
+// soon as Claude's session_id is observed (before any step might park);
+// kvPendingAnswer/kvPendingThreadID are written by the daemon (see
+// internal/adapters/grpc/park.go) right before re-dispatching the parked step
+// with resume=true.
+const (
+	kvAgentSessionID  = "_help.agent_session_id"
+	kvPendingAnswer   = "_help.pending_answer"
+	kvPendingThreadID = "_help.pending_thread_id"
+)
 
 func (a *Adapter) Name() string {
 	return "prompt"
@@ -165,8 +178,9 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 
 	// Build the full prompt
 	var fullPrompt string
+	var resumeSessionID string
 	if a.ResumeConversation {
-		fullPrompt = "retry"
+		resumeSessionID, fullPrompt = a.buildResumePrompt(ctx)
 	} else {
 		var err error
 		fullPrompt, err = a.assemblePrompt(ctx, step, workDir)
@@ -184,7 +198,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	ran := false
 
 	for _, command := range a.Commands {
-		result, stdout, usage, fallbackErr := a.tryCommand(ctx, command, fullPrompt, workDir, step.Name)
+		result, stdout, usage, fallbackErr := a.tryCommand(ctx, command, fullPrompt, workDir, step.Name, resumeSessionID)
 		lastResult = result
 		lastStdout = stdout
 		lastUsage = usage
@@ -243,6 +257,65 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	return domain.StepResult{Result: result, Usage: lastUsage}, nil
 }
 
+// buildResumePrompt returns the Claude session id to resume (empty if none
+// was captured) and the prompt to deliver as the next turn. When a park+resume
+// answer is pending (KV handoff from the daemon, see
+// internal/adapters/grpc/park.go), the prompt delivers it directly so the
+// agent picks up exactly where it left off. Falls back to the older bare
+// "retry" resume (no specific session, via `-c`) when no session id was
+// captured — e.g. the pre-existing resume-after-failure flow, which predates
+// the help channel and has no session_id/pending-answer KV to read.
+func (a *Adapter) buildResumePrompt(ctx context.Context) (sessionID, prompt string) {
+	if a.KV == nil {
+		return "", "retry"
+	}
+	sessionID, _, _ = a.KV.Get(ctx, kvAgentSessionID)
+	answer, foundAnswer, _ := a.KV.Get(ctx, kvPendingAnswer)
+	if sessionID == "" || !foundAnswer {
+		return sessionID, "retry"
+	}
+	threadID, _, _ := a.KV.Get(ctx, kvPendingThreadID)
+	if threadID != "" {
+		return sessionID, fmt.Sprintf("Answer to your question in thread `%s`: %s", threadID, answer)
+	}
+	return sessionID, "Answer to your question: " + answer
+}
+
+// captureSessionID persists Claude's session_id to KV the first time it's
+// observed in a step's output, so a later park+resume can `claude --resume`
+// this exact conversation. No-op when no KVWriter is configured, the command
+// isn't claude, or no session_id is found.
+func (a *Adapter) captureSessionID(ctx context.Context, command string, output []byte) {
+	if a.KVWriter == nil || command != "claude" {
+		return
+	}
+	for _, line := range bytes.Split(output, []byte("\n")) {
+		if sid := extractSessionID(line); sid != "" {
+			if err := a.KVWriter.Set(ctx, kvAgentSessionID, sid); err != nil {
+				log.Printf("prompt: failed to persist session_id: %v", err)
+			}
+			return
+		}
+	}
+}
+
+// extractSessionID looks for a top-level "session_id" field on a streaming-JSON
+// event line (Claude Code's "system"/"init" event carries one, but the field
+// is matched regardless of envelope shape so this doesn't depend on the exact
+// init event schema).
+func extractSessionID(line []byte) string {
+	if !bytes.Contains(line, []byte(`"session_id"`)) {
+		return ""
+	}
+	var envelope struct {
+		SessionID string `json:"session_id"`
+	}
+	if json.Unmarshal(line, &envelope) != nil {
+		return ""
+	}
+	return envelope.SessionID
+}
+
 // tryCommand executes a single agent command and returns:
 //   - result: the step result name (e.g. "success", "fail")
 //   - stdout: captured stdout bytes
@@ -256,11 +329,17 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 // Definitive (non-fallback) conditions:
 //   - Command exited 0
 //   - Command exited non-zero but produced a CLOCHE_RESULT marker
-func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string, workDir string, stepName string) (result string, stdout []byte, usage *domain.TokenUsage, fallbackErr error) {
+func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string, workDir string, stepName string, resumeSessionID string) (result string, stdout []byte, usage *domain.TokenUsage, fallbackErr error) {
 	args := a.argsFor(command)
-	// Resume mode: add -c flag to resume previous conversation
+	// Resume mode: continue the exact prior session when one was captured
+	// (see buildResumePrompt); otherwise fall back to -c (resume whatever
+	// conversation is latest in workDir).
 	if a.ResumeConversation {
-		args = append([]string{"-c"}, args...)
+		if command == "claude" && resumeSessionID != "" {
+			args = append([]string{"--resume", resumeSessionID}, args...)
+		} else {
+			args = append([]string{"-c"}, args...)
+		}
 	}
 	args = append(args, mcpConfigArgs(command)...)
 	cmd := exec.CommandContext(ctx, command, args...)
@@ -283,6 +362,7 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 		if usage != nil {
 			usage.AgentName = command
 		}
+		a.captureSessionID(ctx, command, stdoutBytes)
 		return
 	}
 
@@ -344,6 +424,7 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 	}
 
 	waitErr := cmd.Wait()
+	a.captureSessionID(ctx, command, rawBuf.Bytes())
 	// Check raw output for agent-level errors (e.g. error_during_execution
 	// from rate limits) before classifying the extracted text.
 	if bytes.Contains(rawBuf.Bytes(), []byte(`"error_during_execution"`)) {

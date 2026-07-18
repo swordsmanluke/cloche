@@ -20,7 +20,7 @@ import (
 // enough to exercise the AgentSession RPC.
 type fakeAgentSessionServer struct {
 	pb.UnimplementedClocheServiceServer
-	steps   []*pb.ExecuteStep  // steps to dispatch after AgentReady
+	steps    []*pb.ExecuteStep // steps to dispatch after AgentReady
 	gotReady chan *pb.AgentReady
 	results  chan *pb.StepResult
 	logs     chan *pb.StepLog
@@ -623,6 +623,106 @@ func TestSession_ExecuteHumanStep_InvalidInterval(t *testing.T) {
 	case result := <-srv.results:
 		assert.Equal(t, "req-h6", result.RequestId)
 		assert.Equal(t, "fail", result.Result)
+	default:
+		t.Fatal("StepResult not received")
+	}
+}
+
+// parkingFakeServer sends a single ExecuteStep, waits for StepStarted, then
+// sends ParkStep instead of waiting for the step to finish on its own —
+// exercising cloche-agent's ParkStep handling (kill the subprocess, reply
+// with the reserved "parked" result).
+type parkingFakeServer struct {
+	pb.UnimplementedClocheServiceServer
+	step    *pb.ExecuteStep
+	results chan *pb.StepResult
+}
+
+func (f *parkingFakeServer) AgentSession(stream pb.ClocheService_AgentSessionServer) error {
+	msg, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	if _, ok := msg.Payload.(*pb.AgentMessage_Ready); !ok {
+		return nil
+	}
+
+	if err := stream.Send(&pb.DaemonMessage{
+		Payload: &pb.DaemonMessage_ExecuteStep{ExecuteStep: f.step},
+	}); err != nil {
+		return err
+	}
+
+	for {
+		agentMsg, err := stream.Recv()
+		if err != nil {
+			return err
+		}
+		switch p := agentMsg.Payload.(type) {
+		case *pb.AgentMessage_StepStarted:
+			// The step has started; park it instead of waiting for it to
+			// finish on its own.
+			if err := stream.Send(&pb.DaemonMessage{
+				Payload: &pb.DaemonMessage_ParkStep{ParkStep: &pb.ParkStep{StepName: p.StepStarted.StepName}},
+			}); err != nil {
+				return err
+			}
+		case *pb.AgentMessage_StepResult:
+			f.results <- p.StepResult
+			return stream.Send(&pb.DaemonMessage{Payload: &pb.DaemonMessage_Shutdown{Shutdown: &pb.Shutdown{}}})
+		}
+	}
+}
+
+func startParkingFakeServer(t *testing.T, srv *parkingFakeServer) string {
+	t.Helper()
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	s := grpc.NewServer()
+	pb.RegisterClocheServiceServer(s, srv)
+	go func() { _ = s.Serve(lis) }()
+	t.Cleanup(func() { s.Stop() })
+	return lis.Addr().String()
+}
+
+// TestSession_ParkStepKillsSubprocessAndReportsParked verifies that a
+// ParkStep DaemonMessage kills the in-progress step subprocess and the agent
+// replies with the reserved "parked" StepResult instead of "fail".
+func TestSession_ParkStepKillsSubprocessAndReportsParked(t *testing.T) {
+	srv := &parkingFakeServer{
+		step: &pb.ExecuteStep{
+			StepName:  "long-running",
+			StepType:  "script",
+			Config:    map[string]string{"run": "sleep 30"},
+			RequestId: "req-park-1",
+		},
+		results: make(chan *pb.StepResult, 1),
+	}
+	addr := startParkingFakeServer(t, srv)
+
+	dir := t.TempDir()
+	sess := agent.NewSession(agent.SessionConfig{
+		Addr:    addr,
+		RunID:   "run-park-1",
+		WorkDir: dir,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	err := sess.Run(ctx)
+	require.NoError(t, err)
+	elapsed := time.Since(start)
+
+	// The subprocess (sleep 30) must actually have been killed, not left to
+	// run to completion.
+	assert.Less(t, elapsed, 10*time.Second, "ParkStep should kill the subprocess well before its natural completion")
+
+	select {
+	case result := <-srv.results:
+		assert.Equal(t, "req-park-1", result.RequestId)
+		assert.Equal(t, "parked", result.Result)
 	default:
 		t.Fatal("StepResult not received")
 	}

@@ -8,3 +8,10 @@ import "context"
 type KVReader interface {
 	Get(ctx context.Context, key string) (value string, found bool, err error)
 }
+
+// KVWriter is the port for writing a single named value to a run's KV store.
+// Used by the prompt adapter to persist Claude's session_id before a step
+// might be parked, so a later resume can `claude --resume <session-id>`.
+type KVWriter interface {
+	Set(ctx context.Context, key, value string) error
+}

@@ -441,7 +441,6 @@ func TestEngine_StepTriggerContext(t *testing.T) {
 	assert.Equal(t, "success", testTrigger.trigger.PrevResult)
 }
 
-
 func TestEngine_MaxAttempts_SynthesizesGiveUp(t *testing.T) {
 	// Reproduce the develop workflow infinite loop: test always fails and routes
 	// to fix; fix always returns success and routes back to test.
@@ -836,9 +835,9 @@ type skippedStatusHandler struct {
 
 type noopStatus struct{}
 
-func (noopStatus) OnStepStart(*domain.Run, *domain.Step)                               {}
+func (noopStatus) OnStepStart(*domain.Run, *domain.Step)                                {}
 func (noopStatus) OnStepComplete(*domain.Run, *domain.Step, string, *domain.TokenUsage) {}
-func (noopStatus) OnStepSkipped(*domain.Run, *domain.Step, string)                     {}
+func (noopStatus) OnStepSkipped(*domain.Run, *domain.Step, string)                      {}
 func (noopStatus) OnRunComplete(*domain.Run)                                            {}
 
 func (h *skippedStatusHandler) OnStepSkipped(_ *domain.Run, step *domain.Step, wire string) {
@@ -1046,4 +1045,127 @@ func TestEngine_SkipResumeReplaysWire(t *testing.T) {
 	assert.NotContains(t, exec.called, "first")
 	assert.Contains(t, exec.called, "next")
 	exec.mu.Unlock()
+}
+
+// completedStatusHandler records every OnStepComplete call's (step, result).
+type completedStatusHandler struct {
+	noopStatus
+	mu        sync.Mutex
+	completed []string
+	results   []string
+}
+
+func (h *completedStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, result string, _ *domain.TokenUsage) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.completed = append(h.completed, step.Name)
+	h.results = append(h.results, result)
+}
+
+// TestEngine_ParkedStepSuspendsRunWithoutError verifies that a step
+// returning the reserved "parked" result (produced when a help-channel ask
+// goes unanswered past park_after) suspends the run — RunStateParked, no
+// error — instead of failing it or walking any wiring.
+func TestEngine_ParkedStepSuspendsRunWithoutError(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "parked-test",
+		Steps: map[string]*domain.Step{
+			"ask":  {Name: "ask", Type: domain.StepTypeAgent, Results: []string{"success"}},
+			"next": {Name: "next", Type: domain.StepTypeScript, Results: []string{"success"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "ask", Result: "success", To: "next"},
+			{From: "next", Result: "success", To: domain.StepDone},
+		},
+		EntryStep: "ask",
+	}
+
+	exec := &fakeExecutor{results: map[string]string{"ask": domain.StepParked}}
+	sh := &completedStatusHandler{}
+	eng := engine.New(exec)
+	eng.SetStatusHandler(sh)
+
+	run, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateParked, run.State)
+
+	// "next" must never have been dispatched — parked is not wired.
+	exec.mu.Lock()
+	assert.Equal(t, []string{"ask"}, exec.called)
+	exec.mu.Unlock()
+
+	sh.mu.Lock()
+	require.Len(t, sh.completed, 1)
+	assert.Equal(t, "ask", sh.completed[0])
+	assert.Equal(t, domain.StepParked, sh.results[0])
+	sh.mu.Unlock()
+}
+
+// TestEngine_ParkedPropagatesThroughNestedWorkflowStep verifies that a step
+// executor which itself drives a nested engine.Run (as DaemonExecutor does
+// for workflow_name steps) can observe RunStateParked on the returned run
+// and translate it into a "parked" StepResult, which the outer engine then
+// also treats as a suspension rather than a failure.
+func TestEngine_ParkedPropagatesThroughNestedWorkflowStep(t *testing.T) {
+	innerWF := &domain.Workflow{
+		Name: "inner",
+		Steps: map[string]*domain.Step{
+			"ask": {Name: "ask", Type: domain.StepTypeAgent, Results: []string{"success"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "ask", Result: "success", To: domain.StepDone},
+		},
+		EntryStep: "ask",
+	}
+	innerExec := &fakeExecutor{results: map[string]string{"ask": domain.StepParked}}
+
+	// Outer executor: routes a "workflow" step to a nested engine.Run over
+	// innerWF, mirroring DaemonExecutor.executeWorkflowStep's propagation.
+	outerExec := engine.StepExecutorFunc(func(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
+		nestedEng := engine.New(innerExec)
+		run, err := nestedEng.Run(ctx, innerWF)
+		if err != nil {
+			return domain.StepResult{Result: "fail"}, nil
+		}
+		if run.State == domain.RunStateParked {
+			return domain.StepResult{Result: domain.StepParked}, nil
+		}
+		return domain.StepResult{Result: "success"}, nil
+	})
+
+	outerWF := &domain.Workflow{
+		Name: "outer",
+		Steps: map[string]*domain.Step{
+			"dispatch": {Name: "dispatch", Type: domain.StepTypeWorkflow, Results: []string{"success"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "dispatch", Result: "success", To: domain.StepDone},
+		},
+		EntryStep: "dispatch",
+	}
+
+	eng := engine.New(outerExec)
+	run, err := eng.Run(context.Background(), outerWF)
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateParked, run.State)
+}
+
+// TestWorkflow_ValidateRejectsDeclaredParkedResult verifies that a workflow
+// cannot declare "parked" as one of a step's Results — it is reserved for
+// the help-channel park mechanism and must not be user-wireable.
+func TestWorkflow_ValidateRejectsDeclaredParkedResult(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "bad",
+		Steps: map[string]*domain.Step{
+			"ask": {Name: "ask", Type: domain.StepTypeAgent, Results: []string{"success", domain.StepParked}},
+		},
+		Wiring: []domain.Wire{
+			{From: "ask", Result: "success", To: domain.StepDone},
+			{From: "ask", Result: domain.StepParked, To: domain.StepDone},
+		},
+		EntryStep: "ask",
+	}
+	err := wf.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reserved result")
 }

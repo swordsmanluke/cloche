@@ -217,6 +217,9 @@ Output (task ID):
   Attempt     Latest attempt ID
   Result      running, succeeded, failed, or cancelled
   Ended       End timestamp (if complete)
+  Parked      Shown when a help-channel ask went unanswered past park_after:
+              "parked — awaiting reply: <title> (<channel>/<name>)". Reply
+              with "cloche threads reply <channel>/<name> ..." to resume.
 
 Output (no ID — daemon overview):
   Daemon version
@@ -719,6 +722,13 @@ Examples:
 An agent step (via the ask_user MCP tool or "clo ask") can open a help
 thread mid-run and block for a reply. Threads are addressed by
 <channel>/<name>, where channel defaults to the project name.
+
+If no reply arrives within park_after (default 5m), the run is parked: its
+container is committed and stopped so it doesn't burn resources indefinitely.
+Replying to a parked thread automatically resumes the run — a prompt-adapter
+agent continues its session with the answer; a generic step replays from the
+start and gets the answer instantly at the same ask site (see "cloche status"
+for a run's parked state).
 
 Usage:
   cloche threads [list] [--all] [--channel <c>]

@@ -1894,6 +1894,14 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 				sum.PendingHelpTitle = threads[0].Title
 			}
 		}
+		if run.State == domain.RunStateParked && run.ParkedThreadID != "" {
+			sum.ParkedTitle = run.ParkedTitle
+			if hasHS {
+				if thread, _, err := hs.GetThread(ctx, run.ParkedThreadID); err == nil {
+					sum.ParkedThreadAddress = thread.Address()
+				}
+			}
+		}
 		resp.Runs = append(resp.Runs, sum)
 	}
 	return resp, nil
@@ -1917,8 +1925,9 @@ func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) 
 		return nil, fmt.Errorf("listing tasks: %w", err)
 	}
 
-	// Cast store to HumanPollStore once for waiting step lookups.
+	// Cast store to HumanPollStore/HelpStore once for waiting/parked lookups.
 	hps, hasHPS := s.store.(ports.HumanPollStore)
+	hs, hasHS := s.store.(ports.HelpStore)
 
 	resp := &pb.ListTasksResponse{}
 	for _, task := range tasks {
@@ -1934,8 +1943,8 @@ func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) 
 			sum.LatestAttemptId = la.ID
 		}
 		// For tasks whose latest attempt is still "running", check whether any
-		// associated runs are actually in the "waiting" state (blocked at a human
-		// step). If so, upgrade the task status and populate waiting step info.
+		// associated runs are actually in the "waiting" or "parked" state. If
+		// so, upgrade the task status and populate the corresponding details.
 		if task.Status == domain.TaskStatusRunning {
 			waitingRuns, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{
 				TaskID: task.ID,
@@ -1955,6 +1964,20 @@ func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) 
 							sum.PollCount = int32(polls[0].PollCount)
 							break
 						}
+					}
+				}
+			}
+			parkedRuns, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{
+				TaskID: task.ID,
+				State:  domain.RunStateParked,
+			})
+			if err == nil && len(parkedRuns) > 0 {
+				sum.Status = string(domain.TaskStatusParked)
+				pr := parkedRuns[0]
+				sum.ParkedTitle = pr.ParkedTitle
+				if hasHS && pr.ParkedThreadID != "" {
+					if thread, _, err := hs.GetThread(ctx, pr.ParkedThreadID); err == nil {
+						sum.ParkedThreadAddress = thread.Address()
 					}
 				}
 			}
@@ -2503,6 +2526,18 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 		if threads, err := hs.ListOpenThreadsByRun(ctx, run.ID); err == nil && len(threads) > 0 {
 			resp.PendingHelpAddress = threads[0].Address()
 			resp.PendingHelpTitle = threads[0].Title
+		}
+	}
+
+	// Populate parked thread details. Set directly on the run record at park
+	// time, so this survives the container being stopped (unlike PendingHelp*
+	// above, which only reflects an in-place block).
+	if run.State == domain.RunStateParked && run.ParkedThreadID != "" {
+		resp.ParkedTitle = run.ParkedTitle
+		if hs, ok := s.store.(ports.HelpStore); ok {
+			if thread, _, err := hs.GetThread(ctx, run.ParkedThreadID); err == nil {
+				resp.ParkedThreadAddress = thread.Address()
+			}
 		}
 	}
 
@@ -4269,7 +4304,7 @@ func (s *ClocheServer) AskHelp(ctx context.Context, req *pb.AskHelpRequest) (*pb
 	}
 
 	res, err := s.doAskHelp(ctx, req.TaskId, req.AttemptId, req.RunId, req.StepName,
-		req.Question, req.Title, req.ThreadId, req.Options, req.AskKey)
+		req.Question, req.Title, req.ThreadId, req.Options, req.AskKey, req.NoPark)
 	if err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "%v", err)
 	}
@@ -4282,7 +4317,7 @@ func (s *ClocheServer) AskHelp(ctx context.Context, req *pb.AskHelpRequest) (*pb
 // (gRPC, trusts task_id/attempt_id from the request like clo get/set do) and
 // AskHelpForRun (MCP, resolves task_id/attempt_id from the run record since
 // only run_id is authenticated by the bearer token).
-func (s *ClocheServer) doAskHelp(ctx context.Context, taskID, attemptID, runID, stepName, question, title, threadID string, options []string, askKey string) (help.AskResult, error) {
+func (s *ClocheServer) doAskHelp(ctx context.Context, taskID, attemptID, runID, stepName, question, title, threadID string, options []string, askKey string, noPark bool) (help.AskResult, error) {
 	channel := "cloche"
 	var projectDir string
 	if run, err := s.store.GetRun(ctx, runID); err == nil {
@@ -4304,6 +4339,7 @@ func (s *ClocheServer) doAskHelp(ctx context.Context, taskID, attemptID, runID, 
 		Options:   options,
 		ThreadID:  threadID,
 		AskKey:    askKey,
+		NoPark:    noPark,
 	})
 	if err != nil {
 		return help.AskResult{}, err
@@ -4335,7 +4371,7 @@ func (s *ClocheServer) AskHelpForRun(ctx context.Context, runID, question, title
 		taskID, attemptID = run.TaskID, run.AttemptID
 	}
 
-	res, err := s.doAskHelp(ctx, taskID, attemptID, runID, "", question, title, threadID, options, askKey)
+	res, err := s.doAskHelp(ctx, taskID, attemptID, runID, "", question, title, threadID, options, askKey, false)
 	if err != nil {
 		return "", "", false, err
 	}
@@ -4388,6 +4424,17 @@ func (s *ClocheServer) ReplyThread(ctx context.Context, req *pb.ReplyThreadReque
 	if err := s.helpRouter.ReplyByAddress(ctx, req.Address, req.Body, "cli"); err != nil {
 		return nil, status.Errorf(codes.NotFound, "%v", err)
 	}
+
+	// If the run is parked (the reply arrived after park_after already fired
+	// and tore down the container), resume it. A reply that lands while the
+	// run is still blocked in place instead unblocks Router.Ask directly
+	// above; this is a no-op in that case since the run won't be parked.
+	if hs, ok := s.store.(ports.HelpStore); ok {
+		if thread, err := hs.ResolveThread(ctx, req.Address); err == nil {
+			s.triggerResumeIfParked(ctx, thread.ID, req.Body)
+		}
+	}
+
 	return &pb.ReplyThreadResponse{}, nil
 }
 

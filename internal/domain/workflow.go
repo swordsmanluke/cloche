@@ -13,6 +13,12 @@ const (
 	// StepStatusSkipped is recorded on a StepExecution when the step's skip
 	// script exits 0 and the step is bypassed without executing.
 	StepStatusSkipped = "skipped"
+
+	// StepParked is a reserved step result (like done/abort) produced when a
+	// step's help-channel ask goes unanswered past park_after and the step is
+	// torn down. Workflows cannot declare or wire it; the engine treats it as
+	// a graceful suspension of the run rather than a completion or failure.
+	StepParked = "parked"
 )
 
 type StepType string
@@ -89,7 +95,7 @@ const DefaultContainerID = "_default"
 
 type Workflow struct {
 	Name      string
-	Location  WorkflowLocation  // host or container
+	Location  WorkflowLocation // host or container
 	Steps     map[string]*Step
 	Agents    map[string]*Agent // declared agents, keyed by identifier
 	Wiring    []Wire
@@ -170,6 +176,9 @@ func (w *Workflow) Validate() error {
 
 	for name, step := range w.Steps {
 		for _, result := range step.Results {
+			if result == StepParked {
+				return fmt.Errorf("workflow %q: step %q declares reserved result %q; it is produced by the help-channel park mechanism and cannot be declared or wired", w.Name, name, result)
+			}
 			if !wired[name][result] {
 				return fmt.Errorf("workflow %q: step %q result %q is not wired", w.Name, name, result)
 			}
@@ -241,11 +250,11 @@ var knownStepConfigKeys = map[string]bool{
 	"usage_command": true,
 	"repository":    true,
 	// poll step keys
-	"poll":          true,
-	"interval":      true,
+	"poll":     true,
+	"interval": true,
 	// skip script: optional shell command run before the step; exit 0 means skip
-	"skip":          true,
-	"token-limit":   true,
+	"skip":        true,
+	"token-limit": true,
 }
 
 // ValidateConfig checks step config keys against known keys and returns

@@ -9,8 +9,12 @@
 //	clo set <key> -            Read value from stdin
 //	clo set <key> -f <file>    Set a key from file contents
 //	clo keys                   List all keys in the current attempt namespace
-//	clo ask [--thread <id>] [--option A --option B ...] [--key <ask-key>] "question"
-//	                           Ask the user a question and block for the reply
+//	clo ask [--thread <id>] [--option A --option B ...] [--key <ask-key>] [--no-park] "question"
+//	                           Ask the user a question and block for the reply.
+//	                           --no-park disables parking for this ask (for
+//	                           steps that cannot replay safely on resume); it
+//	                           blocks in place until replied or the step's own
+//	                           timeout fires instead.
 //	clo -v / clo --version     Print version
 package main
 
@@ -74,6 +78,7 @@ const askParkedExitCode = 3
 func cmdAsk(args []string) {
 	var threadID, askKey string
 	var options []string
+	var noPark bool
 	var questionParts []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -98,6 +103,8 @@ func cmdAsk(args []string) {
 				os.Exit(1)
 			}
 			askKey = args[i]
+		case "--no-park":
+			noPark = true
 		default:
 			questionParts = append(questionParts, args[i])
 		}
@@ -125,6 +132,7 @@ func cmdAsk(args []string) {
 		ThreadId:  threadID,
 		Options:   options,
 		AskKey:    askKey,
+		NoPark:    noPark,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

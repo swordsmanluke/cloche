@@ -6,6 +6,8 @@ package help
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strings"
@@ -16,10 +18,16 @@ import (
 	"github.com/cloche-dev/cloche/internal/ports"
 )
 
-// DefaultParkAfter is the default grace period before a blocked ask would be
-// parked. Phase 1 accepts and stores this but never actually parks — long
-// waits just keep blocking (see AskResult.Parked, always false for now).
+// DefaultParkAfter is the default grace period before a blocked ask is parked.
 const DefaultParkAfter = 5 * time.Minute
+
+// ParkFunc is invoked when a blocked ask's park_after grace period expires
+// with no reply. The implementation is responsible for recording the park
+// (marking the run parked, tearing down its container) and should return
+// quickly — teardown may continue asynchronously. Errors are the
+// implementation's concern to log; Ask has no way to surface them since the
+// caller (agent/script) is about to be torn down regardless.
+type ParkFunc func(ctx context.Context, runID, threadID, title string)
 
 // DefaultRetention is how long archived threads are kept before the daily
 // sweep deletes them (30 days).
@@ -37,6 +45,10 @@ type AskParams struct {
 	Options   []string
 	ThreadID  string // optional; continue an existing thread
 	AskKey    string // optional idempotency key (reserved for phase 2 replay)
+	// NoPark disables parking for this ask: it blocks in place until replied
+	// or ctx is cancelled (e.g. by the step's own timeout), instead of
+	// parking after parkAfter. For steps that cannot replay safely on resume.
+	NoPark bool
 }
 
 // AskResult is returned once a reply arrives.
@@ -59,9 +71,19 @@ type Router struct {
 	store     ports.HelpStore
 	channels  []ports.HelpChannel
 	parkAfter time.Duration
+	parkFunc  ParkFunc
 
 	mu      sync.Mutex
 	pending map[string]*pendingAsk // keyed by RunID
+}
+
+// SetParkFunc configures the callback invoked when an ask parks. Must be
+// called before any Ask that might park; nil (the default) disables parking
+// and Ask blocks past park_after indefinitely, matching phase 1 behavior.
+func (r *Router) SetParkFunc(f ParkFunc) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.parkFunc = f
 }
 
 // NewRouter constructs a Router. parkAfter <= 0 uses DefaultParkAfter.
@@ -88,6 +110,19 @@ func (r *Router) Ask(ctx context.Context, p AskParams) (AskResult, error) {
 		return AskResult{}, fmt.Errorf("help: question must not be empty")
 	}
 
+	// Idempotent replay: a generic step that re-runs from scratch after a
+	// park+resume re-issues the same ask. If this exact ask (identified by
+	// ask_key, or a hash of the question body when no key is given) already
+	// received a user reply on this run, return it instantly instead of
+	// re-blocking or re-posting to channels.
+	effectiveKey := p.AskKey
+	if effectiveKey == "" {
+		effectiveKey = hashAskBody(p.Question)
+	}
+	if answer, threadID, found, err := r.store.FindAskAnswer(ctx, p.RunID, effectiveKey); err == nil && found {
+		return AskResult{Answer: answer, ThreadID: threadID}, nil
+	}
+
 	r.mu.Lock()
 	if _, exists := r.pending[p.RunID]; exists {
 		r.mu.Unlock()
@@ -106,7 +141,7 @@ func (r *Router) Ask(ctx context.Context, p AskParams) (AskResult, error) {
 		Author:    domain.MessageAuthorAgent,
 		Body:      p.Question,
 		Options:   p.Options,
-		AskKey:    p.AskKey,
+		AskKey:    effectiveKey,
 		CreatedAt: time.Now(),
 	}
 	if err := r.store.AppendMessage(ctx, msg); err != nil {
@@ -128,16 +163,31 @@ func (r *Router) Ask(ctx context.Context, p AskParams) (AskResult, error) {
 
 	r.postToChannels(*thread, *msg)
 
-	parkTimer := time.NewTimer(r.parkAfter)
-	defer parkTimer.Stop()
+	// NoPark steps (per-step "cannot replay safely" config) disable the park
+	// timer entirely: a nil channel never fires in a select, so the ask just
+	// blocks in place until replied or ctx is cancelled (e.g. the step's own
+	// timeout).
+	var parkC <-chan time.Time
+	if !p.NoPark {
+		parkTimer := time.NewTimer(r.parkAfter)
+		defer parkTimer.Stop()
+		parkC = parkTimer.C
+	}
 
 	for {
 		select {
 		case body := <-replyCh:
 			return AskResult{Answer: body, ThreadID: thread.ID}, nil
-		case <-parkTimer.C:
-			// Phase 1 has no parking yet: keep blocking past park_after.
-			// (Phase 2 will commit/stop the container here instead.)
+		case <-parkC:
+			r.mu.Lock()
+			parkFunc := r.parkFunc
+			r.mu.Unlock()
+			if parkFunc == nil {
+				// No park callback configured: keep blocking past park_after.
+				continue
+			}
+			parkFunc(context.Background(), p.RunID, thread.ID, thread.Title)
+			return AskResult{ThreadID: thread.ID, Parked: true}, nil
 		case <-ctx.Done():
 			return AskResult{}, ctx.Err()
 		}
@@ -281,6 +331,13 @@ func (r *Router) resolveOrCreateThread(ctx context.Context, p AskParams) (*domai
 		}
 	}
 	return nil, fmt.Errorf("help: could not allocate a unique thread name for %q after repeated attempts", slug)
+}
+
+// hashAskBody returns a deterministic idempotency key for an ask that didn't
+// supply an explicit ask_key, so replay detection still works.
+func hashAskBody(question string) string {
+	sum := sha256.Sum256([]byte(question))
+	return "body:" + hex.EncodeToString(sum[:])
 }
 
 func isUniqueConstraintErr(err error) bool {

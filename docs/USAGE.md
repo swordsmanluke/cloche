@@ -1001,7 +1001,7 @@ status for that task.
 
 | Argument | Output |
 |----------|--------|
-| Task ID | Task status, title, project, latest attempt ID, result, end timestamp, and total tokens consumed across all attempts (omitted if no usage data). When the task is `waiting` at a human step, also shows the step name, time since last poll, and poll count (e.g. `Waiting: code-review — last polled 4m ago (3 polls)`). When the run has an open help thread (`clo ask` / `ask_user` blocked awaiting a reply), also shows `Pending question: <title> (<channel>/<name>)` — this can appear even while the run is otherwise `running`. |
+| Task ID | Task status, title, project, latest attempt ID, result, end timestamp, and total tokens consumed across all attempts (omitted if no usage data). When the task is `waiting` at a human step, also shows the step name, time since last poll, and poll count (e.g. `Waiting: code-review — last polled 4m ago (3 polls)`). When the run has an open help thread (`clo ask` / `ask_user` blocked awaiting a reply), also shows `Pending question: <title> (<channel>/<name>)` — this can appear even while the run is otherwise `running`. When a help-channel ask went unanswered past `park_after`, shows `parked — awaiting reply: <title> (<channel>/<name>)`; reply with `cloche threads reply <channel>/<name> ...` to resume. |
 | _(none)_ | Daemon version, run statistics (past hour), active tasks with attempt IDs and in-progress runs shown as composite IDs (e.g. `cloche-1234:aj19:main`), and per-agent token burn rate for the last hour (omitted if no usage data). In a project directory, also shows project name, concurrency, loop state, and the count of resumable (parked) runs. |
 
 | Flag | Description |
@@ -1027,9 +1027,12 @@ show a flat run listing instead of the task-oriented view.
 | `--limit, -n NUM` | Limit the number of results returned. |
 | `--runs` | Show flat run listing instead of task-oriented view. |
 
-Default output columns: task ID, status, attempt count, latest attempt ID, title.
+Default output columns: task ID, status, attempt count, latest attempt ID, title. A
+task awaiting a help-channel reply after parking shows `[awaiting reply: <title>
+(<channel>/<name>)]` appended to its status.
 With `--runs`: workflow ID, workflow, state, type, task ID, title, error. A run with
-an open help thread shows `[pending question: <channel>/<name>]` appended to its state.
+an open help thread shows `[pending question: <channel>/<name>]` appended to its state;
+a parked run shows `[awaiting reply: <title> (<channel>/<name>)]`.
 
 ### `cloche logs`
 
@@ -1298,7 +1301,7 @@ clo set <key> <value>      Set a key
 clo set <key> -            Read value from stdin (trailing newlines trimmed)
 clo set <key> -f <file>    Set a key from file contents
 clo keys                   List all keys in the current run namespace
-clo ask [--thread <id>] [--option A --option B ...] [--key <ask-key>] "question"
+clo ask [--thread <id>] [--option A --option B ...] [--key <ask-key>] [--no-park] "question"
                            Ask the user a question and block for the reply
 clo -v / --version / version   Print version
 ```
@@ -1313,8 +1316,12 @@ steps even though they run under a different run ID.
 `clo ask` opens (or continues, with `--thread`) a help thread and blocks until the
 user replies from `cloche threads reply` or a configured integration (see
 `cloche threads` and the `[help]` config section below). `--option` may be repeated
-to suggest answers; `--key` sets an idempotency key for replay. Exits `3` if the run
-is parked awaiting the reply instead of returning an answer directly.
+to suggest answers; `--key` sets an idempotency key for replay. If no reply arrives
+within `park_after`, the run is parked (container committed and stopped) and `clo ask`
+exits `3` instead of returning an answer directly; replaying the same call after resume
+returns the answer instantly. `--no-park` disables parking for this ask — it blocks in
+place until replied or the step's own timeout fires instead, for steps that cannot
+replay safely on resume.
 
 ### `cloche tasks`
 
@@ -1491,6 +1498,13 @@ cloche threads reply <channel>/<name> "message"
 by the full message transcript. `threads reply` appends a user reply, which
 unblocks the agent's waiting `AskHelp` call.
 
+If no reply arrives within `park_after` (default 5m), the run is parked: its
+container is committed and stopped so it doesn't burn resources indefinitely.
+Replying to a parked thread automatically resumes the run — a prompt-adapter
+agent continues its session with the answer; a generic step replays from the
+start and gets the answer instantly at the same ask site (see `cloche status`
+for a run's parked state).
+
 ### `cloche debug`
 
 Inspect the running daemon via its debug HTTP server. The debug server must be enabled first.
@@ -1648,7 +1662,7 @@ Controls the help channel (`clo ask` / `ask_user` MCP tool / `cloche threads`).
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `park_after` | `"5m"` | Duration string. How long an `AskHelp` call blocks in place before parking the run. Parking itself is not yet implemented (phase 1): calls simply keep blocking. |
+| `park_after` | `"5m"` | Duration string. How long an `AskHelp` call blocks in place before parking the run: the container is committed and stopped, and the run's state becomes `parked` until a reply resumes it. Overridable per ask with `--no-park` (`clo ask`) / `no_park` (`ask_user`), which disables parking and blocks in place instead. |
 | `retention` | `"720h"` | Duration string. How long archived threads (from completed tasks) are kept before the daemon's daily sweep deletes them. |
 
 Questions always flow via `cloche threads`, which needs no configuration. To

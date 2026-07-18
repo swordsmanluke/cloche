@@ -24,6 +24,11 @@ const (
 	KindHelpAsked EventKind = "help_asked"
 	// KindHelpAnswered is written when a user reply unblocks a pending ask.
 	KindHelpAnswered EventKind = "help_answered"
+	// KindHelpParked is written when an ask goes unanswered past park_after
+	// and the run is parked.
+	KindHelpParked EventKind = "help_parked"
+	// KindHelpResumed is written when a reply to a parked thread resumes the run.
+	KindHelpResumed EventKind = "help_resumed"
 )
 
 // Entry is one record in the activity log. Fields are omitted when empty.

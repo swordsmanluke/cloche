@@ -920,10 +920,10 @@ func TestListRunsSortRunningFirst(t *testing.T) {
 	listed, err := store.ListRuns(ctx, time.Time{})
 	require.NoError(t, err)
 	require.Len(t, listed, 4)
-	assert.Equal(t, "new-running", listed[0].ID)    // running, more recent
-	assert.Equal(t, "old-running", listed[1].ID)     // running, older
-	assert.Equal(t, "new-failed", listed[2].ID)      // non-running, most recent
-	assert.Equal(t, "mid-succeeded", listed[3].ID)   // non-running, older
+	assert.Equal(t, "new-running", listed[0].ID)   // running, more recent
+	assert.Equal(t, "old-running", listed[1].ID)   // running, older
+	assert.Equal(t, "new-failed", listed[2].ID)    // non-running, most recent
+	assert.Equal(t, "mid-succeeded", listed[3].ID) // non-running, older
 
 	// ListRunsByProject: same ordering
 	listed, err = store.ListRunsByProject(ctx, "/test/project", time.Time{})
@@ -1569,7 +1569,10 @@ func TestQueryUsage_FilterByAgent(t *testing.T) {
 	run.State = domain.RunStateSucceeded
 	require.NoError(t, store.CreateRun(ctx, run))
 
-	for _, tc := range []struct{ agent string; input int64 }{
+	for _, tc := range []struct {
+		agent string
+		input int64
+	}{
 		{"claude", 1000},
 		{"codex", 2000},
 	} {
@@ -1724,4 +1727,38 @@ func TestRunStore_ParentStepName_NullForLegacyRows(t *testing.T) {
 	got, err := store.GetRun(context.Background(), "legacy-run-1")
 	require.NoError(t, err)
 	assert.Equal(t, "", got.ParentStepName, "legacy row should yield empty ParentStepName")
+}
+
+// TestRunStore_ParkedStateSurvivesRestart verifies that a run parked by the
+// help-channel mechanism (state + thread info) is durable across a daemon
+// restart: reopening the same on-disk database yields the same parked run.
+func TestRunStore_ParkedStateSurvivesRestart(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "parked.db")
+
+	store, err := sqlite.NewStore(dbPath)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	run := domain.NewRun("run-1", "develop")
+	run.TaskID = "task-a"
+	run.AttemptID = "att-1"
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	run.State = domain.RunStateParked
+	run.ParkedThreadID = "thread-1"
+	run.ParkedTitle = "Which schema should I use?"
+	require.NoError(t, store.UpdateRun(ctx, run))
+	require.NoError(t, store.Close())
+
+	// Simulate a daemon restart: reopen the same database file.
+	restarted, err := sqlite.NewStore(dbPath)
+	require.NoError(t, err)
+	defer restarted.Close()
+
+	got, err := restarted.GetRun(ctx, "run-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateParked, got.State)
+	assert.Equal(t, "thread-1", got.ParkedThreadID)
+	assert.Equal(t, "Which schema should I use?", got.ParkedTitle)
 }

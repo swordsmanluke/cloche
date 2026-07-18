@@ -9,6 +9,7 @@ const (
 	TaskStatusPending   TaskStatus = "pending"
 	TaskStatusRunning   TaskStatus = "running"
 	TaskStatusWaiting   TaskStatus = "waiting" // blocked at a human step
+	TaskStatusParked    TaskStatus = "parked"  // parked awaiting a help-channel reply
 	TaskStatusSucceeded TaskStatus = "succeeded"
 	TaskStatusFailed    TaskStatus = "failed"
 	TaskStatusCancelled TaskStatus = "cancelled"

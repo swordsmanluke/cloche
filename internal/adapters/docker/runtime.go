@@ -489,6 +489,20 @@ func (r *Runtime) CommitContainer(ctx context.Context, containerID, attemptID st
 	return tag, nil
 }
 
+// CommitContainerAs creates a Docker image from the given container tagged
+// exactly as given (no derived naming), used by the help-channel park
+// mechanism ("cloche-park-<run-id>").
+func (r *Runtime) CommitContainerAs(ctx context.Context, containerID, tag string) (string, error) {
+	cmd := exec.CommandContext(ctx, "docker", "commit", containerID, tag)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("committing container: %s: %w", stderr.String(), err)
+	}
+	return tag, nil
+}
+
 // RemoveImage removes a Docker image by tag.
 func (r *Runtime) RemoveImage(ctx context.Context, imageTag string) error {
 	cmd := exec.CommandContext(ctx, "docker", "rmi", imageTag)

@@ -161,4 +161,10 @@ type HelpStore interface {
 	// GetExternalID is the reverse lookup of ResolveExternal: given an internal
 	// thread ID, returns the external id bound for that channel, or "" if unbound.
 	GetExternalID(ctx context.Context, threadID, channelName string) (externalID string, err error)
+	// FindAskAnswer looks up an ask on this run identified by askKey (see
+	// HelpMessage.AskKey) that has since received a user reply, and returns
+	// that reply. Used for idempotent replay: a step re-running from scratch
+	// after a park+resume re-issues the same ask and gets the answer instantly
+	// instead of re-blocking or re-posting to channels.
+	FindAskAnswer(ctx context.Context, runID, askKey string) (answer, threadID string, found bool, err error)
 }

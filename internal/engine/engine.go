@@ -52,9 +52,9 @@ type StatusHandler interface {
 
 type noopStatus struct{}
 
-func (noopStatus) OnStepStart(*domain.Run, *domain.Step)                               {}
+func (noopStatus) OnStepStart(*domain.Run, *domain.Step)                                {}
 func (noopStatus) OnStepComplete(*domain.Run, *domain.Step, string, *domain.TokenUsage) {}
-func (noopStatus) OnStepSkipped(*domain.Run, *domain.Step, string)                     {}
+func (noopStatus) OnStepSkipped(*domain.Run, *domain.Step, string)                      {}
 func (noopStatus) OnRunComplete(*domain.Run)                                            {}
 
 type Engine struct {
@@ -308,6 +308,22 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 						e.status.OnRunComplete(run)
 						return run, fmt.Errorf("step %q execution failed: %w", sr.stepName, sr.err)
 					}
+				}
+
+				// Parked: a help-channel ask on this step went unanswered past
+				// park_after. This is a reserved, unwireable result (like
+				// done/abort) — the run suspends rather than completing or
+				// failing. The run's persisted parked-thread details are
+				// written directly by whatever triggered the park (outside the
+				// engine); here we only need to stop dispatching and surface
+				// the suspension via run.State so callers (e.g.
+				// executeWorkflowStep, host.Runner) can propagate it instead of
+				// treating the run as failed.
+				if sr.result == domain.StepParked {
+					run.RecordStepComplete(sr.stepName, sr.result)
+					e.status.OnStepComplete(run, step, sr.result, sr.usage)
+					run.State = domain.RunStateParked
+					return run, nil
 				}
 
 				// Validate result is declared in the step's Results list.

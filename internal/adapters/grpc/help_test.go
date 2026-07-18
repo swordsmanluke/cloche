@@ -190,3 +190,62 @@ func TestServer_AskHelpForRun_Disabled(t *testing.T) {
 	_, _, _, err = srv.AskHelpForRun(context.Background(), "run-1", "q?", "", "", nil, "")
 	assert.Error(t, err)
 }
+
+func TestServer_ParkRunForHelp_MarksRunParkedAndSurfacesStatus(t *testing.T) {
+	srv, store, _ := newHelpTestServer(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/tmp/my-project"
+	run.TaskID = "task-a"
+	run.AttemptID = "att-1"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	now := time.Now()
+	thread := &domain.HelpThread{
+		ID: "thread-1", Channel: "my-project", Name: "schema-choice-1",
+		TaskID: "task-a", AttemptID: "att-1", RunID: "run-1", Title: "Which schema?",
+		State: domain.ThreadStateAwaitingUser, CreatedAt: now, UpdatedAt: now,
+	}
+	require.NoError(t, store.CreateThread(ctx, thread))
+
+	// ParkRunForHelp is the help.ParkFunc callback invoked by the router when
+	// park_after expires. No container pool is configured in this test, so
+	// the container-teardown half is a no-op (best-effort, logged) — this
+	// exercises the run-state persistence half.
+	srv.ParkRunForHelp(ctx, "run-1", "thread-1", "Which schema?")
+
+	got, err := store.GetRun(ctx, "run-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateParked, got.State)
+	assert.Equal(t, "thread-1", got.ParkedThreadID)
+	assert.Equal(t, "Which schema?", got.ParkedTitle)
+
+	statusResp, err := srv.GetStatus(ctx, &pb.GetStatusRequest{RunId: "run-1"})
+	require.NoError(t, err)
+	assert.Equal(t, "parked", statusResp.State)
+	assert.Equal(t, "Which schema?", statusResp.ParkedTitle)
+	assert.Equal(t, "my-project/schema-choice-1", statusResp.ParkedThreadAddress)
+
+	runsResp, err := srv.ListRuns(ctx, &pb.ListRunsRequest{All: true})
+	require.NoError(t, err)
+	require.Len(t, runsResp.Runs, 1)
+	assert.Equal(t, "my-project/schema-choice-1", runsResp.Runs[0].ParkedThreadAddress)
+	assert.Equal(t, "Which schema?", runsResp.Runs[0].ParkedTitle)
+
+	// ListTasks upgrades a "running" task's status to "parked" when one of
+	// its runs is parked, mirroring the existing waiting-step upgrade.
+	srv.SetTaskStore(store)
+	task := &domain.Task{ID: "task-a", Title: "My task", ProjectDir: "/tmp/my-project", CreatedAt: now}
+	require.NoError(t, store.SaveTask(ctx, task))
+	attempt := domain.NewAttempt("task-a")
+	attempt.ID = "att-1"
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	tasksResp, err := srv.ListTasks(ctx, &pb.ListTasksRequest{All: true})
+	require.NoError(t, err)
+	require.Len(t, tasksResp.Tasks, 1)
+	assert.Equal(t, "parked", tasksResp.Tasks[0].Status)
+	assert.Equal(t, "my-project/schema-choice-1", tasksResp.Tasks[0].ParkedThreadAddress)
+	assert.Equal(t, "Which schema?", tasksResp.Tasks[0].ParkedTitle)
+}

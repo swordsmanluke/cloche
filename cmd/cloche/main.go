@@ -445,6 +445,9 @@ func cmdStatusTaskLatest(ctx context.Context, client pb.ClocheServiceClient, tas
 			if statusResp.PendingHelpAddress != "" {
 				fmt.Printf("Pending question: %s (%s)\n", statusResp.PendingHelpTitle, statusResp.PendingHelpAddress)
 			}
+			if statusResp.ParkedThreadAddress != "" {
+				fmt.Printf("parked — awaiting reply: %s (%s)\n", statusResp.ParkedTitle, statusResp.ParkedThreadAddress)
+			}
 		}
 	}
 
@@ -706,6 +709,9 @@ func printActiveTasks(ctx context.Context, client pb.ClocheServiceClient, w io.W
 				fmt.Fprintf(w, "    Waiting: %s\n", task.WaitingStep)
 			}
 		}
+		if task.ParkedThreadAddress != "" {
+			fmt.Fprintf(w, "    Parked — awaiting reply: %s (%s)\n", task.ParkedTitle, task.ParkedThreadAddress)
+		}
 		attemptID := task.LatestAttemptId
 		if attemptID != "" {
 			fmt.Fprintf(w, "    Attempt %d: %s\n", task.AttemptCount, colorID(attemptID))
@@ -721,6 +727,11 @@ func printActiveTasks(ctx context.Context, client pb.ClocheServiceClient, w io.W
 						} else {
 							runStatus = fmt.Sprintf(" [waiting: %s]", run.WaitingStep)
 						}
+					}
+				} else if run.State == "parked" {
+					runStatus = " [parked]"
+					if run.ParkedThreadAddress != "" {
+						runStatus = fmt.Sprintf(" [parked — awaiting reply: %s (%s)]", run.ParkedTitle, run.ParkedThreadAddress)
 					}
 				}
 				compositeID := fmt.Sprintf("%s:%s:%s", task.TaskId, attemptID, run.WorkflowName)
@@ -875,6 +886,9 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 				status = fmt.Sprintf("%s [%s (%d polls)]", task.Status, task.WaitingStep, task.PollCount)
 			}
 		}
+		if task.ParkedThreadAddress != "" {
+			status = fmt.Sprintf("%s [awaiting reply: %s (%s)]", task.Status, task.ParkedTitle, task.ParkedThreadAddress)
+		}
 		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n",
 			task.TaskId, status, task.AttemptCount, latestAttempt, title)
 	}
@@ -933,6 +947,9 @@ func cmdListRuns(ctx context.Context, client pb.ClocheServiceClient, all bool, p
 		}
 		if run.PendingHelpAddress != "" {
 			state = fmt.Sprintf("%s [pending question: %s]", state, run.PendingHelpAddress)
+		}
+		if run.ParkedThreadAddress != "" {
+			state = fmt.Sprintf("%s [awaiting reply: %s (%s)]", state, run.ParkedTitle, run.ParkedThreadAddress)
 		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			run.RunId, run.WorkflowName, state, runType,

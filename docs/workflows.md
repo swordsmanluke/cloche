@@ -120,6 +120,13 @@ workflow-level shorthand wire:
 token-limit -> handle-limit
 ```
 
+`parked` is a reserved result name, like `done`/`abort`: steps cannot declare or wire
+it. It is produced by the help-channel park mechanism when a step's `clo ask` /
+`ask_user` call goes unanswered past `park_after` — the run suspends (state `parked`)
+instead of completing or failing, and resumes from that step when the pending help
+thread receives a reply. See
+[`docs/plans/2026-07-17-help-channel-design.md`](plans/2026-07-17-help-channel-design.md).
+
 A step with more than one of `prompt`, `run`, `workflow_name`, or `poll`, or none of them,
 is a parse error.
 

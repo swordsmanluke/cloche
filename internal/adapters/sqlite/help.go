@@ -334,3 +334,26 @@ func (s *Store) GetExternalID(ctx context.Context, threadID, channelName string)
 	}
 	return externalID, err
 }
+
+// FindAskAnswer looks up an agent ask on this run identified by askKey that
+// has since received a user reply in the same thread, and returns the
+// earliest such reply. Used for idempotent replay of generic steps.
+func (s *Store) FindAskAnswer(ctx context.Context, runID, askKey string) (answer, threadID string, found bool, err error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT m2.body, t.id
+		FROM help_threads t
+		JOIN help_messages m1 ON m1.thread_id = t.id AND m1.author = 'agent' AND m1.ask_key = ?
+		JOIN help_messages m2 ON m2.thread_id = t.id AND m2.author = 'user' AND m2.created_at > m1.created_at
+		WHERE t.run_id = ?
+		ORDER BY m2.created_at ASC, m2.id ASC
+		LIMIT 1`,
+		askKey, runID)
+	err = row.Scan(&answer, &threadID)
+	if err == sql.ErrNoRows {
+		return "", "", false, nil
+	}
+	if err != nil {
+		return "", "", false, err
+	}
+	return answer, threadID, true, nil
+}

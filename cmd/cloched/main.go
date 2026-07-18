@@ -116,6 +116,7 @@ func main() {
 	retention := parseDurationOr(globalCfg.Help.Retention, help.DefaultRetention)
 	helpChannels := initHelpChannels(globalCfg, store)
 	helpRouter := help.NewRouter(store, parkAfter, helpChannels...)
+	helpRouter.SetParkFunc(srv.ParkRunForHelp)
 	srv.SetHelpRouter(helpRouter)
 
 	// Run each configured HelpChannel's Socket/event loop for the daemon's

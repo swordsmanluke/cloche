@@ -65,6 +65,15 @@ type DaemonExecutor struct {
 	// so the in-container agent continues an existing LLM conversation.
 	resumeMode bool
 
+	// parkedContainerID, when non-empty, identifies the workflow container id
+	// (domain.Workflow.ContainerID()) that was parked and should be resumed
+	// from parkedImage instead of started fresh. Set only when this executor
+	// was constructed to resume a parked run.
+	parkedContainerID string
+	// parkedImage is the committed image tag to start the parked container
+	// id's session from (see parkedContainerID).
+	parkedImage string
+
 	// onContainerStart is called after a container is started with (containerID).
 	// The server uses this to register the container → run mapping so the
 	// AgentSession handler can route StepLog messages to the right run.
@@ -126,25 +135,33 @@ type DaemonExecutorConfig struct {
 	ResumeMode bool
 	// OnContainerStart is called after a container starts with (containerID).
 	OnContainerStart func(containerID string)
+	// ParkedContainerID/ParkedImage configure this executor to resume a
+	// parked run: the container workflow whose ContainerID() matches
+	// ParkedContainerID starts from ParkedImage instead of a fresh container.
+	// Leave both empty for normal (non-resume) execution.
+	ParkedContainerID string
+	ParkedImage       string
 }
 
 // NewDaemonExecutor creates a DaemonExecutor from the given config.
 func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 	return &DaemonExecutor{
-		hostExec:         cfg.HostExec,
-		pool:             cfg.Pool,
-		store:            cfg.Store,
-		logStore:         cfg.LogStore,
-		logBroadcast:     cfg.LogBroadcast,
-		projectDir:       cfg.ProjectDir,
-		taskID:           cfg.TaskID,
-		attemptID:        cfg.AttemptID,
-		image:            cfg.Image,
-		allWFs:           cfg.AllWFs,
-		containerSeedSHA: cfg.ContainerSeedSHA,
-		resumeMode:       cfg.ResumeMode,
-		onContainerStart: cfg.OnContainerStart,
-		worktrees:        make(map[string][]repoWorktree),
+		hostExec:          cfg.HostExec,
+		pool:              cfg.Pool,
+		store:             cfg.Store,
+		logStore:          cfg.LogStore,
+		logBroadcast:      cfg.LogBroadcast,
+		projectDir:        cfg.ProjectDir,
+		taskID:            cfg.TaskID,
+		attemptID:         cfg.AttemptID,
+		image:             cfg.Image,
+		allWFs:            cfg.AllWFs,
+		containerSeedSHA:  cfg.ContainerSeedSHA,
+		resumeMode:        cfg.ResumeMode,
+		onContainerStart:  cfg.OnContainerStart,
+		worktrees:         make(map[string][]repoWorktree),
+		parkedContainerID: cfg.ParkedContainerID,
+		parkedImage:       cfg.ParkedImage,
 	}
 }
 
@@ -338,6 +355,22 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 			outputDir:    filepath.Join(d.projectDir, ".cloche", "logs", d.taskID, d.attemptID),
 		})
 	}
+
+	// Resuming a parked run: this sub-workflow is the one whose container was
+	// parked. Preload results for its inner steps that completed before the
+	// parked one (recorded on the host run — the AgentSession handler records
+	// every inner step against the host run ID regardless of nesting level),
+	// so the engine fast-forwards to the parked step and re-dispatches only
+	// that one (resume=true is set executor-wide, see resumeMode).
+	if d.parkedImage != "" && d.parkedContainerID == targetWF.ContainerID() && d.store != nil && d.hostExec != nil && d.hostExec.HostRunID != "" {
+		if hostRun, err := d.store.GetRun(ctx, d.hostExec.HostRunID); err == nil {
+			innerStep, _, _ := d.store.GetContextKey(ctx, d.taskID, d.attemptID, d.hostExec.HostRunID, "_help.park_inner_step")
+			if innerStep != "" {
+				eng.SetPreloadedResults(host.BuildPreloadedResults(hostRun, targetWF, innerStep))
+			}
+		}
+	}
+
 	run, err := eng.Run(ctx, targetWF)
 	if err != nil {
 		log.Printf("daemon executor: sub-workflow %q failed: %v", targetName, err)
@@ -357,6 +390,16 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 			}
 		}
 		return domain.StepResult{Result: "fail"}, nil
+	}
+
+	if run.State == domain.RunStateParked {
+		// Propagate the suspension up to whatever engine is driving this
+		// step (the top-level engine for a host workflow, or another nested
+		// one). The container was already committed/stopped/cleaned up by
+		// executeContainerStep's handling of the parked StepResult, so
+		// succeeded stays false and the deferred cleanup above is a no-op
+		// (CleanupAttempt already removed the pool bookkeeping for poolKey).
+		return domain.StepResult{Result: domain.StepParked}, nil
 	}
 
 	succeeded = run.State == domain.RunStateSucceeded
@@ -608,16 +651,71 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 		}
 	}
 
-	session, err := d.pool.SessionFor(ctx, poolKey, cfg)
-	if err != nil {
-		return domain.StepResult{}, fmt.Errorf("daemon executor: getting container session for step %q: %w", step.Name, err)
+	var session *docker.ContainerSession
+	var err error
+	if d.parkedImage != "" && d.parkedContainerID == wf.ContainerID() {
+		session, err = d.pool.StartFromImage(ctx, poolKey, d.parkedImage, cfg)
+		if err != nil {
+			return domain.StepResult{}, fmt.Errorf("daemon executor: starting parked container for step %q: %w", step.Name, err)
+		}
+	} else {
+		session, err = d.pool.SessionFor(ctx, poolKey, cfg)
+		if err != nil {
+			return domain.StepResult{}, fmt.Errorf("daemon executor: getting container session for step %q: %w", step.Name, err)
+		}
 	}
 
 	if d.onContainerStart != nil {
 		d.onContainerStart(session.ContainerID)
 	}
 
-	return session.ExecuteStep(ctx, step, d.resumeMode)
+	result, err := session.ExecuteStep(ctx, step, d.resumeMode)
+	if err != nil {
+		return result, err
+	}
+	if result.Result == domain.StepParked {
+		d.handleStepParked(ctx, session.ContainerID, poolKey, step.Name)
+	}
+	return result, nil
+}
+
+// handleStepParked commits the parked container to an image tagged
+// cloche-park-<run-id>, stops and removes the (now-committed) container, and
+// records enough KV bookkeeping for a later resume to restart the exact
+// container workflow the parked step belongs to. Best-effort: errors are
+// logged, not returned — the step result is already "parked" and propagates
+// to the engine regardless of whether teardown succeeds.
+func (d *DaemonExecutor) handleStepParked(ctx context.Context, containerID, poolKey, stepName string) {
+	var hostRunID string
+	if d.hostExec != nil {
+		hostRunID = d.hostExec.HostRunID
+	}
+	if hostRunID == "" {
+		log.Printf("daemon executor: parked container %s has no host run id; cannot record resume bookkeeping", containerID)
+		return
+	}
+
+	tag := "cloche-park-" + hostRunID
+	if _, err := d.pool.CommitContainerAs(ctx, containerID, tag); err != nil {
+		log.Printf("daemon executor: failed to commit parked container %s: %v", containerID, err)
+	} else {
+		log.Printf("daemon executor: committed parked container %s to image %s", containerID, tag)
+	}
+
+	// Stop + remove the container now that its filesystem state is preserved
+	// in the image. succeeded=true here means "safe to remove", not "workflow
+	// succeeded" — CleanupAttempt also drops the pool's bookkeeping for
+	// poolKey so a later resume starts a fresh session from the image.
+	if err := d.pool.CleanupAttempt(ctx, poolKey, false, true); err != nil {
+		log.Printf("daemon executor: failed to clean up parked container %s: %v", containerID, err)
+	}
+
+	if d.store != nil && d.taskID != "" {
+		_, containerWFID, _ := strings.Cut(poolKey, ":")
+		_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, hostRunID, "_help.park_image", tag)
+		_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, hostRunID, "_help.park_container_id", containerWFID)
+		_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, hostRunID, "_help.park_inner_step", stepName)
+	}
 }
 
 // extractContainerLogs copies output log files from the container to the host
