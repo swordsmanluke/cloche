@@ -202,6 +202,7 @@ func migrate(db *sql.DB) error {
 		return errAct
 	}
 	db.Exec(`CREATE INDEX IF NOT EXISTS activity_log_project_ts ON activity_log (project_dir, ts)`)
+	db.Exec(`ALTER TABLE activity_log ADD COLUMN message TEXT NOT NULL DEFAULT ''`) // ignore "duplicate column" errors
 
 	// v6: Human step poll tracking — persists last_poll_at so the daemon can
 	// surface "waiting" status and survive restarts mid-poll.
@@ -230,6 +231,55 @@ func migrate(db *sql.DB) error {
 		return errRepo
 	}
 	db.Exec(`CREATE INDEX IF NOT EXISTS repositories_project_dir ON repositories(project_dir)`)
+
+	// v8: Help channel tables — HelpThread/HelpMessage persistence (see
+	// internal/domain/help.go), plus external channel bindings (Slack thread_ts, etc).
+	_, errHelpThreads := db.Exec(`CREATE TABLE IF NOT EXISTS help_threads (
+		id          TEXT PRIMARY KEY,
+		channel     TEXT NOT NULL,
+		name        TEXT NOT NULL,
+		task_id     TEXT NOT NULL DEFAULT '',
+		attempt_id  TEXT NOT NULL DEFAULT '',
+		run_id      TEXT NOT NULL DEFAULT '',
+		step_name   TEXT NOT NULL DEFAULT '',
+		title       TEXT NOT NULL DEFAULT '',
+		state       TEXT NOT NULL,
+		created_at  TEXT NOT NULL,
+		updated_at  TEXT NOT NULL,
+		archived_at TEXT,
+		UNIQUE(channel, name)
+	)`)
+	if errHelpThreads != nil {
+		return errHelpThreads
+	}
+	db.Exec(`CREATE INDEX IF NOT EXISTS help_threads_task ON help_threads(task_id)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS help_threads_run ON help_threads(run_id)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS help_threads_state ON help_threads(state)`)
+
+	_, errHelpMessages := db.Exec(`CREATE TABLE IF NOT EXISTS help_messages (
+		id         TEXT PRIMARY KEY,
+		thread_id  TEXT NOT NULL,
+		author     TEXT NOT NULL,
+		body       TEXT NOT NULL,
+		options    TEXT NOT NULL DEFAULT '',
+		ask_key    TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL
+	)`)
+	if errHelpMessages != nil {
+		return errHelpMessages
+	}
+	db.Exec(`CREATE INDEX IF NOT EXISTS help_messages_thread ON help_messages(thread_id)`)
+
+	_, errHelpBindings := db.Exec(`CREATE TABLE IF NOT EXISTS help_bindings (
+		thread_id    TEXT NOT NULL,
+		channel_name TEXT NOT NULL,
+		external_id  TEXT NOT NULL,
+		PRIMARY KEY (channel_name, external_id)
+	)`)
+	if errHelpBindings != nil {
+		return errHelpBindings
+	}
+	db.Exec(`CREATE INDEX IF NOT EXISTS help_bindings_thread ON help_bindings(thread_id)`)
 
 	return nil
 }
@@ -651,7 +701,6 @@ func (s *Store) ListRunsSince(ctx context.Context, projectDir, workflowName, sin
 	return scanRuns(rows)
 }
 
-
 func (s *Store) SaveTask(ctx context.Context, task *domain.Task) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT OR REPLACE INTO tasks (id, title, source, project_dir, created_at)
@@ -1038,7 +1087,7 @@ func (s *Store) ListContextKeys(ctx context.Context, taskID, attemptID, runID st
 }
 
 // migrateContextKVRunID adds run_id to the context_kv primary key by
-// recreating the table. Existing rows get run_id=''. Idempotent.
+// recreating the table. Existing rows get run_id=”. Idempotent.
 func migrateContextKVRunID(db *sql.DB) error {
 	// Check if run_id column already exists.
 	rows, err := db.Query(`PRAGMA table_info(context_kv)`)
@@ -1140,10 +1189,10 @@ func (s *Store) ListRepositories(ctx context.Context, projectDir string) ([]*dom
 // AppendActivityEntry inserts one activity log entry for the given project.
 func (s *Store) AppendActivityEntry(ctx context.Context, projectDir string, entry activitylog.Entry) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO activity_log (ts, kind, project_dir, task_id, attempt_id, workflow, step, result, state)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO activity_log (ts, kind, project_dir, task_id, attempt_id, workflow, step, result, state, message)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		formatTime(entry.Timestamp), string(entry.Kind), projectDir,
-		entry.TaskID, entry.AttemptID, entry.WorkflowName, entry.StepName, entry.Result, entry.State,
+		entry.TaskID, entry.AttemptID, entry.WorkflowName, entry.StepName, entry.Result, entry.State, entry.Message,
 	)
 	return err
 }
@@ -1151,7 +1200,7 @@ func (s *Store) AppendActivityEntry(ctx context.Context, projectDir string, entr
 // ReadActivityEntries returns activity log entries for projectDir, optionally
 // filtered by the time range in opts. Results are ordered by timestamp ascending.
 func (s *Store) ReadActivityEntries(ctx context.Context, projectDir string, opts activitylog.ReadOptions) ([]activitylog.Entry, error) {
-	query := `SELECT ts, kind, task_id, attempt_id, workflow, step, result, state
+	query := `SELECT ts, kind, task_id, attempt_id, workflow, step, result, state, COALESCE(message, '')
 	          FROM activity_log WHERE project_dir = ?`
 	args := []interface{}{projectDir}
 	if !opts.Since.IsZero() {
@@ -1174,7 +1223,7 @@ func (s *Store) ReadActivityEntries(ctx context.Context, projectDir string, opts
 	for rows.Next() {
 		var e activitylog.Entry
 		var ts, kind string
-		if err := rows.Scan(&ts, &kind, &e.TaskID, &e.AttemptID, &e.WorkflowName, &e.StepName, &e.Result, &e.State); err != nil {
+		if err := rows.Scan(&ts, &kind, &e.TaskID, &e.AttemptID, &e.WorkflowName, &e.StepName, &e.Result, &e.State, &e.Message); err != nil {
 			return nil, err
 		}
 		e.Timestamp = parseTime(ts)

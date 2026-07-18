@@ -65,6 +65,22 @@ service ClocheService {
   // agent. The agent connects after container startup; the daemon sends step
   // execution commands; the agent sends back status events and results.
   rpc AgentSession(stream AgentMessage) returns (stream DaemonMessage);
+
+  // AskHelp opens (or continues) a help thread and blocks until a user reply
+  // arrives, up to the configured park_after grace period. Phase 1: long
+  // waits simply keep blocking (no parking yet). A second AskHelp for a run
+  // that already has an open ask is rejected.
+  rpc AskHelp(AskHelpRequest) returns (AskHelpResponse);
+
+  // ListThreads returns help threads, optionally filtered by channel and
+  // including archived/closed threads.
+  rpc ListThreads(ListThreadsRequest) returns (ListThreadsResponse);
+
+  // GetThread returns a single thread and its full transcript.
+  rpc GetThread(GetThreadRequest) returns (GetThreadResponse);
+
+  // ReplyThread appends a user reply to a thread, unblocking the waiting AskHelp call.
+  rpc ReplyThread(ReplyThreadRequest) returns (ReplyThreadResponse);
 }
 
 message RunWorkflowRequest {
@@ -108,6 +124,9 @@ message GetStatusResponse {
   string last_poll_at = 13;
   // Populated when state == "waiting": number of times the poll script has been invoked.
   int32 poll_count = 14;
+  // Populated when the run has an open help thread awaiting a user reply.
+  string pending_help_address = 15; // "<channel>/<name>"
+  string pending_help_title = 16;
 }
 
 message StepExecutionStatus {
@@ -208,6 +227,9 @@ message RunSummary {
   string last_poll_at = 12;
   // Populated when state == "waiting": number of times the poll script has been invoked.
   int32 poll_count = 13;
+  // Populated when the run has an open help thread awaiting a user reply.
+  string pending_help_address = 14; // "<channel>/<name>"
+  string pending_help_title = 15;
 }
 
 message EnableLoopRequest {
@@ -535,3 +557,71 @@ message TokenUsage {
   int64 input_tokens  = 1;
   int64 output_tokens = 2;
 }
+
+// AskHelpRequest opens or continues a help thread from an agent step.
+message AskHelpRequest {
+  string task_id    = 1;
+  string attempt_id = 2;
+  string run_id     = 3;
+  string step_name  = 4;
+  string question   = 5;
+  string title      = 6; // optional; defaults to first line of question
+  string thread_id  = 7; // optional; continue an existing thread
+  repeated string options = 8; // optional suggested answers
+  string ask_key    = 9; // optional idempotency key; see replay (phase 2)
+}
+
+message AskHelpResponse {
+  string answer    = 1;
+  string thread_id = 2;
+  // Always false in this phase; reserved for phase 2 parking.
+  bool   parked    = 3;
+}
+
+message ListThreadsRequest {
+  bool   all     = 1; // include archived/closed threads
+  string channel = 2; // empty = all channels
+}
+
+message HelpThreadSummary {
+  string id         = 1;
+  string channel    = 2;
+  string name       = 3;
+  string task_id    = 4;
+  string attempt_id = 5;
+  string run_id     = 6;
+  string step_name  = 7;
+  string title      = 8;
+  string state      = 9;
+  string created_at = 10;
+  string updated_at = 11;
+}
+
+message ListThreadsResponse {
+  repeated HelpThreadSummary threads = 1;
+}
+
+// GetThreadRequest accepts a "<channel>/<name>" address, a bare thread ID,
+// or (when unambiguous) a bare name.
+message GetThreadRequest {
+  string address = 1;
+}
+
+message HelpMessageEntry {
+  string author     = 1; // "agent" | "user"
+  string body       = 2;
+  repeated string options = 3;
+  string created_at = 4;
+}
+
+message GetThreadResponse {
+  HelpThreadSummary thread = 1;
+  repeated HelpMessageEntry messages = 2;
+}
+
+message ReplyThreadRequest {
+  string address = 1; // "<channel>/<name>", bare name, or raw thread ID
+  string body    = 2;
+}
+
+message ReplyThreadResponse {}

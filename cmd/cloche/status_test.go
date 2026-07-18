@@ -23,6 +23,7 @@ type statusMockClient struct {
 	taskResp        *pb.GetTaskResponse
 	taskErr         error
 	usageResp       *pb.GetUsageResponse
+	statusResp      *pb.GetStatusResponse
 }
 
 func (m *statusMockClient) GetVersion(_ context.Context, _ *pb.GetVersionRequest, _ ...grpc.CallOption) (*pb.GetVersionResponse, error) {
@@ -62,6 +63,13 @@ func (m *statusMockClient) GetUsage(_ context.Context, _ *pb.GetUsageRequest, _ 
 		return m.usageResp, nil
 	}
 	return &pb.GetUsageResponse{}, nil
+}
+
+func (m *statusMockClient) GetStatus(_ context.Context, _ *pb.GetStatusRequest, _ ...grpc.CallOption) (*pb.GetStatusResponse, error) {
+	if m.statusResp != nil {
+		return m.statusResp, nil
+	}
+	return &pb.GetStatusResponse{}, nil
 }
 
 func TestCmdStatusOverview_ProjectMode(t *testing.T) {
@@ -180,10 +188,9 @@ func TestCmdStatusOverview_LoopStopped(t *testing.T) {
 	}
 }
 
-
 func TestCmdStatusOverview_DaemonVersion(t *testing.T) {
 	client := &statusMockClient{
-		versionResp: &pb.GetVersionResponse{Version: "2.0.0"},
+		versionResp:  &pb.GetVersionResponse{Version: "2.0.0"},
 		listRunsResp: &pb.ListRunsResponse{},
 	}
 

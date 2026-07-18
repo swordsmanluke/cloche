@@ -713,6 +713,28 @@ Usage:
 Examples:
   cloche version
 `,
+
+	"threads": `cloche threads — List, show, and reply to agent help-request threads
+
+An agent step (via the ask_user MCP tool or "clo ask") can open a help
+thread mid-run and block for a reply. Threads are addressed by
+<channel>/<name>, where channel defaults to the project name.
+
+Usage:
+  cloche threads [list] [--all] [--channel <c>]
+  cloche threads show <channel>/<name>
+  cloche threads reply <channel>/<name> "message"
+
+Flags (list):
+  --all              Include archived/closed threads (default: open only)
+  --channel <c>       Restrict to one channel (project)
+
+Examples:
+  cloche threads
+  cloche threads list --all
+  cloche threads show cloche/schema-choice-1
+  cloche threads reply cloche/schema-choice-1 "Use schema B"
+`,
 }
 
 // printHelp prints the top-level help or subcommand-specific help.
@@ -791,6 +813,9 @@ Orchestration:
   tasks      Show task pipeline and assignment state
   loop       Start or stop the orchestration loop
   activity   Show project activity log (attempt/step timestamps and outcomes)
+
+Help Channel:
+  threads    List, show, and reply to agent help-request threads
 
 Context Store (for use inside workflow steps):
   get        Get a value from the run context store

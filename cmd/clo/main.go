@@ -9,6 +9,8 @@
 //	clo set <key> -            Read value from stdin
 //	clo set <key> -f <file>    Set a key from file contents
 //	clo keys                   List all keys in the current attempt namespace
+//	clo ask [--thread <id>] [--option A --option B ...] [--key <ask-key>] "question"
+//	                           Ask the user a question and block for the reply
 //	clo -v / clo --version     Print version
 package main
 
@@ -17,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
@@ -43,6 +46,8 @@ func main() {
 		cmdSet(os.Args[2:])
 	case "keys":
 		cmdKeys()
+	case "ask":
+		cmdAsk(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		printUsage()
@@ -57,7 +62,79 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  set <key> -            Read value from stdin\n")
 	fmt.Fprintf(os.Stderr, "  set <key> -f <file>    Set a key from file contents\n")
 	fmt.Fprintf(os.Stderr, "  keys                   List all keys\n")
+	fmt.Fprintf(os.Stderr, "  ask [--thread <id>] [--option A --option B ...] [--key <ask-key>] \"question\"\n")
+	fmt.Fprintf(os.Stderr, "                         Ask the user a question and block for the reply\n")
 	fmt.Fprintf(os.Stderr, "  -v / --version         Print version\n")
+}
+
+// askParkedExitCode is returned when the run was parked mid-ask (the step is
+// being torn down; on replay the same call returns the answer instantly).
+const askParkedExitCode = 3
+
+func cmdAsk(args []string) {
+	var threadID, askKey string
+	var options []string
+	var questionParts []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--thread":
+			i++
+			if i >= len(args) {
+				fmt.Fprintf(os.Stderr, "--thread requires a value\n")
+				os.Exit(1)
+			}
+			threadID = args[i]
+		case "--option":
+			i++
+			if i >= len(args) {
+				fmt.Fprintf(os.Stderr, "--option requires a value\n")
+				os.Exit(1)
+			}
+			options = append(options, args[i])
+		case "--key":
+			i++
+			if i >= len(args) {
+				fmt.Fprintf(os.Stderr, "--key requires a value\n")
+				os.Exit(1)
+			}
+			askKey = args[i]
+		default:
+			questionParts = append(questionParts, args[i])
+		}
+	}
+	question := strings.TrimSpace(strings.Join(questionParts, " "))
+	if question == "" {
+		fmt.Fprintf(os.Stderr, "usage: clo ask [--thread <id>] [--option A --option B ...] [--key <ask-key>] \"question\"\n")
+		os.Exit(1)
+	}
+
+	conn, taskID, attemptID, runID := dial()
+	defer conn.Close()
+
+	client := pb.NewClocheServiceClient(conn)
+	// AskHelp blocks until a reply arrives (up to the daemon's park_after grace
+	// period), so this needs a much longer timeout than the other clo commands.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	resp, err := client.AskHelp(ctx, &pb.AskHelpRequest{
+		TaskId:    taskID,
+		AttemptId: attemptID,
+		RunId:     runID,
+		Question:  question,
+		ThreadId:  threadID,
+		Options:   options,
+		AskKey:    askKey,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if resp.Parked {
+		fmt.Fprintf(os.Stderr, "run parked awaiting reply on thread %s; the answer will be delivered on resume\n", resp.ThreadId)
+		os.Exit(askParkedExitCode)
+	}
+	fmt.Println(resp.Answer)
 }
 
 func dial() (*grpc.ClientConn, string, string, string) {

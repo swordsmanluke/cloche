@@ -20,6 +20,10 @@ const (
 	KindStepStarted EventKind = "step_started"
 	// KindStepCompleted is written when a workflow step produces a result.
 	KindStepCompleted EventKind = "step_completed"
+	// KindHelpAsked is written when an agent step opens or continues a help thread.
+	KindHelpAsked EventKind = "help_asked"
+	// KindHelpAnswered is written when a user reply unblocks a pending ask.
+	KindHelpAnswered EventKind = "help_answered"
 )
 
 // Entry is one record in the activity log. Fields are omitted when empty.
@@ -34,6 +38,9 @@ type Entry struct {
 	Result string `json:"result,omitempty"`
 	// State is set for KindAttemptEnded entries (e.g. "succeeded", "failed").
 	State string `json:"state,omitempty"`
+	// Message carries free-form text for KindHelpAsked/KindHelpAnswered entries
+	// (the question or answer body, truncated for display).
+	Message string `json:"message,omitempty"`
 }
 
 // ReadOptions controls optional time-range filtering for activity log reads.

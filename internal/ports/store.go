@@ -74,7 +74,6 @@ type TaskStore interface {
 	ListTasks(ctx context.Context, projectDir string) ([]*domain.Task, error)
 }
 
-
 type AttemptLogEntry struct {
 	ID        int64
 	AttemptID string
@@ -125,4 +124,38 @@ type HumanPollStore interface {
 	GetHumanPoll(ctx context.Context, runID, stepName string) (*HumanPollRecord, error)
 	DeleteHumanPoll(ctx context.Context, runID, stepName string) error
 	ListHumanPolls(ctx context.Context, runID string) ([]*HumanPollRecord, error)
+}
+
+// HelpThreadFilter holds optional filters for listing help threads.
+type HelpThreadFilter struct {
+	Channel string // empty = all channels
+	All     bool   // include closed/archived threads; false = only awaiting_user/awaiting_agent
+}
+
+// HelpStore persists help threads and messages (see internal/domain/help.go).
+// Follows the HumanPollStore pattern.
+type HelpStore interface {
+	CreateThread(ctx context.Context, thread *domain.HelpThread) error
+	AppendMessage(ctx context.Context, msg *domain.HelpMessage) error
+	GetThread(ctx context.Context, threadID string) (*domain.HelpThread, []domain.HelpMessage, error)
+	// ResolveThread accepts a "<channel>/<name>" address, a bare thread ID, or
+	// (when unambiguous) a bare name, and returns the matching thread.
+	ResolveThread(ctx context.Context, address string) (*domain.HelpThread, error)
+	ListThreads(ctx context.Context, filter HelpThreadFilter) ([]*domain.HelpThread, error)
+	// ListOpenThreadsByRun returns threads awaiting a user reply for the given run.
+	// Under the "one open ask per run" rule this is 0 or 1 threads in practice.
+	ListOpenThreadsByRun(ctx context.Context, runID string) ([]*domain.HelpThread, error)
+	SetThreadState(ctx context.Context, threadID string, state domain.ThreadState) error
+	// CountThreadsWithNamePrefix returns how many threads in a channel already
+	// have a name starting with prefix, used to allocate the next name suffix.
+	CountThreadsWithNamePrefix(ctx context.Context, channel, prefix string) (int, error)
+	// ArchiveThreadsByTask moves all of a task's non-archived threads to the
+	// archived state. Called when the owning task completes successfully.
+	ArchiveThreadsByTask(ctx context.Context, taskID string) (int64, error)
+	// DeleteArchivedThreadsOlderThan deletes archived threads (and their
+	// messages/bindings) whose ArchivedAt is before cutoff.
+	DeleteArchivedThreadsOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
+	// Channel bindings: map external ids (e.g. Slack thread_ts) to thread ids.
+	BindExternal(ctx context.Context, threadID, channelName, externalID string) error
+	ResolveExternal(ctx context.Context, channelName, externalID string) (threadID string, err error)
 }

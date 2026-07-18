@@ -121,6 +121,8 @@ type Handler struct {
 	loopStatusFn  func(projectDir string) bool
 	stopLoopFn    func(ctx context.Context, projectDir string) error
 	stopRunFn     func(ctx context.Context, taskID string) error
+	mcpSecret     []byte      // enables /mcp when non-empty; see WithHelpMCP
+	askHelpFn     AskHelpFunc // handles ask_user tool calls on /mcp
 	pages         map[string]*template.Template
 	mux           *http.ServeMux
 }
@@ -204,6 +206,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /tasks/{taskID}", h.handleTaskDetail)
 	h.mux.HandleFunc("GET /failed-tasks", h.handleFailedTasksDashboard)
 	h.mux.HandleFunc("GET /api/failed-tasks", h.handleAPIFailedTasks)
+	h.mux.HandleFunc("POST /mcp", h.handleMCP)
 	h.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
 
 	return h, nil
@@ -452,11 +455,11 @@ func (h *Handler) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
-		"Title":    "Task " + taskID,
-		"TaskID":   taskID,
+		"Title":     "Task " + taskID,
+		"TaskID":    taskID,
 		"TaskTitle": taskTitle,
-		"Status":   status,
-		"Attempts": attempts,
+		"Status":    status,
+		"Attempts":  attempts,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.pages["task_detail"].ExecuteTemplate(w, "layout", data); err != nil {
@@ -1228,8 +1231,8 @@ func (h *Handler) handleAPIRunDetail(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	step := r.PathValue("step")
-	logType := r.URL.Query().Get("type")   // optional: "script", "llm"
-	format := r.URL.Query().Get("format")  // optional: "raw" to skip parsing
+	logType := r.URL.Query().Get("type")  // optional: "script", "llm"
+	format := r.URL.Query().Get("format") // optional: "raw" to skip parsing
 
 	run, err := h.store.GetRun(r.Context(), id)
 	if err != nil {

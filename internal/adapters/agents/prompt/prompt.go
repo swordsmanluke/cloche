@@ -80,6 +80,52 @@ func (a *Adapter) argsFor(command string) []string {
 	return nil
 }
 
+// mcpConfigArgs returns extra CLI args wiring the ask_user MCP tool for
+// "claude", when the container was started with a help-channel MCP endpoint
+// (CLOCHE_MCP_URL/CLOCHE_MCP_TOKEN env vars, set by docker.Runtime.Start).
+// Other commands are left alone; a missing endpoint or write failure is
+// non-fatal — the step just proceeds without the ask_user tool.
+func mcpConfigArgs(command string) []string {
+	if command != "claude" {
+		return nil
+	}
+	url := os.Getenv("CLOCHE_MCP_URL")
+	token := os.Getenv("CLOCHE_MCP_TOKEN")
+	if url == "" || token == "" {
+		return nil
+	}
+
+	cfg := map[string]any{
+		"mcpServers": map[string]any{
+			"cloche-help": map[string]any{
+				"type": "http",
+				"url":  url,
+				"headers": map[string]any{
+					"Authorization": "Bearer " + token,
+				},
+			},
+		},
+	}
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		log.Printf("prompt: failed to marshal mcp config: %v", err)
+		return nil
+	}
+
+	f, err := os.CreateTemp("", "cloche-mcp-*.json")
+	if err != nil {
+		log.Printf("prompt: failed to create mcp config file: %v", err)
+		return nil
+	}
+	defer f.Close()
+	if _, err := f.Write(data); err != nil {
+		log.Printf("prompt: failed to write mcp config file: %v", err)
+		return nil
+	}
+
+	return []string{"--mcp-config", f.Name()}
+}
+
 // containsArg checks if an argument list contains a specific flag.
 func containsArg(args []string, flag string) bool {
 	for _, a := range args {
@@ -216,6 +262,7 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 	if a.ResumeConversation {
 		args = append([]string{"-c"}, args...)
 	}
+	args = append(args, mcpConfigArgs(command)...)
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = workDir
 	cmd.Stdin = strings.NewReader(prompt)
@@ -371,11 +418,11 @@ func runUsageCommand(ctx context.Context, cmd string, workDir string) *domain.To
 //
 // Supported producers and their event types:
 //   - Claude Code stream-json:
-//       "assistant" — one per turn, message.content[] with text and tool_use blocks
-//       "result"    — final event with the full result text (contains CLOCHE_RESULT marker)
+//     "assistant" — one per turn, message.content[] with text and tool_use blocks
+//     "result"    — final event with the full result text (contains CLOCHE_RESULT marker)
 //   - Opencode --format json:
-//       "text"      — incremental text delta (part.text)
-//       "tool_use"  — tool invocation (part.tool, part.state.input, part.state.output)
+//     "text"      — incremental text delta (part.text)
+//     "tool_use"  — tool invocation (part.tool, part.state.input, part.state.output)
 //
 // For tool_use events we emit a short "--- Tool: name(arg) ---" summary so
 // the live log mirrors the user's view of the agent's actions.
@@ -684,7 +731,6 @@ func resolveContent(value string, workDir string) (string, error) {
 	}
 	return value, nil
 }
-
 
 func readAttemptCount(workDir, taskID, stepName string) int {
 	path := filepath.Join(workDir, ".cloche", "runs", taskID, "attempt_count", stepName)

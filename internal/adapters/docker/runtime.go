@@ -15,16 +15,45 @@ import (
 	"time"
 
 	"github.com/cloche-dev/cloche/internal/config"
+	"github.com/cloche-dev/cloche/internal/mcpauth"
 	"github.com/cloche-dev/cloche/internal/ports"
 )
 
-type Runtime struct{}
+type Runtime struct {
+	// mcpSecret is the daemon-generated HMAC key used to mint per-run bearer
+	// tokens for the /mcp ask_user tool. Empty disables MCP config injection.
+	mcpSecret []byte
+}
 
 func NewRuntime() (*Runtime, error) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		return nil, fmt.Errorf("docker not found in PATH: %w", err)
 	}
 	return &Runtime{}, nil
+}
+
+// SetMCPSecret configures the HMAC key used to mint per-run bearer tokens
+// (CLOCHE_MCP_TOKEN) for containers started by this runtime. Must match the
+// secret the daemon's web handler validates against (see web.WithHelpMCP).
+func (r *Runtime) SetMCPSecret(secret []byte) {
+	r.mcpSecret = secret
+}
+
+// mcpEnvArgs returns the "-e KEY=VALUE" docker create flags exposing the
+// ask_user MCP endpoint to a container, or nil if the help channel isn't
+// configured (no secret) or the web dashboard isn't enabled (no httpAddr).
+func mcpEnvArgs(mcpSecret []byte, httpAddr, runID string) []string {
+	if runID == "" || len(mcpSecret) == 0 || httpAddr == "" {
+		return nil
+	}
+	containerHTTPAddr := httpAddr
+	containerHTTPAddr = strings.Replace(containerHTTPAddr, "127.0.0.1:", "host.docker.internal:", 1)
+	containerHTTPAddr = strings.Replace(containerHTTPAddr, "0.0.0.0:", "host.docker.internal:", 1)
+	mcpURL := fmt.Sprintf("http://%s/mcp?run_id=%s", containerHTTPAddr, runID)
+	return []string{
+		"-e", "CLOCHE_MCP_URL=" + mcpURL,
+		"-e", "CLOCHE_MCP_TOKEN=" + mcpauth.Token(mcpSecret, runID),
+	}
 }
 
 func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string, error) {
@@ -87,6 +116,11 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	containerAddr = strings.Replace(containerAddr, "127.0.0.1:", "host.docker.internal:", 1)
 	containerAddr = strings.Replace(containerAddr, "0.0.0.0:", "host.docker.internal:", 1)
 	args = append(args, "-e", "CLOCHE_ADDR="+containerAddr)
+
+	// Pass the ask_user MCP endpoint + a per-run bearer token so the prompt
+	// adapter can wire --mcp-config. Only available when both the web
+	// dashboard (CLOCHE_HTTP) and the help channel (r.mcpSecret) are enabled.
+	args = append(args, mcpEnvArgs(r.mcpSecret, os.Getenv("CLOCHE_HTTP"), cfg.RunID)...)
 
 	// Claude auth files are copied (not mounted) after docker create so each
 	// container gets its own copy — avoids concurrent write conflicts.

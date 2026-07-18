@@ -76,25 +76,26 @@ type TaskStateEntry struct {
 // which calls PollCoordinator.DrivePolls to trigger due poll invocations and
 // deliver decisions to waiting executor goroutines.
 type Loop struct {
-	config       LoopConfig
-	listTasks    ListTasksFunc
-	mainFn       MainFunc
-	store        ports.RunStore
-	taskStore    ports.TaskStore      // optional; ensures Task records exist when set
-	activityLog  *activitylog.Logger  // optional; records attempt lifecycle events
-	assigner     TaskAssigner         // optional; feeds listTasks in NewLoop-created loops
-	pollCoord    *PollCoordinator     // optional; drives human step polling on each tick
-	humanPollStore ports.HumanPollStore // optional; persists human step poll state
-	stopCh       chan struct{}
-	mu           sync.Mutex
-	running      bool
+	config              LoopConfig
+	listTasks           ListTasksFunc
+	mainFn              MainFunc
+	store               ports.RunStore
+	taskStore           ports.TaskStore      // optional; ensures Task records exist when set
+	activityLog         *activitylog.Logger  // optional; records attempt lifecycle events
+	assigner            TaskAssigner         // optional; feeds listTasks in NewLoop-created loops
+	pollCoord           *PollCoordinator     // optional; drives human step polling on each tick
+	humanPollStore      ports.HumanPollStore // optional; persists human step poll state
+	helpArchiver        HelpArchiver         // optional; archives a task's help threads on success
+	stopCh              chan struct{}
+	mu                  sync.Mutex
+	running             bool
 	failureMu           sync.Mutex
-	consecutiveFailures int    // number of consecutive failed runs
+	consecutiveFailures int // number of consecutive failed runs
 	dedupMu             sync.Mutex
-	dedup      map[string]time.Time // task ID -> last assignment time
-	tasksMu    sync.RWMutex
-	lastTasks  []Task                    // most recently fetched tasks
-	taskRuns   map[string]TaskAssignment // task ID -> assignment info
+	dedup               map[string]time.Time // task ID -> last assignment time
+	tasksMu             sync.RWMutex
+	lastTasks           []Task                    // most recently fetched tasks
+	taskRuns            map[string]TaskAssignment // task ID -> assignment info
 }
 
 // NewLoop creates an orchestration loop using a single run function. Internally
@@ -182,6 +183,18 @@ func (l *Loop) SetPollCoordinator(coord *PollCoordinator) {
 // persist last_poll_at timestamps. Must be called before Start.
 func (l *Loop) SetHumanPollStore(store ports.HumanPollStore) {
 	l.humanPollStore = store
+}
+
+// HelpArchiver archives a task's help threads once its attempt succeeds.
+// Satisfied by *help.Router.
+type HelpArchiver interface {
+	ArchiveTaskThreads(ctx context.Context, taskID string) (int64, error)
+}
+
+// SetHelpArchiver configures the HelpArchiver used to archive a task's help
+// threads when its attempt completes successfully.
+func (l *Loop) SetHelpArchiver(archiver HelpArchiver) {
+	l.helpArchiver = archiver
 }
 
 // Start begins the orchestration loop. No-op if already running.
@@ -562,6 +575,14 @@ func (l *Loop) completeAttempt(attemptID string, state domain.RunState) {
 			AttemptID: attemptID,
 			State:     string(result),
 		})
+	}
+
+	if result == domain.AttemptResultSucceeded && l.helpArchiver != nil && attempt.TaskID != "" {
+		if n, err := l.helpArchiver.ArchiveTaskThreads(ctx, attempt.TaskID); err != nil {
+			log.Printf("orchestration loop: failed to archive help threads for task %s: %v", attempt.TaskID, err)
+		} else if n > 0 {
+			log.Printf("orchestration loop: archived %d help thread(s) for task %s", n, attempt.TaskID)
+		}
 	}
 }
 

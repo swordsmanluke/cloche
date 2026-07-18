@@ -25,6 +25,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/evolution"
+	"github.com/cloche-dev/cloche/internal/help"
 	"github.com/cloche-dev/cloche/internal/host"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
@@ -51,6 +52,7 @@ type ClocheServer struct {
 	logBroadcast    *logstream.Broadcaster
 	shutdownFn      func()
 	pollCoord       *host.PollCoordinator // drives human step polling for all projects
+	helpRouter      *help.Router          // routes AskHelp/ListThreads/GetThread/ReplyThread; nil disables the help channel
 	mu              sync.Mutex
 	runIDs          map[string]string              // run_id -> container_id
 	containerRun    map[string]string              // container_id -> run_id
@@ -229,6 +231,17 @@ func (s *ClocheServer) SetShutdownFunc(fn func()) {
 // register agent streams for step dispatch by the DaemonExecutor.
 func (s *ClocheServer) SetContainerPool(pool *docker.ContainerPool) {
 	s.pool = pool
+}
+
+// SetHelpRouter attaches the help channel router, enabling AskHelp,
+// ListThreads, GetThread and ReplyThread.
+func (s *ClocheServer) SetHelpRouter(r *help.Router) {
+	s.helpRouter = r
+}
+
+// HelpRouter returns the attached help router, or nil if none is configured.
+func (s *ClocheServer) HelpRouter() *help.Router {
+	return s.helpRouter
 }
 
 // AgentSession handles the bidirectional gRPC stream between the daemon and an
@@ -892,6 +905,20 @@ func (s *ClocheServer) ensureTaskAndAttempt(ctx context.Context, issueID, title,
 	return attemptID
 }
 
+// archiveHelpThreadsIfSucceeded moves a task's help threads to archived once
+// its owning attempt succeeds. No-op if the help channel is disabled, the
+// task ID is empty, or the result is not a success.
+func (s *ClocheServer) archiveHelpThreadsIfSucceeded(ctx context.Context, taskID string, ar domain.AttemptResult) {
+	if s.helpRouter == nil || taskID == "" || ar != domain.AttemptResultSucceeded {
+		return
+	}
+	if n, err := s.helpRouter.ArchiveTaskThreads(ctx, taskID); err != nil {
+		log.Printf("server: failed to archive help threads for task %s: %v", taskID, err)
+	} else if n > 0 {
+		log.Printf("server: archived %d help thread(s) for task %s", n, taskID)
+	}
+}
+
 // completeAttemptRecord marks an attempt as finished with the result derived
 // from the run state. Used by runHostWorkflow to finalize attempts for direct
 // (non-loop) host workflow runs.
@@ -902,10 +929,12 @@ func (s *ClocheServer) completeAttemptRecord(attemptID string, state domain.RunS
 		log.Printf("server: failed to get attempt %s for completion: %v", attemptID, err)
 		return
 	}
-	attempt.Complete(domain.AttemptResultFromRunState(state))
+	ar := domain.AttemptResultFromRunState(state)
+	attempt.Complete(ar)
 	if err := s.store.SaveAttempt(ctx, attempt); err != nil {
 		log.Printf("server: failed to complete attempt %s: %v", attemptID, err)
 	}
+	s.archiveHelpThreadsIfSucceeded(ctx, attempt.TaskID, ar)
 }
 
 // resolveResumeTarget takes a bare ID (no colons) and resolves it to a
@@ -1104,6 +1133,7 @@ func (s *ClocheServer) completeAttemptFromResult(attemptID, taskID string, resul
 	if err := s.store.SaveAttempt(ctx, attempt); err != nil {
 		log.Printf("server: failed to complete attempt %s: %v", attemptID, err)
 	}
+	s.archiveHelpThreadsIfSucceeded(ctx, taskID, ar)
 }
 
 // resumeContainerRun creates a new attempt and run for resuming a failed
@@ -1348,6 +1378,7 @@ func (s *ClocheServer) completeAttemptResult(ctx context.Context, attemptID, tas
 	if err := s.store.SaveAttempt(ctx, attempt); err != nil {
 		log.Printf("server: failed to save completed attempt %s: %v", attemptID, err)
 	}
+	s.archiveHelpThreadsIfSucceeded(ctx, taskID, ar)
 }
 
 // resumeContainerRunLegacy is the legacy approach for resuming a container run
@@ -1829,8 +1860,9 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 		return nil, fmt.Errorf("listing runs: %w", err)
 	}
 
-	// Cast store to HumanPollStore once to look up waiting step info.
+	// Cast store to HumanPollStore/HelpStore once to look up pending info.
 	hps, hasHPS := s.store.(ports.HumanPollStore)
+	hs, hasHS := s.store.(ports.HelpStore)
 
 	resp := &pb.ListRunsResponse{}
 	for _, run := range runs {
@@ -1854,6 +1886,12 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 					sum.LastPollAt = polls[0].LastPollAt.UTC().Format(time.RFC3339)
 				}
 				sum.PollCount = int32(polls[0].PollCount)
+			}
+		}
+		if hasHS {
+			if threads, err := hs.ListOpenThreadsByRun(ctx, run.ID); err == nil && len(threads) > 0 {
+				sum.PendingHelpAddress = threads[0].Address()
+				sum.PendingHelpTitle = threads[0].Title
 			}
 		}
 		resp.Runs = append(resp.Runs, sum)
@@ -2457,6 +2495,14 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 				}
 				resp.PollCount = int32(polls[0].PollCount)
 			}
+		}
+	}
+
+	// Populate the run's open help thread, if any (blocked in place inside AskHelp).
+	if hs, ok := s.store.(ports.HelpStore); ok {
+		if threads, err := hs.ListOpenThreadsByRun(ctx, run.ID); err == nil && len(threads) > 0 {
+			resp.PendingHelpAddress = threads[0].Address()
+			resp.PendingHelpTitle = threads[0].Title
 		}
 	}
 
@@ -3412,6 +3458,9 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	if hps, ok := s.store.(ports.HumanPollStore); ok {
 		loop.SetHumanPollStore(hps)
 	}
+	if s.helpRouter != nil {
+		loop.SetHelpArchiver(s.helpRouter)
+	}
 	return loop
 }
 
@@ -4135,6 +4184,211 @@ func (s *ClocheServer) ListContextKeys(ctx context.Context, req *pb.ListContextK
 		return nil, err
 	}
 	return &pb.ListContextKeysResponse{Keys: keys}, nil
+}
+
+// channelForProject derives the help channel name for a project directory:
+// the project's display label if known, otherwise the directory basename.
+func (s *ClocheServer) channelForProject(ctx context.Context, projectDir string) string {
+	if projectDir == "" {
+		return "cloche"
+	}
+	if projects, err := s.store.ListProjects(ctx); err == nil {
+		if label, ok := projectLabels(projects)[projectDir]; ok && label != "" {
+			return label
+		}
+	}
+	return filepath.Base(projectDir)
+}
+
+func helpThreadToProto(t *domain.HelpThread) *pb.HelpThreadSummary {
+	return &pb.HelpThreadSummary{
+		Id:        t.ID,
+		Channel:   t.Channel,
+		Name:      t.Name,
+		TaskId:    t.TaskID,
+		AttemptId: t.AttemptID,
+		RunId:     t.RunID,
+		StepName:  t.StepName,
+		Title:     t.Title,
+		State:     string(t.State),
+		CreatedAt: t.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt: t.UpdatedAt.UTC().Format(time.RFC3339),
+	}
+}
+
+func helpMessagesToProto(msgs []domain.HelpMessage) []*pb.HelpMessageEntry {
+	out := make([]*pb.HelpMessageEntry, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, &pb.HelpMessageEntry{
+			Author:    string(m.Author),
+			Body:      m.Body,
+			Options:   m.Options,
+			CreatedAt: m.CreatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	return out
+}
+
+// publishHelpEvent broadcasts a help-channel lifecycle event on the run's log
+// stream and records it in the project's activity log. Best-effort: errors
+// are not surfaced, mirroring how step start/complete events are recorded.
+func (s *ClocheServer) publishHelpEvent(projectDir, runID, taskID, attemptID, stepName string, kind activitylog.EventKind, message, logLine string) {
+	now := time.Now()
+	if s.logBroadcast != nil && runID != "" {
+		s.logBroadcast.Publish(runID, logstream.LogLine{
+			Timestamp: now.Format(time.RFC3339),
+			Type:      "status",
+			Content:   logLine,
+			StepName:  stepName,
+		})
+	}
+	if logger := s.activityLoggerFor(projectDir); logger != nil {
+		logger.Append(activitylog.Entry{
+			Timestamp: now,
+			Kind:      kind,
+			TaskID:    taskID,
+			AttemptID: attemptID,
+			StepName:  stepName,
+			Message:   message,
+		})
+	}
+}
+
+// AskHelp opens (or continues) a help thread and blocks until a user reply
+// arrives, up to the configured park_after grace period (phase 1: long waits
+// just keep blocking). A second concurrent AskHelp for the same run is rejected.
+func (s *ClocheServer) AskHelp(ctx context.Context, req *pb.AskHelpRequest) (*pb.AskHelpResponse, error) {
+	if s.helpRouter == nil {
+		return nil, status.Errorf(codes.Unimplemented, "help channel is not enabled on this daemon")
+	}
+	if req.RunId == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "run_id is required")
+	}
+	if strings.TrimSpace(req.Question) == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "question is required")
+	}
+
+	res, err := s.doAskHelp(ctx, req.TaskId, req.AttemptId, req.RunId, req.StepName,
+		req.Question, req.Title, req.ThreadId, req.Options, req.AskKey)
+	if err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "%v", err)
+	}
+
+	return &pb.AskHelpResponse{Answer: res.Answer, ThreadId: res.ThreadID, Parked: res.Parked}, nil
+}
+
+// doAskHelp resolves the asking run's channel, fans the question out via the
+// help router, and records ask/answer lifecycle events. Shared by AskHelp
+// (gRPC, trusts task_id/attempt_id from the request like clo get/set do) and
+// AskHelpForRun (MCP, resolves task_id/attempt_id from the run record since
+// only run_id is authenticated by the bearer token).
+func (s *ClocheServer) doAskHelp(ctx context.Context, taskID, attemptID, runID, stepName, question, title, threadID string, options []string, askKey string) (help.AskResult, error) {
+	channel := "cloche"
+	var projectDir string
+	if run, err := s.store.GetRun(ctx, runID); err == nil {
+		projectDir = run.ProjectDir
+		channel = s.channelForProject(ctx, run.ProjectDir)
+	}
+
+	s.publishHelpEvent(projectDir, runID, taskID, attemptID, stepName,
+		activitylog.KindHelpAsked, question, "help_asked: "+question)
+
+	res, err := s.helpRouter.Ask(ctx, help.AskParams{
+		TaskID:    taskID,
+		AttemptID: attemptID,
+		RunID:     runID,
+		StepName:  stepName,
+		Channel:   channel,
+		Question:  question,
+		Title:     title,
+		Options:   options,
+		ThreadID:  threadID,
+		AskKey:    askKey,
+	})
+	if err != nil {
+		return help.AskResult{}, err
+	}
+
+	s.publishHelpEvent(projectDir, runID, taskID, attemptID, stepName,
+		activitylog.KindHelpAnswered, res.Answer, "help_answered: "+res.Answer)
+
+	return res, nil
+}
+
+// AskHelpForRun handles an ask_user MCP tool call for runID, which has
+// already been authenticated by the caller (the bearer token proves the
+// caller is that run; task_id/attempt_id are resolved from the run record
+// rather than trusted from the tool call). Matches web.AskHelpFunc.
+func (s *ClocheServer) AskHelpForRun(ctx context.Context, runID, question, title, threadID string, options []string, askKey string) (answer, respThreadID string, parked bool, err error) {
+	if s.helpRouter == nil {
+		return "", "", false, fmt.Errorf("help channel is not enabled on this daemon")
+	}
+	if runID == "" {
+		return "", "", false, fmt.Errorf("run_id is required")
+	}
+	if strings.TrimSpace(question) == "" {
+		return "", "", false, fmt.Errorf("question is required")
+	}
+
+	var taskID, attemptID string
+	if run, err := s.store.GetRun(ctx, runID); err == nil {
+		taskID, attemptID = run.TaskID, run.AttemptID
+	}
+
+	res, err := s.doAskHelp(ctx, taskID, attemptID, runID, "", question, title, threadID, options, askKey)
+	if err != nil {
+		return "", "", false, err
+	}
+	return res.Answer, res.ThreadID, res.Parked, nil
+}
+
+// ListThreads returns help threads, optionally filtered by channel and
+// including archived/closed threads.
+func (s *ClocheServer) ListThreads(ctx context.Context, req *pb.ListThreadsRequest) (*pb.ListThreadsResponse, error) {
+	if s.helpRouter == nil {
+		return nil, status.Errorf(codes.Unimplemented, "help channel is not enabled on this daemon")
+	}
+	threads, err := s.helpRouter.ListThreads(ctx, ports.HelpThreadFilter{Channel: req.Channel, All: req.All})
+	if err != nil {
+		return nil, err
+	}
+	resp := &pb.ListThreadsResponse{}
+	for _, t := range threads {
+		resp.Threads = append(resp.Threads, helpThreadToProto(t))
+	}
+	return resp, nil
+}
+
+// GetThread returns a single thread and its full transcript.
+func (s *ClocheServer) GetThread(ctx context.Context, req *pb.GetThreadRequest) (*pb.GetThreadResponse, error) {
+	if s.helpRouter == nil {
+		return nil, status.Errorf(codes.Unimplemented, "help channel is not enabled on this daemon")
+	}
+	if req.Address == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "address is required")
+	}
+	thread, msgs, err := s.helpRouter.GetThread(ctx, req.Address)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "%v", err)
+	}
+	return &pb.GetThreadResponse{Thread: helpThreadToProto(thread), Messages: helpMessagesToProto(msgs)}, nil
+}
+
+// ReplyThread appends a user reply to a thread, unblocking the waiting AskHelp call.
+func (s *ClocheServer) ReplyThread(ctx context.Context, req *pb.ReplyThreadRequest) (*pb.ReplyThreadResponse, error) {
+	if s.helpRouter == nil {
+		return nil, status.Errorf(codes.Unimplemented, "help channel is not enabled on this daemon")
+	}
+	if req.Address == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "address is required")
+	}
+	if strings.TrimSpace(req.Body) == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "body is required")
+	}
+	if err := s.helpRouter.ReplyByAddress(ctx, req.Address, req.Body, "cli"); err != nil {
+		return nil, status.Errorf(codes.NotFound, "%v", err)
+	}
+	return &pb.ReplyThreadResponse{}, nil
 }
 
 // stuckContainerThreshold is how long a container must have been dead before

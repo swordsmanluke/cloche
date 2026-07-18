@@ -17,7 +17,7 @@ import (
 var completionSubcommands = []string{
 	"complete", "delete", "get", "health", "help", "init", "list", "logs",
 	"loop", "poll", "project", "resume", "run", "set", "shutdown", "status",
-	"stop", "tasks", "validate", "workflow",
+	"stop", "tasks", "threads", "validate", "workflow",
 }
 
 // cmdComplete handles `cloche complete --index <n> -- <word0> <word1> ...`.

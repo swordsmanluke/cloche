@@ -1001,7 +1001,7 @@ status for that task.
 
 | Argument | Output |
 |----------|--------|
-| Task ID | Task status, title, project, latest attempt ID, result, end timestamp, and total tokens consumed across all attempts (omitted if no usage data). When the task is `waiting` at a human step, also shows the step name, time since last poll, and poll count (e.g. `Waiting: code-review — last polled 4m ago (3 polls)`). |
+| Task ID | Task status, title, project, latest attempt ID, result, end timestamp, and total tokens consumed across all attempts (omitted if no usage data). When the task is `waiting` at a human step, also shows the step name, time since last poll, and poll count (e.g. `Waiting: code-review — last polled 4m ago (3 polls)`). When the run has an open help thread (`clo ask` / `ask_user` blocked awaiting a reply), also shows `Pending question: <title> (<channel>/<name>)` — this can appear even while the run is otherwise `running`. |
 | _(none)_ | Daemon version, run statistics (past hour), active tasks with attempt IDs and in-progress runs shown as composite IDs (e.g. `cloche-1234:aj19:main`), and per-agent token burn rate for the last hour (omitted if no usage data). In a project directory, also shows project name, concurrency, loop state, and the count of resumable (parked) runs. |
 
 | Flag | Description |
@@ -1028,7 +1028,8 @@ show a flat run listing instead of the task-oriented view.
 | `--runs` | Show flat run listing instead of task-oriented view. |
 
 Default output columns: task ID, status, attempt count, latest attempt ID, title.
-With `--runs`: workflow ID, workflow, state, type, task ID, title, error.
+With `--runs`: workflow ID, workflow, state, type, task ID, title, error. A run with
+an open help thread shows `[pending question: <channel>/<name>]` appended to its state.
 
 ### `cloche logs`
 
@@ -1297,6 +1298,8 @@ clo set <key> <value>      Set a key
 clo set <key> -            Read value from stdin (trailing newlines trimmed)
 clo set <key> -f <file>    Set a key from file contents
 clo keys                   List all keys in the current run namespace
+clo ask [--thread <id>] [--option A --option B ...] [--key <ask-key>] "question"
+                           Ask the user a question and block for the reply
 clo -v / --version / version   Print version
 ```
 
@@ -1306,6 +1309,12 @@ from the environment. The Docker adapter sets all four automatically.
 `clo get` uses the same scope fallback as `cloche get`: per-run → attempt-scoped →
 task-scoped. Values written at task scope before a run starts are visible to container
 steps even though they run under a different run ID.
+
+`clo ask` opens (or continues, with `--thread`) a help thread and blocks until the
+user replies from `cloche threads reply` or a configured integration (see
+`cloche threads` and the `[help]` config section below). `--option` may be repeated
+to suggest answers; `--key` sets an idempotency key for replay. Exits `3` if the run
+is parked awaiting the reply instead of returning an answer directly.
 
 ### `cloche tasks`
 
@@ -1460,6 +1469,28 @@ container is kept — it does not appear in `cloche list`, but can be deleted wi
 
 Must be run from inside a git repository with a `.cloche/` directory.
 
+### `cloche threads`
+
+List, show, and reply to agent help-request threads. An agent step (via the
+`ask_user` MCP tool or `clo ask`) can open a help thread mid-run and block for a
+reply; threads are addressed by `<channel>/<name>`, where channel defaults to the
+project name.
+
+```
+cloche threads [list] [--all] [--channel <c>]
+cloche threads show <channel>/<name>
+cloche threads reply <channel>/<name> "message"
+```
+
+| Flag (list) | Description |
+|------|-------------|
+| `--all` | Include archived/closed threads (default: open only). |
+| `--channel <c>` | Restrict to one channel (project). |
+
+`threads show` prints the thread's metadata (title, state, task/run/step) followed
+by the full message transcript. `threads reply` appends a user reply, which
+unblocks the agent's waiting `AskHelp` call.
+
 ### `cloche debug`
 
 Inspect the running daemon via its debug HTTP server. The debug server must be enabled first.
@@ -1610,6 +1641,17 @@ Per-agent config for the Codex agent. See [How to set up Codex](agent-setup-code
 | Key | Default | Description |
 |-----|---------|-------------|
 | `usage_command` | _(unset)_ | Shell command run after each Codex step to capture token usage. Output must be JSON: `{"input_tokens": N, "output_tokens": N}`. |
+
+### `[help]`
+
+Controls the help channel (`clo ask` / `ask_user` MCP tool / `cloche threads`).
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `park_after` | `"5m"` | Duration string. How long an `AskHelp` call blocks in place before parking the run. Parking itself is not yet implemented (phase 1): calls simply keep blocking. |
+| `retention` | `"720h"` | Duration string. How long archived threads (from completed tasks) are kept before the daemon's daily sweep deletes them. |
+
+See [`docs/plans/2026-07-17-help-channel-design.md`](plans/2026-07-17-help-channel-design.md) for the full design.
 
 ### `[git]`
 

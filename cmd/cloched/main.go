@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -14,15 +15,17 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
-	adaptgrpc "github.com/cloche-dev/cloche/internal/adapters/grpc"
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
+	adaptgrpc "github.com/cloche-dev/cloche/internal/adapters/grpc"
 	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/adapters/web"
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/evolution"
+	"github.com/cloche-dev/cloche/internal/help"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/version"
@@ -105,6 +108,25 @@ func main() {
 		srv.SetEvolution(evoTrigger)
 	}
 
+	// Set up the help channel router (AskHelp/ListThreads/GetThread/ReplyThread).
+	parkAfter := parseDurationOr(globalCfg.Help.ParkAfter, help.DefaultParkAfter)
+	retention := parseDurationOr(globalCfg.Help.Retention, help.DefaultRetention)
+	helpRouter := help.NewRouter(store, parkAfter)
+	srv.SetHelpRouter(helpRouter)
+
+	// Mint the daemon-lifetime secret used to authenticate the ask_user MCP
+	// tool (see internal/mcpauth). Only docker containers get the resulting
+	// CLOCHE_MCP_URL/CLOCHE_MCP_TOKEN env vars; the web dashboard must also be
+	// enabled (CLOCHE_HTTP) for /mcp to actually be reachable.
+	mcpSecret := make([]byte, 32)
+	if _, err := rand.Read(mcpSecret); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to generate MCP secret, ask_user tool disabled: %v\n", err)
+		mcpSecret = nil
+	}
+	if dockerRuntime, ok := runtime.(*docker.Runtime); ok && mcpSecret != nil {
+		dockerRuntime.SetMCPSecret(mcpSecret)
+	}
+
 	grpcServer := grpc.NewServer()
 	pb.RegisterClocheServiceServer(grpcServer, srv)
 
@@ -125,6 +147,11 @@ func main() {
 
 	var httpServer *http.Server
 	if httpAddr := envOrConfig("CLOCHE_HTTP", globalCfg.Daemon.HTTP, ""); httpAddr != "" {
+		// Ensure docker.Runtime sees the resolved address even when it only
+		// came from the config file, since it reads CLOCHE_HTTP directly to
+		// build each container's CLOCHE_MCP_URL.
+		os.Setenv("CLOCHE_HTTP", httpAddr)
+
 		webOpts := []web.HandlerOption{
 			web.WithContainerLogger(runtime),
 			web.WithLogStore(store),
@@ -143,6 +170,9 @@ func main() {
 				_, err := srv.StopRun(ctx, &pb.StopRunRequest{TaskId: taskID})
 				return err
 			}),
+		}
+		if mcpSecret != nil {
+			webOpts = append(webOpts, web.WithHelpMCP(mcpSecret, srv.AskHelpForRun))
 		}
 		webHandler, err := web.NewHandler(store, store, webOpts...)
 		if err != nil {
@@ -178,6 +208,11 @@ func main() {
 	scanCtx, scanCancel := context.WithCancel(context.Background())
 	defer scanCancel()
 	srv.StartStuckWorkflowScanner(scanCtx)
+
+	// Start the daily sweep that deletes archived help threads past retention.
+	helpSweepCtx, helpSweepCancel := context.WithCancel(context.Background())
+	defer helpSweepCancel()
+	go runHelpRetentionSweep(helpSweepCtx, helpRouter, retention)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
@@ -252,7 +287,6 @@ func initEvolution(globalCfg *config.Config, evoStore ports.EvolutionStore, capS
 
 	return trigger
 }
-
 
 // autoRunActiveProjects scans known projects for active = true in their config
 // and starts the orchestration loop for each one via EnableLoop.
@@ -349,6 +383,44 @@ func envOrConfig(envKey, configVal, fallback string) string {
 		return configVal
 	}
 	return fallback
+}
+
+// parseDurationOr parses s as a duration, falling back to def if s is empty
+// or invalid.
+func parseDurationOr(s string, def time.Duration) time.Duration {
+	if s == "" {
+		return def
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: invalid duration %q, using %s: %v\n", s, def, err)
+		return def
+	}
+	return d
+}
+
+// runHelpRetentionSweep periodically deletes archived help threads older
+// than retention. Runs once immediately, then once a day until ctx is done.
+func runHelpRetentionSweep(ctx context.Context, router *help.Router, retention time.Duration) {
+	sweep := func() {
+		if n, err := router.SweepRetention(context.Background(), retention); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: help retention sweep failed: %v\n", err)
+		} else if n > 0 {
+			fmt.Fprintf(os.Stderr, "startup: deleted %d retention-expired help thread(s)\n", n)
+		}
+	}
+	sweep()
+
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			sweep()
+		}
+	}
 }
 
 // startDebugServer starts a pprof + daemon-state HTTP server on addr.

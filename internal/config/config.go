@@ -19,13 +19,13 @@ type DaemonConfig struct {
 }
 
 type EvolutionConfig struct {
-	Enabled          bool   `toml:"enabled"`
-	DebounceSeconds  int    `toml:"debounce_seconds"`
-	MinConfidence    string `toml:"min_confidence"`
-	MaxPromptBullets int    `toml:"max_prompt_bullets"`
-	PopulationEnabled  bool `toml:"population_enabled"`
-	MaxCandidates      int  `toml:"max_candidates"`
-	MinRunsToPromote   int  `toml:"min_runs_to_promote"`
+	Enabled           bool   `toml:"enabled"`
+	DebounceSeconds   int    `toml:"debounce_seconds"`
+	MinConfidence     string `toml:"min_confidence"`
+	MaxPromptBullets  int    `toml:"max_prompt_bullets"`
+	PopulationEnabled bool   `toml:"population_enabled"`
+	MaxCandidates     int    `toml:"max_candidates"`
+	MinRunsToPromote  int    `toml:"min_runs_to_promote"`
 }
 
 type OrchestrationConfig struct {
@@ -50,6 +50,14 @@ type AgentsConfig struct {
 // mode "mcp" parks prompt steps until an MCP client claims and completes them.
 type AgentConfig struct {
 	Mode string `toml:"mode"` // "prompt" (default) or "mcp"
+}
+
+// HelpConfig controls the help channel: how long an AskHelp call blocks in
+// place before parking (parking itself lands in a later phase) and how long
+// archived threads are retained before the daemon's daily sweep deletes them.
+type HelpConfig struct {
+	ParkAfter string `toml:"park_after"` // duration string, e.g. "5m"; default 5m
+	Retention string `toml:"retention"`  // duration string, e.g. "720h"; default 720h (30 days)
 }
 
 // GitConfig controls the git identity used for cloche-authored commits
@@ -80,6 +88,7 @@ type Config struct {
 	Agents        AgentsConfig        `toml:"agents"`
 	Agent         AgentConfig         `toml:"agent"`
 	Git           GitConfig           `toml:"git"`
+	Help          HelpConfig          `toml:"help"`
 	Repositories  []RepositoryConfig  `toml:"repositories"`
 }
 
@@ -89,18 +98,22 @@ func defaults() Config {
 			Mode: "prompt",
 		},
 		Evolution: EvolutionConfig{
-			Enabled:          true,
-			DebounceSeconds:  30,
-			MinConfidence:    "medium",
-			MaxPromptBullets: 50,
-			PopulationEnabled:  false,
-			MaxCandidates:      5,
-			MinRunsToPromote:   5,
+			Enabled:           true,
+			DebounceSeconds:   30,
+			MinConfidence:     "medium",
+			MaxPromptBullets:  50,
+			PopulationEnabled: false,
+			MaxCandidates:     5,
+			MinRunsToPromote:  5,
 		},
 		Orchestration: OrchestrationConfig{
 			Concurrency:            1,
 			StaggerSeconds:         1.0,
 			MaxConsecutiveFailures: 3,
+		},
+		Help: HelpConfig{
+			ParkAfter: "5m",
+			Retention: "720h",
 		},
 	}
 }

@@ -146,7 +146,7 @@ func main() {
 	daemonCmds := map[string]bool{
 		"run": true, "resume": true, "status": true, "logs": true, "poll": true,
 		"list": true, "stop": true, "delete": true, "loop": true, "shutdown": true,
-		"console": true, "extract": true,
+		"console": true, "extract": true, "threads": true,
 	}
 	if daemonCmds[os.Args[1]] && hasHelpFlag(os.Args[2:]) {
 		printSubcommandHelp(os.Args[1])
@@ -195,6 +195,8 @@ func main() {
 		cmdConsole(client, os.Args[2:])
 	case "extract":
 		cmdExtract(ctx, client, os.Args[2:])
+	case "threads":
+		cmdThreads(ctx, client, os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", os.Args[1])
 		printTopLevelHelp()
@@ -427,14 +429,21 @@ func cmdStatusTaskLatest(ctx context.Context, client pb.ClocheServiceClient, tas
 	}
 
 	// If the task is waiting at a human step, surface the step name, elapsed
-	// time since last poll, and poll count from the run's status.
-	if resp.Status == "waiting" && latest.AttemptId != "" {
-		if statusResp, err := client.GetStatus(ctx, &pb.GetStatusRequest{Id: latest.AttemptId}); err == nil && statusResp.WaitingStep != "" {
-			elapsed := formatLastPollElapsed(statusResp.LastPollAt)
-			if elapsed != "" {
-				fmt.Printf("Waiting: %s — last polled %s ago (%d polls)\n", statusResp.WaitingStep, elapsed, statusResp.PollCount)
-			} else {
-				fmt.Printf("Waiting: %s (%d polls)\n", statusResp.WaitingStep, statusResp.PollCount)
+	// time since last poll, and poll count from the run's status. Also surface
+	// a pending help question, which can occur even while the run is "running"
+	// (blocked in place inside AskHelp).
+	if latest.AttemptId != "" {
+		if statusResp, err := client.GetStatus(ctx, &pb.GetStatusRequest{Id: latest.AttemptId}); err == nil {
+			if resp.Status == "waiting" && statusResp.WaitingStep != "" {
+				elapsed := formatLastPollElapsed(statusResp.LastPollAt)
+				if elapsed != "" {
+					fmt.Printf("Waiting: %s — last polled %s ago (%d polls)\n", statusResp.WaitingStep, elapsed, statusResp.PollCount)
+				} else {
+					fmt.Printf("Waiting: %s (%d polls)\n", statusResp.WaitingStep, statusResp.PollCount)
+				}
+			}
+			if statusResp.PendingHelpAddress != "" {
+				fmt.Printf("Pending question: %s (%s)\n", statusResp.PendingHelpTitle, statusResp.PendingHelpAddress)
 			}
 		}
 	}
@@ -921,6 +930,9 @@ func cmdListRuns(ctx context.Context, client pb.ClocheServiceClient, all bool, p
 			} else {
 				state = fmt.Sprintf("%s [%q]", run.State, run.WaitingStep)
 			}
+		}
+		if run.PendingHelpAddress != "" {
+			state = fmt.Sprintf("%s [pending question: %s]", state, run.PendingHelpAddress)
 		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			run.RunId, run.WorkflowName, state, runType,
