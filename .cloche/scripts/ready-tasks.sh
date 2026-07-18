@@ -7,7 +7,8 @@ set -uo pipefail
 
 # bd ready --json outputs a JSON array of ready tasks (open + in_progress).
 # Filter to only open tasks — in_progress means already claimed by a run.
-json=$(bd ready --json 2>/dev/null | jq '[.[] | select(.status == "open")]') || json="[]"
+# Epics are containers for child tasks, not dispatchable work.
+json=$(bd ready --json 2>/dev/null | jq '[.[] | select(.status == "open" and .issue_type != "epic")]') || json="[]"
 
 if [ "$json" = "[]" ] || [ -z "$json" ]; then
   exit 0
