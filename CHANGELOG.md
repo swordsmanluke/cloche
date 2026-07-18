@@ -1,5 +1,22 @@
 # Cloche Changelog
 
+## v3.19.0 — 2026-07-18
+
+### Breaking changes
+
+- Workflow steps can no longer declare or wire a result named `parked` — it is now reserved, like `done`/`abort`, produced by the new help-channel park mechanism. Migration: rename any step result named `parked` in your `.cloche` workflow files.
+
+### Features
+
+- **Help channel: agents can now ask a human and wait for a reply.** The `ask_user` MCP tool and `clo ask` open a help thread and block until answered; `cloche threads` lists, shows, and replies to threads from the CLI. ([design](docs/plans/2026-07-17-help-channel-design.md))
+- **Help channel: parking.** If an `ask_user` / `clo ask` question goes unanswered past `park_after` (default 5m), the run's container is committed and stopped instead of blocking indefinitely; replying via `cloche threads reply` resumes it. Use `--no-park` on `clo ask` to keep the old block-in-place behavior for steps that can't safely replay. `cloche status` and `cloche list` show parked/pending-question state. ([design](docs/plans/2026-07-17-help-channel-design.md))
+- **Help channel: Slack integration.** Configure one or more `[[help.channel]]` tables in the daemon config to also deliver questions to Slack (Socket Mode), with optional per-project channel routing via `channel_map`. ([design](docs/plans/2026-07-17-help-channel-design.md))
+- `cloche shutdown --restart` and daemon relaunches now persist stdout/stderr to `~/.config/cloche/cloched.log` (override with `CLOCHE_LOG`) instead of discarding them.
+
+### Notable fixes
+
+- Container snapshots seeded from a host workflow's mid-run git state are now real git clones (with `.git` and nested `[[repositories]]` checkouts intact) instead of bare archived trees, so in-container `git` commands and nested-repo workflows no longer fail with "not a git repository" or missing-directory errors.
+
 ## v3.18.3 — 2026-07-14
 
 ### Breaking changes

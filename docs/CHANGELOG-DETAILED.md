@@ -1,5 +1,28 @@
 # Cloche Detailed Changelog
 
+## v3.19.0 — 2026-07-18
+
+### Breaking
+
+- `76162c9` The workflow step result name `parked` is now reserved, like `done`/`abort`: `Workflow.Validate` rejects any step that declares or wires it. Produced by the new help-channel park mechanism when a `clo ask` / `ask_user` call goes unanswered past `park_after`. Migration: rename any step result literally named `parked` in your `.cloche` files. (Also introduces the park mechanism itself — see Features.)
+
+### Features
+
+- `7e0a364` Add the help-channel foundation: the `ask_user` MCP tool and `clo ask` CLI open (or continue) a help thread and block for a human reply; the new `cloche threads [list|show|reply]` command lists, inspects, and answers threads; `cloche status`/`cloche list` surface an open thread as `Pending question: ...`. Adds `internal/mcpauth` token handling for MCP tool auth. ([design](docs/plans/2026-07-17-help-channel-design.md))
+- `76162c9` Implement help-channel parking: an unanswered `clo ask`/`ask_user` call now commits and stops the run's container after `park_after` (default 5m) instead of blocking forever; replying via `cloche threads reply` automatically resumes the run. Adds `--no-park` to `clo ask` to opt a step out of parking. `cloche status`/`cloche list` show parked runs as `parked — awaiting reply: ...`. ([design](docs/plans/2026-07-17-help-channel-design.md))
+- `9bad3a1` Add Slack as a help-channel integration: `[[help.channel]]` daemon-config tables (`type = "slack"`, bot/app token env vars, optional `channel_map` to route per-project) deliver `ask_user`/`clo ask` questions to Slack in addition to `cloche threads`. A channel that fails to initialize logs a warning and is skipped rather than failing daemon startup. ([design](docs/plans/2026-07-17-help-channel-design.md))
+- `2935529` `cloche shutdown --restart` and daemon relaunches now redirect the new daemon process's stdout/stderr to `~/.config/cloche/cloched.log` (override with `CLOCHE_LOG`) instead of discarding them; `cloched` logs the configured log path on startup and `cloche shutdown` (initial launch) prints it.
+
+### Fixes
+
+- `0eac0a2` Clean container snapshots (used to seed a container from a pinned git state mid-host-workflow) are now produced via a local `git clone` instead of `git archive`, so the snapshot retains `.git` — workflow steps that run git inside the container (e.g. committing a report) no longer fail with `fatal: not a git repository`. The snapshot also checks out the branch that was active at capture time instead of a detached HEAD.
+- `b9ac04a` Clean container snapshots now include nested `[[repositories]]` checkouts (resolved from project config and materialized at their own pinned commit), fixing workflows that `cd` into a gitignored nested repo (e.g. `repos/anarkana`) failing with "can't cd to" after the container is seeded from a snapshot that omitted it.
+- `a3ad217` Extend the clean-snapshot isolation protection to container sub-workflows dispatched mid-run by a host workflow (`DaemonExecutor.executeContainerStep`), which previously seeded from the live, possibly-mid-checkout project tree; the seed git state (and nested-repo state) is now captured before any host step runs, mirroring the protection already applied to top-level runs. ([docs](docs/run-isolation/architecture.md))
+
+### Internal
+
+- `64167e9` Filter epics out of `.cloche/scripts/ready-tasks.sh` dispatch so an open epic issue is no longer claimed and run as if it were a leaf task; adds the help-channel design doc the phase tickets reference.
+
 ## v3.18.3 — 2026-07-14
 
 ### Breaking
