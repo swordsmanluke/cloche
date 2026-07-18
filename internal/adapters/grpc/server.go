@@ -1527,7 +1527,8 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 		baseSHA = ""
 	}
 	if baseSHA != "" {
-		snapDir, cleanup, snapErr := materializeCleanSnapshot(ctx, req.ProjectDir, baseSHA, children)
+		snapDir, cleanup, snapErr := materializeCleanSnapshot(ctx, req.ProjectDir,
+			RepoSeed{SHA: baseSHA, Branch: gitBranch(req.ProjectDir)}, children)
 		if snapErr != nil {
 			log.Printf("run %s: clean snapshot at %s failed, falling back to live tree: %v", runID, baseSHA, snapErr)
 		} else {
@@ -3419,11 +3420,11 @@ func (s *ClocheServer) daemonExecutorFor(projectDir, taskID, attemptID string) e
 	// step runs. If a declared nested repo can't be seeded, disable the clean
 	// snapshot entirely so container copies fall back to the live tree rather
 	// than silently omitting the repo.
-	seedSHA := gitHEAD(projectDir)
+	seed := captureRepoSeed(projectDir)
 	seedChildren, seedErr := childRepoSeeds(projectDir)
 	if seedErr != nil {
 		log.Printf("daemon executor: %v; container sub-workflows will seed from the live tree", seedErr)
-		seedSHA = ""
+		seed = RepoSeed{}
 		seedChildren = nil
 	}
 	var de *DaemonExecutor
@@ -3433,7 +3434,7 @@ func (s *ClocheServer) daemonExecutorFor(projectDir, taskID, attemptID string) e
 		LogStore:              s.logStore,
 		LogBroadcast:          s.logBroadcast,
 		ProjectDir:            projectDir,
-		ContainerSeedSHA:      seedSHA,
+		ContainerSeed:         seed,
 		ContainerSeedChildren: seedChildren,
 		TaskID:                taskID,
 		AttemptID:             attemptID,

@@ -90,15 +90,15 @@ type DaemonExecutor struct {
 	// single-element slice with an unnamed repo).
 	worktrees map[string][]repoWorktree
 
-	// containerSeedSHA is the git commit projectDir was at when this executor
-	// was constructed — captured before any host workflow step has had a
-	// chance to run. Container sub-workflow copies seed from a clean snapshot
-	// at this SHA rather than the live projectDir; see containerProjectDir.
-	containerSeedSHA string
+	// containerSeed pins the state projectDir was at when this executor was
+	// constructed — captured before any host workflow step has had a chance
+	// to run. Container sub-workflow copies seed from a clean snapshot at
+	// this state rather than the live projectDir; see containerProjectDir.
+	containerSeed RepoSeed
 
-	// containerSeedChildren are the [[repositories]] checkouts (path + HEAD,
-	// captured alongside containerSeedSHA) to materialize into the clean
-	// snapshot — the parent's git archive cannot see nested repos.
+	// containerSeedChildren are the [[repositories]] checkouts (captured
+	// alongside containerSeed) to materialize into the clean snapshot — the
+	// parent repo cannot see inside nested repos.
 	containerSeedChildren []ChildRepoSeed
 
 	// containerSeedDir caches the lazily-materialized snapshot directory (see
@@ -125,19 +125,19 @@ type DaemonExecutorConfig struct {
 	AttemptID    string
 	Image        string
 	AllWFs       map[string]*domain.Workflow
-	// ContainerSeedSHA, when non-empty, is the git commit ProjectDir was at
-	// when this config was built. Container sub-workflow copies snapshot
-	// ProjectDir at this SHA instead of using the live working tree, so a
+	// ContainerSeed, when its SHA is non-empty, pins the state ProjectDir was
+	// at when this config was built. Container sub-workflow copies snapshot
+	// ProjectDir at this state instead of using the live working tree, so a
 	// host step that runs `git checkout` against the shared ProjectDir mid-run
 	// (e.g. to prepare a design/test-plan/layer branch) can't cause a later
 	// container sub-workflow to miss files that were present when the run
-	// started. Leave empty for non-git projects or callers that don't need
+	// started. Leave zero for non-git projects or callers that don't need
 	// the protection (e.g. most tests) — containerProjectDir then falls back
 	// to the live ProjectDir, matching the previous behavior.
-	ContainerSeedSHA string
+	ContainerSeed RepoSeed
 	// ContainerSeedChildren lists nested [[repositories]] checkouts to
 	// materialize into the clean snapshot (see childRepoSeeds). Ignored when
-	// ContainerSeedSHA is empty.
+	// ContainerSeed is zero.
 	ContainerSeedChildren []ChildRepoSeed
 	// ResumeMode, when true, sets resume=true on all ExecuteStep messages so
 	// that the in-container agent continues its previous LLM conversation.
@@ -165,7 +165,7 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 		attemptID:             cfg.AttemptID,
 		image:                 cfg.Image,
 		allWFs:                cfg.AllWFs,
-		containerSeedSHA:      cfg.ContainerSeedSHA,
+		containerSeed:         cfg.ContainerSeed,
 		containerSeedChildren: cfg.ContainerSeedChildren,
 		resumeMode:            cfg.ResumeMode,
 		onContainerStart:      cfg.OnContainerStart,
@@ -176,21 +176,21 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 }
 
 // containerProjectDir returns the directory that should seed container
-// sub-workflow copies. When containerSeedSHA is set, it lazily materializes
-// (and memoizes) a clean git snapshot at that SHA and returns it instead of
-// the live projectDir — see the ContainerSeedSHA doc comment for why. Falls
-// back to the live projectDir when no seed SHA was configured, or when
+// sub-workflow copies. When containerSeed is set, it lazily materializes
+// (and memoizes) a clean git snapshot at that state and returns it instead of
+// the live projectDir — see the ContainerSeed doc comment for why. Falls
+// back to the live projectDir when no seed was configured, or when
 // snapshot creation fails (logged, not fatal — mirrors the same fallback
 // used for top-level container runs in launchAndTrack).
 func (d *DaemonExecutor) containerProjectDir(ctx context.Context) string {
-	if d.containerSeedSHA == "" {
+	if d.containerSeed.SHA == "" {
 		return d.projectDir
 	}
 	if !d.containerSeedAttempted {
 		d.containerSeedAttempted = true
-		dir, cleanup, err := materializeCleanSnapshot(ctx, d.projectDir, d.containerSeedSHA, d.containerSeedChildren)
+		dir, cleanup, err := materializeCleanSnapshot(ctx, d.projectDir, d.containerSeed, d.containerSeedChildren)
 		if err != nil {
-			log.Printf("daemon executor: clean snapshot of %s at %s failed, falling back to live tree: %v", d.projectDir, d.containerSeedSHA, err)
+			log.Printf("daemon executor: clean snapshot of %s at %s failed, falling back to live tree: %v", d.projectDir, d.containerSeed.SHA, err)
 		} else {
 			d.containerSeedDir = dir
 			d.containerSeedCleanup = cleanup

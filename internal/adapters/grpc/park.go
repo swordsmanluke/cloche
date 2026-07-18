@@ -126,21 +126,29 @@ func (s *ClocheServer) daemonExecutorForResume(projectDir, taskID, attemptID, pa
 	if projCfg, err := config.Load(projectDir); err == nil && projCfg.Daemon.Image != "" {
 		image = projCfg.Daemon.Image
 	}
+	seed := captureRepoSeed(projectDir)
+	seedChildren, seedErr := childRepoSeeds(projectDir)
+	if seedErr != nil {
+		log.Printf("park resume: %v; container sub-workflows will seed from the live tree", seedErr)
+		seed = RepoSeed{}
+		seedChildren = nil
+	}
 	var de *DaemonExecutor
 	de = NewDaemonExecutor(DaemonExecutorConfig{
-		Pool:              s.pool,
-		Store:             s.store,
-		LogStore:          s.logStore,
-		LogBroadcast:      s.logBroadcast,
-		ProjectDir:        projectDir,
-		ContainerSeedSHA:  gitHEAD(projectDir),
-		TaskID:            taskID,
-		AttemptID:         attemptID,
-		Image:             image,
-		AllWFs:            allWFs,
-		ResumeMode:        true,
-		ParkedContainerID: parkedContainerID,
-		ParkedImage:       parkedImage,
+		Pool:                  s.pool,
+		Store:                 s.store,
+		LogStore:              s.logStore,
+		LogBroadcast:          s.logBroadcast,
+		ProjectDir:            projectDir,
+		ContainerSeed:         seed,
+		ContainerSeedChildren: seedChildren,
+		TaskID:                taskID,
+		AttemptID:             attemptID,
+		Image:                 image,
+		AllWFs:                allWFs,
+		ResumeMode:            true,
+		ParkedContainerID:     parkedContainerID,
+		ParkedImage:           parkedImage,
 		OnContainerStart: func(containerID string) {
 			runID := ""
 			if de.hostExec != nil {

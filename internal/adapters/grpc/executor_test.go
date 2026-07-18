@@ -570,7 +570,7 @@ func TestDaemonExecutorFor_SetsContainerSeedSHA(t *testing.T) {
 	exec := srv.daemonExecutorFor(tmpDir, "task-1", "att-1")
 	de, ok := exec.(*DaemonExecutor)
 	require.True(t, ok)
-	assert.Equal(t, headSHA, de.containerSeedSHA)
+	assert.Equal(t, headSHA, de.containerSeed.SHA)
 }
 
 // TestDaemonExecutorFor_NonGitProject verifies that non-git project
@@ -589,7 +589,7 @@ func TestDaemonExecutorFor_NonGitProject(t *testing.T) {
 	exec := srv.daemonExecutorFor(tmpDir, "task-1", "att-1")
 	de, ok := exec.(*DaemonExecutor)
 	require.True(t, ok)
-	assert.Empty(t, de.containerSeedSHA)
+	assert.Empty(t, de.containerSeed.SHA)
 	assert.Equal(t, tmpDir, de.containerProjectDir(context.Background()))
 }
 
@@ -1334,8 +1334,8 @@ func TestDaemonExecutor_ContainerProjectDir_SurvivesLaterCheckout(t *testing.T) 
 	seedSHA := gitCmd(t, tmpDir, "rev-parse", "HEAD")
 
 	de := NewDaemonExecutor(DaemonExecutorConfig{
-		ProjectDir:       tmpDir,
-		ContainerSeedSHA: seedSHA,
+		ProjectDir:    tmpDir,
+		ContainerSeed: RepoSeed{SHA: seedSHA},
 	})
 
 	// Simulate a host step (vertical-prepare-design-branch.sh) checking out a
@@ -1368,8 +1368,8 @@ func TestDaemonExecutor_ContainerProjectDir_Memoized(t *testing.T) {
 	seedSHA := gitCmd(t, tmpDir, "rev-parse", "HEAD")
 
 	de := NewDaemonExecutor(DaemonExecutorConfig{
-		ProjectDir:       tmpDir,
-		ContainerSeedSHA: seedSHA,
+		ProjectDir:    tmpDir,
+		ContainerSeed: RepoSeed{SHA: seedSHA},
 	})
 
 	first := de.containerProjectDir(context.Background())
@@ -1388,8 +1388,8 @@ func TestDaemonExecutor_ContainerProjectDir_InvalidSHAFallsBack(t *testing.T) {
 	gitCmd(t, tmpDir, "commit", "-m", "init")
 
 	de := NewDaemonExecutor(DaemonExecutorConfig{
-		ProjectDir:       tmpDir,
-		ContainerSeedSHA: "not-a-real-sha",
+		ProjectDir:    tmpDir,
+		ContainerSeed: RepoSeed{SHA: "not-a-real-sha"},
 	})
 
 	assert.Equal(t, tmpDir, de.containerProjectDir(context.Background()))
@@ -1418,12 +1418,12 @@ func TestDaemonExecutor_ExecuteContainerStep_UsesSnapshotProjectDir(t *testing.T
 	pool := docker.NewContainerPool(rt)
 
 	de := NewDaemonExecutor(DaemonExecutorConfig{
-		Pool:             pool,
-		ProjectDir:       tmpDir,
-		ContainerSeedSHA: seedSHA,
-		TaskID:           "task-1",
-		AttemptID:        "att-1",
-		AllWFs:           allWFs,
+		Pool:          pool,
+		ProjectDir:    tmpDir,
+		ContainerSeed: RepoSeed{SHA: seedSHA},
+		TaskID:        "task-1",
+		AttemptID:     "att-1",
+		AllWFs:        allWFs,
 	})
 
 	// Host step mutates the shared tree before the container step runs.

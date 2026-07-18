@@ -76,7 +76,7 @@ func readFile(t *testing.T, path string) string {
 func TestMaterializeCleanSnapshot_ExtractsTrackedFilesAtRef(t *testing.T) {
 	repo, head := initSnapshotTestRepo(t)
 
-	snap, cleanup, err := materializeCleanSnapshot(context.Background(), repo, head, nil)
+	snap, cleanup, err := materializeCleanSnapshot(context.Background(), repo, RepoSeed{SHA: head}, nil)
 	if err != nil {
 		t.Fatalf("materializeCleanSnapshot: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestMaterializeCleanSnapshot_ExtractsTrackedFilesAtRef(t *testing.T) {
 func TestMaterializeCleanSnapshot_BadRef(t *testing.T) {
 	repo, _ := initSnapshotTestRepo(t)
 
-	snap, cleanup, err := materializeCleanSnapshot(context.Background(), repo, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", nil)
+	snap, cleanup, err := materializeCleanSnapshot(context.Background(), repo, RepoSeed{SHA: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}, nil)
 	defer cleanup()
 	if err == nil {
 		t.Fatalf("expected error for nonexistent ref, got nil (snap=%q)", snap)
@@ -116,7 +116,7 @@ func TestMaterializeCleanSnapshot_BadRef(t *testing.T) {
 func TestMaterializeCleanSnapshot_NonGitDir(t *testing.T) {
 	dir := t.TempDir() // not a git repo
 
-	snap, cleanup, err := materializeCleanSnapshot(context.Background(), dir, "HEAD", nil)
+	snap, cleanup, err := materializeCleanSnapshot(context.Background(), dir, RepoSeed{SHA: "HEAD"}, nil)
 	defer cleanup()
 	if err == nil {
 		t.Fatalf("expected error for non-git dir, got nil (snap=%q)", snap)
@@ -168,8 +168,8 @@ func TestMaterializeCleanSnapshot_IncludesChildRepos(t *testing.T) {
 	repo, head := initSnapshotTestRepo(t)
 	childHead := initNestedRepo(t, repo, filepath.Join("repos", "child"))
 
-	snap, cleanup, err := materializeCleanSnapshot(context.Background(), repo, head,
-		[]ChildRepoSeed{{Path: filepath.Join("repos", "child"), SHA: childHead}})
+	snap, cleanup, err := materializeCleanSnapshot(context.Background(), repo, RepoSeed{SHA: head},
+		[]ChildRepoSeed{{Path: filepath.Join("repos", "child"), Seed: RepoSeed{SHA: childHead}}})
 	if err != nil {
 		t.Fatalf("materializeCleanSnapshot: %v", err)
 	}
@@ -189,8 +189,8 @@ func TestMaterializeCleanSnapshot_ChildArchiveFailureFailsSnapshot(t *testing.T)
 	repo, head := initSnapshotTestRepo(t)
 
 	// Declared child that doesn't exist as a git repo.
-	snap, cleanup, err := materializeCleanSnapshot(context.Background(), repo, head,
-		[]ChildRepoSeed{{Path: filepath.Join("repos", "ghost"), SHA: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}})
+	snap, cleanup, err := materializeCleanSnapshot(context.Background(), repo, RepoSeed{SHA: head},
+		[]ChildRepoSeed{{Path: filepath.Join("repos", "ghost"), Seed: RepoSeed{SHA: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}}})
 	defer cleanup()
 	if err == nil {
 		t.Fatalf("expected error for unarchivable child repo, got nil (snap=%q)", snap)
@@ -200,8 +200,8 @@ func TestMaterializeCleanSnapshot_ChildArchiveFailureFailsSnapshot(t *testing.T)
 func TestMaterializeCleanSnapshot_ChildPathEscapeRejected(t *testing.T) {
 	repo, head := initSnapshotTestRepo(t)
 
-	snap, cleanup, err := materializeCleanSnapshot(context.Background(), repo, head,
-		[]ChildRepoSeed{{Path: filepath.Join("..", "outside"), SHA: head}})
+	snap, cleanup, err := materializeCleanSnapshot(context.Background(), repo, RepoSeed{SHA: head},
+		[]ChildRepoSeed{{Path: filepath.Join("..", "outside"), Seed: RepoSeed{SHA: head}}})
 	defer cleanup()
 	if err == nil {
 		t.Fatalf("expected error for escaping child path, got nil (snap=%q)", snap)
@@ -228,7 +228,7 @@ func TestChildRepoSeeds_ResolvesDeclaredRepos(t *testing.T) {
 	if len(seeds) != 1 {
 		t.Fatalf("seeds = %+v, want exactly the cloned child", seeds)
 	}
-	if seeds[0].Path != filepath.Join("repos", "child") || seeds[0].SHA != childHead {
+	if seeds[0].Path != filepath.Join("repos", "child") || seeds[0].Seed.SHA != childHead {
 		t.Errorf("seed = %+v, want {repos/child %s}", seeds[0], childHead)
 	}
 }
@@ -251,4 +251,69 @@ func TestChildRepoSeeds_NonRepoCheckoutIsError(t *testing.T) {
 	if _, err := childRepoSeeds(repo); err == nil {
 		t.Fatal("expected error for existing non-repo checkout, got nil")
 	}
+}
+
+func TestMaterializeCleanSnapshot_ProducesGitCheckout(t *testing.T) {
+	repo, _ := initSnapshotTestRepo(t)
+	childHead := initNestedRepo(t, repo, filepath.Join("repos", "child"))
+
+	// Mirror real projects: the nested checkout lives at a gitignored path.
+	if err := os.WriteFile(filepath.Join(repo, ".gitignore"), []byte("repos/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %s: %v", args, out, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	gitIn("add", ".gitignore")
+	gitIn("commit", "-m", "ignore repos/")
+	head := gitIn("rev-parse", "HEAD")
+
+	snap, cleanup, err := materializeCleanSnapshot(context.Background(), repo, RepoSeed{SHA: head, Branch: "main"},
+		[]ChildRepoSeed{{Path: filepath.Join("repos", "child"), Seed: RepoSeed{SHA: childHead}}})
+	if err != nil {
+		t.Fatalf("materializeCleanSnapshot: %v", err)
+	}
+	defer cleanup()
+
+	// The snapshot must be a functioning git repo pinned at head: workflows
+	// run git commands (add/commit) inside the container copy.
+	gitOut := func(dir string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v in %s: %s: %v", args, dir, out, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	if got := gitOut(snap, "rev-parse", "HEAD"); got != head {
+		t.Errorf("snapshot HEAD = %s, want %s", got, head)
+	}
+	if got := gitOut(snap, "symbolic-ref", "--short", "HEAD"); got != "main" {
+		t.Errorf("snapshot branch = %q, want main", got)
+	}
+	if got := gitOut(snap, "status", "--porcelain"); got != "" {
+		t.Errorf("snapshot working tree not clean: %q", got)
+	}
+	// Nested repo is its own functioning checkout at its pinned commit.
+	child := filepath.Join(snap, "repos", "child")
+	if got := gitOut(child, "rev-parse", "HEAD"); got != childHead {
+		t.Errorf("child HEAD = %s, want %s", got, childHead)
+	}
+	// And in-container-style commits must work in both.
+	if err := os.WriteFile(filepath.Join(child, "G"), []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitOut(child, "add", "G")
+	gitOut(child, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "in-snapshot commit")
 }
