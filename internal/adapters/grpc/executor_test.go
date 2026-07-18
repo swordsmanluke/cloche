@@ -547,6 +547,52 @@ func TestDaemonExecutor_ProductionWiring(t *testing.T) {
 	_ = result // result may be nil on context cancellation
 }
 
+// TestDaemonExecutorFor_SetsContainerSeedSHA verifies that daemonExecutorFor
+// captures the project's current git HEAD into ContainerSeedSHA, so that
+// container sub-workflow copies are protected against host steps that check
+// out a different branch on the shared project directory mid-run (see
+// TestDaemonExecutor_ContainerProjectDir_SurvivesLaterCheckout).
+func TestDaemonExecutorFor_SetsContainerSeedSHA(t *testing.T) {
+	tmpDir := t.TempDir()
+	gitCmd(t, tmpDir, "init")
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "README"), []byte("x"), 0644))
+	gitCmd(t, tmpDir, "add", "README")
+	gitCmd(t, tmpDir, "commit", "-m", "init")
+	headSHA := gitCmd(t, tmpDir, "rev-parse", "HEAD")
+
+	srv := &ClocheServer{
+		store:           &fakeRunStore{},
+		pool:            docker.NewContainerPool(&recordingContainerRuntime{}),
+		defaultImage:    "test-image:latest",
+		activityLoggers: make(map[string]*activitylog.Logger),
+	}
+
+	exec := srv.daemonExecutorFor(tmpDir, "task-1", "att-1")
+	de, ok := exec.(*DaemonExecutor)
+	require.True(t, ok)
+	assert.Equal(t, headSHA, de.containerSeedSHA)
+}
+
+// TestDaemonExecutorFor_NonGitProject verifies that non-git project
+// directories don't break daemonExecutorFor — ContainerSeedSHA stays empty
+// and containerProjectDir falls back to the live directory.
+func TestDaemonExecutorFor_NonGitProject(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	srv := &ClocheServer{
+		store:           &fakeRunStore{},
+		pool:            docker.NewContainerPool(&recordingContainerRuntime{}),
+		defaultImage:    "test-image:latest",
+		activityLoggers: make(map[string]*activitylog.Logger),
+	}
+
+	exec := srv.daemonExecutorFor(tmpDir, "task-1", "att-1")
+	de, ok := exec.(*DaemonExecutor)
+	require.True(t, ok)
+	assert.Empty(t, de.containerSeedSHA)
+	assert.Equal(t, tmpDir, de.containerProjectDir(context.Background()))
+}
+
 // blockingWait provides a Wait that blocks until Stop signals the container
 // exited (or context is cancelled). Embed in fake runtimes; call bwInit(id) in
 // Start and bwHalt(id) in Stop so the pool exit-watcher doesn't fire early.
@@ -1235,4 +1281,168 @@ func TestDaemonExecutor_WorkflowStep_NoExtractionWhenNoSession(t *testing.T) {
 	// No session was ever established, so CopyFrom should NOT have been called.
 	copied := rt.copiedFrom()
 	assert.Empty(t, copied, "CopyFrom must not be called when no container session exists")
+}
+
+// gitCmd runs a git command in dir, failing the test on error.
+func gitCmd(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := execCommand("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test",
+	)
+	out, err := cmd.CombinedOutput()
+	require.NoErrorf(t, err, "git %v: %s", args, out)
+	return strings.TrimSpace(string(out))
+}
+
+// TestDaemonExecutor_ContainerProjectDir_NoSeedSHA verifies that when no
+// ContainerSeedSHA is configured (e.g. non-git projects, or callers that
+// don't opt in), containerProjectDir returns the live projectDir unchanged —
+// preserving the pre-fix behavior.
+func TestDaemonExecutor_ContainerProjectDir_NoSeedSHA(t *testing.T) {
+	tmpDir := t.TempDir()
+	de := NewDaemonExecutor(DaemonExecutorConfig{ProjectDir: tmpDir})
+
+	assert.Equal(t, tmpDir, de.containerProjectDir(context.Background()))
+}
+
+// TestDaemonExecutor_ContainerProjectDir_SurvivesLaterCheckout is the
+// regression test for the "project copy into sub-workflow containers misses
+// files" bug: a host workflow step (e.g. vertical-prepare-design-branch.sh)
+// runs `git checkout -B <branch> <base>` directly against the shared project
+// working tree before a later step dispatches a container sub-workflow. If
+// the container copy reads the live tree at that point, it inherits whatever
+// happens to be checked out — which can be missing files that existed when
+// the run started. containerProjectDir must instead snapshot the SHA
+// projectDir was at when the executor was built, before any step ran.
+func TestDaemonExecutor_ContainerProjectDir_SurvivesLaterCheckout(t *testing.T) {
+	tmpDir := t.TempDir()
+	gitCmd(t, tmpDir, "init")
+
+	// Commit 1: only the file that predates the run's new addition.
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "develop.cloche"), []byte("old"), 0644))
+	gitCmd(t, tmpDir, "add", "develop.cloche")
+	gitCmd(t, tmpDir, "commit", "-m", "commit1")
+
+	// Commit 2: the new file that must survive into the container copy —
+	// present on disk when "cloche run vertical" is invoked.
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "vertical.cloche"), []byte("new"), 0644))
+	gitCmd(t, tmpDir, "add", "vertical.cloche")
+	gitCmd(t, tmpDir, "commit", "-m", "commit2")
+	seedSHA := gitCmd(t, tmpDir, "rev-parse", "HEAD")
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		ProjectDir:       tmpDir,
+		ContainerSeedSHA: seedSHA,
+	})
+
+	// Simulate a host step (vertical-prepare-design-branch.sh) checking out a
+	// branch based on the pre-vertical.cloche commit, directly on the shared
+	// working tree — exactly what happens between "prepare-design-branch" and
+	// "bdd-test-plan" in vertical.cloche.
+	gitCmd(t, tmpDir, "checkout", "-B", "vertical/feat/design", "HEAD~1")
+	require.NoFileExists(t, filepath.Join(tmpDir, "vertical.cloche"),
+		"sanity check: checkout should have removed vertical.cloche from the live tree")
+
+	seedDir := de.containerProjectDir(context.Background())
+	assert.NotEqual(t, tmpDir, seedDir, "should return a snapshot dir, not the live (mutated) tree")
+	assert.FileExists(t, filepath.Join(seedDir, "vertical.cloche"),
+		"container copy must still see files present when the run started, despite the later checkout")
+	assert.FileExists(t, filepath.Join(seedDir, "develop.cloche"))
+
+	de.Close(true)
+	assert.NoDirExists(t, seedDir, "Close should clean up the snapshot dir")
+}
+
+// TestDaemonExecutor_ContainerProjectDir_Memoized verifies the snapshot is
+// only materialized once per executor and reused across calls (each
+// container sub-workflow step in an attempt calls containerProjectDir again).
+func TestDaemonExecutor_ContainerProjectDir_Memoized(t *testing.T) {
+	tmpDir := t.TempDir()
+	gitCmd(t, tmpDir, "init")
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "a.txt"), []byte("a"), 0644))
+	gitCmd(t, tmpDir, "add", "a.txt")
+	gitCmd(t, tmpDir, "commit", "-m", "init")
+	seedSHA := gitCmd(t, tmpDir, "rev-parse", "HEAD")
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		ProjectDir:       tmpDir,
+		ContainerSeedSHA: seedSHA,
+	})
+
+	first := de.containerProjectDir(context.Background())
+	second := de.containerProjectDir(context.Background())
+	assert.Equal(t, first, second, "the snapshot should be materialized once and reused")
+}
+
+// TestDaemonExecutor_ContainerProjectDir_InvalidSHAFallsBack verifies that a
+// bad seed SHA (snapshot creation failure) falls back to the live projectDir
+// instead of breaking the container copy entirely.
+func TestDaemonExecutor_ContainerProjectDir_InvalidSHAFallsBack(t *testing.T) {
+	tmpDir := t.TempDir()
+	gitCmd(t, tmpDir, "init")
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "a.txt"), []byte("a"), 0644))
+	gitCmd(t, tmpDir, "add", "a.txt")
+	gitCmd(t, tmpDir, "commit", "-m", "init")
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		ProjectDir:       tmpDir,
+		ContainerSeedSHA: "not-a-real-sha",
+	})
+
+	assert.Equal(t, tmpDir, de.containerProjectDir(context.Background()))
+}
+
+// TestDaemonExecutor_ExecuteContainerStep_UsesSnapshotProjectDir exercises
+// the fix through the full Execute path (not just containerProjectDir
+// directly): a container sub-workflow step must receive the pre-run snapshot
+// as ProjectDir, not the live tree, even after it's been checked out
+// elsewhere by an earlier host step.
+func TestDaemonExecutor_ExecuteContainerStep_UsesSnapshotProjectDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	gitCmd(t, tmpDir, "init")
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "develop.cloche"), []byte("old"), 0644))
+	gitCmd(t, tmpDir, "add", "develop.cloche")
+	gitCmd(t, tmpDir, "commit", "-m", "commit1")
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "vertical.cloche"), []byte("new"), 0644))
+	gitCmd(t, tmpDir, "add", "vertical.cloche")
+	gitCmd(t, tmpDir, "commit", "-m", "commit2")
+	seedSHA := gitCmd(t, tmpDir, "rev-parse", "HEAD")
+
+	containerWF := buildContainerWFForTest("develop")
+	allWFs := map[string]*domain.Workflow{"develop": containerWF}
+
+	rt := &recordingContainerRuntime{}
+	pool := docker.NewContainerPool(rt)
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		Pool:             pool,
+		ProjectDir:       tmpDir,
+		ContainerSeedSHA: seedSHA,
+		TaskID:           "task-1",
+		AttemptID:        "att-1",
+		AllWFs:           allWFs,
+	})
+
+	// Host step mutates the shared tree before the container step runs.
+	gitCmd(t, tmpDir, "checkout", "-B", "vertical/feat/design", "HEAD~1")
+
+	step := &domain.Step{
+		Name:    "develop",
+		Type:    domain.StepTypeWorkflow,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"workflow_name": "develop"},
+	}
+	mainWF := buildHostWFForTest("main")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	_, _ = de.Execute(engine.WithWorkflow(ctx, mainWF), step)
+
+	require.True(t, rt.startCalled)
+	assert.NotEqual(t, tmpDir, rt.lastConfig.ProjectDir)
+	assert.FileExists(t, filepath.Join(rt.lastConfig.ProjectDir, "vertical.cloche"),
+		"the container should be seeded from the pre-run snapshot, not the live checked-out tree")
 }

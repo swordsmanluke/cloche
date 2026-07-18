@@ -81,22 +81,46 @@ type DaemonExecutor struct {
 	// single-element slice with an unnamed repo).
 	worktrees map[string][]repoWorktree
 
+	// containerSeedSHA is the git commit projectDir was at when this executor
+	// was constructed — captured before any host workflow step has had a
+	// chance to run. Container sub-workflow copies seed from a clean snapshot
+	// at this SHA rather than the live projectDir; see containerProjectDir.
+	containerSeedSHA string
+
+	// containerSeedDir caches the lazily-materialized snapshot directory (see
+	// containerProjectDir). containerSeedCleanup removes it; both stay unset
+	// until first use. containerSeedAttempted guards against retrying a failed
+	// snapshot on every container step.
+	containerSeedDir       string
+	containerSeedCleanup   func()
+	containerSeedAttempted bool
+
 	// closed tracks whether Close() has already been called.
 	closed bool
 }
 
 // DaemonExecutorConfig holds configuration for constructing a DaemonExecutor.
 type DaemonExecutorConfig struct {
-	HostExec   *host.Executor
-	Pool       *docker.ContainerPool
-	Store      ports.RunStore
-	LogStore   ports.LogStore
+	HostExec     *host.Executor
+	Pool         *docker.ContainerPool
+	Store        ports.RunStore
+	LogStore     ports.LogStore
 	LogBroadcast *logstream.Broadcaster
-	ProjectDir string
-	TaskID     string
-	AttemptID  string
-	Image      string
-	AllWFs     map[string]*domain.Workflow
+	ProjectDir   string
+	TaskID       string
+	AttemptID    string
+	Image        string
+	AllWFs       map[string]*domain.Workflow
+	// ContainerSeedSHA, when non-empty, is the git commit ProjectDir was at
+	// when this config was built. Container sub-workflow copies snapshot
+	// ProjectDir at this SHA instead of using the live working tree, so a
+	// host step that runs `git checkout` against the shared ProjectDir mid-run
+	// (e.g. to prepare a design/test-plan/layer branch) can't cause a later
+	// container sub-workflow to miss files that were present when the run
+	// started. Leave empty for non-git projects or callers that don't need
+	// the protection (e.g. most tests) — containerProjectDir then falls back
+	// to the live ProjectDir, matching the previous behavior.
+	ContainerSeedSHA string
 	// ResumeMode, when true, sets resume=true on all ExecuteStep messages so
 	// that the in-container agent continues its previous LLM conversation.
 	ResumeMode bool
@@ -117,10 +141,38 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 		attemptID:        cfg.AttemptID,
 		image:            cfg.Image,
 		allWFs:           cfg.AllWFs,
+		containerSeedSHA: cfg.ContainerSeedSHA,
 		resumeMode:       cfg.ResumeMode,
 		onContainerStart: cfg.OnContainerStart,
 		worktrees:        make(map[string][]repoWorktree),
 	}
+}
+
+// containerProjectDir returns the directory that should seed container
+// sub-workflow copies. When containerSeedSHA is set, it lazily materializes
+// (and memoizes) a clean git snapshot at that SHA and returns it instead of
+// the live projectDir — see the ContainerSeedSHA doc comment for why. Falls
+// back to the live projectDir when no seed SHA was configured, or when
+// snapshot creation fails (logged, not fatal — mirrors the same fallback
+// used for top-level container runs in launchAndTrack).
+func (d *DaemonExecutor) containerProjectDir(ctx context.Context) string {
+	if d.containerSeedSHA == "" {
+		return d.projectDir
+	}
+	if !d.containerSeedAttempted {
+		d.containerSeedAttempted = true
+		dir, cleanup, err := materializeCleanSnapshot(ctx, d.projectDir, d.containerSeedSHA)
+		if err != nil {
+			log.Printf("daemon executor: clean snapshot of %s at %s failed, falling back to live tree: %v", d.projectDir, d.containerSeedSHA, err)
+		} else {
+			d.containerSeedDir = dir
+			d.containerSeedCleanup = cleanup
+		}
+	}
+	if d.containerSeedDir != "" {
+		return d.containerSeedDir
+	}
+	return d.projectDir
 }
 
 // Ensure DaemonExecutor satisfies engine.StepExecutor.
@@ -139,10 +191,16 @@ var (
 // removed on success, kept on failure. Must be called after the host workflow
 // finishes.
 func (d *DaemonExecutor) Close(succeeded bool) {
-	if d.closed || d.pool == nil {
+	if d.closed {
 		return
 	}
 	d.closed = true
+	if d.containerSeedCleanup != nil {
+		d.containerSeedCleanup()
+	}
+	if d.pool == nil {
+		return
+	}
 	ctx := context.Background()
 	for key := range d.poolKeys {
 		if err := d.pool.CleanupAttempt(ctx, key, false, succeeded); err != nil {
@@ -494,7 +552,6 @@ func (d *DaemonExecutor) writeRepoBranchKV(ctx context.Context, prepared []repoW
 	}
 }
 
-
 // executeContainerStep obtains a container session for the attempt (starting a
 // new container if needed) and dispatches the step to the in-container agent.
 func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.Step, wf *domain.Workflow) (domain.StepResult, error) {
@@ -522,7 +579,7 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 	cfg := ports.ContainerConfig{
 		Image:        image,
 		WorkflowName: wf.Name,
-		ProjectDir:   d.projectDir,
+		ProjectDir:   d.containerProjectDir(ctx),
 		RunID:        hostRunID,
 		TaskID:       d.taskID,
 		AttemptID:    d.attemptID,

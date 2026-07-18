@@ -71,6 +71,31 @@ container can never see uncommitted/dirty state or a stray branch checkout. On a
 error (non-git dir, empty `baseSHA`, archive failure) it **falls back to the live
 tree** so nothing breaks.
 
+### 3a. Same protection for host-workflow container sub-workflows (v3.18.5)
+
+§3 covers the top-level `launchAndTrack` path. A **host** workflow (a `host { }`
+block, see [workflows.md](../workflows.md#workflow-level-configuration-blocks)) can
+also dispatch a **container sub-workflow**
+mid-run via `DaemonExecutor.executeContainerStep` — e.g. `vertical.cloche` runs
+`git checkout -B <branch> <base>` directly against the shared project tree
+(`vertical-prepare-design-branch.sh`) before a later step launches a container.
+That path used to seed the container from the live `projectDir`, so it inherited
+whatever branch happened to be checked out at that moment — the same class of bug
+as §1, one level down.
+
+- `daemonExecutorFor` (`server.go:3326`) captures `ContainerSeedSHA: gitHEAD(projectDir)`
+  when it builds the `DaemonExecutor`, i.e. before any host step of that run has
+  executed.
+- `DaemonExecutor.containerProjectDir(ctx)` (`executor.go:158`) lazily materializes
+  a `materializeCleanSnapshot` at that SHA on first container sub-workflow dispatch,
+  memoizes the directory, and returns it in place of the live `projectDir`; on
+  failure it logs and falls back to the live tree, mirroring §3. The snapshot is
+  removed in `DaemonExecutor.Close` (`executor.go:193`).
+- `executeContainerStep` (`executor.go:582`) uses `containerProjectDir(ctx)` instead
+  of `d.projectDir` when building the container's `ProjectDir`.
+- Callers that don't set `ContainerSeedSHA` (non-git projects, most tests) get the
+  pre-fix behavior: `containerProjectDir` returns the live `projectDir` unchanged.
+
 ## 4. Execution — per-step workspace snapshots
 
 While the container runs, the daemon snapshots `/workspace` **after each successful
