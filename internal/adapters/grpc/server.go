@@ -1521,8 +1521,13 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 	// changes. On any failure (non-git dir, empty baseSHA, archive error) we
 	// fall back to the live tree so nothing breaks.
 	seedDir := req.ProjectDir
+	children, childErr := childRepoSeeds(req.ProjectDir)
+	if childErr != nil {
+		log.Printf("run %s: %v; seeding container from live tree", runID, childErr)
+		baseSHA = ""
+	}
 	if baseSHA != "" {
-		snapDir, cleanup, snapErr := materializeCleanSnapshot(ctx, req.ProjectDir, baseSHA)
+		snapDir, cleanup, snapErr := materializeCleanSnapshot(ctx, req.ProjectDir, baseSHA, children)
 		if snapErr != nil {
 			log.Printf("run %s: clean snapshot at %s failed, falling back to live tree: %v", runID, baseSHA, snapErr)
 		} else {
@@ -3410,18 +3415,30 @@ func (s *ClocheServer) daemonExecutorFor(projectDir, taskID, attemptID string) e
 	if projCfg, err := config.Load(projectDir); err == nil && projCfg.Daemon.Image != "" {
 		image = projCfg.Daemon.Image
 	}
+	// Capture the seed state (parent HEAD + nested repo HEADs) before any host
+	// step runs. If a declared nested repo can't be seeded, disable the clean
+	// snapshot entirely so container copies fall back to the live tree rather
+	// than silently omitting the repo.
+	seedSHA := gitHEAD(projectDir)
+	seedChildren, seedErr := childRepoSeeds(projectDir)
+	if seedErr != nil {
+		log.Printf("daemon executor: %v; container sub-workflows will seed from the live tree", seedErr)
+		seedSHA = ""
+		seedChildren = nil
+	}
 	var de *DaemonExecutor
 	de = NewDaemonExecutor(DaemonExecutorConfig{
-		Pool:             s.pool,
-		Store:            s.store,
-		LogStore:         s.logStore,
-		LogBroadcast:     s.logBroadcast,
-		ProjectDir:       projectDir,
-		ContainerSeedSHA: gitHEAD(projectDir),
-		TaskID:           taskID,
-		AttemptID:        attemptID,
-		Image:            image,
-		AllWFs:           allWFs,
+		Pool:                  s.pool,
+		Store:                 s.store,
+		LogStore:              s.logStore,
+		LogBroadcast:          s.logBroadcast,
+		ProjectDir:            projectDir,
+		ContainerSeedSHA:      seedSHA,
+		ContainerSeedChildren: seedChildren,
+		TaskID:                taskID,
+		AttemptID:             attemptID,
+		Image:                 image,
+		AllWFs:                allWFs,
 		OnContainerStart: func(containerID string) {
 			// Register the container → host run mapping so the AgentSession
 			// handler can route StepLog messages to the correct run for

@@ -96,6 +96,11 @@ type DaemonExecutor struct {
 	// at this SHA rather than the live projectDir; see containerProjectDir.
 	containerSeedSHA string
 
+	// containerSeedChildren are the [[repositories]] checkouts (path + HEAD,
+	// captured alongside containerSeedSHA) to materialize into the clean
+	// snapshot — the parent's git archive cannot see nested repos.
+	containerSeedChildren []ChildRepoSeed
+
 	// containerSeedDir caches the lazily-materialized snapshot directory (see
 	// containerProjectDir). containerSeedCleanup removes it; both stay unset
 	// until first use. containerSeedAttempted guards against retrying a failed
@@ -130,6 +135,10 @@ type DaemonExecutorConfig struct {
 	// the protection (e.g. most tests) — containerProjectDir then falls back
 	// to the live ProjectDir, matching the previous behavior.
 	ContainerSeedSHA string
+	// ContainerSeedChildren lists nested [[repositories]] checkouts to
+	// materialize into the clean snapshot (see childRepoSeeds). Ignored when
+	// ContainerSeedSHA is empty.
+	ContainerSeedChildren []ChildRepoSeed
 	// ResumeMode, when true, sets resume=true on all ExecuteStep messages so
 	// that the in-container agent continues its previous LLM conversation.
 	ResumeMode bool
@@ -146,22 +155,23 @@ type DaemonExecutorConfig struct {
 // NewDaemonExecutor creates a DaemonExecutor from the given config.
 func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 	return &DaemonExecutor{
-		hostExec:          cfg.HostExec,
-		pool:              cfg.Pool,
-		store:             cfg.Store,
-		logStore:          cfg.LogStore,
-		logBroadcast:      cfg.LogBroadcast,
-		projectDir:        cfg.ProjectDir,
-		taskID:            cfg.TaskID,
-		attemptID:         cfg.AttemptID,
-		image:             cfg.Image,
-		allWFs:            cfg.AllWFs,
-		containerSeedSHA:  cfg.ContainerSeedSHA,
-		resumeMode:        cfg.ResumeMode,
-		onContainerStart:  cfg.OnContainerStart,
-		worktrees:         make(map[string][]repoWorktree),
-		parkedContainerID: cfg.ParkedContainerID,
-		parkedImage:       cfg.ParkedImage,
+		hostExec:              cfg.HostExec,
+		pool:                  cfg.Pool,
+		store:                 cfg.Store,
+		logStore:              cfg.LogStore,
+		logBroadcast:          cfg.LogBroadcast,
+		projectDir:            cfg.ProjectDir,
+		taskID:                cfg.TaskID,
+		attemptID:             cfg.AttemptID,
+		image:                 cfg.Image,
+		allWFs:                cfg.AllWFs,
+		containerSeedSHA:      cfg.ContainerSeedSHA,
+		containerSeedChildren: cfg.ContainerSeedChildren,
+		resumeMode:            cfg.ResumeMode,
+		onContainerStart:      cfg.OnContainerStart,
+		worktrees:             make(map[string][]repoWorktree),
+		parkedContainerID:     cfg.ParkedContainerID,
+		parkedImage:           cfg.ParkedImage,
 	}
 }
 
@@ -178,7 +188,7 @@ func (d *DaemonExecutor) containerProjectDir(ctx context.Context) string {
 	}
 	if !d.containerSeedAttempted {
 		d.containerSeedAttempted = true
-		dir, cleanup, err := materializeCleanSnapshot(ctx, d.projectDir, d.containerSeedSHA)
+		dir, cleanup, err := materializeCleanSnapshot(ctx, d.projectDir, d.containerSeedSHA, d.containerSeedChildren)
 		if err != nil {
 			log.Printf("daemon executor: clean snapshot of %s at %s failed, falling back to live tree: %v", d.projectDir, d.containerSeedSHA, err)
 		} else {

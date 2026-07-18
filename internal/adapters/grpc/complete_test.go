@@ -342,14 +342,14 @@ func TestServer_Complete_FuzzyMatchesFn(t *testing.T) {
 		s, prefix string
 		want      bool
 	}{
-		{"task-abc:1fka", "1fka", true},  // component match
-		{"task-abc:1fka", "task", true},  // prefix match on first component
+		{"task-abc:1fka", "1fka", true},     // component match
+		{"task-abc:1fka", "task", true},     // prefix match on first component
 		{"task-abc:1fka", "task-abc", true}, // exact component match
-		{"task-abc:1fka", "xyz", false},  // no match
-		{"stop", "st", true},             // normal prefix match
-		{"--all", "--a", true},           // flag prefix match
-		{"a:b:c", "b", true},             // middle component
-		{"a:b:c", "c", true},             // last component
+		{"task-abc:1fka", "xyz", false},     // no match
+		{"stop", "st", true},                // normal prefix match
+		{"--all", "--a", true},              // flag prefix match
+		{"a:b:c", "b", true},                // middle component
+		{"a:b:c", "c", true},                // last component
 	}
 
 	for _, tc := range cases {

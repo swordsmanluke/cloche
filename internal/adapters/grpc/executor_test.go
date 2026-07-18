@@ -687,7 +687,7 @@ func (f *fakeRunStore) GetRun(_ context.Context, _ string) (*domain.Run, error) 
 func (f *fakeRunStore) GetRunByAttempt(_ context.Context, _, _ string) (*domain.Run, error) {
 	return nil, fmt.Errorf("not found")
 }
-func (f *fakeRunStore) DeleteRun(_ context.Context, _ string) error             { return nil }
+func (f *fakeRunStore) DeleteRun(_ context.Context, _ string) error { return nil }
 func (f *fakeRunStore) ListRuns(_ context.Context, _ time.Time) ([]*domain.Run, error) {
 	return nil, nil
 }
@@ -697,7 +697,7 @@ func (f *fakeRunStore) ListRunsByProject(_ context.Context, _ string, _ time.Tim
 func (f *fakeRunStore) ListRunsFiltered(_ context.Context, _ domain.RunListFilter) ([]*domain.Run, error) {
 	return nil, nil
 }
-func (f *fakeRunStore) ListProjects(_ context.Context) ([]string, error)  { return nil, nil }
+func (f *fakeRunStore) ListProjects(_ context.Context) ([]string, error) { return nil, nil }
 func (f *fakeRunStore) ListChildRuns(_ context.Context, _ string) ([]*domain.Run, error) {
 	return nil, nil
 }
@@ -768,8 +768,8 @@ func (r *copyTrackingRuntime) CopyFrom(_ context.Context, _, src, _ string) erro
 	r.mu.Unlock()
 	return nil
 }
-func (r *copyTrackingRuntime) Logs(_ context.Context, _ string) (string, error)  { return "", nil }
-func (r *copyTrackingRuntime) Remove(_ context.Context, _ string) error           { return nil }
+func (r *copyTrackingRuntime) Logs(_ context.Context, _ string) (string, error) { return "", nil }
+func (r *copyTrackingRuntime) Remove(_ context.Context, _ string) error         { return nil }
 func (r *copyTrackingRuntime) Inspect(_ context.Context, _ string) (*ports.ContainerStatus, error) {
 	return &ports.ContainerStatus{}, nil
 }

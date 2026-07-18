@@ -14,8 +14,8 @@ import (
 	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
-	server "github.com/cloche-dev/cloche/internal/adapters/grpc"
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
+	server "github.com/cloche-dev/cloche/internal/adapters/grpc"
 	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/domain"
@@ -2483,7 +2483,6 @@ func TestServer_ListTasks_WithTasks(t *testing.T) {
 	srv := server.NewClocheServer(store, nil)
 	srv.SetTaskStore(store)
 
-
 	// Create tasks directly in the store
 	taskA := &domain.Task{
 		ID:         "TASK-1",
@@ -2542,7 +2541,6 @@ func TestServer_GetTask(t *testing.T) {
 	srv := server.NewClocheServer(store, nil)
 	srv.SetTaskStore(store)
 
-
 	task := &domain.Task{
 		ID:         "TASK-A",
 		Title:      "My task",
@@ -2584,7 +2582,6 @@ func TestServer_GetAttempt(t *testing.T) {
 	ctx := context.Background()
 	srv := server.NewClocheServer(store, nil)
 	srv.SetTaskStore(store)
-
 
 	// Create task, attempt, and a matching run
 	task := &domain.Task{
@@ -3271,7 +3268,6 @@ func TestResumeTarget_TaskID_PrefersHostRun(t *testing.T) {
 	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
 	srv.SetTaskStore(store)
 
-
 	// Resume by task ID. Use NewIncomingContext so the server's metadata
 	// readers (FromIncomingContext) see the headers.
 	md := metadata.Pairs("x-cloche-resume-task-or-run", taskID)
@@ -3388,7 +3384,6 @@ func TestResume_CreatesNewAttempt_HostRun(t *testing.T) {
 
 	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
 	srv.SetTaskStore(store)
-
 
 	md := metadata.Pairs("x-cloche-resume-run-id", hostRun.ID)
 	resumeCtx := metadata.NewIncomingContext(ctx, md)
@@ -3952,11 +3947,11 @@ func (m *mockConsoleStream) getOutputs() []*pb.ConsoleOutput {
 
 // consoleRuntime is a ContainerRuntime that supports interactive Attach for Console tests.
 type consoleRuntime struct {
-	startCfg   ports.ContainerConfig
+	startCfg    ports.ContainerConfig
 	containerID string
-	attachConn io.ReadWriteCloser
-	waitCode   int
-	waitSignal chan struct{}
+	attachConn  io.ReadWriteCloser
+	waitCode    int
+	waitSignal  chan struct{}
 }
 
 func newConsoleRuntime(conn io.ReadWriteCloser, waitCode int) *consoleRuntime {
@@ -3973,7 +3968,7 @@ func (r *consoleRuntime) Start(_ context.Context, cfg ports.ContainerConfig) (st
 	return r.containerID, nil
 }
 
-func (r *consoleRuntime) Stop(_ context.Context, _ string) error        { return nil }
+func (r *consoleRuntime) Stop(_ context.Context, _ string) error           { return nil }
 func (r *consoleRuntime) CopyFrom(_ context.Context, _, _, _ string) error { return nil }
 func (r *consoleRuntime) Logs(_ context.Context, _ string) (string, error) { return "", nil }
 func (r *consoleRuntime) Remove(_ context.Context, _ string) error         { return nil }
@@ -4250,7 +4245,7 @@ func (m *mockInspectRuntime) AttachOutput(_ context.Context, _ string) (io.ReadC
 }
 func (m *mockInspectRuntime) CopyFrom(_ context.Context, _, _, _ string) error { return nil }
 func (m *mockInspectRuntime) Logs(_ context.Context, _ string) (string, error) { return "", nil }
-func (m *mockInspectRuntime) Remove(_ context.Context, _ string) error { return nil }
+func (m *mockInspectRuntime) Remove(_ context.Context, _ string) error         { return nil }
 func (m *mockInspectRuntime) Inspect(_ context.Context, _ string) (*ports.ContainerStatus, error) {
 	if m.inspectErr != nil {
 		return nil, m.inspectErr
@@ -4682,9 +4677,9 @@ type nopRuntime struct{}
 func (n *nopRuntime) Start(_ context.Context, _ ports.ContainerConfig) (string, error) {
 	return "", fmt.Errorf("nopRuntime: Start not supported")
 }
-func (n *nopRuntime) Stop(_ context.Context, _ string) error     { return nil }
-func (n *nopRuntime) Remove(_ context.Context, _ string) error   { return nil }
-func (n *nopRuntime) Wait(_ context.Context, _ string) (int, error) { return 0, nil }
+func (n *nopRuntime) Stop(_ context.Context, _ string) error           { return nil }
+func (n *nopRuntime) Remove(_ context.Context, _ string) error         { return nil }
+func (n *nopRuntime) Wait(_ context.Context, _ string) (int, error)    { return 0, nil }
 func (n *nopRuntime) Logs(_ context.Context, _ string) (string, error) { return "", nil }
 func (n *nopRuntime) AttachOutput(_ context.Context, _ string) (io.ReadCloser, error) {
 	return io.NopCloser(nil), nil
