@@ -12,7 +12,7 @@ shared: Shared repos/cloche checkout {
 snapshot: "Clean per-run snapshot\n(input isolation)" {
   shape: page
   style.fill: "#f3fff0"
-  body: "git archive <baseSHA>\n→ temp dir\n(tracked files only —\nno dirty/untracked state)"
+  body: "git clone @ baseSHA\n→ temp dir\n(+ nested [[repositories]]\nchild clones)"
 }
 
 container: Container (one per run) {
@@ -34,7 +34,7 @@ origin: origin (GitHub) {
   main: main
 }
 
-shared.git -> snapshot.body: "1. git archive baseSHA"
+shared.git -> snapshot.body: "1. git clone @ baseSHA"
 snapshot.body -> container.ws: "2. docker cp (clean)"
 container.exec -> container.snaps: "capture after each\nsuccessful step"
 container.ws -> extract.body: "3. extract commits\n(daemon)"

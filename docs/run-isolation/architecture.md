@@ -35,7 +35,7 @@ fast-forward refspec push.
 The numbered edges correspond to the sections below. The two green "page" nodes are
 the isolation boundaries; the blue shared checkout is **never mutated** by a run.
 
-## 3. Input isolation — clean per-run container snapshot (v3.18.0, v3.18.9)
+## 3. Input isolation — clean per-run container snapshot (v3.18.0, v3.18.9/v3.19.0)
 
 When the daemon launches a container, it records the base commit (and, for any
 nested `[[repositories]]` checkouts, their commits too) and seeds `/workspace`
@@ -50,10 +50,13 @@ from a **clean local git clone pinned at that state**, not the live tree.
 - The seed block — `server.go:1523-1539`:
 
   ```go
-  seedDir := req.ProjectDir
+  // Seed the container from a CLEAN per-run snapshot of the project at
+  // baseSHA rather than the live working tree. Host workflow steps mutate the
+  // shared working tree (git checkout, etc.); copying the live tree would
+  // leak a stale/dirty state into the container, which then commits and
+  // finalizes it back over main.
   children, childErr := childRepoSeeds(req.ProjectDir)
   if childErr != nil {
-      log.Printf("run %s: %v; seeding container from live tree", runID, childErr)
       baseSHA = ""
   }
   if baseSHA != "" {
@@ -98,7 +101,7 @@ live tree** so nothing breaks. (Through v3.18.8 this snapshot was a bare
 that ran git inside the container — fixed in v3.18.10. Nested
 `[[repositories]]` checkouts were added in v3.18.9.)
 
-### 3a. Same protection for host-workflow container sub-workflows (v3.18.5, v3.18.9)
+### 3a. Same protection for host-workflow container sub-workflows (v3.18.5, v3.18.9/v3.19.0)
 
 §3 covers the top-level `launchAndTrack` path. A **host** workflow (a `host { }`
 block, see [workflows.md](../workflows.md#workflow-level-configuration-blocks)) can
@@ -118,10 +121,10 @@ as §1, one level down.
   snapshot is disabled entirely for that executor rather than silently omitting
   the repo.
 - `DaemonExecutor.containerProjectDir(ctx)` (`executor.go:185`) lazily materializes
-  a `materializeCleanSnapshot` at that seed (parent + children) on first container
-  sub-workflow dispatch, memoizes the directory, and returns it in place of the
-  live `projectDir`; on failure it logs and falls back to the live tree, mirroring
-  §3. The snapshot is removed in `DaemonExecutor.Close` (`executor.go:220`).
+  a `materializeCleanSnapshot` at that seed on first container sub-workflow dispatch,
+  memoizes the directory, and returns it in place of the live `projectDir`; on
+  failure it logs and falls back to the live tree, mirroring §3. The snapshot is
+  removed in `DaemonExecutor.Close` (`executor.go:220`).
 - `executeContainerStep` (`executor.go:610`) uses `containerProjectDir(ctx)` instead
   of `d.projectDir` when building the container's `ProjectDir`.
 - Callers that don't set `ContainerSeed` (non-git projects, most tests) get the

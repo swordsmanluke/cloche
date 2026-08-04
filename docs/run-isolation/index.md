@@ -5,7 +5,7 @@ This section documents the cluster of features that let cloche run vertical task
 base branch — plus the operational guardrails that bound a run's cost and let an
 operator quiesce the daemon for maintenance.
 
-These features landed across cloche **v3.16 – v3.18.9** (and companion changes in
+These features landed across cloche **v3.16 – v3.19.0** (and companion changes in
 the wrapper's `.cloche/` vertical-workflow scripts).
 
 ## Why this exists
@@ -48,7 +48,7 @@ fast-forward refspec push — never by checking out or mutating the shared tree.
 
 | Feature | Version | What it does |
 |---|---|---|
-| Clean per-run container snapshot | v3.18.0 – v3.18.9 | Seeds `/workspace` from a local `git clone` pinned at `baseSHA` (including nested `[[repositories]]` checkouts), never the live tree. |
+| Clean per-run container snapshot | v3.18.0 – v3.18.9, v3.19.0 | Seeds `/workspace` from a local `git clone` pinned at `baseSHA` (including nested `[[repositories]]` checkouts), never the live tree. |
 | Isolated finalize + sync-forward | wrapper | Merges the stack via a throwaway worktree, rebasing onto the latest base; pushes via refspec. |
 | Close-on-publish | wrapper | Closes a layer's tracker task the moment its branch is published, so re-runs don't redo it. |
 | `--allow-no-op` idempotency | wrapper | Re-dispatched test-plan/docs phases pass when their work is already in the base. |
