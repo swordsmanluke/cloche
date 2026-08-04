@@ -70,13 +70,20 @@ from a **clean local git clone pinned at that state**, not the live tree.
 
 - `materializeCleanSnapshot(ctx, projectDir, seed, children)` —
   `internal/adapters/grpc/snapshot_input.go:50` — makes a local `git clone
-  --no-checkout` of `projectDir` into a temp dir (the object store is
-  hardlinked, so it's cheap even for large repos) and checks out `seed.SHA`,
-  landing on `seed.Branch` when set rather than a detached HEAD. Each entry in
-  `children` (a nested `[[repositories]]` checkout, invisible to the parent
-  repo because its path is gitignored) is cloned separately into the snapshot
-  at its declared path via the same mechanism. The temp dir is what gets
-  copied into the container; it is removed after `container.Start` returns.
+  --no-checkout` of `projectDir` into a temp dir via `cloneAt`
+  (`snapshot_input.go:82`; the object store is hardlinked, so it's cheap even
+  for large repos) and checks out `seed.SHA`, landing on `seed.Branch` when set
+  rather than a detached HEAD. Each entry in `children` (a nested
+  `[[repositories]]` checkout, invisible to the parent repo because its path is
+  gitignored) is cloned separately into the snapshot at its declared path via
+  the same mechanism. The temp dir is what gets copied into the container; it
+  is removed after `container.Start` returns.
+- `childRepoSeeds(projectDir)` — `snapshot_input.go:128` resolves the project's
+  `[[repositories]]` entries into `ChildRepoSeed{Path, Seed}` pairs via
+  `nestedRepoSeed`/`captureRepoSeed` (`snapshot_input.go:103,160`). A declared
+  repo that doesn't exist on disk yet is skipped; one that exists but isn't a
+  git checkout with a resolvable HEAD is an **error**, so the caller falls back
+  to the live tree rather than silently shipping a snapshot missing that repo.
 
 Cloning rather than the earlier `git archive`-based approach keeps `.git`
 present in the snapshot — workflow steps run `git` commands inside the
@@ -105,9 +112,11 @@ as §1, one level down.
 
 - `daemonExecutorFor` (`server.go:3413`) captures `ContainerSeed: captureRepoSeed(projectDir)`
   and `ContainerSeedChildren: childRepoSeeds(projectDir)` when it builds the
-  `DaemonExecutor`, i.e. before any host step of that run has executed. If a
-  declared nested repo can't be seeded, both are cleared so the clean snapshot
-  is disabled entirely for that executor rather than silently omitting the repo.
+  `DaemonExecutor`, i.e. before any host step of that run has executed; the same
+  capture happens in `daemonExecutorForResume` (`park.go:129-130`) for the park/resume
+  path. If a declared nested repo can't be seeded, both are cleared so the clean
+  snapshot is disabled entirely for that executor rather than silently omitting
+  the repo.
 - `DaemonExecutor.containerProjectDir(ctx)` (`executor.go:185`) lazily materializes
   a `materializeCleanSnapshot` at that seed (parent + children) on first container
   sub-workflow dispatch, memoizes the directory, and returns it in place of the
