@@ -35,25 +35,32 @@ fast-forward refspec push.
 The numbered edges correspond to the sections below. The two green "page" nodes are
 the isolation boundaries; the blue shared checkout is **never mutated** by a run.
 
-## 3. Input isolation — clean per-run container snapshot (v3.18.0)
+## 3. Input isolation — clean per-run container snapshot (v3.18.0, v3.18.9)
 
-When the daemon launches a container, it records the base commit and seeds
-`/workspace` from a **clean archive of that commit**, not the live tree.
+When the daemon launches a container, it records the base commit (and, for any
+nested `[[repositories]]` checkouts, their commits too) and seeds `/workspace`
+from a **clean local git clone pinned at that state**, not the live tree.
 
-- `baseSHA := gitHEAD(req.ProjectDir)` — `internal/adapters/grpc/server.go:1464`
-  (`gitHEAD` is `git rev-parse HEAD`, `server.go:3857`).
-- The seed block — `server.go:1482-1506`:
+- `baseSHA := gitHEAD(req.ProjectDir)` — `internal/adapters/grpc/server.go:1495`
+  (`gitHEAD` is `git rev-parse HEAD`, `server.go:3961`).
+- `children, childErr := childRepoSeeds(req.ProjectDir)` resolves the project's
+  `[[repositories]]` entries into per-checkout seeds; if a declared checkout
+  can't be seeded, `baseSHA` is cleared so the whole snapshot is skipped rather
+  than silently omitting the repo.
+- The seed block — `server.go:1523-1539`:
 
   ```go
-  // Seed the container from a CLEAN per-run snapshot of the project at
-  // baseSHA rather than the live working tree. Host workflow steps mutate the
-  // shared working tree (git checkout, etc.); copying the live tree would
-  // leak a stale/dirty state into the container, which then commits and
-  // finalizes it back over main.
+  seedDir := req.ProjectDir
+  children, childErr := childRepoSeeds(req.ProjectDir)
+  if childErr != nil {
+      log.Printf("run %s: %v; seeding container from live tree", runID, childErr)
+      baseSHA = ""
+  }
   if baseSHA != "" {
-      snapDir, cleanup, snapErr := materializeCleanSnapshot(ctx, req.ProjectDir, baseSHA)
+      snapDir, cleanup, snapErr := materializeCleanSnapshot(ctx, req.ProjectDir,
+          RepoSeed{SHA: baseSHA, Branch: gitBranch(req.ProjectDir)}, children)
       if snapErr != nil {
-          log.Printf("run %s: clean snapshot ... falling back to live tree: %v", runID, snapErr)
+          log.Printf("run %s: clean snapshot at %s failed, falling back to live tree: %v", runID, baseSHA, snapErr)
       } else {
           seedDir = snapDir
           defer cleanup()
@@ -61,17 +68,27 @@ When the daemon launches a container, it records the base commit and seeds
   }
   ```
 
-- `materializeCleanSnapshot(ctx, projectDir, ref)` — `internal/adapters/grpc/snapshot_input.go:22`
-  runs `git archive --format=tar <ref>` and extracts the tar into a temp dir, then
-  returns that dir plus a cleanup func. The temp dir is what gets copied into the
-  container; it is removed after `container.Start` returns.
+- `materializeCleanSnapshot(ctx, projectDir, seed, children)` —
+  `internal/adapters/grpc/snapshot_input.go:50` — makes a local `git clone
+  --no-checkout` of `projectDir` into a temp dir (the object store is
+  hardlinked, so it's cheap even for large repos) and checks out `seed.SHA`,
+  landing on `seed.Branch` when set rather than a detached HEAD. Each entry in
+  `children` (a nested `[[repositories]]` checkout, invisible to the parent
+  repo because its path is gitignored) is cloned separately into the snapshot
+  at its declared path via the same mechanism. The temp dir is what gets
+  copied into the container; it is removed after `container.Start` returns.
 
-Because `git archive <baseSHA>` emits **only tracked files as committed**, the
-container can never see uncommitted/dirty state or a stray branch checkout. On any
-error (non-git dir, empty `baseSHA`, archive failure) it **falls back to the live
-tree** so nothing breaks.
+Cloning rather than the earlier `git archive`-based approach keeps `.git`
+present in the snapshot — workflow steps run `git` commands inside the
+container (e.g. committing a report), which a bare archived tree broke
+(`fatal: not a git repository`). The clone only ever contains the tracked
+tree as committed at the pinned SHA — no working-tree mutations, no
+untracked/gitignored files from the live tree (aside from declared child
+repos, which are seeded explicitly). On any error (non-git dir, empty
+`baseSHA`, a declared child repo that fails to clone) it **falls back to the
+live tree** so nothing breaks.
 
-### 3a. Same protection for host-workflow container sub-workflows (v3.18.5)
+### 3a. Same protection for host-workflow container sub-workflows (v3.18.5, v3.18.9)
 
 §3 covers the top-level `launchAndTrack` path. A **host** workflow (a `host { }`
 block, see [workflows.md](../workflows.md#workflow-level-configuration-blocks)) can
@@ -83,17 +100,19 @@ That path used to seed the container from the live `projectDir`, so it inherited
 whatever branch happened to be checked out at that moment — the same class of bug
 as §1, one level down.
 
-- `daemonExecutorFor` (`server.go:3326`) captures `ContainerSeedSHA: gitHEAD(projectDir)`
-  when it builds the `DaemonExecutor`, i.e. before any host step of that run has
-  executed.
-- `DaemonExecutor.containerProjectDir(ctx)` (`executor.go:158`) lazily materializes
-  a `materializeCleanSnapshot` at that SHA on first container sub-workflow dispatch,
-  memoizes the directory, and returns it in place of the live `projectDir`; on
-  failure it logs and falls back to the live tree, mirroring §3. The snapshot is
-  removed in `DaemonExecutor.Close` (`executor.go:193`).
-- `executeContainerStep` (`executor.go:582`) uses `containerProjectDir(ctx)` instead
+- `daemonExecutorFor` (`server.go:3413`) captures `ContainerSeed: captureRepoSeed(projectDir)`
+  and `ContainerSeedChildren: childRepoSeeds(projectDir)` when it builds the
+  `DaemonExecutor`, i.e. before any host step of that run has executed. If a
+  declared nested repo can't be seeded, both are cleared so the clean snapshot
+  is disabled entirely for that executor rather than silently omitting the repo.
+- `DaemonExecutor.containerProjectDir(ctx)` (`executor.go:185`) lazily materializes
+  a `materializeCleanSnapshot` at that seed (parent + children) on first container
+  sub-workflow dispatch, memoizes the directory, and returns it in place of the
+  live `projectDir`; on failure it logs and falls back to the live tree, mirroring
+  §3. The snapshot is removed in `DaemonExecutor.Close` (`executor.go:220`).
+- `executeContainerStep` (`executor.go:610`) uses `containerProjectDir(ctx)` instead
   of `d.projectDir` when building the container's `ProjectDir`.
-- Callers that don't set `ContainerSeedSHA` (non-git projects, most tests) get the
+- Callers that don't set `ContainerSeed` (non-git projects, most tests) get the
   pre-fix behavior: `containerProjectDir` returns the live `projectDir` unchanged.
 
 ## 4. Execution — per-step workspace snapshots
