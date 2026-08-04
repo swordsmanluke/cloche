@@ -43,10 +43,10 @@ from a **clean local git clone pinned at that state**, not the live tree.
 
 - `baseSHA := gitHEAD(req.ProjectDir)` — `internal/adapters/grpc/server.go:1495`
   (`gitHEAD` is `git rev-parse HEAD`, `server.go:3961`).
-- `children, childErr := childRepoSeeds(req.ProjectDir)` resolves the project's
-  `[[repositories]]` entries into per-checkout seeds; if a declared checkout
-  can't be seeded, `baseSHA` is cleared so the whole snapshot is skipped rather
-  than silently omitting the repo.
+- `children, childErr := childRepoSeeds(req.ProjectDir)` (`server.go:1524`)
+  resolves the project's `[[repositories]]` entries into per-checkout seeds;
+  if a declared checkout can't be seeded, `baseSHA` is cleared so the whole
+  snapshot is skipped rather than silently omitting the repo.
 - The seed block — `server.go:1523-1539`:
 
   ```go
@@ -86,7 +86,10 @@ tree as committed at the pinned SHA — no working-tree mutations, no
 untracked/gitignored files from the live tree (aside from declared child
 repos, which are seeded explicitly). On any error (non-git dir, empty
 `baseSHA`, a declared child repo that fails to clone) it **falls back to the
-live tree** so nothing breaks.
+live tree** so nothing breaks. (Through v3.18.8 this snapshot was a bare
+`git archive` extraction, which omitted `.git` entirely and broke any step
+that ran git inside the container — fixed in v3.18.10. Nested
+`[[repositories]]` checkouts were added in v3.18.9.)
 
 ### 3a. Same protection for host-workflow container sub-workflows (v3.18.5, v3.18.9)
 
