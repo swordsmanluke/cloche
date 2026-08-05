@@ -630,13 +630,14 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 	}
 
 	cfg := ports.ContainerConfig{
-		Image:        image,
-		WorkflowName: wf.Name,
-		ProjectDir:   d.containerProjectDir(ctx),
-		RunID:        hostRunID,
-		TaskID:       d.taskID,
-		AttemptID:    d.attemptID,
-		NetworkAllow: []string{"*"},
+		Image:          image,
+		WorkflowName:   wf.Name,
+		ProjectDir:     d.containerProjectDir(ctx),
+		HostProjectDir: d.projectDir,
+		RunID:          hostRunID,
+		TaskID:         d.taskID,
+		AttemptID:      d.attemptID,
+		NetworkAllow:   []string{"*"},
 		// Start agent in session mode (no workflow file argument) so it
 		// connects to the daemon via gRPC and waits for ExecuteStep commands.
 		Cmd: []string{"cloche-agent"},

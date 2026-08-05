@@ -1542,15 +1542,16 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 	}
 
 	containerID, err := s.container.Start(ctx, ports.ContainerConfig{
-		Image:        image,
-		WorkflowName: workflowName,
-		ProjectDir:   seedDir,
-		RunID:        runID,
-		TaskID:       taskID,
-		AttemptID:    attemptID,
-		NetworkAllow: []string{"*"},
-		Cmd:          cmd,
-		Prompt:       req.Prompt,
+		Image:          image,
+		WorkflowName:   workflowName,
+		ProjectDir:     seedDir,
+		HostProjectDir: req.ProjectDir,
+		RunID:          runID,
+		TaskID:         taskID,
+		AttemptID:      attemptID,
+		NetworkAllow:   []string{"*"},
+		Cmd:            cmd,
+		Prompt:         req.Prompt,
 	})
 	if err != nil {
 		run, _ := s.store.GetRun(ctx, runID)

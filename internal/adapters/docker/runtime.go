@@ -130,10 +130,14 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	// prepare-prompt.sh) are accessible to container steps via clo get task_prompt_path.
 	// .cloche/runs/ is excluded from the project copy by .clocheignore, so without
 	// this mount those files would be invisible inside the container.
-	// ProjectDir is empty for resume containers (committed image has workspace state);
-	// skip the mount in that case.
-	if cfg.ProjectDir != "" && cfg.RunID != "" {
-		hostRunDir := filepath.Join(cfg.ProjectDir, ".cloche", "runs", cfg.RunID)
+	// The mount sources from the LIVE project dir (HostProjectDir), never the
+	// seed dir: when ProjectDir is a clean-snapshot clone it has no runtime
+	// state and is deleted right after start, which would leave the mount
+	// pointing at an empty orphaned directory.
+	// Both dirs are empty for resume containers (committed image has workspace
+	// state); skip the mount in that case.
+	if mountRoot := runsMountRoot(cfg); mountRoot != "" && cfg.RunID != "" {
+		hostRunDir := filepath.Join(mountRoot, ".cloche", "runs", cfg.RunID)
 		if err := os.MkdirAll(hostRunDir, 0755); err == nil {
 			args = append(args, "-v", hostRunDir+":/workspace/.cloche/runs/"+cfg.RunID)
 		}
@@ -614,6 +618,17 @@ func (a *attachConn) Close() error {
 	a.stdout.Close()
 	a.cmd.Wait()
 	return err
+}
+
+// runsMountRoot returns the host directory whose .cloche/runs/<run-id> is
+// bind-mounted into the container: the live project root when set, otherwise
+// the seed dir for callers that don't distinguish the two. Empty when the
+// container has no project dir at all (resume from committed image).
+func runsMountRoot(cfg ports.ContainerConfig) string {
+	if cfg.HostProjectDir != "" {
+		return cfg.HostProjectDir
+	}
+	return cfg.ProjectDir
 }
 
 // copyProjectToContainer creates a filtered tar archive of the project

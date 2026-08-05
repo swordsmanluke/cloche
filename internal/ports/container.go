@@ -16,13 +16,19 @@ type ContainerConfig struct {
 	Image        string
 	WorkflowName string
 	ProjectDir   string
-	NetworkAllow []string
-	RunID        string
-	TaskID       string // task ID for runtime state paths (.cloche/runs/<task-id>/)
-	AttemptID    string // attempt ID for unique container naming
-	Cmd          []string // override container command; defaults to ["cloche-agent", WorkflowName]
-	Prompt       string // prompt text to write into .cloche/runs/<task-id>/prompt.txt in container
-	Interactive  bool   // allocate TTY and keep stdin open (-it flags)
+	// HostProjectDir is the live project root on the host, used as the source
+	// for the .cloche/runs/<run-id> bind mount. It must be set whenever
+	// ProjectDir points at a clean-snapshot seed dir: snapshots are temp git
+	// clones that omit untracked runtime state (task_prompt.md etc.) and are
+	// deleted after container start. Falls back to ProjectDir when empty.
+	HostProjectDir string
+	NetworkAllow   []string
+	RunID          string
+	TaskID         string   // task ID for runtime state paths (.cloche/runs/<task-id>/)
+	AttemptID      string   // attempt ID for unique container naming
+	Cmd            []string // override container command; defaults to ["cloche-agent", WorkflowName]
+	Prompt         string   // prompt text to write into .cloche/runs/<task-id>/prompt.txt in container
+	Interactive    bool     // allocate TTY and keep stdin open (-it flags)
 }
 
 type ContainerRuntime interface {
