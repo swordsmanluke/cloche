@@ -308,8 +308,20 @@ workflow "develop-backend" {
 }
 ```
 
-`repos` is a list of repository names matching entries in `config.toml`. It documents
-intent and surfaces in `cloche project`; the runtime does not enforce it.
+`repos` is a list of repository names matching entries in `config.toml`. The runtime
+uses it in two ways:
+
+- **Container seeding** — only the declared repositories are materialized into the
+  container's workspace copy, so workflows that need one repo of many don't pay to
+  copy the rest. Workflows sharing a `container.id` share one container (and one
+  copy), so the copy contains the *union* of their `repos` declarations; if any
+  sharing workflow declares no `repos`, all configured repositories are included.
+- **Extraction** — result branches and worktrees are created only for the declared
+  repositories.
+
+A workflow with no `repos` field gets every configured repository (the
+backward-compatible default). Declaring a name not present in `config.toml` is an
+error.
 
 ## Key Properties
 

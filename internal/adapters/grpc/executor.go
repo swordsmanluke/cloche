@@ -97,17 +97,21 @@ type DaemonExecutor struct {
 	containerSeed RepoSeed
 
 	// containerSeedChildren are the [[repositories]] checkouts (captured
-	// alongside containerSeed) to materialize into the clean snapshot — the
-	// parent repo cannot see inside nested repos.
+	// alongside containerSeed) available to materialize into clean snapshots —
+	// the parent repo cannot see inside nested repos. Which subset actually
+	// lands in a given snapshot depends on the workflow's `repos` declaration;
+	// see containerProjectDir.
 	containerSeedChildren []ChildRepoSeed
 
-	// containerSeedDir caches the lazily-materialized snapshot directory (see
-	// containerProjectDir). containerSeedCleanup removes it; both stay unset
-	// until first use. containerSeedAttempted guards against retrying a failed
-	// snapshot on every container step.
-	containerSeedDir       string
-	containerSeedCleanup   func()
-	containerSeedAttempted bool
+	// containerSeedDirs caches lazily-materialized snapshot directories keyed
+	// by repo-set (see containerProjectDir): workflows that need different
+	// repo subsets get different snapshots, so a container only receives the
+	// repos its workflows declare. containerSeedCleanups removes them;
+	// containerSeedTried guards against retrying a failed snapshot on every
+	// container step for the same repo-set.
+	containerSeedDirs     map[string]string
+	containerSeedCleanups map[string]func()
+	containerSeedTried    map[string]bool
 
 	// closed tracks whether Close() has already been called.
 	closed bool
@@ -167,6 +171,9 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 		allWFs:                cfg.AllWFs,
 		containerSeed:         cfg.ContainerSeed,
 		containerSeedChildren: cfg.ContainerSeedChildren,
+		containerSeedDirs:     make(map[string]string),
+		containerSeedCleanups: make(map[string]func()),
+		containerSeedTried:    make(map[string]bool),
 		resumeMode:            cfg.ResumeMode,
 		onContainerStart:      cfg.OnContainerStart,
 		worktrees:             make(map[string][]repoWorktree),
@@ -175,29 +182,47 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 	}
 }
 
-// containerProjectDir returns the directory that should seed container
-// sub-workflow copies. When containerSeed is set, it lazily materializes
-// (and memoizes) a clean git snapshot at that state and returns it instead of
-// the live projectDir — see the ContainerSeed doc comment for why. Falls
-// back to the live projectDir when no seed was configured, or when
+// containerProjectDir returns the directory that should seed the container
+// copy for wf. When containerSeed is set, it lazily materializes (and
+// memoizes) a clean git snapshot at that state and returns it instead of the
+// live projectDir — see the ContainerSeed doc comment for why. The snapshot
+// includes only the nested [[repositories]] checkouts wf's container needs
+// (the union of `repos` declarations across workflows sharing its
+// container.id — see reposForContainer); snapshots are memoized per repo-set,
+// so workflows needing different subsets don't pay for each other's repos.
+// Falls back to the live projectDir when no seed was configured, or when
 // snapshot creation fails (logged, not fatal — mirrors the same fallback
 // used for top-level container runs in launchAndTrack).
-func (d *DaemonExecutor) containerProjectDir(ctx context.Context) string {
+func (d *DaemonExecutor) containerProjectDir(ctx context.Context, wf *domain.Workflow) string {
 	if d.containerSeed.SHA == "" {
 		return d.projectDir
 	}
-	if !d.containerSeedAttempted {
-		d.containerSeedAttempted = true
-		dir, cleanup, err := materializeCleanSnapshot(ctx, d.projectDir, d.containerSeed, d.containerSeedChildren)
+	var names []string
+	if wf != nil {
+		names = reposForContainer(d.allWFs, wf.ContainerID())
+	}
+	key := "*" // nil names → all repos
+	if names != nil {
+		key = strings.Join(names, ",")
+	}
+	if d.containerSeedTried == nil { // executors built without NewDaemonExecutor (tests)
+		d.containerSeedDirs = make(map[string]string)
+		d.containerSeedCleanups = make(map[string]func())
+		d.containerSeedTried = make(map[string]bool)
+	}
+	if !d.containerSeedTried[key] {
+		d.containerSeedTried[key] = true
+		children := filterChildSeeds(d.containerSeedChildren, names)
+		dir, cleanup, err := materializeCleanSnapshot(ctx, d.projectDir, d.containerSeed, children)
 		if err != nil {
-			log.Printf("daemon executor: clean snapshot of %s at %s failed, falling back to live tree: %v", d.projectDir, d.containerSeed.SHA, err)
+			log.Printf("daemon executor: clean snapshot of %s at %s (repos=%s) failed, falling back to live tree: %v", d.projectDir, d.containerSeed.SHA, key, err)
 		} else {
-			d.containerSeedDir = dir
-			d.containerSeedCleanup = cleanup
+			d.containerSeedDirs[key] = dir
+			d.containerSeedCleanups[key] = cleanup
 		}
 	}
-	if d.containerSeedDir != "" {
-		return d.containerSeedDir
+	if dir := d.containerSeedDirs[key]; dir != "" {
+		return dir
 	}
 	return d.projectDir
 }
@@ -222,8 +247,10 @@ func (d *DaemonExecutor) Close(succeeded bool) {
 		return
 	}
 	d.closed = true
-	if d.containerSeedCleanup != nil {
-		d.containerSeedCleanup()
+	for _, cleanup := range d.containerSeedCleanups {
+		if cleanup != nil {
+			cleanup()
+		}
 	}
 	if d.pool == nil {
 		return
@@ -632,7 +659,7 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 	cfg := ports.ContainerConfig{
 		Image:          image,
 		WorkflowName:   wf.Name,
-		ProjectDir:     d.containerProjectDir(ctx),
+		ProjectDir:     d.containerProjectDir(ctx, wf),
 		HostProjectDir: d.projectDir,
 		RunID:          hostRunID,
 		TaskID:         d.taskID,

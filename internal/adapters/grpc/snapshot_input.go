@@ -21,10 +21,11 @@ type RepoSeed struct {
 }
 
 // ChildRepoSeed identifies a nested [[repositories]] checkout to include in a
-// clean project snapshot: its path relative to the project root plus its
-// pinned state. Nested repos are invisible to the parent repo (their paths
-// are gitignored), so each one is materialized separately.
+// clean project snapshot: its config name, its path relative to the project
+// root, and its pinned state. Nested repos are invisible to the parent repo
+// (their paths are gitignored), so each one is materialized separately.
 type ChildRepoSeed struct {
+	Name string
 	Path string
 	Seed RepoSeed
 }
@@ -147,9 +148,31 @@ func childRepoSeeds(projectDir string) ([]ChildRepoSeed, error) {
 		if seed.SHA == "" {
 			return nil, fmt.Errorf("repository %q at %s exists but is not a git checkout with a resolvable HEAD", r.Name, r.Path)
 		}
-		seeds = append(seeds, ChildRepoSeed{Path: rel, Seed: seed})
+		seeds = append(seeds, ChildRepoSeed{Name: r.Name, Path: rel, Seed: seed})
 	}
 	return seeds, nil
+}
+
+// filterChildSeeds returns the subset of children whose Name is in names.
+// A nil names slice means "no restriction" and returns children unchanged.
+// Names with no matching child are ignored: childRepoSeeds already skips
+// declared repos that aren't cloned on disk yet, and unknown names are
+// rejected at extraction time by resolveRepos.
+func filterChildSeeds(children []ChildRepoSeed, names []string) []ChildRepoSeed {
+	if names == nil {
+		return children
+	}
+	want := make(map[string]bool, len(names))
+	for _, n := range names {
+		want[n] = true
+	}
+	var out []ChildRepoSeed
+	for _, c := range children {
+		if want[c.Name] {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // nestedRepoSeed captures dir's seed state, but only if dir is itself the top

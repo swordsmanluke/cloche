@@ -1526,6 +1526,14 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 		log.Printf("run %s: %v; seeding container from live tree", runID, childErr)
 		baseSHA = ""
 	}
+	// A top-level container run executes exactly one workflow, so restrict the
+	// snapshot to the repos it declares (`repos = [...]`). No declaration means
+	// no restriction — all configured repos are included.
+	if allWFs, wfErr := host.FindAllWorkflows(req.ProjectDir); wfErr == nil {
+		if wf := allWFs[workflowName]; wf != nil && len(wf.Repos) > 0 {
+			children = filterChildSeeds(children, wf.Repos)
+		}
+	}
 	if baseSHA != "" {
 		snapDir, cleanup, snapErr := materializeCleanSnapshot(ctx, req.ProjectDir,
 			RepoSeed{SHA: baseSHA, Branch: gitBranch(req.ProjectDir)}, children)

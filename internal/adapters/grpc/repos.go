@@ -3,6 +3,7 @@ package grpc
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/cloche-dev/cloche/internal/config"
@@ -44,7 +45,9 @@ func resolveRepos(wf *domain.Workflow, cfg *config.Config, projectDir string) ([
 
 	chosen := cfg.Repositories
 	if wf != nil && len(wf.Repos) > 0 {
-		chosen = chosen[:0]
+		// Fresh slice: reslicing cfg.Repositories would overwrite its backing
+		// array and corrupt the config for any later reader.
+		chosen = make([]config.RepositoryConfig, 0, len(wf.Repos))
 		for _, name := range wf.Repos {
 			r, ok := byName[name]
 			if !ok {
@@ -71,4 +74,37 @@ func resolveRepos(wf *domain.Workflow, cfg *config.Config, projectDir string) ([
 		})
 	}
 	return out, nil
+}
+
+// reposForContainer returns the repository names a container's workspace copy
+// must include: the union of `repos = [...]` declarations across every
+// container workflow sharing containerID. Workflows with the same container.id
+// reuse one container (and thus one workspace copy) within an attempt, so the
+// copy has to satisfy all of them. Returns nil — meaning "no restriction,
+// include everything" — when any sharing workflow declares no repos (it may
+// depend on any of them) or when no matching workflow is found.
+func reposForContainer(allWFs map[string]*domain.Workflow, containerID string) []string {
+	seen := make(map[string]bool)
+	var names []string
+	found := false
+	for _, wf := range allWFs {
+		if wf == nil || wf.Location != domain.LocationContainer || wf.ContainerID() != containerID {
+			continue
+		}
+		found = true
+		if len(wf.Repos) == 0 {
+			return nil
+		}
+		for _, n := range wf.Repos {
+			if !seen[n] {
+				seen[n] = true
+				names = append(names, n)
+			}
+		}
+	}
+	if !found {
+		return nil
+	}
+	sort.Strings(names)
+	return names
 }

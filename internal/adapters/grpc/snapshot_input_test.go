@@ -317,3 +317,29 @@ func TestMaterializeCleanSnapshot_ProducesGitCheckout(t *testing.T) {
 	gitOut(child, "add", "G")
 	gitOut(child, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "in-snapshot commit")
 }
+
+func TestFilterChildSeeds(t *testing.T) {
+	children := []ChildRepoSeed{
+		{Name: "a", Path: "repos/a"},
+		{Name: "b", Path: "repos/b"},
+	}
+
+	// nil names → no restriction, everything included.
+	if got := filterChildSeeds(children, nil); len(got) != 2 {
+		t.Fatalf("nil names: got %+v, want all children", got)
+	}
+	// Subset selection by name.
+	got := filterChildSeeds(children, []string{"b"})
+	if len(got) != 1 || got[0].Name != "b" {
+		t.Fatalf("[b]: got %+v, want just b", got)
+	}
+	// Names without a matching child (declared but not cloned) are ignored.
+	got = filterChildSeeds(children, []string{"a", "uncloned"})
+	if len(got) != 1 || got[0].Name != "a" {
+		t.Fatalf("[a uncloned]: got %+v, want just a", got)
+	}
+	// Empty (non-nil) names → no children at all.
+	if got := filterChildSeeds(children, []string{}); len(got) != 0 {
+		t.Fatalf("empty names: got %+v, want none", got)
+	}
+}

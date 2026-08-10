@@ -590,7 +590,7 @@ func TestDaemonExecutorFor_NonGitProject(t *testing.T) {
 	de, ok := exec.(*DaemonExecutor)
 	require.True(t, ok)
 	assert.Empty(t, de.containerSeed.SHA)
-	assert.Equal(t, tmpDir, de.containerProjectDir(context.Background()))
+	assert.Equal(t, tmpDir, de.containerProjectDir(context.Background(), nil))
 }
 
 // blockingWait provides a Wait that blocks until Stop signals the container
@@ -1305,7 +1305,7 @@ func TestDaemonExecutor_ContainerProjectDir_NoSeedSHA(t *testing.T) {
 	tmpDir := t.TempDir()
 	de := NewDaemonExecutor(DaemonExecutorConfig{ProjectDir: tmpDir})
 
-	assert.Equal(t, tmpDir, de.containerProjectDir(context.Background()))
+	assert.Equal(t, tmpDir, de.containerProjectDir(context.Background(), nil))
 }
 
 // TestDaemonExecutor_ContainerProjectDir_SurvivesLaterCheckout is the
@@ -1346,7 +1346,7 @@ func TestDaemonExecutor_ContainerProjectDir_SurvivesLaterCheckout(t *testing.T) 
 	require.NoFileExists(t, filepath.Join(tmpDir, "vertical.cloche"),
 		"sanity check: checkout should have removed vertical.cloche from the live tree")
 
-	seedDir := de.containerProjectDir(context.Background())
+	seedDir := de.containerProjectDir(context.Background(), nil)
 	assert.NotEqual(t, tmpDir, seedDir, "should return a snapshot dir, not the live (mutated) tree")
 	assert.FileExists(t, filepath.Join(seedDir, "vertical.cloche"),
 		"container copy must still see files present when the run started, despite the later checkout")
@@ -1372,8 +1372,8 @@ func TestDaemonExecutor_ContainerProjectDir_Memoized(t *testing.T) {
 		ContainerSeed: RepoSeed{SHA: seedSHA},
 	})
 
-	first := de.containerProjectDir(context.Background())
-	second := de.containerProjectDir(context.Background())
+	first := de.containerProjectDir(context.Background(), nil)
+	second := de.containerProjectDir(context.Background(), nil)
 	assert.Equal(t, first, second, "the snapshot should be materialized once and reused")
 }
 
@@ -1392,7 +1392,7 @@ func TestDaemonExecutor_ContainerProjectDir_InvalidSHAFallsBack(t *testing.T) {
 		ContainerSeed: RepoSeed{SHA: "not-a-real-sha"},
 	})
 
-	assert.Equal(t, tmpDir, de.containerProjectDir(context.Background()))
+	assert.Equal(t, tmpDir, de.containerProjectDir(context.Background(), nil))
 }
 
 // TestDaemonExecutor_ExecuteContainerStep_UsesSnapshotProjectDir exercises
@@ -1445,4 +1445,60 @@ func TestDaemonExecutor_ExecuteContainerStep_UsesSnapshotProjectDir(t *testing.T
 	assert.NotEqual(t, tmpDir, rt.lastConfig.ProjectDir)
 	assert.FileExists(t, filepath.Join(rt.lastConfig.ProjectDir, "vertical.cloche"),
 		"the container should be seeded from the pre-run snapshot, not the live checked-out tree")
+}
+
+// TestDaemonExecutor_ContainerProjectDir_ScopesReposPerWorkflow verifies that
+// a workflow's `repos = [...]` declaration restricts which nested
+// [[repositories]] checkouts are materialized into its container seed
+// snapshot, and that workflows needing different repo subsets get distinct
+// snapshots (memoized per repo-set, not globally).
+func TestDaemonExecutor_ContainerProjectDir_ScopesReposPerWorkflow(t *testing.T) {
+	repo, headSHA := initSnapshotTestRepo(t)
+	initNestedRepo(t, repo, filepath.Join("repos", "a"))
+	initNestedRepo(t, repo, filepath.Join("repos", "b"))
+
+	children := []ChildRepoSeed{
+		{Name: "a", Path: filepath.Join("repos", "a"), Seed: captureRepoSeed(filepath.Join(repo, "repos", "a"))},
+		{Name: "b", Path: filepath.Join("repos", "b"), Seed: captureRepoSeed(filepath.Join(repo, "repos", "b"))},
+	}
+
+	wfA := &domain.Workflow{Name: "wa", Location: domain.LocationContainer,
+		Config: map[string]string{"container.id": "ca"}, Repos: []string{"a"}}
+	wfB := &domain.Workflow{Name: "wb", Location: domain.LocationContainer,
+		Config: map[string]string{"container.id": "cb"}, Repos: []string{"b"}}
+	wfAll := &domain.Workflow{Name: "wall", Location: domain.LocationContainer,
+		Config: map[string]string{"container.id": "call"}} // no repos → everything
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		ProjectDir:            repo,
+		ContainerSeed:         RepoSeed{SHA: headSHA},
+		ContainerSeedChildren: children,
+		AllWFs:                map[string]*domain.Workflow{"wa": wfA, "wb": wfB, "wall": wfAll},
+	})
+	defer de.Close(true)
+
+	dirA := de.containerProjectDir(context.Background(), wfA)
+	require.NotEqual(t, repo, dirA, "should snapshot, not fall back to live tree")
+	assert.DirExists(t, filepath.Join(dirA, "repos", "a"))
+	assert.NoDirExists(t, filepath.Join(dirA, "repos", "b"),
+		"wa declares repos=[a]; b must not be materialized into its snapshot")
+
+	dirB := de.containerProjectDir(context.Background(), wfB)
+	require.NotEqual(t, repo, dirB)
+	assert.NotEqual(t, dirA, dirB, "different repo-sets must get distinct snapshots")
+	assert.DirExists(t, filepath.Join(dirB, "repos", "b"))
+	assert.NoDirExists(t, filepath.Join(dirB, "repos", "a"))
+
+	dirAll := de.containerProjectDir(context.Background(), wfAll)
+	require.NotEqual(t, repo, dirAll)
+	assert.DirExists(t, filepath.Join(dirAll, "repos", "a"))
+	assert.DirExists(t, filepath.Join(dirAll, "repos", "b"))
+
+	// Memoization: same workflow → same snapshot dir.
+	assert.Equal(t, dirA, de.containerProjectDir(context.Background(), wfA))
+
+	de.Close(true)
+	assert.NoDirExists(t, dirA, "Close should clean up all per-repo-set snapshots")
+	assert.NoDirExists(t, dirB)
+	assert.NoDirExists(t, dirAll)
 }
