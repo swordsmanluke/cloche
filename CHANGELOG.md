@@ -1,5 +1,15 @@
 # Cloche Changelog
 
+## v3.19.6 — 2026-08-11
+
+### Breaking changes
+
+- Workflow `repos = [...]` declarations are now enforced at runtime for container seeding, not just documented intent — only the declared repositories (or, for workflows sharing a `container.id`, the union of their declarations) are copied into the container and extracted as result branches. Migration: audit each workflow's `repos` declaration and add any repository it actually needs; repositories not listed are no longer copied in automatically.
+
+### Notable fixes
+
+- Containerized agent steps no longer abort with a missing prompt. The `.cloche/runs/<run-id>` bind mount now sources from the live project directory instead of the temporary snapshot used to seed the container, a regression introduced by the v3.19.0 clean-snapshot container seeding.
+
 ## v3.19.0 — 2026-07-18
 
 ### Breaking changes

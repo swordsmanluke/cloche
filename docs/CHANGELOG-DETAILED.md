@@ -1,5 +1,22 @@
 # Cloche Detailed Changelog
 
+## v3.19.6 — 2026-08-11
+
+### Breaking
+
+- `b136142` Container seeding and result extraction now honor a workflow's `repos = [...]` declaration instead of always including every configured repository; workflows sharing a `container.id` get the union of their declared repos, and a latent bug where narrowing repos could corrupt the shared config for later readers is also fixed. Migration: ensure every `repos` declaration lists all repositories the workflow needs, since unlisted ones are no longer copied into the container.
+
+### Fixes
+
+- `c85c89b` Fixes the `.cloche/runs/<run-id>` bind mount to source from the live project directory instead of the (temporary, already-deleted) container seed snapshot, which had caused every containerized agent step to abort with a missing prompt since v3.19.0.
+
+### Internal
+
+- `8447f52` Updates the run-isolation architecture docs and diagrams to describe the container snapshot mechanism as a `git clone` (not `git archive`) and bumps the documented version range to v3.19.0.
+- `2077077` Documents the `cloneAt` and `childRepoSeeds` snapshot-materialization helpers, including their skip/error behavior for missing or non-git nested repos, in the run-isolation architecture doc.
+- `81687b5` Adds a source line-number reference and a historical note (bare-archive bug fixed in v3.18.10, nested repos added in v3.18.9) to the run-isolation architecture doc.
+- `d32263a` Rewrites the run-isolation architecture and index docs to describe the git-clone-based snapshot approach (replacing the earlier git-archive description) and updates referenced source line numbers and version ranges.
+
 ## v3.19.0 — 2026-07-18
 
 ### Breaking
