@@ -33,6 +33,18 @@ var gitOriginURLFunc = func() (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// bdLookPathFunc is the hook used to locate the beads CLI; replaced in tests.
+var bdLookPathFunc = func() (string, error) {
+	return exec.LookPath("bd")
+}
+
+// bdRunFunc is the hook used to run the beads CLI; replaced in tests.
+// Returns trimmed stdout.
+var bdRunFunc = func(args ...string) (string, error) {
+	out, err := exec.Command("bd", args...).Output()
+	return strings.TrimSpace(string(out)), err
+}
+
 var workflowTemplate = `workflow %s {
   step implement {
     prompt  = file(".cloche/prompts/implement.md")
@@ -94,11 +106,18 @@ USER root
 USER agent
 `
 
-var implementPrompt = `Implement the following change in this project.
+var implementPrompt = `# Implement Task
 
-## Task
+Retrieve the task description by running:
 
-{task_description}
+    cat /workspace/$(clo get task_prompt_path)
+
+The prepare-prompt host step wrote that file into the run directory (which is
+mounted into this container) and stored its path in the run's key-value store;
+clo get reads it back from in here. This file path is how task data crosses the
+host/container boundary — see docs/init/4-passing-data-between-steps.md.
+
+If that file is missing or empty, ABORT and report fail.
 
 ## Project Context
 
@@ -120,7 +139,7 @@ Do not modify the test files — fix the implementation instead.
 
 ## Test Output
 
-{previous_output}
+{{ $prev_output }}
 `
 
 var defaultConfigTOMLTemplate = `# Cloche project configuration
@@ -177,7 +196,17 @@ target/
 
 var versionContent = "1\n"
 
-var hostWorkflowTemplate = `workflow list-tasks {
+var hostWorkflowTemplate = `// Host orchestration workflows, run by the daemon on the host machine.
+//
+// The loop is two-phase: list-tasks is polled to find ready work, then main
+// runs once per dispatched task with CLOCHE_TASK_ID set in every step's
+// environment. See docs/init/3-run-the-loop.md.
+//
+// Data flows between steps through the run's key-value store (cloche get/set
+// on the host, clo get/set inside containers) — see
+// docs/init/4-passing-data-between-steps.md.
+
+workflow list-tasks {
   host {}
 
   step get-tasks {
@@ -192,393 +221,424 @@ var hostWorkflowTemplate = `workflow list-tasks {
 workflow main {
   host {}
 
+  // Mark the task in_progress in beads.
   step claim-task {
     run     = "python3 .cloche/scripts/claim-task.py"
     results = [success, fail]
   }
 
+  // Write the task prompt to a file and publish its path in the KV store.
+  step prepare-prompt {
+    run     = "python3 .cloche/scripts/prepare-prompt.py"
+    results = [success, fail]
+  }
+
+  // Run the container workflow. The daemon pre-creates a git branch and
+  // worktree for the results and publishes child_branch in the KV store.
   step develop {
-    workflow_name = "develop"
+    workflow_name = "%s"
     results       = [success, fail]
   }
 
-  claim-task:success -> develop
-  claim-task:fail    -> abort
-  develop:success    -> prepare-merge
-  develop:fail       -> unclaim
-
-  step prepare-merge {
-    run     = "python3 .cloche/scripts/prepare-merge.py"
-    results = [success, fail]
-  }
-
-  step fix-merge {
-    prompt  = file(".cloche/prompts/fix-merge.md")
-    results = [success, fail]
-  }
-
+  // Rebase the daemon-created branch onto the base branch and fast-forward.
   step merge {
     run     = "python3 .cloche/scripts/merge.py"
     results = [success, fail]
   }
 
-  step release-task {
-    run     = "python3 .cloche/scripts/release-task.py"
+  // Agent step: resolve rebase conflicts in the worktree, then merge re-runs.
+  step fix-merge {
+    prompt  = file(".cloche/prompts/fix-merge.md")
     results = [success, fail]
   }
 
+  // Close the task in beads.
+  step close-task {
+    run     = "python3 .cloche/scripts/close-task.py"
+    results = [success, fail]
+  }
+
+  // Remove the leftover worktree and branch.
   step cleanup {
     run     = "python3 .cloche/scripts/cleanup.py"
     results = [success, fail]
   }
 
+  // Emergency brake: reopen the task and stop the loop for human review.
   step unclaim {
     run     = "python3 .cloche/scripts/unclaim.py"
     results = [success, fail]
   }
 
-  prepare-merge:success -> merge
-  prepare-merge:fail    -> fix-merge
-  fix-merge:success     -> merge
-  fix-merge:fail        -> unclaim
-  merge:success         -> release-task
-  merge:fail            -> fix-merge
-  release-task:success  -> cleanup
-  release-task:fail     -> unclaim
-  cleanup:success       -> done
-  cleanup:fail          -> unclaim
-  unclaim:success       -> abort
-  unclaim:fail          -> abort
+  claim-task:success     -> prepare-prompt
+  claim-task:fail        -> abort
+  prepare-prompt:success -> develop
+  prepare-prompt:fail    -> unclaim
+  develop:success        -> merge
+  develop:fail           -> unclaim
+  merge:success          -> close-task
+  merge:fail             -> fix-merge
+  fix-merge:success      -> merge
+  fix-merge:fail         -> unclaim
+  close-task:success     -> cleanup
+  close-task:fail        -> unclaim
+  cleanup:success        -> done
+  cleanup:fail           -> unclaim
+  unclaim:success        -> abort
+  unclaim:fail           -> abort
 }
 `
 
 var getTasksPyScript = `#!/usr/bin/env python3
-"""Read the next open task from .cloche/task_list.json.
+"""Print ready tasks from beads (bd) as JSONL for the cloche loop.
 
-Replace this script with one that reads from your task tracker of choice
-(Linear, Jira, GitHub Issues, etc.) and returns ready tasks as JSONL:
+This is the task-tracker integration point. The loop runs this script and
+expects zero or more JSON objects on stdout, one task per line:
 
     {"id": "...", "title": "...", "description": "...", "status": "open"}
 
-One JSON object per line. The orchestration loop picks the first open task.
+Only tasks with status "open" are dispatched. To use a different tracker
+(GitHub Issues, Jira, Linear, ...), replace this script with one that emits
+the same JSONL — see docs/init/6-swapping-the-task-tracker.md.
+
+A task is ready when:
+  1. bd considers it ready (open, not blocked or deferred)
+  2. every closed dependency has a succeeded cloche run
 """
 import json
-import os
+import shutil
+import subprocess
 import sys
 
-task_file = os.path.join(os.environ.get("CLOCHE_PROJECT_DIR", "."), ".cloche", "task_list.json")
+if shutil.which("bd") is None:
+    print("error: the beads CLI (bd) is not installed.", file=sys.stderr)
+    print("Install it (https://github.com/steveyegge/beads), or swap in your own", file=sys.stderr)
+    print("task tracker — see docs/init/6-swapping-the-task-tracker.md.", file=sys.stderr)
+    sys.exit(1)
 
-with open(task_file) as f:
-    for line in f:
-        line = line.strip()
-        if not line:
-            continue
-        task = json.loads(line)
-        if task.get("status") == "open":
-            print(json.dumps(task))
-            sys.exit(0)
+ready = subprocess.run(["bd", "ready", "--json"], capture_output=True, text=True)
+if ready.returncode != 0:
+    print(f"error: bd ready failed: {ready.stderr.strip()}", file=sys.stderr)
+    sys.exit(1)
 
-# No open tasks — exit success with empty output (loop idles)
+for task in json.loads(ready.stdout or "[]"):
+    # bd ready lists open and in_progress tasks; in_progress means another run
+    # already claimed it. Epics are containers for child tasks, not work.
+    if task.get("status") != "open" or task.get("issue_type") == "epic":
+        continue
+
+    # A dependency closed in the tracker must also have a succeeded cloche
+    # run, so work never starts from a base its prerequisite didn't land on.
+    show = subprocess.run(["bd", "show", task["id"], "--json"], capture_output=True, text=True)
+    closed_deps = []
+    if show.returncode == 0:
+        try:
+            details = json.loads(show.stdout)[0]
+            closed_deps = [d["id"] for d in details.get("dependencies") or []
+                           if d.get("status") == "closed"]
+        except (ValueError, LookupError):
+            pass
+
+    blocked = False
+    for dep_id in closed_deps:
+        # errors="replace": listing output may truncate task titles and must
+        # never crash this gate on a stray byte.
+        runs = subprocess.run(
+            ["cloche", "list", "--all", "--issue", dep_id, "--state", "succeeded"],
+            capture_output=True, text=True, errors="replace",
+        )
+        if "succeeded" not in runs.stdout:
+            blocked = True
+            break
+
+    if not blocked:
+        print(json.dumps({
+            "id": task["id"],
+            "title": task.get("title", ""),
+            "description": task.get("description", ""),
+            "status": "open",
+        }))
 `
 
 var claimTaskPyScript = `#!/usr/bin/env python3
-"""Mark the assigned task as in-progress and pass its description downstream.
+"""Claim the daemon-assigned task by marking it in_progress in beads.
 
-Prints the task description to stdout so the next workflow step (develop)
-receives it as the prompt for the coding agent.
+The daemon sets CLOCHE_TASK_ID in the environment of every step in this run.
+This step only updates tracker state — the task's content reaches the coding
+agent via the KV store (see prepare-prompt.py), not via stdout.
+"""
+import os
+import subprocess
+import sys
+
+task_id = os.environ.get("CLOCHE_TASK_ID", "")
+if not task_id:
+    print("error: CLOCHE_TASK_ID not set (is the loop running?)", file=sys.stderr)
+    sys.exit(1)
+
+if subprocess.run(["bd", "update", task_id, "-s", "in_progress"]).returncode != 0:
+    print(f"error: could not claim task {task_id}", file=sys.stderr)
+    sys.exit(1)
+
+print(f"Claimed task {task_id}")
+`
+
+var preparePromptPyScript = `#!/usr/bin/env python3
+"""Build the agent's task prompt and pass it to the container via the KV store.
+
+This is the host-to-container data handoff, the pattern to copy whenever a
+step needs to send data to another step (docs/init/4-passing-data-between-steps.md):
+
+  1. Read the task's title and description from beads.
+  2. Write the prompt to a file under temp_file_dir — a per-run directory the
+     daemon creates and mounts into the container.
+  3. Publish the file path with "cloche set task_prompt_path".
+
+The implement prompt reads it back with "clo get task_prompt_path" inside the
+container. KV values are capped at 1 KB, so anything bigger travels as a file
+path, never as a value.
 """
 import json
 import os
+import subprocess
 import sys
 
 task_id = os.environ.get("CLOCHE_TASK_ID", "")
-project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
-task_file = os.path.join(project_dir, ".cloche", "task_list.json")
-
 if not task_id:
     print("error: CLOCHE_TASK_ID not set", file=sys.stderr)
     sys.exit(1)
 
-tasks = []
-with open(task_file) as f:
-    for line in f:
-        line = line.strip()
-        if line:
-            tasks.append(json.loads(line))
-
-target = None
-for task in tasks:
-    if task["id"] == task_id:
-        task["status"] = "in-progress"
-        target = task
-        break
-
-if target is None:
-    print(f"error: task {task_id} not found", file=sys.stderr)
+show = subprocess.run(["bd", "show", task_id, "--json"], capture_output=True, text=True)
+if show.returncode != 0:
+    print(f"error: could not look up task {task_id}", file=sys.stderr)
     sys.exit(1)
 
-with open(task_file, "w") as f:
-    for task in tasks:
-        f.write(json.dumps(task) + "\n")
+task = json.loads(show.stdout)[0]
+title = task.get("title", "")
+if not title:
+    print(f"error: task {task_id} has no title", file=sys.stderr)
+    sys.exit(1)
 
-# Print description to stdout — the host executor captures it as step output,
-# which the develop step reads as its prompt.
-print(target.get("description", target.get("title", "")))
-`
+prompt = f"## Task: {title}\n\n{task.get('description', '')}\n"
 
-var prepareMergePyScript = `#!/usr/bin/env python3
-"""Create a worktree and rebase the agent's branch onto the base branch."""
-import os
-import subprocess
-import sys
-
-project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
-
-# The branch is named after the child container run ID, not the host main run ID.
-run_id = subprocess.run(
-    ["cloche", "get", "child_run_id"], check=True, capture_output=True, text=True,
+# temp_file_dir is project-relative (e.g. .cloche/runs/<run-id>), and the run
+# directory is mounted into the container at the same relative path under
+# /workspace — so the path stored below is valid on both sides.
+temp_dir = subprocess.run(
+    ["cloche", "get", "temp_file_dir"], check=True, capture_output=True, text=True,
 ).stdout.strip()
+prompt_path = os.path.join(temp_dir, "task_prompt.md")
+with open(prompt_path, "w") as f:
+    f.write(prompt)
 
-if not run_id:
-    print("error: child_run_id not set in run context", file=sys.stderr)
-    sys.exit(1)
-
-branch = f"cloche/{run_id}"
-worktree_dir = os.path.join(project_dir, ".gitworktrees", "merge", run_id)
-
-# Verify branch exists
-try:
-    subprocess.run(
-        ["git", "-C", project_dir, "rev-parse", "--verify", branch],
-        check=True, capture_output=True,
-    )
-except subprocess.CalledProcessError:
-    print(f"error: branch {branch} does not exist", file=sys.stderr)
-    sys.exit(1)
-
-base_branch = subprocess.run(
-    ["git", "-C", project_dir, "rev-parse", "--abbrev-ref", "HEAD"],
-    check=True, capture_output=True, text=True,
-).stdout.strip()
-
-os.makedirs(os.path.dirname(worktree_dir), exist_ok=True)
-
-git_name = os.environ.get("CLOCHE_GIT_AUTHOR_NAME") or "cloche"
-git_email = os.environ.get("CLOCHE_GIT_AUTHOR_EMAIL") or "cloche@local"
-env = {**os.environ,
-       "GIT_AUTHOR_NAME": git_name, "GIT_AUTHOR_EMAIL": git_email,
-       "GIT_COMMITTER_NAME": git_name, "GIT_COMMITTER_EMAIL": git_email}
-
-subprocess.run(
-    ["git", "-C", project_dir, "worktree", "add", worktree_dir, branch],
-    check=True, env=env,
-)
-
-# Store worktree path for fix-merge / merge steps
-subprocess.run(["cloche", "set", "worktree_path", worktree_dir], check=True)
-subprocess.run(["cloche", "set", "base_branch", base_branch], check=True)
-
-# Rebase onto base branch
-result = subprocess.run(
-    ["git", "-C", worktree_dir, "rebase", base_branch],
-    env=env,
-)
-if result.returncode != 0:
-    subprocess.run(["git", "-C", worktree_dir, "rebase", "--abort"], capture_output=True)
-    print(f"error: rebase failed — worktree preserved at {worktree_dir}", file=sys.stderr)
-    sys.exit(1)
-
-print(f"Rebased {branch} onto {base_branch}")
+subprocess.run(["cloche", "set", "task_prompt_path", prompt_path], check=True)
+print(f"Wrote prompt for {task_id} to {prompt_path}")
 `
 
 var mergePyScript = `#!/usr/bin/env python3
-"""Fast-forward base branch to the rebased agent branch."""
+"""Rebase the daemon-created result branch onto the base branch and fast-forward.
+
+Before the develop sub-workflow ran, the daemon already created a branch and a
+worktree for its results (.gitworktrees/cloche/<suffix>), extracted the
+container's changes into it, and published the branch name in the KV store as
+child_branch. This script only consumes that worktree — it never creates one.
+See docs/init/5-how-changes-land.md.
+
+On a rebase conflict the worktree is preserved and worktree_path/base_branch
+(set below) feed the fix-merge agent prompt via template variables; after
+fix-merge completes the rebase, this script re-runs and the rebase is a no-op.
+"""
 import os
 import subprocess
 import sys
 
-worktree_dir = subprocess.run(
-    ["cloche", "get", "worktree_path"], check=True, capture_output=True, text=True,
-).stdout.strip()
+
+def kv_get(key):
+    result = subprocess.run(["cloche", "get", key], capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def git(args, cwd, **kwargs):
+    env = dict(os.environ)
+    name = env.get("CLOCHE_GIT_AUTHOR_NAME") or "cloche"
+    email = env.get("CLOCHE_GIT_AUTHOR_EMAIL") or "cloche@local"
+    env.update({"GIT_AUTHOR_NAME": name, "GIT_AUTHOR_EMAIL": email,
+                "GIT_COMMITTER_NAME": name, "GIT_COMMITTER_EMAIL": email})
+    return subprocess.run(["git", "-C", cwd] + args, env=env, **kwargs)
+
 
 project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
 
-# The branch is named after the child container run ID.
-run_id = subprocess.run(
-    ["cloche", "get", "child_run_id"], check=True, capture_output=True, text=True,
-).stdout.strip()
-branch = f"cloche/{run_id}"
+branch = kv_get("child_branch")
+if not branch:
+    run_id = kv_get("child_run_id")
+    if not run_id:
+        print("error: neither child_branch nor child_run_id found in run context", file=sys.stderr)
+        sys.exit(1)
+    branch = f"cloche/{run_id}"
 
-git_name = os.environ.get("CLOCHE_GIT_AUTHOR_NAME") or "cloche"
-git_email = os.environ.get("CLOCHE_GIT_AUTHOR_EMAIL") or "cloche@local"
-env = {**os.environ,
-       "GIT_AUTHOR_NAME": git_name, "GIT_AUTHOR_EMAIL": git_email,
-       "GIT_COMMITTER_NAME": git_name, "GIT_COMMITTER_EMAIL": git_email}
+# The daemon puts the worktree at .gitworktrees/cloche/<branch-suffix>.
+suffix = branch.removeprefix("cloche/")
+worktree_dir = os.path.join(project_dir, ".gitworktrees", "cloche", suffix)
 
-# Get rebased HEAD
-rebased_head = subprocess.run(
-    ["git", "-C", worktree_dir, "rev-parse", "HEAD"],
-    check=True, capture_output=True, text=True,
-).stdout.strip()
+if git(["rev-parse", "--verify", branch], project_dir, capture_output=True).returncode != 0:
+    print(f"error: branch {branch} does not exist", file=sys.stderr)
+    sys.exit(1)
 
-# Remove worktree before merging
-subprocess.run(
-    ["git", "-C", project_dir, "worktree", "remove", "--force", worktree_dir],
-    capture_output=True,
-)
+if not os.path.isdir(worktree_dir):
+    print(f"error: worktree {worktree_dir} does not exist (the daemon pre-creates it)", file=sys.stderr)
+    sys.exit(1)
 
-# Update branch ref and fast-forward
-subprocess.run(
-    ["git", "-C", project_dir, "update-ref", f"refs/heads/{branch}", rebased_head],
-    check=True, env=env,
-)
-subprocess.run(
-    ["git", "-C", project_dir, "merge", "--ff-only", branch],
-    check=True, env=env,
-)
+base_branch = git(["rev-parse", "--abbrev-ref", "HEAD"], project_dir,
+                  check=True, capture_output=True, text=True).stdout.strip()
 
-# Delete the feature branch
-subprocess.run(
-    ["git", "-C", project_dir, "branch", "-D", branch],
-    capture_output=True,
-)
+# Publish state for the fix-merge step, which reads these as {{ $worktree_path }}
+# and {{ $base_branch }} in its prompt template.
+subprocess.run(["cloche", "set", "worktree_path", worktree_dir], check=True)
+subprocess.run(["cloche", "set", "base_branch", base_branch], check=True)
 
-print(f"Merged {branch} ({rebased_head[:8]})")
+# Stash untracked files in the main tree so the fast-forward can't collide.
+stash_msg = f"cloche/merge: {branch}"
+git(["stash", "--include-untracked", "-m", stash_msg], project_dir, capture_output=True)
+stashed = stash_msg in git(["stash", "list"], project_dir,
+                           capture_output=True, text=True).stdout
+
+if git(["rebase", base_branch], worktree_dir).returncode != 0:
+    git(["rebase", "--abort"], worktree_dir, capture_output=True)
+    if stashed:
+        git(["stash", "pop"], project_dir)
+    print(f"error: rebase failed — worktree preserved at {worktree_dir}", file=sys.stderr)
+    sys.exit(1)
+
+rebased_head = git(["rev-parse", "HEAD"], worktree_dir,
+                   check=True, capture_output=True, text=True).stdout.strip()
+
+# Remove the worktree before merging (git refuses to delete a checked-out
+# branch), update the ref, and fast-forward the base branch.
+git(["worktree", "remove", "--force", worktree_dir], project_dir, capture_output=True)
+git(["update-ref", f"refs/heads/{branch}", rebased_head], project_dir, check=True)
+git(["merge", "--ff-only", branch], project_dir, check=True)
+
+if stashed:
+    git(["stash", "pop"], project_dir)
+
+git(["branch", "-D", branch], project_dir, capture_output=True)
+print(f"Merged {branch} into {base_branch} ({rebased_head[:8]})")
 `
 
-var releaseTaskPyScript = `#!/usr/bin/env python3
-"""Mark the completed task as done and move it to the end of .cloche/task_list.json."""
-import json
+var closeTaskPyScript = `#!/usr/bin/env python3
+"""Close the task in beads after a successful run.
+
+This step is wired on the success path (merge:success -> close-task), so
+reaching it means the work landed on the base branch.
+"""
 import os
+import subprocess
 import sys
 
 task_id = os.environ.get("CLOCHE_TASK_ID", "")
-project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
-task_file = os.path.join(project_dir, ".cloche", "task_list.json")
-
 if not task_id:
-    print("error: CLOCHE_TASK_ID not set", file=sys.stderr)
-    sys.exit(1)
+    print("warning: CLOCHE_TASK_ID not set, skipping", file=sys.stderr)
+    sys.exit(0)
 
-tasks = []
-with open(task_file) as f:
-    for line in f:
-        line = line.strip()
-        if line:
-            tasks.append(json.loads(line))
-
-target = None
-remaining = []
-for task in tasks:
-    if task["id"] == task_id:
-        task["status"] = "done"
-        target = task
-    else:
-        remaining.append(task)
-
-if target is None:
-    print(f"error: task {task_id} not found", file=sys.stderr)
-    sys.exit(1)
-
-remaining.append(target)
-
-with open(task_file, "w") as f:
-    for task in remaining:
-        f.write(json.dumps(task) + "\n")
-
-print(f"Released task {task_id}")
+if subprocess.run(["bd", "close", task_id], capture_output=True).returncode != 0:
+    print(f"warning: could not close task {task_id}", file=sys.stderr)
+else:
+    print(f"Closed task {task_id}")
 `
 
 var cleanupPyScript = `#!/usr/bin/env python3
-"""Clean up the worktree and branch from the develop run."""
+"""Remove the worktree and branch left over from the develop run.
+
+The daemon publishes the branch name in the KV store as child_branch when it
+pre-creates the extraction worktree; the worktree lives at
+.gitworktrees/cloche/<branch-suffix>. Everything here is best-effort — a
+successful merge already removed the worktree and branch.
+"""
 import os
 import subprocess
 
 project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
 
-# The branch is named after the child container run ID.
-result = subprocess.run(
-    ["cloche", "get", "child_run_id"], capture_output=True, text=True,
-)
-run_id = result.stdout.strip() if result.returncode == 0 else ""
 
-if not run_id:
-    print("warning: child_run_id not set, skipping cleanup")
-else:
+def kv_get(key):
+    result = subprocess.run(["cloche", "get", key], capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+branch = kv_get("child_branch")
+if not branch:
+    run_id = kv_get("child_run_id")
+    if not run_id:
+        print("warning: neither child_branch nor child_run_id found, skipping cleanup")
+        raise SystemExit(0)
     branch = f"cloche/{run_id}"
-    worktree_dir = os.path.join(project_dir, ".gitworktrees", "cloche", run_id)
 
-    if os.path.isdir(worktree_dir):
-        subprocess.run(
-            ["git", "-C", project_dir, "worktree", "remove", "--force", worktree_dir],
-            capture_output=True,
-        )
+suffix = branch.removeprefix("cloche/")
+worktree_dir = os.path.join(project_dir, ".gitworktrees", "cloche", suffix)
 
+if os.path.isdir(worktree_dir):
     subprocess.run(
-        ["git", "-C", project_dir, "worktree", "prune"],
+        ["git", "-C", project_dir, "worktree", "remove", "--force", worktree_dir],
         capture_output=True,
     )
 
-    subprocess.run(
-        ["git", "-C", project_dir, "branch", "-D", branch],
-        capture_output=True,
-    )
+subprocess.run(["git", "-C", project_dir, "worktree", "prune"], capture_output=True)
+subprocess.run(["git", "-C", project_dir, "branch", "-D", branch], capture_output=True)
 
-print(f"Cleaned up run {run_id or 'unknown'}")
+print(f"Cleaned up {branch}")
 `
 
 var unclaimPyScript = `#!/usr/bin/env python3
-"""Reset the task to open and stop the orchestration loop.
+"""Reset the task to open in beads and stop the orchestration loop.
 
 This is the emergency brake — it halts all automated work so a human
 can investigate what went wrong.
 """
-import json
 import os
 import subprocess
-import sys
 
 task_id = os.environ.get("CLOCHE_TASK_ID", "")
-project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
-task_file = os.path.join(project_dir, ".cloche", "task_list.json")
-
 if task_id:
-    tasks = []
-    with open(task_file) as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                tasks.append(json.loads(line))
+    if subprocess.run(["bd", "update", task_id, "-s", "open"]).returncode == 0:
+        print(f"Unclaimed task {task_id}")
+    else:
+        print(f"warning: could not reset task {task_id} to open")
 
-    for task in tasks:
-        if task["id"] == task_id:
-            task["status"] = "open"
-            break
-
-    with open(task_file, "w") as f:
-        for task in tasks:
-            f.write(json.dumps(task) + "\n")
-
-    print(f"Unclaimed task {task_id}")
-
-# Stop the loop — human must investigate and restart
+# Stop the loop — a human must investigate and restart
 subprocess.run(["cloche", "loop", "stop"])
 print("Loop stopped — investigate and run 'cloche loop' when ready")
 `
 
-var fixMergePrompt = `A rebase of the agent's branch onto the base branch has failed due to conflicts.
+var fixMergePrompt = `# Fix Merge Conflicts
 
-The conflicting worktree is at the path stored in the ` + "`worktree_path`" + ` context key
-(retrieve with ` + "`cloche get worktree_path`" + `).
+The merge step failed: rebasing the agent's result branch onto the base branch
+produced conflicts. Everything you need is filled in below from the run's
+key-value store via prompt template variables
+(docs/init/4-passing-data-between-steps.md):
 
-Resolve the conflicts in the worktree, then run:
-  git -C <worktree_path> rebase --continue
+- Worktree with the conflicting branch checked out: {{ $worktree_path }}
+- Base branch to rebase onto: {{ $base_branch }}
 
-Do not abort the rebase. If you cannot resolve the conflicts, report failure.
-`
+The previous rebase attempt was aborted, so start it again:
 
-var taskListJSON = `{"id": "1", "title": "Validate Agent works", "description": "Create a file, ./agent_test containing the string 'I exist!'", "status": "open"}
-{"id": "2", "title": "Clean up cloche test files", "description": "Delete ./agent_test and cloche_init_test/cloche/test_cloche.py - they were created for validation and we're done now", "status": "open"}
+1. Run:
+
+   git -C {{ $worktree_path }} rebase {{ $base_branch }}
+
+2. Resolve each conflicted file semantically — understand both sides and
+   integrate them; do not just pick one. After editing each file, run
+   git -C {{ $worktree_path }} add <file>.
+
+3. Complete the rebase:
+
+   git -C {{ $worktree_path }} rebase --continue
+
+Do not run rebase --abort, do not merge, and do not delete any branch — after
+you report success the merge step re-runs and performs the fast-forward itself.
+
+Report success when the rebase completes cleanly; report fail if the conflicts
+cannot be resolved.
 `
 
 var testClocheScript = `#!/usr/bin/env python3
@@ -846,16 +906,15 @@ func runNewProjectInit(clocheDir, workflow, baseImage string, noLLM bool, agentC
 		{filepath.Join(clocheDir, "prompts", "fix-tests.md"), fixTestsPrompt, 0644},
 		{filepath.Join(clocheDir, "prompts", "fix-merge.md"), fixMergePrompt, 0644},
 		{filepath.Join(clocheDir, "version"), versionContent, 0644},
-		{filepath.Join(clocheDir, "host.cloche"), hostWorkflowTemplate, 0644},
+		{filepath.Join(clocheDir, "host.cloche"), fmt.Sprintf(hostWorkflowTemplate, workflow), 0644},
 		{filepath.Join(clocheDir, "scripts", "get-tasks.py"), getTasksPyScript, 0755},
 		{filepath.Join(clocheDir, "scripts", "claim-task.py"), claimTaskPyScript, 0755},
-		{filepath.Join(clocheDir, "scripts", "prepare-merge.py"), prepareMergePyScript, 0755},
+		{filepath.Join(clocheDir, "scripts", "prepare-prompt.py"), preparePromptPyScript, 0755},
 		{filepath.Join(clocheDir, "scripts", "merge.py"), mergePyScript, 0755},
-		{filepath.Join(clocheDir, "scripts", "release-task.py"), releaseTaskPyScript, 0755},
+		{filepath.Join(clocheDir, "scripts", "close-task.py"), closeTaskPyScript, 0755},
 		{filepath.Join(clocheDir, "scripts", "cleanup.py"), cleanupPyScript, 0755},
 		{filepath.Join(clocheDir, "scripts", "unclaim.py"), unclaimPyScript, 0755},
 		{".clocheignore", defaultClocheignore, 0644},
-		{filepath.Join(clocheDir, "task_list.json"), taskListJSON, 0644},
 		{filepath.Join("cloche_init_test", "cloche", "test_cloche.py"), testClocheScript, 0644},
 	}
 
@@ -871,9 +930,72 @@ func runNewProjectInit(clocheDir, workflow, baseImage string, noLLM bool, agentC
 		fmt.Fprintf(os.Stderr, "  create %s\n", f.path)
 	}
 
+	// Bootstrap beads (bd) task tracking with the starter validation tasks.
+	runBeadsBootstrap()
+
 	// LLM-assisted init: fill in TODO(cloche-init) placeholders.
 	if !noLLM {
 		runLLMInitPhase(agentCommand, workflow)
+	}
+}
+
+// starterTasks are the validation tasks created in beads during --new
+// bootstrap. The second depends on the first, exercising the dependency
+// gate in get-tasks.py.
+var starterTasks = []struct{ title, desc string }{
+	{
+		"Validate Agent works",
+		"Create a file, ./agent_test containing the string 'I exist!'",
+	},
+	{
+		"Clean up cloche test files",
+		"Delete ./agent_test and the cloche_init_test/ directory — they were created to validate the Cloche setup and are no longer needed",
+	},
+}
+
+// runBeadsBootstrap initializes beads (bd init) and creates the starter
+// validation tasks. A missing bd CLI or bd failures produce warnings, never
+// abort the init.
+func runBeadsBootstrap() {
+	if _, err := bdLookPathFunc(); err != nil {
+		fmt.Fprintf(os.Stderr, `
+warning: the beads CLI (bd) was not found on PATH.
+The generated task workflow uses beads for task tracking. Install it
+(https://github.com/steveyegge/beads), then re-run 'cloche init --new' to
+create the starter tasks — or swap in your own task tracker, see
+docs/init/6-swapping-the-task-tracker.md. 'cloche doctor' also checks for bd.
+`)
+		return
+	}
+
+	// A .beads/ directory means beads is already set up here — leave it
+	// alone and don't re-create the starter tasks on re-init.
+	if _, err := os.Stat(".beads"); err == nil {
+		fmt.Fprintf(os.Stderr, "  skip bd init (.beads/ already exists)\n")
+		return
+	}
+
+	if out, err := bdRunFunc("init", "-q"); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: bd init failed: %v\n%s\n", err, out)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "  create .beads/ (bd init)\n")
+
+	firstID := ""
+	for i, task := range starterTasks {
+		args := []string{"create", task.title, "-d", task.desc, "--silent"}
+		if i > 0 && firstID != "" {
+			args = append(args, "--deps", firstID)
+		}
+		id, err := bdRunFunc(args...)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: bd create %q failed: %v\n", task.title, err)
+			continue
+		}
+		if i == 0 {
+			firstID = id
+		}
+		fmt.Fprintf(os.Stderr, "  create bead %s (%s)\n", id, task.title)
 	}
 }
 
@@ -947,8 +1069,8 @@ func cmdInit(args []string) {
 		".cloche/runs/",
 		".cloche/output/",
 		".cloche/history.log",
+		".cloche/.loop-stopped",
 		".gitworktrees/",
-		".cloche/task_list.json",
 	})
 
 	// 4. Create global daemon config if it doesn't exist.
@@ -980,14 +1102,16 @@ func cmdInit(args []string) {
 		workflowFile := filepath.Join(clocheDir, workflow+".cloche")
 		fmt.Fprintf(os.Stderr, "\nInitialized Cloche project in %s\n", filepath.Base(cwd))
 		fmt.Fprintf(os.Stderr, "\nNext steps:\n")
-		fmt.Fprintf(os.Stderr, "  1. Edit .cloche/config.toml           — review settings\n")
-		fmt.Fprintf(os.Stderr, "  2. Edit %s        — adjust the test command for your project\n", workflowFile)
-		fmt.Fprintf(os.Stderr, "  3. Edit .cloche/Dockerfile            — add your project's dependencies\n")
-		fmt.Fprintf(os.Stderr, "  4. Edit .cloche/scripts/get-tasks.py  — connect to your task tracker\n")
-		fmt.Fprintf(os.Stderr, "  5. docker build -t %s -f .cloche/Dockerfile .\n", imageName)
-		fmt.Fprintf(os.Stderr, "  6. cloche loop                        — start the orchestration loop\n")
-		fmt.Fprintf(os.Stderr, "\nThe sample tasks in .cloche/task_list.json verify your setup end-to-end.\n")
-		fmt.Fprintf(os.Stderr, "Task #1 asks the agent to create a file; task #2 cleans up after itself.\n")
+		fmt.Fprintf(os.Stderr, "  1. Read docs/init/ in the cloche repo — six short setup tutorials\n")
+		fmt.Fprintf(os.Stderr, "  2. Edit .cloche/config.toml           — review settings\n")
+		fmt.Fprintf(os.Stderr, "  3. Edit %s        — adjust the test command for your project\n", workflowFile)
+		fmt.Fprintf(os.Stderr, "  4. Edit .cloche/Dockerfile            — add your project's dependencies\n")
+		fmt.Fprintf(os.Stderr, "  5. git add -A && git commit           — commit the scaffold (containers are\n")
+		fmt.Fprintf(os.Stderr, "                                          seeded from a clean git snapshot)\n")
+		fmt.Fprintf(os.Stderr, "  6. docker build -t %s -f .cloche/Dockerfile .\n", imageName)
+		fmt.Fprintf(os.Stderr, "  7. cloche loop                        — start the orchestration loop\n")
+		fmt.Fprintf(os.Stderr, "\nRun 'bd ready' to see the starter tasks: task #1 has the agent create a\n")
+		fmt.Fprintf(os.Stderr, "file to verify the setup end-to-end; task #2 unblocks afterwards and cleans up.\n")
 	} else {
 		fmt.Fprintf(os.Stderr, "\nProject registered at %s\n", filepath.Base(cwd))
 		if !installShellHelpers {

@@ -104,6 +104,7 @@ func cmdDoctor(args []string) {
 		dr.checkDaemon(),
 		dr.checkAuth(),
 		dr.checkSSHKey(),
+		dr.checkBeads(),
 	}
 
 	// Project-level checks: only when inside a cloche project directory.
@@ -357,6 +358,30 @@ func (dr *doctorRunner) checkSSHKey() checkResult {
 	f.Close()
 
 	return checkResult{label: label, status: checkOK, detail: keyPath}
+}
+
+// checkBeads verifies the beads CLI (bd) used by the generated task workflow
+// is available. Missing bd is a warning, not a failure — projects may use a
+// different task tracker.
+func (dr *doctorRunner) checkBeads() checkResult {
+	label := "Checking beads CLI (bd)"
+
+	if _, err := exec.LookPath("bd"); err != nil {
+		return checkResult{
+			label:  label,
+			status: checkWarning,
+			detail: "bd not found on PATH",
+			remediation: "The generated task workflow reads tasks from beads.\n" +
+				"Install it (https://github.com/steveyegge/beads), or swap in your own\n" +
+				"task tracker — see docs/init/6-swapping-the-task-tracker.md.",
+		}
+	}
+
+	detail := "on PATH"
+	if out, err := exec.Command("bd", "--version").Output(); err == nil {
+		detail = strings.TrimSpace(string(out))
+	}
+	return checkResult{label: label, status: checkOK, detail: detail}
 }
 
 // checkProjectConfig loads .cloche/config.toml and checks for common issues.

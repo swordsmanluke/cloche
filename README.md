@@ -39,7 +39,13 @@ cloche init
 
 This scaffolds a `.cloche/` directory with a default `develop` workflow,
 Dockerfile, prompt templates, host workflow, and configuration. All generated
-files are safe to customize.
+files are safe to customize. With `--new` it also bootstraps
+[beads](https://github.com/steveyegge/beads) task tracking and creates two
+starter validation tasks.
+
+New to Cloche? The [docs/init/](docs/init/README.md) tutorials walk through
+the generated setup one step at a time — from the first `cloche init --new`
+to running the loop and swapping the task tracker.
 
 To use a different workflow name or base image:
 

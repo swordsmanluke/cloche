@@ -153,6 +153,7 @@ USER agent
 	sb.WriteString("- Output the complete file content, not just the changed sections\n")
 	sb.WriteString("- Replace all TODO(cloche-init) blocks with real content for this project\n")
 	sb.WriteString("- Keep all non-placeholder content exactly as-is\n")
+	sb.WriteString("- Preserve {{ ... }} template directives and clo/cloche shell commands verbatim\n")
 	sb.WriteString("- For the .cloche workflow file: set the test step run command to the correct test command\n")
 	sb.WriteString("- For .cloche/Dockerfile: add appropriate dependency installation for this project's runtime\n")
 	sb.WriteString("- For .cloche/prompts/implement.md: add project-specific context (language, frameworks, conventions)\n")

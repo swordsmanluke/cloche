@@ -50,15 +50,24 @@ Additional files created by --new (skipped if already exist):
   .cloche/Dockerfile                 Container image definition
   .cloche/prompts/implement.md       Prompt for the implement step
   .cloche/prompts/fix-tests.md       Prompt for the fix-tests step
-  .cloche/prompts/fix-merge.md       Prompt for resolving merge conflicts
-  .cloche/scripts/get-tasks.py       Read next open task from task tracker
-  .cloche/scripts/claim-task.py      Mark task as in-progress
-  .cloche/scripts/prepare-merge.py   Create worktree and rebase agent branch
-  .cloche/scripts/merge.py           Fast-forward base branch to agent branch
-  .cloche/scripts/release-task.py    Mark completed task as done
-  .cloche/scripts/cleanup.py         Clean up worktree and branch
+  .cloche/prompts/fix-merge.md       Prompt for resolving rebase conflicts
+  .cloche/scripts/get-tasks.py       Print ready beads tasks as JSONL
+  .cloche/scripts/claim-task.py      Mark task in_progress in beads
+  .cloche/scripts/prepare-prompt.py  Write task prompt file, publish path in KV
+  .cloche/scripts/merge.py           Rebase daemon-created branch, fast-forward
+  .cloche/scripts/close-task.py      Close completed task in beads
+  .cloche/scripts/cleanup.py         Clean up leftover worktree and branch
   .cloche/scripts/unclaim.py         Reset task to open and stop loop
   .cloche/version                    Schema version marker
+
+Beads bootstrap (--new only): if the bd CLI is installed and .beads/ does not
+exist yet, init runs 'bd init' and creates two starter validation tasks (the
+second depends on the first). If bd is missing, a warning with install
+instructions is printed and the scaffold is still generated. The task tracker
+is swappable — see docs/init/6-swapping-the-task-tracker.md.
+
+Getting started tutorials: docs/init/ in the cloche repository walks through
+the generated setup one step at a time.
 
 LLM command resolution order (--new only):
   1. --agent-command flag
@@ -84,6 +93,8 @@ Checks performed:
   2. Base image exists (cloche-base:latest or cloche-agent:latest)
   3. Daemon reachable via gRPC (GetVersion)
   4. Agent authentication credentials present (soft check — warning only)
+  5. Git SSH key configured and readable (soft check — warning only)
+  6. Beads CLI (bd) available for task tracking (soft check — warning only)
 
 Usage:
   cloche doctor [--verbose]

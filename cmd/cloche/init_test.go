@@ -9,6 +9,14 @@ import (
 	"testing"
 )
 
+// TestMain stubs the beads CLI hooks so tests never shell out to a real bd.
+// Tests that exercise the bootstrap install their own recording stubs.
+func TestMain(m *testing.M) {
+	bdLookPathFunc = func() (string, error) { return "", fmt.Errorf("bd not found (test stub)") }
+	bdRunFunc = func(args ...string) (string, error) { return "", fmt.Errorf("bd disabled (test stub)") }
+	os.Exit(m.Run())
+}
+
 func TestCmdInit_DefaultFlags(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
@@ -28,17 +36,27 @@ func TestCmdInit_DefaultFlags(t *testing.T) {
 		filepath.Join(".cloche", "host.cloche"),
 		filepath.Join(".cloche", "scripts", "get-tasks.py"),
 		filepath.Join(".cloche", "scripts", "claim-task.py"),
-		filepath.Join(".cloche", "scripts", "prepare-merge.py"),
+		filepath.Join(".cloche", "scripts", "prepare-prompt.py"),
 		filepath.Join(".cloche", "scripts", "merge.py"),
-		filepath.Join(".cloche", "scripts", "release-task.py"),
+		filepath.Join(".cloche", "scripts", "close-task.py"),
 		filepath.Join(".cloche", "scripts", "cleanup.py"),
 		filepath.Join(".cloche", "scripts", "unclaim.py"),
 		".clocheignore",
-		filepath.Join(".cloche", "task_list.json"),
 		filepath.Join("cloche_init_test", "cloche", "test_cloche.py"),
 	} {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			t.Errorf("expected %s to exist", path)
+		}
+	}
+
+	// Replaced by the beads-backed scaffold — must no longer be generated.
+	for _, path := range []string{
+		filepath.Join(".cloche", "scripts", "prepare-merge.py"),
+		filepath.Join(".cloche", "scripts", "release-task.py"),
+		filepath.Join(".cloche", "task_list.json"),
+	} {
+		if _, err := os.Stat(path); err == nil {
+			t.Errorf("expected %s to NOT exist", path)
 		}
 	}
 
@@ -143,8 +161,11 @@ func TestCmdInit_GitignoreEntries(t *testing.T) {
 	if !strings.Contains(content, ".gitworktrees/") {
 		t.Error(".gitignore should contain .gitworktrees/")
 	}
-	if !strings.Contains(content, ".cloche/task_list.json") {
-		t.Error(".gitignore should contain .cloche/task_list.json")
+	if !strings.Contains(content, ".cloche/.loop-stopped") {
+		t.Error(".gitignore should contain .cloche/.loop-stopped")
+	}
+	if strings.Contains(content, ".cloche/task_list.json") {
+		t.Error(".gitignore should no longer contain .cloche/task_list.json")
 	}
 	// Old v1 entries should not be present
 	for _, old := range []string{".cloche/*-*-*/", ".cloche/run-*/", ".cloche/attempt_count/"} {
@@ -243,8 +264,11 @@ func TestCmdInit_ImplementPromptPlaceholder(t *testing.T) {
 	if !strings.Contains(content, "Project Context") {
 		t.Error("implement.md should contain a Project Context section")
 	}
-	if !strings.Contains(content, "{task_description}") {
-		t.Error("implement.md should still contain {task_description} placeholder")
+	if strings.Contains(content, "{task_description}") {
+		t.Error("implement.md should not use the deprecated {task_description} placeholder")
+	}
+	if !strings.Contains(content, "clo get task_prompt_path") {
+		t.Error("implement.md should read the task via clo get task_prompt_path")
 	}
 }
 
@@ -515,35 +539,11 @@ func TestCmdInit_ScriptsExecutable(t *testing.T) {
 	for _, path := range []string{
 		filepath.Join(".cloche", "scripts", "get-tasks.py"),
 		filepath.Join(".cloche", "scripts", "claim-task.py"),
-		filepath.Join(".cloche", "scripts", "prepare-merge.py"),
+		filepath.Join(".cloche", "scripts", "prepare-prompt.py"),
 		filepath.Join(".cloche", "scripts", "merge.py"),
-		filepath.Join(".cloche", "scripts", "release-task.py"),
+		filepath.Join(".cloche", "scripts", "close-task.py"),
 		filepath.Join(".cloche", "scripts", "cleanup.py"),
 		filepath.Join(".cloche", "scripts", "unclaim.py"),
-	} {
-		info, err := os.Stat(path)
-		if os.IsNotExist(err) {
-			t.Errorf("expected %s to exist", path)
-			continue
-		}
-		if info.Mode()&0111 == 0 {
-			t.Errorf("expected %s to be executable", path)
-		}
-	}
-}
-
-func TestCmdInit_MergeCleanupScripts(t *testing.T) {
-	dir := t.TempDir()
-	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
-
-	cmdInit([]string{"--new", "--no-llm"})
-
-	for _, path := range []string{
-		filepath.Join(".cloche", "scripts", "prepare-merge.py"),
-		filepath.Join(".cloche", "scripts", "merge.py"),
-		filepath.Join(".cloche", "scripts", "cleanup.py"),
 	} {
 		info, err := os.Stat(path)
 		if os.IsNotExist(err) {
@@ -561,27 +561,6 @@ func TestCmdInit_MergeCleanupScripts(t *testing.T) {
 	}
 }
 
-func TestCmdInit_PrepareMergeContent(t *testing.T) {
-	dir := t.TempDir()
-	origDir, _ := os.Getwd()
-	os.Chdir(dir)
-	defer os.Chdir(origDir)
-
-	cmdInit([]string{"--new", "--no-llm"})
-
-	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "prepare-merge.py"))
-	content := string(data)
-	if !strings.Contains(content, "child_run_id") {
-		t.Error("prepare-merge.py should retrieve child_run_id from run context")
-	}
-	if !strings.Contains(content, "worktree_path") {
-		t.Error("prepare-merge.py should store worktree_path via cloche set")
-	}
-	if !strings.Contains(content, "rebase") {
-		t.Error("prepare-merge.py should perform a rebase")
-	}
-}
-
 func TestCmdInit_MergeContent(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
@@ -592,8 +571,17 @@ func TestCmdInit_MergeContent(t *testing.T) {
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "merge.py"))
 	content := string(data)
+	if !strings.Contains(content, "child_branch") {
+		t.Error("merge.py should read the daemon-published child_branch key")
+	}
+	if strings.Contains(content, `"worktree", "add"`) {
+		t.Error("merge.py must not create a worktree — the daemon pre-creates it")
+	}
 	if !strings.Contains(content, "worktree_path") {
-		t.Error("merge.py should retrieve worktree_path")
+		t.Error("merge.py should publish worktree_path for the fix-merge step")
+	}
+	if !strings.Contains(content, "base_branch") {
+		t.Error("merge.py should publish base_branch for the fix-merge step")
 	}
 	if !strings.Contains(content, "ff-only") {
 		t.Error("merge.py should fast-forward merge")
@@ -613,8 +601,11 @@ func TestCmdInit_CleanupContent(t *testing.T) {
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "cleanup.py"))
 	content := string(data)
+	if !strings.Contains(content, "child_branch") {
+		t.Error("cleanup.py should read the daemon-published child_branch key")
+	}
 	if !strings.Contains(content, "child_run_id") {
-		t.Error("cleanup.py should retrieve child_run_id from run context")
+		t.Error("cleanup.py should fall back to child_run_id")
 	}
 	if !strings.Contains(content, `"worktree", "remove"`) {
 		t.Error("cleanup.py should remove the worktree")
@@ -634,8 +625,11 @@ func TestCmdInit_FixMergePromptContent(t *testing.T) {
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "prompts", "fix-merge.md"))
 	content := string(data)
-	if !strings.Contains(content, "worktree_path") {
-		t.Error("fix-merge.md should reference worktree_path")
+	if !strings.Contains(content, "{{ $worktree_path }}") {
+		t.Error("fix-merge.md should use the {{ $worktree_path }} template variable")
+	}
+	if !strings.Contains(content, "{{ $base_branch }}") {
+		t.Error("fix-merge.md should use the {{ $base_branch }} template variable")
 	}
 	if !strings.Contains(content, "rebase --continue") {
 		t.Error("fix-merge.md should instruct running rebase --continue")
@@ -689,8 +683,11 @@ func TestCmdInit_HostWorkflowV2(t *testing.T) {
 	if !strings.Contains(content, `workflow main`) {
 		t.Error("host.cloche should contain main workflow")
 	}
-	if !strings.Contains(content, "prepare-merge") {
-		t.Error("host.cloche main workflow should contain prepare-merge step")
+	if !strings.Contains(content, "prepare-prompt.py") {
+		t.Error("host.cloche main workflow should contain prepare-prompt step")
+	}
+	if !strings.Contains(content, "close-task.py") {
+		t.Error("host.cloche main workflow should contain close-task step")
 	}
 	if !strings.Contains(content, "get-tasks.py") {
 		t.Error("host.cloche should reference get-tasks.py")
@@ -701,30 +698,125 @@ func TestCmdInit_HostWorkflowV2(t *testing.T) {
 	if !strings.Contains(content, "unclaim.py") {
 		t.Error("host.cloche should reference unclaim.py")
 	}
-	// Old v1 script should not be present
-	if strings.Contains(content, "prepare-prompt.sh") {
-		t.Error("host.cloche should not reference prepare-prompt.sh")
+	if !strings.Contains(content, `workflow_name = "develop"`) {
+		t.Error("host.cloche develop step should reference the workflow name")
+	}
+	// The daemon pre-creates worktrees; there is no prepare-merge step anymore.
+	if strings.Contains(content, "prepare-merge") {
+		t.Error("host.cloche should not contain a prepare-merge step")
+	}
+	if strings.Contains(content, "release-task") {
+		t.Error("host.cloche should not contain a release-task step")
 	}
 }
 
-func TestCmdInit_TaskListJSON(t *testing.T) {
+func TestCmdInit_HostWorkflowCustomName(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
 	os.Chdir(dir)
 	defer os.Chdir(origDir)
 
+	cmdInit([]string{"--new", "--no-llm", "--workflow", "build"})
+
+	data, _ := os.ReadFile(filepath.Join(".cloche", "host.cloche"))
+	if !strings.Contains(string(data), `workflow_name = "build"`) {
+		t.Error("host.cloche develop step should reference the custom workflow name")
+	}
+}
+
+// recordBeads installs recording bd stubs and returns the recorded calls.
+// Each bd create returns a distinct fake issue ID (task-1, task-2, ...).
+func recordBeads(t *testing.T) *[][]string {
+	t.Helper()
+	calls := &[][]string{}
+	origLook, origRun := bdLookPathFunc, bdRunFunc
+	bdLookPathFunc = func() (string, error) { return "/usr/bin/bd", nil }
+	created := 0
+	bdRunFunc = func(args ...string) (string, error) {
+		*calls = append(*calls, args)
+		if len(args) > 0 && args[0] == "create" {
+			created++
+			return fmt.Sprintf("task-%d", created), nil
+		}
+		return "", nil
+	}
+	t.Cleanup(func() { bdLookPathFunc, bdRunFunc = origLook, origRun })
+	return calls
+}
+
+func TestCmdInit_BeadsBootstrap_Fresh(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	calls := recordBeads(t)
+
 	cmdInit([]string{"--new", "--no-llm"})
 
-	data, err := os.ReadFile(filepath.Join(".cloche", "task_list.json"))
-	if err != nil {
-		t.Fatal("expected .cloche/task_list.json to exist")
+	if len(*calls) != 3 {
+		t.Fatalf("expected 3 bd calls (init + 2 creates), got %d: %v", len(*calls), *calls)
 	}
-	content := string(data)
-	if !strings.Contains(content, "Validate Agent works") {
-		t.Error(".cloche/task_list.json should contain validation task")
+	if (*calls)[0][0] != "init" {
+		t.Errorf("first bd call should be init, got %v", (*calls)[0])
 	}
-	if !strings.Contains(content, "Clean up cloche test files") {
-		t.Error(".cloche/task_list.json should contain cleanup task")
+	first := strings.Join((*calls)[1], " ")
+	if !strings.Contains(first, "create Validate Agent works") || !strings.Contains(first, "--silent") {
+		t.Errorf("second bd call should create the validation task with --silent, got %v", (*calls)[1])
+	}
+	second := strings.Join((*calls)[2], " ")
+	if !strings.Contains(second, "create Clean up cloche test files") {
+		t.Errorf("third bd call should create the cleanup task, got %v", (*calls)[2])
+	}
+	if !strings.Contains(second, "--deps task-1") {
+		t.Errorf("cleanup task should depend on the validation task, got %v", (*calls)[2])
+	}
+}
+
+func TestCmdInit_BeadsBootstrap_SkipsExistingBeads(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	os.MkdirAll(".beads", 0755)
+	calls := recordBeads(t)
+
+	cmdInit([]string{"--new", "--no-llm"})
+
+	if len(*calls) != 0 {
+		t.Errorf("expected no bd calls when .beads/ exists, got %v", *calls)
+	}
+}
+
+func TestCmdInit_BeadsBootstrap_MissingBd(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	// TestMain's default stubs simulate a missing bd CLI.
+	origStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	cmdInit([]string{"--new", "--no-llm"})
+
+	w.Close()
+	os.Stderr = origStderr
+	var buf strings.Builder
+	io.Copy(&buf, r)
+	stderrOutput := buf.String()
+
+	if !strings.Contains(stderrOutput, "beads CLI (bd) was not found") {
+		t.Errorf("expected a missing-bd warning, stderr:\n%s", stderrOutput)
+	}
+	// The scaffold must still be generated.
+	if _, err := os.Stat(filepath.Join(".cloche", "host.cloche")); os.IsNotExist(err) {
+		t.Error("scaffold should be generated even when bd is missing")
+	}
+	if _, err := os.Stat(".beads"); err == nil {
+		t.Error(".beads/ should not be created when bd is missing")
 	}
 }
 
@@ -762,17 +854,20 @@ func TestCmdInit_GetTasksContent(t *testing.T) {
 
 	data, _ := os.ReadFile(filepath.Join(".cloche", "scripts", "get-tasks.py"))
 	content := string(data)
-	if !strings.Contains(content, "task_list.json") {
-		t.Error("get-tasks.py should reference task_list.json")
+	if !strings.Contains(content, "bd") || !strings.Contains(content, "ready") {
+		t.Error("get-tasks.py should read ready tasks from beads (bd ready)")
+	}
+	if strings.Contains(content, "task_list.json") {
+		t.Error("get-tasks.py should no longer reference task_list.json")
 	}
 	if !strings.Contains(content, "print(") {
-		t.Error("get-tasks.py should print task to stdout")
+		t.Error("get-tasks.py should print tasks to stdout")
 	}
-	if !strings.Contains(content, `"status") == "open"`) {
-		// Either format is acceptable
-		if !strings.Contains(content, "open") {
-			t.Error("get-tasks.py should filter for open tasks")
-		}
+	if !strings.Contains(content, `"open"`) {
+		t.Error("get-tasks.py should filter for open tasks")
+	}
+	if !strings.Contains(content, "docs/init/6-swapping-the-task-tracker.md") {
+		t.Error("get-tasks.py should point at the tracker-swap tutorial")
 	}
 }
 
@@ -837,8 +932,8 @@ func TestCmdInit_UnclaimContent(t *testing.T) {
 	if !strings.Contains(content, "loop") {
 		t.Error("unclaim.py should stop the loop")
 	}
-	if !strings.Contains(content, "open") {
-		t.Error("unclaim.py should reset task to open")
+	if !strings.Contains(content, `"bd", "update"`) || !strings.Contains(content, `"open"`) {
+		t.Error("unclaim.py should reset the beads task to open")
 	}
 }
 
@@ -1228,9 +1323,9 @@ func TestCmdInit_InteractiveDeclineAtFirstPrompt(t *testing.T) {
 
 func TestParseGitHubOwnerRepo(t *testing.T) {
 	cases := []struct {
-		url        string
-		wantOwner  string
-		wantRepo   string
+		url       string
+		wantOwner string
+		wantRepo  string
 	}{
 		{"https://github.com/acme/myrepo.git", "acme", "myrepo"},
 		{"https://github.com/acme/myrepo", "acme", "myrepo"},

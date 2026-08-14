@@ -544,13 +544,18 @@ workflow "main" {
     results = [success, fail]
   }
 
+  step prepare-prompt {
+    run     = "python3 .cloche/scripts/prepare-prompt.py"
+    results = [success, fail]
+  }
+
   step develop {
     workflow_name = "develop"
     results       = [success, fail]
   }
 
-  step prepare-merge {
-    run     = "python3 .cloche/scripts/prepare-merge.py"
+  step merge {
+    run     = "python3 .cloche/scripts/merge.py"
     results = [success, fail]
   }
 
@@ -559,13 +564,8 @@ workflow "main" {
     results = [success, fail]
   }
 
-  step merge {
-    run     = "python3 .cloche/scripts/merge.py"
-    results = [success, fail]
-  }
-
-  step release-task {
-    run     = "python3 .cloche/scripts/release-task.py"
+  step close-task {
+    run     = "python3 .cloche/scripts/close-task.py"
     results = [success, fail]
   }
 
@@ -579,22 +579,22 @@ workflow "main" {
     results = [success, fail]
   }
 
-  claim-task:success    -> develop
-  claim-task:fail       -> abort
-  develop:success       -> prepare-merge
-  develop:fail          -> unclaim
-  prepare-merge:success -> merge
-  prepare-merge:fail    -> fix-merge
-  fix-merge:success     -> merge
-  fix-merge:fail        -> unclaim
-  merge:success         -> release-task
-  merge:fail            -> fix-merge
-  release-task:success  -> cleanup
-  release-task:fail     -> unclaim
-  cleanup:success       -> done
-  cleanup:fail          -> unclaim
-  unclaim:success       -> abort
-  unclaim:fail          -> abort
+  claim-task:success     -> prepare-prompt
+  claim-task:fail        -> abort
+  prepare-prompt:success -> develop
+  prepare-prompt:fail    -> unclaim
+  develop:success        -> merge
+  develop:fail           -> unclaim
+  merge:success          -> close-task
+  merge:fail             -> fix-merge
+  fix-merge:success      -> merge
+  fix-merge:fail         -> unclaim
+  close-task:success     -> cleanup
+  close-task:fail        -> unclaim
+  cleanup:success        -> done
+  cleanup:fail           -> unclaim
+  unclaim:success        -> abort
+  unclaim:fail           -> abort
 }
 ```
 
@@ -873,14 +873,46 @@ Skip scripts run **in the same location as the step itself**:
 
 ## Built-in KV Keys
 
-The daemon automatically sets the following KV keys before the first step of every run.
-They are available to host-side scripts via `cloche get <key>` and to container steps
-via `clo get <key>`.
+The daemon automatically sets the following KV keys. They are available to
+host-side scripts via `cloche get <key>` and to container steps via
+`clo get <key>`.
+
+Seeded before the first step of every run:
 
 | Key | Value | Description |
 |-----|-------|-------------|
+| `task_id` | task ID | The task this run belongs to (same as `CLOCHE_TASK_ID`). |
+| `attempt_id` | attempt ID | The current attempt. |
+| `run_id` | run ID | The current run. |
+| `workflow` | workflow name | The workflow being executed (host runs). |
 | `temp_file_dir` | `.cloche/runs/<run-id>` | Scratch directory for temp files too large for the 1 KB KV value limit. The daemon creates this directory at run start. Because it lives inside `.cloche/runs/`, it is already covered by the standard gitignore pattern. |
-| `task_prompt_path` | `.cloche/runs/<run-id>/task_prompt.md` | Set by `prepare-prompt.sh` (or similar host scripts) to point at the task description file. Not set automatically by the daemon. |
+
+Updated by the host executor as steps run:
+
+| Key | Value | Description |
+|-----|-------|-------------|
+| `prev_step` | step name | Name of the most recently completed step. |
+| `prev_step_exit` | exit code | Exit code of the most recently completed step. |
+| `<workflow>:<step>:result` | wire name | The result each completed step reported (e.g. `main:merge:result` → `success`). |
+
+Published after a container sub-workflow (a `workflow_name` step) completes,
+under the host run's scope so host steps can read them:
+
+| Key | Value | Description |
+|-----|-------|-------------|
+| `child_run_id` | run ID | The container sub-workflow's run ID. |
+| `child_branch` | `cloche/<attempt>-<container>` | Branch the daemon pre-created and extracted the container's results onto. Its worktree lives at `.gitworktrees/cloche/<branch-suffix>`. |
+| `child_repos` | comma-separated names | Repos the sub-workflow declared (multi-repo runs). |
+| `child_branch:<repo>` | branch name | Per-repo result branch (multi-repo runs). |
+| `child_repo_path:<repo>` | path | Per-repo host path (multi-repo runs). |
+
+Convention keys set by the generated scaffold scripts (not by the daemon):
+
+| Key | Set by | Description |
+|-----|--------|-------------|
+| `task_prompt_path` | `prepare-prompt.py` | Path to the task description file under `temp_file_dir`; read in-container via `clo get`. |
+| `worktree_path` | `merge.py` | The daemon-created worktree being merged; feeds the fix-merge prompt as `{{ $worktree_path }}`. |
+| `base_branch` | `merge.py` | The branch being merged into; feeds the fix-merge prompt as `{{ $base_branch }}`. |
 
 Use `temp_file_dir` for intermediate files that need to be passed between steps:
 

@@ -419,13 +419,18 @@ workflow "main" {
     results = [success, fail]
   }
 
+  step prepare-prompt {
+    run     = "python3 .cloche/scripts/prepare-prompt.py"
+    results = [success, fail]
+  }
+
   step develop {
     workflow_name = "develop"
     results       = [success, fail]
   }
 
-  step prepare-merge {
-    run     = "python3 .cloche/scripts/prepare-merge.py"
+  step merge {
+    run     = "python3 .cloche/scripts/merge.py"
     results = [success, fail]
   }
 
@@ -434,13 +439,8 @@ workflow "main" {
     results = [success, fail]
   }
 
-  step merge {
-    run     = "python3 .cloche/scripts/merge.py"
-    results = [success, fail]
-  }
-
-  step release-task {
-    run     = "python3 .cloche/scripts/release-task.py"
+  step close-task {
+    run     = "python3 .cloche/scripts/close-task.py"
     results = [success, fail]
   }
 
@@ -454,27 +454,31 @@ workflow "main" {
     results = [success, fail]
   }
 
-  claim-task:success    -> develop
-  claim-task:fail       -> abort
-  develop:success       -> prepare-merge
-  develop:fail          -> unclaim
-  prepare-merge:success -> merge
-  prepare-merge:fail    -> fix-merge
-  fix-merge:success     -> merge
-  fix-merge:fail        -> unclaim
-  merge:success         -> release-task
-  merge:fail            -> fix-merge
-  release-task:success  -> cleanup
-  release-task:fail     -> unclaim
-  cleanup:success       -> done
-  cleanup:fail          -> unclaim
-  unclaim:success       -> abort
-  unclaim:fail          -> abort
+  claim-task:success     -> prepare-prompt
+  claim-task:fail        -> abort
+  prepare-prompt:success -> develop
+  prepare-prompt:fail    -> unclaim
+  develop:success        -> merge
+  develop:fail           -> unclaim
+  merge:success          -> close-task
+  merge:fail             -> fix-merge
+  fix-merge:success      -> merge
+  fix-merge:fail         -> unclaim
+  close-task:success     -> cleanup
+  close-task:fail        -> unclaim
+  cleanup:success        -> done
+  cleanup:fail           -> unclaim
+  unclaim:success        -> abort
+  unclaim:fail           -> abort
 }
 ```
 
 The `list-tasks` script prints JSONL to stdout. The `main` workflow
-receives the task ID and handles all phases of work including any post-run cleanup.
+receives the task ID and handles all phases of work including any post-run
+cleanup. There is no worktree-creation step: the daemon pre-creates the
+result branch and worktree around the `develop` sub-workflow and publishes
+`child_branch` in the KV store; `merge.py` consumes them
+(see [docs/init/5-how-changes-land.md](init/5-how-changes-land.md)).
 
 ### Host Step Environment Variables
 
@@ -857,9 +861,19 @@ the project with the daemon.
 **`--new` scaffolding:** Creates `.cloche/` with workflow file, Dockerfile,
 prompt templates (`implement.md`, `fix-tests.md`, `fix-merge.md`), host
 workflows (`host.cloche`), Python scripts (`get-tasks.py`, `claim-task.py`,
-`prepare-merge.py`, `merge.py`, `release-task.py`, `cleanup.py`, `unclaim.py`),
-`.cloche/task_list.json`, `.cloche/version`, `.clocheignore` (at project root),
-and `cloche_init_test/cloche/test_cloche.py`. Skips existing files.
+`prepare-prompt.py`, `merge.py`, `close-task.py`, `cleanup.py`, `unclaim.py`),
+`.cloche/version`, `.clocheignore` (at project root), and
+`cloche_init_test/cloche/test_cloche.py`. Skips existing files.
+
+**Beads bootstrap:** `--new` also sets up [beads](https://github.com/steveyegge/beads)
+as the task tracker: if the `bd` CLI is installed and `.beads/` does not exist,
+it runs `bd init` and creates two starter validation tasks (the second depends
+on the first). If `bd` is missing, init prints a warning with install
+instructions and still generates the scaffold; re-run `cloche init --new` after
+installing to create the starter tasks. The tracker is swappable — see
+[docs/init/6-swapping-the-task-tracker.md](init/6-swapping-the-task-tracker.md).
+The [docs/init/](init/README.md) tutorial series walks through the whole
+generated setup.
 
 Three generated files contain `TODO(cloche-init)` placeholders:
 
@@ -1583,7 +1597,6 @@ my-project/
 │   ├── scripts/              # Host-side scripts
 │   ├── overrides/            # Files copied on top of /workspace/
 │   │   └── CLAUDE.md         # Container-specific CLAUDE.md (optional)
-│   ├── task_list.json        # Sample task file for local development and testing
 │   ├── runs/
 │   │   └── <task-id>/        # Runtime state (gitignored)
 │   │       └── prompt.txt    # User prompt
@@ -1597,6 +1610,7 @@ my-project/
 ├── cloche_init_test/
 │   └── cloche/
 │       └── test_cloche.py    # Validation tests for the Cloche setup
+├── .beads/                   # Beads task tracker state (created by bd init)
 ├── .clocheignore             # Workspace file exclusions (patterns to omit from container)
 ├── src/                      # Project source (untouched by Cloche)
 └── .git/
@@ -1616,7 +1630,6 @@ my-project/
 |-----|---------|-------------|
 | `concurrency` | `1` | Maximum concurrent container runs. |
 | `stagger_seconds` | `1.0` | Delay (seconds) between consecutive run launches. |
-| `list_tasks_command` | _(unset)_ | Shell command to list open tasks (must output a JSON array). Overrides the default `list-tasks` workflow. |
 | `dedup_seconds` | `0` | Window (seconds) to suppress re-assigning the same task ID. |
 | `stop_on_error` | `false` | Halt the orchestration loop on the first unrecovered error. |
 | `max_consecutive_failures` | `3` | Stop the loop after this many consecutive failed runs. Run `cloche loop` to restart. |
@@ -1726,8 +1739,7 @@ Host scripts receive the resolved identity and push credentials as env vars:
 
 The convention: any workflow script that commits or pushes on the bot's behalf
 should honor these env vars with a local fallback (so it still works when
-nothing is configured). The scaffolded `prepare-merge`/`merge` scripts follow
-this pattern.
+nothing is configured). The scaffolded `merge.py` script follows this pattern.
 
 ### `[[repositories]]`
 
