@@ -1,5 +1,11 @@
 # Cloche Changelog
 
+## v3.19.8 — 2026-08-14
+
+### Notable fixes
+
+- `cloche init --new` now commits the generated scaffold automatically (skip with `--no-commit`), since containers are seeded from a clean git snapshot and an uncommitted scaffold silently broke the first `cloche loop` run; `cloche loop` also now builds the project's Docker image automatically on first use instead of failing with a missing-image error.
+
 ## v3.19.7 — 2026-08-14
 
 ### Features

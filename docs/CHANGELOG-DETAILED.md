@@ -1,5 +1,11 @@
 # Cloche Detailed Changelog
 
+## v3.19.8 — 2026-08-14
+
+### Fixes
+
+- `93371be` `cloche init --new` now commits the generated scaffold (`"Add cloche scaffold"`, skippable with `--no-commit`) after the LLM-fill and SSH-key phases, and `ContainerPool.SessionFor` now auto-builds the project's Docker image before starting a session — fixing two gaps that previously made a fresh project's first `cloche loop` run fail (invisible uncommitted scaffold, missing image).
+
 ## v3.19.7 — 2026-08-14
 
 ### Features
