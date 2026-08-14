@@ -136,3 +136,23 @@ func TestListHelpIncludesTaskIdColumn(t *testing.T) {
 		t.Error("list help text should mention task ID column")
 	}
 }
+
+func TestTruncateRunes(t *testing.T) {
+	cases := []struct {
+		in   string
+		n    int
+		want string
+	}{
+		{"short", 50, "short"},
+		{"exactly-ten", 11, "exactly-ten"},
+		{"abcdefghijklmnop", 10, "abcdefg..."},
+		{"seats — em dash tail that goes on and on and beyond", 20, "seats — em dash t..."},
+		{"ééééééééééééééééééééé", 10, "ééééééé..."},
+	}
+	for _, c := range cases {
+		got := truncateRunes(c.in, c.n)
+		if got != c.want {
+			t.Errorf("truncateRunes(%q, %d) = %q, want %q", c.in, c.n, got, c.want)
+		}
+	}
+}

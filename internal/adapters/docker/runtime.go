@@ -66,6 +66,12 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	if useDefaultCmd {
 		containerCmd = []string{"cloche-agent", ".cloche/" + cfg.WorkflowName + ".cloche"}
 	}
+	// Any cloche-agent invocation (default workflow-file mode or explicit
+	// session mode) needs the root chown+gosu wrapper: docker creates the
+	// .cloche/runs bind-mount target parents as root at start, and without
+	// the chown the agent user cannot create .cloche/output. Only genuinely
+	// custom commands (e.g. tests on non-cloche images) run raw.
+	useAgentWrapper := useDefaultCmd || containerCmd[0] == "cloche-agent"
 
 	args := []string{
 		"create",
@@ -163,10 +169,11 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 
 	// No --network none: agent needs network for git push and API access
 
-	if useDefaultCmd {
-		// Start as root to fix ownership of docker-cp'd files, then drop
-		// to the agent user via gosu (direct setuid+exec, no intermediate
-		// shell — avoids stdout buffering issues that su/sh cause).
+	if useAgentWrapper {
+		// Start as root to fix ownership of docker-cp'd files and
+		// root-created mount-point directories, then drop to the agent user
+		// via gosu (direct setuid+exec, no intermediate shell — avoids
+		// stdout buffering issues that su/sh cause).
 		args = append(args, "--user", "root")
 		wrappedCmd := fmt.Sprintf(
 			"chown -R agent:agent /workspace"+

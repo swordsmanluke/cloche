@@ -803,7 +803,7 @@ func formatDuration(startedAt string) string {
 
 func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	var all bool
-	var projectDir, stateFilter string
+	var projectDir, stateFilter, issueFilter string
 	var limit int32
 	var runs bool // --runs flag to show flat run listing instead of tasks
 
@@ -823,6 +823,11 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 				i++
 				stateFilter = args[i]
 			}
+		case "--issue", "-i":
+			if i+1 < len(args) {
+				i++
+				issueFilter = args[i]
+			}
 		case "--limit", "-n":
 			if i+1 < len(args) {
 				i++
@@ -837,7 +842,7 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 	}
 
 	if runs {
-		cmdListRuns(ctx, client, all, projectDir, stateFilter, limit)
+		cmdListRuns(ctx, client, all, projectDir, stateFilter, issueFilter, limit)
 		return
 	}
 
@@ -861,18 +866,28 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 		os.Exit(1)
 	}
 
-	if len(resp.Tasks) == 0 {
+	tasks := resp.Tasks
+	if issueFilter != "" {
+		// Task IDs double as issue IDs (the loop dispatches tracker issues
+		// under their own ID), so --issue is an exact task-ID filter.
+		filtered := tasks[:0]
+		for _, task := range tasks {
+			if task.TaskId == issueFilter {
+				filtered = append(filtered, task)
+			}
+		}
+		tasks = filtered
+	}
+
+	if len(tasks) == 0 {
 		fmt.Println("No tasks found.")
 		return
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "TASK ID\tSTATUS\tATTEMPTS\tLATEST ATTEMPT\tTITLE")
-	for _, task := range resp.Tasks {
-		title := task.Title
-		if len(title) > 50 {
-			title = title[:47] + "..."
-		}
+	for _, task := range tasks {
+		title := truncateRunes(task.Title, 50)
 		latestAttempt := task.LatestAttemptId
 		if latestAttempt == "" {
 			latestAttempt = "-"
@@ -895,8 +910,19 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 	w.Flush()
 }
 
+// truncateRunes shortens s to at most n runes, replacing the tail with "..."
+// on truncation. Rune-aware so multibyte characters are never split, which
+// would emit invalid UTF-8 (and break strict decoders consuming our output).
+func truncateRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-3]) + "..."
+}
+
 // cmdListRuns shows a flat run listing (legacy mode, accessible via --runs).
-func cmdListRuns(ctx context.Context, client pb.ClocheServiceClient, all bool, projectDir, stateFilter string, limit int32) {
+func cmdListRuns(ctx context.Context, client pb.ClocheServiceClient, all bool, projectDir, stateFilter, issueFilter string, limit int32) {
 	req := &pb.ListRunsRequest{
 		State: stateFilter,
 		Limit: limit,
@@ -916,26 +942,31 @@ func cmdListRuns(ctx context.Context, client pb.ClocheServiceClient, all bool, p
 		os.Exit(1)
 	}
 
-	if len(resp.Runs) == 0 {
+	listedRuns := resp.Runs
+	if issueFilter != "" {
+		filtered := listedRuns[:0]
+		for _, run := range listedRuns {
+			if run.TaskId == issueFilter {
+				filtered = append(filtered, run)
+			}
+		}
+		listedRuns = filtered
+	}
+
+	if len(listedRuns) == 0 {
 		fmt.Println("No runs found.")
 		return
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "RUN ID\tWORKFLOW\tSTATE\tTYPE\tTASK ID\tTITLE\tERROR")
-	for _, run := range resp.Runs {
+	for _, run := range listedRuns {
 		runType := "container"
 		if run.IsHost {
 			runType = "host"
 		}
-		title := run.Title
-		if len(title) > 40 {
-			title = title[:37] + "..."
-		}
-		errMsg := run.ErrorMessage
-		if len(errMsg) > 60 {
-			errMsg = errMsg[:57] + "..."
-		}
+		title := truncateRunes(run.Title, 40)
+		errMsg := truncateRunes(run.ErrorMessage, 60)
 		state := run.State
 		if run.WaitingStep != "" {
 			elapsed := formatLastPollElapsed(run.LastPollAt)

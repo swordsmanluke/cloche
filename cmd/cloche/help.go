@@ -334,6 +334,9 @@ Flags:
   --all              Show tasks from all projects (default: current project only).
   --project, -p DIR  Filter by project directory.
   --state, -s STATE  Filter by task status (pending, running, succeeded, failed, cancelled).
+  --issue, -i ID     Filter to a single task/issue ID (exact match). Useful in
+                     scripts, e.g. checking whether a tracker issue has a
+                     succeeded run.
   --limit, -n NUM    Limit the number of results returned.
   --runs             Show flat run listing instead of task-oriented view.
 
@@ -346,6 +349,7 @@ Examples:
   cloche list --state running
   cloche list --limit 10
   cloche list --all --state failed --limit 5
+  cloche list --all --issue cloche-ab12 --state succeeded
   cloche list -p /home/user/project -s succeeded -n 20
   cloche list --runs
 `,
