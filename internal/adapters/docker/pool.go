@@ -283,6 +283,22 @@ func (p *ContainerPool) SessionFor(ctx context.Context, attemptID string, cfg po
 	}
 	p.mu.Unlock()
 
+	// Auto-build the project image if missing or stale, mirroring the
+	// standalone-run path. Build from the live project dir (the seed snapshot
+	// may not contain an uncommitted Dockerfile). Failures fall through to
+	// Start, whose error reporting covers the genuinely broken cases.
+	if ensurer, ok := p.runtime.(ports.ImageEnsurer); ok {
+		buildDir := cfg.HostProjectDir
+		if buildDir == "" {
+			buildDir = cfg.ProjectDir
+		}
+		if buildDir != "" && cfg.Image != "" {
+			if err := ensurer.EnsureImage(ctx, buildDir, cfg.Image); err != nil {
+				log.Printf("pool: EnsureImage(%s) failed (continuing to start): %v", cfg.Image, err)
+			}
+		}
+	}
+
 	// Start the container outside the lock to avoid blocking other attempts.
 	containerID, err := p.runtime.Start(ctx, cfg)
 	if err != nil {

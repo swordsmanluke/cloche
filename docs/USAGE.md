@@ -855,6 +855,7 @@ the project with the daemon.
 | `--base-image <base>` | `cloche-agent:latest` | Base Docker image for the generated Dockerfile (only with `--new`). |
 | `--agent-command <cmd>` | _(see below)_ | LLM command for the init analysis phase (only with `--new`; overrides config and env). |
 | `--no-llm` | false | Skip the LLM-assisted placeholder filling phase (only with `--new`). |
+| `--no-commit` | false | Skip the automatic scaffold commit (only with `--new`). |
 | `--non-interactive` | false | Skip all interactive prompts (required for CI / scripted use). |
 | `--ssh-key <path>` | _(unset)_ | Write `ssh_key = "<path>"` into `.cloche/config.toml`. Works with or without `--non-interactive`. Path is written verbatim; `~` is expanded by the daemon at runtime. |
 
@@ -874,6 +875,14 @@ installing to create the starter tasks. The tracker is swappable — see
 [docs/init/6-swapping-the-task-tracker.md](init/6-swapping-the-task-tracker.md).
 The [docs/init/](init/README.md) tutorial series walks through the whole
 generated setup.
+
+**Scaffold commit:** `--new` finishes by committing the generated files
+(`Add cloche scaffold`), because containers are seeded from a clean git
+snapshot of the last commit — uncommitted files are invisible in-container.
+Skipped with `--no-commit`, outside a git repository, or when staged changes
+are present (init prints guidance in each case). The project image builds
+automatically on first use (same auto-build as standalone runs), so a manual
+`docker build` before the first loop is optional.
 
 Three generated files contain `TODO(cloche-init)` placeholders:
 

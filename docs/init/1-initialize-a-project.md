@@ -6,7 +6,7 @@ From your project root:
 cloche init --new
 ```
 
-This does four things:
+This does five things:
 
 1. **Registers the project** — creates `.cloche/config.toml` (with
    `active = true`), adds gitignore entries for runtime state, and writes the
@@ -20,6 +20,7 @@ This does four things:
    project (`go.mod`, `package.json`, ...) and replaces the
    `TODO(cloche-init)` placeholders in the Dockerfile, workflow, and
    implement prompt. Skip it with `--no-llm` and fill them in by hand.
+5. **Commits the scaffold** — see below; skip with `--no-commit`.
 
 ## What was generated
 
@@ -33,29 +34,36 @@ This does four things:
 | `.clocheignore` | Files excluded from the container workspace |
 | `cloche_init_test/` | A tiny test the starter tasks use to validate the setup |
 
-## Commit the scaffold
+## The scaffold is committed for you
+
+Init's last step commits the generated files (`Add cloche scaffold`). That
+commit matters: containers are seeded from a **clean git snapshot** of your
+last commit, so uncommitted files are invisible inside the container. The
+rule to internalize — *whenever you edit the scaffold (or anything the agent
+needs), commit before running the loop.* Runtime state (`.cloche/runs/`,
+logs, the beads database) stays gitignored.
+
+The auto-commit is skipped with `--no-commit`, outside a git repo, or if you
+had staged changes; init tells you when that happens, and then committing the
+scaffold yourself is required before the first run.
+
+## Check the stack
 
 ```bash
-git add -A && git commit -m "Add cloche scaffold"
-```
-
-This step is required, not housekeeping: containers are seeded from a
-**clean git snapshot** of your repo, so uncommitted files — including the
-freshly generated `.cloche/` — are invisible inside the container. An
-uncommitted scaffold makes the very first run fail (the container can't find
-its prompts). Runtime state (`.cloche/runs/`, logs, the beads database) is
-already gitignored.
-
-## Build the image and check the stack
-
-```bash
-docker build -t <project>-cloche-agent:latest -f .cloche/Dockerfile .
 cloche doctor
 ```
 
 `cloche doctor` checks Docker, the daemon, agent credentials, and the `bd`
-CLI, and tells you how to fix anything that's missing. The exact image name
-is printed in init's "Next steps" output and stored in `.cloche/config.toml`.
+CLI, and tells you how to fix anything that's missing. The project image
+builds automatically the first time a run needs it; pre-build it (and warm
+the cache) with:
+
+```bash
+docker build -t <project>-cloche-agent:latest -f .cloche/Dockerfile .
+```
+
+The exact image name is printed in init's "Next steps" output and stored in
+`.cloche/config.toml`.
 
 Look for leftover placeholders before your first run:
 

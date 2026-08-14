@@ -953,6 +953,48 @@ var starterTasks = []struct{ title, desc string }{
 	},
 }
 
+// runScaffoldCommit commits the generated scaffold so it is visible to
+// containers, which are seeded from a clean git snapshot of the last commit.
+// Skipped (with guidance) when not in a git repo, when the user already has
+// staged changes, or when there is nothing to commit. Failures are warnings.
+func runScaffoldCommit() {
+	git := func(args ...string) (string, error) {
+		out, err := exec.Command("git", args...).CombinedOutput()
+		return strings.TrimSpace(string(out)), err
+	}
+
+	if _, err := git("rev-parse", "--git-dir"); err != nil {
+		fmt.Fprintf(os.Stderr, "\nwarning: not a git repository. Cloche requires git: containers are seeded\n"+
+			"from a clean git snapshot. Run 'git init && git add -A && git commit' before 'cloche loop'.\n")
+		return
+	}
+
+	// Don't fold the user's own staged work into the scaffold commit.
+	if _, err := git("diff", "--cached", "--quiet"); err != nil {
+		fmt.Fprintf(os.Stderr, "\nwarning: you have staged changes, so the scaffold was not auto-committed.\n"+
+			"Commit the scaffold yourself before 'cloche loop' (containers see only committed files).\n")
+		return
+	}
+
+	for _, path := range []string{".cloche", ".clocheignore", ".gitignore", "cloche_init_test", ".beads", "AGENTS.md"} {
+		if _, err := os.Stat(path); err == nil {
+			git("add", path)
+		}
+	}
+
+	if _, err := git("diff", "--cached", "--quiet"); err == nil {
+		return // nothing new to commit
+	}
+
+	if out, err := git("commit", "-m", "Add cloche scaffold"); err != nil {
+		git("reset") // unstage so the user is back where they started
+		fmt.Fprintf(os.Stderr, "\nwarning: could not commit the scaffold: %v\n%s\n"+
+			"Commit it yourself before 'cloche loop' (containers see only committed files).\n", err, out)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "  commit scaffold (containers are seeded from the last git commit)\n")
+}
+
 // runBeadsBootstrap initializes beads (bd init) and creates the starter
 // validation tasks. A missing bd CLI or bd failures produce warnings, never
 // abort the init.
@@ -1007,6 +1049,7 @@ func cmdInit(args []string) {
 	newProject := false
 	installShellHelpers := false
 	nonInteractive := false
+	noCommit := false
 	sshKey := ""
 
 	for i := 0; i < len(args); i++ {
@@ -1034,6 +1077,8 @@ func cmdInit(args []string) {
 			installShellHelpers = true
 		case "--non-interactive":
 			nonInteractive = true
+		case "--no-commit":
+			noCommit = true
 		case "--ssh-key":
 			if i+1 < len(args) {
 				i++
@@ -1098,6 +1143,11 @@ func cmdInit(args []string) {
 	cwd, _ := os.Getwd()
 	runSSHKeySetup(filepath.Join(clocheDir, "config.toml"), sshKey, nonInteractive, filepath.Base(cwd))
 
+	// === Commit the scaffold (after all file writes, including SSH config) ===
+	if newProject && !noCommit {
+		runScaffoldCommit()
+	}
+
 	if newProject {
 		workflowFile := filepath.Join(clocheDir, workflow+".cloche")
 		fmt.Fprintf(os.Stderr, "\nInitialized Cloche project in %s\n", filepath.Base(cwd))
@@ -1106,10 +1156,10 @@ func cmdInit(args []string) {
 		fmt.Fprintf(os.Stderr, "  2. Edit .cloche/config.toml           — review settings\n")
 		fmt.Fprintf(os.Stderr, "  3. Edit %s        — adjust the test command for your project\n", workflowFile)
 		fmt.Fprintf(os.Stderr, "  4. Edit .cloche/Dockerfile            — add your project's dependencies\n")
-		fmt.Fprintf(os.Stderr, "  5. git add -A && git commit           — commit the scaffold (containers are\n")
-		fmt.Fprintf(os.Stderr, "                                          seeded from a clean git snapshot)\n")
-		fmt.Fprintf(os.Stderr, "  6. docker build -t %s -f .cloche/Dockerfile .\n", imageName)
-		fmt.Fprintf(os.Stderr, "  7. cloche loop                        — start the orchestration loop\n")
+		fmt.Fprintf(os.Stderr, "  5. git commit any edits               — containers only see committed files\n")
+		fmt.Fprintf(os.Stderr, "  6. cloche loop                        — start the orchestration loop\n")
+		fmt.Fprintf(os.Stderr, "\nThe project image (%s) builds automatically on first run;\n", imageName)
+		fmt.Fprintf(os.Stderr, "pre-build it with: docker build -t %s -f .cloche/Dockerfile .\n", imageName)
 		fmt.Fprintf(os.Stderr, "\nRun 'bd ready' to see the starter tasks: task #1 has the agent create a\n")
 		fmt.Fprintf(os.Stderr, "file to verify the setup end-to-end; task #2 unblocks afterwards and cleans up.\n")
 	} else {

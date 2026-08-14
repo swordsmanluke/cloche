@@ -37,6 +37,7 @@ Flags:
   --agent-command <cmd>     LLM command for the --new analysis phase
                             (overrides config and env)
   --no-llm                  Skip the LLM-assisted placeholder filling phase
+  --no-commit               Skip the automatic scaffold commit (--new only)
 
 Core behavior (always, no flags needed):
   .cloche/                   Directory created if missing
@@ -65,6 +66,13 @@ exist yet, init runs 'bd init' and creates two starter validation tasks (the
 second depends on the first). If bd is missing, a warning with install
 instructions is printed and the scaffold is still generated. The task tracker
 is swappable — see docs/init/6-swapping-the-task-tracker.md.
+
+Scaffold commit (--new only): the generated files are committed automatically
+(message "Add cloche scaffold"), because containers are seeded from a clean
+git snapshot of the last commit — uncommitted files are invisible in the
+container. Skipped with --no-commit, when not in a git repository, or when
+you already have staged changes; in those cases commit the scaffold yourself
+before running the loop.
 
 Getting started tutorials: docs/init/ in the cloche repository walks through
 the generated setup one step at a time.

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -786,6 +787,87 @@ func TestCmdInit_BeadsBootstrap_SkipsExistingBeads(t *testing.T) {
 
 	if len(*calls) != 0 {
 		t.Errorf("expected no bd calls when .beads/ exists, got %v", *calls)
+	}
+}
+
+// initGitRepo turns the current directory into a git repo with an identity
+// configured, so the scaffold auto-commit can run.
+func initGitRepo(t *testing.T) {
+	t.Helper()
+	for _, args := range [][]string{
+		{"init", "-q"},
+		{"config", "user.email", "test@example.com"},
+		{"config", "user.name", "test"},
+	} {
+		out, err := exec.Command("git", args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+func gitOutput(t *testing.T, args ...string) string {
+	t.Helper()
+	out, _ := exec.Command("git", args...).CombinedOutput()
+	return strings.TrimSpace(string(out))
+}
+
+func TestCmdInit_ScaffoldCommit(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+	initGitRepo(t)
+
+	cmdInit([]string{"--new", "--no-llm"})
+
+	if got := gitOutput(t, "log", "--format=%s", "-1"); got != "Add cloche scaffold" {
+		t.Fatalf("expected scaffold commit, got log entry %q", got)
+	}
+	tracked := gitOutput(t, "ls-files")
+	for _, want := range []string{".cloche/host.cloche", ".cloche/scripts/get-tasks.py", ".clocheignore"} {
+		if !strings.Contains(tracked, want) {
+			t.Errorf("scaffold commit should track %s", want)
+		}
+	}
+	if strings.Contains(tracked, ".cloche/runs") {
+		t.Error("runtime state should not be committed")
+	}
+}
+
+func TestCmdInit_ScaffoldCommit_NoCommitFlag(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+	initGitRepo(t)
+
+	cmdInit([]string{"--new", "--no-llm", "--no-commit"})
+
+	if got := gitOutput(t, "log", "--format=%s", "-1"); strings.Contains(got, "scaffold") {
+		t.Errorf("--no-commit should not create a commit, got %q", got)
+	}
+}
+
+func TestCmdInit_ScaffoldCommit_SkipsWithStagedChanges(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+	initGitRepo(t)
+
+	os.WriteFile("user-file.txt", []byte("user work"), 0644)
+	exec.Command("git", "add", "user-file.txt").Run()
+
+	cmdInit([]string{"--new", "--no-llm"})
+
+	if got := gitOutput(t, "log", "--format=%s", "-1"); strings.Contains(got, "scaffold") {
+		t.Errorf("auto-commit should be skipped with staged changes, got %q", got)
+	}
+	// The user's staged file must still be staged, untouched.
+	staged := gitOutput(t, "diff", "--cached", "--name-only")
+	if !strings.Contains(staged, "user-file.txt") {
+		t.Error("user's staged changes should remain staged")
 	}
 }
 
