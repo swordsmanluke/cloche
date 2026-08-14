@@ -1,5 +1,15 @@
 # Cloche Detailed Changelog
 
+## v3.19.7 — 2026-08-14
+
+### Features
+
+- `0f24868` Overhauled `cloche init --new`'s first-run scaffold: task tracking now bootstraps beads (`bd`) instead of `task_list.json`, `prepare-merge.py`'s hand-rolled worktree management is replaced by daemon-created branches consumed by new `merge.py`/`cleanup.py` scripts, a new `prepare-prompt.py` step passes task data explicitly via the KV store, `cloche doctor` gains a beads check, and six `docs/init/` tutorials were added and cross-linked from README, USAGE, and init's next-steps output.
+
+### Fixes
+
+- `f3b52d4` Fixed three issues surfaced by a fresh project's first loop run: the docker root chown+gosu ownership wrapper now also applies to session-mode `cloche-agent` invocations, `cloche list` gained a working `--issue`/`-i` filter, and `cloche list` now truncates titles/errors by rune instead of by byte to avoid emitting invalid UTF-8.
+
 ## v3.19.6 — 2026-08-11
 
 ### Breaking

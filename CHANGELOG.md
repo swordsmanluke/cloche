@@ -1,5 +1,17 @@
 # Cloche Changelog
 
+## v3.19.7 — 2026-08-14
+
+### Features
+
+- `cloche init --new` now bootstraps [beads](https://github.com/steveyegge/beads) (`bd`) task tracking by default, replacing the hand-rolled `task_list.json` flow: `bd`-backed scripts handle listing, claiming, and closing tasks with a real dependency gate, the daemon now pre-creates the result branch/worktree instead of a hand-rolled `prepare-merge.py`, task data is passed explicitly through the KV store via a new `prepare-prompt` step, and six new `docs/init/` tutorials walk through the generated setup. `cloche doctor` gains a beads check.
+
+### Notable fixes
+
+- Docker runtime: the root chown+gosu ownership wrapper now applies to session-mode `cloche-agent` invocations, not just the default workflow-file command. Previously the agent could fail immediately with a permissions error creating `.cloche/output` on a fresh project's first loop run.
+- `cloche list` gains a working `--issue`/`-i` exact-match filter. The flag was already used by generated dependency-gate scripts but silently ignored, so the gate could match any succeeded run anywhere rather than the intended task.
+- `cloche list` now truncates titles and error messages by rune instead of by byte, so multibyte characters are no longer split into invalid UTF-8.
+
 ## v3.19.6 — 2026-08-11
 
 ### Breaking changes
