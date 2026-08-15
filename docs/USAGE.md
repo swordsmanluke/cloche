@@ -863,8 +863,9 @@ the project with the daemon.
 prompt templates (`implement.md`, `fix-tests.md`, `fix-merge.md`), host
 workflows (`host.cloche`), Python scripts (`get-tasks.py`, `claim-task.py`,
 `prepare-prompt.py`, `merge.py`, `close-task.py`, `cleanup.py`, `unclaim.py`),
-`.cloche/version`, `.clocheignore` (at project root), and
-`cloche_init_test/cloche/test_cloche.py`. Skips existing files.
+a bundled copy of the [docs/init/](init/README.md) tutorials at
+`.cloche/docs/init/`, `.cloche/version`, `.clocheignore` (at project root),
+and `cloche_init_test/cloche/test_cloche.py`. Skips existing files.
 
 **Beads bootstrap:** `--new` also sets up [beads](https://github.com/steveyegge/beads)
 as the task tracker: if the `bd` CLI is installed and `.beads/` does not exist,
@@ -1604,6 +1605,7 @@ my-project/
 │   │   ├── fix-tests.md
 │   │   └── fix-merge.md
 │   ├── scripts/              # Host-side scripts
+│   ├── docs/init/            # Bundled getting-started tutorials
 │   ├── overrides/            # Files copied on top of /workspace/
 │   │   └── CLAUDE.md         # Container-specific CLAUDE.md (optional)
 │   ├── runs/

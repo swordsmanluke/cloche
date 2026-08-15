@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	initdocs "github.com/cloche-dev/cloche/docs/init"
 	"github.com/cloche-dev/cloche/internal/config"
 	"golang.org/x/term"
 )
@@ -115,7 +116,7 @@ Retrieve the task description by running:
 The prepare-prompt host step wrote that file into the run directory (which is
 mounted into this container) and stored its path in the run's key-value store;
 clo get reads it back from in here. This file path is how task data crosses the
-host/container boundary — see docs/init/4-passing-data-between-steps.md.
+host/container boundary — see .cloche/docs/init/4-passing-data-between-steps.md.
 
 If that file is missing or empty, ABORT and report fail.
 
@@ -200,11 +201,11 @@ var hostWorkflowTemplate = `// Host orchestration workflows, run by the daemon o
 //
 // The loop is two-phase: list-tasks is polled to find ready work, then main
 // runs once per dispatched task with CLOCHE_TASK_ID set in every step's
-// environment. See docs/init/3-run-the-loop.md.
+// environment. See .cloche/docs/init/3-run-the-loop.md.
 //
 // Data flows between steps through the run's key-value store (cloche get/set
 // on the host, clo get/set inside containers) — see
-// docs/init/4-passing-data-between-steps.md.
+// .cloche/docs/init/4-passing-data-between-steps.md.
 
 workflow list-tasks {
   host {}
@@ -299,7 +300,7 @@ expects zero or more JSON objects on stdout, one task per line:
 
 Only tasks with status "open" are dispatched. To use a different tracker
 (GitHub Issues, Jira, Linear, ...), replace this script with one that emits
-the same JSONL — see docs/init/6-swapping-the-task-tracker.md.
+the same JSONL — see .cloche/docs/init/6-swapping-the-task-tracker.md.
 
 A task is ready when:
   1. bd considers it ready (open, not blocked or deferred)
@@ -313,7 +314,7 @@ import sys
 if shutil.which("bd") is None:
     print("error: the beads CLI (bd) is not installed.", file=sys.stderr)
     print("Install it (https://github.com/steveyegge/beads), or swap in your own", file=sys.stderr)
-    print("task tracker — see docs/init/6-swapping-the-task-tracker.md.", file=sys.stderr)
+    print("task tracker — see .cloche/docs/init/6-swapping-the-task-tracker.md.", file=sys.stderr)
     sys.exit(1)
 
 ready = subprocess.run(["bd", "ready", "--json"], capture_output=True, text=True)
@@ -387,7 +388,7 @@ var preparePromptPyScript = `#!/usr/bin/env python3
 """Build the agent's task prompt and pass it to the container via the KV store.
 
 This is the host-to-container data handoff, the pattern to copy whenever a
-step needs to send data to another step (docs/init/4-passing-data-between-steps.md):
+step needs to send data to another step (.cloche/docs/init/4-passing-data-between-steps.md):
 
   1. Read the task's title and description from beads.
   2. Write the prompt to a file under temp_file_dir — a per-run directory the
@@ -442,7 +443,7 @@ Before the develop sub-workflow ran, the daemon already created a branch and a
 worktree for its results (.gitworktrees/cloche/<suffix>), extracted the
 container's changes into it, and published the branch name in the KV store as
 child_branch. This script only consumes that worktree — it never creates one.
-See docs/init/5-how-changes-land.md.
+See .cloche/docs/init/5-how-changes-land.md.
 
 On a rebase conflict the worktree is preserved and worktree_path/base_branch
 (set below) feed the fix-merge agent prompt via template variables; after
@@ -615,7 +616,7 @@ var fixMergePrompt = `# Fix Merge Conflicts
 The merge step failed: rebasing the agent's result branch onto the base branch
 produced conflicts. Everything you need is filled in below from the run's
 key-value store via prompt template variables
-(docs/init/4-passing-data-between-steps.md):
+(.cloche/docs/init/4-passing-data-between-steps.md):
 
 - Worktree with the conflicting branch checked out: {{ $worktree_path }}
 - Base branch to rebase onto: {{ $base_branch }}
@@ -886,6 +887,7 @@ func runNewProjectInit(clocheDir, workflow, baseImage string, noLLM bool, agentC
 		filepath.Join(clocheDir, "prompts"),
 		filepath.Join(clocheDir, "overrides"),
 		filepath.Join(clocheDir, "scripts"),
+		filepath.Join(clocheDir, "docs", "init"),
 		filepath.Join("cloche_init_test", "cloche"),
 	} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
@@ -916,6 +918,22 @@ func runNewProjectInit(clocheDir, workflow, baseImage string, noLLM bool, agentC
 		{filepath.Join(clocheDir, "scripts", "unclaim.py"), unclaimPyScript, 0755},
 		{".clocheignore", defaultClocheignore, 0644},
 		{filepath.Join("cloche_init_test", "cloche", "test_cloche.py"), testClocheScript, 0644},
+	}
+
+	// Bundle the getting-started tutorials so they live next to the scaffold
+	// they describe, available offline in the new project.
+	if entries, err := initdocs.FS.ReadDir("."); err == nil {
+		for _, entry := range entries {
+			data, err := initdocs.FS.ReadFile(entry.Name())
+			if err != nil {
+				continue
+			}
+			files = append(files, struct {
+				path    string
+				content string
+				mode    os.FileMode
+			}{filepath.Join(clocheDir, "docs", "init", entry.Name()), string(data), 0644})
+		}
 	}
 
 	for _, f := range files {
@@ -1005,7 +1023,7 @@ warning: the beads CLI (bd) was not found on PATH.
 The generated task workflow uses beads for task tracking. Install it
 (https://github.com/steveyegge/beads), then re-run 'cloche init --new' to
 create the starter tasks — or swap in your own task tracker, see
-docs/init/6-swapping-the-task-tracker.md. 'cloche doctor' also checks for bd.
+.cloche/docs/init/6-swapping-the-task-tracker.md. 'cloche doctor' also checks for bd.
 `)
 		return
 	}
@@ -1152,7 +1170,7 @@ func cmdInit(args []string) {
 		workflowFile := filepath.Join(clocheDir, workflow+".cloche")
 		fmt.Fprintf(os.Stderr, "\nInitialized Cloche project in %s\n", filepath.Base(cwd))
 		fmt.Fprintf(os.Stderr, "\nNext steps:\n")
-		fmt.Fprintf(os.Stderr, "  1. Read docs/init/ in the cloche repo — six short setup tutorials\n")
+		fmt.Fprintf(os.Stderr, "  1. Read .cloche/docs/init/             — six short setup tutorials (bundled)\n")
 		fmt.Fprintf(os.Stderr, "  2. Edit .cloche/config.toml           — review settings\n")
 		fmt.Fprintf(os.Stderr, "  3. Edit %s        — adjust the test command for your project\n", workflowFile)
 		fmt.Fprintf(os.Stderr, "  4. Edit .cloche/Dockerfile            — add your project's dependencies\n")

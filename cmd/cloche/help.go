@@ -59,13 +59,14 @@ Additional files created by --new (skipped if already exist):
   .cloche/scripts/close-task.py      Close completed task in beads
   .cloche/scripts/cleanup.py         Clean up leftover worktree and branch
   .cloche/scripts/unclaim.py         Reset task to open and stop loop
+  .cloche/docs/init/                 Bundled getting-started tutorials
   .cloche/version                    Schema version marker
 
 Beads bootstrap (--new only): if the bd CLI is installed and .beads/ does not
 exist yet, init runs 'bd init' and creates two starter validation tasks (the
 second depends on the first). If bd is missing, a warning with install
 instructions is printed and the scaffold is still generated. The task tracker
-is swappable — see docs/init/6-swapping-the-task-tracker.md.
+is swappable — see .cloche/docs/init/6-swapping-the-task-tracker.md.
 
 Scaffold commit (--new only): the generated files are committed automatically
 (message "Add cloche scaffold"), because containers are seeded from a clean
@@ -74,8 +75,9 @@ container. Skipped with --no-commit, when not in a git repository, or when
 you already have staged changes; in those cases commit the scaffold yourself
 before running the loop.
 
-Getting started tutorials: docs/init/ in the cloche repository walks through
-the generated setup one step at a time.
+Getting started tutorials: --new bundles the docs/init/ tutorial series into
+the project at .cloche/docs/init/, walking through the generated setup one
+step at a time.
 
 LLM command resolution order (--new only):
   1. --agent-command flag

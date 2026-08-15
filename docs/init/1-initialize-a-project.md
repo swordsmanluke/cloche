@@ -31,6 +31,7 @@ This does five things:
 | `.cloche/Dockerfile` | The container image agents run in |
 | `.cloche/prompts/*.md` | Prompts for the agent steps |
 | `.cloche/scripts/*.py` | Host scripts: beads integration, merge, cleanup |
+| `.cloche/docs/init/` | A bundled copy of these tutorials |
 | `.clocheignore` | Files excluded from the container workspace |
 | `cloche_init_test/` | A tiny test the starter tasks use to validate the setup |
 

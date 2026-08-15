@@ -373,7 +373,8 @@ func (dr *doctorRunner) checkBeads() checkResult {
 			detail: "bd not found on PATH",
 			remediation: "The generated task workflow reads tasks from beads.\n" +
 				"Install it (https://github.com/steveyegge/beads), or swap in your own\n" +
-				"task tracker — see docs/init/6-swapping-the-task-tracker.md.",
+				"task tracker — see .cloche/docs/init/6-swapping-the-task-tracker.md\n" +
+				"(bundled by 'cloche init --new').",
 		}
 	}
 

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	initdocs "github.com/cloche-dev/cloche/docs/init"
 )
 
 // TestMain stubs the beads CLI hooks so tests never shell out to a real bd.
@@ -899,6 +901,40 @@ func TestCmdInit_BeadsBootstrap_MissingBd(t *testing.T) {
 	}
 	if _, err := os.Stat(".beads"); err == nil {
 		t.Error(".beads/ should not be created when bd is missing")
+	}
+}
+
+func TestCmdInit_BundlesInitDocs(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{"--new", "--no-llm"})
+
+	entries, err := initdocs.FS.ReadDir(".")
+	if err != nil {
+		t.Fatalf("reading embedded init docs: %v", err)
+	}
+	var docCount int
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		docCount++
+		path := filepath.Join(".cloche", "docs", "init", entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("expected bundled tutorial %s: %v", path, err)
+			continue
+		}
+		want, _ := initdocs.FS.ReadFile(entry.Name())
+		if string(data) != string(want) {
+			t.Errorf("bundled %s differs from embedded copy", path)
+		}
+	}
+	if docCount < 7 {
+		t.Errorf("expected at least 7 embedded tutorials (README + 6), got %d", docCount)
 	}
 }
 

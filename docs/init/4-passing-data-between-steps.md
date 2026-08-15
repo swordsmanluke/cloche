@@ -69,6 +69,6 @@ key, a later prompt references `{{ $key }}`.
 Every run starts with `temp_file_dir` already set (and the directory
 created). After a container sub-workflow finishes, the daemon also publishes
 `child_branch`, `child_run_id`, and friends — tutorial 5 uses those. The full
-table is in [workflows.md](../workflows.md#built-in-kv-keys).
+table is in [workflows.md](https://github.com/swordsmanluke/cloche/blob/main/docs/workflows.md#built-in-kv-keys).
 
 **Next:** [5. How changes land](5-how-changes-land.md)

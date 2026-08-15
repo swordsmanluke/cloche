@@ -57,5 +57,5 @@ Any language works — the workflow just runs a command. Update the `run =`
 lines in `.cloche/host.cloche` if you rename the scripts, and check
 `cloche validate` afterwards.
 
-That's the end of the series — [workflows.md](../workflows.md) is the full
-DSL reference when you're ready to reshape the workflows themselves.
+That's the end of the series — [workflows.md](https://github.com/swordsmanluke/cloche/blob/main/docs/workflows.md)
+is the full DSL reference when you're ready to reshape the workflows themselves.
