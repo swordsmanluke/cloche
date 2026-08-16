@@ -467,7 +467,7 @@ func TestRunner_RunWithID(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 
 	runner := &Runner{
-		Store:      store,
+		Store: store,
 	}
 
 	customID := "my-custom-run-id"
@@ -505,8 +505,8 @@ func TestRunner_WithTaskID(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 
 	runner := &Runner{
-		Store:      store,
-		TaskID:     "daemon-assigned-task-99",
+		Store:  store,
+		TaskID: "daemon-assigned-task-99",
 	}
 
 	result, err := runner.Run(context.Background(), tmpDir)
@@ -542,7 +542,7 @@ func TestRunner_PersistsHostRun(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 
 	runner := &Runner{
-		Store:      store,
+		Store: store,
 	}
 
 	result, err := runner.Run(context.Background(), tmpDir)
@@ -1074,7 +1074,7 @@ func TestRunner_HostWorkflow_AgentStep(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 
 	runner := &Runner{
-		Store:      store,
+		Store: store,
 	}
 
 	result, err := runner.Run(context.Background(), tmpDir)
@@ -1118,7 +1118,7 @@ func TestRunner_HostWorkflow_AgentStepOverridesWorkflowCommand(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Store:      store,
+		Store: store,
 	}
 
 	result, err := runner.Run(context.Background(), tmpDir)
@@ -1148,7 +1148,7 @@ func TestRunner_PersistsHostRunOnFailure(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 
 	runner := &Runner{
-		Store:      store,
+		Store: store,
 	}
 
 	result, err := runner.Run(context.Background(), tmpDir)
@@ -1184,7 +1184,7 @@ func TestRunner_RunNamed_Main(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Store:      store,
+		Store: store,
 	}
 
 	result, err := runner.RunNamed(context.Background(), tmpDir, "main")
@@ -1236,7 +1236,7 @@ workflow cleanup {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Store:      store,
+		Store: store,
 	}
 
 	// Run list-tasks workflow
@@ -1279,7 +1279,7 @@ func TestRunner_RunNamed_NotFound(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Store:      store,
+		Store: store,
 	}
 
 	_, err := runner.RunNamed(context.Background(), tmpDir, "nonexistent")
@@ -1338,8 +1338,8 @@ func TestRunner_ExtraEnv_Propagated(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Store:      store,
-		ExtraEnv:   []string{"MY_CUSTOM_VAR=hello"},
+		Store:    store,
+		ExtraEnv: []string{"MY_CUSTOM_VAR=hello"},
 	}
 
 	result, err := runner.RunNamed(context.Background(), tmpDir, "post-merge")
@@ -1377,8 +1377,8 @@ func TestRunner_ExtraEnv_RestoredOnResume(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Store:      store,
-		ExtraEnv:   []string{"MY_RUN_REF=develop-original-branch"},
+		Store:    store,
+		ExtraEnv: []string{"MY_RUN_REF=develop-original-branch"},
 	}
 
 	// Run the workflow — it succeeds and persists ExtraEnv to context.json
@@ -1398,7 +1398,7 @@ func TestRunner_ExtraEnv_RestoredOnResume(t *testing.T) {
 
 	// Resume from merge with NO ExtraEnv on the runner — it should restore from context
 	resumeRunner := &Runner{
-		Store:      store,
+		Store: store,
 	}
 
 	resumeResult, err := resumeRunner.ResumeRun(context.Background(), run, "merge")
@@ -1526,7 +1526,7 @@ func TestRunResult_HasOutputDir(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Store:      store,
+		Store: store,
 	}
 
 	result, err := runner.Run(context.Background(), tmpDir)
@@ -1561,7 +1561,7 @@ func TestRunListTasksWorkflow_EmptyResult_NoRunRecord(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Store:      store,
+		Store: store,
 	}
 
 	tasks, result, err := RunListTasksWorkflow(context.Background(), runner, tmpDir)
@@ -1594,7 +1594,7 @@ func TestRunListTasksWorkflow_WithTasks_NoRunRecord(t *testing.T) {
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	runner := &Runner{
-		Store:      store,
+		Store: store,
 	}
 
 	tasks, result, err := RunListTasksWorkflow(context.Background(), runner, tmpDir)
@@ -1933,10 +1933,10 @@ func TestExecutor_SkipsContextSeeding_WhenNoTaskID(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "context.json should not be created without a task ID")
 }
 
-// TestExecutor_HumanStep_ImmediateDecision verifies that a human step returns the
+// TestExecutor_PollStep_ImmediateDecision verifies that a poll step returns the
 // correct wire result when the polling script emits a result marker on the first
 // invocation.
-func TestExecutor_HumanStep_ImmediateDecision(t *testing.T) {
+func TestExecutor_PollStep_ImmediateDecision(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
 
@@ -1947,7 +1947,7 @@ func TestExecutor_HumanStep_ImmediateDecision(t *testing.T) {
 
 	step := &domain.Step{
 		Name:    "review",
-		Type:    domain.StepTypeHuman,
+		Type:    domain.StepTypePoll,
 		Results: []string{"approved", "fail"},
 		Config: map[string]string{
 			// Echo result marker immediately so the first poll resolves.
@@ -1961,9 +1961,9 @@ func TestExecutor_HumanStep_ImmediateDecision(t *testing.T) {
 	assert.Equal(t, "approved", result.Result)
 }
 
-// TestExecutor_HumanStep_PendingThenDecision verifies that the human step keeps
+// TestExecutor_PollStep_PendingThenDecision verifies that the poll step keeps
 // polling until a decision is made after several pending responses.
-func TestExecutor_HumanStep_PendingThenDecision(t *testing.T) {
+func TestExecutor_PollStep_PendingThenDecision(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
 	counterFile := filepath.Join(tmpDir, "counter")
@@ -1985,7 +1985,7 @@ fi
 
 	step := &domain.Step{
 		Name:    "review",
-		Type:    domain.StepTypeHuman,
+		Type:    domain.StepTypePoll,
 		Results: []string{"approved", "fail"},
 		Config: map[string]string{
 			"poll":     scriptBody,
@@ -2003,9 +2003,9 @@ fi
 	assert.Equal(t, "3", count)
 }
 
-// TestExecutor_HumanStep_FailOnNonZeroExit verifies that a non-zero exit without
+// TestExecutor_PollStep_FailOnNonZeroExit verifies that a non-zero exit without
 // a result marker follows the "fail" wire.
-func TestExecutor_HumanStep_FailOnNonZeroExit(t *testing.T) {
+func TestExecutor_PollStep_FailOnNonZeroExit(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
 
@@ -2016,7 +2016,7 @@ func TestExecutor_HumanStep_FailOnNonZeroExit(t *testing.T) {
 
 	step := &domain.Step{
 		Name:    "review",
-		Type:    domain.StepTypeHuman,
+		Type:    domain.StepTypePoll,
 		Results: []string{"approved", "fail"},
 		Config: map[string]string{
 			"poll":     "exit 1",
@@ -2029,16 +2029,15 @@ func TestExecutor_HumanStep_FailOnNonZeroExit(t *testing.T) {
 	assert.Equal(t, "fail", result.Result)
 }
 
-// TestExecutor_HumanStep_WireOutputOnNonZeroExit verifies that wire output
+// TestExecutor_PollStep_WireOutputOnNonZeroExit verifies that wire output
 // takes precedence over a non-zero exit code.
-func TestExecutor_HumanStep_WireOutputOnNonZeroExit(t *testing.T) {
+func TestExecutor_PollStep_WireOutputOnNonZeroExit(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
 
 	scriptPath := filepath.Join(tmpDir, "poll.sh")
 	require.NoError(t, os.WriteFile(scriptPath,
 		[]byte("#!/bin/sh\necho 'CLOCHE_RESULT:fix'\nexit 1\n"), 0755))
-
 
 	executor := &Executor{
 		ProjectDir: tmpDir,
@@ -2047,7 +2046,7 @@ func TestExecutor_HumanStep_WireOutputOnNonZeroExit(t *testing.T) {
 
 	step := &domain.Step{
 		Name:    "review",
-		Type:    domain.StepTypeHuman,
+		Type:    domain.StepTypePoll,
 		Results: []string{"approved", "fix", "fail", "timeout"},
 		Config: map[string]string{
 			"poll":     scriptPath,
@@ -2060,9 +2059,9 @@ func TestExecutor_HumanStep_WireOutputOnNonZeroExit(t *testing.T) {
 	assert.Equal(t, "fix", result.Result)
 }
 
-// TestExecutor_HumanStep_ContextTimeout verifies that context cancellation
+// TestExecutor_PollStep_ContextTimeout verifies that context cancellation
 // routes through the timeout wire rather than returning an error.
-func TestExecutor_HumanStep_ContextTimeout(t *testing.T) {
+func TestExecutor_PollStep_ContextTimeout(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
 
@@ -2073,7 +2072,7 @@ func TestExecutor_HumanStep_ContextTimeout(t *testing.T) {
 
 	step := &domain.Step{
 		Name:    "review",
-		Type:    domain.StepTypeHuman,
+		Type:    domain.StepTypePoll,
 		Results: []string{"approved", "fail", "timeout"},
 		Config: map[string]string{
 			"poll":     "exit 0",
@@ -2089,9 +2088,9 @@ func TestExecutor_HumanStep_ContextTimeout(t *testing.T) {
 	assert.Equal(t, "timeout", result.Result)
 }
 
-// TestExecutor_HumanStep_MultiPollThenDecision verifies that a script returning
+// TestExecutor_PollStep_MultiPollThenDecision verifies that a script returning
 // pending multiple times before a decision is followed correctly.
-func TestExecutor_HumanStep_MultiPollThenDecision(t *testing.T) {
+func TestExecutor_PollStep_MultiPollThenDecision(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
 
@@ -2116,7 +2115,7 @@ fi
 
 	step := &domain.Step{
 		Name:    "review",
-		Type:    domain.StepTypeHuman,
+		Type:    domain.StepTypePoll,
 		Results: []string{"approved", "fail"},
 		Config: map[string]string{
 			"poll":     scriptPath,
@@ -2129,9 +2128,9 @@ fi
 	assert.Equal(t, "approved", result.Result)
 }
 
-// TestExecutor_HumanStep_OverlappingInvocation verifies that an invocation
+// TestExecutor_PollStep_OverlappingInvocation verifies that an invocation
 // running longer than 4× the interval causes the step to fail.
-func TestExecutor_HumanStep_OverlappingInvocation(t *testing.T) {
+func TestExecutor_PollStep_OverlappingInvocation(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
 
@@ -2145,7 +2144,7 @@ func TestExecutor_HumanStep_OverlappingInvocation(t *testing.T) {
 	// Script sleeps for a long time to simulate a hung invocation.
 	step := &domain.Step{
 		Name:    "review",
-		Type:    domain.StepTypeHuman,
+		Type:    domain.StepTypePoll,
 		Results: []string{"approved", "fail"},
 		Config: map[string]string{
 			// Sleep 10 seconds — much longer than 4× the 20ms interval.
@@ -2163,9 +2162,9 @@ func TestExecutor_HumanStep_OverlappingInvocation(t *testing.T) {
 	assert.Equal(t, "fail", result.Result)
 }
 
-// TestExecutor_HumanStep_InvalidInterval verifies that a missing/invalid
+// TestExecutor_PollStep_InvalidInterval verifies that a missing/invalid
 // interval causes the executor to return an error.
-func TestExecutor_HumanStep_InvalidInterval(t *testing.T) {
+func TestExecutor_PollStep_InvalidInterval(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
 
@@ -2176,7 +2175,7 @@ func TestExecutor_HumanStep_InvalidInterval(t *testing.T) {
 
 	step := &domain.Step{
 		Name:    "review",
-		Type:    domain.StepTypeHuman,
+		Type:    domain.StepTypePoll,
 		Results: []string{"approved", "fail", "timeout"},
 		Config: map[string]string{
 			"poll":     "scripts/check.sh",

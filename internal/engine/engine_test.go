@@ -568,12 +568,12 @@ func TestEngine_MaxAttempts_SuccessBeforeLimit(t *testing.T) {
 	assert.Equal(t, 2, callCount, "step should execute only until success")
 }
 
-func TestStepTimeout_HumanStep_Default72h(t *testing.T) {
-	// A human step with no timeout config should use HumanStepDefaultTimeout (72h).
-	// Verify by running a human step whose executor checks the context deadline.
-	humanStep := &domain.Step{
+func TestStepTimeout_PollStep_Default72h(t *testing.T) {
+	// A poll step with no timeout config should use PollStepDefaultTimeout (72h).
+	// Verify by running a poll step whose executor checks the context deadline.
+	pollStep := &domain.Step{
 		Name:    "review",
-		Type:    domain.StepTypeHuman,
+		Type:    domain.StepTypePoll,
 		Results: []string{"approved", "fail"},
 		Config: map[string]string{
 			"poll":     "echo 'CLOCHE_RESULT:approved'",
@@ -592,7 +592,7 @@ func TestStepTimeout_HumanStep_Default72h(t *testing.T) {
 	wf := &domain.Workflow{
 		Name: "test",
 		Steps: map[string]*domain.Step{
-			"review": humanStep,
+			"review": pollStep,
 		},
 		Wiring: []domain.Wire{
 			{From: "review", Result: "approved", To: domain.StepDone},
@@ -606,17 +606,17 @@ func TestStepTimeout_HumanStep_Default72h(t *testing.T) {
 	require.NoError(t, err)
 
 	// The deadline should be approximately 72h from now.
-	require.False(t, capturedDeadline.IsZero(), "human step should have a context deadline")
+	require.False(t, capturedDeadline.IsZero(), "poll step should have a context deadline")
 	remaining := time.Until(capturedDeadline)
-	assert.Greater(t, remaining, 71*time.Hour, "human step deadline should be ~72h")
-	assert.Less(t, remaining, 73*time.Hour, "human step deadline should be ~72h")
+	assert.Greater(t, remaining, 71*time.Hour, "poll step deadline should be ~72h")
+	assert.Less(t, remaining, 73*time.Hour, "poll step deadline should be ~72h")
 }
 
-func TestStepTimeout_HumanStep_ExplicitTimeout(t *testing.T) {
-	// A human step with an explicit timeout should use that timeout, not 72h.
-	humanStep := &domain.Step{
+func TestStepTimeout_PollStep_ExplicitTimeout(t *testing.T) {
+	// A poll step with an explicit timeout should use that timeout, not 72h.
+	pollStep := &domain.Step{
 		Name:    "review",
-		Type:    domain.StepTypeHuman,
+		Type:    domain.StepTypePoll,
 		Results: []string{"approved", "fail"},
 		Config: map[string]string{
 			"poll":     "echo 'CLOCHE_RESULT:approved'",
@@ -636,7 +636,7 @@ func TestStepTimeout_HumanStep_ExplicitTimeout(t *testing.T) {
 	wf := &domain.Workflow{
 		Name: "test",
 		Steps: map[string]*domain.Step{
-			"review": humanStep,
+			"review": pollStep,
 		},
 		Wiring: []domain.Wire{
 			{From: "review", Result: "approved", To: domain.StepDone},

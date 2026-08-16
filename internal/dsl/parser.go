@@ -491,7 +491,7 @@ func (p *Parser) parseStep() (*domain.Step, error) {
 		if _, err := time.ParseDuration(intervalStr); err != nil {
 			return nil, fmt.Errorf("step %q: invalid interval %q: %v", step.Name, intervalStr, err)
 		}
-		step.Type = domain.StepTypeHuman
+		step.Type = domain.StepTypePoll
 	default:
 		return nil, fmt.Errorf("step %q has none of 'prompt', 'run', 'workflow_name', or 'poll'; must have exactly one", step.Name)
 	}

@@ -750,9 +750,9 @@ func TestServer_GetStatus_WaitingStep(t *testing.T) {
 	run.State = domain.RunStateWaiting
 	require.NoError(t, store.CreateRun(ctx, run))
 
-	// Record a human poll entry for the run.
+	// Record a poll step entry for the run.
 	now := time.Now().UTC().Truncate(time.Second)
-	require.NoError(t, store.UpsertHumanPoll(ctx, &ports.HumanPollRecord{
+	require.NoError(t, store.UpsertPoll(ctx, &ports.PollRecord{
 		RunID:      "wait-test",
 		StepName:   "code-review",
 		StartedAt:  now.Add(-10 * time.Minute),
@@ -3128,7 +3128,7 @@ func TestServer_StopRun_StopsUserInitiatedHostRun(t *testing.T) {
 // TestServer_StopRun_StopsWaitingRun verifies that a run parked at a poll
 // step (RunStateWaiting) can be stopped. Previously the handler only treated
 // Pending and Running as active, so calling stop on a workflow waiting at a
-// poll-pr or human step incorrectly returned "no active runs".
+// poll-pr or poll step incorrectly returned "no active runs".
 func TestServer_StopRun_StopsWaitingRun(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

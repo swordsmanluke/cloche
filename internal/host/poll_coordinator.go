@@ -9,7 +9,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/ports"
 )
 
-// PollCoordinator manages human step poll sessions. The orchestration loop
+// PollCoordinator manages poll step poll sessions. The orchestration loop
 // drives all poll timing via DrivePolls; individual executors register
 // sessions and block on result channels.
 //
@@ -26,7 +26,7 @@ type PollCoordinator struct {
 type pollSession struct {
 	runID      string
 	stepName   string
-	resultCh   chan string                                // buffered(1); executor blocks on this
+	resultCh   chan string                               // buffered(1); executor blocks on this
 	invokeFn   func(ctx context.Context) (string, error) // runs one poll invocation
 	interval   time.Duration
 	lastPollAt time.Time // time the last poll invocation was started
@@ -88,7 +88,7 @@ func (c *PollCoordinator) Unregister(runID, stepName string) {
 //
 // Should be called on each orchestration loop tick. store is optional; when
 // provided, last_poll_at is updated in the DB after each pending result.
-func (c *PollCoordinator) DrivePolls(ctx context.Context, store ports.HumanPollStore) {
+func (c *PollCoordinator) DrivePolls(ctx context.Context, store ports.PollStore) {
 	c.mu.Lock()
 	var toTrigger []*pollSession
 	var toFail []*pollSession
@@ -116,7 +116,7 @@ func (c *PollCoordinator) DrivePolls(ctx context.Context, store ports.HumanPollS
 	for _, s := range toFail {
 		s.resultCh <- "fail"
 		if store != nil {
-			_ = store.DeleteHumanPoll(ctx, s.runID, s.stepName)
+			_ = store.DeletePoll(ctx, s.runID, s.stepName)
 		}
 	}
 
@@ -126,7 +126,7 @@ func (c *PollCoordinator) DrivePolls(ctx context.Context, store ports.HumanPollS
 }
 
 // triggerPoll starts a background invocation for the given session.
-func (c *PollCoordinator) triggerPoll(s *pollSession, store ports.HumanPollStore) {
+func (c *PollCoordinator) triggerPoll(s *pollSession, store ports.PollStore) {
 	c.mu.Lock()
 	key := sessionKey(s.runID, s.stepName)
 	if _, ok := c.sessions[key]; !ok {
@@ -193,7 +193,7 @@ func (c *PollCoordinator) triggerPoll(s *pollSession, store ports.HumanPollStore
 			c.mu.Unlock()
 			invCancel()
 			if store != nil {
-				_ = store.DeleteHumanPoll(context.Background(), runID, stepName)
+				_ = store.DeletePoll(context.Background(), runID, stepName)
 			}
 		} else {
 			// Pending: record the poll timestamp and continue.
@@ -201,10 +201,10 @@ func (c *PollCoordinator) triggerPoll(s *pollSession, store ports.HumanPollStore
 			c.mu.Unlock()
 			invCancel()
 			if store != nil {
-				if rec, getErr := store.GetHumanPoll(context.Background(), runID, stepName); getErr == nil && rec != nil {
+				if rec, getErr := store.GetPoll(context.Background(), runID, stepName); getErr == nil && rec != nil {
 					rec.LastPollAt = s2.lastPollAt
 					rec.PollCount++
-					_ = store.UpsertHumanPoll(context.Background(), rec)
+					_ = store.UpsertPoll(context.Background(), rec)
 				}
 			}
 		}

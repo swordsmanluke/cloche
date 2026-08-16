@@ -72,7 +72,7 @@ type TaskStateEntry struct {
 // configured (e.g. via NewLoop without a task assigner), an untracked sentinel
 // task is used so main runs continuously.
 //
-// On each tick the loop also drives human step polling via driveHumanPolls,
+// On each tick the loop also drives poll step polling via drivePollSteps,
 // which calls PollCoordinator.DrivePolls to trigger due poll invocations and
 // deliver decisions to waiting executor goroutines.
 type Loop struct {
@@ -80,12 +80,12 @@ type Loop struct {
 	listTasks           ListTasksFunc
 	mainFn              MainFunc
 	store               ports.RunStore
-	taskStore           ports.TaskStore      // optional; ensures Task records exist when set
-	activityLog         *activitylog.Logger  // optional; records attempt lifecycle events
-	assigner            TaskAssigner         // optional; feeds listTasks in NewLoop-created loops
-	pollCoord           *PollCoordinator     // optional; drives human step polling on each tick
-	humanPollStore      ports.HumanPollStore // optional; persists human step poll state
-	helpArchiver        HelpArchiver         // optional; archives a task's help threads on success
+	taskStore           ports.TaskStore     // optional; ensures Task records exist when set
+	activityLog         *activitylog.Logger // optional; records attempt lifecycle events
+	assigner            TaskAssigner        // optional; feeds listTasks in NewLoop-created loops
+	pollCoord           *PollCoordinator    // optional; drives poll step polling on each tick
+	pollStore           ports.PollStore     // optional; persists poll step poll state
+	helpArchiver        HelpArchiver        // optional; archives a task's help threads on success
 	stopCh              chan struct{}
 	mu                  sync.Mutex
 	running             bool
@@ -173,16 +173,16 @@ func (l *Loop) SetActivityLogger(al *activitylog.Logger) {
 	l.activityLog = al
 }
 
-// SetPollCoordinator configures the PollCoordinator so the loop drives human
+// SetPollCoordinator configures the PollCoordinator so the loop drives poll
 // step polling on each tick. Must be called before Start.
 func (l *Loop) SetPollCoordinator(coord *PollCoordinator) {
 	l.pollCoord = coord
 }
 
-// SetHumanPollStore configures the HumanPollStore used by DrivePolls to
+// SetPollStore configures the PollStore used by DrivePolls to
 // persist last_poll_at timestamps. Must be called before Start.
-func (l *Loop) SetHumanPollStore(store ports.HumanPollStore) {
-	l.humanPollStore = store
+func (l *Loop) SetPollStore(store ports.PollStore) {
+	l.pollStore = store
 }
 
 // HelpArchiver archives a task's help threads once its attempt succeeds.
@@ -262,8 +262,8 @@ func (l *Loop) runPhased() {
 	inFlight := 0
 
 	for {
-		// Drive human step polls on each loop tick.
-		l.driveHumanPolls()
+		// Drive poll step polls on each loop tick.
+		l.drivePollSteps()
 
 		// Fill up to max concurrent slots.
 		launched := 0
@@ -369,8 +369,8 @@ func (l *Loop) runPhased() {
 			if !l.sleep(capacityPollInterval) {
 				return
 			}
-			// Drive human polls after waking from idle sleep.
-			l.driveHumanPolls()
+			// Drive poll steps after waking from idle sleep.
+			l.drivePollSteps()
 			continue
 		}
 
@@ -398,24 +398,24 @@ func (l *Loop) runPhased() {
 			if !l.sleep(idlePollInterval) {
 				return
 			}
-			// Drive human polls after waking from backoff sleep.
-			l.driveHumanPolls()
+			// Drive poll steps after waking from backoff sleep.
+			l.drivePollSteps()
 		case <-time.After(capacityPollInterval):
-			// Periodic wake to drive human polls even when runs are in flight.
-			l.driveHumanPolls()
+			// Periodic wake to drive poll steps even when runs are in flight.
+			l.drivePollSteps()
 		case <-l.stopCh:
 			return
 		}
 	}
 }
 
-// driveHumanPolls calls DrivePolls on the PollCoordinator if one is configured.
-// Called on each loop tick to drive human step poll timing.
-func (l *Loop) driveHumanPolls() {
+// drivePollSteps calls DrivePolls on the PollCoordinator if one is configured.
+// Called on each loop tick to drive poll step poll timing.
+func (l *Loop) drivePollSteps() {
 	if l.pollCoord == nil {
 		return
 	}
-	l.pollCoord.DrivePolls(context.Background(), l.humanPollStore)
+	l.pollCoord.DrivePolls(context.Background(), l.pollStore)
 }
 
 // GetTaskSnapshot returns the current task pipeline state: the most recently

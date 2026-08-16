@@ -8,7 +8,7 @@ type TaskStatus string
 const (
 	TaskStatusPending   TaskStatus = "pending"
 	TaskStatusRunning   TaskStatus = "running"
-	TaskStatusWaiting   TaskStatus = "waiting" // blocked at a human step
+	TaskStatusWaiting   TaskStatus = "waiting" // blocked at a poll step
 	TaskStatusParked    TaskStatus = "parked"  // parked awaiting a help-channel reply
 	TaskStatusSucceeded TaskStatus = "succeeded"
 	TaskStatusFailed    TaskStatus = "failed"

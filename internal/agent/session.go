@@ -272,8 +272,8 @@ func (s *Session) executeStep(
 			sessionCopyToLLMLog(s.cfg.WorkDir, step.Name)
 			s.sessionLogStepOutput(s.cfg.WorkDir, step.Name, ulog, logstream.TypeLLM)
 		}
-	case domain.StepTypeHuman:
-		sr, execErr = s.executeHumanStep(ctx, step, s.cfg.WorkDir)
+	case domain.StepTypePoll:
+		sr, execErr = s.executePollStep(ctx, step, s.cfg.WorkDir)
 		s.sessionLogStepOutput(s.cfg.WorkDir, step.Name, ulog, logstream.TypeScript)
 	default:
 		execErr = fmt.Errorf("unknown step type: %s", step.Type)
@@ -360,13 +360,13 @@ func sessionCopyToLLMLog(workDir, stepName string) {
 	_ = os.WriteFile(dstPath, data, 0644)
 }
 
-// executeHumanStep runs a poll step inside the container using a standalone
-// polling loop. Modeled on the host executor's executeHumanStepStandalone.
-func (s *Session) executeHumanStep(ctx context.Context, step *domain.Step, workDir string) (domain.StepResult, error) {
+// executePollStep runs a poll step inside the container using a standalone
+// polling loop. Modeled on the host executor's executePollStepStandalone.
+func (s *Session) executePollStep(ctx context.Context, step *domain.Step, workDir string) (domain.StepResult, error) {
 	intervalStr := step.Config["interval"]
 	interval, err := time.ParseDuration(intervalStr)
 	if err != nil {
-		return domain.StepResult{}, fmt.Errorf("human step %q: invalid interval %q: %w", step.Name, intervalStr, err)
+		return domain.StepResult{}, fmt.Errorf("poll step %q: invalid interval %q: %w", step.Name, intervalStr, err)
 	}
 
 	// Maximum time allowed for a single invocation before the step is failed.
@@ -413,7 +413,7 @@ func (s *Session) executeHumanStep(ctx context.Context, step *domain.Step, workD
 				// Still running — check for 4× overage.
 				elapsed := now.Sub(invocationStart)
 				if elapsed > maxInvocationTime {
-					log.Printf("human step %q: invocation running for %v (>4× interval %v), failing step",
+					log.Printf("poll step %q: invocation running for %v (>4× interval %v), failing step",
 						step.Name, elapsed.Round(time.Second), interval)
 					return domain.StepResult{Result: "fail"}, nil
 				}
@@ -422,7 +422,7 @@ func (s *Session) executeHumanStep(ctx context.Context, step *domain.Step, workD
 			// Time to start a new poll invocation.
 			invocationRunning = true
 			invocationStart = now
-			log.Printf("human step %q: polling (last=%s interval=%s)", step.Name, lastPoll.Format(time.RFC3339), interval)
+			log.Printf("poll step %q: polling (last=%s interval=%s)", step.Name, lastPoll.Format(time.RFC3339), interval)
 			go func() {
 				r, pollErr := runPollCommand(ctx, step.Config["poll"], step.Name, s.cfg.RunID, workDir)
 				pollCh <- pollResult{result: r, err: pollErr}

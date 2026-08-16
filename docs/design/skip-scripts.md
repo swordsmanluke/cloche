@@ -26,7 +26,7 @@ step develop {
 }
 ```
 
-Allowed on any step type (`agent`, `script`, `workflow`, `poll`, `human`). The key
+Allowed on any step type (`agent`, `script`, `workflow`, `poll`). The key
 is added to `knownStepConfigKeys` in `internal/domain/workflow.go`.
 
 ## Semantics

@@ -765,7 +765,7 @@ fi
 
 While a `poll` step is active, its run's state is set to `waiting`, which `cloche list`
 and `cloche status` surface distinctly from `running`. The daemon also records
-`last_poll_at` and the step name in the `HumanPollStore` so you can see how long the
+`last_poll_at` and the step name in the `PollStore` so you can see how long the
 step has been waiting and when it last polled.
 
 ### Complete example

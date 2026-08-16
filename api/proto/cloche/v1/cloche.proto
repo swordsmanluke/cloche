@@ -118,7 +118,7 @@ message GetStatusResponse {
   string container_dead_since = 9;
   string title = 10;
   bool is_host = 11;
-  // Populated when state == "waiting": the human step being polled.
+  // Populated when state == "waiting": the poll step being polled.
   string waiting_step = 12;
   // Populated when state == "waiting": RFC3339 timestamp of the last poll invocation.
   string last_poll_at = 13;
@@ -227,7 +227,7 @@ message RunSummary {
   bool is_host = 8;
   string project_dir = 9;
   string task_id = 10;
-  // Populated when state == "waiting": the human step being polled.
+  // Populated when state == "waiting": the poll step being polled.
   string waiting_step = 11;
   // Populated when state == "waiting": RFC3339 timestamp of the last poll invocation.
   string last_poll_at = 12;
@@ -328,7 +328,7 @@ message TaskSummary {
   string created_at = 5;
   string latest_attempt_id = 6;
   int32 attempt_count = 7;
-  // Populated when status == "waiting": the human step being polled.
+  // Populated when status == "waiting": the poll step being polled.
   string waiting_step = 8;
   // Populated when status == "waiting": RFC3339 timestamp of the last poll invocation.
   string last_poll_at = 9;
@@ -515,7 +515,7 @@ message AgentReady {
 // ExecuteStep is sent by the daemon to instruct the agent to execute a step.
 message ExecuteStep {
   string              step_name  = 1;
-  string              step_type  = 2; // "agent", "script", "human"
+  string              step_type  = 2; // "agent", "script", "poll"
   map<string, string> config     = 3; // prompt, run, agent_command, etc.
   string              request_id = 5; // correlates with StepResult
   bool                resume     = 6; // continue existing conversation rather than starting fresh

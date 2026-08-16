@@ -8,7 +8,7 @@ workflow demo {
     workflow_name = "develop"
     results = [ success, fail]
   }
-  step human-review {
+  step review {
     poll     = "echo CLOCHE_RESULT:approved"
     interval = "5m"
     results  = [approved, fixit]
@@ -25,16 +25,16 @@ workflow demo {
   }
 
   take_new_task:success  -> implement
-  implement:success      -> human-review
-  human-review:approved  -> merge
-  human-review:fixit     -> address-issues 
-  address-issues:success -> human-review
+  implement:success      -> review
+  review:approved  -> merge
+  review:fixit     -> address-issues 
+  address-issues:success -> review
   merge:success -> done
 
   merge:fail -> abort
   take_new_task:fail -> abort
   implement:fail    -> abort
-  human-review:fail -> abort
+  review:fail -> abort
   address-issues:fail -> abort
 }
 

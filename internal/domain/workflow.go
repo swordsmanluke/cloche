@@ -27,13 +27,13 @@ const (
 	StepTypeAgent    StepType = "agent"
 	StepTypeScript   StepType = "script"
 	StepTypeWorkflow StepType = "workflow"
-	StepTypeHuman    StepType = "human"
+	StepTypePoll     StepType = "poll"
 )
 
-// DefaultHumanStepTimeout is the default timeout for human steps when no
-// explicit timeout is configured. Human steps wait for external input (e.g.
+// DefaultPollStepTimeout is the default timeout for poll steps when no
+// explicit timeout is configured. Poll steps wait for external input (e.g.
 // code review, approval) so they use a much longer default than other step types.
-const DefaultHumanStepTimeout = 72 * time.Hour
+const DefaultPollStepTimeout = 72 * time.Hour
 
 // WorkflowLocation indicates where a workflow is intended to run.
 type WorkflowLocation string

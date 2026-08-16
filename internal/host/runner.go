@@ -24,17 +24,17 @@ var _ engine.StatusHandler = (*hostStatusHandler)(nil)
 // Runner executes a host workflow by parsing host.cloche and walking the step graph.
 type Runner struct {
 	Store         ports.RunStore
-	Captures      ports.CaptureStore       // optional: saves step captures for cloche logs
-	LogBroadcast  *logstream.Broadcaster   // optional: publishes live log lines
-	ActivityLog   *activitylog.Logger      // optional: records step events to .cloche/activity.log
-	Executor      engine.StepExecutor      // optional: custom executor (e.g. DaemonExecutor); when nil, a default host.Executor is created
-	PollCoord     *PollCoordinator         // optional: coordinator for loop-driven human step polling
-	TaskID        string                   // optional task ID assigned by the daemon loop
-	TaskTitle     string                   // optional task title for display in the web UI
-	AttemptID     string                   // optional attempt ID for v2 tracking
-	ParentRunID   string                   // optional parent run ID (links this run to another in the UI)
-	ExtraEnv       []string                 // additional KEY=VALUE env vars passed to all steps
-	SkipRunRecord  bool                     // when true, don't persist a run record to the store
+	Captures      ports.CaptureStore     // optional: saves step captures for cloche logs
+	LogBroadcast  *logstream.Broadcaster // optional: publishes live log lines
+	ActivityLog   *activitylog.Logger    // optional: records step events to .cloche/activity.log
+	Executor      engine.StepExecutor    // optional: custom executor (e.g. DaemonExecutor); when nil, a default host.Executor is created
+	PollCoord     *PollCoordinator       // optional: coordinator for loop-driven poll step polling
+	TaskID        string                 // optional task ID assigned by the daemon loop
+	TaskTitle     string                 // optional task title for display in the web UI
+	AttemptID     string                 // optional attempt ID for v2 tracking
+	ParentRunID   string                 // optional parent run ID (links this run to another in the UI)
+	ExtraEnv      []string               // additional KEY=VALUE env vars passed to all steps
+	SkipRunRecord bool                   // when true, don't persist a run record to the store
 }
 
 // containerCleaner is implemented by executors that manage container lifecycle

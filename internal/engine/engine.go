@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	DefaultStepTimeout      = 30 * time.Minute
-	HumanStepDefaultTimeout = 72 * time.Hour
+	DefaultStepTimeout     = 30 * time.Minute
+	PollStepDefaultTimeout = 72 * time.Hour
 
 	DefaultStepTokenLimit     int64 = 500_000
 	DefaultWorkflowTokenLimit int64 = 2_000_000
@@ -466,16 +466,16 @@ func isContextError(err error) bool {
 }
 
 // stepTimeout returns the timeout for a step. It checks step.Config["timeout"]
-// first, then falls back to a type-specific default (human steps default to
-// domain.DefaultHumanStepTimeout), then the provided global default.
+// first, then falls back to a type-specific default (poll steps default to
+// domain.DefaultPollStepTimeout), then the provided global default.
 func stepTimeout(step *domain.Step, defaultTimeout time.Duration) time.Duration {
 	if raw, ok := step.Config["timeout"]; ok {
 		if d, err := time.ParseDuration(raw); err == nil {
 			return d
 		}
 	}
-	if step.Type == domain.StepTypeHuman {
-		return HumanStepDefaultTimeout
+	if step.Type == domain.StepTypePoll {
+		return PollStepDefaultTimeout
 	}
 	return defaultTimeout
 }

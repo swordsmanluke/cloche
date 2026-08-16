@@ -428,7 +428,7 @@ func cmdStatusTaskLatest(ctx context.Context, client pb.ClocheServiceClient, tas
 		fmt.Printf("Ended:   %s\n", latest.EndedAt)
 	}
 
-	// If the task is waiting at a human step, surface the step name, elapsed
+	// If the task is waiting at a poll step, surface the step name, elapsed
 	// time since last poll, and poll count from the run's status. Also surface
 	// a pending help question, which can occur even while the run is "running"
 	// (blocked in place inside AskHelp).

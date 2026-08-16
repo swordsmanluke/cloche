@@ -11,14 +11,14 @@
 
 ## Overview
 
-A `human` step type is a special workflow step whose script is polled repeatedly by the
+The `poll` step type is a special workflow step whose script is polled repeatedly by the
 orchestrator until a human decision is available. It allows a workflow to pause and wait
 for external human input (e.g. a code review, an approval gate, a ticket transition)
 without holding a blocking process open.
 
 ## Step Semantics
 
-The `human` step runs a script on the host. Exit code and stdout wire output are
+The `poll` step runs a script on the host. Exit code and stdout wire output are
 interpreted as follows:
 
 | Exit code | Wire output | Meaning |
@@ -67,7 +67,7 @@ code-review:fix       -> address-feedback
 
 ## Execution Environment
 
-`human` steps can run on the host or inside a container, following the same rules as
+`poll` steps can run on the host or inside a container, following the same rules as
 other step types. Most polling scripts are lightweight enough to run directly on the host.
 Container execution is available for cases where isolation is desirable — for example, a
 script that uses an LLM agent to scan an email inbox for a specific response should be
@@ -83,23 +83,23 @@ poll invocations rather than spinning up a new one each time. Host scripts use
 The polling script accesses run state via the KV store. Container steps write values with
 `clo set <key> <value>`; host-side scripts read them with `cloche get <key>`. The daemon
 persists KV data for the lifetime of the run, so values written by earlier steps are
-available when the `human` step polls.
+available when the `poll` step polls.
 
-It is the user's responsibility to ensure the relevant keys are set before the `human`
+It is the user's responsibility to ensure the relevant keys are set before the `poll`
 step is reached.
 
 ```bash
 # In a container step (e.g. create-pr)
 clo set pr-id 1234
 
-# In the human polling script (host-side)
+# In the polling script (host-side)
 PR_ID=$(cloche get pr-id)
 ```
 
 ## Orchestration and State
 
-The orchestration loop drives human step polling via a `PollCoordinator`. When an
-executor reaches a `human` step, it registers a session with the coordinator and blocks
+The orchestration loop drives poll step polling via a `PollCoordinator`. When an
+executor reaches a `poll` step, it registers a session with the coordinator and blocks
 on a result channel. On each loop tick, the coordinator's `DrivePolls` is called: sessions
 whose `now >= lastPollAt + interval` have their script invoked in a background goroutine.
 When the script returns a decision (non-empty wire name), the result is sent on the
@@ -110,11 +110,11 @@ exact timing. The loop must tick frequently enough that the actual trigger time 
 ~30 seconds of the ideal time.
 
 Poll state (`last_poll_at`, poll count) is stored per `(run_id, step_name)` in
-`HumanPollStore` for observability (e.g. `cloche status`). The coordinator tracks
+`PollStore` for observability (e.g. `cloche status`). The coordinator tracks
 `lastPollAt` in memory; the DB record is updated after each pending result. No separate
 scheduler or timer management is required.
 
-`cloche list` and `cloche status` should surface runs waiting at a `human` step
+`cloche list` and `cloche status` should surface runs waiting at a `poll` step
 distinctly — e.g. a `waiting` status alongside the step name and time since last poll.
 
 ## Script Idempotency

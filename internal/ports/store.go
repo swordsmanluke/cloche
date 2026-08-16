@@ -107,8 +107,8 @@ type EvolutionStore interface {
 	ListRunsSince(ctx context.Context, projectDir, workflowName, sinceRunID string) ([]*domain.Run, error)
 }
 
-// HumanPollRecord tracks the polling state of a human step within a run.
-type HumanPollRecord struct {
+// PollRecord tracks the polling state of a poll step within a run.
+type PollRecord struct {
 	RunID      string
 	StepName   string
 	StartedAt  time.Time
@@ -116,14 +116,14 @@ type HumanPollRecord struct {
 	PollCount  int
 }
 
-// HumanPollStore persists and retrieves human step poll state.
+// PollStore persists and retrieves poll step poll state.
 // This enables the daemon to surface "waiting" status and survive restarts
-// while a human step is being polled.
-type HumanPollStore interface {
-	UpsertHumanPoll(ctx context.Context, record *HumanPollRecord) error
-	GetHumanPoll(ctx context.Context, runID, stepName string) (*HumanPollRecord, error)
-	DeleteHumanPoll(ctx context.Context, runID, stepName string) error
-	ListHumanPolls(ctx context.Context, runID string) ([]*HumanPollRecord, error)
+// while a poll step is being polled.
+type PollStore interface {
+	UpsertPoll(ctx context.Context, record *PollRecord) error
+	GetPoll(ctx context.Context, runID, stepName string) (*PollRecord, error)
+	DeletePoll(ctx context.Context, runID, stepName string) error
+	ListPolls(ctx context.Context, runID string) ([]*PollRecord, error)
 }
 
 // HelpThreadFilter holds optional filters for listing help threads.
@@ -133,7 +133,7 @@ type HelpThreadFilter struct {
 }
 
 // HelpStore persists help threads and messages (see internal/domain/help.go).
-// Follows the HumanPollStore pattern.
+// Follows the PollStore pattern.
 type HelpStore interface {
 	CreateThread(ctx context.Context, thread *domain.HelpThread) error
 	AppendMessage(ctx context.Context, msg *domain.HelpMessage) error

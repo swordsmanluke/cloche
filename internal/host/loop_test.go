@@ -1256,10 +1256,10 @@ func TestLoop_Stop_PreventsNewWork(t *testing.T) {
 	assert.False(t, loop.Running(), "loop should be stopped after Stop()")
 }
 
-// TestLoop_DriveHumanPolls_TriggersOnTick verifies that the orchestration loop
+// TestLoop_DrivePollSteps_TriggersOnTick verifies that the orchestration loop
 // calls DrivePolls on its PollCoordinator on each tick. We register a session
 // with a fast interval and verify the poll fires within a reasonable time.
-func TestLoop_DriveHumanPolls_TriggersOnTick(t *testing.T) {
+func TestLoop_DrivePollSteps_TriggersOnTick(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	coord := NewPollCoordinator()
 
@@ -1277,7 +1277,7 @@ func TestLoop_DriveHumanPolls_TriggersOnTick(t *testing.T) {
 
 	// Create a loop that does nothing (runFn just sleeps), but drives polls.
 	loop := NewLoop(LoopConfig{
-		ProjectDir:             "/tmp/test-human-poll",
+		ProjectDir:             "/tmp/test-poll-step",
 		MaxConcurrent:          1,
 		MaxConsecutiveFailures: 100,
 	}, store, func(ctx context.Context, _ string, _ string, _ string) (*RunResult, error) {
@@ -1294,16 +1294,16 @@ func TestLoop_DriveHumanPolls_TriggersOnTick(t *testing.T) {
 	case result := <-resultCh:
 		assert.Equal(t, "approved", result)
 	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for loop to drive human poll")
+		t.Fatal("timed out waiting for loop to drive poll step")
 	}
 
 	assert.Equal(t, int32(1), callCount.Load())
 }
 
-// TestLoop_DriveHumanPolls_RespectInterval verifies that the loop-driven
+// TestLoop_DrivePollSteps_RespectInterval verifies that the loop-driven
 // coordinator respects the polling interval: a session is not polled until at
 // least interval has passed since the last poll.
-func TestLoop_DriveHumanPolls_RespectInterval(t *testing.T) {
+func TestLoop_DrivePollSteps_RespectInterval(t *testing.T) {
 	coord := NewPollCoordinator()
 
 	var callCount atomic.Int32
@@ -1347,7 +1347,7 @@ func TestLoop_DriveHumanPolls_RespectInterval(t *testing.T) {
 }
 
 // TestLoop_SetPollCoordinator verifies that SetPollCoordinator wires the
-// coordinator into the loop and driveHumanPolls is a no-op without one.
+// coordinator into the loop and drivePollSteps is a no-op without one.
 func TestLoop_SetPollCoordinator_NoOpWhenNil(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	loop := NewLoop(LoopConfig{
@@ -1356,8 +1356,8 @@ func TestLoop_SetPollCoordinator_NoOpWhenNil(t *testing.T) {
 	}, store, func(_ context.Context, _ string, _ string, _ string) (*RunResult, error) {
 		return &RunResult{State: domain.RunStateFailed}, nil
 	})
-	// No coordinator set — driveHumanPolls should be a no-op (no panic).
-	loop.driveHumanPolls()
+	// No coordinator set — drivePollSteps should be a no-op (no panic).
+	loop.drivePollSteps()
 }
 
 // TestPhaseLoop_Once_LaunchesOneTaskThenStops verifies once mode: with multiple

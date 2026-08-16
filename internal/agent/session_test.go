@@ -388,16 +388,16 @@ check:
 }
 
 // ---------------------------------------------------------------------------
-// Poll (human) step tests
+// Poll step tests
 // ---------------------------------------------------------------------------
 
-// TestSession_ExecuteHumanStep_ImmediateDecision verifies that a poll step
+// TestSession_ExecutePollStep_ImmediateDecision verifies that a poll step
 // returns the correct wire result when the script emits a marker immediately.
-func TestSession_ExecuteHumanStep_ImmediateDecision(t *testing.T) {
+func TestSession_ExecutePollStep_ImmediateDecision(t *testing.T) {
 	srv := newFakeServer([]*pb.ExecuteStep{
 		{
 			StepName:  "gate",
-			StepType:  "human",
+			StepType:  "poll",
 			Config:    map[string]string{"poll": "echo 'CLOCHE_RESULT:approved'", "interval": "50ms"},
 			RequestId: "req-h1",
 		},
@@ -426,9 +426,9 @@ func TestSession_ExecuteHumanStep_ImmediateDecision(t *testing.T) {
 	}
 }
 
-// TestSession_ExecuteHumanStep_PendingThenDecision verifies that the poll step
+// TestSession_ExecutePollStep_PendingThenDecision verifies that the poll step
 // keeps polling until the script emits a result marker after several pending responses.
-func TestSession_ExecuteHumanStep_PendingThenDecision(t *testing.T) {
+func TestSession_ExecutePollStep_PendingThenDecision(t *testing.T) {
 	dir := t.TempDir()
 
 	// Script increments a counter file; emits result marker on the 3rd invocation.
@@ -449,7 +449,7 @@ fi
 	srv := newFakeServer([]*pb.ExecuteStep{
 		{
 			StepName:  "review",
-			StepType:  "human",
+			StepType:  "poll",
 			Config:    map[string]string{"poll": scriptPath, "interval": "50ms"},
 			RequestId: "req-h2",
 		},
@@ -482,13 +482,13 @@ fi
 	assert.Contains(t, string(data), "3")
 }
 
-// TestSession_ExecuteHumanStep_FailOnNonZeroExit verifies that a non-zero exit
+// TestSession_ExecutePollStep_FailOnNonZeroExit verifies that a non-zero exit
 // without a result marker produces a "fail" result.
-func TestSession_ExecuteHumanStep_FailOnNonZeroExit(t *testing.T) {
+func TestSession_ExecutePollStep_FailOnNonZeroExit(t *testing.T) {
 	srv := newFakeServer([]*pb.ExecuteStep{
 		{
 			StepName:  "gate",
-			StepType:  "human",
+			StepType:  "poll",
 			Config:    map[string]string{"poll": "exit 1", "interval": "50ms"},
 			RequestId: "req-h3",
 		},
@@ -517,9 +517,9 @@ func TestSession_ExecuteHumanStep_FailOnNonZeroExit(t *testing.T) {
 	}
 }
 
-// TestSession_ExecuteHumanStep_WireOutputOnNonZeroExit verifies that wire output
+// TestSession_ExecutePollStep_WireOutputOnNonZeroExit verifies that wire output
 // from a non-zero exit is honored over the default "fail".
-func TestSession_ExecuteHumanStep_WireOutputOnNonZeroExit(t *testing.T) {
+func TestSession_ExecutePollStep_WireOutputOnNonZeroExit(t *testing.T) {
 	dir := t.TempDir()
 	scriptPath := filepath.Join(dir, "poll.sh")
 	script := "#!/bin/sh\necho 'CLOCHE_RESULT:fix'\nexit 1\n"
@@ -528,7 +528,7 @@ func TestSession_ExecuteHumanStep_WireOutputOnNonZeroExit(t *testing.T) {
 	srv := newFakeServer([]*pb.ExecuteStep{
 		{
 			StepName:  "gate",
-			StepType:  "human",
+			StepType:  "poll",
 			Config:    map[string]string{"poll": scriptPath, "interval": "50ms"},
 			RequestId: "req-h4",
 		},
@@ -556,15 +556,15 @@ func TestSession_ExecuteHumanStep_WireOutputOnNonZeroExit(t *testing.T) {
 	}
 }
 
-// TestSession_ExecuteHumanStep_ContextTimeout verifies that context cancellation
+// TestSession_ExecutePollStep_ContextTimeout verifies that context cancellation
 // during a poll step causes the session to exit cleanly without hanging.
 // The poll step internally produces a "timeout" result, but the gRPC stream
 // may close before the result is sent — so we verify clean exit, not the result.
-func TestSession_ExecuteHumanStep_ContextTimeout(t *testing.T) {
+func TestSession_ExecutePollStep_ContextTimeout(t *testing.T) {
 	srv := newFakeServer([]*pb.ExecuteStep{
 		{
 			StepName:  "gate",
-			StepType:  "human",
+			StepType:  "poll",
 			Config:    map[string]string{"poll": "exit 0", "interval": "50ms"},
 			RequestId: "req-h5",
 		},
@@ -593,13 +593,13 @@ func TestSession_ExecuteHumanStep_ContextTimeout(t *testing.T) {
 	}
 }
 
-// TestSession_ExecuteHumanStep_InvalidInterval verifies that an invalid interval
+// TestSession_ExecutePollStep_InvalidInterval verifies that an invalid interval
 // produces a "fail" result (the error path sets result to "fail").
-func TestSession_ExecuteHumanStep_InvalidInterval(t *testing.T) {
+func TestSession_ExecutePollStep_InvalidInterval(t *testing.T) {
 	srv := newFakeServer([]*pb.ExecuteStep{
 		{
 			StepName:  "gate",
-			StepType:  "human",
+			StepType:  "poll",
 			Config:    map[string]string{"poll": "echo ok", "interval": "not-a-duration"},
 			RequestId: "req-h6",
 		},

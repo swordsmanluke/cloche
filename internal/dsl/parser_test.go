@@ -892,7 +892,7 @@ func TestParser_PollStep_Valid(t *testing.T) {
 
 	review := wf.Steps["code-review"]
 	require.NotNil(t, review)
-	assert.Equal(t, domain.StepTypeHuman, review.Type)
+	assert.Equal(t, domain.StepTypePoll, review.Type)
 	assert.Equal(t, "scripts/check-pr-review.sh", review.Config["poll"])
 	assert.Equal(t, "5m", review.Config["interval"])
 
@@ -930,7 +930,7 @@ func TestParser_PollStep_WithTimeout(t *testing.T) {
 
 	step := wf.Steps["wait"]
 	require.NotNil(t, step)
-	assert.Equal(t, domain.StepTypeHuman, step.Type)
+	assert.Equal(t, domain.StepTypePoll, step.Type)
 	assert.Equal(t, "48h", step.Config["timeout"])
 }
 
@@ -958,7 +958,7 @@ func TestParser_PollStep_ExplicitTimeoutWire(t *testing.T) {
 
 	review := wf.Steps["code-review"]
 	require.NotNil(t, review)
-	assert.Equal(t, domain.StepTypeHuman, review.Type)
+	assert.Equal(t, domain.StepTypePoll, review.Type)
 	assert.Equal(t, "48h", review.Config["timeout"])
 
 	// Only one timeout wire should exist (the explicit one, no implicit abort added).

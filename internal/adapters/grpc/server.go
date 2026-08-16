@@ -51,7 +51,7 @@ type ClocheServer struct {
 	evolution       *evolution.Trigger
 	logBroadcast    *logstream.Broadcaster
 	shutdownFn      func()
-	pollCoord       *host.PollCoordinator // drives human step polling for all projects
+	pollCoord       *host.PollCoordinator // drives poll step polling for all projects
 	helpRouter      *help.Router          // routes AskHelp/ListThreads/GetThread/ReplyThread; nil disables the help channel
 	mu              sync.Mutex
 	runIDs          map[string]string              // run_id -> container_id
@@ -1875,8 +1875,8 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 		return nil, fmt.Errorf("listing runs: %w", err)
 	}
 
-	// Cast store to HumanPollStore/HelpStore once to look up pending info.
-	hps, hasHPS := s.store.(ports.HumanPollStore)
+	// Cast store to PollStore/HelpStore once to look up pending info.
+	hps, hasHPS := s.store.(ports.PollStore)
 	hs, hasHS := s.store.(ports.HelpStore)
 
 	resp := &pb.ListRunsResponse{}
@@ -1895,7 +1895,7 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 		}
 		// Populate waiting step info for waiting runs.
 		if run.State == domain.RunStateWaiting && hasHPS {
-			if polls, err := hps.ListHumanPolls(ctx, run.ID); err == nil && len(polls) > 0 {
+			if polls, err := hps.ListPolls(ctx, run.ID); err == nil && len(polls) > 0 {
 				sum.WaitingStep = polls[0].StepName
 				if !polls[0].LastPollAt.IsZero() {
 					sum.LastPollAt = polls[0].LastPollAt.UTC().Format(time.RFC3339)
@@ -1940,8 +1940,8 @@ func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) 
 		return nil, fmt.Errorf("listing tasks: %w", err)
 	}
 
-	// Cast store to HumanPollStore/HelpStore once for waiting/parked lookups.
-	hps, hasHPS := s.store.(ports.HumanPollStore)
+	// Cast store to PollStore/HelpStore once for waiting/parked lookups.
+	hps, hasHPS := s.store.(ports.PollStore)
 	hs, hasHS := s.store.(ports.HelpStore)
 
 	resp := &pb.ListTasksResponse{}
@@ -1970,7 +1970,7 @@ func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) 
 				// Pick the first waiting run and look up its poll record.
 				if hasHPS {
 					for _, wr := range waitingRuns {
-						polls, err := hps.ListHumanPolls(ctx, wr.ID)
+						polls, err := hps.ListPolls(ctx, wr.ID)
 						if err == nil && len(polls) > 0 {
 							sum.WaitingStep = polls[0].StepName
 							if !polls[0].LastPollAt.IsZero() {
@@ -2523,10 +2523,10 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 		}
 	}
 
-	// Populate waiting step details when the run is at a human step.
+	// Populate waiting step details when the run is at a poll step.
 	if run.State == domain.RunStateWaiting {
-		if hps, ok := s.store.(ports.HumanPollStore); ok {
-			if polls, err := hps.ListHumanPolls(ctx, run.ID); err == nil && len(polls) > 0 {
+		if hps, ok := s.store.(ports.PollStore); ok {
+			if polls, err := hps.ListPolls(ctx, run.ID); err == nil && len(polls) > 0 {
 				resp.WaitingStep = polls[0].StepName
 				if !polls[0].LastPollAt.IsZero() {
 					resp.LastPollAt = polls[0].LastPollAt.UTC().Format(time.RFC3339)
@@ -3139,7 +3139,7 @@ func (s *ClocheServer) StopRun(ctx context.Context, req *pb.StopRunRequest) (*pb
 
 	var stopped int
 	for _, run := range activeRuns {
-		// Skip terminal states only. RunStateWaiting (poll/human steps awaiting
+		// Skip terminal states only. RunStateWaiting (poll/poll steps awaiting
 		// external input) is non-terminal and must be stoppable — otherwise a
 		// workflow parked at a poll step appears as "no active runs" to
 		// `cloche stop`, even though it's still consuming resources.
@@ -3517,8 +3517,8 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	}
 	loop.SetActivityLogger(alog)
 	loop.SetPollCoordinator(s.pollCoord)
-	if hps, ok := s.store.(ports.HumanPollStore); ok {
-		loop.SetHumanPollStore(hps)
+	if hps, ok := s.store.(ports.PollStore); ok {
+		loop.SetPollStore(hps)
 	}
 	if s.helpRouter != nil {
 		loop.SetHelpArchiver(s.helpRouter)

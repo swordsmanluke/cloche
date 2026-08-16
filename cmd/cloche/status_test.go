@@ -441,7 +441,7 @@ func TestCmdStatusOverview_WaitingTask(t *testing.T) {
 					WorkflowName: "host",
 					IsHost:       true,
 					StartedAt:    "2026-03-14 10:00:00 +0000 UTC",
-					WaitingStep:  "human-review",
+					WaitingStep:  "blocked-review",
 					LastPollAt:   "2026-04-11T12:00:00Z",
 				},
 			},
@@ -454,7 +454,7 @@ func TestCmdStatusOverview_WaitingTask(t *testing.T) {
 					Status:          "waiting",
 					LatestAttemptId: "b2c3",
 					AttemptCount:    1,
-					WaitingStep:     "human-review",
+					WaitingStep:     "blocked-review",
 					LastPollAt:      "2026-04-11T12:00:00Z",
 				},
 			},
@@ -469,8 +469,8 @@ func TestCmdStatusOverview_WaitingTask(t *testing.T) {
 	if !strings.Contains(out, "waiting") {
 		t.Errorf("expected 'waiting' in output, got:\n%s", out)
 	}
-	if !strings.Contains(out, "human-review") {
-		t.Errorf("expected waiting step name 'human-review' in output, got:\n%s", out)
+	if !strings.Contains(out, "blocked-review") {
+		t.Errorf("expected waiting step name 'blocked-review' in output, got:\n%s", out)
 	}
 	if !strings.Contains(out, "cloche-w1") {
 		t.Errorf("expected task ID in output, got:\n%s", out)

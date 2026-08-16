@@ -1762,3 +1762,35 @@ func TestRunStore_ParkedStateSurvivesRestart(t *testing.T) {
 	assert.Equal(t, "thread-1", got.ParkedThreadID)
 	assert.Equal(t, "Which schema should I use?", got.ParkedTitle)
 }
+
+// TestStore_MigratesHumanStepPollsTable verifies that a database created
+// before the poll-step rename (table human_step_polls) is renamed in place
+// with its rows preserved, so in-flight waiting runs keep their poll state.
+func TestStore_MigratesHumanStepPollsTable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+
+	db, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+	_, err = db.Exec(`CREATE TABLE human_step_polls (
+		run_id      TEXT NOT NULL,
+		step_name   TEXT NOT NULL,
+		started_at  TEXT NOT NULL,
+		last_poll_at TEXT NOT NULL,
+		poll_count  INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY (run_id, step_name)
+	)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO human_step_polls VALUES ('r1', 'review', '2026-08-16T00:00:00Z', '2026-08-16T00:05:00Z', 3)`)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	store, err := sqlite.NewStore(path)
+	require.NoError(t, err)
+	defer store.Close()
+
+	rec, err := store.GetPoll(context.Background(), "r1", "review")
+	require.NoError(t, err)
+	require.NotNil(t, rec)
+	assert.Equal(t, 3, rec.PollCount)
+	assert.Equal(t, "review", rec.StepName)
+}
