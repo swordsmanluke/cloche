@@ -588,8 +588,7 @@ Flags:
                     the current directory.
 
 Output includes:
-  Config            active, concurrency, stagger, dedup, stop_on_error,
-                    evolution settings
+  Config            active, concurrency, stagger, dedup, stop_on_error
   Loop              Orchestration loop state (running, stopped, or halted)
   Active runs       Currently pending or running workflow runs
   Workflows         Known container and host workflow names

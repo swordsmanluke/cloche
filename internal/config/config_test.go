@@ -9,38 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLoadEvolutionConfig(t *testing.T) {
-	dir := t.TempDir()
-	clocheDir := filepath.Join(dir, ".cloche")
-	os.MkdirAll(clocheDir, 0755)
-
-	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
-[evolution]
-enabled = true
-debounce_seconds = 45
-min_confidence = "high"
-max_prompt_bullets = 30
-`), 0644)
-
-	cfg, err := Load(dir)
-	require.NoError(t, err)
-	assert.True(t, cfg.Evolution.Enabled)
-	assert.Equal(t, 45, cfg.Evolution.DebounceSeconds)
-	assert.Equal(t, "high", cfg.Evolution.MinConfidence)
-	assert.Equal(t, 30, cfg.Evolution.MaxPromptBullets)
-}
-
-func TestLoadEvolutionConfigDefaults(t *testing.T) {
-	dir := t.TempDir()
-
-	cfg, err := Load(dir)
-	require.NoError(t, err)
-	assert.True(t, cfg.Evolution.Enabled)
-	assert.Equal(t, 30, cfg.Evolution.DebounceSeconds)
-	assert.Equal(t, "medium", cfg.Evolution.MinConfidence)
-	assert.Equal(t, 50, cfg.Evolution.MaxPromptBullets)
-}
-
 func TestLoadDaemonConfig(t *testing.T) {
 	dir := t.TempDir()
 	clocheDir := filepath.Join(dir, ".cloche")
@@ -180,35 +148,6 @@ max_consecutive_failures = 5
 	assert.Equal(t, 5, cfg.Orchestration.MaxConsecutiveFailures)
 }
 
-func TestLoadPopulationConfig(t *testing.T) {
-	dir := t.TempDir()
-	clocheDir := filepath.Join(dir, ".cloche")
-	os.MkdirAll(clocheDir, 0755)
-
-	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
-[evolution]
-population_enabled = true
-max_candidates = 10
-min_runs_to_promote = 3
-`), 0644)
-
-	cfg, err := Load(dir)
-	require.NoError(t, err)
-	assert.True(t, cfg.Evolution.PopulationEnabled)
-	assert.Equal(t, 10, cfg.Evolution.MaxCandidates)
-	assert.Equal(t, 3, cfg.Evolution.MinRunsToPromote)
-}
-
-func TestLoadPopulationConfigDefaults(t *testing.T) {
-	dir := t.TempDir()
-
-	cfg, err := Load(dir)
-	require.NoError(t, err)
-	assert.False(t, cfg.Evolution.PopulationEnabled)
-	assert.Equal(t, 5, cfg.Evolution.MaxCandidates)
-	assert.Equal(t, 5, cfg.Evolution.MinRunsToPromote)
-}
-
 func TestLoadAgentsCodexConfig(t *testing.T) {
 	dir := t.TempDir()
 	clocheDir := filepath.Join(dir, ".cloche")
@@ -343,7 +282,7 @@ func TestLoadGlobalFromMissing(t *testing.T) {
 	cfg, err := LoadGlobalFrom("/nonexistent/path/config")
 	require.NoError(t, err)
 	// Returns defaults, no error
-	assert.True(t, cfg.Evolution.Enabled)
+	assert.Equal(t, "prompt", cfg.Agent.Mode)
 	assert.Equal(t, "", cfg.Daemon.HTTP)
 }
 

@@ -2029,9 +2029,6 @@ workflow post-merge {
 concurrency = 3
 stagger_seconds = 2.5
 dedup_seconds = 120
-
-[evolution]
-enabled = false
 `
 	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(configTOML), 0644))
 
@@ -2059,7 +2056,6 @@ enabled = false
 	assert.Equal(t, int32(3), resp.Concurrency)
 	assert.InDelta(t, 2.5, resp.StaggerSeconds, 0.01)
 	assert.InDelta(t, 120.0, resp.DedupSeconds, 0.01)
-	assert.False(t, resp.EvolutionEnabled)
 	assert.False(t, resp.LoopRunning)
 
 	// Active runs.

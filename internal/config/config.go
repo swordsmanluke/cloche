@@ -18,16 +18,6 @@ type DaemonConfig struct {
 	LLMCommand string `toml:"llm_command"`
 }
 
-type EvolutionConfig struct {
-	Enabled           bool   `toml:"enabled"`
-	DebounceSeconds   int    `toml:"debounce_seconds"`
-	MinConfidence     string `toml:"min_confidence"`
-	MaxPromptBullets  int    `toml:"max_prompt_bullets"`
-	PopulationEnabled bool   `toml:"population_enabled"`
-	MaxCandidates     int    `toml:"max_candidates"`
-	MinRunsToPromote  int    `toml:"min_runs_to_promote"`
-}
-
 type OrchestrationConfig struct {
 	Concurrency            int     `toml:"concurrency"`
 	StaggerSeconds         float64 `toml:"stagger_seconds"`
@@ -103,7 +93,6 @@ type RepositoryConfig struct {
 type Config struct {
 	Active        bool                `toml:"active"`
 	Daemon        DaemonConfig        `toml:"daemon"`
-	Evolution     EvolutionConfig     `toml:"evolution"`
 	Orchestration OrchestrationConfig `toml:"orchestration"`
 	Agents        AgentsConfig        `toml:"agents"`
 	Agent         AgentConfig         `toml:"agent"`
@@ -116,15 +105,6 @@ func defaults() Config {
 	return Config{
 		Agent: AgentConfig{
 			Mode: "prompt",
-		},
-		Evolution: EvolutionConfig{
-			Enabled:           true,
-			DebounceSeconds:   30,
-			MinConfidence:     "medium",
-			MaxPromptBullets:  50,
-			PopulationEnabled: false,
-			MaxCandidates:     5,
-			MinRunsToPromote:  5,
 		},
 		Orchestration: OrchestrationConfig{
 			Concurrency:            1,

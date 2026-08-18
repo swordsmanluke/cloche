@@ -133,7 +133,6 @@ func printProjectInfo(resp *pb.GetProjectInfoResponse, w io.Writer) {
 	}
 	fmt.Fprintf(w, "  stop_on_error:      %v\n", resp.StopOnError)
 	fmt.Fprintf(w, "  max_consecutive_failures: %d\n", resp.MaxConsecutiveFailures)
-	fmt.Fprintf(w, "  evolution:          %v\n", resp.EvolutionEnabled)
 	fmt.Fprintln(w)
 
 	loopState := "stopped"

@@ -156,12 +156,6 @@ image = "%s"
 # stop_on_error            = false
 # max_consecutive_failures = 3
 
-[evolution]
-enabled            = true
-debounce_seconds   = 30
-min_confidence     = "medium"
-max_prompt_bullets = 50
-
 [git]
 # name    = ""     # override global git identity for this project
 # email   = ""

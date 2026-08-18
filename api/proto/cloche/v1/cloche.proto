@@ -293,7 +293,8 @@ message GetProjectInfoResponse {
   int32 concurrency = 4;
   double stagger_seconds = 5;
   double dedup_seconds = 6;
-  bool evolution_enabled = 7;
+  reserved 7;
+  reserved "evolution_enabled";
   bool loop_running = 8;
   repeated RunSummary active_runs = 9;
   repeated string container_workflows = 10;

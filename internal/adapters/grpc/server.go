@@ -24,7 +24,6 @@ import (
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/engine"
-	"github.com/cloche-dev/cloche/internal/evolution"
 	"github.com/cloche-dev/cloche/internal/help"
 	"github.com/cloche-dev/cloche/internal/host"
 	"github.com/cloche-dev/cloche/internal/logstream"
@@ -48,7 +47,6 @@ type ClocheServer struct {
 	container       ports.ContainerRuntime
 	pool            *docker.ContainerPool // optional; manages agent sessions for DaemonExecutor
 	defaultImage    string
-	evolution       *evolution.Trigger
 	logBroadcast    *logstream.Broadcaster
 	shutdownFn      func()
 	pollCoord       *host.PollCoordinator // drives poll step polling for all projects
@@ -210,11 +208,6 @@ func (s *ClocheServer) SetLogStore(ls ports.LogStore) {
 // SetTaskStore attaches a task store so RunWorkflow can create Task records.
 func (s *ClocheServer) SetTaskStore(ts ports.TaskStore) {
 	s.taskStore = ts
-}
-
-// SetEvolution attaches an evolution trigger to the server.
-func (s *ClocheServer) SetEvolution(trigger *evolution.Trigger) {
-	s.evolution = trigger
 }
 
 // SetLogBroadcaster attaches a log broadcaster for live-streaming LLM output.
@@ -1805,11 +1798,6 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 	// the store still says "running", causing StreamLogs to return empty).
 	if s.logBroadcast != nil {
 		s.logBroadcast.Finish(runID)
-	}
-
-	// Fire evolution trigger if configured
-	if s.evolution != nil {
-		s.evolution.Fire(projectDir, workflowName, runID)
 	}
 
 	// Merge is handled as a workflow step in host.cloche, not here.
@@ -3785,7 +3773,6 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 		Concurrency:            int32(cfg.Orchestration.Concurrency),
 		StaggerSeconds:         cfg.Orchestration.StaggerSeconds,
 		DedupSeconds:           cfg.Orchestration.DedupSeconds,
-		EvolutionEnabled:       cfg.Evolution.Enabled,
 		LoopRunning:            loopRunning,
 		ActiveRuns:             activeRuns,
 		ContainerWorkflows:     containerWorkflows,

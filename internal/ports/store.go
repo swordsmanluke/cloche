@@ -84,27 +84,10 @@ type AttemptLogEntry struct {
 	CreatedAt time.Time
 }
 
-type EvolutionEntry struct {
-	ID             string
-	ProjectDir     string
-	WorkflowName   string
-	TriggerRunID   string
-	CreatedAt      time.Time
-	Classification string
-	ChangesJSON    string
-	KnowledgeDelta string
-}
-
 // ActivityStore persists and retrieves project activity log entries.
 type ActivityStore interface {
 	AppendActivityEntry(ctx context.Context, projectDir string, entry activitylog.Entry) error
 	ReadActivityEntries(ctx context.Context, projectDir string, opts activitylog.ReadOptions) ([]activitylog.Entry, error)
-}
-
-type EvolutionStore interface {
-	SaveEvolution(ctx context.Context, entry *EvolutionEntry) error
-	GetLastEvolution(ctx context.Context, projectDir, workflowName string) (*EvolutionEntry, error)
-	ListRunsSince(ctx context.Context, projectDir, workflowName, sinceRunID string) ([]*domain.Run, error)
 }
 
 // PollRecord tracks the polling state of a poll step within a run.

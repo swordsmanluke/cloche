@@ -1225,7 +1225,7 @@ up a project by its registered label instead.
 | `--name <label>` | _(cwd lookup)_ | Look up project by label (e.g. `cloche`) instead of directory. |
 
 `cloche project` output includes: config settings (active, concurrency, stagger, dedup,
-stop_on_error, max_consecutive_failures, evolution), orchestrator loop state
+stop_on_error, max_consecutive_failures), orchestrator loop state
 (running/stopped/halted), currently active runs, known container and host workflow names,
 and a `Repositories:` section listing each repository's name, path, and URL when
 repositories are declared in `config.toml`. When no `[[repositories]]` section is present
@@ -1645,21 +1645,6 @@ my-project/
 | `stop_on_error` | `false` | Halt the orchestration loop on the first unrecovered error. |
 | `max_consecutive_failures` | `3` | Stop the loop after this many consecutive failed runs. Run `cloche loop` to restart. |
 
-### `[evolution]`
-
-Controls the self-evolving prompt system. Requires `CLOCHE_LLM_COMMAND` to be set;
-evolution is silently disabled when it is not.
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `enabled` | `true` | Enable or disable evolution for this project. |
-| `debounce_seconds` | `30` | Seconds to wait after a run completes before triggering an evolution pass (debounces rapid successive completions). |
-| `min_confidence` | `"medium"` | Minimum lesson confidence to include in prompts. One of `"low"`, `"medium"`, `"high"`. |
-| `max_prompt_bullets` | `50` | Maximum number of lesson bullets injected into agent prompts. |
-| `population_enabled` | `false` | Enable population-based candidate selection (experimental). |
-| `max_candidates` | `5` | Maximum number of prompt candidates to evaluate per evolution pass. |
-| `min_runs_to_promote` | `5` | Minimum completed runs before a candidate can be promoted to the active prompt. |
-
 ### `[agent]`
 
 Controls how prompt steps are dispatched.
@@ -1793,7 +1778,6 @@ Repositories appear in `cloche project` output and in `cloche project repos list
 | `CLOCHE_IMAGE` | `cloche-agent:latest` | Default Docker image |
 | `CLOCHE_HTTP` | `localhost:8080` (via global config) | HTTP address for web dashboard. Not started unless set. |
 | `CLOCHE_AGENT_PATH` | _(auto)_ | Path to `cloche-agent` binary (local runtime) |
-| `CLOCHE_LLM_COMMAND` | _(unset)_ | Command for LLM calls (evolution, merge conflicts) |
 | `ANTHROPIC_API_KEY` | _(unset)_ | Passed into Docker containers |
 | `CLOCHE_EXTRA_MOUNTS` | _(unset)_ | Extra bind mounts (comma-separated `host:container`) |
 | `CLOCHE_EXTRA_ENV` | _(unset)_ | Extra env vars (comma-separated `KEY=VALUE`) |

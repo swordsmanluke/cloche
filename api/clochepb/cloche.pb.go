@@ -1820,7 +1820,6 @@ type GetProjectInfoResponse struct {
 	Concurrency            int32                  `protobuf:"varint,4,opt,name=concurrency,proto3" json:"concurrency,omitempty"`
 	StaggerSeconds         float64                `protobuf:"fixed64,5,opt,name=stagger_seconds,json=staggerSeconds,proto3" json:"stagger_seconds,omitempty"`
 	DedupSeconds           float64                `protobuf:"fixed64,6,opt,name=dedup_seconds,json=dedupSeconds,proto3" json:"dedup_seconds,omitempty"`
-	EvolutionEnabled       bool                   `protobuf:"varint,7,opt,name=evolution_enabled,json=evolutionEnabled,proto3" json:"evolution_enabled,omitempty"`
 	LoopRunning            bool                   `protobuf:"varint,8,opt,name=loop_running,json=loopRunning,proto3" json:"loop_running,omitempty"`
 	ActiveRuns             []*RunSummary          `protobuf:"bytes,9,rep,name=active_runs,json=activeRuns,proto3" json:"active_runs,omitempty"`
 	ContainerWorkflows     []string               `protobuf:"bytes,10,rep,name=container_workflows,json=containerWorkflows,proto3" json:"container_workflows,omitempty"`
@@ -1905,13 +1904,6 @@ func (x *GetProjectInfoResponse) GetDedupSeconds() float64 {
 		return x.DedupSeconds
 	}
 	return 0
-}
-
-func (x *GetProjectInfoResponse) GetEvolutionEnabled() bool {
-	if x != nil {
-		return x.EvolutionEnabled
-	}
-	return false
 }
 
 func (x *GetProjectInfoResponse) GetLoopRunning() bool {
@@ -5381,7 +5373,7 @@ const file_cloche_proto_rawDesc = "" +
 	"Repository\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x10\n" +
-	"\x03url\x18\x03 \x01(\tR\x03urlJ\x04\b\x04\x10\x05R\adefault\"\xc2\x05\n" +
+	"\x03url\x18\x03 \x01(\tR\x03urlJ\x04\b\x04\x10\x05R\adefault\"\xae\x05\n" +
 	"\x16GetProjectInfoResponse\x12\x1f\n" +
 	"\vproject_dir\x18\x01 \x01(\tR\n" +
 	"projectDir\x12\x12\n" +
@@ -5389,8 +5381,7 @@ const file_cloche_proto_rawDesc = "" +
 	"\x06active\x18\x03 \x01(\bR\x06active\x12 \n" +
 	"\vconcurrency\x18\x04 \x01(\x05R\vconcurrency\x12'\n" +
 	"\x0fstagger_seconds\x18\x05 \x01(\x01R\x0estaggerSeconds\x12#\n" +
-	"\rdedup_seconds\x18\x06 \x01(\x01R\fdedupSeconds\x12+\n" +
-	"\x11evolution_enabled\x18\a \x01(\bR\x10evolutionEnabled\x12!\n" +
+	"\rdedup_seconds\x18\x06 \x01(\x01R\fdedupSeconds\x12!\n" +
 	"\floop_running\x18\b \x01(\bR\vloopRunning\x126\n" +
 	"\vactive_runs\x18\t \x03(\v2\x15.cloche.v1.RunSummaryR\n" +
 	"activeRuns\x12/\n" +
@@ -5403,7 +5394,7 @@ const file_cloche_proto_rawDesc = "" +
 	"halt_error\x18\x0e \x01(\tR\thaltError\x128\n" +
 	"\x18max_consecutive_failures\x18\x0f \x01(\x05R\x16maxConsecutiveFailures\x129\n" +
 	"\frepositories\x18\x10 \x03(\v2\x15.cloche.v1.RepositoryR\frepositories\x120\n" +
-	"\x14resumable_runs_count\x18\x11 \x01(\x05R\x12resumableRunsCount\"\x13\n" +
+	"\x14resumable_runs_count\x18\x11 \x01(\x05R\x12resumableRunsCountJ\x04\b\a\x10\bR\x11evolution_enabled\"\x13\n" +
 	"\x11GetVersionRequest\".\n" +
 	"\x12GetVersionResponse\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\"q\n" +

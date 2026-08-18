@@ -71,7 +71,7 @@ func migrate(db *sql.DB) error {
 		return err
 	}
 
-	// Evolution schema additions (idempotent)
+	// Schema additions (idempotent)
 	alterStmts := []string{
 		`ALTER TABLE runs ADD COLUMN project_dir TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE step_executions ADD COLUMN prompt_text TEXT`,
@@ -153,20 +153,6 @@ func migrate(db *sql.DB) error {
 	)`)
 	if errAL != nil {
 		return errAL
-	}
-
-	_, err2 := db.Exec(`CREATE TABLE IF NOT EXISTS evolution_log (
-		id TEXT PRIMARY KEY,
-		project_dir TEXT NOT NULL,
-		workflow_name TEXT NOT NULL,
-		trigger_run_id TEXT NOT NULL,
-		created_at TEXT NOT NULL,
-		classification TEXT,
-		changes_json TEXT NOT NULL,
-		knowledge_delta TEXT
-	)`)
-	if err2 != nil {
-		return err2
 	}
 
 	_, errKV := db.Exec(`CREATE TABLE IF NOT EXISTS context_kv (
@@ -652,59 +638,6 @@ func scanLogFiles(rows *sql.Rows) ([]*ports.LogFileEntry, error) {
 		entries = append(entries, e)
 	}
 	return entries, rows.Err()
-}
-
-func (s *Store) SaveEvolution(ctx context.Context, entry *ports.EvolutionEntry) error {
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO evolution_log (id, project_dir, workflow_name, trigger_run_id, created_at, classification, changes_json, knowledge_delta)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		entry.ID, entry.ProjectDir, entry.WorkflowName, entry.TriggerRunID,
-		formatTime(entry.CreatedAt), entry.Classification, entry.ChangesJSON, entry.KnowledgeDelta,
-	)
-	return err
-}
-
-func (s *Store) GetLastEvolution(ctx context.Context, projectDir, workflowName string) (*ports.EvolutionEntry, error) {
-	row := s.db.QueryRowContext(ctx,
-		`SELECT id, project_dir, workflow_name, trigger_run_id, created_at, COALESCE(classification,''), changes_json, COALESCE(knowledge_delta,'')
-		 FROM evolution_log WHERE project_dir = ? AND workflow_name = ? ORDER BY created_at DESC LIMIT 1`,
-		projectDir, workflowName)
-
-	entry := &ports.EvolutionEntry{}
-	var createdAt string
-	err := row.Scan(&entry.ID, &entry.ProjectDir, &entry.WorkflowName, &entry.TriggerRunID,
-		&createdAt, &entry.Classification, &entry.ChangesJSON, &entry.KnowledgeDelta)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	entry.CreatedAt = parseTime(createdAt)
-	return entry, nil
-}
-
-func (s *Store) ListRunsSince(ctx context.Context, projectDir, workflowName, sinceRunID string) ([]*domain.Run, error) {
-	var rows *sql.Rows
-	var err error
-
-	if sinceRunID == "" {
-		rows, err = s.db.QueryContext(ctx,
-			`SELECT `+runSelectCols+`
-			 FROM runs WHERE project_dir = ? AND workflow_name = ? ORDER BY started_at ASC`,
-			projectDir, workflowName)
-	} else {
-		rows, err = s.db.QueryContext(ctx,
-			`SELECT `+runSelectCols+`
-			 FROM runs WHERE project_dir = ? AND workflow_name = ? AND started_at > (SELECT started_at FROM runs WHERE id = ?)
-			 ORDER BY started_at ASC`,
-			projectDir, workflowName, sinceRunID)
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	return scanRuns(rows)
 }
 
 func (s *Store) SaveTask(ctx context.Context, task *domain.Task) error {

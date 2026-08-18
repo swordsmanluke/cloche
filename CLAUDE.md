@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Cloche is a system for grow-coding high quality applications. It provides containerized
 environments for coding agents, a workflow DSL for linking agentic and script-driven
-tasks, validated code pipelines, and self-evolving tooling.
+tasks, and validated code pipelines.
 
 **Language:** Go
 

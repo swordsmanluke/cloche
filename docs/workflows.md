@@ -332,8 +332,7 @@ field makes it a script step; a `poll` field makes it a poll step.
 report. The graph engine follows the wiring to determine the next step.
 
 **Wiring is separate from step definitions.** This enables inserting new steps between
-existing ones by rewiring — without modifying either step. This is the foundation for
-Cloche's self-evolution feature.
+existing ones by rewiring — without modifying either step.
 
 **Graphs are validated at parse time.** The parser checks that all declared results are
 wired, no steps are orphaned, and an entry point exists.
