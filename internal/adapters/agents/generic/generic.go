@@ -15,6 +15,7 @@ import (
 type Adapter struct {
 	StatusWriter *protocol.StatusWriter // optional: streams live output lines
 	RunID        string                 // optional: passed as CLOCHE_RUN_ID to child processes
+	OutputDir    string                 // directory for step output logs and history; empty = <workDir>/.cloche/output (per-run container workspace layout). Host runs must set a per-attempt dir so concurrent runs don't share files.
 }
 
 func New() *Adapter {
@@ -51,12 +52,23 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	markerResult, cleanOutput, found := protocol.ExtractResult(output)
 
 	// Append cleaned output to log file, preserving history across loop iterations.
-	outputDir := filepath.Join(workDir, ".cloche", "output")
+	outputDir := a.OutputDir
+	if outputDir == "" {
+		outputDir = filepath.Join(workDir, ".cloche", "output")
+	}
 	if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
 		appendStepLog(filepath.Join(outputDir, step.Name+".log"), cleanOutput)
 	}
 
 	isAgent := step.Type == domain.StepTypeAgent
+
+	appendHistory := func(result string) {
+		if a.OutputDir != "" {
+			protocol.AppendHistoryTo(filepath.Join(a.OutputDir, "history.log"), step.Name, result, isAgent, cleanOutput)
+		} else {
+			protocol.AppendHistory(workDir, step.Name, result, isAgent, cleanOutput)
+		}
+	}
 
 	if err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
@@ -64,7 +76,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 			if found {
 				result = markerResult
 			}
-			protocol.AppendHistory(workDir, step.Name, result, isAgent, cleanOutput)
+			appendHistory(result)
 			return domain.StepResult{Result: result}, nil
 		}
 		return domain.StepResult{}, err
@@ -74,7 +86,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	if found {
 		result = markerResult
 	}
-	protocol.AppendHistory(workDir, step.Name, result, isAgent, cleanOutput)
+	appendHistory(result)
 	return domain.StepResult{Result: result}, nil
 }
 

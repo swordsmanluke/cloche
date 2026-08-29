@@ -10,11 +10,19 @@ import (
 
 const historyFile = ".cloche/history.log"
 
-// AppendHistory appends a step completion entry to the history log.
+// AppendHistory appends a step completion entry to the history log at the
+// default per-workdir location (.cloche/history.log).
 // For agent steps, pass nil for output (only the header is recorded).
 // For script steps, the full cleaned output is included, indented with "  | ".
 func AppendHistory(workDir, stepName, result string, isAgent bool, output []byte) {
-	path := filepath.Join(workDir, historyFile)
+	AppendHistoryTo(filepath.Join(workDir, historyFile), stepName, result, isAgent, output)
+}
+
+// AppendHistoryTo appends a step completion entry to the history log at path.
+// Host runs pass a per-attempt path so concurrent runs of the same project
+// don't interleave history; in-container runs use AppendHistory (the workdir
+// is a per-run container workspace, so the default path is already isolated).
+func AppendHistoryTo(path, stepName, result string, isAgent bool, output []byte) {
 	_ = os.MkdirAll(filepath.Dir(path), 0755)
 
 	ts := time.Now().UTC().Format(time.RFC3339)

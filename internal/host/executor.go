@@ -352,6 +352,12 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 
 	adapter.RunID = e.HostRunID
 	adapter.TaskID = e.TaskID
+	// Route the adapter's step log and history into the per-attempt output dir.
+	// The default (<workDir>/.cloche/output) is only safe in containers; on the
+	// host workDir is the shared project dir, and same-named steps of concurrent
+	// runs would append to one file and contaminate each other's logs and
+	// {previous_output} prompts (cloche-1or8).
+	adapter.OutputDir = e.OutputDir
 
 	// Wire the real KVReader so {{ $var }} directives can resolve KV-store values.
 	if e.Store != nil && e.TaskID != "" {
@@ -416,14 +422,8 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 		return domain.StepResult{}, err
 	}
 
-	// Append adapter output to executor's step log, preserving history across loop iterations.
-	adapterOutput := filepath.Join(e.ProjectDir, ".cloche", "output", step.Name+".log")
-	if data, readErr := os.ReadFile(adapterOutput); readErr == nil {
-		if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
-			appendStepLog(e.stepOutputFile(step.Name), data)
-		}
-	}
-
+	// The adapter appended its output directly to e.OutputDir/<step>.log via
+	// adapter.OutputDir above, so there is nothing to copy here.
 	return sr, nil
 }
 

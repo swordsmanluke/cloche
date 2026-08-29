@@ -36,6 +36,7 @@ type Adapter struct {
 	ExtraEnv           []string               // additional KEY=VALUE env vars injected into the agent process
 	KV                 KVReader               // optional: KV store for {{ $var }} lookups; nil disables non-builtin vars
 	KVWriter           KVWriter               // optional: persists Claude's session_id so a later park+resume can `claude --resume`
+	OutputDir          string                 // directory for step output logs and history; empty = <workDir>/.cloche/output (per-run container workspace layout). Host runs must set a per-attempt dir: workDir is the shared project dir there, and same-named steps of concurrent runs would interleave in one file.
 }
 
 func New() *Adapter {
@@ -248,12 +249,23 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		resetAttemptCount(workDir, a.TaskID, step.Name)
 	}
 
-	// Append output file, preserving history across loop iterations.
-	outputDir := filepath.Join(workDir, ".cloche", "output")
-	if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
-		appendStepLog(filepath.Join(outputDir, step.Name+".log"), lastStdout)
+	// Append output file, preserving history across loop iterations. Strip
+	// standalone CLOCHE_RESULT marker lines first: this file feeds later
+	// steps' {previous_output} prompts, and re-injected markers could be
+	// echoed into a future transcript and picked up by the classifier.
+	outputDir := a.OutputDir
+	if outputDir == "" {
+		outputDir = filepath.Join(workDir, ".cloche", "output")
 	}
-	protocol.AppendHistory(workDir, step.Name, result, true, nil)
+	_, cleanStdout, _ := protocol.ExtractResult(lastStdout)
+	if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
+		appendStepLog(filepath.Join(outputDir, step.Name+".log"), cleanStdout)
+	}
+	if a.OutputDir != "" {
+		protocol.AppendHistoryTo(filepath.Join(a.OutputDir, "history.log"), step.Name, result, true, nil)
+	} else {
+		protocol.AppendHistory(workDir, step.Name, result, true, nil)
+	}
 	return domain.StepResult{Result: result, Usage: lastUsage}, nil
 }
 

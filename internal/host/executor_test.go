@@ -2419,3 +2419,88 @@ func TestExecutor_SkipScript_NotSkipped_OutputNotInSkipLog(t *testing.T) {
 	require.NoError(t, readErr)
 	assert.Contains(t, string(data), "skip tried")
 }
+
+// TestExecutor_AgentStep_ConcurrentRunsIsolated is the regression test for
+// cloche-1or8: two concurrent runs in the same project dir executing a
+// same-named agent step must not contaminate each other's logs. Before the
+// fix, the prompt adapter staged output in the shared
+// <project>/.cloche/output/<step>.log (keyed by step name only, never
+// truncated) and the executor copied the whole accumulated file into each
+// run's per-attempt log.
+func TestExecutor_AgentStep_ConcurrentRunsIsolated(t *testing.T) {
+	projectDir := t.TempDir()
+
+	mkAgent := func(name, payload string) string {
+		p := filepath.Join(projectDir, name)
+		script := "#!/bin/sh\ncat > /dev/null\n" +
+			"i=0\nwhile [ $i -lt 50 ]; do echo '" + payload + "'; i=$((i+1)); done\n" +
+			"echo 'CLOCHE_RESULT:success'\n"
+		require.NoError(t, os.WriteFile(p, []byte(script), 0755))
+		return p
+	}
+	agentA := mkAgent("agent-a.sh", "PAYLOAD-RUN-A")
+	agentB := mkAgent("agent-b.sh", "PAYLOAD-RUN-B")
+
+	outputA := filepath.Join(projectDir, ".cloche", "logs", "task-a", "attempt-a")
+	outputB := filepath.Join(projectDir, ".cloche", "logs", "task-b", "attempt-b")
+
+	runStep := func(outputDir, agent, runID string) error {
+		executor := &Executor{
+			ProjectDir: projectDir,
+			OutputDir:  outputDir,
+			HostRunID:  runID,
+		}
+		step := &domain.Step{
+			Name:    "implement",
+			Type:    domain.StepTypeAgent,
+			Results: []string{"success", "fail"},
+			Config: map[string]string{
+				"prompt":        "do the work",
+				"agent_command": agent,
+			},
+		}
+		result, err := executor.Execute(context.Background(), step)
+		if err != nil {
+			return err
+		}
+		if result.Result != "success" {
+			return fmt.Errorf("unexpected result %q", result.Result)
+		}
+		return nil
+	}
+
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	wg.Add(2)
+	go func() { defer wg.Done(); errs[0] = runStep(outputA, agentA, "run-a") }()
+	go func() { defer wg.Done(); errs[1] = runStep(outputB, agentB, "run-b") }()
+	wg.Wait()
+	require.NoError(t, errs[0])
+	require.NoError(t, errs[1])
+
+	logA, err := os.ReadFile(filepath.Join(outputA, "implement.log"))
+	require.NoError(t, err)
+	logB, err := os.ReadFile(filepath.Join(outputB, "implement.log"))
+	require.NoError(t, err)
+
+	assert.Contains(t, string(logA), "PAYLOAD-RUN-A")
+	assert.NotContains(t, string(logA), "PAYLOAD-RUN-B", "run A's log contains run B's output")
+	assert.Contains(t, string(logB), "PAYLOAD-RUN-B")
+	assert.NotContains(t, string(logB), "PAYLOAD-RUN-A", "run B's log contains run A's output")
+
+	// Standalone result-marker lines must not be persisted into step logs,
+	// which feed later steps' {previous_output} prompts (cloche-ulid).
+	assert.NotContains(t, string(logA), "CLOCHE_RESULT")
+	assert.NotContains(t, string(logB), "CLOCHE_RESULT")
+
+	// Host runs must not create the shared staging files at all.
+	_, statErr := os.Stat(filepath.Join(projectDir, ".cloche", "output", "implement.log"))
+	assert.True(t, os.IsNotExist(statErr), "shared .cloche/output/implement.log should not be created by host runs")
+	_, statErr = os.Stat(filepath.Join(projectDir, ".cloche", "history.log"))
+	assert.True(t, os.IsNotExist(statErr), "shared .cloche/history.log should not be created by host runs")
+
+	// History lands in each attempt's own dir instead.
+	histA, err := os.ReadFile(filepath.Join(outputA, "history.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(histA), "step:implement result:success")
+}
