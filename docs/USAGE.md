@@ -935,7 +935,7 @@ contains a `.cloche/` subdirectory.
 | Workflow syntax | Parses all `.cloche/*.cloche` files using the same logic as `cloche validate`. |
 | Image source dir | Warns (not fatal) when the existing project image was built from a different source directory. The next `EnsureImage` call will rebuild it automatically. |
 | Project image build | Calls `EnsureImage` to build or confirm the project Docker image. |
-| Agent roundtrip | Starts a short-lived container from the project image, runs a minimal test workflow, and verifies it completes. |
+| Agent binary | Starts a short-lived container from the project image, runs `cloche-agent --version`, and warns if the baked-in agent version differs from the host version. |
 
 Each failing check prints actionable remediation steps inline.
 
@@ -943,7 +943,7 @@ Each failing check prints actionable remediation steps inline.
 |------|-------------|
 | `--verbose`, `-v` | Print details for all checks (version, detected credential source, etc.). |
 | `--project <dir>` | Run against the specified project directory instead of the current working directory. |
-| `--timeout <duration>` | Timeout for the agent roundtrip check (default `60s`). The container is always cleaned up. |
+| `--timeout <duration>` | Timeout for the agent binary check (default `60s`). The container is always cleaned up. |
 
 ### `cloche run`
 

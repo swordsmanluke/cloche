@@ -512,8 +512,8 @@ image = "test-image:latest"
 	}
 }
 
-// TestCheckAgentRoundtrip_dockerNotFound verifies FAIL when docker binary is missing.
-func TestCheckAgentRoundtrip_dockerNotFound(t *testing.T) {
+// TestCheckAgentBinary_dockerNotFound verifies FAIL when docker binary is missing.
+func TestCheckAgentBinary_dockerNotFound(t *testing.T) {
 	dir := t.TempDir()
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
@@ -529,14 +529,14 @@ image = "test-image:latest"
 	os.Setenv("PATH", t.TempDir())
 
 	dr := &doctorRunner{projectDir: dir, timeout: 5 * time.Second}
-	result := dr.checkAgentRoundtrip()
+	result := dr.checkAgentBinary()
 	if result.status != checkFail {
 		t.Errorf("expected checkFail when docker not found, got %v", result.status)
 	}
 }
 
-// TestCheckAgentRoundtrip_timeout verifies timeout behavior.
-func TestCheckAgentRoundtrip_timeout(t *testing.T) {
+// TestCheckAgentBinary_timeout verifies timeout behavior.
+func TestCheckAgentBinary_timeout(t *testing.T) {
 	dir := t.TempDir()
 	clocheDir := filepath.Join(dir, ".cloche")
 	os.MkdirAll(clocheDir, 0755)
@@ -549,7 +549,7 @@ image = "nonexistent-image-that-will-fail:latest"
 	// Use a very short timeout; the docker run will fail quickly since the image
 	// doesn't exist, which tests that the timeout path and error path both work.
 	dr := &doctorRunner{projectDir: dir, timeout: 5 * time.Second}
-	result := dr.checkAgentRoundtrip()
+	result := dr.checkAgentBinary()
 	// Either timeout or failure is acceptable here (image doesn't exist).
 	if result.status != checkFail {
 		t.Errorf("expected checkFail for nonexistent image, got %v", result.status)

@@ -14,6 +14,7 @@ import (
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
 	"github.com/cloche-dev/cloche/internal/config"
+	"github.com/cloche-dev/cloche/internal/version"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -117,9 +118,9 @@ func cmdDoctor(args []string) {
 		imageResult := dr.checkImageBuild()
 		results = append(results, imageResult)
 
-		// Only attempt roundtrip if the image build succeeded.
+		// Only check the agent binary if the image build succeeded.
 		if imageResult.status != checkFail {
-			results = append(results, dr.checkAgentRoundtrip())
+			results = append(results, dr.checkAgentBinary())
 		}
 	}
 
@@ -140,7 +141,8 @@ func cmdDoctor(args []string) {
 // printResults prints a formatted table of check results.
 func (dr *doctorRunner) printResults(results []checkResult) {
 	const labelWidth = 40
-	anyIssue := false
+	anyFail := false
+	anyWarning := false
 
 	for _, r := range results {
 		label := r.label + "..."
@@ -156,7 +158,11 @@ func (dr *doctorRunner) printResults(results []checkResult) {
 		}
 		fmt.Printf("%s%s%s\n", label, strings.Repeat(" ", padding), statusStr)
 		if r.status != checkOK {
-			anyIssue = true
+			if r.status == checkFail {
+				anyFail = true
+			} else {
+				anyWarning = true
+			}
 			if r.remediation != "" {
 				for _, line := range strings.Split(r.remediation, "\n") {
 					fmt.Printf("  %s\n", line)
@@ -168,10 +174,13 @@ func (dr *doctorRunner) printResults(results []checkResult) {
 	}
 
 	fmt.Println()
-	if !anyIssue {
-		fmt.Println("All checks passed.")
-	} else {
+	switch {
+	case anyFail:
 		fmt.Println("Some checks failed. See above for remediation steps.")
+	case anyWarning:
+		fmt.Println("All checks passed, with warnings. See above for details.")
+	default:
+		fmt.Println("All checks passed.")
 	}
 }
 
@@ -574,22 +583,12 @@ func (dr *doctorRunner) checkImageBuild() checkResult {
 	}
 }
 
-// testWorkflowContent is the minimal workflow used for the agent roundtrip check.
-const testWorkflowContent = `workflow doctor-test {
-  step test {
-    run     = "echo ok > /tmp/doctor-test"
-    results = [success, fail]
-  }
-
-  test:success -> done
-  test:fail    -> abort
-}
-`
-
-// checkAgentRoundtrip starts a container from the project image, runs a minimal
-// agent workflow, and verifies it completes within the configured timeout.
-func (dr *doctorRunner) checkAgentRoundtrip() checkResult {
-	label := "Checking agent roundtrip"
+// checkAgentBinary starts a container from the project image and verifies the
+// baked-in cloche-agent binary runs and matches the host version. A full
+// daemon roundtrip is exercised by real runs; here we only prove the image
+// contains a working, current agent.
+func (dr *doctorRunner) checkAgentBinary() checkResult {
+	label := "Checking agent binary"
 
 	cfg, err := config.Load(dr.projectDir)
 	if err != nil {
@@ -605,34 +604,14 @@ func (dr *doctorRunner) checkAgentRoundtrip() checkResult {
 		image = strings.ToLower(filepath.Base(dr.projectDir)) + "-cloche-agent:latest"
 	}
 
-	// Create a temporary workspace with a minimal test workflow.
-	tmpDir, err := os.MkdirTemp("", "cloche-doctor")
-	if err != nil {
-		return checkResult{label: label, status: checkFail, detail: err.Error()}
-	}
-	defer os.RemoveAll(tmpDir)
-
-	clocheSubDir := filepath.Join(tmpDir, ".cloche")
-	if err := os.MkdirAll(clocheSubDir, 0755); err != nil {
-		return checkResult{label: label, status: checkFail, detail: err.Error()}
-	}
-
-	if err := os.WriteFile(filepath.Join(clocheSubDir, "doctor-test.cloche"), []byte(testWorkflowContent), 0644); err != nil {
-		return checkResult{label: label, status: checkFail, detail: err.Error()}
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), dr.timeout)
 	defer cancel()
 
 	start := time.Now()
 
-	// Run a short-lived container with the test workflow.
-	// No CLOCHE_ADDR is set so the agent skips daemon KV operations.
 	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
-		"-v", tmpDir+":/workspace",
-		"-w", "/workspace",
 		image,
-		"cloche-agent", ".cloche/doctor-test.cloche",
+		"cloche-agent", "--version",
 	)
 
 	var out bytes.Buffer
@@ -666,9 +645,20 @@ func (dr *doctorRunner) checkAgentRoundtrip() checkResult {
 		}
 	}
 
+	agentVersion := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(out.String()), "cloche-agent"))
+	if agentVersion != version.Version() {
+		return checkResult{
+			label:  label,
+			status: checkWarning,
+			detail: fmt.Sprintf("image agent is %s but host is %s", agentVersion, version.Version()),
+			remediation: "The agent baked into " + image + " is out of date.\n" +
+				"Rebuild the project image (a new run rebuilds it automatically, or run 'make install').",
+		}
+	}
+
 	return checkResult{
 		label:  label,
 		status: checkOK,
-		detail: fmt.Sprintf("agent responded in %v", elapsed.Round(time.Second)),
+		detail: fmt.Sprintf("agent %s responded in %v", agentVersion, elapsed.Round(time.Second)),
 	}
 }
