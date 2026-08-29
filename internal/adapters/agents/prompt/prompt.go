@@ -29,6 +29,7 @@ type Adapter struct {
 	ExplicitArgs       []string // if non-nil, overrides default args for all commands
 	RunID              string
 	TaskID             string                 // task ID for runtime state paths (.cloche/runs/<task-id>/)
+	AttemptID          string                 // attempt ID; with TaskID, lets the adapter derive the per-attempt output dir
 	StatusWriter       *protocol.StatusWriter // optional: streams live output lines
 	ResumeConversation bool                   // when true, resume previous conversation instead of starting new one
 	UsageCommand       string                 // optional: shell command to run after step to capture token usage JSON
@@ -36,7 +37,7 @@ type Adapter struct {
 	ExtraEnv           []string               // additional KEY=VALUE env vars injected into the agent process
 	KV                 KVReader               // optional: KV store for {{ $var }} lookups; nil disables non-builtin vars
 	KVWriter           KVWriter               // optional: persists Claude's session_id so a later park+resume can `claude --resume`
-	OutputDir          string                 // directory for step output logs and history; empty = <workDir>/.cloche/output (per-run container workspace layout). Host runs must set a per-attempt dir: workDir is the shared project dir there, and same-named steps of concurrent runs would interleave in one file.
+	OutputDir          string                 // directory for step output logs and history. Empty = derive <workDir>/.cloche/logs/<TaskID>/<AttemptID> when both IDs are set (the per-attempt layout every host-side reader uses), else <workDir>/.cloche/output. In-container callers MUST pin this to the workspace's .cloche/output: that path is the container's public surface (daemon extraction, feedback flag, session streaming), and the container adapter has task/attempt IDs set too, so the derived default would move logs where nothing looks.
 }
 
 func New() *Adapter {
@@ -253,20 +254,35 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	// standalone CLOCHE_RESULT marker lines first: this file feeds later
 	// steps' {previous_output} prompts, and re-injected markers could be
 	// echoed into a future transcript and picked up by the classifier.
-	outputDir := a.OutputDir
-	if outputDir == "" {
-		outputDir = filepath.Join(workDir, ".cloche", "output")
-	}
+	outputDir, legacyLayout := a.resolveOutputDir(workDir)
 	_, cleanStdout, _ := protocol.ExtractResult(lastStdout)
 	if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
 		appendStepLog(filepath.Join(outputDir, step.Name+".log"), cleanStdout)
 	}
-	if a.OutputDir != "" {
-		protocol.AppendHistoryTo(filepath.Join(a.OutputDir, "history.log"), step.Name, result, true, nil)
-	} else {
+	if legacyLayout {
 		protocol.AppendHistory(workDir, step.Name, result, true, nil)
+	} else {
+		protocol.AppendHistoryTo(filepath.Join(outputDir, "history.log"), step.Name, result, true, nil)
 	}
 	return domain.StepResult{Result: result, Usage: lastUsage}, nil
+}
+
+// resolveOutputDir returns the directory for step output logs and whether the
+// legacy shared layout (<workDir>/.cloche/output + .cloche/history.log) is in
+// effect. An explicit OutputDir always wins (host runs pass their per-attempt
+// dir, or a temp dir for taskless runs; containers pin .cloche/output). With
+// no override, the per-attempt logs dir is derived from TaskID/AttemptID so a
+// caller that forgets to set OutputDir gets partitioned logs, not the shared
+// file that caused cross-run contamination (cloche-1or8).
+func (a *Adapter) resolveOutputDir(workDir string) (dir string, legacyLayout bool) {
+	legacyDir := filepath.Join(workDir, ".cloche", "output")
+	if a.OutputDir != "" {
+		return a.OutputDir, a.OutputDir == legacyDir
+	}
+	if a.TaskID != "" && a.AttemptID != "" {
+		return filepath.Join(workDir, ".cloche", "logs", a.TaskID, a.AttemptID), false
+	}
+	return legacyDir, true
 }
 
 // buildResumePrompt returns the Claude session id to resume (empty if none

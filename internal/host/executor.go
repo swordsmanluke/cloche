@@ -352,9 +352,12 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 
 	adapter.RunID = e.HostRunID
 	adapter.TaskID = e.TaskID
-	// Route the adapter's step log and history into the per-attempt output dir.
-	// The default (<workDir>/.cloche/output) is only safe in containers; on the
-	// host workDir is the shared project dir, and same-named steps of concurrent
+	adapter.AttemptID = e.AttemptID
+	// Route the adapter's step log and history into this run's output dir. The
+	// adapter could derive the per-attempt logs dir from task/attempt itself,
+	// but the explicit path also covers taskless runs, whose output dir is a
+	// temp dir outside the project (see runner.go). On the host the shared
+	// .cloche/output default is never safe: same-named steps of concurrent
 	// runs would append to one file and contaminate each other's logs and
 	// {previous_output} prompts (cloche-1or8).
 	adapter.OutputDir = e.OutputDir

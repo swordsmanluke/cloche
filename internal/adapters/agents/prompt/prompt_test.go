@@ -228,6 +228,82 @@ func TestExecuteWritesOutputFile(t *testing.T) {
 	assert.Contains(t, string(data), "agent output")
 }
 
+// TestExecuteDerivesPerAttemptOutputDir verifies the safe default for callers
+// that set task/attempt IDs but no explicit OutputDir: output and history land
+// in the per-attempt logs dir, not the shared .cloche/output layout that
+// caused cross-run contamination (cloche-1or8).
+func TestExecuteDerivesPerAttemptOutputDir(t *testing.T) {
+	dir := t.TempDir()
+
+	a := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output'"},
+		RunID:        "test-run",
+		TaskID:       "test-task",
+		AttemptID:    "test-attempt",
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Build something"},
+	}
+
+	sr, err := a.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result)
+
+	attemptDir := filepath.Join(dir, ".cloche", "logs", "test-task", "test-attempt")
+	data, err := os.ReadFile(filepath.Join(attemptDir, "implement.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "agent output")
+
+	hist, err := os.ReadFile(filepath.Join(attemptDir, "history.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(hist), "step:implement result:success")
+
+	// The shared layout must not be touched.
+	_, statErr := os.Stat(filepath.Join(dir, ".cloche", "output", "implement.log"))
+	assert.True(t, os.IsNotExist(statErr))
+	_, statErr = os.Stat(filepath.Join(dir, ".cloche", "history.log"))
+	assert.True(t, os.IsNotExist(statErr))
+}
+
+// TestExecutePinnedOutputDirKeepsLegacyHistory verifies the container
+// configuration: OutputDir explicitly pinned to <workDir>/.cloche/output (as
+// the in-container session does) keeps history at the legacy
+// .cloche/history.log location even when task/attempt IDs are set.
+func TestExecutePinnedOutputDirKeepsLegacyHistory(t *testing.T) {
+	dir := t.TempDir()
+
+	a := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output'"},
+		TaskID:       "test-task",
+		AttemptID:    "test-attempt",
+		OutputDir:    filepath.Join(dir, ".cloche", "output"),
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Build something"},
+	}
+
+	_, err := a.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filepath.Join(dir, ".cloche", "output", "implement.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "agent output")
+
+	hist, err := os.ReadFile(filepath.Join(dir, ".cloche", "history.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(hist), "step:implement result:success")
+}
+
 func TestPromptAdapter_IncrementsAttemptCount(t *testing.T) {
 	dir := t.TempDir()
 	taskID := "test-task"

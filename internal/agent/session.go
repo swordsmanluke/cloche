@@ -98,13 +98,24 @@ func (s *Session) Run(ctx context.Context) error {
 	sw := protocol.NewStatusWriter(gsw)
 
 	// Set up adapters, wiring them to the gRPC status writer for live log streaming.
+	// OutputDir is pinned to the workspace's .cloche/output: that layout is the
+	// container's public surface (daemon extraction, feedback flag, this
+	// session's own streaming offsets), and it is already isolated per run
+	// because each run gets a fresh container. Without the pin the adapters
+	// would derive a per-attempt dir from TaskID/AttemptID, where none of the
+	// container-side readers look.
+	containerOutputDir := filepath.Join(s.cfg.WorkDir, ".cloche", "output")
+
 	genericAdapter := generic.New()
 	genericAdapter.RunID = s.cfg.RunID
+	genericAdapter.OutputDir = containerOutputDir
 	genericAdapter.StatusWriter = sw
 
 	promptAdapter := prompt.New()
 	promptAdapter.RunID = s.cfg.RunID
 	promptAdapter.TaskID = s.cfg.TaskID
+	promptAdapter.AttemptID = s.cfg.AttemptID
+	promptAdapter.OutputDir = containerOutputDir
 	promptAdapter.StatusWriter = sw
 
 	// Apply agent command override from environment.
