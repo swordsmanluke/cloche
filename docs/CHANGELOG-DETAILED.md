@@ -1,5 +1,23 @@
 # Cloche Detailed Changelog
 
+## v3.20.1 — 2026-08-29
+
+### Breaking
+
+- `ef725cf` Removed the self-evolution system: the `internal/evolution` package, its daemon and gRPC wiring, the `EvolutionStore` port and SQLite implementation, and the `[evolution]` config block / `evolution_enabled` project-info field. The reserved proto field is never reused. Migration: remove `[evolution]` from `.cloche/config.toml`; existing databases keep their harmless `evolution_log` table.
+
+### Features
+
+- `412e059` `cloche init --new` now embeds the `docs/init/` tutorial series and writes it to `.cloche/docs/init/` in new project scaffolds, updating generated templates, next-steps output, and doctor/help text to reference the bundled paths.
+
+### Fixes
+
+- `166c40d` `cloche doctor`'s agent roundtrip check has been replaced with an agent-binary check (`cloche-agent --version` inside a container from the project image), fixing a check that always failed under the v3 stream-executor agent because it required `CLOCHE_ADDR`. The doctor epilogue also now distinguishes warnings from failures.
+
+### Internal
+
+- `1a7d908` Finished renaming "human" steps to "poll" steps throughout the codebase (domain types, SQLite store/table, host executor, engine, proto comments, docs, and the dogfood demo workflow); the on-disk `poll` DSL keyword and step config were unchanged, this only cleans up leftover internal naming, with a migration that preserves in-flight poll state.
+
 ## v3.19.8 — 2026-08-14
 
 ### Fixes

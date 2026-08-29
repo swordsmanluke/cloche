@@ -1,5 +1,19 @@
 # Cloche Changelog
 
+## v3.20.1 — 2026-08-29
+
+### Breaking changes
+
+- The self-evolution system has been removed. Migration: delete any `[evolution]` block from your `.cloche/config.toml` — it is no longer read; `cloche project` no longer prints an `evolution:` line.
+
+### Features
+
+- `cloche init --new` now bundles the `docs/init/` tutorial series into `.cloche/docs/init/` in the generated scaffold, so getting-started docs are available offline next to the files they describe.
+
+### Notable fixes
+
+- `cloche doctor`'s agent check no longer always fails with "CLOCHE_ADDR not set"; it now checks the baked-in `cloche-agent` binary in the project's container image and warns on a version mismatch instead.
+
 ## v3.19.8 — 2026-08-14
 
 ### Notable fixes
