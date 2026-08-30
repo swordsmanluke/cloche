@@ -1,5 +1,11 @@
 # Cloche Changelog
 
+## v3.20.2 — 2026-08-30
+
+### Notable fixes
+
+- Host-side agent steps in the same project no longer contaminate each other's logs when runs execute concurrently: same-named steps from different runs used to append to one shared `.cloche/output/<step>.log` file, interleaving output and re-injecting stale results into later `{previous_output}` prompts.
+
 ## v3.20.1 — 2026-08-29
 
 ### Breaking changes

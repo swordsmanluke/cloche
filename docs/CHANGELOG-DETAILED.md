@@ -1,5 +1,15 @@
 # Cloche Detailed Changelog
 
+## v3.20.2 — 2026-08-30
+
+### Fixes
+
+- `315d3f2` Host executor step logs are now partitioned per attempt (`.cloche/logs/<task>/<attempt>/`) instead of staged in a shared `<project>/.cloche/output/<step>.log` keyed only by step name; concurrent runs with same-named steps no longer interleave output, inherit prior runs' transcripts, or leak stale `CLOCHE_RESULT` markers into later `{previous_output}` prompts (cloche-1or8).
+
+### Internal
+
+- `4c68660` When an agent adapter's `OutputDir` is left unset but task and attempt IDs are present, it now derives the per-attempt logs directory automatically instead of falling back to the shared legacy layout; the in-container session and host executor still pin their output dirs explicitly.
+
 ## v3.20.1 — 2026-08-29
 
 ### Breaking
