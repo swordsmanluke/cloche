@@ -3457,6 +3457,7 @@ func (s *ClocheServer) daemonExecutorFor(projectDir, taskID, attemptID string) e
 		Pool:                  s.pool,
 		Store:                 s.store,
 		LogStore:              s.logStore,
+		Captures:              s.captures,
 		LogBroadcast:          s.logBroadcast,
 		ProjectDir:            projectDir,
 		ContainerSeed:         seed,

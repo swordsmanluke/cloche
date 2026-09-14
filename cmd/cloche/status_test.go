@@ -24,6 +24,7 @@ type statusMockClient struct {
 	taskErr         error
 	usageResp       *pb.GetUsageResponse
 	statusResp      *pb.GetStatusResponse
+	statusRespByID  map[string]*pb.GetStatusResponse
 }
 
 func (m *statusMockClient) GetVersion(_ context.Context, _ *pb.GetVersionRequest, _ ...grpc.CallOption) (*pb.GetVersionResponse, error) {
@@ -65,7 +66,12 @@ func (m *statusMockClient) GetUsage(_ context.Context, _ *pb.GetUsageRequest, _ 
 	return &pb.GetUsageResponse{}, nil
 }
 
-func (m *statusMockClient) GetStatus(_ context.Context, _ *pb.GetStatusRequest, _ ...grpc.CallOption) (*pb.GetStatusResponse, error) {
+func (m *statusMockClient) GetStatus(_ context.Context, req *pb.GetStatusRequest, _ ...grpc.CallOption) (*pb.GetStatusResponse, error) {
+	if m.statusRespByID != nil {
+		if r, ok := m.statusRespByID[req.Id]; ok {
+			return r, nil
+		}
+	}
 	if m.statusResp != nil {
 		return m.statusResp, nil
 	}
@@ -279,6 +285,73 @@ func TestCmdStatusTaskLatest_WithAttempt(t *testing.T) {
 	}
 	if !strings.Contains(out, "succeeded") {
 		t.Errorf("expected result, got:\n%s", out)
+	}
+}
+
+// TestCmdStatusTaskLatest_TokensScopedToTask guards against regressing to the
+// old GetUsage-based implementation, which pooled every task/run/retry in the
+// project into one number: two different tasks would print an identical
+// "Tokens:" line. Here the (unused) usageResp carries a much larger,
+// unrelated project-wide total; the printed total must come only from this
+// task's own attempts (summed via GetStatus), not from usageResp.
+func TestCmdStatusTaskLatest_TokensScopedToTask(t *testing.T) {
+	client := &statusMockClient{
+		taskResp: &pb.GetTaskResponse{
+			TaskId:     "TASK-42",
+			Title:      "my task",
+			Status:     "succeeded",
+			ProjectDir: "/fake/project",
+			Attempts: []*pb.AttemptSummary{
+				{AttemptId: "attempt-old", Result: "failed", EndedAt: "2026-03-18 10:00:00 +0000 UTC"},
+				{AttemptId: "attempt-new", Result: "succeeded", EndedAt: "2026-03-19 11:00:00 +0000 UTC"},
+			},
+		},
+		// Deliberately huge and from unrelated agents/tasks: if the old
+		// project-wide GetUsage path were still used, this is what would print.
+		usageResp: &pb.GetUsageResponse{
+			Summaries: []*pb.UsageSummary{
+				{AgentName: "unrelated-agent", InputTokens: 900_000, OutputTokens: 900_000, TotalTokens: 1_800_000},
+			},
+		},
+		statusRespByID: map[string]*pb.GetStatusResponse{
+			"attempt-old": {
+				StepExecutions: []*pb.StepExecutionStatus{
+					{StepName: "implement", AgentName: "claude", InputTokens: 100, OutputTokens: 50},
+				},
+			},
+			"attempt-new": {
+				StepExecutions: []*pb.StepExecutionStatus{
+					{StepName: "implement", AgentName: "claude", InputTokens: 200, OutputTokens: 75},
+					{StepName: "review", AgentName: "codex", InputTokens: 30, OutputTokens: 20},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	ctx := context.Background()
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	cmdStatusTaskLatest(ctx, client, "TASK-42")
+	w.Close()
+	os.Stdout = oldStdout
+	buf.ReadFrom(r)
+
+	out := buf.String()
+	// Expected total: (100+50) + (200+75) + (30+20) = 475, across both attempts.
+	if !strings.Contains(out, "Tokens:  475") {
+		t.Errorf("expected task-scoped token total of 475, got:\n%s", out)
+	}
+	if strings.Contains(out, "1,800,000") || strings.Contains(out, "unrelated-agent") {
+		t.Errorf("expected task-scoped tokens, not project-wide GetUsage total, got:\n%s", out)
+	}
+	if !strings.Contains(out, "claude: 425") {
+		t.Errorf("expected claude agent breakdown of 425 (150 + 275), got:\n%s", out)
+	}
+	if !strings.Contains(out, "codex: 50") {
+		t.Errorf("expected codex agent breakdown of 50, got:\n%s", out)
 	}
 }
 

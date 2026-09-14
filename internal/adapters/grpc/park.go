@@ -138,6 +138,7 @@ func (s *ClocheServer) daemonExecutorForResume(projectDir, taskID, attemptID, pa
 		Pool:                  s.pool,
 		Store:                 s.store,
 		LogStore:              s.logStore,
+		Captures:              s.captures,
 		LogBroadcast:          s.logBroadcast,
 		ProjectDir:            projectDir,
 		ContainerSeed:         seed,

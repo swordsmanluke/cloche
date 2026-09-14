@@ -53,6 +53,11 @@ type DaemonExecutor struct {
 	// UI can serve them by step name. Optional: indexing is skipped when nil.
 	logStore ports.LogStore
 
+	// captures persists per-step token usage so `cloche status`/GetUsage see
+	// steps run inside nested host sub-workflows. Optional: persistence is
+	// skipped when nil (matches pre-existing behavior in that case).
+	captures ports.CaptureStore
+
 	// logBroadcast is used to publish live log lines for nested sub-workflow
 	// steps so that cloche logs -f and the web UI show them in real time.
 	// Optional: broadcasting is skipped when nil.
@@ -123,6 +128,7 @@ type DaemonExecutorConfig struct {
 	Pool         *docker.ContainerPool
 	Store        ports.RunStore
 	LogStore     ports.LogStore
+	Captures     ports.CaptureStore
 	LogBroadcast *logstream.Broadcaster
 	ProjectDir   string
 	TaskID       string
@@ -163,6 +169,7 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 		pool:                  cfg.Pool,
 		store:                 cfg.Store,
 		logStore:              cfg.LogStore,
+		captures:              cfg.Captures,
 		logBroadcast:          cfg.LogBroadcast,
 		projectDir:            cfg.ProjectDir,
 		taskID:                cfg.TaskID,
@@ -384,10 +391,15 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 	eng := engine.New(d)
 	// For host sub-workflows attach a lightweight status handler so the inner
 	// steps' events (start, output, completion) are broadcast live to the
-	// parent run's log stream and can be read back from full.log.
-	if targetWF.Location == domain.LocationHost && d.logBroadcast != nil && d.hostExec != nil && d.hostExec.HostRunID != "" {
+	// parent run's log stream, can be read back from full.log, and — same as
+	// top-level host steps — have their token usage persisted against the
+	// host run (see innerHostStatusHandler.OnStepComplete; without this,
+	// steps inside a nested host sub-workflow never show up in
+	// GetStatus/GetUsage at all, undercounting per-task/per-agent totals).
+	if targetWF.Location == domain.LocationHost && d.hostExec != nil && d.hostExec.HostRunID != "" {
 		eng.SetStatusHandler(&innerHostStatusHandler{
 			logBroadcast: d.logBroadcast,
+			captures:     d.captures,
 			hostRunID:    d.hostExec.HostRunID,
 			outputDir:    filepath.Join(d.projectDir, ".cloche", "logs", d.taskID, d.attemptID),
 		})
@@ -884,14 +896,24 @@ func (d *DaemonExecutor) aggregateHostSubWorkflowLogs(workflowStepName string, r
 // innerHostStatusHandler is a lightweight engine.StatusHandler attached to the
 // engine running a host sub-workflow. It broadcasts inner step events (start,
 // output, completion) to the parent run's log broadcaster so that live-stream
-// clients see the nested workflow activity in real time.
+// clients see the nested workflow activity in real time, and persists each
+// step's capture (including token usage) against the host run ID — mirroring
+// host.hostStatusHandler — so nested steps appear in GetStatus/GetUsage the
+// same as top-level host steps do.
 type innerHostStatusHandler struct {
 	logBroadcast *logstream.Broadcaster
+	captures     ports.CaptureStore
 	hostRunID    string
 	outputDir    string
 }
 
 func (h *innerHostStatusHandler) OnStepStart(_ *domain.Run, step *domain.Step) {
+	if h.captures != nil {
+		_ = h.captures.SaveCapture(context.Background(), h.hostRunID, &domain.StepExecution{
+			StepName:  step.Name,
+			StartedAt: time.Now(),
+		})
+	}
 	if h.logBroadcast == nil {
 		return
 	}
@@ -903,21 +925,30 @@ func (h *innerHostStatusHandler) OnStepStart(_ *domain.Run, step *domain.Step) {
 	})
 }
 
-func (h *innerHostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, result string, _ *domain.TokenUsage) {
+func (h *innerHostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, result string, usage *domain.TokenUsage) {
+	now := time.Now()
+	if h.captures != nil {
+		_ = h.captures.SaveCapture(context.Background(), h.hostRunID, &domain.StepExecution{
+			StepName:    step.Name,
+			Result:      result,
+			CompletedAt: now,
+			Usage:       usage,
+		})
+	}
 	if h.logBroadcast == nil {
 		return
 	}
 	logPath := filepath.Join(h.outputDir, step.Name+".log")
 	if data, err := os.ReadFile(logPath); err == nil && len(data) > 0 {
 		h.logBroadcast.Publish(h.hostRunID, logstream.LogLine{
-			Timestamp: time.Now().Format(time.RFC3339),
+			Timestamp: now.Format(time.RFC3339),
 			Type:      "script",
 			Content:   string(data),
 			StepName:  step.Name,
 		})
 	}
 	h.logBroadcast.Publish(h.hostRunID, logstream.LogLine{
-		Timestamp: time.Now().Format(time.RFC3339),
+		Timestamp: now.Format(time.RFC3339),
 		Type:      "status",
 		Content:   "step_completed: " + step.Name + " -> " + result,
 		StepName:  step.Name,

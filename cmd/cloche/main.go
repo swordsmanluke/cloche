@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -452,36 +453,49 @@ func cmdStatusTaskLatest(ctx context.Context, client pb.ClocheServiceClient, tas
 	}
 
 	// Show token usage across all attempts for this task.
-	printTaskTokenUsage(ctx, client, taskID, resp.ProjectDir)
+	printTaskTokenUsage(ctx, client, resp.Attempts)
 }
 
-// printTaskTokenUsage fetches and displays total token consumption for all
-// attempts of a task by querying the status of each attempt's run.
-func printTaskTokenUsage(ctx context.Context, client pb.ClocheServiceClient, taskID, projectDir string) {
-	usageResp, err := client.GetUsage(ctx, &pb.GetUsageRequest{
-		ProjectDir: projectDir,
-	})
-	if err != nil || len(usageResp.Summaries) == 0 {
-		return
-	}
-
+// printTaskTokenUsage displays total token consumption across all attempts of
+// a task by fetching each attempt's step executions (via GetStatus, scoped by
+// attempt ID) and summing their per-step token counts.
+//
+// This deliberately avoids GetUsage: that RPC only filters by project_dir (and
+// optionally agent_name/time window), with no task or attempt scoping, so it
+// returns the sum across every task/run/retry ever executed in the project —
+// not this task's tokens. Using it here previously made `cloche status <id>`
+// print the same project-wide total for every task in the project.
+func printTaskTokenUsage(ctx context.Context, client pb.ClocheServiceClient, attempts []*pb.AttemptSummary) {
 	var totalIn, totalOut int64
 	agentTotals := map[string]int64{}
-	for _, s := range usageResp.Summaries {
-		totalIn += s.InputTokens
-		totalOut += s.OutputTokens
-		agentTotals[s.AgentName] = s.TotalTokens
+	for _, a := range attempts {
+		if a.AttemptId == "" {
+			continue
+		}
+		statusResp, err := client.GetStatus(ctx, &pb.GetStatusRequest{Id: a.AttemptId})
+		if err != nil {
+			continue
+		}
+		for _, se := range statusResp.StepExecutions {
+			totalIn += se.InputTokens
+			totalOut += se.OutputTokens
+			agentTotals[se.AgentName] += se.InputTokens + se.OutputTokens
+		}
 	}
 	total := totalIn + totalOut
 	if total == 0 {
 		return
 	}
 
-	// Format agent breakdown.
+	// Format agent breakdown, sorted for stable output.
 	var agents []string
 	for agent, toks := range agentTotals {
+		if agent == "" {
+			continue
+		}
 		agents = append(agents, fmt.Sprintf("%s: %s", agent, formatTokenCount(toks)))
 	}
+	sort.Strings(agents)
 	breakdown := strings.Join(agents, " / ")
 	if breakdown != "" {
 		fmt.Printf("Tokens:  %s (%s)\n", formatTokenCount(total), breakdown)

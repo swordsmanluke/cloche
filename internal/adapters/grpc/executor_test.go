@@ -1191,6 +1191,134 @@ func TestDaemonExecutor_AggregateHostSubWorkflowLogs_SkipsWhenNoTaskID(t *testin
 	assert.True(t, os.IsNotExist(err))
 }
 
+// fakeExecutorCaptureStore is a minimal in-memory ports.CaptureStore used to
+// verify DaemonExecutor/innerHostStatusHandler persist step captures (and
+// their token usage) rather than silently dropping them.
+type fakeExecutorCaptureStore struct {
+	mu    sync.Mutex
+	byRun map[string][]*domain.StepExecution
+}
+
+func (f *fakeExecutorCaptureStore) SaveCapture(_ context.Context, runID string, exec *domain.StepExecution) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.byRun == nil {
+		f.byRun = make(map[string][]*domain.StepExecution)
+	}
+	f.byRun[runID] = append(f.byRun[runID], exec)
+	return nil
+}
+
+func (f *fakeExecutorCaptureStore) GetCaptures(_ context.Context, runID string) ([]*domain.StepExecution, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.byRun[runID], nil
+}
+
+// TestInnerHostStatusHandler_PersistsCaptureWithUsage verifies that
+// innerHostStatusHandler saves a capture (including token usage) against the
+// *outer* host run ID for every inner step of a nested host sub-workflow.
+// Before this fix, OnStepComplete only broadcast log lines and never called
+// SaveCapture, so token usage for steps inside a host workflow_name/run:
+// sub-workflow was silently dropped from GetStatus/GetUsage entirely.
+func TestInnerHostStatusHandler_PersistsCaptureWithUsage(t *testing.T) {
+	captures := &fakeExecutorCaptureStore{}
+	h := &innerHostStatusHandler{
+		captures:  captures,
+		hostRunID: "outer-host-run",
+		outputDir: t.TempDir(),
+	}
+
+	step := &domain.Step{Name: "implement", Type: domain.StepTypeAgent}
+	h.OnStepStart(nil, step)
+	usage := &domain.TokenUsage{InputTokens: 123, OutputTokens: 45, AgentName: "claude"}
+	h.OnStepComplete(nil, step, "success", usage)
+
+	saved := captures.byRun["outer-host-run"]
+	require.Len(t, saved, 2, "expected a start capture and a complete capture")
+	assert.Equal(t, "implement", saved[0].StepName)
+	assert.Nil(t, saved[0].Usage)
+
+	assert.Equal(t, "implement", saved[1].StepName)
+	assert.Equal(t, "success", saved[1].Result)
+	require.NotNil(t, saved[1].Usage)
+	assert.Equal(t, int64(123), saved[1].Usage.InputTokens)
+	assert.Equal(t, int64(45), saved[1].Usage.OutputTokens)
+	assert.Equal(t, "claude", saved[1].Usage.AgentName)
+}
+
+// TestDaemonExecutor_WorkflowStep_HostSubWorkflowPersistsCapture is an
+// end-to-end check that executeWorkflowStep wires the captures store and
+// host run ID into innerHostStatusHandler, so a step inside a nested host
+// sub-workflow is recorded against the outer host run (matching how
+// top-level host steps are captured), rather than never appearing in
+// GetStatus/GetUsage.
+func TestDaemonExecutor_WorkflowStep_HostSubWorkflowPersistsCapture(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	subWF := &domain.Workflow{
+		Name:     "develop",
+		Location: domain.LocationHost,
+		Steps: map[string]*domain.Step{
+			"build": {
+				Name:    "build",
+				Type:    domain.StepTypeScript,
+				Results: []string{"success", "fail"},
+				Config:  map[string]string{"run": "echo built"},
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: "build", Result: "success", To: domain.StepDone},
+			{From: "build", Result: "fail", To: domain.StepAbort},
+		},
+		EntryStep: "build",
+	}
+
+	allWFs := map[string]*domain.Workflow{"develop": subWF}
+
+	hostExec := &host.Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  tmpDir + "/output",
+		HostRunID:  "outer-host-run",
+	}
+
+	captures := &fakeExecutorCaptureStore{}
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		HostExec:   hostExec,
+		Captures:   captures,
+		ProjectDir: tmpDir,
+		TaskID:     "task1",
+		AttemptID:  "att1",
+		AllWFs:     allWFs,
+	})
+
+	step := &domain.Step{
+		Name:    "dispatch",
+		Type:    domain.StepTypeWorkflow,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"workflow_name": "develop"},
+	}
+
+	mainWF := buildHostWFForTest("main")
+	ctx := engine.WithWorkflow(context.Background(), mainWF)
+
+	result, err := de.Execute(ctx, step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result.Result)
+
+	saved := captures.byRun["outer-host-run"]
+	require.NotEmpty(t, saved, "expected the inner 'build' step to be captured against the outer host run")
+	var completed *domain.StepExecution
+	for _, s := range saved {
+		if s.StepName == "build" && s.Result != "" {
+			completed = s
+		}
+	}
+	require.NotNil(t, completed, "expected a completed capture for the inner 'build' step")
+	assert.Equal(t, "success", completed.Result)
+}
+
 // TestInnerHostStatusHandler_BroadcastsEvents verifies that the
 // innerHostStatusHandler publishes step_started, script content, and
 // step_completed events to the broadcaster under the given hostRunID.
