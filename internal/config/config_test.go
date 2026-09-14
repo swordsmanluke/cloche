@@ -206,12 +206,14 @@ func TestLoadIntentConfig(t *testing.T) {
 [intent]
 embedder = "ollama"
 model = "EmbeddingGemma-300M"
+scan_after_tasks = true
 `), 0644)
 
 	cfg, err := Load(dir)
 	require.NoError(t, err)
 	assert.Equal(t, "ollama", cfg.Intent.Embedder)
 	assert.Equal(t, "EmbeddingGemma-300M", cfg.Intent.Model)
+	assert.True(t, cfg.Intent.ScanAfterTasks)
 }
 
 func TestLoadIntentConfigDefaults(t *testing.T) {
@@ -221,6 +223,7 @@ func TestLoadIntentConfigDefaults(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "", cfg.Intent.Embedder)
 	assert.Equal(t, "", cfg.Intent.Model)
+	assert.False(t, cfg.Intent.ScanAfterTasks)
 }
 
 func TestLoadHelpChannelConfig(t *testing.T) {

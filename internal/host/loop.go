@@ -86,6 +86,7 @@ type Loop struct {
 	pollCoord           *PollCoordinator    // optional; drives poll step polling on each tick
 	pollStore           ports.PollStore     // optional; persists poll step poll state
 	helpArchiver        HelpArchiver        // optional; archives a task's help threads on success
+	postTaskScanner     PostTaskScanner     // optional; enqueues an intent-scan after a task succeeds
 	stopCh              chan struct{}
 	mu                  sync.Mutex
 	running             bool
@@ -195,6 +196,21 @@ type HelpArchiver interface {
 // threads when its attempt completes successfully.
 func (l *Loop) SetHelpArchiver(archiver HelpArchiver) {
 	l.helpArchiver = archiver
+}
+
+// PostTaskScanner enqueues an incremental intent-scan run after a task's
+// attempt succeeds (config intent.scan_after_tasks). Satisfied by an
+// adapter that dispatches the intent-scan host workflow.
+type PostTaskScanner interface {
+	EnqueueScan(ctx context.Context, projectDir, taskID string) error
+}
+
+// SetPostTaskScanner configures the PostTaskScanner invoked when a task's
+// attempt completes successfully. Leave unset (nil) to disable — the caller
+// is expected to only wire this in when intent.scan_after_tasks is on and
+// the project defines an intent-scan workflow.
+func (l *Loop) SetPostTaskScanner(scanner PostTaskScanner) {
+	l.postTaskScanner = scanner
 }
 
 // Start begins the orchestration loop. No-op if already running.
@@ -582,6 +598,12 @@ func (l *Loop) completeAttempt(attemptID string, state domain.RunState) {
 			log.Printf("orchestration loop: failed to archive help threads for task %s: %v", attempt.TaskID, err)
 		} else if n > 0 {
 			log.Printf("orchestration loop: archived %d help thread(s) for task %s", n, attempt.TaskID)
+		}
+	}
+
+	if result == domain.AttemptResultSucceeded && l.postTaskScanner != nil && attempt.TaskID != "" {
+		if err := l.postTaskScanner.EnqueueScan(ctx, l.config.ProjectDir, attempt.TaskID); err != nil {
+			log.Printf("orchestration loop: failed to enqueue intent-scan for task %s: %v", attempt.TaskID, err)
 		}
 	}
 }

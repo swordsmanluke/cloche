@@ -99,9 +99,12 @@ type RepositoryConfig struct {
 // Neither field is wired from config into embed.Resolve yet — that lands
 // with the daemon-side selection wiring — so the onnx adapter currently
 // reads its override via the CLOCHE_INTENT_MODEL env var directly.
+// ScanAfterTasks opts a project into an incremental intent-scan run after
+// each task's main orchestration attempt succeeds; default off.
 type IntentConfig struct {
-	Embedder string `toml:"embedder"`
-	Model    string `toml:"model"`
+	Embedder       string `toml:"embedder"`
+	Model          string `toml:"model"`
+	ScanAfterTasks bool   `toml:"scan_after_tasks"`
 }
 
 type Config struct {

@@ -901,6 +901,78 @@ func TestPhaseLoop_AttemptCompletedAsFailed(t *testing.T) {
 	assert.Equal(t, domain.AttemptResultFailed, attempts[0].Result)
 }
 
+type fakePostTaskScanner struct {
+	mu    sync.Mutex
+	calls []string // taskIDs
+}
+
+func (f *fakePostTaskScanner) EnqueueScan(ctx context.Context, projectDir, taskID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, taskID)
+	return nil
+}
+
+func (f *fakePostTaskScanner) called() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string{}, f.calls...)
+}
+
+func TestPhaseLoop_PostTaskScannerCalledOnSuccess(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	taskStore := newFakeTaskStore()
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{{ID: "task-1", Status: "open"}}, nil
+	}
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
+		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  2 * time.Second,
+	}, store, listTasksFn, mainFn)
+	loop.SetTaskStore(taskStore)
+	scanner := &fakePostTaskScanner{}
+	loop.SetPostTaskScanner(scanner)
+
+	loop.Start()
+	time.Sleep(200 * time.Millisecond)
+	loop.Stop()
+
+	assert.Equal(t, []string{"task-1"}, scanner.called())
+}
+
+func TestPhaseLoop_PostTaskScannerNotCalledOnFailure(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	taskStore := newFakeTaskStore()
+
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{{ID: "task-1", Status: "open"}}, nil
+	}
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
+		return &RunResult{RunID: "run-1", State: domain.RunStateFailed}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  2 * time.Second,
+	}, store, listTasksFn, mainFn)
+	loop.SetTaskStore(taskStore)
+	scanner := &fakePostTaskScanner{}
+	loop.SetPostTaskScanner(scanner)
+
+	loop.Start()
+	time.Sleep(200 * time.Millisecond)
+	loop.Stop()
+
+	assert.Empty(t, scanner.called())
+}
+
 func TestLegacyLoop_CreatesAttemptWhenTaskAssignerSet(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	taskStore := newFakeTaskStore()

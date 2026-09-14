@@ -3540,7 +3540,30 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	if s.helpRouter != nil {
 		loop.SetHelpArchiver(s.helpRouter)
 	}
+	if _, hasIntentScan := hostWFs["intent-scan"]; hasIntentScan {
+		if projCfg, err := config.Load(projectDir); err == nil && projCfg.Intent.ScanAfterTasks {
+			loop.SetPostTaskScanner(&intentScanTrigger{server: s})
+		}
+	}
 	return loop
+}
+
+// intentScanTrigger dispatches the intent-scan host workflow after a task's
+// attempt succeeds, when the project opts in via intent.scan_after_tasks
+// (see docs/plans/2026-09-13-intent-continuity-design.md, "Triggers").
+// Reuses runHostWorkflow so it gets the same task/attempt bookkeeping and
+// background dispatch as a user-initiated `cloche run intent-scan`.
+type intentScanTrigger struct {
+	server *ClocheServer
+}
+
+func (t *intentScanTrigger) EnqueueScan(ctx context.Context, projectDir, taskID string) error {
+	_, err := t.server.runHostWorkflow(ctx, &pb.RunWorkflowRequest{
+		ProjectDir:   projectDir,
+		WorkflowName: "intent-scan",
+		Title:        "Incremental intent scan (post-task)",
+	})
+	return err
 }
 
 // LoopRunning returns whether an orchestration loop is active and running for

@@ -56,18 +56,18 @@ const (
 // narrowed to one or more domains, optionally further narrowed by path globs
 // or languages.
 type Scope struct {
-	Level     ScopeLevel `yaml:"level"`
-	Domains   []string   `yaml:"domains,omitempty"`
-	Paths     []string   `yaml:"paths,omitempty"`
-	Languages []string   `yaml:"languages,omitempty"`
+	Level     ScopeLevel `yaml:"level" json:"level"`
+	Domains   []string   `yaml:"domains,omitempty" json:"domains,omitempty"`
+	Paths     []string   `yaml:"paths,omitempty" json:"paths,omitempty"`
+	Languages []string   `yaml:"languages,omitempty" json:"languages,omitempty"`
 }
 
 // Provenance records where a Requirement came from.
 type Provenance struct {
-	Kind        ProvenanceKind `yaml:"kind"`
-	Ref         string         `yaml:"ref"`
-	ExtractedAt time.Time      `yaml:"extracted_at"`
-	ExtractedBy string         `yaml:"extracted_by"`
+	Kind        ProvenanceKind `yaml:"kind" json:"kind"`
+	Ref         string         `yaml:"ref" json:"ref"`
+	ExtractedAt time.Time      `yaml:"extracted_at" json:"extracted_at"`
+	ExtractedBy string         `yaml:"extracted_by" json:"extracted_by"`
 }
 
 // Requirement is one durable statement of intent: a constraint or decision,
