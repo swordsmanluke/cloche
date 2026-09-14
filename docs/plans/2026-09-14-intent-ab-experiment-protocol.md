@@ -217,7 +217,7 @@ E1–E6 were filed in bead on 2026-09-14 after the 3.21.0 install was verified.
 on the local GPU with a human decision gate between them — executed manually
 per the Procedure section, not loop-claimable container work.
 
-**E1 — Experiment seed repo + frozen Bract spec** *(feature, no deps)*
+**E1 (`cloche-j3rg`) — Experiment seed repo + frozen Bract spec** *(feature, no deps)*
 `experiments/intent-ab/seed/` in this repo (arms are cloned out to standalone
 project dirs by the E5 driver; extraction stays within this project): project scaffold (Python, stdlib only),
 `DESIGN.md` containing the full Bract spec with the seven prior traps Q1–Q7 and
@@ -226,14 +226,14 @@ develop/host workflows, config.toml *without* arm-specific intent keys). Name
 collision already checked. Acceptance: `cloche validate` passes; spec covers
 every trap unambiguously; repo tagged `seed-v1` on freeze.
 
-**E2 — Task list with embedded drift constraints** *(task, after E1)*
+**E2 (`cloche-ccgl`) — Task list with embedded drift constraints** *(task, after E1)*
 The 12 dependency-ordered task definitions (lexer → … → polish), authored once,
 copied verbatim into both arms. Drift corrections D1–D5 embedded at their frozen
 positions (tasks 4/5/6/8/9) with frozen wording, phrased as offhand corrections
 inside otherwise-normal task descriptions. Acceptance: wording matches the
 protocol table; a dry `list-tasks` run emits the 12 tasks in order.
 
-**E3 — Hidden acceptance corpus + runner** *(feature, after E1)*
+**E3 (`cloche-fnn6`) — Hidden acceptance corpus + runner** *(feature, after E1)*
 ~48 Bract programs with expected stdout/stderr/exit codes: ≥2 per prior trap
 (incl. negative-operand division, side-effect-visible `and`/`or`) plus ~32
 general-coverage. Runner script executes the corpus against a repo's `main` and
@@ -242,7 +242,7 @@ seed repo (`experiments/intent-ab/eval/`), never copied into an arm. Acceptance:
 reference implementation (written for this purpose, also kept out of the arms)
 passes 48/48; a deliberately Lox-prior implementation scores ≈0 on traps.
 
-**E4 — Bonsai executor wrapper** *(feature, no deps)*
+**E4 (`cloche-usjb`) — Bonsai executor wrapper** *(feature, no deps)*
 `agent_command` CLI driving bonsai-8b-16k through host Ollama's
 OpenAI-compatible endpoint (candidate: aider non-interactive; else a minimal
 edit-loop driver). Bakes in the spike's bonsai rules: temperature > 0, capped
@@ -251,7 +251,7 @@ on empty content. Container networking via host-gateway + `network_allow`.
 Acceptance: from inside a cloche container, the wrapper completes a trivial
 scripted edit task against a fixture repo three times in a row.
 
-**E5 — Arm configs + run orchestration** *(feature, after E1, E2, E4)*
+**E5 (`cloche-1lk0`) — Arm configs + run orchestration** *(feature, after E1, E2, E4)*
 Per-arm overlays (A: no intent dir, `scan_after_tasks = false`; B: defaults +
 `intent.token_budget = 1000`) and a driver script: clone seed at `seed-v1`,
 apply overlay, start loop, run to task-list exhaustion or budget/wall cap,
@@ -260,7 +260,7 @@ context-composition for B). Contamination asserts: arm A contains no
 `.cloche/intent/` at any point; hidden corpus absent from both trees.
 Acceptance: end-to-end smoke run of both arms against a 2-task stub list.
 
-**E6 — Audit + judging tooling** *(feature, after E2, E3)*
+**E6 (`cloche-git7`) — Audit + judging tooling** *(feature, after E2, E3)*
 Automated checkers for D1–D5 and the standing-constraint audit (regex/AST/
 behavior per constraint, emitting per-constraint verdicts as JSON); blinded-
 judging prep script (strip `.cloche/` and git history from copies, randomize
