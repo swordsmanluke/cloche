@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -230,6 +231,19 @@ func TestGenerateCompletionScripts_ZshContent(t *testing.T) {
 // TestGenerateCompletionScripts_WorkflowNames verifies workflow name completions
 // when .cloche/ directory is present.
 func TestGenerateCompletionScripts_WorkflowNames(t *testing.T) {
+	// Isolate CLOCHE_ADDR so this test cannot consult a live daemon (e.g. one
+	// reachable via a host.docker.internal-style address inherited from the
+	// environment). Reserve a local port and close it immediately so any
+	// connection attempt fails fast with "connection refused" instead of
+	// hitting a real daemon or hanging until the RPC timeout.
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("net.Listen: %v", err)
+	}
+	addr := lis.Addr().String()
+	lis.Close()
+	t.Setenv("CLOCHE_ADDR", addr)
+
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
 	os.Chdir(dir)

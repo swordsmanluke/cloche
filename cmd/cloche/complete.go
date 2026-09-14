@@ -74,14 +74,40 @@ func resolveCompletions(index int, words []string) []string {
 		return nil
 	}
 
-	// Try daemon first.
+	// Static completions (local .cloche/ workflows, built-ins, flags) are
+	// always available and take precedence, since the daemon may be
+	// answering for a different filesystem view of the project (e.g. a
+	// daemon reached over CLOCHE_ADDR from inside a container doesn't see
+	// the container's .cloche/ directory).
+	static := staticCompletions(words[1], index, words, cur)
+
 	cwd, _ := os.Getwd()
-	if dynamic := queryDaemonCompletions(index, words, cwd); dynamic != nil {
-		return dynamic
+	dynamic := queryDaemonCompletions(index, words, cwd)
+	if dynamic == nil {
+		return static
 	}
 
-	// Static fallback.
-	return staticCompletions(words[1], index, words, cur)
+	return mergeCompletionsUnique(static, dynamic)
+}
+
+// mergeCompletionsUnique combines two completion lists, preserving order and
+// dropping duplicates. Entries from primary are kept ahead of secondary.
+func mergeCompletionsUnique(primary, secondary []string) []string {
+	seen := make(map[string]bool, len(primary)+len(secondary))
+	out := make([]string, 0, len(primary)+len(secondary))
+	for _, s := range primary {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	for _, s := range secondary {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // queryDaemonCompletions contacts the daemon and calls the Complete RPC.
