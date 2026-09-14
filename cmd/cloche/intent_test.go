@@ -57,6 +57,71 @@ func TestRunIntentCollectSources_QuietThenNew(t *testing.T) {
 	}
 }
 
+func TestExcludedIntentTrackingSteps_StepLevel(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	if err := os.MkdirAll(clocheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wfSrc := `workflow develop {
+  step implement {
+    run = "true"
+    results = [success, fail]
+  }
+
+  step sanitize {
+    run = "true"
+    intent_tracking = false
+    results = [success, fail]
+  }
+
+  implement:success -> sanitize
+  implement:fail -> abort
+  sanitize:success -> done
+  sanitize:fail -> abort
+}
+`
+	if err := os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(wfSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	excluded := excludedIntentTrackingSteps(dir)
+	if !excluded["sanitize"] {
+		t.Fatalf("expected sanitize to be excluded, got %v", excluded)
+	}
+	if excluded["implement"] {
+		t.Fatalf("did not expect implement to be excluded, got %v", excluded)
+	}
+}
+
+func TestExcludedIntentTrackingSteps_WorkflowLevel(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	if err := os.MkdirAll(clocheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wfSrc := `workflow develop {
+  intent_tracking = false
+
+  step implement {
+    run = "true"
+    results = [success, fail]
+  }
+
+  implement:success -> done
+  implement:fail -> abort
+}
+`
+	if err := os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(wfSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	excluded := excludedIntentTrackingSteps(dir)
+	if !excluded["implement"] {
+		t.Fatalf("expected implement to be excluded via workflow-level intent_tracking = false, got %v", excluded)
+	}
+}
+
 func TestRunIntentApplyReconcile(t *testing.T) {
 	dir := t.TempDir()
 	reconcile := []map[string]any{
@@ -406,7 +471,7 @@ func TestIntentPreview_InjectionOffForStep(t *testing.T) {
 	wfSrc := `workflow develop {
   step implement {
     prompt = file("prompts/implement.md")
-    intent = "off"
+    intent_tracking = false
     results = [success, fail]
   }
 

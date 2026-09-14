@@ -215,18 +215,22 @@ told.
 
 ```
 workflow "develop" {
-  intent = "off"
+  intent_tracking = false
   ...
 }
 ```
 
 ```
 step implement {
-  prompt  = file(".cloche/prompts/implement.md")
-  intent  = "off"
-  results = [success, fail]
+  prompt          = file(".cloche/prompts/implement.md")
+  intent_tracking = false
+  results         = [success, fail]
 }
 ```
+
+A step or workflow opted out with `intent_tracking = false` also has its logs excluded
+from `collect-sources`' transcript mining, so noise or sensitive step output never seeds
+requirements.
 
 `config.toml`'s `[intent]` table's `inject = "off"` disables injection project-wide.
 See [`docs/workflows.md`](workflows.md#intent-injection) for the DSL-level details.

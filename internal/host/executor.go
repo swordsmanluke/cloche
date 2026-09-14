@@ -24,23 +24,23 @@ import (
 // Executor implements engine.StepExecutor for host workflow steps (scripts and
 // local agents). Workflow_name step dispatch is handled by the DaemonExecutor.
 type Executor struct {
-	ProjectDir    string
-	MainDir       string // main branch worktree dir; scripts execute from here
-	Store         ports.RunStore
-	PollStore     ports.PollStore  // optional: persists poll step poll state
-	PollCoord     *PollCoordinator // optional: loop-driven poll coordinator for poll steps
-	OutputDir     string           // directory for step output files
-	Wires         []domain.Wire    // workflow wiring (for previous-step output lookup)
-	HostRunID     string           // ID of the parent host run (set on child runs)
-	AgentCommands []string         // workflow-level agent command fallback chain
-	AgentArgs     []string         // workflow-level explicit agent args (overrides defaults)
-	TaskID        string           // optional task ID assigned by the daemon loop
-	AttemptID     string           // optional attempt ID for v2 tracking (propagated to child runs)
-	WorkflowName  string           // workflow name for run context seeding
-	Repos         []string         // workflow's declared repos (domain.Workflow.Repos), used for intent domain scoping
-	IntentOff     bool             // workflow-level `intent = "off"`; opts every step in the workflow out of injection
-	ExtraEnv      []string         // additional KEY=VALUE env vars for all steps
-	ResumeStep    string           // step being resumed (for prompt conversation resume)
+	ProjectDir        string
+	MainDir           string // main branch worktree dir; scripts execute from here
+	Store             ports.RunStore
+	PollStore         ports.PollStore  // optional: persists poll step poll state
+	PollCoord         *PollCoordinator // optional: loop-driven poll coordinator for poll steps
+	OutputDir         string           // directory for step output files
+	Wires             []domain.Wire    // workflow wiring (for previous-step output lookup)
+	HostRunID         string           // ID of the parent host run (set on child runs)
+	AgentCommands     []string         // workflow-level agent command fallback chain
+	AgentArgs         []string         // workflow-level explicit agent args (overrides defaults)
+	TaskID            string           // optional task ID assigned by the daemon loop
+	AttemptID         string           // optional attempt ID for v2 tracking (propagated to child runs)
+	WorkflowName      string           // workflow name for run context seeding
+	Repos             []string         // workflow's declared repos (domain.Workflow.Repos), used for intent domain scoping
+	IntentTrackingOff bool             // workflow-level `intent_tracking = false`; opts every step in the workflow out of injection and collect-sources mining
+	ExtraEnv          []string         // additional KEY=VALUE env vars for all steps
+	ResumeStep        string           // step being resumed (for prompt conversation resume)
 
 	seedOnce sync.Once // ensures SeedRunContext is called exactly once
 }
@@ -441,11 +441,11 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 // hostKVReader wired onto adapter.KV above — see a value. This is the host
 // half of the design's KV-seeding mechanism; DaemonExecutor.seedIntentKV
 // does the equivalent for container steps. Opted out by workflow/step
-// `intent = "off"` or config.toml's `intent.inject = "off"`; a project with
-// no .cloche/intent/ directory gets no KV writes at all (the dormancy
-// guarantee — intent.Resolve reports active=false).
+// `intent_tracking = false` or config.toml's `intent.inject = "off"`; a
+// project with no .cloche/intent/ directory gets no KV writes at all (the
+// dormancy guarantee — intent.Resolve reports active=false).
 func (e *Executor) seedIntentKV(ctx context.Context, step *domain.Step) {
-	if e.IntentOff || step.Config["intent"] == "off" {
+	if e.IntentTrackingOff || step.Config["intent_tracking"] == "false" {
 		return
 	}
 	cfg, err := config.Load(e.ProjectDir)

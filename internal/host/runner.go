@@ -129,19 +129,19 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 	}
 
 	hostExec := &Executor{
-		ProjectDir:   projectDir,
-		MainDir:      MainWorktreeDir(projectDir),
-		Store:        r.Store,
-		PollCoord:    r.PollCoord,
-		OutputDir:    outputDir,
-		Wires:        wf.Wiring,
-		HostRunID:    orchRunID,
-		TaskID:       r.TaskID,
-		AttemptID:    r.AttemptID,
-		WorkflowName: wf.Name,
-		Repos:        wf.Repos,
-		IntentOff:    wf.Config["intent"] == "off",
-		ExtraEnv:     r.ExtraEnv,
+		ProjectDir:        projectDir,
+		MainDir:           MainWorktreeDir(projectDir),
+		Store:             r.Store,
+		PollCoord:         r.PollCoord,
+		OutputDir:         outputDir,
+		Wires:             wf.Wiring,
+		HostRunID:         orchRunID,
+		TaskID:            r.TaskID,
+		AttemptID:         r.AttemptID,
+		WorkflowName:      wf.Name,
+		Repos:             wf.Repos,
+		IntentTrackingOff: wf.Config["intent_tracking"] == "false",
+		ExtraEnv:          r.ExtraEnv,
 	}
 
 	// Configure agent from workflow-level host config
@@ -321,17 +321,17 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 	}
 
 	hostExec := &Executor{
-		ProjectDir:   run.ProjectDir,
-		MainDir:      MainWorktreeDir(run.ProjectDir),
-		Store:        r.Store,
-		OutputDir:    outputDir,
-		Wires:        wf.Wiring,
-		HostRunID:    run.ID,
-		TaskID:       r.TaskID,
-		WorkflowName: wf.Name,
-		Repos:        wf.Repos,
-		IntentOff:    wf.Config["intent"] == "off",
-		ExtraEnv:     extraEnv,
+		ProjectDir:        run.ProjectDir,
+		MainDir:           MainWorktreeDir(run.ProjectDir),
+		Store:             r.Store,
+		OutputDir:         outputDir,
+		Wires:             wf.Wiring,
+		HostRunID:         run.ID,
+		TaskID:            r.TaskID,
+		WorkflowName:      wf.Name,
+		Repos:             wf.Repos,
+		IntentTrackingOff: wf.Config["intent_tracking"] == "false",
+		ExtraEnv:          extraEnv,
 	}
 
 	// Configure agent from workflow-level host config
@@ -513,19 +513,19 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 	saveExtraEnv(ctx, r.Store, oldRun.TaskID, r.AttemptID, newRunID, extraEnv)
 
 	hostExec := &Executor{
-		ProjectDir:   oldRun.ProjectDir,
-		MainDir:      MainWorktreeDir(oldRun.ProjectDir),
-		Store:        r.Store,
-		OutputDir:    newOutputDir,
-		Wires:        wf.Wiring,
-		HostRunID:    newRunID,
-		TaskID:       r.TaskID,
-		AttemptID:    r.AttemptID,
-		WorkflowName: wf.Name,
-		Repos:        wf.Repos,
-		IntentOff:    wf.Config["intent"] == "off",
-		ExtraEnv:     extraEnv,
-		ResumeStep:   resumeFrom,
+		ProjectDir:        oldRun.ProjectDir,
+		MainDir:           MainWorktreeDir(oldRun.ProjectDir),
+		Store:             r.Store,
+		OutputDir:         newOutputDir,
+		Wires:             wf.Wiring,
+		HostRunID:         newRunID,
+		TaskID:            r.TaskID,
+		AttemptID:         r.AttemptID,
+		WorkflowName:      wf.Name,
+		Repos:             wf.Repos,
+		IntentTrackingOff: wf.Config["intent_tracking"] == "false",
+		ExtraEnv:          extraEnv,
+		ResumeStep:        resumeFrom,
 	}
 
 	if cmd := wf.Config["host.agent_command"]; cmd != "" {

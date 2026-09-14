@@ -413,20 +413,21 @@ with no `.cloche/intent/` directory are unaffected — nothing is injected and n
 run KV is written. See [`docs/intent.md`](intent.md) for the full guide to the
 feature — concepts, file format, the `intent-scan` extraction workflow, and CLI.
 
-Opt out per workflow or per step with `intent = "off"`:
+Opt out per workflow or per step with `intent_tracking = false`. This also excludes
+the step's logs from collect-sources mining (see `docs/intent.md`).
 
 ```
 workflow "develop" {
-  intent = "off"
+  intent_tracking = false
   ...
 }
 ```
 
 ```
 step implement {
-  prompt  = file(".cloche/prompts/implement.md")
-  intent  = "off"
-  results = [success, fail]
+  prompt          = file(".cloche/prompts/implement.md")
+  intent_tracking = false
+  results         = [success, fail]
 }
 ```
 

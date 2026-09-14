@@ -653,8 +653,8 @@ func (d *DaemonExecutor) writeRepoBranchKV(ctx context.Context, prepared []repoW
 // the host tier) find it through the existing grpcKVReader round-trip with
 // no container/proto changes — this is what sidesteps the container's
 // clean-git-snapshot seeding, since the daemon reads .cloche/intent/ from
-// the host project dir. Opted out by workflow/step `intent = "off"` or
-// config.toml's `intent.inject = "off"`; a project with no
+// the host project dir. Opted out by workflow/step `intent_tracking =
+// false` or config.toml's `intent.inject = "off"`; a project with no
 // .cloche/intent/ directory gets no KV writes at all (intent.Resolve
 // reports active=false). Best-effort: errors are logged, not returned, so a
 // broken embedder or config never blocks a run.
@@ -662,7 +662,7 @@ func (d *DaemonExecutor) seedIntentKV(ctx context.Context, step *domain.Step, wf
 	if d.store == nil || d.taskID == "" {
 		return
 	}
-	if wf.Config["intent"] == "off" || step.Config["intent"] == "off" {
+	if wf.Config["intent_tracking"] == "false" || step.Config["intent_tracking"] == "false" {
 		return
 	}
 	daemonCfg, err := config.Load(d.projectDir)

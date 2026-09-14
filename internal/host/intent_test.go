@@ -114,7 +114,7 @@ func TestExecutor_AgentStep_NoIntentDir_NoKVSeeded(t *testing.T) {
 	assert.False(t, ok, "no intent dir should mean no KV seeding at all")
 }
 
-func TestExecutor_AgentStep_StepLevelIntentOff_SkipsInjection(t *testing.T) {
+func TestExecutor_AgentStep_StepLevelIntentTrackingOff_SkipsInjection(t *testing.T) {
 	tmpDir, reqID := newIntentFixtureProject(t)
 	outputDir := filepath.Join(tmpDir, "output")
 	_ = reqID
@@ -138,9 +138,9 @@ func TestExecutor_AgentStep_StepLevelIntentOff_SkipsInjection(t *testing.T) {
 		Type:    domain.StepTypeAgent,
 		Results: []string{"success", "fail"},
 		Config: map[string]string{
-			"prompt":        "You are a coding assistant.",
-			"agent_command": mockAgent,
-			"intent":        "off",
+			"prompt":          "You are a coding assistant.",
+			"agent_command":   mockAgent,
+			"intent_tracking": "false",
 		},
 	}
 
@@ -156,7 +156,7 @@ func TestExecutor_AgentStep_StepLevelIntentOff_SkipsInjection(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestExecutor_AgentStep_WorkflowLevelIntentOff_SkipsInjection(t *testing.T) {
+func TestExecutor_AgentStep_WorkflowLevelIntentTrackingOff_SkipsInjection(t *testing.T) {
 	tmpDir, _ := newIntentFixtureProject(t)
 	outputDir := filepath.Join(tmpDir, "output")
 
@@ -165,14 +165,14 @@ func TestExecutor_AgentStep_WorkflowLevelIntentOff_SkipsInjection(t *testing.T) 
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	executor := &Executor{
-		ProjectDir:   tmpDir,
-		OutputDir:    outputDir,
-		Store:        store,
-		HostRunID:    "run1",
-		TaskID:       "task1",
-		AttemptID:    "att1",
-		WorkflowName: "develop",
-		IntentOff:    true,
+		ProjectDir:        tmpDir,
+		OutputDir:         outputDir,
+		Store:             store,
+		HostRunID:         "run1",
+		TaskID:            "task1",
+		AttemptID:         "att1",
+		WorkflowName:      "develop",
+		IntentTrackingOff: true,
 	}
 
 	step := &domain.Step{

@@ -112,7 +112,10 @@ func (c *Collection) NextState(prev *intent.ScanState) *intent.ScanState {
 // docGlobs (DefaultDocGlobs when empty) whose content hash changed, commits
 // since prev.LastCommit with per-task version-bump noise filtered out, and
 // run directories under .cloche/runs/ not yet listed in prev.ScannedRuns.
-func Collect(projectDir string, prev *intent.ScanState, docGlobs []string) (*Collection, error) {
+// excludedSteps names steps configured with `intent_tracking = false`:
+// their log files are left out of each run's mined Transcript so
+// noise/sensitive step output never seeds requirements.
+func Collect(projectDir string, prev *intent.ScanState, docGlobs []string, excludedSteps map[string]bool) (*Collection, error) {
 	if prev == nil {
 		prev = &intent.ScanState{}
 	}
@@ -130,7 +133,7 @@ func Collect(projectDir string, prev *intent.ScanState, docGlobs []string) (*Col
 		return nil, fmt.Errorf("intent scan: collecting commits: %w", err)
 	}
 
-	runs, visited, err := collectRuns(projectDir, prev.ScannedRuns)
+	runs, visited, err := collectRuns(projectDir, prev.ScannedRuns, excludedSteps)
 	if err != nil {
 		return nil, fmt.Errorf("intent scan: collecting runs: %w", err)
 	}
@@ -304,7 +307,7 @@ func runGit(projectDir string, args ...string) (string, error) {
 	return string(out), nil
 }
 
-func collectRuns(projectDir string, prevScanned []string) ([]RunSource, []string, error) {
+func collectRuns(projectDir string, prevScanned []string, excludedSteps map[string]bool) ([]RunSource, []string, error) {
 	already := map[string]bool{}
 	for _, id := range prevScanned {
 		already[id] = true
@@ -331,7 +334,7 @@ func collectRuns(projectDir string, prevScanned []string) ([]RunSource, []string
 		if data, err := os.ReadFile(filepath.Join(runsDir, e.Name(), "task_prompt.md")); err == nil {
 			src.TaskPrompt = string(data)
 		}
-		if transcript, err := collectTranscript(filepath.Join(projectDir, ".cloche", "logs", e.Name())); err == nil {
+		if transcript, err := collectTranscript(filepath.Join(projectDir, ".cloche", "logs", e.Name()), excludedSteps); err == nil {
 			src.Transcript = transcript
 		}
 		if src.TaskPrompt != "" || src.Transcript != "" {
@@ -347,8 +350,10 @@ func collectRuns(projectDir string, prevScanned []string) ([]RunSource, []string
 // collectTranscript concatenates every *.log file under a task's
 // .cloche/logs/<task-id>/ tree (step output from every attempt), capped to
 // maxTranscriptBytes so one verbose run can't dominate the extract step's
-// token budget.
-func collectTranscript(taskLogDir string) (string, error) {
+// token budget. excludedSteps names steps opted out of mining via
+// `intent_tracking = false`: their log files are skipped, and a
+// sub-workflow directory named after an excluded step is skipped entirely.
+func collectTranscript(taskLogDir string, excludedSteps map[string]bool) (string, error) {
 	if _, err := os.Stat(taskLogDir); err != nil {
 		return "", err
 	}
@@ -364,12 +369,18 @@ func collectTranscript(taskLogDir string) (string, error) {
 		for _, item := range items {
 			path := filepath.Join(dir, item.Name())
 			if item.IsDir() {
+				if excludedSteps[item.Name()] {
+					continue
+				}
 				if err := walk(path); err != nil {
 					return err
 				}
 				continue
 			}
 			if !strings.HasSuffix(item.Name(), ".log") {
+				continue
+			}
+			if excludedSteps[transcriptLogStepName(item.Name())] {
 				continue
 			}
 			data, err := os.ReadFile(path)
@@ -393,6 +404,14 @@ func collectTranscript(taskLogDir string) (string, error) {
 		out = out[:maxTranscriptBytes]
 	}
 	return out, nil
+}
+
+// transcriptLogStepName derives the step name a log file belongs to from
+// its filename, per the "<step>.log" / "llm-<step>.log" conventions used
+// under .cloche/logs/ (see indexLogFiles in internal/adapters/grpc/server.go).
+func transcriptLogStepName(fileName string) string {
+	base := strings.TrimSuffix(fileName, ".log")
+	return strings.TrimPrefix(base, "llm-")
 }
 
 // Write lays out the collected material under outDir for the extract step

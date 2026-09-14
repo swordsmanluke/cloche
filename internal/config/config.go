@@ -103,7 +103,7 @@ type RepositoryConfig struct {
 // each task's main orchestration attempt succeeds; default off. TokenBudget
 // overrides intent.Select's default selection budget (~2000); zero means
 // "use the default". Inject == "off" disables auto-prepend project-wide
-// (per-step/workflow `intent = "off"` also opts out).
+// (per-step/workflow `intent_tracking = false` also opts out).
 type IntentConfig struct {
 	Embedder       string `toml:"embedder"`
 	Model          string `toml:"model"`

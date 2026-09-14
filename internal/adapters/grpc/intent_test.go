@@ -78,7 +78,7 @@ func TestDaemonExecutor_SeedIntentKV_StepLevelOff_SkipsSeeding(t *testing.T) {
 
 	store := &recordingRunStore{ctxKeys: map[string]string{}}
 	wf := buildContainerWFForTest("develop")
-	wf.Steps["step1"].Config["intent"] = "off"
+	wf.Steps["step1"].Config["intent_tracking"] = "false"
 
 	de := NewDaemonExecutor(DaemonExecutorConfig{
 		Store:      store,
@@ -98,7 +98,7 @@ func TestDaemonExecutor_SeedIntentKV_WorkflowLevelOff_SkipsSeeding(t *testing.T)
 
 	store := &recordingRunStore{ctxKeys: map[string]string{}}
 	wf := buildContainerWFForTest("develop")
-	wf.Config = map[string]string{"intent": "off"}
+	wf.Config = map[string]string{"intent_tracking": "false"}
 
 	de := NewDaemonExecutor(DaemonExecutorConfig{
 		Store:      store,

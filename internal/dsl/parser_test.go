@@ -67,9 +67,9 @@ func TestParser_MinimalWorkflow(t *testing.T) {
 	assert.Equal(t, "build", wf.EntryStep)
 }
 
-func TestParser_WorkflowLevelIntentOff(t *testing.T) {
+func TestParser_WorkflowLevelIntentTrackingOff(t *testing.T) {
 	input := `workflow simple {
-  intent = "off"
+  intent_tracking = false
 
   step build {
     run = "make build"
@@ -82,7 +82,57 @@ func TestParser_WorkflowLevelIntentOff(t *testing.T) {
 
 	wf, err := dsl.Parse(input)
 	require.NoError(t, err)
-	assert.Equal(t, "off", wf.Config["intent"])
+	assert.Equal(t, "false", wf.Config["intent_tracking"])
+}
+
+func TestParser_WorkflowLevelIntentTrackingInvalid(t *testing.T) {
+	input := `workflow simple {
+  intent_tracking = "off"
+
+  step build {
+    run = "make build"
+    results = [success, fail]
+  }
+
+  build:success -> done
+  build:fail -> abort
+}`
+
+	_, err := dsl.Parse(input)
+	assert.Error(t, err)
+}
+
+func TestParser_StepLevelIntentTrackingOff(t *testing.T) {
+	input := `workflow simple {
+  step build {
+    run = "make build"
+    intent_tracking = false
+    results = [success, fail]
+  }
+
+  build:success -> done
+  build:fail -> abort
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+	assert.Equal(t, "false", wf.Steps["build"].Config["intent_tracking"])
+}
+
+func TestParser_StepLevelIntentTrackingInvalid(t *testing.T) {
+	input := `workflow simple {
+  step build {
+    run = "make build"
+    intent_tracking = "nope"
+    results = [success, fail]
+  }
+
+  build:success -> done
+  build:fail -> abort
+}`
+
+	_, err := dsl.Parse(input)
+	assert.Error(t, err)
 }
 
 func TestParser_SyntaxError(t *testing.T) {

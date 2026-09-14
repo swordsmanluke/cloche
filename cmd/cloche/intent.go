@@ -14,6 +14,7 @@ import (
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/intent"
 	"github.com/cloche-dev/cloche/internal/intent/embed"
 	"github.com/cloche-dev/cloche/internal/intent/scan"
@@ -448,19 +449,53 @@ func resolveRepoPaths(cfg *config.Config, repoNames []string) []string {
 
 // intentInjectionOff reports whether the resolved workflow/step/config opts
 // out of intent injection, per the design's opt-outs: a step or workflow
-// `intent = "off"` config key, or project-wide `intent.inject = "off"` in
-// config.toml.
+// `intent_tracking = false` config key, or project-wide `intent.inject =
+// "off"` in config.toml.
 func intentInjectionOff(cfg *config.Config, wf *domain.Workflow, step *domain.Step) bool {
-	if step != nil && step.Config["intent"] == "off" {
+	if step != nil && step.Config["intent_tracking"] == "false" {
 		return true
 	}
-	if wf != nil && wf.Config["intent"] == "off" {
+	if wf != nil && wf.Config["intent_tracking"] == "false" {
 		return true
 	}
 	if cfg != nil && cfg.Intent.Inject == "off" {
 		return true
 	}
 	return false
+}
+
+// excludedIntentTrackingSteps returns the names of every step, across every
+// workflow discovered in the project (host and container), whose step-level
+// or workflow-level `intent_tracking = false` config opts it out of
+// collect-sources mining. Best-effort: a workflow file that fails to parse
+// is skipped rather than failing the scan. Step names are not qualified by
+// workflow, so identically named steps in different workflows share
+// exclusion.
+func excludedIntentTrackingSteps(projectDir string) map[string]bool {
+	excluded := map[string]bool{}
+	entries, err := filepath.Glob(filepath.Join(projectDir, ".cloche", "*.cloche"))
+	if err != nil {
+		return excluded
+	}
+	for _, path := range entries {
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			continue
+		}
+		wfs, parseErr := dsl.ParseAll(string(data))
+		if parseErr != nil {
+			continue
+		}
+		for _, wf := range wfs {
+			wfOff := wf.Config["intent_tracking"] == "false"
+			for name, step := range wf.Steps {
+				if wfOff || step.Config["intent_tracking"] == "false" {
+					excluded[name] = true
+				}
+			}
+		}
+	}
+	return excluded
 }
 
 // intentPreviewCommand implements:
@@ -695,7 +730,7 @@ func runIntentCollectSources(projectDir, outDir string) (*scan.Collection, error
 		return nil, fmt.Errorf("loading scan state: %w", err)
 	}
 
-	collection, err := scan.Collect(absProjectDir, prev, nil)
+	collection, err := scan.Collect(absProjectDir, prev, nil, excludedIntentTrackingSteps(absProjectDir))
 	if err != nil {
 		return nil, err
 	}

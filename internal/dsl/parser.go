@@ -279,8 +279,9 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 // workflow block: `repos = ["a", "b"]` names the repositories the workflow
 // consumes (repo names must match [[repositories]] entries in the
 // project's config.toml), `token-limit = N` overrides the per-step
-// token-limit result's default budget, and `intent = "off"` opts every
-// step in the workflow out of $intent injection.
+// token-limit result's default budget, and `intent_tracking = false` opts
+// every step in the workflow out of $intent injection and collect-sources
+// mining.
 func (p *Parser) parseWorkflowField(wf *domain.Workflow) error {
 	keyTok, err := p.expect(TokenIdent)
 	if err != nil {
@@ -320,12 +321,15 @@ func (p *Parser) parseWorkflowField(wf *domain.Workflow) error {
 		}
 		wf.Config["token-limit"] = numStr
 		return nil
-	case "intent":
+	case "intent_tracking":
 		val, err := p.parseValue()
 		if err != nil {
 			return err
 		}
-		wf.Config["intent"] = val
+		if val != "true" && val != "false" {
+			return fmt.Errorf("line %d col %d: intent_tracking must be true or false, got %q", keyTok.Line, keyTok.Col, val)
+		}
+		wf.Config["intent_tracking"] = val
 		return nil
 	default:
 		return fmt.Errorf("line %d col %d: unknown workflow field %q", keyTok.Line, keyTok.Col, keyTok.Literal)
@@ -574,6 +578,9 @@ func (p *Parser) parseStepField(step *domain.Step, prefix string) error {
 		val, err := p.parseValue()
 		if err != nil {
 			return err
+		}
+		if key == "intent_tracking" && val != "true" && val != "false" {
+			return fmt.Errorf("line %d col %d: intent_tracking must be true or false, got %q", keyTok.Line, keyTok.Col, val)
 		}
 		step.Config[key] = val
 	}
