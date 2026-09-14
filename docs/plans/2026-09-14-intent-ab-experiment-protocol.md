@@ -40,22 +40,56 @@ possible follow-up, not part of this run.
 calibrate task difficulty. Proceed to replications (target 3/arm) only if the
 pilot passes its calibration gate (below).
 
-## Subject: the Sprout language
+## Subject: the Bract language
 
 A tiny interpreted language — small enough to finish, tricky enough to punish
 forgetting. Implementation language **Python** (the executor's strongest), stdlib
 only.
 
+**Naming note:** the working name "Sprout" was checked and rejected — at least
+four existing languages use it, including a Python tree-walking interpreter on
+PyPI (our exact shape). "Bract" has no language collision (checked 2026-09-14;
+nearest hits are a Clojure config framework and the unrelated Bracmat). A
+name-collision check is part of the freeze procedure for any future subject.
+
 Spec highlights (full spec ships in the seed repo's `DESIGN.md`):
 
 - Integers, strings, booleans; `let` bindings; `fn` definitions with closures;
   `if`/`else`; `while`; comparison and arithmetic operators.
-- A REPL (`sprout`) and a file runner (`sprout run FILE`).
-- Line-oriented error reporting; a `sprout fmt` canonical formatter.
+- A REPL (`bract`) and a file runner (`bract run FILE`).
+- Line-oriented error reporting; a `bract fmt` canonical formatter.
 
 ~12 bead tasks in dependency order: lexer → parser → evaluator core → bindings →
 functions/closures → control flow → errors → REPL → file runner → formatter →
 polish/docs. The task list is authored once and copied verbatim into both arms.
+
+### Anti-prior design
+
+A conventional `let/fn/if/while` tree-walker is isomorphic to Lox (*Crafting
+Interpreters*) and Monkey (*Writing an Interpreter in Go*), which saturate every
+training corpus — a model can score well by autocompleting the tutorial rather
+than reading the spec, and that headroom would mask exactly the effect under
+test. Bract therefore deviates from tutorial priors in a fixed set of **prior
+traps**: semantics that are *no harder to implement* when you know them
+(avoiding floor effects), diametric to what Lox/Monkey/Python priors predict,
+and mechanically checkable.
+
+| # | Bract rule | The prior it contradicts |
+|---|---|---|
+| Q1 | `if`/`while` conditions must be booleans; anything else is `line N: condition must be a boolean` | Python/Lox truthiness |
+| Q2 | `let` declares (redeclaration is an error); reassignment requires `set` | bare `=` for both |
+| Q3 | String concatenation is `~`; `+` on strings is a type error | `+` concatenation |
+| Q4 | Not-equals is `<>`; `!=` is a lex error | `!=` |
+| Q5 | The string builtins (`at`, `len`, `sub`) are 1-indexed | 0-indexing |
+| Q6 | Comparisons don't chain: `a < b < c` is a parse error | Python chaining |
+| Q7 | `and`/`or` always evaluate both operands (no short-circuit) | short-circuit evaluation |
+
+The quirks are in `DESIGN.MD` from day one, so they are **standing**
+constraints: arm B's first scan turns them into injected requirements; arm A
+must keep re-deriving them from the spec against the pull of its priors. The
+drift constraints D1–D5 stay separately anti-prior for the same reason — a
+drift rule the model's priors already agree with would let arm A comply by
+accident and measure nothing.
 
 ## The measurements
 
@@ -72,8 +106,8 @@ tasks:
 | D1 | task 4 | "error messages must read `line N: message`, nothing else" | tasks 7–12 |
 | D2 | task 5 | "the evaluator must be iterative — no recursion on user input depth" | tasks 6–12 |
 | D3 | task 6 | "integer division truncates toward zero, never floor" | tasks 7–12 |
-| D4 | task 8 | "the REPL prompt is `sprout> ` with a trailing space, and Ctrl-D exits cleanly" | tasks 9–12 |
-| D5 | task 9 | "`sprout fmt` output must be byte-stable (fmt∘fmt = fmt)" | tasks 10–12 |
+| D4 | task 8 | "the REPL prompt is `bract> ` with a trailing space, and Ctrl-D exits cleanly" | tasks 9–12 |
+| D5 | task 9 | "`bract fmt` output must be byte-stable (fmt∘fmt = fmt)" | tasks 10–12 |
 
 In arm B these live only in a past task's prompt/transcript until the post-task
 scan mines them into requirements; in arm A they exist only in history no later
@@ -82,13 +116,24 @@ does the final merged code comply? Scored by automated checks (regex/AST/behavio
 tests per constraint), reported as adherence rate per arm. Exact wording and
 placement are frozen in the seed repo before any run.
 
+### Co-primary: prior-trap pass rate
+
+Of the hidden corpus, **~16 programs specifically exercise the prior traps**
+(each quirk Q1–Q7 covered by at least two programs, including
+negative-operand division and side-effect-visible `and`/`or` cases). This
+sub-score is reported as its own metric: it measures whether the arm follows
+the *spec* where the spec fights the model's *priors* — the standing-constraint
+counterpart to drift adherence. A tutorial-prior implementation (Lox with the
+serial numbers filed off) scores near zero here while passing much of the
+general suite; that gap is the contamination-control working as intended.
+
 ### Secondary: hidden acceptance suite
 
-A corpus of **~40 Sprout programs with expected stdout/stderr/exit codes**,
-written against the spec before any run and kept **outside both repos** (the
-agents never see it). A harness script runs the corpus against each arm's final
-`main`; metric is pass rate. Sub-scored by feature area so partial builds
-compare fairly.
+A corpus of **~48 Bract programs with expected stdout/stderr/exit codes**
+(the ~16 trap programs plus ~32 general-coverage programs), written against
+the spec before any run and kept **outside both repos** (the agents never see
+it). A harness script runs the corpus against each arm's final `main`; metric
+is pass rate. Sub-scored by feature area so partial builds compare fairly.
 
 ### Tertiary: standing-constraint audit
 
@@ -133,7 +178,7 @@ headline — the automated metrics are the headline.
 
 ## Procedure
 
-1. **Freeze artifacts** (before any run): Sprout spec + `DESIGN.md` with
+1. **Freeze artifacts** (before any run): Bract spec + `DESIGN.md` with
    standing constraints; the 12-task list with drift constraints D1–D5 embedded;
    the hidden test corpus + harness; audit scripts; the agent wrapper. Tag the
    seed repo.
