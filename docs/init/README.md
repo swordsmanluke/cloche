@@ -36,11 +36,12 @@ Everything the tutorials touch lives in `.cloche/` at your project root;
 
 ## Optional: intent continuity
 
-`cloche init` doesn't create `.cloche/intent/` — that's a separate, opt-in feature for
-once your project has some history to learn from. `intent-scan` is a built-in workflow
-(compiled into the daemon), so no setup is required: run `cloche intent scan` any time
-after your first few tasks to extract standing requirements (constraints and decisions)
-from your docs, commits, and run transcripts, and have them auto-injected into future
-agent prompts. See the cloche repo's `docs/intent.md` for the full guide (not bundled
+`cloche init` doesn't create `.cloche/intent/` itself, but by default your first
+completed task triggers it automatically: `intent-scan` is a built-in workflow
+(compiled into the daemon, no setup required), and `intent.scan_after_tasks` defaults
+to `true` in `config.toml`. It extracts standing requirements (constraints and
+decisions) from your docs, commits, and run transcripts, and has them auto-injected
+into future agent prompts; set `intent.scan_after_tasks = false` to opt out, or run
+`cloche intent scan` by hand any time. See the cloche repo's `docs/intent.md` for the full guide (not bundled
 into this project's `.cloche/docs/init/`, since it documents a daemon-wide feature
 rather than this scaffold).

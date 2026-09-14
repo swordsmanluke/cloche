@@ -100,9 +100,10 @@ type RepositoryConfig struct {
 // with the daemon-side selection wiring — so the onnx adapter currently
 // reads its override via the CLOCHE_INTENT_MODEL env var directly.
 // ScanAfterTasks opts a project into an incremental intent-scan run after
-// each task's main orchestration attempt succeeds; default off. TokenBudget
-// overrides intent.Select's default selection budget (~2000); zero means
-// "use the default". Inject == "off" disables auto-prepend project-wide
+// each task's main orchestration attempt succeeds; default on (set to false
+// in a project's config.toml to opt out). TokenBudget overrides
+// intent.Select's default selection budget (~2000); zero means "use the
+// default". Inject == "off" disables auto-prepend project-wide
 // (per-step/workflow `intent_tracking = false` also opts out).
 type IntentConfig struct {
 	Embedder       string `toml:"embedder"`
@@ -137,6 +138,9 @@ func defaults() Config {
 		Help: HelpConfig{
 			ParkAfter: "5m",
 			Retention: "720h",
+		},
+		Intent: IntentConfig{
+			ScanAfterTasks: true,
 		},
 	}
 }

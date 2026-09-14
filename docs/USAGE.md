@@ -1798,7 +1798,7 @@ for the design rationale.
 | `model` | _(unset)_ | Reserved for overriding the `onnx` adapter's embedding model; not yet wired in — use the `CLOCHE_INTENT_MODEL` env var today. |
 | `token_budget` | `0` | Overrides `intent.Select`'s default selection budget (~2000 tokens). Zero means "use the default". |
 | `inject` | _(unset)_ | Set to `"off"` to disable auto-prepending requirements to agent-step prompts project-wide. A workflow or step config key `intent_tracking = false` opts out at that scope instead (also excludes the step's logs from collect-sources mining). |
-| `scan_after_tasks` | `false` | Enqueue an incremental `intent-scan` run after each completed `main` orchestration task attempt. |
+| `scan_after_tasks` | `true` | Enqueue an incremental `intent-scan` run after each completed `main` orchestration task attempt. |
 
 ### `[[repositories]]`
 

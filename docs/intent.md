@@ -13,9 +13,12 @@ under `.cloche/intent/`, and injects the ones relevant to a given step automatic
 For the full design rationale (goals, non-goals, the retrieval spike results) see
 [`docs/plans/2026-09-13-intent-continuity-design.md`](plans/2026-09-13-intent-continuity-design.md).
 
-**The feature is fully dormant until you run a scan.** A project with no
-`.cloche/intent/` directory gets no injection, no warnings, and no behavior change —
-byte-identical prompts to a project that never adopted the feature.
+**The feature is dormant until a scan runs.** A project with no `.cloche/intent/`
+directory gets no injection, no warnings, and no behavior change — byte-identical
+prompts to a project that never adopted the feature. By default a scan runs
+automatically after the first completed `main` orchestration task (see "Incremental
+scans on task completion" below); set `intent.scan_after_tasks = false` to keep it
+fully manual instead.
 
 ## Concepts
 
@@ -149,11 +152,13 @@ workflows always take precedence over built-ins of the same name. `collect-sourc
 are the plumbing subcommands the workflow's script steps invoke — not normally run by
 hand.
 
-**Incremental scans on task completion.** Set `intent.scan_after_tasks = true` in
-`config.toml` to enqueue an incremental scan automatically after each completed `main`
-orchestration run, covering just that task's prompt, transcript, and commits.
-Incremental scans are cheap: `collect-sources`' cursors mean there's usually very
-little new material to mine.
+**Incremental scans on task completion.** By default (`intent.scan_after_tasks = true`),
+an incremental scan is enqueued automatically after each completed `main` orchestration
+run, covering just that task's prompt, transcript, and commits. Set
+`intent.scan_after_tasks = false` in `config.toml` to opt out. Incremental scans are
+cheap: `collect-sources`' cursors mean there's usually very little new material to mine,
+and a project is never scanned twice in parallel — if a scan is already queued or
+running, a new trigger is skipped.
 
 ## Injection
 
@@ -303,13 +308,16 @@ API.
 | `model` | _(unset)_ | Reserved for overriding the `onnx` adapter's model; not yet wired in — use the `CLOCHE_INTENT_MODEL` env var today. |
 | `token_budget` | `0` | Overrides the ~2000-token default selection budget. Zero means "use the default". |
 | `inject` | _(unset)_ | `"off"` disables auto-prepending requirements to agent-step prompts project-wide. |
-| `scan_after_tasks` | `false` | Enqueue an incremental `intent-scan` after each completed `main` orchestration run. |
+| `scan_after_tasks` | `true` | Enqueue an incremental `intent-scan` after each completed `main` orchestration run. |
 
 ## Adopting the feature on an existing project
 
-`cloche init` never creates `.cloche/intent/` itself — the feature stays fully dormant
-until you opt in. The built-in `intent-scan` workflow (see "Extraction" above) needs no
-setup, so adopting the feature is just:
+`cloche init` never creates `.cloche/intent/` itself, and with `intent.scan_after_tasks`
+left at its default of `true`, the first completed `main` orchestration task bootstraps
+it automatically (domain discovery runs on that initial pass). Set
+`intent.scan_after_tasks = false` in `config.toml` to keep the feature fully dormant
+until you opt in by hand; the built-in `intent-scan` workflow (see "Extraction" above)
+needs no setup, so adopting it manually is just:
 
 ```
 cloche intent scan --full
@@ -318,5 +326,4 @@ cloche intent list
 
 Review what got extracted (`cloche intent list`, `cloche intent show <id>`), edit or
 disable anything wrong, and commit `.cloche/intent/`. From then on, injection is
-automatic; re-run `cloche intent scan` periodically (or turn on
-`intent.scan_after_tasks`) to keep it current as the project evolves.
+automatic, and incremental scans keep it current as the project evolves.

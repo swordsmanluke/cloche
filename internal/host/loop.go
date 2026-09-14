@@ -213,6 +213,13 @@ func (l *Loop) SetPostTaskScanner(scanner PostTaskScanner) {
 	l.postTaskScanner = scanner
 }
 
+// PostTaskScannerConfigured reports whether a PostTaskScanner is wired for
+// this loop, i.e. whether a task's successful attempt will trigger an
+// intent-scan enqueue.
+func (l *Loop) PostTaskScannerConfigured() bool {
+	return l.postTaskScanner != nil
+}
+
 // Start begins the orchestration loop. No-op if already running.
 func (l *Loop) Start() {
 	l.mu.Lock()

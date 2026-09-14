@@ -223,6 +223,21 @@ func TestLoadIntentConfigDefaults(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "", cfg.Intent.Embedder)
 	assert.Equal(t, "", cfg.Intent.Model)
+	assert.True(t, cfg.Intent.ScanAfterTasks)
+}
+
+func TestLoadIntentConfigScanAfterTasksOptOut(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
+[intent]
+scan_after_tasks = false
+`), 0644)
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
 	assert.False(t, cfg.Intent.ScanAfterTasks)
 }
 

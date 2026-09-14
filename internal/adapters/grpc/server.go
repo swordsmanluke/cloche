@@ -3558,12 +3558,32 @@ type intentScanTrigger struct {
 }
 
 func (t *intentScanTrigger) EnqueueScan(ctx context.Context, projectDir, taskID string) error {
+	if t.scanQueuedOrRunning(ctx, projectDir) {
+		log.Printf("intent-scan trigger: skipping for %s, a scan is already queued or running", projectDir)
+		return nil
+	}
 	_, err := t.server.runHostWorkflow(ctx, &pb.RunWorkflowRequest{
 		ProjectDir:   projectDir,
 		WorkflowName: "intent-scan",
 		Title:        "Incremental intent scan (post-task)",
 	})
 	return err
+}
+
+// scanQueuedOrRunning reports whether an intent-scan run for projectDir is
+// already pending or running, so a busy loop doesn't pile up redundant scans
+// behind each other. Fails open (false) if the run list can't be loaded.
+func (t *intentScanTrigger) scanQueuedOrRunning(ctx context.Context, projectDir string) bool {
+	runs, err := t.server.store.ListRunsByProject(ctx, projectDir, time.Time{})
+	if err != nil {
+		return false
+	}
+	for _, r := range runs {
+		if r.WorkflowName == "intent-scan" && (r.State == domain.RunStatePending || r.State == domain.RunStateRunning) {
+			return true
+		}
+	}
+	return false
 }
 
 // LoopRunning returns whether an orchestration loop is active and running for
