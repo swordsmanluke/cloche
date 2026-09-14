@@ -290,7 +290,7 @@ Rules:
 - Marker lines are **stripped** from captured output (not passed to logs or downstream steps).
 - The result name must match one of the step's declared `results`.
 - For script steps with no marker: exit 0 = `success`, exit non-zero = `fail`.
-- For agent steps: if exit non-zero with a marker, the marker result is used. If exit non-zero without a marker, falls back to the next agent in the fallback chain (or returns `fail` if last).
+- For agent steps: a marker (regardless of exit code) is used as the result. Without a marker, the adapter falls back to the next agent in the fallback chain (or returns `fail` if last) — this includes exit 0, since an agent that exits 0 without a marker can't be trusted as a success.
 
 ## Prompt Assembly
 
@@ -333,9 +333,8 @@ agent_command = "claude,gemini,codex"
 ```
 
 - **Command not found / failed to start** — try next command
-- **Exit non-zero without `CLOCHE_RESULT` marker** — try next command
-- **Exit non-zero with `CLOCHE_RESULT` marker** — use that result (no fallback)
-- **Exit 0** — use result (no fallback)
+- **Exit 0 or non-zero, without a `CLOCHE_RESULT` marker** (including no output at all, or an `error_during_execution` report) — try next command
+- **Exit 0 or non-zero, with a `CLOCHE_RESULT` marker** — use that result (no fallback)
 - **All commands fail to start** — step returns an error
 - **Last command crashes without marker** — step returns `fail`
 

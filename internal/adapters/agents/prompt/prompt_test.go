@@ -22,7 +22,7 @@ func TestPromptAdapter_ExecutesCommand(t *testing.T) {
 	// Use a mock command that writes a file to prove it ran
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'implemented' > result.txt && echo ok"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'implemented' > result.txt && echo ok && echo 'CLOCHE_RESULT:success'"},
 		RunID:        "test-run",
 		TaskID:       "test-task",
 	}
@@ -50,7 +50,7 @@ func TestPromptAdapter_PreviousOutputSubstitution(t *testing.T) {
 	// Mock command that captures stdin to a file so we can inspect it
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok"},
+		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo 'CLOCHE_RESULT:success'"},
 		PrevOutput:   "test passed: 42/42",
 	}
 
@@ -81,7 +81,7 @@ func TestPromptAdapter_PreviousOutputEmptyWhenNotSet(t *testing.T) {
 	// Mock command that captures stdin to a file so we can inspect it
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok"},
+		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo 'CLOCHE_RESULT:success'"},
 		// PrevOutput not set — {previous_output} should substitute empty string
 	}
 
@@ -153,12 +153,36 @@ func TestPromptAdapter_CommandFailure(t *testing.T) {
 	assert.Equal(t, "fail", sr.Result)
 }
 
+// TestPromptAdapter_NoMarkerDefaultsToFail is the regression test for the
+// bug where an agent that aborted (e.g. missing task prompt) but exited 0
+// without emitting a CLOCHE_RESULT marker was classified as "success" and
+// rode the merge path. A missing marker must never default to success.
+func TestPromptAdapter_NoMarkerDefaultsToFail(t *testing.T) {
+	dir := t.TempDir()
+
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'Result: FAIL - task prompt file not found'"},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "fail", sr.Result)
+}
+
 func TestPromptAdapter_InjectsResultInstructions(t *testing.T) {
 	dir := t.TempDir()
 
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok"},
+		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo 'CLOCHE_RESULT:success'"},
 	}
 
 	step := &domain.Step{
@@ -205,7 +229,7 @@ func TestExecuteWritesOutputFile(t *testing.T) {
 
 	a := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output' && echo 'CLOCHE_RESULT:success'"},
 		RunID:        "test-run",
 		TaskID:       "test-task",
 	}
@@ -237,7 +261,7 @@ func TestExecuteDerivesPerAttemptOutputDir(t *testing.T) {
 
 	a := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output' && echo 'CLOCHE_RESULT:success'"},
 		RunID:        "test-run",
 		TaskID:       "test-task",
 		AttemptID:    "test-attempt",
@@ -279,7 +303,7 @@ func TestExecutePinnedOutputDirKeepsLegacyHistory(t *testing.T) {
 
 	a := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output' && echo 'CLOCHE_RESULT:success'"},
 		TaskID:       "test-task",
 		AttemptID:    "test-attempt",
 		OutputDir:    filepath.Join(dir, ".cloche", "output"),
@@ -342,7 +366,7 @@ func TestPromptAdapter_FallbackOnCommandNotFound(t *testing.T) {
 	// First command doesn't exist, second one does
 	adapter := &prompt.Adapter{
 		Commands:     []string{"nonexistent-agent-xyz", "sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'fallback ran'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'fallback ran' && echo 'CLOCHE_RESULT:success'"},
 	}
 
 	step := &domain.Step{
@@ -371,7 +395,7 @@ func TestPromptAdapter_FallbackOnExitErrorNoMarker(t *testing.T) {
 	require.NoError(t, os.WriteFile(failing, []byte("#!/bin/sh\ncat > /dev/null\nexit 1\n"), 0755))
 
 	succeeding := filepath.Join(dir, "good-agent.sh")
-	require.NoError(t, os.WriteFile(succeeding, []byte("#!/bin/sh\ncat > /dev/null\necho 'good agent output'\n"), 0755))
+	require.NoError(t, os.WriteFile(succeeding, []byte("#!/bin/sh\ncat > /dev/null\necho 'good agent output'\necho 'CLOCHE_RESULT:success'\n"), 0755))
 
 	adapter := &prompt.Adapter{
 		Commands: []string{failing, succeeding},
@@ -474,7 +498,7 @@ func TestPromptAdapter_SingleCommandPreservesBehavior(t *testing.T) {
 	// Single command, exit 0 — should behave exactly like before
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo hello"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo hello && echo 'CLOCHE_RESULT:success'"},
 	}
 
 	step := &domain.Step{
@@ -502,7 +526,7 @@ func TestPromptAdapter_UsageCommandFromStepConfig(t *testing.T) {
 	// Mock agent that produces no stream-json usage
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo 'CLOCHE_RESULT:success'"},
 	}
 
 	step := &domain.Step{
@@ -528,7 +552,7 @@ func TestPromptAdapter_UsageCommandFromAdapterField(t *testing.T) {
 
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo 'CLOCHE_RESULT:success'"},
 		UsageCommand: `echo '{"input_tokens":300,"output_tokens":120}'`,
 	}
 
@@ -552,7 +576,7 @@ func TestPromptAdapter_StepConfigUsageCommandOverridesAdapterField(t *testing.T)
 
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo 'CLOCHE_RESULT:success'"},
 		UsageCommand: `echo '{"input_tokens":999,"output_tokens":999}'`,
 	}
 
@@ -579,7 +603,7 @@ func TestPromptAdapter_UsageCommandFailsDegracefully(t *testing.T) {
 
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo 'CLOCHE_RESULT:success'"},
 	}
 
 	step := &domain.Step{
@@ -604,7 +628,7 @@ func TestPromptAdapter_NoUsageCommandReturnsNilUsage(t *testing.T) {
 
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo 'CLOCHE_RESULT:success'"},
 	}
 
 	step := &domain.Step{
@@ -626,7 +650,7 @@ func TestPromptAdapter_SetsAgentNameInUsage(t *testing.T) {
 	streamJSON := `{"type":"result","subtype":"success","result":"CLOCHE_RESULT:success","usage":{"input_tokens":100,"output_tokens":50}}`
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo '" + streamJSON + "'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo '" + streamJSON + "' && echo 'CLOCHE_RESULT:success'"},
 	}
 
 	step := &domain.Step{
@@ -650,7 +674,7 @@ func TestPromptAdapter_SetsAgentNameViaUsageCommand(t *testing.T) {
 	// Command produces no stream-json usage; usage_command provides it.
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo 'CLOCHE_RESULT:success'"},
 	}
 
 	step := &domain.Step{
@@ -678,7 +702,7 @@ func TestPromptAdapter_ExtraEnvPropagatedToAgent(t *testing.T) {
 	// The agent script echoes the value of the injected env var.
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo \"TASK=$CLOCHE_TASK_ID RUN=$CLOCHE_RUN_ID\""},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo \"TASK=$CLOCHE_TASK_ID RUN=$CLOCHE_RUN_ID\" && echo 'CLOCHE_RESULT:success'"},
 		ExtraEnv:     []string{"CLOCHE_TASK_ID=test-task-42", "CLOCHE_RUN_ID=run-99"},
 	}
 

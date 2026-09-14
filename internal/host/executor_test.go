@@ -743,7 +743,7 @@ func TestExecutor_AgentStep_Success(t *testing.T) {
 
 	// Create a mock agent script that reads stdin and produces output
 	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
-	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'agent did the work'\n"), 0755))
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'agent did the work'\necho 'CLOCHE_RESULT:success'\n"), 0755))
 
 	executor := &Executor{
 		ProjectDir: tmpDir,
@@ -800,13 +800,47 @@ func TestExecutor_AgentStep_Failure(t *testing.T) {
 	assert.Equal(t, "fail", result.Result)
 }
 
+// TestExecutor_AgentStep_AbortedWithoutMarkerIsFail is the regression test
+// for a failed implement step riding the merge path: an agent that aborted
+// (e.g. the task prompt file was missing) and only said so in prose, without
+// emitting a CLOCHE_RESULT marker, must classify as "fail" — never "success".
+func TestExecutor_AgentStep_AbortedWithoutMarkerIsFail(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	// Mock agent simulating a real abort: exits 0, states failure in prose,
+	// but never emits the CLOCHE_RESULT marker the adapter parses.
+	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'Result: FAIL - task prompt file not found'\n"), 0755))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		HostRunID:  "test-host-run",
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config: map[string]string{
+			"prompt":        "You are a coding assistant.",
+			"agent_command": mockAgent,
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "fail", result.Result)
+}
+
 func TestExecutor_AgentStep_WorkflowLevelCommand(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")
 
 	// Create a mock agent
 	mockAgent := filepath.Join(tmpDir, "workflow-agent.sh")
-	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'workflow agent ran'\n"), 0755))
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'workflow agent ran'\necho 'CLOCHE_RESULT:success'\n"), 0755))
 
 	executor := &Executor{
 		ProjectDir:    tmpDir,
@@ -839,10 +873,10 @@ func TestExecutor_AgentStep_StepLevelOverridesWorkflow(t *testing.T) {
 
 	// Create two mock agents
 	workflowAgent := filepath.Join(tmpDir, "workflow-agent.sh")
-	require.NoError(t, os.WriteFile(workflowAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'workflow agent'\n"), 0755))
+	require.NoError(t, os.WriteFile(workflowAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'workflow agent'\necho 'CLOCHE_RESULT:success'\n"), 0755))
 
 	stepAgent := filepath.Join(tmpDir, "step-agent.sh")
-	require.NoError(t, os.WriteFile(stepAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'step agent'\n"), 0755))
+	require.NoError(t, os.WriteFile(stepAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'step agent'\necho 'CLOCHE_RESULT:success'\n"), 0755))
 
 	executor := &Executor{
 		ProjectDir:    tmpDir,
@@ -878,7 +912,7 @@ func TestExecutor_AgentStep_FallbackChain(t *testing.T) {
 
 	// Create a good agent
 	goodAgent := filepath.Join(tmpDir, "good-agent.sh")
-	require.NoError(t, os.WriteFile(goodAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'fallback agent ran'\n"), 0755))
+	require.NoError(t, os.WriteFile(goodAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'fallback agent ran'\necho 'CLOCHE_RESULT:success'\n"), 0755))
 
 	executor := &Executor{
 		ProjectDir: tmpDir,
@@ -916,7 +950,7 @@ func TestExecutor_AgentStep_PrevOutput(t *testing.T) {
 
 	// Create a mock agent that echoes stdin (the prompt) to verify it received it
 	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
-	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'processed prompt'\n"), 0755))
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'processed prompt'\necho 'CLOCHE_RESULT:success'\n"), 0755))
 
 	executor := &Executor{
 		ProjectDir: tmpDir,
@@ -958,7 +992,7 @@ func TestExecutor_AgentStep_PromptStep(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "custom-source.log"), []byte("custom prompt content"), 0644))
 
 	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
-	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'done'\n"), 0755))
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'done'\necho 'CLOCHE_RESULT:success'\n"), 0755))
 
 	executor := &Executor{
 		ProjectDir: tmpDir,
@@ -995,7 +1029,7 @@ func TestEngine_HostWorkflow_WithAgentStep(t *testing.T) {
 
 	// Create a mock agent
 	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
-	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'agent output'\n"), 0755))
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'agent output'\necho 'CLOCHE_RESULT:success'\n"), 0755))
 
 	executor := &Executor{
 		ProjectDir: tmpDir,
@@ -1051,7 +1085,7 @@ func TestRunner_HostWorkflow_AgentStep(t *testing.T) {
 
 	// Create a mock agent
 	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
-	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'agent implemented'\n"), 0755))
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'agent implemented'\necho 'CLOCHE_RESULT:success'\n"), 0755))
 
 	// Write a host.cloche with an agent step
 	clocheDir := filepath.Join(tmpDir, ".cloche")
@@ -1093,10 +1127,10 @@ func TestRunner_HostWorkflow_AgentStepOverridesWorkflowCommand(t *testing.T) {
 
 	// Create two mock agents
 	workflowAgent := filepath.Join(tmpDir, "workflow-agent.sh")
-	require.NoError(t, os.WriteFile(workflowAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'workflow level'\n"), 0755))
+	require.NoError(t, os.WriteFile(workflowAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'workflow level'\necho 'CLOCHE_RESULT:success'\n"), 0755))
 
 	stepAgent := filepath.Join(tmpDir, "step-agent.sh")
-	require.NoError(t, os.WriteFile(stepAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'step level'\n"), 0755))
+	require.NoError(t, os.WriteFile(stepAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'step level'\necho 'CLOCHE_RESULT:success'\n"), 0755))
 
 	clocheDir := filepath.Join(tmpDir, ".cloche")
 	require.NoError(t, os.MkdirAll(clocheDir, 0755))
@@ -1426,6 +1460,7 @@ echo "TASK_ID=$CLOCHE_TASK_ID"
 echo "ATTEMPT_ID=$CLOCHE_ATTEMPT_ID"
 echo "RUN_ID=$CLOCHE_RUN_ID"
 echo "PROJECT_DIR=$CLOCHE_PROJECT_DIR"
+echo 'CLOCHE_RESULT:success'
 `
 	require.NoError(t, os.WriteFile(mockAgent, []byte(script), 0755))
 

@@ -353,9 +353,11 @@ func extractSessionID(line []byte) string {
 // Fallback-eligible conditions:
 //   - Command not found or failed to start (stdout will be nil)
 //   - Command exited non-zero without a CLOCHE_RESULT marker
+//   - Command exited 0 but produced no output, reported
+//     error_during_execution, or produced no CLOCHE_RESULT marker
 //
 // Definitive (non-fallback) conditions:
-//   - Command exited 0
+//   - Command exited 0 and produced a CLOCHE_RESULT marker
 //   - Command exited non-zero but produced a CLOCHE_RESULT marker
 func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string, workDir string, stepName string, resumeSessionID string) (result string, stdout []byte, usage *domain.TokenUsage, fallbackErr error) {
 	args := a.argsFor(command)
@@ -494,11 +496,15 @@ func (a *Adapter) classifyResult(command string, stdoutBytes []byte, runErr erro
 		return "fail", stdoutBytes, fmt.Errorf("command %q reported error_during_execution", command)
 	}
 	markerResult, _, found := protocol.ExtractResult(stdoutBytes)
-	result := "success"
-	if found {
-		result = markerResult
+	if !found {
+		// Conservative default: an agent that exits 0 without emitting a
+		// recognizable CLOCHE_RESULT marker must never be classified as
+		// success. A missing marker means we can't tell what the agent
+		// actually did (e.g. it aborted early and only said so in prose), so
+		// treat it as a failure rather than letting it ride the merge path.
+		return "fail", stdoutBytes, fmt.Errorf("command %q exited 0 but produced no CLOCHE_RESULT marker", command)
 	}
-	return result, stdoutBytes, nil
+	return markerResult, stdoutBytes, nil
 }
 
 // runUsageCommand executes a shell command and parses its JSON output as token usage.
