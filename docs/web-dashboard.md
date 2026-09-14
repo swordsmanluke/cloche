@@ -98,7 +98,7 @@ Only shown for projects with a `.cloche/intent/` directory (i.e. that have run a
 intent scan at least once); dormant otherwise. See [`docs/intent.md`](intent.md)
 for the full guide to the feature.
 
-- **Scan now** — dispatches the project's `intent-scan` workflow via
+- **Scan now** — dispatches the built-in `intent-scan` workflow via
   `POST /api/projects/{name}/intent/scan` and shows the last-scan timestamp
   (`GET /api/projects/{name}/intent/requirements`).
 - **Requirements table** — one row per extracted requirement, with its statement,

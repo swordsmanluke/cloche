@@ -103,6 +103,7 @@ type Workflow struct {
 	EntryStep string
 	Config    map[string]string // workflow-level config (e.g. "container.image")
 	Repos     []string          // repositories this workflow consumes; names refer to [[repositories]] entries in config.toml
+	Builtin   bool              // true for workflows constructed in Go and registered via internal/builtin, rather than parsed from a project's .cloche files
 }
 
 // ContainerID returns the container id for this workflow.

@@ -123,52 +123,6 @@ workflow changelog {
   commit:fail             -> abort
 }
 
-workflow intent-scan {
-  host {
-    agent_command = "claude"
-  }
-
-  step discover-domains {
-    prompt  = file(".cloche/prompts/intent-scan-discover-domains.md")
-    timeout = "10m"
-    results = [success, fail]
-  }
-
-  step collect-sources {
-    run     = "bash .cloche/scripts/intent-scan-collect-sources.sh"
-    results = [success, none, fail]
-  }
-
-  step extract {
-    prompt  = file(".cloche/prompts/intent-scan-extract.md")
-    timeout = "20m"
-    results = [success, fail]
-  }
-
-  step reconcile {
-    prompt  = file(".cloche/prompts/intent-scan-reconcile.md")
-    timeout = "20m"
-    results = [success, fail]
-  }
-
-  step apply-reconcile {
-    run     = "bash .cloche/scripts/intent-scan-apply-reconcile.sh"
-    results = [success, fail]
-  }
-
-  discover-domains:success -> collect-sources
-  discover-domains:fail    -> abort
-  collect-sources:success  -> extract
-  collect-sources:none     -> done
-  collect-sources:fail     -> abort
-  extract:success          -> reconcile
-  extract:fail             -> abort
-  reconcile:success        -> apply-reconcile
-  reconcile:fail           -> abort
-  apply-reconcile:success  -> done
-  apply-reconcile:fail     -> abort
-}
-
 workflow release {
   host {}
 

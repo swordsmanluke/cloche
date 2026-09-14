@@ -11,6 +11,7 @@ import (
 
 	"github.com/cloche-dev/cloche/internal/activitylog"
 	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
+	"github.com/cloche-dev/cloche/internal/builtin"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/engine"
@@ -773,6 +774,11 @@ func findHostWorkflow(projectDir, workflowName string) (*domain.Workflow, error)
 		}
 	}
 
+	if wf, ok := builtin.Lookup(workflowName); ok && wf.Location == domain.LocationHost {
+		wf.ResolveAgents()
+		return wf, nil
+	}
+
 	return nil, fmt.Errorf("host workflow %q not found in any .cloche file", workflowName)
 }
 
@@ -807,6 +813,14 @@ func FindAllWorkflows(projectDir string) (map[string]*domain.Workflow, error) {
 			wf.ResolveAgents()
 			all[name] = wf
 		}
+	}
+
+	for name, wf := range builtin.All() {
+		if _, exists := all[name]; exists {
+			continue
+		}
+		wf.ResolveAgents()
+		all[name] = wf
 	}
 
 	return all, nil

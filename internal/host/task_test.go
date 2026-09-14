@@ -216,9 +216,12 @@ workflow main {
 
 	all, err := FindAllWorkflows(tmpDir)
 	require.NoError(t, err)
-	assert.Len(t, all, 2)
+	// 2 project-defined workflows plus the intent-scan built-in (not
+	// overridden by this project).
+	assert.Len(t, all, 3)
 	assert.Contains(t, all, "develop")
 	assert.Contains(t, all, "main")
+	assert.Contains(t, all, "intent-scan")
 }
 
 func TestFindAllWorkflows_CrossFileDuplicate(t *testing.T) {
@@ -270,9 +273,12 @@ func TestFindAllWorkflows_IncludesContainerAndHost(t *testing.T) {
 
 	all, err := FindAllWorkflows(tmpDir)
 	require.NoError(t, err)
-	assert.Len(t, all, 2)
+	// 2 project-defined workflows plus the intent-scan built-in (not
+	// overridden by this project).
+	assert.Len(t, all, 3)
 	assert.Contains(t, all, "develop")
 	assert.Contains(t, all, "main")
+	assert.Contains(t, all, "intent-scan")
 }
 
 func TestFindHostWorkflows_FiltersHostOnly(t *testing.T) {
@@ -301,7 +307,10 @@ workflow main {
 
 	hostWFs, err := FindHostWorkflows(tmpDir)
 	require.NoError(t, err)
-	assert.Len(t, hostWFs, 1)
+	// "main" (project-defined) plus the intent-scan built-in; "develop" is a
+	// container workflow and must be excluded.
+	assert.Len(t, hostWFs, 2)
 	assert.Contains(t, hostWFs, "main")
+	assert.Contains(t, hostWFs, "intent-scan")
 	assert.NotContains(t, hostWFs, "develop")
 }

@@ -104,11 +104,11 @@ marked `user_edited: true`.
 
 ## Extraction: `cloche intent scan`
 
-Extraction is an agent job, run through Cloche itself — the same dogfooding pattern as
-the `changelog`/`release` workflows (see the root `CLAUDE.md`'s release section):
-`intent-scan` isn't compiled into the `cloched` binary, it's a host workflow that this
-repo defines for itself in `.cloche/host.cloche`. `cloche intent scan` (alias for
-`cloche run intent-scan`) dispatches that workflow, which has five steps:
+Extraction is an agent job, run through Cloche itself. `intent-scan` is a **built-in
+host workflow** — its graph, agent prompts, and script steps are compiled into the
+`cloched`/`cloche` binaries (see [`docs/workflows.md`](workflows.md#built-in-workflows)),
+so it's available in any project with no setup. `cloche intent scan` (alias for
+`cloche run intent-scan`) dispatches it; the workflow has five steps:
 
 1. **discover-domains** — surveys the repo layout and proposes/updates
    `domains.yaml`. Full survey on first scan; incremental proposals afterwards,
@@ -142,12 +142,9 @@ cloche intent scan            # incremental: only material since the last scan
 cloche intent scan --full     # force a full domain re-survey
 ```
 
-Because `intent-scan` is a project-defined workflow, not a binary-embedded default,
-adopting the feature in a project other than this one means that project's own
-`.cloche/*.cloche` files must define an `intent-scan` workflow too (copy this repo's
-`.cloche/host.cloche` and `.cloche/prompts/intent-scan-*.md`/`.cloche/scripts/intent-scan-*.sh`
-as a starting point, or write your own). Without it, `cloche intent scan` fails with
-`workflow "intent-scan" not found in project <dir>`. `collect-sources` and
+A project can still override the built-in by defining its own `intent-scan` workflow
+in a `.cloche/*.cloche` file (e.g. to swap the agent or tune timeouts) — project-defined
+workflows always take precedence over built-ins of the same name. `collect-sources` and
 `apply-reconcile` (`cloche intent collect-sources` / `cloche intent apply-reconcile`)
 are the plumbing subcommands the workflow's script steps invoke — not normally run by
 hand.
@@ -311,8 +308,8 @@ API.
 ## Adopting the feature on an existing project
 
 `cloche init` never creates `.cloche/intent/` itself — the feature stays fully dormant
-until you opt in. First, make sure your project's `.cloche/*.cloche` files define an
-`intent-scan` workflow (see "Extraction" above); then:
+until you opt in. The built-in `intent-scan` workflow (see "Extraction" above) needs no
+setup, so adopting the feature is just:
 
 ```
 cloche intent scan --full

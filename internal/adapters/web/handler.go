@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloche-dev/cloche/internal/builtin"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cloche-dev/cloche/internal/intent"
@@ -2232,9 +2233,44 @@ func (h *Handler) handleAPIWorkflows(w http.ResponseWriter, r *http.Request) {
 		Steps     []apiStepDef `json:"steps"`
 		Wires     []apiWire    `json:"wires"`
 		EntryStep string       `json:"entry_step"`
+		Builtin   bool         `json:"builtin,omitempty"`
+	}
+
+	toAPIWorkflow := func(wf *domain.Workflow, file string) apiWorkflow {
+		var steps []apiStepDef
+		for _, s := range wf.Steps {
+			steps = append(steps, apiStepDef{
+				Name:    s.Name,
+				Type:    string(s.Type),
+				Results: s.Results,
+				Config:  s.Config,
+			})
+		}
+		sort.Slice(steps, func(i, j int) bool { return steps[i].Name < steps[j].Name })
+
+		var wires []apiWire
+		for _, wire := range wf.Wiring {
+			wires = append(wires, apiWire{From: wire.From, Result: wire.Result, To: wire.To, Implicit: wire.Implicit})
+		}
+
+		location := "container"
+		if wf.Location == domain.LocationHost {
+			location = "host"
+		}
+
+		return apiWorkflow{
+			Name:      wf.Name,
+			File:      file,
+			Location:  location,
+			Steps:     steps,
+			Wires:     wires,
+			EntryStep: wf.EntryStep,
+			Builtin:   wf.Builtin,
+		}
 	}
 
 	var workflows []apiWorkflow
+	seen := make(map[string]bool)
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".cloche") {
 			continue
@@ -2248,36 +2284,16 @@ func (h *Handler) handleAPIWorkflows(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		for _, wf := range wfs {
-			var steps []apiStepDef
-			for _, s := range wf.Steps {
-				steps = append(steps, apiStepDef{
-					Name:    s.Name,
-					Type:    string(s.Type),
-					Results: s.Results,
-					Config:  s.Config,
-				})
-			}
-			sort.Slice(steps, func(i, j int) bool { return steps[i].Name < steps[j].Name })
-
-			var wires []apiWire
-			for _, wire := range wf.Wiring {
-				wires = append(wires, apiWire{From: wire.From, Result: wire.Result, To: wire.To, Implicit: wire.Implicit})
-			}
-
-			location := "container"
-			if wf.Location == domain.LocationHost {
-				location = "host"
-			}
-
-			workflows = append(workflows, apiWorkflow{
-				Name:      wf.Name,
-				File:      filepath.Join(".cloche", e.Name()),
-				Location:  location,
-				Steps:     steps,
-				Wires:     wires,
-				EntryStep: wf.EntryStep,
-			})
+			seen[wf.Name] = true
+			workflows = append(workflows, toAPIWorkflow(wf, filepath.Join(".cloche", e.Name())))
 		}
+	}
+
+	for name, wf := range builtin.All() {
+		if seen[name] {
+			continue
+		}
+		workflows = append(workflows, toAPIWorkflow(wf, ""))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -2314,6 +2330,11 @@ func (h *Handler) handleAPIStepContent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if wf == nil {
+		if found, ok := builtin.Lookup(workflowName); ok {
+			wf = found
+		}
+	}
+	if wf == nil {
 		http.Error(w, "workflow not found", http.StatusNotFound)
 		return
 	}
@@ -2326,6 +2347,21 @@ func (h *Handler) handleAPIStepContent(w http.ResponseWriter, r *http.Request) {
 
 	// Try to read the referenced file from step config
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+
+	// Built-in steps carry literal content (prompt text, shell script) directly
+	// in their config, with no project-relative files to resolve.
+	if wf.Builtin {
+		if prompt := step.Config["prompt"]; prompt != "" {
+			w.Write([]byte(prompt))
+			return
+		}
+		if run := step.Config["run"]; run != "" {
+			w.Write([]byte(run))
+			return
+		}
+		http.Error(w, "no content available", http.StatusNotFound)
+		return
+	}
 
 	if prompt := step.Config["prompt"]; prompt != "" {
 		content, err := resolveFileRef(prompt, dir)

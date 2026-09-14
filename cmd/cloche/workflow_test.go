@@ -9,6 +9,33 @@ import (
 	"github.com/cloche-dev/cloche/internal/domain"
 )
 
+// captureStdout runs fn with os.Stdout redirected and returns everything written.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+
+	fn()
+
+	w.Close()
+	os.Stdout = old
+
+	var buf strings.Builder
+	tmp := make([]byte, 4096)
+	for {
+		n, readErr := r.Read(tmp)
+		buf.Write(tmp[:n])
+		if readErr != nil {
+			break
+		}
+	}
+	return buf.String()
+}
+
 func TestBfsOrder_LinearWorkflow(t *testing.T) {
 	wf := &domain.Workflow{
 		EntryStep: "a",
@@ -138,7 +165,7 @@ func TestRenderWorkflowGraph_NoColor(t *testing.T) {
 		Location:  domain.LocationContainer,
 		EntryStep: "build",
 		Steps: map[string]*domain.Step{
-			"build": {Name: "build", Type: domain.StepTypeScript, Results: []string{"success", "fail"}},
+			"build":  {Name: "build", Type: domain.StepTypeScript, Results: []string{"success", "fail"}},
 			"deploy": {Name: "deploy", Type: domain.StepTypeAgent, Results: []string{"success"}},
 		},
 		Wiring: []domain.Wire{
@@ -325,7 +352,7 @@ func TestRenderWorkflowGraph_ConsistentBoxWidth(t *testing.T) {
 		Location:  domain.LocationContainer,
 		EntryStep: "a",
 		Steps: map[string]*domain.Step{
-			"a":             {Name: "a", Type: domain.StepTypeScript, Results: []string{"ok"}},
+			"a":              {Name: "a", Type: domain.StepTypeScript, Results: []string{"ok"}},
 			"long-step-name": {Name: "long-step-name", Type: domain.StepTypeAgent, Results: []string{"ok"}},
 		},
 		Wiring: []domain.Wire{
@@ -396,9 +423,10 @@ workflow run {
 		t.Fatal(err)
 	}
 
-	// Should find 3 workflows: 1 container + 2 host
-	if len(infos) != 3 {
-		t.Fatalf("expected 3 workflows, got %d", len(infos))
+	// Should find 4 workflows: 1 container + 2 project-defined host + the
+	// intent-scan built-in (not overridden by this project).
+	if len(infos) != 4 {
+		t.Fatalf("expected 4 workflows, got %d", len(infos))
 	}
 
 	var containerCount, hostCount int
@@ -416,13 +444,70 @@ workflow run {
 	if containerCount != 1 {
 		t.Errorf("expected 1 container workflow, got %d", containerCount)
 	}
-	if hostCount != 2 {
-		t.Errorf("expected 2 host workflows, got %d", hostCount)
+	if hostCount != 3 {
+		t.Errorf("expected 3 host workflows, got %d", hostCount)
 	}
-	for _, name := range []string{"build", "plan", "run"} {
+	for _, name := range []string{"build", "plan", "run", "intent-scan"} {
 		if !names[name] {
 			t.Errorf("missing workflow %q", name)
 		}
+	}
+}
+
+func TestDiscoverWorkflows_IncludesBuiltinNotLocallyDefined(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow main {
+  host {}
+  step run {
+    run = "echo run"
+    results = [success]
+  }
+  run:success -> done
+}`), 0644)
+
+	infos, err := discoverWorkflows(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var found *workflowInfo
+	for i := range infos {
+		if infos[i].name == "intent-scan" {
+			found = &infos[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("expected discoverWorkflows to include built-in intent-scan")
+	}
+	if !found.builtin {
+		t.Error("expected intent-scan to be marked builtin")
+	}
+	if found.location != domain.LocationHost {
+		t.Errorf("expected intent-scan to be a host workflow, got %q", found.location)
+	}
+}
+
+func TestListWorkflows_LabelsBuiltin(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow main {
+  host {}
+  step run {
+    run = "echo run"
+    results = [success]
+  }
+  run:success -> done
+}`), 0644)
+
+	output := captureStdout(t, func() { listWorkflows(dir) })
+
+	if !strings.Contains(output, "intent-scan (built-in)") {
+		t.Errorf("expected output to contain 'intent-scan (built-in)', got:\n%s", output)
 	}
 }
 
@@ -433,8 +518,12 @@ func TestDiscoverWorkflows_NoClocheDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(infos) != 0 {
-		t.Errorf("expected 0 workflows, got %d", len(infos))
+	// No project workflows, but the intent-scan built-in is always present.
+	if len(infos) != 1 {
+		t.Errorf("expected 1 workflow (built-in intent-scan), got %d", len(infos))
+	}
+	if len(infos) == 1 && (infos[0].name != "intent-scan" || !infos[0].builtin) {
+		t.Errorf("expected built-in intent-scan, got %+v", infos[0])
 	}
 }
 

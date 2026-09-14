@@ -1027,8 +1027,9 @@ func TestAPIWorkflows_IncludesHostWorkflows(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &workflows))
 
-	// Should have both container and host workflows
-	assert.Len(t, workflows, 2)
+	// Should have both container and host workflows, plus the intent-scan
+	// built-in (not overridden by this project).
+	assert.Len(t, workflows, 3)
 
 	var locations = map[string]string{}
 	for _, wf := range workflows {
@@ -1036,6 +1037,7 @@ func TestAPIWorkflows_IncludesHostWorkflows(t *testing.T) {
 	}
 	assert.Equal(t, "container", locations["develop"])
 	assert.Equal(t, "host", locations["main"])
+	assert.Equal(t, "host", locations["intent-scan"])
 }
 
 func TestAPIStepContent_HostWorkflow(t *testing.T) {
@@ -1770,9 +1772,30 @@ func TestWorkflowAPI_ComplexGraph(t *testing.T) {
 		} `json:"wires"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &workflows))
-	require.Len(t, workflows, 1)
+	// The project-defined "pipeline" plus the intent-scan built-in (not
+	// overridden by this project).
+	require.Len(t, workflows, 2)
 
-	pipeline := workflows[0]
+	var pipeline struct {
+		Name      string `json:"name"`
+		Location  string `json:"location"`
+		EntryStep string `json:"entry_step"`
+		Steps     []struct {
+			Name    string   `json:"name"`
+			Type    string   `json:"type"`
+			Results []string `json:"results"`
+		} `json:"steps"`
+		Wires []struct {
+			From   string `json:"from"`
+			Result string `json:"result"`
+			To     string `json:"to"`
+		} `json:"wires"`
+	}
+	for _, wf := range workflows {
+		if wf.Name == "pipeline" {
+			pipeline = wf
+		}
+	}
 	assert.Equal(t, "pipeline", pipeline.Name)
 	assert.Equal(t, "container", pipeline.Location)
 	assert.Equal(t, "analyze", pipeline.EntryStep)

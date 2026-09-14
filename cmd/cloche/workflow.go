@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cloche-dev/cloche/internal/builtin"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
 )
@@ -46,6 +47,7 @@ func cmdWorkflow(args []string) {
 type workflowInfo struct {
 	name     string
 	location domain.WorkflowLocation
+	builtin  bool
 }
 
 func discoverWorkflows(projectDir string) ([]workflowInfo, error) {
@@ -56,6 +58,7 @@ func discoverWorkflows(projectDir string) ([]workflowInfo, error) {
 	}
 
 	var infos []workflowInfo
+	seen := make(map[string]bool)
 	for _, path := range entries {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -66,8 +69,16 @@ func discoverWorkflows(projectDir string) ([]workflowInfo, error) {
 			continue
 		}
 		for _, wf := range wfs {
+			seen[wf.Name] = true
 			infos = append(infos, workflowInfo{name: wf.Name, location: wf.Location})
 		}
+	}
+
+	for name, wf := range builtin.All() {
+		if seen[name] {
+			continue
+		}
+		infos = append(infos, workflowInfo{name: name, location: wf.Location, builtin: true})
 	}
 
 	return infos, nil
@@ -85,13 +96,21 @@ func listWorkflows(projectDir string) {
 		return
 	}
 
+	label := func(info workflowInfo) string {
+		if info.builtin {
+			return info.name + " (built-in)"
+		}
+		return info.name
+	}
+
 	var container, host []string
 	for _, info := range infos {
+		l := label(info)
 		switch info.location {
 		case domain.LocationContainer:
-			container = append(container, info.name)
+			container = append(container, l)
 		case domain.LocationHost:
-			host = append(host, info.name)
+			host = append(host, l)
 		}
 	}
 
@@ -135,6 +154,10 @@ func loadWorkflow(projectDir, name string) (*domain.Workflow, error) {
 		if wf, ok := wfs[name]; ok {
 			return wf, nil
 		}
+	}
+
+	if wf, ok := builtin.Lookup(name); ok {
+		return wf, nil
 	}
 
 	return nil, fmt.Errorf("workflow %q not found", name)

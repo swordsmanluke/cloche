@@ -3773,25 +3773,14 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 		}
 	}
 
-	// Discover workflows from .cloche files.
+	// Discover workflows from .cloche files (plus built-ins not overridden by the project).
 	var containerWorkflows, hostWorkflows []string
-	clocheDir := filepath.Join(projectDir, ".cloche")
-	entries, _ := filepath.Glob(filepath.Join(clocheDir, "*.cloche"))
-	for _, path := range entries {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		wfs, err := dsl.ParseAll(string(data))
-		if err != nil {
-			continue
-		}
-		for name, wf := range wfs {
-			if wf.Location == domain.LocationHost {
-				hostWorkflows = append(hostWorkflows, name)
-			} else {
-				containerWorkflows = append(containerWorkflows, name)
-			}
+	wfs, _ := host.FindAllWorkflows(projectDir)
+	for name, wf := range wfs {
+		if wf.Location == domain.LocationHost {
+			hostWorkflows = append(hostWorkflows, name)
+		} else {
+			containerWorkflows = append(containerWorkflows, name)
 		}
 	}
 

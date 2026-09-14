@@ -51,6 +51,17 @@ via `FindAllWorkflows()` and returns an error if the same workflow name appears 
 than one file. `FindHostWorkflows()` is a filtered view of this result, returning only
 workflows with a `host {}` block.
 
+## Built-in Workflows
+
+Some workflows are constructed in Go and compiled into the `cloched`/`cloche` binaries
+rather than parsed from a project's `.cloche` files, so they work in any project with no
+setup. `intent-scan` (see [`docs/intent.md`](intent.md)) is the first built-in.
+
+Built-in workflows are resolved *after* project workflow discovery: a project that
+defines its own workflow with the same name overrides the built-in entirely. `cloche
+workflow` (list view) and the web dashboard's workflow graph mark unoverridden built-ins
+with a `(built-in)` label.
+
 ## Concepts
 
 | Concept  | Description                                                        |
