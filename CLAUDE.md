@@ -56,6 +56,7 @@ my-project/
 │   ├── prompts/             # Prompt templates for agent steps
 │   ├── scripts/             # Host-side scripts (e.g. prepare-prompt.sh)
 │   ├── overrides/           # Files copied on top of /workspace/ in container
+│   ├── intent/               # Standing project requirements (optional; see docs/intent.md)
 │   └── runs/                # Runtime state (gitignored)
 │       └── <run-id>/
 ├── src/                     # Existing project source (untouched)
@@ -72,6 +73,13 @@ top. Results are extracted to git branches. Network is allowlisted.
 
 Agent-agnostic. The `AgentAdapter` interface wraps any coding agent. Initial adapters:
 Generic (arbitrary commands) and Claude Code.
+
+## Intent Continuity
+
+`.cloche/intent/` holds standing project requirements — durable constraints and
+decisions extracted from docs, run history, and commits — auto-injected into
+agent-step prompts as a `## Standing project requirements` block. Fully dormant
+until `cloche intent scan` is run once. See `docs/intent.md` for the user guide.
 
 ## Versioning
 

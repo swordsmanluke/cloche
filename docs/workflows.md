@@ -410,7 +410,8 @@ automatically get a `## Standing project requirements` block prepended to their
 prompt, built from that project's requirements. A prompt template that places
 `{{ $intent }}` explicitly gets the block there instead of at the top. Projects
 with no `.cloche/intent/` directory are unaffected — nothing is injected and no
-run KV is written.
+run KV is written. See [`docs/intent.md`](intent.md) for the full guide to the
+feature — concepts, file format, the `intent-scan` extraction workflow, and CLI.
 
 Opt out per workflow or per step with `intent = "off"`:
 

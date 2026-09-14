@@ -33,3 +33,17 @@ cloche run/loop  ──gRPC──▶  cloched (daemon, host)  ──▶  Docker 
 
 Everything the tutorials touch lives in `.cloche/` at your project root;
 `cloche init --new` generates all of it.
+
+## Optional: intent continuity
+
+`cloche init` doesn't create `.cloche/intent/` or an `intent-scan` workflow — that's a
+separate, opt-in feature for once your project has some history to learn from, and
+`cloche intent scan` will fail until your project's own `.cloche/*.cloche` files
+define an `intent-scan` workflow (it isn't built into the daemon; copy one from a
+project that already has it, such as the cloche repo's own `.cloche/host.cloche`, or
+write your own). Once that workflow exists, run `cloche intent scan` any time after
+your first few tasks to extract standing requirements (constraints and decisions)
+from your docs, commits, and run transcripts, and have them auto-injected into future
+agent prompts. See the cloche repo's `docs/intent.md` for the full guide (not bundled
+into this project's `.cloche/docs/init/`, since it documents a daemon-wide feature
+rather than this scaffold).

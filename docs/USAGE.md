@@ -1254,9 +1254,11 @@ fixed-width table. The package is an internal rendering helper with no public AP
 
 View and curate standing project requirements — durable statements of intent
 (constraints and decisions) extracted from project sources and injected into
-agent-step prompts. See
+agent-step prompts. See [`docs/intent.md`](intent.md) for the full user guide
+(concepts, file format, scan workflow, injection mechanics, embedder
+backends) and
 [`docs/plans/2026-09-13-intent-continuity-design.md`](plans/2026-09-13-intent-continuity-design.md)
-for the full design.
+for the design rationale.
 
 ```
 cloche intent list [--domain <name>] [--status <status>] [--project <dir>]
@@ -1784,14 +1786,17 @@ nothing is configured). The scaffolded `merge.py` script follows this pattern.
 ### `[intent]`
 
 Controls requirement extraction and prompt injection. See
+[`docs/intent.md`](intent.md) for the full user guide and
 [`docs/plans/2026-09-13-intent-continuity-design.md`](plans/2026-09-13-intent-continuity-design.md)
-for the full design.
+for the design rationale.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `embedder` | _(unset)_ | Pins the adapter-chain resolution in `internal/intent/embed` to a specific adapter name (`"onnx"`, `"ollama"`, `"keyword"`). Empty uses the default chain. |
+| `embedder` | _(unset)_ | Reserved for pinning adapter-chain resolution in `internal/intent/embed` to `"onnx"`, `"ollama"`, or `"keyword"`; not yet wired into resolution. |
+| `model` | _(unset)_ | Reserved for overriding the `onnx` adapter's embedding model; not yet wired in — use the `CLOCHE_INTENT_MODEL` env var today. |
 | `token_budget` | `0` | Overrides `intent.Select`'s default selection budget (~2000 tokens). Zero means "use the default". |
 | `inject` | _(unset)_ | Set to `"off"` to disable auto-prepending requirements to agent-step prompts project-wide. A workflow or step config key `intent = "off"` opts out at that scope instead. |
+| `scan_after_tasks` | `false` | Enqueue an incremental `intent-scan` run after each completed `main` orchestration task attempt. |
 
 ### `[[repositories]]`
 

@@ -95,7 +95,8 @@ total. Values are formatted with K/M suffixes for readability (e.g. `1.5M`).
 #### Intent
 
 Only shown for projects with a `.cloche/intent/` directory (i.e. that have run an
-intent scan at least once); dormant otherwise.
+intent scan at least once); dormant otherwise. See [`docs/intent.md`](intent.md)
+for the full guide to the feature.
 
 - **Scan now** — dispatches the project's `intent-scan` workflow via
   `POST /api/projects/{name}/intent/scan` and shows the last-scan timestamp

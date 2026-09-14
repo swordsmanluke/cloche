@@ -1,0 +1,38 @@
+version: 1
+domains:
+  - name: workflow-dsl
+    description: The .cloche workflow DSL — lexer/parser, step types, wiring, validation semantics.
+    paths: ["internal/dsl/**", "docs/workflows.md"]
+  - name: cli
+    description: The cloche CLI client — subcommands, flags, project init/scaffolding, output formatting.
+    paths: ["cmd/cloche/**", "docs/USAGE.md"]
+  - name: daemon-host-orchestration
+    description: The cloched daemon's orchestration loop, host workflow executor, and task pipeline (list-tasks/main/release-task).
+    paths: ["cmd/cloched/**", "internal/engine/**", "internal/host/**", "docs/plans/2026-03-06-host-workflow-design.md", "docs/design/human-in-the-loop.md", "docs/plans/2026-05-28-mcp-mode.md"]
+  - name: container-runtime
+    description: Docker adapter, container lifecycle, seeding/extraction, and cloche-agent's in-container execution.
+    paths: ["internal/adapters/docker/**", "cmd/cloche-agent/**", "docs/run-isolation/**"]
+  - name: agent-adapters
+    description: Coding-agent adapters (Claude Code, opencode, generic) and their argument/result-protocol conventions.
+    paths: ["internal/adapters/agents/**", "internal/agent/**", "docs/built-in-agents.md", "docs/agent-setup-claude.md", "docs/agent-setup-codex.md"]
+  - name: grpc-protocol
+    description: The daemon's gRPC API, wire protocol, and the in-container clo KV CLI.
+    paths: ["internal/adapters/grpc/**", "internal/protocol/**", "cmd/clo/**"]
+  - name: intent-continuity
+    description: Intent requirement extraction, storage, scoping, and prompt injection (.cloche/intent/).
+    paths: ["internal/intent/**", "docs/plans/2026-09-13-intent-continuity-design.md", "docs/plans/2026-09-13-intent-continuity-implementation.md"]
+  - name: web-dashboard
+    description: The daemon's web dashboard — project/run views, HTTP API, live log streaming UI.
+    paths: ["internal/adapters/web/**", "docs/web-dashboard.md", "docs/design/ui-pages.md"]
+  - name: versioning-release
+    description: Version-string policy and the changelog/release host-workflow pipeline.
+    paths: ["internal/version/**", ".cloche/scripts/release-*.sh", ".cloche/scripts/changelog-*.sh", ".cloche/prompts/draft-changelog.md", "docs/plans/2026-04-15-release-process-design.md"]
+  - name: security-safety
+    description: Threat model and mitigations for agent-in-the-loop usage — network, filesystem, credential, and prompt-injection safety.
+    paths: ["docs/SAFETY.md"]
+  - name: project-config
+    description: Project/global configuration (config.toml), repository declarations, and git bot identity/push credentials.
+    paths: ["internal/config/**", "internal/project/**", "internal/projectcli/**", "docs/plans/2026-03-06-config-toml-design.md", "docs/plans/2026-04-21-git-identity-design.md"]
+  - name: self-hosting-workflows
+    description: Cloche's own .cloche/ project config that uses cloche to develop cloche (vertical/finalize/publish pipeline).
+    paths: [".cloche/**", "docs/design/vertical-workflow.md"]
