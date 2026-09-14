@@ -47,6 +47,14 @@ func (s *Store) IntentDir() string {
 	return filepath.Join(s.dir, ".cloche", "intent")
 }
 
+// Exists reports whether the project has a .cloche/intent/ directory. Callers
+// (e.g. the dashboard) use this to decide whether to show intent-related UI
+// at all, preserving the dormancy guarantee for projects that never ran a scan.
+func (s *Store) Exists() bool {
+	info, err := os.Stat(s.IntentDir())
+	return err == nil && info.IsDir()
+}
+
 func (s *Store) requirementsDir() string {
 	return filepath.Join(s.IntentDir(), "requirements")
 }

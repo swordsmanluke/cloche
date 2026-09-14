@@ -21,6 +21,7 @@ import (
 
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
+	"github.com/cloche-dev/cloche/internal/intent"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/version"
@@ -74,6 +75,12 @@ func WithStopRunFunc(fn func(ctx context.Context, taskID string) error) HandlerO
 	return func(h *Handler) { h.stopRunFn = fn }
 }
 
+// WithScanFunc sets the function used to dispatch an intent-scan for a project,
+// returning the dispatched run ID.
+func WithScanFunc(fn func(ctx context.Context, projectDir string) (string, error)) HandlerOption {
+	return func(h *Handler) { h.scanFn = fn }
+}
+
 //go:embed templates/*.html static/*
 var content embed.FS
 
@@ -121,6 +128,7 @@ type Handler struct {
 	loopStatusFn  func(projectDir string) bool
 	stopLoopFn    func(ctx context.Context, projectDir string) error
 	stopRunFn     func(ctx context.Context, taskID string) error
+	scanFn        func(ctx context.Context, projectDir string) (string, error)
 	mcpSecret     []byte      // enables /mcp when non-empty; see WithHelpMCP
 	askHelpFn     AskHelpFunc // handles ask_user tool calls on /mcp
 	pages         map[string]*template.Template
@@ -198,6 +206,12 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
 	h.mux.HandleFunc("GET /api/projects/{name}/loop/status", h.handleAPILoopStatus)
 	h.mux.HandleFunc("POST /api/projects/{name}/loop/stop", h.handleAPILoopStop)
+	h.mux.HandleFunc("GET /api/projects/{name}/intent/requirements", h.handleAPIIntentRequirementsList)
+	h.mux.HandleFunc("PATCH /api/projects/{name}/intent/requirements", h.handleAPIIntentRequirementsPatch)
+	h.mux.HandleFunc("GET /api/projects/{name}/intent/domains", h.handleAPIIntentDomainsGet)
+	h.mux.HandleFunc("PUT /api/projects/{name}/intent/domains", h.handleAPIIntentDomainsPut)
+	h.mux.HandleFunc("POST /api/projects/{name}/intent/scan", h.handleAPIIntentScan)
+	h.mux.HandleFunc("GET /api/projects/{name}/intent/doc", h.handleAPIIntentDoc)
 	h.mux.HandleFunc("GET /api/tasks", h.handleAPIAllTasks)
 	h.mux.HandleFunc("GET /api/runs/{id}/logs", h.handleAPILogs)
 	h.mux.HandleFunc("GET /api/runs/{id}/stream", h.handleAPIStream)
@@ -1983,6 +1997,7 @@ func (h *Handler) handleProjectDetail(w http.ResponseWriter, r *http.Request) {
 		"Dir":            dir,
 		"RecentRuns":     dots,
 		"ContainerCount": containerCount,
+		"IntentEnabled":  intent.NewStore(dir).Exists(),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.pages["project_detail"].ExecuteTemplate(w, "layout", data); err != nil {
@@ -2153,8 +2168,8 @@ func (h *Handler) handleAPIPromptDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	file := r.URL.Query().Get("file")
 	sha := r.URL.Query().Get("sha")
-	if file == "" || sha == "" {
-		http.Error(w, "file and sha required", http.StatusBadRequest)
+	if sha == "" {
+		http.Error(w, "sha required", http.StatusBadRequest)
 		return
 	}
 
@@ -2166,7 +2181,14 @@ func (h *Handler) handleAPIPromptDiff(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	cmd := exec.Command("git", "diff", sha+"^.."+sha, "--", file)
+	// file is optional: omitted (e.g. an intent requirement's commit
+	// provenance, which isn't tied to one file), the whole commit is shown.
+	var cmd *exec.Cmd
+	if file != "" {
+		cmd = exec.Command("git", "diff", sha+"^.."+sha, "--", file)
+	} else {
+		cmd = exec.Command("git", "show", sha)
+	}
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
@@ -2476,6 +2498,344 @@ func (h *Handler) handleAPILoopStop(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "project": label})
+}
+
+// --- Intent API ---
+//
+// Backs the Project Detail page's Intent tab: requirements CRUD, the domain
+// map, and scan dispatch. The intent.Store handles dormancy (a project
+// without .cloche/intent/ returns empty results, never an error), so these
+// handlers never need to special-case a project that hasn't scanned yet.
+
+func writeJSONError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+// apiScope is the JSON representation of an intent.Scope.
+type apiScope struct {
+	Level     string   `json:"level"`
+	Domains   []string `json:"domains,omitempty"`
+	Paths     []string `json:"paths,omitempty"`
+	Languages []string `json:"languages,omitempty"`
+}
+
+// apiProvenance is the JSON representation of an intent.Provenance, plus a
+// dashboard Link resolved to the right existing page for its Kind (run
+// transcripts -> Run Detail, task prompts -> Task Detail, commits -> inline
+// diff, docs -> raw content), empty when the ref can't be resolved to a link.
+type apiProvenance struct {
+	Kind        string `json:"kind"`
+	Ref         string `json:"ref"`
+	ExtractedAt string `json:"extracted_at,omitempty"`
+	ExtractedBy string `json:"extracted_by,omitempty"`
+	Link        string `json:"link,omitempty"`
+}
+
+// apiRequirement is the JSON representation of an intent.Requirement.
+type apiRequirement struct {
+	ID           string        `json:"id"`
+	Status       string        `json:"status"`
+	SupersededBy string        `json:"superseded_by,omitempty"`
+	Scope        apiScope      `json:"scope"`
+	Hints        []string      `json:"hints,omitempty"`
+	Confidence   string        `json:"confidence"`
+	UserEdited   bool          `json:"user_edited"`
+	Provenance   apiProvenance `json:"provenance"`
+	Statement    string        `json:"statement"`
+	Created      string        `json:"created,omitempty"`
+	Updated      string        `json:"updated,omitempty"`
+	NewSinceScan bool          `json:"new_since_scan,omitempty"`
+}
+
+// apiRequirementsResponse is the response body for GET .../intent/requirements.
+type apiRequirementsResponse struct {
+	Requirements []apiRequirement `json:"requirements"`
+	LastScanAt   string           `json:"last_scan_at,omitempty"`
+}
+
+// apiDomain is the JSON representation of an intent.Domain.
+type apiDomain struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Paths       []string `json:"paths"`
+	UserEdited  bool     `json:"user_edited,omitempty"`
+}
+
+// apiDomainMap is the JSON representation of an intent.DomainMap.
+type apiDomainMap struct {
+	Version int         `json:"version"`
+	Domains []apiDomain `json:"domains"`
+}
+
+// apiRequirementPatch is the request body for PATCH .../intent/requirements.
+// Only present fields are applied; Statement/Scope/Hints edits set
+// user_edited (matching the CLI's `intent edit`), Status changes alone (the
+// table's status toggle) do not.
+type apiRequirementPatch struct {
+	ID        string    `json:"id"`
+	Statement *string   `json:"statement"`
+	Status    *string   `json:"status"`
+	Scope     *apiScope `json:"scope"`
+	Hints     *[]string `json:"hints"`
+}
+
+// apiTimeString formats t as RFC3339 UTC, or "" for the zero value.
+func apiTimeString(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
+// provenanceLink resolves a Requirement's provenance to a dashboard URL, or
+// "" when the kind has no linkable page (e.g. a manually added requirement).
+func provenanceLink(label string, p intent.Provenance) string {
+	if p.Ref == "" {
+		return ""
+	}
+	switch p.Kind {
+	case intent.ProvenanceTranscript:
+		return "/runs/" + url.PathEscape(p.Ref)
+	case intent.ProvenancePrompt:
+		return "/tasks/" + url.PathEscape(p.Ref)
+	case intent.ProvenanceCommit:
+		return "/api/projects/" + url.PathEscape(label) + "/info/prompt-diff?sha=" + url.QueryEscape(p.Ref)
+	case intent.ProvenanceDoc:
+		return "/api/projects/" + url.PathEscape(label) + "/intent/doc?path=" + url.QueryEscape(p.Ref)
+	default:
+		return ""
+	}
+}
+
+func toAPIScope(s intent.Scope) apiScope {
+	return apiScope{Level: string(s.Level), Domains: s.Domains, Paths: s.Paths, Languages: s.Languages}
+}
+
+func toAPIRequirement(req *intent.Requirement, label string, lastScanAt time.Time) apiRequirement {
+	return apiRequirement{
+		ID:           req.ID,
+		Status:       string(req.Status),
+		SupersededBy: req.SupersededBy,
+		Scope:        toAPIScope(req.Scope),
+		Hints:        req.Hints,
+		Confidence:   string(req.Confidence),
+		UserEdited:   req.UserEdited,
+		Provenance: apiProvenance{
+			Kind:        string(req.Provenance.Kind),
+			Ref:         req.Provenance.Ref,
+			ExtractedAt: apiTimeString(req.Provenance.ExtractedAt),
+			ExtractedBy: req.Provenance.ExtractedBy,
+			Link:        provenanceLink(label, req.Provenance),
+		},
+		Statement:    req.Body,
+		Created:      apiTimeString(req.Created),
+		Updated:      apiTimeString(req.Updated),
+		NewSinceScan: !lastScanAt.IsZero() && req.Created.After(lastScanAt),
+	}
+}
+
+func toAPIDomainMap(dm *intent.DomainMap) apiDomainMap {
+	out := apiDomainMap{Version: dm.Version, Domains: make([]apiDomain, len(dm.Domains))}
+	for i, d := range dm.Domains {
+		out.Domains[i] = apiDomain{Name: d.Name, Description: d.Description, Paths: d.Paths, UserEdited: d.UserEdited}
+	}
+	return out
+}
+
+// handleAPIIntentRequirementsList returns every requirement (all statuses;
+// the dashboard filters superseded/disabled client-side), newest-scan-aware.
+func (h *Handler) handleAPIIntentRequirementsList(w http.ResponseWriter, r *http.Request) {
+	dir, label, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	store := intent.NewStore(dir)
+
+	reqs, err := store.ListRequirements()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	scanState, err := store.LoadScanState()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	resp := apiRequirementsResponse{
+		Requirements: make([]apiRequirement, len(reqs)),
+		LastScanAt:   apiTimeString(scanState.LastScanAt),
+	}
+	for i, req := range reqs {
+		resp.Requirements[i] = toAPIRequirement(req, label, scanState.LastScanAt)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// handleAPIIntentRequirementsPatch updates one requirement (identified by
+// patch.ID in the body) and writes it back through the file store, so the
+// edit is visible in `git diff` like any other change.
+func (h *Handler) handleAPIIntentRequirementsPatch(w http.ResponseWriter, r *http.Request) {
+	dir, label, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+
+	var patch apiRequirementPatch
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if patch.ID == "" {
+		writeJSONError(w, http.StatusBadRequest, "id is required")
+		return
+	}
+
+	store := intent.NewStore(dir)
+	req, err := store.GetRequirement(patch.ID)
+	if err != nil {
+		writeJSONError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	if patch.Statement != nil {
+		req.Body = *patch.Statement
+		req.UserEdited = true
+	}
+	if patch.Scope != nil {
+		req.Scope = intent.Scope{
+			Level:     intent.ScopeLevel(patch.Scope.Level),
+			Domains:   patch.Scope.Domains,
+			Paths:     patch.Scope.Paths,
+			Languages: patch.Scope.Languages,
+		}
+		req.UserEdited = true
+	}
+	if patch.Hints != nil {
+		req.Hints = *patch.Hints
+		req.UserEdited = true
+	}
+	if patch.Status != nil {
+		req.Status = intent.Status(*patch.Status)
+	}
+	req.Updated = time.Now().UTC()
+
+	if err := store.SaveRequirement(req); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	scanState, _ := store.LoadScanState()
+	var lastScanAt time.Time
+	if scanState != nil {
+		lastScanAt = scanState.LastScanAt
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(toAPIRequirement(req, label, lastScanAt))
+}
+
+// handleAPIIntentDomainsGet returns the project's domain map.
+func (h *Handler) handleAPIIntentDomainsGet(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	dm, err := intent.NewStore(dir).LoadDomains()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(toAPIDomainMap(dm))
+}
+
+// handleAPIIntentDomainsPut replaces the project's domain map wholesale (the
+// domain map editor sends the full edited list back).
+func (h *Handler) handleAPIIntentDomainsPut(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+
+	var body apiDomainMap
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if body.Version == 0 {
+		body.Version = 1
+	}
+
+	dm := &intent.DomainMap{Version: body.Version, Domains: make([]intent.Domain, len(body.Domains))}
+	for i, d := range body.Domains {
+		dm.Domains[i] = intent.Domain{Name: d.Name, Description: d.Description, Paths: d.Paths, UserEdited: d.UserEdited}
+	}
+
+	store := intent.NewStore(dir)
+	if err := store.SaveDomains(dm); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(toAPIDomainMap(dm))
+}
+
+// handleAPIIntentScan dispatches an intent-scan run for the project (the
+// dashboard's "Scan now" button). Requires WithScanFunc to be configured;
+// the intent-scan workflow itself is defined at the project level (built-in
+// or overridden), same as `changelog`/`release`.
+func (h *Handler) handleAPIIntentScan(w http.ResponseWriter, r *http.Request) {
+	dir, label, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	if h.scanFn == nil {
+		writeJSONError(w, http.StatusNotImplemented, "intent scan not configured")
+		return
+	}
+	runID, err := h.scanFn(r.Context(), dir)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"status": "ok", "project": label, "run_id": runID})
+}
+
+// handleAPIIntentDoc serves the raw content of a doc-provenance file within
+// the project, for the requirements table's doc provenance link. path is
+// project-relative; traversal outside the project root is rejected.
+func (h *Handler) handleAPIIntentDoc(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	rel := r.URL.Query().Get("path")
+	if rel == "" {
+		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+
+	cleanDir := filepath.Clean(dir)
+	full := filepath.Join(cleanDir, filepath.Clean("/"+rel))
+	if full != cleanDir && !strings.HasPrefix(full, cleanDir+string(filepath.Separator)) {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	data, err := os.ReadFile(full)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write(data)
 }
 
 // --- Failed tasks dashboard ---

@@ -184,6 +184,16 @@ func main() {
 				_, err := srv.StopRun(ctx, &pb.StopRunRequest{TaskId: taskID})
 				return err
 			}),
+			web.WithScanFunc(func(ctx context.Context, projectDir string) (string, error) {
+				resp, err := srv.RunWorkflow(ctx, &pb.RunWorkflowRequest{
+					WorkflowName: "intent-scan",
+					ProjectDir:   projectDir,
+				})
+				if err != nil {
+					return "", err
+				}
+				return resp.RunId, nil
+			}),
 		}
 		if mcpSecret != nil {
 			webOpts = append(webOpts, web.WithHelpMCP(mcpSecret, srv.AskHelpForRun))

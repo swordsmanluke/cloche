@@ -3,6 +3,7 @@ package intent
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -16,6 +17,10 @@ type ScanState struct {
 	LastCommit  string            `yaml:"last_commit"`
 	ScannedRuns []string          `yaml:"scanned_runs"`
 	ScannedDocs map[string]string `yaml:"scanned_docs"`
+	// LastScanAt records when intent-scan last completed (UTC), so consumers
+	// (e.g. the dashboard's new-since-scan badge) can tell which requirements
+	// were created by the most recent scan. Zero means no scan has run yet.
+	LastScanAt time.Time `yaml:"last_scan_at,omitempty"`
 }
 
 // LoadScanState reads scan-state.yaml. A missing file yields a zero-value

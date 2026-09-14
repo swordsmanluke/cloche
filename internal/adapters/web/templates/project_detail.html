@@ -36,6 +36,37 @@
     <div class="panel-body" id="token-usage-body">Loading...</div>
 </div>
 
+{{if .IntentEnabled}}
+<!-- Panel: Intent -->
+<div class="panel" id="intent-panel">
+    <div class="panel-header">
+        Intent
+        <button class="btn btn-secondary btn-sm" id="intent-scan-btn" onclick="scanIntent()" style="float:right">Scan now</button>
+    </div>
+    <div class="panel-body">
+        <div id="intent-meta" style="margin-bottom:0.75rem;color:var(--text-muted);font-size:0.85rem">Loading...</div>
+        <label style="font-size:0.85rem;display:inline-flex;align-items:center;gap:0.35rem;margin-bottom:0.75rem">
+            <input type="checkbox" id="intent-show-hidden" onchange="renderRequirements()"> Show superseded/disabled
+        </label>
+        <div id="intent-requirements">Loading...</div>
+
+        <h2>Domains</h2>
+        <div id="intent-domains">Loading...</div>
+        <button class="btn btn-secondary btn-sm" onclick="addDomainRow()" style="margin-top:0.5rem">Add domain</button>
+        <button class="btn btn-secondary btn-sm" onclick="saveDomains()" style="margin-top:0.5rem">Save domains</button>
+    </div>
+</div>
+
+<!-- Requirement Edit Drawer -->
+<div class="drawer" id="intent-drawer">
+    <div class="drawer-header">
+        <span id="intent-drawer-title"></span>
+        <button class="drawer-close" onclick="closeIntentDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body" id="intent-drawer-body"></div>
+</div>
+{{end}}
+
 <!-- Panel 3: Workflow View -->
 <div class="panel" id="workflow-panel">
     <div class="panel-header">Workflows</div>
@@ -834,6 +865,207 @@ function loadTokenUsage() {
         .catch(function() {});
 }
 
+// --- Intent tab ---
+
+var intentData = { requirements: [], last_scan_at: '' };
+var domainsData = { version: 1, domains: [] };
+
+function formatIntentTime(s) {
+    if (!s) return 'never';
+    var d = new Date(s);
+    return isNaN(d.getTime()) ? s : d.toLocaleString();
+}
+
+function loadIntent() {
+    if (!document.getElementById('intent-panel')) return;
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/intent/requirements')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            intentData = data || { requirements: [], last_scan_at: '' };
+            document.getElementById('intent-meta').textContent = 'Last scan: ' + formatIntentTime(intentData.last_scan_at);
+            renderRequirements();
+        })
+        .catch(function() {});
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/intent/domains')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            domainsData = data || { version: 1, domains: [] };
+            renderDomains();
+        })
+        .catch(function() {});
+}
+
+function scanIntent() {
+    var btn = document.getElementById('intent-scan-btn');
+    if (btn) btn.disabled = true;
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/intent/scan', { method: 'POST' })
+        .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+        .then(function(res) {
+            if (btn) btn.disabled = false;
+            if (!res.ok) {
+                alert('Failed to start scan: ' + (res.data.error || 'unknown error'));
+                return;
+            }
+            loadIntent();
+        })
+        .catch(function() {
+            if (btn) btn.disabled = false;
+            alert('Failed to start scan');
+        });
+}
+
+function renderRequirements() {
+    var showHidden = document.getElementById('intent-show-hidden').checked;
+    var reqs = (intentData.requirements || []).filter(function(r) {
+        return showHidden || (r.status !== 'superseded' && r.status !== 'disabled');
+    });
+
+    var el = document.getElementById('intent-requirements');
+    if (reqs.length === 0) {
+        el.innerHTML = '<p class="empty">No requirements' + (showHidden ? '' : ' (or all hidden)') + '</p>';
+        return;
+    }
+
+    var html = '<table class="runs-table" style="margin:0"><thead><tr>';
+    html += '<th>Statement</th><th>Scope</th><th>Status</th><th>Confidence</th><th>Provenance</th><th></th>';
+    html += '</tr></thead><tbody>';
+    reqs.forEach(function(r) {
+        html += '<tr>';
+        html += '<td>' + escapeHtml(r.statement) + (r.new_since_scan ? ' <span class="badge badge-running">new</span>' : '') + (r.user_edited ? ' <span class="badge badge-stopped">edited</span>' : '') + '</td>';
+        html += '<td>';
+        if (r.scope && r.scope.level === 'domain' && r.scope.domains) {
+            r.scope.domains.forEach(function(d) { html += '<span class="badge badge-cancelled" style="margin-right:0.25rem">' + escapeHtml(d) + '</span>'; });
+        } else {
+            html += '<span class="badge badge-cancelled">project</span>';
+        }
+        html += '</td>';
+        html += '<td><button class="btn btn-secondary btn-sm" onclick="toggleRequirementStatus(\'' + r.id + '\',\'' + r.status + '\')">' + escapeHtml(r.status) + '</button></td>';
+        html += '<td>' + escapeHtml(r.confidence || '') + '</td>';
+        html += '<td>';
+        if (r.provenance && r.provenance.link) {
+            html += '<a href="' + r.provenance.link + '" target="_blank">' + escapeHtml(r.provenance.kind) + '</a>';
+        } else if (r.provenance) {
+            html += escapeHtml(r.provenance.kind || '');
+        }
+        html += '</td>';
+        html += '<td><button class="btn btn-secondary btn-sm" onclick="openIntentDrawer(\'' + r.id + '\')">Edit</button></td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+}
+
+function toggleRequirementStatus(id, currentStatus) {
+    var next = currentStatus === 'disabled' ? 'active' : 'disabled';
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/intent/requirements', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id, status: next })
+    })
+        .then(function(r) { return r.json(); })
+        .then(function() { loadIntent(); })
+        .catch(function() { alert('Failed to update status'); });
+}
+
+function openIntentDrawer(id) {
+    var r = (intentData.requirements || []).find(function(x) { return x.id === id; });
+    if (!r) return;
+
+    document.getElementById('intent-drawer-title').textContent = r.id;
+    var domains = (r.scope && r.scope.domains) ? r.scope.domains.join(', ') : '';
+    var body = '<label>Statement</label>';
+    body += '<textarea id="intent-edit-statement" rows="4" style="width:100%">' + escapeHtml(r.statement) + '</textarea>';
+    body += '<label style="display:block;margin-top:0.75rem">Scope level</label>';
+    body += '<select id="intent-edit-scope-level">';
+    body += '<option value="project"' + (r.scope.level === 'project' ? ' selected' : '') + '>project</option>';
+    body += '<option value="domain"' + (r.scope.level === 'domain' ? ' selected' : '') + '>domain</option>';
+    body += '</select>';
+    body += '<label style="display:block;margin-top:0.75rem">Domains (comma-separated)</label>';
+    body += '<input type="text" id="intent-edit-domains" value="' + escapeHtml(domains) + '" style="width:100%">';
+    body += '<button class="btn btn-primary" style="margin-top:1rem" onclick="saveIntentEdit(\'' + r.id + '\')">Save</button>';
+
+    document.getElementById('intent-drawer-body').innerHTML = body;
+    document.getElementById('intent-drawer').classList.add('drawer-open');
+}
+
+function closeIntentDrawer() {
+    document.getElementById('intent-drawer').classList.remove('drawer-open');
+}
+
+function saveIntentEdit(id) {
+    var statement = document.getElementById('intent-edit-statement').value;
+    var level = document.getElementById('intent-edit-scope-level').value;
+    var domains = document.getElementById('intent-edit-domains').value
+        .split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; });
+
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/intent/requirements', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            id: id,
+            statement: statement,
+            scope: { level: level, domains: domains }
+        })
+    })
+        .then(function(r) { return r.json(); })
+        .then(function() {
+            closeIntentDrawer();
+            loadIntent();
+        })
+        .catch(function() { alert('Failed to save requirement'); });
+}
+
+function renderDomains() {
+    var el = document.getElementById('intent-domains');
+    var domains = domainsData.domains || [];
+    if (domains.length === 0) {
+        el.innerHTML = '<p class="empty">No domains defined</p>';
+        return;
+    }
+    var html = '<table class="runs-table" style="margin:0"><thead><tr>';
+    html += '<th>Name</th><th>Description</th><th>Paths (comma-separated)</th>';
+    html += '</tr></thead><tbody>';
+    domains.forEach(function(d, i) {
+        html += '<tr>';
+        html += '<td><input type="text" value="' + escapeHtml(d.name || '') + '" onchange="updateDomainField(' + i + ',\'name\',this.value)"></td>';
+        html += '<td><input type="text" value="' + escapeHtml(d.description || '') + '" onchange="updateDomainField(' + i + ',\'description\',this.value)" style="width:100%"></td>';
+        html += '<td><input type="text" value="' + escapeHtml((d.paths || []).join(', ')) + '" onchange="updateDomainPaths(' + i + ',this.value)" style="width:100%"></td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+}
+
+function updateDomainField(i, field, value) {
+    domainsData.domains[i][field] = value;
+    domainsData.domains[i].user_edited = true;
+}
+
+function updateDomainPaths(i, value) {
+    domainsData.domains[i].paths = value.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; });
+    domainsData.domains[i].user_edited = true;
+}
+
+function addDomainRow() {
+    domainsData.domains = domainsData.domains || [];
+    domainsData.domains.push({ name: '', description: '', paths: [], user_edited: true });
+    renderDomains();
+}
+
+function saveDomains() {
+    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/intent/domains', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(domainsData)
+    })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            domainsData = data;
+            renderDomains();
+        })
+        .catch(function() { alert('Failed to save domains'); });
+}
+
 var loopRunning = false;
 
 function updateLoopButton(running) {
@@ -899,6 +1131,7 @@ loadWorkflows();
 loadTasks();
 loadTokenUsage();
 loadLoopStatus();
+loadIntent();
 setInterval(loadTasks, 5000);
 setInterval(loadTokenUsage, 30000);
 setInterval(loadLoopStatus, 5000);

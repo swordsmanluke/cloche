@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cloche-dev/cloche/internal/intent"
 	"github.com/stretchr/testify/assert"
@@ -162,11 +163,23 @@ func TestStore_SaveAndLoadScanState(t *testing.T) {
 		LastCommit:  "abc123",
 		ScannedRuns: []string{"run-1", "run-2"},
 		ScannedDocs: map[string]string{"CLAUDE.md": "deadbeef"},
+		LastScanAt:  time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC),
 	}
 
 	require.NoError(t, store.SaveScanState(st))
 
 	got, err := store.LoadScanState()
 	require.NoError(t, err)
+	assert.True(t, st.LastScanAt.Equal(got.LastScanAt))
+	got.LastScanAt = st.LastScanAt // avoid time.Time equality gotchas (wall/monotonic)
 	assert.Equal(t, st, got)
+}
+
+func TestStore_Exists(t *testing.T) {
+	dir := t.TempDir()
+	store := intent.NewStore(dir)
+	assert.False(t, store.Exists())
+
+	require.NoError(t, store.SaveDomains(&intent.DomainMap{Version: 1}))
+	assert.True(t, store.Exists())
 }

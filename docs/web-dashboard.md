@@ -64,7 +64,7 @@ Click a project card to go to the Project Detail page.
 
 ### Project Detail (`/projects/{name}`)
 
-A four-panel page for a specific project.
+A multi-panel page for a specific project.
 
 A **Start Loop / Stop Loop** toggle button appears at the top of the page. It polls
 `GET /api/projects/{name}/loop/status` every 5 seconds to reflect the current loop state
@@ -91,6 +91,26 @@ Shows token usage data for the project:
 
 Each row shows the agent name (e.g. `claude`), input tokens, output tokens, and combined
 total. Values are formatted with K/M suffixes for readability (e.g. `1.5M`).
+
+#### Intent
+
+Only shown for projects with a `.cloche/intent/` directory (i.e. that have run an
+intent scan at least once); dormant otherwise.
+
+- **Scan now** — dispatches the project's `intent-scan` workflow via
+  `POST /api/projects/{name}/intent/scan` and shows the last-scan timestamp
+  (`GET /api/projects/{name}/intent/requirements`).
+- **Requirements table** — one row per extracted requirement, with its statement,
+  scope (project-wide or specific domains), status, confidence, and a link to its
+  provenance (run transcript, task prompt, commit diff, or source doc). Requirements
+  created by the most recent scan are flagged `new`; requirements edited by hand are
+  flagged `edited`. A checkbox toggles whether superseded/disabled requirements are
+  shown. The status button toggles a requirement between `active` and `disabled`; the
+  **Edit** button opens a drawer to change the statement or scope
+  (`PATCH /api/projects/{name}/intent/requirements`).
+- **Domains** — an editable table of the project's domain map (name, description,
+  paths), with **Add domain** and **Save domains**
+  (`PUT /api/projects/{name}/intent/domains`).
 
 #### In-progress Tasks
 
@@ -245,6 +265,7 @@ confirms that all attempted tasks have succeeded or are still running.
 | Live log streaming (SSE) | Run detail → Log viewer, Step output panels |
 | Workflow DAG visualization | Project detail → Workflow DAG tab |
 | Token burn metrics | Project detail → Token Burn panel |
+| Intent requirements & domain map | Project detail → Intent panel |
 | Task pipeline & release | Project detail → Tasks panel |
 | Container delete | Run detail → Container Management |
 | Prompt diff viewer | Project detail → Project Info → commit history |
