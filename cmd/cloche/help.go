@@ -602,6 +602,67 @@ Examples:
   cloche project --name my-app
 `,
 
+	"intent": `cloche intent — View and curate standing project requirements
+
+Requirements are durable statements of intent (constraints and decisions)
+extracted from project sources and injected into agent-step prompts. See
+docs/plans/2026-09-13-intent-continuity-design.md for the full design.
+
+All mutations are plain file edits under .cloche/intent/ — visible in
+"git diff", committed like any other change. Only "scan" talks to the
+daemon (it dispatches the intent-scan workflow, like "cloche run").
+
+Usage:
+  cloche intent list [--domain <name>] [--status <status>] [--project <dir>]
+  cloche intent show <id> [--project <dir>]
+  cloche intent edit <id> [--project <dir>]
+  cloche intent disable <id> [--project <dir>]
+  cloche intent enable <id> [--project <dir>]
+  cloche intent add "<statement>" [--domain <name>]... [--project <dir>]
+  cloche intent preview [--workflow <name>] [--step <name>] [--prompt "..."] [--project <dir>]
+  cloche intent scan [--full]
+
+Subcommands:
+  list       Table of id, status, scope, source, and statement (truncated).
+             --domain filters to requirements scoped to that domain;
+             --status filters by status (active, disabled, superseded).
+  show       Full statement, rationale, scope, provenance, and history for
+             one requirement.
+  edit       Opens $EDITOR (or $VISUAL, or vi) on the requirement's raw
+             markdown+frontmatter file. After the editor exits, sets
+             user_edited=true and re-saves through the store.
+  disable    Sets status=disabled — the requirement is never injected.
+  enable     Sets status=active.
+  add        Creates a new requirement with provenance kind=user and
+             user_edited=true. Project-scoped unless --domain is given
+             (repeatable for multiple domains).
+  preview    Renders the exact block an agent step would receive: runs the
+             same selection (status filter, deterministic scope match,
+             semantic retrieval, token budget) and formatting the daemon
+             uses for prompt injection. --workflow/--step supply scope
+             context (repos, domains, prompt template name) from the
+             project's .cloche/*.cloche files; --prompt supplies the task
+             description used for semantic retrieval.
+  scan       Alias for "cloche run intent-scan"; dispatches the built-in
+             extraction workflow. --full forces a full re-scan instead of
+             an incremental one.
+
+Environment:
+  EDITOR, VISUAL    Editor used by "edit" (default: vi).
+  CLOCHE_ADDR       Daemon gRPC address, used only by "scan".
+
+Examples:
+  cloche intent list
+  cloche intent list --domain versioning --status active
+  cloche intent show req-a3f8
+  cloche intent edit req-a3f8
+  cloche intent disable req-a3f8
+  cloche intent add "Never bump the major version unless explicitly told to." --domain versioning
+  cloche intent preview --workflow develop --step implement --prompt "Add a /health endpoint"
+  cloche intent scan
+  cloche intent scan --full
+`,
+
 	"validate": `cloche validate — Validate project configuration and workflows
 
 Parses and validates all config and workflow files in the project's .cloche/
@@ -826,6 +887,7 @@ Project Setup:
   doctor     Diagnose infrastructure (Docker, base image, daemon, agent auth)
   health     Show project health summary (pass/fail counts)
   project    Show project info, config, loop state, and workflows
+  intent     View and curate standing project requirements
 
 Workflow Info:
   workflow   List workflows or show a workflow as an ASCII-art graph

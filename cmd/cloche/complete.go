@@ -15,9 +15,9 @@ import (
 
 // completionSubcommands is the canonical list of all cloche subcommands.
 var completionSubcommands = []string{
-	"complete", "delete", "get", "health", "help", "init", "list", "logs",
-	"loop", "poll", "project", "resume", "run", "set", "shutdown", "status",
-	"stop", "tasks", "threads", "validate", "workflow",
+	"complete", "delete", "get", "health", "help", "init", "intent", "list",
+	"logs", "loop", "poll", "project", "resume", "run", "set", "shutdown",
+	"status", "stop", "tasks", "threads", "validate", "workflow",
 }
 
 // cmdComplete handles `cloche complete --index <n> -- <word0> <word1> ...`.
@@ -163,6 +163,25 @@ func staticCompletions(subcommand string, index int, words []string, cur string)
 	case "workflow":
 		// Try reading from local .cloche/
 		candidates = localWorkflowNames()
+
+	case "intent":
+		if index == 2 {
+			candidates = []string{"list", "show", "edit", "disable", "enable", "add", "preview", "scan"}
+		} else if len(words) > 2 {
+			switch words[2] {
+			case "preview":
+				switch prev {
+				case "--workflow":
+					candidates = localWorkflowNames()
+				default:
+					candidates = []string{"--workflow", "--step", "--prompt", "-p", "--project"}
+				}
+			case "list":
+				candidates = []string{"--domain", "--status", "--project", "-p"}
+			case "scan":
+				candidates = []string{"--full"}
+			}
+		}
 
 	case "shutdown":
 		candidates = []string{"--force", "-f"}

@@ -120,6 +120,13 @@ func main() {
 		}
 		cmdProject(os.Args[2:])
 		return
+	case "intent":
+		if hasHelpFlag(os.Args[2:]) {
+			printSubcommandHelp("intent")
+			return
+		}
+		cmdIntent(os.Args[2:])
+		return
 	case "validate":
 		if hasHelpFlag(os.Args[2:]) {
 			printSubcommandHelp("validate")
@@ -136,9 +143,6 @@ func main() {
 		return
 	case "debug":
 		cmdDebug(os.Args[2:])
-		return
-	case "intent":
-		cmdIntent(os.Args[2:])
 		return
 	case "complete":
 		// No help flag handling: complete must be fast and quiet.

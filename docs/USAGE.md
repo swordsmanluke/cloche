@@ -1250,6 +1250,46 @@ frontend              ./repos/frontend
 `internal/projectcli` (`WriteReposList`), which formats the repository list as a
 fixed-width table. The package is an internal rendering helper with no public API.
 
+### `cloche intent`
+
+View and curate standing project requirements — durable statements of intent
+(constraints and decisions) extracted from project sources and injected into
+agent-step prompts. See
+[`docs/plans/2026-09-13-intent-continuity-design.md`](plans/2026-09-13-intent-continuity-design.md)
+for the full design.
+
+```
+cloche intent list [--domain <name>] [--status <status>] [--project <dir>]
+cloche intent show <id> [--project <dir>]
+cloche intent edit <id> [--project <dir>]
+cloche intent disable <id> [--project <dir>]
+cloche intent enable <id> [--project <dir>]
+cloche intent add "<statement>" [--domain <name>]... [--project <dir>]
+cloche intent preview [--workflow <name>] [--step <name>] [--prompt "..."] [--project <dir>]
+cloche intent scan [--full]
+```
+
+All mutations (`edit`, `disable`, `enable`, `add`) are plain file edits under
+`.cloche/intent/` — visible in `git diff`, committed like any other change. Only
+`scan` talks to the daemon: it dispatches the built-in `intent-scan` workflow,
+the same RPC `cloche run` uses.
+
+| Subcommand | Description |
+|------------|-------------|
+| `list` | Table of id, status, scope, source, and statement (truncated). `--domain` filters to requirements scoped to that domain; `--status` filters by status (`active`, `disabled`, `superseded`). |
+| `show` | Full statement, rationale, scope, provenance, and history for one requirement. |
+| `edit` | Opens `$EDITOR` (or `$VISUAL`, or `vi`) on the requirement's raw markdown+frontmatter file. After the editor exits, sets `user_edited=true` and re-saves through the store. |
+| `disable` | Sets `status=disabled` — the requirement is never injected. |
+| `enable` | Sets `status=active`. |
+| `add` | Creates a new requirement with provenance `kind=user` and `user_edited=true`. Project-scoped unless `--domain` is given (repeatable for multiple domains). |
+| `preview` | Renders the exact block an agent step would receive: runs the same selection (status filter, deterministic scope match, semantic retrieval, token budget) and formatting the daemon uses for prompt injection. `--workflow`/`--step` supply scope context (repos, domains, prompt template name) from the project's `.cloche/*.cloche` files; `--prompt` supplies the task description used for semantic retrieval. |
+| `scan` | Alias for `cloche run intent-scan`; dispatches the built-in extraction workflow. `--full` forces a full re-scan instead of an incremental one. |
+
+| Env var | Description |
+|---------|-------------|
+| `EDITOR`, `VISUAL` | Editor used by `edit` (default: `vi`). |
+| `CLOCHE_ADDR` | Daemon gRPC address, used only by `scan`. |
+
 ### `cloche get`
 
 ```
@@ -1740,6 +1780,18 @@ Host scripts receive the resolved identity and push credentials as env vars:
 The convention: any workflow script that commits or pushes on the bot's behalf
 should honor these env vars with a local fallback (so it still works when
 nothing is configured). The scaffolded `merge.py` script follows this pattern.
+
+### `[intent]`
+
+Controls requirement extraction and prompt injection. See
+[`docs/plans/2026-09-13-intent-continuity-design.md`](plans/2026-09-13-intent-continuity-design.md)
+for the full design.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `embedder` | _(unset)_ | Pins the adapter-chain resolution in `internal/intent/embed` to a specific adapter name (`"onnx"`, `"ollama"`, `"keyword"`). Empty uses the default chain. |
+| `token_budget` | `0` | Overrides `intent.Select`'s default selection budget (~2000 tokens). Zero means "use the default". |
+| `inject` | _(unset)_ | Set to `"off"` to disable auto-prepending requirements to agent-step prompts project-wide. A workflow or step config key `intent = "off"` opts out at that scope instead. |
 
 ### `[[repositories]]`
 
