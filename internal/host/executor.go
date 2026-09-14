@@ -177,6 +177,7 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 	cmdStr := step.Config["run"]
 	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
 	cmd.Dir = e.scriptDir()
+	nonce := protocol.GenerateNonce()
 	// Build env from parent, filtering out CLOCHE_* vars so they don't
 	// leak from the container environment when they are not explicitly set.
 	var baseEnv []string
@@ -216,10 +217,20 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 		cmd.Env = append(cmd.Env, "CLOCHE_PREV_OUTPUT="+prevOutput)
 	}
 
+	// Per-invocation nonce so a CLI the script shells out to (e.g. `cloche
+	// intent collect-sources`) can frame its result marker out-of-band,
+	// immune to unrelated "CLOCHE_RESULT:" text the script's own output may
+	// contain (collected docs/commits, echoed source, etc.).
+	cmd.Env = append(cmd.Env, "CLOCHE_RESULT_NONCE="+nonce)
+
 	output, err := cmd.CombinedOutput()
 
-	// Extract result marker
-	markerResult, cleanOutput, found := protocol.ExtractResult(output)
+	// Extract result marker: prefer the nonce-framed marker, falling back to
+	// a bare marker for scripts that don't know about CLOCHE_RESULT_NONCE.
+	markerResult, cleanOutput, found := protocol.ExtractNoncedResult(output, nonce)
+	if !found {
+		markerResult, cleanOutput, found = protocol.ExtractResult(output)
+	}
 
 	// Append output to file, preserving history across loop iterations.
 	if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {

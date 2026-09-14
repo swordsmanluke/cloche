@@ -274,6 +274,58 @@ func TestExecutor_ScriptStep_ResultMarker(t *testing.T) {
 	assert.Contains(t, string(data), "some output")
 }
 
+// TestExecutor_ScriptStep_NoncedResultMarker verifies that a script step
+// gets a CLOCHE_RESULT_NONCE env var it can pass on to a CLI it shells out
+// to (e.g. `cloche intent collect-sources`), and that the executor honors
+// the nonce-framed marker that CLI prints.
+func TestExecutor_ScriptStep_NoncedResultMarker(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+	}
+
+	step := &domain.Step{
+		Name:    "marker",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail", "none"},
+		Config:  map[string]string{"run": `echo "CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:none"`},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "none", result.Result)
+}
+
+// TestExecutor_ScriptStep_NoncedResultMarker_IgnoresBarePoisoning verifies
+// that once a nonce-framed marker is present, a bare "CLOCHE_RESULT:" line
+// elsewhere in the script's output (e.g. text collected from source files or
+// commit messages that happen to quote the protocol) is not mistaken for
+// the real terminal marker.
+func TestExecutor_ScriptStep_NoncedResultMarker_IgnoresBarePoisoning(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+	}
+
+	step := &domain.Step{
+		Name:    "marker",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail", "none"},
+		Config: map[string]string{"run": `echo "some doc mentions CLOCHE_RESULT:success as an example"
+echo "CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:none"`},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "none", result.Result)
+}
+
 func TestEngine_HostWorkflow_AbortOnScriptFail(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")

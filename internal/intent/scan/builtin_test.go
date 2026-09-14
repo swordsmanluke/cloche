@@ -1,7 +1,9 @@
 package scan_test
 
 import (
+	"os/exec"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/cloche-dev/cloche/internal/intent/scan"
@@ -44,6 +46,27 @@ func TestBuiltinWorkflow_Shape(t *testing.T) {
 		if assert.True(t, ok, "unexpected wire %s", key) {
 			assert.Equal(t, want, wire.To, "wire %s", key)
 		}
+	}
+}
+
+// TestBuiltinWorkflow_ScriptsAreDashCompatible guards against a regression
+// where the collect-sources / apply-reconcile scripts used the bashism
+// `set -o pipefail`, which fails instantly under Ubuntu's default `/bin/sh`
+// (dash), which lacks it — the host executor always runs step "run" scripts
+// via `sh -c`, not bash. See cloche-la93 x cloche-ulid integration bug.
+func TestBuiltinWorkflow_ScriptsAreDashCompatible(t *testing.T) {
+	wf := scan.BuiltinWorkflow()
+
+	for _, name := range []string{"collect-sources", "apply-reconcile"} {
+		step, ok := wf.Steps[name]
+		require.True(t, ok, "step %s should exist", name)
+		script := step.Config["run"]
+		require.NotEmpty(t, script, "step %s should have a run script", name)
+
+		firstLine, _, _ := strings.Cut(script, "\n")
+		cmd := exec.Command("sh", "-c", firstLine)
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, "step %s: %q failed under sh: %s", name, firstLine, out)
 	}
 }
 

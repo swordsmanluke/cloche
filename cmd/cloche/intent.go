@@ -18,6 +18,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/intent"
 	"github.com/cloche-dev/cloche/internal/intent/embed"
 	"github.com/cloche-dev/cloche/internal/intent/scan"
+	"github.com/cloche-dev/cloche/internal/protocol"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -674,6 +675,21 @@ func intentScanWithClient(ctx context.Context, client pb.ClocheServiceClient, ar
 	return nil
 }
 
+// printResultMarker prints the CLOCHE_RESULT marker for name, framed with
+// the step nonce from CLOCHE_RESULT_NONCE when the caller (the host
+// executor) set one, so the marker can't be confused with unrelated
+// "CLOCHE_RESULT:" text this command's own output may contain (e.g. commits
+// or docs it collected that happen to mention the protocol literally).
+// Falls back to a bare marker when the env var is unset, for callers that
+// invoke this command directly without the nonce protocol.
+func printResultMarker(name string) {
+	if nonce := os.Getenv("CLOCHE_RESULT_NONCE"); nonce != "" {
+		fmt.Println(protocol.FormatNoncedMarker(nonce, name))
+		return
+	}
+	fmt.Println(protocol.ResultPrefix + name)
+}
+
 func cmdIntentCollectSources(args []string) {
 	projectDir, _ := os.Getwd()
 	outDir := ""
@@ -704,13 +720,13 @@ func cmdIntentCollectSources(args []string) {
 
 	if !collection.HasNew() {
 		fmt.Println("no new material since the last scan")
-		fmt.Println("CLOCHE_RESULT:none")
+		printResultMarker("none")
 		return
 	}
 
 	fmt.Printf("collected %d doc(s), %d commit(s), %d run(s) into %s\n",
 		len(collection.Docs), len(collection.Commits), len(collection.Runs), outDir)
-	fmt.Println("CLOCHE_RESULT:success")
+	printResultMarker("success")
 }
 
 // runIntentCollectSources loads the project's scan-state cursors, collects
@@ -773,13 +789,13 @@ func cmdIntentApplyReconcile(args []string) {
 	report, err := runIntentApplyReconcile(projectDir, reconcilePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		fmt.Println("CLOCHE_RESULT:fail")
+		printResultMarker("fail")
 		os.Exit(1)
 	}
 
 	fmt.Printf("created %d, superseded %d, merged %d, dropped %d\n",
 		len(report.Created), len(report.Superseded), len(report.Merged), report.Dropped)
-	fmt.Println("CLOCHE_RESULT:success")
+	printResultMarker("success")
 }
 
 // runIntentApplyReconcile reads a reconcile.json produced by the reconcile

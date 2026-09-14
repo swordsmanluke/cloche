@@ -15,7 +15,7 @@ var extractPrompt string
 //go:embed prompts/reconcile.md
 var reconcilePrompt string
 
-const collectSourcesScript = `set -euo pipefail
+const collectSourcesScript = `set -eu
 PROJECT_DIR="${CLOCHE_PROJECT_DIR:-.}"
 TEMP=$(cloche get temp_file_dir)
 if [ -z "$TEMP" ]; then
@@ -27,7 +27,7 @@ cloche intent collect-sources --project "$PROJECT_DIR" --out "$OUT"
 cloche set intent_scan_sources_dir "$OUT"
 `
 
-const applyReconcileScript = `set -euo pipefail
+const applyReconcileScript = `set -eu
 PROJECT_DIR="${CLOCHE_PROJECT_DIR:-.}"
 TEMP=$(cloche get temp_file_dir)
 if [ -z "$TEMP" ]; then

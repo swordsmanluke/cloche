@@ -18,6 +18,26 @@ import (
 	"google.golang.org/grpc"
 )
 
+func TestPrintResultMarker_FramesWithNonceWhenSet(t *testing.T) {
+	t.Setenv("CLOCHE_RESULT_NONCE", "abc123")
+
+	out := captureStdout(t, func() { printResultMarker("none") })
+
+	if strings.TrimSpace(out) != "CLOCHE_RESULT:abc123:none" {
+		t.Fatalf("got %q, want nonce-framed marker", out)
+	}
+}
+
+func TestPrintResultMarker_FallsBackToBareWhenNonceUnset(t *testing.T) {
+	t.Setenv("CLOCHE_RESULT_NONCE", "")
+
+	out := captureStdout(t, func() { printResultMarker("success") })
+
+	if strings.TrimSpace(out) != "CLOCHE_RESULT:success" {
+		t.Fatalf("got %q, want bare marker", out)
+	}
+}
+
 func TestRunIntentCollectSources_QuietThenNew(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "out")
