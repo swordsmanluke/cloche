@@ -90,6 +90,14 @@ type RepositoryConfig struct {
 	URL  string `toml:"url"`
 }
 
+// IntentConfig controls the intent-continuity feature (see
+// docs/plans/2026-09-13-intent-continuity-design.md). Embedder pins the
+// adapter-chain resolution in internal/intent/embed to a specific adapter
+// name ("onnx", "ollama", "keyword"); empty uses the default chain.
+type IntentConfig struct {
+	Embedder string `toml:"embedder"`
+}
+
 type Config struct {
 	Active        bool                `toml:"active"`
 	Daemon        DaemonConfig        `toml:"daemon"`
@@ -98,6 +106,7 @@ type Config struct {
 	Agent         AgentConfig         `toml:"agent"`
 	Git           GitConfig           `toml:"git"`
 	Help          HelpConfig          `toml:"help"`
+	Intent        IntentConfig        `toml:"intent"`
 	Repositories  []RepositoryConfig  `toml:"repositories"`
 }
 

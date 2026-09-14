@@ -197,6 +197,29 @@ func TestLoadGitConfigDefaults(t *testing.T) {
 	assert.Equal(t, "", cfg.Git.Email)
 }
 
+func TestLoadIntentConfig(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
+[intent]
+embedder = "ollama"
+`), 0644)
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "ollama", cfg.Intent.Embedder)
+}
+
+func TestLoadIntentConfigDefaults(t *testing.T) {
+	dir := t.TempDir()
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "", cfg.Intent.Embedder)
+}
+
 func TestLoadHelpChannelConfig(t *testing.T) {
 	dir := t.TempDir()
 	clocheDir := filepath.Join(dir, ".cloche")

@@ -43,6 +43,9 @@ examples/*/.cloche/
 .cloche/runs/
 .cloche/activity.log
 
+# Intent embedding index: a derived cache (vectors), never a source of truth.
+.cloche/intent-index/
+
 # Agent credentials baked into the project image at build time.
 # Never commit these — they grant push access to GitHub via the cloche bot user.
 .cloche/credentials/
