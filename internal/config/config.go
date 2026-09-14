@@ -93,9 +93,15 @@ type RepositoryConfig struct {
 // IntentConfig controls the intent-continuity feature (see
 // docs/plans/2026-09-13-intent-continuity-design.md). Embedder pins the
 // adapter-chain resolution in internal/intent/embed to a specific adapter
-// name ("onnx", "ollama", "keyword"); empty uses the default chain.
+// name ("onnx", "ollama", "keyword"); empty uses the default chain. Model
+// overrides the onnx adapter's model (default all-MiniLM-L6-v2; e.g.
+// EmbeddingGemma-300M for projects that want it); empty uses the default.
+// Neither field is wired from config into embed.Resolve yet — that lands
+// with the daemon-side selection wiring — so the onnx adapter currently
+// reads its override via the CLOCHE_INTENT_MODEL env var directly.
 type IntentConfig struct {
 	Embedder string `toml:"embedder"`
+	Model    string `toml:"model"`
 }
 
 type Config struct {

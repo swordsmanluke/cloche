@@ -205,11 +205,13 @@ func TestLoadIntentConfig(t *testing.T) {
 	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`
 [intent]
 embedder = "ollama"
+model = "EmbeddingGemma-300M"
 `), 0644)
 
 	cfg, err := Load(dir)
 	require.NoError(t, err)
 	assert.Equal(t, "ollama", cfg.Intent.Embedder)
+	assert.Equal(t, "EmbeddingGemma-300M", cfg.Intent.Model)
 }
 
 func TestLoadIntentConfigDefaults(t *testing.T) {
@@ -218,6 +220,7 @@ func TestLoadIntentConfigDefaults(t *testing.T) {
 	cfg, err := Load(dir)
 	require.NoError(t, err)
 	assert.Equal(t, "", cfg.Intent.Embedder)
+	assert.Equal(t, "", cfg.Intent.Model)
 }
 
 func TestLoadHelpChannelConfig(t *testing.T) {

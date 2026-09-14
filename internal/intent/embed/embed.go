@@ -1,8 +1,8 @@
 // Package embed defines the Embedder port used by the intent package's
-// semantic retrieval and the pure-Go adapters that satisfy it (ollama,
-// keyword). A third adapter, onnx, is added behind a build tag in a later
-// slice; the chain below already accounts for it by name so no change is
-// needed here when it lands. See
+// semantic retrieval, the pure-Go adapters that satisfy it unconditionally
+// (ollama, keyword), and the in-process onnx adapter (onnx.go) that only
+// registers itself when built with `-tags onnx` — cloched is the only
+// binary built that way; cloche, clo, and cloche-agent stay cgo-free. See
 // docs/plans/2026-09-13-intent-continuity-design.md for the full design.
 package embed
 
