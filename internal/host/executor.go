@@ -15,8 +15,10 @@ import (
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/engine"
+	"github.com/cloche-dev/cloche/internal/intent"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/cloche-dev/cloche/internal/protocol"
+	"github.com/cloche-dev/cloche/internal/runcontext"
 )
 
 // Executor implements engine.StepExecutor for host workflow steps (scripts and
@@ -35,6 +37,8 @@ type Executor struct {
 	TaskID        string           // optional task ID assigned by the daemon loop
 	AttemptID     string           // optional attempt ID for v2 tracking (propagated to child runs)
 	WorkflowName  string           // workflow name for run context seeding
+	Repos         []string         // workflow's declared repos (domain.Workflow.Repos), used for intent domain scoping
+	IntentOff     bool             // workflow-level `intent = "off"`; opts every step in the workflow out of injection
 	ExtraEnv      []string         // additional KEY=VALUE env vars for all steps
 	ResumeStep    string           // step being resumed (for prompt conversation resume)
 
@@ -370,6 +374,7 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 			attemptID: e.AttemptID,
 			runID:     e.HostRunID,
 		}
+		e.seedIntentKV(ctx, step)
 	}
 
 	// Pass CLOCHE_* vars so the agent process can invoke `cloche get/set`.
@@ -428,6 +433,57 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 	// The adapter appended its output directly to e.OutputDir/<step>.log via
 	// adapter.OutputDir above, so there is nothing to copy here.
 	return sr, nil
+}
+
+// seedIntentKV computes this step's injected requirements block (see
+// intent.Resolve) and writes it into run KV as "intent", so prompt.go's
+// {{ $intent }} resolution and auto-prepend — which read it via the same
+// hostKVReader wired onto adapter.KV above — see a value. This is the host
+// half of the design's KV-seeding mechanism; DaemonExecutor.seedIntentKV
+// does the equivalent for container steps. Opted out by workflow/step
+// `intent = "off"` or config.toml's `intent.inject = "off"`; a project with
+// no .cloche/intent/ directory gets no KV writes at all (the dormancy
+// guarantee — intent.Resolve reports active=false).
+func (e *Executor) seedIntentKV(ctx context.Context, step *domain.Step) {
+	if e.IntentOff || step.Config["intent"] == "off" {
+		return
+	}
+	cfg, err := config.Load(e.ProjectDir)
+	if err != nil {
+		log.Printf("host executor: loading config for intent injection: %v", err)
+		return
+	}
+	if cfg.Intent.Inject == "off" {
+		return
+	}
+
+	var taskDescription string
+	if data, readErr := os.ReadFile(runcontext.PromptPath(e.ProjectDir, e.TaskID)); readErr == nil {
+		taskDescription = string(data)
+	}
+	query := intent.Query{
+		TaskDescription: taskDescription,
+		StepPromptName:  step.Name,
+		WorkflowName:    e.WorkflowName,
+		Repos:           e.Repos,
+	}
+	opts := intent.Options{TokenBudget: cfg.Intent.TokenBudget}
+
+	injection, active, err := intent.Resolve(ctx, e.ProjectDir, query, opts, cfg.Intent.Embedder)
+	if err != nil {
+		log.Printf("host executor: resolving intent injection for step %q: %v", step.Name, err)
+		return
+	}
+	if !active {
+		return
+	}
+	if setErr := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, e.HostRunID, "intent", injection.Block); setErr != nil {
+		log.Printf("host executor: seeding intent KV for step %q: %v", step.Name, setErr)
+	}
+	key := fmt.Sprintf("%s:%s:intent", e.WorkflowName, step.Name)
+	if setErr := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, e.HostRunID, key, strings.Join(injection.IDs, ",")); setErr != nil {
+		log.Printf("host executor: recording injected intent IDs for step %q: %v", step.Name, setErr)
+	}
 }
 
 // stepOutputFile returns the path for a step's output file.

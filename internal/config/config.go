@@ -99,11 +99,16 @@ type RepositoryConfig struct {
 // Neither field is wired from config into embed.Resolve yet — that lands
 // with the daemon-side selection wiring — so the onnx adapter currently
 // reads its override via the CLOCHE_INTENT_MODEL env var directly.
+// Inject = "off" disables both {{ $intent }} resolution and auto-prepend for
+// the whole project; step/workflow `intent = "off"` overrides per step.
+// Empty TokenBudget uses intent.Select's built-in default (~2000).
 // ScanAfterTasks opts a project into an incremental intent-scan run after
 // each task's main orchestration attempt succeeds; default off.
 type IntentConfig struct {
 	Embedder       string `toml:"embedder"`
 	Model          string `toml:"model"`
+	Inject         string `toml:"inject"`
+	TokenBudget    int    `toml:"token_budget"`
 	ScanAfterTasks bool   `toml:"scan_after_tasks"`
 }
 

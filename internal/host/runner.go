@@ -139,6 +139,8 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		TaskID:       r.TaskID,
 		AttemptID:    r.AttemptID,
 		WorkflowName: wf.Name,
+		Repos:        wf.Repos,
+		IntentOff:    wf.Config["intent"] == "off",
 		ExtraEnv:     r.ExtraEnv,
 	}
 
@@ -327,6 +329,8 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 		HostRunID:    run.ID,
 		TaskID:       r.TaskID,
 		WorkflowName: wf.Name,
+		Repos:        wf.Repos,
+		IntentOff:    wf.Config["intent"] == "off",
 		ExtraEnv:     extraEnv,
 	}
 
@@ -518,6 +522,8 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 		TaskID:       r.TaskID,
 		AttemptID:    r.AttemptID,
 		WorkflowName: wf.Name,
+		Repos:        wf.Repos,
+		IntentOff:    wf.Config["intent"] == "off",
 		ExtraEnv:     extraEnv,
 		ResumeStep:   resumeFrom,
 	}

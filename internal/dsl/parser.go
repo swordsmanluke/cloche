@@ -276,9 +276,11 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 }
 
 // parseWorkflowField handles top-level `key = value` assignments inside a
-// workflow block. Currently the only such field is `repos = ["a", "b"]`,
-// which names the repositories the workflow consumes — repo names must
-// match [[repositories]] entries in the project's config.toml.
+// workflow block: `repos = ["a", "b"]` names the repositories the workflow
+// consumes (repo names must match [[repositories]] entries in the
+// project's config.toml), `token-limit = N` overrides the per-step
+// token-limit result's default budget, and `intent = "off"` opts every
+// step in the workflow out of $intent injection.
 func (p *Parser) parseWorkflowField(wf *domain.Workflow) error {
 	keyTok, err := p.expect(TokenIdent)
 	if err != nil {
@@ -317,6 +319,13 @@ func (p *Parser) parseWorkflowField(wf *domain.Workflow) error {
 				keyTok.Line, keyTok.Col, numStr)
 		}
 		wf.Config["token-limit"] = numStr
+		return nil
+	case "intent":
+		val, err := p.parseValue()
+		if err != nil {
+			return err
+		}
+		wf.Config["intent"] = val
 		return nil
 	default:
 		return fmt.Errorf("line %d col %d: unknown workflow field %q", keyTok.Line, keyTok.Col, keyTok.Literal)

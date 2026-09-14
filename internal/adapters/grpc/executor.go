@@ -15,8 +15,10 @@ import (
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/host"
+	"github.com/cloche-dev/cloche/internal/intent"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/cloche-dev/cloche/internal/runcontext"
 )
 
 // DaemonExecutor implements engine.StepExecutor and routes steps based on the
@@ -644,6 +646,63 @@ func (d *DaemonExecutor) writeRepoBranchKV(ctx context.Context, prepared []repoW
 	}
 }
 
+// seedIntentKV computes step's injected requirements block (see
+// intent.Resolve) and writes it into run KV as "intent" before the step is
+// dispatched, so the in-container prompt resolver's {{ $intent }}
+// resolution and auto-prepend (internal/adapters/agents/prompt, shared with
+// the host tier) find it through the existing grpcKVReader round-trip with
+// no container/proto changes — this is what sidesteps the container's
+// clean-git-snapshot seeding, since the daemon reads .cloche/intent/ from
+// the host project dir. Opted out by workflow/step `intent = "off"` or
+// config.toml's `intent.inject = "off"`; a project with no
+// .cloche/intent/ directory gets no KV writes at all (intent.Resolve
+// reports active=false). Best-effort: errors are logged, not returned, so a
+// broken embedder or config never blocks a run.
+func (d *DaemonExecutor) seedIntentKV(ctx context.Context, step *domain.Step, wf *domain.Workflow, hostRunID string) {
+	if d.store == nil || d.taskID == "" {
+		return
+	}
+	if wf.Config["intent"] == "off" || step.Config["intent"] == "off" {
+		return
+	}
+	daemonCfg, err := config.Load(d.projectDir)
+	if err != nil {
+		log.Printf("daemon executor: loading config for intent injection: %v", err)
+		return
+	}
+	if daemonCfg.Intent.Inject == "off" {
+		return
+	}
+
+	var taskDescription string
+	if data, readErr := os.ReadFile(runcontext.PromptPath(d.projectDir, d.taskID)); readErr == nil {
+		taskDescription = string(data)
+	}
+	query := intent.Query{
+		TaskDescription: taskDescription,
+		StepPromptName:  step.Name,
+		WorkflowName:    wf.Name,
+		Repos:           wf.Repos,
+	}
+	opts := intent.Options{TokenBudget: daemonCfg.Intent.TokenBudget}
+
+	injection, active, err := intent.Resolve(ctx, d.projectDir, query, opts, daemonCfg.Intent.Embedder)
+	if err != nil {
+		log.Printf("daemon executor: resolving intent injection for step %q: %v", step.Name, err)
+		return
+	}
+	if !active {
+		return
+	}
+	if setErr := d.store.SetContextKey(ctx, d.taskID, d.attemptID, hostRunID, "intent", injection.Block); setErr != nil {
+		log.Printf("daemon executor: seeding intent KV for step %q: %v", step.Name, setErr)
+	}
+	key := fmt.Sprintf("%s:%s:intent", wf.Name, step.Name)
+	if setErr := d.store.SetContextKey(ctx, d.taskID, d.attemptID, hostRunID, key, strings.Join(injection.IDs, ",")); setErr != nil {
+		log.Printf("daemon executor: recording injected intent IDs for step %q: %v", step.Name, setErr)
+	}
+}
+
 // executeContainerStep obtains a container session for the attempt (starting a
 // new container if needed) and dispatches the step to the in-container agent.
 func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.Step, wf *domain.Workflow) (domain.StepResult, error) {
@@ -717,6 +776,10 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 
 	if d.onContainerStart != nil {
 		d.onContainerStart(session.ContainerID)
+	}
+
+	if step.Type == domain.StepTypeAgent {
+		d.seedIntentKV(ctx, step, wf, hostRunID)
 	}
 
 	result, err := session.ExecuteStep(ctx, step, d.resumeMode)

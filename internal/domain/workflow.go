@@ -255,6 +255,8 @@ var knownStepConfigKeys = map[string]bool{
 	// skip script: optional shell command run before the step; exit 0 means skip
 	"skip":        true,
 	"token-limit": true,
+	// intent = "off" opts a step out of $intent requirement injection
+	"intent": true,
 }
 
 // ValidateConfig checks step config keys against known keys and returns

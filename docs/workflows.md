@@ -403,6 +403,36 @@ explicitly will route to `release-task` instead of `abort`.
 > redirect timeout events for a specific step, use a step-level wire:
 > `<stepname>:timeout -> <target>`.
 
+## Intent Injection
+
+Agent steps whose project has a `.cloche/intent/` directory (see `cloche intent`)
+automatically get a `## Standing project requirements` block prepended to their
+prompt, built from that project's requirements. A prompt template that places
+`{{ $intent }}` explicitly gets the block there instead of at the top. Projects
+with no `.cloche/intent/` directory are unaffected — nothing is injected and no
+run KV is written.
+
+Opt out per workflow or per step with `intent = "off"`:
+
+```
+workflow "develop" {
+  intent = "off"
+  ...
+}
+```
+
+```
+step implement {
+  prompt  = file(".cloche/prompts/implement.md")
+  intent  = "off"
+  results = [success, fail]
+}
+```
+
+`config.toml`'s `[intent]` table also supports a project-wide `inject = "off"` to
+disable injection everywhere, and `token_budget` to cap the injected block's size
+(defaults to ~2000 tokens).
+
 ## Workflow-Level Configuration Blocks
 
 Workflows support a configuration block at the workflow level to set defaults for all
@@ -893,6 +923,15 @@ Updated by the host executor as steps run:
 | `prev_step` | step name | Name of the most recently completed step. |
 | `prev_step_exit` | exit code | Exit code of the most recently completed step. |
 | `<workflow>:<step>:result` | wire name | The result each completed step reported (e.g. `main:merge:result` → `success`). |
+
+Seeded before each agent step (host and container), when the project has a
+`.cloche/intent/` directory and injection isn't opted out (see [Intent
+Injection](#intent-injection)):
+
+| Key | Value | Description |
+|-----|-------|-------------|
+| `intent` | formatted block | The requirements block `{{ $intent }}` resolves to and the auto-prepend inserts. |
+| `<workflow>:<step>:intent` | comma-separated req IDs | The requirement IDs selected for that step. |
 
 Published after a container sub-workflow (a `workflow_name` step) completes,
 under the host run's scope so host steps can read them:

@@ -67,6 +67,24 @@ func TestParser_MinimalWorkflow(t *testing.T) {
 	assert.Equal(t, "build", wf.EntryStep)
 }
 
+func TestParser_WorkflowLevelIntentOff(t *testing.T) {
+	input := `workflow simple {
+  intent = "off"
+
+  step build {
+    run = "make build"
+    results = [success, fail]
+  }
+
+  build:success -> done
+  build:fail -> abort
+}`
+
+	wf, err := dsl.Parse(input)
+	require.NoError(t, err)
+	assert.Equal(t, "off", wf.Config["intent"])
+}
+
 func TestParser_SyntaxError(t *testing.T) {
 	input := `workflow { }`
 	_, err := dsl.Parse(input)

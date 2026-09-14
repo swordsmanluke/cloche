@@ -758,12 +758,18 @@ func (a *Adapter) assemblePrompt(ctx context.Context, step *domain.Step, workDir
 
 	userPrompt := readUserPrompt(workDir, a.TaskID)
 
+	// Explicit {{ $intent }} placement suppresses the auto-prepend below;
+	// checked against the raw (pre-resolve) template so the substring survives
+	// even though resolving the directive below will replace it with content.
+	explicitIntent := false
+
 	// 1. Read system template from step config
 	if tmpl, ok := step.Config["prompt"]; ok {
 		content, err := resolveContent(tmpl, workDir)
 		if err != nil {
 			return "", fmt.Errorf("reading prompt template: %w", err)
 		}
+		explicitIntent = hasIntentReference(content)
 
 		// New {{ }} resolver pass.
 		resolver := &Resolver{
@@ -818,7 +824,39 @@ func (a *Adapter) assemblePrompt(ctx context.Context, step *domain.Step, workDir
 		parts = append(parts, strings.Join(resultLines, "\n"))
 	}
 
+	// Auto-prepend the standing requirements block the daemon/host executor
+	// seeded into KV under "intent" before this step ran (see
+	// internal/intent.Resolve and its callers). Skipped when the template
+	// already placed {{ $intent }} explicitly, when no KV is wired, or when
+	// there's nothing to inject (dormant project, opt-out, or an empty
+	// selection for this step).
+	if !explicitIntent && a.KV != nil {
+		if block, found, err := a.KV.Get(ctx, "intent"); err == nil && found && block != "" {
+			parts = append([]string{block}, parts...)
+		}
+	}
+
 	return strings.Join(parts, "\n\n"), nil
+}
+
+// hasIntentReference reports whether s contains a "$intent" variable
+// reference (bare or inside a {{ }} directive) as opposed to merely
+// containing "$intent" as a prefix of a longer identifier like
+// "$intentionally". Matches the identifier-char rule the bare-$name
+// resolver (resolveBareVars in template.go) uses to end an identifier.
+func hasIntentReference(s string) bool {
+	const needle = "$intent"
+	for i := 0; ; {
+		idx := strings.Index(s[i:], needle)
+		if idx == -1 {
+			return false
+		}
+		end := i + idx + len(needle)
+		if end >= len(s) || !isIdentChar(s[end], false) {
+			return true
+		}
+		i = end
+	}
 }
 
 // legacyToNewName maps a legacy placeholder name to the equivalent new-style variable name.
