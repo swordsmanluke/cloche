@@ -212,13 +212,14 @@ headline — the automated metrics are the headline.
 
 ## Ticket drafts (NOT yet filed)
 
-Deliberately **not** in bead: the orchestration loop claims open tickets within
-seconds, and this work must not start until the Cloche updates are finished and
-verified. File these (with the listed dependencies) when ready; drafts are
-written to be usable as `bd create` descriptions verbatim.
+E1–E6 were filed in bead on 2026-09-14 after the 3.21.0 install was verified.
+**E7 and E8 stay out of the tracker permanently**: they are multi-hour arm runs
+on the local GPU with a human decision gate between them — executed manually
+per the Procedure section, not loop-claimable container work.
 
 **E1 — Experiment seed repo + frozen Bract spec** *(feature, no deps)*
-New repo `bract-experiment/seed/`: project scaffold (Python, stdlib only),
+`experiments/intent-ab/seed/` in this repo (arms are cloned out to standalone
+project dirs by the E5 driver; extraction stays within this project): project scaffold (Python, stdlib only),
 `DESIGN.md` containing the full Bract spec with the seven prior traps Q1–Q7 and
 ~12 standing constraints, `.cloche/` setup shared by both arms (Dockerfile,
 develop/host workflows, config.toml *without* arm-specific intent keys). Name
@@ -237,7 +238,7 @@ protocol table; a dry `list-tasks` run emits the 12 tasks in order.
 (incl. negative-operand division, side-effect-visible `and`/`or`) plus ~32
 general-coverage. Runner script executes the corpus against a repo's `main` and
 emits overall, per-feature, and prior-trap pass rates as JSON. Lives outside the
-seed repo (`bract-experiment/eval/`), never copied into an arm. Acceptance: a
+seed repo (`experiments/intent-ab/eval/`), never copied into an arm. Acceptance: a
 reference implementation (written for this purpose, also kept out of the arms)
 passes 48/48; a deliberately Lox-prior implementation scores ≈0 on traps.
 
