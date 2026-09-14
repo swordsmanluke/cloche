@@ -321,6 +321,14 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	return containerID, nil
 }
 
+// startedSuccessfully reports whether a container's inspect status counts as
+// a successful start: either it's currently running, or it already exited
+// with code 0 (a container can only reach "exited" by first being "running",
+// so a short-lived command finishing between polls is not a failure).
+func startedSuccessfully(status *ports.ContainerStatus) bool {
+	return status.Running || (!status.FinishedAt.IsZero() && status.ExitCode == 0)
+}
+
 // waitForRunning polls docker inspect until the container reports Running=true,
 // returning an error if it does not transition within a short window. This
 // catches the "container stuck in Created" failure mode where docker start
@@ -344,7 +352,7 @@ func (r *Runtime) waitForRunning(ctx context.Context, containerID string) error 
 			}
 			continue // transient inspect error; retry
 		}
-		if status.Running {
+		if startedSuccessfully(status) {
 			return nil
 		}
 	}
