@@ -1,0 +1,16 @@
+{
+  "q1": "- Versioning system for semantic versioning and release tagging  \n- Git branching strategies for release branches and pull requests  \n- Container runtime for image updates and runtime configurations  \n- Workflow DSL for task execution and release pipeline automation  \n- KV-store for data management and release-specific state tracking  \n- Orchestration system for task execution and deployment automation  \n- Tasks system for defined release steps and automation  \n- Prompt-templating for user interface and deployment scripts  \n- Dashboard for real-time release status and metrics  \n- Release policies requiring approval and testing before deployment",
+  "q10": "versioning  \nrelease  \narchitecture  \ncontainer runtime  \nworkflow DSL  \nprompt templating",
+  "q11": "- Tasks  \n- Workflow-dsl  \n- Kv-store  \n- Orchestration  \n- Prompt-templating  \n- Versioning",
+  "q12": "prompt-templating system  \ngit system  \norchestration system  \ndynamic variables in prompts  \nbranch name policy  \nprompt generation conventions",
+  "q13": "- Task management system  \n- Orchestration system  \n- Container runtime system  \n- Release system",
+  "q14": "container-runtime  \norchestration  \nworkflow-dsl  \nversioning  \ngit  \ntasks",
+  "q2": "versioning  \nrelease  \narchitecture  \ncontainer-runtime  \nworkflow-dsl  \nprompt-templating  \nkv-store  \norchestration  \ntasks  \ndashboard  \ngit",
+  "q3": "versioning  \ncontainer-runtime  \norchestration  \ntasks  \nkv-store  \nprompt-templating",
+  "q4": "prompt-templating system  \norchestration system  \ntasks system  \nworkflow-dsl  \ncontainer-runtime  \ndashboard",
+  "q5": "1. Architecture changes for new sandbox provider integration  \n2. Container runtime policy compliance with multiple runtimes  \n3. Workflow DSL updates for sandbox-specific execution  \n4. Prompt-templating system adjustments for new provider interactions  \n5. kv-store data model modifications for sandbox provider metadata  \n6. Orchestration system alignment with new provider requirements",
+  "q6": "Incorrect file path in agent's configuration  \nGit ignore settings in .cloche/overrides directory  \nPermissions preventing access to overrides file  \nOrchestration pipeline not scanning overrides directory  \nPrompt-templating not including override file in agent's prompt  \nTasks not configured to process files in overrides directory",
+  "q7": "CI/CD system configuration and policies  \nOrchestration system policies  \nGit system merging conventions  \nContainer runtime policies  \nKV-store dependencies  \nProject workflow policies",
+  "q8": "- Workflow-dsl for defining the data flow  \n- Orchestration for managing the step sequence  \n- Container-runtime for data transmission  \n- Git for tracking JSON report versions  \n- Data integrity policies for the report  \n- Format validation policies for the structure",
+  "q9": "Versioning (git repos)  \nRelease (release policies)  \nOrchestration (config changes)  \nTasks (execution states)  \nDashboard (config changes)"
+}

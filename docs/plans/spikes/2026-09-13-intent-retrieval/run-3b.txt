@@ -1,0 +1,77 @@
+corpus: 28 requirements, 14 queries
+
+keyword-baseline       hit@1 0.36   recall@3 0.35   recall@5 0.54   MRR 0.48
+generator model: llama3.2:3b
+
+bad generations: 0/14 expansions, 1/28 hints
+
+all-minilm             hit@1 0.50   recall@3 0.60   recall@5 0.63   MRR 0.63
+all-minilm+expand      hit@1 0.29   recall@3 0.37   recall@5 0.54   MRR 0.44
+all-minilm+hints       hit@1 0.64   recall@3 0.63   recall@5 0.63   MRR 0.71
+all-minilm+hints+expand hit@1 0.43   recall@3 0.52   recall@5 0.65   MRR 0.56
+
+all-minilm+hints threshold sweep (cosine cutoff -> precision / recall over all query-req pairs):
+  >= 0.30   precision 0.38   recall 0.48   (selected 26)
+  >= 0.35   precision 0.40   recall 0.29   (selected 15)
+  >= 0.40   precision 0.50   recall 0.24   (selected 10)
+  >= 0.45   precision 0.50   recall 0.10   (selected 4)
+  >= 0.50   precision 0.50   recall 0.05   (selected 2)
+  >= 0.55   precision 0.00   recall 0.00   (selected 0)
+  >= 0.60   precision 0.00   recall 0.00   (selected 0)
+  >= 0.65   precision 0.00   recall 0.00   (selected 0)
+
+all-minilm+hints misses (first relevant not in top 3):
+  q2 "Add a --json output flag to the status subcommand"  wanted [r-go-style r-ver-minor]  got r-tmpl-syntax(0.28) r-dsl-reserved(0.27) r-orch-poll(0.22)
+  q6 "Why doesn't the agent see the file I just created in .cloche/overrides?"  wanted [r-cont-seed]  got r-arch-container(0.52) r-ver-single(0.43) r-rel-dryrun(0.39)
+  q8 "Pass a large JSON report from the review step to the summarize step"  wanted [r-kv-limit]  got r-dsl-onetype(0.24) r-dsl-reserved(0.23) r-dsl-results(0.23)
+  q10 "Let one step download packages from npmjs.org"  wanted [r-cont-network]  got r-ver-single(0.18) r-ver-major(0.12) r-orch-poll(0.11)
+
+nomic-embed-text       hit@1 0.57   recall@3 0.56   recall@5 0.70   MRR 0.66
+nomic-embed-text+expand hit@1 0.36   recall@3 0.40   recall@5 0.50   MRR 0.48
+nomic-embed-text+hints hit@1 0.57   recall@3 0.56   recall@5 0.70   MRR 0.68
+nomic-embed-text+hints+expand hit@1 0.36   recall@3 0.36   recall@5 0.57   MRR 0.49
+
+nomic-embed-text+hints threshold sweep (cosine cutoff -> precision / recall over all query-req pairs):
+  >= 0.30   precision 0.05   recall 1.00   (selected 392)
+  >= 0.35   precision 0.05   recall 1.00   (selected 392)
+  >= 0.40   precision 0.05   recall 1.00   (selected 391)
+  >= 0.45   precision 0.06   recall 1.00   (selected 369)
+  >= 0.50   precision 0.07   recall 1.00   (selected 310)
+  >= 0.55   precision 0.11   recall 0.81   (selected 154)
+  >= 0.60   precision 0.23   recall 0.52   (selected 48)
+  >= 0.65   precision 0.58   recall 0.33   (selected 12)
+
+nomic-embed-text+hints misses (first relevant not in top 3):
+  q2 "Add a --json output flag to the status subcommand"  wanted [r-go-style r-ver-minor]  got r-orch-idem(0.66) r-task-claim(0.63) r-orch-poll(0.61)
+  q6 "Why doesn't the agent see the file I just created in .cloche/overrides?"  wanted [r-cont-seed]  got r-arch-container(0.71) r-task-claim(0.68) r-kv-builtin(0.64)
+  q8 "Pass a large JSON report from the review step to the summarize step"  wanted [r-kv-limit]  got r-orch-idem(0.65) r-orch-poll(0.62) r-token-limit(0.60)
+  q12 "Inject the current git branch name into the implement prompt"  wanted [r-tmpl-syntax]  got r-git-branch(0.67) r-scripts-main(0.63) r-rel-tag(0.61)
+
+embeddinggemma         hit@1 0.57   recall@3 0.52   recall@5 0.83   MRR 0.69
+embeddinggemma+expand  hit@1 0.57   recall@3 0.60   recall@5 0.65   MRR 0.67
+embeddinggemma+hints   hit@1 0.64   recall@3 0.67   recall@5 0.86   MRR 0.76
+embeddinggemma+hints+expand hit@1 0.43   recall@3 0.67   recall@5 0.73   MRR 0.63
+
+embeddinggemma+hints threshold sweep (cosine cutoff -> precision / recall over all query-req pairs):
+  >= 0.30   precision 0.23   recall 0.71   (selected 65)
+  >= 0.35   precision 0.32   recall 0.62   (selected 41)
+  >= 0.40   precision 0.38   recall 0.43   (selected 24)
+  >= 0.45   precision 0.46   recall 0.29   (selected 13)
+  >= 0.50   precision 0.67   recall 0.10   (selected 3)
+  >= 0.55   precision 1.00   recall 0.10   (selected 2)
+  >= 0.60   precision 1.00   recall 0.10   (selected 2)
+  >= 0.65   precision 0.00   recall 0.00   (selected 0)
+
+embeddinggemma+hints misses (first relevant not in top 3):
+  q6 "Why doesn't the agent see the file I just created in .cloche/overrides?"  wanted [r-cont-seed]  got r-arch-container(0.49) r-ver-single(0.47) r-kv-builtin(0.39)
+  q8 "Pass a large JSON report from the review step to the summarize step"  wanted [r-kv-limit]  got r-token-limit(0.29) r-ver-minor(0.29) r-dsl-results(0.27)
+
+
+keyword-baseline misses (first relevant not in top 3):
+  q2 "Add a --json output flag to the status subcommand"  wanted [r-go-style r-ver-minor]  got r-tmpl-notmpl(0.17) r-task-claim(0.17) r-orch-idem(0.17)
+  q6 "Why doesn't the agent see the file I just created in .cloche/overrides?"  wanted [r-cont-seed]  got r-arch-container(0.22) r-git-branch(0.22) r-ver-single(0.22)
+  q7 "Write a script that waits for CI to go green before merging"  wanted [r-orch-poll r-orch-idem]  got r-arch-hex(0.14) r-go-style(0.14) r-tmpl-syntax(0.00)
+  q8 "Pass a large JSON report from the review step to the summarize step"  wanted [r-kv-limit]  got r-cont-network(0.14) r-token-limit(0.14) r-orch-idem(0.14)
+  q10 "Let one step download packages from npmjs.org"  wanted [r-cont-network]  got r-dsl-onetype(0.29) r-cont-seed(0.14) r-token-limit(0.14)
+  q11 "Add a new step outcome called parked to the fix step"  wanted [r-dsl-reserved]  got r-cont-network(0.17) r-token-limit(0.17) r-orch-idem(0.17)
+  q13 "The agent ran out of budget halfway through the refactoring task"  wanted [r-token-limit]  got r-tmpl-syntax(0.12) r-arch-container(0.12) r-ver-single(0.12)
