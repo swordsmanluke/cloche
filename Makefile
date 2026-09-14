@@ -45,10 +45,29 @@ install-sh: build docker-build
 	@install bin/cloche bin/cloched bin/cloche-agent $(PREFIX)/bin/
 
 install: build docker-build
-	@# Stop running daemon (graceful via CLI, fallback to kill)
+	@# Stop running daemon (graceful via CLI, fallback to kill), then wait for
+	@# it to actually exit rather than assuming a fixed sleep is enough. A
+	@# daemon hung in shutdown can survive well past 1s, still holding its
+	@# ports — starting the new daemon while that's true causes its web
+	@# listener to fail to bind (see serveWebWithRetry in cmd/cloched).
 	@echo "==> Stopping cloched..."
 	@cloche shutdown 2>/dev/null || pkill -x cloched 2>/dev/null || true
-	@sleep 1
+	@for i in $$(seq 1 30); do \
+		pgrep -x cloched > /dev/null || break; \
+		sleep 1; \
+	done
+	@if pgrep -x cloched > /dev/null; then \
+		echo "==> cloched still running after 30s, sending SIGKILL"; \
+		pkill -9 -x cloched 2>/dev/null || true; \
+		for i in $$(seq 1 10); do \
+			pgrep -x cloched > /dev/null || break; \
+			sleep 1; \
+		done; \
+	fi
+	@if pgrep -x cloched > /dev/null; then \
+		echo "==> ERROR: cloched did not exit, aborting install"; \
+		exit 1; \
+	fi
 	@# Install binaries
 	@mkdir -p $(PREFIX)/bin
 	@echo "==> Installing to $(PREFIX)/bin/"

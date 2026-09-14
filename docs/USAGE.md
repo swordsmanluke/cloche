@@ -1029,7 +1029,7 @@ status for that task.
 | Argument | Output |
 |----------|--------|
 | Task ID | Task status, title, project, latest attempt ID, result, end timestamp, and total tokens consumed across all attempts (omitted if no usage data). When the task is `waiting` at a poll step, also shows the step name, time since last poll, and poll count (e.g. `Waiting: code-review — last polled 4m ago (3 polls)`). When the run has an open help thread (`clo ask` / `ask_user` blocked awaiting a reply), also shows `Pending question: <title> (<channel>/<name>)` — this can appear even while the run is otherwise `running`. When a help-channel ask went unanswered past `park_after`, shows `parked — awaiting reply: <title> (<channel>/<name>)`; reply with `cloche threads reply <channel>/<name> ...` to resume. |
-| _(none)_ | Daemon version, run statistics (past hour), active tasks with attempt IDs and in-progress runs shown as composite IDs (e.g. `cloche-1234:aj19:main`), and per-agent token burn rate for the last hour (omitted if no usage data). In a project directory, also shows project name, concurrency, loop state, and the count of resumable (parked) runs. |
+| _(none)_ | Daemon version, web dashboard status (`Web: http://<addr>` if up, or `Web: DOWN (<error>)` if configured but its listener is down), run statistics (past hour), active tasks with attempt IDs and in-progress runs shown as composite IDs (e.g. `cloche-1234:aj19:main`), and per-agent token burn rate for the last hour (omitted if no usage data). In a project directory, also shows project name, concurrency, loop state, and the count of resumable (parked) runs. The web dashboard line is omitted entirely if the dashboard isn't configured (`CLOCHE_HTTP`/`[daemon] http` unset). |
 
 | Flag | Description |
 |------|-------------|
@@ -1165,6 +1165,11 @@ cloche health
 ```
 
 Show per-project pass/fail summary. Requires `CLOCHE_HTTP`.
+
+If the HTTP request fails, `cloche health` falls back to `GetVersion` over gRPC to tell
+apart a fully-down daemon from one whose web dashboard listener is down (e.g. stuck
+retrying a bind failure): in the latter case it reports `web dashboard is down (<error>);
+daemon is otherwise healthy (version <version>)` instead of a generic connection error.
 
 ### `cloche workflow`
 

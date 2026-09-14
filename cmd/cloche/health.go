@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"text/tabwriter"
+	"time"
 
+	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cloche-dev/cloche/internal/config"
 )
 
@@ -49,7 +52,10 @@ func cmdHealth(args []string) {
 	url := "http://" + httpAddr + "/api/projects"
 	resp, err := http.Get(url)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		// The dial failure looks identical whether the whole daemon is down
+		// or just its web dashboard (e.g. stuck retrying a bind failure).
+		// Check gRPC, which is a separate listener, to tell them apart.
+		reportWebUnreachable(err)
 		os.Exit(1)
 	}
 	defer resp.Body.Close()
@@ -82,5 +88,39 @@ func cmdHealth(args []string) {
 			name, status, p.Health.Passed, p.Health.Failed, p.Health.Total)
 	}
 	w.Flush()
+}
+
+// reportWebUnreachable prints an error for a failed web dashboard request,
+// enriched with the daemon's gRPC-reported web status when reachable. This
+// distinguishes "daemon is fully down" from "daemon is up but its web
+// dashboard bind failed" — the latter looks identical over plain HTTP.
+func reportWebUnreachable(httpErr error) {
+	conn, err := dialDaemon()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", httpErr)
+		return
+	}
+	defer conn.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	verResp, err := pb.NewClocheServiceClient(conn).GetVersion(ctx, &pb.GetVersionRequest{})
+	if err != nil {
+		// gRPC unreachable too: the daemon itself is down.
+		fmt.Fprintf(os.Stderr, "error: %v\n", httpErr)
+		return
+	}
+
+	if verResp.WebAddr != "" && !verResp.WebUp {
+		detail := verResp.WebError
+		if detail == "" {
+			detail = "bind failed"
+		}
+		fmt.Fprintf(os.Stderr, "error: web dashboard is down (%s); daemon is otherwise healthy (version %s)\n", detail, verResp.Version)
+		fmt.Fprintf(os.Stderr, "hint: it retries automatically; run 'cloche status' for details\n")
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "error: %v\n", httpErr)
 }
 

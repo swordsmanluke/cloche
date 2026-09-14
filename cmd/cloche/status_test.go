@@ -574,6 +574,50 @@ func TestFormatTokenCount(t *testing.T) {
 	}
 }
 
+func TestPrintWebStatus(t *testing.T) {
+	tests := []struct {
+		name    string
+		resp    *pb.GetVersionResponse
+		want    string
+		notWant string
+	}{
+		{
+			name:    "disabled: no line printed",
+			resp:    &pb.GetVersionResponse{WebAddr: ""},
+			notWant: "Web:",
+		},
+		{
+			name: "up: shows address",
+			resp: &pb.GetVersionResponse{WebAddr: "0.0.0.0:8080", WebUp: true},
+			want: "Web: http://0.0.0.0:8080\n",
+		},
+		{
+			name: "down: shows DOWN and the bind error",
+			resp: &pb.GetVersionResponse{WebAddr: "0.0.0.0:8080", WebUp: false, WebError: "bind: address already in use"},
+			want: "Web: DOWN (bind: address already in use)\n",
+		},
+		{
+			name: "down with no error detail: falls back to generic message",
+			resp: &pb.GetVersionResponse{WebAddr: "0.0.0.0:8080", WebUp: false},
+			want: "Web: DOWN (bind failed)\n",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			printWebStatus(&buf, tc.resp)
+			out := buf.String()
+			if tc.want != "" && !strings.Contains(out, tc.want) {
+				t.Errorf("expected output to contain %q, got:\n%s", tc.want, out)
+			}
+			if tc.notWant != "" && strings.Contains(out, tc.notWant) {
+				t.Errorf("expected output not to contain %q, got:\n%s", tc.notWant, out)
+			}
+		})
+	}
+}
+
 func TestStatusHelpText(t *testing.T) {
 	text, ok := subcommandHelp["status"]
 	if !ok {

@@ -515,6 +515,7 @@ func cmdStatusOverview(ctx context.Context, client pb.ClocheServiceClient, w io.
 		os.Exit(1)
 	}
 	fmt.Fprintf(w, "Daemon version: %s\n", verResp.Version)
+	printWebStatus(w, verResp)
 
 	cwd, _ := os.Getwd()
 	_, hasClocheDir := os.Stat(filepath.Join(cwd, ".cloche"))
@@ -526,6 +527,29 @@ func cmdStatusOverview(ctx context.Context, client pb.ClocheServiceClient, w io.
 		// Not in a project directory or --all: show global overview.
 		cmdStatusGlobal(ctx, client, w)
 	}
+}
+
+// printWebStatus reports the web dashboard's configured address and
+// liveness, so a daemon stuck retrying a bind failure (otherwise
+// indistinguishable from healthy) is visible in `cloche status`. Prints
+// nothing when the web dashboard isn't configured.
+func printWebStatus(w io.Writer, verResp *pb.GetVersionResponse) {
+	if verResp.WebAddr == "" {
+		return
+	}
+	if verResp.WebUp {
+		fmt.Fprintf(w, "Web: http://%s\n", verResp.WebAddr)
+		return
+	}
+	label := "DOWN"
+	if colorEnabled() {
+		label = ansiRed + label + ansiReset
+	}
+	detail := verResp.WebError
+	if detail == "" {
+		detail = "bind failed"
+	}
+	fmt.Fprintf(w, "Web: %s (%s)\n", label, detail)
 }
 
 func cmdStatusProject(ctx context.Context, client pb.ClocheServiceClient, w io.Writer, projectDir string) {

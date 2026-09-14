@@ -130,7 +130,9 @@ make install
 ```
 
 The `make install` target stops the running daemon, installs the new binaries,
-and restarts the daemon automatically.
+and restarts the daemon automatically. It waits (up to 30s, then escalates to
+`SIGKILL` and waits up to another 10s) for the old daemon to fully exit before
+installing, and aborts the install if it never does.
 
 ## Next Steps
 

@@ -34,6 +34,12 @@ The CLI command `cloche health` also requires `CLOCHE_HTTP` to be set, since it 
 to the daemon's HTTP API. `cloche tasks` falls back to `localhost:8080` when `CLOCHE_HTTP`
 is unset.
 
+If the configured port is unavailable when the daemon starts (e.g. still held by a
+previous daemon that hasn't fully exited), the daemon does not give up on the dashboard —
+it retries the bind with exponential backoff (1s up to 30s) until it succeeds or the
+daemon shuts down. While down, the dashboard's status is visible via `cloche status` and
+`cloche health` instead of just failing to connect.
+
 ---
 
 ## Pages

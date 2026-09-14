@@ -39,18 +39,22 @@ import (
 
 type ClocheServer struct {
 	pb.UnimplementedClocheServiceServer
-	store           ports.RunStore
-	captures        ports.CaptureStore
-	logStore        ports.LogStore
-	taskStore       ports.TaskStore     // optional; creates Task records
-	activityStore   ports.ActivityStore // optional; backs per-project activity loggers
-	container       ports.ContainerRuntime
-	pool            *docker.ContainerPool // optional; manages agent sessions for DaemonExecutor
-	defaultImage    string
-	logBroadcast    *logstream.Broadcaster
-	shutdownFn      func()
-	pollCoord       *host.PollCoordinator // drives poll step polling for all projects
-	helpRouter      *help.Router          // routes AskHelp/ListThreads/GetThread/ReplyThread; nil disables the help channel
+	store         ports.RunStore
+	captures      ports.CaptureStore
+	logStore      ports.LogStore
+	taskStore     ports.TaskStore     // optional; creates Task records
+	activityStore ports.ActivityStore // optional; backs per-project activity loggers
+	container     ports.ContainerRuntime
+	pool          *docker.ContainerPool // optional; manages agent sessions for DaemonExecutor
+	defaultImage  string
+	logBroadcast  *logstream.Broadcaster
+	shutdownFn    func()
+	pollCoord     *host.PollCoordinator // drives poll step polling for all projects
+	helpRouter    *help.Router          // routes AskHelp/ListThreads/GetThread/ReplyThread; nil disables the help channel
+
+	webStatusMu sync.RWMutex
+	webStatus   WebStatus // reported by GetVersion so `cloche status`/`cloche health` surface a down web dashboard
+
 	mu              sync.Mutex
 	runIDs          map[string]string              // run_id -> container_id
 	containerRun    map[string]string              // container_id -> run_id
@@ -230,6 +234,30 @@ func (s *ClocheServer) SetContainerPool(pool *docker.ContainerPool) {
 // ListThreads, GetThread and ReplyThread.
 func (s *ClocheServer) SetHelpRouter(r *help.Router) {
 	s.helpRouter = r
+}
+
+// WebStatus reports the daemon's web dashboard HTTP listener state, so a
+// daemon running without its configured web server (e.g. stuck retrying a
+// bind failure) can be told apart from a healthy one via GetVersion.
+type WebStatus struct {
+	Addr  string // configured web dashboard address (e.g. "0.0.0.0:8080"); empty if disabled
+	Up    bool
+	Error string // last bind/serve error; only meaningful when Addr is non-empty and Up is false
+}
+
+// SetWebStatus records the current state of the web dashboard HTTP listener.
+// Called by cmd/cloched as the listener binds, fails, and retries.
+func (s *ClocheServer) SetWebStatus(ws WebStatus) {
+	s.webStatusMu.Lock()
+	s.webStatus = ws
+	s.webStatusMu.Unlock()
+}
+
+// GetWebStatus returns the last-reported web dashboard listener state.
+func (s *ClocheServer) GetWebStatus() WebStatus {
+	s.webStatusMu.RLock()
+	defer s.webStatusMu.RUnlock()
+	return s.webStatus
 }
 
 // HelpRouter returns the attached help router, or nil if none is configured.
@@ -3807,7 +3835,13 @@ func projectLabels(dirs []string) map[string]string {
 }
 
 func (s *ClocheServer) GetVersion(ctx context.Context, req *pb.GetVersionRequest) (*pb.GetVersionResponse, error) {
-	return &pb.GetVersionResponse{Version: version.Version()}, nil
+	ws := s.GetWebStatus()
+	return &pb.GetVersionResponse{
+		Version:  version.Version(),
+		WebAddr:  ws.Addr,
+		WebUp:    ws.Up,
+		WebError: ws.Error,
+	}, nil
 }
 
 func (s *ClocheServer) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*pb.ShutdownResponse, error) {

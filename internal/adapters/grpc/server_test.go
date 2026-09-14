@@ -2140,6 +2140,39 @@ func TestServer_GetVersion(t *testing.T) {
 	resp, err := srv.GetVersion(context.Background(), &pb.GetVersionRequest{})
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.Version)
+	// No web status set yet: reports as disabled, not merely "down".
+	assert.Empty(t, resp.WebAddr)
+	assert.False(t, resp.WebUp)
+	assert.Empty(t, resp.WebError)
+}
+
+// TestServer_GetVersion_WebStatus verifies that GetVersion surfaces the web
+// dashboard's listener state as recorded by SetWebStatus, so `cloche
+// status`/`cloche health` can tell a daemon with a down web dashboard apart
+// from a fully healthy one.
+func TestServer_GetVersion_WebStatus(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := server.NewClocheServer(store, nil)
+
+	srv.SetWebStatus(server.WebStatus{Addr: "0.0.0.0:8080", Up: false, Error: "bind: address already in use"})
+	resp, err := srv.GetVersion(context.Background(), &pb.GetVersionRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, "0.0.0.0:8080", resp.WebAddr)
+	assert.False(t, resp.WebUp)
+	assert.Equal(t, "bind: address already in use", resp.WebError)
+
+	srv.SetWebStatus(server.WebStatus{Addr: "0.0.0.0:8080", Up: true})
+	resp, err = srv.GetVersion(context.Background(), &pb.GetVersionRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, "0.0.0.0:8080", resp.WebAddr)
+	assert.True(t, resp.WebUp)
+	assert.Empty(t, resp.WebError)
+
+	got := srv.GetWebStatus()
+	assert.Equal(t, server.WebStatus{Addr: "0.0.0.0:8080", Up: true}, got)
 }
 
 // TestServer_StreamLogs_LimitFullLog verifies that the --limit flag truncates

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -157,6 +158,8 @@ func main() {
 	}
 
 	var httpServer *http.Server
+	webCtx, webCancel := context.WithCancel(context.Background())
+	defer webCancel()
 	if httpAddr := envOrConfig("CLOCHE_HTTP", globalCfg.Daemon.HTTP, ""); httpAddr != "" {
 		// Ensure docker.Runtime sees the resolved address even when it only
 		// came from the config file, since it reads CLOCHE_HTTP directly to
@@ -191,12 +194,7 @@ func main() {
 			os.Exit(1)
 		}
 		httpServer = &http.Server{Addr: httpAddr, Handler: webHandler}
-		go func() {
-			fmt.Fprintf(os.Stderr, "cloched web dashboard on http://%s\n", httpAddr)
-			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				fmt.Fprintf(os.Stderr, "http server error: %v\n", err)
-			}
-		}()
+		go serveWebWithRetry(webCtx, httpServer, httpAddr, srv, time.Second, 30*time.Second)
 	}
 
 	// Start debug HTTP server if --debug-addr or CLOCHE_DEBUG or [daemon] debug is set.
@@ -231,10 +229,64 @@ func main() {
 	case <-sigCh:
 	case <-shutdownCh:
 	}
+	webCancel()
 	if httpServer != nil {
 		httpServer.Close()
 	}
 	grpcServer.GracefulStop()
+}
+
+// serveWebWithRetry binds and serves the web dashboard on addr, retrying
+// with exponential backoff on bind or serve failure instead of giving up
+// permanently. This lets the dashboard self-heal from a transient port
+// conflict (e.g. a hung previous daemon still holding the port during a
+// restart) without operator intervention. Status is reported to srv via
+// SetWebStatus so `cloche status`/`cloche health` can surface a down
+// dashboard instead of looking like a healthy daemon. Returns once ctx is
+// canceled or the server is closed intentionally (http.ErrServerClosed).
+func serveWebWithRetry(ctx context.Context, httpServer *http.Server, addr string, srv *adaptgrpc.ClocheServer, initialBackoff, maxBackoff time.Duration) {
+	backoff := initialBackoff
+	for {
+		lis, err := net.Listen("tcp", addr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "web dashboard bind failed on %s: %v (retrying in %s)\n", addr, err, backoff)
+			srv.SetWebStatus(adaptgrpc.WebStatus{Addr: addr, Up: false, Error: err.Error()})
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+			backoff = nextBackoff(backoff, maxBackoff)
+			continue
+		}
+
+		fmt.Fprintf(os.Stderr, "cloched web dashboard on http://%s\n", addr)
+		srv.SetWebStatus(adaptgrpc.WebStatus{Addr: addr, Up: true})
+		backoff = initialBackoff
+
+		err = httpServer.Serve(lis)
+		if ctx.Err() != nil || errors.Is(err, http.ErrServerClosed) {
+			return
+		}
+
+		fmt.Fprintf(os.Stderr, "web dashboard server error: %v (retrying in %s)\n", err, backoff)
+		srv.SetWebStatus(adaptgrpc.WebStatus{Addr: addr, Up: false, Error: err.Error()})
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		backoff = nextBackoff(backoff, maxBackoff)
+	}
+}
+
+// nextBackoff doubles cur, capped at max.
+func nextBackoff(cur, max time.Duration) time.Duration {
+	next := cur * 2
+	if next > max {
+		next = max
+	}
+	return next
 }
 
 func initRuntime(cfg *config.Config) (ports.ContainerRuntime, error) {
