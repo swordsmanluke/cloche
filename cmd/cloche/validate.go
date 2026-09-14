@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
+	"github.com/cloche-dev/cloche/internal/engine"
 )
 
 func cmdValidate(args []string) {
@@ -36,6 +38,10 @@ func cmdValidate(args []string) {
 		if err == nil {
 			projectDir = abs
 		}
+	}
+
+	for _, w := range validateProjectWarnings(projectDir, workflowFilter) {
+		fmt.Fprintln(os.Stderr, "WARNING: "+w)
 	}
 
 	errs := validateProject(projectDir, workflowFilter)
@@ -98,6 +104,29 @@ func validateProject(projectDir, workflowFilter string) []string {
 	}
 
 	return errs
+}
+
+// validateProjectWarnings performs non-fatal cross-workflow validation checks
+// that are reported to the user but do not cause `cloche validate` to exit
+// non-zero. Kept separate from validateProject (whose errs list gates exit
+// status) so existing callers/tests of validateProject are unaffected.
+func validateProjectWarnings(projectDir, workflowFilter string) []string {
+	if workflowFilter != "" {
+		// Timeout fit is inherently a cross-workflow check.
+		return nil
+	}
+
+	clocheDir := filepath.Join(projectDir, ".cloche")
+	if info, err := os.Stat(clocheDir); err != nil || !info.IsDir() {
+		return nil
+	}
+
+	workflows, parseErrs := parseAllWorkflowFiles(clocheDir)
+	if len(parseErrs) > 0 {
+		return nil // parse errors are already reported as errors
+	}
+
+	return validateWorkflowTimeouts(workflows)
 }
 
 type workflowFileInfo struct {
@@ -471,4 +500,47 @@ func validateCrossFile(projectDir string, workflows map[string]*workflowFileInfo
 	sort.Strings(errs)
 
 	return errs
+}
+
+// validateWorkflowTimeouts warns when a workflow_name step declares an
+// explicit `timeout` that is shorter than the target workflow's own step
+// timeouts summed (domain.Workflow.SumStepTimeouts) — a dispatch step
+// timeout that short will kill the sub-workflow before its own steps'
+// declared timeouts can ever be reached. Steps with no explicit timeout are
+// not checked here: the engine derives a default from the same sum (plus
+// overhead), so they cannot exhibit this problem.
+func validateWorkflowTimeouts(workflows map[string]*workflowFileInfo) []string {
+	var warnings []string
+
+	for _, wfi := range workflows {
+		for _, step := range wfi.workflow.Steps {
+			if step.Type != domain.StepTypeWorkflow {
+				continue
+			}
+			raw, hasExplicit := step.Config["timeout"]
+			if !hasExplicit {
+				continue
+			}
+			explicit, err := time.ParseDuration(raw)
+			if err != nil {
+				continue // reported separately as a config error
+			}
+
+			refName := step.Config["workflow_name"]
+			target, ok := workflows[refName]
+			if !ok {
+				continue // reported separately by validateCrossFile
+			}
+
+			childSum := target.workflow.SumStepTimeouts(engine.DefaultStepTimeout)
+			if explicit < childSum {
+				warnings = append(warnings, fmt.Sprintf(
+					"%s: workflow %q: step %q: timeout %s is shorter than target workflow %q's step timeouts summed (%s) — the sub-workflow may be killed before its own steps can time out",
+					wfi.file, wfi.workflow.Name, step.Name, explicit, refName, childSum))
+			}
+		}
+	}
+
+	sort.Strings(warnings)
+	return warnings
 }

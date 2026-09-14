@@ -128,6 +128,60 @@ func TestDaemonExecutor_WorkflowStep_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "nonexistent")
 }
 
+// TestDaemonExecutor_WorkflowStepTimeout_DerivesFromChildStepTimeouts
+// verifies that WorkflowStepTimeout (engine.WorkflowStepTimeoutResolver)
+// sums the target workflow's own step timeouts and adds
+// domain.WorkflowStepTimeoutOverhead, instead of the caller having to fall
+// back to the engine's flat 30m leaf-step default for the whole dispatch —
+// the bug behind manager run zdye-tune, where a 45m sweep + 1h analyze child
+// workflow was killed by an unrelated 30m outer cap.
+func TestDaemonExecutor_WorkflowStepTimeout_DerivesFromChildStepTimeouts(t *testing.T) {
+	subWF := &domain.Workflow{
+		Name: "balance-tune",
+		Steps: map[string]*domain.Step{
+			"sweep":   {Name: "sweep", Type: domain.StepTypeScript, Config: map[string]string{"timeout": "45m"}},
+			"analyze": {Name: "analyze", Type: domain.StepTypeAgent, Config: map[string]string{"timeout": "1h"}},
+		},
+	}
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		ProjectDir: t.TempDir(),
+		AttemptID:  "att1",
+		AllWFs:     map[string]*domain.Workflow{"balance-tune": subWF},
+	})
+
+	step := &domain.Step{
+		Name:   "tune",
+		Type:   domain.StepTypeWorkflow,
+		Config: map[string]string{"workflow_name": "balance-tune"},
+	}
+
+	d, resolved := de.WorkflowStepTimeout(step)
+	require.True(t, resolved)
+	assert.Equal(t, 45*time.Minute+time.Hour+domain.WorkflowStepTimeoutOverhead, d)
+}
+
+// TestDaemonExecutor_WorkflowStepTimeout_UnknownWorkflowNotResolved verifies
+// that a workflow_name step referencing an unknown workflow reports
+// unresolved, so the engine falls back to its normal default rather than
+// panicking or returning a bogus zero timeout.
+func TestDaemonExecutor_WorkflowStepTimeout_UnknownWorkflowNotResolved(t *testing.T) {
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		ProjectDir: t.TempDir(),
+		AttemptID:  "att1",
+		AllWFs:     map[string]*domain.Workflow{},
+	})
+
+	step := &domain.Step{
+		Name:   "tune",
+		Type:   domain.StepTypeWorkflow,
+		Config: map[string]string{"workflow_name": "nonexistent"},
+	}
+
+	_, resolved := de.WorkflowStepTimeout(step)
+	assert.False(t, resolved)
+}
+
 // TestDaemonExecutor_WorkflowStep_RunsSubWorkflow verifies that a workflow_name
 // step triggers a sub-workflow run using the same DaemonExecutor recursively.
 func TestDaemonExecutor_WorkflowStep_RunsSubWorkflow(t *testing.T) {
@@ -836,6 +890,67 @@ func TestDaemonExecutor_WorkflowStep_ExtractsLogsOnContextError(t *testing.T) {
 	// The CopyFrom path for container log extraction should have been called.
 	copied := rt.copiedFrom()
 	assert.NotEmpty(t, copied, "extractContainerLogs should have called CopyFrom even on context error")
+}
+
+// TestDaemonExecutor_WorkflowStep_DeadlineExceeded_ReturnsTimeoutWire verifies
+// that when the dispatch step's own context deadline (not an unrelated
+// cancellation) fires while the sub-workflow is still running, the step
+// result is "timeout" rather than "fail" — so a workflow authoring a
+// `dispatch:timeout -> ...` wire can distinguish it from a genuine child
+// workflow failure, instead of both looking identical (cloche manager run
+// zdye-tune).
+func TestDaemonExecutor_WorkflowStep_DeadlineExceeded_ReturnsTimeoutWire(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	subWF := &domain.Workflow{
+		Name:     "develop",
+		Location: domain.LocationHost,
+		Steps: map[string]*domain.Step{
+			"build": {
+				Name:    "build",
+				Type:    domain.StepTypeScript,
+				Results: []string{"success", "fail", "timeout"},
+				// "exec" replaces the shell process image in place (rather than
+				// forking a child), so killing the process on ctx cancellation
+				// takes effect immediately instead of leaving an orphaned sleep
+				// holding the output pipe open until it exits on its own.
+				Config: map[string]string{"run": "exec sleep 5"},
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: "build", Result: "success", To: domain.StepDone},
+			{From: "build", Result: "fail", To: domain.StepAbort},
+			{From: "build", Result: "timeout", To: domain.StepAbort},
+		},
+		EntryStep: "build",
+	}
+
+	hostExec := &host.Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  tmpDir + "/output",
+	}
+
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		HostExec:   hostExec,
+		ProjectDir: tmpDir,
+		AttemptID:  "att1",
+		AllWFs:     map[string]*domain.Workflow{"develop": subWF},
+	})
+
+	step := &domain.Step{
+		Name:    "dispatch",
+		Type:    domain.StepTypeWorkflow,
+		Results: []string{"success", "fail", "timeout"},
+		Config:  map[string]string{"workflow_name": "develop"},
+	}
+
+	mainWF := buildHostWFForTest("main")
+	ctx, cancel := context.WithTimeout(engine.WithWorkflow(context.Background(), mainWF), 30*time.Millisecond)
+	defer cancel()
+
+	result, err := de.Execute(ctx, step)
+	require.NoError(t, err)
+	assert.Equal(t, "timeout", result.Result)
 }
 
 // TestDaemonExecutor_WorkflowStep_PreCreatesWorktree verifies that the first

@@ -90,7 +90,16 @@ any deterministic check. Available in both host and container workflows. Default
 **workflow** (has `workflow_name`) — Triggers a named workflow run and blocks until it
 completes. Available in both host and container workflows. Dispatch is always handled by
 the daemon orchestrator, which resolves the target workflow by name across all `.cloche`
-files and routes it to the host executor or container pool as appropriate. Default timeout: 30m.
+files and routes it to the host executor or container pool as appropriate. This timeout
+applies to the *entire* dispatched sub-workflow run, not a single step, so when no explicit
+`timeout` is set the default is derived from the target workflow instead of the flat 30m
+leaf-step default: the sum of the target's own step timeouts, plus a fixed dispatch
+overhead (container/worktree setup) — so a child workflow with genuinely long step
+timeouts (e.g. a 45m step followed by a 1h step) isn't silently capped by an unrelated
+30m outer limit. `cloche validate` warns if an *explicit* `timeout` you set is shorter
+than that sum. If the applied timeout (explicit or derived) does fire, it produces a
+`"timeout"` result like any other step, and the daemon logs which step was killed and
+what timeout applied, so it isn't mistaken for a hung agent.
 Optional: `prompt_step` — the name of a preceding step whose output is passed as the
 prompt to the dispatched workflow, overriding the default prompt selection.
 
@@ -690,7 +699,7 @@ makes it a poll step. A poll step must not include `prompt`, `run`, or `workflow
 |------------|----------|-------------|
 | `poll`     | yes      | Shell command to invoke on each poll. Run via `sh -c`, so pipes, redirection, and shell builtins all work. Can be a path to a script (`scripts/check.sh`), an inline command (`gh pr view 123 --json state -q .state`), or anything sh accepts. |
 | `interval` | yes      | Poll frequency as a Go duration — any value accepted by [`time.ParseDuration`](https://pkg.go.dev/time#ParseDuration), e.g. `"30s"`, `"5m"`, `"1h"`. Invalid durations fail at parse time. |
-| `timeout`  | no       | Overall step timeout. Default `72h` (vs. `30m` for agent/script/workflow steps). When the step exceeds its timeout it produces a `"timeout"` result. |
+| `timeout`  | no       | Overall step timeout. Default `72h` (vs. `30m` for agent/script steps, or the target-workflow-derived default for `workflow_name` steps — see above). When the step exceeds its timeout it produces a `"timeout"` result. |
 | `results`  | no       | Declared wire names. Always implicitly includes `timeout` if omitted. Your declared list must cover every `CLOCHE_RESULT:<name>` value the script can emit, plus `fail` if your script can exit non-zero without a marker. |
 
 ```

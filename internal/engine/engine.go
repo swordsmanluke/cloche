@@ -25,6 +25,21 @@ type StepExecutor interface {
 	Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error)
 }
 
+// WorkflowStepTimeoutResolver is optionally implemented by a StepExecutor to
+// supply a tailored default timeout for a workflow_name (StepTypeWorkflow)
+// dispatch step that has no explicit `timeout` config. Without this, such a
+// step falls back to the same leaf-step default as any other step (30m),
+// which is applied to the ENTIRE child sub-workflow and silently caps the
+// child's own step timeouts (e.g. a 45m child step gets killed at 30m via
+// the outer dispatch step, not its own declared timeout). Implementations
+// typically derive the default from the target workflow's own step
+// timeouts (see domain.Workflow.SumStepTimeouts) plus dispatch overhead.
+// The bool return reports whether a target workflow was resolved at all;
+// false falls back to the engine's normal default.
+type WorkflowStepTimeoutResolver interface {
+	WorkflowStepTimeout(step *domain.Step) (time.Duration, bool)
+}
+
 // HostExecutorConfigurer is optionally implemented by composite executors
 // (e.g. DaemonExecutor) that wrap a host executor. The runner calls
 // SetHostExecutor after constructing a fully-configured host executor so the
@@ -228,14 +243,34 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 
 		go func(s *domain.Step, t StepTrigger, baseCtx context.Context) {
 			stepCtx := baseCtx
-			if d := stepTimeout(s, e.defaultTimeout); d > 0 {
+			defaultTimeout := e.defaultTimeout
+			if s.Type == domain.StepTypeWorkflow {
+				if resolver, ok := e.executor.(WorkflowStepTimeoutResolver); ok {
+					if d, resolved := resolver.WorkflowStepTimeout(s); resolved {
+						defaultTimeout = d
+					}
+				}
+			}
+			appliedTimeout := stepTimeout(s, defaultTimeout)
+			if appliedTimeout > 0 {
 				var cancel context.CancelFunc
-				stepCtx, cancel = context.WithTimeout(baseCtx, d)
+				stepCtx, cancel = context.WithTimeout(baseCtx, appliedTimeout)
 				defer cancel()
 			}
 			stepCtx = WithStepTrigger(stepCtx, t)
 			stepCtx = WithWorkflow(stepCtx, wf)
 			sr, err := e.executor.Execute(stepCtx, s)
+			if appliedTimeout > 0 && stepCtx.Err() == context.DeadlineExceeded {
+				// Distinguish "the step's own timeout fired" from a hung agent
+				// or upstream failure. For workflow_name steps this timeout
+				// applies to the ENTIRE child sub-workflow, so a killed dispatch
+				// step can otherwise look identical to a stuck child step.
+				kind := "step"
+				if s.Type == domain.StepTypeWorkflow {
+					kind = "workflow_name dispatch step"
+				}
+				log.Printf("engine: %s %q killed by timeout (%s%s)", kind, s.Name, appliedTimeout.Round(time.Second), defaultTimeoutNote(s))
+			}
 			results <- stepResult{stepName: s.Name, result: sr.Result, usage: sr.Usage, err: err, skipped: sr.Skipped}
 		}(step, trigger, ctx)
 
@@ -469,15 +504,17 @@ func isContextError(err error) bool {
 // first, then falls back to a type-specific default (poll steps default to
 // domain.DefaultPollStepTimeout), then the provided global default.
 func stepTimeout(step *domain.Step, defaultTimeout time.Duration) time.Duration {
-	if raw, ok := step.Config["timeout"]; ok {
-		if d, err := time.ParseDuration(raw); err == nil {
-			return d
-		}
+	return step.EffectiveTimeout(defaultTimeout)
+}
+
+// defaultTimeoutNote returns ", default" when the step has no explicit
+// `timeout` config (i.e. the applied timeout came from a default), or "" when
+// the step declared its own timeout, for use in the timeout-kill log line.
+func defaultTimeoutNote(step *domain.Step) string {
+	if _, hasExplicit := step.Config["timeout"]; hasExplicit {
+		return ""
 	}
-	if step.Type == domain.StepTypePoll {
-		return PollStepDefaultTimeout
-	}
-	return defaultTimeout
+	return ", default"
 }
 
 // stepTokenLimit returns the output-token limit for a step. Returns the

@@ -612,3 +612,143 @@ func TestValidateProject_ContainerID_DefaultConflict(t *testing.T) {
 		t.Errorf("expected container id conflict error for default id, got: %v", errs)
 	}
 }
+
+// TestValidateProjectWarnings_WorkflowNameTimeoutTooShort verifies that a
+// workflow_name step with an explicit timeout shorter than the target
+// workflow's own step timeouts summed produces a warning — the dispatch
+// step would kill the sub-workflow before its own steps' declared timeouts
+// can ever be reached (the manager run zdye-tune failure mode).
+func TestValidateProjectWarnings_WorkflowNameTimeoutTooShort(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "balance-tune.cloche"), []byte(`workflow balance-tune {
+  step sweep {
+    run = "echo sweep"
+    timeout = "45m"
+    results = [success, fail]
+  }
+  step analyze {
+    run = "echo analyze"
+    timeout = "1h"
+    results = [success, fail]
+  }
+  sweep:success -> analyze
+  sweep:fail -> abort
+  analyze:success -> done
+  analyze:fail -> abort
+}`), 0644)
+
+	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow main {
+  host {}
+  step tune {
+    workflow_name = "balance-tune"
+    timeout = "30m"
+    results = [success, fail]
+  }
+  tune:success -> done
+  tune:fail -> abort
+}`), 0644)
+
+	warnings := validateProjectWarnings(dir, "")
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "tune") && strings.Contains(w, "balance-tune") && strings.Contains(w, "shorter than") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a timeout-too-short warning, got: %v", warnings)
+	}
+
+	// This is a warning, not an error: it must not fail `cloche validate`.
+	errs := validateProject(dir, "")
+	if len(errs) > 0 {
+		t.Errorf("expected no errors (warning-only), got: %v", errs)
+	}
+}
+
+// TestValidateProjectWarnings_WorkflowNameTimeoutFits verifies that no
+// warning is produced when the dispatch step's explicit timeout is long
+// enough to fit the target workflow's summed step timeouts.
+func TestValidateProjectWarnings_WorkflowNameTimeoutFits(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "balance-tune.cloche"), []byte(`workflow balance-tune {
+  step sweep {
+    run = "echo sweep"
+    timeout = "45m"
+    results = [success, fail]
+  }
+  step analyze {
+    run = "echo analyze"
+    timeout = "1h"
+    results = [success, fail]
+  }
+  sweep:success -> analyze
+  sweep:fail -> abort
+  analyze:success -> done
+  analyze:fail -> abort
+}`), 0644)
+
+	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow main {
+  host {}
+  step tune {
+    workflow_name = "balance-tune"
+    timeout = "2h"
+    results = [success, fail]
+  }
+  tune:success -> done
+  tune:fail -> abort
+}`), 0644)
+
+	warnings := validateProjectWarnings(dir, "")
+	if len(warnings) > 0 {
+		t.Errorf("expected no warnings, got: %v", warnings)
+	}
+}
+
+// TestValidateProjectWarnings_WorkflowNameNoExplicitTimeout verifies that a
+// workflow_name step with no explicit timeout never produces a warning: the
+// engine derives its default from the same sum the warning check uses (plus
+// overhead), so it can't exhibit this problem.
+func TestValidateProjectWarnings_WorkflowNameNoExplicitTimeout(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	os.WriteFile(filepath.Join(clocheDir, "balance-tune.cloche"), []byte(`workflow balance-tune {
+  step sweep {
+    run = "echo sweep"
+    timeout = "45m"
+    results = [success, fail]
+  }
+  step analyze {
+    run = "echo analyze"
+    timeout = "1h"
+    results = [success, fail]
+  }
+  sweep:success -> analyze
+  sweep:fail -> abort
+  analyze:success -> done
+  analyze:fail -> abort
+}`), 0644)
+
+	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow main {
+  host {}
+  step tune {
+    workflow_name = "balance-tune"
+    results = [success, fail]
+  }
+  tune:success -> done
+  tune:fail -> abort
+}`), 0644)
+
+	warnings := validateProjectWarnings(dir, "")
+	if len(warnings) > 0 {
+		t.Errorf("expected no warnings for a step with no explicit timeout, got: %v", warnings)
+	}
+}

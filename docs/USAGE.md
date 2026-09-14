@@ -1212,8 +1212,9 @@ Checks performed:
 - **Workflow files** — syntax, result wiring completeness, terminal coverage (all paths reach `done`/`abort`), no orphan steps, config key validation.
 - **File references** — prompt `file()` paths resolve to `.cloche/prompts/`, script `run` paths resolve to `.cloche/scripts/`.
 - **Cross-file consistency** — `workflow_name` references in steps resolve to defined workflows.
+- **workflow_name timeout fit** (warning, all workflows only) — a `workflow_name` step's explicit `timeout` is checked against the target workflow's own step timeouts summed; if the explicit timeout is shorter, the sub-workflow could be killed before its own steps can time out.
 
-Exits 0 and prints "All configuration valid." on success. Exits 1 and prints each error with file path on failure.
+Exits 0 and prints "All configuration valid." on success. Exits 1 and prints each error with file path on failure. Warnings (e.g. the timeout fit check) print to stderr with a `WARNING:` prefix but do not affect the exit code.
 
 ### `cloche project`
 

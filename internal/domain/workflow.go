@@ -35,6 +35,13 @@ const (
 // code review, approval) so they use a much longer default than other step types.
 const DefaultPollStepTimeout = 72 * time.Hour
 
+// WorkflowStepTimeoutOverhead is added on top of a child workflow's own step
+// timeouts when deriving a default timeout for the workflow_name step that
+// dispatches it (see Workflow.SumStepTimeouts), to account for
+// container/worktree setup and extraction time that isn't attributable to
+// any single child step.
+const WorkflowStepTimeoutOverhead = 5 * time.Minute
+
 // WorkflowLocation indicates where a workflow is intended to run.
 type WorkflowLocation string
 
@@ -53,6 +60,22 @@ type Step struct {
 	Type    StepType
 	Results []string
 	Config  map[string]string
+}
+
+// EffectiveTimeout returns the step's configured timeout (Config["timeout"]),
+// falling back to defaultTimeout when unset or unparseable. Poll steps
+// without an explicit timeout get DefaultPollStepTimeout instead, since they
+// wait on external input rather than doing bounded work.
+func (s *Step) EffectiveTimeout(defaultTimeout time.Duration) time.Duration {
+	if raw, ok := s.Config["timeout"]; ok {
+		if d, err := time.ParseDuration(raw); err == nil {
+			return d
+		}
+	}
+	if s.Type == StepTypePoll {
+		return DefaultPollStepTimeout
+	}
+	return defaultTimeout
 }
 
 type Wire struct {
@@ -118,6 +141,25 @@ func (w *Workflow) ContainerID() string {
 		return id
 	}
 	return DefaultContainerID
+}
+
+// SumStepTimeouts returns the sum of this workflow's steps' effective
+// timeouts (via Step.EffectiveTimeout), a conservative worst-case-sequential
+// upper bound. It is used to derive a default timeout for a workflow_name
+// step that dispatches this workflow, so the dispatching step's own timeout
+// doesn't silently cap this workflow's own step timeouts (a step with no
+// explicit timeout otherwise falls back to a single leaf-step default,
+// applied to the entire sub-workflow run).
+//
+// Not recursive: a nested workflow_name step among these steps contributes
+// only its own EffectiveTimeout (defaultTimeout when it has no explicit
+// timeout), not a further-derived sum of its own target workflow.
+func (w *Workflow) SumStepTimeouts(defaultTimeout time.Duration) time.Duration {
+	var total time.Duration
+	for _, s := range w.Steps {
+		total += s.EffectiveTimeout(defaultTimeout)
+	}
+	return total
 }
 
 func (w *Workflow) Validate() error {

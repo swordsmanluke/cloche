@@ -236,8 +236,10 @@ func (d *DaemonExecutor) containerProjectDir(ctx context.Context, wf *domain.Wor
 	return d.projectDir
 }
 
-// Ensure DaemonExecutor satisfies engine.StepExecutor.
+// Ensure DaemonExecutor satisfies engine.StepExecutor and
+// engine.WorkflowStepTimeoutResolver.
 var _ engine.StepExecutor = (*DaemonExecutor)(nil)
+var _ engine.WorkflowStepTimeoutResolver = (*DaemonExecutor)(nil)
 
 // Package-level hooks so tests can stub out the docker extract functions
 // without standing up real containers or git operations.
@@ -305,6 +307,20 @@ func removeExtractWorktree(ctx context.Context, repoDir string, wt docker.Extrac
 			log.Printf("daemon executor: git branch -D %s: %s: %v", wt.Branch, out, err)
 		}
 	}
+}
+
+// WorkflowStepTimeout implements engine.WorkflowStepTimeoutResolver. It
+// derives a default timeout for a workflow_name dispatch step with no
+// explicit `timeout` config by summing the target workflow's own step
+// timeouts (domain.Workflow.SumStepTimeouts, a worst-case-sequential upper
+// bound) plus a fixed dispatch overhead, instead of the single leaf-step
+// default the engine would otherwise apply to the whole sub-workflow run.
+func (d *DaemonExecutor) WorkflowStepTimeout(step *domain.Step) (time.Duration, bool) {
+	targetWF, ok := d.allWFs[step.Config["workflow_name"]]
+	if !ok {
+		return 0, false
+	}
+	return targetWF.SumStepTimeouts(engine.DefaultStepTimeout) + domain.WorkflowStepTimeoutOverhead, true
 }
 
 // SetHostExecutor replaces the host executor with a fully-configured one.
@@ -424,6 +440,21 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 
 	run, err := eng.Run(ctx, targetWF)
 	if err != nil {
+		// eng.Run wraps any ctx.Done() cause (deadline or explicit
+		// cancellation) uniformly as "workflow cancelled", so the returned
+		// err can't distinguish them — check the context we passed in
+		// instead. A DeadlineExceeded ctx.Err() here means this dispatch
+		// step's own timeout fired (see engine.go's "killed by timeout" log
+		// for the effective duration), as opposed to an unrelated
+		// cancellation or execution failure inside the child workflow. Report
+		// it via the "timeout" wire (declared on every step by the DSL
+		// parser, see internal/dsl/parser.go) rather than lumping it into
+		// "fail", so it isn't misread as a hung agent or unrelated crash
+		// (cloche manager run zdye-tune).
+		result := "fail"
+		if ctx.Err() == context.DeadlineExceeded {
+			result = "timeout"
+		}
 		log.Printf("daemon executor: sub-workflow %q failed: %v", targetName, err)
 		// Even on error (e.g. context timeout), try to extract container logs so
 		// they are accessible for post-mortem investigation. The original ctx may
@@ -440,7 +471,7 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 				}
 			}
 		}
-		return domain.StepResult{Result: "fail"}, nil
+		return domain.StepResult{Result: result}, nil
 	}
 
 	if run.State == domain.RunStateParked {

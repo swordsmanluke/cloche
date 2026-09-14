@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/stretchr/testify/assert"
@@ -541,4 +542,42 @@ func TestWorkflow_ContainerID_EmptyStringTreatedAsDefault(t *testing.T) {
 		Config:   map[string]string{"container.id": ""},
 	}
 	assert.Equal(t, domain.DefaultContainerID, wf.ContainerID())
+}
+
+func TestStep_EffectiveTimeout_ExplicitConfig(t *testing.T) {
+	s := &domain.Step{Type: domain.StepTypeAgent, Config: map[string]string{"timeout": "45m"}}
+	assert.Equal(t, 45*time.Minute, s.EffectiveTimeout(30*time.Minute))
+}
+
+func TestStep_EffectiveTimeout_UnparseableFallsBackToDefault(t *testing.T) {
+	s := &domain.Step{Type: domain.StepTypeAgent, Config: map[string]string{"timeout": "not-a-duration"}}
+	assert.Equal(t, 30*time.Minute, s.EffectiveTimeout(30*time.Minute))
+}
+
+func TestStep_EffectiveTimeout_PollDefaultsTo72h(t *testing.T) {
+	s := &domain.Step{Type: domain.StepTypePoll, Config: map[string]string{}}
+	assert.Equal(t, domain.DefaultPollStepTimeout, s.EffectiveTimeout(30*time.Minute))
+}
+
+func TestStep_EffectiveTimeout_NoConfigUsesDefault(t *testing.T) {
+	s := &domain.Step{Type: domain.StepTypeScript, Config: map[string]string{}}
+	assert.Equal(t, 30*time.Minute, s.EffectiveTimeout(30*time.Minute))
+}
+
+func TestWorkflow_SumStepTimeouts(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "balance-tune",
+		Steps: map[string]*domain.Step{
+			"sweep":   {Name: "sweep", Type: domain.StepTypeScript, Config: map[string]string{"timeout": "45m"}},
+			"analyze": {Name: "analyze", Type: domain.StepTypeAgent, Config: map[string]string{"timeout": "1h"}},
+			"report":  {Name: "report", Type: domain.StepTypeScript, Config: map[string]string{}}, // no explicit timeout
+		},
+	}
+	// 45m + 1h + defaultTimeout(30m) = 2h15m
+	assert.Equal(t, 2*time.Hour+15*time.Minute, wf.SumStepTimeouts(30*time.Minute))
+}
+
+func TestWorkflow_SumStepTimeouts_EmptyWorkflow(t *testing.T) {
+	wf := &domain.Workflow{Name: "empty", Steps: map[string]*domain.Step{}}
+	assert.Equal(t, time.Duration(0), wf.SumStepTimeouts(30*time.Minute))
 }

@@ -1,8 +1,11 @@
 package engine_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -1168,4 +1171,114 @@ func TestWorkflow_ValidateRejectsDeclaredParkedResult(t *testing.T) {
 	err := wf.Validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reserved result")
+}
+
+// resolverExecutor implements both engine.StepExecutor and
+// engine.WorkflowStepTimeoutResolver, capturing the deadline seen by Execute
+// so tests can assert what timeout the engine actually applied.
+type resolverExecutor struct {
+	timeout          time.Duration
+	resolved         bool
+	capturedDeadline time.Time
+	result           string
+}
+
+func (r *resolverExecutor) Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
+	if dl, ok := ctx.Deadline(); ok {
+		r.capturedDeadline = dl
+	}
+	return domain.StepResult{Result: r.result}, nil
+}
+
+func (r *resolverExecutor) WorkflowStepTimeout(step *domain.Step) (time.Duration, bool) {
+	return r.timeout, r.resolved
+}
+
+func workflowDispatchWF(stepConfig map[string]string) *domain.Workflow {
+	return &domain.Workflow{
+		Name: "outer",
+		Steps: map[string]*domain.Step{
+			"dispatch": {Name: "dispatch", Type: domain.StepTypeWorkflow, Results: []string{"success"}, Config: stepConfig},
+		},
+		Wiring: []domain.Wire{
+			{From: "dispatch", Result: "success", To: domain.StepDone},
+		},
+		EntryStep: "dispatch",
+	}
+}
+
+// TestStepTimeout_WorkflowStep_UsesResolverDefault verifies that a
+// workflow_name step with no explicit timeout gets the duration supplied by
+// a WorkflowStepTimeoutResolver-implementing executor, not the engine's
+// blanket 30m leaf-step default (cloche timeout-derivation fix).
+func TestStepTimeout_WorkflowStep_UsesResolverDefault(t *testing.T) {
+	exec := &resolverExecutor{timeout: 2 * time.Hour, resolved: true, result: "success"}
+	wf := workflowDispatchWF(map[string]string{"workflow_name": "child"})
+
+	eng := engine.New(exec)
+	_, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+
+	require.False(t, exec.capturedDeadline.IsZero())
+	remaining := time.Until(exec.capturedDeadline)
+	assert.Greater(t, remaining, 90*time.Minute, "should use the resolver's 2h default, not the engine's 30m default")
+	assert.Less(t, remaining, 3*time.Hour)
+}
+
+// TestStepTimeout_WorkflowStep_ExplicitOverridesResolver verifies that an
+// explicit step-level timeout still wins even when the executor implements
+// WorkflowStepTimeoutResolver.
+func TestStepTimeout_WorkflowStep_ExplicitOverridesResolver(t *testing.T) {
+	exec := &resolverExecutor{timeout: 2 * time.Hour, resolved: true, result: "success"}
+	wf := workflowDispatchWF(map[string]string{"workflow_name": "child", "timeout": "10m"})
+
+	eng := engine.New(exec)
+	_, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+
+	require.False(t, exec.capturedDeadline.IsZero())
+	remaining := time.Until(exec.capturedDeadline)
+	assert.Greater(t, remaining, 5*time.Minute)
+	assert.Less(t, remaining, 15*time.Minute, "explicit step timeout should override the resolver default")
+}
+
+// TestStepTimeout_WorkflowStep_ResolverUnresolvedFallsBack verifies that
+// when the resolver reports it could not resolve a target workflow, the
+// step falls back to the engine's normal default timeout.
+func TestStepTimeout_WorkflowStep_ResolverUnresolvedFallsBack(t *testing.T) {
+	exec := &resolverExecutor{timeout: 2 * time.Hour, resolved: false, result: "success"}
+	wf := workflowDispatchWF(map[string]string{"workflow_name": "child"})
+
+	eng := engine.New(exec)
+	_, err := eng.Run(context.Background(), wf)
+	require.NoError(t, err)
+
+	require.False(t, exec.capturedDeadline.IsZero())
+	remaining := time.Until(exec.capturedDeadline)
+	assert.Greater(t, remaining, 25*time.Minute)
+	assert.Less(t, remaining, 35*time.Minute, "unresolved resolver should fall back to the engine's 30m default")
+}
+
+// TestStepTimeout_KilledByTimeout_LogsClearAttribution verifies that a step
+// killed by its own applied timeout logs an unambiguous message naming the
+// step and (for workflow_name steps) calling out that it's a dispatch step —
+// so the failure isn't mistaken for a hung agent or unrelated crash.
+func TestStepTimeout_KilledByTimeout_LogsClearAttribution(t *testing.T) {
+	exec := engine.StepExecutorFunc(func(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
+		<-ctx.Done()
+		return domain.StepResult{}, ctx.Err()
+	})
+
+	wf := workflowDispatchWF(map[string]string{"workflow_name": "child", "timeout": "20ms"})
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	eng := engine.New(exec)
+	_, err := eng.Run(context.Background(), wf)
+	require.Error(t, err)
+
+	assert.Contains(t, buf.String(), `workflow_name dispatch step "dispatch" killed by timeout (`)
+	assert.NotContains(t, buf.String(), "default", "explicit timeout should not be flagged as a default")
 }
