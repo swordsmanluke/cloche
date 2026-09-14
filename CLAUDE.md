@@ -78,8 +78,10 @@ Generic (arbitrary commands) and Claude Code.
 
 `.cloche/intent/` holds standing project requirements — durable constraints and
 decisions extracted from docs, run history, and commits — auto-injected into
-agent-step prompts as a `## Standing project requirements` block. Fully dormant
-until `cloche intent scan` is run once. See `docs/intent.md` for the user guide.
+agent-step prompts as a `## Standing project requirements` block. Dormant until a
+scan runs; by default a scan is triggered automatically after the first completed
+`main` orchestration task (`intent.scan_after_tasks = true`), or run `cloche intent
+scan` by hand. See `docs/intent.md` for the user guide.
 
 ## Versioning
 
