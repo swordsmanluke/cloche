@@ -2,6 +2,7 @@ package prompt_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -779,6 +780,45 @@ func TestPromptAdapter_ExtraEnvPropagatedToAgent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "TASK=test-task-42")
 	assert.Contains(t, string(data), "RUN=run-99")
+}
+
+// TestPromptAdapter_MarkerInsideStreamJSONResultField is the regression test
+// for the host executor classifying a completed agent step as "fail" because
+// its CLOCHE_RESULT marker lived inside the stream-json "result" event's
+// "result" string field rather than on its own raw stdout line. The host
+// path (no StatusWriter set, so tryCommand takes the buffered branch) must
+// extract stream-json text the same way the streaming/in-container path
+// does before scanning for the marker.
+func TestPromptAdapter_MarkerInsideStreamJSONResultField(t *testing.T) {
+	dir := t.TempDir()
+
+	resultEvent := map[string]any{
+		"type":    "result",
+		"subtype": "success",
+		"result":  "All done implementing the feature.\n\nCLOCHE_RESULT:success",
+	}
+	line, err := json.Marshal(resultEvent)
+	require.NoError(t, err)
+
+	adapter := &prompt.Adapter{
+		Commands: []string{"sh"},
+		// printf (unlike sh's built-in echo) never reinterprets backslash
+		// escapes in its arguments, so the JSON's literal "\n" bytes reach
+		// stdout unchanged and the whole event stays on one line, exactly as
+		// a real agent's stream-json output would look.
+		ExplicitArgs: []string{"-c", "cat > /dev/null && printf '%s\\n' '" + string(line) + "'"},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result)
 }
 
 func TestParseCommands(t *testing.T) {

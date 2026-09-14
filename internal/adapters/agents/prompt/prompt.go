@@ -387,7 +387,27 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 
 		runErr := cmd.Run()
 		stdoutBytes := stdoutBuf.Bytes()
-		result, stdout, fallbackErr = a.classifyResult(command, stdoutBytes, runErr)
+		stdout = stdoutBytes
+
+		// Mirror the streaming path below: check the raw output for
+		// agent-level errors before classifying extracted text, since
+		// "error_during_execution" is a JSON field that extracted plain text
+		// never contains.
+		if bytes.Contains(stdoutBytes, []byte(`"error_during_execution"`)) {
+			result, fallbackErr = "fail", fmt.Errorf("command %q reported error_during_execution", command)
+		} else {
+			// Prefer extracted text (stream-json) for result classification,
+			// same as the streaming path: a CLOCHE_RESULT marker can be
+			// embedded inside a JSON string (e.g. the "result" event's
+			// "result" field) where a raw line-based scan would never see it.
+			// Fall back to raw output for non-JSON commands (scripts,
+			// non-claude agents).
+			classifyBuf := extractStreamOutputText(stdoutBytes)
+			if len(bytes.TrimSpace(classifyBuf)) == 0 {
+				classifyBuf = stdoutBytes
+			}
+			result, _, fallbackErr = a.classifyResult(command, classifyBuf, runErr)
+		}
 		usage = scanOutputForUsage(stdoutBytes)
 		if usage != nil {
 			usage.AgentName = command
@@ -527,6 +547,20 @@ func runUsageCommand(ctx context.Context, cmd string, workDir string) *domain.To
 		InputTokens:  data.InputTokens,
 		OutputTokens: data.OutputTokens,
 	}
+}
+
+// extractStreamOutputText applies extractStreamText to every line of a
+// complete (non-streaming) output buffer and concatenates the results. Used
+// by the buffered execution path (tryCommand, no StatusWriter) so it
+// classifies the same extracted text the streaming path does, rather than
+// scanning raw stream-json lines where a CLOCHE_RESULT marker embedded inside
+// a JSON string (e.g. the "result" event's "result" field) would never match.
+func extractStreamOutputText(output []byte) []byte {
+	var buf bytes.Buffer
+	for _, line := range bytes.Split(output, []byte("\n")) {
+		buf.WriteString(extractStreamText(line))
+	}
+	return buf.Bytes()
 }
 
 // extractStreamText parses a streaming-JSON event line and returns text content.
