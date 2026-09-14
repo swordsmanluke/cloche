@@ -1,0 +1,90 @@
+{
+  "commit_message": "bd: seed the 12-task Bract build list (D1-D5 embedded)",
+  "nodes": [
+    {
+      "key": "01-lexer",
+      "title": "Lexer",
+      "type": "task",
+      "description": "Implement `bract/lexer.py`: a hand-written lexer producing the token stream defined in DESIGN.md §2. Cover every token class — keywords (`let set fn if else while and or true false nil return`), identifiers, integer literals, string literals with escapes (`\\\"`, `\\\\`, `\\n`, `\\t`), punctuation, and all operators including `~` (Q3) and `<>` (Q4). `//` starts a line comment; there are no block comments.\n\nToken type names are `SCREAMING_CASE` (SC5) — `LET`, `IDENT`, `INT`, `STRING`, `TILDE`, `NOTEQ`, and so on. There is no `!` token: a stray `!` produces `line N: unexpected character '!'`, and `!=` is therefore unreachable at the parser (Q4) — do not special-case it. Bad escapes produce `line N: unknown escape sequence '\\x'`; an unterminated string produces `line N: unterminated string`.\n\nWrite unit tests under `tests/` covering every token kind, both prior-trap tokens (`~`, `<>`, absence of `!=`), and the three lex-error messages above with correct line numbers."
+    },
+    {
+      "key": "02-parser",
+      "title": "Parser",
+      "type": "task",
+      "description": "Implement `bract/parser.py`: a recursive-descent parser over the lexer's token stream, producing an AST for the grammar in DESIGN.md §3. Implement every statement form (`let`, `set`, `fn`, `if`/`else`, `while`, `return`, expression statements, blocks) and the full expression precedence chain down to `primary`.\n\nThe `comparison` rule accepts at most one `comp-op` (Q6) — `a < b < c` must fail to parse with `line N: comparisons do not chain`, not silently associate. There is no subscript syntax (`s[0]`) anywhere in the grammar; string indexing only exists via the `at`/`sub` builtins, so don't add bracket parsing as a convenience. Parse errors use the shared `line N: <message>` format.\n\nTests should walk every grammar production at least once, with dedicated cases for Q6 (chained and non-chained comparisons, including the `(a < b) and (b < c)` workaround from DESIGN.md) and for rejecting bare `x = expr;`."
+    },
+    {
+      "key": "03-evaluator-core",
+      "title": "Evaluator core",
+      "type": "task",
+      "description": "Implement the core of `bract/evaluator.py`: a tree-walking evaluator for literals (integers, strings, booleans, `nil`) and the arithmetic/string operators (`+ - * / % ~`). Integers and strings are never implicitly converted (§1) — every mismatched operand pairing is a runtime type error, not a coercion, including `+` on strings (`line N: '+' cannot be applied to strings`, Q3) and `~` on non-strings (`line N: '~' expects strings`).\n\nDivision and remainder by zero raise `line N: division by zero`. All interpreter state (values, call stack, whatever else) is threaded through an explicit `Interpreter`/`Environment`-shaped object passed around, not held in module-level globals (SC8) — later tasks build bindings and control flow on top of this object, so get its shape right now.\n\nTests should cover each operator's happy path and its type-error path, plus the zero-division cases for both `/` and `%`."
+    },
+    {
+      "key": "04-bindings",
+      "title": "Bindings (let/set)",
+      "type": "task",
+      "description": "Add `let`/`set` binding semantics to the evaluator, per DESIGN.md §4 and Q2. `let x = expr;` declares a new binding in the current scope; redeclaring `x` in that same scope is `line N: 'x' is already declared` (shadowing an outer `x` from an inner scope is fine). `set x = expr;` reassigns by walking the scope chain outward; if no enclosing scope declared `x`, it's `line N: 'x' is not declared`. There is no bare `x = expr;` — that's a parse error, not a binding operation.\n\nOne correction from review of the evaluator-core work: error messages must read `line N: message`, nothing else — no stack traces, no exception class names, no second line. Make sure every error path (this task's and the ones before it) actually renders through one shared formatting function rather than an ad hoc `raise`/`print`, since that's the only way later tasks can rely on the format staying put.\n\nTests: redeclare-in-same-scope, shadow-from-inner-scope, set-before-declare, set-through-nested-scopes."
+    },
+    {
+      "key": "05-functions",
+      "title": "Functions & closures",
+      "type": "task",
+      "description": "Implement `fn` definitions and calls: `fn name(params) { ... }` statements, first-class function values, chained calls (`f()()`), and `return`. Closures must be real — a returned inner `fn` still sees its outer `let` bindings after the outer call returns (DESIGN.md §4); the counter-closure example in §11 is the canonical test case, and it requires `set` (not `let`) to mutate the captured counter from inside the inner function.\n\nSeparately: the evaluator must be iterative — no recursion on user input depth. A tree-walking evaluator is tempted to recurse through Python's own call stack once per Bract function call or nested block; don't — a deeply-recursive or deeply-nested Bract program must not blow the Python recursion limit. Use an explicit stack/work-list for call and block evaluation instead of letting user-controlled nesting depth become Python stack depth.\n\nTests: the closure/counter example, chained calls, and a deep call chain (hundreds of frames) that would fail under naive Python recursion but must succeed here."
+    },
+    {
+      "key": "06-control-flow",
+      "title": "Control flow (if/while)",
+      "type": "task",
+      "description": "Implement `if`/`else` and `while` execution. Per Q1, the condition of `if` and `while` must be a `Boolean` — `0`, `\"\"`, and `nil` are not falsy, they're a type error: `line N: condition must be a boolean`. Implement `and`/`or` per Q7: both operands are always evaluated, left-to-right, regardless of the left operand's value — no short-circuiting, even when the left operand alone would decide the result. A non-boolean operand is `line N: operand of 'and'/'or' must be a boolean`.\n\nWhile you're in the arithmetic paths for loop counters: integer division truncates toward zero, never floor. DESIGN.md §7 deliberately leaves `/`'s rounding direction for mixed-sign operands unpinned; that's now decided — truncate toward zero (Python's own `/` and `//` do not do this for negative operands, so don't reach for either directly).\n\nTests: boolean-only conditions (including the `0`/`\"\"`/`nil` cases), an `and`/`or` case where the left operand alone would short-circuit in Python but the right operand's side effect must still be observed (mirroring DESIGN.md §11's `has_side_effect` example), and division/remainder with at least one negative operand."
+    },
+    {
+      "key": "07-errors",
+      "title": "Errors & exit codes",
+      "type": "task",
+      "description": "Consolidate error handling across the lexer, parser, and evaluator into one shared path: every lex, parse, or runtime failure is a single line on stderr, `line N: <message>` (DESIGN.md §8, SC3) — no stack traces, no secondary lines, ever. Audit every raise/except site built by tasks 1–6 and route them through it if any slipped through.\n\nWire up the process-level exit codes: `0` on success, `1` for a runtime error, `2` for a lex or parse error (the program never started executing) — and only those three values, from `bract run` and the top-level CLI dispatch (SC6). No Python traceback should ever be able to reach a user-visible surface; catch broadly at the CLI boundary and re-render through the shared formatter.\n\nTests: force at least one failure from each of the three stages and assert both the exact stderr line and the exit code."
+    },
+    {
+      "key": "08-repl",
+      "title": "REPL",
+      "type": "task",
+      "description": "Implement the interactive REPL entry point (`bract` with no arguments), per DESIGN.md §9: read a statement, evaluate it, print its result if it was an expression statement with a non-`nil` value, and loop. An error during a statement is reported per the shared `line N:` format and does not end the session — the REPL keeps reading.\n\nCorrection from the last round of testing: the REPL prompt is `bract> ` with a trailing space, and Ctrl-D exits cleanly (an EOF on stdin should end the session with exit code 0, not raise an uncaught exception).\n\nTests: expression-statement echoing, a statement that produces no printable result, an error mid-session followed by a further working statement in the same session, and clean EOF handling."
+    },
+    {
+      "key": "09-file-runner",
+      "title": "File runner",
+      "type": "task",
+      "description": "Implement `bract run FILE` (DESIGN.md §9): execute the file as a complete program and exit with the code from §8. Unlike the REPL, there is no implicit result-printing — only output the program itself produces, plus the one-line error format on failure.\n\nSeparate note for later: `bract fmt` output must be byte-stable (fmt∘fmt = fmt) — running the formatter on its own output must be a no-op. That's a constraint on the formatter task, not this one, but it belongs in the record now so it isn't lost by the time that task starts.\n\nTests: a program that runs to completion (exit 0), one with a runtime error (exit 1), one with a lex/parse error (exit 2, confirming the program never started executing), and confirmation that `bract run` produces no output beyond what the program itself writes."
+    },
+    {
+      "key": "10-formatter",
+      "title": "Formatter (bract fmt)",
+      "type": "task",
+      "description": "Implement `bract fmt FILE` (DESIGN.md §9, SC9): reparse `FILE` and write a canonically formatted version to stdout without modifying the source file. Formatting only ever touches whitespace, indentation, and brace placement — it must never reorder, re-associate, or drop AST nodes; expression grouping, operator precedence, and evaluation order are exactly preserved.\n\nThe formatter must be byte-stable: formatting already-formatted output is a no-op (fmt∘fmt = fmt, per the correction recorded in the file-runner task). Verify this directly — round-trip every fixture program through the formatter twice and diff.\n\nTests: at least one fixture per statement/expression kind, a round-trip idempotence test (`fmt(fmt(x)) == fmt(x)`) across the whole fixture set, and an AST-equality check between the original parse and the reparsed-formatted-output parse."
+    },
+    {
+      "key": "11-polish",
+      "title": "Polish & standing-constraint audit",
+      "type": "task",
+      "description": "Audit the full implementation against every standing constraint in DESIGN.md §10 (SC1–SC12): stdlib-only, single top-level `bract/` package with no nested subpackages, every user-visible error routed through the shared `line N:` formatter, no stray `print`/`sys.stdout.write`/`sys.stderr.write` outside `bract/cli.py`, `SCREAMING_CASE` token names, exit codes limited to `{0,1,2}`, no `eval`/`exec`/`compile`, no module-level mutable interpreter state, formatter changes limited to whitespace/indentation/braces, a single `bract/__main__.py` dispatch point, 1-indexed line numbers everywhere, and no leftover `TODO`/`FIXME`/stub `pass` in any module reachable from `__main__`.\n\nFix whatever the audit turns up. Also re-run the full test suite (`python3 -m unittest discover -s tests -v`) and close any coverage gaps found across the whole feature set built by tasks 1–10, not just the standing constraints — this is the last task before docs, so it's the last chance to catch drift.\n\nDeliverable: a short note (in the PR/commit description, not a new doc) listing which SC items required a fix, if any."
+    },
+    {
+      "key": "12-docs",
+      "title": "Docs",
+      "type": "task",
+      "description": "Write user-facing documentation for Bract: a `README.md` at the project root covering what Bract is, how to install/run it (`bract`, `bract run FILE`, `bract fmt FILE`), and a handful of example programs (the DESIGN.md §11 examples are a fine starting point, but write at least one more of your own). Document the error format and exit codes (DESIGN.md §8) so a user hitting `line N: ...` on stderr knows what it means.\n\nDo not restate the full grammar or semantics — DESIGN.md remains the single source of truth for those; the README should point there rather than duplicate it, so the two can't drift apart.\n\nDeliverable: `README.md`, plus doc comments/docstrings on any public-ish entry points (`bract/__main__.py`, `Lexer`, `Parser`, `Interpreter`/`Evaluator`, `Environment`) that don't already have them."
+    }
+  ],
+  "edges": [
+    { "from_key": "02-parser",            "to_key": "01-lexer",          "type": "blocks" },
+    { "from_key": "03-evaluator-core",    "to_key": "02-parser",         "type": "blocks" },
+    { "from_key": "04-bindings",          "to_key": "03-evaluator-core", "type": "blocks" },
+    { "from_key": "05-functions",         "to_key": "04-bindings",       "type": "blocks" },
+    { "from_key": "06-control-flow",      "to_key": "05-functions",      "type": "blocks" },
+    { "from_key": "07-errors",            "to_key": "06-control-flow",   "type": "blocks" },
+    { "from_key": "08-repl",              "to_key": "07-errors",         "type": "blocks" },
+    { "from_key": "09-file-runner",       "to_key": "08-repl",           "type": "blocks" },
+    { "from_key": "10-formatter",         "to_key": "09-file-runner",    "type": "blocks" },
+    { "from_key": "11-polish",            "to_key": "10-formatter",      "type": "blocks" },
+    { "from_key": "12-docs",              "to_key": "11-polish",         "type": "blocks" }
+  ]
+}

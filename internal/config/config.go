@@ -96,9 +96,9 @@ type RepositoryConfig struct {
 // name ("onnx", "ollama", "keyword"); empty uses the default chain. Model
 // overrides the onnx adapter's model (default all-MiniLM-L6-v2; e.g.
 // EmbeddingGemma-300M for projects that want it); empty uses the default.
-// Neither field is wired from config into embed.Resolve yet — that lands
-// with the daemon-side selection wiring — so the onnx adapter currently
-// reads its override via the CLOCHE_INTENT_MODEL env var directly.
+// Embedder is wired into embed.Resolve via internal/host and the daemon's
+// gRPC executor. Model is not yet wired from config — the onnx adapter
+// currently reads its override via the CLOCHE_INTENT_MODEL env var directly.
 // ScanAfterTasks opts a project into an incremental intent-scan run after
 // each task's main orchestration attempt succeeds; default on (set to false
 // in a project's config.toml to opt out). TokenBudget overrides

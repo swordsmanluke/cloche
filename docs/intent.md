@@ -254,10 +254,10 @@ at injection time. Adapters resolve in this order (first available wins):
    degraded fallback, not an alternative — the project's retrieval spike measured
    embeddings roughly doubling recall@3 over keyword overlap.
 
-`intent.embedder`/`intent.model` in `config.toml` exist as config fields but aren't
-wired into adapter resolution yet; today the onnx adapter's model override is read
-from the `CLOCHE_INTENT_MODEL` environment variable instead. This will move to the
-config keys as the daemon-side selection wiring lands.
+`intent.embedder` in `config.toml` pins the adapter-chain resolution above to a specific
+adapter (`"onnx"`, `"ollama"`, or `"keyword"`); empty uses the default chain order.
+`intent.model` is not yet wired into resolution — the onnx adapter's model override is
+still read from the `CLOCHE_INTENT_MODEL` environment variable instead.
 
 When no embedder is available (unsupported platform, model download refused),
 selection degrades gracefully to status + deterministic scoping plus keyword-overlap
@@ -304,7 +304,7 @@ API.
 
 | Key | Default | Description |
 |-----|---------|--------------|
-| `embedder` | _(unset)_ | Reserved for pinning the adapter chain to `"onnx"`, `"ollama"`, or `"keyword"`; not yet wired into resolution (see "Embedding backends" above). |
+| `embedder` | _(unset)_ | Pins the adapter chain to `"onnx"`, `"ollama"`, or `"keyword"`; empty uses the default chain order (see "Embedding backends" above). |
 | `model` | _(unset)_ | Reserved for overriding the `onnx` adapter's model; not yet wired in — use the `CLOCHE_INTENT_MODEL` env var today. |
 | `token_budget` | `0` | Overrides the ~2000-token default selection budget. Zero means "use the default". |
 | `inject` | _(unset)_ | `"off"` disables auto-prepending requirements to agent-step prompts project-wide. |
