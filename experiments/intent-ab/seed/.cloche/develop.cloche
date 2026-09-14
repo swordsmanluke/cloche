@@ -1,0 +1,31 @@
+workflow develop {
+  step implement {
+    prompt  = file(".cloche/prompts/implement.md")
+    results = [success, fail]
+  }
+
+  step commit {
+    run     = "git add -A && git commit -m \"implement task changes\" || true"
+    results = [success, fail]
+  }
+
+  step test {
+    run     = "python3 -m unittest discover -s tests -v"
+    results = [success, fail]
+  }
+
+  step fix-tests {
+    prompt       = file(".cloche/prompts/fix-tests.md")
+    max_attempts = 2
+    results      = [success, fail]
+  }
+
+  implement:success  -> commit
+  implement:fail     -> abort
+  commit:success     -> test
+  commit:fail        -> abort
+  test:success       -> done
+  test:fail          -> fix-tests
+  fix-tests:success  -> test
+  fix-tests:fail     -> abort
+}

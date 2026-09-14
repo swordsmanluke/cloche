@@ -1,0 +1,90 @@
+// Host orchestration workflows, run by the daemon on the host machine.
+//
+// The loop is two-phase: list-tasks is polled to find ready work, then main
+// runs once per dispatched task with CLOCHE_TASK_ID set in every step's
+// environment.
+//
+// Data flows between steps through the run's key-value store (cloche get/set
+// on the host, clo get/set inside containers).
+
+workflow list-tasks {
+  host {}
+
+  step get-tasks {
+    run     = "python3 .cloche/scripts/get-tasks.py"
+    results = [success, fail]
+  }
+
+  get-tasks:success -> done
+  get-tasks:fail    -> abort
+}
+
+workflow main {
+  host {}
+
+  // Mark the task in_progress in beads.
+  step claim-task {
+    run     = "python3 .cloche/scripts/claim-task.py"
+    results = [success, fail]
+  }
+
+  // Write the task prompt to a file and publish its path in the KV store.
+  step prepare-prompt {
+    run     = "python3 .cloche/scripts/prepare-prompt.py"
+    results = [success, fail]
+  }
+
+  // Run the container workflow. The daemon pre-creates a git branch and
+  // worktree for the results and publishes child_branch in the KV store.
+  step develop {
+    workflow_name = "develop"
+    results       = [success, fail]
+  }
+
+  // Rebase the daemon-created branch onto the base branch and fast-forward.
+  step merge {
+    run     = "python3 .cloche/scripts/merge.py"
+    results = [success, fail]
+  }
+
+  // Agent step: resolve rebase conflicts in the worktree, then merge re-runs.
+  step fix-merge {
+    prompt  = file(".cloche/prompts/fix-merge.md")
+    results = [success, fail]
+  }
+
+  // Close the task in beads.
+  step close-task {
+    run     = "python3 .cloche/scripts/close-task.py"
+    results = [success, fail]
+  }
+
+  // Remove the leftover worktree and branch.
+  step cleanup {
+    run     = "python3 .cloche/scripts/cleanup.py"
+    results = [success, fail]
+  }
+
+  // Emergency brake: reopen the task and stop the loop for human review.
+  step unclaim {
+    run     = "python3 .cloche/scripts/unclaim.py"
+    results = [success, fail]
+  }
+
+  claim-task:success     -> prepare-prompt
+  claim-task:fail        -> abort
+  prepare-prompt:success -> develop
+  prepare-prompt:fail    -> unclaim
+  develop:success        -> merge
+  develop:fail           -> unclaim
+  merge:success          -> close-task
+  merge:fail             -> fix-merge
+  fix-merge:success      -> merge
+  fix-merge:fail         -> unclaim
+  close-task:success     -> cleanup
+  close-task:fail        -> unclaim
+  cleanup:success        -> done
+  cleanup:fail           -> unclaim
+  unclaim:success        -> abort
+  unclaim:fail           -> abort
+}

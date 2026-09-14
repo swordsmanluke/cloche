@@ -1619,9 +1619,12 @@ cloche complete --index <n> [-i <n>] -- <word0> <word1> ...
 ```
 
 Prints one completion candidate per line for the word at position `<n>` in the
-command line. If the daemon is reachable, dynamic candidates (task IDs, workflow
-names, attempt IDs) are returned via the `Complete` gRPC RPC. Otherwise falls
-back to static subcommand and flag completions.
+command line. Static candidates (subcommands, flags, and project workflow names
+read from the local `.cloche/`) are always computed first and take precedence,
+since a daemon reached over `CLOCHE_ADDR` may be answering for a different
+filesystem view of the project (e.g. from inside a container). If the daemon
+is reachable, its dynamic candidates (task IDs, workflow names, attempt IDs)
+are merged in after, with duplicates dropped.
 
 **Context-aware filtering:** The daemon filters candidates based on the subcommand:
 - `status` and `poll` — only suggest tasks that are currently running or completed

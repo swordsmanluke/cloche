@@ -1,0 +1,17 @@
+# Cloche project configuration
+active = true
+
+[daemon]
+image = "seed-cloche-agent:latest"
+
+# [orchestration]
+# concurrency              = 1
+# stagger_seconds          = 1.0
+# dedup_seconds            = 300.0
+# stop_on_error            = false
+# max_consecutive_failures = 3
+
+[git]
+# name    = ""     # override global git identity for this project
+# email   = ""
+# ssh_key = ""     # path to private key used for git push

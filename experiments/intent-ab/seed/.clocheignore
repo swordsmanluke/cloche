@@ -1,0 +1,25 @@
+# Files excluded from the container workspace.
+# Uses gitignore-style patterns (*, ?, **).
+
+# Cloche runtime state
+.cloche/logs/
+.cloche/runs/
+
+# Extraction worktrees live on the host.
+.gitworktrees/
+
+# Common large/generated directories
+node_modules/
+.venv/
+venv/
+__pycache__/
+dist/
+build/
+.next/
+target/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
