@@ -1692,7 +1692,7 @@ my-project/
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `concurrency` | `1` | Maximum concurrent container runs. |
+| `concurrency` | `1` | Maximum concurrent container runs. Runs parked at a `poll` step release their slot for the duration of the poll and reacquire one (ahead of new task launches) once it resolves — see [Poll Step](workflows.md#poll-step) — so they don't count against this limit while waiting. |
 | `stagger_seconds` | `1.0` | Delay (seconds) between consecutive run launches. |
 | `dedup_seconds` | `0` | Window (seconds) to suppress re-assigning the same task ID. |
 | `stop_on_error` | `false` | Halt the orchestration loop on the first unrecovered error. |

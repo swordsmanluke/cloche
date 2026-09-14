@@ -288,6 +288,17 @@ func (l *Loop) runPhased() {
 		// Drive poll step polls on each loop tick.
 		l.drivePollSteps()
 
+		// Apply slots released by runs that parked at a poll step since the
+		// last tick, freeing them up immediately for other work.
+		if l.pollCoord != nil {
+			if released := l.pollCoord.drainReleasedSlots(); released > 0 {
+				inFlight -= released
+				if inFlight < 0 {
+					inFlight = 0
+				}
+			}
+		}
+
 		// Fill up to max concurrent slots.
 		launched := 0
 		for inFlight < l.config.MaxConcurrent {
@@ -295,6 +306,13 @@ func (l *Loop) runPhased() {
 			case <-l.stopCh:
 				return
 			default:
+			}
+
+			// Runs that finished polling and are just waiting to resume take
+			// priority over brand-new task launches.
+			if l.pollCoord != nil && l.pollCoord.grantNextResume() {
+				inFlight++
+				continue
 			}
 
 			// Check how many host runs are active for this project.
@@ -399,6 +417,9 @@ func (l *Loop) runPhased() {
 
 		// Wait for any run to complete (or the poll interval, whichever comes first).
 		select {
+		case <-l.wakeCh():
+			// A parked poll step released or requested its slot back — loop
+			// around immediately to process it ahead of the next tick.
 		case r := <-completions:
 			inFlight--
 			if r.state == domain.RunStateSucceeded {
@@ -631,15 +652,28 @@ func (l *Loop) countActiveHostRuns() int {
 	return count
 }
 
-// sleep waits for the given duration or until the loop is stopped.
+// sleep waits for the given duration or until the loop is stopped. Also
+// returns early (true) when a parked poll step releases or requests its slot
+// back, so freed/priority work is not left waiting out the full duration.
 // Returns false if the loop was stopped.
 func (l *Loop) sleep(d time.Duration) bool {
 	select {
 	case <-time.After(d):
 		return true
+	case <-l.wakeCh():
+		return true
 	case <-l.stopCh:
 		return false
 	}
+}
+
+// wakeCh returns the PollCoordinator's wake channel, or nil (which blocks
+// forever in a select) when no coordinator is configured.
+func (l *Loop) wakeCh() chan struct{} {
+	if l.pollCoord == nil {
+		return nil
+	}
+	return l.pollCoord.wake
 }
 
 // ReadListTasksOutput reads the output directory from a list-tasks workflow run

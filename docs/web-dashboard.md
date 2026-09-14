@@ -164,7 +164,14 @@ The graph scrolls horizontally and vertically for large workflows.
 
 ### Runs (`/runs` or `/projects/{name}/runs`)
 
-The runs list groups workflow executions by task and attempt. Each group shows:
+A **Polls** table at the top of the page lists poll steps currently being run
+asynchronously (runs parked in the `waiting` state with an active poll). Each row shows
+the run ID, project, workflow, task, step name, start time, last poll time, and poll
+count. It refreshes every 3 seconds from `GET /api/polls` (optionally filtered by
+`?project=<dir>`). Once a poll resolves and the workflow continues, the run disappears
+from this table and reappears under "Runs" as normal.
+
+The runs list below it groups workflow executions by task and attempt. Each group shows:
 
 - A **task header** with the task ID, title, and overall status.
 - **Attempt blocks** under each task — one per attempt (e.g. `Attempt a12z`), with a
@@ -272,6 +279,7 @@ confirms that all attempted tasks have succeeded or are still running.
 | Prompt diff viewer | Project detail → Project Info → commit history |
 | Run cancel | Run detail → Cancel button |
 | Task/attempt grouping | Runs list |
+| Active polls table | Runs list → Polls |
 | Project health overview | Projects landing page |
 | Failed open tasks dashboard | `/failed-tasks` |
 | Manual orchestrator trigger | Projects landing page → Trigger Orchestrator button |

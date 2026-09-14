@@ -129,6 +129,33 @@ func TestRunsList_Empty(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "No runs yet.")
 }
 
+func TestRunsList_WithPolls(t *testing.T) {
+	h, store := setupHandler(t)
+
+	ctx := context.Background()
+	run := domain.NewRun("poll-run-1", "main")
+	run.Start()
+	run.State = domain.RunStateWaiting
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.UpsertPoll(ctx, &ports.PollRecord{
+		RunID:      "poll-run-1",
+		StepName:   "await-approval",
+		StartedAt:  time.Now(),
+		LastPollAt: time.Now(),
+		PollCount:  3,
+	}))
+
+	req := httptest.NewRequest("GET", "/runs", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "Polls")
+	assert.Contains(t, body, "poll-run-1")
+	assert.Contains(t, body, "await-approval")
+}
+
 func TestRunDetail_WithCaptures(t *testing.T) {
 	h, store := setupHandler(t)
 	seedRun(t, store, "run-detail-1", "develop", domain.RunStateRunning)
@@ -237,6 +264,42 @@ func TestAPIRuns(t *testing.T) {
 	}
 	assert.True(t, ids["api-run-1"])
 	assert.True(t, ids["api-run-2"])
+}
+
+// TestAPIPolls verifies that GET /api/polls surfaces only waiting runs with
+// an active PollRecord, backing the web UI's "Polls" section.
+func TestAPIPolls(t *testing.T) {
+	h, store := setupHandler(t)
+
+	ctx := context.Background()
+	run := domain.NewRun("poll-run-2", "main")
+	run.Start()
+	run.State = domain.RunStateWaiting
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.UpsertPoll(ctx, &ports.PollRecord{
+		RunID:      "poll-run-2",
+		StepName:   "await-approval",
+		StartedAt:  time.Now(),
+		LastPollAt: time.Now(),
+		PollCount:  2,
+	}))
+
+	// A regular running run has no poll record and must not show up.
+	seedRun(t, store, "regular-run", "develop", domain.RunStateRunning)
+
+	req := httptest.NewRequest("GET", "/api/polls", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
+
+	var polls []apiPoll
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &polls))
+	require.Len(t, polls, 1)
+	assert.Equal(t, "poll-run-2", polls[0].RunID)
+	assert.Equal(t, "await-approval", polls[0].StepName)
+	assert.Equal(t, 2, polls[0].PollCount)
 }
 
 func TestAPIRunDetail(t *testing.T) {

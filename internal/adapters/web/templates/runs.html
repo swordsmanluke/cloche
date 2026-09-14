@@ -18,6 +18,40 @@
     {{end}}
 </div>
 {{end}}
+<h2>Polls</h2>
+<table class="runs-table">
+    <thead>
+        <tr>
+            <th>Run ID</th>
+            <th>Project</th>
+            <th>Workflow</th>
+            <th>Task</th>
+            <th>Step</th>
+            <th>Started</th>
+            <th>Last Poll</th>
+            <th>Poll Count</th>
+        </tr>
+    </thead>
+    <tbody id="polls-body">
+    {{if .Polls}}
+        {{range .Polls}}
+        <tr>
+            <td><a href="/runs/{{.RunID}}">{{.RunID}}</a></td>
+            <td>{{.ProjectLabel}}</td>
+            <td>{{.WorkflowName}}</td>
+            <td>{{if .TaskTitle}}{{.TaskTitle}}{{else}}{{.TaskID}}{{end}}</td>
+            <td class="mono">{{.StepName}}</td>
+            <td>{{.StartedAt}}</td>
+            <td>{{.LastPollAt}}</td>
+            <td>{{.PollCount}}</td>
+        </tr>
+        {{end}}
+    {{else}}
+        <tr><td colspan="8" class="empty">No active polls.</td></tr>
+    {{end}}
+    </tbody>
+</table>
+<h2>Runs</h2>
 <table class="runs-table">
     <thead>
         <tr>
@@ -240,6 +274,36 @@
             .catch(function() {});
     }
 
+    function pollPolls() {
+        var url = currentProject ? '/api/polls?project=' + encodeURIComponent(currentProject) : '/api/polls';
+        fetch(url)
+            .then(function(r) { return r.json(); })
+            .then(function(polls) {
+                var tbody = document.getElementById('polls-body');
+                if (!tbody) return;
+                if (!polls || polls.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="empty">No active polls.</td></tr>';
+                    return;
+                }
+                var html = '';
+                for (var i = 0; i < polls.length; i++) {
+                    var p = polls[i];
+                    html += '<tr>' +
+                        '<td><a href="/runs/' + p.run_id + '">' + p.run_id + '</a></td>' +
+                        '<td>' + escapeHtml(p.project_label || '') + '</td>' +
+                        '<td>' + escapeHtml(p.workflow_name || '') + '</td>' +
+                        '<td>' + escapeHtml(p.task_title || p.task_id || '') + '</td>' +
+                        '<td class="mono">' + escapeHtml(p.step_name || '') + '</td>' +
+                        '<td>' + escapeHtml(p.started_at || '') + '</td>' +
+                        '<td>' + escapeHtml(p.last_poll_at || '') + '</td>' +
+                        '<td>' + p.poll_count + '</td>' +
+                        '</tr>';
+                }
+                tbody.innerHTML = html;
+            })
+            .catch(function() {});
+    }
+
     function escapeHtml(s) {
         var d = document.createElement('div');
         d.appendChild(document.createTextNode(s));
@@ -253,6 +317,7 @@
     // Apply accordions to the server-rendered initial HTML.
     applyAccordions();
     setInterval(poll, 3000);
+    setInterval(pollPolls, 3000);
 })();
 </script>
 {{end}}

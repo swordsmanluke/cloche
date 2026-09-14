@@ -559,6 +559,17 @@ func (e *Executor) executePollStep(ctx context.Context, step *domain.Step) (stri
 				log.Printf("host executor: setting run %q to waiting: %v", e.HostRunID, updateErr)
 			}
 		}
+		// Restore to running once the poll resolves (decision or timeout) and
+		// the workflow continues, so list/status show the run as active again
+		// under "Runs" instead of remaining stuck as "waiting".
+		defer func() {
+			if run, getErr := e.Store.GetRun(context.Background(), e.HostRunID); getErr == nil && run.State == domain.RunStateWaiting {
+				run.State = domain.RunStateRunning
+				if updateErr := e.Store.UpdateRun(context.Background(), run); updateErr != nil {
+					log.Printf("host executor: restoring run %q to running: %v", e.HostRunID, updateErr)
+				}
+			}
+		}()
 	}
 
 	// Record poll state in PollStore for observability.
@@ -577,7 +588,7 @@ func (e *Executor) executePollStep(ctx context.Context, step *domain.Step) (stri
 
 	if e.PollCoord != nil {
 		// Loop-driven mode: register session and block until the loop delivers
-		// a decision via DrivePolls. The executor goroutine is parked here; the
+		// a decision via DrivePolls. The executor goroutine parks here; the
 		// orchestration loop owns all poll timing.
 		resultCh := e.PollCoord.Register(e.HostRunID, step.Name, invokeFn, interval)
 		defer e.PollCoord.Unregister(e.HostRunID, step.Name)
@@ -586,6 +597,15 @@ func (e *Executor) executePollStep(ctx context.Context, step *domain.Step) (stri
 				_ = e.PollStore.DeletePoll(context.Background(), e.HostRunID, step.Name)
 			}
 		}()
+
+		// Give up this run's concurrency slot for the duration of the poll —
+		// the orchestration loop can use it for other work while this run
+		// waits — and reacquire one (ahead of brand-new task launches) once a
+		// decision is ready, before the session/poll record are cleaned up
+		// above and the workflow continues.
+		e.PollCoord.ReleaseSlot()
+		defer e.PollCoord.ReacquireSlot()
+
 		select {
 		case result := <-resultCh:
 			return result, nil

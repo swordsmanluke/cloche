@@ -750,6 +750,13 @@ due, that interval is skipped. If a single invocation runs longer than 4× `inte
 (three consecutive skips), the step produces a `fail` result and follows the `fail`
 wire.
 
+**Concurrency slot.** In a host workflow, a run parked at a poll step gives up its
+`concurrency` slot (see `[orchestration] concurrency` in `.cloche/config.toml`) for the
+duration of the poll, so the orchestration loop can use it to launch other work. When
+the poll resolves (decision or timeout), the run reacquires a slot — ahead of any
+brand-new task launches — before the workflow continues, and its state moves back from
+`waiting` to `running`.
+
 ### Timeout
 
 The default step timeout is 72 hours. Override it with the `timeout` field, same as any

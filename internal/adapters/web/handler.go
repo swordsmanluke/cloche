@@ -191,6 +191,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/projects", h.handleAPIProjects)
 	h.mux.HandleFunc("GET /api/projects/{name}/runs", h.handleAPIProjectRuns)
 	h.mux.HandleFunc("GET /api/runs", h.handleAPIRuns)
+	h.mux.HandleFunc("GET /api/polls", h.handleAPIPolls)
 	h.mux.HandleFunc("GET /api/runs/{id}", h.handleAPIRunDetail)
 	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
 	h.mux.HandleFunc("POST /api/runs/{id}/stop", h.handleAPIStopRun)
@@ -537,7 +538,9 @@ func (h *Handler) renderRunsList(w http.ResponseWriter, r *http.Request, project
 		totalContainerCount += c
 	}
 
-	grouped := groupAndSortRuns(runs, labels, h.taskTitlesFromRuns(runs))
+	taskTitles := h.taskTitlesFromRuns(runs)
+	grouped := groupAndSortRuns(runs, labels, taskTitles)
+	polls := h.collectPolls(r.Context(), runs, labels, taskTitles)
 
 	// Build a JSON map of dir→label for the template JS.
 	dirToLabel := map[string]string{}
@@ -554,6 +557,7 @@ func (h *Handler) renderRunsList(w http.ResponseWriter, r *http.Request, project
 	data := map[string]any{
 		"Title":               "Runs",
 		"GroupedRuns":         grouped,
+		"Polls":               polls,
 		"Projects":            projectList,
 		"ProjectFilter":       projectFilter,
 		"ProjectLabel":        projectLabel,
@@ -940,6 +944,59 @@ func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
 	}
 }
 
+// apiPoll describes a poll step currently being run asynchronously (parked,
+// not holding a concurrency slot) — the "Polls" section that sits alongside
+// "Runs". Once the poll resolves and the workflow continues, the run
+// reappears under "Runs" as normal.
+type apiPoll struct {
+	RunID        string `json:"run_id"`
+	ProjectLabel string `json:"project_label"`
+	WorkflowName string `json:"workflow_name"`
+	TaskID       string `json:"task_id,omitempty"`
+	TaskTitle    string `json:"task_title,omitempty"`
+	StepName     string `json:"step_name"`
+	StartedAt    string `json:"started_at"`
+	LastPollAt   string `json:"last_poll_at"`
+	PollCount    int    `json:"poll_count"`
+}
+
+// collectPolls returns the poll steps currently being polled asynchronously
+// across the given runs (runs in RunStateWaiting with an active PollRecord).
+// Returns nil when the store doesn't implement ports.PollStore.
+func (h *Handler) collectPolls(ctx context.Context, runs []*domain.Run, labels map[string]string, taskTitles map[string]string) []apiPoll {
+	pollStore, ok := h.store.(ports.PollStore)
+	if !ok {
+		return nil
+	}
+	var polls []apiPoll
+	for _, run := range runs {
+		if run.State != domain.RunStateWaiting {
+			continue
+		}
+		records, err := pollStore.ListPolls(ctx, run.ID)
+		if err != nil {
+			continue
+		}
+		for _, rec := range records {
+			polls = append(polls, apiPoll{
+				RunID:        run.ID,
+				ProjectLabel: labels[run.ProjectDir],
+				WorkflowName: run.WorkflowName,
+				TaskID:       run.TaskID,
+				TaskTitle:    taskTitles[run.TaskID],
+				StepName:     rec.StepName,
+				StartedAt:    formatTime(rec.StartedAt),
+				LastPollAt:   formatTime(rec.LastPollAt),
+				PollCount:    rec.PollCount,
+			})
+		}
+	}
+	sort.Slice(polls, func(i, j int) bool {
+		return polls[i].StartedAt > polls[j].StartedAt
+	})
+	return polls
+}
+
 // apiGroupedEntry is a single entry in the grouped runs response.
 // Can be a task header, an attempt header, or a run entry.
 type apiGroupedEntry struct {
@@ -1125,6 +1182,32 @@ func (h *Handler) handleAPIRuns(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.renderAPIRuns(w, r, "")
+}
+
+// handleAPIPolls handles GET /api/polls, returning the poll steps currently
+// being run asynchronously (optionally filtered by ?project=<dir>) so the
+// "Polls" section on the runs page can refresh without a full page reload.
+func (h *Handler) handleAPIPolls(w http.ResponseWriter, r *http.Request) {
+	projectFilter := r.URL.Query().Get("project")
+
+	var runs []*domain.Run
+	var err error
+	if projectFilter != "" {
+		runs, err = h.store.ListRunsByProject(r.Context(), projectFilter, time.Time{})
+	} else {
+		runs, err = h.store.ListRuns(r.Context(), time.Time{})
+	}
+	if err != nil {
+		http.Error(w, "failed to list runs", http.StatusInternalServerError)
+		return
+	}
+
+	projects, _ := h.store.ListProjects(r.Context())
+	labels := projectLabels(projects)
+	polls := h.collectPolls(r.Context(), runs, labels, h.taskTitlesFromRuns(runs))
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(polls)
 }
 
 // handleAPIProjectRuns handles GET /api/projects/{name}/runs.

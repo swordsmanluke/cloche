@@ -21,6 +21,15 @@ import (
 type PollCoordinator struct {
 	mu       sync.Mutex
 	sessions map[string]*pollSession
+
+	// Concurrency-slot handoff: a parked executor goroutine calls ReleaseSlot
+	// before blocking so the orchestration loop can use its slot for other
+	// work, then ReacquireSlot before resuming, so it gets priority over
+	// brand-new task launches. See Loop.runPhased.
+	slotMu      sync.Mutex
+	released    int             // pending ReleaseSlot() calls not yet applied to inFlight
+	resumeQueue []chan struct{} // FIFO of pending ReacquireSlot() grants
+	wake        chan struct{}   // buffered(1); wakes the loop to reprocess slot state
 }
 
 type pollSession struct {
@@ -37,7 +46,76 @@ type pollSession struct {
 
 // NewPollCoordinator creates a new PollCoordinator.
 func NewPollCoordinator() *PollCoordinator {
-	return &PollCoordinator{sessions: make(map[string]*pollSession)}
+	return &PollCoordinator{
+		sessions: make(map[string]*pollSession),
+		wake:     make(chan struct{}, 1),
+	}
+}
+
+// ReleaseSlot gives up a concurrency slot without exiting the calling
+// goroutine. Called by an executor goroutine right before it parks at a poll
+// step, so the orchestration loop can immediately use the freed slot for
+// other work while this run waits. Must be paired with exactly one
+// ReacquireSlot call.
+func (c *PollCoordinator) ReleaseSlot() {
+	c.slotMu.Lock()
+	c.released++
+	c.slotMu.Unlock()
+	c.wakeLoop()
+}
+
+// ReacquireSlot blocks until the orchestration loop grants this run a
+// concurrency slot again. Pending reacquire requests are served ahead of
+// brand-new task launches (see Loop.runPhased), so a poll step that becomes
+// ready resumes before the loop starts unrelated work.
+func (c *PollCoordinator) ReacquireSlot() {
+	grant := make(chan struct{}, 1)
+	c.slotMu.Lock()
+	c.resumeQueue = append(c.resumeQueue, grant)
+	c.slotMu.Unlock()
+	c.wakeLoop()
+	<-grant
+}
+
+func (c *PollCoordinator) wakeLoop() {
+	select {
+	case c.wake <- struct{}{}:
+	default:
+	}
+}
+
+// drainReleasedSlots returns the number of ReleaseSlot calls made since the
+// last call, resetting the counter to zero. Called by the orchestration loop.
+func (c *PollCoordinator) drainReleasedSlots() int {
+	c.slotMu.Lock()
+	defer c.slotMu.Unlock()
+	n := c.released
+	c.released = 0
+	return n
+}
+
+// grantNextResume signals the oldest pending ReacquireSlot call to proceed.
+// Returns true if a request was granted. Called by the orchestration loop
+// before it considers launching a brand-new task.
+func (c *PollCoordinator) grantNextResume() bool {
+	c.slotMu.Lock()
+	if len(c.resumeQueue) == 0 {
+		c.slotMu.Unlock()
+		return false
+	}
+	grant := c.resumeQueue[0]
+	c.resumeQueue = c.resumeQueue[1:]
+	c.slotMu.Unlock()
+	grant <- struct{}{}
+	return true
+}
+
+// PendingResumeCount reports how many parked runs are currently waiting to
+// reacquire a concurrency slot. Exposed for tests/observability.
+func (c *PollCoordinator) PendingResumeCount() int {
+	c.slotMu.Lock()
+	defer c.slotMu.Unlock()
+	return len(c.resumeQueue)
 }
 
 func sessionKey(runID, stepName string) string {

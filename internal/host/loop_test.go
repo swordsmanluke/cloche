@@ -1305,6 +1305,170 @@ func TestPhaseLoop_ConcurrentTasks_UniqueAttemptIDs(t *testing.T) {
 	assert.NotEqual(t, id1, id2, "concurrent tasks must receive distinct attempt IDs")
 }
 
+// TestLoop_PollRelease_FreesSlotForNewTask verifies that a run which calls
+// PollCoordinator.ReleaseSlot (as executePollStep does when parking at a poll
+// step) gives up its concurrency slot immediately, letting another task start
+// even with MaxConcurrent: 1. This is the core fix for "poll steps should not
+// hold concurrency slots".
+func TestLoop_PollRelease_FreesSlotForNewTask(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	coord := NewPollCoordinator()
+
+	tasks := []Task{
+		{ID: "task-1", Status: "open"},
+		{ID: "task-2", Status: "open"},
+	}
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return tasks, nil
+	}
+
+	parked := make(chan struct{})
+	resume := make(chan struct{})
+	task2Started := make(chan struct{})
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
+		switch taskID {
+		case "task-1":
+			// Simulate parking at a poll step: release the slot, then block
+			// until told to reacquire — mirroring executePollStep's
+			// ReleaseSlot/ReacquireSlot pair around a real poll decision.
+			coord.ReleaseSlot()
+			close(parked)
+			<-resume
+			coord.ReacquireSlot()
+		case "task-2":
+			close(task2Started)
+		}
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-poll-release",
+		MaxConcurrent: 1,
+		DedupTimeout:  5 * time.Second,
+	}, store, listTasksFn, mainFn)
+	loop.SetPollCoordinator(coord)
+
+	loop.Start()
+	defer loop.Stop()
+
+	select {
+	case <-parked:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for task-1 to park")
+	}
+
+	// With the old behavior (goroutine-alive == slot-held), task-2 could
+	// never start while task-1 is still blocked here, since MaxConcurrent is
+	// 1. With ReleaseSlot wired in, task-2 should start promptly.
+	select {
+	case <-task2Started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("task-2 did not start while task-1 was parked at a poll step — poll step held a concurrency slot")
+	}
+
+	close(resume)
+}
+
+// TestLoop_PollReacquire_PriorityOverNewTask verifies that a run resuming
+// from a poll step (via ReacquireSlot) is granted a freed concurrency slot
+// ahead of a brand-new task launch, even though the new task became
+// assignable first.
+func TestLoop_PollReacquire_PriorityOverNewTask(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	coord := NewPollCoordinator()
+
+	tasks := []Task{
+		{ID: "task-1", Status: "open"},
+		{ID: "task-2", Status: "open"},
+		{ID: "task-3", Status: "open"},
+	}
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return tasks, nil
+	}
+
+	parked := make(chan struct{})
+	task2Started := make(chan struct{})
+	reacquireRequested := make(chan struct{})
+	releaseTask2 := make(chan struct{})
+
+	var (
+		orderMu sync.Mutex
+		order   []string
+	)
+	record := func(name string) {
+		orderMu.Lock()
+		order = append(order, name)
+		orderMu.Unlock()
+	}
+
+	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
+		switch taskID {
+		case "task-1":
+			coord.ReleaseSlot()
+			close(parked)
+			// Wait until task-2 has taken the freed slot before asking to
+			// reacquire, so the request is genuinely queued behind an
+			// in-flight run rather than granted immediately.
+			<-task2Started
+			close(reacquireRequested)
+			coord.ReacquireSlot()
+			record("task-1")
+		case "task-2":
+			close(task2Started)
+			<-releaseTask2
+			record("task-2")
+		case "task-3":
+			record("task-3")
+		}
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-poll-priority",
+		MaxConcurrent: 1,
+		DedupTimeout:  5 * time.Second,
+	}, store, listTasksFn, mainFn)
+	loop.SetPollCoordinator(coord)
+
+	loop.Start()
+	defer loop.Stop()
+
+	select {
+	case <-parked:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for task-1 to park")
+	}
+	select {
+	case <-task2Started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("task-2 did not start while task-1 was parked")
+	}
+	select {
+	case <-reacquireRequested:
+	case <-time.After(2 * time.Second):
+		t.Fatal("task-1 never requested to reacquire its slot")
+	}
+
+	// Give the loop time to observe the pending reacquire request while
+	// task-2 still holds the only slot, then free it.
+	time.Sleep(100 * time.Millisecond)
+	close(releaseTask2)
+
+	require.Eventually(t, func() bool {
+		orderMu.Lock()
+		defer orderMu.Unlock()
+		return len(order) >= 3
+	}, 3*time.Second, 10*time.Millisecond, "expected task-2, task-1, and task-3 to all complete")
+
+	orderMu.Lock()
+	defer orderMu.Unlock()
+	// task-2 must finish first (it held the only slot). Once it frees the
+	// slot, task-1's queued resume must be granted before task-3 — a
+	// brand-new task launch — gets a chance to start.
+	assert.Equal(t, []string{"task-2", "task-1", "task-3"}, order)
+}
+
 func TestLoop_Stop_PreventsNewWork(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	var called atomic.Int32

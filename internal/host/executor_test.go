@@ -2163,6 +2163,93 @@ fi
 	assert.Equal(t, "approved", result.Result)
 }
 
+// TestExecutor_PollStep_ReleasesSlotAndRestoresRunningState verifies that,
+// when driven by a PollCoordinator, executePollStep releases its concurrency
+// slot while parked (ReleaseSlot), blocks on ReacquireSlot once a decision is
+// ready until the loop grants it a slot back, and restores the run's state
+// from "waiting" to "running" once it resumes.
+func TestExecutor_PollStep_ReleasesSlotAndRestoresRunningState(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	run := domain.NewRun("run-1", "main")
+	run.Start()
+	require.NoError(t, store.CreateRun(context.Background(), run))
+
+	coord := NewPollCoordinator()
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		Store:      store,
+		HostRunID:  "run-1",
+		PollCoord:  coord,
+	}
+
+	step := &domain.Step{
+		Name:    "review",
+		Type:    domain.StepTypePoll,
+		Results: []string{"approved", "fail"},
+		Config: map[string]string{
+			"poll":     "echo 'CLOCHE_RESULT:approved'",
+			"interval": "10ms",
+		},
+	}
+
+	type execOutcome struct {
+		result string
+		err    error
+	}
+	doneCh := make(chan execOutcome, 1)
+	go func() {
+		r, err := executor.Execute(context.Background(), step)
+		doneCh <- execOutcome{result: r.Result, err: err}
+	}()
+
+	// The run should be marked waiting and the slot released while parked.
+	require.Eventually(t, func() bool {
+		r, err := store.GetRun(context.Background(), "run-1")
+		return err == nil && r.State == domain.RunStateWaiting
+	}, time.Second, 5*time.Millisecond, "run was never marked waiting")
+
+	var released int
+	require.Eventually(t, func() bool {
+		released += coord.drainReleasedSlots()
+		return released > 0
+	}, time.Second, 5*time.Millisecond, "poll step never released its concurrency slot")
+	assert.Equal(t, 1, released)
+
+	// Drive the poll coordinator (as the orchestration loop would each tick)
+	// until the script's decision is delivered and the executor asks to
+	// reacquire its slot.
+	require.Eventually(t, func() bool {
+		coord.DrivePolls(context.Background(), nil)
+		return coord.PendingResumeCount() == 1
+	}, time.Second, 5*time.Millisecond, "executor never requested to reacquire its slot")
+
+	// Nothing has granted the slot back yet, so the executor must still be
+	// blocked and the run must still show as waiting.
+	select {
+	case <-doneCh:
+		t.Fatal("executor returned before its slot was granted back")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	require.True(t, coord.grantNextResume(), "expected a queued resume request to grant")
+
+	select {
+	case outcome := <-doneCh:
+		require.NoError(t, outcome.err)
+		assert.Equal(t, "approved", outcome.result)
+	case <-time.After(time.Second):
+		t.Fatal("executor did not resume after its slot was granted")
+	}
+
+	r, err := store.GetRun(context.Background(), "run-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateRunning, r.State, "run should be restored to running once the workflow continues")
+}
+
 // TestExecutor_PollStep_OverlappingInvocation verifies that an invocation
 // running longer than 4× the interval causes the step to fail.
 func TestExecutor_PollStep_OverlappingInvocation(t *testing.T) {
