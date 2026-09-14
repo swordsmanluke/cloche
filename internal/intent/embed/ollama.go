@@ -89,6 +89,19 @@ func (o *OllamaEmbedder) Dimensions() int {
 	return o.dims
 }
 
+// SimilarityFloor returns the per-model minimum cosine similarity a
+// semantic match must clear, per the design spike's tuned values.
+// Unrecognized/custom models fall back to the all-MiniLM-L6-v2 value, the
+// conservative default the spike measured.
+func (o *OllamaEmbedder) SimilarityFloor() float32 {
+	switch o.model {
+	case "embeddinggemma", "embeddinggemma-300m":
+		return 0.40
+	default:
+		return 0.35
+	}
+}
+
 type ollamaEmbedRequest struct {
 	Model string   `json:"model"`
 	Input []string `json:"input"`

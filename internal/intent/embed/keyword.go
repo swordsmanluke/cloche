@@ -38,6 +38,13 @@ func (k *KeywordEmbedder) ModelID() string { return "keyword:v1" }
 
 func (k *KeywordEmbedder) Dimensions() int { return keywordDimensions }
 
+// SimilarityFloor returns the keyword fallback's similarity floor. Hashed
+// token-overlap cosine scores run lower than a trained embedding model's,
+// so degraded mode filters noise at a lower bar — the design's "degraded
+// keyword mode produces the same shape" guarantee is about the selection
+// shape, not an identical numeric floor.
+func (k *KeywordEmbedder) SimilarityFloor() float32 { return 0.15 }
+
 func (k *KeywordEmbedder) Embed(_ context.Context, texts []string) ([][]float32, error) {
 	vecs := make([][]float32, len(texts))
 	for i, t := range texts {
