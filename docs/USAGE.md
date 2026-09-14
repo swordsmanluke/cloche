@@ -298,7 +298,8 @@ When an agent step runs, Cloche assembles a prompt from these sections (joined b
 
 1. **Step template**: The step's `prompt` content (inline string or resolved `file("path")`), after `{{ }}` template expansion (see below).
 2. **User request**: Content of `.cloche/<run-id>/prompt.txt` (set via `--prompt` flag), prefixed with `## User Request`. Skipped if the template consumed it via `{{ $task_description }}`.
-3. **Result selection**: Lists the step's declared results with instructions to print exactly one `CLOCHE_RESULT:<name>` marker.
+3. **Result selection**: Lists the step's declared results with instructions to print exactly one `CLOCHE_RESULT:<name>` marker. Only added when the step declares `results`.
+4. **Marker protocol reminder**: If nothing assembled so far mentions `CLOCHE_RESULT:` (no declared `results`, and no manual mention in the template), a generic reminder is appended instructing the agent to print `CLOCHE_RESULT:success` or `CLOCHE_RESULT:fail` — since an exit-0 run without a marker is still treated as `fail` (see Result Protocol above).
 
 The assembled prompt is passed to the agent command via stdin.
 

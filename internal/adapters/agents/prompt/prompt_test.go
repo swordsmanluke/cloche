@@ -202,6 +202,63 @@ func TestPromptAdapter_InjectsResultInstructions(t *testing.T) {
 	assert.Contains(t, string(captured), "CLOCHE_RESULT:needs_research")
 }
 
+// TestPromptAdapter_NoResultsStillGetsMarkerReminder is the regression test
+// for cloche init's scaffolded prompts (and any out-of-tree project) that
+// declare a `prompt` step with no `results = [...]` — the "## Result
+// Selection" section only fires when results are declared, but
+// classifyResult unconditionally requires a CLOCHE_RESULT marker on exit 0
+// regardless. Without a belt-and-braces reminder, such a step would fail
+// every run with no instruction telling the agent why.
+func TestPromptAdapter_NoResultsStillGetsMarkerReminder(t *testing.T) {
+	dir := t.TempDir()
+
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo 'CLOCHE_RESULT:success'"},
+	}
+
+	step := &domain.Step{
+		Name:   "implement",
+		Type:   domain.StepTypeAgent,
+		Config: map[string]string{"prompt": "Do something."},
+	}
+
+	_, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+
+	captured, err := os.ReadFile(filepath.Join(dir, "captured_prompt.txt"))
+	require.NoError(t, err)
+	assert.Contains(t, string(captured), "CLOCHE_RESULT:success")
+	assert.Contains(t, string(captured), "CLOCHE_RESULT:fail")
+}
+
+// TestPromptAdapter_NoReminderWhenAlreadyMentioned ensures the belt-and-braces
+// reminder does not pile on top of an explicit template that already covers
+// the marker protocol (e.g. the hand-authored .cloche/prompts/*.md files).
+func TestPromptAdapter_NoReminderWhenAlreadyMentioned(t *testing.T) {
+	dir := t.TempDir()
+
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo 'CLOCHE_RESULT:success'"},
+	}
+
+	step := &domain.Step{
+		Name: "implement",
+		Type: domain.StepTypeAgent,
+		Config: map[string]string{
+			"prompt": "Do something.\n\nPrint CLOCHE_RESULT:success or CLOCHE_RESULT:fail when done.",
+		},
+	}
+
+	_, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+
+	captured, err := os.ReadFile(filepath.Join(dir, "captured_prompt.txt"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(captured), "## Reporting your result (required)")
+}
+
 func TestPromptAdapter_StdoutMarkerSelectsResult(t *testing.T) {
 	dir := t.TempDir()
 

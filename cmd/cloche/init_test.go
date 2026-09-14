@@ -639,6 +639,29 @@ func TestCmdInit_FixMergePromptContent(t *testing.T) {
 	}
 }
 
+func TestCmdInit_ScaffoldedPromptsIncludeResultMarkerProtocol(t *testing.T) {
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(dir)
+	defer os.Chdir(origDir)
+
+	cmdInit([]string{"--new", "--no-llm"})
+
+	for _, name := range []string{"implement.md", "fix-tests.md", "fix-merge.md"} {
+		data, err := os.ReadFile(filepath.Join(".cloche", "prompts", name))
+		if err != nil {
+			t.Fatalf("reading %s: %v", name, err)
+		}
+		content := string(data)
+		if !strings.Contains(content, "CLOCHE_RESULT:success") {
+			t.Errorf("%s should instruct the agent to print CLOCHE_RESULT:success", name)
+		}
+		if !strings.Contains(content, "CLOCHE_RESULT:fail") {
+			t.Errorf("%s should instruct the agent to print CLOCHE_RESULT:fail", name)
+		}
+	}
+}
+
 func TestCmdInit_WorkflowTemplateV2(t *testing.T) {
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()

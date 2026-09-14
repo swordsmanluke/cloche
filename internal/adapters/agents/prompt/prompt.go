@@ -836,8 +836,32 @@ func (a *Adapter) assemblePrompt(ctx context.Context, step *domain.Step, workDir
 		}
 	}
 
-	return strings.Join(parts, "\n\n"), nil
+	// Belt-and-braces: classifyResult unconditionally fails an exit-0 run
+	// that never printed a CLOCHE_RESULT marker (cloche-anu5), regardless of
+	// whether this step declared `results` — but the "## Result Selection"
+	// section above only fires when it did. A step with no declared results,
+	// or an out-of-tree project's prompt template written before this
+	// protocol existed, would otherwise fail every run with no instruction
+	// telling the agent why. Append a generic reminder whenever nothing in
+	// the assembled prompt already mentions the marker.
+	joined := strings.Join(parts, "\n\n")
+	if !strings.Contains(joined, protocol.ResultPrefix) {
+		joined += "\n\n" + markerProtocolReminder
+	}
+
+	return joined, nil
 }
+
+// markerProtocolReminder is appended to the assembled prompt when nothing in
+// it already mentions the CLOCHE_RESULT marker protocol (see assemblePrompt).
+const markerProtocolReminder = `## Reporting your result (required)
+
+When you are completely done, print exactly one of these markers as the final line of your output:
+
+- ` + "`CLOCHE_RESULT:success`" + ` — the task is complete (and tests pass, where applicable)
+- ` + "`CLOCHE_RESULT:fail`" + ` — you could not complete the task
+
+An agent that exits without printing a marker is treated as failed, regardless of what the prose says.`
 
 // hasIntentReference reports whether s contains a "$intent" variable
 // reference (bare or inside a {{ }} directive) as opposed to merely
