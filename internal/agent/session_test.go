@@ -729,6 +729,127 @@ func TestSession_ParkStepKillsSubprocessAndReportsParked(t *testing.T) {
 	}
 }
 
+func startLLMParkingFakeServer(t *testing.T, srv *llmParkingFakeServer) string {
+	t.Helper()
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	s := grpc.NewServer()
+	pb.RegisterClocheServiceServer(s, srv)
+	go func() { _ = s.Serve(lis) }()
+	t.Cleanup(func() { s.Stop() })
+	return lis.Addr().String()
+}
+
+// llmParkingFakeServer is like parkingFakeServer, but waits to observe a
+// specific StepLog line before parking the step. This lets a test kill an
+// agent step deterministically after it has produced some output, instead of
+// racing ParkStep against the mock agent subprocess's first write.
+type llmParkingFakeServer struct {
+	pb.UnimplementedClocheServiceServer
+	step        *pb.ExecuteStep
+	awaitedLine string
+	results     chan *pb.StepResult
+}
+
+func (f *llmParkingFakeServer) AgentSession(stream pb.ClocheService_AgentSessionServer) error {
+	msg, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	if _, ok := msg.Payload.(*pb.AgentMessage_Ready); !ok {
+		return nil
+	}
+
+	if err := stream.Send(&pb.DaemonMessage{
+		Payload: &pb.DaemonMessage_ExecuteStep{ExecuteStep: f.step},
+	}); err != nil {
+		return err
+	}
+
+	for {
+		agentMsg, err := stream.Recv()
+		if err != nil {
+			return err
+		}
+		switch p := agentMsg.Payload.(type) {
+		case *pb.AgentMessage_StepLog:
+			if p.StepLog.Line == f.awaitedLine {
+				if err := stream.Send(&pb.DaemonMessage{
+					Payload: &pb.DaemonMessage_ParkStep{ParkStep: &pb.ParkStep{StepName: p.StepLog.StepName}},
+				}); err != nil {
+					return err
+				}
+			}
+		case *pb.AgentMessage_StepResult:
+			f.results <- p.StepResult
+			return stream.Send(&pb.DaemonMessage{Payload: &pb.DaemonMessage_Shutdown{Shutdown: &pb.Shutdown{}}})
+		}
+	}
+}
+
+// TestSession_ParkedAgentStepPersistsPartialLLMOutput verifies that an agent
+// (prompt) step killed mid-flight (via ParkStep, exercising the same
+// subprocess-kill path as a timeout/abort/container stop) leaves its partial
+// transcript behind in llm-<step>.log and full.log, instead of the old
+// behavior where nothing was ever persisted for a step that never reached
+// its own post-completion log harvest.
+func TestSession_ParkedAgentStepPersistsPartialLLMOutput(t *testing.T) {
+	dir := t.TempDir()
+
+	// A mock agent that streams a recognizable line then hangs until killed.
+	mockAgent := filepath.Join(dir, "mock-agent.sh")
+	// The final command uses "exec" so it replaces the shell process in place
+	// (rather than running as a forked child); otherwise a killed parent shell
+	// would leave the orphaned sleep still holding the stdout pipe open, and
+	// the scanner reading it would never see EOF.
+	script := "#!/bin/sh\n" +
+		"cat > /dev/null\n" +
+		"echo '{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"partial transcript line\"}]}}'\n" +
+		"exec sleep 30\n"
+	require.NoError(t, os.WriteFile(mockAgent, []byte(script), 0755))
+
+	srv := &llmParkingFakeServer{
+		step: &pb.ExecuteStep{
+			StepName:  "implement",
+			StepType:  "agent",
+			Config:    map[string]string{"prompt": "Do something.", "agent_command": mockAgent},
+			RequestId: "req-park-2",
+		},
+		awaitedLine: "partial transcript line",
+		results:     make(chan *pb.StepResult, 1),
+	}
+	addr := startLLMParkingFakeServer(t, srv)
+
+	sess := agent.NewSession(agent.SessionConfig{
+		Addr:    addr,
+		RunID:   "run-park-2",
+		WorkDir: dir,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err := sess.Run(ctx)
+	require.NoError(t, err)
+
+	select {
+	case result := <-srv.results:
+		assert.Equal(t, "req-park-2", result.RequestId)
+		assert.Equal(t, "parked", result.Result)
+	default:
+		t.Fatal("StepResult not received")
+	}
+
+	llmLog, err := os.ReadFile(filepath.Join(dir, ".cloche", "output", "llm-implement.log"))
+	require.NoError(t, err, "llm-implement.log should exist even though the step was killed mid-flight")
+	assert.Contains(t, string(llmLog), "partial transcript line")
+
+	fullLog, err := os.ReadFile(filepath.Join(dir, ".cloche", "output", "full.log"))
+	require.NoError(t, err, "full.log should exist even though the step was killed mid-flight")
+	assert.Contains(t, string(fullLog), "partial transcript line")
+	assert.Contains(t, string(fullLog), "[llm]")
+}
+
 // verifyGRPC ensures the test binary can import grpc without issue.
 func init() {
 	_ = grpc.WithTransportCredentials(insecure.NewCredentials())

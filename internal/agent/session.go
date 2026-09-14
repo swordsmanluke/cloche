@@ -93,8 +93,16 @@ func (s *Session) Run(ctx context.Context) error {
 		return stream.Send(msg)
 	}
 
+	// currentLLMStep names the agent (prompt) step currently streaming output,
+	// so grpcStatusWriter knows which MsgLog lines are llm output to persist
+	// incrementally (see appendLLMLogLine) rather than "" when no agent step
+	// is in flight (e.g. a script step's live lines, which are persisted in
+	// one shot by sessionLogStepOutput once the step completes).
+	var currentLLMStep atomic.Value
+	currentLLMStep.Store("")
+
 	// grpcStatusWriter translates StatusWriter MsgLog entries into StepLog gRPC messages.
-	gsw := newGRPCStatusWriter(send)
+	gsw := newGRPCStatusWriter(send, ulog, s.cfg.WorkDir, &currentLLMStep)
 	sw := protocol.NewStatusWriter(gsw)
 
 	// Set up adapters, wiring them to the gRPC status writer for live log streaming.
@@ -171,7 +179,7 @@ func (s *Session) Run(ctx context.Context) error {
 			// Execute in a goroutine so we can receive StepCancelled/ParkStep concurrently.
 			go func(c *pb.ExecuteStep, sCtx context.Context, sCancel context.CancelFunc) {
 				defer sCancel()
-				s.executeStep(sCtx, c, genericAdapter, promptAdapter, kvClient, ulog, send, &stepParked)
+				s.executeStep(sCtx, c, genericAdapter, promptAdapter, kvClient, ulog, send, &stepParked, &currentLLMStep)
 			}(cmd, stepCtx, cancel)
 
 		case *pb.DaemonMessage_StepCancelled:
@@ -217,6 +225,7 @@ func (s *Session) executeStep(
 	ulog *logstream.Writer,
 	send func(*pb.AgentMessage) error,
 	parked *atomic.Bool,
+	currentLLMStep *atomic.Value,
 ) {
 	// Signal step start.
 	_ = send(&pb.AgentMessage{
@@ -279,9 +288,15 @@ func (s *Session) executeStep(
 			sr, execErr = genericAdapter.Execute(ctx, step, s.cfg.WorkDir)
 			s.sessionLogStepOutput(s.cfg.WorkDir, step.Name, ulog, logstream.TypeScript)
 		} else {
+			// Mark this step as the one streaming llm output so grpcStatusWriter's
+			// processLine persists each line to full.log and llm-<step>.log as it
+			// arrives (see appendLLMLogLine), instead of only writing a snapshot
+			// once Execute returns — a step killed mid-flight (timeout, abort,
+			// container stop) never reaches that point, so it left zero llm
+			// output behind under the old post-completion-only harvest.
+			currentLLMStep.Store(step.Name)
 			sr, execErr = promptAdapter.Execute(ctx, step, s.cfg.WorkDir)
-			sessionCopyToLLMLog(s.cfg.WorkDir, step.Name)
-			s.sessionLogStepOutput(s.cfg.WorkDir, step.Name, ulog, logstream.TypeLLM)
+			currentLLMStep.Store("")
 		}
 	case domain.StepTypePoll:
 		sr, execErr = s.executePollStep(ctx, step, s.cfg.WorkDir)
@@ -359,16 +374,22 @@ func (s *Session) sessionLogStepOutput(workDir, stepName string, ulog *logstream
 	s.stepLogOffsets[stepName] = int64(len(data))
 }
 
-// sessionCopyToLLMLog copies the step log file to the llm-<step>.log path.
-func sessionCopyToLLMLog(workDir, stepName string) {
+// appendLLMLogLine appends a single line of extracted agent output to
+// llm-<stepName>.log immediately, so that a step killed mid-flight (timeout,
+// abort, container stop) leaves its partial transcript on disk. This replaces
+// the old sessionCopyToLLMLog, which only ever ran once promptAdapter.Execute
+// returned — a point a killed step never reaches.
+func appendLLMLogLine(workDir, stepName, line string) {
 	outputDir := filepath.Join(workDir, ".cloche", "output")
-	srcPath := filepath.Join(outputDir, stepName+".log")
-	dstPath := filepath.Join(outputDir, "llm-"+stepName+".log")
-	data, err := os.ReadFile(srcPath)
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(outputDir, "llm-"+stepName+".log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(dstPath, data, 0644)
+	defer f.Close()
+	_, _ = fmt.Fprintln(f, line)
 }
 
 // executePollStep runs a poll step inside the container using a standalone
@@ -592,14 +613,20 @@ func (g *grpcKVWriter) Set(ctx context.Context, key, value string) error {
 }
 
 // grpcStatusWriter is an io.Writer that buffers lines from a protocol.StatusWriter
-// and forwards MsgLog entries to the daemon as StepLog gRPC messages.
+// and forwards MsgLog entries to the daemon as StepLog gRPC messages. It also
+// persists llm MsgLog lines incrementally (full.log + llm-<step>.log) as they
+// arrive, so a killed step's partial transcript survives on disk even though
+// the step never returns to run its own post-completion log harvest.
 type grpcStatusWriter struct {
-	send func(*pb.AgentMessage) error
-	buf  []byte
+	send           func(*pb.AgentMessage) error
+	ulog           *logstream.Writer
+	workDir        string
+	currentLLMStep *atomic.Value // string; name of the step currently streaming llm output, "" if none
+	buf            []byte
 }
 
-func newGRPCStatusWriter(send func(*pb.AgentMessage) error) *grpcStatusWriter {
-	return &grpcStatusWriter{send: send}
+func newGRPCStatusWriter(send func(*pb.AgentMessage) error, ulog *logstream.Writer, workDir string, currentLLMStep *atomic.Value) *grpcStatusWriter {
+	return &grpcStatusWriter{send: send, ulog: ulog, workDir: workDir, currentLLMStep: currentLLMStep}
 }
 
 // Write buffers incoming bytes and processes complete newline-terminated JSON lines.
@@ -629,6 +656,12 @@ func (w *grpcStatusWriter) processLine(line []byte) {
 	}
 	if msg.Type != protocol.MsgLog {
 		return
+	}
+	if step, _ := w.currentLLMStep.Load().(string); step != "" && step == msg.StepName {
+		if w.ulog != nil {
+			w.ulog.Log(logstream.TypeLLM, msg.Message)
+		}
+		appendLLMLogLine(w.workDir, msg.StepName, msg.Message)
 	}
 	_ = w.send(&pb.AgentMessage{
 		Payload: &pb.AgentMessage_StepLog{
