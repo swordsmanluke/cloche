@@ -78,3 +78,12 @@ For each task, the **description** must specify:
 
 If anything looks wrong, fix it before returning. Once the layer tasks are in
 place and correctly wired, exit successfully — the workflow takes over from here.
+
+## Reporting your result (required)
+
+When you are completely done, print exactly one of these markers as the final line of your output:
+
+- `CLOCHE_RESULT:success` — the task is complete (and tests pass, where applicable)
+- `CLOCHE_RESULT:fail` — you could not complete the task
+
+An agent that exits without printing a marker is treated as failed, regardless of what the prose says.

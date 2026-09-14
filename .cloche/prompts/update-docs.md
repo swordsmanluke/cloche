@@ -18,3 +18,12 @@ Compare the current source code against project documentation and update docs to
 
 ## Learned Rules
 - This file was previously corrupted with meta-conversation text (asking for write permissions). Despite the corruption, update-docs succeeded in 26+ consecutive runs. The prompt has been restored to its clean form — if corruption recurs, replace the entire file contents with this canonical version.
+
+## Reporting your result (required)
+
+When you are completely done, print exactly one of these markers as the final line of your output:
+
+- `CLOCHE_RESULT:success` — the task is complete (and tests pass, where applicable)
+- `CLOCHE_RESULT:fail` — you could not complete the task
+
+An agent that exits without printing a marker is treated as failed, regardless of what the prose says.

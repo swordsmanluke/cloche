@@ -40,3 +40,12 @@ Audit the project's documentation against the actual source code. Your goal is t
 - If a doc file is fully accurate, note that briefly and move on.
 - Report success after writing the report, even if zero errors were found.
 - Report fail only if you were unable to complete the audit (e.g., could not read files).
+
+## Reporting your result (required)
+
+When you are completely done, print exactly one of these markers as the final line of your output:
+
+- `CLOCHE_RESULT:success` — the task is complete (and tests pass, where applicable)
+- `CLOCHE_RESULT:fail` — you could not complete the task
+
+An agent that exits without printing a marker is treated as failed, regardless of what the prose says.

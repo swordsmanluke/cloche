@@ -26,3 +26,12 @@ Read the documentation audit report and fix every issue it identifies.
 - Keep changes minimal and targeted — fix what the report says, nothing more.
 - Report success when all report items have been addressed.
 - Report fail only if a file write actually failed.
+
+## Reporting your result (required)
+
+When you are completely done, print exactly one of these markers as the final line of your output:
+
+- `CLOCHE_RESULT:success` — the task is complete (and tests pass, where applicable)
+- `CLOCHE_RESULT:fail` — you could not complete the task
+
+An agent that exits without printing a marker is treated as failed, regardless of what the prose says.

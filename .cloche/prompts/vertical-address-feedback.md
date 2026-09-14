@@ -34,3 +34,12 @@ direction.
 
 Commit your fixes. The workflow's verify and push steps run after you exit. Once
 pushed, the workflow re-enters the poll loop and waits for the user's next response.
+
+## Reporting your result (required)
+
+When you are completely done, print exactly one of these markers as the final line of your output:
+
+- `CLOCHE_RESULT:success` — the task is complete (and tests pass, where applicable)
+- `CLOCHE_RESULT:fail` — you could not complete the task
+
+An agent that exits without printing a marker is treated as failed, regardless of what the prose says.

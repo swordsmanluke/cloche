@@ -103,3 +103,12 @@ report success when tests pass.
    whole layer's architecture is wrong), write
    `$(clo get temp_file_dir)/agent-give-up-reason.md` and exit non-zero with
    give-up. Don't paper over structural problems with self-review fixes.
+
+## Reporting your result (required)
+
+When you are completely done, print exactly one of these markers as the final line of your output:
+
+- `CLOCHE_RESULT:success` — the task is complete (and tests pass, where applicable)
+- `CLOCHE_RESULT:fail` — you could not complete the task
+
+An agent that exits without printing a marker is treated as failed, regardless of what the prose says.

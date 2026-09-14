@@ -112,3 +112,12 @@ in the task description don't specify enough, you need access to something you d
 have — write a short note to `$(clo get temp_file_dir)/agent-give-up-reason.md`
 explaining what's blocking you and exit non-zero. The workflow will surface this in
 a "stuck" PR for the user to comment on.
+
+## Reporting your result (required)
+
+When you are completely done, print exactly one of these markers as the final line of your output:
+
+- `CLOCHE_RESULT:success` — the task is complete (and tests pass, where applicable)
+- `CLOCHE_RESULT:fail` — you could not complete the task
+
+An agent that exits without printing a marker is treated as failed, regardless of what the prose says.
