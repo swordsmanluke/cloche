@@ -31,7 +31,7 @@ func TestExecutor_AgentStep_SeedsAndInjectsIntentBlock(t *testing.T) {
 	outputDir := filepath.Join(tmpDir, "output")
 
 	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
-	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > captured_prompt.txt\necho ok\necho 'CLOCHE_RESULT:success'\n"), 0755))
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > captured_prompt.txt\necho ok\necho CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success\n"), 0755))
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	executor := &Executor{
@@ -79,7 +79,7 @@ func TestExecutor_AgentStep_NoIntentDir_NoKVSeeded(t *testing.T) {
 	outputDir := filepath.Join(tmpDir, "output")
 
 	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
-	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > captured_prompt.txt\necho ok\necho 'CLOCHE_RESULT:success'\n"), 0755))
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > captured_prompt.txt\necho ok\necho CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success\n"), 0755))
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	executor := &Executor{
@@ -120,7 +120,7 @@ func TestExecutor_AgentStep_StepLevelIntentTrackingOff_SkipsInjection(t *testing
 	_ = reqID
 
 	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
-	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > captured_prompt.txt\necho ok\necho 'CLOCHE_RESULT:success'\n"), 0755))
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > captured_prompt.txt\necho ok\necho CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success\n"), 0755))
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	executor := &Executor{
@@ -161,7 +161,7 @@ func TestExecutor_AgentStep_WorkflowLevelIntentTrackingOff_SkipsInjection(t *tes
 	outputDir := filepath.Join(tmpDir, "output")
 
 	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
-	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > captured_prompt.txt\necho ok\necho 'CLOCHE_RESULT:success'\n"), 0755))
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > captured_prompt.txt\necho ok\necho CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success\n"), 0755))
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	executor := &Executor{
@@ -201,7 +201,7 @@ func TestExecutor_AgentStep_ConfigTomlIntentOff_SkipsInjection(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".cloche", "config.toml"), []byte("[intent]\ninject = \"off\"\n"), 0644))
 
 	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
-	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > captured_prompt.txt\necho ok\necho 'CLOCHE_RESULT:success'\n"), 0755))
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > captured_prompt.txt\necho ok\necho CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success\n"), 0755))
 
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	executor := &Executor{

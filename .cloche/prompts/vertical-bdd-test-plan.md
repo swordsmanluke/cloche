@@ -113,7 +113,7 @@ language ("scenarios that capture the feature's intent") wastes their time.
 
 When you are completely done, print exactly one of these markers as the final line of your output:
 
-- `CLOCHE_RESULT:success` — the task is complete (and tests pass, where applicable)
-- `CLOCHE_RESULT:fail` — you could not complete the task
+- `CLOCHE_RESULT:{{ $result_nonce }}:success` — the task is complete (and tests pass, where applicable)
+- `CLOCHE_RESULT:{{ $result_nonce }}:fail` — you could not complete the task
 
 An agent that exits without printing a marker is treated as failed, regardless of what the prose says.

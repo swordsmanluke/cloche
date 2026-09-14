@@ -27,7 +27,7 @@ const intentBlock = "## Standing project requirements\n\n- [req-a1b2] never do X
 func captureStdin(dir string) *prompt.Adapter {
 	return &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 	}
 }
 

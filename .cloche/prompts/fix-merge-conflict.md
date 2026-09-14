@@ -61,5 +61,5 @@ The project root is `$CLOCHE_PROJECT_DIR`.
 
 ## Results
 
-- Report `CLOCHE_RESULT:success` after the fast-forward merge completes.
-- Report `CLOCHE_RESULT:fail` if conflicts cannot be resolved correctly or tests still fail after resolution attempts.
+- Report `CLOCHE_RESULT:{{ $result_nonce }}:success` after the fast-forward merge completes.
+- Report `CLOCHE_RESULT:{{ $result_nonce }}:fail` if conflicts cannot be resolved correctly or tests still fail after resolution attempts.

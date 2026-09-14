@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
@@ -23,7 +24,7 @@ func TestPromptAdapter_ExecutesCommand(t *testing.T) {
 	// Use a mock command that writes a file to prove it ran
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'implemented' > result.txt && echo ok && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'implemented' > result.txt && echo ok && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 		RunID:        "test-run",
 		TaskID:       "test-task",
 	}
@@ -51,7 +52,7 @@ func TestPromptAdapter_PreviousOutputSubstitution(t *testing.T) {
 	// Mock command that captures stdin to a file so we can inspect it
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 		PrevOutput:   "test passed: 42/42",
 	}
 
@@ -82,7 +83,7 @@ func TestPromptAdapter_PreviousOutputEmptyWhenNotSet(t *testing.T) {
 	// Mock command that captures stdin to a file so we can inspect it
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 		// PrevOutput not set — {previous_output} should substitute empty string
 	}
 
@@ -183,7 +184,7 @@ func TestPromptAdapter_InjectsResultInstructions(t *testing.T) {
 
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 	}
 
 	step := &domain.Step{
@@ -198,9 +199,20 @@ func TestPromptAdapter_InjectsResultInstructions(t *testing.T) {
 
 	captured, err := os.ReadFile(filepath.Join(dir, "captured_prompt.txt"))
 	require.NoError(t, err)
-	assert.Contains(t, string(captured), "CLOCHE_RESULT:success")
-	assert.Contains(t, string(captured), "CLOCHE_RESULT:fail")
-	assert.Contains(t, string(captured), "CLOCHE_RESULT:needs_research")
+	nonce := readResultNonce(t, dir, "", "analyze")
+	assert.Contains(t, string(captured), "CLOCHE_RESULT:"+nonce+":success")
+	assert.Contains(t, string(captured), "CLOCHE_RESULT:"+nonce+":fail")
+	assert.Contains(t, string(captured), "CLOCHE_RESULT:"+nonce+":needs_research")
+}
+
+// readResultNonce reads back the per-step nonce the adapter generated and
+// persisted for (taskID, stepName) under workDir, so tests can assert
+// against the exact nonce-framed marker text the assembled prompt carried.
+func readResultNonce(t *testing.T, workDir, taskID, stepName string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(workDir, ".cloche", "runs", taskID, "result_nonce", stepName))
+	require.NoError(t, err)
+	return string(data)
 }
 
 // TestPromptAdapter_NoResultsStillGetsMarkerReminder is the regression test
@@ -215,7 +227,7 @@ func TestPromptAdapter_NoResultsStillGetsMarkerReminder(t *testing.T) {
 
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 	}
 
 	step := &domain.Step{
@@ -229,8 +241,9 @@ func TestPromptAdapter_NoResultsStillGetsMarkerReminder(t *testing.T) {
 
 	captured, err := os.ReadFile(filepath.Join(dir, "captured_prompt.txt"))
 	require.NoError(t, err)
-	assert.Contains(t, string(captured), "CLOCHE_RESULT:success")
-	assert.Contains(t, string(captured), "CLOCHE_RESULT:fail")
+	nonce := readResultNonce(t, dir, "", "implement")
+	assert.Contains(t, string(captured), "CLOCHE_RESULT:"+nonce+":success")
+	assert.Contains(t, string(captured), "CLOCHE_RESULT:"+nonce+":fail")
 }
 
 // TestPromptAdapter_NoReminderWhenAlreadyMentioned ensures the belt-and-braces
@@ -241,7 +254,7 @@ func TestPromptAdapter_NoReminderWhenAlreadyMentioned(t *testing.T) {
 
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > captured_prompt.txt && echo ok && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 	}
 
 	step := &domain.Step{
@@ -265,7 +278,7 @@ func TestPromptAdapter_StdoutMarkerSelectsResult(t *testing.T) {
 
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'CLOCHE_RESULT:needs_research'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:needs_research"},
 	}
 
 	step := &domain.Step{
@@ -287,7 +300,7 @@ func TestExecuteWritesOutputFile(t *testing.T) {
 
 	a := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output' && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output' && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 		RunID:        "test-run",
 		TaskID:       "test-task",
 	}
@@ -319,7 +332,7 @@ func TestExecuteDerivesPerAttemptOutputDir(t *testing.T) {
 
 	a := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output' && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output' && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 		RunID:        "test-run",
 		TaskID:       "test-task",
 		AttemptID:    "test-attempt",
@@ -361,7 +374,7 @@ func TestExecutePinnedOutputDirKeepsLegacyHistory(t *testing.T) {
 
 	a := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output' && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'agent output' && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 		TaskID:       "test-task",
 		AttemptID:    "test-attempt",
 		OutputDir:    filepath.Join(dir, ".cloche", "output"),
@@ -424,7 +437,7 @@ func TestPromptAdapter_FallbackOnCommandNotFound(t *testing.T) {
 	// First command doesn't exist, second one does
 	adapter := &prompt.Adapter{
 		Commands:     []string{"nonexistent-agent-xyz", "sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'fallback ran' && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo 'fallback ran' && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 	}
 
 	step := &domain.Step{
@@ -453,7 +466,7 @@ func TestPromptAdapter_FallbackOnExitErrorNoMarker(t *testing.T) {
 	require.NoError(t, os.WriteFile(failing, []byte("#!/bin/sh\ncat > /dev/null\nexit 1\n"), 0755))
 
 	succeeding := filepath.Join(dir, "good-agent.sh")
-	require.NoError(t, os.WriteFile(succeeding, []byte("#!/bin/sh\ncat > /dev/null\necho 'good agent output'\necho 'CLOCHE_RESULT:success'\n"), 0755))
+	require.NoError(t, os.WriteFile(succeeding, []byte("#!/bin/sh\ncat > /dev/null\necho 'good agent output'\necho CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success\n"), 0755))
 
 	adapter := &prompt.Adapter{
 		Commands: []string{failing, succeeding},
@@ -482,10 +495,10 @@ func TestPromptAdapter_NoFallbackOnMarkerResult(t *testing.T) {
 
 	// First command exits 1 but reports a CLOCHE_RESULT marker — should NOT fall back
 	failing := filepath.Join(dir, "reporting-agent.sh")
-	require.NoError(t, os.WriteFile(failing, []byte("#!/bin/sh\ncat > /dev/null\necho 'CLOCHE_RESULT:fail'\nexit 1\n"), 0755))
+	require.NoError(t, os.WriteFile(failing, []byte("#!/bin/sh\ncat > /dev/null\necho CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:fail\nexit 1\n"), 0755))
 
 	shouldNotRun := filepath.Join(dir, "should-not-run.sh")
-	require.NoError(t, os.WriteFile(shouldNotRun, []byte("#!/bin/sh\ncat > /dev/null\necho 'CLOCHE_RESULT:success'\n"), 0755))
+	require.NoError(t, os.WriteFile(shouldNotRun, []byte("#!/bin/sh\ncat > /dev/null\necho CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success\n"), 0755))
 
 	adapter := &prompt.Adapter{
 		Commands: []string{failing, shouldNotRun},
@@ -556,7 +569,7 @@ func TestPromptAdapter_SingleCommandPreservesBehavior(t *testing.T) {
 	// Single command, exit 0 — should behave exactly like before
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo hello && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo hello && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 	}
 
 	step := &domain.Step{
@@ -584,7 +597,7 @@ func TestPromptAdapter_UsageCommandFromStepConfig(t *testing.T) {
 	// Mock agent that produces no stream-json usage
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 	}
 
 	step := &domain.Step{
@@ -610,7 +623,7 @@ func TestPromptAdapter_UsageCommandFromAdapterField(t *testing.T) {
 
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 		UsageCommand: `echo '{"input_tokens":300,"output_tokens":120}'`,
 	}
 
@@ -634,7 +647,7 @@ func TestPromptAdapter_StepConfigUsageCommandOverridesAdapterField(t *testing.T)
 
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 		UsageCommand: `echo '{"input_tokens":999,"output_tokens":999}'`,
 	}
 
@@ -661,7 +674,7 @@ func TestPromptAdapter_UsageCommandFailsDegracefully(t *testing.T) {
 
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 	}
 
 	step := &domain.Step{
@@ -686,7 +699,7 @@ func TestPromptAdapter_NoUsageCommandReturnsNilUsage(t *testing.T) {
 
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 	}
 
 	step := &domain.Step{
@@ -704,11 +717,13 @@ func TestPromptAdapter_NoUsageCommandReturnsNilUsage(t *testing.T) {
 
 func TestPromptAdapter_SetsAgentNameInUsage(t *testing.T) {
 	dir := t.TempDir()
-	// Simulate a claude-style stream-json result with usage data.
-	streamJSON := `{"type":"result","subtype":"success","result":"CLOCHE_RESULT:success","usage":{"input_tokens":100,"output_tokens":50}}`
+	// Simulate a claude-style stream-json result with usage data. The %s
+	// placeholder is filled in by printf from $CLOCHE_RESULT_NONCE so the
+	// marker embedded in the "result" field carries this run's nonce.
+	streamJSON := `{"type":"result","subtype":"success","result":"CLOCHE_RESULT:%s:success","usage":{"input_tokens":100,"output_tokens":50}}`
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo '" + streamJSON + "' && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && printf '" + streamJSON + "\\n' \"$CLOCHE_RESULT_NONCE\""},
 	}
 
 	step := &domain.Step{
@@ -732,7 +747,7 @@ func TestPromptAdapter_SetsAgentNameViaUsageCommand(t *testing.T) {
 	// Command produces no stream-json usage; usage_command provides it.
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 	}
 
 	step := &domain.Step{
@@ -760,7 +775,7 @@ func TestPromptAdapter_ExtraEnvPropagatedToAgent(t *testing.T) {
 	// The agent script echoes the value of the injected env var.
 	adapter := &prompt.Adapter{
 		Commands:     []string{"sh"},
-		ExplicitArgs: []string{"-c", "cat > /dev/null && echo \"TASK=$CLOCHE_TASK_ID RUN=$CLOCHE_RUN_ID\" && echo 'CLOCHE_RESULT:success'"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo \"TASK=$CLOCHE_TASK_ID RUN=$CLOCHE_RUN_ID\" && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
 		ExtraEnv:     []string{"CLOCHE_TASK_ID=test-task-42", "CLOCHE_RUN_ID=run-99"},
 	}
 
@@ -795,18 +810,23 @@ func TestPromptAdapter_MarkerInsideStreamJSONResultField(t *testing.T) {
 	resultEvent := map[string]any{
 		"type":    "result",
 		"subtype": "success",
-		"result":  "All done implementing the feature.\n\nCLOCHE_RESULT:success",
+		"result":  "All done implementing the feature.\n\nCLOCHE_RESULT:NONCE_PLACEHOLDER:success",
 	}
 	line, err := json.Marshal(resultEvent)
 	require.NoError(t, err)
 
+	// Split around the placeholder so the nonce is substituted as a printf
+	// %s argument rather than spliced into the format string itself: the
+	// JSON payload's literal "\n" bytes must reach stdout unchanged (as a
+	// real agent's stream-json output would), but printf reinterprets
+	// backslash escapes that appear in the format string — only arguments
+	// substituted via %s are passed through verbatim.
+	parts := strings.SplitN(string(line), "NONCE_PLACEHOLDER", 2)
+	require.Len(t, parts, 2)
+
 	adapter := &prompt.Adapter{
-		Commands: []string{"sh"},
-		// printf (unlike sh's built-in echo) never reinterprets backslash
-		// escapes in its arguments, so the JSON's literal "\n" bytes reach
-		// stdout unchanged and the whole event stays on one line, exactly as
-		// a real agent's stream-json output would look.
-		ExplicitArgs: []string{"-c", "cat > /dev/null && printf '%s\\n' '" + string(line) + "'"},
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && printf '%s%s%s\\n' '" + parts[0] + "' \"$CLOCHE_RESULT_NONCE\" '" + parts[1] + "'"},
 	}
 
 	step := &domain.Step{
@@ -819,6 +839,71 @@ func TestPromptAdapter_MarkerInsideStreamJSONResultField(t *testing.T) {
 	sr, err := adapter.Execute(context.Background(), step, dir)
 	require.NoError(t, err)
 	assert.Equal(t, "success", sr.Result)
+}
+
+// TestPromptAdapter_StrayQuotedMarkerDoesNotPoisonResult is the regression
+// test for the vulnerability where an agent's own transcript quoting the bare
+// "CLOCHE_RESULT:<name>" protocol string (e.g. grepping code, echoing a test
+// fixture, discussing the marker itself) got mistaken for the genuine
+// terminal marker. The nonce framing means only a marker carrying this run's
+// nonce counts — a bare, unnonced line is just text.
+func TestPromptAdapter_StrayQuotedMarkerDoesNotPoisonResult(t *testing.T) {
+	dir := t.TempDir()
+
+	adapter := &prompt.Adapter{
+		Commands: []string{"sh"},
+		ExplicitArgs: []string{"-c",
+			`cat > /dev/null && ` +
+				`echo "grep found: CLOCHE_RESULT:success in fixtures_test.go" && ` +
+				`echo "CLOCHE_RESULT:success" && ` + // bare, unnonced — must be ignored
+				`echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:fail`,
+		},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "fail", sr.Result)
+}
+
+// TestPromptAdapter_ResumeReusesPersistedNonce verifies that the nonce
+// generated for a step's first invocation is reused on a later
+// ResumeConversation invocation of the same step: the resume prompt is just
+// "retry"/an answer, never restating the marker instructions, so the agent on
+// the other end only ever learned the original nonce.
+func TestPromptAdapter_ResumeReusesPersistedNonce(t *testing.T) {
+	dir := t.TempDir()
+	taskID := "test-task"
+
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
+		TaskID:       taskID,
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	require.Equal(t, "success", sr.Result)
+	firstNonce := readResultNonce(t, dir, taskID, "implement")
+
+	adapter.ResumeConversation = true
+	sr, err = adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result, "resumed call must classify using the same nonce the agent originally learned")
+	assert.Equal(t, firstNonce, readResultNonce(t, dir, taskID, "implement"))
 }
 
 func TestParseCommands(t *testing.T) {

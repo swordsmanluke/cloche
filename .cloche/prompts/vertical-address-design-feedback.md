@@ -71,7 +71,7 @@ address them.
 
 4. Output:
    ```
-   CLOCHE_RESULT:success
+   CLOCHE_RESULT:{{ $result_nonce }}:success
    ```
 
 ## If you cannot address the feedback
@@ -79,6 +79,6 @@ address them.
 If a comment requires information genuinely unavailable in this repo (e.g., it
 references an external decision or system outside your reach), output:
 ```
-CLOCHE_RESULT:give-up
+CLOCHE_RESULT:{{ $result_nonce }}:give-up
 ```
 with a one-sentence explanation of what is missing.

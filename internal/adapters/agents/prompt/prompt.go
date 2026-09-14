@@ -178,6 +178,15 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	}
 	incrementAttemptCount(workDir, a.TaskID, step.Name)
 
+	// A per-step nonce frames the CLOCHE_RESULT marker out-of-band so a
+	// transcript that merely quotes "CLOCHE_RESULT:success" (grepping code,
+	// editing test fixtures, discussing the protocol) can't poison its own
+	// classification: only a line carrying this run's random nonce counts.
+	// Persisted to disk (not just held in memory) so a resumed invocation of
+	// the same step — which is given a short "retry" prompt, not the full
+	// instructions again — still submits a marker the classifier recognizes.
+	nonce := resultNonce(workDir, a.TaskID, step.Name)
+
 	// Build the full prompt
 	var fullPrompt string
 	var resumeSessionID string
@@ -185,7 +194,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		resumeSessionID, fullPrompt = a.buildResumePrompt(ctx)
 	} else {
 		var err error
-		fullPrompt, err = a.assemblePrompt(ctx, step, workDir)
+		fullPrompt, err = a.assemblePrompt(ctx, step, workDir, nonce)
 		if err != nil {
 			return domain.StepResult{}, fmt.Errorf("assembling prompt: %w", err)
 		}
@@ -200,7 +209,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	ran := false
 
 	for _, command := range a.Commands {
-		result, stdout, usage, fallbackErr := a.tryCommand(ctx, command, fullPrompt, workDir, step.Name, resumeSessionID)
+		result, stdout, usage, fallbackErr := a.tryCommand(ctx, command, fullPrompt, workDir, step.Name, resumeSessionID, nonce)
 		lastResult = result
 		lastStdout = stdout
 		lastUsage = usage
@@ -255,7 +264,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	// steps' {previous_output} prompts, and re-injected markers could be
 	// echoed into a future transcript and picked up by the classifier.
 	outputDir, legacyLayout := a.resolveOutputDir(workDir)
-	_, cleanStdout, _ := protocol.ExtractResult(lastStdout)
+	_, cleanStdout, _ := protocol.ExtractNoncedResult(lastStdout, nonce)
 	if mkErr := os.MkdirAll(outputDir, 0755); mkErr == nil {
 		appendStepLog(filepath.Join(outputDir, step.Name+".log"), cleanStdout)
 	}
@@ -359,7 +368,7 @@ func extractSessionID(line []byte) string {
 // Definitive (non-fallback) conditions:
 //   - Command exited 0 and produced a CLOCHE_RESULT marker
 //   - Command exited non-zero but produced a CLOCHE_RESULT marker
-func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string, workDir string, stepName string, resumeSessionID string) (result string, stdout []byte, usage *domain.TokenUsage, fallbackErr error) {
+func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string, workDir string, stepName string, resumeSessionID string, nonce string) (result string, stdout []byte, usage *domain.TokenUsage, fallbackErr error) {
 	args := a.argsFor(command)
 	// Resume mode: continue the exact prior session when one was captured
 	// (see buildResumePrompt); otherwise fall back to -c (resume whatever
@@ -375,8 +384,12 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = workDir
 	cmd.Stdin = strings.NewReader(prompt)
+	// CLOCHE_RESULT_NONCE lets a custom agent command construct its own
+	// nonce-framed marker (see resultNonce) instead of relying solely on the
+	// instructions baked into the assembled prompt.
+	cmd.Env = append(os.Environ(), "CLOCHE_RESULT_NONCE="+nonce)
 	if len(a.ExtraEnv) > 0 {
-		cmd.Env = append(os.Environ(), a.ExtraEnv...)
+		cmd.Env = append(cmd.Env, a.ExtraEnv...)
 	}
 
 	// If we have a StatusWriter, stream stdout line-by-line; otherwise buffer.
@@ -406,7 +419,7 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 			if len(bytes.TrimSpace(classifyBuf)) == 0 {
 				classifyBuf = stdoutBytes
 			}
-			result, _, fallbackErr = a.classifyResult(command, classifyBuf, runErr)
+			result, _, fallbackErr = a.classifyResult(command, classifyBuf, runErr, nonce)
 		}
 		usage = scanOutputForUsage(stdoutBytes)
 		if usage != nil {
@@ -486,20 +499,22 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 	if len(bytes.TrimSpace(classifyBuf)) == 0 {
 		classifyBuf = rawBuf.Bytes()
 	}
-	result, _, fallbackErr = a.classifyResult(command, classifyBuf, waitErr)
+	result, _, fallbackErr = a.classifyResult(command, classifyBuf, waitErr, nonce)
 	return result, rawBuf.Bytes(), usage, fallbackErr
 }
 
 // classifyResult interprets the command's exit status and stdout to determine
-// the step result.
-func (a *Adapter) classifyResult(command string, stdoutBytes []byte, runErr error) (string, []byte, error) {
+// the step result. The nonce ties classification to the marker instructions
+// this invocation's prompt actually carried (see resultNonce / assemblePrompt);
+// a marker missing or bearing a different nonce is never honored.
+func (a *Adapter) classifyResult(command string, stdoutBytes []byte, runErr error, nonce string) (string, []byte, error) {
 	if runErr != nil {
 		if _, ok := runErr.(*exec.ExitError); !ok {
 			// Command failed to start (not found, permission denied, etc.)
 			return "", nil, fmt.Errorf("command %q failed to start: %w", command, runErr)
 		}
 		// Command ran but exited non-zero
-		markerResult, _, found := protocol.ExtractResult(stdoutBytes)
+		markerResult, _, found := protocol.ExtractNoncedResult(stdoutBytes, nonce)
 		if found {
 			return markerResult, stdoutBytes, nil
 		}
@@ -515,7 +530,7 @@ func (a *Adapter) classifyResult(command string, stdoutBytes []byte, runErr erro
 	if bytes.Contains(stdoutBytes, []byte(`"error_during_execution"`)) {
 		return "fail", stdoutBytes, fmt.Errorf("command %q reported error_during_execution", command)
 	}
-	markerResult, _, found := protocol.ExtractResult(stdoutBytes)
+	markerResult, _, found := protocol.ExtractNoncedResult(stdoutBytes, nonce)
 	if !found {
 		// Conservative default: an agent that exits 0 without emitting a
 		// recognizable CLOCHE_RESULT marker must never be classified as
@@ -787,7 +802,7 @@ func toolInputSummary(input json.RawMessage) string {
 	return ""
 }
 
-func (a *Adapter) assemblePrompt(ctx context.Context, step *domain.Step, workDir string) (string, error) {
+func (a *Adapter) assemblePrompt(ctx context.Context, step *domain.Step, workDir string, nonce string) (string, error) {
 	var parts []string
 
 	userPrompt := readUserPrompt(workDir, a.TaskID)
@@ -814,6 +829,7 @@ func (a *Adapter) assemblePrompt(ctx context.Context, step *domain.Step, workDir
 				"workdir":          workDir,
 				"prev_output":      a.PrevOutput,
 				"task_description": userPrompt,
+				"result_nonce":     nonce,
 			},
 			KV:      a.KV,
 			WorkDir: workDir,
@@ -853,7 +869,7 @@ func (a *Adapter) assemblePrompt(ctx context.Context, step *domain.Step, workDir
 		resultLines = append(resultLines, "## Result Selection")
 		resultLines = append(resultLines, "When you are finished, output exactly one of the following on its own line:")
 		for _, r := range step.Results {
-			resultLines = append(resultLines, protocol.ResultPrefix+r)
+			resultLines = append(resultLines, protocol.FormatNoncedMarker(nonce, r))
 		}
 		parts = append(parts, strings.Join(resultLines, "\n"))
 	}
@@ -880,7 +896,7 @@ func (a *Adapter) assemblePrompt(ctx context.Context, step *domain.Step, workDir
 	// the assembled prompt already mentions the marker.
 	joined := strings.Join(parts, "\n\n")
 	if !strings.Contains(joined, protocol.ResultPrefix) {
-		joined += "\n\n" + markerProtocolReminder
+		joined += "\n\n" + markerProtocolReminder(nonce)
 	}
 
 	return joined, nil
@@ -888,14 +904,16 @@ func (a *Adapter) assemblePrompt(ctx context.Context, step *domain.Step, workDir
 
 // markerProtocolReminder is appended to the assembled prompt when nothing in
 // it already mentions the CLOCHE_RESULT marker protocol (see assemblePrompt).
-const markerProtocolReminder = `## Reporting your result (required)
+func markerProtocolReminder(nonce string) string {
+	return `## Reporting your result (required)
 
 When you are completely done, print exactly one of these markers as the final line of your output:
 
-- ` + "`CLOCHE_RESULT:success`" + ` — the task is complete (and tests pass, where applicable)
-- ` + "`CLOCHE_RESULT:fail`" + ` — you could not complete the task
+- "` + protocol.FormatNoncedMarker(nonce, "success") + `" — the task is complete (and tests pass, where applicable)
+- "` + protocol.FormatNoncedMarker(nonce, "fail") + `" — you could not complete the task
 
 An agent that exits without printing a marker is treated as failed, regardless of what the prose says.`
+}
 
 // hasIntentReference reports whether s contains a "$intent" variable
 // reference (bare or inside a {{ }} directive) as opposed to merely
@@ -975,6 +993,26 @@ func incrementAttemptCount(workDir, taskID, stepName string) {
 	_ = os.MkdirAll(dir, 0755)
 	count := readAttemptCount(workDir, taskID, stepName) + 1
 	_ = os.WriteFile(filepath.Join(dir, stepName), []byte(strconv.Itoa(count)), 0644)
+}
+
+// resultNonce returns the per-step nonce that frames this step's
+// CLOCHE_RESULT marker, generating and persisting one to disk on first use.
+// Later calls for the same (workDir, taskID, stepName) — including a
+// resumed invocation, whose prompt is just "retry"/"answer" text and never
+// restates the marker instructions — reuse the same value, since the agent
+// on the other end only ever learned the nonce once, in the first prompt.
+func resultNonce(workDir, taskID, stepName string) string {
+	path := filepath.Join(workDir, ".cloche", "runs", taskID, "result_nonce", stepName)
+	if data, err := os.ReadFile(path); err == nil {
+		if nonce := strings.TrimSpace(string(data)); nonce != "" {
+			return nonce
+		}
+	}
+	nonce := protocol.GenerateNonce()
+	if mkErr := os.MkdirAll(filepath.Dir(path), 0755); mkErr == nil {
+		_ = os.WriteFile(path, []byte(nonce), 0644)
+	}
+	return nonce
 }
 
 // appendStepLog appends data to the step log file, preserving prior invocations.

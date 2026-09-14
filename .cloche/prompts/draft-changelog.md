@@ -162,7 +162,7 @@ include paths you've verified exist.
 
 ## Results
 
-- Emit `CLOCHE_RESULT:success` once both files have been written.
-- Emit `CLOCHE_RESULT:fail` if you cannot read the inputs, cannot write
+- Emit `CLOCHE_RESULT:{{ $result_nonce }}:success` once both files have been written.
+- Emit `CLOCHE_RESULT:{{ $result_nonce }}:fail` if you cannot read the inputs, cannot write
   the outputs, or encounter a corrupt commit/diff that blocks
   classification.

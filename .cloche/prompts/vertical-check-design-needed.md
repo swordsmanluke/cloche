@@ -29,12 +29,12 @@ or whether Phase 0.5 (design prep) should run before implementation begins.
    ```
    Then output:
    ```
-   CLOCHE_RESULT:has-design
+   CLOCHE_RESULT:{{ $result_nonce }}:has-design
    ```
 
 5. **If no reference is found, no file exists, or no file has `**Status:** Approved`:**
    ```
-   CLOCHE_RESULT:needs-design
+   CLOCHE_RESULT:{{ $result_nonce }}:needs-design
    ```
 
 ## Rules

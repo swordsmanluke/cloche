@@ -177,7 +177,7 @@ func TestSession_ExecuteAgentStep(t *testing.T) {
 
 	// A mock agent script that reads stdin and outputs a line.
 	mockAgent := filepath.Join(dir, "mock-agent.sh")
-	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'agent output'\necho 'CLOCHE_RESULT:success'\n"), 0755))
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho 'agent output'\necho CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success\n"), 0755))
 
 	srv := newFakeServer([]*pb.ExecuteStep{
 		{
@@ -264,7 +264,7 @@ if echo "$args" | grep -q -- '-c'; then
 else
   echo 'fresh'
 fi
-echo 'CLOCHE_RESULT:success'
+echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success
 `
 	require.NoError(t, os.WriteFile(mockAgent, []byte(script), 0755))
 

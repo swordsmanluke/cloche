@@ -278,6 +278,7 @@ File contents and shell stdout are **not** re-templated.
 | `$workdir` | Working directory for the step |
 | `$prev_output` | Preceding step's captured stdout |
 | `$task_description` | Content of the user prompt (`--prompt` flag) |
+| `$result_nonce` | Per-step random nonce that frames this step's `CLOCHE_RESULT` marker (`CLOCHE_RESULT:{{ $result_nonce }}:<name>`) — see [Result Protocol](USAGE.md#result-protocol) |
 
 Built-ins shadow any KV key with the same name. All other `{{ $name }}` lookups go to
 the KV store (via the gRPC client — the same store that `clo get` and `cloche get`

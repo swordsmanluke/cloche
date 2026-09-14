@@ -291,6 +291,7 @@ Rules:
 - The result name must match one of the step's declared `results`.
 - For script steps with no marker: exit 0 = `success`, exit non-zero = `fail`.
 - For agent steps: a marker (regardless of exit code) is used as the result. Without a marker, the adapter falls back to the next agent in the fallback chain (or returns `fail` if last) — this includes exit 0, since an agent that exits 0 without a marker can't be trusted as a success.
+- **Agent steps use a nonced marker**, `CLOCHE_RESULT:{{ $result_nonce }}:<name>` (see [Prompt Assembly](#prompt-assembly)), not the bare form above. A free-form coding agent's own transcript can otherwise reproduce the literal string `CLOCHE_RESULT:success` while grepping code, editing test fixtures, or discussing this very protocol; framing the marker with a per-step random nonce means only a line the agent deliberately copied from its own instructions counts, so quoted or incidental mentions elsewhere in the transcript are left alone as ordinary text. Script, poll, and skip steps are author-controlled and keep the unnonced form.
 
 ## Prompt Assembly
 
@@ -298,8 +299,10 @@ When an agent step runs, Cloche assembles a prompt from these sections (joined b
 
 1. **Step template**: The step's `prompt` content (inline string or resolved `file("path")`), after `{{ }}` template expansion (see below).
 2. **User request**: Content of `.cloche/<run-id>/prompt.txt` (set via `--prompt` flag), prefixed with `## User Request`. Skipped if the template consumed it via `{{ $task_description }}`.
-3. **Result selection**: Lists the step's declared results with instructions to print exactly one `CLOCHE_RESULT:<name>` marker. Only added when the step declares `results`.
-4. **Marker protocol reminder**: If nothing assembled so far mentions `CLOCHE_RESULT:` (no declared `results`, and no manual mention in the template), a generic reminder is appended instructing the agent to print `CLOCHE_RESULT:success` or `CLOCHE_RESULT:fail` — since an exit-0 run without a marker is still treated as `fail` (see Result Protocol above).
+3. **Result selection**: Lists the step's declared results with instructions to print exactly one `CLOCHE_RESULT:{{ $result_nonce }}:<name>` marker. Only added when the step declares `results`.
+4. **Marker protocol reminder**: If nothing assembled so far mentions `CLOCHE_RESULT:` (no declared `results`, and no manual mention in the template), a generic reminder is appended instructing the agent to print the nonced `CLOCHE_RESULT:{{ $result_nonce }}:success` or `...:fail` — since an exit-0 run without a marker is still treated as `fail` (see Result Protocol above).
+
+The nonce is generated once per step (persisted under `.cloche/runs/<task-id>/result_nonce/`) and reused across retries and resumes of that step, so a resumed conversation — which is only given a short "retry" prompt, not the full instructions again — still submits a marker the classifier recognizes. It's also exported to the agent process as `CLOCHE_RESULT_NONCE`, for custom `agent_command` scripts that construct their own marker.
 
 The assembled prompt is passed to the agent command via stdin.
 
@@ -309,7 +312,7 @@ Prompt files support `{{ }}` directives that are evaluated before the agent is i
 
 | Form | Meaning |
 |------|---------|
-| `{{ $name }}` | Variable lookup: built-in (`$task_id`, `$run_id`, `$step_name`, `$workdir`, `$prev_output`, `$task_description`), then KV store |
+| `{{ $name }}` | Variable lookup: built-in (`$task_id`, `$run_id`, `$step_name`, `$workdir`, `$prev_output`, `$task_description`, `$result_nonce`), then KV store |
 | `{{! cmd }}` | Run `cmd` via `sh -c`; substitute stdout (30 s timeout) |
 | `{{@ path }}` | Read file at `path`; substitute its contents verbatim |
 | `$$` | Literal `$` inside `{{! ... }}` only |

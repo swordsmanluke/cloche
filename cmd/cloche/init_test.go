@@ -653,11 +653,11 @@ func TestCmdInit_ScaffoldedPromptsIncludeResultMarkerProtocol(t *testing.T) {
 			t.Fatalf("reading %s: %v", name, err)
 		}
 		content := string(data)
-		if !strings.Contains(content, "CLOCHE_RESULT:success") {
-			t.Errorf("%s should instruct the agent to print CLOCHE_RESULT:success", name)
+		if !strings.Contains(content, "CLOCHE_RESULT:{{ $result_nonce }}:success") {
+			t.Errorf("%s should instruct the agent to print CLOCHE_RESULT:{{ $result_nonce }}:success", name)
 		}
-		if !strings.Contains(content, "CLOCHE_RESULT:fail") {
-			t.Errorf("%s should instruct the agent to print CLOCHE_RESULT:fail", name)
+		if !strings.Contains(content, "CLOCHE_RESULT:{{ $result_nonce }}:fail") {
+			t.Errorf("%s should instruct the agent to print CLOCHE_RESULT:{{ $result_nonce }}:fail", name)
 		}
 	}
 }

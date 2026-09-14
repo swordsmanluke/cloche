@@ -84,7 +84,7 @@ so make it actionable for the reviewer, not a placeholder.
 
 3. Output:
    ```
-   CLOCHE_RESULT:success
+   CLOCHE_RESULT:{{ $result_nonce }}:success
    ```
 
 ## Hard constraints
