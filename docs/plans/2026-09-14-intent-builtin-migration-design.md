@@ -88,14 +88,14 @@ release has shipped the old key.
 
 ## Tickets
 
-- **A — Built-in workflow mechanism; embed intent-scan; delete project-local copy**
+- **A (`cloche-la93`) — Built-in workflow mechanism; embed intent-scan; delete project-local copy**
   (engine: registry + name resolution + DAG/CLI labeling; `go:embed` prompts;
   workflow graph in Go; remove `.cloche/` intent-scan block/prompts/scripts).
-- **B — Automatic extraction** (flip `scan_after_tasks` default; concurrency
+- **B (`cloche-nbnh`) — Automatic extraction** (flip `scan_after_tasks` default; concurrency
   guard; bootstrap path verified on a fixture project with no `.cloche/intent/`).
   Depends on A.
-- **C — `intent_tracking` key** (parse boolean at step+workflow level; wire to
+- **C (`cloche-hxws`) — `intent_tracking` key** (parse boolean at step+workflow level; wire to
   injection gate; collect-sources exclusion; remove `intent = "off"`). Parallel
   with A.
-- **D — Docs + release alignment** (docs updates; confirm minor bump ships after
+- **D (`cloche-cg8a`) — Docs + release alignment** (docs updates; confirm minor bump ships after
   A–C). Depends on A, B, C.
