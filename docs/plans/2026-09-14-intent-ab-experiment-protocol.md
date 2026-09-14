@@ -210,6 +210,74 @@ headline — the automated metrics are the headline.
   this doc + the tagged seed repo before the first run. Post-hoc metric shopping
   is the failure mode this section exists to prevent.
 
+## Ticket drafts (NOT yet filed)
+
+Deliberately **not** in bead: the orchestration loop claims open tickets within
+seconds, and this work must not start until the Cloche updates are finished and
+verified. File these (with the listed dependencies) when ready; drafts are
+written to be usable as `bd create` descriptions verbatim.
+
+**E1 — Experiment seed repo + frozen Bract spec** *(feature, no deps)*
+New repo `bract-experiment/seed/`: project scaffold (Python, stdlib only),
+`DESIGN.md` containing the full Bract spec with the seven prior traps Q1–Q7 and
+~12 standing constraints, `.cloche/` setup shared by both arms (Dockerfile,
+develop/host workflows, config.toml *without* arm-specific intent keys). Name
+collision already checked. Acceptance: `cloche validate` passes; spec covers
+every trap unambiguously; repo tagged `seed-v1` on freeze.
+
+**E2 — Task list with embedded drift constraints** *(task, after E1)*
+The 12 dependency-ordered task definitions (lexer → … → polish), authored once,
+copied verbatim into both arms. Drift corrections D1–D5 embedded at their frozen
+positions (tasks 4/5/6/8/9) with frozen wording, phrased as offhand corrections
+inside otherwise-normal task descriptions. Acceptance: wording matches the
+protocol table; a dry `list-tasks` run emits the 12 tasks in order.
+
+**E3 — Hidden acceptance corpus + runner** *(feature, after E1)*
+~48 Bract programs with expected stdout/stderr/exit codes: ≥2 per prior trap
+(incl. negative-operand division, side-effect-visible `and`/`or`) plus ~32
+general-coverage. Runner script executes the corpus against a repo's `main` and
+emits overall, per-feature, and prior-trap pass rates as JSON. Lives outside the
+seed repo (`bract-experiment/eval/`), never copied into an arm. Acceptance: a
+reference implementation (written for this purpose, also kept out of the arms)
+passes 48/48; a deliberately Lox-prior implementation scores ≈0 on traps.
+
+**E4 — Bonsai executor wrapper** *(feature, no deps)*
+`agent_command` CLI driving bonsai-8b-16k through host Ollama's
+OpenAI-compatible endpoint (candidate: aider non-interactive; else a minimal
+edit-loop driver). Bakes in the spike's bonsai rules: temperature > 0, capped
+generation length, strip leaked chain-of-thought before applying edits, retry
+on empty content. Container networking via host-gateway + `network_allow`.
+Acceptance: from inside a cloche container, the wrapper completes a trivial
+scripted edit task against a fixture repo three times in a row.
+
+**E5 — Arm configs + run orchestration** *(feature, after E1, E2, E4)*
+Per-arm overlays (A: no intent dir, `scan_after_tasks = false`; B: defaults +
+`intent.token_budget = 1000`) and a driver script: clone seed at `seed-v1`,
+apply overlay, start loop, run to task-list exhaustion or budget/wall cap,
+collect cloche process metrics (attempts, tokens, fix-loops, merges,
+context-composition for B). Contamination asserts: arm A contains no
+`.cloche/intent/` at any point; hidden corpus absent from both trees.
+Acceptance: end-to-end smoke run of both arms against a 2-task stub list.
+
+**E6 — Audit + judging tooling** *(feature, after E2, E3)*
+Automated checkers for D1–D5 and the standing-constraint audit (regex/AST/
+behavior per constraint, emitting per-constraint verdicts as JSON); blinded-
+judging prep script (strip `.cloche/` and git history from copies, randomize
+arm labels, emit judge bundle). Acceptance: checkers produce correct verdicts
+against hand-made compliant and violating fixtures.
+
+**E7 — Pilot run + calibration report** *(task, after E5, E6)*
+Execute 1 run per arm; evaluate the calibration gate (unattended harness,
+completion between ~30–90% in ≥1 arm, all metrics measurable); write the pilot
+report to `docs/plans/spikes/` with a go/retune/no-go recommendation and, if
+retuning, the specific task-list changes. Human decision point before
+replications.
+
+**E8 — Replications + final report** *(task, after E7, gated on pilot)*
+3 runs per arm from `seed-v1` (or `seed-v2` if the pilot forced a retune),
+full evaluation, medians + per-replication spreads, results doc in
+`docs/plans/spikes/`, published write-up artifact.
+
 ## What would falsify the hypothesis
 
 Arm B showing no improvement in drift adherence (primary), or buying adherence
