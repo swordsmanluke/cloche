@@ -34,6 +34,12 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+/* The overlays (help, activity, ledger, secondary view) are hidden with the
+   HTML `hidden` attribute and shown by clearing it. Their class rules set
+   `display: flex`, which would otherwise beat the browser's default
+   `[hidden] { display: none }` and render every overlay at once. */
+[hidden] { display: none !important; }
+
 html, body { height: 100%; }
 
 body {
