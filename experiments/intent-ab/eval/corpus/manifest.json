@@ -1,0 +1,482 @@
+[
+  {
+    "id": "q1-if-int-condition",
+    "file": "q1_if_int_condition.bract",
+    "feature_area": "control_flow",
+    "trap": "Q1",
+    "expected_exit_code": 1,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: condition must be a boolean\n"
+  },
+  {
+    "id": "q1-while-string-condition",
+    "file": "q1_while_string_condition.bract",
+    "feature_area": "control_flow",
+    "trap": "Q1",
+    "expected_exit_code": 1,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: condition must be a boolean\n"
+  },
+  {
+    "id": "q2-redeclare-same-scope",
+    "file": "q2_redeclare_same_scope.bract",
+    "feature_area": "bindings",
+    "trap": "Q2",
+    "expected_exit_code": 1,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 2: 'x' is already declared\n"
+  },
+  {
+    "id": "q2-set-undeclared",
+    "file": "q2_set_undeclared.bract",
+    "feature_area": "bindings",
+    "trap": "Q2",
+    "expected_exit_code": 1,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: 'y' is not declared\n"
+  },
+  {
+    "id": "q3-plus-on-strings",
+    "file": "q3_plus_on_strings.bract",
+    "feature_area": "arithmetic",
+    "trap": "Q3",
+    "expected_exit_code": 1,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: '+' cannot be applied to strings\n"
+  },
+  {
+    "id": "q3-plus-string-and-int",
+    "file": "q3_plus_string_and_int.bract",
+    "feature_area": "arithmetic",
+    "trap": "Q3",
+    "expected_exit_code": 1,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: '+' cannot be applied to strings\n"
+  },
+  {
+    "id": "q4-bang-equal-lex-error",
+    "file": "q4_bang_equal_lex_error.bract",
+    "feature_area": "lexer",
+    "trap": "Q4",
+    "expected_exit_code": 2,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: unexpected character '!'\n"
+  },
+  {
+    "id": "q4-bang-equal-in-while",
+    "file": "q4_bang_equal_in_while.bract",
+    "feature_area": "lexer",
+    "trap": "Q4",
+    "expected_exit_code": 2,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: unexpected character '!'\n"
+  },
+  {
+    "id": "q5-index-zero-out-of-range",
+    "file": "q5_index_zero_out_of_range.bract",
+    "feature_area": "strings",
+    "trap": "Q5",
+    "expected_exit_code": 1,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: index out of range\n"
+  },
+  {
+    "id": "q5-one-indexed-positive",
+    "file": "q5_one_indexed_positive.bract",
+    "feature_area": "strings",
+    "trap": "Q5",
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "q6-chained-comparison-error",
+    "file": "q6_chained_comparison_error.bract",
+    "feature_area": "comparisons",
+    "trap": "Q6",
+    "expected_exit_code": 2,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: comparisons do not chain\n"
+  },
+  {
+    "id": "q6-chained-comparison-in-condition",
+    "file": "q6_chained_comparison_in_condition.bract",
+    "feature_area": "comparisons",
+    "trap": "Q6",
+    "expected_exit_code": 2,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 4: comparisons do not chain\n"
+  },
+  {
+    "id": "q7-and-side-effect",
+    "file": "q7_and_side_effect.bract",
+    "feature_area": "control_flow",
+    "trap": "Q7",
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "q7-or-side-effect",
+    "file": "q7_or_side_effect.bract",
+    "feature_area": "control_flow",
+    "trap": "Q7",
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "d3-negative-dividend",
+    "file": "d3_negative_dividend.bract",
+    "feature_area": "arithmetic",
+    "trap": "D3",
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "d3-negative-divisor",
+    "file": "d3_negative_divisor.bract",
+    "feature_area": "arithmetic",
+    "trap": "D3",
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "lit-integers-and-arithmetic-precedence",
+    "file": "lit_integers_and_arithmetic_precedence.bract",
+    "feature_area": "arithmetic",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "lit-bool-nil",
+    "file": "lit_bool_nil.bract",
+    "feature_area": "values",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "arith-add-sub-mul",
+    "file": "arith_add_sub_mul.bract",
+    "feature_area": "arithmetic",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "arith-div-mod-positive",
+    "file": "arith_div_mod_positive.bract",
+    "feature_area": "arithmetic",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "arith-div-by-zero-error",
+    "file": "arith_div_by_zero_error.bract",
+    "feature_area": "arithmetic",
+    "trap": null,
+    "expected_exit_code": 1,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: division by zero\n"
+  },
+  {
+    "id": "arith-mod-by-zero-error",
+    "file": "arith_mod_by_zero_error.bract",
+    "feature_area": "arithmetic",
+    "trap": null,
+    "expected_exit_code": 1,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: division by zero\n"
+  },
+  {
+    "id": "str-len-various",
+    "file": "str_len_various.bract",
+    "feature_area": "strings",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "str-sub-two-arg",
+    "file": "str_sub_two_arg.bract",
+    "feature_area": "strings",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "str-sub-start-gt-end-empty",
+    "file": "str_sub_start_gt_end_empty.bract",
+    "feature_area": "strings",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "str-at-non-string-error",
+    "file": "str_at_non_string_error.bract",
+    "feature_area": "strings",
+    "trap": null,
+    "expected_exit_code": 1,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: 'at' expects a string\n"
+  },
+  {
+    "id": "bind-shadow-inner-scope-ok",
+    "file": "bind_shadow_inner_scope_ok.bract",
+    "feature_area": "bindings",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "bind-set-through-nested-scope",
+    "file": "bind_set_through_nested_scope.bract",
+    "feature_area": "bindings",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "bind-bare-assignment-parse-error",
+    "file": "bind_bare_assignment_parse_error.bract",
+    "feature_area": "bindings",
+    "trap": null,
+    "expected_exit_code": 2,
+    "expected_stdout": "",
+    "stderr_check": "prefix",
+    "expected_stderr": "line 1: "
+  },
+  {
+    "id": "bind-let-scope-boundary",
+    "file": "bind_let_scope_boundary.bract",
+    "feature_area": "bindings",
+    "trap": null,
+    "expected_exit_code": 1,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 4: 'inner' is not declared\n"
+  },
+  {
+    "id": "fn-basic-call-return",
+    "file": "fn_basic_call_return.bract",
+    "feature_area": "functions",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "fn-closure-counter",
+    "file": "fn_closure_counter.bract",
+    "feature_area": "functions",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "fn-chained-calls",
+    "file": "fn_chained_calls.bract",
+    "feature_area": "functions",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "fn-recursion",
+    "file": "fn_recursion.bract",
+    "feature_area": "functions",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "cf-if-else-chain",
+    "file": "cf_if_else_chain.bract",
+    "feature_area": "control_flow",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "cf-while-loop-sum",
+    "file": "cf_while_loop_sum.bract",
+    "feature_area": "control_flow",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "cf-nested-blocks-scope",
+    "file": "cf_nested_blocks_scope.bract",
+    "feature_area": "control_flow",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "cf-boolean-logic-combo",
+    "file": "cf_boolean_logic_combo.bract",
+    "feature_area": "control_flow",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "cmp-all-operators",
+    "file": "cmp_all_operators.bract",
+    "feature_area": "comparisons",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "cmp-string-equality",
+    "file": "cmp_string_equality.bract",
+    "feature_area": "comparisons",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "cmp-ordering-type-error",
+    "file": "cmp_ordering_type_error.bract",
+    "feature_area": "comparisons",
+    "trap": null,
+    "expected_exit_code": 1,
+    "expected_stdout": "",
+    "stderr_check": "prefix",
+    "expected_stderr": "line 1: "
+  },
+  {
+    "id": "err-unterminated-string",
+    "file": "err_unterminated_string.bract",
+    "feature_area": "lexer",
+    "trap": null,
+    "expected_exit_code": 2,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: unterminated string\n"
+  },
+  {
+    "id": "err-unknown-escape",
+    "file": "err_unknown_escape.bract",
+    "feature_area": "lexer",
+    "trap": null,
+    "expected_exit_code": 2,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: unknown escape sequence '\\q'\n"
+  },
+  {
+    "id": "err-unexpected-char",
+    "file": "err_unexpected_char.bract",
+    "feature_area": "lexer",
+    "trap": null,
+    "expected_exit_code": 2,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: unexpected character '@'\n"
+  },
+  {
+    "id": "cli-exit-zero-no-output",
+    "file": "cli_exit_zero_no_output.bract",
+    "feature_area": "cli",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "cli-runtime-error-exit-one",
+    "file": "cli_runtime_error_exit_one.bract",
+    "feature_area": "cli",
+    "trap": null,
+    "expected_exit_code": 1,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 1: 'z' is not declared\n"
+  },
+  {
+    "id": "misc-comments-and-whitespace",
+    "file": "misc_comments_and_whitespace.bract",
+    "feature_area": "lexer",
+    "trap": null,
+    "expected_exit_code": 0,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": ""
+  },
+  {
+    "id": "misc-line-number-tracking",
+    "file": "misc_line_number_tracking.bract",
+    "feature_area": "errors",
+    "trap": null,
+    "expected_exit_code": 1,
+    "expected_stdout": "",
+    "stderr_check": "exact",
+    "expected_stderr": "line 5: condition must be a boolean\n"
+  }
+]

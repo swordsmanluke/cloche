@@ -1,0 +1,9 @@
+if (len("hello") <> 5) {
+  let f = 1 / 0;
+}
+if (len("") <> 0) {
+  let f2 = 1 / 0;
+}
+if ("foo" ~ "bar" <> "foobar") {
+  let f3 = 1 / 0;
+}

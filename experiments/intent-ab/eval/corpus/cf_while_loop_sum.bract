@@ -1,0 +1,9 @@
+let i = 1;
+let total = 0;
+while (i <= 10) {
+  set total = total + i;
+  set i = i + 1;
+}
+if (total <> 55) {
+  let f = 1 / 0;
+}

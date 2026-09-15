@@ -1,0 +1,6 @@
+if (("abc" == "abc") <> true) {
+  let f = 1 / 0;
+}
+if (("abc" <> "abd") <> true) {
+  let f2 = 1 / 0;
+}

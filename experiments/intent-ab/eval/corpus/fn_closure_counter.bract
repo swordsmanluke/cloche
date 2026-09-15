@@ -1,0 +1,17 @@
+fn make_counter() {
+  let n = 0;
+  fn next() {
+    set n = n + 1;
+    return n;
+  }
+  return next;
+}
+let counter = make_counter();
+let a = counter();
+let b = counter();
+if (a <> 1) {
+  let f = 1 / 0;
+}
+if (b <> 2) {
+  let f2 = 1 / 0;
+}

@@ -1,0 +1,3 @@
+if (sub("hello world", 7) <> "world") {
+  let f = 1 / 0;
+}

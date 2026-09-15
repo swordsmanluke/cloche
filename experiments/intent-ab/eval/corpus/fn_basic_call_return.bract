@@ -1,0 +1,6 @@
+fn square(n) {
+  return n * n;
+}
+if (square(6) <> 36) {
+  let f = 1 / 0;
+}

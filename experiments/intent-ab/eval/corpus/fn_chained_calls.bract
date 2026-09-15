@@ -1,0 +1,9 @@
+fn make_adder(n) {
+  fn add(x) {
+    return x + n;
+  }
+  return add;
+}
+if (make_adder(3)(4) <> 7) {
+  let f = 1 / 0;
+}

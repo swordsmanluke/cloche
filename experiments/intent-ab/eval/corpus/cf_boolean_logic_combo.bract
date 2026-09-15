@@ -1,0 +1,12 @@
+if ((true and true) <> true) {
+  let f = 1 / 0;
+}
+if ((true and false) <> false) {
+  let f2 = 1 / 0;
+}
+if ((false or false) <> false) {
+  let f3 = 1 / 0;
+}
+if ((false or true) <> true) {
+  let f4 = 1 / 0;
+}

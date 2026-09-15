@@ -1,0 +1,9 @@
+let counter_state = 0;
+fn has_side_effect() {
+  set counter_state = counter_state + 1;
+  return true;
+}
+let ok = false and has_side_effect();
+if (counter_state <> 1) {
+  let fail = 1 / 0;
+}

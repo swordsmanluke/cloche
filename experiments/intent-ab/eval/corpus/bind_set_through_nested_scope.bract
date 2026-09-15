@@ -1,0 +1,9 @@
+let counter = 0;
+if (true) {
+  if (true) {
+    set counter = counter + 1;
+  }
+}
+if (counter <> 1) {
+  let f = 1 / 0;
+}

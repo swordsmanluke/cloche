@@ -1,0 +1,4 @@
+if (true) {
+  let inner = 1;
+}
+set inner = 2;

@@ -1,0 +1,9 @@
+// This program is riddled with comments and odd whitespace.
+let   a   =   1;   // trailing comment
+let b=2;
+// another comment
+
+
+if   (  a  +  b  <>  3  )   {
+  let f = 1 / 0;
+}

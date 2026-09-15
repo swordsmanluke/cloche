@@ -1,0 +1,12 @@
+if (at("hello", 1) <> "h") {
+  let f = 1 / 0;
+}
+if (len("hello") <> 5) {
+  let f2 = 1 / 0;
+}
+if (sub("hello", 1, 3) <> "hel") {
+  let f3 = 1 / 0;
+}
+if (sub("hello", 1) <> "hello") {
+  let f4 = 1 / 0;
+}

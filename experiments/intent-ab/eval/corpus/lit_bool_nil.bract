@@ -1,0 +1,8 @@
+if (true <> false) {
+} else {
+  let f = 1 / 0;
+}
+if (nil == nil) {
+} else {
+  let f2 = 1 / 0;
+}

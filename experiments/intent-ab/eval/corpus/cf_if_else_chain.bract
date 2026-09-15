@@ -1,0 +1,18 @@
+fn classify(n) {
+  if (n < 0) {
+    return "negative";
+  } else if (n == 0) {
+    return "zero";
+  } else {
+    return "positive";
+  }
+}
+if (classify(-5) <> "negative") {
+  let f = 1 / 0;
+}
+if (classify(0) <> "zero") {
+  let f2 = 1 / 0;
+}
+if (classify(5) <> "positive") {
+  let f3 = 1 / 0;
+}

@@ -1,0 +1,15 @@
+if ((3 == 3) <> true) {
+  let f = 1 / 0;
+}
+if ((3 < 4) <> true) {
+  let f2 = 1 / 0;
+}
+if ((4 > 3) <> true) {
+  let f3 = 1 / 0;
+}
+if ((3 <= 3) <> true) {
+  let f4 = 1 / 0;
+}
+if ((3 >= 4) <> false) {
+  let f5 = 1 / 0;
+}
