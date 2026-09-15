@@ -1,0 +1,27 @@
+// Acceptance-check workflow for the bonsai executor wrapper (E4). Not part
+// of the A/B experiment arms themselves (see E5) — this proves the wrapper
+// works end-to-end from inside a real cloche container against a real
+// Ollama endpoint. See ../README.md for how to run it.
+
+workflow fixture_check {
+  step implement {
+    prompt = file(".cloche/prompts/fixture-task.md")
+    container {
+      // Resolved relative to /workspace (the container's copy of this
+      // project root), so no PATH/install step is needed for the wrapper
+      // itself — see .cloche/Dockerfile.
+      agent_command = "bin/agent_command"
+
+      // host-gateway reachability to host.docker.internal is unconditional
+      // (internal/adapters/docker/runtime.go always adds
+      // --add-host=host.docker.internal:host-gateway); network_allow here
+      // just documents the intent for when enforcement lands (currently
+      // parsed but not enforced, docs/USAGE.md).
+      network_allow = ["host.docker.internal:11434"]
+    }
+    results = [success, fail]
+  }
+
+  implement:success -> done
+  implement:fail    -> abort
+}

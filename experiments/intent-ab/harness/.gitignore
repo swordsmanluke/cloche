@@ -1,0 +1,8 @@
+.cloche/logs/
+.cloche/runs/
+.cloche/output/
+.cloche/history.log
+.cloche/.loop-stopped
+.gitworktrees/
+__pycache__/
+*.pyc

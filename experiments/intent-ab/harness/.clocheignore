@@ -1,0 +1,5 @@
+# Files excluded from the container workspace.
+.cloche/logs/
+.cloche/runs/
+__pycache__/
+*.pyc

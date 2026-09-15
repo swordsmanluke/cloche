@@ -1,0 +1,13 @@
+# Cloche project configuration for the bonsai executor wrapper's own
+# acceptance check (E4) — a standalone mini-project, separate from
+# experiments/intent-ab/seed/, whose only job is proving the wrapper works
+# from inside a real cloche container against a real Ollama endpoint.
+active = true
+
+[daemon]
+image = "bonsai-harness-cloche-agent:latest"
+
+[git]
+# name    = ""
+# email   = ""
+# ssh_key = ""
