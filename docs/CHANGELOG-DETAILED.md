@@ -1,5 +1,83 @@
 # Cloche Detailed Changelog
 
+## v3.22.0 — 2026-09-15
+
+### Breaking
+
+- `1dd72ee` Frames the `CLOCHE_RESULT` marker for agent steps with a per-step random nonce (`CLOCHE_RESULT:{{ $result_nonce }}:<name>`) so a stray mention of the literal marker string in an agent's own transcript can no longer be misclassified as the real terminal marker. Migration: custom `.cloche/prompts/*.md` templates or `agent_command` scripts that hardcode `CLOCHE_RESULT:<name>` must switch to `CLOCHE_RESULT:{{ $result_nonce }}:<name>` (or read `CLOCHE_RESULT_NONCE`).
+- `718b5e4` Renames the intent-injection opt-out config key from `intent = "off"` to a typed boolean `intent_tracking = false`, and excludes opted-out steps' logs from intent collect-sources mining. This supersedes `5da99fb` (below) within this same release — `intent = "off"` never appeared in a published version, so no existing user file needs migration; use `intent_tracking = false` going forward.
+- `793887b` Changes agent-step result classification so exiting 0 without ever emitting a `CLOCHE_RESULT` marker is now `fail` instead of `success`. Migration: custom `agent_command` scripts/agents relying on a bare `exit 0` for success must explicitly emit the marker.
+- `44a06f1` Adds `is_builtin`/`user_initiated` tracking to runs and tasks, surfaced as a new TYPE column in `cloche list` and ORIGIN column in `cloche list --runs`. Migration: scripts parsing `cloche list`/`cloche list --runs` output by column position must account for the inserted columns.
+
+### Features
+
+- `ca1ff25` Ships the intent-scan pipeline: a host workflow (discover-domains → collect-sources → extract → reconcile → apply-reconcile), the `internal/intent/scan` package, `cloche intent collect-sources`/`apply-reconcile` plumbing subcommands, and orchestration-loop wiring to auto-trigger a scan after a task succeeds.
+- `2c698e2` Adds the `cloche intent` CLI command family (`list`, `show`, `edit`, `disable`, `enable`, `add`, `preview`, `scan`) with shell-completion and help-text wiring.
+- `5da99fb` Adds automatic prompt injection of a "## Standing project requirements" block for agent steps, plus a DSL opt-out keyword (renamed to `intent_tracking = false` by `718b5e4` later in this release).
+- `ddcc9c6` Introduces a "built-in workflow" engine mechanism (Go-constructed workflows resolved after project `.cloche` discovery, overridable by a same-named project workflow) and makes intent-scan the first built-in, so extraction works in any project with no setup.
+- `6837f35` Flips `intent.scan_after_tasks` default from false to true so new and existing projects get an automatic incremental intent-scan after each completed main task, and adds a per-project concurrency guard against duplicate enqueues.
+- `4e81c1a` Adds an Intent panel to the web dashboard's Project Detail page: a requirements table with edit/enable/disable, a domain-map editor, and a "Scan now" button, backed by new `/api/projects/{name}/intent/...` endpoints.
+- `0a3a0a3` Adds an in-process ONNX Runtime embedding adapter (tokenizer, mean-pooling, model download+cache) behind a `-tags onnx` build flag, plus an `intent.model` config key to select the embedding model.
+- `63ffb3a` Replaces the multi-page web dashboard (Projects, Project Detail, Runs, Run Detail, Task Detail, Failed Open Tasks) with a single-page console: a project tab bar, a task stack (Needs you / Running / Queued / Done today), and a centre pane; old dashboard URLs redirect into the new routes for one release.
+- `998ada0` Adds the web console's task detail pane: header/state actions, attempt tabs, a per-step strip with child-run inlining, and a full-width live/paginated log view.
+- `5d39639` Adds a `GET /api/projects/{name}/tasks/stack` endpoint (needs-you / running / queued / done-today, with ETag support and cursor pagination) backing the console task stack.
+- `7d8aeb3` Adds a per-project "Ledger" dashboard overlay showing pass-rate history, mean attempts/tokens to success, per-prompt-file outcome stats by git revision, and requirement-injection cross-references.
+- `8c7aae0` Adds an activity-stream view to the web dashboard, plus new activity-log event kinds (`help_asked`, `help_answered`, `help_parked`, `help_resumed`).
+- `9afb46c` Adds a "Containers" view to the web dashboard showing retained containers and their disk usage.
+- `1e5f8ae` Adds a "parked" pane to the web console: when a run is parked awaiting a help-thread reply, the log pane is replaced by the thread transcript and a reply box.
+- `040802e` Wires up a daemon-side attention cache computing and background-refreshing each project's "needs you" item set (parked help threads, stuck tasks, etc.), adds an `attention_count` gRPC field and a `GET .../attention` web endpoint, adds `attention.refresh_interval`/`max_parallel_refresh` config, and triggers an out-of-band refresh when a help thread is created or replied to.
+- `ecc357c` Adds a "Needs you" attention set (`GetAttention` RPC, `cloche status` section, `[attention]` config block) surfacing parked runs, stale tracker claims, repeated task/workflow failures, and long-running polls.
+- `66fde91` Extends the "Needs you" dashboard with actionable buttons (release claim, close-in-tracker via a new optional `close-task`/`cancel-task` host workflow contract, run-once, mute) and a compare-log view.
+- `fb901c2` Adds orchestration-loop concurrency occupancy reporting: `GetLoopOccupancy`/`ListLoopOccupancy` RPCs, a "Slots: `<busy>`/`<max>` busy · `<queued>` queued" line in `cloche status`/`cloche loop status`, and a matching web endpoint.
+- `8191b4d` Broadens `cloche doctor` with project-scoped checks (config, workflow syntax, image build, agent-binary version) and `--project`/`--timeout` flags; adds `cloche init --ssh-key`/`--non-interactive`, `cloche logs --step`, `cloche set -f <file>`, `cloche project repos list`, and `cloche loop status`; also fixes `cloche list --state`/`--limit` being silently ignored, parked tasks/runs missing from `cloche status`, `--no-color` being rejected by `cloche threads`, and shell completion offering a nonexistent `--workflow` flag for `cloche run`.
+
+### Fixes
+
+- `dd930fe` Fixes the orchestration loop treating a run parked at a `poll` step as still occupying a concurrency slot, which could block other tasks from launching even under `MaxConcurrent: 1`; also adds a live "Polls" table to the web dashboard's Runs page.
+- `009b7a5` Fixes agent steps being wrongly classified as failed when a long-running session did real work but dropped the trailing `CLOCHE_RESULT` marker after many turns; the adapter now issues one recovery turn asking for the marker before falling back to fail.
+- `e0ad5d4` Fixes the non-streaming (host-path) agent execution branch classifying a step as failed when its `CLOCHE_RESULT` marker was embedded inside a stream-JSON `result` event's string field instead of on its own raw stdout line.
+- `f643d20` Fixes web dashboard links 404ing for projects that share a directory basename by separating the display label from a new URL-safe slug used in all project links/API routes (with one release of backward compatibility for old bookmarked URLs); also adds a `cloche health --project <dir>` flag and makes `cloche tasks --project` accept a full directory path.
+- `d5efda2` Fixes agent runs being marked failed with no explanation when a prompt step declares no `results` (e.g. `cloche init`'s scaffolded fix-tests/fix-merge/implement prompts), by appending a generic `CLOCHE_RESULT` marker-protocol reminder to the assembled prompt whenever nothing already mentions it.
+- `7acbccc` Fixes container-startup detection treating a container that exited 0 between polls (a fast-finishing command) as a stuck/failed start.
+- `54c32bd` Fixes web console overlays (help, activity, ledger, secondary view) rendering visible on load/close because their `display: flex` rules beat the browser's default `[hidden]` styling.
+- `db42ba5` Fixes the web dashboard silently failing to stay bound after a daemon restart (stale process holding the port): the daemon now retries binding with exponential backoff and reports web-listener health via `GetVersion`, surfaced by `cloche status`/`cloche health`; `make install` now waits for the old daemon to fully exit instead of a fixed 1s sleep.
+- `6200c30` Frames host script-step `CLOCHE_RESULT` markers with a per-invocation nonce (`CLOCHE_RESULT_NONCE`) so a script's own output can't be mistaken for the real result marker, and fixes a bashism (`set -o pipefail`) in the intent-scan builtin scripts that failed under Ubuntu's default dash shell.
+- `a1e98a2` Appends the required `CLOCHE_RESULT` marker instructions to 13 prompt files that lacked them, fixing container runs that started failing once exit-0-without-marker became a hard failure.
+- `ec3da6f` Fixes `cloche status <task>` printing the wrong (project-wide) token total for every task instead of that task's own usage, and fixes token usage from steps inside nested host sub-workflows being silently dropped from `GetStatus`/`GetUsage`.
+- `22c591b` Fixes agent (prompt) steps killed mid-flight (timeout, abort, container stop, park) leaving no LLM transcript on disk — output is now persisted line-by-line as it streams instead of only after the step completes.
+- `54f4348` Fixes shell completion so project-local `.cloche/` workflow names always merge with (rather than being shadowed by) the daemon's built-ins, and makes the workflow-name completion test hermetic against a live daemon.
+- `d8d7f25` Fixes the console tab bar collapsing every idle project into "More" when the current project has no live activity, and changes `GET /` to render the console shell directly instead of redirecting.
+- `622d981` Fixes `workflow_name` dispatch steps whose target sub-workflow has long-running steps getting killed by an unrelated flat 30-minute default timeout instead of one derived from the target's own step timeouts; also adds a `cloche validate` warning when an explicit dispatch timeout is shorter than that derived sum.
+- `b43e5a4` Fixes agent-name attribution for token usage: `agent_name` was read from the wrong config key so most workflows recorded no usage attribution; adds an `agent_name` field to the `TokenUsage` proto and a one-time SQLite backfill for previously unattributed rows.
+
+### Internal
+
+- `bfa5255` Commits an auto-generated update to `.cloche/intent/domains.yaml` and `scan-state.yaml` recording a post-task intent scan's results.
+- `6efc370` Removes dead legacy web-dashboard handler code and CSS (old task-summary page and superseded API routes) and corrects `status`/`list` help text to match current task-oriented behavior.
+- `feda0cd` Extends the intent-ab A/B experiment's `arm_driver` harness (contamination checks, metrics, overlay, seeding) and fixes a `.gitignore` rule that was dropping the harness's wrapper binary from git; also touches up unrelated `USAGE.md` wording.
+- `4bb8fad` Hardens the intent-ab experiment's weak-model edit-applying harness against a model echoing the example path verbatim or inventing an unrelated file.
+- `41e254c` Adds a stdlib-only Python `agent_command` wrapper (temperature/token clamping, chain-of-thought stripping) for driving a local model in the intent-ab experiment, plus its test harness.
+- `46f22b2` Adds audit/judging tooling to the intent-continuity research experiment: automated drift-constraint and standing-constraint checkers plus a blinded-judge bundle preparation script for the toy "Bract" language eval harness, with fixtures and tests.
+- `200789d` Commits auto-generated `.cloche/intent/` requirement files and a domain map produced by running the built-in intent scan on the Cloche repo itself.
+- `941e3d8` Adds a corpus of sample programs plus a manifest and generator script for the intent-ab eval harness's toy "Bract" language.
+- `9bb995b` Clarifies intent-embedder config documentation and adds seed task fixtures for the intent-ab experiment.
+- `6079886` Adds a "seed" project (Bract interpreter, Dockerfile, develop/host workflows, task-management scripts) used as the target repo for the intent-ab eval harness; also touches up unrelated `USAGE.md` wording.
+- `03b9518` Records bead ticket IDs (E1–E6) in the intent-ab experiment protocol doc.
+- `f67966a` Updates the intent-ab experiment protocol doc to reflect that E1–E6 tickets were filed and artifacts live under `experiments/intent-ab/`, with E7–E8 staying manual.
+- `d84725e` Drafts E1–E8 ticket descriptions for the Bract A/B intent-continuity experiment directly in the protocol doc, not yet filed in bead.
+- `8637a92` Renames the internal A/B research experiment's toy subject language from "Sprout" to "Bract" (name-collision fix) and adds an anti-prior spec design plus a trap metric.
+- `d385929` Adds a design doc for an A/B experiment protocol (intent tracking on/off) using a toy language and a weak local executor.
+- `7e5a5b1` Updates CLAUDE.md's Intent Continuity description to reflect that scans are dormant until an automatic post-task trigger or manual `cloche intent scan`.
+- `e175e01` Doc-only edit linking bead ticket IDs into the intent-builtin-migration design doc.
+- `71c61de` Adds a design doc for migrating intent-scan into a built-in workflow.
+- `2c70c8f` Adds a docs/intent.md user guide for the Intent Continuity feature and cross-links it from CLAUDE.md, docs/USAGE.md, docs/init/README.md, and docs/web-dashboard.md; also commits a batch of auto-generated `.cloche/intent/` requirement files from running the scan on this repo.
+- `b3de6fb` Adds per-model similarity-floor and scoring/formatting logic to the intent-continuity retrieval engine — backend plumbing not yet exposed through any CLI/UI in this commit.
+- `f3cedb5` Adds the embedding infrastructure for intent retrieval: an `Embedder` port with ollama/keyword adapters and a self-healing on-disk vector index — internal plumbing not yet wired to any CLI/DSL surface.
+- `f90ed09` Adds a design doc for a reusable-modules proposal and lists the already-shipped `extract`/`complete` CLI subcommands in CLAUDE.md's architecture overview.
+- `d48a745` Adds the `internal/intent` package's file-backed data layer: `Requirement`/`Domain` models with YAML-frontmatter parse/marshal, a `Store` for reading/writing `.cloche/intent/`, and scan-state cursor persistence.
+- `f76daaf` Doc-only terminology fix in USAGE.md: renames "human step" to "poll step" in the `cloche status` output description.
+- `0d39d19` Adds design docs for the intent-continuity feature and its retrieval spike, plus the spike's throwaway Go program and corpus/results fixtures.
+
 ## v3.20.2 — 2026-08-30
 
 ### Fixes

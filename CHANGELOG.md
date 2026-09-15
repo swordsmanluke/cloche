@@ -1,5 +1,31 @@
 # Cloche Changelog
 
+## v3.22.0 — 2026-09-15
+
+### Breaking changes
+
+- The `CLOCHE_RESULT` marker emitted by agent steps is now framed with a per-step random nonce (`CLOCHE_RESULT:{{ $result_nonce }}:<name>`), so a stray mention of the literal marker string inside an agent's own transcript can no longer be mistaken for the real terminal marker. Migration: any custom `.cloche/prompts/*.md` template or `agent_command` script that hardcodes `CLOCHE_RESULT:<name>` must switch to `CLOCHE_RESULT:{{ $result_nonce }}:<name>` (or read the `CLOCHE_RESULT_NONCE` env var); script/poll/skip steps are unaffected.
+- An agent step that exits 0 without ever emitting a `CLOCHE_RESULT` marker is now classified `fail` instead of `success`. Migration: custom `agent_command` scripts or agents that relied on a bare `exit 0` for success must explicitly emit the marker.
+- `cloche list` gains a TYPE column, and `cloche list --runs` an ORIGIN column, distinguishing built-in/automatic runs (e.g. the new automatic intent-scan) from user-initiated ones. Migration: scripts that parse `cloche list` output by column position must account for the inserted columns.
+
+### Features
+
+- **Intent Continuity.** A new standing-requirements system: `.cloche/intent/` holds durable project requirements extracted by a scan pipeline (`cloche intent scan`, now also runnable with no project setup as a built-in workflow) and auto-injected into agent-step prompts as a "## Standing project requirements" block (opt out per step/workflow with `intent_tracking = false`). The scan now runs automatically after the first completed `main` task by default (`intent.scan_after_tasks = true`) and uses a real embedding backend (ONNX Runtime, `intent.model` config key) for retrieval. Manage requirements with the new `cloche intent list/show/edit/disable/enable/add/preview/scan` commands or the new Intent panel on the web dashboard. ([design](docs/plans/2026-09-13-intent-continuity-design.md))
+- **Web console redesign.** The multi-page web dashboard (Projects, Project Detail, Runs, Run Detail, Task Detail) is replaced by a single-page console: a project tab bar, a task stack (Needs you / Running / Queued / Done today), and a full-width task detail pane with attempt tabs and live logs; old dashboard URLs redirect into the new routes for one release. New overlays add a per-project Ledger (pass-rate history, attempts/tokens to success), an activity stream, a Containers view (retained containers and disk usage), and a "parked" pane for replying to help-channel threads without leaving the console.
+- **"Needs you" attention dashboard.** `cloche status` and the console now surface a "Needs you" set — parked runs, stale tracker claims, repeated failures, long-running polls — with one-click actions (release claim, close/cancel in the issue tracker via a new optional host-workflow contract, run-once, mute).
+- Orchestration loop concurrency occupancy is now visible: `cloche status`/`cloche loop status` show a `Slots: <busy>/<max> busy · <queued> queued` line, and the web dashboard exposes the same data via a new endpoint.
+- `cloche doctor` gained project-scoped checks (config, workflow syntax, image build, agent-binary version) and `--project`/`--timeout` flags; `cloche init` gained `--ssh-key`/`--non-interactive`. Also new: `cloche logs --step`, `cloche set -f <file>`, `cloche project repos list`, `cloche loop status`.
+
+### Notable fixes
+
+- Fixed the orchestration loop treating a run parked at a `poll` step as still occupying a concurrency slot, which could block other tasks from launching under `MaxConcurrent: 1`.
+- Fixed the web dashboard silently failing to rebind its port after a daemon restart when a stale process still held it; the daemon now retries with backoff and reports listener health via `cloche health`.
+- Fixed several `CLOCHE_RESULT` marker false negatives: markers dropped after long agent sessions, markers embedded in a stream-JSON `result` event on the host execution path, and prompts with no declared results missing marker instructions entirely.
+- Fixed web dashboard project links 404ing when two projects shared a directory basename, by giving each project a URL-safe slug distinct from its display label.
+- Fixed `workflow_name` dispatch steps being killed by a flat 30-minute default timeout instead of one derived from the target sub-workflow's own step timeouts.
+- Fixed `agent_name` token-usage attribution reading the wrong config key, which had left most workflows' usage unattributed (existing rows are backfilled).
+- Fixed agent step transcripts being lost entirely when a step was killed mid-flight (timeout, abort, container stop, park); output is now persisted as it streams.
+
 ## v3.20.2 — 2026-08-30
 
 ### Notable fixes
