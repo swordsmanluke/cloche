@@ -47,6 +47,11 @@ type Item struct {
 	Since         time.Time `json:"since"`
 	Actions       []string  `json:"actions,omitempty"`
 	ThreadAddress string    `json:"thread_address,omitempty"` // set for KindParked
+	// Key stably identifies the item across recomputations, independent of
+	// RunID (which changes as new attempts run) — used to mute a
+	// KindBuiltinFailures item (see Mute) and to correlate an action taken
+	// on an item across a stack refresh.
+	Key string `json:"key,omitempty"`
 }
 
 // Config holds the configurable thresholds used by the derivation. Zero
@@ -183,6 +188,7 @@ func computeParked(ctx context.Context, deps Deps, projectDir string, runs []*do
 			Since:         since,
 			Actions:       []string{"reply", "resume"},
 			ThreadAddress: address,
+			Key:           string(KindParked) + ":" + r.ID,
 		})
 	}
 	return items
@@ -236,7 +242,8 @@ func computeStaleClaims(projectDir string, runs []*domain.Run, trackerTasks []ho
 			RunID:      runID,
 			Reason:     fmt.Sprintf("tracker shows %q in progress but no run is claiming it", title),
 			Since:      since,
-			Actions:    []string{"release"},
+			Actions:    []string{"release", "close", "run-once"},
+			Key:        string(KindStaleClaim) + ":" + t.ID,
 		})
 	}
 	return items
@@ -295,7 +302,8 @@ func computeRepeatFailures(projectDir string, runs []*domain.Run, trackerTasks [
 			RunID:      streak[0].ID,
 			Reason:     fmt.Sprintf("%d consecutive failed attempts, task still open in tracker", len(streak)),
 			Since:      streak[len(streak)-1].StartedAt,
-			Actions:    []string{"retry", "close"},
+			Actions:    []string{"release", "close", "run-once"},
+			Key:        string(KindRepeatFailure) + ":" + taskID,
 		})
 	}
 	return items
@@ -379,13 +387,19 @@ func computeBuiltinFailures(ctx context.Context, deps Deps, projectDir string, r
 		oldest := failed[0]
 		latest := failed[len(failed)-1]
 
+		key := string(KindBuiltinFailures) + ":" + name
+		if IsMuted(projectDir, key) {
+			continue
+		}
+
 		items = append(items, Item{
 			Kind:       KindBuiltinFailures,
 			ProjectDir: projectDir,
 			RunID:      latest.ID,
 			Reason:     fmt.Sprintf("%d failed %q runs in the last %s", len(failed), name, deps.Config.BuiltinFailureWindow),
 			Since:      oldest.StartedAt,
-			Actions:    []string{"retry", "logs"},
+			Actions:    []string{"retry", "logs", "mute"},
+			Key:        key,
 		})
 	}
 	return items

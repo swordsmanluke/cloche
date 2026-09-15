@@ -15,6 +15,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/attention"
 	"github.com/cloche-dev/cloche/internal/builtin"
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/host"
 	"github.com/cloche-dev/cloche/internal/ports"
 )
 
@@ -37,6 +38,12 @@ type TaskStackNeedsYou struct {
 	Reason  string   `json:"reason"`
 	Since   string   `json:"since"`
 	Actions []string `json:"actions,omitempty"`
+	Key     string   `json:"key,omitempty"`
+	// CloseAvailable reports whether the project defines a close/cancel task
+	// contract (see host.ResolveCloseTaskWorkflow), so the dashboard can
+	// disable the "close" action with a hint instead of only discovering
+	// it's unavailable after the user clicks it.
+	CloseAvailable bool `json:"close_available,omitempty"`
 }
 
 // TaskStackRunning is a task with a pending or running top-level run.
@@ -210,11 +217,14 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursorT
 		if err != nil {
 			return nil, fmt.Errorf("computing attention: %w", err)
 		}
+		// Resolved at most once per build (a .cloche glob+parse), and only
+		// when a stale-claim/repeat-failure item actually needs it.
+		closeAvailable := -1 // -1 = not yet resolved, 0 = false, 1 = true
 		for _, item := range items {
 			if len(stack.NeedsYou) >= taskStackNeedsYouCap {
 				break
 			}
-			stack.NeedsYou = append(stack.NeedsYou, TaskStackNeedsYou{
+			entry := TaskStackNeedsYou{
 				Kind:    string(item.Kind),
 				TaskID:  item.TaskID,
 				RunID:   item.RunID,
@@ -222,7 +232,19 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursorT
 				Reason:  item.Reason,
 				Since:   apiTimeString(item.Since),
 				Actions: item.Actions,
-			})
+				Key:     item.Key,
+			}
+			if item.Kind == attention.KindStaleClaim || item.Kind == attention.KindRepeatFailure {
+				if closeAvailable == -1 {
+					_, ok := host.ResolveCloseTaskWorkflow(projectDir)
+					closeAvailable = 0
+					if ok {
+						closeAvailable = 1
+					}
+				}
+				entry.CloseAvailable = closeAvailable == 1
+			}
+			stack.NeedsYou = append(stack.NeedsYou, entry)
 		}
 	}
 

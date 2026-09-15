@@ -87,6 +87,18 @@ workflow release-task {
   release-task:fail    -> abort
 }
 
+workflow close-task {
+  host {}
+
+  step close-task {
+    run     = "bash .cloche/scripts/close-task.sh"
+    results = [success, fail]
+  }
+
+  close-task:success -> done
+  close-task:fail    -> abort
+}
+
 workflow changelog {
   host {
     agent_command = "claude"

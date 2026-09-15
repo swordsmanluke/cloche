@@ -102,6 +102,8 @@ func TestAPITaskAttempts_RetryReasonFromPreviousFailure(t *testing.T) {
 	require.Len(t, resp.Attempts, 2)
 	assert.Empty(t, resp.Attempts[0].RetryReason, "first attempt has no prior attempt to retry from")
 	assert.Equal(t, "build", resp.Attempts[1].RetryReason)
+	assert.Equal(t, "build", resp.Attempts[0].FailedStep, "first attempt itself failed at build")
+	assert.Empty(t, resp.Attempts[1].FailedStep, "second attempt succeeded")
 }
 
 func TestAPIRunBranch_NoneRecorded(t *testing.T) {

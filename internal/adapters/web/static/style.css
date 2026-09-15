@@ -580,6 +580,74 @@ h2 {
 
 .console-header-actions { display: flex; gap: 0.4rem; margin-left: auto; }
 
+.console-why-line {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin: -0.5rem 0 1rem;
+    max-width: 60ch;
+}
+
+.console-run-once-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.console-run-once-form label { font-size: 0.8rem; color: var(--text-muted); }
+
+.console-run-once-form input,
+.console-run-once-form textarea {
+    font-family: var(--font);
+    font-size: 0.85rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.4em 0.6em;
+    color: var(--text);
+}
+
+.console-run-once-form textarea { min-height: 4rem; resize: vertical; }
+
+.console-run-once-form button { align-self: flex-start; }
+
+.console-compare-columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.console-compare-column {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.console-compare-column-head {
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0.4em 0.6em;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.console-compare-column-log {
+    margin: 0;
+    padding: 0.6em;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow: auto;
+    max-height: 60vh;
+    flex: 1 1 auto;
+}
+
 .console-action-panel {
     background: var(--bg-surface);
     border: 1px solid var(--border);

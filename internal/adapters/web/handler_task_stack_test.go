@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -233,6 +235,84 @@ func TestAPITaskStack_NeedsYou(t *testing.T) {
 	assert.Equal(t, "parked", string(stack.NeedsYou[0].Kind))
 	assert.Equal(t, "task-p", stack.NeedsYou[0].TaskID)
 	assert.Equal(t, []string{"reply"}, stack.NeedsYou[0].Actions)
+	// KindParked isn't one of the kinds the close action applies to, so
+	// CloseAvailable stays false regardless of the project's workflows.
+	assert.False(t, stack.NeedsYou[0].CloseAvailable)
+}
+
+func TestAPITaskStack_NeedsYou_CloseAvailableForRepeatFailure(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	seed := domain.NewRun("seed", "develop")
+	seed.ProjectDir = taskStackProjectDir
+	seed.State = domain.RunStateSucceeded
+	seed.StartedAt = time.Now()
+	seed.CompletedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, seed))
+
+	since := time.Now().Add(-time.Hour)
+	h.attentionProvider = &mockAttentionProvider{
+		items: map[string][]attention.Item{
+			taskStackProjectDir: {
+				{Kind: attention.KindRepeatFailure, ProjectDir: taskStackProjectDir, TaskID: "task-r", RunID: "run-r", Reason: "3 failures", Since: since, Actions: []string{"release", "close", "run-once"}, Key: "repeat-failure:task-r"},
+			},
+		},
+	}
+
+	// No .cloche directory exists at taskStackProjectDir, so no close/cancel
+	// contract is defined — CloseAvailable must be false.
+	_, stack := getTaskStack(t, h, "")
+	require.Len(t, stack.NeedsYou, 1)
+	assert.Equal(t, "repeat-failure:task-r", stack.NeedsYou[0].Key)
+	assert.False(t, stack.NeedsYou[0].CloseAvailable)
+}
+
+func TestAPITaskStack_NeedsYou_CloseAvailableWhenContractDefined(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := t.TempDir()
+	slug := filepath.Base(projectDir)
+	clocheDir := filepath.Join(projectDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	content := `workflow close-task {
+  host {}
+  step close-task {
+    run     = "echo closed"
+    results = [success, fail]
+  }
+  close-task:success -> done
+  close-task:fail    -> abort
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(content), 0644))
+
+	seed := domain.NewRun("seed-close", "develop")
+	seed.ProjectDir = projectDir
+	seed.State = domain.RunStateSucceeded
+	seed.StartedAt = time.Now()
+	seed.CompletedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, seed))
+
+	since := time.Now().Add(-time.Hour)
+	h.attentionProvider = &mockAttentionProvider{
+		items: map[string][]attention.Item{
+			projectDir: {
+				{Kind: attention.KindRepeatFailure, ProjectDir: projectDir, TaskID: "task-r", RunID: "run-r", Reason: "3 failures", Since: since, Actions: []string{"release", "close", "run-once"}, Key: "repeat-failure:task-r"},
+			},
+		},
+	}
+
+	req := httptest.NewRequest("GET", "/api/projects/"+slug+"/tasks/stack", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var stack TaskStack
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&stack))
+	require.Len(t, stack.NeedsYou, 1)
+	assert.True(t, stack.NeedsYou[0].CloseAvailable)
 }
 
 func TestAPITaskStack_NoProvidersConfigured(t *testing.T) {

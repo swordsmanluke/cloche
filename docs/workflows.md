@@ -28,6 +28,12 @@ automatic orchestration loop — it is invoked on demand (e.g. from the web dash
 release a stale claimed task back to `open` status. Receives `CLOCHE_TASK_ID` for the
 task to release.
 
+Similarly, a **`close-task`** (or **`cancel-task`**) host workflow may be defined for
+the dashboard's "Close in tracker" needs-you action, marking a task done/cancelled from
+outside `main` — e.g. giving up on a task with too many repeat failures. Also invoked
+on demand, also receives `CLOCHE_TASK_ID`. The dashboard disables the action with a
+hint when a project defines neither name.
+
 Only `main` is required. If `list-tasks` is absent, the daemon runs `main`
 continuously using a sentinel task (no task ID tracking).
 

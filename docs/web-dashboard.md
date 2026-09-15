@@ -80,7 +80,25 @@ Shows the selected task's full detail:
   parked — parked also shows how long the run has been parked, e.g. "parked · 12m"), the
   title, and state-dependent actions: running → Console (raw container output), Workflow
   (step/wire summary), Cancel; done → Open branch, Diff, Delete container; queued → Cancel;
-  parked → Cancel. Needs-you tasks show no actions yet.
+  parked → Cancel. A needs-you task's actions come from the attention item's own `actions`
+  list (see below) rather than a fixed set per state.
+- **Needs-you why-line and compare view** — when the selected task's attention kind is
+  `stale-claim` or `repeat-failure`, a one-sentence why-line (the attention item's
+  `reason`) appears under the header, and the log area defaults to a compare view: one
+  column per failed attempt (the last three; older ones are not yet individually
+  selectable), each showing the failing step's log trimmed to start at its first
+  failure-looking line, fetched from `GET /api/runs/{id}/steps/{step}/output` using the
+  `failed_step` named on each attempt (`GET /api/projects/{slug}/tasks/{taskId}/attempts`).
+  Press `c` to toggle back to the ordinary single-attempt log, and again to return to the
+  compare view. Available actions, driven by the item's `actions` list: **Release claim**
+  (`POST .../tasks/{taskId}/release`), **Close in tracker** (`POST .../tasks/{taskId}/close`
+  — runs the project's `close-task`/`cancel-task` host workflow contract; disabled with a
+  hint when the project defines neither), and **Run once…** (`POST
+  .../tasks/{taskId}/run-once` with a chosen workflow name and optional prompt — dispatches
+  a single attempt outside the orchestration loop). A `builtin-failures` item instead offers
+  **Mute** (`POST /api/projects/{slug}/attention/mute`), which permanently suppresses that
+  workflow's repeated-failure item. All four actions refresh the task stack in place
+  (`GET .../tasks/stack`) rather than reloading the page.
 - **Facts row** — attempt tabs (number, run ID, outcome, duration; only shown when a task
   has more than one attempt; `[` and `]` switch between them), plus the selected attempt's
   top-level run ID, child run IDs, container ID and state, token usage per agent, the
@@ -135,7 +153,7 @@ The pre-console URLs (`/`, `/projects/{name}[/runs]`, `/runs[/{id}]`, `/tasks/{i
 | `g` / `G` | Scroll the log to the top / bottom |
 | `w` | Open the Workflows view |
 | `i` | Open the Intent view |
-| `c` | Open the Containers view |
+| `c` | Open the Containers view, or toggle the needs-you compare view / single-attempt log when one is open |
 | `?` | Toggle the keyboard shortcuts overlay |
 
 ### Foot bar
@@ -194,8 +212,17 @@ The dashboard's JSON endpoints remain stable and are also used by the CLI
 - `GET /api/projects/{name}/tasks` — the orchestration loop's live task snapshot.
 - `GET /api/projects/{name}/tasks/stack` — the grouped, bounded task stack (see above).
 - `GET /api/projects/{name}/tasks/{taskId}/attempts` — a task's attempts (oldest first),
-  each with its run ID, outcome, duration, and retry reason — backs the centre pane's
-  attempt tabs.
+  each with its run ID, outcome, duration, retry reason, and the step it itself failed at
+  (`failed_step`) — backs the centre pane's attempt tabs and the needs-you compare view.
+- `POST /api/projects/{name}/tasks/{taskId}/release` — releases a stale claim back to open.
+- `POST /api/projects/{name}/tasks/{taskId}/close` — runs the project's `close-task`/
+  `cancel-task` host workflow contract for the task; `501` with a `hint` when neither is
+  defined.
+- `POST /api/projects/{name}/tasks/{taskId}/run-once` — dispatches a single attempt of a
+  named workflow (and optional prompt) for the task, outside the orchestration loop.
+- `POST /api/projects/{name}/attention/mute` — mutes a "Needs you" item by its `key`
+  (see `GET .../tasks/stack`'s `needs_you[].key`); currently only meaningful for
+  `builtin-failures` items.
 - `GET /api/projects/{name}/loop/status`, `POST /loop/stop`, `POST /trigger` — loop control.
 - `GET /api/projects/{name}/loop/occupancy`, `GET /api/projects/occupancy` — concurrency
   slots and queue depth, per-project and all-projects.

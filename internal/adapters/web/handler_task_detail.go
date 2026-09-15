@@ -23,6 +23,10 @@ type apiAttempt struct {
 	// RetryReason names the step where the *previous* attempt failed, empty
 	// for the first attempt.
 	RetryReason string `json:"retry_reason,omitempty"`
+	// FailedStep names the step where *this* attempt itself failed, empty if
+	// it didn't fail. Used by the needs-you compare view to fetch each
+	// attempt's failing-step log (see handleAPIStepOutput).
+	FailedStep string `json:"failed_step,omitempty"`
 }
 
 // apiTaskAttempts is the response for GET /api/projects/{name}/tasks/{taskId}/attempts.
@@ -74,6 +78,7 @@ func (h *Handler) handleAPITaskAttempts(w http.ResponseWriter, r *http.Request) 
 	for i, tr := range topLevel {
 		allInAttempt := append([]*domain.Run{tr}, parentMap[tr.ID]...)
 		status := taskAggregateStatus(allInAttempt)
+		failedStep := h.firstFailedStepLabel(r.Context(), tr.ID)
 
 		attempts = append(attempts, apiAttempt{
 			AttemptNum:  i + 1,
@@ -84,8 +89,9 @@ func (h *Handler) handleAPITaskAttempts(w http.ResponseWriter, r *http.Request) 
 			CompletedAt: formatTime(tr.CompletedAt),
 			Duration:    formatRunTiming(tr.State, tr.StartedAt, tr.CompletedAt),
 			RetryReason: prevFailedStep,
+			FailedStep:  failedStep,
 		})
-		prevFailedStep = h.firstFailedStepLabel(r.Context(), tr.ID)
+		prevFailedStep = failedStep
 	}
 
 	taskTitles := h.taskTitlesFromRuns(runs)

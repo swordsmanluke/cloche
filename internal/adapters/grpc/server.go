@@ -3838,6 +3838,65 @@ func (s *ClocheServer) ReleaseTask(ctx context.Context, projectDir string, taskI
 	return nil
 }
 
+// CloseTask runs the project's close/cancel task contract — a standalone
+// "close-task" or "cancel-task" host workflow, mirroring release-task — for
+// a specific task, so it can be marked done/cancelled in the tracker from
+// outside the main pipeline (e.g. giving up on a repeat-failure task).
+// Returns host.ErrNoCloseContract if the project defines neither workflow.
+func (s *ClocheServer) CloseTask(ctx context.Context, projectDir string, taskID string) error {
+	workflowName, ok := host.ResolveCloseTaskWorkflow(projectDir)
+	if !ok {
+		return host.ErrNoCloseContract
+	}
+	runner := &host.Runner{
+		Store:        s.store,
+		Captures:     s.captures,
+		LogBroadcast: s.logBroadcast,
+		TaskID:       taskID,
+	}
+	result, err := runner.RunNamed(ctx, projectDir, workflowName)
+	if err != nil {
+		return fmt.Errorf("%s workflow failed: %w", workflowName, err)
+	}
+	if result.State != domain.RunStateSucceeded {
+		return fmt.Errorf("%s workflow finished with state %s", workflowName, result.State)
+	}
+	return nil
+}
+
+// RunOnce dispatches a single attempt of workflowName for taskID outside the
+// orchestration loop — backing the needs-you "run once" action, which lets an
+// operator retry a stuck task without waiting for (or re-entering) the
+// loop's claim cycle. prompt, when non-empty, is written as the run's prompt
+// file, overriding the workflow's own prompt resolution. Returns the new
+// run's ID.
+func (s *ClocheServer) RunOnce(ctx context.Context, projectDir, taskID, workflowName, prompt string) (string, error) {
+	if workflowName == "" {
+		return "", fmt.Errorf("workflow name is required")
+	}
+	resp, err := s.RunWorkflow(ctx, &pb.RunWorkflowRequest{
+		ProjectDir:   projectDir,
+		WorkflowName: workflowName,
+		IssueId:      taskID,
+		Prompt:       prompt,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.RunId, nil
+}
+
+// MuteAttentionItem suppresses a "Needs you" item (identified by
+// attention.Item.Key) from future attention computations for projectDir.
+// Currently only meaningful for KindBuiltinFailures items — the one kind the
+// dashboard exposes a "mute" action for.
+func (s *ClocheServer) MuteAttentionItem(ctx context.Context, projectDir, key string) error {
+	if key == "" {
+		return fmt.Errorf("key is required")
+	}
+	return attention.Mute(projectDir, key)
+}
+
 func (s *ClocheServer) DisableLoop(ctx context.Context, req *pb.DisableLoopRequest) (*pb.DisableLoopResponse, error) {
 	projectDir := normalizeProjectDir(req.ProjectDir)
 	if projectDir == "" {

@@ -173,6 +173,7 @@ func main() {
 			web.WithTaskProvider(srv),
 			web.WithTaskStore(store),
 			web.WithAttentionProvider(srv),
+			web.WithAttentionMuter(srv),
 			web.WithOccupancyProvider(srv),
 			web.WithActivityStore(store),
 			web.WithOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {

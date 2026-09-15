@@ -595,7 +595,14 @@
                 e.preventDefault();
                 break;
             case 'c':
-                openContainersView();
+                // A needs-you compare-eligible task open in the centre pane
+                // claims 'c' for its compare/single-log toggle; otherwise it
+                // opens the Containers view, as advertised in the header button.
+                if (detail && detail.entry && isNeedsYouCompareKind(detail.entry.kind)) {
+                    toggleCompareView();
+                } else {
+                    openContainersView();
+                }
                 e.preventDefault();
                 break;
             case '?':
@@ -783,10 +790,15 @@
             logSkipped: 0,
             eventSource: null,
             pollTimer: null,
-            threadLoadedFor: '' // run id the thread panel was last loaded for, '' = not loaded
+            threadLoadedFor: '', // run id the thread panel was last loaded for, '' = not loaded
+            // compareMode defaults on for a needs-you task whose attention
+            // kind is stale-claim/repeat-failure (see isNeedsYouCompareKind);
+            // 'c' toggles it off/on for the rest of this session.
+            compareMode: group === 'needs_you' && isNeedsYouCompareKind(entry.kind)
         };
 
         renderDetailShell();
+        renderWhyLine();
 
         if (!detail.taskId) {
             // Ad-hoc run (no task record) — there's exactly one implicit attempt.
@@ -813,6 +825,12 @@
         header.className = 'console-task-header';
         header.id = 'console-task-header';
         el.appendChild(header);
+
+        var whyLine = document.createElement('div');
+        whyLine.className = 'console-why-line';
+        whyLine.id = 'console-why-line';
+        whyLine.hidden = true;
+        el.appendChild(whyLine);
 
         var actionPanel = document.createElement('div');
         actionPanel.className = 'console-action-panel';
@@ -881,12 +899,7 @@
         stopDetailPoll();
 
         var attempt = detail.attempts[index];
-        renderLogPaneShell();
-        if (attempt.attempt_id) {
-            startDetailLogStream('attempt', attempt.attempt_id);
-        } else {
-            startDetailLogStream('run', attempt.run_id);
-        }
+        renderLogArea();
 
         fetchRunDetail(attempt.run_id).then(function (run) {
             if (!detail || detail.attempts[detail.attemptIndex] !== attempt) return; // stale
@@ -1062,8 +1075,157 @@
             if (run.container_state === 'available' || run.container_state === 'stopped') {
                 actions.appendChild(actionButton('Delete container', function () { deleteContainerForRun(run); }, 'btn-danger'));
             }
+        } else if (headerState === 'needs_you') {
+            renderNeedsYouActions(actions);
         }
         el.appendChild(actions);
+    }
+
+    // isNeedsYouCompareKind reports whether an attention Kind gets the full
+    // needs-you treatment (why-line + compare log view) — stale-claim and
+    // repeat-failure both name a specific task with an attempt history to
+    // compare; other kinds (parked, long-poll, builtin-failures) keep the
+    // ordinary single-attempt view.
+    function isNeedsYouCompareKind(kind) {
+        return kind === 'stale-claim' || kind === 'repeat-failure';
+    }
+
+    // renderWhyLine shows the attention item's one-sentence Reason under the
+    // header for compare-kind needs-you tasks. Independent of run/attempt
+    // load, since it only depends on the stack entry that was clicked.
+    function renderWhyLine() {
+        var el = document.getElementById('console-why-line');
+        if (!el || !detail) return;
+        if (detail.group === 'needs_you' && isNeedsYouCompareKind(detail.entry.kind) && detail.entry.reason) {
+            el.textContent = detail.entry.reason;
+            el.hidden = false;
+        } else {
+            el.hidden = true;
+        }
+    }
+
+    // renderNeedsYouActions renders whichever action buttons apply to the
+    // open needs-you item, driven entirely by the attention item's own
+    // Actions list (see internal/attention) — release/close/run-once for
+    // stale-claim & repeat-failure, mute for builtin-failures. Parked and
+    // long-poll items declare no button handled here, matching "Needs-you
+    // ... show no actions yet" until their own tickets add them.
+    function renderNeedsYouActions(actions) {
+        var entry = detail.entry || {};
+        var available = entry.actions || [];
+        function has(a) { return available.indexOf(a) !== -1; }
+
+        if (has('release')) {
+            actions.appendChild(actionButton('Release claim', function () { releaseTask(); }));
+        }
+        if (has('close')) {
+            var closeBtn = actionButton('Close in tracker', function () { closeTask(); }, 'btn-danger');
+            if (!entry.close_available) {
+                closeBtn.disabled = true;
+                closeBtn.title = 'Define a "close-task" or "cancel-task" host workflow to enable this.';
+            }
+            actions.appendChild(closeBtn);
+        }
+        if (has('run-once')) {
+            actions.appendChild(actionButton('Run once…', function () { openRunOncePanel(); }));
+        }
+        if (has('mute')) {
+            actions.appendChild(actionButton('Mute', function () { muteAttentionItem(); }));
+        }
+    }
+
+    // afterNeedsYouAction refreshes the task stack in place (no page reload)
+    // after release/close/run-once/mute, and reloads the open task's
+    // attempts so the centre pane reflects the new state too.
+    function afterNeedsYouAction() {
+        loadStack(false); // incremental refresh — the ETag is now stale, so this still fetches fresh data
+        if (detail && detail.taskId) loadAttempts();
+    }
+
+    function releaseTask() {
+        if (!detail || !detail.taskId) return;
+        fetch('/api/projects/' + encodeURIComponent(state.activeSlug) + '/tasks/' + encodeURIComponent(detail.taskId) + '/release', { method: 'POST' })
+            .then(afterNeedsYouAction)
+            .catch(function () {});
+    }
+
+    function closeTask() {
+        if (!detail || !detail.taskId) return;
+        fetch('/api/projects/' + encodeURIComponent(state.activeSlug) + '/tasks/' + encodeURIComponent(detail.taskId) + '/close', { method: 'POST' })
+            .then(function (r) {
+                return r.json().catch(function () { return {}; }).then(function (body) { return { ok: r.ok, body: body }; });
+            })
+            .then(function (result) {
+                if (!result.ok) {
+                    showActionPanel('Close in tracker', actionPre(result.body.hint || result.body.error || 'Failed to close task.'));
+                    return;
+                }
+                afterNeedsYouAction();
+            })
+            .catch(function () {});
+    }
+
+    function muteAttentionItem() {
+        if (!detail || !detail.entry || !detail.entry.key) return;
+        fetch('/api/projects/' + encodeURIComponent(state.activeSlug) + '/attention/mute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: detail.entry.key })
+        }).then(afterNeedsYouAction).catch(function () {});
+    }
+
+    function openRunOncePanel() {
+        if (!detail) return;
+        var wrap = document.createElement('div');
+        wrap.className = 'console-run-once-form';
+
+        var wfLabel = document.createElement('label');
+        wfLabel.textContent = 'Workflow';
+        wrap.appendChild(wfLabel);
+        var wfInput = document.createElement('input');
+        wfInput.type = 'text';
+        wfInput.placeholder = 'e.g. develop';
+        wrap.appendChild(wfInput);
+
+        var promptLabel = document.createElement('label');
+        promptLabel.textContent = 'Prompt (optional)';
+        wrap.appendChild(promptLabel);
+        var promptInput = document.createElement('textarea');
+        wrap.appendChild(promptInput);
+
+        var status = document.createElement('p');
+        status.className = 'console-facts-note';
+        wrap.appendChild(status);
+
+        var runBtn = document.createElement('button');
+        runBtn.type = 'button';
+        runBtn.className = 'btn btn-sm btn-primary';
+        runBtn.textContent = 'Run once';
+        runBtn.addEventListener('click', function () {
+            var workflow = wfInput.value.trim();
+            if (!workflow) return;
+            runBtn.disabled = true;
+            status.textContent = 'Dispatching…';
+            fetch('/api/projects/' + encodeURIComponent(state.activeSlug) + '/tasks/' + encodeURIComponent(detail.taskId) + '/run-once', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workflow: workflow, prompt: promptInput.value })
+            }).then(function (r) { return r.json(); }).then(function (body) {
+                runBtn.disabled = false;
+                if (body.run_id) {
+                    hideActionPanel();
+                    afterNeedsYouAction();
+                } else {
+                    status.textContent = body.error || 'Failed to dispatch run.';
+                }
+            }).catch(function () {
+                runBtn.disabled = false;
+                status.textContent = 'Failed to dispatch run.';
+            });
+        });
+        wrap.appendChild(runBtn);
+
+        showActionPanel('Run once', wrap);
     }
 
     function actionButton(label, onClick, extraClass) {
@@ -1581,6 +1743,121 @@
     }
 
     // ---------- centre pane: log pane ----------
+
+    // renderLogArea renders whichever log view is currently active for the
+    // selected attempt: the compare view (needs-you compare-kind tasks,
+    // unless toggled off with 'c') or the ordinary single-attempt streaming
+    // log. Always stops any live stream first, since switching modes (or
+    // attempts) must not leave a stale EventSource running in the background.
+    function renderLogArea() {
+        stopLogStream();
+        if (detail.compareMode) {
+            renderCompareView();
+            return;
+        }
+        renderLogPaneShell();
+        var attempt = detail.attempts[detail.attemptIndex];
+        if (!attempt) return;
+        if (attempt.attempt_id) {
+            startDetailLogStream('attempt', attempt.attempt_id);
+        } else {
+            startDetailLogStream('run', attempt.run_id);
+        }
+    }
+
+    // toggleCompareView is bound to 'c': flips between the needs-you compare
+    // view and the ordinary single-attempt log for the rest of this task's
+    // session. No-op for tasks that never had a compare view to begin with.
+    function toggleCompareView() {
+        if (!detail || !detail.entry || !isNeedsYouCompareKind(detail.entry.kind)) return;
+        detail.compareMode = !detail.compareMode;
+        renderLogArea();
+    }
+
+    // renderCompareView renders one column per failed attempt (newest three,
+    // oldest of the three first) inside the log-pane region, each showing
+    // the failing step's log trimmed to start at its first failure-looking
+    // line — see alignToFirstFailureLine. Falls back to the last up-to-three
+    // attempts, failed or not, if none recorded a failing step (e.g. a
+    // stale-claim task where the loop simply never came back to reclaim it).
+    function renderCompareView() {
+        var el = document.getElementById('console-log-pane');
+        if (!el) return;
+        el.innerHTML = '';
+
+        var toolbar = document.createElement('div');
+        toolbar.className = 'console-log-toolbar';
+        var label = document.createElement('span');
+        label.className = 'badge badge-failed';
+        label.textContent = 'Compare view — press c for the single-attempt log';
+        toolbar.appendChild(label);
+        el.appendChild(toolbar);
+
+        var columnsWrap = document.createElement('div');
+        columnsWrap.className = 'console-compare-columns';
+        el.appendChild(columnsWrap);
+
+        var attempts = detail.attempts || [];
+        var picked = [];
+        for (var i = attempts.length - 1; i >= 0 && picked.length < 3; i--) {
+            if (attempts[i].failed_step) picked.unshift(attempts[i]);
+        }
+        if (!picked.length) {
+            picked = attempts.slice(Math.max(0, attempts.length - 3));
+        }
+
+        if (!picked.length) {
+            var empty = document.createElement('div');
+            empty.className = 'console-centre-empty';
+            empty.textContent = 'No attempts to compare yet.';
+            columnsWrap.appendChild(empty);
+            return;
+        }
+
+        picked.forEach(function (attempt) { columnsWrap.appendChild(buildCompareColumn(attempt)); });
+    }
+
+    function buildCompareColumn(attempt) {
+        var col = document.createElement('div');
+        col.className = 'console-compare-column';
+
+        var head = document.createElement('div');
+        head.className = 'console-compare-column-head';
+        var headText = '#' + attempt.attempt_num;
+        if (attempt.failed_step) headText += ' · ' + attempt.failed_step;
+        if (attempt.outcome) headText += ' · ' + attempt.outcome;
+        head.textContent = headText;
+        col.appendChild(head);
+
+        var pre = document.createElement('pre');
+        pre.className = 'console-compare-column-log';
+
+        if (!attempt.failed_step) {
+            pre.textContent = 'This attempt did not fail.';
+        } else {
+            pre.textContent = 'Loading…';
+            fetch('/api/runs/' + encodeURIComponent(attempt.run_id) + '/steps/' + encodeURIComponent(attempt.failed_step) + '/output')
+                .then(function (r) { return r.ok ? r.text() : Promise.reject(); })
+                .then(function (text) { pre.textContent = alignToFirstFailureLine(text) || '(empty)'; })
+                .catch(function () { pre.textContent = 'No output available for this step.'; });
+        }
+
+        col.appendChild(pre);
+        return col;
+    }
+
+    // alignToFirstFailureLine trims a step's log to start at the first line
+    // that looks like a failure indicator, so the compare columns line up on
+    // their respective failures rather than on unrelated leading output.
+    // Falls back to the full text when no such line is found.
+    function alignToFirstFailureLine(text) {
+        var lines = text.split('\n');
+        var markerRe = /error|exception|panic|traceback|fail(ed|ure)?|fatal/i;
+        for (var i = 0; i < lines.length; i++) {
+            if (markerRe.test(lines[i])) return lines.slice(i).join('\n');
+        }
+        return text;
+    }
 
     function renderLogPaneShell() {
         var el = document.getElementById('console-log-pane');

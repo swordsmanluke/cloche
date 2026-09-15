@@ -379,6 +379,12 @@ web dashboard) to release a stale claimed task back to `open` status. A task is
 considered stale when it has `in_progress` status but no active worker is running for
 it (e.g. after a failed run or daemon restart). The workflow receives `CLOCHE_TASK_ID`.
 
+Similarly, a **`close-task`** (or **`cancel-task`**) host workflow may be defined for
+the dashboard's "Close in tracker" needs-you action, marking a task done/cancelled from
+outside `main` — e.g. giving up on a task with too many repeat failures. Also invoked
+on demand, also receives `CLOCHE_TASK_ID`. The dashboard disables the action with a
+hint when a project defines neither name.
+
 Only `main` is required. If `list-tasks` is absent, the daemon runs `main`
 continuously using an untracked sentinel task.
 
@@ -525,8 +531,15 @@ An optional workflow, **`release-task`**, can be defined for releasing stale cla
 tasks back to open status. It is not part of the automatic loop — it runs on demand,
 triggered via `POST /api/projects/{name}/tasks/{id}/release`.
 
+An optional workflow, **`close-task`** (or **`cancel-task`**), can be defined as the
+dashboard's "close in tracker" contract — marking a task done/cancelled from outside
+the main pipeline, e.g. giving up on a task with too many repeat failures. Like
+`release-task`, it's not part of the automatic loop; it runs on demand, triggered via
+`POST /api/projects/{name}/tasks/{id}/close`. If neither name is defined, the
+dashboard's "Close in tracker" action stays disabled with a hint.
+
 These host workflows can live in any `.cloche` file(s). Only `main` is required;
-`list-tasks` and `release-task` are optional.
+`list-tasks`, `release-task`, and `close-task`/`cancel-task` are optional.
 
 ### `list-tasks` — Discovering Work
 
@@ -630,6 +643,36 @@ workflow "release-task" {
 
   release-task:success -> done
   release-task:fail    -> abort
+}
+```
+
+### `close-task` / `cancel-task` — Closing or Cancelling from the Dashboard
+
+Either workflow name handles the dashboard's "Close in tracker" needs-you action —
+marking a task done or cancelled in your tracker without waiting for (or going
+through) the normal `main` pipeline. A common use is giving up on a task that has
+failed too many times in a row (the `repeat-failure` attention kind) or a stale
+claim you'd rather close out than release back to the loop.
+
+**When it runs:** On demand, via `POST /api/projects/{name}/tasks/{id}/close`. The
+daemon sets `CLOCHE_TASK_ID` to the task being closed. If a project defines neither
+`close-task` nor `cancel-task`, the dashboard disables the action with a hint instead
+of failing at click time.
+
+**How to configure:** Reuse the same script your `main` pipeline's own close step
+calls on success, if you have one:
+
+```
+workflow "close-task" {
+  host {}
+
+  step close-task {
+    run     = "bash .cloche/scripts/close-task.sh"
+    results = [success, fail]
+  }
+
+  close-task:success -> done
+  close-task:fail    -> abort
 }
 ```
 

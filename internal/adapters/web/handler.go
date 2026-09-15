@@ -70,6 +70,11 @@ func WithAttentionProvider(ap AttentionProvider) HandlerOption {
 	return func(h *Handler) { h.attentionProvider = ap }
 }
 
+// WithAttentionMuter sets the provider used to mute a "Needs you" item.
+func WithAttentionMuter(am AttentionMuter) HandlerOption {
+	return func(h *Handler) { h.attentionMuter = am }
+}
+
 // WithOccupancyProvider sets the provider for querying orchestration loop
 // concurrency-slot occupancy (slots/queued/polls and the all-projects summary).
 func WithOccupancyProvider(op OccupancyProvider) HandlerOption {
@@ -161,11 +166,26 @@ type TaskEntry struct {
 type TaskProvider interface {
 	GetLoopTasks(projectDir string) []TaskEntry
 	ReleaseTask(ctx context.Context, projectDir string, taskID string) error
+	// CloseTask runs the project's close/cancel task contract for taskID —
+	// see host.ResolveCloseTaskWorkflow. Returns an error satisfying
+	// errors.Is(err, host.ErrNoCloseContract) when the project defines
+	// neither workflow, which the handler surfaces as "not available" rather
+	// than a failure.
+	CloseTask(ctx context.Context, projectDir string, taskID string) error
+	// RunOnce dispatches a single attempt of workflowName for taskID outside
+	// the orchestration loop, returning the new run's ID.
+	RunOnce(ctx context.Context, projectDir, taskID, workflowName, prompt string) (string, error)
 }
 
 // AttentionProvider computes the "Needs you" attention set for a project.
 type AttentionProvider interface {
 	AttentionItems(ctx context.Context, projectDir string) ([]attention.Item, error)
+}
+
+// AttentionMuter suppresses a "Needs you" item (identified by
+// attention.Item.Key) from future attention computations.
+type AttentionMuter interface {
+	MuteAttentionItem(ctx context.Context, projectDir, key string) error
 }
 
 // OccupancySlot describes a single busy concurrency slot: an in-flight host
@@ -240,6 +260,7 @@ type Handler struct {
 	taskStore         ports.TaskStore
 	activityStore     ports.ActivityStore
 	attentionProvider AttentionProvider
+	attentionMuter    AttentionMuter
 	occupancyProvider OccupancyProvider
 	orchestrateFn     func(ctx context.Context, projectDir string) (int, error)
 	loopStatusFn      func(projectDir string) bool
@@ -324,6 +345,9 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks/{taskId}/attempts", h.handleAPITaskAttempts)
 	h.mux.HandleFunc("GET /api/activity", h.handleAPIActivity)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
+	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/close", h.handleAPICloseTask)
+	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/run-once", h.handleAPIRunOnce)
+	h.mux.HandleFunc("POST /api/projects/{name}/attention/mute", h.handleAPIMuteAttention)
 	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
 	h.mux.HandleFunc("GET /api/projects/{name}/loop/status", h.handleAPILoopStatus)
 	h.mux.HandleFunc("POST /api/projects/{name}/loop/stop", h.handleAPILoopStop)

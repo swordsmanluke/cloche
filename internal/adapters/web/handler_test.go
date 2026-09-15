@@ -9,12 +9,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/attention"
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/host"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1422,6 +1424,13 @@ type mockTaskProvider struct {
 	tasks        map[string][]TaskEntry // projectDir -> tasks
 	releasedTask string                 // last released task ID
 	releaseErr   error                  // error to return from ReleaseTask
+	closedTask   string                 // last closed task ID
+	closeErr     error                  // error to return from CloseTask
+	runOnceTask  string                 // last task ID passed to RunOnce
+	runOnceWF    string                 // last workflow name passed to RunOnce
+	runOncePr    string                 // last prompt passed to RunOnce
+	runOnceRunID string                 // run ID to return from RunOnce
+	runOnceErr   error                  // error to return from RunOnce
 }
 
 func (m *mockTaskProvider) GetLoopTasks(projectDir string) []TaskEntry {
@@ -1436,10 +1445,44 @@ func (m *mockTaskProvider) ReleaseTask(ctx context.Context, projectDir string, t
 	return nil
 }
 
+func (m *mockTaskProvider) CloseTask(ctx context.Context, projectDir string, taskID string) error {
+	if m.closeErr != nil {
+		return m.closeErr
+	}
+	m.closedTask = taskID
+	return nil
+}
+
+func (m *mockTaskProvider) RunOnce(ctx context.Context, projectDir, taskID, workflowName, prompt string) (string, error) {
+	if m.runOnceErr != nil {
+		return "", m.runOnceErr
+	}
+	m.runOnceTask = taskID
+	m.runOnceWF = workflowName
+	m.runOncePr = prompt
+	return m.runOnceRunID, nil
+}
+
 // mockAttentionProvider implements AttentionProvider for testing.
 type mockAttentionProvider struct {
 	items map[string][]attention.Item // projectDir -> items
 	err   error
+}
+
+// mockAttentionMuter implements AttentionMuter for testing.
+type mockAttentionMuter struct {
+	mutedDir string
+	mutedKey string
+	err      error
+}
+
+func (m *mockAttentionMuter) MuteAttentionItem(_ context.Context, projectDir, key string) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.mutedDir = projectDir
+	m.mutedKey = key
+	return nil
 }
 
 func (m *mockAttentionProvider) AttentionItems(_ context.Context, projectDir string) ([]attention.Item, error) {
@@ -1678,6 +1721,207 @@ func TestAPITasks_StaleField(t *testing.T) {
 	assert.False(t, tasks[0].Stale)
 	assert.True(t, tasks[1].Stale)
 	assert.False(t, tasks[2].Stale)
+}
+
+func TestAPICloseTask_Success(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	tp := &mockTaskProvider{}
+	h.taskProvider = tp
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/task-1/close", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "task-1", tp.closedTask)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "ok", resp["status"])
+}
+
+func TestAPICloseTask_NoProvider(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/task-1/close", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAPICloseTask_NoContract(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	tp := &mockTaskProvider{closeErr: host.ErrNoCloseContract}
+	h.taskProvider = tp
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/task-1/close", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotImplemented, w.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.NotEmpty(t, resp["hint"])
+}
+
+func TestAPICloseTask_Error(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	tp := &mockTaskProvider{closeErr: fmt.Errorf("workflow failed")}
+	h.taskProvider = tp
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/task-1/close", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestAPIRunOnce_Success(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	tp := &mockTaskProvider{runOnceRunID: "run-once-1"}
+	h.taskProvider = tp
+
+	body := strings.NewReader(`{"workflow":"develop","prompt":"try again"}`)
+	req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/task-1/run-once", body)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "task-1", tp.runOnceTask)
+	assert.Equal(t, "develop", tp.runOnceWF)
+	assert.Equal(t, "try again", tp.runOncePr)
+
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "ok", resp["status"])
+	assert.Equal(t, "run-once-1", resp["run_id"])
+}
+
+func TestAPIRunOnce_MissingWorkflow(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	h.taskProvider = &mockTaskProvider{}
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/task-1/run-once", strings.NewReader(`{}`))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAPIRunOnce_Error(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	h.taskProvider = &mockTaskProvider{runOnceErr: fmt.Errorf("dispatch failed")}
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/task-1/run-once", strings.NewReader(`{"workflow":"develop"}`))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestAPIMuteAttention_Success(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	am := &mockAttentionMuter{}
+	h.attentionMuter = am
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/attention/mute", strings.NewReader(`{"key":"builtin-failures:intent-scan"}`))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, projectDir, am.mutedDir)
+	assert.Equal(t, "builtin-failures:intent-scan", am.mutedKey)
+}
+
+func TestAPIMuteAttention_MissingKey(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	h.attentionMuter = &mockAttentionMuter{}
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/attention/mute", strings.NewReader(`{}`))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAPIMuteAttention_NoProvider(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	req := httptest.NewRequest("POST", "/api/projects/myapp/attention/mute", strings.NewReader(`{"key":"x"}`))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestAPIDeleteAllContainers_Success(t *testing.T) {

@@ -37,6 +37,12 @@ of truth.)
 
 `merge.py` and `cleanup.py` are tracker-agnostic; leave them alone.
 
+The dashboard's "Close in tracker" needs-you action (for a task with too many repeat
+failures, or a stale claim you'd rather close than release) is a separate, optional
+contract: a standalone `close-task` (or `cancel-task`) host workflow, invoked on demand
+rather than as part of the `main` pipeline. It can reuse `close-task.py` directly — see
+"`close-task` / `cancel-task`" in `docs/USAGE.md`.
+
 ## Example: GitHub Issues sketch
 
 ```bash

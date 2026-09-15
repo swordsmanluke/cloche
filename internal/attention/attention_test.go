@@ -210,6 +210,9 @@ func TestCompute_StaleClaim(t *testing.T) {
 	if items[0].TaskID != "task-1" || items[0].RunID != "run-1" {
 		t.Errorf("unexpected item: %+v", items[0])
 	}
+	if items[0].Key != "stale-claim:task-1" {
+		t.Errorf("Key = %q, want %q", items[0].Key, "stale-claim:task-1")
+	}
 }
 
 func TestCompute_StaleClaim_SuppressedByActiveRun(t *testing.T) {
@@ -262,6 +265,9 @@ func TestCompute_RepeatFailure(t *testing.T) {
 	}
 	if !items[0].Since.Equal(base) {
 		t.Errorf("Since = %v, want %v (oldest failure in the streak)", items[0].Since, base)
+	}
+	if items[0].Key != "repeat-failure:task-1" {
+		t.Errorf("Key = %q, want %q", items[0].Key, "repeat-failure:task-1")
 	}
 }
 
@@ -359,6 +365,18 @@ func TestCompute_BuiltinFailures(t *testing.T) {
 	if !items[0].Since.Equal(base) {
 		t.Errorf("Since = %v, want %v (oldest failure)", items[0].Since, base)
 	}
+	if items[0].Key != "builtin-failures:intent-scan" {
+		t.Errorf("Key = %q, want %q", items[0].Key, "builtin-failures:intent-scan")
+	}
+	found := false
+	for _, a := range items[0].Actions {
+		if a == "mute" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected Actions to include %q, got %v", "mute", items[0].Actions)
+	}
 }
 
 func TestCompute_BuiltinFailures_ExcludesAutoTriggered(t *testing.T) {
@@ -381,6 +399,33 @@ func TestCompute_BuiltinFailures_ExcludesAutoTriggered(t *testing.T) {
 	}
 	if len(items) != 0 {
 		t.Fatalf("expected auto-triggered failures to be excluded, got %+v", items)
+	}
+}
+
+func TestCompute_BuiltinFailures_ExcludesMuted(t *testing.T) {
+	projectDir := t.TempDir()
+	base := time.Now().Add(-time.Hour)
+	runStore := &fakeRunStore{runs: []*domain.Run{
+		{ID: "s1", ProjectDir: projectDir, TaskID: "user-a1", WorkflowName: "intent-scan", IsHost: true, State: domain.RunStateFailed, StartedAt: base},
+		{ID: "s2", ProjectDir: projectDir, TaskID: "user-a2", WorkflowName: "intent-scan", IsHost: true, State: domain.RunStateFailed, StartedAt: base.Add(time.Minute)},
+		{ID: "s3", ProjectDir: projectDir, TaskID: "user-a3", WorkflowName: "intent-scan", IsHost: true, State: domain.RunStateFailed, StartedAt: base.Add(2 * time.Minute)},
+	}}
+	taskStore := &fakeTaskStore{tasks: map[string]*domain.Task{
+		"user-a1": {ID: "user-a1", Title: ""},
+		"user-a2": {ID: "user-a2", Title: ""},
+		"user-a3": {ID: "user-a3", Title: ""},
+	}}
+
+	if err := Mute(projectDir, "builtin-failures:intent-scan"); err != nil {
+		t.Fatalf("Mute: %v", err)
+	}
+
+	items, err := Compute(context.Background(), Deps{RunStore: runStore, TaskStore: taskStore}, projectDir)
+	if err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected muted builtin-failures item to be excluded, got %+v", items)
 	}
 }
 
