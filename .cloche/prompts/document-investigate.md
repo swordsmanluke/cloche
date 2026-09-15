@@ -12,19 +12,27 @@ Audit the project's documentation against the actual source code. Your goal is t
    - Architecture descriptions — verify package structure and interfaces match what's documented.
    - Installation steps — verify build commands and dependencies are current.
 3. Collate all findings into a single Markdown report listing every error or mismatch found, organized by doc file.
-4. Write the report to `.cloche/doc-report.md`.
-5. Store the report path so later steps can find it:
+4. If `.cloche/doc-report.md` already exists (check `git log --follow -- .cloche/doc-report.md` or read the working copy before you overwrite it), note which of its unresolved findings still apply. A finding that matches one already present and unresolved in the previous report is recurring — mark it as such (see Report Format) instead of writing it up as new.
+5. Write the report to `.cloche/doc-report.md`, replacing the previous contents.
+6. Store the report path so later steps can find it:
    ```
    clo set doc_report_path .cloche/doc-report.md
    ```
 
 ## Report Format
 
+Every finding gets an `Outcome:` line. At this stage — before anything has been
+fixed — it is always `unresolved`; the `write-docs` step is responsible for
+updating it once it knows what actually happened. Leaving the placeholder in
+place gives `write-docs` a fixed spot to edit rather than requiring it to
+restructure the report.
+
 ```markdown
 # Documentation Audit Report
 
 ## docs/USAGE.md
 - **Line ~N**: Says X but source shows Y
+  - Outcome: unresolved
 - ...
 
 ## docs/workflows.md
@@ -33,6 +41,10 @@ Audit the project's documentation against the actual source code. Your goal is t
 ## Summary
 - N errors found across M files
 ```
+
+If a finding recurs from the previous report (step 4 above), say so in the
+finding itself, e.g. `- **Line ~N**: Says X but source shows Y (recurring —
+also flagged in the prior report and still unresolved)`.
 
 ## Rules
 - Only flag concrete, verifiable inaccuracies — not style or tone issues.

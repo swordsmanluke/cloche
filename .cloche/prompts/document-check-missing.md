@@ -24,24 +24,34 @@ Identify cloche commands and subsystems that lack documentation entirely.
 
 ## Append Format
 
-Add to the existing report:
+Add to the existing report, using exactly the heading `## Missing Documentation`
+— not a variant like "Carried Forward", "Backlog", or anything else. These are
+findings from *this* run; do not name the section in a way that implies they
+were rolled over from a previous one. Each finding gets an `Outcome:` line, set
+to `unresolved` — `write-docs` fills it in once it has acted on the finding,
+the same as for the investigate report's findings.
 
 ```markdown
 ## Missing Documentation
 
 ### Undocumented Commands
 - `cloche <command>` — no usage documentation found
+  - Outcome: unresolved
 
 ### Undocumented Subsystems
 - `internal/<package>/` — no design or reference documentation
+  - Outcome: unresolved
 
 ### Undocumented DSL Features
 - `<keyword>` — supported by parser but not in workflows.md
+  - Outcome: unresolved
 ```
 
 ## Rules
 - Read the report path via `clo get doc_report_path` — do not hardcode the path.
 - Append to the existing report; do not overwrite previous findings.
+- Use the heading `## Missing Documentation` verbatim; do not describe the
+  section as carried forward or as a backlog.
 - Only flag genuinely missing docs, not thin docs. If a command has at least a one-line description in USAGE.md, it counts as documented.
 - Report success after updating the report.
 - Report fail only if you could not read/write the report or scan the source.
