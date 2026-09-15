@@ -36,6 +36,7 @@ type Runner struct {
 	ParentRunID   string                 // optional parent run ID (links this run to another in the UI)
 	ExtraEnv      []string               // additional KEY=VALUE env vars passed to all steps
 	SkipRunRecord bool                   // when true, don't persist a run record to the store
+	UserInitiated bool                   // true when dispatched by an explicit user request rather than an automated trigger (see domain.Run.UserInitiated)
 }
 
 // containerCleaner is implemented by executors that manage container lifecycle
@@ -119,6 +120,8 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		hostRun.TaskTitle = r.TaskTitle
 		hostRun.AttemptID = r.AttemptID
 		hostRun.ParentRunID = r.ParentRunID
+		hostRun.IsBuiltin = wf.Builtin
+		hostRun.UserInitiated = r.UserInitiated
 		if err := r.Store.CreateRun(ctx, hostRun); err != nil {
 			return nil, fmt.Errorf("creating host run record: %w", err)
 		}
@@ -504,6 +507,8 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 	hostRun.TaskTitle = oldRun.TaskTitle
 	hostRun.AttemptID = r.AttemptID
 	hostRun.ParentRunID = oldRun.ParentRunID
+	hostRun.IsBuiltin = wf.Builtin
+	hostRun.UserInitiated = oldRun.UserInitiated
 	if err := r.Store.CreateRun(ctx, hostRun); err != nil {
 		return nil, fmt.Errorf("creating resume run record: %w", err)
 	}

@@ -1078,12 +1078,19 @@ show a flat run listing instead of the task-oriented view.
 | `--limit, -n NUM` | Limit the number of results returned. |
 | `--runs` | Show flat run listing instead of task-oriented view. |
 
-Default output columns: task ID, status, attempt count, latest attempt ID, title. A
-task awaiting a help-channel reply after parking shows `[awaiting reply: <title>
-(<channel>/<name>)]` appended to its status.
-With `--runs`: workflow ID, workflow, state, type, task ID, title, error. A run with
-an open help thread shows `[pending question: <channel>/<name>]` appended to its state;
-a parked run shows `[awaiting reply: <title> (<channel>/<name>)]`.
+Default output columns: task ID, type, status, attempt count, latest attempt ID, title.
+Type is `built-in` for a task whose runs are for a built-in workflow (e.g. the synthetic
+task the automatic post-task intent-scan trigger creates) — it isn't a user-facing work
+item, just marked so it isn't mistaken for one — or `-` otherwise. A task awaiting a
+help-channel reply after parking shows `[awaiting reply: <title> (<channel>/<name>)]`
+appended to its status.
+With `--runs`: workflow ID, workflow, state, type, origin, task ID, title, error. Type is
+`host` or `container`. Origin is `user` for a run dispatched by an explicit request
+(`cloche run`/`resume`, `cloche intent scan`, the dashboard "Scan now" button) or `auto`
+for one dispatched by the orchestration loop or an automated trigger (e.g. the post-task
+intent-scan trigger), with `(built-in)` appended when the workflow itself is built-in. A
+run with an open help thread shows `[pending question: <channel>/<name>]` appended to its
+state; a parked run shows `[awaiting reply: <title> (<channel>/<name>)]`.
 
 ### `cloche logs`
 

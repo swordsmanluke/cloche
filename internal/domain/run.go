@@ -66,6 +66,17 @@ type Run struct {
 	TaskTitle      string // title from the task tracker, for display after the task leaves the active snapshot
 	AttemptID      string // ID of the attempt this run belongs to (v2)
 
+	// IsBuiltin is true when the workflow actually resolved for this run is a
+	// built-in one (see internal/builtin), rather than parsed from a project's
+	// .cloche files — even if a project workflow shares the built-in's name and
+	// overrides it, in which case this stays false for that run.
+	IsBuiltin bool
+	// UserInitiated is true when this run was dispatched by an explicit request
+	// (cloche run/resume, cloche intent scan, or the dashboard "Scan now"
+	// button) rather than by the orchestration loop or an automated trigger
+	// (e.g. the post-task intent-scan trigger).
+	UserInitiated bool
+
 	// ParkedThreadID and ParkedTitle identify the help thread a parked run is
 	// awaiting a reply on. Set when State == RunStateParked as a result of the
 	// help-channel park mechanism (as opposed to an operator quiesce, which

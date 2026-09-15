@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cloche-dev/cloche/internal/activitylog"
+	"github.com/cloche-dev/cloche/internal/builtin"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/ports"
 	_ "modernc.org/sqlite"
@@ -92,6 +93,8 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE step_executions ADD COLUMN input_tokens INTEGER DEFAULT 0`,
 		`ALTER TABLE step_executions ADD COLUMN output_tokens INTEGER DEFAULT 0`,
 		`ALTER TABLE step_executions ADD COLUMN agent_name TEXT DEFAULT ''`,
+		`ALTER TABLE runs ADD COLUMN is_builtin INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE runs ADD COLUMN user_initiated INTEGER NOT NULL DEFAULT 0`,
 	}
 	for _, stmt := range alterStmts {
 		db.Exec(stmt) // ignore "duplicate column" errors
@@ -128,6 +131,16 @@ func migrate(db *sql.DB) error {
 	// records, moving log files) happens per-project via MigrateProjectLogs.
 	if err := migrateV2Schema(db); err != nil {
 		return fmt.Errorf("v2 schema migration: %w", err)
+	}
+
+	// Backfill is_builtin/user_initiated for runs created before these columns
+	// existed, using workflow_name/task_id as a proxy for the original dispatch
+	// context (no longer recoverable). Requires the _migrations table created
+	// just above for its one-shot gate. Rows whose task_id is backfilled later
+	// by the per-project v2 log migration (very old pre-v2 runs) are missed,
+	// same as any other one-shot global migration here.
+	if err := backfillRunOrigin(db); err != nil {
+		return fmt.Errorf("backfilling run origin columns: %w", err)
 	}
 
 	// v3: Recreate runs table with pk autoincrement + UNIQUE(attempt_id, id)
@@ -278,23 +291,23 @@ func migrate(db *sql.DB) error {
 
 func (s *Store) CreateRun(ctx context.Context, run *domain.Run) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, project_dir, error_message, container_id, base_sha, container_kept, title, is_host, parent_run_id, task_id, task_title, attempt_id, parent_step_name, parked_thread_id, parked_title)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, project_dir, error_message, container_id, base_sha, container_kept, title, is_host, parent_run_id, task_id, task_title, attempt_id, parent_step_name, parked_thread_id, parked_title, is_builtin, user_initiated)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID, run.WorkflowName, string(run.State), run.ActiveStepsString(),
-		formatTime(run.StartedAt), formatTime(run.CompletedAt), run.ProjectDir, truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, nullableString(run.ParentStepName), run.ParkedThreadID, run.ParkedTitle,
+		formatTime(run.StartedAt), formatTime(run.CompletedAt), run.ProjectDir, truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, nullableString(run.ParentStepName), run.ParkedThreadID, run.ParkedTitle, boolToInt(run.IsBuiltin), boolToInt(run.UserInitiated),
 	)
 	return err
 }
 
 // runSelectCols is the standard column list for scanning a Run row.
-const runSelectCols = `pk, id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,''), COALESCE(is_host,0), COALESCE(parent_run_id,''), COALESCE(task_id,''), COALESCE(task_title,''), COALESCE(attempt_id,''), COALESCE(parent_step_name,''), COALESCE(parked_thread_id,''), COALESCE(parked_title,'')`
+const runSelectCols = `pk, id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,''), COALESCE(is_host,0), COALESCE(parent_run_id,''), COALESCE(task_id,''), COALESCE(task_title,''), COALESCE(attempt_id,''), COALESCE(parent_step_name,''), COALESCE(parked_thread_id,''), COALESCE(parked_title,''), COALESCE(is_builtin,0), COALESCE(user_initiated,0)`
 
 // scanRun scans a single row into a *domain.Run.
 func scanRun(scanner interface{ Scan(...any) error }) (*domain.Run, error) {
 	run := &domain.Run{}
 	var activeSteps, startedAt, completedAt string
-	var containerKept, isHost int
-	err := scanner.Scan(&run.PK, &run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage, &run.ContainerID, &run.BaseSHA, &containerKept, &run.Title, &isHost, &run.ParentRunID, &run.TaskID, &run.TaskTitle, &run.AttemptID, &run.ParentStepName, &run.ParkedThreadID, &run.ParkedTitle)
+	var containerKept, isHost, isBuiltin, userInitiated int
+	err := scanner.Scan(&run.PK, &run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage, &run.ContainerID, &run.BaseSHA, &containerKept, &run.Title, &isHost, &run.ParentRunID, &run.TaskID, &run.TaskTitle, &run.AttemptID, &run.ParentStepName, &run.ParkedThreadID, &run.ParkedTitle, &isBuiltin, &userInitiated)
 	if err != nil {
 		return nil, err
 	}
@@ -303,6 +316,8 @@ func scanRun(scanner interface{ Scan(...any) error }) (*domain.Run, error) {
 	run.CompletedAt = parseTime(completedAt)
 	run.ContainerKept = containerKept != 0
 	run.IsHost = isHost != 0
+	run.IsBuiltin = isBuiltin != 0
+	run.UserInitiated = userInitiated != 0
 	return run, nil
 }
 
@@ -336,18 +351,18 @@ func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 	// attempt_id+id composite which is unique by schema constraint.
 	if run.PK != 0 {
 		_, err := s.db.ExecContext(ctx,
-			`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ?, parent_step_name = ?, parked_thread_id = ?, parked_title = ? WHERE pk = ?`,
+			`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ?, parent_step_name = ?, parked_thread_id = ?, parked_title = ?, is_builtin = ?, user_initiated = ? WHERE pk = ?`,
 			string(run.State), run.ActiveStepsString(),
 			formatTime(run.StartedAt), formatTime(run.CompletedAt),
-			truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, nullableString(run.ParentStepName), run.ParkedThreadID, run.ParkedTitle, run.PK,
+			truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, nullableString(run.ParentStepName), run.ParkedThreadID, run.ParkedTitle, boolToInt(run.IsBuiltin), boolToInt(run.UserInitiated), run.PK,
 		)
 		return err
 	}
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ?, parent_step_name = ?, parked_thread_id = ?, parked_title = ? WHERE attempt_id = ? AND id = ?`,
+		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ?, parent_step_name = ?, parked_thread_id = ?, parked_title = ?, is_builtin = ?, user_initiated = ? WHERE attempt_id = ? AND id = ?`,
 		string(run.State), run.ActiveStepsString(),
 		formatTime(run.StartedAt), formatTime(run.CompletedAt),
-		truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, nullableString(run.ParentStepName), run.ParkedThreadID, run.ParkedTitle,
+		truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, nullableString(run.ParentStepName), run.ParkedThreadID, run.ParkedTitle, boolToInt(run.IsBuiltin), boolToInt(run.UserInitiated),
 		run.AttemptID, run.ID,
 	)
 	return err
@@ -1023,6 +1038,39 @@ func (s *Store) ListContextKeys(ctx context.Context, taskID, attemptID, runID st
 		keys = append(keys, k)
 	}
 	return keys, rows.Err()
+}
+
+// backfillRunOrigin populates is_builtin/user_initiated on runs created
+// before those columns existed. New rows set both flags accurately at
+// creation time; for old rows the original dispatch context is gone, so this
+// backfills from workflow_name/task_id instead: is_builtin follows the
+// current built-in registry, and user_initiated defaults to true only for
+// non-builtin runs with a synthetic "user-<attempt>" task ID (a plain
+// `cloche run`). Built-in runs default to false — most existing ones are the
+// automatic post-task intent-scan trigger, which reused the same synthetic
+// task ID despite not being user-initiated (the exact bug this backfill
+// exists to stop masquerading as a task). Gated by _migrations so it only
+// runs once.
+func backfillRunOrigin(db *sql.DB) error {
+	const migrationID = "run-origin-backfill-v1"
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM _migrations WHERE id = ?`, migrationID).Scan(&count); err == nil && count > 0 {
+		return nil
+	}
+
+	for name := range builtin.All() {
+		if _, err := db.Exec(`UPDATE runs SET is_builtin = 1 WHERE workflow_name = ?`, name); err != nil {
+			return fmt.Errorf("backfilling is_builtin for %q: %w", name, err)
+		}
+	}
+
+	if _, err := db.Exec(`UPDATE runs SET user_initiated = 1 WHERE is_builtin = 0 AND task_id LIKE 'user-%'`); err != nil {
+		return fmt.Errorf("backfilling user_initiated: %w", err)
+	}
+
+	_, err := db.Exec(`INSERT OR IGNORE INTO _migrations (id, applied_at) VALUES (?, ?)`,
+		migrationID, time.Now().UTC().Format(time.RFC3339))
+	return err
 }
 
 // migrateContextKVRunID adds run_id to the context_kv primary key by

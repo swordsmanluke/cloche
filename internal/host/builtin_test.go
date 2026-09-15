@@ -1,6 +1,7 @@
 package host
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -84,4 +85,71 @@ func TestFindAllWorkflows_ProjectOverridesBuiltin(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, direct.Builtin)
 	assert.Contains(t, direct.Steps, "custom-step")
+}
+
+// TestRunner_RunNamed_TagsBuiltinAndUserInitiated covers domain.Run.IsBuiltin
+// and .UserInitiated being set on the persisted run record: IsBuiltin follows
+// the resolved workflow (project override aware, same as findHostWorkflow),
+// and UserInitiated is threaded through verbatim from Runner.UserInitiated.
+func TestRunner_RunNamed_TagsBuiltinAndUserInitiated(t *testing.T) {
+	tmpDir := t.TempDir()
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	hostCloche := `workflow main {
+  host {}
+  step greet {
+    run     = "echo hi"
+    results = [success, fail]
+  }
+  greet:success -> done
+  greet:fail    -> abort
+}`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	runner := &Runner{Store: store, UserInitiated: true}
+
+	result, err := runner.RunNamed(context.Background(), tmpDir, "main")
+	require.NoError(t, err)
+
+	run, err := store.GetRun(context.Background(), result.RunID)
+	require.NoError(t, err)
+	assert.False(t, run.IsBuiltin, "a project-defined workflow is never built-in")
+	assert.True(t, run.UserInitiated)
+}
+
+// TestRunner_RunNamed_ProjectOverrideIsNotBuiltin covers a project overriding
+// the "intent-scan" name with its own workflow: the persisted run must not be
+// tagged IsBuiltin, mirroring TestFindAllWorkflows_ProjectOverridesBuiltin but
+// asserting what actually lands on the run row. (The no-override case — a run
+// resolving to the real registered built-in — is deliberately not exercised
+// here: the real intent-scan workflow's entry step is a live agent
+// invocation, unsafe and slow to run in a unit test; TestFindHostWorkflow_
+// BuiltinFallback already proves wf.Builtin is true in that case, and this
+// runner code simply copies that value onto the run record unchanged.)
+func TestRunner_RunNamed_ProjectOverrideIsNotBuiltin(t *testing.T) {
+	tmpDir := t.TempDir()
+	clocheDir := filepath.Join(tmpDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+	content := `workflow intent-scan {
+  host {}
+  step custom-step {
+    run     = "echo custom"
+    results = [success]
+  }
+  custom-step:success -> done
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(content), 0644))
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	runner := &Runner{Store: store, UserInitiated: true}
+
+	result, err := runner.RunNamed(context.Background(), tmpDir, "intent-scan")
+	require.NoError(t, err)
+
+	run, err := store.GetRun(context.Background(), result.RunID)
+	require.NoError(t, err)
+	assert.False(t, run.IsBuiltin)
+	assert.True(t, run.UserInitiated)
 }

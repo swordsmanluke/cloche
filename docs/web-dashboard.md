@@ -264,6 +264,23 @@ Each row shows:
 The page auto-refreshes every 5 seconds. If there are no failed open tasks, a message
 confirms that all attempted tasks have succeeded or are still running.
 
+Below the task table, a separate **Built-in Workflow Failures** table summarizes failed
+runs of built-in workflows (e.g. the automatic post-task `intent-scan` trigger) — these
+don't correspond to a user-facing task, so they're aggregated one row per workflow name
+instead of appearing in the table above. Each row shows:
+
+- **Workflow** — the workflow name, with a `built-in` badge.
+- **Failed (Total)** — how many runs of this built-in workflow have failed.
+- **Failed Today** — how many of those failures happened today.
+- **Latest Run** — a link to the most recent failed run.
+- **Latest Failure** — the timestamp of the most recent failure.
+- **Error** — a truncated excerpt of the latest error, with a `same error` badge if every
+  failure in the group shares the same error message.
+
+This table also auto-refreshes every 5 seconds, sourced from the same `GET
+/api/failed-tasks` endpoint (which now returns `{"tasks": [...], "builtin_failures":
+[...]}`).
+
 ---
 
 ## Features at a Glance

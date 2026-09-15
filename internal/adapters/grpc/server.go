@@ -638,10 +638,18 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	// Parse optional step from workflow_name ("workflow:step" format).
 	workflowName, startStep, _ := strings.Cut(req.WorkflowName, ":")
 
+	// Resolve the workflow (project-defined, or a built-in if not overridden)
+	// once: used both for host-workflow routing and to tag the run below.
+	allWFs, wfLookupErr := host.FindAllWorkflows(req.ProjectDir)
+
 	// Check if this is a host workflow (has host {} block).
-	if hostWFs, err := host.FindHostWorkflows(req.ProjectDir); err == nil {
-		if _, isHost := hostWFs[workflowName]; isHost {
-			return s.runHostWorkflow(ctx, req)
+	if wfLookupErr == nil {
+		if wf, ok := allWFs[workflowName]; ok && wf.Location == domain.LocationHost {
+			// RunWorkflow is only ever reached via a direct external request
+			// (CLI `cloche run`, `cloche intent scan`, or the dashboard "Scan
+			// now" button) — never a propagated/loop-dispatched attempt — so
+			// this dispatch is always user-initiated.
+			return s.runHostWorkflow(ctx, req, true)
 		}
 	}
 
@@ -663,6 +671,12 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	run.Title = req.Title
 	run.TaskID = req.IssueId
 	run.AttemptID = attemptID
+	run.UserInitiated = true
+	if wfLookupErr == nil {
+		if wf, ok := allWFs[workflowName]; ok {
+			run.IsBuiltin = wf.Builtin
+		}
+	}
 	if run.TaskID == "" {
 		// User-initiated run: task ID was synthesized during ensureTaskAndAttempt.
 		// Derive it from the attempt prefix for backward compat with log paths.
@@ -709,8 +723,13 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 }
 
 // runHostWorkflow dispatches a host workflow via the host runner, returning
-// immediately while the workflow runs in a background goroutine.
-func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
+// immediately while the workflow runs in a background goroutine. userInitiated
+// is passed explicitly by the caller rather than inferred from ctx: every
+// caller of this function starts a fresh top-level dispatch (there is no
+// propagated attempt to check), so the two current callers — a direct
+// RunWorkflow request versus the automatic post-task intent-scan trigger —
+// are otherwise indistinguishable from ctx alone.
+func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowRequest, userInitiated bool) (*pb.RunWorkflowResponse, error) {
 	// Check for a propagated attempt ID from a parent host executor.
 	attemptID := attemptIDFromContext(ctx)
 
@@ -728,13 +747,14 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 	runID := domain.GenerateRunID(hostWorkflowName, attemptID)
 
 	runner := &host.Runner{
-		Store:        s.store,
-		Captures:     s.captures,
-		LogBroadcast: s.logBroadcast,
-		ActivityLog:  s.activityLoggerFor(req.ProjectDir),
-		Executor:     s.daemonExecutorFor(req.ProjectDir, taskID, attemptID),
-		TaskID:       taskID,
-		AttemptID:    attemptID,
+		Store:         s.store,
+		Captures:      s.captures,
+		LogBroadcast:  s.logBroadcast,
+		ActivityLog:   s.activityLoggerFor(req.ProjectDir),
+		Executor:      s.daemonExecutorFor(req.ProjectDir, taskID, attemptID),
+		TaskID:        taskID,
+		AttemptID:     attemptID,
+		UserInitiated: userInitiated,
 	}
 
 	runCtx, cancel := context.WithCancel(context.Background())
@@ -1213,6 +1233,8 @@ func (s *ClocheServer) resumeContainerRunWithPool(ctx context.Context, run *doma
 	newRun.TaskTitle = run.TaskTitle
 	newRun.AttemptID = newAttempt.ID
 	newRun.ParentRunID = run.ParentRunID
+	newRun.IsBuiltin = wf.Builtin
+	newRun.UserInitiated = run.UserInitiated
 	if err := s.store.CreateRun(ctx, newRun); err != nil {
 		return nil, fmt.Errorf("creating resume run record: %w", err)
 	}
@@ -1445,6 +1467,8 @@ func (s *ClocheServer) resumeContainerRunLegacy(ctx context.Context, run *domain
 	newRun.TaskTitle = run.TaskTitle
 	newRun.AttemptID = newAttempt.ID
 	newRun.ParentRunID = run.ParentRunID
+	newRun.IsBuiltin = run.IsBuiltin
+	newRun.UserInitiated = run.UserInitiated
 	if err := s.store.CreateRun(ctx, newRun); err != nil {
 		return nil, fmt.Errorf("creating resume run record: %w", err)
 	}
@@ -1900,16 +1924,18 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 	resp := &pb.ListRunsResponse{}
 	for _, run := range runs {
 		sum := &pb.RunSummary{
-			RunId:        run.ID,
-			WorkflowName: run.WorkflowName,
-			State:        string(run.State),
-			StartedAt:    run.StartedAt.String(),
-			ErrorMessage: run.ErrorMessage,
-			ContainerId:  run.ContainerID,
-			Title:        run.Title,
-			IsHost:       run.IsHost,
-			ProjectDir:   run.ProjectDir,
-			TaskId:       run.TaskID,
+			RunId:         run.ID,
+			WorkflowName:  run.WorkflowName,
+			State:         string(run.State),
+			StartedAt:     run.StartedAt.String(),
+			ErrorMessage:  run.ErrorMessage,
+			ContainerId:   run.ContainerID,
+			Title:         run.Title,
+			IsHost:        run.IsHost,
+			ProjectDir:    run.ProjectDir,
+			TaskId:        run.TaskID,
+			IsBuiltin:     run.IsBuiltin,
+			UserInitiated: run.UserInitiated,
 		}
 		// Populate waiting step info for waiting runs.
 		if run.State == domain.RunStateWaiting && hasHPS {
@@ -1974,6 +2000,13 @@ func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) 
 		}
 		if la := task.LatestAttempt(); la != nil {
 			sum.LatestAttemptId = la.ID
+		}
+		// Built-in-ness is a property of the run's resolved workflow, not the
+		// task record itself — a synthetic task created for the automatic
+		// intent-scan trigger is 1:1 with a single built-in workflow run, so
+		// any one associated run tells us whether to mark the whole task.
+		if taskRuns, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{TaskID: task.ID, Limit: 1}); err == nil && len(taskRuns) > 0 {
+			sum.IsBuiltin = taskRuns[0].IsBuiltin
 		}
 		// For tasks whose latest attempt is still "running", check whether any
 		// associated runs are actually in the "waiting" or "parked" state. If
@@ -3568,7 +3601,7 @@ func (t *intentScanTrigger) EnqueueScan(ctx context.Context, projectDir, taskID 
 		ProjectDir:   projectDir,
 		WorkflowName: "intent-scan",
 		Title:        builtin.AutoTriggerTitles["intent-scan"],
-	})
+	}, false) // automatic trigger, not a user request
 	return err
 }
 

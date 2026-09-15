@@ -1199,8 +1199,15 @@ type RunSummary struct {
 	// Populated when state == "parked": see GetStatusResponse for semantics.
 	ParkedThreadAddress string `protobuf:"bytes,16,opt,name=parked_thread_address,json=parkedThreadAddress,proto3" json:"parked_thread_address,omitempty"`
 	ParkedTitle         string `protobuf:"bytes,17,opt,name=parked_title,json=parkedTitle,proto3" json:"parked_title,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// True when workflow_name resolved to a built-in workflow (see internal/builtin)
+	// rather than one parsed from the project's .cloche files.
+	IsBuiltin bool `protobuf:"varint,18,opt,name=is_builtin,json=isBuiltin,proto3" json:"is_builtin,omitempty"`
+	// True when this run was dispatched by an explicit request (cloche run/resume,
+	// cloche intent scan, dashboard "Scan now") rather than the orchestration loop
+	// or an automated trigger (e.g. the post-task intent-scan trigger).
+	UserInitiated bool `protobuf:"varint,19,opt,name=user_initiated,json=userInitiated,proto3" json:"user_initiated,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RunSummary) Reset() {
@@ -1350,6 +1357,20 @@ func (x *RunSummary) GetParkedTitle() string {
 		return x.ParkedTitle
 	}
 	return ""
+}
+
+func (x *RunSummary) GetIsBuiltin() bool {
+	if x != nil {
+		return x.IsBuiltin
+	}
+	return false
+}
+
+func (x *RunSummary) GetUserInitiated() bool {
+	if x != nil {
+		return x.UserInitiated
+	}
+	return false
 }
 
 type EnableLoopRequest struct {
@@ -2875,8 +2896,12 @@ type TaskSummary struct {
 	// Populated when status == "parked": see GetStatusResponse for semantics.
 	ParkedThreadAddress string `protobuf:"bytes,11,opt,name=parked_thread_address,json=parkedThreadAddress,proto3" json:"parked_thread_address,omitempty"`
 	ParkedTitle         string `protobuf:"bytes,12,opt,name=parked_title,json=parkedTitle,proto3" json:"parked_title,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// True when this task's runs are for a built-in workflow (see internal/builtin),
+	// e.g. a synthetic task created for the automatic intent-scan trigger — not a
+	// user-facing work item, shown distinctly by `cloche list`.
+	IsBuiltin     bool `protobuf:"varint,13,opt,name=is_builtin,json=isBuiltin,proto3" json:"is_builtin,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TaskSummary) Reset() {
@@ -2991,6 +3016,13 @@ func (x *TaskSummary) GetParkedTitle() string {
 		return x.ParkedTitle
 	}
 	return ""
+}
+
+func (x *TaskSummary) GetIsBuiltin() bool {
+	if x != nil {
+		return x.IsBuiltin
+	}
+	return false
 }
 
 type ListTasksResponse struct {
@@ -6053,7 +6085,7 @@ const file_cloche_proto_rawDesc = "" +
 	"\x05limit\x18\x04 \x01(\x05R\x05limit\x12\x17\n" +
 	"\atask_id\x18\x05 \x01(\tR\x06taskId\"=\n" +
 	"\x10ListRunsResponse\x12)\n" +
-	"\x04runs\x18\x01 \x03(\v2\x15.cloche.v1.RunSummaryR\x04runs\"\xc9\x04\n" +
+	"\x04runs\x18\x01 \x03(\v2\x15.cloche.v1.RunSummaryR\x04runs\"\x8f\x05\n" +
 	"\n" +
 	"RunSummary\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12#\n" +
@@ -6077,7 +6109,10 @@ const file_cloche_proto_rawDesc = "" +
 	"\x14pending_help_address\x18\x0e \x01(\tR\x12pendingHelpAddress\x12,\n" +
 	"\x12pending_help_title\x18\x0f \x01(\tR\x10pendingHelpTitle\x122\n" +
 	"\x15parked_thread_address\x18\x10 \x01(\tR\x13parkedThreadAddress\x12!\n" +
-	"\fparked_title\x18\x11 \x01(\tR\vparkedTitle\"o\n" +
+	"\fparked_title\x18\x11 \x01(\tR\vparkedTitle\x12\x1d\n" +
+	"\n" +
+	"is_builtin\x18\x12 \x01(\bR\tisBuiltin\x12%\n" +
+	"\x0euser_initiated\x18\x13 \x01(\bR\ruserInitiated\"o\n" +
 	"\x11EnableLoopRequest\x12\x1f\n" +
 	"\vproject_dir\x18\x01 \x01(\tR\n" +
 	"projectDir\x12%\n" +
@@ -6195,7 +6230,7 @@ const file_cloche_proto_rawDesc = "" +
 	"\vproject_dir\x18\x02 \x01(\tR\n" +
 	"projectDir\x12\x14\n" +
 	"\x05state\x18\x03 \x01(\tR\x05state\x12\x14\n" +
-	"\x05limit\x18\x04 \x01(\x05R\x05limit\"\xa0\x03\n" +
+	"\x05limit\x18\x04 \x01(\x05R\x05limit\"\xbf\x03\n" +
 	"\vTaskSummary\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x16\n" +
@@ -6213,7 +6248,9 @@ const file_cloche_proto_rawDesc = "" +
 	"poll_count\x18\n" +
 	" \x01(\x05R\tpollCount\x122\n" +
 	"\x15parked_thread_address\x18\v \x01(\tR\x13parkedThreadAddress\x12!\n" +
-	"\fparked_title\x18\f \x01(\tR\vparkedTitle\"A\n" +
+	"\fparked_title\x18\f \x01(\tR\vparkedTitle\x12\x1d\n" +
+	"\n" +
+	"is_builtin\x18\r \x01(\bR\tisBuiltin\"A\n" +
 	"\x11ListTasksResponse\x12,\n" +
 	"\x05tasks\x18\x01 \x03(\v2\x16.cloche.v1.TaskSummaryR\x05tasks\")\n" +
 	"\x0eGetTaskRequest\x12\x17\n" +

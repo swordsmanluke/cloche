@@ -430,7 +430,10 @@ func buildTaskSummaries(runs []*domain.Run, labels map[string]string, taskTitles
 
 	var sorted []*domain.Run
 	for _, r := range runs {
-		if r.WorkflowName != "list-tasks" && r.TaskID != "" && r.ParentRunID == "" {
+		// Built-in workflow runs (e.g. the automatic intent-scan trigger) get a
+		// synthetic task ID but aren't user work items — excluded from task
+		// grouping so they don't masquerade as tasks (see buildBuiltinFailureSummaries).
+		if r.WorkflowName != "list-tasks" && r.TaskID != "" && r.ParentRunID == "" && !r.IsBuiltin {
 			sorted = append(sorted, r)
 		}
 	}
@@ -1159,14 +1162,19 @@ func groupAndSortRuns(runs []*domain.Run, labels map[string]string, taskTitles m
 	// emitted as a block the first time we encounter a run belonging to it.
 	var result []apiGroupedEntry
 
+	// Built-in workflow runs (e.g. the automatic intent-scan trigger) carry a
+	// synthetic task ID but aren't user work items — treated as ungrouped so
+	// they render as standalone runs instead of masquerading as a task.
+	hasTaskGroup := func(r *domain.Run) bool { return r.TaskID != "" && !r.IsBuiltin }
+
 	for _, r := range topLevel {
-		if r.TaskID != "" {
+		if hasTaskGroup(r) {
 			taskGroups[r.TaskID] = append(taskGroups[r.TaskID], r)
 		}
 	}
 
 	for _, r := range topLevel {
-		if r.TaskID != "" {
+		if hasTaskGroup(r) {
 			if emittedTask[r.TaskID] {
 				continue
 			}
@@ -3153,14 +3161,38 @@ type failedOpenTaskEntry struct {
 	OpenInBead   bool   `json:"open_in_bead"`
 }
 
+// builtinFailureSummary aggregates failed runs of a single built-in workflow
+// (e.g. intent-scan, dispatched by the automatic post-task trigger) across all
+// projects into one entry, so N automated failures show as a single
+// "workflow: N failed today" line instead of masquerading as N separate open
+// tasks (built-in runs are excluded from failedOpenTaskEntry grouping).
+type builtinFailureSummary struct {
+	WorkflowName       string `json:"workflow_name"`
+	FailedCount        int    `json:"failed_count"`
+	FailedToday        int    `json:"failed_today"`
+	LatestRunID        string `json:"latest_run_id"`
+	LatestError        string `json:"latest_error,omitempty"`
+	LatestTime         string `json:"latest_time,omitempty"`
+	SameErrorSignature bool   `json:"same_error_signature"`
+}
+
+// failedOpenTasksResult bundles the failed-but-open task groups with the
+// separate built-in-workflow failure summary fed to the dashboard's
+// attention surface as "builtin-failures".
+type failedOpenTasksResult struct {
+	Tasks           []failedOpenTaskEntry   `json:"tasks"`
+	BuiltinFailures []builtinFailureSummary `json:"builtin_failures"`
+}
+
 // buildFailedOpenTasks returns all tasks that have failed runs but have not yet
-// succeeded. For each task the latest top-level run determines recency. If a
-// taskProvider is configured, tasks that appear in the live bead task list are
-// flagged as open in bead.
-func (h *Handler) buildFailedOpenTasks(ctx context.Context) []failedOpenTaskEntry {
+// succeeded, plus a separate per-workflow summary of failed built-in workflow
+// runs (see builtinFailureSummary). For each task the latest top-level run
+// determines recency. If a taskProvider is configured, tasks that appear in
+// the live bead task list are flagged as open in bead.
+func (h *Handler) buildFailedOpenTasks(ctx context.Context) failedOpenTasksResult {
 	runs, err := h.store.ListRuns(ctx, time.Time{})
 	if err != nil {
-		return nil
+		return failedOpenTasksResult{}
 	}
 
 	projects, _ := h.store.ListProjects(ctx)
@@ -3182,19 +3214,24 @@ func (h *Handler) buildFailedOpenTasks(ctx context.Context) []failedOpenTaskEntr
 		}
 	}
 
-	// Build parent→children map and collect top-level runs.
+	// Build parent→children map and collect top-level runs, splitting off
+	// built-in workflow runs into their own bucket (summarized separately
+	// below rather than grouped into task entries).
 	byID := map[string]*domain.Run{}
 	for _, r := range runs {
 		byID[r.ID] = r
 	}
 	parentMap := map[string][]*domain.Run{}
 	var topLevel []*domain.Run
+	var builtinTopLevel []*domain.Run
 	for _, r := range runs {
 		if r.WorkflowName == "list-tasks" {
 			continue
 		}
 		if r.ParentRunID != "" && byID[r.ParentRunID] != nil {
 			parentMap[r.ParentRunID] = append(parentMap[r.ParentRunID], r)
+		} else if r.IsBuiltin {
+			builtinTopLevel = append(builtinTopLevel, r)
 		} else {
 			topLevel = append(topLevel, r)
 		}
@@ -3259,19 +3296,80 @@ func (h *Handler) buildFailedOpenTasks(ctx context.Context) []failedOpenTaskEntr
 			OpenInBead:   beadOpen[tid],
 		})
 	}
+	return failedOpenTasksResult{
+		Tasks:           result,
+		BuiltinFailures: buildBuiltinFailureSummaries(builtinTopLevel),
+	}
+}
+
+// buildBuiltinFailureSummaries aggregates failed built-in workflow runs (e.g.
+// intent-scan's automatic post-task trigger) into one entry per workflow
+// name — the "attention model" surface for built-in failures, fed by
+// buildFailedOpenTasks instead of letting repeated automated failures
+// masquerade as separate open tasks.
+func buildBuiltinFailureSummaries(builtinRuns []*domain.Run) []builtinFailureSummary {
+	byWorkflow := map[string][]*domain.Run{}
+	var order []string
+	for _, r := range builtinRuns {
+		if r.State != domain.RunStateFailed {
+			continue
+		}
+		if _, ok := byWorkflow[r.WorkflowName]; !ok {
+			order = append(order, r.WorkflowName)
+		}
+		byWorkflow[r.WorkflowName] = append(byWorkflow[r.WorkflowName], r)
+	}
+
+	todayStart := time.Now().Truncate(24 * time.Hour)
+
+	var result []builtinFailureSummary
+	for _, name := range order {
+		group := byWorkflow[name]
+		sort.SliceStable(group, func(i, j int) bool {
+			return group[i].StartedAt.After(group[j].StartedAt)
+		})
+		latest := group[0]
+
+		var failedToday int
+		sameSignature := true
+		for _, r := range group {
+			if !r.StartedAt.Before(todayStart) {
+				failedToday++
+			}
+			if r.ErrorMessage != latest.ErrorMessage {
+				sameSignature = false
+			}
+		}
+
+		result = append(result, builtinFailureSummary{
+			WorkflowName:       name,
+			FailedCount:        len(group),
+			FailedToday:        failedToday,
+			LatestRunID:        latest.ID,
+			LatestError:        latest.ErrorMessage,
+			LatestTime:         formatTime(latest.StartedAt),
+			SameErrorSignature: sameSignature,
+		})
+	}
 	return result
 }
 
 // handleFailedTasksDashboard renders the failed-but-still-open tasks dashboard.
 func (h *Handler) handleFailedTasksDashboard(w http.ResponseWriter, r *http.Request) {
-	tasks := h.buildFailedOpenTasks(r.Context())
+	failed := h.buildFailedOpenTasks(r.Context())
+	tasks := failed.Tasks
 	if tasks == nil {
 		tasks = []failedOpenTaskEntry{}
+	}
+	builtinFailures := failed.BuiltinFailures
+	if builtinFailures == nil {
+		builtinFailures = []builtinFailureSummary{}
 	}
 	hasBeadProvider := h.taskProvider != nil
 	data := map[string]any{
 		"Title":           "Failed Open Tasks",
 		"Tasks":           tasks,
+		"BuiltinFailures": builtinFailures,
 		"HasBeadProvider": hasBeadProvider,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -3280,14 +3378,18 @@ func (h *Handler) handleFailedTasksDashboard(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-// handleAPIFailedTasks returns a JSON list of failed-but-still-open tasks.
+// handleAPIFailedTasks returns failed-but-still-open tasks together with the
+// built-in workflow failure summary, as { "tasks": [...], "builtin_failures": [...] }.
 func (h *Handler) handleAPIFailedTasks(w http.ResponseWriter, r *http.Request) {
-	tasks := h.buildFailedOpenTasks(r.Context())
-	if tasks == nil {
-		tasks = []failedOpenTaskEntry{}
+	failed := h.buildFailedOpenTasks(r.Context())
+	if failed.Tasks == nil {
+		failed.Tasks = []failedOpenTaskEntry{}
+	}
+	if failed.BuiltinFailures == nil {
+		failed.BuiltinFailures = []builtinFailureSummary{}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tasks)
+	json.NewEncoder(w).Encode(failed)
 }
 
 // --- Template helpers ---

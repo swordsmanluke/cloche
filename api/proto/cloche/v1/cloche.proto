@@ -256,6 +256,13 @@ message RunSummary {
   // Populated when state == "parked": see GetStatusResponse for semantics.
   string parked_thread_address = 16;
   string parked_title = 17;
+  // True when workflow_name resolved to a built-in workflow (see internal/builtin)
+  // rather than one parsed from the project's .cloche files.
+  bool is_builtin = 18;
+  // True when this run was dispatched by an explicit request (cloche run/resume,
+  // cloche intent scan, dashboard "Scan now") rather than the orchestration loop
+  // or an automated trigger (e.g. the post-task intent-scan trigger).
+  bool user_initiated = 19;
 }
 
 message EnableLoopRequest {
@@ -443,6 +450,10 @@ message TaskSummary {
   // Populated when status == "parked": see GetStatusResponse for semantics.
   string parked_thread_address = 11;
   string parked_title = 12;
+  // True when this task's runs are for a built-in workflow (see internal/builtin),
+  // e.g. a synthetic task created for the automatic intent-scan trigger — not a
+  // user-facing work item, shown distinctly by `cloche list`.
+  bool is_builtin = 13;
 }
 
 message ListTasksResponse {

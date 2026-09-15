@@ -74,6 +74,7 @@
     <div class="panel-body">
         <div id="location-tabs" class="tab-bar"></div>
         <div id="workflow-tabs" class="tab-bar"></div>
+        <div id="workflow-name-label"></div>
         <div id="workflow-dag"></div>
     </div>
 </div>
@@ -192,7 +193,8 @@ function renderWorkflowTabs() {
     if (filtered.length > 1) {
         var html = '';
         filtered.forEach(function(wf, i) {
-            html += '<button class="tab-btn' + (i === 0 ? ' tab-active' : '') + '" onclick="showFilteredWorkflow(' + i + ')">' + wf.name + '</button>';
+            var badge = wf.builtin ? ' <span class="badge badge-cancelled">built-in</span>' : '';
+            html += '<button class="tab-btn' + (i === 0 ? ' tab-active' : '') + '" onclick="showFilteredWorkflow(' + i + ')">' + wf.name + badge + '</button>';
         });
         tabs.innerHTML = html;
     } else {
@@ -210,6 +212,10 @@ function showFilteredWorkflow(idx) {
 
 function showWorkflow(wf) {
     var dagEl = document.getElementById('workflow-dag');
+    var nameLabel = document.getElementById('workflow-name-label');
+    if (nameLabel) {
+        nameLabel.innerHTML = wf.builtin ? '<span class="badge badge-cancelled">built-in</span>' : '';
+    }
 
     if (!wf.steps || wf.steps.length === 0) {
         dagEl.innerHTML = '<p class="empty">No steps defined</p>';

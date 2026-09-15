@@ -976,12 +976,18 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "TASK ID\tSTATUS\tATTEMPTS\tLATEST ATTEMPT\tTITLE")
+	fmt.Fprintln(w, "TASK ID\tTYPE\tSTATUS\tATTEMPTS\tLATEST ATTEMPT\tTITLE")
 	for _, task := range tasks {
 		title := truncateRunes(task.Title, 50)
 		latestAttempt := task.LatestAttemptId
 		if latestAttempt == "" {
 			latestAttempt = "-"
+		}
+		// Built-in workflow tasks (e.g. the automatic intent-scan trigger) are
+		// synthetic — marked distinctly rather than presented as a real task.
+		taskType := "-"
+		if task.IsBuiltin {
+			taskType = "built-in"
 		}
 		status := task.Status
 		if task.WaitingStep != "" {
@@ -995,8 +1001,8 @@ func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) 
 		if task.ParkedThreadAddress != "" {
 			status = fmt.Sprintf("%s [awaiting reply: %s (%s)]", task.Status, task.ParkedTitle, task.ParkedThreadAddress)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n",
-			task.TaskId, status, task.AttemptCount, latestAttempt, title)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\n",
+			task.TaskId, taskType, status, task.AttemptCount, latestAttempt, title)
 	}
 	w.Flush()
 }
@@ -1050,11 +1056,23 @@ func cmdListRuns(ctx context.Context, client pb.ClocheServiceClient, all bool, p
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "RUN ID\tWORKFLOW\tSTATE\tTYPE\tTASK ID\tTITLE\tERROR")
+	fmt.Fprintln(w, "RUN ID\tWORKFLOW\tSTATE\tTYPE\tORIGIN\tTASK ID\tTITLE\tERROR")
 	for _, run := range listedRuns {
 		runType := "container"
 		if run.IsHost {
 			runType = "host"
+		}
+		// ORIGIN distinguishes an explicit dispatch (cloche run/resume, cloche
+		// intent scan, dashboard "Scan now") from the orchestration loop or an
+		// automated trigger (e.g. the post-task intent-scan trigger), and flags
+		// built-in workflow runs (e.g. intent-scan) so they aren't mistaken for
+		// project-defined workflows.
+		origin := "auto"
+		if run.UserInitiated {
+			origin = "user"
+		}
+		if run.IsBuiltin {
+			origin += " (built-in)"
 		}
 		title := truncateRunes(run.Title, 40)
 		errMsg := truncateRunes(run.ErrorMessage, 60)
@@ -1073,8 +1091,8 @@ func cmdListRuns(ctx context.Context, client pb.ClocheServiceClient, all bool, p
 		if run.ParkedThreadAddress != "" {
 			state = fmt.Sprintf("%s [awaiting reply: %s (%s)]", state, run.ParkedTitle, run.ParkedThreadAddress)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			run.RunId, run.WorkflowName, state, runType,
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			run.RunId, run.WorkflowName, state, runType, origin,
 			run.TaskId, title, errMsg)
 	}
 	w.Flush()

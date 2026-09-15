@@ -94,9 +94,10 @@ func TestAPIFailedTasks_Empty(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
 
-	var tasks []failedOpenTaskEntry
-	require.NoError(t, json.NewDecoder(w.Body).Decode(&tasks))
-	assert.Empty(t, tasks)
+	var resp failedOpenTasksResult
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Empty(t, resp.Tasks)
+	assert.Empty(t, resp.BuiltinFailures)
 }
 
 func TestAPIFailedTasks_ShowsFailedTask(t *testing.T) {
@@ -109,8 +110,9 @@ func TestAPIFailedTasks_ShowsFailedTask(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	var tasks []failedOpenTaskEntry
-	require.NoError(t, json.NewDecoder(w.Body).Decode(&tasks))
+	var resp failedOpenTasksResult
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	tasks := resp.Tasks
 	require.Len(t, tasks, 1)
 	assert.Equal(t, "task-X", tasks[0].TaskID)
 	assert.Equal(t, "run-api-1", tasks[0].LatestRunID)
@@ -127,8 +129,9 @@ func TestAPIFailedTasks_MultipleFailedAttempts(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 
-	var tasks []failedOpenTaskEntry
-	require.NoError(t, json.NewDecoder(w.Body).Decode(&tasks))
+	var resp failedOpenTasksResult
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	tasks := resp.Tasks
 	require.Len(t, tasks, 1)
 	assert.Equal(t, "task-Y", tasks[0].TaskID)
 	assert.Equal(t, 2, tasks[0].FailedCount)
@@ -147,8 +150,9 @@ func TestAPIFailedTasks_SucceededNotShown(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 
-	var tasks []failedOpenTaskEntry
-	require.NoError(t, json.NewDecoder(w.Body).Decode(&tasks))
+	var resp failedOpenTasksResult
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	tasks := resp.Tasks
 	require.Len(t, tasks, 1)
 	assert.Equal(t, "task-W", tasks[0].TaskID)
 }
@@ -188,8 +192,9 @@ func TestAPIFailedTasks_BeadProviderFlags(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 
-	var tasks []failedOpenTaskEntry
-	require.NoError(t, json.NewDecoder(w.Body).Decode(&tasks))
+	var resp failedOpenTasksResult
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	tasks := resp.Tasks
 	require.Len(t, tasks, 2)
 
 	byID := map[string]failedOpenTaskEntry{}
@@ -198,4 +203,54 @@ func TestAPIFailedTasks_BeadProviderFlags(t *testing.T) {
 	}
 	assert.True(t, byID["task-inbead"].OpenInBead)
 	assert.False(t, byID["task-notinbead"].OpenInBead)
+}
+
+// seedBuiltinTaskRun creates a failed run for a built-in workflow (e.g. the
+// automatic intent-scan trigger), carrying a synthetic "user-xxxx" task ID
+// exactly as ensureTaskAndAttempt synthesizes for a real one.
+func seedBuiltinTaskRun(t *testing.T, store *sqlite.Store, id, workflow, taskID, errMsg string) {
+	t.Helper()
+	ctx := context.Background()
+	run := domain.NewRun(id, workflow)
+	run.TaskID = taskID
+	run.IsBuiltin = true
+	run.Start()
+	run.Complete(domain.RunStateFailed)
+	run.ErrorMessage = errMsg
+	require.NoError(t, store.CreateRun(ctx, run))
+}
+
+func TestAPIFailedTasks_BuiltinRunsExcludedFromTaskGroups(t *testing.T) {
+	h, store := setupHandler(t)
+	seedBuiltinTaskRun(t, store, "run-scan-1", "intent-scan", "user-aaaa", "boom")
+
+	req := httptest.NewRequest("GET", "/api/failed-tasks", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	var resp failedOpenTasksResult
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Empty(t, resp.Tasks, "built-in workflow runs should not masquerade as tasks")
+	require.Len(t, resp.BuiltinFailures, 1)
+	assert.Equal(t, "intent-scan", resp.BuiltinFailures[0].WorkflowName)
+	assert.Equal(t, 1, resp.BuiltinFailures[0].FailedCount)
+	assert.Equal(t, "run-scan-1", resp.BuiltinFailures[0].LatestRunID)
+}
+
+func TestAPIFailedTasks_BuiltinFailuresGroupedByWorkflow(t *testing.T) {
+	h, store := setupHandler(t)
+	seedBuiltinTaskRun(t, store, "run-scan-1", "intent-scan", "user-aaaa", "same error")
+	seedBuiltinTaskRun(t, store, "run-scan-2", "intent-scan", "user-bbbb", "same error")
+	seedBuiltinTaskRun(t, store, "run-scan-3", "intent-scan", "user-cccc", "different error")
+
+	req := httptest.NewRequest("GET", "/api/failed-tasks", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	var resp failedOpenTasksResult
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	require.Len(t, resp.BuiltinFailures, 1)
+	summary := resp.BuiltinFailures[0]
+	assert.Equal(t, 3, summary.FailedCount)
+	assert.False(t, summary.SameErrorSignature, "errors differ across the three failed runs")
 }
