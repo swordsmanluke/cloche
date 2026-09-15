@@ -44,10 +44,18 @@ cloche intent apply-reconcile --project "$PROJECT_DIR" --reconcile-file "$RECONC
 
 // commitScript commits any changes apply-reconcile wrote under
 // .cloche/intent/, scoped strictly to that path so unrelated working-tree
-// edits present when the scan fires are left untouched. It operates against
-// CLOCHE_PROJECT_DIR — the same directory apply-reconcile just wrote to —
-// which for intent-scan runs is the main git worktree (docs/workflows.md,
-// Execution Model).
+// edits present when the scan fires are left untouched.
+//
+// It operates against CLOCHE_PROJECT_DIR — the same directory
+// apply-reconcile just wrote to, which is what makes the pair correct. Note
+// that CLOCHE_PROJECT_DIR is the project directory, NOT necessarily the main
+// git worktree: a host script step's working directory defaults to the main
+// worktree, but CLOCHE_PROJECT_DIR keeps pointing at the actual project dir,
+// and the two differ whenever the project dir is a linked worktree. Both are
+// defaults rather than invariants — Executor.scriptDir() falls back to
+// ProjectDir when MainDir is unset, and MainWorktreeDir() falls back to the
+// project dir on any error. Nothing here should assume which tree it is in;
+// correctness comes from committing in the same directory that was written.
 const commitScript = `set -eu
 PROJECT_DIR="${CLOCHE_PROJECT_DIR:-.}"
 INTENT_DIR=".cloche/intent"
