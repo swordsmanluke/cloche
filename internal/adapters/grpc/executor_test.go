@@ -774,6 +774,12 @@ func (f *fakeRunStore) ListAttempts(_ context.Context, _ string) ([]*domain.Atte
 	return nil, nil
 }
 func (f *fakeRunStore) FailStaleAttempts(_ context.Context) (int64, error) { return 0, nil }
+func (f *fakeRunStore) ListContextKVForProject(_ context.Context, _ string) ([]ports.ContextKVRow, error) {
+	return nil, nil
+}
+func (f *fakeRunStore) AttemptTokenTotals(_ context.Context, _ string) (map[string]int64, error) {
+	return nil, nil
+}
 
 // errContainerRuntime always fails on Start.
 type errContainerRuntime struct{ err error }

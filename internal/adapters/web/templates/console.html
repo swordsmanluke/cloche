@@ -26,6 +26,7 @@
             <span><kbd>enter</kbd> open</span>
             <span><kbd>esc</kbd> stack</span>
             <span><kbd>a</kbd> activity</span>
+            <span><kbd>l</kbd> ledger</span>
             <span><kbd>[</kbd>/<kbd>]</kbd> attempt</span>
             <span><kbd>g</kbd>/<kbd>G</kbd> log top/bottom</span>
             <span><kbd>w</kbd> workflows</span>
@@ -50,6 +51,15 @@
             <button type="button" class="console-load-earlier" id="console-activity-load-earlier" hidden>Load earlier</button>
         </div>
     </div>
+    <div class="console-ledger-overlay" id="console-ledger-overlay" hidden>
+        <div class="console-ledger-panel" role="dialog" aria-modal="true" aria-label="Project ledger">
+            <div class="console-ledger-header">
+                <h2>Ledger</h2>
+                <button type="button" id="console-ledger-close" class="btn btn-secondary btn-sm">Close</button>
+            </div>
+            <div class="console-ledger-body" id="console-ledger-body"></div>
+        </div>
+    </div>
     <div class="console-help-overlay" id="console-help-overlay" hidden>
         <div class="console-help-panel" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
             <h2>Keyboard shortcuts</h2>
@@ -59,6 +69,7 @@
                 <dt>Enter</dt><dd>Open the selected task</dd>
                 <dt>Esc</dt><dd>Return to the stack, or close an open view/drawer</dd>
                 <dt>a</dt><dd>Open the activity stream</dd>
+                <dt>l</dt><dd>Open the project ledger</dd>
                 <dt>[ / ]</dt><dd>Switch to the previous / next attempt</dd>
                 <dt>g / G</dt><dd>Scroll the log to the top / bottom</dd>
                 <dt>w</dt><dd>Open the Workflows view</dd>

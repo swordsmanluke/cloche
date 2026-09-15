@@ -1040,6 +1040,61 @@ func (s *Store) ListContextKeys(ctx context.Context, taskID, attemptID, runID st
 	return keys, rows.Err()
 }
 
+// ListContextKVForProject returns every context_kv row belonging to an
+// attempt of projectDir, joining through the attempts table since context_kv
+// itself has no project_dir column. Used for cross-attempt aggregation (the
+// ledger view's prompt-revision and requirement-injection tables) rather
+// than the single-scope lookups GetContextKey/ListContextKeys provide.
+func (s *Store) ListContextKVForProject(ctx context.Context, projectDir string) ([]ports.ContextKVRow, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT ck.task_id, ck.attempt_id, ck.run_id, ck.key, ck.value
+		FROM context_kv ck
+		JOIN attempts a ON a.task_id = ck.task_id AND a.id = ck.attempt_id
+		WHERE a.project_dir = ?
+		ORDER BY ck.updated_at ASC`, projectDir)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ports.ContextKVRow
+	for rows.Next() {
+		var row ports.ContextKVRow
+		if err := rows.Scan(&row.TaskID, &row.AttemptID, &row.RunID, &row.Key, &row.Value); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// AttemptTokenTotals returns total (input+output) token usage per attempt
+// for projectDir, summed across every run (host run and any child container
+// runs) tied to that attempt. Used by the ledger view's "mean tokens"
+// aggregates grouped by prompt revision or requirement.
+func (s *Store) AttemptTokenTotals(ctx context.Context, projectDir string) (map[string]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT a.id, COALESCE(SUM(se.input_tokens), 0) + COALESCE(SUM(se.output_tokens), 0)
+		FROM attempts a
+		JOIN runs r ON r.attempt_id = a.id
+		JOIN step_executions se ON se.run_id = r.id
+		WHERE a.project_dir = ?
+		GROUP BY a.id`, projectDir)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var id string
+		var total int64
+		if err := rows.Scan(&id, &total); err != nil {
+			return nil, err
+		}
+		out[id] = total
+	}
+	return out, rows.Err()
+}
+
 // backfillRunOrigin populates is_builtin/user_initiated on runs created
 // before those columns existed. New rows set both flags accurately at
 // creation time; for old rows the original dispatch context is gone, so this

@@ -18,6 +18,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/intent"
 	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/cloche-dev/cloche/internal/promptrev"
 	"github.com/cloche-dev/cloche/internal/runcontext"
 )
 
@@ -734,6 +735,33 @@ func (d *DaemonExecutor) seedIntentKV(ctx context.Context, step *domain.Step, wf
 	}
 }
 
+// recordPromptRevisionKV is the container-tier counterpart of
+// host.Executor.recordPromptRevisionKV: it records which prompt file (if
+// any) this step's `prompt` config resolves to, and the git commit that
+// last touched it in the host project dir as of dispatch time, so the
+// ledger view can join container-step attempts to the prompt revision they
+// ran with. Best-effort: failures are silently skipped.
+func (d *DaemonExecutor) recordPromptRevisionKV(ctx context.Context, step *domain.Step, workflowName, hostRunID string) {
+	if d.store == nil || d.taskID == "" {
+		return
+	}
+	relPath, ok := promptrev.ResolveFile(step.Config["prompt"])
+	if !ok {
+		return
+	}
+	rev := promptrev.GitRevision(d.projectDir, relPath)
+	if rev == "" {
+		return
+	}
+	prefix := fmt.Sprintf("%s:%s", workflowName, step.Name)
+	if setErr := d.store.SetContextKey(ctx, d.taskID, d.attemptID, hostRunID, prefix+":prompt_file", relPath); setErr != nil {
+		log.Printf("daemon executor: recording prompt file for step %q: %v", step.Name, setErr)
+	}
+	if setErr := d.store.SetContextKey(ctx, d.taskID, d.attemptID, hostRunID, prefix+":prompt_rev", rev); setErr != nil {
+		log.Printf("daemon executor: recording prompt revision for step %q: %v", step.Name, setErr)
+	}
+}
+
 // executeContainerStep obtains a container session for the attempt (starting a
 // new container if needed) and dispatches the step to the in-container agent.
 func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.Step, wf *domain.Workflow) (domain.StepResult, error) {
@@ -811,6 +839,7 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 
 	if step.Type == domain.StepTypeAgent {
 		d.seedIntentKV(ctx, step, wf, hostRunID)
+		d.recordPromptRevisionKV(ctx, step, wf.Name, hostRunID)
 	}
 
 	result, err := session.ExecuteStep(ctx, step, d.resumeMode)

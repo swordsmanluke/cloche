@@ -17,6 +17,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cloche-dev/cloche/internal/intent"
 	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/cloche-dev/cloche/internal/promptrev"
 	"github.com/cloche-dev/cloche/internal/protocol"
 	"github.com/cloche-dev/cloche/internal/runcontext"
 )
@@ -386,6 +387,7 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 			runID:     e.HostRunID,
 		}
 		e.seedIntentKV(ctx, step)
+		e.recordPromptRevisionKV(ctx, step)
 	}
 
 	// Pass CLOCHE_* vars so the agent process can invoke `cloche get/set`.
@@ -494,6 +496,31 @@ func (e *Executor) seedIntentKV(ctx context.Context, step *domain.Step) {
 	key := fmt.Sprintf("%s:%s:intent", e.WorkflowName, step.Name)
 	if setErr := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, e.HostRunID, key, strings.Join(injection.IDs, ",")); setErr != nil {
 		log.Printf("host executor: recording injected intent IDs for step %q: %v", step.Name, setErr)
+	}
+}
+
+// recordPromptRevisionKV records which prompt file (if any) this step's
+// `prompt` config resolves to, and the git commit that last touched it as of
+// dispatch time, under the same "<workflow>:<step>:" key prefix seedIntentKV
+// uses for injected requirement IDs. This lets the ledger view (see
+// internal/adapters/web/handler_ledger.go) join attempts to the prompt
+// revision their agent steps ran with. Best-effort: git/lookup failures are
+// silently skipped, same as seedIntentKV's degrade-gracefully approach.
+func (e *Executor) recordPromptRevisionKV(ctx context.Context, step *domain.Step) {
+	relPath, ok := promptrev.ResolveFile(step.Config["prompt"])
+	if !ok {
+		return
+	}
+	rev := promptrev.GitRevision(e.ProjectDir, relPath)
+	if rev == "" {
+		return
+	}
+	prefix := fmt.Sprintf("%s:%s", e.WorkflowName, step.Name)
+	if setErr := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, e.HostRunID, prefix+":prompt_file", relPath); setErr != nil {
+		log.Printf("host executor: recording prompt file for step %q: %v", step.Name, setErr)
+	}
+	if setErr := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, e.HostRunID, prefix+":prompt_rev", rev); setErr != nil {
+		log.Printf("host executor: recording prompt revision for step %q: %v", step.Name, setErr)
 	}
 }
 

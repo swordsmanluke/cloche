@@ -343,6 +343,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks", h.handleAPITasks)
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks/stack", h.handleAPITaskStack)
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks/{taskId}/attempts", h.handleAPITaskAttempts)
+	h.mux.HandleFunc("GET /api/projects/{name}/ledger", h.handleAPILedger)
 	h.mux.HandleFunc("GET /api/activity", h.handleAPIActivity)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/close", h.handleAPICloseTask)

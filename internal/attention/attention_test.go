@@ -68,6 +68,12 @@ func (f *fakeRunStore) ListAttempts(context.Context, string) ([]*domain.Attempt,
 	return nil, nil
 }
 func (f *fakeRunStore) FailStaleAttempts(context.Context) (int64, error) { return 0, nil }
+func (f *fakeRunStore) ListContextKVForProject(context.Context, string) ([]ports.ContextKVRow, error) {
+	return nil, nil
+}
+func (f *fakeRunStore) AttemptTokenTotals(context.Context, string) (map[string]int64, error) {
+	return nil, nil
+}
 
 type fakeHelpStore struct {
 	threads map[string]*domain.HelpThread

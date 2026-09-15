@@ -4952,6 +4952,12 @@ func (f *fakeRunStore) ListAttempts(_ context.Context, _ string) ([]*domain.Atte
 	return nil, nil
 }
 func (f *fakeRunStore) FailStaleAttempts(_ context.Context) (int64, error) { return 0, nil }
+func (f *fakeRunStore) ListContextKVForProject(_ context.Context, _ string) ([]ports.ContextKVRow, error) {
+	return nil, nil
+}
+func (f *fakeRunStore) AttemptTokenTotals(_ context.Context, _ string) (map[string]int64, error) {
+	return nil, nil
+}
 
 // newTestLoop creates a minimal Loop for use in server tests.
 func newTestLoop(projectDir string, store ports.RunStore) *host.Loop {

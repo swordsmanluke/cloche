@@ -965,6 +965,73 @@ h2 {
 
 .console-activity-empty { color: var(--text-muted); padding: 0.5rem 0.1rem; }
 
+.console-ledger-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+}
+
+.console-ledger-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    width: min(900px, 92vw);
+    height: min(720px, 85vh);
+    display: flex;
+    flex-direction: column;
+}
+
+.console-ledger-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+.console-ledger-header h2 { margin: 0; font-size: 1.1rem; }
+
+.console-ledger-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+    padding-top: 0.75rem;
+}
+
+.console-ledger-section { margin-bottom: 1.5rem; }
+.console-ledger-section h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+
+.console-ledger-stats { display: flex; gap: 1rem; margin-bottom: 0.75rem; }
+.console-ledger-stat {
+    background: var(--bg-inset, rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.5rem 0.85rem;
+    flex: 1 1 0;
+}
+.console-ledger-stat-value { font-size: 1.2rem; font-weight: 600; }
+.console-ledger-stat-label { color: var(--text-muted); font-size: 0.75rem; }
+
+.console-ledger-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 0.5rem; }
+.console-ledger-table th, .console-ledger-table td {
+    text-align: left;
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+.console-ledger-table th { color: var(--text-muted); font-weight: 500; }
+
+.console-ledger-file { margin-bottom: 1rem; }
+.console-ledger-file-path { font-family: var(--mono); font-size: 0.85rem; margin-bottom: 0.25rem; }
+.console-ledger-comparison { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.35rem; }
+.console-ledger-mono { font-family: var(--mono); }
+.console-ledger-requirement-text { color: var(--text-muted); font-size: 0.78rem; margin-top: 0.15rem; }
+
+.console-ledger-empty { color: var(--text-muted); padding: 0.5rem 0.1rem; }
+
 .console-help-overlay {
     position: fixed;
     inset: 0;

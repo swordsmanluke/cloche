@@ -183,6 +183,14 @@ func (f *fakeStore) FailStaleAttempts(_ context.Context) (int64, error) {
 	return 0, nil
 }
 
+func (f *fakeStore) ListContextKVForProject(_ context.Context, _ string) ([]ports.ContextKVRow, error) {
+	return nil, nil
+}
+
+func (f *fakeStore) AttemptTokenTotals(_ context.Context, _ string) (map[string]int64, error) {
+	return nil, nil
+}
+
 func (f *fakeStore) countAttempts() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()

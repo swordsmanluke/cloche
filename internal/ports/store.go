@@ -36,6 +36,23 @@ type RunStore interface {
 	GetAttempt(ctx context.Context, id string) (*domain.Attempt, error)
 	ListAttempts(ctx context.Context, taskID string) ([]*domain.Attempt, error)
 	FailStaleAttempts(ctx context.Context) (int64, error)
+	// ListContextKVForProject returns every context_kv row belonging to an
+	// attempt of projectDir, for cross-attempt aggregation (the ledger
+	// view's prompt-revision and requirement-injection tables).
+	ListContextKVForProject(ctx context.Context, projectDir string) ([]ContextKVRow, error)
+	// AttemptTokenTotals returns total (input+output) token usage per
+	// attempt for projectDir, summed across every run tied to that attempt.
+	AttemptTokenTotals(ctx context.Context, projectDir string) (map[string]int64, error)
+}
+
+// ContextKVRow is one row of the per-attempt context KV store, returned by
+// ListContextKVForProject for cross-attempt aggregation.
+type ContextKVRow struct {
+	TaskID    string
+	AttemptID string
+	RunID     string
+	Key       string
+	Value     string
 }
 
 // ProjectMigrator is an optional interface that a RunStore may implement

@@ -266,6 +266,12 @@ func (s *fakeRunStore) ListAttempts(_ context.Context, _ string) ([]*domain.Atte
 	return nil, nil
 }
 func (s *fakeRunStore) FailStaleAttempts(_ context.Context) (int64, error) { return 0, nil }
+func (s *fakeRunStore) ListContextKVForProject(_ context.Context, _ string) ([]ports.ContextKVRow, error) {
+	return nil, nil
+}
+func (s *fakeRunStore) AttemptTokenTotals(_ context.Context, _ string) (map[string]int64, error) {
+	return nil, nil
+}
 
 // ---------------------------------------------------------------------------
 // Agent simulation helpers

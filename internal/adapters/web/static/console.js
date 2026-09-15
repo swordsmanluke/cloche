@@ -542,6 +542,15 @@
             return;
         }
 
+        var ledgerOverlay = document.getElementById('console-ledger-overlay');
+        if (!ledgerOverlay.hidden) {
+            if (e.key === 'Escape' || e.key === 'l') {
+                toggleLedger(false);
+                e.preventDefault();
+            }
+            return;
+        }
+
         // A drawer sits on top of a secondary view; Escape closes the
         // topmost thing first rather than falling through to the stack.
         if (anyDrawerOpen()) {
@@ -603,6 +612,10 @@
                 } else {
                     openContainersView();
                 }
+                e.preventDefault();
+                break;
+            case 'l':
+                toggleLedger(true);
                 e.preventDefault();
                 break;
             case '?':
@@ -748,6 +761,203 @@
 
         var earlierBtn = document.getElementById('console-activity-load-earlier');
         earlierBtn.hidden = !state.activity.cursor;
+    }
+
+    // ---------- ledger ----------
+
+    document.getElementById('console-ledger-close').addEventListener('click', function () { toggleLedger(false); });
+
+    function toggleLedger(show) {
+        document.getElementById('console-ledger-overlay').hidden = !show;
+        if (show) loadLedger();
+    }
+
+    function loadLedger() {
+        var slug = state.activeSlug;
+        var body = document.getElementById('console-ledger-body');
+        if (!slug) {
+            body.innerHTML = '';
+            return;
+        }
+        body.innerHTML = '<div class="console-ledger-empty">Loading…</div>';
+        fetch('/api/projects/' + encodeURIComponent(slug) + '/ledger')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (slug !== state.activeSlug) return; // stale response from a since-abandoned project
+                renderLedger(data || {});
+            })
+            .catch(function () {
+                body.innerHTML = '<div class="console-ledger-empty">Failed to load ledger.</div>';
+            });
+    }
+
+    function renderLedger(data) {
+        var body = document.getElementById('console-ledger-body');
+        body.innerHTML = '';
+        body.appendChild(renderLedgerSummary(data));
+        body.appendChild(renderLedgerPromptFiles(data.prompt_files || []));
+        body.appendChild(renderLedgerRequirements(data.requirements || [], data.task_requirements || []));
+    }
+
+    function renderLedgerSummary(data) {
+        var section = document.createElement('div');
+        section.className = 'console-ledger-section';
+
+        var stats = document.createElement('div');
+        stats.className = 'console-ledger-stats';
+        stats.appendChild(ledgerStatTile('Mean attempts to success', formatNumber(data.mean_attempts_to_success || 0)));
+        stats.appendChild(ledgerStatTile('Tokens per succeeded task', formatNumber(data.tokens_per_succeeded_task || 0)));
+        var points = data.pass_rate_over_time || [];
+        var latest = points.length ? points[points.length - 1] : null;
+        stats.appendChild(ledgerStatTile('Latest day pass rate', latest ? Math.round(latest.pass_rate * 100) + '%' : '—'));
+        section.appendChild(stats);
+
+        var table = document.createElement('table');
+        table.className = 'console-ledger-table';
+        var thead = document.createElement('thead');
+        thead.innerHTML = '<tr><th>Date</th><th>Attempts</th><th>Passed</th><th>Pass rate</th></tr>';
+        table.appendChild(thead);
+        var tbody = document.createElement('tbody');
+        if (!points.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="console-ledger-empty">No attempts yet.</td></tr>';
+        }
+        points.forEach(function (p) {
+            var tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + escapeHtml(p.date) + '</td><td>' + p.attempts + '</td><td>' + p.passed +
+                '</td><td>' + Math.round((p.pass_rate || 0) * 100) + '%</td>';
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        section.appendChild(table);
+        return section;
+    }
+
+    function ledgerStatTile(label, value) {
+        var tile = document.createElement('div');
+        tile.className = 'console-ledger-stat';
+        var v = document.createElement('div');
+        v.className = 'console-ledger-stat-value';
+        v.textContent = value;
+        var l = document.createElement('div');
+        l.className = 'console-ledger-stat-label';
+        l.textContent = label;
+        tile.appendChild(v);
+        tile.appendChild(l);
+        return tile;
+    }
+
+    function renderLedgerPromptFiles(files) {
+        var section = document.createElement('div');
+        section.className = 'console-ledger-section';
+        var h = document.createElement('h3');
+        h.textContent = 'Prompt revisions';
+        section.appendChild(h);
+
+        if (!files.length) {
+            var empty = document.createElement('div');
+            empty.className = 'console-ledger-empty';
+            empty.textContent = 'No prompt-revision data recorded yet.';
+            section.appendChild(empty);
+            return section;
+        }
+
+        files.forEach(function (file) {
+            var block = document.createElement('div');
+            block.className = 'console-ledger-file';
+
+            var title = document.createElement('div');
+            title.className = 'console-ledger-file-path';
+            title.textContent = file.path;
+            block.appendChild(title);
+
+            if (file.latest_change) {
+                var cmp = document.createElement('div');
+                cmp.className = 'console-ledger-comparison';
+                var before = file.latest_change.before, after = file.latest_change.after;
+                cmp.textContent = 'Latest change: ' + Math.round((before.pass_rate || 0) * 100) + '% pass (' +
+                    before.attempts + ' attempts) → ' + Math.round((after.pass_rate || 0) * 100) + '% pass (' +
+                    after.attempts + ' attempts)';
+                block.appendChild(cmp);
+            }
+
+            var table = document.createElement('table');
+            table.className = 'console-ledger-table';
+            table.innerHTML = '<thead><tr><th>Revision</th><th>Date</th><th>Message</th><th>Attempts</th>' +
+                '<th>Pass rate</th><th>Mean tokens</th></tr></thead>';
+            var tbody = document.createElement('tbody');
+            (file.revisions || []).forEach(function (rev) {
+                var tr = document.createElement('tr');
+                tr.innerHTML = '<td class="console-ledger-mono">' + escapeHtml(rev.revision) + '</td>' +
+                    '<td>' + escapeHtml(rev.date || '') + '</td>' +
+                    '<td>' + escapeHtml(rev.message || '') + '</td>' +
+                    '<td>' + rev.attempts + '</td>' +
+                    '<td>' + Math.round((rev.pass_rate || 0) * 100) + '%</td>' +
+                    '<td>' + formatNumber(rev.mean_tokens || 0) + '</td>';
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            block.appendChild(table);
+            section.appendChild(block);
+        });
+        return section;
+    }
+
+    function renderLedgerRequirements(requirements, taskRequirements) {
+        var section = document.createElement('div');
+        section.className = 'console-ledger-section';
+        var h = document.createElement('h3');
+        h.textContent = 'Requirements';
+        section.appendChild(h);
+
+        if (!requirements.length) {
+            var empty = document.createElement('div');
+            empty.className = 'console-ledger-empty';
+            empty.textContent = 'No requirement injections recorded yet.';
+            section.appendChild(empty);
+            return section;
+        }
+
+        var table = document.createElement('table');
+        table.className = 'console-ledger-table';
+        table.innerHTML = '<thead><tr><th>Requirement</th><th>Tasks</th></tr></thead>';
+        var tbody = document.createElement('tbody');
+        requirements.forEach(function (req) {
+            var tr = document.createElement('tr');
+            var taskLabels = (req.tasks || []).map(function (t) { return t.title || t.task_id; }).join(', ');
+            tr.innerHTML = '<td><span class="console-ledger-mono">' + escapeHtml(req.id) + '</span>' +
+                (req.statement ? '<div class="console-ledger-requirement-text">' + escapeHtml(truncateText(req.statement, 140)) + '</div>' : '') +
+                '</td><td>' + escapeHtml(taskLabels) + '</td>';
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        section.appendChild(table);
+
+        if (taskRequirements.length) {
+            var table2 = document.createElement('table');
+            table2.className = 'console-ledger-table';
+            table2.innerHTML = '<thead><tr><th>Task</th><th>Requirements</th></tr></thead>';
+            var tbody2 = document.createElement('tbody');
+            taskRequirements.forEach(function (t) {
+                var tr = document.createElement('tr');
+                tr.innerHTML = '<td>' + escapeHtml(t.title || t.task_id) + '</td><td class="console-ledger-mono">' +
+                    escapeHtml((t.requirement_ids || []).join(', ')) + '</td>';
+                tbody2.appendChild(tr);
+            });
+            table2.appendChild(tbody2);
+            section.appendChild(table2);
+        }
+        return section;
+    }
+
+    function truncateText(s, n) {
+        if (!s || s.length <= n) return s || '';
+        return s.slice(0, n - 1) + '…';
+    }
+
+    function escapeHtml(s) {
+        var div = document.createElement('div');
+        div.textContent = s == null ? '' : String(s);
+        return div.innerHTML;
     }
 
     // ---------- centre pane: entry point ----------
@@ -3207,6 +3417,15 @@
         el.appendChild(instrumentSpan('console-slot-meter', 'Slots ' + busy + '/' + max));
         el.appendChild(instrumentSpan('console-queue-depth', 'Queue ' + ((occ.queued || []).length)));
         el.appendChild(instrumentSpan('console-burn', 'Burn ' + formatBurn(data.usage)));
+
+        var ledgerBtn = document.createElement('button');
+        ledgerBtn.type = 'button';
+        ledgerBtn.id = 'console-ledger-btn';
+        ledgerBtn.className = 'btn btn-secondary btn-sm';
+        ledgerBtn.textContent = 'Ledger';
+        ledgerBtn.addEventListener('click', function () { toggleLedger(true); });
+        el.appendChild(ledgerBtn);
+
         el.appendChild(instrumentSpan('console-version', 'v' + (root.dataset.clocheVersion || '')));
     }
 

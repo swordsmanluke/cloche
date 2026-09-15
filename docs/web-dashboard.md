@@ -60,6 +60,7 @@ On the right, daemon instruments for the active project:
 - **Slots** — busy/max concurrency slots (`GET /loop/occupancy`).
 - **Queue** — how many tasks are waiting for a free slot.
 - **Burn** — combined token burn rate across agents over the last hour (`GET /usage`).
+- **Ledger** — opens the project ledger overlay (see below).
 - **Version** — the daemon's version.
 
 ### Task stack
@@ -149,6 +150,7 @@ The pre-console URLs (`/`, `/projects/{name}[/runs]`, `/runs[/{id}]`, `/tasks/{i
 | `Enter` | Open the selected task in the centre pane |
 | `Esc` | Close an open drawer/view, else return to the stack (clears the centre pane) |
 | `a` | Open the activity stream |
+| `l` | Open the project ledger |
 | `[` / `]` | Switch to the previous / next attempt |
 | `g` / `G` | Scroll the log to the top / bottom |
 | `w` | Open the Workflows view |
@@ -201,6 +203,28 @@ falling back to the stack-deselect behavior described above.
   dashboard links to it, since a single click there could silently remove another
   project's kept containers.
 
+### Ledger
+
+The **Ledger** instrument button (or pressing `l`) opens a per-project overlay
+summarizing outcomes across every attempt, from `GET /api/projects/{slug}/ledger`:
+
+- **Summary** — mean attempts to success, mean tokens per succeeded task, and the
+  latest day's pass rate, plus a day-by-day pass-rate table.
+- **Prompt revisions** — for each prompt file used by an agent step (`prompt =
+  file("...")` in the workflow DSL), its outcome stats broken out by git revision
+  (newest first, from `git log --follow`), and a before/after comparison for the most
+  recent edit that has recorded attempts.
+- **Requirements** — standing requirements (from `.cloche/intent/`) cross-referenced
+  with the tasks whose steps ran with them injected, and the reverse index (task →
+  requirement IDs).
+
+Attribution of an attempt to a prompt revision is recorded at step-dispatch time
+(`host.Executor.recordPromptRevisionKV` and its `grpc.DaemonExecutor` counterpart for
+container steps), keyed by the resolved prompt file and the git commit that last
+touched it as of dispatch. Attempts that predate this recording are backfilled
+best-effort using the workflow's current prompt-file references and `git log` history
+at the attempt's start time. Escape or `l` closes the overlay.
+
 ---
 
 ## JSON API
@@ -250,6 +274,9 @@ The dashboard's JSON endpoints remain stable and are also used by the CLI
 - `GET /api/projects/{name}/containers`, `DELETE .../containers`, `DELETE /api/runs/{id}/container` —
   per-task retained-container listing (with size/age), project-scoped clean-up, and
   per-container delete for the Containers view.
+- `GET /api/projects/{name}/ledger` — pass rate over time, mean attempts/tokens to
+  success, per-prompt-file revision outcomes, and requirement-injection
+  cross-references (see Ledger above).
 
 These are unchanged by the console-shell rework; only the HTML pages that used to render
 around them were replaced.
