@@ -201,34 +201,6 @@ func TestTaskDetail_RedirectsToConsoleShell(t *testing.T) {
 	assert.Equal(t, "/myproj/task-det-1", w.Header().Get("Location"))
 }
 
-func TestAPIAllTasks(t *testing.T) {
-	h, store := setupHandler(t)
-
-	ctx := context.Background()
-	run := domain.NewRun("main-cc33-implement", "main")
-	run.TaskID = "task-api-1"
-	run.TaskTitle = "API Task"
-	run.AttemptID = "cc33"
-	run.ProjectDir = "/some/project"
-	run.Start()
-	run.Complete(domain.RunStateSucceeded)
-	require.NoError(t, store.CreateRun(ctx, run))
-
-	req := httptest.NewRequest("GET", "/api/tasks", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var tasks []taskSummaryEntry
-	require.NoError(t, json.NewDecoder(w.Body).Decode(&tasks))
-	require.Len(t, tasks, 1)
-	assert.Equal(t, "task-api-1", tasks[0].TaskID)
-	assert.Equal(t, "API Task", tasks[0].TaskTitle)
-	assert.Equal(t, "succeeded", tasks[0].Status)
-	assert.Equal(t, 1, tasks[0].AttemptCount)
-}
-
 func TestFullLogPath_V2(t *testing.T) {
 	run := &domain.Run{
 		ID:         "main-ab12-implement",

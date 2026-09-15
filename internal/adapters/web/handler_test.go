@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -146,42 +145,6 @@ func TestAPIRuns(t *testing.T) {
 	assert.True(t, ids["api-run-2"])
 }
 
-// TestAPIPolls verifies that GET /api/polls surfaces only waiting runs with
-// an active PollRecord, backing the web UI's "Polls" section.
-func TestAPIPolls(t *testing.T) {
-	h, store := setupHandler(t)
-
-	ctx := context.Background()
-	run := domain.NewRun("poll-run-2", "main")
-	run.Start()
-	run.State = domain.RunStateWaiting
-	require.NoError(t, store.CreateRun(ctx, run))
-	require.NoError(t, store.UpsertPoll(ctx, &ports.PollRecord{
-		RunID:      "poll-run-2",
-		StepName:   "await-approval",
-		StartedAt:  time.Now(),
-		LastPollAt: time.Now(),
-		PollCount:  2,
-	}))
-
-	// A regular running run has no poll record and must not show up.
-	seedRun(t, store, "regular-run", "develop", domain.RunStateRunning)
-
-	req := httptest.NewRequest("GET", "/api/polls", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
-
-	var polls []apiPoll
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &polls))
-	require.Len(t, polls, 1)
-	assert.Equal(t, "poll-run-2", polls[0].RunID)
-	assert.Equal(t, "await-approval", polls[0].StepName)
-	assert.Equal(t, 2, polls[0].PollCount)
-}
-
 func TestAPIRunDetail(t *testing.T) {
 	h, store := setupHandler(t)
 	seedRun(t, store, "api-detail-1", "develop", domain.RunStateRunning)
@@ -222,14 +185,6 @@ func TestStaticCSS(t *testing.T) {
 }
 
 func TestHelpers(t *testing.T) {
-	t.Run("stateColor", func(t *testing.T) {
-		assert.Equal(t, "pending", stateColor(domain.RunStatePending))
-		assert.Equal(t, "running", stateColor(domain.RunStateRunning))
-		assert.Equal(t, "succeeded", stateColor(domain.RunStateSucceeded))
-		assert.Equal(t, "failed", stateColor(domain.RunStateFailed))
-		assert.Equal(t, "cancelled", stateColor(domain.RunStateCancelled))
-	})
-
 	t.Run("formatTime", func(t *testing.T) {
 		assert.Equal(t, "", formatTime(time.Time{}))
 		ts := time.Date(2026, 2, 26, 14, 30, 0, 0, time.UTC)
@@ -243,16 +198,6 @@ func TestHelpers(t *testing.T) {
 		assert.Equal(t, "500ms", formatDuration(now, now.Add(500*time.Millisecond)))
 		assert.Equal(t, "5.0s", formatDuration(now, now.Add(5*time.Second)))
 		assert.Equal(t, "2m30s", formatDuration(now, now.Add(2*time.Minute+30*time.Second)))
-	})
-
-	t.Run("truncate", func(t *testing.T) {
-		assert.Equal(t, "hello", truncate("hello", 10))
-		assert.Equal(t, "hel...", truncate("hello world", 3))
-	})
-
-	t.Run("shortContainerID", func(t *testing.T) {
-		assert.Equal(t, "abc123def456", shortContainerID("abc123def456789abcdef"))
-		assert.Equal(t, "short", shortContainerID("short"))
 	})
 
 	t.Run("formatSmartDuration", func(t *testing.T) {
@@ -648,15 +593,6 @@ func TestProjectOverview_Empty(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.NotContains(t, w.Body.String(), "project-card")
-}
-
-func TestHealthColor(t *testing.T) {
-	assert.Equal(t, "green", healthColor(domain.HealthGreen))
-	assert.Equal(t, "yellow", healthColor(domain.HealthYellow))
-	assert.Equal(t, "red", healthColor(domain.HealthRed))
-	assert.Equal(t, "blue", healthColor(domain.HealthBlue))
-	assert.Equal(t, "grey", healthColor(domain.HealthGrey))
-	assert.Equal(t, "grey", healthColor("unknown"))
 }
 
 func TestAPIProjects_HealthData(t *testing.T) {
@@ -1302,54 +1238,6 @@ func TestStepOutput_DoesNotFallBackToContainerLog(t *testing.T) {
 	assert.NotContains(t, w.Body.String(), "wrong: mixed output from all steps")
 }
 
-func TestAPIProjectInfo_PromptFileContent(t *testing.T) {
-	// The project info API should return prompt file contents, not just git history.
-	h, store := setupHandler(t)
-
-	dir := t.TempDir()
-	seedRunWithProject(t, store, "info-1", "develop", domain.RunStateSucceeded, dir)
-
-	// Create .cloche/prompts/ with a prompt file
-	promptsDir := filepath.Join(dir, ".cloche", "prompts")
-	require.NoError(t, os.MkdirAll(promptsDir, 0o755))
-	promptContent := "You are a coding assistant.\nImplement the feature described below."
-	require.NoError(t, os.WriteFile(filepath.Join(promptsDir, "implement.md"), []byte(promptContent), 0o644))
-
-	// Initialize a git repo so git log doesn't fail
-	runGit := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
-			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com")
-		out, err := cmd.CombinedOutput()
-		require.NoError(t, err, "git %v: %s", args, out)
-	}
-	runGit("init")
-	runGit("add", ".")
-	runGit("commit", "-m", "initial")
-
-	req := httptest.NewRequest("GET", "/api/projects/"+filepath.Base(dir)+"/info", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var resp struct {
-		PromptFiles []struct {
-			Path    string `json:"path"`
-			Content string `json:"content"`
-			History []struct {
-				SHA string `json:"sha"`
-			} `json:"history"`
-		} `json:"prompt_files"`
-	}
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	require.Len(t, resp.PromptFiles, 1)
-	assert.Equal(t, filepath.Join(".cloche", "prompts", "implement.md"), resp.PromptFiles[0].Path)
-	assert.Equal(t, promptContent, resp.PromptFiles[0].Content)
-	assert.NotEmpty(t, resp.PromptFiles[0].History, "should still include git history")
-}
-
 func TestWorkflowAPI_ComplexGraph(t *testing.T) {
 	// Test that the workflow API returns the full graph structure needed by
 	// the layered layout engine (steps with types, wires with results,
@@ -1559,57 +1447,6 @@ func (m *mockAttentionProvider) AttentionItems(_ context.Context, projectDir str
 		return nil, m.err
 	}
 	return m.items[projectDir], nil
-}
-
-func TestAPIProjectAttention_WithItems(t *testing.T) {
-	h, store := setupHandler(t)
-	ctx := context.Background()
-
-	projectDir := "/home/user/projects/myapp"
-	run := domain.NewRun("run-1", "develop")
-	run.ProjectDir = projectDir
-	require.NoError(t, store.CreateRun(ctx, run))
-
-	since := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
-	h.attentionProvider = &mockAttentionProvider{items: map[string][]attention.Item{
-		projectDir: {
-			{Kind: attention.KindParked, ProjectDir: projectDir, TaskID: "task-1", RunID: "run-1", Reason: "run parked", Since: since, Actions: []string{"reply"}, ThreadAddress: "myapp/ask-1"},
-		},
-	}}
-
-	req := httptest.NewRequest("GET", "/api/projects/myapp/attention", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
-
-	var items []attention.Item
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &items))
-	require.Len(t, items, 1)
-	assert.Equal(t, attention.KindParked, items[0].Kind)
-	assert.Equal(t, "task-1", items[0].TaskID)
-	assert.Equal(t, "myapp/ask-1", items[0].ThreadAddress)
-}
-
-func TestAPIProjectAttention_NoProvider(t *testing.T) {
-	h, store := setupHandler(t)
-	ctx := context.Background()
-
-	projectDir := "/home/user/projects/myapp"
-	run := domain.NewRun("run-1", "develop")
-	run.ProjectDir = projectDir
-	require.NoError(t, store.CreateRun(ctx, run))
-
-	req := httptest.NewRequest("GET", "/api/projects/myapp/attention", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var items []attention.Item
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &items))
-	assert.Empty(t, items)
 }
 
 func TestAPIProjects_FoldsAttentionCount(t *testing.T) {

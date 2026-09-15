@@ -257,15 +257,7 @@ type Handler struct {
 // NewHandler creates a web dashboard handler.
 func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...HandlerOption) (*Handler, error) {
 	funcMap := template.FuncMap{
-		"stateColor":       stateColor,
-		"healthColor":      healthColor,
-		"formatTime":       formatTime,
-		"formatDuration":   formatDuration,
-		"formatRunTiming":  formatRunTiming,
-		"truncate":         truncate,
-		"shortContainerID": shortContainerID,
-		"jsonMap":          jsonMap,
-		"clocheVersion":    version.Version,
+		"clocheVersion": version.Version,
 	}
 
 	base, err := template.New("").Funcs(funcMap).ParseFS(content, "templates/layout.html")
@@ -311,7 +303,6 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/projects", h.handleAPIProjects)
 	h.mux.HandleFunc("GET /api/projects/{name}/runs", h.handleAPIProjectRuns)
 	h.mux.HandleFunc("GET /api/runs", h.handleAPIRuns)
-	h.mux.HandleFunc("GET /api/polls", h.handleAPIPolls)
 	h.mux.HandleFunc("GET /api/runs/{id}", h.handleAPIRunDetail)
 	h.mux.HandleFunc("GET /api/runs/{id}/thread", h.handleAPIRunThread)
 	h.mux.HandleFunc("POST /api/runs/{id}/thread/reply", h.handleAPIRunThreadReply)
@@ -325,14 +316,12 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("DELETE /api/projects/{name}/containers", h.handleAPIDeleteProjectContainers)
 	h.mux.HandleFunc("DELETE /api/containers", h.handleAPIDeleteAllContainers)
 	h.mux.HandleFunc("GET /api/projects/{name}/usage", h.handleAPIProjectUsage)
-	h.mux.HandleFunc("GET /api/projects/{name}/info", h.handleAPIProjectInfo)
 	h.mux.HandleFunc("GET /api/projects/{name}/info/prompt-diff", h.handleAPIPromptDiff)
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows", h.handleAPIWorkflows)
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows/{workflow}/steps/{step}/content", h.handleAPIStepContent)
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks", h.handleAPITasks)
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks/stack", h.handleAPITaskStack)
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks/{taskId}/attempts", h.handleAPITaskAttempts)
-	h.mux.HandleFunc("GET /api/projects/{name}/attention", h.handleAPIProjectAttention)
 	h.mux.HandleFunc("GET /api/activity", h.handleAPIActivity)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
 	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
@@ -346,7 +335,6 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("PUT /api/projects/{name}/intent/domains", h.handleAPIIntentDomainsPut)
 	h.mux.HandleFunc("POST /api/projects/{name}/intent/scan", h.handleAPIIntentScan)
 	h.mux.HandleFunc("GET /api/projects/{name}/intent/doc", h.handleAPIIntentDoc)
-	h.mux.HandleFunc("GET /api/tasks", h.handleAPIAllTasks)
 	h.mux.HandleFunc("GET /api/runs/{id}/logs", h.handleAPILogs)
 	h.mux.HandleFunc("GET /api/runs/{id}/stream", h.handleAPIStream)
 	h.mux.HandleFunc("GET /api/attempts/{id}/stream", h.handleAPIAttemptStream)
@@ -366,87 +354,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // --- HTML handlers ---
 
-// taskSummaryEntry holds a summary of a task for the landing page task list.
-type taskSummaryEntry struct {
-	TaskID       string `json:"task_id"`
-	TaskTitle    string `json:"task_title,omitempty"`
-	ProjectLabel string `json:"project_label,omitempty"`
-	Status       string `json:"status"`
-	AttemptCount int    `json:"attempt_count"`
-	LatestResult string `json:"latest_result,omitempty"`
-	LatestTime   string `json:"latest_time,omitempty"`
-}
-
 const healthWindowSize = 10
-
-// buildTaskSummaries derives a task summary list from a set of runs.
-// Each unique TaskID produces one summary entry with status, attempt count, and latest result.
-func buildTaskSummaries(runs []*domain.Run, labels map[string]string, taskTitles map[string]string) []taskSummaryEntry {
-	// Build children map for computing per-attempt status.
-	parentMap := map[string][]*domain.Run{}
-	for _, r := range runs {
-		if r.ParentRunID != "" {
-			parentMap[r.ParentRunID] = append(parentMap[r.ParentRunID], r)
-		}
-	}
-
-	// Group top-level runs by task ID (excluding list-tasks runs).
-	taskRuns := map[string][]*domain.Run{}
-	taskOrder := []string{} // preserve first-seen order (sorted by most active)
-	seenTask := map[string]bool{}
-
-	var sorted []*domain.Run
-	for _, r := range runs {
-		// Built-in workflow runs (e.g. the automatic intent-scan trigger) get a
-		// synthetic task ID but aren't user work items — excluded from task
-		// grouping so they don't masquerade as tasks (see buildBuiltinFailureSummaries).
-		if r.WorkflowName != "list-tasks" && r.TaskID != "" && r.ParentRunID == "" && !r.IsBuiltin {
-			sorted = append(sorted, r)
-		}
-	}
-	// Sort: running first, then by started_at desc
-	sort.SliceStable(sorted, func(i, j int) bool {
-		iRunning := sorted[i].State == domain.RunStateRunning
-		jRunning := sorted[j].State == domain.RunStateRunning
-		if iRunning != jRunning {
-			return iRunning
-		}
-		return sorted[i].StartedAt.After(sorted[j].StartedAt)
-	})
-
-	for _, r := range sorted {
-		taskRuns[r.TaskID] = append(taskRuns[r.TaskID], r)
-		if !seenTask[r.TaskID] {
-			seenTask[r.TaskID] = true
-			taskOrder = append(taskOrder, r.TaskID)
-		}
-	}
-
-	var result []taskSummaryEntry
-	for _, tid := range taskOrder {
-		group := taskRuns[tid]
-		if len(group) == 0 {
-			continue
-		}
-		// Task status reflects the latest attempt (group[0]) and its children.
-		latestRun := group[0]
-		latestAttemptRuns := append([]*domain.Run{latestRun}, parentMap[latestRun.ID]...)
-		status := taskAggregateStatus(latestAttemptRuns)
-		latestResult := string(latestRun.State)
-		latestTime := formatTime(latestRun.StartedAt)
-
-		result = append(result, taskSummaryEntry{
-			TaskID:       tid,
-			TaskTitle:    taskTitles[tid],
-			ProjectLabel: labels[latestRun.ProjectDir],
-			Status:       status,
-			AttemptCount: len(group),
-			LatestResult: latestResult,
-			LatestTime:   latestTime,
-		})
-	}
-	return result
-}
 
 // stepEntry is a merged view of a step execution for the template.
 type stepEntry struct {
@@ -826,59 +734,6 @@ func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
 	}
 }
 
-// apiPoll describes a poll step currently being run asynchronously (parked,
-// not holding a concurrency slot) — the "Polls" section that sits alongside
-// "Runs". Once the poll resolves and the workflow continues, the run
-// reappears under "Runs" as normal.
-type apiPoll struct {
-	RunID        string `json:"run_id"`
-	ProjectLabel string `json:"project_label"`
-	WorkflowName string `json:"workflow_name"`
-	TaskID       string `json:"task_id,omitempty"`
-	TaskTitle    string `json:"task_title,omitempty"`
-	StepName     string `json:"step_name"`
-	StartedAt    string `json:"started_at"`
-	LastPollAt   string `json:"last_poll_at"`
-	PollCount    int    `json:"poll_count"`
-}
-
-// collectPolls returns the poll steps currently being polled asynchronously
-// across the given runs (runs in RunStateWaiting with an active PollRecord).
-// Returns nil when the store doesn't implement ports.PollStore.
-func (h *Handler) collectPolls(ctx context.Context, runs []*domain.Run, labels map[string]string, taskTitles map[string]string) []apiPoll {
-	pollStore, ok := h.store.(ports.PollStore)
-	if !ok {
-		return nil
-	}
-	var polls []apiPoll
-	for _, run := range runs {
-		if run.State != domain.RunStateWaiting {
-			continue
-		}
-		records, err := pollStore.ListPolls(ctx, run.ID)
-		if err != nil {
-			continue
-		}
-		for _, rec := range records {
-			polls = append(polls, apiPoll{
-				RunID:        run.ID,
-				ProjectLabel: labels[run.ProjectDir],
-				WorkflowName: run.WorkflowName,
-				TaskID:       run.TaskID,
-				TaskTitle:    taskTitles[run.TaskID],
-				StepName:     rec.StepName,
-				StartedAt:    formatTime(rec.StartedAt),
-				LastPollAt:   formatTime(rec.LastPollAt),
-				PollCount:    rec.PollCount,
-			})
-		}
-	}
-	sort.Slice(polls, func(i, j int) bool {
-		return polls[i].StartedAt > polls[j].StartedAt
-	})
-	return polls
-}
-
 // apiGroupedEntry is a single entry in the grouped runs response.
 // Can be a task header, an attempt header, or a run entry.
 type apiGroupedEntry struct {
@@ -1069,32 +924,6 @@ func (h *Handler) handleAPIRuns(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.renderAPIRuns(w, r, "")
-}
-
-// handleAPIPolls handles GET /api/polls, returning the poll steps currently
-// being run asynchronously (optionally filtered by ?project=<dir>) so the
-// "Polls" section on the runs page can refresh without a full page reload.
-func (h *Handler) handleAPIPolls(w http.ResponseWriter, r *http.Request) {
-	projectFilter := r.URL.Query().Get("project")
-
-	var runs []*domain.Run
-	var err error
-	if projectFilter != "" {
-		runs, err = h.store.ListRunsByProject(r.Context(), projectFilter, time.Time{})
-	} else {
-		runs, err = h.store.ListRuns(r.Context(), time.Time{})
-	}
-	if err != nil {
-		http.Error(w, "failed to list runs", http.StatusInternalServerError)
-		return
-	}
-
-	projects, _ := h.store.ListProjects(r.Context())
-	labels := projectLabels(projects)
-	polls := h.collectPolls(r.Context(), runs, labels, h.taskTitlesFromRuns(runs))
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(polls)
 }
 
 // handleAPIProjectRuns handles GET /api/projects/{name}/runs.
@@ -2275,99 +2104,6 @@ func (h *Handler) handleAPIProjectUsage(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (h *Handler) handleAPIProjectInfo(w http.ResponseWriter, r *http.Request) {
-	dir, _, ok := h.resolveProjectDir(w, r)
-	if !ok {
-		return
-	}
-
-	// Docker image: read FROM line from Dockerfile
-	dockerImage := ""
-	dockerfilePath := filepath.Join(dir, ".cloche", "Dockerfile")
-	if data, err := os.ReadFile(dockerfilePath); err == nil {
-		// Find the last FROM line (final stage)
-		for _, line := range strings.Split(string(data), "\n") {
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(strings.ToUpper(trimmed), "FROM ") {
-				parts := strings.Fields(trimmed)
-				if len(parts) >= 2 {
-					dockerImage = parts[1]
-				}
-			}
-		}
-	}
-
-	// Version
-	version := 0
-	versionPath := filepath.Join(dir, ".cloche", "version")
-	if data, err := os.ReadFile(versionPath); err == nil {
-		if v, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
-			version = v
-		}
-	}
-
-	// Prompt files history
-	type commitEntry struct {
-		SHA     string `json:"sha"`
-		Date    string `json:"date"`
-		Message string `json:"message"`
-	}
-	type promptFile struct {
-		Path    string        `json:"path"`
-		Content string        `json:"content"`
-		History []commitEntry `json:"history"`
-	}
-
-	var promptFiles []promptFile
-	promptsDir := filepath.Join(dir, ".cloche", "prompts")
-	if entries, err := os.ReadDir(promptsDir); err == nil {
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			relPath := filepath.Join(".cloche", "prompts", e.Name())
-			content := ""
-			if data, err := os.ReadFile(filepath.Join(promptsDir, e.Name())); err == nil {
-				content = string(data)
-			}
-			cmd := exec.Command("git", "log", "--follow", "--format=%H %aI %s", "--", relPath)
-			cmd.Dir = dir
-			out, err := cmd.Output()
-			if err != nil {
-				continue
-			}
-			var history []commitEntry
-			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-				if line == "" {
-					continue
-				}
-				parts := strings.SplitN(line, " ", 3)
-				if len(parts) < 3 {
-					continue
-				}
-				// Parse date to short form
-				dateStr := parts[1]
-				if t, err := time.Parse(time.RFC3339, dateStr); err == nil {
-					dateStr = t.Format("2006-01-02")
-				}
-				history = append(history, commitEntry{
-					SHA:     parts[0][:7],
-					Date:    dateStr,
-					Message: parts[2],
-				})
-			}
-			promptFiles = append(promptFiles, promptFile{Path: relPath, Content: content, History: history})
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"docker_image": dockerImage,
-		"version":      version,
-		"prompt_files": promptFiles,
-	})
-}
-
 func (h *Handler) handleAPIPromptDiff(w http.ResponseWriter, r *http.Request) {
 	dir, _, ok := h.resolveProjectDir(w, r)
 	if !ok {
@@ -2660,47 +2396,6 @@ func (h *Handler) handleAPITasks(w http.ResponseWriter, r *http.Request) {
 	if tasks == nil {
 		tasks = []TaskEntry{}
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tasks)
-}
-
-// handleAPIProjectAttention returns the "Needs you" attention items for a project.
-func (h *Handler) handleAPIProjectAttention(w http.ResponseWriter, r *http.Request) {
-	dir, _, ok := h.resolveProjectDir(w, r)
-	if !ok {
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if h.attentionProvider == nil {
-		json.NewEncoder(w).Encode([]attention.Item{})
-		return
-	}
-
-	items, err := h.attentionProvider.AttentionItems(r.Context(), dir)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to compute attention: %v", err)})
-		return
-	}
-	if items == nil {
-		items = []attention.Item{}
-	}
-	json.NewEncoder(w).Encode(items)
-}
-
-// handleAPIAllTasks returns a JSON task summary list derived from all runs.
-func (h *Handler) handleAPIAllTasks(w http.ResponseWriter, r *http.Request) {
-	runs, err := h.store.ListRuns(r.Context(), time.Time{})
-	if err != nil {
-		http.Error(w, "failed to list runs", http.StatusInternalServerError)
-		return
-	}
-	projects, _ := h.store.ListProjects(r.Context())
-	labels := projectLabels(projects)
-	taskTitles := h.taskTitlesFromRuns(runs)
-	tasks := buildTaskSummaries(runs, labels, taskTitles)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tasks)
@@ -3444,38 +3139,6 @@ func isTextContent(data []byte) bool {
 	return true
 }
 
-func stateColor(state domain.RunState) string {
-	switch state {
-	case domain.RunStatePending:
-		return "pending"
-	case domain.RunStateRunning:
-		return "running"
-	case domain.RunStateSucceeded:
-		return "succeeded"
-	case domain.RunStateFailed:
-		return "failed"
-	case domain.RunStateCancelled:
-		return "cancelled"
-	default:
-		return "pending"
-	}
-}
-
-func healthColor(status domain.HealthStatus) string {
-	switch status {
-	case domain.HealthGreen:
-		return "green"
-	case domain.HealthYellow:
-		return "yellow"
-	case domain.HealthRed:
-		return "red"
-	case domain.HealthBlue:
-		return "blue"
-	default:
-		return "grey"
-	}
-}
-
 func formatTime(t time.Time) string {
 	if t.IsZero() {
 		return ""
@@ -3581,26 +3244,6 @@ func formatRunTimingAt(state domain.RunState, startedAt, completedAt, now time.T
 		ago := now.Sub(completedAt)
 		return formatSmartDuration(d) + ", " + roundRelativeTime(ago)
 	}
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
-}
-
-// jsonMap serializes a map to a JSON string for embedding in templates.
-func jsonMap(m map[string]string) template.JS {
-	b, _ := json.Marshal(m)
-	return template.JS(b)
-}
-
-func shortContainerID(id string) string {
-	if len(id) > 12 {
-		return id[:12]
-	}
-	return id
 }
 
 // projectLabels builds a mapping from full project directory paths to

@@ -1014,10 +1014,10 @@ Workflow Info:
 Workflow Runs:
   run        Launch a workflow run in a container
   resume     Resume a failed workflow run from a specific step
-  status     Show daemon overview or check a specific run's status
+  status     Show daemon overview or check a specific task's status
   logs       Show or stream logs for a run
   poll       Wait for one or more runs to finish (blocks until terminal)
-  list       List runs for current project (or all projects)
+  list       List tasks for current project (or all projects; --runs for a run listing)
   stop       Stop a running workflow
   delete     Delete a retained container
   extract    Extract container results to a local directory or git worktree
