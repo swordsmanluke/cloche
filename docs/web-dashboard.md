@@ -112,11 +112,13 @@ Shows the selected task's full detail:
   attempt failed at. Backed by `GET /api/projects/{slug}/tasks/{taskId}/attempts` for the
   attempt list and `GET /api/runs/{id}` for the selected attempt's detail.
 - **Step strip** — one horizontal segment per step of the top-level run, with a spawned
-  child run's steps inlined in a row beneath the workflow step that spawned them (the
-  flattened-run tree already used by `GET /api/runs/{id}`). Each segment shows a result
-  dot and duration; poll steps also show their last poll time and count. The live (or
-  selected) segment is highlighted. Clicking a segment scopes the log below to that step's
-  output (`GET /api/runs/{id}/steps/{step}/output`); clicking it again clears the scope.
+  child run's steps inlined immediately after the workflow step that spawned them (the
+  flattened-run tree already used by `GET /api/runs/{id}`) — the parent segment gets a `↳`
+  marker and its children render shaded and indented in the same strip. Each segment shows
+  a result dot and duration; poll steps also show their last poll time and count. The live
+  (or selected) segment is highlighted. Clicking a segment scopes the log below to that
+  step's output (`GET /api/runs/{id}/steps/{step}/output`); clicking it again clears the
+  scope.
 - **Log** — full pane width. Unscoped, it's an SSE stream (`GET /api/attempts/{id}/stream`)
   with a follow toggle, a replay of the last ~1000 lines, and "load earlier" paging
   (`GET /api/attempts/{id}/logs`). A type filter (all/llm/script/status), a wrap toggle,

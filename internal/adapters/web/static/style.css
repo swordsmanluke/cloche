@@ -807,52 +807,61 @@ h2 {
 
 .console-step-strip {
     display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 0.5rem;
+    align-items: stretch;
     margin-bottom: 1rem;
     padding-bottom: 0.5rem;
     overflow-x: auto;
 }
 
-.console-step-cluster { display: flex; flex-direction: column; gap: 0.3rem; }
-
-.console-step-substrip {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-    margin-left: 1rem;
-    padding-left: 0.4rem;
-    border-left: 2px solid var(--ln);
-}
-
 .console-step-segment {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
+    display: grid;
+    gap: 0.15rem;
+    flex: none;
+    min-width: 118px;
     background: var(--pnl);
     border: 1px solid var(--ln);
-    border-radius: var(--radius);
+    border-right: 0;
     color: var(--tx);
     font-family: var(--font);
-    font-size: 0.78rem;
-    padding: 0.3em 0.55em;
+    text-align: left;
+    padding: 0.35rem 0.7rem;
     cursor: pointer;
-    white-space: nowrap;
+}
+
+.console-step-segment:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+
+.console-step-segment:last-child {
+    border-right: 1px solid var(--ln);
+    border-radius: 0 var(--radius) var(--radius) 0;
 }
 
 .console-step-segment:hover { background: var(--bg); }
 
-.console-step-segment-child { font-size: 0.72rem; opacity: 0.9; }
+.console-step-segment-name {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    color: var(--tx);
+}
 
-.console-step-segment-meta { color: var(--mu); }
+.console-step-segment-name .run-dot { width: 7px; height: 7px; }
+
+.console-step-segment-meta {
+    font-size: 0.62rem;
+    color: var(--mu);
+    font-variant-numeric: tabular-nums;
+}
+
+.console-step-segment-child { background: var(--bg); }
+
+.console-step-segment-child .console-step-segment-name { padding-left: 0.5rem; }
 
 .console-step-segment-live { border-color: var(--ac); }
 
 .console-step-segment-selected {
     background: var(--pnl3);
-    border-color: var(--ac);
-    box-shadow: 0 0 0 1px var(--ac);
+    box-shadow: inset 0 -2px 0 var(--ac);
 }
 
 .console-thread-panel {

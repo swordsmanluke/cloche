@@ -1789,7 +1789,10 @@
         }
 
         clusterSteps(steps).forEach(function (cluster) {
-            container.appendChild(renderStepCluster(cluster));
+            container.appendChild(renderStepSegment(cluster.step, false, cluster.children.length > 0));
+            cluster.children.forEach(function (child) {
+                container.appendChild(renderStepSegment(child, true, false));
+            });
         });
     }
 
@@ -1812,22 +1815,7 @@
         return clusters;
     }
 
-    function renderStepCluster(cluster) {
-        var box = document.createElement('div');
-        box.className = 'console-step-cluster';
-        box.appendChild(renderStepSegment(cluster.step, false));
-        if (cluster.children.length) {
-            var sub = document.createElement('div');
-            sub.className = 'console-step-substrip';
-            cluster.children.forEach(function (child) {
-                sub.appendChild(renderStepSegment(child, true));
-            });
-            box.appendChild(sub);
-        }
-        return box;
-    }
-
-    function renderStepSegment(step, isChild) {
+    function renderStepSegment(step, isChild, hasChildren) {
         var seg = document.createElement('button');
         seg.type = 'button';
         seg.className = 'console-step-segment' + (isChild ? ' console-step-segment-child' : '');
@@ -1837,25 +1825,27 @@
         if (isScoped) seg.classList.add('console-step-segment-selected');
         if (isLive) seg.classList.add('console-step-segment-live');
 
-        var dot = document.createElement('span');
-        dot.className = 'run-dot ' + stepDotClass(step);
-        seg.appendChild(dot);
-
         var name = document.createElement('span');
         name.className = 'console-step-segment-name';
-        name.textContent = step.step_name;
+
+        var dot = document.createElement('span');
+        dot.className = 'run-dot ' + stepDotClass(step);
+        name.appendChild(dot);
+
+        var nameText = document.createElement('span');
+        nameText.textContent = step.step_name + (hasChildren ? ' ↳' : '');
+        name.appendChild(nameText);
+
         seg.appendChild(name);
 
         var metaText = step.duration || (isLive ? 'running…' : '');
         if (step.poll_count) {
             metaText += (metaText ? ' · ' : '') + '⟳' + step.poll_count + ' · ' + step.last_poll_at;
         }
-        if (metaText) {
-            var meta = document.createElement('span');
-            meta.className = 'console-step-segment-meta';
-            meta.textContent = metaText;
-            seg.appendChild(meta);
-        }
+        var meta = document.createElement('span');
+        meta.className = 'console-step-segment-meta';
+        meta.textContent = metaText;
+        seg.appendChild(meta);
 
         seg.addEventListener('click', function () { toggleStepScope(step); });
         return seg;
