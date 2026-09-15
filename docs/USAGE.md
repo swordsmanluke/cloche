@@ -1892,14 +1892,29 @@ for the design rationale.
 ### `[attention]`
 
 Controls the thresholds used to derive the "Needs you" set shown by `cloche status`
-(see above) and the daemon's `GetAttention` RPC. See `internal/attention` for the
-derivation logic.
+(see above), the `/api/projects`, `/api/projects/{slug}/attention`, and
+`/api/projects/occupancy` dashboard endpoints, and the daemon's `GetAttention` RPC.
+See `internal/attention` for the derivation logic.
+
+Per-project thresholds go in a project's `.cloche/config.toml`:
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `repeat_failure_threshold` | `3` | Consecutive failed attempts for a task (or failed runs for a built-in workflow, within `builtin_failure_window`) before it's flagged. |
 | `long_poll_threshold` | `"2h"` | Duration string (e.g. `"2h"`, `"90m"`); a poll step waiting longer than this is flagged. |
 | `builtin_failure_window` | `"24h"` | Duration string bounding how far back built-in workflow runs are considered for the repeated-failure check. |
+
+All of the above endpoints and the RPC answer from a per-project cache the daemon
+refreshes in the background (see `internal/attention.Cache`) rather than running each
+project's tracker on every request — a project that hasn't been refreshed yet reports
+an empty set with `computed_at` unset rather than blocking. The cache itself recomputes
+on a timer (plus immediately after a run reaches a terminal state or a help thread
+changes), configured daemon-wide in `~/.config/cloche/config` (not a per-project file):
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `refresh_interval` | `"60s"` | Duration string; how often every registered project's attention set is recomputed. |
+| `max_parallel_refresh` | `4` | How many projects refresh concurrently, so one slow tracker script can't delay the rest. |
 
 ### `[[repositories]]`
 

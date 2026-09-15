@@ -398,7 +398,8 @@ message ListLoopOccupancyRequest {}
 
 // ProjectOccupancySummary is a cheap per-project rollup for a dashboard tab
 // bar: how many slots are busy, how many things are queued, and overall
-// health. attention_count is always 0 until the attention-model ticket lands.
+// health. attention_count is read from the background-refreshed attention
+// cache (see internal/attention.Cache), never computed on this request.
 message ProjectOccupancySummary {
   string project_dir = 1;
   string name = 2;

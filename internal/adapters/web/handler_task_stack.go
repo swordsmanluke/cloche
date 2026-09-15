@@ -213,10 +213,7 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursorT
 	}
 
 	if h.attentionProvider != nil {
-		items, err := h.attentionProvider.AttentionItems(ctx, projectDir)
-		if err != nil {
-			return nil, fmt.Errorf("computing attention: %w", err)
-		}
+		items := h.attentionProvider.AttentionSnapshot(projectDir).Items
 		// Resolved at most once per build (a .cloche glob+parse), and only
 		// when a stale-claim/repeat-failure item actually needs it.
 		closeAvailable := -1 // -1 = not yet resolved, 0 = false, 1 = true

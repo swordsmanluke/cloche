@@ -72,6 +72,7 @@ type Router struct {
 	channels  []ports.HelpChannel
 	parkAfter time.Duration
 	parkFunc  ParkFunc
+	onChanged func(runID string)
 
 	mu      sync.Mutex
 	pending map[string]*pendingAsk // keyed by RunID
@@ -84,6 +85,27 @@ func (r *Router) SetParkFunc(f ParkFunc) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.parkFunc = f
+}
+
+// SetOnThreadChanged configures a callback invoked (with the RunID a thread
+// is attached to) whenever a thread is created or gets a new message — used
+// to trigger an out-of-band attention-cache refresh (see
+// internal/attention.Cache) so a new/resolved KindParked item doesn't wait
+// for the next timer tick. Best-effort: runs synchronously but must not
+// block (the caller resolves projectDir via a cheap store lookup).
+func (r *Router) SetOnThreadChanged(f func(runID string)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.onChanged = f
+}
+
+func (r *Router) notifyChanged(runID string) {
+	r.mu.Lock()
+	f := r.onChanged
+	r.mu.Unlock()
+	if f != nil && runID != "" {
+		f(runID)
+	}
 }
 
 // NewRouter constructs a Router. parkAfter <= 0 uses DefaultParkAfter.
@@ -150,6 +172,7 @@ func (r *Router) Ask(ctx context.Context, p AskParams) (AskResult, error) {
 	if err := r.store.SetThreadState(ctx, thread.ID, domain.ThreadStateAwaitingUser); err != nil {
 		return AskResult{}, fmt.Errorf("help: set thread state: %w", err)
 	}
+	r.notifyChanged(p.RunID)
 
 	replyCh := make(chan string, 1)
 	r.mu.Lock()
@@ -228,6 +251,8 @@ func (r *Router) Reply(ctx context.Context, threadID string, body string, via st
 		}
 	}
 	r.mu.Unlock()
+
+	r.notifyChanged(thread.RunID)
 
 	return nil
 }

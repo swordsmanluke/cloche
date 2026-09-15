@@ -25,6 +25,7 @@ import (
 	"github.com/cloche-dev/cloche/internal/adapters/local"
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cloche-dev/cloche/internal/adapters/web"
+	"github.com/cloche-dev/cloche/internal/attention"
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/help"
 	"github.com/cloche-dev/cloche/internal/logstream"
@@ -111,7 +112,23 @@ func main() {
 	helpChannels := initHelpChannels(globalCfg, store)
 	helpRouter := help.NewRouter(store, parkAfter, helpChannels...)
 	helpRouter.SetParkFunc(srv.ParkRunForHelp)
+	helpRouter.SetOnThreadChanged(func(runID string) {
+		if run, err := store.GetRun(context.Background(), runID); err == nil && run != nil {
+			srv.TriggerAttentionRefresh(run.ProjectDir)
+		}
+	})
 	srv.SetHelpRouter(helpRouter)
+
+	// Start the background attention cache (see internal/attention.Cache):
+	// answers /api/projects, GET .../attention, the occupancy summary, and
+	// the GetAttention RPC from a per-project cache refreshed on a timer
+	// (plus immediately after a run completes or a help thread changes)
+	// instead of running each project's list-tasks workflow on every request.
+	attentionInterval := parseDurationOr(globalCfg.Attention.RefreshInterval, attention.DefaultRefreshInterval)
+	attentionParallel := globalCfg.Attention.MaxParallelRefresh
+	attentionCtx, attentionCancel := context.WithCancel(context.Background())
+	defer attentionCancel()
+	srv.StartAttentionCache(attentionCtx, attentionInterval, attentionParallel)
 
 	// Run each configured HelpChannel's Socket/event loop for the daemon's
 	// lifetime. A channel that fails to connect (bad token, network down)

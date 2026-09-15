@@ -177,9 +177,12 @@ type TaskProvider interface {
 	RunOnce(ctx context.Context, projectDir, taskID, workflowName, prompt string) (string, error)
 }
 
-// AttentionProvider computes the "Needs you" attention set for a project.
+// AttentionProvider reads the cached "Needs you" attention set for a
+// project (see internal/attention.Cache) — always returns instantly; a
+// project never refreshed reports a zero Snapshot rather than blocking to
+// compute one. Never invokes the project's tracker on the request path.
 type AttentionProvider interface {
-	AttentionItems(ctx context.Context, projectDir string) ([]attention.Item, error)
+	AttentionSnapshot(projectDir string) attention.Snapshot
 }
 
 // AttentionMuter suppresses a "Needs you" item (identified by
@@ -228,7 +231,8 @@ type LoopOccupancy struct {
 }
 
 // ProjectOccupancy is a cheap per-project rollup for a dashboard tab bar.
-// AttentionCount is always 0 until the attention-model ticket lands.
+// AttentionCount is read from the attention cache (see
+// internal/attention.Cache), never computed on this request path.
 type ProjectOccupancy struct {
 	ProjectDir     string `json:"project_dir"`
 	Name           string `json:"name"`
@@ -348,6 +352,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/close", h.handleAPICloseTask)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/run-once", h.handleAPIRunOnce)
+	h.mux.HandleFunc("GET /api/projects/{name}/attention", h.handleAPIProjectAttention)
 	h.mux.HandleFunc("POST /api/projects/{name}/attention/mute", h.handleAPIMuteAttention)
 	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
 	h.mux.HandleFunc("GET /api/projects/{name}/loop/status", h.handleAPILoopStatus)
@@ -1013,12 +1018,13 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 		Total  int    `json:"total"`
 	}
 	type apiProject struct {
-		Dir            string    `json:"dir"`
-		Label          string    `json:"label"`
-		Slug           string    `json:"slug"`
-		Health         apiHealth `json:"health"`
-		ActiveCount    int       `json:"active_count"`
-		AttentionCount int       `json:"attention_count"`
+		Dir                 string    `json:"dir"`
+		Label               string    `json:"label"`
+		Slug                string    `json:"slug"`
+		Health              apiHealth `json:"health"`
+		ActiveCount         int       `json:"active_count"`
+		AttentionCount      int       `json:"attention_count"`
+		AttentionComputedAt string    `json:"attention_computed_at"`
 	}
 	result := make([]apiProject, len(projects))
 	for i, dir := range projects {
@@ -1034,11 +1040,9 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 				activeCount++
 			}
 		}
-		var attentionCount int
+		var attentionSnap attention.Snapshot
 		if h.attentionProvider != nil {
-			if items, err := h.attentionProvider.AttentionItems(r.Context(), dir); err == nil {
-				attentionCount = len(items)
-			}
+			attentionSnap = h.attentionProvider.AttentionSnapshot(dir)
 		}
 		result[i] = apiProject{
 			Dir:   dir,
@@ -1050,8 +1054,9 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 				Failed: health.Failed,
 				Total:  health.Total,
 			},
-			ActiveCount:    activeCount,
-			AttentionCount: attentionCount,
+			ActiveCount:         activeCount,
+			AttentionCount:      len(attentionSnap.Items),
+			AttentionComputedAt: apiTimeString(attentionSnap.ComputedAt),
 		}
 	}
 

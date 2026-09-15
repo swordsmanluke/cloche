@@ -54,6 +54,12 @@ type ClocheServer struct {
 	pollCoord     *host.PollCoordinator // drives poll step polling for all projects
 	helpRouter    *help.Router          // routes AskHelp/ListThreads/GetThread/ReplyThread; nil disables the help channel
 
+	// attentionCache holds the background-refreshed "Needs you" set per
+	// project (see internal/attention.Cache). nil until StartAttentionCache
+	// is called (e.g. in tests that don't need it); AttentionSnapshot
+	// degrades to a zero Snapshot in that case rather than panicking.
+	attentionCache *attention.Cache
+
 	webStatusMu sync.RWMutex
 	webStatus   WebStatus // reported by GetVersion so `cloche status`/`cloche health` surface a down web dashboard
 
@@ -783,6 +789,7 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 			}
 			s.completeAttemptRecord(attemptID, state)
 		}
+		s.TriggerAttentionRefresh(req.ProjectDir)
 	}()
 
 	return &pb.RunWorkflowResponse{RunId: runID}, nil
@@ -1148,6 +1155,7 @@ func (s *ClocheServer) resumeHostRun(ctx context.Context, run *domain.Run, stepN
 		}()
 		result, runErr := runner.ResumeRunAsNewAttempt(resumeCtx, run, stepName, newRunID)
 		s.completeAttemptFromResult(newAttempt.ID, newAttempt.TaskID, result, runErr)
+		s.TriggerAttentionRefresh(run.ProjectDir)
 	}()
 
 	return &pb.RunWorkflowResponse{RunId: newRunID, AttemptId: newAttempt.ID}, nil
@@ -1329,6 +1337,7 @@ func (s *ClocheServer) runResumedContainerWorkflow(
 		_ = s.store.UpdateRun(ctx, run)
 		log.Printf("run %s: failed to start resume container from image %s: %v", run.ID, image, err)
 		s.completeAttemptResult(ctx, run.AttemptID, run.TaskID, domain.AttemptResultFailed)
+		s.TriggerAttentionRefresh(run.ProjectDir)
 		return
 	}
 
@@ -1403,6 +1412,7 @@ func (s *ClocheServer) runResumedContainerWorkflow(
 		ar = domain.AttemptResultCancelled
 	}
 	s.completeAttemptResult(ctx, run.AttemptID, run.TaskID, ar)
+	s.TriggerAttentionRefresh(run.ProjectDir)
 
 	// Cleanup container-run mapping.
 	s.mu.Lock()
@@ -1843,6 +1853,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 			unexpectedExit = true
 		}
 		_ = s.store.UpdateRun(ctx, run)
+		s.TriggerAttentionRefresh(projectDir)
 		if unexpectedExit {
 			s.stopProjectLoop(projectDir, fmt.Sprintf("container exited unexpectedly with code %d for run %s", exitCode, runID))
 		}
@@ -3258,6 +3269,7 @@ func (s *ClocheServer) StopRun(ctx context.Context, req *pb.StopRunRequest) (*pb
 
 		run.Complete(domain.RunStateCancelled)
 		_ = s.store.UpdateRun(ctx, run)
+		s.TriggerAttentionRefresh(run.ProjectDir)
 
 		// Also mark the associated attempt as cancelled so the task
 		// status is updated immediately (task status derives from the
@@ -3626,6 +3638,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 			loop.SetPostTaskScanner(&intentScanTrigger{server: s})
 		}
 	}
+	loop.SetOnAttemptComplete(s.TriggerAttentionRefresh)
 	return loop
 }
 
@@ -3767,8 +3780,10 @@ func (s *ClocheServer) AttentionItems(ctx context.Context, projectDir string) ([
 	return attention.Compute(ctx, deps, projectDir)
 }
 
-// GetAttention is the gRPC surface for AttentionItems, aggregating across
-// all projects when All is set (or ProjectDir is empty).
+// GetAttention is the gRPC surface for the cached attention set, aggregating
+// across all projects when All is set (or ProjectDir is empty). Reads the
+// attention cache (see StartAttentionCache) — never runs a project's tracker
+// on this request path.
 func (s *ClocheServer) GetAttention(ctx context.Context, req *pb.GetAttentionRequest) (*pb.GetAttentionResponse, error) {
 	projectDir := normalizeProjectDir(req.ProjectDir)
 
@@ -3785,12 +3800,7 @@ func (s *ClocheServer) GetAttention(ctx context.Context, req *pb.GetAttentionReq
 
 	resp := &pb.GetAttentionResponse{}
 	for _, dir := range projectDirs {
-		items, err := s.AttentionItems(ctx, dir)
-		if err != nil {
-			log.Printf("attention: failed to compute for %s: %v", dir, err)
-			continue
-		}
-		for _, it := range items {
+		for _, it := range s.AttentionSnapshot(dir).Items {
 			resp.Items = append(resp.Items, &pb.AttentionItem{
 				Kind:          string(it.Kind),
 				ProjectDir:    it.ProjectDir,
@@ -3804,6 +3814,45 @@ func (s *ClocheServer) GetAttention(ctx context.Context, req *pb.GetAttentionReq
 		}
 	}
 	return resp, nil
+}
+
+// StartAttentionCache builds the per-project attention cache and starts its
+// background refresh loop in a new goroutine: every interval (and once
+// immediately), it recomputes every registered project's attention set with
+// up to parallel refreshes running at a time, so a slow tracker script on
+// one project can't delay the rest. The loop runs until ctx is cancelled.
+// interval <= 0 uses attention.DefaultRefreshInterval; parallel <= 0 uses
+// attention.DefaultMaxParallelRefresh.
+//
+// Must be called at most once; AttentionSnapshot and TriggerAttentionRefresh
+// degrade to no-ops/zero values until this has been called (e.g. in tests
+// that don't need the cache).
+func (s *ClocheServer) StartAttentionCache(ctx context.Context, interval time.Duration, parallel int) {
+	s.attentionCache = attention.NewCache(s.AttentionItems, interval, parallel)
+	go s.attentionCache.Run(ctx, s.store.ListProjects)
+}
+
+// AttentionSnapshot implements web.AttentionProvider: it reads the
+// background-refreshed attention cache (see StartAttentionCache) rather
+// than computing fresh, so it always returns instantly. A project that
+// hasn't been refreshed yet (or a server with no cache started) reports a
+// zero Snapshot rather than blocking to compute one.
+func (s *ClocheServer) AttentionSnapshot(projectDir string) attention.Snapshot {
+	if s.attentionCache == nil {
+		return attention.Snapshot{}
+	}
+	return s.attentionCache.Get(projectDir)
+}
+
+// TriggerAttentionRefresh asynchronously recomputes projectDir's attention
+// set outside the timer — called after a run in that project reaches a
+// terminal state or a help thread changes, so the "Needs you" set doesn't
+// wait for the next tick. No-op if the cache hasn't been started.
+func (s *ClocheServer) TriggerAttentionRefresh(projectDir string) {
+	if s.attentionCache == nil || projectDir == "" {
+		return
+	}
+	s.attentionCache.Refresh(projectDir)
 }
 
 // parseDurationOr parses s as a duration, falling back to def if s is empty
@@ -4179,12 +4228,12 @@ func (s *ClocheServer) ListLoopOccupancy(ctx context.Context, req *pb.ListLoopOc
 		}
 
 		resp.Projects = append(resp.Projects, &pb.ProjectOccupancySummary{
-			ProjectDir: dir,
-			Name:       labels[dir],
-			Running:    int32(running),
-			Queued:     int32(queued),
-			Health:     string(health.Status),
-			// AttentionCount is always 0 until the attention-model ticket lands.
+			ProjectDir:     dir,
+			Name:           labels[dir],
+			Running:        int32(running),
+			Queued:         int32(queued),
+			Health:         string(health.Status),
+			AttentionCount: int32(len(s.AttentionSnapshot(dir).Items)),
 		})
 	}
 	return resp, nil
@@ -4974,6 +5023,7 @@ func (s *ClocheServer) scanAndResolveStuckWorkflows(ctx context.Context) {
 			log.Printf("stuck workflow scanner: container %s not found for run %s; marking failed", containerID, runID)
 			run.Fail("container not found; may have been removed unexpectedly")
 			_ = s.store.UpdateRun(ctx, run)
+			s.TriggerAttentionRefresh(run.ProjectDir)
 			if s.logBroadcast != nil {
 				s.logBroadcast.Finish(runID)
 			}
@@ -5004,6 +5054,7 @@ func (s *ClocheServer) scanAndResolveStuckWorkflows(ctx context.Context) {
 		run.Fail(fmt.Sprintf("container exited with code %d (%s ago) but workflow remained running",
 			status.ExitCode, time.Since(status.FinishedAt).Round(time.Second)))
 		_ = s.store.UpdateRun(ctx, run)
+		s.TriggerAttentionRefresh(run.ProjectDir)
 		if s.logBroadcast != nil {
 			s.logBroadcast.Finish(runID)
 		}

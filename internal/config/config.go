@@ -122,10 +122,19 @@ type IntentConfig struct {
 // BuiltinFailureWindow) before flagging it; default 3. LongPollThreshold and
 // BuiltinFailureWindow are duration strings (e.g. "2h", "24h"); empty uses
 // the package default.
+//
+// RefreshInterval and MaxParallelRefresh configure the daemon-wide
+// background attention cache (see internal/attention.Cache) rather than a
+// single project's derivation, so they're only read from the global daemon
+// config (~/.config/cloche/config), not a project's .cloche/config.toml.
+// RefreshInterval is a duration string (default "60s"); MaxParallelRefresh
+// bounds how many projects refresh concurrently (default 4).
 type AttentionConfig struct {
 	RepeatFailureThreshold int    `toml:"repeat_failure_threshold"`
 	LongPollThreshold      string `toml:"long_poll_threshold"`
 	BuiltinFailureWindow   string `toml:"builtin_failure_window"`
+	RefreshInterval        string `toml:"refresh_interval"`
+	MaxParallelRefresh     int    `toml:"max_parallel_refresh"`
 }
 
 type Config struct {
@@ -162,6 +171,8 @@ func defaults() Config {
 			RepeatFailureThreshold: 3,
 			LongPollThreshold:      "2h",
 			BuiltinFailureWindow:   "24h",
+			RefreshInterval:        "60s",
+			MaxParallelRefresh:     4,
 		},
 	}
 }

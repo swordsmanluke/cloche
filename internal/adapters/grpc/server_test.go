@@ -5429,6 +5429,16 @@ func TestGetAttention_RPC(t *testing.T) {
 
 	srv := server.NewClocheServer(store, nil)
 
+	// GetAttention reads the background cache rather than computing fresh
+	// (see internal/attention.Cache), so the cache must be started and given
+	// a chance to refresh before it reports anything.
+	cacheCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	srv.StartAttentionCache(cacheCtx, time.Hour, 1)
+	require.Eventually(t, func() bool {
+		return len(srv.AttentionSnapshot(projectDir).Items) > 0
+	}, time.Second, time.Millisecond, "attention cache never refreshed")
+
 	resp, err := srv.GetAttention(ctx, &pb.GetAttentionRequest{ProjectDir: projectDir})
 	require.NoError(t, err)
 	require.Len(t, resp.Items, 1)
@@ -5439,4 +5449,53 @@ func TestGetAttention_RPC(t *testing.T) {
 	allResp, err := srv.GetAttention(ctx, &pb.GetAttentionRequest{All: true})
 	require.NoError(t, err)
 	require.Len(t, allResp.Items, 1)
+}
+
+// TestAttentionSnapshot_NeverInvokesTracker verifies the request path behind
+// GET /api/projects, GET .../attention, and the GetAttention RPC (all backed
+// by AttentionSnapshot) never runs the project's list-tasks tracker workflow
+// — only the background cache's fresh compute (AttentionItems, called from
+// internal/attention.Cache's refresher) may.
+func TestAttentionSnapshot_NeverInvokesTracker(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	projectDir := t.TempDir()
+	clocheDir := filepath.Join(projectDir, ".cloche")
+	require.NoError(t, os.MkdirAll(clocheDir, 0755))
+
+	marker := filepath.Join(projectDir, "tracker-invoked")
+	hostCloche := fmt.Sprintf(`workflow list-tasks {
+  host {}
+  step fetch {
+    run     = "touch %s && echo '[]'"
+    results = [success, fail]
+  }
+  fetch:success -> done
+  fetch:fail    -> abort
+}`, marker)
+	require.NoError(t, os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(hostCloche), 0644))
+
+	run := domain.NewRun("run-1", "main")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	srv := server.NewClocheServer(store, nil)
+
+	snap := srv.AttentionSnapshot(projectDir)
+	assert.Empty(t, snap.Items)
+	assert.True(t, snap.ComputedAt.IsZero())
+	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+		t.Fatalf("AttentionSnapshot must not invoke the project's tracker, but the marker file exists")
+	}
+
+	// Confirm the marker file would actually be created by a fresh compute
+	// (i.e. this project really does wire up a tracker) — otherwise the
+	// assertion above would trivially pass for the wrong reason.
+	_, err = srv.AttentionItems(ctx, projectDir)
+	require.NoError(t, err)
+	_, statErr := os.Stat(marker)
+	require.NoError(t, statErr, "AttentionItems (the fresh-compute path) should invoke the tracker")
 }

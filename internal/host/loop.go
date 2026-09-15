@@ -123,13 +123,14 @@ type Loop struct {
 	listTasks           ListTasksFunc
 	mainFn              MainFunc
 	store               ports.RunStore
-	taskStore           ports.TaskStore     // optional; ensures Task records exist when set
-	activityLog         *activitylog.Logger // optional; records attempt lifecycle events
-	assigner            TaskAssigner        // optional; feeds listTasks in NewLoop-created loops
-	pollCoord           *PollCoordinator    // optional; drives poll step polling on each tick
-	pollStore           ports.PollStore     // optional; persists poll step poll state
-	helpArchiver        HelpArchiver        // optional; archives a task's help threads on success
-	postTaskScanner     PostTaskScanner     // optional; enqueues an intent-scan after a task succeeds
+	taskStore           ports.TaskStore         // optional; ensures Task records exist when set
+	activityLog         *activitylog.Logger     // optional; records attempt lifecycle events
+	assigner            TaskAssigner            // optional; feeds listTasks in NewLoop-created loops
+	pollCoord           *PollCoordinator        // optional; drives poll step polling on each tick
+	pollStore           ports.PollStore         // optional; persists poll step poll state
+	helpArchiver        HelpArchiver            // optional; archives a task's help threads on success
+	postTaskScanner     PostTaskScanner         // optional; enqueues an intent-scan after a task succeeds
+	onAttemptComplete   func(projectDir string) // optional; notified whenever an attempt reaches a terminal state
 	stopCh              chan struct{}
 	mu                  sync.Mutex
 	running             bool
@@ -257,6 +258,15 @@ type PostTaskScanner interface {
 // the project defines an intent-scan workflow.
 func (l *Loop) SetPostTaskScanner(scanner PostTaskScanner) {
 	l.postTaskScanner = scanner
+}
+
+// SetOnAttemptComplete configures a callback invoked with the loop's project
+// directory whenever an attempt reaches a terminal state (succeeded, failed,
+// or cancelled) — used to trigger an out-of-band attention-cache refresh
+// (see internal/attention.Cache) so the "Needs you" set doesn't wait for the
+// next timer tick after a run finishes.
+func (l *Loop) SetOnAttemptComplete(fn func(projectDir string)) {
+	l.onAttemptComplete = fn
 }
 
 // PostTaskScannerConfigured reports whether a PostTaskScanner is wired for
@@ -801,6 +811,10 @@ func (l *Loop) completeAttempt(attemptID string, state domain.RunState) {
 		if err := l.postTaskScanner.EnqueueScan(ctx, l.config.ProjectDir, attempt.TaskID); err != nil {
 			log.Printf("orchestration loop: failed to enqueue intent-scan for task %s: %v", attempt.TaskID, err)
 		}
+	}
+
+	if l.onAttemptComplete != nil {
+		l.onAttemptComplete(l.config.ProjectDir)
 	}
 }
 

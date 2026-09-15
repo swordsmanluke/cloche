@@ -232,7 +232,12 @@ at the attempt's start time. Escape or `l` closes the overlay.
 The dashboard's JSON endpoints remain stable and are also used by the CLI
 (`cloche health`, `cloche tasks`, etc.):
 
-- `GET /api/projects` — per-project health, active-run count, and attention count.
+- `GET /api/projects` — per-project health, active-run count, and attention count
+  (`attention_count`/`attention_computed_at`, read from the background attention cache —
+  see `internal/attention.Cache` — rather than computed per request).
+- `GET /api/projects/{name}/attention` — the full "Needs you" item list for one project
+  plus `computed_at`, from the same cache; `computed_at` is empty for a project that
+  hasn't been refreshed yet.
 - `GET /api/projects/{name}/tasks` — the orchestration loop's live task snapshot.
 - `GET /api/projects/{name}/tasks/stack` — the grouped, bounded task stack (see above).
 - `GET /api/projects/{name}/tasks/{taskId}/attempts` — a task's attempts (oldest first),

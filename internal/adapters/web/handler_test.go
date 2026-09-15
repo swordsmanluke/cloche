@@ -1465,8 +1465,8 @@ func (m *mockTaskProvider) RunOnce(ctx context.Context, projectDir, taskID, work
 
 // mockAttentionProvider implements AttentionProvider for testing.
 type mockAttentionProvider struct {
-	items map[string][]attention.Item // projectDir -> items
-	err   error
+	items      map[string][]attention.Item // projectDir -> items
+	computedAt map[string]time.Time        // projectDir -> ComputedAt, optional
 }
 
 // mockAttentionMuter implements AttentionMuter for testing.
@@ -1485,11 +1485,8 @@ func (m *mockAttentionMuter) MuteAttentionItem(_ context.Context, projectDir, ke
 	return nil
 }
 
-func (m *mockAttentionProvider) AttentionItems(_ context.Context, projectDir string) ([]attention.Item, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	return m.items[projectDir], nil
+func (m *mockAttentionProvider) AttentionSnapshot(projectDir string) attention.Snapshot {
+	return attention.Snapshot{Items: m.items[projectDir], ComputedAt: m.computedAt[projectDir]}
 }
 
 func TestAPIProjects_FoldsAttentionCount(t *testing.T) {

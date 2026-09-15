@@ -40,6 +40,7 @@ func (s *ClocheServer) ParkRunForHelp(ctx context.Context, runID, threadID, titl
 	if err := s.store.UpdateRun(ctx, run); err != nil {
 		log.Printf("park: failed to mark run %s parked: %v", runID, err)
 	}
+	s.TriggerAttentionRefresh(run.ProjectDir)
 
 	s.publishHelpEvent(run.ProjectDir, runID, run.TaskID, run.AttemptID, "",
 		activitylog.KindHelpParked, title, "help_parked: "+title)
@@ -112,6 +113,7 @@ func (s *ClocheServer) resumeParkedRun(ctx context.Context, run *domain.Run, thr
 			log.Printf("resume: run %s: %v", run.ID, runErr)
 		}
 		s.completeAttemptFromResult(run.AttemptID, run.TaskID, result, runErr)
+		s.TriggerAttentionRefresh(run.ProjectDir)
 	}()
 }
 

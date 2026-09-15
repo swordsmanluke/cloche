@@ -94,6 +94,40 @@ func TestLoop_StartStop(t *testing.T) {
 	}
 }
 
+func TestLoop_OnAttemptComplete_FiresOnTerminalState(t *testing.T) {
+	// A real (non-sentinel) task ID is required: completeAttempt looks the
+	// attempt up in the store, and the sentinel "" task ID used by a
+	// no-assigner loop is never persisted (see createAttemptForTask).
+	store := &fakeStore{runs: map[string]*domain.Run{}, attempts: map[string]*domain.Attempt{}}
+
+	assigner := &fakeTaskAssigner{tasks: []Task{{ID: "task-1"}}}
+
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewLoop(LoopConfig{
+		ProjectDir:    "/tmp/attention-test-project",
+		MaxConcurrent: 1,
+	}, store, runFn)
+	loop.SetTaskAssigner(assigner)
+
+	var notified atomic.Int32
+	var gotDir atomic.Value
+	loop.SetOnAttemptComplete(func(projectDir string) {
+		notified.Add(1)
+		gotDir.Store(projectDir)
+	})
+
+	loop.Start()
+	require.Eventually(t, func() bool { return notified.Load() > 0 }, time.Second, time.Millisecond,
+		"onAttemptComplete should fire after a run reaches a terminal state")
+	loop.Stop()
+
+	dir, _ := gotDir.Load().(string)
+	assert.Equal(t, "/tmp/attention-test-project", dir)
+}
+
 func TestLoop_RampsUpOnSuccess(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	var called atomic.Int32
