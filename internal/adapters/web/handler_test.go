@@ -10,8 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"testing"
 	"time"
 
@@ -99,138 +97,6 @@ func seedRunWithProject(t *testing.T, store *sqlite.Store, id, workflow string, 
 		run.ErrorMessage = "something went wrong"
 	}
 	require.NoError(t, store.CreateRun(ctx, run))
-}
-
-func TestRunsList_WithRuns(t *testing.T) {
-	h, store := setupHandler(t)
-	seedRun(t, store, "test-run-1", "develop", domain.RunStateRunning)
-	seedRun(t, store, "test-run-2", "deploy", domain.RunStateSucceeded)
-
-	req := httptest.NewRequest("GET", "/runs", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
-	body := w.Body.String()
-	assert.Contains(t, body, "test-run-1")
-	assert.Contains(t, body, "test-run-2")
-	assert.Contains(t, body, "badge-running")
-	assert.Contains(t, body, "badge-succeeded")
-	assert.Contains(t, body, "develop")
-	assert.Contains(t, body, "deploy")
-}
-
-func TestRunsList_Empty(t *testing.T) {
-	h, _ := setupHandler(t)
-
-	req := httptest.NewRequest("GET", "/runs", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "No runs yet.")
-}
-
-func TestRunsList_WithPolls(t *testing.T) {
-	h, store := setupHandler(t)
-
-	ctx := context.Background()
-	run := domain.NewRun("poll-run-1", "main")
-	run.Start()
-	run.State = domain.RunStateWaiting
-	require.NoError(t, store.CreateRun(ctx, run))
-	require.NoError(t, store.UpsertPoll(ctx, &ports.PollRecord{
-		RunID:      "poll-run-1",
-		StepName:   "await-approval",
-		StartedAt:  time.Now(),
-		LastPollAt: time.Now(),
-		PollCount:  3,
-	}))
-
-	req := httptest.NewRequest("GET", "/runs", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, "Polls")
-	assert.Contains(t, body, "poll-run-1")
-	assert.Contains(t, body, "await-approval")
-}
-
-func TestRunDetail_WithCaptures(t *testing.T) {
-	h, store := setupHandler(t)
-	seedRun(t, store, "run-detail-1", "develop", domain.RunStateRunning)
-
-	ctx := context.Background()
-	require.NoError(t, store.SaveCapture(ctx, "run-detail-1", &domain.StepExecution{
-		StepName:    "implement",
-		Result:      "success",
-		StartedAt:   time.Now().Add(-5 * time.Minute),
-		CompletedAt: time.Now(),
-	}))
-
-	req := httptest.NewRequest("GET", "/runs/run-detail-1", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, "run-detail-1")
-	assert.Contains(t, body, "implement")
-}
-
-func TestRunDetail_AccordionStatePreserved(t *testing.T) {
-	// Verify the rendered page includes JavaScript that preserves accordion state
-	// during SSE polling updates (captures open/closed state before DOM rebuild).
-	h, store := setupHandler(t)
-	seedRun(t, store, "run-accordion-1", "develop", domain.RunStateRunning)
-
-	ctx := context.Background()
-	require.NoError(t, store.SaveCapture(ctx, "run-accordion-1", &domain.StepExecution{
-		StepName:    "build",
-		Result:      "success",
-		StartedAt:   time.Now().Add(-5 * time.Minute),
-		CompletedAt: time.Now(),
-	}))
-
-	req := httptest.NewRequest("GET", "/runs/run-accordion-1", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-
-	// The poll function should capture accordion state before rebuilding the DOM
-	assert.Contains(t, body, "openAccordions")
-	assert.Contains(t, body, "loadedOutputs")
-	// Verify it restores loaded output content after DOM rebuild
-	assert.Contains(t, body, "loadedOutputs[noKey]")
-}
-
-func TestRunDetail_LogScrollStabilization(t *testing.T) {
-	// Verify the rendered page stabilizes scroll position when SSE log events
-	// arrive: saves scrollTop before append, auto-scrolls only when at bottom,
-	// and restores position otherwise.
-	h, store := setupHandler(t)
-	seedRun(t, store, "run-scroll-1", "develop", domain.RunStateRunning)
-
-	req := httptest.NewRequest("GET", "/runs/run-scroll-1", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-
-	// Must capture scroll position before DOM mutation
-	assert.Contains(t, body, "savedScrollTop")
-	// Must check if at bottom before appending content
-	assert.Contains(t, body, "var atBottom = container.scrollHeight - savedScrollTop - container.clientHeight < 40")
-	// Must restore scroll position when not at bottom
-	assert.Contains(t, body, "container.scrollTop = savedScrollTop")
-	// Must NOT use a detached autoScroll state variable (race-prone)
-	assert.NotContains(t, body, "var autoScroll")
 }
 
 func TestRunDetail_NotFound(t *testing.T) {
@@ -490,93 +356,36 @@ func TestHelpers(t *testing.T) {
 	})
 }
 
-func TestRunsList_ProjectFilter(t *testing.T) {
-	h, store := setupHandler(t)
-	seedRunWithProject(t, store, "run-a1", "develop", domain.RunStateRunning, "/home/user/alpha")
-	seedRunWithProject(t, store, "run-a2", "develop", domain.RunStateSucceeded, "/home/user/alpha")
-	seedRunWithProject(t, store, "run-b1", "deploy", domain.RunStateRunning, "/home/user/beta")
-
-	// Without filter: all runs shown
-	req := httptest.NewRequest("GET", "/runs", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, "run-a1")
-	assert.Contains(t, body, "run-b1")
-
-	// Clean URL /projects/{name}/runs renders filtered runs directly
-	req = httptest.NewRequest("GET", "/projects/alpha/runs", nil)
-	w = httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusOK, w.Code)
-	body = w.Body.String()
-	assert.Contains(t, body, "run-a1")
-	assert.Contains(t, body, "run-a2")
-	assert.NotContains(t, body, "run-b1")
-	// Backlink to project page should be present
-	assert.Contains(t, body, `href="/projects/alpha"`)
-
-	// Unfiltered runs page should NOT have a project backlink
-	req = httptest.NewRequest("GET", "/runs", nil)
-	w = httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-	body = w.Body.String()
-	assert.NotContains(t, body, `href="/projects/`)
-
-	// Legacy ?project= query param redirects to clean URL
-	req = httptest.NewRequest("GET", "/runs?project=/home/user/alpha", nil)
-	w = httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusFound, w.Code)
-	assert.Equal(t, "/projects/alpha/runs", w.Header().Get("Location"))
-}
-
-// TestProjectsPage_CollidingBasenames_AllLinksResolve registers two projects
-// that share a basename (e.g. "workspace/cloche" and "repos/cloche") and
-// walks every link rendered on the projects page, asserting each resolves
-// with 200. Guards against regressions where a raw, unescaped "/"-bearing
-// label is interpolated into an href, splitting it into an extra path
-// segment that 404s against the GET /projects/{name} route.
-func TestProjectsPage_CollidingBasenames_AllLinksResolve(t *testing.T) {
+// TestConsoleShell_CollidingBasenames_ResolveViaSlug verifies that when two
+// projects share a basename, /api/projects disambiguates them with distinct
+// slugs and the console shell resolves each slug to the right project.
+func TestConsoleShell_CollidingBasenames_ResolveViaSlug(t *testing.T) {
 	h, store := setupHandler(t)
 	seedRunWithProject(t, store, "col-1", "develop", domain.RunStateSucceeded, "/home/user/workspace/cloche")
 	seedRunWithProject(t, store, "col-2", "develop", domain.RunStateSucceeded, "/home/user/repos/cloche")
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest("GET", "/api/projects", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
 
-	// Both projects display as "cloche"; their slugs must disambiguate.
-	assert.Contains(t, body, "workspace--cloche")
-	assert.Contains(t, body, "repos--cloche")
-	// The colliding display name must never leak a raw "/" into an href.
-	assert.NotContains(t, body, `href="/projects/workspace/cloche`)
-	assert.NotContains(t, body, `href="/projects/repos/cloche`)
+	var projects []struct {
+		Slug string `json:"slug"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &projects))
 
-	hrefRe := regexp.MustCompile(`href="(/projects/[^"]+)"`)
-	matches := hrefRe.FindAllStringSubmatch(body, -1)
-	require.NotEmpty(t, matches)
+	slugs := map[string]bool{}
+	for _, p := range projects {
+		slugs[p.Slug] = true
+	}
+	assert.True(t, slugs["workspace--cloche"])
+	assert.True(t, slugs["repos--cloche"])
 
-	seen := map[string]bool{}
-	for _, m := range matches {
-		link := m[1]
-		seen[link] = true
-		req2 := httptest.NewRequest("GET", link, nil)
+	for slug := range slugs {
+		req2 := httptest.NewRequest("GET", "/"+slug, nil)
 		w2 := httptest.NewRecorder()
 		h.ServeHTTP(w2, req2)
-		assert.Equal(t, http.StatusOK, w2.Code, "GET %s", link)
-	}
-
-	for _, want := range []string{
-		"/projects/workspace--cloche",
-		"/projects/workspace--cloche/runs",
-		"/projects/repos--cloche",
-		"/projects/repos--cloche/runs",
-	} {
-		assert.True(t, seen[want], "expected projects page to link to %s", want)
+		assert.Equal(t, http.StatusOK, w2.Code, "GET /%s", slug)
 	}
 }
 
@@ -591,14 +400,14 @@ func TestResolveProjectDir_BackwardCompat(t *testing.T) {
 	seedRunWithProject(t, store, "bc-2", "develop", domain.RunStateSucceeded, "/home/user/repos/cloche")
 
 	// Current canonical slug.
-	req := httptest.NewRequest("GET", "/projects/workspace--cloche", nil)
+	req := httptest.NewRequest("GET", "/workspace--cloche", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Legacy "parent/base" label, percent-encoded as JS's encodeURIComponent
 	// would have produced for an old bookmark.
-	req = httptest.NewRequest("GET", "/projects/workspace%2Fcloche", nil)
+	req = httptest.NewRequest("GET", "/workspace%2Fcloche", nil)
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -609,19 +418,6 @@ func TestResolveProjectDir_BackwardCompat(t *testing.T) {
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
-}
-
-func TestRunsList_ProjectColumn(t *testing.T) {
-	h, store := setupHandler(t)
-	seedRunWithProject(t, store, "run-p1", "develop", domain.RunStateRunning, "/home/user/myproject")
-
-	req := httptest.NewRequest("GET", "/runs", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, "myproject")
-	assert.Contains(t, body, "Project")
 }
 
 func TestAPIRuns_ProjectFilter(t *testing.T) {
@@ -687,151 +483,6 @@ func seedRunWithContainer(t *testing.T, store *sqlite.Store, mgr *mockContainerM
 	if kept {
 		mgr.containers[containerID] = true
 	}
-}
-
-func TestRunDetail_ContainerRunning(t *testing.T) {
-	h, store, mgr := setupHandlerWithContainerManager(t)
-
-	ctx := context.Background()
-	run := domain.NewRun("run-cr", "develop")
-	run.ProjectDir = "/proj"
-	run.Start()
-	run.ContainerID = "cid-running"
-	require.NoError(t, store.CreateRun(ctx, run))
-	mgr.containers["cid-running"] = true
-	mgr.running["cid-running"] = true
-
-	req := httptest.NewRequest("GET", "/runs/run-cr", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, "Container running")
-	assert.Contains(t, body, `badge-running">Container running`)
-}
-
-func TestRunDetail_ContainerStopped(t *testing.T) {
-	h, store, mgr := setupHandlerWithContainerManager(t)
-
-	ctx := context.Background()
-	run := domain.NewRun("run-cs", "develop")
-	run.ProjectDir = "/proj"
-	run.Start()
-	run.ContainerID = "cid-stopped"
-	run.ContainerKept = false
-	run.Complete(domain.RunStateSucceeded)
-	require.NoError(t, store.CreateRun(ctx, run))
-	mgr.containers["cid-stopped"] = true // container exists but not running, not kept
-
-	req := httptest.NewRequest("GET", "/runs/run-cs", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, "Container stopped")
-	assert.Contains(t, body, `badge-stopped">Container stopped`)
-}
-
-func TestRunDetail_ContainerStoppedTerminal_ShowsDeleteButton(t *testing.T) {
-	h, store, mgr := setupHandlerWithContainerManager(t)
-
-	for _, state := range []domain.RunState{domain.RunStateSucceeded, domain.RunStateFailed, domain.RunStateCancelled} {
-		t.Run(string(state), func(t *testing.T) {
-			id := "run-cst-" + string(state)
-			ctx := context.Background()
-			run := domain.NewRun(id, "develop")
-			run.ProjectDir = "/proj"
-			run.Start()
-			run.ContainerID = "cid-stopped-" + string(state)
-			run.ContainerKept = false
-			run.Complete(state)
-			require.NoError(t, store.CreateRun(ctx, run))
-			mgr.containers[run.ContainerID] = true // container exists but not running, not kept
-
-			req := httptest.NewRequest("GET", "/runs/"+id, nil)
-			w := httptest.NewRecorder()
-			h.ServeHTTP(w, req)
-
-			assert.Equal(t, http.StatusOK, w.Code)
-			body := w.Body.String()
-			assert.Contains(t, body, "Container stopped")
-			assert.Contains(t, body, `id="delete-container-btn"`, "should show delete button for terminal run with stopped container")
-		})
-	}
-}
-
-func TestRunDetail_ContainerStoppedRunning_NoDeleteButton(t *testing.T) {
-	h, store, mgr := setupHandlerWithContainerManager(t)
-
-	ctx := context.Background()
-	run := domain.NewRun("run-csr", "develop")
-	run.ProjectDir = "/proj"
-	run.Start()
-	run.ContainerID = "cid-stopped-running"
-	run.ContainerKept = false
-	require.NoError(t, store.CreateRun(ctx, run))
-	mgr.containers["cid-stopped-running"] = true
-	// container not running, but run state is still "running" (not terminal)
-	// containerState will return "stopped" since ContainerKept=false
-
-	req := httptest.NewRequest("GET", "/runs/run-csr", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, "Container stopped")
-	// The HTML container-status section should NOT have the delete button.
-	// We check the dd#container-status block specifically, not the full body
-	// (which includes JS that references the button ID as string literals).
-	statusStart := "container-status"
-	statusEnd := "</dd>"
-	idx := strings.Index(body, statusStart)
-	require.NotEqual(t, -1, idx, "container-status element must exist")
-	endIdx := strings.Index(body[idx:], statusEnd)
-	require.NotEqual(t, -1, endIdx, "closing </dd> must exist")
-	statusSection := body[idx : idx+endIdx+len(statusEnd)]
-	assert.NotContains(t, statusSection, "Delete Container", "should NOT show delete button for non-terminal run")
-}
-
-func TestRunDetail_ContainerAvailable(t *testing.T) {
-	h, store, mgr := setupHandlerWithContainerManager(t)
-	seedRunWithContainer(t, store, mgr, "run-c1", "develop", "/proj", "cid-1234567890ab", true)
-
-	req := httptest.NewRequest("GET", "/runs/run-c1", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, "Container available")
-	assert.Contains(t, body, `badge-succeeded">Container available`)
-	assert.Contains(t, body, `id="delete-container-btn"`)
-}
-
-func TestRunDetail_ContainerRemoved(t *testing.T) {
-	h, store, _ := setupHandlerWithContainerManager(t)
-
-	ctx := context.Background()
-	run := domain.NewRun("run-c2", "develop")
-	run.ProjectDir = "/proj"
-	run.Start()
-	run.ContainerID = "cid-gone"
-	run.ContainerKept = false
-	run.Complete(domain.RunStateSucceeded)
-	require.NoError(t, store.CreateRun(ctx, run))
-	// container NOT in mock's containers map → Inspect will fail → "removed"
-
-	req := httptest.NewRequest("GET", "/runs/run-c2", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, "Container removed")
-	assert.Contains(t, body, `badge-pending">Container removed`)
 }
 
 func TestAPIDeleteContainer_Success(t *testing.T) {
@@ -936,24 +587,6 @@ func TestAPIRunDetail_ContainerState(t *testing.T) {
 	assert.Equal(t, "stopped", detail.ContainerState)
 }
 
-func TestRunsList_ContainerCount(t *testing.T) {
-	h, store, mgr := setupHandlerWithContainerManager(t)
-	seedRunWithContainer(t, store, mgr, "run-cc1", "develop", "/home/user/alpha", "cid-1", true)
-	seedRunWithContainer(t, store, mgr, "run-cc2", "develop", "/home/user/alpha", "cid-2", true)
-	seedRunWithContainer(t, store, mgr, "run-cc3", "deploy", "/home/user/beta", "cid-3", false)
-
-	req := httptest.NewRequest("GET", "/runs", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	// alpha has 2 retained containers
-	assert.Contains(t, body, "2 containers")
-	// beta has 0, so no count should appear
-	assert.NotContains(t, body, "0 container")
-}
-
 func TestAPIProjects(t *testing.T) {
 	h, store := setupHandler(t)
 	seedRunWithProject(t, store, "p1", "develop", domain.RunStateRunning, "/home/user/alpha")
@@ -993,31 +626,6 @@ func TestAPIProjects(t *testing.T) {
 	// beta has 1 running = blue (all in-progress), 1 active
 	assert.Equal(t, "blue", byDir["/home/user/beta"].Health.Status)
 	assert.Equal(t, 1, byDir["/home/user/beta"].ActiveCount)
-}
-
-func TestProjectOverview_WithProjects(t *testing.T) {
-	h, store := setupHandler(t)
-	seedRunWithProject(t, store, "ov-1", "develop", domain.RunStateSucceeded, "/home/user/alpha")
-	seedRunWithProject(t, store, "ov-2", "develop", domain.RunStateFailed, "/home/user/alpha")
-	seedRunWithProject(t, store, "ov-3", "develop", domain.RunStateRunning, "/home/user/beta")
-
-	req := httptest.NewRequest("GET", "/", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
-	body := w.Body.String()
-	// Project cards should be present
-	assert.Contains(t, body, "project-card")
-	assert.Contains(t, body, "alpha")
-	assert.Contains(t, body, "beta")
-	// Health dots
-	assert.Contains(t, body, "health-dot")
-	// Run history dots
-	assert.Contains(t, body, "run-dot")
-	// Quick actions
-	assert.Contains(t, body, "View Runs")
 }
 
 func TestProjectOverview_Empty(t *testing.T) {
@@ -1455,48 +1063,6 @@ func TestAPIStopRun_NoManager(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestRunDetail_CancelButton_ShownForActiveRuns(t *testing.T) {
-	h, store, mgr := setupHandlerWithContainerManager(t)
-
-	ctx := context.Background()
-	run := domain.NewRun("run-cancel-btn", "develop")
-	run.ProjectDir = "/proj"
-	run.Start()
-	run.ContainerID = "cid-cancel"
-	require.NoError(t, store.CreateRun(ctx, run))
-	mgr.containers["cid-cancel"] = true
-	mgr.running["cid-cancel"] = true
-
-	req := httptest.NewRequest("GET", "/runs/run-cancel-btn", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, `id="cancel-run-btn"`)
-	assert.Contains(t, body, "Cancel")
-}
-
-func TestRunDetail_CancelButton_HiddenForTerminalRuns(t *testing.T) {
-	h, store, mgr := setupHandlerWithContainerManager(t)
-	seedRunWithContainer(t, store, mgr, "run-no-cancel", "develop", "/proj", "cid-terminal", false)
-
-	req := httptest.NewRequest("GET", "/runs/run-no-cancel", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	// The cancel button ID should not appear in the HTML header section
-	// (it may appear in the JS as a string literal, so check the h1 area)
-	h1Start := strings.Index(body, "<h1>")
-	h1End := strings.Index(body, "</h1>")
-	require.NotEqual(t, -1, h1Start)
-	require.NotEqual(t, -1, h1End)
-	h1Section := body[h1Start : h1End+len("</h1>")]
-	assert.NotContains(t, h1Section, `id="cancel-run-btn"`)
-}
-
 func TestAPIDeleteProjectContainers_Success(t *testing.T) {
 	h, store, mgr := setupHandlerWithContainerManager(t)
 	seedRunWithContainer(t, store, mgr, "run-pd1", "develop", "/home/user/alpha", "cid-pd1", true)
@@ -1587,34 +1153,6 @@ func TestAPIDeleteProjectContainers_ProjectNotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-func TestProjectDetail_ContainerDeleteButton(t *testing.T) {
-	h, store, mgr := setupHandlerWithContainerManager(t)
-	seedRunWithContainer(t, store, mgr, "run-pdb1", "develop", "/home/user/alpha", "cid-pdb1", true)
-	seedRunWithContainer(t, store, mgr, "run-pdb2", "develop", "/home/user/alpha", "cid-pdb2", true)
-
-	req := httptest.NewRequest("GET", "/projects/alpha", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, `id="delete-containers-btn"`)
-	assert.Contains(t, body, "Delete 2 containers")
-}
-
-func TestProjectDetail_NoButtonWhenNoContainers(t *testing.T) {
-	h, store, mgr := setupHandlerWithContainerManager(t)
-	seedRunWithContainer(t, store, mgr, "run-pdnb1", "develop", "/home/user/alpha", "cid-pdnb1", false)
-
-	req := httptest.NewRequest("GET", "/projects/alpha", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.NotContains(t, body, `id="delete-containers-btn"`)
-}
-
 func TestAPIProjects_HealthNoRuns(t *testing.T) {
 	h, _ := setupHandler(t)
 
@@ -1631,63 +1169,6 @@ func TestAPIProjects_HealthNoRuns(t *testing.T) {
 	var projects []project
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &projects))
 	assert.Empty(t, projects)
-}
-
-func TestRunDetail_ParentChildLinks(t *testing.T) {
-	h, store := setupHandler(t)
-	ctx := context.Background()
-
-	// Create parent (host) run
-	parent := domain.NewRun("parent-host-1", "main")
-	parent.IsHost = true
-	parent.ProjectDir = "/project"
-	parent.Start()
-	require.NoError(t, store.CreateRun(ctx, parent))
-
-	// Create child run with ParentRunID
-	child := domain.NewRun("child-run-1", "develop")
-	child.ProjectDir = "/project"
-	child.ParentRunID = "parent-host-1"
-	child.Start()
-	child.Title = "Implement feature X"
-	require.NoError(t, store.CreateRun(ctx, child))
-
-	// Check child's detail page shows parent link
-	req := httptest.NewRequest("GET", "/runs/child-run-1", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, "parent-host-1")
-	assert.Contains(t, body, `href="/runs/parent-host-1"`)
-	assert.Contains(t, body, "Parent Run")
-
-	// Check parent's detail page shows child runs section
-	req = httptest.NewRequest("GET", "/runs/parent-host-1", nil)
-	w = httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body = w.Body.String()
-	assert.Contains(t, body, "Child Runs")
-	assert.Contains(t, body, "child-run-1")
-	assert.Contains(t, body, `href="/runs/child-run-1"`)
-	assert.Contains(t, body, "Implement feature X")
-}
-
-func TestRunDetail_NoParentChild(t *testing.T) {
-	h, store := setupHandler(t)
-	seedRun(t, store, "standalone-1", "develop", domain.RunStateRunning)
-
-	req := httptest.NewRequest("GET", "/runs/standalone-1", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.NotContains(t, body, "Parent Run")
-	assert.NotContains(t, body, "Child Runs")
 }
 
 func TestAPIRunDetail_ChildRuns(t *testing.T) {
@@ -1766,37 +1247,6 @@ func TestAPIRuns_ParentRunID(t *testing.T) {
 			assert.Equal(t, "", r.ParentRunID)
 		}
 	}
-}
-
-func TestRunsList_TreeGrouping(t *testing.T) {
-	h, store := setupHandler(t)
-	ctx := context.Background()
-
-	// Create a parent host run
-	parent := domain.NewRun("tree-parent-1", "main")
-	parent.IsHost = true
-	parent.ProjectDir = "/project"
-	parent.Start()
-	require.NoError(t, store.CreateRun(ctx, parent))
-
-	// Create child run
-	child := domain.NewRun("tree-child-1", "develop")
-	child.ProjectDir = "/project"
-	child.ParentRunID = "tree-parent-1"
-	child.Start()
-	require.NoError(t, store.CreateRun(ctx, child))
-
-	req := httptest.NewRequest("GET", "/runs", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-
-	// Parent row should have run-parent-row class (host run without parent)
-	assert.Contains(t, body, "run-parent-row")
-	// Child row should have run-child-row class
-	assert.Contains(t, body, "run-child-row")
 }
 
 func TestStepOutput_ReturnsStepLog(t *testing.T) {
@@ -1998,50 +1448,6 @@ func TestWorkflowAPI_ComplexGraph(t *testing.T) {
 	assert.Equal(t, 2, terminalTargets["done"])
 	// 3 explicit abort + 3 implicit timeout->abort + 3 implicit token-limit->abort = 9
 	assert.Equal(t, 9, terminalTargets["abort"])
-}
-
-func TestProjectDetail_RendersLayoutEngine(t *testing.T) {
-	// Verify the project detail page contains the layered layout engine code.
-	h, store := setupHandler(t)
-
-	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
-
-	wf := `workflow develop {
-    step implement {
-        prompt = "Build it"
-        results = [success, fail]
-    }
-    implement:success -> done
-    implement:fail -> abort
-}
-`
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"), []byte(wf), 0o644))
-	seedRunWithProject(t, store, "le-1", "develop", domain.RunStateRunning, dir)
-
-	req := httptest.NewRequest("GET", "/projects/"+filepath.Base(dir), nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-
-	// Layout engine key features
-	assert.Contains(t, body, "workflow-dag")    // DAG container
-	assert.Contains(t, body, "showWorkflow")    // Main render function
-	assert.Contains(t, body, "layerOf")         // Layer assignment
-	assert.Contains(t, body, "topoOrder")       // Topological sort
-	assert.Contains(t, body, "dag-link-node")   // Wire column link node dots
-	assert.Contains(t, body, "wireColStart")    // Wire column start position
-	assert.Contains(t, body, "layerGap")        // Horizontal layer spacing
-	assert.Contains(t, body, "termWires")       // Terminal wire merging
-	assert.Contains(t, body, "maxOffset")       // Max endpoint offset to eliminate elbow joins
-	assert.Contains(t, body, "orthoPath")       // Orthogonal (right-angle) path helper
-	assert.Contains(t, body, "isSuccessResult") // Success result detection helper
-	assert.Contains(t, body, "resultColor")     // Color mapping for wire results
-	assert.Contains(t, body, "wireColumns")     // Wire column routing for failure paths
-	assert.Contains(t, body, "isFailureResult") // Failure result detection helper
-	assert.Contains(t, body, "colorPalette")    // Multi-color palette for custom results
 }
 
 func TestStepOutput_DoesNotFallBackToLiveDockerLogs(t *testing.T) {
@@ -2504,34 +1910,6 @@ func TestAPIDeleteAllContainers_NoManager(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestRunsList_CleanupButton(t *testing.T) {
-	h, store, mgr := setupHandlerWithContainerManager(t)
-	seedRunWithContainer(t, store, mgr, "run-cb1", "develop", "/home/user/alpha", "cid-cb1", true)
-	seedRunWithContainer(t, store, mgr, "run-cb2", "develop", "/home/user/beta", "cid-cb2", true)
-
-	req := httptest.NewRequest("GET", "/runs", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, `id="cleanup-containers-btn"`)
-	assert.Contains(t, body, "Clean up 2 old containers")
-}
-
-func TestRunsList_NoCleanupButtonWhenNoContainers(t *testing.T) {
-	h, store, mgr := setupHandlerWithContainerManager(t)
-	seedRunWithContainer(t, store, mgr, "run-ncb1", "develop", "/home/user/alpha", "cid-ncb1", false)
-
-	req := httptest.NewRequest("GET", "/runs", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.NotContains(t, body, `id="cleanup-containers-btn"`)
-}
-
 func TestAPIRuns_TaskID(t *testing.T) {
 	h, store := setupHandler(t)
 	ctx := context.Background()
@@ -2565,37 +1943,6 @@ func TestAPIRuns_TaskID(t *testing.T) {
 			assert.Equal(t, "", r.TaskID)
 		}
 	}
-}
-
-func TestRunsList_HidesListTasksRuns(t *testing.T) {
-	h, store := setupHandler(t)
-	ctx := context.Background()
-
-	// Create a list-tasks host run
-	listRun := domain.NewRun("lt-run-1", "list-tasks")
-	listRun.IsHost = true
-	listRun.ProjectDir = "/project"
-	listRun.Start()
-	require.NoError(t, store.CreateRun(ctx, listRun))
-
-	// Create a main host run
-	mainRun := domain.NewRun("main-run-1", "main")
-	mainRun.IsHost = true
-	mainRun.ProjectDir = "/project"
-	mainRun.Start()
-	require.NoError(t, store.CreateRun(ctx, mainRun))
-
-	req := httptest.NewRequest("GET", "/runs", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-
-	// list-tasks run should be hidden from the rendered HTML
-	assert.NotContains(t, body, "lt-run-1")
-	// main run should be visible
-	assert.Contains(t, body, "main-run-1")
 }
 
 func TestRunsList_TaskGrouping(t *testing.T) {
@@ -2954,31 +2301,6 @@ func TestRunsList_HostRunFailedOverridesChildSuccess(t *testing.T) {
 	assert.Equal(t, "failed", entries[0].TaskStatus)
 }
 
-func TestProjectDetail_TasksPanel(t *testing.T) {
-	h, store := setupHandler(t)
-	ctx := context.Background()
-
-	// Seed a project so it resolves
-	run := domain.NewRun("pd-run-1", "develop")
-	run.ProjectDir = "/home/user/projects/taskapp"
-	require.NoError(t, store.CreateRun(ctx, run))
-
-	req := httptest.NewRequest("GET", "/projects/taskapp", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-
-	// The tasks panels should be present in the HTML
-	assert.Contains(t, body, `id="in-progress-panel"`)
-	assert.Contains(t, body, `id="in-progress-body"`)
-	assert.Contains(t, body, "In-progress Tasks")
-	assert.Contains(t, body, `id="upcoming-panel"`)
-	assert.Contains(t, body, `id="upcoming-body"`)
-	assert.Contains(t, body, "Upcoming Tasks")
-}
-
 func TestTaskID_StorePersistence(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
@@ -3273,40 +2595,6 @@ func TestAPIProjectUsage_NotFound(t *testing.T) {
 	h.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
-}
-
-func TestRunDetail_WithUsage(t *testing.T) {
-	h, store := setupHandler(t)
-	ctx := context.Background()
-
-	run := domain.NewRun("run-usage-1", "develop")
-	run.Start()
-	require.NoError(t, store.CreateRun(ctx, run))
-
-	now := time.Now()
-	require.NoError(t, store.SaveCapture(ctx, "run-usage-1", &domain.StepExecution{
-		StepName:    "implement",
-		Result:      "success",
-		StartedAt:   now.Add(-5 * time.Minute),
-		CompletedAt: now,
-		Usage: &domain.TokenUsage{
-			InputTokens:  1234,
-			OutputTokens: 567,
-			AgentName:    "claude",
-		},
-	}))
-
-	req := httptest.NewRequest("GET", "/runs/run-usage-1", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, "Agent")
-	assert.Contains(t, body, "Tokens")
-	assert.Contains(t, body, "claude")
-	assert.Contains(t, body, "1234")
-	assert.Contains(t, body, "567")
 }
 
 func TestAPIRunDetail_WithUsage(t *testing.T) {

@@ -7,19 +7,7 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <nav class="navbar">
-        <div class="container navbar-inner">
-            <a href="/" class="logo">Cloche</a>
-            <div class="nav-links">
-                <a href="/runs">Runs</a>
-                <a href="/failed-tasks">Failed Tasks</a>
-            </div>
-        </div>
-    </nav>
-    <main class="container">
-        {{block "content" .}}{{end}}
-    </main>
-    <footer class="version-watermark">cloche v{{clocheVersion}}</footer>
+    {{block "content" .}}{{end}}
     {{block "scripts" .}}{{end}}
 </body>
 </html>{{end}}

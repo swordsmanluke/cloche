@@ -270,31 +270,6 @@ func TestAPIIntentDoc_RejectsTraversal(t *testing.T) {
 	assert.NotEqual(t, http.StatusOK, w.Code)
 }
 
-func TestProjectDetail_IntentTabAbsentWithoutIntentDir(t *testing.T) {
-	h, dir, label := setupIntentProject(t)
-	_ = dir
-
-	req := httptest.NewRequest("GET", "/projects/"+label, nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	require.Equal(t, http.StatusOK, w.Code)
-	assert.NotContains(t, w.Body.String(), `id="intent-panel"`)
-}
-
-func TestProjectDetail_IntentTabPresentWithIntentDir(t *testing.T) {
-	h, dir, label := setupIntentProject(t)
-	store := intent.NewStore(dir)
-	require.NoError(t, store.SaveDomains(&intent.DomainMap{Version: 1}))
-
-	req := httptest.NewRequest("GET", "/projects/"+label, nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	require.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), `id="intent-panel"`)
-}
-
 func TestProvenanceLink(t *testing.T) {
 	cases := []struct {
 		name string

@@ -1,8 +1,7 @@
 # Web Dashboard
 
-The web dashboard is a browser UI for monitoring and managing Cloche runs. It gives you
-live log streaming, workflow visualization, token usage metrics, task management, and
-container controls — all without needing the CLI.
+The web dashboard is a browser UI for monitoring and managing Cloche runs — a single-page
+console shell with live task tracking, without needing the CLI.
 
 ## Enabling the Dashboard
 
@@ -42,262 +41,85 @@ daemon shuts down. While down, the dashboard's status is visible via `cloche sta
 
 ---
 
-## Pages
+## The Console
 
-### Projects (`/`)
+The dashboard is a single page — a "console shell" — built from a tab bar, a task stack,
+and a centre pane, routed by project and task rather than by a fixed set of pages.
 
-The landing page shows a card for each registered project. Each card displays:
+### Tab bar
 
-- A **health dot** (green = healthy, yellow = degraded, red = failing) based on recent
-  pass/fail rates.
-- **Pass stats** — how many of the last 10 runs succeeded.
-- **Active run count** — runs currently in progress.
-- **Run history dots** — a mini visual history of recent run outcomes.
-- A **View Runs** link to the filtered runs list for that project.
-- A **Trigger Orchestrator** button that calls `POST /api/projects/{name}/trigger` to
-  kick off the orchestration loop immediately. The button shows "Dispatched N" on success
-  or "No tasks ready" if no tasks were dispatched, then resets after 3 seconds.
+Across the top: one tab per registered project (a health dot, a running-count badge, and
+a `!` attention flag when something needs you), with idle projects (no active runs, nothing
+needing attention) folded into a **More** menu to keep the bar short. Clicking a tab
+switches projects without a page navigation.
 
-Click a project card to go to the Project Detail page.
+On the right, daemon instruments for the active project:
 
----
+- **Start loop / Stop loop** — toggles the orchestration loop (`POST /trigger` to start,
+  `POST /loop/stop` to stop).
+- **Slots** — busy/max concurrency slots (`GET /loop/occupancy`).
+- **Queue** — how many tasks are waiting for a free slot.
+- **Burn** — combined token burn rate across agents over the last hour (`GET /usage`).
+- **Version** — the daemon's version.
 
-### Project Detail (`/projects/{name}`)
+### Task stack
 
-A multi-panel page for a specific project.
+The left rail groups the active project's tasks — **Needs you**, **Running**, **Queued**,
+**Done today** (with a **Load earlier** button paging further into history) — from
+`GET /api/projects/{slug}/tasks/stack`. It polls every few seconds using conditional GET
+(`ETag`/`If-None-Match`), so a poll with nothing new costs a 304 rather than a re-render;
+when something *has* changed, only the affected rows update in place.
 
-A **Start Loop / Stop Loop** toggle button appears at the top of the page. It polls
-`GET /api/projects/{name}/loop/status` every 5 seconds to reflect the current loop state
-and calls `POST /api/projects/{name}/loop/stop` or
-`POST /api/projects/{name}/trigger` to stop or start the orchestration loop.
+Click a row (or select it with `j`/`k` and press Enter) to open it in the centre pane.
 
-#### Project Info
+### Centre pane
 
-Shows the Docker image (parsed from the project's `Dockerfile`), the project version
-(from `.cloche/version`), and all prompt files under `.cloche/prompts/`. For each prompt
-file you can:
+Shows the selected task's header and a facts row (status, timing, current step, or outcome,
+depending on which group it came from). This is a placeholder host — the full detail pane
+(logs, steps, DAG, etc.) is a separate ticket.
 
-- **Expand the file** to read its current content.
-- **View git history** — a list of commits that touched the file, with short SHA, date,
-  and message.
-- **Click a commit** to load an inline unified diff showing exactly what changed.
+### Routing
 
-#### Token Burn
+URLs follow `/{project-slug}` and `/{project-slug}/{task-id}`; `?attempt=` and `?step=`
+are reserved for a future detail pane. Selecting a project or task updates the URL via
+`history.pushState` without a page reload; browser back/forward works as expected.
 
-Shows token usage data for the project:
+The pre-console URLs (`/`, `/projects/{name}[/runs]`, `/runs[/{id}]`, `/tasks/{id}`,
+`/failed-tasks`) redirect into the new scheme for one release before being removed.
 
-- **1-hour burn rate** — tokens consumed per hour across all agents in the last hour.
-- **24-hour totals** — total input and output tokens per agent over the last 24 hours.
+### Keyboard
 
-Each row shows the agent name (e.g. `claude`), input tokens, output tokens, and combined
-total. Values are formatted with K/M suffixes for readability (e.g. `1.5M`).
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move the stack selection down / up |
+| `Tab` / `Shift+Tab` | Switch to the next / previous project |
+| `Enter` | Open the selected task in the centre pane |
+| `Esc` | Return to the stack (clears the centre pane) |
+| `?` | Toggle the keyboard shortcuts overlay |
 
-#### Intent
+### Foot bar
 
-Only shown for projects with a `.cloche/intent/` directory (i.e. that have run an
-intent scan at least once); dormant otherwise. See [`docs/intent.md`](intent.md)
-for the full guide to the feature.
-
-- **Scan now** — dispatches the built-in `intent-scan` workflow via
-  `POST /api/projects/{name}/intent/scan` and shows the last-scan timestamp
-  (`GET /api/projects/{name}/intent/requirements`).
-- **Requirements table** — one row per extracted requirement, with its statement,
-  scope (project-wide or specific domains), status, confidence, and a link to its
-  provenance (run transcript, task prompt, commit diff, or source doc). Requirements
-  created by the most recent scan are flagged `new`; requirements edited by hand are
-  flagged `edited`. A checkbox toggles whether superseded/disabled requirements are
-  shown. The status button toggles a requirement between `active` and `disabled`; the
-  **Edit** button opens a drawer to change the statement or scope
-  (`PATCH /api/projects/{name}/intent/requirements`).
-- **Domains** — an editable table of the project's domain map (name, description,
-  paths), with **Add domain** and **Save domains**
-  (`PUT /api/projects/{name}/intent/domains`).
-
-#### In-progress Tasks
-
-Shows tasks that have been assigned to a worker and have an active run currently
-executing. For each task you can see the task ID, title, status, the time it was
-assigned, and a link to the active run.
-
-**Releasing a stale task:** If a task is assigned but its run is no longer active — for
-example after the daemon restarted or a container was lost — a **Release** button appears
-next to it. Clicking Release triggers the project's `release-task` workflow to return the
-task to `open` status in your tracker. (Requires a `release-task` workflow to be defined;
-see [USAGE.md](USAGE.md) for details.)
-
-#### Upcoming Tasks
-
-Shows tasks returned by the orchestration loop's `list-tasks` step that have not yet
-been assigned to a worker. Displays the task ID, title, and current status.
-
-Both task panels refresh automatically every few seconds.
-
-#### Workflow DAG
-
-A visual graph of the project's workflows. If the project has both container and host
-workflows, tabs let you switch between them. If a location has multiple workflows,
-additional tabs let you select which one to view.
-
-The graph shows:
-
-- **Nodes** — each step, labeled with its name and a type icon (🤖 agent, 📜 script,
-  🔁 workflow dispatch).
-- **Edges** — wires between steps, labeled with the result name (e.g. `success`, `fail`).
-  Colors: green for success results, red for failure results, other colors for custom
-  result names.
-- **Terminal nodes** — `done` and `abort` are rendered distinctly and positioned at the
-  bottom of the graph.
-
-Click any step node to open a **drawer panel** on the right side with:
-
-- The step's name, type, and declared results.
-- `max_attempts` if set.
-- For **agent steps**: the full content of the prompt file.
-- For **script steps**: the shell command or the contents of the script file.
-- For **workflow steps**: the name of the dispatched container workflow.
-
-Press Escape or click the X button to close the drawer.
-
-The graph scrolls horizontally and vertically for large workflows.
+Shows the keybindings above and a one-line activity ticker placeholder on the right (filled
+in by a separate ticket).
 
 ---
 
-### Runs (`/runs` or `/projects/{name}/runs`)
+## JSON API
 
-A **Polls** table at the top of the page lists poll steps currently being run
-asynchronously (runs parked in the `waiting` state with an active poll). Each row shows
-the run ID, project, workflow, task, step name, start time, last poll time, and poll
-count. It refreshes every 3 seconds from `GET /api/polls` (optionally filtered by
-`?project=<dir>`). Once a poll resolves and the workflow continues, the run disappears
-from this table and reappears under "Runs" as normal.
+The dashboard's JSON endpoints remain stable and are also used by the CLI
+(`cloche health`, `cloche tasks`, etc.):
 
-The runs list below it groups workflow executions by task and attempt. Each group shows:
+- `GET /api/projects` — per-project health, active-run count, and attention count.
+- `GET /api/projects/{name}/tasks` — the orchestration loop's live task snapshot.
+- `GET /api/projects/{name}/tasks/stack` — the grouped, bounded task stack (see above).
+- `GET /api/projects/{name}/loop/status`, `POST /loop/stop`, `POST /trigger` — loop control.
+- `GET /api/projects/{name}/loop/occupancy`, `GET /api/projects/occupancy` — concurrency
+  slots and queue depth, per-project and all-projects.
+- `GET /api/projects/{name}/usage` — token burn rate and 24h totals.
+- `GET /api/runs`, `GET /api/runs/{id}`, `GET /api/runs/{id}/stream` — run listing, detail,
+  and live SSE log streaming.
+- `GET /api/failed-tasks` — failed-but-still-open tasks and built-in workflow failures.
+- `GET /api/projects/{name}/intent/...` — intent requirements, domains, and scan control.
 
-- A **task header** with the task ID, title, and overall status.
-- **Attempt blocks** under each task — one per attempt (e.g. `Attempt a12z`), with a
-  timestamp and aggregate status. The latest attempt is expanded; earlier ones are
-  collapsed.
-- **Run rows** within each attempt — the top-level run (e.g. `main`) and any child runs
-  it dispatched (e.g. `develop`).
-
-Click an attempt header to expand or collapse it. Accordion state is preserved across
-automatic page refreshes.
-
-Runs with no associated task appear below the task groups as ungrouped entries.
-
-Use the **project filter** dropdown at the top to limit the view to a specific project.
-
----
-
-### Run Detail (`/runs/{id}`)
-
-Shows the full detail of a single workflow execution.
-
-#### Steps Table
-
-A table of all steps in the run, with name, result, duration, and (for agent steps)
-token usage. Click any row to expand an output panel showing the captured log for that
-step. The output panel streams live during active steps.
-
-For runs that dispatch child workflows, the steps table shows a tree view: child-run
-steps appear directly below the workflow step that spawned them, indented one level. A
-**▾/▸ toggle** button on workflow steps collapses or expands their child steps.
-
-#### Log Viewer
-
-A scrollable log panel at the bottom of the page streams all output for the run in real
-time via [SSE](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events). Each
-line is labeled with its type (script output, LLM conversation, status event).
-
-For completed runs, all captured output is loaded immediately. For active runs, existing
-output is replayed first and then new lines are appended as they arrive.
-
-Use **Load Earlier** to fetch older log lines when there is history before the current
-view.
-
-#### Container Management
-
-Shows the state of the Docker container for this run:
-
-| State | Meaning |
-|-------|---------|
-| Container running | The run is active. |
-| Container stopped | The run ended and the container was not retained (already cleaned up or will be). |
-| Container available | The run ended and the container is retained; it can be inspected or deleted. |
-| Container removed | The container has been deleted. |
-
-A **Delete container** button appears when the container is retained (`available`). Use
-it to free disk space once you no longer need the container.
-
-#### Cancelling a Run
-
-A **Cancel** button appears at the top of the page for runs that are pending or actively
-running. Clicking it stops the run and marks it cancelled.
-
----
-
-### Task Detail (`/tasks/{taskID}`)
-
-Shows all attempts for a task, newest first. Each attempt row shows the attempt ID,
-start time, duration, and result. Click an attempt to expand a list of the workflow runs
-and steps within it. From here you can follow links to individual run detail pages for
-full log output.
-
----
-
-### Failed Open Tasks (`/failed-tasks`)
-
-A dashboard that cross-references run history with the live bead task list to surface
-tasks that have been attempted at least once but have never succeeded and are still open.
-
-Each row shows:
-
-- **Task** — the task ID (links to the Task Detail page) and title.
-- **Project** — the project the task belongs to.
-- **Failed Attempts** — how many runs for this task have failed.
-- **Latest Run** — a link to the most recent run.
-- **Latest Failure** — the timestamp of the most recent failed run.
-- **Error** — a truncated excerpt of the error message from the latest failure.
-- **In Bead** *(only shown when a task provider is configured)* — `open` if the task
-  still appears in the bead task list, `—` if not.
-
-The page auto-refreshes every 5 seconds. If there are no failed open tasks, a message
-confirms that all attempted tasks have succeeded or are still running.
-
-Below the task table, a separate **Built-in Workflow Failures** table summarizes failed
-runs of built-in workflows (e.g. the automatic post-task `intent-scan` trigger) — these
-don't correspond to a user-facing task, so they're aggregated one row per workflow name
-instead of appearing in the table above. Each row shows:
-
-- **Workflow** — the workflow name, with a `built-in` badge.
-- **Failed (Total)** — how many runs of this built-in workflow have failed.
-- **Failed Today** — how many of those failures happened today.
-- **Latest Run** — a link to the most recent failed run.
-- **Latest Failure** — the timestamp of the most recent failure.
-- **Error** — a truncated excerpt of the latest error, with a `same error` badge if every
-  failure in the group shares the same error message.
-
-This table also auto-refreshes every 5 seconds, sourced from the same `GET
-/api/failed-tasks` endpoint (which now returns `{"tasks": [...], "builtin_failures":
-[...]}`).
-
----
-
-## Features at a Glance
-
-| Feature | Where |
-|---------|-------|
-| Live log streaming (SSE) | Run detail → Log viewer, Step output panels |
-| Workflow DAG visualization | Project detail → Workflow DAG tab |
-| Token burn metrics | Project detail → Token Burn panel |
-| Intent requirements & domain map | Project detail → Intent panel |
-| Task pipeline & release | Project detail → Tasks panel |
-| Container delete | Run detail → Container Management |
-| Prompt diff viewer | Project detail → Project Info → commit history |
-| Run cancel | Run detail → Cancel button |
-| Task/attempt grouping | Runs list |
-| Active polls table | Runs list → Polls |
-| Project health overview | Projects landing page |
-| Failed open tasks dashboard | `/failed-tasks` |
-| Manual orchestrator trigger | Projects landing page → Trigger Orchestrator button |
-| Loop start/stop toggle | Project detail → Start Loop / Stop Loop button |
+These are unchanged by the console-shell rework; only the HTML pages that used to render
+around them were replaced.

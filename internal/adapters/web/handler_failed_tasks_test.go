@@ -31,59 +31,6 @@ func seedTaskRun(t *testing.T, store *sqlite.Store, id, workflow string, state d
 	require.NoError(t, store.CreateRun(ctx, run))
 }
 
-func TestFailedTasksDashboard_Empty(t *testing.T) {
-	h, _ := setupHandler(t)
-
-	req := httptest.NewRequest("GET", "/failed-tasks", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
-	assert.Contains(t, w.Body.String(), "No failed open tasks")
-}
-
-func TestFailedTasksDashboard_ShowsFailedTask(t *testing.T) {
-	h, store := setupHandler(t)
-	seedTaskRun(t, store, "run-f1", "develop", domain.RunStateFailed, "task-A")
-
-	req := httptest.NewRequest("GET", "/failed-tasks", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, "task-A")
-	assert.Contains(t, body, "run-f1")
-}
-
-func TestFailedTasksDashboard_HidesSucceededTask(t *testing.T) {
-	h, store := setupHandler(t)
-	// task-B: first attempt failed, second succeeded — should NOT appear.
-	seedTaskRun(t, store, "run-b1", "develop", domain.RunStateFailed, "task-B")
-	seedTaskRun(t, store, "run-b2", "develop", domain.RunStateSucceeded, "task-B")
-
-	req := httptest.NewRequest("GET", "/failed-tasks", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.NotContains(t, w.Body.String(), "task-B")
-}
-
-func TestFailedTasksDashboard_HidesTaskWithoutTaskID(t *testing.T) {
-	h, store := setupHandler(t)
-	// Runs without a task ID should not appear on the failed tasks dashboard.
-	seedRun(t, store, "run-no-task", "develop", domain.RunStateFailed)
-
-	req := httptest.NewRequest("GET", "/failed-tasks", nil)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.NotContains(t, w.Body.String(), "run-no-task")
-}
-
 func TestAPIFailedTasks_Empty(t *testing.T) {
 	h, _ := setupHandler(t)
 

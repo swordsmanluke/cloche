@@ -1,0 +1,42 @@
+{{define "content"}}
+<div id="console-app" class="console-app"
+     data-project-slug="{{.ProjectSlug}}"
+     data-task-id="{{.TaskID}}"
+     data-cloche-version="{{clocheVersion}}">
+    <header class="console-tabbar" id="console-tabbar">
+        <nav class="console-project-tabs" id="console-project-tabs" aria-label="Projects"></nav>
+        <button type="button" class="console-more-btn" id="console-more-btn" hidden
+                aria-haspopup="true" aria-expanded="false">More ▾</button>
+        <div class="console-idle-menu" id="console-idle-menu" hidden></div>
+        <div class="console-instruments" id="console-instruments"></div>
+    </header>
+    <div class="console-body">
+        <aside class="console-stack" id="console-stack" aria-label="Task stack"></aside>
+        <main class="console-centre" id="console-centre" aria-label="Task detail"></main>
+    </div>
+    <footer class="console-footbar" id="console-footbar">
+        <div class="console-keys" id="console-keys">
+            <span><kbd>j</kbd>/<kbd>k</kbd> move</span>
+            <span><kbd>tab</kbd> project</span>
+            <span><kbd>enter</kbd> open</span>
+            <span><kbd>esc</kbd> stack</span>
+            <span><kbd>?</kbd> keys</span>
+        </div>
+        <div class="console-ticker" id="console-ticker">—</div>
+    </footer>
+    <div class="console-help-overlay" id="console-help-overlay" hidden>
+        <div class="console-help-panel" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+            <h2>Keyboard shortcuts</h2>
+            <dl>
+                <dt>j / k</dt><dd>Move selection down / up</dd>
+                <dt>Tab / Shift+Tab</dt><dd>Switch project</dd>
+                <dt>Enter</dt><dd>Open the selected task</dd>
+                <dt>Esc</dt><dd>Return to the stack</dd>
+                <dt>?</dt><dd>Toggle this help</dd>
+            </dl>
+            <button type="button" id="console-help-close" class="btn btn-secondary btn-sm">Close</button>
+        </div>
+    </div>
+</div>
+{{end}}
+{{define "scripts"}}<script src="/static/console.js"></script>{{end}}

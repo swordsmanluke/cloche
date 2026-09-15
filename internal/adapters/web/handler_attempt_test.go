@@ -177,41 +177,28 @@ func TestTaskDetail_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-func TestTaskDetail_WithAttempts(t *testing.T) {
+// TestTaskDetail_RedirectsToConsoleShell verifies the legacy /tasks/{id}
+// route resolves the task's project and redirects into the new
+// /{slug}/{task-id} console shell scheme rather than rendering a page.
+func TestTaskDetail_RedirectsToConsoleShell(t *testing.T) {
 	h, store := setupHandler(t)
 
 	ctx := context.Background()
-	// Create two attempts for the same task
 	run1 := domain.NewRun("main-aa11-implement", "main")
 	run1.TaskID = "task-det-1"
 	run1.TaskTitle = "My Task"
 	run1.AttemptID = "aa11"
-	run1.ProjectDir = t.TempDir()
+	run1.ProjectDir = "/home/user/myproj"
 	run1.Start()
 	run1.Complete(domain.RunStateFailed)
 	require.NoError(t, store.CreateRun(ctx, run1))
-
-	run2 := domain.NewRun("main-bb22-implement", "main")
-	run2.TaskID = "task-det-1"
-	run2.TaskTitle = "My Task"
-	run2.AttemptID = "bb22"
-	run2.ProjectDir = run1.ProjectDir
-	run2.Start()
-	run2.Complete(domain.RunStateSucceeded)
-	require.NoError(t, store.CreateRun(ctx, run2))
 
 	req := httptest.NewRequest("GET", "/tasks/task-det-1", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, "My Task")
-	assert.Contains(t, body, "task-det-1")
-	assert.Contains(t, body, "Attempt #1")
-	assert.Contains(t, body, "Attempt #2")
-	assert.Contains(t, body, "badge-succeeded")
-	assert.Contains(t, body, "badge-failed")
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, "/myproj/task-det-1", w.Header().Get("Location"))
 }
 
 func TestAPIAllTasks(t *testing.T) {

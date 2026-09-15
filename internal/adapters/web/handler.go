@@ -246,7 +246,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	}
 
 	pages := map[string]*template.Template{}
-	for _, page := range []string{"projects", "runs", "run_detail", "project_detail", "task_detail", "failed_tasks"} {
+	for _, page := range []string{"console"} {
 		clone, err := base.Clone()
 		if err != nil {
 			return nil, fmt.Errorf("clone layout for %s: %w", page, err)
@@ -273,11 +273,13 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 		return nil, fmt.Errorf("static sub-fs: %w", err)
 	}
 
-	h.mux.HandleFunc("GET /{$}", h.handleProjectOverview)
-	h.mux.HandleFunc("GET /projects/{name}/runs", h.handleProjectRuns)
-	h.mux.HandleFunc("GET /runs", h.handleRunsList)
-	h.mux.HandleFunc("GET /runs/{id}", h.handleRunDetail)
-	h.mux.HandleFunc("GET /projects/{name}", h.handleProjectDetail)
+	h.mux.HandleFunc("GET /{$}", h.handleLegacyRoot)
+	h.mux.HandleFunc("GET /projects/{name}/runs", h.handleLegacyProjectRedirect)
+	h.mux.HandleFunc("GET /runs", h.handleLegacyRunsRedirect)
+	h.mux.HandleFunc("GET /runs/{id}", h.handleLegacyRunRedirect)
+	h.mux.HandleFunc("GET /projects/{name}", h.handleLegacyProjectRedirect)
+	h.mux.HandleFunc("GET /{name}", h.handleConsoleShell)
+	h.mux.HandleFunc("GET /{name}/{taskID...}", h.handleConsoleShell)
 	h.mux.HandleFunc("GET /api/projects", h.handleAPIProjects)
 	h.mux.HandleFunc("GET /api/projects/{name}/runs", h.handleAPIProjectRuns)
 	h.mux.HandleFunc("GET /api/runs", h.handleAPIRuns)
@@ -313,8 +315,8 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/runs/{id}/stream", h.handleAPIStream)
 	h.mux.HandleFunc("GET /api/attempts/{id}/stream", h.handleAPIAttemptStream)
 	h.mux.HandleFunc("GET /api/attempts/{id}/logs", h.handleAPIAttemptLogs)
-	h.mux.HandleFunc("GET /tasks/{taskID}", h.handleTaskDetail)
-	h.mux.HandleFunc("GET /failed-tasks", h.handleFailedTasksDashboard)
+	h.mux.HandleFunc("GET /tasks/{taskID}", h.handleLegacyTaskRedirect)
+	h.mux.HandleFunc("GET /failed-tasks", h.handleLegacyFailedTasksRedirect)
 	h.mux.HandleFunc("GET /api/failed-tasks", h.handleAPIFailedTasks)
 	h.mux.HandleFunc("POST /mcp", h.handleMCP)
 	h.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
@@ -328,22 +330,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // --- HTML handlers ---
 
-// projectOverviewEntry holds data for a single project card on the landing page.
-type projectOverviewEntry struct {
-	Dir         string
-	Label       string
-	Slug        string
-	Health      domain.HealthResult
-	RecentRuns  []recentRunDot
-	ActiveCount int
-}
-
-// recentRunDot is a minimal representation of a run for the mini history display.
-type recentRunDot struct {
-	ID    string
-	State string
-}
-
 // taskSummaryEntry holds a summary of a task for the landing page task list.
 type taskSummaryEntry struct {
 	TaskID       string `json:"task_id"`
@@ -356,70 +342,6 @@ type taskSummaryEntry struct {
 }
 
 const healthWindowSize = 10
-
-func (h *Handler) handleProjectOverview(w http.ResponseWriter, r *http.Request) {
-	projects, _ := h.store.ListProjects(r.Context())
-	labels := projectLabels(projects)
-	slugs := projectSlugs(projects)
-
-	var entries []projectOverviewEntry
-	for _, dir := range projects {
-		runs, err := h.store.ListRunsByProject(r.Context(), dir, time.Time{})
-		if err != nil {
-			continue
-		}
-
-		// Convert []*domain.Run to []domain.Run for CalculateHealth.
-		runValues := make([]domain.Run, len(runs))
-		for i, rr := range runs {
-			runValues[i] = *rr
-		}
-
-		health := domain.CalculateHealth(runValues, healthWindowSize)
-
-		// Take the last N runs for the mini history (most recent first).
-		n := healthWindowSize
-		if n > len(runs) {
-			n = len(runs)
-		}
-		dots := make([]recentRunDot, n)
-		for i := 0; i < n; i++ {
-			dots[i] = recentRunDot{
-				ID:    runs[i].ID,
-				State: string(runs[i].State),
-			}
-		}
-
-		var activeCount int
-		for _, rr := range runs {
-			if rr.State == domain.RunStatePending || rr.State == domain.RunStateRunning {
-				activeCount++
-			}
-		}
-
-		entries = append(entries, projectOverviewEntry{
-			Dir:         dir,
-			Label:       labels[dir],
-			Slug:        slugs[dir],
-			Health:      health,
-			RecentRuns:  dots,
-			ActiveCount: activeCount,
-		})
-	}
-
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Dir < entries[j].Dir
-	})
-
-	data := map[string]any{
-		"Title":    "Projects",
-		"Projects": entries,
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.pages["projects"].ExecuteTemplate(w, "layout", data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
 
 // buildTaskSummaries derives a task summary list from a set of runs.
 // Each unique TaskID produces one summary entry with status, attempt count, and latest result.
@@ -488,199 +410,6 @@ func buildTaskSummaries(runs []*domain.Run, labels map[string]string, taskTitles
 		})
 	}
 	return result
-}
-
-// taskAttemptEntry holds a single attempt's summary for the task drill-down page.
-type taskAttemptEntry struct {
-	AttemptNum int
-	AttemptID  string
-	Status     string
-	StartedAt  string
-	Runs       []apiRun
-}
-
-// handleTaskDetail renders the task drill-down page showing all attempts for a task.
-func (h *Handler) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
-	taskID := r.PathValue("taskID")
-
-	runs, err := h.store.ListRunsFiltered(r.Context(), domain.RunListFilter{TaskID: taskID})
-	if err != nil || len(runs) == 0 {
-		http.Error(w, "task not found", http.StatusNotFound)
-		return
-	}
-
-	projects, _ := h.store.ListProjects(r.Context())
-	labels := projectLabels(projects)
-	taskTitles := h.taskTitlesFromRuns(runs)
-
-	// Build lookup and parent→children map for top-level runs in this task.
-	byID := map[string]*domain.Run{}
-	for _, r := range runs {
-		byID[r.ID] = r
-	}
-	parentMap := map[string][]*domain.Run{}
-	var topLevel []*domain.Run
-	for _, rr := range runs {
-		if rr.ParentRunID != "" && byID[rr.ParentRunID] != nil {
-			parentMap[rr.ParentRunID] = append(parentMap[rr.ParentRunID], rr)
-		} else {
-			topLevel = append(topLevel, rr)
-		}
-	}
-
-	// Sort top-level: running first, then by started_at desc
-	sort.SliceStable(topLevel, func(i, j int) bool {
-		iRunning := topLevel[i].State == domain.RunStateRunning
-		jRunning := topLevel[j].State == domain.RunStateRunning
-		if iRunning != jRunning {
-			return iRunning
-		}
-		return topLevel[i].StartedAt.After(topLevel[j].StartedAt)
-	})
-
-	// Build attempts list (each top-level run is one attempt).
-	var attempts []taskAttemptEntry
-	for i, tr := range topLevel {
-		attemptNum := len(topLevel) - i
-		children := parentMap[tr.ID]
-		allInAttempt := append([]*domain.Run{tr}, children...)
-		status := taskAggregateStatus(allInAttempt)
-
-		allRuns := append([]*domain.Run{tr}, children...)
-		sort.SliceStable(allRuns, func(i, j int) bool {
-			return allRuns[i].StartedAt.After(allRuns[j].StartedAt)
-		})
-		var runsForAttempt []apiRun
-		for _, ar := range allRuns {
-			runsForAttempt = append(runsForAttempt, toAPIRun(ar, labels))
-		}
-
-		attempts = append(attempts, taskAttemptEntry{
-			AttemptNum: attemptNum,
-			AttemptID:  tr.AttemptID,
-			Status:     status,
-			StartedAt:  formatTime(tr.StartedAt),
-			Runs:       runsForAttempt,
-		})
-	}
-
-	taskTitle := taskTitles[taskID]
-	status := ""
-	if len(attempts) > 0 {
-		status = attempts[0].Status
-	}
-
-	data := map[string]any{
-		"Title":     "Task " + taskID,
-		"TaskID":    taskID,
-		"TaskTitle": taskTitle,
-		"Status":    status,
-		"Attempts":  attempts,
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.pages["task_detail"].ExecuteTemplate(w, "layout", data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-func (h *Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
-	projectFilter := r.URL.Query().Get("project")
-
-	// Redirect ?project=<dir> to clean URL /projects/<slug>/runs.
-	if projectFilter != "" {
-		projects, _ := h.store.ListProjects(r.Context())
-		slugs := projectSlugs(projects)
-		if slug, ok := slugs[projectFilter]; ok {
-			http.Redirect(w, r, "/projects/"+url.PathEscape(slug)+"/runs", http.StatusFound)
-			return
-		}
-	}
-
-	h.renderRunsList(w, r, "")
-}
-
-// renderRunsList renders the runs list page, optionally filtered by project directory.
-func (h *Handler) renderRunsList(w http.ResponseWriter, r *http.Request, projectFilter string) {
-	var runs []*domain.Run
-	var err error
-	if projectFilter != "" {
-		runs, err = h.store.ListRunsByProject(r.Context(), projectFilter, time.Time{})
-	} else {
-		runs, err = h.store.ListRuns(r.Context(), time.Time{})
-	}
-	if err != nil {
-		http.Error(w, "failed to list runs", http.StatusInternalServerError)
-		return
-	}
-
-	projects, _ := h.store.ListProjects(r.Context())
-	labels := projectLabels(projects)
-	slugs := projectSlugs(projects)
-
-	// Count retained containers per project
-	containerCounts := map[string]int{}
-	allRuns, _ := h.store.ListRuns(r.Context(), time.Time{})
-	for _, run := range allRuns {
-		if run.ContainerKept {
-			containerCounts[run.ProjectDir]++
-		}
-	}
-
-	var projectList []projectEntry
-	for _, dir := range projects {
-		projectList = append(projectList, projectEntry{Dir: dir, Label: labels[dir], Slug: slugs[dir], ContainerCount: containerCounts[dir]})
-	}
-	sort.Slice(projectList, func(i, j int) bool {
-		return projectList[i].Dir < projectList[j].Dir
-	})
-
-	var totalContainerCount int
-	for _, c := range containerCounts {
-		totalContainerCount += c
-	}
-
-	taskTitles := h.taskTitlesFromRuns(runs)
-	grouped := groupAndSortRuns(runs, labels, taskTitles)
-	polls := h.collectPolls(r.Context(), runs, labels, taskTitles)
-
-	// Build a JSON map of dir→slug for the template JS to build project links.
-	dirToSlug := map[string]string{}
-	for _, p := range projectList {
-		dirToSlug[p.Dir] = p.Slug
-	}
-
-	// Resolve the label/slug for the active project filter, if any.
-	var projectLabel, projectSlug string
-	if projectFilter != "" {
-		projectLabel = labels[projectFilter]
-		projectSlug = slugs[projectFilter]
-	}
-
-	data := map[string]any{
-		"Title":               "Runs",
-		"GroupedRuns":         grouped,
-		"Polls":               polls,
-		"Projects":            projectList,
-		"ProjectFilter":       projectFilter,
-		"ProjectLabel":        projectLabel,
-		"ProjectSlug":         projectSlug,
-		"ProjectLabels":       labels,
-		"DirToSlug":           dirToSlug,
-		"TotalContainerCount": totalContainerCount,
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.pages["runs"].ExecuteTemplate(w, "layout", data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-// handleProjectRuns renders the runs list filtered by the project in the URL path.
-func (h *Handler) handleProjectRuns(w http.ResponseWriter, r *http.Request) {
-	dir, _, ok := h.resolveProjectDir(w, r)
-	if !ok {
-		return
-	}
-	h.renderRunsList(w, r, dir)
 }
 
 // stepEntry is a merged view of a step execution for the template.
@@ -929,51 +658,6 @@ func (h *Handler) containerState(ctx context.Context, run *domain.Run) string {
 		return "available"
 	}
 	return "stopped"
-}
-
-func (h *Handler) handleRunDetail(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-
-	run, err := h.store.GetRun(r.Context(), id)
-	if err != nil {
-		http.Error(w, "run not found", http.StatusNotFound)
-		return
-	}
-
-	steps, _ := h.flattenRun(r.Context(), id, 0, -1)
-
-	// Determine if any step has usage data (for conditional column display).
-	var hasUsage bool
-	for _, s := range steps {
-		if s.HasUsage {
-			hasUsage = true
-			break
-		}
-	}
-
-	// Fetch parent run if this is a child
-	var parentRun *domain.Run
-	if run.ParentRunID != "" {
-		parentRun, _ = h.store.GetRun(r.Context(), run.ParentRunID)
-	}
-
-	// Fetch child runs for the existing flat table links.
-	childRuns, _ := h.store.ListChildRuns(r.Context(), id)
-
-	data := map[string]any{
-		"Title":          "Run " + run.ID,
-		"Run":            run,
-		"Steps":          steps,
-		"HasUsage":       hasUsage,
-		"Page":           "detail",
-		"ContainerState": h.containerState(r.Context(), run),
-		"ParentRun":      parentRun,
-		"ChildRuns":      childRuns,
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.pages["run_detail"].ExecuteTemplate(w, "layout", data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
 }
 
 // --- JSON API handlers ---
@@ -2196,43 +1880,124 @@ func (h *Handler) resolveProjectDir(w http.ResponseWriter, r *http.Request) (str
 	return "", "", false
 }
 
-func (h *Handler) handleProjectDetail(w http.ResponseWriter, r *http.Request) {
+// handleConsoleShell renders the console shell frame for GET /{slug} and
+// GET /{slug}/{taskID}. The shell is a single-page app: project switching and
+// task selection happen client-side against the JSON APIs, so this handler
+// only needs to seed the initial project slug and task ID.
+func (h *Handler) handleConsoleShell(w http.ResponseWriter, r *http.Request) {
 	dir, slug, ok := h.resolveProjectDir(w, r)
 	if !ok {
 		return
 	}
 	label := filepath.Base(dir)
-
-	runs, _ := h.store.ListRunsByProject(r.Context(), dir, time.Time{})
-	n := 10
-	if n > len(runs) {
-		n = len(runs)
-	}
-	dots := make([]recentRunDot, n)
-	for i := 0; i < n; i++ {
-		dots[i] = recentRunDot{ID: runs[i].ID, State: string(runs[i].State)}
-	}
-
-	var containerCount int
-	for _, run := range runs {
-		if run.ContainerKept {
-			containerCount++
-		}
-	}
-
 	data := map[string]any{
-		"Title":          label,
-		"Label":          label,
-		"Slug":           slug,
-		"Dir":            dir,
-		"RecentRuns":     dots,
-		"ContainerCount": containerCount,
-		"IntentEnabled":  intent.NewStore(dir).Exists(),
+		"Title":       label,
+		"ProjectSlug": slug,
+		"TaskID":      r.PathValue("taskID"),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.pages["project_detail"].ExecuteTemplate(w, "layout", data); err != nil {
+	if err := h.pages["console"].ExecuteTemplate(w, "layout", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// renderEmptyConsoleShell renders the shell with no project selected, for
+// GET / when no projects are registered yet.
+func (h *Handler) renderEmptyConsoleShell(w http.ResponseWriter) {
+	data := map[string]any{
+		"Title":       "Cloche",
+		"ProjectSlug": "",
+		"TaskID":      "",
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := h.pages["console"].ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// --- Legacy URL redirects ---
+//
+// The pre-console dashboard used /, /projects/{name}[/runs], /runs[/{id}],
+// /tasks/{id}, and /failed-tasks. These routes now redirect into the new
+// /{project-slug}[/{task-id}] scheme for one release before being removed
+// entirely.
+
+// handleLegacyRoot redirects GET / to the console shell for a default
+// project (the alphabetically first by slug), or renders the shell with no
+// project selected when none are registered yet.
+func (h *Handler) handleLegacyRoot(w http.ResponseWriter, r *http.Request) {
+	projects, _ := h.store.ListProjects(r.Context())
+	if len(projects) == 0 {
+		h.renderEmptyConsoleShell(w)
+		return
+	}
+	slugs := projectSlugs(projects)
+	sorted := make([]string, 0, len(slugs))
+	for _, slug := range slugs {
+		sorted = append(sorted, slug)
+	}
+	sort.Strings(sorted)
+	http.Redirect(w, r, "/"+url.PathEscape(sorted[0]), http.StatusFound)
+}
+
+// handleLegacyProjectRedirect redirects GET /projects/{name} and
+// GET /projects/{name}/runs to GET /{slug}.
+func (h *Handler) handleLegacyProjectRedirect(w http.ResponseWriter, r *http.Request) {
+	_, slug, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	http.Redirect(w, r, "/"+url.PathEscape(slug), http.StatusFound)
+}
+
+// handleLegacyRunsRedirect redirects GET /runs to GET /.
+func (h *Handler) handleLegacyRunsRedirect(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// handleLegacyRunRedirect redirects GET /runs/{id} to the console shell for
+// the run's project and task, e.g. GET /{slug}/{task-id}.
+func (h *Handler) handleLegacyRunRedirect(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	run, err := h.store.GetRun(r.Context(), id)
+	if err != nil {
+		http.Error(w, "run not found", http.StatusNotFound)
+		return
+	}
+	projects, _ := h.store.ListProjects(r.Context())
+	slugs := projectSlugs(projects)
+	slug := slugs[run.ProjectDir]
+	if slug == "" {
+		slug = filepath.Base(run.ProjectDir)
+	}
+	dest := "/" + url.PathEscape(slug)
+	if run.TaskID != "" {
+		dest += "/" + url.PathEscape(run.TaskID)
+	}
+	http.Redirect(w, r, dest, http.StatusFound)
+}
+
+// handleLegacyTaskRedirect redirects GET /tasks/{taskID} to
+// GET /{slug}/{taskID}.
+func (h *Handler) handleLegacyTaskRedirect(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("taskID")
+	runs, err := h.store.ListRunsFiltered(r.Context(), domain.RunListFilter{TaskID: taskID})
+	if err != nil || len(runs) == 0 {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+	projects, _ := h.store.ListProjects(r.Context())
+	slugs := projectSlugs(projects)
+	slug := slugs[runs[0].ProjectDir]
+	if slug == "" {
+		slug = filepath.Base(runs[0].ProjectDir)
+	}
+	http.Redirect(w, r, "/"+url.PathEscape(slug)+"/"+url.PathEscape(taskID), http.StatusFound)
+}
+
+// handleLegacyFailedTasksRedirect redirects GET /failed-tasks to GET /.
+func (h *Handler) handleLegacyFailedTasksRedirect(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 // apiUsageSummary is the JSON representation of a per-agent usage summary.
@@ -3363,30 +3128,6 @@ func buildBuiltinFailureSummaries(builtinRuns []*domain.Run) []builtinFailureSum
 	return result
 }
 
-// handleFailedTasksDashboard renders the failed-but-still-open tasks dashboard.
-func (h *Handler) handleFailedTasksDashboard(w http.ResponseWriter, r *http.Request) {
-	failed := h.buildFailedOpenTasks(r.Context())
-	tasks := failed.Tasks
-	if tasks == nil {
-		tasks = []failedOpenTaskEntry{}
-	}
-	builtinFailures := failed.BuiltinFailures
-	if builtinFailures == nil {
-		builtinFailures = []builtinFailureSummary{}
-	}
-	hasBeadProvider := h.taskProvider != nil
-	data := map[string]any{
-		"Title":           "Failed Open Tasks",
-		"Tasks":           tasks,
-		"BuiltinFailures": builtinFailures,
-		"HasBeadProvider": hasBeadProvider,
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.pages["failed_tasks"].ExecuteTemplate(w, "layout", data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
 // handleAPIFailedTasks returns failed-but-still-open tasks together with the
 // built-in workflow failure summary, as { "tasks": [...], "builtin_failures": [...] }.
 func (h *Handler) handleAPIFailedTasks(w http.ResponseWriter, r *http.Request) {
@@ -3692,11 +3433,4 @@ func projectSlugs(dirs []string) map[string]string {
 		}
 	}
 	return slugs
-}
-
-type projectEntry struct {
-	Dir            string
-	Label          string
-	Slug           string
-	ContainerCount int
 }

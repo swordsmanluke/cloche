@@ -290,13 +290,13 @@ subcommand reference.
 
 ## Web dashboard
 
-Project Detail pages for projects with a `.cloche/intent/` directory get an **Intent**
-tab: a requirements table (statement, scope, status, confidence, provenance links back
-to the source run/commit/doc), an edit drawer that sets `user_edited` on save, a
-domain-map editor, and a **Scan now** button. Superseded and disabled requirements are
-hidden by default behind an audit-history filter. See
-[`docs/web-dashboard.md`](web-dashboard.md#intent) for details and the backing HTTP
-API.
+The console shell's centre pane doesn't surface an Intent panel yet (it's a placeholder
+pending the detail-pane ticket — see [`docs/web-dashboard.md`](web-dashboard.md)). The
+backing HTTP API remains available for scripting or a future UI: requirements CRUD
+(`GET`/`PATCH /api/projects/{name}/intent/requirements`), the domain map
+(`GET`/`PUT /api/projects/{name}/intent/domains`), scan dispatch
+(`POST /api/projects/{name}/intent/scan`), and source doc content
+(`GET /api/projects/{name}/intent/doc`).
 
 ## Configuration reference
 

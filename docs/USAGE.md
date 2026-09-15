@@ -522,8 +522,8 @@ The daemon recognizes two host workflow names and runs them in order:
 2. **`main`** — execute the work (including any post-run cleanup)
 
 An optional workflow, **`release-task`**, can be defined for releasing stale claimed
-tasks back to open status. It is not part of the automatic loop — it runs on demand
-when triggered from the web dashboard's Release button.
+tasks back to open status. It is not part of the automatic loop — it runs on demand,
+triggered via `POST /api/projects/{name}/tasks/{id}/release`.
 
 These host workflows can live in any `.cloche` file(s). Only `main` is required;
 `list-tasks` and `release-task` are optional.
@@ -612,10 +612,9 @@ after it completes.
 
 The `release-task` workflow handles releasing tasks that are stuck in `in_progress`
 status without an active worker. This happens when a run fails, the daemon restarts,
-or a container is lost. The web dashboard detects these stale tasks and shows a
-**Release** button next to them.
+or a container is lost.
 
-**When it runs:** On demand, when a user clicks Release in the web dashboard. The
+**When it runs:** On demand, via `POST /api/projects/{name}/tasks/{id}/release`. The
 daemon sets `CLOCHE_TASK_ID` to the task being released.
 
 **How to configure:**
@@ -774,14 +773,10 @@ This line is omitted if no usage data exists for the task.
 
 ### Token Usage in the Web Dashboard
 
-The project detail page shows a **Token Usage** panel (auto-hidden if empty) that
-refreshes every 30 seconds:
-
-- **Burn rate (last 1h)** — per-agent tokens per hour, formatted as `~Xk/hr` or `~X/hr`
-- **Totals (last 24h)** — per-agent input/output/total token counts
-
-The run detail page shows per-step token counts (input/output) in the steps table
-for any step that reported usage.
+The console shell's tab bar shows a **Burn** instrument for the active project — the
+combined tokens/hour across agents over the last hour, from
+`GET /api/projects/{name}/usage`, which also returns per-agent burn rate and 24h
+totals for scripting or a future detail pane.
 
 ### `GetUsage` gRPC Endpoint
 
@@ -1091,7 +1086,7 @@ help-channel reply after parking shows `[awaiting reply: <title> (<channel>/<nam
 appended to its status.
 With `--runs`: workflow ID, workflow, state, type, origin, task ID, title, error. Type is
 `host` or `container`. Origin is `user` for a run dispatched by an explicit request
-(`cloche run`/`resume`, `cloche intent scan`, the dashboard "Scan now" button) or `auto`
+(`cloche run`/`resume`, `cloche intent scan`, `POST /api/projects/{name}/intent/scan`) or `auto`
 for one dispatched by the orchestration loop or an automated trigger (e.g. the post-task
 intent-scan trigger), with `(built-in)` appended when the workflow itself is built-in. A
 run with an open help thread shows `[pending question: <channel>/<name>]` appended to its

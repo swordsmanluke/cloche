@@ -59,8 +59,7 @@ setup. `intent-scan` (see [`docs/intent.md`](intent.md)) is the first built-in.
 
 Built-in workflows are resolved *after* project workflow discovery: a project that
 defines its own workflow with the same name overrides the built-in entirely. `cloche
-workflow` (list view) and the web dashboard's workflow graph mark unoverridden built-ins
-with a `(built-in)` label.
+workflow` (list view) marks unoverridden built-ins with a `(built-in)` label.
 
 ## Concepts
 
