@@ -2235,70 +2235,89 @@
         return text;
     }
 
+    // renderLogPaneShell builds the flat log status band (scope, type
+    // filter chips, live/follow indicator, and right-aligned meta) plus the
+    // scrolling log viewer beneath it. See docs/design/console-restructured-
+    // mock.html .m5 .logbar for the reference layout — a status band, not
+    // form controls.
     function renderLogPaneShell() {
         var el = document.getElementById('console-log-pane');
         if (!el) return;
         el.innerHTML = '';
 
-        var toolbar = document.createElement('div');
-        toolbar.className = 'console-log-toolbar';
+        var logbar = document.createElement('div');
+        logbar.className = 'console-logbar';
 
-        var status = document.createElement('span');
-        status.id = 'console-log-status';
-        status.className = 'badge badge-running';
-        status.textContent = 'Live';
-        toolbar.appendChild(status);
+        var scope = document.createElement('button');
+        scope.type = 'button';
+        scope.id = 'console-log-scope';
+        scope.className = 'console-logbar-scope';
+        scope.addEventListener('click', clearStepScope);
+        logbar.appendChild(scope);
 
-        var scopeIndicator = document.createElement('button');
-        scopeIndicator.type = 'button';
-        scopeIndicator.id = 'console-log-scope';
-        scopeIndicator.className = 'console-log-scope';
-        scopeIndicator.hidden = true;
-        scopeIndicator.addEventListener('click', clearStepScope);
-        toolbar.appendChild(scopeIndicator);
-
-        var select = document.createElement('select');
-        select.id = 'console-log-type-filter';
+        var chips = document.createElement('span');
+        chips.className = 'console-logbar-chips';
         ['all', 'llm', 'script', 'status'].forEach(function (t) {
-            var opt = document.createElement('option');
-            opt.value = t;
-            opt.textContent = t === 'all' ? 'All types' : t;
-            select.appendChild(opt);
+            var chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'console-logbar-chip' + (detail.logTypeFilter === t ? ' is-active' : '');
+            chip.textContent = t;
+            chip.addEventListener('click', function () {
+                detail.logTypeFilter = t;
+                Array.prototype.forEach.call(chips.children, function (c) {
+                    c.classList.toggle('is-active', c === chip);
+                });
+                if (detail.scopedStep) {
+                    loadStepOutput();
+                } else {
+                    renderLogLines();
+                }
+            });
+            chips.appendChild(chip);
         });
-        select.value = detail.logTypeFilter;
-        select.addEventListener('change', function () {
-            detail.logTypeFilter = select.value;
-            if (detail.scopedStep) {
-                loadStepOutput();
-            } else {
-                renderLogLines();
-            }
-        });
-        toolbar.appendChild(select);
+        logbar.appendChild(chips);
 
-        var wrapBtn = document.createElement('button');
-        wrapBtn.type = 'button';
-        wrapBtn.className = 'btn btn-sm btn-secondary';
-        wrapBtn.textContent = 'Wrap: ' + (detail.logWrap ? 'On' : 'Off');
-        wrapBtn.addEventListener('click', function () {
+        var live = document.createElement('button');
+        live.type = 'button';
+        live.id = 'console-log-status';
+        live.className = 'console-logbar-live';
+        live.title = 'Toggle follow';
+        live.addEventListener('click', toggleLogFollow);
+        logbar.appendChild(live);
+
+        var right = document.createElement('span');
+        right.className = 'console-logbar-right';
+
+        var count = document.createElement('span');
+        count.id = 'console-log-count';
+        right.appendChild(count);
+
+        var wrapToggle = document.createElement('button');
+        wrapToggle.type = 'button';
+        wrapToggle.id = 'console-log-wrap-toggle';
+        wrapToggle.className = 'console-logbar-action';
+        wrapToggle.textContent = 'wrap: ' + (detail.logWrap ? 'on' : 'off');
+        wrapToggle.addEventListener('click', function () {
             detail.logWrap = !detail.logWrap;
-            wrapBtn.textContent = 'Wrap: ' + (detail.logWrap ? 'On' : 'Off');
+            wrapToggle.textContent = 'wrap: ' + (detail.logWrap ? 'on' : 'off');
             applyLogWrap();
         });
-        toolbar.appendChild(wrapBtn);
+        right.appendChild(wrapToggle);
 
-        var followBtn = document.createElement('button');
-        followBtn.type = 'button';
-        followBtn.className = 'btn btn-sm btn-secondary';
-        followBtn.textContent = 'Follow: ' + (detail.logFollow ? 'On' : 'Off');
-        followBtn.addEventListener('click', function () {
-            detail.logFollow = !detail.logFollow;
-            followBtn.textContent = 'Follow: ' + (detail.logFollow ? 'On' : 'Off');
-            if (detail.logFollow) scrollLogTo('bottom');
-        });
-        toolbar.appendChild(followBtn);
+        var hints = document.createElement('span');
+        hints.className = 'console-logbar-hints';
+        var gKbd = document.createElement('kbd');
+        gKbd.textContent = 'g';
+        var bigGKbd = document.createElement('kbd');
+        bigGKbd.textContent = 'G';
+        hints.appendChild(gKbd);
+        hints.appendChild(document.createTextNode(' top '));
+        hints.appendChild(bigGKbd);
+        hints.appendChild(document.createTextNode(' end'));
+        right.appendChild(hints);
 
-        el.appendChild(toolbar);
+        logbar.appendChild(right);
+        el.appendChild(logbar);
 
         var viewer = document.createElement('div');
         viewer.className = 'log-viewer console-log-viewer';
@@ -2320,6 +2339,9 @@
         el.appendChild(viewer);
 
         applyLogWrap();
+        setLogStatus(detail.logStatus || 'live');
+        updateLogScopeIndicator();
+        updateLogCount();
     }
 
     function applyLogWrap() {
@@ -2331,30 +2353,54 @@
         var el = document.getElementById('console-log-scope');
         if (el) {
             if (detail.scopedStep) {
-                el.hidden = false;
-                el.textContent = 'Step: ' + detail.scopedStep.step_name + ' ✕';
+                el.textContent = 'log · ' + detail.scopedStep.step_name + ' ✕';
+                el.classList.add('is-scoped');
             } else {
-                el.hidden = true;
+                el.textContent = 'log';
+                el.classList.remove('is-scoped');
             }
         }
         var earlierBtn = document.getElementById('console-log-earlier');
         if (earlierBtn) earlierBtn.hidden = !!detail.scopedStep || !detail.logSkipped;
     }
 
+    // setLogStatus updates the live/follow indicator in the log bar. Text
+    // doubles as the control for toggleLogFollow (see the click handler in
+    // renderLogPaneShell), so it always reflects both stream state and
+    // whether new lines are being auto-scrolled into view.
     function setLogStatus(status) {
         if (detail) detail.logStatus = status;
         var el = document.getElementById('console-log-status');
         if (!el) return;
         if (status === 'live') {
-            el.textContent = 'Live';
-            el.className = 'badge badge-running';
+            el.textContent = '● live' + (detail && detail.logFollow ? ' · following' : '');
+            el.className = 'console-logbar-live';
         } else if (status === 'complete') {
-            el.textContent = 'Complete';
-            el.className = 'badge badge-succeeded';
+            el.textContent = 'complete';
+            el.className = 'console-logbar-live console-logbar-done';
         } else if (status === 'disconnected') {
-            el.textContent = 'Disconnected';
-            el.className = 'badge badge-failed';
+            el.textContent = 'disconnected';
+            el.className = 'console-logbar-live console-logbar-disconnected';
         }
+    }
+
+    function toggleLogFollow() {
+        if (!detail) return;
+        detail.logFollow = !detail.logFollow;
+        setLogStatus(detail.logStatus);
+        if (detail.logFollow) scrollLogTo('bottom');
+    }
+
+    // updateLogCount refreshes the right-aligned line count in the log bar
+    // to match whatever is currently displayed (scoped step output, or the
+    // full stream filtered by type).
+    function updateLogCount() {
+        var el = document.getElementById('console-log-count');
+        if (!el || !detail) return;
+        var lines = detail.scopedStep ? detail.stepLines : detail.allLines;
+        var filter = detail.logTypeFilter;
+        var n = (lines || []).filter(function (l) { return filter === 'all' || l.type === filter; }).length;
+        el.textContent = n.toLocaleString() + (n === 1 ? ' line' : ' lines');
     }
 
     function startDetailLogStream(kind, id) {
@@ -2427,6 +2473,7 @@
                     viewer.scrollTop += viewer.scrollHeight - prevHeight;
                 }
                 updateLogScopeIndicator();
+                updateLogCount();
                 if (btn) { btn.disabled = false; btn.textContent = 'Load earlier'; }
             })
             .catch(function () {
@@ -2442,17 +2489,68 @@
         var pre = document.getElementById('console-log-content');
         if (!pre) return;
         pre.appendChild(buildLogLineEl(line));
+        updateLogCount();
         if (detail.logFollow) scrollLogTo('bottom');
     }
 
+    // TOOL_LINE_RE matches the "--- Tool: <call> ---" marker that
+    // logstream.ParseClaudeLine emits for a tool_use content block (see
+    // internal/logstream/parse.go formatToolCall); group 1 is the call
+    // summary, e.g. "Bash('go test ./...')".
+    var TOOL_LINE_RE = /^-+\s*Tool:\s*(.*?)\s*-+$/;
+
+    // classifyLogLine assigns a semantic class to a line's CONTENT (never
+    // the whole line — see buildLogLineEl) based on the line's own type and,
+    // for status lines, the step-transition result cloche itself writes
+    // ("step_completed: <name> -> <result>", see internal/host/runner.go and
+    // internal/adapters/grpc/server.go). Script output is classified by a
+    // few common pass/fail/warning markers. Returns '' for plain content,
+    // which keeps the default dimmed-content colour.
+    function classifyLogLine(line) {
+        var type = line.type || 'script';
+        var content = (line.content || '').trim();
+        if (type === 'llm') {
+            return TOOL_LINE_RE.test(content) ? 'tool' : 'l';
+        }
+        if (type === 'status') {
+            if (/->\s*success\b/i.test(content)) return 'g';
+            if (/->\s*(fail|error)\b/i.test(content)) return 'w';
+            return '';
+        }
+        if (/\b(FAIL|ERROR|panic:|traceback)\b/i.test(content)) return 'b';
+        if (/^ok\s+\S/.test(content) || /\b(succeeded|passed)\b/i.test(content)) return 'g';
+        if (/\bwarn(ing)?\b/i.test(content)) return 'w';
+        return '';
+    }
+
+    // buildLogLineEl renders one log line as a dimmed prefix span (timestamp
+    // + type + step) followed by a separately-classed content span — never
+    // one whole-line colour (see classifyLogLine).
     function buildLogLineEl(line) {
         var span = document.createElement('span');
         span.className = 'log-line log-type-' + (line.type || 'script');
-        var prefix = '';
-        if (line.timestamp) prefix += '[' + line.timestamp + '] ';
-        prefix += '[' + (line.type || '') + '] ';
-        if (!detail.scopedStep && line.step_name) prefix += '(' + line.step_name + ') ';
-        span.textContent = prefix + line.content + '\n';
+
+        var prefixParts = [];
+        if (line.timestamp) prefixParts.push('[' + line.timestamp + ']');
+        prefixParts.push('[' + (line.type || '') + ']');
+        if (!detail.scopedStep && line.step_name) prefixParts.push('(' + line.step_name + ')');
+        var prefix = document.createElement('span');
+        prefix.className = 'log-line-prefix';
+        prefix.textContent = prefixParts.join(' ') + ' ';
+        span.appendChild(prefix);
+
+        var cls = classifyLogLine(line);
+        var content = document.createElement('span');
+        if (cls === 'tool') {
+            var m = TOOL_LINE_RE.exec((line.content || '').trim());
+            content.className = 'log-line-content log-line-tool';
+            content.textContent = '⚙ ' + (m ? m[1] : (line.content || '').trim());
+        } else {
+            content.className = 'log-line-content' + (cls ? ' log-line-' + cls : '');
+            content.textContent = line.content || '';
+        }
+        span.appendChild(content);
+        span.appendChild(document.createTextNode('\n'));
         return span;
     }
 
@@ -2468,6 +2566,7 @@
             frag.appendChild(buildLogLineEl(line));
         });
         pre.appendChild(frag);
+        updateLogCount();
         if (detail.logFollow) scrollLogTo('bottom');
     }
 

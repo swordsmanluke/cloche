@@ -119,12 +119,17 @@ Shows the selected task's full detail:
   (or selected) segment is highlighted. Clicking a segment scopes the log below to that
   step's output (`GET /api/runs/{id}/steps/{step}/output`); clicking it again clears the
   scope.
-- **Log** — full pane width. Unscoped, it's an SSE stream (`GET /api/attempts/{id}/stream`)
-  with a follow toggle, a replay of the last ~1000 lines, and "load earlier" paging
-  (`GET /api/attempts/{id}/logs`). A type filter (all/llm/script/status), a wrap toggle,
-  and `g`/`G` (scroll to top/bottom) are always available. Every line keeps its timestamp,
-  type, and originating step. An SSE error shows "Disconnected" — only an explicit `done`
-  event marks the stream "Complete". When the run is parked (see below), the log pane is
+- **Log** — full pane width, topped by a status band (not toolbar-style controls): a scope
+  chip (`log`, or `log · <step name> ✕` when scoped — clicking it clears the scope), a type
+  filter as chips (all/llm/script/status), a click-to-toggle live/follow indicator, and a
+  right-aligned line count, wrap toggle, and `g`/`G` (scroll to top/bottom) hint. Unscoped,
+  the pane is an SSE stream (`GET /api/attempts/{id}/stream`) with a replay of the last
+  ~1000 lines and "load earlier" paging (`GET /api/attempts/{id}/logs`). Every line keeps
+  its timestamp, type, and originating step, and its content is colorized by a simple
+  classifier (tool-call markers, pass/fail/warning keywords, and step-transition
+  success/failure). The live indicator reads "● live" (plus "· following" while follow is
+  on — click it to toggle), "complete" once an explicit `done` event closes the stream, or
+  "disconnected" on an SSE error. When the run is parked (see below), the log pane is
   replaced by the help-thread panel instead.
 
 #### Parked pane

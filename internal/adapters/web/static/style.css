@@ -301,10 +301,19 @@ h2 {
 .load-earlier-btn:hover { background: var(--ln); }
 .load-earlier-btn:disabled { opacity: 0.5; cursor: wait; }
 
-.log-line { display: block; }
-.log-type-status { color: var(--badge-running-text); }
-.log-type-llm { color: var(--badge-succeeded-text); }
-.log-type-script { color: var(--tx); }
+/* A log line is a dimmed prefix (timestamp/type/step) + a content span
+   classed by what the content actually is, never a single whole-line
+   colour — see console.js buildLogLineEl/classifyLogLine. The log-type-*
+   classes stay on the line for identification/filtering only; they carry
+   no colour of their own. */
+.log-line { display: block; color: var(--tx2); }
+.log-line-prefix { color: var(--mu); }
+.log-line-content { color: var(--tx2); }
+.log-line-l { color: var(--tx); }
+.log-line-g { color: var(--ok); }
+.log-line-b { color: var(--bad); }
+.log-line-w { color: var(--warn); }
+.log-line-tool { color: var(--tx2); }
 
 /* Tabs */
 .tab-bar {
@@ -797,18 +806,30 @@ h2 {
     font-size: 0.8rem;
 }
 
+/* The centre pane is a column of auto-height sections (header, facts,
+   step strip, ...) topped and tailed by the task pane's own edges, with
+   the log pane as the sole flexible section: it claims all remaining
+   height and scrolls internally, instead of the whole column scrolling
+   together as one document. See docs/design/console-restructured-mock.html
+   .m5 .det (grid-template-rows: auto auto auto 1fr auto) for the reference
+   layout — flexbox here achieves the same "log gets every remaining pixel,
+   foot pinned" result without depending on a fixed count of visible rows. */
 .console-centre {
     flex: 1 1 auto;
-    overflow-y: auto;
-    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
 }
 
-.console-centre-empty { color: var(--tx2); }
+.console-centre-empty { color: var(--tx2); padding: 1.25rem; }
 
 .console-task-header {
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    flex: 0 0 auto;
+    padding: 1.25rem 1.25rem 0;
     margin-bottom: 1rem;
 }
 
@@ -833,6 +854,8 @@ h2 {
 .console-why-line {
     color: var(--tx2);
     font-size: 0.9rem;
+    flex: 0 0 auto;
+    padding: 0 1.25rem;
     margin: -0.5rem 0 1rem;
     max-width: 60ch;
 }
@@ -864,6 +887,10 @@ h2 {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
     gap: 0.75rem;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0 1.1rem 1.1rem;
+    overflow: auto;
 }
 
 .console-compare-column {
@@ -903,7 +930,8 @@ h2 {
     border: 1px solid var(--ln);
     border-radius: var(--radius);
     padding: 0.75rem 1rem;
-    margin-bottom: 1rem;
+    flex: 0 0 auto;
+    margin: 0 1.25rem 1rem;
 }
 
 .console-action-panel-head {
@@ -931,7 +959,7 @@ h2 {
 
 .console-action-diff { white-space: pre; }
 
-.console-facts-block { margin-bottom: 1rem; }
+.console-facts-block { flex: 0 0 auto; padding: 0 1.25rem; margin-bottom: 1rem; }
 
 .console-attempt-tabs {
     display: flex;
@@ -967,7 +995,7 @@ h2 {
     display: flex;
     align-items: stretch;
     margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
+    padding: 0 1.25rem 0.5rem;
     overflow-x: auto;
 }
 
@@ -1026,6 +1054,8 @@ h2 {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+    flex: 0 0 auto;
+    padding: 0 1.25rem 1.25rem;
 }
 
 .console-thread-head {
@@ -1097,33 +1127,93 @@ h2 {
 
 .console-thread-reply-error { color: var(--badge-failed-text); font-size: 0.8rem; }
 
+/* Used by the compare view's badge toolbar (see renderCompareView); the
+   ordinary single-attempt log uses .console-logbar instead. */
 .console-log-toolbar {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    padding: 0.6rem 1.1rem 0;
     margin-bottom: 0.5rem;
+    flex: 0 0 auto;
     flex-wrap: wrap;
 }
 
-.console-log-toolbar select {
-    font-family: var(--font);
-    font-size: 0.78rem;
-    padding: 0.2rem 0.4rem;
-    border: 1px solid var(--ln);
-    border-radius: var(--radius);
-    background: var(--bg);
-    color: var(--tx);
+/* The log pane owns all remaining height in the centre column (see
+   .console-centre) and lays out its own flat status band + scrolling
+   viewer, matching docs/design/console-restructured-mock.html .m5 .logbar
+   and .m5 .log — a status band, not a form-control toolbar. */
+.console-log-pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
-.console-log-scope {
-    background: var(--badge-running-bg);
-    color: var(--badge-running-text);
+.console-logbar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex: 0 0 auto;
+    padding: 0.35rem 1.1rem;
+    font-size: 0.7rem;
+    color: var(--mu);
+    background: var(--pnl);
+    border-bottom: 1px solid var(--ln);
+    flex-wrap: wrap;
+}
+
+.console-logbar button {
+    background: none;
     border: none;
-    border-radius: var(--radius);
-    font-family: var(--mono);
-    font-size: 0.75rem;
-    padding: 0.15em 0.55em;
+    font: inherit;
+    color: inherit;
+    padding: 0;
     cursor: pointer;
+}
+
+.console-logbar-scope.is-scoped { color: var(--tx); }
+
+.console-logbar-chips { display: inline-flex; gap: 0.5rem; }
+
+.console-logbar-chip { padding: 0 0.35rem; border-radius: var(--radius); }
+.console-logbar-chip.is-active { background: var(--pnl3); color: var(--tx); }
+
+.console-logbar-live { color: var(--ok); }
+.console-logbar-live.console-logbar-done { color: var(--tx2); }
+.console-logbar-live.console-logbar-disconnected { color: var(--bad); }
+
+.console-logbar-right { margin-left: auto; display: flex; gap: 1rem; align-items: center; }
+
+.console-logbar-hints kbd {
+    border: 1px solid var(--ln);
+    border-radius: 3px;
+    padding: 0 0.3em;
+    color: var(--tx2);
+    font-family: inherit;
+}
+
+/* Overrides the generic .log-viewer box (bordered, height-capped — see
+   above) so the console's log body is flush and fills the log pane's
+   remaining height instead of scrolling as a bounded widget. */
+.console-log-viewer {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    margin-bottom: 0;
+    max-height: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.console-log-viewer pre {
+    margin: 0;
+    padding: 0.6rem 1.1rem 0.8rem;
+    font-size: 0.7rem;
+    line-height: 1.55;
+    color: var(--tx2);
+    white-space: pre;
 }
 
 .console-footbar {
