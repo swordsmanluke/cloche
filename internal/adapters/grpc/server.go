@@ -1968,6 +1968,68 @@ func (s *ClocheServer) ListRuns(ctx context.Context, req *pb.ListRunsRequest) (*
 	return resp, nil
 }
 
+// taskRunState holds a task's status as upgraded by its associated runs'
+// live state (waiting/parked), plus the details needed to display that state.
+type taskRunState struct {
+	Status              string
+	WaitingStep         string
+	LastPollAt          string
+	PollCount           int32
+	ParkedTitle         string
+	ParkedThreadAddress string
+}
+
+// deriveTaskRunState checks whether a task whose latest attempt is still
+// "running" actually has an associated run that is "waiting" or "parked",
+// and if so upgrades the reported status and looks up the corresponding
+// details. Tasks not in the "running" state are returned unchanged.
+func (s *ClocheServer) deriveTaskRunState(ctx context.Context, task *domain.Task) taskRunState {
+	state := taskRunState{Status: string(task.Status)}
+	if task.Status != domain.TaskStatusRunning {
+		return state
+	}
+
+	hps, hasHPS := s.store.(ports.PollStore)
+	hs, hasHS := s.store.(ports.HelpStore)
+
+	waitingRuns, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{
+		TaskID: task.ID,
+		State:  domain.RunStateWaiting,
+	})
+	if err == nil && len(waitingRuns) > 0 {
+		state.Status = string(domain.TaskStatusWaiting)
+		// Pick the first waiting run and look up its poll record.
+		if hasHPS {
+			for _, wr := range waitingRuns {
+				polls, err := hps.ListPolls(ctx, wr.ID)
+				if err == nil && len(polls) > 0 {
+					state.WaitingStep = polls[0].StepName
+					if !polls[0].LastPollAt.IsZero() {
+						state.LastPollAt = polls[0].LastPollAt.UTC().Format(time.RFC3339)
+					}
+					state.PollCount = int32(polls[0].PollCount)
+					break
+				}
+			}
+		}
+	}
+	parkedRuns, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{
+		TaskID: task.ID,
+		State:  domain.RunStateParked,
+	})
+	if err == nil && len(parkedRuns) > 0 {
+		state.Status = string(domain.TaskStatusParked)
+		pr := parkedRuns[0]
+		state.ParkedTitle = pr.ParkedTitle
+		if hasHS && pr.ParkedThreadID != "" {
+			if thread, _, err := hs.GetThread(ctx, pr.ParkedThreadID); err == nil {
+				state.ParkedThreadAddress = thread.Address()
+			}
+		}
+	}
+	return state
+}
+
 func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) (*pb.ListTasksResponse, error) {
 	req.ProjectDir = normalizeProjectDir(req.ProjectDir)
 
@@ -1985,10 +2047,6 @@ func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) 
 	if err != nil {
 		return nil, fmt.Errorf("listing tasks: %w", err)
 	}
-
-	// Cast store to PollStore/HelpStore once for waiting/parked lookups.
-	hps, hasHPS := s.store.(ports.PollStore)
-	hs, hasHS := s.store.(ports.HelpStore)
 
 	resp := &pb.ListTasksResponse{}
 	for _, task := range tasks {
@@ -2010,47 +2068,30 @@ func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) 
 		if taskRuns, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{TaskID: task.ID, Limit: 1}); err == nil && len(taskRuns) > 0 {
 			sum.IsBuiltin = taskRuns[0].IsBuiltin
 		}
-		// For tasks whose latest attempt is still "running", check whether any
-		// associated runs are actually in the "waiting" or "parked" state. If
-		// so, upgrade the task status and populate the corresponding details.
-		if task.Status == domain.TaskStatusRunning {
-			waitingRuns, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{
-				TaskID: task.ID,
-				State:  domain.RunStateWaiting,
-			})
-			if err == nil && len(waitingRuns) > 0 {
-				sum.Status = string(domain.TaskStatusWaiting)
-				// Pick the first waiting run and look up its poll record.
-				if hasHPS {
-					for _, wr := range waitingRuns {
-						polls, err := hps.ListPolls(ctx, wr.ID)
-						if err == nil && len(polls) > 0 {
-							sum.WaitingStep = polls[0].StepName
-							if !polls[0].LastPollAt.IsZero() {
-								sum.LastPollAt = polls[0].LastPollAt.UTC().Format(time.RFC3339)
-							}
-							sum.PollCount = int32(polls[0].PollCount)
-							break
-						}
-					}
-				}
-			}
-			parkedRuns, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{
-				TaskID: task.ID,
-				State:  domain.RunStateParked,
-			})
-			if err == nil && len(parkedRuns) > 0 {
-				sum.Status = string(domain.TaskStatusParked)
-				pr := parkedRuns[0]
-				sum.ParkedTitle = pr.ParkedTitle
-				if hasHS && pr.ParkedThreadID != "" {
-					if thread, _, err := hs.GetThread(ctx, pr.ParkedThreadID); err == nil {
-						sum.ParkedThreadAddress = thread.Address()
-					}
-				}
+		state := s.deriveTaskRunState(ctx, task)
+		sum.Status = state.Status
+		sum.WaitingStep = state.WaitingStep
+		sum.LastPollAt = state.LastPollAt
+		sum.PollCount = state.PollCount
+		sum.ParkedTitle = state.ParkedTitle
+		sum.ParkedThreadAddress = state.ParkedThreadAddress
+		resp.Tasks = append(resp.Tasks, sum)
+	}
+
+	// Apply state filter after status upgrades above (waiting/parked are only
+	// known once each task's runs have been inspected, so filtering earlier
+	// against task.Status would miss them).
+	if req.State != "" {
+		filtered := resp.Tasks[:0]
+		for _, t := range resp.Tasks {
+			if t.Status == req.State {
+				filtered = append(filtered, t)
 			}
 		}
-		resp.Tasks = append(resp.Tasks, sum)
+		resp.Tasks = filtered
+	}
+	if req.Limit > 0 && int(req.Limit) < len(resp.Tasks) {
+		resp.Tasks = resp.Tasks[:req.Limit]
 	}
 	return resp, nil
 }
@@ -2064,10 +2105,11 @@ func (s *ClocheServer) GetTask(ctx context.Context, req *pb.GetTaskRequest) (*pb
 		return nil, fmt.Errorf("getting task: %w", err)
 	}
 
+	state := s.deriveTaskRunState(ctx, task)
 	resp := &pb.GetTaskResponse{
 		TaskId:     task.ID,
 		Title:      task.Title,
-		Status:     string(task.Status),
+		Status:     state.Status,
 		ProjectDir: task.ProjectDir,
 	}
 	for _, a := range task.Attempts {
@@ -2112,9 +2154,10 @@ func (s *ClocheServer) GetAttempt(ctx context.Context, req *pb.GetAttemptRequest
 
 // allSubcmds is the canonical list of cloche subcommands for shell completion.
 var allSubcmds = []string{
-	"complete", "delete", "get", "health", "help", "init", "list", "logs",
-	"loop", "poll", "project", "resume", "run", "set", "shutdown", "status",
-	"stop", "tasks", "validate", "workflow",
+	"activity", "complete", "console", "debug", "delete", "doctor", "extract",
+	"get", "health", "help", "init", "intent", "list", "logs", "loop", "poll",
+	"project", "resume", "run", "set", "shutdown", "status", "stop", "tasks",
+	"threads", "validate", "version", "workflow",
 }
 
 // Complete returns shell completion candidates for the given partial command line.
@@ -2151,10 +2194,11 @@ func (s *ClocheServer) Complete(ctx context.Context, req *pb.CompleteRequest) (*
 	switch subcommand {
 	case "run":
 		switch prev {
-		case "--workflow":
-			completions = s.workflowNames(projectDir)
+		case "--prompt", "--title", "--issue":
+			// Free-form values: no dynamic candidates.
 		default:
-			completions = []string{"--workflow", "--prompt", "--title", "--issue", "--keep-container"}
+			// The workflow name is a positional argument, not a flag value.
+			completions = append(s.workflowNames(projectDir), "--prompt", "--title", "--issue", "--keep-container")
 		}
 
 	case "status":
@@ -2184,13 +2228,13 @@ func (s *ClocheServer) Complete(ctx context.Context, req *pb.CompleteRequest) (*
 
 	case "list":
 		if prev == "--state" || prev == "-s" {
-			completions = []string{"running", "pending", "succeeded", "failed", "cancelled"}
+			completions = []string{"running", "pending", "waiting", "parked", "succeeded", "failed", "cancelled"}
 		} else {
 			completions = []string{"--all", "--runs", "--state", "--project", "--limit"}
 		}
 
 	case "loop":
-		completions = []string{"stop", "resume", "--max"}
+		completions = []string{"once", "stop", "status", "--max"}
 
 	case "workflow":
 		completions = s.workflowNames(projectDir)

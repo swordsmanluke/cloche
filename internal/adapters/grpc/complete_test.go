@@ -62,13 +62,15 @@ func TestServer_Complete_RunFlags(t *testing.T) {
 	srv := server.NewClocheServer(store, nil)
 	ctx := context.Background()
 
-	// "cloche run <TAB>" should include --workflow.
+	// "cloche run <TAB>" should include real run flags. The workflow name is
+	// positional, not a "--workflow" flag.
 	resp, err := srv.Complete(ctx, &pb.CompleteRequest{
 		Words:  []string{"cloche", "run", ""},
 		CurIdx: 2,
 	})
 	require.NoError(t, err)
-	assert.Contains(t, resp.Completions, "--workflow")
+	assert.Contains(t, resp.Completions, "--prompt")
+	assert.NotContains(t, resp.Completions, "--workflow")
 }
 
 func TestServer_Complete_WorkflowNames(t *testing.T) {
@@ -93,9 +95,11 @@ func TestServer_Complete_WorkflowNames(t *testing.T) {
 	srv := server.NewClocheServer(store, nil)
 	ctx := context.Background()
 
+	// The workflow name is positional: "cloche run <TAB>" should offer it
+	// directly, with no "--workflow" flag involved.
 	resp, err := srv.Complete(ctx, &pb.CompleteRequest{
-		Words:      []string{"cloche", "run", "--workflow", ""},
-		CurIdx:     3,
+		Words:      []string{"cloche", "run", ""},
+		CurIdx:     2,
 		ProjectDir: dir,
 	})
 	require.NoError(t, err)
@@ -151,13 +155,15 @@ func TestServer_Complete_LoopSubcommands(t *testing.T) {
 	srv := server.NewClocheServer(store, nil)
 	ctx := context.Background()
 
+	// "resume" is not a real "cloche loop" subcommand (once/stop/status are).
 	resp, err := srv.Complete(ctx, &pb.CompleteRequest{
 		Words:  []string{"cloche", "loop", ""},
 		CurIdx: 2,
 	})
 	require.NoError(t, err)
 	assert.Contains(t, resp.Completions, "stop")
-	assert.Contains(t, resp.Completions, "resume")
+	assert.Contains(t, resp.Completions, "status")
+	assert.NotContains(t, resp.Completions, "resume")
 }
 
 func TestServer_Complete_LogsTypeValues(t *testing.T) {

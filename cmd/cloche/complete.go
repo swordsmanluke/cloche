@@ -15,9 +15,10 @@ import (
 
 // completionSubcommands is the canonical list of all cloche subcommands.
 var completionSubcommands = []string{
-	"complete", "delete", "get", "health", "help", "init", "intent", "list",
-	"logs", "loop", "poll", "project", "resume", "run", "set", "shutdown",
-	"status", "stop", "tasks", "threads", "validate", "workflow",
+	"activity", "complete", "console", "debug", "delete", "doctor", "extract",
+	"get", "health", "help", "init", "intent", "list", "logs", "loop", "poll",
+	"project", "resume", "run", "set", "shutdown", "status", "stop", "tasks",
+	"threads", "validate", "version", "workflow",
 }
 
 // cmdComplete handles `cloche complete --index <n> -- <word0> <word1> ...`.
@@ -152,11 +153,11 @@ func staticCompletions(subcommand string, index int, words []string, cur string)
 	switch subcommand {
 	case "run":
 		switch prev {
-		case "--workflow":
-			// Workflow names: try reading from local .cloche/
-			candidates = localWorkflowNames()
+		case "--prompt", "-p", "--title", "--issue", "-i":
+			// Free-form values: no static candidates.
 		default:
-			candidates = []string{"--workflow", "--prompt", "-p", "--title", "--issue", "-i", "--keep-container"}
+			// The workflow name is a positional argument, not a flag value.
+			candidates = append(localWorkflowNames(), "--prompt", "-p", "--title", "--issue", "-i", "--keep-container")
 		}
 
 	case "status":
@@ -175,13 +176,13 @@ func staticCompletions(subcommand string, index int, words []string, cur string)
 	case "list":
 		switch prev {
 		case "--state", "-s":
-			candidates = []string{"running", "pending", "succeeded", "failed", "cancelled"}
+			candidates = []string{"running", "pending", "waiting", "parked", "succeeded", "failed", "cancelled"}
 		default:
 			candidates = []string{"--all", "--runs", "--state", "-s", "--project", "-p", "--limit", "-n"}
 		}
 
 	case "loop":
-		candidates = []string{"once", "stop", "resume", "--max", "--hard"}
+		candidates = []string{"once", "stop", "status", "--max", "--hard"}
 
 	case "resume":
 		candidates = []string{"--no-rebuild", "--clean"}
@@ -223,13 +224,18 @@ func staticCompletions(subcommand string, index int, words []string, cur string)
 		}
 
 	case "validate":
-		// no flags yet
+		switch prev {
+		case "--workflow":
+			candidates = localWorkflowNames()
+		default:
+			candidates = []string{"--project", "--workflow"}
+		}
 
 	case "health", "tasks":
 		candidates = []string{"--project"}
 
 	case "project":
-		// no flags
+		candidates = []string{"--name"}
 	}
 
 	return completionFilterPrefix(candidates, cur)

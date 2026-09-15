@@ -194,6 +194,32 @@ func TestDoctorRunner_printResults_withFailure(t *testing.T) {
 	}
 }
 
+// TestDoctorRunner_printResults_verboseTogglesDetail verifies that --verbose
+// controls whether a passing check's detail is shown: without it, only "ok"
+// prints; with it, "ok (<detail>)" prints. Previously both branches of this
+// logic were identical, so detail always showed regardless of the flag.
+func TestDoctorRunner_printResults_verboseTogglesDetail(t *testing.T) {
+	results := []checkResult{
+		{label: "Checking base image", status: checkOK, detail: "cloche-base:latest"},
+	}
+
+	quiet := captureStdout(t, func() {
+		dr := &doctorRunner{verbose: false}
+		dr.printResults(results)
+	})
+	if strings.Contains(quiet, "cloche-base:latest") {
+		t.Errorf("expected detail hidden without --verbose, got:\n%s", quiet)
+	}
+
+	verbose := captureStdout(t, func() {
+		dr := &doctorRunner{verbose: true}
+		dr.printResults(results)
+	})
+	if !strings.Contains(verbose, "ok (cloche-base:latest)") {
+		t.Errorf("expected detail shown with --verbose, got:\n%s", verbose)
+	}
+}
+
 // TestCheckSSHKey_notConfigured verifies OK when ssh_key is not set.
 func TestCheckSSHKey_notConfigured(t *testing.T) {
 	dir := t.TempDir()

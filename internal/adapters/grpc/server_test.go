@@ -2549,6 +2549,90 @@ func TestServer_ListTasks_WithTasks(t *testing.T) {
 	assert.True(t, foundTask1)
 }
 
+// TestServer_ListTasks_StateFilter verifies that req.State actually filters
+// the returned tasks. Previously ListTasks never read req.State at all, so
+// "cloche list --state X" only worked in --runs mode.
+func TestServer_ListTasks_StateFilter(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	srv := server.NewClocheServer(store, nil)
+	srv.SetTaskStore(store)
+
+	running := &domain.Task{ID: "TASK-RUNNING", Status: domain.TaskStatusRunning, ProjectDir: "/proj", CreatedAt: time.Now()}
+	require.NoError(t, store.SaveTask(ctx, running))
+	require.NoError(t, store.SaveAttempt(ctx, domain.NewAttempt("TASK-RUNNING")))
+
+	succeeded := &domain.Task{ID: "TASK-DONE", Status: domain.TaskStatusSucceeded, ProjectDir: "/proj", CreatedAt: time.Now()}
+	require.NoError(t, store.SaveTask(ctx, succeeded))
+	succeededAttempt := domain.NewAttempt("TASK-DONE")
+	succeededAttempt.Complete(domain.AttemptResultSucceeded)
+	require.NoError(t, store.SaveAttempt(ctx, succeededAttempt))
+
+	resp, err := srv.ListTasks(ctx, &pb.ListTasksRequest{ProjectDir: "/proj", State: "succeeded"})
+	require.NoError(t, err)
+	require.Len(t, resp.Tasks, 1)
+	assert.Equal(t, "TASK-DONE", resp.Tasks[0].TaskId)
+}
+
+// TestServer_ListTasks_Limit verifies that req.Limit actually truncates the
+// returned tasks. Previously ListTasks never read req.Limit, so
+// "cloche list --limit N" only worked in --runs mode.
+func TestServer_ListTasks_Limit(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	srv := server.NewClocheServer(store, nil)
+	srv.SetTaskStore(store)
+
+	for i := 0; i < 3; i++ {
+		task := &domain.Task{
+			ID:         fmt.Sprintf("TASK-%d", i),
+			Status:     domain.TaskStatusPending,
+			ProjectDir: "/proj",
+			CreatedAt:  time.Now(),
+		}
+		require.NoError(t, store.SaveTask(ctx, task))
+	}
+
+	resp, err := srv.ListTasks(ctx, &pb.ListTasksRequest{ProjectDir: "/proj", Limit: 2})
+	require.NoError(t, err)
+	assert.Len(t, resp.Tasks, 2)
+}
+
+// TestServer_GetTask_WaitingStatus verifies that GetTask upgrades a
+// "running" task's status to "waiting" when one of its runs is actually
+// waiting at a poll step — mirroring the derivation ListTasks already
+// performs. Previously GetTask reported the task's raw stored status, so
+// "cloche status <task>"'s "Waiting:" line (gated on this field) never fired.
+func TestServer_GetTask_WaitingStatus(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	srv := server.NewClocheServer(store, nil)
+	srv.SetTaskStore(store)
+
+	task := &domain.Task{ID: "TASK-W", Status: domain.TaskStatusRunning, ProjectDir: "/proj", CreatedAt: time.Now()}
+	require.NoError(t, store.SaveTask(ctx, task))
+	require.NoError(t, store.SaveAttempt(ctx, domain.NewAttempt("TASK-W")))
+
+	run := domain.NewRun("run-w", "develop")
+	run.TaskID = "TASK-W"
+	run.Start()
+	run.State = domain.RunStateWaiting
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	resp, err := srv.GetTask(ctx, &pb.GetTaskRequest{TaskId: "TASK-W"})
+	require.NoError(t, err)
+	assert.Equal(t, "waiting", resp.Status)
+}
+
 func TestServer_GetTask_NotFound(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

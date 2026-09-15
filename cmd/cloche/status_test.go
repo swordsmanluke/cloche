@@ -577,6 +577,63 @@ func TestCmdStatusOverview_WaitingTask(t *testing.T) {
 	}
 }
 
+// TestCmdStatusOverview_ParkedTask verifies that a parked task (and its
+// parked run) actually show up in the active-tasks section. Previously the
+// task-status filter and the run-state fetch both excluded "parked", so the
+// "Parked — awaiting reply" lines were unreachable even though the printing
+// code for them existed.
+func TestCmdStatusOverview_ParkedTask(t *testing.T) {
+	client := &statusMockClient{
+		versionResp: &pb.GetVersionResponse{Version: "2.0.0"},
+		projectInfoResp: &pb.GetProjectInfoResponse{
+			Name:        "myproject",
+			Concurrency: 1,
+			LoopRunning: true,
+		},
+		listRunsResp: &pb.ListRunsResponse{
+			Runs: []*pb.RunSummary{
+				{
+					RunId:               "run-parked",
+					State:               "parked",
+					TaskId:              "cloche-p1",
+					WorkflowName:        "develop",
+					StartedAt:           "2026-03-14 10:00:00 +0000 UTC",
+					ParkedTitle:         "Which schema?",
+					ParkedThreadAddress: "cloche/schema-choice-1",
+				},
+			},
+		},
+		listTasksResp: &pb.ListTasksResponse{
+			Tasks: []*pb.TaskSummary{
+				{
+					TaskId:              "cloche-p1",
+					Title:               "Parked Task",
+					Status:              "parked",
+					LatestAttemptId:     "b2c3",
+					AttemptCount:        1,
+					ParkedTitle:         "Which schema?",
+					ParkedThreadAddress: "cloche/schema-choice-1",
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	ctx := context.Background()
+	cmdStatusProject(ctx, client, &buf, "/fake/project")
+
+	out := buf.String()
+	if !strings.Contains(out, "cloche-p1") {
+		t.Errorf("expected parked task ID in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Parked — awaiting reply: Which schema? (cloche/schema-choice-1)") {
+		t.Errorf("expected parked task line in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "parked — awaiting reply: Which schema? (cloche/schema-choice-1)") {
+		t.Errorf("expected parked run line in output, got:\n%s", out)
+	}
+}
+
 func TestFormatLastPollElapsed(t *testing.T) {
 	// Empty string returns empty.
 	if got := formatLastPollElapsed(""); got != "" {

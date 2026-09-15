@@ -22,7 +22,8 @@ machine to install shell tab-completion.
 Usage:
   cloche init [-n | --new] [--install-shell-helpers]
               [--workflow <name>] [--base-image <image>]
-              [--agent-command <cmd>] [--no-llm]
+              [--agent-command <cmd>] [--no-llm] [--no-commit]
+              [--ssh-key <path>] [--non-interactive]
 
 Flags:
   -n, --new                 Generate workflow files, Dockerfile, prompts, and
@@ -38,6 +39,15 @@ Flags:
                             (overrides config and env)
   --no-llm                  Skip the LLM-assisted placeholder filling phase
   --no-commit               Skip the automatic scaffold commit (--new only)
+  --ssh-key <path>          Configure a project-specific git push key from an
+                            existing private key file, non-interactively.
+  --non-interactive         Skip the interactive SSH key setup prompt entirely
+                            (no key is configured unless --ssh-key is also
+                            given). Useful for scripted/CI init runs.
+
+SSH key setup: without --ssh-key or --non-interactive, and when stdin is a
+terminal, init interactively offers to configure a project-specific git push
+key (use an existing key, generate a new one, or skip).
 
 Core behavior (always, no flags needed):
   .cloche/                   Directory created if missing
@@ -98,7 +108,7 @@ Examples:
 Checks every layer of the setup stack in order and prints a status line for
 each check. Exits with code 1 if any check fails.
 
-Checks performed:
+Checks always performed:
   1. Docker daemon reachable
   2. Base image exists (cloche-base:latest or cloche-agent:latest)
   3. Daemon reachable via gRPC (GetVersion)
@@ -106,15 +116,30 @@ Checks performed:
   5. Git SSH key configured and readable (soft check — warning only)
   6. Beads CLI (bd) available for task tracking (soft check — warning only)
 
+Additional checks, only when run inside a project with a .cloche/ directory:
+  7. Project config (.cloche/config.toml) parses and has no common issues
+  8. Workflow syntax (same validation as "cloche validate")
+  9. Project Docker image was built from the current project directory
+  10. Project Docker image builds successfully
+  11. Agent binary inside the built image runs and matches the host version
+
 Usage:
-  cloche doctor [--verbose]
+  cloche doctor [--verbose] [--project <dir>] [--timeout <duration>]
 
 Flags:
-  --verbose    Print details for all checks, including timing and config values
+  --verbose, -v          Show the detail string for passing checks too (e.g.
+                        which image or SSH key path was found), not just for
+                        warnings/failures.
+  --project <dir>       Project directory to check (default: current directory).
+                        Determines whether the project-only checks (7-11) run.
+  --timeout <duration>  Timeout for the agent-binary check's container run
+                        (default: 60s). Accepts a Go duration (e.g. "2m").
 
 Examples:
   cloche doctor
   cloche doctor --verbose
+  cloche doctor --project /path/to/project
+  cloche doctor --timeout 2m
 `,
 
 	"health": `cloche health — Show project health summary
@@ -149,8 +174,10 @@ Usage:
   cloche run <workflow>[:<step>] [--prompt "..."] [--title "..."] [--issue ID] [--keep-container]
 
 Arguments:
-  <workflow>           Name of the workflow to run. Must match a
-                       .cloche/<workflow>.cloche file in the project.
+  <workflow>           Name of the workflow to run: either a
+                       .cloche/<workflow>.cloche file in the project, or a
+                       built-in workflow name (e.g. "intent-scan") not
+                       overridden by a project file of the same name.
   <workflow>:<step>    Run starting at a specific step within the workflow.
                        Execution begins at <step> instead of the entry step.
 
@@ -183,6 +210,7 @@ re-applied before the failed step is retried.
 
 Usage:
   cloche resume [--no-rebuild|--clean] <task-id>
+  cloche resume [--no-rebuild|--clean] <run-id>
   cloche resume [--no-rebuild|--clean] <workflow-id>
   cloche resume [--no-rebuild|--clean] <step-id>
 
@@ -196,6 +224,8 @@ Flags:
 Arguments:
   <task-id>      Task identifier (e.g. TASK-123 or cloche-k4gh).
                  Finds and resumes the latest failed run for that task.
+  <run-id>       Run identifier (e.g. pqpm-main), resolved server-side to its
+                 task and latest failed attempt.
   <workflow-id>  Colon-separated workflow identifier. Accepted formats:
                    attempt:workflow         (e.g. a133:develop)
                    task:attempt:workflow    (e.g. TASK-123:a41k:develop)
@@ -268,7 +298,7 @@ Streams or displays log output. The first argument accepts any level of
 the ID hierarchy.
 
 Usage:
-  cloche logs <id> [--type <full|script|llm>] [-f] [-l <n>]
+  cloche logs <id> [--step <name>] [--type <full|script|llm>] [-f] [-l <n>]
 
 Arguments:
   <id>    Any of the following:
@@ -279,6 +309,9 @@ Arguments:
           Legacy composite task:attempt[:step] is also accepted.
 
 Flags:
+  --step, -s <name>               Filter to a single step's logs, when <id>
+                                 doesn't already name one (e.g. a task or
+                                 workflow ID).
   --type <full|script|llm>       Filter by log type:
                                    full    — complete unfiltered output
                                    script  — script/command output only
@@ -287,7 +320,7 @@ Flags:
                                  run completes or is stopped).
   --limit, -l <n>                Display only the last n lines of output.
 
-Flags are combinable: cloche logs a3f7:develop:implement -l 20 -f
+Flags are combinable: cloche logs a3f7:develop -s implement -l 20 -f
 
 Examples:
   cloche logs TASK-123
@@ -340,9 +373,9 @@ Examples:
 
 	"list": `cloche list — List tasks
 
-Shows all tasks for the current project, grouped by status with attempt
-count and latest attempt ID. Use --all to show tasks from all projects,
-or --runs to show a flat run listing instead.
+Shows all tasks for the current project, most recently created first, with
+status, attempt count, and latest attempt ID. Use --all to show tasks from
+all projects, or --runs to show a flat run listing instead.
 
 Usage:
   cloche list [flags]
@@ -350,7 +383,8 @@ Usage:
 Flags:
   --all              Show tasks from all projects (default: current project only).
   --project, -p DIR  Filter by project directory.
-  --state, -s STATE  Filter by task status (pending, running, succeeded, failed, cancelled).
+  --state, -s STATE  Filter by task status (pending, running, waiting, parked,
+                     succeeded, failed, cancelled).
   --issue, -i ID     Filter to a single task/issue ID (exact match). Useful in
                      scripts, e.g. checking whether a tracker issue has a
                      succeeded run.
@@ -473,6 +507,7 @@ Usage:
   cloche loop [--max <n>]     Start the orchestration loop
   cloche loop once            Launch the next ready task, leave the loop stopped
   cloche loop stop [--hard]   Stop the orchestration loop
+  cloche loop status          Show the loop's project status (alias for "cloche status" in the project dir)
 
 Flags:
   --max <n>    Maximum number of concurrent runs (default: value from
@@ -504,12 +539,14 @@ Examples:
   cloche loop once
   cloche loop stop
   cloche loop stop --hard
+  cloche loop status
 `,
 
 	"get": `cloche get — Get a value from the run context store
 
-Reads a key from the task's context.json file. Intended for use inside
-workflow scripts and steps.
+Reads a key from the task's context store (a per-attempt KV namespace kept by
+the daemon, queried over gRPC). Intended for use inside workflow scripts and
+steps.
 
 Usage:
   cloche get <key>
@@ -519,7 +556,8 @@ Arguments:
 
 Environment:
   CLOCHE_TASK_ID       Task identifier (required).
-  CLOCHE_PROJECT_DIR   Project directory (default: current directory).
+  CLOCHE_ATTEMPT_ID    Attempt identifier (set automatically in steps).
+  CLOCHE_RUN_ID        Run identifier (set automatically in steps).
 
 Exit codes:
   0    Key exists; value printed to stdout.
@@ -532,24 +570,29 @@ Examples:
 
 	"set": `cloche set — Set a value in the run context store
 
-Writes a key-value pair to the task's context.json file. Use "-" as the
-value to read from stdin (useful for multi-line content).
+Writes a key-value pair to the task's context store. Use "-" as the value to
+read from stdin, or "-f <file>" to read from a file (both useful for
+multi-line content).
 
 Usage:
   cloche set <key> <value>
-  cloche set <key> -          (read value from stdin)
+  cloche set <key> -               (read value from stdin)
+  cloche set <key> -f <file>       (read value from a file)
 
 Arguments:
   <key>      The context key to write.
-  <value>    The value to store, or "-" to read from stdin.
+  <value>    The value to store, "-" to read from stdin, or "-f <file>" to
+             read from a file.
 
 Environment:
   CLOCHE_TASK_ID       Task identifier (required).
-  CLOCHE_PROJECT_DIR   Project directory (default: current directory).
+  CLOCHE_ATTEMPT_ID    Attempt identifier (set automatically in steps).
+  CLOCHE_RUN_ID        Run identifier (set automatically in steps).
 
 Examples:
   cloche set branch feature-auth
   echo "multi-line content" | cloche set notes -
+  cloche set notes -f ./notes.txt
 `,
 
 	"workflow": `cloche workflow — View workflow definitions
@@ -590,6 +633,11 @@ By default, looks up the project by the current working directory. Use
 
 Usage:
   cloche project [--name <label>]
+  cloche project repos list [--name <label>]
+
+Subcommands:
+  repos list   Machine-readable table of configured [[repositories]] entries
+               (name, path, url). Same lookup rules as the bare command.
 
 Flags:
   --name <label>    Look up project by label (e.g. "cloche") instead of
@@ -597,17 +645,21 @@ Flags:
 
 Output includes:
   Config            active, concurrency, stagger, dedup, stop_on_error
-  Loop              Orchestration loop state (running, stopped, or halted)
+  Loop              Orchestration loop state (running or stopped)
   Active runs       Currently pending or running workflow runs
   Workflows         Known container and host workflow names
+  Repositories      Configured [[repositories]] entries, if any (otherwise a
+                    note that the project root is used as the implicit
+                    single repository)
 
 Environment:
-  CLOCHE_ADDR    Daemon gRPC address (default: 127.0.0.1:50051)
+  CLOCHE_ADDR    Daemon gRPC address (default: 0.0.0.0:50051)
 
 Examples:
   cloche project
   cloche project --name cloche
   cloche project --name my-app
+  cloche project repos list
 `,
 
 	"intent": `cloche intent — View and curate standing project requirements
@@ -738,9 +790,9 @@ Examples:
 
 	"activity": `cloche activity — Show project activity log
 
-Reads the project's .cloche/activity.log file and displays attempt and step
-lifecycle events: when tasks were attempted, which steps fired, their
-timestamps, and the outcome of each step.
+Reads attempt and step lifecycle events for the project from the daemon's
+SQLite database (opened directly, not via gRPC): when tasks were attempted,
+which steps fired, their timestamps, and the outcome of each step.
 
 Usage:
   cloche activity [--project <dir>] [--since <duration|time>] [--until <time>] [--json]
@@ -762,9 +814,14 @@ Output columns:
   STEP        Step name (for step events).
   OUTCOME     Result (for step_completed) or state (for attempt_ended).
 
-The activity log is written to .cloche/activity.log. It is created automatically
-when the orchestration loop or a host workflow run starts and is intended to
-help diagnose which paths through the workflow graph were taken.
+Entries are recorded automatically by the daemon as the orchestration loop or
+a host workflow run executes, and are intended to help diagnose which paths
+through the workflow graph were taken.
+
+Environment:
+  CLOCHE_DB    Path to the daemon's SQLite database (default:
+              ~/.config/cloche/cloche.db). Must point at the same database
+              the daemon is using.
 
 Examples:
   cloche activity
@@ -808,6 +865,59 @@ Usage:
 
 Examples:
   cloche version
+`,
+
+	"debug": `cloche debug — Query the daemon's debug HTTP endpoint
+
+Fetches diagnostics directly from cloched's debug server (goroutine dumps,
+in-memory state). The debug server is opt-in and must be enabled on the
+daemon before this command can reach it.
+
+Usage:
+  cloche debug <subcommand> [--debug-addr <addr>]
+
+Subcommands:
+  goroutines   Print a full goroutine stack dump from the running daemon
+               (alias: dump)
+  state        Print a JSON summary of active runs, loops, and container
+               sessions
+
+Flags:
+  --debug-addr <addr>    Daemon debug HTTP address (e.g. "localhost:7778").
+                        Overrides CLOCHE_DEBUG and the [daemon] debug config.
+
+Environment:
+  CLOCHE_DEBUG    Daemon debug HTTP address, used when --debug-addr is absent.
+
+Enabling the debug server on cloched:
+  cloched --debug-addr localhost:7778
+  CLOCHE_DEBUG=localhost:7778 cloched
+  # or in ~/.config/cloche/config: [daemon] debug = "localhost:7778"
+
+Examples:
+  cloche debug goroutines
+  cloche debug state
+  cloche debug state --debug-addr localhost:7778
+`,
+
+	"complete": `cloche complete — Print shell completion candidates
+
+Internal command invoked by the bash/zsh completion scripts (installed via
+"cloche init --install-shell-helpers"); not typically run by hand. Prints one
+completion candidate per line for the given cursor position, combining static
+flag/value candidates with dynamic ones (task IDs, workflow names) fetched
+from the daemon when reachable.
+
+Usage:
+  cloche complete --index <n> -- <word0> <word1> ...
+
+Flags:
+  --index, -i <n>    Index of the word being completed within the word list
+                     that follows "--".
+
+Examples:
+  cloche complete --index 1 -- cloche st
+  cloche complete --index 2 -- cloche run ""
 `,
 
 	"threads": `cloche threads — List, show, and reply to agent help-request threads
@@ -927,13 +1037,20 @@ Context Store (for use inside workflow steps):
 
 Daemon:
   shutdown   Shut down the Cloche daemon
+  debug      Query the daemon's debug HTTP endpoint (goroutines, state)
   version    Print CLI, daemon, and agent version information
 
+Global Flags:
+  --no-color   Disable ANSI color output on any command that colors its
+              output (status, list, poll, threads, health). Also respects
+              the NO_COLOR env var; forced on with CLOCHE_FORCE_COLOR.
+
 Environment Variables:
-  CLOCHE_ADDR          Daemon gRPC address (default: 127.0.0.1:50051)
+  CLOCHE_ADDR          Daemon gRPC address (default: 0.0.0.0:50051)
   CLOCHE_HTTP          Daemon HTTP address (for health/tasks commands)
-  CLOCHE_RUN_ID        Workflow ID for the current run (set automatically in steps)
-  CLOCHE_PROJECT_DIR   Project directory override for get/set commands
+  CLOCHE_TASK_ID       Task identifier for get/set commands (set automatically in steps)
+  CLOCHE_ATTEMPT_ID    Attempt identifier for get/set commands (set automatically in steps)
+  CLOCHE_RUN_ID        Run identifier for get/set commands (set automatically in steps)
 
 Examples:
   cloche init

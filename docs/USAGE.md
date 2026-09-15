@@ -505,7 +505,7 @@ result branch and worktree around the `develop` sub-workflow and publishes
 | `CLOCHE_RUN_ID` | Workflow ID for this workflow execution (e.g. `a133:develop`). |
 | `CLOCHE_TASK_ID` | Task ID assigned by the daemon. Set when the container run is associated with a task. |
 | `CLOCHE_ATTEMPT_ID` | Attempt identifier for this container run. Used for unique container naming. |
-| `CLOCHE_PROJECT_DIR` | Working directory (set for script steps so `cloche get`/`cloche set` work). |
+| `CLOCHE_PROJECT_DIR` | Working directory for script steps. |
 | `ANTHROPIC_API_KEY` | Passed through from the host if set. |
 | `CLOCHE_AGENT_COMMAND` | Overrides the default agent command inside the container. |
 
@@ -967,7 +967,7 @@ cloche run <workflow>[:<step>] [--prompt "..."] [--title "..."] [--issue ID] [--
 
 | Argument / Flag | Description |
 |-----------------|-------------|
-| `<workflow>` | Workflow name. Resolves to `.cloche/<name>.cloche`. |
+| `<workflow>` | Workflow name. Resolves to `.cloche/<name>.cloche`, or a built-in workflow (e.g. `intent-scan`) not overridden by a project file of the same name. |
 | `<workflow>:<step>` | Run starting at a specific step within the workflow. |
 | `--prompt "..."`, `-p` | Inline prompt written to `.cloche/<run-id>/prompt.txt`. |
 | `--title "..."` | One-line summary for status display. Auto-generated if omitted. |
@@ -1071,9 +1071,9 @@ waiting. Thresholds are configured via `[attention]` in `config.toml` (see below
 cloche list [flags]
 ```
 
-Lists tasks for the current project directory, grouped by status with attempt count and
-latest attempt ID. Pass `--all` to show tasks across all projects. Use `--runs` to
-show a flat run listing instead of the task-oriented view.
+Lists tasks for the current project directory, most recently created first, with
+status, attempt count, and latest attempt ID. Pass `--all` to show tasks across all
+projects. Use `--runs` to show a flat run listing instead of the task-oriented view.
 
 | Flag | Description |
 |------|-------------|
@@ -1272,8 +1272,8 @@ up a project by its registered label instead.
 | `--name <label>` | _(cwd lookup)_ | Look up project by label (e.g. `cloche`) instead of directory. |
 
 `cloche project` output includes: config settings (active, concurrency, stagger, dedup,
-stop_on_error, max_consecutive_failures), orchestrator loop state
-(running/stopped/halted), currently active runs, known container and host workflow names,
+stop_on_error, max_consecutive_failures), orchestrator loop state (running or stopped),
+currently active runs, known container and host workflow names,
 and a `Repositories:` section listing each repository's name, path, and URL when
 repositories are declared in `config.toml`. When no `[[repositories]]` section is present
 in `config.toml`, a deprecation warning is printed with instructions for adding the
@@ -1510,7 +1510,11 @@ cloche activity [--project <dir>] [--since <duration|time>] [--until <time>] [--
 | `--until <time>` | _(all)_ | Show only entries on or before this RFC3339 timestamp. |
 | `--json` | false | Output raw JSONL instead of the table view. |
 
-Reads activity entries from the daemon's SQLite database. Events are recorded automatically by the orchestration loop and host workflow runs. Output columns: `TIME`, `KIND`, `TASK`, `ATTEMPT`, `WORKFLOW`, `STEP`, `OUTCOME`.
+Reads activity entries from the daemon's SQLite database (opened directly, not via
+gRPC — set `CLOCHE_DB` to point at a non-default database path, default
+`~/.config/cloche/cloche.db`; must match the database the daemon is using). Events are
+recorded automatically by the orchestration loop and host workflow runs. Output columns:
+`TIME`, `KIND`, `TASK`, `ATTEMPT`, `WORKFLOW`, `STEP`, `OUTCOME`.
 
 Event kinds: `attempt_started`, `attempt_ended`, `step_started`, `step_completed`.
 
@@ -1935,7 +1939,7 @@ Injected into the container by the daemon at startup.
 | `CLOCHE_RUN_ID` | The run ID for this workflow execution. |
 | `CLOCHE_TASK_ID` | Task ID assigned by the daemon. Set when the container run is associated with a task. |
 | `CLOCHE_ATTEMPT_ID` | Attempt identifier for this container run. Used for unique container naming. |
-| `CLOCHE_PROJECT_DIR` | Working directory inside the container (`/workspace`). Set so `cloche get`/`cloche set` work correctly. |
+| `CLOCHE_PROJECT_DIR` | Working directory inside the container (`/workspace`). |
 | `CLOCHE_AGENT_COMMAND` | Overrides the default agent command inside the container. |
 | `CLOCHE_ADDR` | Daemon gRPC TCP address (e.g. `host.docker.internal:50051`). Used by `clo get`/`clo set` inside the container. |
 | `ANTHROPIC_API_KEY` | Passed through from the host environment if set. |

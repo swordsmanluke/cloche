@@ -153,8 +153,6 @@ func (dr *doctorRunner) printResults(results []checkResult) {
 		statusStr := r.statusString()
 		if r.status == checkOK && r.detail != "" && dr.verbose {
 			statusStr = fmt.Sprintf("ok (%s)", r.detail)
-		} else if r.status == checkOK && r.detail != "" {
-			statusStr = fmt.Sprintf("ok (%s)", r.detail)
 		}
 		fmt.Printf("%s%s%s\n", label, strings.Repeat(" ", padding), statusStr)
 		if r.status != checkOK {
@@ -168,8 +166,6 @@ func (dr *doctorRunner) printResults(results []checkResult) {
 					fmt.Printf("  %s\n", line)
 				}
 			}
-		} else if dr.verbose && r.detail != "" {
-			// already included in statusStr above
 		}
 	}
 

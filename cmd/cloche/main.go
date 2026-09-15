@@ -736,9 +736,10 @@ func printActiveTasks(ctx context.Context, client pb.ClocheServiceClient, w io.W
 		os.Exit(1)
 	}
 
-	// Fetch active runs (all time, to include long-running tasks) — both running and waiting.
+	// Fetch active runs (all time, to include long-running tasks) — running,
+	// waiting, and parked (awaiting a help-channel reply).
 	var allActiveRuns []*pb.RunSummary
-	for _, state := range []string{"running", "waiting"} {
+	for _, state := range []string{"running", "waiting", "parked"} {
 		runsResp, err := client.ListRuns(ctx, &pb.ListRunsRequest{
 			State:      state,
 			All:        true,
@@ -762,10 +763,10 @@ func printActiveTasks(ctx context.Context, client pb.ClocheServiceClient, w io.W
 		}
 	}
 
-	// Filter to active tasks (running, waiting, or pending).
+	// Filter to active tasks (running, waiting, parked, or pending).
 	var activeTasks []*pb.TaskSummary
 	for _, task := range tasksResp.Tasks {
-		if task.Status == "running" || task.Status == "waiting" || task.Status == "pending" {
+		if task.Status == "running" || task.Status == "waiting" || task.Status == "parked" || task.Status == "pending" {
 			activeTasks = append(activeTasks, task)
 		}
 	}
@@ -1430,7 +1431,7 @@ func cmdTasks(args []string) {
 	resp, err := http.Get(tasksURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error connecting to daemon web API: %v\n", err)
-		fmt.Fprintf(os.Stderr, "hint: ensure CLOCHE_HTTP is set and the daemon is running with --http\n")
+		fmt.Fprintf(os.Stderr, "hint: set CLOCHE_HTTP (or [daemon] http in ~/.config/cloche/config) and restart the daemon\n")
 		os.Exit(1)
 	}
 	defer resp.Body.Close()

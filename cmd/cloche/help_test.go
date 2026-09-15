@@ -31,7 +31,7 @@ func TestSubcommandHelpExists(t *testing.T) {
 	commands := []string{
 		"init", "health", "run", "resume", "status", "logs", "poll",
 		"list", "stop", "delete", "tasks", "loop", "get", "set", "shutdown",
-		"workflow", "project", "version",
+		"workflow", "project", "version", "debug", "complete",
 	}
 
 	for _, cmd := range commands {
@@ -56,6 +56,23 @@ func TestSubcommandHelpContainsUsage(t *testing.T) {
 		}
 		if !strings.Contains(text, "cloche "+cmd) {
 			t.Errorf("help for %q missing usage line with 'cloche %s'", cmd, cmd)
+		}
+	}
+}
+
+// TestPrintHelp_DebugAndComplete verifies "cloche help debug" and
+// "cloche help complete" resolve to real help text instead of falling
+// through to the "unknown command" path (both are real, dispatched
+// subcommands, just missing from the subcommandHelp map previously).
+func TestPrintHelp_DebugAndComplete(t *testing.T) {
+	for _, cmd := range []string{"debug", "complete"} {
+		text, ok := subcommandHelp[cmd]
+		if !ok {
+			t.Errorf("subcommandHelp[%q] missing — %q help text falls through to unknown command", cmd, cmd)
+			continue
+		}
+		if strings.Contains(text, "unknown command") {
+			t.Errorf("help text for %q should not contain 'unknown command', got:\n%s", cmd, text)
 		}
 	}
 }

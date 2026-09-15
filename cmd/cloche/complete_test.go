@@ -55,29 +55,34 @@ func TestResolveCompletions_EmptyIndex(t *testing.T) {
 	}
 }
 
-// TestStaticCompletions_Run verifies flag completions for "run".
+// TestStaticCompletions_Run verifies flag completions for "run". The
+// workflow name is a positional argument (not a "--workflow" flag), so the
+// first completion position should offer real run flags plus workflow names.
 func TestStaticCompletions_Run(t *testing.T) {
 	completions := staticCompletions("run", 2, []string{"cloche", "run", ""}, "")
-	hasWorkflow := false
+	hasPrompt := false
+	hasWorkflowFlag := false
 	for _, c := range completions {
+		if c == "--prompt" {
+			hasPrompt = true
+		}
 		if c == "--workflow" {
-			hasWorkflow = true
+			hasWorkflowFlag = true
 		}
 	}
-	if !hasWorkflow {
-		t.Errorf("expected --workflow in run completions, got %v", completions)
+	if !hasPrompt {
+		t.Errorf("expected --prompt in run completions, got %v", completions)
+	}
+	if hasWorkflowFlag {
+		t.Errorf("run has no --workflow flag (workflow name is positional), got %v", completions)
 	}
 }
 
-// TestStaticCompletions_RunWorkflowValue verifies no flags are returned after --workflow.
-func TestStaticCompletions_RunWorkflowValue(t *testing.T) {
-	completions := staticCompletions("run", 3, []string{"cloche", "run", "--workflow", ""}, "")
-	// Should return local workflow names (may be empty in test dir, which is fine).
-	// Just verify --workflow is NOT in the results.
-	for _, c := range completions {
-		if c == "--workflow" {
-			t.Errorf("--workflow should not appear after --workflow flag, got %v", completions)
-		}
+// TestStaticCompletions_RunPromptValue verifies no flags are returned after --prompt.
+func TestStaticCompletions_RunPromptValue(t *testing.T) {
+	completions := staticCompletions("run", 3, []string{"cloche", "run", "--prompt", ""}, "")
+	if len(completions) != 0 {
+		t.Errorf("expected no completions after --prompt, got %v", completions)
 	}
 }
 
@@ -117,21 +122,29 @@ func TestStaticCompletions_LogsType(t *testing.T) {
 	}
 }
 
-// TestStaticCompletions_Loop verifies loop subcommand completions.
+// TestStaticCompletions_Loop verifies loop subcommand completions. "resume"
+// is not a real "cloche loop" subcommand (the subcommands are once/stop/status).
 func TestStaticCompletions_Loop(t *testing.T) {
 	completions := staticCompletions("loop", 2, []string{"cloche", "loop", ""}, "")
 	hasStop := false
+	hasStatus := false
 	hasResume := false
 	for _, c := range completions {
 		if c == "stop" {
 			hasStop = true
 		}
+		if c == "status" {
+			hasStatus = true
+		}
 		if c == "resume" {
 			hasResume = true
 		}
 	}
-	if !hasStop || !hasResume {
-		t.Errorf("expected stop and resume in loop completions, got %v", completions)
+	if !hasStop || !hasStatus {
+		t.Errorf("expected stop and status in loop completions, got %v", completions)
+	}
+	if hasResume {
+		t.Errorf("loop has no 'resume' subcommand, got %v", completions)
 	}
 }
 

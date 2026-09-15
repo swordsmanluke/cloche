@@ -52,6 +52,8 @@ func cmdThreadsList(ctx context.Context, client pb.ClocheServiceClient, args []s
 				os.Exit(1)
 			}
 			channel = args[i]
+		case "--no-color":
+			// handled globally in main()
 		default:
 			fmt.Fprintf(os.Stderr, "unknown flag: %s\n", args[i])
 			os.Exit(1)
