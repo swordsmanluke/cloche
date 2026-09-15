@@ -71,3 +71,10 @@ type ContainerCopier interface {
 type TerminalResizer interface {
 	ResizeTerminal(ctx context.Context, containerID string, rows, cols int) error
 }
+
+// ContainerSizer is an optional interface for querying a container's disk
+// usage (its writable layer plus root filesystem). Used by the dashboard's
+// Containers view to surface the storage cost of retained containers.
+type ContainerSizer interface {
+	ContainerSize(ctx context.Context, containerID string) (sizeBytes int64, err error)
+}

@@ -70,6 +70,34 @@ func TestDockerRuntime_Wait(t *testing.T) {
 	assert.Equal(t, 0, exitCode)
 }
 
+func TestDockerRuntime_ContainerSize(t *testing.T) {
+	skipIfNoDocker(t)
+
+	rt, err := docker.NewRuntime()
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+
+	ctx := context.Background()
+	containerID, err := rt.Start(ctx, ports.ContainerConfig{
+		Image:        "alpine:latest",
+		WorkflowName: "test",
+		ProjectDir:   dir,
+		RunID:        "test-run-size",
+		Cmd:          []string{"echo", "hello"},
+	})
+	require.NoError(t, err)
+	defer rt.Remove(ctx, containerID)
+
+	_, err = rt.Wait(ctx, containerID)
+	require.NoError(t, err)
+
+	size, err := rt.ContainerSize(ctx, containerID)
+	require.NoError(t, err)
+	assert.Greater(t, size, int64(0))
+}
+
 func TestDockerRuntime_FilesPresent(t *testing.T) {
 	skipIfNoDocker(t)
 

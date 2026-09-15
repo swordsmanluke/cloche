@@ -23,8 +23,9 @@ import (
 
 // mockContainerManager implements ContainerManager for testing.
 type mockContainerManager struct {
-	containers map[string]bool // containerID -> exists
-	running    map[string]bool // containerID -> running
+	containers map[string]bool  // containerID -> exists
+	running    map[string]bool  // containerID -> running
+	sizes      map[string]int64 // containerID -> size in bytes
 	removed    []string
 	stopped    []string
 }
@@ -33,7 +34,17 @@ func newMockContainerManager() *mockContainerManager {
 	return &mockContainerManager{
 		containers: map[string]bool{},
 		running:    map[string]bool{},
+		sizes:      map[string]int64{},
 	}
+}
+
+// ContainerSize satisfies ports.ContainerSizer so tests can exercise the
+// Containers view's size column without a real Docker daemon.
+func (m *mockContainerManager) ContainerSize(_ context.Context, containerID string) (int64, error) {
+	if !m.containers[containerID] {
+		return 0, fmt.Errorf("container %s not found", containerID)
+	}
+	return m.sizes[containerID], nil
 }
 
 func (m *mockContainerManager) Logs(_ context.Context, containerID string) (string, error) {

@@ -477,6 +477,27 @@ func (r *Runtime) Inspect(ctx context.Context, containerID string) (*ports.Conta
 	}, nil
 }
 
+// ContainerSize returns the container's total disk usage (writable layer +
+// root filesystem), satisfying ports.ContainerSizer. Requires `docker inspect
+// --size`, which computes disk usage on demand and can be slow on hosts with
+// many containers.
+func (r *Runtime) ContainerSize(ctx context.Context, containerID string) (int64, error) {
+	cmd := exec.CommandContext(ctx, "docker", "inspect", "--size",
+		"--format", "{{.SizeRootFs}}", containerID)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return 0, fmt.Errorf("inspecting container size: %s: %w", stderr.String(), err)
+	}
+
+	size, err := strconv.ParseInt(strings.TrimSpace(stdout.String()), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parsing container size %q: %w", stdout.String(), err)
+	}
+	return size, nil
+}
+
 func (r *Runtime) Commit(ctx context.Context, containerID string) (string, error) {
 	short := containerID
 	if len(short) > 12 {

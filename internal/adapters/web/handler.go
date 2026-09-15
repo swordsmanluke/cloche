@@ -299,6 +299,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/runs/{id}/branch", h.handleAPIRunBranch)
 	h.mux.HandleFunc("GET /api/runs/{id}/diff", h.handleAPIRunDiff)
 	h.mux.HandleFunc("GET /api/runs/{id}/console", h.handleAPIRunConsole)
+	h.mux.HandleFunc("GET /api/projects/{name}/containers", h.handleAPIProjectContainers)
 	h.mux.HandleFunc("DELETE /api/projects/{name}/containers", h.handleAPIDeleteProjectContainers)
 	h.mux.HandleFunc("DELETE /api/containers", h.handleAPIDeleteAllContainers)
 	h.mux.HandleFunc("GET /api/projects/{name}/usage", h.handleAPIProjectUsage)
@@ -1415,6 +1416,95 @@ func (h *Handler) handleAPIDeleteProjectContainers(w http.ResponseWriter, r *htt
 		resp["errors"] = errs
 	}
 	json.NewEncoder(w).Encode(resp)
+}
+
+// apiContainerEntry describes one retained container for the Containers view.
+type apiContainerEntry struct {
+	RunID        string `json:"run_id"`
+	WorkflowName string `json:"workflow_name"`
+	ContainerID  string `json:"container_id"`
+	State        string `json:"state"`
+	SizeBytes    int64  `json:"size_bytes,omitempty"`
+	AgeSeconds   int64  `json:"age_seconds"`
+}
+
+// apiContainerTaskGroup groups a task's retained containers together, since a
+// task can accumulate more than one kept container across attempts or child
+// (host-dispatched) container runs.
+type apiContainerTaskGroup struct {
+	TaskID     string              `json:"task_id"`
+	Title      string              `json:"title,omitempty"`
+	Containers []apiContainerEntry `json:"containers"`
+}
+
+// handleAPIProjectContainers lists all retained containers for a project,
+// grouped by task, with size (when the runtime supports ContainerSizer) and
+// age — backing the dashboard's Containers view.
+func (h *Handler) handleAPIProjectContainers(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+
+	runs, err := h.store.ListRunsByProject(r.Context(), dir, time.Time{})
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to list runs")
+		return
+	}
+
+	sizer, _ := h.container.(ports.ContainerSizer)
+
+	var order []string
+	groups := make(map[string]*apiContainerTaskGroup)
+	now := time.Now()
+	for _, run := range runs {
+		if !run.ContainerKept || run.ContainerID == "" {
+			continue
+		}
+
+		entry := apiContainerEntry{
+			RunID:        run.ID,
+			WorkflowName: run.WorkflowName,
+			ContainerID:  run.ContainerID,
+			State:        h.containerState(r.Context(), run),
+		}
+		age := run.StartedAt
+		if !run.CompletedAt.IsZero() {
+			age = run.CompletedAt
+		}
+		if !age.IsZero() {
+			entry.AgeSeconds = int64(now.Sub(age).Seconds())
+		}
+		if sizer != nil {
+			if size, err := sizer.ContainerSize(r.Context(), run.ContainerID); err == nil {
+				entry.SizeBytes = size
+			}
+		}
+
+		taskID := run.TaskID
+		if taskID == "" {
+			taskID = run.ID
+		}
+		g, seen := groups[taskID]
+		if !seen {
+			title := run.TaskTitle
+			if title == "" {
+				title = run.Title
+			}
+			g = &apiContainerTaskGroup{TaskID: taskID, Title: title}
+			groups[taskID] = g
+			order = append(order, taskID)
+		}
+		g.Containers = append(g.Containers, entry)
+	}
+
+	result := make([]apiContainerTaskGroup, 0, len(order))
+	for _, id := range order {
+		result = append(result, *groups[id])
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 // handleAPIDeleteAllContainers mass-deletes all retained/exited containers across all projects.

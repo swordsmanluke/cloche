@@ -116,10 +116,13 @@ The pre-console URLs (`/`, `/projects/{name}[/runs]`, `/runs[/{id}]`, `/tasks/{i
 | `j` / `k` | Move the stack selection down / up |
 | `Tab` / `Shift+Tab` | Switch to the next / previous project |
 | `Enter` | Open the selected task in the centre pane |
-| `Esc` | Return to the stack (clears the centre pane) |
+| `Esc` | Close an open drawer/view, else return to the stack (clears the centre pane) |
 | `a` | Open the activity stream |
 | `[` / `]` | Switch to the previous / next attempt |
 | `g` / `G` | Scroll the log to the top / bottom |
+| `w` | Open the Workflows view |
+| `i` | Open the Intent view |
+| `c` | Open the Containers view |
 | `?` | Toggle the keyboard shortcuts overlay |
 
 ### Foot bar
@@ -138,6 +141,34 @@ stream is always a bounded tail (never the full `activity_log` table): the first
 covers today plus a fixed page size, and a **Load earlier** button pages further into
 history via an opaque cursor (an `activity_log` row ID), the same pattern the task
 stack's "Done today" group uses for its own cursor.
+
+### Secondary views: Workflows, Intent, Containers
+
+Three header buttons (and matching shortcuts `w` / `i` / `c`) open project-scoped views as
+an overlay on top of the console shell — they don't navigate away from the current
+project/task URL. `Esc` closes the topmost open drawer first, then the view itself, before
+falling back to the stack-deselect behavior described above.
+
+- **Workflows** — the read-only DAG of steps/wires for the active project's container and
+  host workflows (`GET /api/projects/{slug}/workflows`), with location/workflow tabs when
+  more than one applies. Built-in workflows are marked with a `built-in` badge. Clicking a
+  step node opens a drawer with its type, results, and whichever of the DSL's real config
+  keys it uses (`prompt`, `run`, `poll`, `interval`, `agent`, `agent_command`, `agent_args`,
+  `intent_tracking`, `workflow_name`, `max_attempts`), plus the referenced prompt/script
+  content (`GET /api/projects/{slug}/workflows/{workflow}/steps/{step}/content`).
+- **Intent** — the requirements table, its edit drawer, and the domain editor, driven by
+  the same `GET/PATCH /api/projects/{slug}/intent/requirements` and
+  `GET/PUT /api/projects/{slug}/intent/domains` endpoints as before. **Scan now**
+  (`POST /api/projects/{slug}/intent/scan`) shows the dispatched run's id and live state
+  next to the button, with a link to jump straight to that run's task in the stack, instead
+  of silently reloading the requirements table.
+- **Containers** — retained containers for the project, grouped by task, each row showing
+  size and age (`GET /api/projects/{slug}/containers`). Delete a single container
+  (`DELETE /api/runs/{id}/container`) or clean up every retained container in the project
+  (`DELETE /api/projects/{slug}/containers`) — there is no cross-project clean-up button;
+  the daemon-wide `DELETE /api/containers` endpoint still exists but nothing in the
+  dashboard links to it, since a single click there could silently remove another
+  project's kept containers.
 
 ---
 
@@ -171,6 +202,11 @@ The dashboard's JSON endpoints remain stable and are also used by the CLI
   `?project=<slug>` (all projects when omitted) and `?failures_only=1`, paged via
   `?before=<cursor>&limit=<n>`.
 - `GET /api/projects/{name}/intent/...` — intent requirements, domains, and scan control.
+- `GET /api/projects/{name}/workflows`, `GET .../workflows/{workflow}/steps/{step}/content` —
+  workflow structure and step content for the Workflows view's DAG and drawer.
+- `GET /api/projects/{name}/containers`, `DELETE .../containers`, `DELETE /api/runs/{id}/container` —
+  per-task retained-container listing (with size/age), project-scoped clean-up, and
+  per-container delete for the Containers view.
 
 These are unchanged by the console-shell rework; only the HTML pages that used to render
 around them were replaced.

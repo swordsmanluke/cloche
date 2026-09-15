@@ -197,11 +197,15 @@
         state.rowOrder = [];
         state.selectedIndex = -1;
 
+        closeView();
+        scanStatus = null;
+
         stopStackPolling();
         stopInstrumentsPolling();
         stopTickerPolling();
         renderTabBar();
         renderCentrePane(null, null);
+        updateViewButtonsEnabled();
 
         loadInstruments();
         startInstrumentsPolling();
@@ -508,6 +512,15 @@
         return tag === 'input' || tag === 'textarea' || (el && el.isContentEditable);
     }
 
+    function escapeHtml(s) {
+        return String(s === undefined || s === null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     document.addEventListener('keydown', function (e) {
         if (isTypingTarget(e.target)) return;
 
@@ -524,6 +537,25 @@
         if (!activityOverlay.hidden) {
             if (e.key === 'Escape' || e.key === 'a') {
                 toggleActivity(false);
+                e.preventDefault();
+            }
+            return;
+        }
+
+        // A drawer sits on top of a secondary view; Escape closes the
+        // topmost thing first rather than falling through to the stack.
+        if (anyDrawerOpen()) {
+            if (e.key === 'Escape') {
+                closeStepDrawer();
+                closeIntentDrawer();
+                e.preventDefault();
+            }
+            return;
+        }
+
+        if (isViewOpen()) {
+            if (e.key === 'Escape') {
+                closeView();
                 e.preventDefault();
             }
             return;
@@ -552,6 +584,18 @@
                 break;
             case 'a':
                 toggleActivity(true);
+                e.preventDefault();
+                break;
+            case 'w':
+                openWorkflowsView();
+                e.preventDefault();
+                break;
+            case 'i':
+                openIntentView();
+                e.preventDefault();
+                break;
+            case 'c':
+                openContainersView();
                 e.preventDefault();
                 break;
             case '?':
@@ -1598,6 +1642,1058 @@
         var viewer = document.getElementById('console-log-viewer');
         if (!viewer) return;
         viewer.scrollTop = where === 'top' ? 0 : viewer.scrollHeight;
+    }
+
+    // ---------- secondary views (Workflows / Intent / Containers) ----------
+    //
+    // These are opened from the header (buttons + w/i/c shortcuts), not
+    // routed pages — the console shell stays on the current project/task URL
+    // while a view is open. Escape closes the topmost drawer, then the view
+    // itself (see the keydown handler above).
+
+    function isViewOpen() {
+        return !document.getElementById('console-view-overlay').hidden;
+    }
+
+    function openView(title) {
+        document.getElementById('console-view-title').textContent = title;
+        document.getElementById('console-view-overlay').hidden = false;
+    }
+
+    function closeView() {
+        document.getElementById('console-view-overlay').hidden = true;
+        document.getElementById('console-view-body').innerHTML = '';
+        closeStepDrawer();
+        closeIntentDrawer();
+        stopScanPolling();
+    }
+
+    function isDrawerOpen(id) {
+        var el = document.getElementById(id);
+        return !!el && el.classList.contains('drawer-open');
+    }
+
+    function anyDrawerOpen() {
+        return isDrawerOpen('step-drawer') || isDrawerOpen('intent-drawer');
+    }
+
+    function closeStepDrawer() {
+        document.getElementById('step-drawer').classList.remove('drawer-open');
+    }
+
+    function closeIntentDrawer() {
+        document.getElementById('intent-drawer').classList.remove('drawer-open');
+    }
+
+    function updateViewButtonsEnabled() {
+        var disabled = !state.activeSlug;
+        ['console-view-workflows-btn', 'console-view-intent-btn', 'console-view-containers-btn'].forEach(function (id) {
+            document.getElementById(id).disabled = disabled;
+        });
+    }
+
+    document.getElementById('console-view-close').addEventListener('click', closeView);
+    document.getElementById('step-drawer-close').addEventListener('click', closeStepDrawer);
+    document.getElementById('intent-drawer-close').addEventListener('click', closeIntentDrawer);
+    document.getElementById('console-view-workflows-btn').addEventListener('click', openWorkflowsView);
+    document.getElementById('console-view-intent-btn').addEventListener('click', openIntentView);
+    document.getElementById('console-view-containers-btn').addEventListener('click', openContainersView);
+    updateViewButtonsEnabled();
+
+    // ---------- Workflows view ----------
+
+    // The DSL's real step config keys (see docs/workflows.md) — anything else
+    // (e.g. the old "command"/"script" branches, which no parsed step ever
+    // populates) is skipped rather than silently showing nothing useful.
+    var DRAWER_CONFIG_KEYS = [
+        'prompt', 'run', 'poll', 'interval', 'agent', 'agent_command',
+        'agent_args', 'intent_tracking', 'workflow_name', 'max_attempts'
+    ];
+
+    var workflowsData = [];
+    var activeLocation = 'container';
+
+    function openWorkflowsView() {
+        if (!state.activeSlug) return;
+        openView('Workflows');
+        var body = document.getElementById('console-view-body');
+        body.innerHTML =
+            '<div id="location-tabs" class="tab-bar"></div>' +
+            '<div id="workflow-tabs" class="tab-bar"></div>' +
+            '<div id="workflow-name-label"></div>' +
+            '<div id="workflow-dag"></div>';
+        document.getElementById('location-tabs').addEventListener('click', onLocationTabsClick);
+        document.getElementById('workflow-tabs').addEventListener('click', onWorkflowTabsClick);
+        document.getElementById('workflow-dag').addEventListener('click', onDagClick);
+        loadWorkflows();
+    }
+
+    function onLocationTabsClick(e) {
+        var btn = e.target.closest('[data-location]');
+        if (btn) switchLocation(btn.getAttribute('data-location'));
+    }
+
+    function onWorkflowTabsClick(e) {
+        var btn = e.target.closest('[data-workflow-index]');
+        if (btn) showFilteredWorkflow(parseInt(btn.getAttribute('data-workflow-index'), 10));
+    }
+
+    function onDagClick(e) {
+        var node = e.target.closest('[data-step]');
+        if (node) openStepDrawer(node.getAttribute('data-workflow'), node.getAttribute('data-step'));
+    }
+
+    function loadWorkflows() {
+        fetch('/api/projects/' + encodeURIComponent(state.activeSlug) + '/workflows')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                workflowsData = data || [];
+                if (workflowsData.length === 0) {
+                    document.getElementById('workflow-dag').innerHTML = '<p class="empty">No workflows found</p>';
+                    document.getElementById('location-tabs').innerHTML = '';
+                    document.getElementById('workflow-tabs').innerHTML = '';
+                    return;
+                }
+
+                var hasContainer = workflowsData.some(function (wf) { return wf.location === 'container'; });
+                var hasHost = workflowsData.some(function (wf) { return wf.location === 'host'; });
+
+                var locationTabs = document.getElementById('location-tabs');
+                if (hasContainer && hasHost) {
+                    locationTabs.innerHTML =
+                        '<button type="button" class="tab-btn tab-active" data-location="container">Container</button>' +
+                        '<button type="button" class="tab-btn" data-location="host">Host</button>';
+                } else {
+                    locationTabs.innerHTML = '';
+                }
+
+                activeLocation = hasContainer ? 'container' : 'host';
+                renderWorkflowTabs();
+            })
+            .catch(function () {
+                document.getElementById('workflow-dag').innerHTML = '<p class="empty">Failed to load workflows</p>';
+            });
+    }
+
+    function switchLocation(loc) {
+        activeLocation = loc;
+        var btns = document.querySelectorAll('#location-tabs .tab-btn');
+        Array.prototype.forEach.call(btns, function (b) {
+            b.classList.toggle('tab-active', b.getAttribute('data-location') === loc);
+        });
+        renderWorkflowTabs();
+    }
+
+    function renderWorkflowTabs() {
+        var filtered = workflowsData.filter(function (wf) { return wf.location === activeLocation; });
+        var tabs = document.getElementById('workflow-tabs');
+
+        if (filtered.length === 0) {
+            tabs.innerHTML = '';
+            document.getElementById('workflow-dag').innerHTML = '<p class="empty">No ' + activeLocation + ' workflows found</p>';
+            return;
+        }
+
+        if (filtered.length > 1) {
+            var html = '';
+            filtered.forEach(function (wf, i) {
+                var badge = wf.builtin ? ' <span class="badge badge-cancelled">built-in</span>' : '';
+                html += '<button type="button" class="tab-btn' + (i === 0 ? ' tab-active' : '') +
+                    '" data-workflow-index="' + i + '">' + escapeHtml(wf.name) + badge + '</button>';
+            });
+            tabs.innerHTML = html;
+        } else {
+            tabs.innerHTML = '';
+        }
+        showFilteredWorkflow(0);
+    }
+
+    function showFilteredWorkflow(idx) {
+        var filtered = workflowsData.filter(function (wf) { return wf.location === activeLocation; });
+        var btns = document.querySelectorAll('#workflow-tabs .tab-btn');
+        Array.prototype.forEach.call(btns, function (b, i) { b.classList.toggle('tab-active', i === idx); });
+        showWorkflow(filtered[idx]);
+    }
+
+    function showWorkflow(wf) {
+        var dagEl = document.getElementById('workflow-dag');
+        var nameLabel = document.getElementById('workflow-name-label');
+        if (nameLabel) {
+            nameLabel.innerHTML = wf.builtin ? '<span class="badge badge-cancelled">built-in</span>' : '';
+        }
+
+        if (!wf.steps || wf.steps.length === 0) {
+            dagEl.innerHTML = '<p class="empty">No steps defined</p>';
+            return;
+        }
+
+        var wires = (wf.wires || []).filter(function (w) { return !w.implicit; });
+
+        function isSuccessResult(r) { return r === 'success' || r === 'ok' || r === 'done' || r === 'pass'; }
+        function isFailureResult(r) { return r === 'failed' || r === 'fail' || r === 'error'; }
+
+        var colorPalette = ['#2196f3', '#ffc107', '#e040fb', '#00bcd4', '#ff9800'];
+        var otherColorIdx = 0;
+        var resultColorCache = {};
+
+        function resultColor(r) {
+            if (resultColorCache[r]) return resultColorCache[r];
+            if (isSuccessResult(r)) { resultColorCache[r] = '#4caf50'; }
+            else if (isFailureResult(r)) { resultColorCache[r] = '#e53935'; }
+            else {
+                resultColorCache[r] = colorPalette[otherColorIdx % colorPalette.length];
+                otherColorIdx++;
+            }
+            return resultColorCache[r];
+        }
+
+        wires.forEach(function (w) { resultColor(w.result); });
+
+        var terminals = {};
+        wires.forEach(function (wire) {
+            if (wire.to === 'done' || wire.to === 'abort') terminals[wire.to] = true;
+        });
+
+        var adj = {};
+        var revAdj = {};
+        wires.forEach(function (wire) {
+            if (!adj[wire.from]) adj[wire.from] = [];
+            adj[wire.from].push(wire);
+            if (!revAdj[wire.to]) revAdj[wire.to] = [];
+            if (revAdj[wire.to].indexOf(wire.from) === -1) revAdj[wire.to].push(wire.from);
+        });
+
+        var stepNames = wf.steps.map(function (s) { return s.name; });
+
+        var inDeg = {};
+        stepNames.forEach(function (n) { inDeg[n] = 0; });
+        wires.forEach(function (wire) {
+            if (inDeg[wire.to] !== undefined) inDeg[wire.to]++;
+        });
+
+        var queue = [];
+        stepNames.forEach(function (n) { if (inDeg[n] === 0) queue.push(n); });
+
+        var topoOrder = [];
+        while (queue.length > 0) {
+            var n = queue.shift();
+            topoOrder.push(n);
+            (adj[n] || []).forEach(function (wire) {
+                if (inDeg[wire.to] !== undefined) {
+                    inDeg[wire.to]--;
+                    if (inDeg[wire.to] === 0) queue.push(wire.to);
+                }
+            });
+        }
+        var topoVisited = {};
+        topoOrder.forEach(function (n) { topoVisited[n] = true; });
+        var bfsQ = topoOrder.slice();
+        while (bfsQ.length > 0) {
+            var bn = bfsQ.shift();
+            (adj[bn] || []).forEach(function (wire) {
+                if (!topoVisited[wire.to] && inDeg[wire.to] !== undefined) {
+                    topoVisited[wire.to] = true;
+                    topoOrder.push(wire.to);
+                    bfsQ.push(wire.to);
+                }
+            });
+        }
+        stepNames.forEach(function (n) { if (!topoVisited[n]) { topoOrder.push(n); } });
+
+        var layerOf = {};
+        topoOrder.forEach(function (n) {
+            var maxParent = -1;
+            (revAdj[n] || []).forEach(function (p) {
+                if (layerOf[p] !== undefined && layerOf[p] > maxParent) maxParent = layerOf[p];
+            });
+            layerOf[n] = maxParent + 1;
+        });
+
+        var maxLayer = 0;
+        stepNames.forEach(function (n) { if (layerOf[n] > maxLayer) maxLayer = layerOf[n]; });
+
+        var termLayer = maxLayer + 1;
+        for (var t in terminals) { layerOf[t] = termLayer; }
+        var numLayers = termLayer + 1;
+
+        var layers = [];
+        for (var i = 0; i < numLayers; i++) layers.push([]);
+        topoOrder.forEach(function (n) { layers[layerOf[n]].push(n); });
+        for (var t2 in terminals) { layers[termLayer].push(t2); }
+
+        for (var pass = 0; pass < 4; pass++) {
+            for (var li = 1; li < numLayers; li++) {
+                var bary = {};
+                layers[li].forEach(function (n) {
+                    var pars = revAdj[n] || [];
+                    var sum = 0, cnt = 0;
+                    pars.forEach(function (p) {
+                        var idx = layers[li - 1].indexOf(p);
+                        if (idx >= 0) { sum += idx; cnt++; }
+                    });
+                    bary[n] = cnt > 0 ? sum / cnt : 999;
+                });
+                layers[li].sort(function (a, b) { return bary[a] - bary[b]; });
+            }
+            for (var li2 = numLayers - 2; li2 >= 0; li2--) {
+                var baryB = {};
+                layers[li2].forEach(function (n) {
+                    var children = (adj[n] || []).map(function (w) { return w.to; });
+                    var sum = 0, cnt = 0;
+                    children.forEach(function (c) {
+                        var idx = layers[li2 + 1].indexOf(c);
+                        if (idx >= 0) { sum += idx; cnt++; }
+                    });
+                    baryB[n] = cnt > 0 ? sum / cnt : 999;
+                });
+                layers[li2].sort(function (a, b) { return baryB[a] - baryB[b]; });
+            }
+        }
+
+        var nodeW = 180, nodeH = 48;
+        var layerGap = 80;
+        var nodeGap = 40;
+        var maxOffset = Math.round(nodeW / 6);
+        var padL = 30, padT = 30;
+
+        var maxInLayer = 1;
+        layers.forEach(function (l) { if (l.length > maxInLayer) maxInLayer = l.length; });
+        var totalLayerW = maxInLayer * nodeW + (maxInLayer - 1) * nodeGap;
+
+        var positions = {};
+        layers.forEach(function (layer, li) {
+            var lw = layer.length * nodeW + (layer.length - 1) * nodeGap;
+            var offsetX = (totalLayerW - lw) / 2;
+            layer.forEach(function (name, ni) {
+                positions[name] = {
+                    x: padL + offsetX + ni * (nodeW + nodeGap),
+                    y: padT + li * (nodeH + layerGap)
+                };
+            });
+        });
+
+        var termWires = {};
+        var normWires = [];
+        wires.forEach(function (wire) {
+            if (wire.to === 'done' || wire.to === 'abort') {
+                if (!termWires[wire.to]) termWires[wire.to] = [];
+                termWires[wire.to].push(wire);
+            } else {
+                normWires.push(wire);
+            }
+        });
+
+        var wireColStart = padL + totalLayerW + 50;
+        var wireColGap = 40;
+        var wireColumns = {};
+        var wireColIdx = 0;
+
+        for (var term in termWires) {
+            var tw = termWires[term];
+            var nonSucc = tw.filter(function (w) { return !isSuccessResult(w.result); });
+            if (nonSucc.length > 0) {
+                var byResult = {};
+                nonSucc.forEach(function (w) {
+                    if (!byResult[w.result]) byResult[w.result] = [];
+                    byResult[w.result].push(w);
+                });
+                for (var result in byResult) {
+                    var colKey = term + ':' + result;
+                    wireColumns[colKey] = {
+                        x: wireColStart + wireColIdx * wireColGap,
+                        terminal: term,
+                        result: result,
+                        wires: byResult[result]
+                    };
+                    wireColIdx++;
+                }
+            }
+        }
+
+        var succByDest = {};
+
+        normWires = normWires.filter(function (wire) {
+            if (!isSuccessResult(wire.result)) return true;
+            var fl = layerOf[wire.from];
+            var tl = layerOf[wire.to] !== undefined ? layerOf[wire.to] : termLayer;
+            if (tl > fl + 1) {
+                if (!succByDest[wire.to]) succByDest[wire.to] = [];
+                succByDest[wire.to].push(wire);
+                return false;
+            }
+            return true;
+        });
+
+        var crossTermSuccKeys = {};
+        for (var sterm in termWires) {
+            termWires[sterm].forEach(function (wire) {
+                if (!isSuccessResult(wire.result)) return;
+                var fl = layerOf[wire.from];
+                if (termLayer > fl + 1) {
+                    if (!succByDest[wire.to]) succByDest[wire.to] = [];
+                    succByDest[wire.to].push(wire);
+                    crossTermSuccKeys[wire.from + ':' + wire.to] = true;
+                }
+            });
+        }
+
+        var succColStartX = wireColStart + wireColIdx * wireColGap + (wireColIdx > 0 ? 20 : 0);
+        var succColumns = {};
+        var succCI = 0;
+        for (var succDest in succByDest) {
+            succColumns[succDest] = {
+                x: succColStartX + succCI * wireColGap,
+                dest: succDest,
+                wires: succByDest[succDest]
+            };
+            succCI++;
+        }
+
+        for (var term2 in termWires) {
+            var tw2 = termWires[term2];
+            var hasSucc = tw2.some(function (w) { return isSuccessResult(w.result); });
+            if (!hasSucc) {
+                var colXs = [];
+                for (var ck in wireColumns) {
+                    if (wireColumns[ck].terminal === term2) colXs.push(wireColumns[ck].x);
+                }
+                if (colXs.length > 0) {
+                    var avgX = colXs.reduce(function (a, b) { return a + b; }, 0) / colXs.length;
+                    positions[term2] = {
+                        x: avgX - nodeW / 2,
+                        y: positions[term2].y
+                    };
+                }
+            }
+        }
+
+        var maxX = padL + totalLayerW;
+        for (var ck2 in wireColumns) {
+            if (wireColumns[ck2].x + 20 > maxX) maxX = wireColumns[ck2].x + 20;
+        }
+        for (var t3 in terminals) {
+            var tx = positions[t3].x + nodeW + 10;
+            if (tx > maxX) maxX = tx;
+        }
+        for (var sd in succColumns) {
+            if (succColumns[sd].x + 20 > maxX) maxX = succColumns[sd].x + 20;
+        }
+
+        var svgW = maxX + padL;
+        var svgH = padT * 2 + numLayers * nodeH + (numLayers - 1) * layerGap;
+
+        var svg = '<svg class="dag-svg" width="' + svgW + '" height="' + svgH + '">';
+
+        svg += '<defs>';
+        var markersDone = {};
+        for (var r in resultColorCache) {
+            var c = resultColorCache[r];
+            if (markersDone[c]) continue;
+            markersDone[c] = true;
+            svg += '<marker id="arrow-' + c.replace('#', '') + '" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="' + c + '"/></marker>';
+        }
+        svg += '</defs>';
+
+        function mkr(color) { return 'url(#arrow-' + color.replace('#', '') + ')'; }
+
+        function orthoPath(x1, y1, x2, y2) {
+            var diff = x2 - x1;
+            if (Math.abs(diff) <= 2 * maxOffset) {
+                var xc = (x1 + x2) / 2;
+                return { d: 'M' + xc + ' ' + y1 + ' L' + xc + ' ' + y2, lx: xc + 6, ly: (y1 + y2) / 2 };
+            }
+            var midY = (y1 + y2) / 2;
+            return { d: 'M' + x1 + ' ' + y1 + ' L' + x1 + ' ' + midY + ' L' + x2 + ' ' + midY + ' L' + x2 + ' ' + y2, lx: (x1 + x2) / 2 + 6, ly: midY };
+        }
+
+        normWires.forEach(function (wire) {
+            var from = positions[wire.from], to = positions[wire.to];
+            if (!from || !to) return;
+            var color = resultColor(wire.result);
+            var x1 = from.x + nodeW / 2, y1 = from.y + nodeH;
+            var x2 = to.x + nodeW / 2, y2 = to.y;
+            var rr = orthoPath(x1, y1, x2, y2);
+            svg += '<path d="' + rr.d + '" class="dag-edge" style="stroke:' + color + '" marker-end="' + mkr(color) + '"/>';
+            svg += '<text x="' + rr.lx + '" y="' + rr.ly + '" class="dag-edge-label" style="fill:' + color + '">' + escapeHtml(wire.result) + '</text>';
+        });
+
+        for (var term3 in termWires) {
+            var tw3 = termWires[term3];
+            var tpos = positions[term3];
+            if (!tpos) continue;
+
+            tw3.filter(function (w) { return isSuccessResult(w.result) && !crossTermSuccKeys[w.from + ':' + w.to]; }).forEach(function (wire) {
+                var from = positions[wire.from];
+                if (!from) return;
+                var color = resultColor(wire.result);
+                var x1 = from.x + nodeW / 2, y1 = from.y + nodeH;
+                var x2 = tpos.x + nodeW / 2, y2 = tpos.y;
+                var rr = orthoPath(x1, y1, x2, y2);
+                svg += '<path d="' + rr.d + '" class="dag-edge" style="stroke:' + color + '" marker-end="' + mkr(color) + '"/>';
+                svg += '<text x="' + rr.lx + '" y="' + rr.ly + '" class="dag-edge-label" style="fill:' + color + '">' + escapeHtml(wire.result) + '</text>';
+            });
+        }
+
+        for (var ck3 in wireColumns) {
+            var col = wireColumns[ck3];
+            var color = resultColor(col.result);
+            var tpos2 = positions[col.terminal];
+            if (!tpos2) continue;
+
+            var links = [];
+            col.wires.forEach(function (wire) {
+                var from = positions[wire.from];
+                if (!from) return;
+                links.push({ srcX: from.x + nodeW, srcY: from.y + nodeH / 2 });
+            });
+            links.sort(function (a, b) { return a.srcY - b.srcY; });
+            if (links.length === 0) continue;
+
+            links.forEach(function (ln) {
+                svg += '<path d="M' + ln.srcX + ' ' + ln.srcY + ' L' + col.x + ' ' + ln.srcY + '" class="dag-edge" style="stroke:' + color + '"/>';
+                svg += '<circle cx="' + col.x + '" cy="' + ln.srcY + '" r="3" class="dag-link-node" style="fill:' + color + '"/>';
+                svg += '<text x="' + (ln.srcX + 6) + '" y="' + (ln.srcY - 6) + '" class="dag-edge-label" style="fill:' + color + '">' + escapeHtml(col.result) + '</text>';
+            });
+
+            var topY = links[0].srcY;
+            var termCX = tpos2.x + nodeW / 2;
+            var termTY = tpos2.y;
+
+            var termEntry = (Math.abs(termCX - col.x) <= maxOffset) ? col.x : termCX;
+            if (col.x === termEntry) {
+                svg += '<path d="M' + col.x + ' ' + topY + ' L' + col.x + ' ' + termTY + '" class="dag-edge" style="stroke:' + color + '" marker-end="' + mkr(color) + '"/>';
+            } else {
+                svg += '<path d="M' + col.x + ' ' + topY + ' L' + col.x + ' ' + termTY + ' L' + termCX + ' ' + termTY + '" class="dag-edge" style="stroke:' + color + '" marker-end="' + mkr(color) + '"/>';
+            }
+        }
+
+        for (var sd2 in succColumns) {
+            var scol = succColumns[sd2];
+            var dpos = positions[scol.dest];
+            if (!dpos) continue;
+
+            var links2 = [];
+            scol.wires.forEach(function (wire) {
+                var from = positions[wire.from];
+                if (!from) return;
+                links2.push({ srcX: from.x + nodeW, srcY: from.y + nodeH / 2, result: wire.result });
+            });
+            links2.sort(function (a, b) { return a.srcY - b.srcY; });
+            if (links2.length === 0) continue;
+
+            var sColor = resultColor(scol.wires[0].result);
+
+            links2.forEach(function (ln) {
+                svg += '<path d="M' + ln.srcX + ' ' + ln.srcY + ' L' + scol.x + ' ' + ln.srcY + '" class="dag-edge" style="stroke:' + sColor + '"/>';
+                svg += '<circle cx="' + scol.x + '" cy="' + ln.srcY + '" r="3" class="dag-link-node" style="fill:' + sColor + '"/>';
+                svg += '<text x="' + (ln.srcX + 6) + '" y="' + (ln.srcY - 6) + '" class="dag-edge-label" style="fill:' + sColor + '">' + escapeHtml(ln.result) + '</text>';
+            });
+
+            var topY2 = links2[0].srcY;
+            var destCX = dpos.x + nodeW / 2;
+            var destTY = dpos.y;
+
+            var destEntry = (Math.abs(destCX - scol.x) <= maxOffset) ? scol.x : destCX;
+            if (scol.x === destEntry) {
+                svg += '<path d="M' + scol.x + ' ' + topY2 + ' L' + scol.x + ' ' + destTY + '" class="dag-edge" style="stroke:' + sColor + '" marker-end="' + mkr(sColor) + '"/>';
+            } else {
+                svg += '<path d="M' + scol.x + ' ' + topY2 + ' L' + scol.x + ' ' + destTY + ' L' + destCX + ' ' + destTY + '" class="dag-edge" style="stroke:' + sColor + '" marker-end="' + mkr(sColor) + '"/>';
+            }
+        }
+
+        wf.steps.forEach(function (s) {
+            var pos = positions[s.name];
+            if (!pos) return;
+            var icon = '\u{1F4DC}';
+            if (s.type === 'agent') icon = '\u{1F916}';
+            else if (s.type === 'workflow') icon = '\u{1F501}';
+            svg += '<g class="dag-node" data-workflow="' + escapeHtml(wf.name) + '" data-step="' + escapeHtml(s.name) + '" style="cursor:pointer">';
+            svg += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + nodeW + '" height="' + nodeH + '" class="dag-node-rect"/>';
+            svg += '<text x="' + (pos.x + 10) + '" y="' + (pos.y + nodeH / 2 + 5) + '" class="dag-node-text">' + icon + ' ' + escapeHtml(s.name) + '</text>';
+            svg += '</g>';
+        });
+
+        for (var tt in terminals) {
+            var posT = positions[tt];
+            var cls = tt === 'done' ? 'dag-terminal-done' : 'dag-terminal-abort';
+            svg += '<rect x="' + posT.x + '" y="' + posT.y + '" width="' + nodeW + '" height="' + nodeH + '" class="dag-node-rect ' + cls + '" rx="20"/>';
+            svg += '<text x="' + (posT.x + nodeW / 2) + '" y="' + (posT.y + nodeH / 2 + 5) + '" class="dag-node-text" text-anchor="middle">' + tt + '</text>';
+        }
+
+        svg += '</svg>';
+        dagEl.innerHTML = svg;
+    }
+
+    function openStepDrawer(workflowName, stepName) {
+        var wf = workflowsData.find(function (w) { return w.name === workflowName; });
+        if (!wf) return;
+        var step = wf.steps.find(function (s) { return s.name === stepName; });
+        if (!step) return;
+
+        document.getElementById('drawer-title').textContent = stepName;
+        var body = '<dl class="console-facts-row">';
+        body += '<dt>Type</dt><dd>' + escapeHtml(step.type) + '</dd>';
+        body += '<dt>Results</dt><dd>' + (step.results && step.results.length ? escapeHtml(step.results.join(', ')) : 'none') + '</dd>';
+        if (step.config) {
+            DRAWER_CONFIG_KEYS.forEach(function (k) {
+                if (step.config[k] !== undefined && step.config[k] !== '') {
+                    body += '<dt>' + escapeHtml(k) + '</dt><dd class="mono">' + escapeHtml(step.config[k]) + '</dd>';
+                }
+            });
+        }
+        body += '</dl>';
+        body += '<div id="step-drawer-content"><p style="color:var(--text-muted)">Loading content...</p></div>';
+
+        document.getElementById('drawer-body').innerHTML = body;
+        document.getElementById('step-drawer').classList.add('drawer-open');
+
+        fetch('/api/projects/' + encodeURIComponent(state.activeSlug) + '/workflows/' +
+            encodeURIComponent(workflowName) + '/steps/' + encodeURIComponent(stepName) + '/content')
+            .then(function (r) { return r.ok ? r.text() : ''; })
+            .then(function (text) {
+                var el = document.getElementById('step-drawer-content');
+                if (!el) return;
+                if (text) {
+                    el.innerHTML = '<pre>' + escapeHtml(text) + '</pre>';
+                } else {
+                    el.style.display = 'none';
+                }
+            })
+            .catch(function () {});
+    }
+
+    // ---------- Intent view ----------
+
+    var intentData = { requirements: [], last_scan_at: '' };
+    var domainsData = { version: 1, domains: [] };
+    var scanStatus = null; // { runId, state, taskId }
+    var scanPollTimer = null;
+
+    function formatIntentTime(s) {
+        return s ? formatTimestamp(s) : 'never';
+    }
+
+    function isTerminalRunState(s) {
+        return s === 'succeeded' || s === 'failed' || s === 'cancelled';
+    }
+
+    function openIntentView() {
+        if (!state.activeSlug) return;
+        openView('Intent');
+        var body = document.getElementById('console-view-body');
+        body.innerHTML =
+            '<div style="margin-bottom:0.75rem">' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="intent-scan-btn">Scan now</button>' +
+            '<span class="container-scan-status" id="intent-scan-status"></span>' +
+            '</div>' +
+            '<div id="intent-meta" style="margin-bottom:0.75rem;color:var(--text-muted);font-size:0.85rem">Loading...</div>' +
+            '<label style="font-size:0.85rem;display:inline-flex;align-items:center;gap:0.35rem;margin-bottom:0.75rem">' +
+            '<input type="checkbox" id="intent-show-hidden"> Show superseded/disabled</label>' +
+            '<div id="intent-requirements">Loading...</div>' +
+            '<h2 style="margin-top:1.5rem">Domains</h2>' +
+            '<div id="intent-domains">Loading...</div>' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="intent-add-domain-btn" style="margin-top:0.5rem">Add domain</button> ' +
+            '<button type="button" class="btn btn-secondary btn-sm" id="intent-save-domains-btn" style="margin-top:0.5rem">Save domains</button>';
+
+        document.getElementById('intent-scan-btn').addEventListener('click', scanIntent);
+        document.getElementById('intent-show-hidden').addEventListener('change', renderRequirements);
+        document.getElementById('intent-add-domain-btn').addEventListener('click', addDomainRow);
+        document.getElementById('intent-save-domains-btn').addEventListener('click', saveDomains);
+        document.getElementById('intent-requirements').addEventListener('click', onRequirementsClick);
+        document.getElementById('intent-domains').addEventListener('change', onDomainsChange);
+
+        renderScanStatus();
+        if (scanStatus && !isTerminalRunState(scanStatus.state)) pollScanRun();
+        loadIntent();
+    }
+
+    function onRequirementsClick(e) {
+        var btn = e.target.closest('button[data-action]');
+        if (!btn) return;
+        var id = btn.getAttribute('data-id');
+        if (btn.getAttribute('data-action') === 'toggle-status') {
+            toggleRequirementStatus(id, btn.getAttribute('data-status'));
+        } else if (btn.getAttribute('data-action') === 'edit') {
+            openIntentDrawer(id);
+        }
+    }
+
+    function loadIntent() {
+        fetch('/api/projects/' + encodeURIComponent(state.activeSlug) + '/intent/requirements')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                intentData = data || { requirements: [], last_scan_at: '' };
+                var metaEl = document.getElementById('intent-meta');
+                if (metaEl) metaEl.textContent = 'Last scan: ' + formatIntentTime(intentData.last_scan_at);
+                renderRequirements();
+            })
+            .catch(function () {});
+        fetch('/api/projects/' + encodeURIComponent(state.activeSlug) + '/intent/domains')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                domainsData = data || { version: 1, domains: [] };
+                renderDomains();
+            })
+            .catch(function () {});
+    }
+
+    function stopScanPolling() {
+        if (scanPollTimer) {
+            clearInterval(scanPollTimer);
+            scanPollTimer = null;
+        }
+    }
+
+    function renderScanStatus() {
+        var el = document.getElementById('intent-scan-status');
+        if (!el) return;
+        if (!scanStatus) {
+            el.innerHTML = '';
+            return;
+        }
+        var label = 'Scan dispatched: ' + scanStatus.runId + (scanStatus.state ? ' (' + scanStatus.state + ')' : '');
+        if (scanStatus.taskId) {
+            el.innerHTML = ' — ' + escapeHtml(label) + ' <a href="#" id="intent-scan-open-link">open</a>';
+            var link = document.getElementById('intent-scan-open-link');
+            link.addEventListener('click', function (e) {
+                e.preventDefault();
+                var taskId = scanStatus.taskId;
+                closeView();
+                selectTaskById(taskId);
+            });
+        } else {
+            el.textContent = ' — ' + label;
+        }
+    }
+
+    function pollScanRun() {
+        stopScanPolling();
+        var check = function () {
+            if (!scanStatus) { stopScanPolling(); return; }
+            fetch('/api/runs/' + encodeURIComponent(scanStatus.runId))
+                .then(function (r) { return r.json(); })
+                .then(function (run) {
+                    if (!scanStatus) return;
+                    scanStatus.state = run.state;
+                    if (run.task_id) scanStatus.taskId = run.task_id;
+                    renderScanStatus();
+                    if (isTerminalRunState(run.state)) {
+                        stopScanPolling();
+                        loadIntent();
+                    }
+                })
+                .catch(function () {});
+        };
+        check();
+        scanPollTimer = setInterval(check, 3000);
+    }
+
+    function scanIntent() {
+        var btn = document.getElementById('intent-scan-btn');
+        if (btn) btn.disabled = true;
+        fetch('/api/projects/' + encodeURIComponent(state.activeSlug) + '/intent/scan', { method: 'POST' })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+            .then(function (res) {
+                if (btn) btn.disabled = false;
+                if (!res.ok) {
+                    alert('Failed to start scan: ' + (res.data.error || 'unknown error'));
+                    return;
+                }
+                scanStatus = { runId: res.data.run_id || '', state: 'running', taskId: res.data.task_id || '' };
+                renderScanStatus();
+                pollScanRun();
+            })
+            .catch(function () {
+                if (btn) btn.disabled = false;
+                alert('Failed to start scan');
+            });
+    }
+
+    function renderRequirements() {
+        var showHiddenEl = document.getElementById('intent-show-hidden');
+        var showHidden = !!(showHiddenEl && showHiddenEl.checked);
+        var reqs = (intentData.requirements || []).filter(function (r) {
+            return showHidden || (r.status !== 'superseded' && r.status !== 'disabled');
+        });
+
+        var el = document.getElementById('intent-requirements');
+        if (!el) return;
+        if (reqs.length === 0) {
+            el.innerHTML = '<p class="empty">No requirements' + (showHidden ? '' : ' (or all hidden)') + '</p>';
+            return;
+        }
+
+        var html = '<table class="runs-table" style="margin:0"><thead><tr>';
+        html += '<th>Statement</th><th>Scope</th><th>Status</th><th>Confidence</th><th>Provenance</th><th></th>';
+        html += '</tr></thead><tbody>';
+        reqs.forEach(function (r) {
+            html += '<tr>';
+            html += '<td>' + escapeHtml(r.statement) +
+                (r.new_since_scan ? ' <span class="badge badge-running">new</span>' : '') +
+                (r.user_edited ? ' <span class="badge badge-stopped">edited</span>' : '') + '</td>';
+            html += '<td>';
+            if (r.scope && r.scope.level === 'domain' && r.scope.domains) {
+                r.scope.domains.forEach(function (d) {
+                    html += '<span class="badge badge-cancelled" style="margin-right:0.25rem">' + escapeHtml(d) + '</span>';
+                });
+            } else {
+                html += '<span class="badge badge-cancelled">project</span>';
+            }
+            html += '</td>';
+            html += '<td><button type="button" class="btn btn-secondary btn-sm" data-action="toggle-status" data-id="' +
+                escapeHtml(r.id) + '" data-status="' + escapeHtml(r.status) + '">' + escapeHtml(r.status) + '</button></td>';
+            html += '<td>' + escapeHtml(r.confidence || '') + '</td>';
+            html += '<td>';
+            if (r.provenance && r.provenance.link) {
+                html += '<a href="' + escapeHtml(r.provenance.link) + '" target="_blank" rel="noopener">' + escapeHtml(r.provenance.kind) + '</a>';
+            } else if (r.provenance) {
+                html += escapeHtml(r.provenance.kind || '');
+            }
+            html += '</td>';
+            html += '<td><button type="button" class="btn btn-secondary btn-sm" data-action="edit" data-id="' + escapeHtml(r.id) + '">Edit</button></td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        el.innerHTML = html;
+    }
+
+    function toggleRequirementStatus(id, currentStatus) {
+        var next = currentStatus === 'disabled' ? 'active' : 'disabled';
+        fetch('/api/projects/' + encodeURIComponent(state.activeSlug) + '/intent/requirements', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: id, status: next })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function () { loadIntent(); })
+            .catch(function () { alert('Failed to update status'); });
+    }
+
+    function openIntentDrawer(id) {
+        var r = (intentData.requirements || []).find(function (x) { return x.id === id; });
+        if (!r) return;
+
+        document.getElementById('intent-drawer-title').textContent = r.id;
+        var domains = (r.scope && r.scope.domains) ? r.scope.domains.join(', ') : '';
+        var body = '<label>Statement</label>';
+        body += '<textarea id="intent-edit-statement" rows="4" style="width:100%">' + escapeHtml(r.statement) + '</textarea>';
+        body += '<label style="display:block;margin-top:0.75rem">Scope level</label>';
+        body += '<select id="intent-edit-scope-level">';
+        body += '<option value="project"' + (r.scope && r.scope.level === 'project' ? ' selected' : '') + '>project</option>';
+        body += '<option value="domain"' + (r.scope && r.scope.level === 'domain' ? ' selected' : '') + '>domain</option>';
+        body += '</select>';
+        body += '<label style="display:block;margin-top:0.75rem">Domains (comma-separated)</label>';
+        body += '<input type="text" id="intent-edit-domains" value="' + escapeHtml(domains) + '" style="width:100%">';
+        body += '<button type="button" class="btn btn-primary" id="intent-edit-save-btn" style="margin-top:1rem">Save</button>';
+
+        document.getElementById('intent-drawer-body').innerHTML = body;
+        document.getElementById('intent-edit-save-btn').addEventListener('click', function () { saveIntentEdit(id); });
+        document.getElementById('intent-drawer').classList.add('drawer-open');
+    }
+
+    function saveIntentEdit(id) {
+        var statement = document.getElementById('intent-edit-statement').value;
+        var level = document.getElementById('intent-edit-scope-level').value;
+        var domains = document.getElementById('intent-edit-domains').value
+            .split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+
+        fetch('/api/projects/' + encodeURIComponent(state.activeSlug) + '/intent/requirements', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id: id,
+                statement: statement,
+                scope: { level: level, domains: domains }
+            })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function () {
+                closeIntentDrawer();
+                loadIntent();
+            })
+            .catch(function () { alert('Failed to save requirement'); });
+    }
+
+    function renderDomains() {
+        var el = document.getElementById('intent-domains');
+        if (!el) return;
+        var domains = domainsData.domains || [];
+        if (domains.length === 0) {
+            el.innerHTML = '<p class="empty">No domains defined</p>';
+            return;
+        }
+        var html = '<table class="runs-table" style="margin:0"><thead><tr>';
+        html += '<th>Name</th><th>Description</th><th>Paths (comma-separated)</th>';
+        html += '</tr></thead><tbody>';
+        domains.forEach(function (d, i) {
+            html += '<tr>';
+            html += '<td><input type="text" value="' + escapeHtml(d.name || '') + '" data-field="name" data-index="' + i + '"></td>';
+            html += '<td><input type="text" value="' + escapeHtml(d.description || '') + '" data-field="description" data-index="' + i + '" style="width:100%"></td>';
+            html += '<td><input type="text" value="' + escapeHtml((d.paths || []).join(', ')) + '" data-field="paths" data-index="' + i + '" style="width:100%"></td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        el.innerHTML = html;
+    }
+
+    function onDomainsChange(e) {
+        var input = e.target.closest('input[data-field]');
+        if (!input) return;
+        var i = parseInt(input.getAttribute('data-index'), 10);
+        var field = input.getAttribute('data-field');
+        domainsData.domains[i] = domainsData.domains[i] || {};
+        if (field === 'paths') {
+            domainsData.domains[i].paths = input.value.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+        } else {
+            domainsData.domains[i][field] = input.value;
+        }
+        domainsData.domains[i].user_edited = true;
+    }
+
+    function addDomainRow() {
+        domainsData.domains = domainsData.domains || [];
+        domainsData.domains.push({ name: '', description: '', paths: [], user_edited: true });
+        renderDomains();
+    }
+
+    function saveDomains() {
+        fetch('/api/projects/' + encodeURIComponent(state.activeSlug) + '/intent/domains', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(domainsData)
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                domainsData = data;
+                renderDomains();
+            })
+            .catch(function () { alert('Failed to save domains'); });
+    }
+
+    // ---------- Containers view ----------
+
+    function formatBytes(n) {
+        if (!n) return '0 B';
+        var units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        var i = 0;
+        var v = n;
+        while (v >= 1024 && i < units.length - 1) {
+            v /= 1024;
+            i++;
+        }
+        return (i === 0 ? String(v) : v.toFixed(1)) + ' ' + units[i];
+    }
+
+    function containerStateBadgeClass(s) {
+        switch (s) {
+            case 'running': return 'badge-running';
+            case 'available': return 'badge-succeeded';
+            case 'stopped': return 'badge-stopped';
+            default: return 'badge-cancelled';
+        }
+    }
+
+    function openContainersView() {
+        if (!state.activeSlug) return;
+        openView('Containers');
+        var body = document.getElementById('console-view-body');
+        body.innerHTML =
+            '<div id="containers-list">Loading...</div>' +
+            '<div style="margin-top:1rem">' +
+            '<button type="button" class="btn btn-danger btn-sm" id="containers-cleanup-btn" hidden>Clean up old containers in this project</button>' +
+            '<span class="container-scan-status" id="containers-cleanup-status"></span>' +
+            '</div>';
+        document.getElementById('containers-cleanup-btn').addEventListener('click', cleanupProjectContainers);
+        document.getElementById('containers-list').addEventListener('click', onContainersListClick);
+        loadContainers();
+    }
+
+    function onContainersListClick(e) {
+        var btn = e.target.closest('button[data-delete-run]');
+        if (btn) deleteContainer(btn.getAttribute('data-delete-run'), btn);
+    }
+
+    function loadContainers() {
+        fetch('/api/projects/' + encodeURIComponent(state.activeSlug) + '/containers')
+            .then(function (r) { return r.json(); })
+            .then(function (groups) { renderContainers(groups || []); })
+            .catch(function () {
+                var el = document.getElementById('containers-list');
+                if (el) el.innerHTML = '<p class="empty">Failed to load containers</p>';
+            });
+    }
+
+    function renderContainers(groups) {
+        var el = document.getElementById('containers-list');
+        var cleanupBtn = document.getElementById('containers-cleanup-btn');
+        if (!el) return;
+
+        if (groups.length === 0) {
+            el.innerHTML = '<p class="empty">No retained containers in this project</p>';
+            if (cleanupBtn) cleanupBtn.hidden = true;
+            return;
+        }
+        if (cleanupBtn) cleanupBtn.hidden = false;
+
+        var html = '';
+        groups.forEach(function (g) {
+            html += '<div class="container-task-group">';
+            html += '<div class="container-task-group-title">' + escapeHtml(g.title || g.task_id) + '</div>';
+            html += '<table class="runs-table" style="margin:0"><thead><tr>';
+            html += '<th>Run</th><th>Workflow</th><th>Container</th><th>State</th><th>Size</th><th>Age</th><th></th>';
+            html += '</tr></thead><tbody>';
+            (g.containers || []).forEach(function (c) {
+                html += '<tr>';
+                html += '<td class="mono">' + escapeHtml(c.run_id) + '</td>';
+                html += '<td>' + escapeHtml(c.workflow_name) + '</td>';
+                html += '<td class="mono">' + escapeHtml((c.container_id || '').slice(0, 12)) + '</td>';
+                html += '<td><span class="badge ' + containerStateBadgeClass(c.state) + '">' + escapeHtml(c.state) + '</span></td>';
+                html += '<td>' + (c.size_bytes ? formatBytes(c.size_bytes) : '—') + '</td>';
+                html += '<td>' + formatDuration(c.age_seconds) + ' ago</td>';
+                html += '<td><button type="button" class="btn btn-danger btn-sm" data-delete-run="' + escapeHtml(c.run_id) + '">Delete</button></td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+        });
+        el.innerHTML = html;
+    }
+
+    function deleteContainer(runId, btn) {
+        if (btn) btn.disabled = true;
+        fetch('/api/runs/' + encodeURIComponent(runId) + '/container', { method: 'DELETE' })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+            .then(function (res) {
+                if (!res.ok) {
+                    alert('Failed to delete container: ' + (res.data.error || 'unknown error'));
+                    if (btn) btn.disabled = false;
+                    return;
+                }
+                loadContainers();
+            })
+            .catch(function () {
+                alert('Failed to delete container');
+                if (btn) btn.disabled = false;
+            });
+    }
+
+    function cleanupProjectContainers() {
+        var btn = document.getElementById('containers-cleanup-btn');
+        if (btn) btn.disabled = true;
+        fetch('/api/projects/' + encodeURIComponent(state.activeSlug) + '/containers', { method: 'DELETE' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var status = document.getElementById('containers-cleanup-status');
+                if (status) {
+                    status.textContent = ' Cleaned up ' + (data.deleted || 0) + ' container' +
+                        (data.deleted === 1 ? '' : 's') + ' in this project.';
+                }
+                if (btn) btn.disabled = false;
+                loadContainers();
+            })
+            .catch(function () {
+                if (btn) btn.disabled = false;
+                alert('Failed to clean up containers');
+            });
     }
 
     // ---------- daemon instruments ----------

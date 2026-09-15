@@ -8,6 +8,11 @@
         <button type="button" class="console-more-btn" id="console-more-btn" hidden
                 aria-haspopup="true" aria-expanded="false">More ▾</button>
         <div class="console-idle-menu" id="console-idle-menu" hidden></div>
+        <div class="console-view-buttons" id="console-view-buttons">
+            <button type="button" class="btn btn-secondary btn-sm" id="console-view-workflows-btn" title="Workflows (w)">Workflows</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="console-view-intent-btn" title="Intent (i)">Intent</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="console-view-containers-btn" title="Containers (c)">Containers</button>
+        </div>
         <div class="console-instruments" id="console-instruments"></div>
     </header>
     <div class="console-body">
@@ -23,6 +28,9 @@
             <span><kbd>a</kbd> activity</span>
             <span><kbd>[</kbd>/<kbd>]</kbd> attempt</span>
             <span><kbd>g</kbd>/<kbd>G</kbd> log top/bottom</span>
+            <span><kbd>w</kbd> workflows</span>
+            <span><kbd>i</kbd> intent</span>
+            <span><kbd>c</kbd> containers</span>
             <span><kbd>?</kbd> keys</span>
         </div>
         <button type="button" class="console-ticker" id="console-ticker" aria-label="Open activity stream">—</button>
@@ -49,14 +57,40 @@
                 <dt>j / k</dt><dd>Move selection down / up</dd>
                 <dt>Tab / Shift+Tab</dt><dd>Switch project</dd>
                 <dt>Enter</dt><dd>Open the selected task</dd>
-                <dt>Esc</dt><dd>Return to the stack</dd>
+                <dt>Esc</dt><dd>Return to the stack, or close an open view/drawer</dd>
                 <dt>a</dt><dd>Open the activity stream</dd>
                 <dt>[ / ]</dt><dd>Switch to the previous / next attempt</dd>
                 <dt>g / G</dt><dd>Scroll the log to the top / bottom</dd>
+                <dt>w</dt><dd>Open the Workflows view</dd>
+                <dt>i</dt><dd>Open the Intent view</dd>
+                <dt>c</dt><dd>Open the Containers view</dd>
                 <dt>?</dt><dd>Toggle this help</dd>
             </dl>
             <button type="button" id="console-help-close" class="btn btn-secondary btn-sm">Close</button>
         </div>
+    </div>
+    <div class="console-view-overlay" id="console-view-overlay" hidden>
+        <div class="console-view-panel" role="dialog" aria-modal="true" aria-label="Secondary view">
+            <div class="console-view-topbar">
+                <h2 id="console-view-title"></h2>
+                <button type="button" class="drawer-close" id="console-view-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="console-view-body" id="console-view-body"></div>
+        </div>
+    </div>
+    <div class="drawer" id="step-drawer">
+        <div class="drawer-header">
+            <span id="drawer-title"></span>
+            <button type="button" class="drawer-close" id="step-drawer-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="drawer-body" id="drawer-body"></div>
+    </div>
+    <div class="drawer" id="intent-drawer">
+        <div class="drawer-header">
+            <span id="intent-drawer-title"></span>
+            <button type="button" class="drawer-close" id="intent-drawer-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="drawer-body" id="intent-drawer-body"></div>
     </div>
 </div>
 {{end}}
