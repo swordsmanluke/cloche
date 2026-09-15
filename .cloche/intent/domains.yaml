@@ -7,8 +7,8 @@ domains:
     description: The cloche CLI client — subcommands, flags, project init/scaffolding, output formatting.
     paths: ["cmd/cloche/**", "docs/USAGE.md"]
   - name: daemon-host-orchestration
-    description: The cloched daemon's orchestration loop, host workflow executor, and task pipeline (list-tasks/main/release-task).
-    paths: ["cmd/cloched/**", "internal/engine/**", "internal/host/**", "docs/plans/2026-03-06-host-workflow-design.md", "docs/design/human-in-the-loop.md", "docs/plans/2026-05-28-mcp-mode.md"]
+    description: The cloched daemon's orchestration loop, host workflow executor, task pipeline (list-tasks/main/release-task), built-in workflow registry, activity-event logging, and per-task run-context paths.
+    paths: ["cmd/cloched/**", "internal/engine/**", "internal/host/**", "internal/builtin/**", "internal/activitylog/**", "internal/runcontext/**", "docs/plans/2026-03-06-host-workflow-design.md", "docs/design/human-in-the-loop.md", "docs/plans/2026-05-28-mcp-mode.md"]
   - name: container-runtime
     description: Docker adapter, container lifecycle, seeding/extraction, and cloche-agent's in-container execution.
     paths: ["internal/adapters/docker/**", "cmd/cloche-agent/**", "docs/run-isolation/**"]
@@ -23,7 +23,7 @@ domains:
     paths: ["internal/intent/**", "docs/plans/2026-09-13-intent-continuity-design.md", "docs/plans/2026-09-13-intent-continuity-implementation.md"]
   - name: web-dashboard
     description: The daemon's web dashboard — project/run views, HTTP API, live log streaming UI.
-    paths: ["internal/adapters/web/**", "docs/web-dashboard.md", "docs/design/ui-pages.md"]
+    paths: ["internal/adapters/web/**", "internal/logstream/**", "docs/web-dashboard.md", "docs/design/ui-pages.md"]
   - name: versioning-release
     description: Version-string policy and the changelog/release host-workflow pipeline.
     paths: ["internal/version/**", ".cloche/scripts/release-*.sh", ".cloche/scripts/changelog-*.sh", ".cloche/prompts/draft-changelog.md", "docs/plans/2026-04-15-release-process-design.md"]
@@ -36,3 +36,12 @@ domains:
   - name: self-hosting-workflows
     description: Cloche's own .cloche/ project config that uses cloche to develop cloche (vertical/finalize/publish pipeline).
     paths: [".cloche/**", "docs/design/vertical-workflow.md"]
+  - name: help-channel
+    description: Human-in-the-loop help channel — the ask_user MCP tool and per-run auth, routing agent questions to configured channels (e.g. Slack), and parking/resuming runs awaiting a reply.
+    paths: ["internal/help/**", "internal/mcpauth/**", "internal/adapters/help/**", "docs/plans/2026-07-17-help-channel-design.md"]
+  - name: core-domain-ports
+    description: Core domain types (Workflow, Step, Run, Task, Attempt, Repository) and the hexagonal port interfaces (ContainerRuntime, RunStore, AgentAdapter, KV store) that adapters implement.
+    paths: ["internal/domain/**", "internal/ports/**"]
+  - name: persistence
+    description: SQLite-backed persistence for runs, KV store, help threads, and activity log; the RunStore/CaptureStore adapter implementation.
+    paths: ["internal/adapters/sqlite/**"]
