@@ -11,16 +11,16 @@ domains:
     paths: ["cmd/cloched/**", "internal/engine/**", "internal/host/**", "internal/builtin/**", "internal/activitylog/**", "internal/runcontext/**", "docs/plans/2026-03-06-host-workflow-design.md", "docs/design/human-in-the-loop.md", "docs/plans/2026-05-28-mcp-mode.md"]
   - name: container-runtime
     description: Docker and local-process ContainerRuntime adapters, container lifecycle, seeding/extraction, and cloche-agent's in-container execution.
-    paths: ["internal/adapters/docker/**", "internal/adapters/local/**", "cmd/cloche-agent/**", "docs/run-isolation/**"]
+    paths: ["internal/adapters/docker/**", "internal/adapters/local/**", "cmd/cloche-agent/**", "docs/run-isolation/**", "docker/**"]
   - name: agent-adapters
     description: Coding-agent adapters (Claude Code, opencode, generic) and their argument/result-protocol conventions.
     paths: ["internal/adapters/agents/**", "internal/agent/**", "docs/built-in-agents.md", "docs/agent-setup-claude.md", "docs/agent-setup-codex.md"]
   - name: grpc-protocol
     description: The daemon's gRPC API, wire protocol, and the in-container clo KV CLI.
-    paths: ["internal/adapters/grpc/**", "internal/protocol/**", "cmd/clo/**"]
+    paths: ["internal/adapters/grpc/**", "internal/protocol/**", "cmd/clo/**", "api/**"]
   - name: intent-continuity
     description: Intent requirement extraction, storage, scoping, and prompt injection (.cloche/intent/).
-    paths: ["internal/intent/**", "docs/plans/2026-09-13-intent-continuity-design.md", "docs/plans/2026-09-13-intent-continuity-implementation.md", "docs/plans/2026-09-14-intent-builtin-migration-design.md", "docs/plans/2026-09-14-intent-ab-experiment-protocol.md", "docs/plans/spikes/2026-09-13-intent-retrieval/**"]
+    paths: ["internal/intent/**", "docs/plans/2026-09-13-intent-continuity-design.md", "docs/plans/2026-09-13-intent-continuity-implementation.md", "docs/plans/2026-09-14-intent-builtin-migration-design.md", "docs/plans/2026-09-14-intent-ab-experiment-protocol.md", "docs/plans/spikes/2026-09-13-intent-retrieval/**", "experiments/intent-ab/**"]
   - name: web-dashboard
     description: The daemon's web dashboard — project/run views, HTTP API, live log streaming UI, the "Needs You" attention feed, and the prompt-revision ledger.
     paths: ["internal/adapters/web/**", "internal/logstream/**", "internal/attention/**", "internal/promptrev/**", "docs/web-dashboard.md", "docs/design/ui-pages.md", "docs/design/console-restructured-mock.html"]

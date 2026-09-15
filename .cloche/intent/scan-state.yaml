@@ -1,4 +1,4 @@
-last_commit: eee1ae2193998994abd7262647bf031b8afc1a0a
+last_commit: 07037c2d90061aecffc75f83a052e89c537dfade
 scanned_runs:
     - cloche-0vqg
     - rxth-main
@@ -312,6 +312,11 @@ scanned_runs:
     - user-as6a
     - qc5z-intent-scan
     - user-qc5z
+    - 62qe-main
+    - a5c0-intent-scan
+    - user-a5c0
+    - b4xc-intent-scan
+    - user-b4xc
 scanned_docs:
     .cloche/prompts/document-check-missing.md: 154c933c83042dcb0b3f14e9c451226e6eab14bcdcbc9889fa4edef52d7c1283
     .cloche/prompts/document-investigate.md: 0bb6d7225ed9fa53f36269540994d74e7beef92a717e13794a86cfffdd8652d9
@@ -363,7 +368,7 @@ scanned_docs:
     docs/init/5-how-changes-land.md: 594a3470a666c6bffb9a98f507567876f55e1d349c57bcc5d9acf8170451d750
     docs/init/6-swapping-the-task-tracker.md: 8dc2df1eff1ab7d883902dad5731f60d6c3463b35af2e9731f1f1fe7546b2dfa
     docs/init/README.md: f16cc2cce0950a2bccd1260416fb05a22568c58ebd290396f4a3b2dedc113584
-    docs/intent.md: 16f39c59b20664885ff4f63c8e417ed10a951b13443a9b348c2f9a1a19d0d7bb
+    docs/intent.md: 0b8975a0c43fbdaf02637cfb65ae81cb6590b54a7ca0929b5beea84840da606e
     docs/plans/2026-02-20-cloche-implementation.md: 4316ef7a359d9b31ee3963b51dd455bd70d9d52c462ff1ffbc8c2857bd21cb9f
     docs/plans/2026-02-20-cloche-system-design.md: 854a59c2a74e7fc3455efc2eec3a31c673de04ad569a04bc5ff60ec315cb7561
     docs/plans/2026-02-20-edge-selection-design.md: a94c3d7db5e013f7bbe1a562ccb7e515f88e9fe3634620c1209c62b6791eaec5
@@ -412,4 +417,4 @@ scanned_docs:
     docs/run-isolation/architecture.md: 5f322ad76fedc1012b67f450ac1df9c328ef628ef90285f5ebd4c94a201d4b43
     docs/run-isolation/index.md: 06461a1f739a3b6fba4f5331fa668c15058808f59938b284c4e953a291ae6916
     docs/web-dashboard.md: 8f651fc2f3474bfbe245dc8e6c74264895048d465d02eb53207946c0a3332ac8
-    docs/workflows.md: 4117de5a2e9ec8d1df0dbc7b92faa63d800ae608d19a5a301e61746535116451
+    docs/workflows.md: fca4c3bb2d324a68435eea18afca3e1a4ee60560675303509bc050046d087de7
