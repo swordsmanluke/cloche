@@ -395,7 +395,7 @@
             section.className = 'console-stack-group';
 
             var h = document.createElement('h3');
-            h.className = 'console-stack-group-title';
+            h.className = 'console-stack-group-title' + (g.key === 'needs_you' ? ' console-stack-group-title-warn' : '');
             h.appendChild(document.createTextNode(g.label + ' '));
             section.appendChild(h);
 
@@ -430,7 +430,7 @@
                 section.className = 'console-stack-group';
 
                 var h = document.createElement('h3');
-                h.className = 'console-stack-group-title';
+                h.className = 'console-stack-group-title' + (g.key === 'needs_you' ? ' console-stack-group-title-warn' : '');
                 h.appendChild(document.createTextNode(g.label + ' '));
                 var count = document.createElement('span');
                 count.className = 'console-stack-group-count';
@@ -467,7 +467,7 @@
     function diffGroup(groupKey, entries) {
         var list = document.getElementById('console-stack-list-' + groupKey);
         var countEl = list.parentElement.querySelector('.console-stack-group-count');
-        countEl.textContent = entries.length ? '(' + entries.length + ')' : '';
+        countEl.textContent = entries.length ? String(entries.length) : '';
 
         var seen = {};
         var prevKeys = Object.keys(state.rowEls).filter(function (k) {
@@ -523,15 +523,51 @@
         row.__entry = entry;
         row.__group = groupKey;
 
-        var title = document.createElement('span');
+        var dot = document.createElement('span');
+        dot.className = 'console-stack-row-dot console-stack-row-dot-' + rowDotClass(groupKey, entry);
+        if (groupKey === 'running') dot.classList.add('console-stack-row-dot-pulse');
+        row.appendChild(dot);
+
+        var text = document.createElement('div');
+        text.className = 'console-stack-row-text';
+
+        var id = document.createElement('div');
+        id.className = 'console-stack-row-id';
+        id.textContent = rowIdText(entry);
+        text.appendChild(id);
+
+        var title = document.createElement('div');
         title.className = 'console-stack-row-title';
         title.textContent = entry.title || entry.task_id || entry.run_id || '(untitled)';
-        row.appendChild(title);
+        text.appendChild(title);
 
-        var meta = document.createElement('span');
-        meta.className = 'console-stack-row-meta';
-        meta.textContent = rowMetaText(groupKey, entry);
-        row.appendChild(meta);
+        row.appendChild(text);
+
+        var elapsed = document.createElement('span');
+        elapsed.className = 'console-stack-row-elapsed' + (groupKey === 'needs_you' ? ' console-stack-row-elapsed-warn' : '');
+        elapsed.textContent = rowMetaText(groupKey, entry);
+        row.appendChild(elapsed);
+    }
+
+    // g = ok, y = warn/needs-you, r = failed, b = running, x = idle — mirrors
+    // docs/design/console-restructured-mock.html's .m5 .d.* classes.
+    function rowDotClass(groupKey, entry) {
+        switch (groupKey) {
+            case 'needs_you': return 'y';
+            case 'running': return 'b';
+            case 'queued': return 'x';
+            case 'done_today':
+                if (entry.outcome === 'succeeded') return 'g';
+                if (entry.outcome === 'failed') return 'r';
+                return 'x';
+            default: return 'x';
+        }
+    }
+
+    function rowIdText(entry) {
+        var id = entry.task_id || entry.run_id || '';
+        if (entry.attempt && entry.attempt > 1) id += ' · a' + entry.attempt;
+        return id;
     }
 
     function rowMetaText(groupKey, entry) {
