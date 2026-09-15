@@ -3938,6 +3938,180 @@ func (s *ClocheServer) GetProjectInfo(ctx context.Context, req *pb.GetProjectInf
 	}, nil
 }
 
+// occupancyHealthWindow mirrors web.healthWindowSize; kept as a separate
+// constant since that one is package-private to internal/adapters/web.
+const occupancyHealthWindow = 10
+
+// loopForProject returns the registered orchestration loop for a project
+// directory, if any.
+func (s *ClocheServer) loopForProject(projectDir string) (*host.Loop, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	loop, ok := s.loops[projectDir]
+	return loop, ok && loop != nil
+}
+
+// GetLoopOccupancy reports a project's orchestration loop concurrency-slot
+// usage: busy slots, queued work, and asynchronously-driven polls. Returns a
+// zero-value response (no error) when no loop is active for the project.
+func (s *ClocheServer) GetLoopOccupancy(ctx context.Context, req *pb.GetLoopOccupancyRequest) (*pb.GetLoopOccupancyResponse, error) {
+	projectDir := normalizeProjectDir(req.ProjectDir)
+	if projectDir == "" {
+		return nil, fmt.Errorf("project_dir is required")
+	}
+
+	loop, ok := s.loopForProject(projectDir)
+	if !ok {
+		return &pb.GetLoopOccupancyResponse{}, nil
+	}
+
+	return toPBOccupancy(loop.Occupancy(ctx)), nil
+}
+
+// toPBOccupancy converts a host.Occupancy snapshot to its gRPC wire form.
+func toPBOccupancy(occ host.Occupancy) *pb.GetLoopOccupancyResponse {
+	resp := &pb.GetLoopOccupancyResponse{MaxConcurrency: int32(occ.MaxConcurrency)}
+	for _, s := range occ.Slots {
+		resp.Slots = append(resp.Slots, &pb.OccupancySlot{
+			Index:       int32(s.Index),
+			RunId:       s.RunID,
+			TaskId:      s.TaskID,
+			AttemptId:   s.AttemptID,
+			CurrentStep: s.CurrentStep,
+			StartedAt:   formatOccupancyTime(s.StartedAt),
+		})
+	}
+	for _, q := range occ.Queued {
+		resp.Queued = append(resp.Queued, &pb.QueuedItem{
+			TaskId: q.TaskID,
+			RunId:  q.RunID,
+			Reason: q.Reason,
+			Since:  formatOccupancyTime(q.Since),
+		})
+	}
+	for _, p := range occ.Polls {
+		resp.Polls = append(resp.Polls, &pb.PollItem{
+			RunId:      p.RunID,
+			Step:       p.Step,
+			LastPollAt: formatOccupancyTime(p.LastPollAt),
+			PollCount:  int32(p.PollCount),
+		})
+	}
+	return resp
+}
+
+// formatOccupancyTime formats a timestamp as RFC3339, or "" for the zero value.
+func formatOccupancyTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
+// ListLoopOccupancy returns a cheap per-project summary (running count,
+// queued count, health, attention count) across all known projects, for a
+// dashboard tab bar polled every few seconds.
+func (s *ClocheServer) ListLoopOccupancy(ctx context.Context, req *pb.ListLoopOccupancyRequest) (*pb.ListLoopOccupancyResponse, error) {
+	dirs, err := s.store.ListProjects(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing projects: %w", err)
+	}
+	labels := projectLabels(dirs)
+
+	resp := &pb.ListLoopOccupancyResponse{}
+	for _, dir := range dirs {
+		runs, _ := s.store.ListRunsByProject(ctx, dir, time.Time{})
+		runValues := make([]domain.Run, len(runs))
+		for i, r := range runs {
+			runValues[i] = *r
+		}
+		health := domain.CalculateHealth(runValues, occupancyHealthWindow)
+
+		var running, queued int
+		if loop, ok := s.loopForProject(dir); ok {
+			occ := loop.Occupancy(ctx)
+			running = len(occ.Slots)
+			queued = len(occ.Queued)
+		} else {
+			for _, r := range runs {
+				if r.IsHost && (r.State == domain.RunStatePending || r.State == domain.RunStateRunning) {
+					running++
+				}
+			}
+		}
+
+		resp.Projects = append(resp.Projects, &pb.ProjectOccupancySummary{
+			ProjectDir: dir,
+			Name:       labels[dir],
+			Running:    int32(running),
+			Queued:     int32(queued),
+			Health:     string(health.Status),
+			// AttentionCount is always 0 until the attention-model ticket lands.
+		})
+	}
+	return resp, nil
+}
+
+// LoopOccupancySnapshot implements web.OccupancyProvider, returning the
+// occupancy detail for a single project's orchestration loop as web DTOs.
+func (s *ClocheServer) LoopOccupancySnapshot(projectDir string) (web.LoopOccupancy, bool) {
+	loop, ok := s.loopForProject(projectDir)
+	if !ok {
+		return web.LoopOccupancy{}, false
+	}
+	occ := loop.Occupancy(context.Background())
+
+	out := web.LoopOccupancy{MaxConcurrency: occ.MaxConcurrency}
+	for _, sl := range occ.Slots {
+		out.Slots = append(out.Slots, web.OccupancySlot{
+			Index:       sl.Index,
+			RunID:       sl.RunID,
+			TaskID:      sl.TaskID,
+			AttemptID:   sl.AttemptID,
+			CurrentStep: sl.CurrentStep,
+			StartedAt:   formatOccupancyTime(sl.StartedAt),
+		})
+	}
+	for _, q := range occ.Queued {
+		out.Queued = append(out.Queued, web.QueuedItem{
+			TaskID: q.TaskID,
+			RunID:  q.RunID,
+			Reason: q.Reason,
+			Since:  formatOccupancyTime(q.Since),
+		})
+	}
+	for _, p := range occ.Polls {
+		out.Polls = append(out.Polls, web.PollItem{
+			RunID:      p.RunID,
+			Step:       p.Step,
+			LastPollAt: formatOccupancyTime(p.LastPollAt),
+			PollCount:  p.PollCount,
+		})
+	}
+	return out, true
+}
+
+// AllLoopOccupancy implements web.OccupancyProvider, returning the
+// per-project occupancy summary across all projects.
+func (s *ClocheServer) AllLoopOccupancy() []web.ProjectOccupancy {
+	resp, err := s.ListLoopOccupancy(context.Background(), &pb.ListLoopOccupancyRequest{})
+	if err != nil {
+		return nil
+	}
+	out := make([]web.ProjectOccupancy, len(resp.Projects))
+	for i, p := range resp.Projects {
+		out[i] = web.ProjectOccupancy{
+			ProjectDir:     p.ProjectDir,
+			Name:           p.Name,
+			Running:        int(p.Running),
+			Queued:         int(p.Queued),
+			Health:         p.Health,
+			AttentionCount: int(p.AttentionCount),
+		}
+	}
+	return out
+}
+
 // projectLabels maps each project directory to a short display label.
 // Uses basename unless there are conflicts, in which case parent/basename is used.
 func projectLabels(dirs []string) map[string]string {

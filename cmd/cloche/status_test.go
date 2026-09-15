@@ -27,6 +27,14 @@ type statusMockClient struct {
 	statusResp      *pb.GetStatusResponse
 	statusRespByID  map[string]*pb.GetStatusResponse
 	attentionResp   *pb.GetAttentionResponse
+	occupancyResp   *pb.GetLoopOccupancyResponse
+}
+
+func (m *statusMockClient) GetLoopOccupancy(_ context.Context, _ *pb.GetLoopOccupancyRequest, _ ...grpc.CallOption) (*pb.GetLoopOccupancyResponse, error) {
+	if m.occupancyResp != nil {
+		return m.occupancyResp, nil
+	}
+	return &pb.GetLoopOccupancyResponse{}, nil
 }
 
 func (m *statusMockClient) GetVersion(_ context.Context, _ *pb.GetVersionRequest, _ ...grpc.CallOption) (*pb.GetVersionResponse, error) {
@@ -107,6 +115,13 @@ func TestCmdStatusOverview_ProjectMode(t *testing.T) {
 				{TaskId: "TASK-1", Title: "Fix login bug", Status: "running"},
 			},
 		},
+		occupancyResp: &pb.GetLoopOccupancyResponse{
+			MaxConcurrency: 5,
+			Slots: []*pb.OccupancySlot{
+				{RunId: "run-1"}, {RunId: "run-2"}, {RunId: "run-3"}, {RunId: "run-4"},
+			},
+			Queued: []*pb.QueuedItem{{TaskId: "task-9", Reason: "capacity"}},
+		},
 	}
 
 	var buf bytes.Buffer
@@ -124,6 +139,9 @@ func TestCmdStatusOverview_ProjectMode(t *testing.T) {
 	}
 	if !strings.Contains(out, "Orchestration loop: running") {
 		t.Errorf("expected loop running, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Slots: 4/5 busy · 1 queued") {
+		t.Errorf("expected slots summary, got:\n%s", out)
 	}
 	if !strings.Contains(out, "2 / 3 succeeded") {
 		t.Errorf("expected 2/3 succeeded, got:\n%s", out)

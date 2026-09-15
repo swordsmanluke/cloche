@@ -1335,7 +1335,7 @@ func TestLoop_PollRelease_FreesSlotForNewTask(t *testing.T) {
 			coord.ReleaseSlot()
 			close(parked)
 			<-resume
-			coord.ReacquireSlot()
+			coord.ReacquireSlot("run-task-1", "poll-step")
 		case "task-2":
 			close(task2Started)
 		}
@@ -1412,7 +1412,7 @@ func TestLoop_PollReacquire_PriorityOverNewTask(t *testing.T) {
 			// in-flight run rather than granted immediately.
 			<-task2Started
 			close(reacquireRequested)
-			coord.ReacquireSlot()
+			coord.ReacquireSlot("run-task-1", "poll-step")
 			record("task-1")
 		case "task-2":
 			close(task2Started)

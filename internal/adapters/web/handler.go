@@ -63,6 +63,12 @@ func WithAttentionProvider(ap AttentionProvider) HandlerOption {
 	return func(h *Handler) { h.attentionProvider = ap }
 }
 
+// WithOccupancyProvider sets the provider for querying orchestration loop
+// concurrency-slot occupancy (slots/queued/polls and the all-projects summary).
+func WithOccupancyProvider(op OccupancyProvider) HandlerOption {
+	return func(h *Handler) { h.occupancyProvider = op }
+}
+
 // WithOrchestrateFunc sets the function used to trigger the orchestration loop for a project.
 func WithOrchestrateFunc(fn func(ctx context.Context, projectDir string) (int, error)) HandlerOption {
 	return func(h *Handler) { h.orchestrateFn = fn }
@@ -130,6 +136,68 @@ type AttentionProvider interface {
 	AttentionItems(ctx context.Context, projectDir string) ([]attention.Item, error)
 }
 
+// OccupancySlot describes a single busy concurrency slot: an in-flight host
+// run currently occupying it.
+type OccupancySlot struct {
+	Index       int    `json:"index"`
+	RunID       string `json:"run_id"`
+	TaskID      string `json:"task_id,omitempty"`
+	AttemptID   string `json:"attempt_id,omitempty"`
+	CurrentStep string `json:"current_step,omitempty"`
+	StartedAt   string `json:"started_at"`
+}
+
+// QueuedItem describes a task or run waiting for a concurrency slot. Reason
+// is "capacity" (an open task discovered but no free slot yet) or "resuming"
+// (a run that finished a poll step and is waiting to reacquire its slot).
+type QueuedItem struct {
+	TaskID string `json:"task_id,omitempty"`
+	RunID  string `json:"run_id,omitempty"`
+	Reason string `json:"reason"`
+	Since  string `json:"since"`
+}
+
+// PollItem describes a poll step currently being driven asynchronously —
+// parked, not holding a concurrency slot.
+type PollItem struct {
+	RunID      string `json:"run_id"`
+	Step       string `json:"step"`
+	LastPollAt string `json:"last_poll_at"`
+	PollCount  int    `json:"poll_count"`
+}
+
+// LoopOccupancy summarizes a project's orchestration loop concurrency-slot
+// usage for the GET /api/projects/{name}/loop/occupancy endpoint.
+type LoopOccupancy struct {
+	MaxConcurrency int             `json:"max_concurrency"`
+	Slots          []OccupancySlot `json:"slots"`
+	Queued         []QueuedItem    `json:"queued"`
+	Polls          []PollItem      `json:"polls"`
+}
+
+// ProjectOccupancy is a cheap per-project rollup for a dashboard tab bar.
+// AttentionCount is always 0 until the attention-model ticket lands.
+type ProjectOccupancy struct {
+	ProjectDir     string `json:"project_dir"`
+	Name           string `json:"name"`
+	Running        int    `json:"running"`
+	Queued         int    `json:"queued"`
+	Health         string `json:"health"`
+	AttentionCount int    `json:"attention_count"`
+}
+
+// OccupancyProvider retrieves loop occupancy data across projects, backed by
+// the daemon's in-memory orchestration loops. Named distinctly from the
+// GetLoopOccupancy/ListLoopOccupancy gRPC RPCs (same underlying data, but a
+// gRPC server implementation can't share method names with this interface).
+type OccupancyProvider interface {
+	// LoopOccupancySnapshot returns the occupancy detail for a single
+	// project's orchestration loop. ok is false when no loop is active.
+	LoopOccupancySnapshot(projectDir string) (occupancy LoopOccupancy, ok bool)
+	// AllLoopOccupancy returns the per-project summary across all projects.
+	AllLoopOccupancy() []ProjectOccupancy
+}
+
 type Handler struct {
 	store             ports.RunStore
 	captures          ports.CaptureStore
@@ -138,6 +206,7 @@ type Handler struct {
 	logBroadcast      *logstream.Broadcaster
 	taskProvider      TaskProvider
 	attentionProvider AttentionProvider
+	occupancyProvider OccupancyProvider
 	orchestrateFn     func(ctx context.Context, projectDir string) (int, error)
 	loopStatusFn      func(projectDir string) bool
 	stopLoopFn        func(ctx context.Context, projectDir string) error
@@ -222,6 +291,8 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
 	h.mux.HandleFunc("GET /api/projects/{name}/loop/status", h.handleAPILoopStatus)
 	h.mux.HandleFunc("POST /api/projects/{name}/loop/stop", h.handleAPILoopStop)
+	h.mux.HandleFunc("GET /api/projects/{name}/loop/occupancy", h.handleAPILoopOccupancy)
+	h.mux.HandleFunc("GET /api/projects/occupancy", h.handleAPIProjectsOccupancy)
 	h.mux.HandleFunc("GET /api/projects/{name}/intent/requirements", h.handleAPIIntentRequirementsList)
 	h.mux.HandleFunc("PATCH /api/projects/{name}/intent/requirements", h.handleAPIIntentRequirementsPatch)
 	h.mux.HandleFunc("GET /api/projects/{name}/intent/domains", h.handleAPIIntentDomainsGet)
@@ -2700,6 +2771,34 @@ func (h *Handler) handleAPILoopStop(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "project": label})
+}
+
+// handleAPILoopOccupancy returns the orchestration loop's concurrency-slot
+// occupancy for a project: busy slots, queued work, and asynchronously
+// driven polls. Cheap enough to poll every few seconds from a dashboard.
+func (h *Handler) handleAPILoopOccupancy(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	var occupancy LoopOccupancy
+	if h.occupancyProvider != nil {
+		occupancy, _ = h.occupancyProvider.LoopOccupancySnapshot(dir)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(occupancy)
+}
+
+// handleAPIProjectsOccupancy returns the all-projects occupancy summary for
+// a dashboard tab bar: per-project running/queued counts, health, and
+// attention count.
+func (h *Handler) handleAPIProjectsOccupancy(w http.ResponseWriter, r *http.Request) {
+	var summary []ProjectOccupancy
+	if h.occupancyProvider != nil {
+		summary = h.occupancyProvider.AllLoopOccupancy()
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(summary)
 }
 
 // --- Intent API ---

@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,10 +60,51 @@ type TaskAssignment struct {
 
 // TaskStateEntry combines a task with its assignment state.
 type TaskStateEntry struct {
-	Task       Task
-	Assigned   bool
-	AssignedAt time.Time
-	RunID      string // empty if not yet known
+	Task        Task
+	Assigned    bool
+	AssignedAt  time.Time
+	RunID       string    // empty if not yet known
+	QueuedSince time.Time // set when the task is open but not yet assigned a slot
+}
+
+// OccupancySlot describes a single busy concurrency slot: an in-flight host
+// run currently occupying it.
+type OccupancySlot struct {
+	Index       int
+	RunID       string
+	TaskID      string
+	AttemptID   string
+	CurrentStep string
+	StartedAt   time.Time
+}
+
+// QueuedEntry describes a task or run waiting for a concurrency slot. Reason
+// is "capacity" (an open task discovered but no free slot yet) or "resuming"
+// (a run that finished a poll step and is waiting to reacquire its slot).
+type QueuedEntry struct {
+	TaskID string
+	RunID  string
+	Reason string
+	Since  time.Time
+}
+
+// PollEntry describes a poll step currently being driven asynchronously —
+// parked, not holding a concurrency slot.
+type PollEntry struct {
+	RunID      string
+	Step       string
+	LastPollAt time.Time
+	PollCount  int
+}
+
+// Occupancy summarizes a loop's current concurrency-slot usage: which runs
+// hold a slot, what's queued waiting for one, and which polls are being
+// driven asynchronously without holding a slot.
+type Occupancy struct {
+	MaxConcurrency int
+	Slots          []OccupancySlot
+	Queued         []QueuedEntry
+	Polls          []PollEntry
 }
 
 // Loop manages a continuous orchestration loop for a project, keeping up to
@@ -97,6 +140,7 @@ type Loop struct {
 	tasksMu             sync.RWMutex
 	lastTasks           []Task                    // most recently fetched tasks
 	taskRuns            map[string]TaskAssignment // task ID -> assignment info
+	queuedSince         map[string]time.Time      // task ID -> time first observed open+unassigned; guarded by dedupMu
 }
 
 // NewLoop creates an orchestration loop using a single run function. Internally
@@ -115,10 +159,11 @@ func NewLoop(cfg LoopConfig, store ports.RunStore, runFn RunFunc) *Loop {
 		cfg.MaxConsecutiveFailures = defaultMaxConsecutiveFailures
 	}
 	l := &Loop{
-		config:   cfg,
-		store:    store,
-		dedup:    make(map[string]time.Time),
-		taskRuns: make(map[string]TaskAssignment),
+		config:      cfg,
+		store:       store,
+		dedup:       make(map[string]time.Time),
+		taskRuns:    make(map[string]TaskAssignment),
+		queuedSince: make(map[string]time.Time),
 	}
 	// listTasks delegates to the assigner when set, otherwise returns a single
 	// untracked sentinel task (empty ID) so main runs unconditionally.
@@ -147,12 +192,13 @@ func NewPhaseLoop(cfg LoopConfig, store ports.RunStore, listTasksFn ListTasksFun
 		cfg.MaxConsecutiveFailures = defaultMaxConsecutiveFailures
 	}
 	return &Loop{
-		config:    cfg,
-		listTasks: listTasksFn,
-		mainFn:    mainFn,
-		store:     store,
-		dedup:     make(map[string]time.Time),
-		taskRuns:  make(map[string]TaskAssignment),
+		config:      cfg,
+		listTasks:   listTasksFn,
+		mainFn:      mainFn,
+		store:       store,
+		dedup:       make(map[string]time.Time),
+		taskRuns:    make(map[string]TaskAssignment),
+		queuedSince: make(map[string]time.Time),
 	}
 }
 
@@ -491,9 +537,131 @@ func (l *Loop) GetTaskSnapshot() []TaskStateEntry {
 		}
 		l.tasksMu.RUnlock()
 
+		// Track how long an open, unassigned (non-sentinel) task has been
+		// queued waiting for a free slot, so occupancy reporting can surface a
+		// "since" timestamp for it.
+		if task.ID != "" {
+			if entry.Assigned {
+				delete(l.queuedSince, task.ID)
+			} else {
+				since, ok := l.queuedSince[task.ID]
+				if !ok {
+					since = now
+					l.queuedSince[task.ID] = since
+				}
+				entry.QueuedSince = since
+			}
+		}
+
 		entries = append(entries, entry)
 	}
 	return entries
+}
+
+// MaxConcurrent returns the loop's configured concurrency cap.
+func (l *Loop) MaxConcurrent() int {
+	return l.config.MaxConcurrent
+}
+
+// Slots returns the concurrency slots currently occupied by in-flight host
+// runs for this loop's project, ordered by start time.
+func (l *Loop) Slots(ctx context.Context) []OccupancySlot {
+	runs, err := l.store.ListRunsByProject(ctx, l.config.ProjectDir, time.Time{})
+	if err != nil {
+		return nil
+	}
+
+	var active []*domain.Run
+	for _, r := range runs {
+		if r.IsHost && (r.State == domain.RunStatePending || r.State == domain.RunStateRunning) {
+			active = append(active, r)
+		}
+	}
+	sort.Slice(active, func(i, j int) bool { return active[i].StartedAt.Before(active[j].StartedAt) })
+
+	slots := make([]OccupancySlot, len(active))
+	for i, r := range active {
+		slots[i] = OccupancySlot{
+			Index:       i,
+			RunID:       r.ID,
+			TaskID:      r.TaskID,
+			AttemptID:   r.AttemptID,
+			CurrentStep: strings.Join(r.ActiveSteps, ","),
+			StartedAt:   r.StartedAt,
+		}
+	}
+	return slots
+}
+
+// QueuedTasks returns open tasks discovered by the loop but not yet assigned
+// a slot ("capacity" reason), plus runs parked at a poll step that are
+// currently waiting to reacquire their slot ahead of new launches
+// ("resuming" reason).
+func (l *Loop) QueuedTasks(ctx context.Context) []QueuedEntry {
+	var queued []QueuedEntry
+
+	for _, e := range l.GetTaskSnapshot() {
+		if e.Assigned || e.Task.ID == "" {
+			continue
+		}
+		queued = append(queued, QueuedEntry{TaskID: e.Task.ID, Reason: "capacity", Since: e.QueuedSince})
+	}
+
+	if l.pollCoord != nil {
+		for _, r := range l.pollCoord.PendingResumes() {
+			run, err := l.store.GetRun(ctx, r.RunID)
+			if err != nil || run.ProjectDir != l.config.ProjectDir {
+				continue
+			}
+			queued = append(queued, QueuedEntry{RunID: r.RunID, Reason: "resuming", Since: r.QueuedAt})
+		}
+	}
+
+	return queued
+}
+
+// Polls returns the poll steps currently being driven asynchronously for
+// this loop's project — parked at a poll step, not holding a concurrency
+// slot. Returns nil when no PollStore is configured.
+func (l *Loop) Polls(ctx context.Context) []PollEntry {
+	if l.pollStore == nil {
+		return nil
+	}
+	runs, err := l.store.ListRunsByProject(ctx, l.config.ProjectDir, time.Time{})
+	if err != nil {
+		return nil
+	}
+
+	var polls []PollEntry
+	for _, r := range runs {
+		if r.State != domain.RunStateWaiting {
+			continue
+		}
+		records, err := l.pollStore.ListPolls(ctx, r.ID)
+		if err != nil {
+			continue
+		}
+		for _, rec := range records {
+			polls = append(polls, PollEntry{
+				RunID:      r.ID,
+				Step:       rec.StepName,
+				LastPollAt: rec.LastPollAt,
+				PollCount:  rec.PollCount,
+			})
+		}
+	}
+	return polls
+}
+
+// Occupancy summarizes the loop's current concurrency-slot usage: busy
+// slots, queued work, and asynchronously-driven polls.
+func (l *Loop) Occupancy(ctx context.Context) Occupancy {
+	return Occupancy{
+		MaxConcurrency: l.config.MaxConcurrent,
+		Slots:          l.Slots(ctx),
+		Queued:         l.QueuedTasks(ctx),
+		Polls:          l.Polls(ctx),
+	}
 }
 
 // pickTaskFromPhase runs the list-tasks function and picks the first open,

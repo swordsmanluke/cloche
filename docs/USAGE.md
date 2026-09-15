@@ -1037,7 +1037,7 @@ status for that task.
 | Argument | Output |
 |----------|--------|
 | Task ID | Task status, title, project, latest attempt ID, result, end timestamp, and total tokens consumed across all attempts (omitted if no usage data). When the task is `waiting` at a poll step, also shows the step name, time since last poll, and poll count (e.g. `Waiting: code-review — last polled 4m ago (3 polls)`). When the run has an open help thread (`clo ask` / `ask_user` blocked awaiting a reply), also shows `Pending question: <title> (<channel>/<name>)` — this can appear even while the run is otherwise `running`. When a help-channel ask went unanswered past `park_after`, shows `parked — awaiting reply: <title> (<channel>/<name>)`; reply with `cloche threads reply <channel>/<name> ...` to resume. |
-| _(none)_ | Daemon version, web dashboard status (`Web: http://<addr>` if up, or `Web: DOWN (<error>)` if configured but its listener is down), run statistics (past hour), active tasks with attempt IDs and in-progress runs shown as composite IDs (e.g. `cloche-1234:aj19:main`), a "Needs you" section (see below), and per-agent token burn rate for the last hour (omitted if no usage data). In a project directory, also shows project name, concurrency, loop state, and the count of resumable (parked) runs. The web dashboard line is omitted entirely if the dashboard isn't configured (`CLOCHE_HTTP`/`[daemon] http` unset). |
+| _(none)_ | Daemon version, web dashboard status (`Web: http://<addr>` if up, or `Web: DOWN (<error>)` if configured but its listener is down), run statistics (past hour), active tasks with attempt IDs and in-progress runs shown as composite IDs (e.g. `cloche-1234:aj19:main`), a "Needs you" section (see below), and per-agent token burn rate for the last hour (omitted if no usage data). In a project directory, also shows project name, concurrency, loop state, a `Slots: <busy>/<max> busy · <queued> queued` line reporting orchestration loop concurrency-slot usage, and the count of resumable (parked) runs. The web dashboard line is omitted entirely if the dashboard isn't configured (`CLOCHE_HTTP`/`[daemon] http` unset). |
 
 | Flag | Description |
 |------|-------------|
@@ -1471,8 +1471,10 @@ is stopped, in-flight runs are **not** auto-resumed.
 daemon restarts. Parked runs have state `parked` and can be inspected with
 `cloche list --runs`. Use this before rebuilding or restarting the daemon.
 
-`cloche loop status` shows the current loop state, including a `Resumable runs` count
-of parked runs that would otherwise fire on daemon restart.
+`cloche loop status` shows the current loop state, including a
+`Slots: <busy>/<max> busy · <queued> queued` line reporting orchestration loop
+concurrency-slot usage and a `Resumable runs` count of parked runs that would otherwise
+fire on daemon restart.
 
 When `stop_on_error` or `max_consecutive_failures` triggers a stop, run `cloche loop`
 again to restart the loop.

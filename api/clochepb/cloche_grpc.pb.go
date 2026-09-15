@@ -19,35 +19,37 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ClocheService_RunWorkflow_FullMethodName     = "/cloche.v1.ClocheService/RunWorkflow"
-	ClocheService_GetStatus_FullMethodName       = "/cloche.v1.ClocheService/GetStatus"
-	ClocheService_StreamLogs_FullMethodName      = "/cloche.v1.ClocheService/StreamLogs"
-	ClocheService_StopRun_FullMethodName         = "/cloche.v1.ClocheService/StopRun"
-	ClocheService_ListRuns_FullMethodName        = "/cloche.v1.ClocheService/ListRuns"
-	ClocheService_ListTasks_FullMethodName       = "/cloche.v1.ClocheService/ListTasks"
-	ClocheService_GetTask_FullMethodName         = "/cloche.v1.ClocheService/GetTask"
-	ClocheService_GetAttempt_FullMethodName      = "/cloche.v1.ClocheService/GetAttempt"
-	ClocheService_Shutdown_FullMethodName        = "/cloche.v1.ClocheService/Shutdown"
-	ClocheService_DeleteContainer_FullMethodName = "/cloche.v1.ClocheService/DeleteContainer"
-	ClocheService_ExtractRun_FullMethodName      = "/cloche.v1.ClocheService/ExtractRun"
-	ClocheService_EnableLoop_FullMethodName      = "/cloche.v1.ClocheService/EnableLoop"
-	ClocheService_DisableLoop_FullMethodName     = "/cloche.v1.ClocheService/DisableLoop"
-	ClocheService_ResumeLoop_FullMethodName      = "/cloche.v1.ClocheService/ResumeLoop"
-	ClocheService_QuiesceRuns_FullMethodName     = "/cloche.v1.ClocheService/QuiesceRuns"
-	ClocheService_GetProjectInfo_FullMethodName  = "/cloche.v1.ClocheService/GetProjectInfo"
-	ClocheService_GetAttention_FullMethodName    = "/cloche.v1.ClocheService/GetAttention"
-	ClocheService_GetVersion_FullMethodName      = "/cloche.v1.ClocheService/GetVersion"
-	ClocheService_Complete_FullMethodName        = "/cloche.v1.ClocheService/Complete"
-	ClocheService_GetUsage_FullMethodName        = "/cloche.v1.ClocheService/GetUsage"
-	ClocheService_Console_FullMethodName         = "/cloche.v1.ClocheService/Console"
-	ClocheService_GetContextKey_FullMethodName   = "/cloche.v1.ClocheService/GetContextKey"
-	ClocheService_SetContextKey_FullMethodName   = "/cloche.v1.ClocheService/SetContextKey"
-	ClocheService_ListContextKeys_FullMethodName = "/cloche.v1.ClocheService/ListContextKeys"
-	ClocheService_AgentSession_FullMethodName    = "/cloche.v1.ClocheService/AgentSession"
-	ClocheService_AskHelp_FullMethodName         = "/cloche.v1.ClocheService/AskHelp"
-	ClocheService_ListThreads_FullMethodName     = "/cloche.v1.ClocheService/ListThreads"
-	ClocheService_GetThread_FullMethodName       = "/cloche.v1.ClocheService/GetThread"
-	ClocheService_ReplyThread_FullMethodName     = "/cloche.v1.ClocheService/ReplyThread"
+	ClocheService_RunWorkflow_FullMethodName       = "/cloche.v1.ClocheService/RunWorkflow"
+	ClocheService_GetStatus_FullMethodName         = "/cloche.v1.ClocheService/GetStatus"
+	ClocheService_StreamLogs_FullMethodName        = "/cloche.v1.ClocheService/StreamLogs"
+	ClocheService_StopRun_FullMethodName           = "/cloche.v1.ClocheService/StopRun"
+	ClocheService_ListRuns_FullMethodName          = "/cloche.v1.ClocheService/ListRuns"
+	ClocheService_ListTasks_FullMethodName         = "/cloche.v1.ClocheService/ListTasks"
+	ClocheService_GetTask_FullMethodName           = "/cloche.v1.ClocheService/GetTask"
+	ClocheService_GetAttempt_FullMethodName        = "/cloche.v1.ClocheService/GetAttempt"
+	ClocheService_Shutdown_FullMethodName          = "/cloche.v1.ClocheService/Shutdown"
+	ClocheService_DeleteContainer_FullMethodName   = "/cloche.v1.ClocheService/DeleteContainer"
+	ClocheService_ExtractRun_FullMethodName        = "/cloche.v1.ClocheService/ExtractRun"
+	ClocheService_EnableLoop_FullMethodName        = "/cloche.v1.ClocheService/EnableLoop"
+	ClocheService_DisableLoop_FullMethodName       = "/cloche.v1.ClocheService/DisableLoop"
+	ClocheService_ResumeLoop_FullMethodName        = "/cloche.v1.ClocheService/ResumeLoop"
+	ClocheService_QuiesceRuns_FullMethodName       = "/cloche.v1.ClocheService/QuiesceRuns"
+	ClocheService_GetProjectInfo_FullMethodName    = "/cloche.v1.ClocheService/GetProjectInfo"
+	ClocheService_GetAttention_FullMethodName      = "/cloche.v1.ClocheService/GetAttention"
+	ClocheService_GetLoopOccupancy_FullMethodName  = "/cloche.v1.ClocheService/GetLoopOccupancy"
+	ClocheService_ListLoopOccupancy_FullMethodName = "/cloche.v1.ClocheService/ListLoopOccupancy"
+	ClocheService_GetVersion_FullMethodName        = "/cloche.v1.ClocheService/GetVersion"
+	ClocheService_Complete_FullMethodName          = "/cloche.v1.ClocheService/Complete"
+	ClocheService_GetUsage_FullMethodName          = "/cloche.v1.ClocheService/GetUsage"
+	ClocheService_Console_FullMethodName           = "/cloche.v1.ClocheService/Console"
+	ClocheService_GetContextKey_FullMethodName     = "/cloche.v1.ClocheService/GetContextKey"
+	ClocheService_SetContextKey_FullMethodName     = "/cloche.v1.ClocheService/SetContextKey"
+	ClocheService_ListContextKeys_FullMethodName   = "/cloche.v1.ClocheService/ListContextKeys"
+	ClocheService_AgentSession_FullMethodName      = "/cloche.v1.ClocheService/AgentSession"
+	ClocheService_AskHelp_FullMethodName           = "/cloche.v1.ClocheService/AskHelp"
+	ClocheService_ListThreads_FullMethodName       = "/cloche.v1.ClocheService/ListThreads"
+	ClocheService_GetThread_FullMethodName         = "/cloche.v1.ClocheService/GetThread"
+	ClocheService_ReplyThread_FullMethodName       = "/cloche.v1.ClocheService/ReplyThread"
 )
 
 // ClocheServiceClient is the client API for ClocheService service.
@@ -79,6 +81,15 @@ type ClocheServiceClient interface {
 	// stale tracker claims, repeated task failures, long-running polls, and
 	// repeated built-in workflow failures. See internal/attention.
 	GetAttention(ctx context.Context, in *GetAttentionRequest, opts ...grpc.CallOption) (*GetAttentionResponse, error)
+	// GetLoopOccupancy reports a project's orchestration loop concurrency-slot
+	// usage: which runs currently hold a slot, what's queued waiting for one,
+	// and which poll steps are being driven asynchronously without holding a
+	// slot. Returns zero values (no error) when no loop is active.
+	GetLoopOccupancy(ctx context.Context, in *GetLoopOccupancyRequest, opts ...grpc.CallOption) (*GetLoopOccupancyResponse, error)
+	// ListLoopOccupancy returns a cheap per-project summary (running count,
+	// queued count, health, attention count) across all known projects, for a
+	// dashboard tab bar polled every few seconds.
+	ListLoopOccupancy(ctx context.Context, in *ListLoopOccupancyRequest, opts ...grpc.CallOption) (*ListLoopOccupancyResponse, error)
 	GetVersion(ctx context.Context, in *GetVersionRequest, opts ...grpc.CallOption) (*GetVersionResponse, error)
 	// Complete returns shell completion candidates for the given partial command line.
 	// Used by shell integration scripts to provide dynamic completions for task IDs,
@@ -302,6 +313,26 @@ func (c *clocheServiceClient) GetAttention(ctx context.Context, in *GetAttention
 	return out, nil
 }
 
+func (c *clocheServiceClient) GetLoopOccupancy(ctx context.Context, in *GetLoopOccupancyRequest, opts ...grpc.CallOption) (*GetLoopOccupancyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetLoopOccupancyResponse)
+	err := c.cc.Invoke(ctx, ClocheService_GetLoopOccupancy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clocheServiceClient) ListLoopOccupancy(ctx context.Context, in *ListLoopOccupancyRequest, opts ...grpc.CallOption) (*ListLoopOccupancyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListLoopOccupancyResponse)
+	err := c.cc.Invoke(ctx, ClocheService_ListLoopOccupancy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *clocheServiceClient) GetVersion(ctx context.Context, in *GetVersionRequest, opts ...grpc.CallOption) (*GetVersionResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetVersionResponse)
@@ -457,6 +488,15 @@ type ClocheServiceServer interface {
 	// stale tracker claims, repeated task failures, long-running polls, and
 	// repeated built-in workflow failures. See internal/attention.
 	GetAttention(context.Context, *GetAttentionRequest) (*GetAttentionResponse, error)
+	// GetLoopOccupancy reports a project's orchestration loop concurrency-slot
+	// usage: which runs currently hold a slot, what's queued waiting for one,
+	// and which poll steps are being driven asynchronously without holding a
+	// slot. Returns zero values (no error) when no loop is active.
+	GetLoopOccupancy(context.Context, *GetLoopOccupancyRequest) (*GetLoopOccupancyResponse, error)
+	// ListLoopOccupancy returns a cheap per-project summary (running count,
+	// queued count, health, attention count) across all known projects, for a
+	// dashboard tab bar polled every few seconds.
+	ListLoopOccupancy(context.Context, *ListLoopOccupancyRequest) (*ListLoopOccupancyResponse, error)
 	GetVersion(context.Context, *GetVersionRequest) (*GetVersionResponse, error)
 	// Complete returns shell completion candidates for the given partial command line.
 	// Used by shell integration scripts to provide dynamic completions for task IDs,
@@ -551,6 +591,12 @@ func (UnimplementedClocheServiceServer) GetProjectInfo(context.Context, *GetProj
 }
 func (UnimplementedClocheServiceServer) GetAttention(context.Context, *GetAttentionRequest) (*GetAttentionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetAttention not implemented")
+}
+func (UnimplementedClocheServiceServer) GetLoopOccupancy(context.Context, *GetLoopOccupancyRequest) (*GetLoopOccupancyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetLoopOccupancy not implemented")
+}
+func (UnimplementedClocheServiceServer) ListLoopOccupancy(context.Context, *ListLoopOccupancyRequest) (*ListLoopOccupancyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListLoopOccupancy not implemented")
 }
 func (UnimplementedClocheServiceServer) GetVersion(context.Context, *GetVersionRequest) (*GetVersionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetVersion not implemented")
@@ -908,6 +954,42 @@ func _ClocheService_GetAttention_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClocheService_GetLoopOccupancy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetLoopOccupancyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).GetLoopOccupancy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_GetLoopOccupancy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).GetLoopOccupancy(ctx, req.(*GetLoopOccupancyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClocheService_ListLoopOccupancy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListLoopOccupancyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).ListLoopOccupancy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_ListLoopOccupancy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).ListLoopOccupancy(ctx, req.(*ListLoopOccupancyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ClocheService_GetVersion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetVersionRequest)
 	if err := dec(in); err != nil {
@@ -1172,6 +1254,14 @@ var ClocheService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetAttention",
 			Handler:    _ClocheService_GetAttention_Handler,
+		},
+		{
+			MethodName: "GetLoopOccupancy",
+			Handler:    _ClocheService_GetLoopOccupancy_Handler,
+		},
+		{
+			MethodName: "ListLoopOccupancy",
+			Handler:    _ClocheService_ListLoopOccupancy_Handler,
 		},
 		{
 			MethodName: "GetVersion",

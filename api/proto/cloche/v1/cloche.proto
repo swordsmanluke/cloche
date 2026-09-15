@@ -36,6 +36,17 @@ service ClocheService {
   // repeated built-in workflow failures. See internal/attention.
   rpc GetAttention(GetAttentionRequest) returns (GetAttentionResponse);
 
+  // GetLoopOccupancy reports a project's orchestration loop concurrency-slot
+  // usage: which runs currently hold a slot, what's queued waiting for one,
+  // and which poll steps are being driven asynchronously without holding a
+  // slot. Returns zero values (no error) when no loop is active.
+  rpc GetLoopOccupancy(GetLoopOccupancyRequest) returns (GetLoopOccupancyResponse);
+
+  // ListLoopOccupancy returns a cheap per-project summary (running count,
+  // queued count, health, attention count) across all known projects, for a
+  // dashboard tab bar polled every few seconds.
+  rpc ListLoopOccupancy(ListLoopOccupancyRequest) returns (ListLoopOccupancyResponse);
+
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
 
   // Complete returns shell completion candidates for the given partial command line.
@@ -333,6 +344,65 @@ message AttentionItem {
 
 message GetAttentionResponse {
   repeated AttentionItem items = 1;
+}
+
+message GetLoopOccupancyRequest {
+  string project_dir = 1;  // Resolve by absolute path (default: cwd)
+}
+
+// OccupancySlot describes a single busy concurrency slot: an in-flight host
+// run currently occupying it.
+message OccupancySlot {
+  int32 index = 1;
+  string run_id = 2;
+  string task_id = 3;
+  string attempt_id = 4;
+  string current_step = 5;
+  string started_at = 6;
+}
+
+// QueuedItem describes a task or run waiting for a concurrency slot. reason
+// is "capacity" (an open task discovered but no free slot yet) or "resuming"
+// (a run that finished a poll step and is waiting to reacquire its slot).
+message QueuedItem {
+  string task_id = 1;
+  string run_id = 2;
+  string reason = 3;
+  string since = 4;
+}
+
+// PollItem describes a poll step currently being driven asynchronously —
+// parked, not holding a concurrency slot.
+message PollItem {
+  string run_id = 1;
+  string step = 2;
+  string last_poll_at = 3;
+  int32 poll_count = 4;
+}
+
+message GetLoopOccupancyResponse {
+  int32 max_concurrency = 1;
+  repeated OccupancySlot slots = 2;
+  repeated QueuedItem queued = 3;
+  repeated PollItem polls = 4;
+}
+
+message ListLoopOccupancyRequest {}
+
+// ProjectOccupancySummary is a cheap per-project rollup for a dashboard tab
+// bar: how many slots are busy, how many things are queued, and overall
+// health. attention_count is always 0 until the attention-model ticket lands.
+message ProjectOccupancySummary {
+  string project_dir = 1;
+  string name = 2;
+  int32 running = 3;
+  int32 queued = 4;
+  string health = 5;
+  int32 attention_count = 6;
+}
+
+message ListLoopOccupancyResponse {
+  repeated ProjectOccupancySummary projects = 1;
 }
 
 message GetVersionRequest {}

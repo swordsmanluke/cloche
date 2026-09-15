@@ -589,6 +589,15 @@ func cmdStatusProject(ctx context.Context, client pb.ClocheServiceClient, w io.W
 		loopStatus = "running"
 	}
 	fmt.Fprintf(w, "Orchestration loop: %s\n", loopStatus)
+
+	if occ, err := client.GetLoopOccupancy(ctx, &pb.GetLoopOccupancyRequest{ProjectDir: projectDir}); err == nil {
+		maxConc := int(occ.MaxConcurrency)
+		if maxConc == 0 {
+			maxConc = int(info.Concurrency)
+		}
+		fmt.Fprintf(w, "Slots: %d/%d busy · %d queued\n", len(occ.Slots), maxConc, len(occ.Queued))
+	}
+
 	fmt.Fprintf(w, "Resumable runs: %d\n", info.GetResumableRunsCount())
 
 	// Fetch runs for the past hour to compute success rate.

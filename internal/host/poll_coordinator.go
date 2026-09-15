@@ -27,9 +27,27 @@ type PollCoordinator struct {
 	// work, then ReacquireSlot before resuming, so it gets priority over
 	// brand-new task launches. See Loop.runPhased.
 	slotMu      sync.Mutex
-	released    int             // pending ReleaseSlot() calls not yet applied to inFlight
-	resumeQueue []chan struct{} // FIFO of pending ReacquireSlot() grants
-	wake        chan struct{}   // buffered(1); wakes the loop to reprocess slot state
+	released    int              // pending ReleaseSlot() calls not yet applied to inFlight
+	resumeQueue []*resumeRequest // FIFO of pending ReacquireSlot() grants
+	wake        chan struct{}    // buffered(1); wakes the loop to reprocess slot state
+}
+
+// resumeRequest tracks a single pending ReacquireSlot() call, identifying the
+// run/step waiting to resume and when it started waiting, for observability
+// (see PendingResumes).
+type resumeRequest struct {
+	runID    string
+	stepName string
+	queuedAt time.Time
+	grant    chan struct{}
+}
+
+// ResumeInfo describes a run currently waiting to reacquire a concurrency
+// slot after finishing a poll step. Exposed for occupancy reporting.
+type ResumeInfo struct {
+	RunID    string
+	StepName string
+	QueuedAt time.Time
 }
 
 type pollSession struct {
@@ -67,11 +85,13 @@ func (c *PollCoordinator) ReleaseSlot() {
 // ReacquireSlot blocks until the orchestration loop grants this run a
 // concurrency slot again. Pending reacquire requests are served ahead of
 // brand-new task launches (see Loop.runPhased), so a poll step that becomes
-// ready resumes before the loop starts unrelated work.
-func (c *PollCoordinator) ReacquireSlot() {
+// ready resumes before the loop starts unrelated work. runID and stepName
+// identify the waiting run for occupancy reporting (see PendingResumes).
+func (c *PollCoordinator) ReacquireSlot(runID, stepName string) {
 	grant := make(chan struct{}, 1)
+	req := &resumeRequest{runID: runID, stepName: stepName, queuedAt: time.Now(), grant: grant}
 	c.slotMu.Lock()
-	c.resumeQueue = append(c.resumeQueue, grant)
+	c.resumeQueue = append(c.resumeQueue, req)
 	c.slotMu.Unlock()
 	c.wakeLoop()
 	<-grant
@@ -103,10 +123,10 @@ func (c *PollCoordinator) grantNextResume() bool {
 		c.slotMu.Unlock()
 		return false
 	}
-	grant := c.resumeQueue[0]
+	req := c.resumeQueue[0]
 	c.resumeQueue = c.resumeQueue[1:]
 	c.slotMu.Unlock()
-	grant <- struct{}{}
+	req.grant <- struct{}{}
 	return true
 }
 
@@ -116,6 +136,19 @@ func (c *PollCoordinator) PendingResumeCount() int {
 	c.slotMu.Lock()
 	defer c.slotMu.Unlock()
 	return len(c.resumeQueue)
+}
+
+// PendingResumes returns the runs currently waiting to reacquire a
+// concurrency slot after finishing a poll step, oldest first. Exposed for
+// occupancy reporting (see Loop.QueuedTasks).
+func (c *PollCoordinator) PendingResumes() []ResumeInfo {
+	c.slotMu.Lock()
+	defer c.slotMu.Unlock()
+	out := make([]ResumeInfo, len(c.resumeQueue))
+	for i, req := range c.resumeQueue {
+		out[i] = ResumeInfo{RunID: req.runID, StepName: req.stepName, QueuedAt: req.queuedAt}
+	}
+	return out
 }
 
 func sessionKey(runID, stepName string) string {

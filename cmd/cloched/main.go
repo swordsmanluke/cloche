@@ -172,6 +172,7 @@ func main() {
 			web.WithLogBroadcaster(broadcaster),
 			web.WithTaskProvider(srv),
 			web.WithAttentionProvider(srv),
+			web.WithOccupancyProvider(srv),
 			web.WithOrchestrateFunc(func(ctx context.Context, projectDir string) (int, error) {
 				_, err := srv.EnableLoop(ctx, &pb.EnableLoopRequest{ProjectDir: projectDir})
 				if err != nil {

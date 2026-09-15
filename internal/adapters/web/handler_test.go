@@ -3681,6 +3681,113 @@ func TestAPILoopStatus_ProjectNotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
+// --- Loop occupancy tests ---
+
+// fakeOccupancyProvider implements OccupancyProvider for testing.
+type fakeOccupancyProvider struct {
+	snapshots map[string]LoopOccupancy
+	summary   []ProjectOccupancy
+}
+
+func (f *fakeOccupancyProvider) LoopOccupancySnapshot(projectDir string) (LoopOccupancy, bool) {
+	occ, ok := f.snapshots[projectDir]
+	return occ, ok
+}
+
+func (f *fakeOccupancyProvider) AllLoopOccupancy() []ProjectOccupancy {
+	return f.summary
+}
+
+func TestAPILoopOccupancy_ActiveLoop(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	h.occupancyProvider = &fakeOccupancyProvider{
+		snapshots: map[string]LoopOccupancy{
+			"/home/user/projects/myapp": {
+				MaxConcurrency: 5,
+				Slots: []OccupancySlot{
+					{Index: 0, RunID: "run-1", TaskID: "task-1", CurrentStep: "build", StartedAt: "2026-01-01T00:00:00Z"},
+				},
+				Queued: []QueuedItem{{TaskID: "task-2", Reason: "capacity", Since: "2026-01-01T00:00:00Z"}},
+				Polls:  []PollItem{},
+			},
+		},
+	}
+
+	req := httptest.NewRequest("GET", "/api/projects/myapp/loop/occupancy", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	var resp LoopOccupancy
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, 5, resp.MaxConcurrency)
+	require.Len(t, resp.Slots, 1)
+	assert.Equal(t, "run-1", resp.Slots[0].RunID)
+	require.Len(t, resp.Queued, 1)
+	assert.Equal(t, "capacity", resp.Queued[0].Reason)
+}
+
+func TestAPILoopOccupancy_NoProvider(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	req := httptest.NewRequest("GET", "/api/projects/myapp/loop/occupancy", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp LoopOccupancy
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Zero(t, resp.MaxConcurrency)
+	assert.Empty(t, resp.Slots)
+}
+
+func TestAPIProjectsOccupancy(t *testing.T) {
+	h, _ := setupHandler(t)
+
+	h.occupancyProvider = &fakeOccupancyProvider{
+		summary: []ProjectOccupancy{
+			{ProjectDir: "/proj/a", Name: "a", Running: 2, Queued: 1, Health: "green", AttentionCount: 0},
+			{ProjectDir: "/proj/b", Name: "b", Running: 0, Queued: 0, Health: "red", AttentionCount: 0},
+		},
+	}
+
+	req := httptest.NewRequest("GET", "/api/projects/occupancy", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	var resp []ProjectOccupancy
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Len(t, resp, 2)
+	assert.Equal(t, "a", resp[0].Name)
+	assert.Equal(t, 2, resp[0].Running)
+	assert.Equal(t, "red", resp[1].Health)
+}
+
+func TestAPILoopOccupancy_ProjectNotFound(t *testing.T) {
+	h, _ := setupHandler(t)
+	h.occupancyProvider = &fakeOccupancyProvider{}
+
+	req := httptest.NewRequest("GET", "/api/projects/nonexistent/loop/occupancy", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
 func TestAPILoopStop_Success(t *testing.T) {
 	h, store := setupHandler(t)
 	ctx := context.Background()
