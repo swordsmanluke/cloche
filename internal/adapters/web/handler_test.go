@@ -182,8 +182,27 @@ func TestStaticCSS(t *testing.T) {
 	h.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), ":root")
-	assert.Contains(t, w.Body.String(), "badge-running")
+	body := w.Body.String()
+	assert.Contains(t, body, ":root")
+	assert.Contains(t, body, "badge-running")
+	assert.Contains(t, body, "--ac: #e0a458")
+	assert.Contains(t, body, "--pnl3: #222b27")
+	assert.Contains(t, body, `"IBM Plex Mono"`)
+	assert.NotContains(t, body, "fonts.googleapis.com")
+	assert.NotContains(t, body, "fonts.gstatic.com")
+}
+
+func TestStaticFontsSelfHosted(t *testing.T) {
+	h, _ := setupHandler(t)
+
+	req := httptest.NewRequest("GET", "/static/fonts/ibm-plex-mono-400.woff2", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.Bytes()
+	require.GreaterOrEqual(t, len(body), 4)
+	assert.Equal(t, "wOF2", string(body[:4]), "expected a woff2 font file served from the app itself, not a network fetch")
 }
 
 func TestHelpers(t *testing.T) {

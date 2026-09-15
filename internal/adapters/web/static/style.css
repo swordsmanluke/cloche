@@ -1,17 +1,79 @@
 /* Dark-first single theme — the console shell is the only surface left, so
    there's no light variant to preserve (see docs/plans for the console-shell
-   ticket). */
+   ticket). Palette and type match the reference mock
+   (docs/design/console-restructured-mock.html, selector .m5). */
+@font-face {
+    font-family: "IBM Plex Mono";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("/static/fonts/ibm-plex-mono-400.woff2") format("woff2");
+}
+@font-face {
+    font-family: "IBM Plex Mono";
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url("/static/fonts/ibm-plex-mono-500.woff2") format("woff2");
+}
+@font-face {
+    font-family: "IBM Plex Mono";
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url("/static/fonts/ibm-plex-mono-600.woff2") format("woff2");
+}
+@font-face {
+    font-family: "IBM Plex Sans";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("/static/fonts/ibm-plex-sans-400.woff2") format("woff2");
+}
+@font-face {
+    font-family: "IBM Plex Sans";
+    font-style: italic;
+    font-weight: 400;
+    font-display: swap;
+    src: url("/static/fonts/ibm-plex-sans-400-italic.woff2") format("woff2");
+}
+@font-face {
+    font-family: "IBM Plex Sans";
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url("/static/fonts/ibm-plex-sans-500.woff2") format("woff2");
+}
+@font-face {
+    font-family: "IBM Plex Sans";
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url("/static/fonts/ibm-plex-sans-600.woff2") format("woff2");
+}
+
 :root {
     color-scheme: dark;
 
-    --bg: #111827;
-    --bg-surface: #1f2937;
-    --text: #f3f4f6;
-    --text-muted: #9ca3af;
-    --border: #374151;
-    --link: #60a5fa;
-    --font: system-ui, -apple-system, sans-serif;
-    --mono: ui-monospace, "Cascadia Code", "Fira Code", monospace;
+    --bg: #0f1412;
+    --pnl: #151b18;
+    --pnl2: #1b2320;
+    --pnl3: #222b27;
+    --ln: #26302b;
+    --tx: #d8ded9;
+    --tx2: #97a39c;
+    --mu: #5f6b65;
+    --ac: #e0a458;
+    --acs: #3a2c16;
+
+    --run: #5aa9ff;
+    --ok: #6fcf97;
+    --bad: #ef7c72;
+    --warn: #e0a458;
+
+    --font: "IBM Plex Mono", ui-monospace, monospace;
+    --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
     --radius: 4px;
 
     --badge-pending-bg: #78350f;
@@ -45,9 +107,10 @@ html, body { height: 100%; }
 body {
     margin: 0;
     font-family: var(--font);
+    font-size: 12px;
     background: var(--bg);
-    color: var(--text);
-    line-height: 1.5;
+    color: var(--tx);
+    line-height: 1.45;
 }
 
 .container {
@@ -56,7 +119,7 @@ body {
     padding: 0 1rem;
 }
 
-a { color: var(--link); text-decoration: none; }
+a { color: var(--ac); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 h1 {
@@ -108,22 +171,22 @@ h2 {
 .runs-table td {
     padding: 0.5rem 0.75rem;
     text-align: left;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--ln);
 }
 
 .runs-table th {
-    background: var(--bg-surface);
+    background: var(--pnl);
     font-weight: 600;
     font-size: 0.8rem;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    color: var(--text-muted);
+    color: var(--mu);
 }
 
-.runs-table tr:hover { background: var(--bg-surface); }
+.runs-table tr:hover { background: var(--pnl2); }
 
 .mono { font-family: var(--mono); font-size: 0.85em; }
-.empty { color: var(--text-muted); text-align: center; padding: 2rem 0; }
+.empty { color: var(--tx2); text-align: center; padding: 2rem 0; }
 
 /* Health indicator dots */
 .health-dot {
@@ -163,7 +226,7 @@ h2 {
     font-family: var(--font);
     font-size: 0.8rem;
     font-weight: 600;
-    border: 1px solid var(--border);
+    border: 1px solid var(--ln);
     cursor: pointer;
     text-decoration: none;
     white-space: nowrap;
@@ -173,15 +236,15 @@ h2 {
 
 .btn-secondary {
     background: var(--bg);
-    color: var(--link);
+    color: var(--ac);
 }
 
-.btn-secondary:hover { background: var(--bg-surface); }
+.btn-secondary:hover { background: var(--pnl2); }
 
 .btn-primary {
-    background: var(--link);
+    background: var(--ac);
     color: #fff;
-    border-color: var(--link);
+    border-color: var(--ac);
 }
 
 .btn-primary:hover { opacity: 0.9; }
@@ -203,8 +266,8 @@ h2 {
 
 /* Log viewer */
 .log-viewer {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
+    background: var(--pnl);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     max-height: 600px;
     overflow: auto;
@@ -227,27 +290,27 @@ h2 {
     width: 100%;
     padding: 0.4rem;
     text-align: center;
-    background: var(--bg-secondary);
+    background: var(--pnl);
     border: none;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--ln);
     cursor: pointer;
     font-size: 0.8rem;
     font-family: var(--mono);
-    color: var(--link);
+    color: var(--ac);
 }
-.load-earlier-btn:hover { background: var(--border); }
+.load-earlier-btn:hover { background: var(--ln); }
 .load-earlier-btn:disabled { opacity: 0.5; cursor: wait; }
 
 .log-line { display: block; }
 .log-type-status { color: var(--badge-running-text); }
 .log-type-llm { color: var(--badge-succeeded-text); }
-.log-type-script { color: var(--text); }
+.log-type-script { color: var(--tx); }
 
 /* Tabs */
 .tab-bar {
     display: flex;
     gap: 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--ln);
     margin-bottom: 1rem;
 }
 .tab-bar:empty {
@@ -262,12 +325,12 @@ h2 {
     background: none;
     border: none;
     border-bottom: 2px solid transparent;
-    color: var(--text-muted);
+    color: var(--tx2);
     cursor: pointer;
 }
 
-.tab-btn:hover { color: var(--text); }
-.tab-btn.tab-active { color: var(--link); border-bottom-color: var(--link); }
+.tab-btn:hover { color: var(--tx); }
+.tab-btn.tab-active { color: var(--ac); border-bottom-color: var(--ac); }
 
 /* DAG */
 .dag-svg { display: block; }
@@ -275,29 +338,29 @@ h2 {
 
 .dag-node-rect {
     fill: var(--bg);
-    stroke: var(--border);
+    stroke: var(--ln);
     stroke-width: 1.5;
     rx: 4;
 }
 
-.dag-node:hover .dag-node-rect { stroke: var(--link); stroke-width: 2; }
+.dag-node:hover .dag-node-rect { stroke: var(--ac); stroke-width: 2; }
 
 .dag-node-text {
     font-family: var(--font);
     font-size: 13px;
-    fill: var(--text);
+    fill: var(--tx);
 }
 
 .dag-edge {
     fill: none;
-    stroke: var(--text-muted);
+    stroke: var(--mu);
     stroke-width: 1.5;
 }
 
 .dag-edge-label {
     font-family: var(--font);
     font-size: 10px;
-    fill: var(--text-muted);
+    fill: var(--mu);
     text-anchor: start;
 }
 
@@ -313,8 +376,8 @@ h2 {
     right: -420px;
     width: 400px;
     height: 100vh;
-    background: var(--bg-surface);
-    border-left: 1px solid var(--border);
+    background: var(--pnl);
+    border-left: 1px solid var(--ln);
     box-shadow: -4px 0 12px rgba(0,0,0,0.1);
     transition: right 0.25s ease;
     z-index: 100;
@@ -330,7 +393,7 @@ h2 {
     justify-content: space-between;
     align-items: center;
     padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--ln);
     font-weight: 700;
     font-size: 1rem;
 }
@@ -340,11 +403,11 @@ h2 {
     border: none;
     font-size: 1.4rem;
     cursor: pointer;
-    color: var(--text-muted);
+    color: var(--tx2);
     padding: 0 0.25rem;
 }
 
-.drawer-close:hover { color: var(--text); }
+.drawer-close:hover { color: var(--tx); }
 
 .drawer-body {
     padding: 1rem;
@@ -354,7 +417,7 @@ h2 {
 
 .drawer-body pre {
     background: var(--bg);
-    border: 1px solid var(--border);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     padding: 0.75rem;
     font-family: var(--mono);
@@ -386,8 +449,8 @@ h2 {
     align-items: center;
     gap: 0.75rem;
     padding: 0.5rem 0.75rem;
-    background: var(--bg-surface);
-    border-bottom: 1px solid var(--border);
+    background: var(--pnl);
+    border-bottom: 1px solid var(--ln);
     position: relative;
 }
 
@@ -407,26 +470,26 @@ h2 {
     border: 1px solid transparent;
     border-radius: var(--radius);
     background: transparent;
-    color: var(--text-muted);
+    color: var(--tx2);
     font: inherit;
     font-size: 0.85rem;
     cursor: pointer;
     white-space: nowrap;
 }
 
-.console-tab:hover { color: var(--text); background: var(--bg); }
+.console-tab:hover { color: var(--tx); background: var(--bg); }
 
 .console-tab-active {
-    color: var(--text);
+    color: var(--tx);
     background: var(--bg);
-    border-color: var(--border);
+    border-color: var(--ln);
 }
 
 .console-tab:focus-visible,
 .console-more-btn:focus-visible,
 .console-stack-row:focus-visible,
 .btn:focus-visible {
-    outline: 2px solid var(--link);
+    outline: 2px solid var(--ac);
     outline-offset: 1px;
 }
 
@@ -445,8 +508,8 @@ h2 {
 
 .console-more-btn {
     background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text-muted);
+    border: 1px solid var(--ln);
+    color: var(--tx2);
     border-radius: var(--radius);
     padding: 0.3rem 0.6rem;
     font-size: 0.8rem;
@@ -459,8 +522,8 @@ h2 {
     top: 100%;
     left: 0.75rem;
     margin-top: 0.25rem;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
+    background: var(--pnl2);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     display: flex;
     flex-direction: column;
@@ -477,7 +540,7 @@ h2 {
     align-items: center;
     gap: 0.75rem;
     font-size: 0.8rem;
-    color: var(--text-muted);
+    color: var(--tx2);
     flex: 0 0 auto;
 }
 
@@ -493,7 +556,7 @@ h2 {
     width: 320px;
     flex: 0 0 320px;
     overflow-y: auto;
-    border-right: 1px solid var(--border);
+    border-right: 1px solid var(--ln);
     padding: 0.5rem;
 }
 
@@ -503,13 +566,13 @@ h2 {
     font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--text-muted);
+    color: var(--mu);
     margin: 0 0 0.35rem;
     display: flex;
     gap: 0.35rem;
 }
 
-.console-stack-group-count { color: var(--text-muted); font-weight: 400; }
+.console-stack-group-count { color: var(--mu); font-weight: 400; }
 
 .console-stack-list { display: flex; flex-direction: column; gap: 0.15rem; }
 
@@ -524,31 +587,31 @@ h2 {
     border: 1px solid transparent;
     border-radius: var(--radius);
     background: transparent;
-    color: var(--text);
+    color: var(--tx);
     font: inherit;
     cursor: pointer;
 }
 
-.console-stack-row:hover { background: var(--bg-surface); }
+.console-stack-row:hover { background: var(--pnl2); }
 
 .console-stack-row-selected {
-    background: var(--bg-surface);
-    border-color: var(--link);
+    background: var(--pnl2);
+    border-color: var(--ac);
 }
 
-.console-stack-row-title { font-size: 0.85rem; }
-.console-stack-row-meta { font-size: 0.72rem; color: var(--text-muted); }
+.console-stack-row-title { font-family: var(--font-sans); font-size: 0.85rem; }
+.console-stack-row-meta { font-size: 0.72rem; color: var(--mu); }
 
-.console-stack-empty { color: var(--text-muted); font-size: 0.8rem; padding: 0.25rem 0.5rem; }
+.console-stack-empty { color: var(--tx2); font-size: 0.8rem; padding: 0.25rem 0.5rem; }
 
 .console-stack-loading { font-style: italic; }
 
 .console-tab-skeleton {
     width: 5.5rem;
     height: 1.6rem;
-    background: var(--bg-surface);
+    background: var(--pnl2);
     opacity: 0.6;
-    border: 1px solid var(--border);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     animation: console-skeleton-pulse 1.2s ease-in-out infinite;
 }
@@ -560,16 +623,16 @@ h2 {
 
 .console-stale-hint {
     font-size: 0.72rem;
-    color: var(--text-muted);
+    color: var(--tx2);
     white-space: nowrap;
 }
 
 .console-load-earlier {
     width: 100%;
     margin-top: 0.5rem;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
+    background: var(--pnl2);
+    border: 1px solid var(--ln);
+    color: var(--tx2);
     border-radius: var(--radius);
     padding: 0.4rem;
     cursor: pointer;
@@ -582,7 +645,7 @@ h2 {
     padding: 1.25rem;
 }
 
-.console-centre-empty { color: var(--text-muted); }
+.console-centre-empty { color: var(--tx2); }
 
 .console-task-header {
     display: flex;
@@ -591,7 +654,7 @@ h2 {
     margin-bottom: 1rem;
 }
 
-.console-task-header h2 { margin: 0; font-size: 1.2rem; }
+.console-task-header h2 { margin: 0; font-family: var(--font-sans); font-size: 1.2rem; }
 
 .console-facts-row {
     display: grid;
@@ -600,17 +663,17 @@ h2 {
     font-size: 0.9rem;
 }
 
-.console-facts-row dt { color: var(--text-muted); }
+.console-facts-row dt { color: var(--mu); }
 .console-facts-row dd { margin: 0; }
 
-.console-facts-note { color: var(--text-muted); font-size: 0.85rem; margin-top: 0.75rem; }
+.console-facts-note { color: var(--tx2); font-size: 0.85rem; margin-top: 0.75rem; }
 
-.badge-parked { background: var(--bg-surface); color: var(--text-muted); border: 1px solid var(--border); }
+.badge-parked { background: var(--pnl2); color: var(--tx2); border: 1px solid var(--ln); }
 
 .console-header-actions { display: flex; gap: 0.4rem; margin-left: auto; }
 
 .console-why-line {
-    color: var(--text-muted);
+    color: var(--tx2);
     font-size: 0.9rem;
     margin: -0.5rem 0 1rem;
     max-width: 60ch;
@@ -622,17 +685,17 @@ h2 {
     gap: 0.4rem;
 }
 
-.console-run-once-form label { font-size: 0.8rem; color: var(--text-muted); }
+.console-run-once-form label { font-size: 0.8rem; color: var(--mu); }
 
 .console-run-once-form input,
 .console-run-once-form textarea {
     font-family: var(--font);
     font-size: 0.85rem;
     background: var(--bg);
-    border: 1px solid var(--border);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     padding: 0.4em 0.6em;
-    color: var(--text);
+    color: var(--tx);
 }
 
 .console-run-once-form textarea { min-height: 4rem; resize: vertical; }
@@ -649,17 +712,17 @@ h2 {
     display: flex;
     flex-direction: column;
     min-width: 0;
-    border: 1px solid var(--border);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     overflow: hidden;
 }
 
 .console-compare-column-head {
-    background: var(--bg-surface);
-    border-bottom: 1px solid var(--border);
+    background: var(--pnl);
+    border-bottom: 1px solid var(--ln);
     padding: 0.4em 0.6em;
     font-size: 0.8rem;
-    color: var(--text-muted);
+    color: var(--mu);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -678,8 +741,8 @@ h2 {
 }
 
 .console-action-panel {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
+    background: var(--pnl);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     padding: 0.75rem 1rem;
     margin-bottom: 1rem;
@@ -696,7 +759,7 @@ h2 {
 
 .console-action-pre {
     background: var(--bg);
-    border: 1px solid var(--border);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     padding: 0.75rem;
     font-family: var(--mono);
@@ -724,23 +787,23 @@ h2 {
     align-items: center;
     gap: 0.35rem;
     background: var(--bg);
-    border: 1px solid var(--border);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
-    color: var(--text-muted);
+    color: var(--tx2);
     font-family: var(--font);
     font-size: 0.78rem;
     padding: 0.25em 0.55em;
     cursor: pointer;
 }
 
-.console-attempt-tab:hover { background: var(--bg-surface); }
+.console-attempt-tab:hover { background: var(--pnl2); }
 
 .console-attempt-tab-active {
-    color: var(--text);
-    border-color: var(--link);
+    color: var(--tx);
+    border-color: var(--ac);
 }
 
-.console-attempt-tab-duration { color: var(--text-muted); }
+.console-attempt-tab-duration { color: var(--mu); }
 
 .console-step-strip {
     display: flex;
@@ -760,17 +823,17 @@ h2 {
     gap: 0.3rem;
     margin-left: 1rem;
     padding-left: 0.4rem;
-    border-left: 2px solid var(--border);
+    border-left: 2px solid var(--ln);
 }
 
 .console-step-segment {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
+    background: var(--pnl);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
-    color: var(--text);
+    color: var(--tx);
     font-family: var(--font);
     font-size: 0.78rem;
     padding: 0.3em 0.55em;
@@ -782,13 +845,14 @@ h2 {
 
 .console-step-segment-child { font-size: 0.72rem; opacity: 0.9; }
 
-.console-step-segment-meta { color: var(--text-muted); }
+.console-step-segment-meta { color: var(--mu); }
 
-.console-step-segment-live { border-color: var(--link); }
+.console-step-segment-live { border-color: var(--ac); }
 
 .console-step-segment-selected {
-    border-color: var(--link);
-    box-shadow: 0 0 0 1px var(--link);
+    background: var(--pnl3);
+    border-color: var(--ac);
+    box-shadow: 0 0 0 1px var(--ac);
 }
 
 .console-thread-panel {
@@ -805,7 +869,7 @@ h2 {
 
 .console-thread-head h3 { margin: 0; font-size: 1rem; }
 
-.console-thread-meta { color: var(--text-muted); font-size: 0.82rem; }
+.console-thread-meta { color: var(--tx2); font-size: 0.82rem; }
 
 .console-thread-transcript {
     display: flex;
@@ -817,17 +881,17 @@ h2 {
 }
 
 .console-thread-message {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
+    background: var(--pnl);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     padding: 0.6rem 0.75rem;
 }
 
-.console-thread-message-user { border-left: 3px solid var(--link); }
-.console-thread-message-agent { border-left: 3px solid var(--border); }
+.console-thread-message-user { border-left: 3px solid var(--ac); }
+.console-thread-message-agent { border-left: 3px solid var(--ln); }
 
 .console-thread-message-meta {
-    color: var(--text-muted);
+    color: var(--mu);
     font-size: 0.75rem;
     margin-bottom: 0.3rem;
 }
@@ -836,7 +900,7 @@ h2 {
 
 .console-thread-message-options {
     margin-top: 0.4rem;
-    color: var(--text-muted);
+    color: var(--tx2);
     font-size: 0.8rem;
 }
 
@@ -849,9 +913,9 @@ h2 {
 .console-thread-reply-input {
     font-family: var(--font);
     font-size: 0.9rem;
-    color: var(--text);
+    color: var(--tx);
     background: var(--bg);
-    border: 1px solid var(--border);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     padding: 0.5rem;
     resize: vertical;
@@ -878,10 +942,10 @@ h2 {
     font-family: var(--font);
     font-size: 0.78rem;
     padding: 0.2rem 0.4rem;
-    border: 1px solid var(--border);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     background: var(--bg);
-    color: var(--text);
+    color: var(--tx);
 }
 
 .console-log-scope {
@@ -900,16 +964,16 @@ h2 {
     align-items: center;
     justify-content: space-between;
     padding: 0.4rem 0.75rem;
-    background: var(--bg-surface);
-    border-top: 1px solid var(--border);
+    background: var(--pnl);
+    border-top: 1px solid var(--ln);
     font-size: 0.75rem;
-    color: var(--text-muted);
+    color: var(--mu);
 }
 
 .console-keys { display: flex; gap: 0.75rem; }
 .console-keys kbd {
     background: var(--bg);
-    border: 1px solid var(--border);
+    border: 1px solid var(--ln);
     border-radius: 3px;
     padding: 0 0.3em;
     font-family: var(--mono);
@@ -928,7 +992,7 @@ h2 {
     cursor: pointer;
     padding: 0;
 }
-.console-ticker:hover { color: var(--text); }
+.console-ticker:hover { color: var(--tx); }
 .console-ticker.console-ticker-failure { color: var(--badge-failed-text); }
 
 .console-activity-overlay {
@@ -942,8 +1006,8 @@ h2 {
 }
 
 .console-activity-panel {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
+    background: var(--pnl);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     padding: 1.25rem;
     width: min(720px, 90vw);
@@ -965,7 +1029,7 @@ h2 {
     gap: 1rem;
     flex: 1 1 auto;
     font-size: 0.85rem;
-    color: var(--text-muted);
+    color: var(--tx2);
 }
 .console-activity-filters label { display: flex; align-items: center; gap: 0.3rem; cursor: pointer; }
 
@@ -975,7 +1039,7 @@ h2 {
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--ln);
     padding-top: 0.5rem;
 }
 
@@ -987,12 +1051,12 @@ h2 {
     font-size: 0.85rem;
     border-bottom: 1px solid transparent;
 }
-.console-activity-row-time { color: var(--text-muted); font-family: var(--mono); font-size: 0.8rem; flex: 0 0 auto; }
-.console-activity-row-project { color: var(--text-muted); flex: 0 0 auto; }
+.console-activity-row-time { color: var(--mu); font-family: var(--mono); font-size: 0.8rem; flex: 0 0 auto; }
+.console-activity-row-project { color: var(--mu); flex: 0 0 auto; }
 .console-activity-row-text { flex: 1 1 auto; }
 .console-activity-row-failure .console-activity-row-text { color: var(--badge-failed-text); }
 
-.console-activity-empty { color: var(--text-muted); padding: 0.5rem 0.1rem; }
+.console-activity-empty { color: var(--tx2); padding: 0.5rem 0.1rem; }
 
 .console-ledger-overlay {
     position: fixed;
@@ -1005,8 +1069,8 @@ h2 {
 }
 
 .console-ledger-panel {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
+    background: var(--pnl);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     padding: 1.25rem;
     width: min(900px, 92vw);
@@ -1027,7 +1091,7 @@ h2 {
 .console-ledger-body {
     flex: 1 1 auto;
     overflow-y: auto;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--ln);
     padding-top: 0.75rem;
 }
 
@@ -1037,29 +1101,29 @@ h2 {
 .console-ledger-stats { display: flex; gap: 1rem; margin-bottom: 0.75rem; }
 .console-ledger-stat {
     background: var(--bg-inset, rgba(255, 255, 255, 0.03));
-    border: 1px solid var(--border);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     padding: 0.5rem 0.85rem;
     flex: 1 1 0;
 }
 .console-ledger-stat-value { font-size: 1.2rem; font-weight: 600; }
-.console-ledger-stat-label { color: var(--text-muted); font-size: 0.75rem; }
+.console-ledger-stat-label { color: var(--mu); font-size: 0.75rem; }
 
 .console-ledger-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 0.5rem; }
 .console-ledger-table th, .console-ledger-table td {
     text-align: left;
     padding: 0.3rem 0.5rem;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--ln);
 }
-.console-ledger-table th { color: var(--text-muted); font-weight: 500; }
+.console-ledger-table th { color: var(--mu); font-weight: 500; }
 
 .console-ledger-file { margin-bottom: 1rem; }
 .console-ledger-file-path { font-family: var(--mono); font-size: 0.85rem; margin-bottom: 0.25rem; }
-.console-ledger-comparison { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.35rem; }
+.console-ledger-comparison { color: var(--tx2); font-size: 0.8rem; margin-bottom: 0.35rem; }
 .console-ledger-mono { font-family: var(--mono); }
-.console-ledger-requirement-text { color: var(--text-muted); font-size: 0.78rem; margin-top: 0.15rem; }
+.console-ledger-requirement-text { color: var(--tx2); font-size: 0.78rem; margin-top: 0.15rem; }
 
-.console-ledger-empty { color: var(--text-muted); padding: 0.5rem 0.1rem; }
+.console-ledger-empty { color: var(--tx2); padding: 0.5rem 0.1rem; }
 
 .console-help-overlay {
     position: fixed;
@@ -1072,8 +1136,8 @@ h2 {
 }
 
 .console-help-panel {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
+    background: var(--pnl);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     padding: 1.25rem;
     min-width: 280px;
@@ -1085,8 +1149,8 @@ h2 {
     gap: 0.3rem 1rem;
     margin: 0.75rem 0;
 }
-.console-help-panel dt { font-family: var(--mono); color: var(--text); }
-.console-help-panel dd { margin: 0; color: var(--text-muted); }
+.console-help-panel dt { font-family: var(--mono); color: var(--tx); }
+.console-help-panel dd { margin: 0; color: var(--tx2); }
 
 @media (max-width: 768px) {
     .console-stack { width: 220px; flex-basis: 220px; }
@@ -1116,7 +1180,7 @@ h2 {
 
 .console-view-panel {
     background: var(--bg);
-    border: 1px solid var(--border);
+    border: 1px solid var(--ln);
     border-radius: var(--radius);
     width: 100%;
     max-width: 1100px;
@@ -1131,8 +1195,8 @@ h2 {
     align-items: center;
     justify-content: space-between;
     padding: 0.75rem 1.25rem;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-surface);
+    border-bottom: 1px solid var(--ln);
+    background: var(--pnl);
 }
 
 .console-view-topbar h2 { margin: 0; font-size: 1.05rem; }
@@ -1150,14 +1214,14 @@ h2 {
 .container-task-group-title {
     font-size: 0.85rem;
     font-weight: 700;
-    color: var(--text-muted);
+    color: var(--mu);
     margin: 0 0 0.4rem;
 }
 
 .container-scan-status {
     margin-top: 0.5rem;
     font-size: 0.85rem;
-    color: var(--text-muted);
+    color: var(--tx2);
 }
 
 @media (max-width: 768px) {
