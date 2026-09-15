@@ -355,7 +355,7 @@ func computeBuiltinFailures(ctx context.Context, deps Deps, projectDir string, r
 		if _, ok := builtin.Lookup(r.WorkflowName); !ok {
 			continue
 		}
-		if !isUserInitiatedBuiltinRun(ctx, deps, r) {
+		if !IsUserInitiatedBuiltinRun(ctx, deps.TaskStore, r) {
 			continue
 		}
 		if _, seen := byWorkflow[r.WorkflowName]; !seen {
@@ -391,21 +391,25 @@ func computeBuiltinFailures(ctx context.Context, deps Deps, projectDir string, r
 	return items
 }
 
-// isUserInitiatedBuiltinRun reports whether run r of a built-in workflow was
+// IsUserInitiatedBuiltinRun reports whether run r of a built-in workflow was
 // started by the user rather than an automatic daemon trigger (e.g. the
 // post-task intent-scan trigger). See builtin.AutoTriggerTitles for why this
 // requires a Task lookup rather than a field on Run. Fails open (true) when
 // it can't be determined, since builtin.AutoTriggerTitles has no entry (no
-// known auto-trigger to rule out) or TaskStore/TaskID is unavailable.
-func isUserInitiatedBuiltinRun(ctx context.Context, deps Deps, r *domain.Run) bool {
+// known auto-trigger to rule out) or taskStore/TaskID is unavailable.
+//
+// Exported for reuse by the task-stack API (internal/adapters/web), which
+// excludes user-initiated built-in runs from its groups so they can be
+// surfaced separately by the built-in grouping ticket.
+func IsUserInitiatedBuiltinRun(ctx context.Context, taskStore ports.TaskStore, r *domain.Run) bool {
 	autoTitle, hasAuto := builtin.AutoTriggerTitles[r.WorkflowName]
 	if !hasAuto {
 		return true
 	}
-	if deps.TaskStore == nil || r.TaskID == "" {
+	if taskStore == nil || r.TaskID == "" {
 		return true
 	}
-	task, err := deps.TaskStore.GetTask(ctx, r.TaskID)
+	task, err := taskStore.GetTask(ctx, r.TaskID)
 	if err != nil || task == nil {
 		return true
 	}

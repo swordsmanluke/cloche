@@ -57,6 +57,13 @@ func WithTaskProvider(tp TaskProvider) HandlerOption {
 	return func(h *Handler) { h.taskProvider = tp }
 }
 
+// WithTaskStore sets the task store used to resolve Task/Attempt records
+// (title, source, attempt ordinal) for the task-stack API. Optional; when
+// unset, the task-stack endpoint falls back to per-run data only.
+func WithTaskStore(ts ports.TaskStore) HandlerOption {
+	return func(h *Handler) { h.taskStore = ts }
+}
+
 // WithAttentionProvider sets the provider used to compute the "Needs you"
 // attention set (see internal/attention).
 func WithAttentionProvider(ap AttentionProvider) HandlerOption {
@@ -205,6 +212,7 @@ type Handler struct {
 	container         ContainerLogger
 	logBroadcast      *logstream.Broadcaster
 	taskProvider      TaskProvider
+	taskStore         ports.TaskStore
 	attentionProvider AttentionProvider
 	occupancyProvider OccupancyProvider
 	orchestrateFn     func(ctx context.Context, projectDir string) (int, error)
@@ -286,6 +294,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows", h.handleAPIWorkflows)
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows/{workflow}/steps/{step}/content", h.handleAPIStepContent)
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks", h.handleAPITasks)
+	h.mux.HandleFunc("GET /api/projects/{name}/tasks/stack", h.handleAPITaskStack)
 	h.mux.HandleFunc("GET /api/projects/{name}/attention", h.handleAPIProjectAttention)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
 	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
