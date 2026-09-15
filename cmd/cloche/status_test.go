@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"google.golang.org/grpc"
@@ -25,6 +26,7 @@ type statusMockClient struct {
 	usageResp       *pb.GetUsageResponse
 	statusResp      *pb.GetStatusResponse
 	statusRespByID  map[string]*pb.GetStatusResponse
+	attentionResp   *pb.GetAttentionResponse
 }
 
 func (m *statusMockClient) GetVersion(_ context.Context, _ *pb.GetVersionRequest, _ ...grpc.CallOption) (*pb.GetVersionResponse, error) {
@@ -76,6 +78,13 @@ func (m *statusMockClient) GetStatus(_ context.Context, req *pb.GetStatusRequest
 		return m.statusResp, nil
 	}
 	return &pb.GetStatusResponse{}, nil
+}
+
+func (m *statusMockClient) GetAttention(_ context.Context, _ *pb.GetAttentionRequest, _ ...grpc.CallOption) (*pb.GetAttentionResponse, error) {
+	if m.attentionResp != nil {
+		return m.attentionResp, nil
+	}
+	return &pb.GetAttentionResponse{}, nil
 }
 
 func TestCmdStatusOverview_ProjectMode(t *testing.T) {
@@ -688,6 +697,71 @@ func TestPrintWebStatus(t *testing.T) {
 				t.Errorf("expected output not to contain %q, got:\n%s", tc.notWant, out)
 			}
 		})
+	}
+}
+
+func TestCmdStatusOverview_NeedsYou(t *testing.T) {
+	client := &statusMockClient{
+		versionResp: &pb.GetVersionResponse{Version: "2.0.0"},
+		projectInfoResp: &pb.GetProjectInfoResponse{
+			Name:        "myproject",
+			Concurrency: 1,
+			LoopRunning: true,
+		},
+		listRunsResp:  &pb.ListRunsResponse{},
+		listTasksResp: &pb.ListTasksResponse{},
+		attentionResp: &pb.GetAttentionResponse{
+			Items: []*pb.AttentionItem{
+				{
+					Kind:    "parked",
+					TaskId:  "task-1",
+					RunId:   "run-1",
+					Reason:  `run parked awaiting a reply on myproject/ask-1 ("which branch?")`,
+					Since:   time.Now().Add(-90 * time.Minute).Format(time.RFC3339),
+					Actions: []string{"reply", "resume"},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	ctx := context.Background()
+	cmdStatusProject(ctx, client, &buf, "/fake/project")
+
+	out := buf.String()
+	if !strings.Contains(out, "Needs you (1):") {
+		t.Errorf("expected 'Needs you (1):' header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "[parked]") {
+		t.Errorf("expected kind marker '[parked]', got:\n%s", out)
+	}
+	if !strings.Contains(out, "task-1") {
+		t.Errorf("expected task ID in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Actions: reply, resume") {
+		t.Errorf("expected actions line, got:\n%s", out)
+	}
+}
+
+func TestCmdStatusOverview_NeedsYou_Empty(t *testing.T) {
+	client := &statusMockClient{
+		versionResp: &pb.GetVersionResponse{Version: "2.0.0"},
+		projectInfoResp: &pb.GetProjectInfoResponse{
+			Name:        "myproject",
+			Concurrency: 1,
+			LoopRunning: true,
+		},
+		listRunsResp:  &pb.ListRunsResponse{},
+		listTasksResp: &pb.ListTasksResponse{},
+	}
+
+	var buf bytes.Buffer
+	ctx := context.Background()
+	cmdStatusProject(ctx, client, &buf, "/fake/project")
+
+	out := buf.String()
+	if strings.Contains(out, "Needs you") {
+		t.Errorf("expected no 'Needs you' section when empty, got:\n%s", out)
 	}
 }
 

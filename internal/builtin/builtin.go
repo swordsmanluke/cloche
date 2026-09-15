@@ -33,3 +33,14 @@ func All() map[string]*domain.Workflow {
 	}
 	return all
 }
+
+// AutoTriggerTitles maps a built-in workflow name to the domain.Task.Title
+// the daemon assigns when it dispatches that workflow automatically (as
+// opposed to a user-initiated `cloche run <name>` / `cloche intent scan`).
+// domain.Run has no dedicated "origin" field, and every host-workflow run
+// gets a synthesized, one-off TaskID (see ensureTaskAndAttempt), so this
+// title comparison on the associated Task is the only signal available to
+// distinguish automatic from user-initiated runs of the same workflow.
+var AutoTriggerTitles = map[string]string{
+	"intent-scan": "Incremental intent scan (post-task)",
+}

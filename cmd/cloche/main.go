@@ -609,6 +609,9 @@ func cmdStatusProject(ctx context.Context, client pb.ClocheServiceClient, w io.W
 	// Active tasks with nested runs.
 	printActiveTasks(ctx, client, w, projectDir)
 
+	// Needs you: parked runs, stale claims, repeat failures, long polls.
+	printNeedsYou(ctx, client, w, projectDir)
+
 	// Burn rate section: show per-agent token usage for the last hour.
 	printBurnRate(ctx, client, w, projectDir)
 }
@@ -633,8 +636,41 @@ func cmdStatusGlobal(ctx context.Context, client pb.ClocheServiceClient, w io.Wr
 	// Active tasks with nested runs.
 	printActiveTasks(ctx, client, w, "")
 
+	// Needs you: parked runs, stale claims, repeat failures, long polls.
+	printNeedsYou(ctx, client, w, "")
+
 	// Burn rate section: show per-agent token usage for the last hour.
 	printBurnRate(ctx, client, w, "")
+}
+
+// printNeedsYou displays the "Needs you" attention set: items requiring
+// human action across the daemon's derivation (parked runs, stale tracker
+// claims, repeated failures, long-running polls, repeated built-in workflow
+// failures). Prints nothing when the set is empty.
+func printNeedsYou(ctx context.Context, client pb.ClocheServiceClient, w io.Writer, projectDir string) {
+	resp, err := client.GetAttention(ctx, &pb.GetAttentionRequest{
+		ProjectDir: projectDir,
+		All:        projectDir == "",
+	})
+	if err != nil || len(resp.Items) == 0 {
+		return
+	}
+
+	fmt.Fprintf(w, "Needs you (%d):\n", len(resp.Items))
+	for _, item := range resp.Items {
+		id := item.TaskId
+		if id == "" {
+			id = item.RunId
+		}
+		age := formatLastPollElapsed(item.Since)
+		if age != "" {
+			age = fmt.Sprintf(" (%s ago)", age)
+		}
+		fmt.Fprintf(w, "  [%s] %s: %s%s\n", item.Kind, colorID(id), item.Reason, age)
+		if len(item.Actions) > 0 {
+			fmt.Fprintf(w, "    Actions: %s\n", strings.Join(item.Actions, ", "))
+		}
+	}
 }
 
 // printBurnRate fetches and displays per-agent token burn rates for the last hour.

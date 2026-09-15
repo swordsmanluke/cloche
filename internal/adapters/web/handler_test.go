@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
+	"github.com/cloche-dev/cloche/internal/attention"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/stretchr/testify/assert"
@@ -2026,21 +2027,21 @@ func TestProjectDetail_RendersLayoutEngine(t *testing.T) {
 	body := w.Body.String()
 
 	// Layout engine key features
-	assert.Contains(t, body, "workflow-dag")           // DAG container
-	assert.Contains(t, body, "showWorkflow")           // Main render function
-	assert.Contains(t, body, "layerOf")                // Layer assignment
-	assert.Contains(t, body, "topoOrder")              // Topological sort
-	assert.Contains(t, body, "dag-link-node")           // Wire column link node dots
-	assert.Contains(t, body, "wireColStart")            // Wire column start position
-	assert.Contains(t, body, "layerGap")               // Horizontal layer spacing
-	assert.Contains(t, body, "termWires")              // Terminal wire merging
-	assert.Contains(t, body, "maxOffset")              // Max endpoint offset to eliminate elbow joins
-	assert.Contains(t, body, "orthoPath")              // Orthogonal (right-angle) path helper
-	assert.Contains(t, body, "isSuccessResult")        // Success result detection helper
-	assert.Contains(t, body, "resultColor")            // Color mapping for wire results
-	assert.Contains(t, body, "wireColumns")            // Wire column routing for failure paths
-	assert.Contains(t, body, "isFailureResult")        // Failure result detection helper
-	assert.Contains(t, body, "colorPalette")           // Multi-color palette for custom results
+	assert.Contains(t, body, "workflow-dag")    // DAG container
+	assert.Contains(t, body, "showWorkflow")    // Main render function
+	assert.Contains(t, body, "layerOf")         // Layer assignment
+	assert.Contains(t, body, "topoOrder")       // Topological sort
+	assert.Contains(t, body, "dag-link-node")   // Wire column link node dots
+	assert.Contains(t, body, "wireColStart")    // Wire column start position
+	assert.Contains(t, body, "layerGap")        // Horizontal layer spacing
+	assert.Contains(t, body, "termWires")       // Terminal wire merging
+	assert.Contains(t, body, "maxOffset")       // Max endpoint offset to eliminate elbow joins
+	assert.Contains(t, body, "orthoPath")       // Orthogonal (right-angle) path helper
+	assert.Contains(t, body, "isSuccessResult") // Success result detection helper
+	assert.Contains(t, body, "resultColor")     // Color mapping for wire results
+	assert.Contains(t, body, "wireColumns")     // Wire column routing for failure paths
+	assert.Contains(t, body, "isFailureResult") // Failure result detection helper
+	assert.Contains(t, body, "colorPalette")    // Multi-color palette for custom results
 }
 
 func TestStepOutput_DoesNotFallBackToLiveDockerLogs(t *testing.T) {
@@ -2128,6 +2129,101 @@ func (m *mockTaskProvider) ReleaseTask(ctx context.Context, projectDir string, t
 	}
 	m.releasedTask = taskID
 	return nil
+}
+
+// mockAttentionProvider implements AttentionProvider for testing.
+type mockAttentionProvider struct {
+	items map[string][]attention.Item // projectDir -> items
+	err   error
+}
+
+func (m *mockAttentionProvider) AttentionItems(_ context.Context, projectDir string) ([]attention.Item, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.items[projectDir], nil
+}
+
+func TestAPIProjectAttention_WithItems(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	since := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	h.attentionProvider = &mockAttentionProvider{items: map[string][]attention.Item{
+		projectDir: {
+			{Kind: attention.KindParked, ProjectDir: projectDir, TaskID: "task-1", RunID: "run-1", Reason: "run parked", Since: since, Actions: []string{"reply"}, ThreadAddress: "myapp/ask-1"},
+		},
+	}}
+
+	req := httptest.NewRequest("GET", "/api/projects/myapp/attention", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	var items []attention.Item
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &items))
+	require.Len(t, items, 1)
+	assert.Equal(t, attention.KindParked, items[0].Kind)
+	assert.Equal(t, "task-1", items[0].TaskID)
+	assert.Equal(t, "myapp/ask-1", items[0].ThreadAddress)
+}
+
+func TestAPIProjectAttention_NoProvider(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	req := httptest.NewRequest("GET", "/api/projects/myapp/attention", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var items []attention.Item
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &items))
+	assert.Empty(t, items)
+}
+
+func TestAPIProjects_FoldsAttentionCount(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	projectDir := "/home/user/projects/myapp"
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	h.attentionProvider = &mockAttentionProvider{items: map[string][]attention.Item{
+		projectDir: {
+			{Kind: attention.KindParked, ProjectDir: projectDir},
+			{Kind: attention.KindLongPoll, ProjectDir: projectDir},
+		},
+	}}
+
+	req := httptest.NewRequest("GET", "/api/projects", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var projects []struct {
+		Dir            string `json:"dir"`
+		AttentionCount int    `json:"attention_count"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &projects))
+	require.Len(t, projects, 1)
+	assert.Equal(t, 2, projects[0].AttentionCount)
 }
 
 func TestAPITasks_WithTasks(t *testing.T) {

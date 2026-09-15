@@ -5256,3 +5256,71 @@ func TestEnableLoop_StopsNestedLoopWhenParentEnabled(t *testing.T) {
 	dirs := srv.ActiveLoopDirs()
 	assert.Equal(t, []string{parentDir}, dirs)
 }
+
+func TestAttentionItems_Parked(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	projectDir := "/home/user/projects/myapp"
+
+	run := domain.NewRun("run-1", "main")
+	run.ProjectDir = projectDir
+	run.State = domain.RunStateParked
+	run.ParkedThreadID = "thread-1"
+	run.ParkedTitle = "which branch?"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	thread := &domain.HelpThread{
+		ID:        "thread-1",
+		Channel:   "myapp",
+		Name:      "ask-1",
+		RunID:     "run-1",
+		Title:     "which branch?",
+		State:     domain.ThreadStateAwaitingUser,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	require.NoError(t, store.CreateThread(ctx, thread))
+
+	srv := server.NewClocheServer(store, nil)
+	items, err := srv.AttentionItems(ctx, projectDir)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.EqualValues(t, "parked", items[0].Kind)
+	assert.Equal(t, "myapp/ask-1", items[0].ThreadAddress)
+	assert.Equal(t, "run-1", items[0].RunID)
+}
+
+func TestGetAttention_RPC(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	projectDir := "/home/user/projects/myapp"
+
+	run := domain.NewRun("run-1", "main")
+	run.ProjectDir = projectDir
+	run.State = domain.RunStateParked
+	run.ParkedThreadID = "thread-1"
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.CreateThread(ctx, &domain.HelpThread{
+		ID: "thread-1", Channel: "myapp", Name: "ask-1", RunID: "run-1",
+		State: domain.ThreadStateAwaitingUser, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	srv := server.NewClocheServer(store, nil)
+
+	resp, err := srv.GetAttention(ctx, &pb.GetAttentionRequest{ProjectDir: projectDir})
+	require.NoError(t, err)
+	require.Len(t, resp.Items, 1)
+	assert.Equal(t, "parked", resp.Items[0].Kind)
+	assert.Equal(t, "myapp/ask-1", resp.Items[0].ThreadAddress)
+
+	// All=true aggregates across every project.
+	allResp, err := srv.GetAttention(ctx, &pb.GetAttentionRequest{All: true})
+	require.NoError(t, err)
+	require.Len(t, allResp.Items, 1)
+}

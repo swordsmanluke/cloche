@@ -113,6 +113,21 @@ type IntentConfig struct {
 	Inject         string `toml:"inject"`
 }
 
+// AttentionConfig controls the "Needs you" attention derivation (see
+// internal/attention): the per-project list of items that require human
+// action — parked runs, stale tracker claims, repeated task failures,
+// long-running polls, and repeated built-in workflow failures.
+// RepeatFailureThreshold is the number of consecutive failed attempts (for a
+// task) or failed runs (for a built-in workflow, within
+// BuiltinFailureWindow) before flagging it; default 3. LongPollThreshold and
+// BuiltinFailureWindow are duration strings (e.g. "2h", "24h"); empty uses
+// the package default.
+type AttentionConfig struct {
+	RepeatFailureThreshold int    `toml:"repeat_failure_threshold"`
+	LongPollThreshold      string `toml:"long_poll_threshold"`
+	BuiltinFailureWindow   string `toml:"builtin_failure_window"`
+}
+
 type Config struct {
 	Active        bool                `toml:"active"`
 	Daemon        DaemonConfig        `toml:"daemon"`
@@ -122,6 +137,7 @@ type Config struct {
 	Git           GitConfig           `toml:"git"`
 	Help          HelpConfig          `toml:"help"`
 	Intent        IntentConfig        `toml:"intent"`
+	Attention     AttentionConfig     `toml:"attention"`
 	Repositories  []RepositoryConfig  `toml:"repositories"`
 }
 
@@ -141,6 +157,11 @@ func defaults() Config {
 		},
 		Intent: IntentConfig{
 			ScanAfterTasks: true,
+		},
+		Attention: AttentionConfig{
+			RepeatFailureThreshold: 3,
+			LongPollThreshold:      "2h",
+			BuiltinFailureWindow:   "24h",
 		},
 	}
 }

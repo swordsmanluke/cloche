@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloche-dev/cloche/internal/attention"
 	"github.com/cloche-dev/cloche/internal/builtin"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
@@ -54,6 +55,12 @@ func WithLogStore(ls ports.LogStore) HandlerOption {
 // WithTaskProvider sets the task provider for querying orchestration loop task state.
 func WithTaskProvider(tp TaskProvider) HandlerOption {
 	return func(h *Handler) { h.taskProvider = tp }
+}
+
+// WithAttentionProvider sets the provider used to compute the "Needs you"
+// attention set (see internal/attention).
+func WithAttentionProvider(ap AttentionProvider) HandlerOption {
+	return func(h *Handler) { h.attentionProvider = ap }
 }
 
 // WithOrchestrateFunc sets the function used to trigger the orchestration loop for a project.
@@ -118,22 +125,28 @@ type TaskProvider interface {
 	ReleaseTask(ctx context.Context, projectDir string, taskID string) error
 }
 
+// AttentionProvider computes the "Needs you" attention set for a project.
+type AttentionProvider interface {
+	AttentionItems(ctx context.Context, projectDir string) ([]attention.Item, error)
+}
+
 type Handler struct {
-	store         ports.RunStore
-	captures      ports.CaptureStore
-	logStore      ports.LogStore
-	container     ContainerLogger
-	logBroadcast  *logstream.Broadcaster
-	taskProvider  TaskProvider
-	orchestrateFn func(ctx context.Context, projectDir string) (int, error)
-	loopStatusFn  func(projectDir string) bool
-	stopLoopFn    func(ctx context.Context, projectDir string) error
-	stopRunFn     func(ctx context.Context, taskID string) error
-	scanFn        func(ctx context.Context, projectDir string) (string, error)
-	mcpSecret     []byte      // enables /mcp when non-empty; see WithHelpMCP
-	askHelpFn     AskHelpFunc // handles ask_user tool calls on /mcp
-	pages         map[string]*template.Template
-	mux           *http.ServeMux
+	store             ports.RunStore
+	captures          ports.CaptureStore
+	logStore          ports.LogStore
+	container         ContainerLogger
+	logBroadcast      *logstream.Broadcaster
+	taskProvider      TaskProvider
+	attentionProvider AttentionProvider
+	orchestrateFn     func(ctx context.Context, projectDir string) (int, error)
+	loopStatusFn      func(projectDir string) bool
+	stopLoopFn        func(ctx context.Context, projectDir string) error
+	stopRunFn         func(ctx context.Context, taskID string) error
+	scanFn            func(ctx context.Context, projectDir string) (string, error)
+	mcpSecret         []byte      // enables /mcp when non-empty; see WithHelpMCP
+	askHelpFn         AskHelpFunc // handles ask_user tool calls on /mcp
+	pages             map[string]*template.Template
+	mux               *http.ServeMux
 }
 
 // NewHandler creates a web dashboard handler.
@@ -204,6 +217,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows", h.handleAPIWorkflows)
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows/{workflow}/steps/{step}/content", h.handleAPIStepContent)
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks", h.handleAPITasks)
+	h.mux.HandleFunc("GET /api/projects/{name}/attention", h.handleAPIProjectAttention)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
 	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
 	h.mux.HandleFunc("GET /api/projects/{name}/loop/status", h.handleAPILoopStatus)
@@ -1278,11 +1292,12 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 		Total  int    `json:"total"`
 	}
 	type apiProject struct {
-		Dir         string    `json:"dir"`
-		Label       string    `json:"label"`
-		Slug        string    `json:"slug"`
-		Health      apiHealth `json:"health"`
-		ActiveCount int       `json:"active_count"`
+		Dir            string    `json:"dir"`
+		Label          string    `json:"label"`
+		Slug           string    `json:"slug"`
+		Health         apiHealth `json:"health"`
+		ActiveCount    int       `json:"active_count"`
+		AttentionCount int       `json:"attention_count"`
 	}
 	result := make([]apiProject, len(projects))
 	for i, dir := range projects {
@@ -1298,6 +1313,12 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 				activeCount++
 			}
 		}
+		var attentionCount int
+		if h.attentionProvider != nil {
+			if items, err := h.attentionProvider.AttentionItems(r.Context(), dir); err == nil {
+				attentionCount = len(items)
+			}
+		}
 		result[i] = apiProject{
 			Dir:   dir,
 			Label: labels[dir],
@@ -1308,7 +1329,8 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 				Failed: health.Failed,
 				Total:  health.Total,
 			},
-			ActiveCount: activeCount,
+			ActiveCount:    activeCount,
+			AttentionCount: attentionCount,
 		}
 	}
 
@@ -2549,6 +2571,31 @@ func (h *Handler) handleAPITasks(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tasks)
+}
+
+// handleAPIProjectAttention returns the "Needs you" attention items for a project.
+func (h *Handler) handleAPIProjectAttention(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if h.attentionProvider == nil {
+		json.NewEncoder(w).Encode([]attention.Item{})
+		return
+	}
+
+	items, err := h.attentionProvider.AttentionItems(r.Context(), dir)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to compute attention: %v", err)})
+		return
+	}
+	if items == nil {
+		items = []attention.Item{}
+	}
+	json.NewEncoder(w).Encode(items)
 }
 
 // handleAPIAllTasks returns a JSON task summary list derived from all runs.

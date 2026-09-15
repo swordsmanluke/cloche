@@ -30,6 +30,12 @@ service ClocheService {
 
   rpc GetProjectInfo(GetProjectInfoRequest) returns (GetProjectInfoResponse);
 
+  // GetAttention returns the "Needs you" attention set: items across a
+  // project (or all projects) that require human action — parked runs,
+  // stale tracker claims, repeated task failures, long-running polls, and
+  // repeated built-in workflow failures. See internal/attention.
+  rpc GetAttention(GetAttentionRequest) returns (GetAttentionResponse);
+
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
 
   // Complete returns shell completion candidates for the given partial command line.
@@ -305,6 +311,28 @@ message GetProjectInfoResponse {
   int32 max_consecutive_failures = 15; // halt loop after N consecutive failures
   repeated Repository repositories = 16;
   int32 resumable_runs_count = 17; // count of runs parked/resumable (set by QuiesceRuns or daemon restart gate)
+}
+
+message GetAttentionRequest {
+  string project_dir = 1;  // resolve by absolute path
+  bool all = 2;            // aggregate across all projects (project_dir ignored)
+}
+
+// AttentionItem is one entry in the "Needs you" set: a task/run that needs a
+// human to look at it, why, since when, and what can be done about it.
+message AttentionItem {
+  string kind = 1;             // "parked" | "stale-claim" | "repeat-failure" | "long-poll" | "builtin-failures"
+  string project_dir = 2;
+  string task_id = 3;
+  string run_id = 4;
+  string reason = 5;           // one-line human-readable explanation
+  string since = 6;            // RFC3339 timestamp of when this item started needing attention
+  repeated string actions = 7; // short action verbs that apply, e.g. "reply", "release", "retry"
+  string thread_address = 8;   // set for kind == "parked": the help-thread address awaiting a reply
+}
+
+message GetAttentionResponse {
+  repeated AttentionItem items = 1;
 }
 
 message GetVersionRequest {}

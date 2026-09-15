@@ -1035,12 +1035,28 @@ status for that task.
 | Argument | Output |
 |----------|--------|
 | Task ID | Task status, title, project, latest attempt ID, result, end timestamp, and total tokens consumed across all attempts (omitted if no usage data). When the task is `waiting` at a poll step, also shows the step name, time since last poll, and poll count (e.g. `Waiting: code-review — last polled 4m ago (3 polls)`). When the run has an open help thread (`clo ask` / `ask_user` blocked awaiting a reply), also shows `Pending question: <title> (<channel>/<name>)` — this can appear even while the run is otherwise `running`. When a help-channel ask went unanswered past `park_after`, shows `parked — awaiting reply: <title> (<channel>/<name>)`; reply with `cloche threads reply <channel>/<name> ...` to resume. |
-| _(none)_ | Daemon version, web dashboard status (`Web: http://<addr>` if up, or `Web: DOWN (<error>)` if configured but its listener is down), run statistics (past hour), active tasks with attempt IDs and in-progress runs shown as composite IDs (e.g. `cloche-1234:aj19:main`), and per-agent token burn rate for the last hour (omitted if no usage data). In a project directory, also shows project name, concurrency, loop state, and the count of resumable (parked) runs. The web dashboard line is omitted entirely if the dashboard isn't configured (`CLOCHE_HTTP`/`[daemon] http` unset). |
+| _(none)_ | Daemon version, web dashboard status (`Web: http://<addr>` if up, or `Web: DOWN (<error>)` if configured but its listener is down), run statistics (past hour), active tasks with attempt IDs and in-progress runs shown as composite IDs (e.g. `cloche-1234:aj19:main`), a "Needs you" section (see below), and per-agent token burn rate for the last hour (omitted if no usage data). In a project directory, also shows project name, concurrency, loop state, and the count of resumable (parked) runs. The web dashboard line is omitted entirely if the dashboard isn't configured (`CLOCHE_HTTP`/`[daemon] http` unset). |
 
 | Flag | Description |
 |------|-------------|
 | `--all` | Show global stats instead of project-specific stats (overview mode only). |
 | `--no-color` | Disable ANSI color output. Set `CLOCHE_FORCE_COLOR=1` to force color on even when stdout is not a terminal. |
+
+#### "Needs you"
+
+Overview mode includes a `Needs you (N):` section (omitted when empty) listing items
+that require human action, derived by `internal/attention`:
+
+| Kind | Meaning | Actions shown |
+|------|---------|---------------|
+| `parked` | A run is parked awaiting a reply on a help thread. | `reply`, `resume` |
+| `stale-claim` | The task tracker still shows a task in-progress but no pending/running run is claiming it. | `release` |
+| `repeat-failure` | A task still open in the tracker has hit the consecutive-failure threshold. | `retry`, `close` |
+| `long-poll` | A poll step has been waiting longer than the configured threshold. | `logs`, `cancel` |
+| `builtin-failures` | A user-initiated built-in workflow (e.g. `intent-scan`) has failed repeatedly within the failure window. | `retry`, `logs` |
+
+Each line shows the kind, the task or run ID, the reason, and how long it's been
+waiting. Thresholds are configured via `[attention]` in `config.toml` (see below).
 
 ### `cloche list`
 
@@ -1813,6 +1829,18 @@ for the design rationale.
 | `token_budget` | `0` | Overrides `intent.Select`'s default selection budget (~2000 tokens). Zero means "use the default". |
 | `inject` | _(unset)_ | Set to `"off"` to disable auto-prepending requirements to agent-step prompts project-wide. A workflow or step config key `intent_tracking = false` opts out at that scope instead (also excludes the step's logs from collect-sources mining). |
 | `scan_after_tasks` | `true` | Enqueue an incremental `intent-scan` run after each completed `main` orchestration task attempt. |
+
+### `[attention]`
+
+Controls the thresholds used to derive the "Needs you" set shown by `cloche status`
+(see above) and the daemon's `GetAttention` RPC. See `internal/attention` for the
+derivation logic.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `repeat_failure_threshold` | `3` | Consecutive failed attempts for a task (or failed runs for a built-in workflow, within `builtin_failure_window`) before it's flagged. |
+| `long_poll_threshold` | `"2h"` | Duration string (e.g. `"2h"`, `"90m"`); a poll step waiting longer than this is flagged. |
+| `builtin_failure_window` | `"24h"` | Duration string bounding how far back built-in workflow runs are considered for the repeated-failure check. |
 
 ### `[[repositories]]`
 

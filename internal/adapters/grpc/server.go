@@ -20,6 +20,8 @@ import (
 	"github.com/cloche-dev/cloche/internal/activitylog"
 	"github.com/cloche-dev/cloche/internal/adapters/docker"
 	"github.com/cloche-dev/cloche/internal/adapters/web"
+	"github.com/cloche-dev/cloche/internal/attention"
+	"github.com/cloche-dev/cloche/internal/builtin"
 	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/cloche-dev/cloche/internal/dsl"
@@ -3565,7 +3567,7 @@ func (t *intentScanTrigger) EnqueueScan(ctx context.Context, projectDir, taskID 
 	_, err := t.server.runHostWorkflow(ctx, &pb.RunWorkflowRequest{
 		ProjectDir:   projectDir,
 		WorkflowName: "intent-scan",
-		Title:        "Incremental intent scan (post-task)",
+		Title:        builtin.AutoTriggerTitles["intent-scan"],
 	})
 	return err
 }
@@ -3645,6 +3647,97 @@ func (s *ClocheServer) GetLoopTasks(projectDir string) []web.TaskEntry {
 		entries[i] = entry
 	}
 	return entries
+}
+
+// AttentionItems computes the "Needs you" attention set for a single
+// project (see internal/attention). It implements web.AttentionProvider so
+// the web dashboard — which runs in-process with the daemon — can call it
+// directly rather than over gRPC.
+func (s *ClocheServer) AttentionItems(ctx context.Context, projectDir string) ([]attention.Item, error) {
+	cfg, err := config.Load(projectDir)
+	if err != nil {
+		cfg = &config.Config{}
+	}
+	def := attention.DefaultConfig()
+	aCfg := attention.Config{
+		RepeatFailureThreshold: cfg.Attention.RepeatFailureThreshold,
+		LongPollThreshold:      parseDurationOr(cfg.Attention.LongPollThreshold, def.LongPollThreshold),
+		BuiltinFailureWindow:   parseDurationOr(cfg.Attention.BuiltinFailureWindow, def.BuiltinFailureWindow),
+	}
+
+	deps := attention.Deps{RunStore: s.store, TaskStore: s.taskStore, Config: aCfg}
+	if hs, ok := s.store.(ports.HelpStore); ok {
+		deps.HelpStore = hs
+	}
+	if ps, ok := s.store.(ports.PollStore); ok {
+		deps.PollStore = ps
+	}
+
+	// The tracker must be queried fresh (never via the loop's cached
+	// GetTaskSnapshot) so stale-claim/repeat-failure reflect live state.
+	if hostWFs, _ := host.FindHostWorkflows(projectDir); hostWFs != nil {
+		if _, hasListTasks := hostWFs["list-tasks"]; hasListTasks {
+			deps.Tasks = func(ctx context.Context, projDir string) ([]host.Task, error) {
+				runner := &host.Runner{Store: s.store}
+				tasks, _, err := host.RunListTasksWorkflow(ctx, runner, projDir)
+				return tasks, err
+			}
+		}
+	}
+
+	return attention.Compute(ctx, deps, projectDir)
+}
+
+// GetAttention is the gRPC surface for AttentionItems, aggregating across
+// all projects when All is set (or ProjectDir is empty).
+func (s *ClocheServer) GetAttention(ctx context.Context, req *pb.GetAttentionRequest) (*pb.GetAttentionResponse, error) {
+	projectDir := normalizeProjectDir(req.ProjectDir)
+
+	var projectDirs []string
+	if req.All || projectDir == "" {
+		dirs, err := s.store.ListProjects(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("listing projects: %w", err)
+		}
+		projectDirs = dirs
+	} else {
+		projectDirs = []string{projectDir}
+	}
+
+	resp := &pb.GetAttentionResponse{}
+	for _, dir := range projectDirs {
+		items, err := s.AttentionItems(ctx, dir)
+		if err != nil {
+			log.Printf("attention: failed to compute for %s: %v", dir, err)
+			continue
+		}
+		for _, it := range items {
+			resp.Items = append(resp.Items, &pb.AttentionItem{
+				Kind:          string(it.Kind),
+				ProjectDir:    it.ProjectDir,
+				TaskId:        it.TaskID,
+				RunId:         it.RunID,
+				Reason:        it.Reason,
+				Since:         it.Since.Format(time.RFC3339),
+				Actions:       it.Actions,
+				ThreadAddress: it.ThreadAddress,
+			})
+		}
+	}
+	return resp, nil
+}
+
+// parseDurationOr parses s as a duration, falling back to def if s is empty
+// or invalid.
+func parseDurationOr(s string, def time.Duration) time.Duration {
+	if s == "" {
+		return def
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return def
+	}
+	return d
 }
 
 // ReleaseTask runs the release-task host workflow for a specific task,
