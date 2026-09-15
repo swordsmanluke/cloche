@@ -24,10 +24,14 @@ and is never copied into either experiment arm.
   tutorial-shaped prior would predict instead of what `DESIGN.md`
   specifies. Scores 0/16 on the prior-trap subset while still passing most
   of the general suite — proof the trap subset actually discriminates.
+- `audit/` (E6) — automated D1–D5 drift-constraint and SC1–SC12
+  standing-constraint checkers, plus the blinded-judging prep script. See
+  `audit/README.md`.
 - `tests/` — `unittest`-based tests: acceptance-level checks that encode
-  the criteria above (`test_corpus_acceptance.py`) and unit tests against
+  the criteria above (`test_corpus_acceptance.py`), unit tests against
   the reference implementation's lexer/parser/evaluator
-  (`test_reference_impl.py`).
+  (`test_reference_impl.py`), and the E6 checker/judge-bundle acceptance
+  tests (`test_audit_checks.py`, `test_judge_bundle.py`).
 
 ## Why no test checks `stdout` output from `bract run`
 
