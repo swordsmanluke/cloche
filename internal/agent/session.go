@@ -21,7 +21,9 @@ import (
 	"github.com/swordsmanluke/cloche/internal/logstream"
 	"github.com/swordsmanluke/cloche/internal/protocol"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 // SessionConfig holds configuration for the bidirectional session handler.
@@ -156,7 +158,15 @@ func (s *Session) Run(ctx context.Context) error {
 	for {
 		msg, err := stream.Recv()
 		if err != nil {
-			if ctx.Err() != nil {
+			// The daemon propagates our context's deadline to its own handler
+			// (via the grpc-timeout header), so a step that times out locally
+			// can also cause the server to independently tear down the stream
+			// around the same instant. Under scheduling delays, the resulting
+			// RST_STREAM can reach us fractionally before our local ctx.Err()
+			// flips non-nil, so also treat Canceled/DeadlineExceeded status
+			// codes as the expected, clean-exit teardown.
+			code := status.Code(err)
+			if ctx.Err() != nil || code == codes.Canceled || code == codes.DeadlineExceeded {
 				return nil // context cancelled, clean exit
 			}
 			return fmt.Errorf("receiving from AgentSession: %w", err)

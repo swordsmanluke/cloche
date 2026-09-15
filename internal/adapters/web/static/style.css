@@ -806,14 +806,14 @@ h2 {
     font-size: 0.8rem;
 }
 
-/* The centre pane is a column of auto-height sections (header, facts,
-   step strip, ...) topped and tailed by the task pane's own edges, with
-   the log pane as the sole flexible section: it claims all remaining
-   height and scrolls internally, instead of the whole column scrolling
-   together as one document. See docs/design/console-restructured-mock.html
-   .m5 .det (grid-template-rows: auto auto auto 1fr auto) for the reference
-   layout — flexbox here achieves the same "log gets every remaining pixel,
-   foot pinned" result without depending on a fixed count of visible rows. */
+/* The centre pane is a column of auto-height bands (task-header / why-line
+   / facts / step-strip / thread-panel), each padding itself to 1.1rem
+   horizontally and separated by 1px rules — console-centre itself stays
+   unpadded so the bands sit flush to the pane edges. The log pane is the
+   sole flexible band: it claims all remaining height and scrolls
+   internally, instead of the whole column scrolling together as one
+   document. See docs/design/console-restructured-mock.html .m5 .det
+   (grid-template-rows: auto auto auto 1fr auto) for the reference layout. */
 .console-centre {
     flex: 1 1 auto;
     display: flex;
@@ -826,14 +826,40 @@ h2 {
 
 .console-task-header {
     display: flex;
-    align-items: center;
-    gap: 0.75rem;
+    align-items: baseline;
+    gap: 1rem;
     flex: 0 0 auto;
-    padding: 1.25rem 1.25rem 0;
-    margin-bottom: 1rem;
+    padding: 0.7rem 1.1rem 0.4rem;
+    border-bottom: 1px solid var(--ln);
 }
 
-.console-task-header h2 { margin: 0; font-family: var(--font-sans); font-size: 1.2rem; }
+.console-task-id { color: var(--tx); font-size: 0.9rem; }
+
+.console-task-pill {
+    font-size: 0.62rem;
+    padding: 0.05rem 0.45rem;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.console-task-pill-run { background: var(--badge-running-bg); color: var(--badge-running-text); }
+.console-task-pill-ok { background: #1d3b2a; color: var(--ok); }
+.console-task-pill-bad { background: #472220; color: var(--bad); }
+.console-task-pill-warn { background: var(--acs); color: var(--warn); }
+.console-task-pill-neutral { background: var(--pnl2); color: var(--tx2); border: 1px solid var(--ln); }
+
+.console-task-title {
+    font-family: var(--font-sans);
+    color: var(--tx2);
+    font-size: 0.82rem;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 .console-facts-row {
     display: grid;
@@ -845,19 +871,17 @@ h2 {
 .console-facts-row dt { color: var(--mu); }
 .console-facts-row dd { margin: 0; }
 
-.console-facts-note { color: var(--tx2); font-size: 0.85rem; margin-top: 0.75rem; }
-
-.badge-parked { background: var(--pnl2); color: var(--tx2); border: 1px solid var(--ln); }
+.console-facts-note { color: var(--tx2); font-size: 0.85rem; margin: 0; }
 
 .console-header-actions { display: flex; gap: 0.4rem; margin-left: auto; }
 
 .console-why-line {
-    color: var(--tx2);
-    font-size: 0.9rem;
+    background: var(--acs);
+    color: var(--warn);
     flex: 0 0 auto;
-    padding: 0 1.25rem;
-    margin: -0.5rem 0 1rem;
-    max-width: 60ch;
+    padding: 0.4rem 1.1rem;
+    font-size: 0.7rem;
+    border-bottom: 1px solid var(--ln);
 }
 
 .console-run-once-form {
@@ -931,7 +955,7 @@ h2 {
     border-radius: var(--radius);
     padding: 0.75rem 1rem;
     flex: 0 0 auto;
-    margin: 0 1.25rem 1rem;
+    margin: 0.75rem 1.1rem;
 }
 
 .console-action-panel-head {
@@ -959,43 +983,47 @@ h2 {
 
 .console-action-diff { white-space: pre; }
 
-.console-facts-block { flex: 0 0 auto; padding: 0 1.25rem; margin-bottom: 1rem; }
-
-.console-attempt-tabs {
+/* .facts — a single wrapping horizontal instrument strip, not a key/value
+   table: attempt chips are just its leading entry. */
+.console-facts-block {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.35rem;
-    margin-bottom: 0.6rem;
+    flex: 0 0 auto;
+    gap: 1.6rem;
+    padding: 0.45rem 1.1rem;
+    border-bottom: 1px solid var(--ln);
+    font-size: 0.68rem;
+    color: var(--mu);
 }
 
-.console-attempt-tab {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    background: var(--bg);
+.console-facts-block b { color: var(--tx2); font-weight: 500; }
+
+.console-attempt-chips { display: inline-flex; gap: 0.25rem; }
+
+.console-attempt-chip {
     border: 1px solid var(--ln);
-    border-radius: var(--radius);
+    border-radius: 3px;
+    background: transparent;
     color: var(--tx2);
     font-family: var(--font);
-    font-size: 0.78rem;
-    padding: 0.25em 0.55em;
+    font-size: 0.68rem;
+    padding: 0 0.4rem;
     cursor: pointer;
 }
 
-.console-attempt-tab:hover { background: var(--pnl2); }
+.console-attempt-chip:hover { background: var(--pnl2); }
 
-.console-attempt-tab-active {
-    color: var(--tx);
-    border-color: var(--ac);
-}
-
-.console-attempt-tab-duration { color: var(--mu); }
+/* Order matters: a chip that is both the current attempt and a failed one
+   (.console-attempt-chip-on.console-attempt-chip-bad) keeps the amber
+   border/fill from -on but takes the red text from -bad. */
+.console-attempt-chip-on { border-color: var(--ac); color: var(--tx); background: var(--acs); }
+.console-attempt-chip-bad { color: var(--bad); }
 
 .console-step-strip {
     display: flex;
     align-items: stretch;
-    margin-bottom: 1rem;
-    padding: 0 1.25rem 0.5rem;
+    padding: 0.6rem 1.1rem;
+    border-bottom: 1px solid var(--ln);
     overflow-x: auto;
 }
 
@@ -1055,7 +1083,8 @@ h2 {
     flex-direction: column;
     gap: 0.75rem;
     flex: 0 0 auto;
-    padding: 0 1.25rem 1.25rem;
+    padding: 0.75rem 1.1rem;
+    border-bottom: 1px solid var(--ln);
 }
 
 .console-thread-head {
@@ -1133,8 +1162,8 @@ h2 {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.6rem 1.1rem 0;
-    margin-bottom: 0.5rem;
+    padding: 0.6rem 1.1rem 0.5rem;
+    border-bottom: 1px solid var(--ln);
     flex: 0 0 auto;
     flex-wrap: wrap;
 }

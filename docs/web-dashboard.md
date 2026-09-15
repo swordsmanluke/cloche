@@ -105,12 +105,14 @@ Shows the selected task's full detail:
   **Mute** (`POST /api/projects/{slug}/attention/mute`), which permanently suppresses that
   workflow's repeated-failure item. All four actions refresh the task stack in place
   (`GET .../tasks/stack`) rather than reloading the page.
-- **Facts row** — attempt tabs (number, run ID, outcome, duration; only shown when a task
-  has more than one attempt; `[` and `]` switch between them), plus the selected attempt's
-  top-level run ID, child run IDs, container ID and state, token usage per agent, the
-  prompt file and git revision used, and (on a retried attempt) which step the previous
-  attempt failed at. Backed by `GET /api/projects/{slug}/tasks/{taskId}/attempts` for the
-  attempt list and `GET /api/runs/{id}` for the selected attempt's detail.
+- **Facts row** — a single wrapping strip of label/value pairs. When a task has more than
+  one attempt, its leading entry is a group of attempt chips (attempt number + short run
+  ID; outcome and duration are in the chip's tooltip; the current attempt and any failed
+  attempts are colored distinctly; `[` and `]` switch between them). The rest of the strip
+  is the selected attempt's top-level run ID, child run IDs, container ID and state, token
+  usage per agent, the prompt file and git revision used, and (on a retried attempt) which
+  step the previous attempt failed at. Backed by `GET /api/projects/{slug}/tasks/{taskId}/attempts`
+  for the attempt list and `GET /api/runs/{id}` for the selected attempt's detail.
 - **Step strip** — one horizontal segment per step of the top-level run, with a spawned
   child run's steps inlined immediately after the workflow step that spawned them (the
   flattened-run tree already used by `GET /api/runs/{id}`) — the parent segment gets a `↳`

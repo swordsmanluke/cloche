@@ -1452,14 +1452,19 @@
         }
     }
 
-    function headerPillClass(headerState, run) {
+    // headerPillColorClass maps a header state onto one of the mock's four
+    // pill colors (run/ok/bad/warn) plus a neutral fallback for states the
+    // mock doesn't depict (queued, parked, cancelled/stopped).
+    function headerPillColorClass(headerState, run) {
         switch (headerState) {
-            case 'done': return 'badge-' + run.state;
-            case 'needs_you': return 'badge-failed';
-            case 'queued': return 'badge-pending';
-            case 'running': return 'badge-running';
-            case 'parked': return 'badge-parked';
-            default: return 'badge-cancelled';
+            case 'running': return 'console-task-pill-run';
+            case 'needs_you': return 'console-task-pill-warn';
+            case 'queued': return 'console-task-pill-warn';
+            case 'done':
+                if (run.state === 'succeeded') return 'console-task-pill-ok';
+                if (run.state === 'failed') return 'console-task-pill-bad';
+                return 'console-task-pill-neutral';
+            default: return 'console-task-pill-neutral';
         }
     }
 
@@ -1475,15 +1480,21 @@
         if (!el) return;
         el.innerHTML = '';
 
-        var title = document.createElement('h2');
-        title.textContent = detail.title;
-        el.appendChild(title);
+        var id = document.createElement('span');
+        id.className = 'console-task-id';
+        id.textContent = detail.taskId || (run && run.id) || '';
+        el.appendChild(id);
 
         var headerState = computeHeaderState(run);
         var pill = document.createElement('span');
-        pill.className = 'badge ' + headerPillClass(headerState, run);
+        pill.className = 'console-task-pill ' + headerPillColorClass(headerState, run);
         pill.textContent = headerPillLabel(headerState, run);
         el.appendChild(pill);
+
+        var title = document.createElement('span');
+        title.className = 'console-task-title';
+        title.textContent = detail.title;
+        el.appendChild(title);
 
         var actions = document.createElement('div');
         actions.className = 'console-header-actions';
@@ -1836,95 +1847,96 @@
             .catch(function () {});
     }
 
-    // ---------- centre pane: facts row + attempt tabs ----------
+    // ---------- centre pane: facts row + attempt chips ----------
 
+    // renderFactsRow builds the .facts instrument strip: a single wrapping
+    // horizontal band of "label value" pairs, with the attempt chips (when
+    // there's more than one attempt) as its leading entry rather than a
+    // hoisted tab row above it.
     function renderFactsRow(run) {
         var container = document.getElementById('console-facts-block');
         if (!container) return;
         container.innerHTML = '';
 
         if (detail.attempts.length > 1) {
-            container.appendChild(renderAttemptTabs());
+            container.appendChild(renderAttemptsFact());
         }
 
-        var dl = document.createElement('dl');
-        dl.className = 'console-facts-row';
         factsForRun(run).forEach(function (f) {
-            var dt = document.createElement('dt');
-            dt.textContent = f[0];
-            var dd = document.createElement('dd');
-            dd.textContent = f[1];
-            dl.appendChild(dt);
-            dl.appendChild(dd);
-        });
-        container.appendChild(dl);
-    }
-
-    function renderAttemptTabs() {
-        var wrap = document.createElement('div');
-        wrap.className = 'console-attempt-tabs';
-        detail.attempts.forEach(function (a, i) {
-            var tab = document.createElement('button');
-            tab.type = 'button';
-            tab.className = 'console-attempt-tab' + (i === detail.attemptIndex ? ' console-attempt-tab-active' : '');
-
-            var dot = document.createElement('span');
-            dot.className = 'run-dot ' + attemptDotClass(a.outcome);
-            tab.appendChild(dot);
+            var fact = document.createElement('span');
+            fact.className = 'console-fact';
 
             var label = document.createElement('span');
-            label.textContent = '#' + a.attempt_num;
-            tab.appendChild(label);
+            label.className = 'console-fact-label';
+            label.textContent = f[0];
+            fact.appendChild(label);
+            fact.appendChild(document.createTextNode(' '));
 
-            if (a.duration) {
-                var dur = document.createElement('span');
-                dur.className = 'console-attempt-tab-duration';
-                dur.textContent = a.duration;
-                tab.appendChild(dur);
-            }
+            var value = document.createElement('b');
+            value.textContent = f[1];
+            fact.appendChild(value);
 
-            tab.title = (a.run_id || '') + ' · ' + (a.outcome || '');
-            tab.addEventListener('click', function () { selectAttempt(i); });
-            wrap.appendChild(tab);
+            container.appendChild(fact);
         });
-        return wrap;
     }
 
-    function attemptDotClass(outcome) {
-        switch (outcome) {
-            case 'succeeded': return 'run-dot-succeeded';
-            case 'failed': return 'run-dot-failed';
-            case 'cancelled': return 'run-dot-cancelled';
-            case 'running': return 'run-dot-running';
-            default: return 'run-dot-pending';
-        }
+    // renderAttemptsFact renders the "attempt 1 s6hh 2 l0xa 3 vtmf" chip
+    // group as one fact among the others — bordered chips, current attempt
+    // amber-filled (.console-attempt-chip-on), failed attempts red
+    // (.console-attempt-chip-bad). Chips stay clickable for switching and
+    // the [ / ] keybinding still calls the same selectAttempt/switchAttempt.
+    function renderAttemptsFact() {
+        var fact = document.createElement('span');
+        fact.className = 'console-fact';
+
+        var label = document.createElement('span');
+        label.className = 'console-fact-label';
+        label.textContent = 'attempt';
+        fact.appendChild(label);
+        fact.appendChild(document.createTextNode(' '));
+
+        var chips = document.createElement('span');
+        chips.className = 'console-attempt-chips';
+        detail.attempts.forEach(function (a, i) {
+            var chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'console-attempt-chip';
+            if (i === detail.attemptIndex) chip.classList.add('console-attempt-chip-on');
+            if (a.outcome === 'failed') chip.classList.add('console-attempt-chip-bad');
+            chip.textContent = a.attempt_num + ' ' + shortId(a.run_id || '');
+            chip.title = (a.run_id || '') + ' · ' + (a.outcome || '') + (a.duration ? ' · ' + a.duration : '');
+            chip.addEventListener('click', function () { selectAttempt(i); });
+            chips.appendChild(chip);
+        });
+        fact.appendChild(chips);
+        return fact;
     }
 
     function factsForRun(run) {
-        if (!run) return [['Status', 'Loading…']];
+        if (!run) return [['status', 'Loading…']];
 
         var facts = [];
-        facts.push(['Run', run.id]);
+        facts.push(['run', run.id]);
         if (run.child_runs && run.child_runs.length) {
-            facts.push(['Child runs', run.child_runs.map(function (c) { return c.id; }).join(', ')]);
+            facts.push(['child runs', run.child_runs.map(function (c) { return c.id; }).join(', ')]);
         }
-        facts.push(['Container', (run.container_id ? shortId(run.container_id) : '—') + ' (' + (run.container_state || 'removed') + ')']);
+        facts.push(['container', (run.container_id ? shortId(run.container_id) : '—') + ' (' + (run.container_state || 'removed') + ')']);
         if (run.token_usage && run.token_usage.length) {
-            facts.push(['Tokens', run.token_usage.map(function (u) {
+            facts.push(['tokens', run.token_usage.map(function (u) {
                 return u.agent_name + ': ' + u.input_tokens + '/' + u.output_tokens;
             }).join(', ')]);
         }
         if (run.prompt_file) {
-            facts.push(['Prompt', run.prompt_file + (run.git_revision ? ' @ ' + run.git_revision : '')]);
+            facts.push(['prompt', run.prompt_file + (run.git_revision ? ' @ ' + run.git_revision : '')]);
         }
         var attempt = detail.attempts[detail.attemptIndex];
         if (attempt && attempt.retry_reason) {
-            facts.push(['Retry reason', 'previous attempt failed at "' + attempt.retry_reason + '"']);
+            facts.push(['retry reason', 'previous attempt failed at "' + attempt.retry_reason + '"']);
         }
         if (run.error_message) {
-            facts.push(['Error', run.error_message]);
+            facts.push(['error', run.error_message]);
         }
-        facts.push(['Timing', run.timing || '—']);
+        facts.push(['timing', run.timing || '—']);
         return facts;
     }
 
