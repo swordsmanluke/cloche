@@ -198,6 +198,38 @@ func main() {
 				}
 				return resp.RunId, nil
 			}),
+			web.WithGetThreadFunc(func(ctx context.Context, address string) (web.ThreadSummary, []web.ThreadMessage, error) {
+				resp, err := srv.GetThread(ctx, &pb.GetThreadRequest{Address: address})
+				if err != nil {
+					return web.ThreadSummary{}, nil, err
+				}
+				t := resp.Thread
+				summary := web.ThreadSummary{
+					Address:   t.Channel + "/" + t.Name,
+					Title:     t.Title,
+					State:     t.State,
+					TaskID:    t.TaskId,
+					RunID:     t.RunId,
+					StepName:  t.StepName,
+					CreatedAt: t.CreatedAt,
+				}
+				msgs := make([]web.ThreadMessage, 0, len(resp.Messages))
+				for _, m := range resp.Messages {
+					msgs = append(msgs, web.ThreadMessage{
+						Author:    m.Author,
+						Body:      m.Body,
+						Options:   m.Options,
+						CreatedAt: m.CreatedAt,
+					})
+				}
+				return summary, msgs, nil
+			}),
+			// Goes through the exact ReplyThread RPC handler `cloche threads
+			// reply` uses, including its resume-if-parked side effect.
+			web.WithReplyThreadFunc(func(ctx context.Context, address, body string) error {
+				_, err := srv.ReplyThread(ctx, &pb.ReplyThreadRequest{Address: address, Body: body})
+				return err
+			}),
 		}
 		if mcpSecret != nil {
 			webOpts = append(webOpts, web.WithHelpMCP(mcpSecret, srv.AskHelpForRun))

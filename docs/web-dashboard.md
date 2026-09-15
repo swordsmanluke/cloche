@@ -77,9 +77,10 @@ Click a row (or select it with `j`/`k` and press Enter) to open it in the centre
 Shows the selected task's full detail:
 
 - **Header** — task ID, a state pill (running / needs you / queued / succeeded / failed /
-  parked), the title, and state-dependent actions: running → Console (raw container
-  output), Workflow (step/wire summary), Cancel; done → Open branch, Diff, Delete
-  container; queued → Cancel. Needs-you and parked tasks show no actions yet.
+  parked — parked also shows how long the run has been parked, e.g. "parked · 12m"), the
+  title, and state-dependent actions: running → Console (raw container output), Workflow
+  (step/wire summary), Cancel; done → Open branch, Diff, Delete container; queued → Cancel;
+  parked → Cancel. Needs-you tasks show no actions yet.
 - **Facts row** — attempt tabs (number, run ID, outcome, duration; only shown when a task
   has more than one attempt; `[` and `]` switch between them), plus the selected attempt's
   top-level run ID, child run IDs, container ID and state, token usage per agent, the
@@ -97,7 +98,19 @@ Shows the selected task's full detail:
   (`GET /api/attempts/{id}/logs`). A type filter (all/llm/script/status), a wrap toggle,
   and `g`/`G` (scroll to top/bottom) are always available. Every line keeps its timestamp,
   type, and originating step. An SSE error shows "Disconnected" — only an explicit `done`
-  event marks the stream "Complete".
+  event marks the stream "Complete". When the run is parked (see below), the log pane is
+  replaced by the help-thread panel instead.
+
+#### Parked pane
+
+When the selected task's run is parked awaiting a help-thread reply, the step strip freezes
+on the step that parked (a distinct dot color) and the log pane is replaced by the thread
+panel: the agent's question and any prior exchanges (`GET /api/runs/{id}/thread`, resolved
+from the run's parked thread), and a reply box. Submitting the reply box posts to
+`POST /api/runs/{id}/thread/reply`, which the daemon serves through the same `ReplyThread`
+RPC handler `cloche threads reply` uses — including resuming the run if the reply is what
+it was waiting on. The centre pane keeps polling while parked, so once the run resumes the
+step strip, facts, and log pane pick back up automatically.
 
 ### Routing
 
@@ -191,6 +204,9 @@ The dashboard's JSON endpoints remain stable and are also used by the CLI
   (steps, child runs, container state, per-agent token totals, prompt file/git revision),
   and live SSE log streaming.
 - `GET /api/runs/{id}/steps/{step}/output` — a single step's raw output, for the step strip.
+- `GET /api/runs/{id}/thread`, `POST /api/runs/{id}/thread/reply` — the help thread a parked
+  run is awaiting a reply on, and posting a reply (same path as `cloche threads reply`,
+  including resuming the run). 404 when the run isn't parked.
 - `GET /api/runs/{id}/branch`, `GET /api/runs/{id}/diff` — the run's extracted result
   branch(es) and their diff against the run's base revision.
 - `GET /api/runs/{id}/console` — the raw (unparsed) container log, for the header's Console

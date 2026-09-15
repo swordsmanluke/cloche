@@ -352,6 +352,7 @@ details pre {
 .run-dot-cancelled { background: #9ca3af; }
 .run-dot-running   { background: #3b82f6; animation: pulse 2s infinite; }
 .run-dot-pending   { background: #eab308; }
+.run-dot-parked    { background: #a78bfa; }
 
 /* Action buttons */
 .project-actions {
@@ -1043,6 +1044,81 @@ details pre {
     border-color: var(--link);
     box-shadow: 0 0 0 1px var(--link);
 }
+
+.console-thread-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.console-thread-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+}
+
+.console-thread-head h3 { margin: 0; font-size: 1rem; }
+
+.console-thread-meta { color: var(--text-muted); font-size: 0.82rem; }
+
+.console-thread-transcript {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    max-height: 45vh;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+}
+
+.console-thread-message {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.75rem;
+}
+
+.console-thread-message-user { border-left: 3px solid var(--link); }
+.console-thread-message-agent { border-left: 3px solid var(--border); }
+
+.console-thread-message-meta {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    margin-bottom: 0.3rem;
+}
+
+.console-thread-message-body { white-space: pre-wrap; word-break: break-word; font-size: 0.9rem; }
+
+.console-thread-message-options {
+    margin-top: 0.4rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.console-thread-reply {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.console-thread-reply-input {
+    font-family: var(--font);
+    font-size: 0.9rem;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.5rem;
+    resize: vertical;
+}
+
+.console-thread-reply-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.6rem;
+}
+
+.console-thread-reply-error { color: var(--badge-failed-text); font-size: 0.8rem; }
 
 .console-log-toolbar {
     display: flex;

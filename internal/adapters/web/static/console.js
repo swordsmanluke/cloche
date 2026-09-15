@@ -782,7 +782,8 @@
             logTypeFilter: 'all',
             logSkipped: 0,
             eventSource: null,
-            pollTimer: null
+            pollTimer: null,
+            threadLoadedFor: '' // run id the thread panel was last loaded for, '' = not loaded
         };
 
         renderDetailShell();
@@ -828,6 +829,12 @@
         strip.className = 'console-step-strip';
         strip.id = 'console-step-strip';
         el.appendChild(strip);
+
+        var threadPanel = document.createElement('div');
+        threadPanel.className = 'console-thread-panel';
+        threadPanel.id = 'console-thread-panel';
+        threadPanel.hidden = true;
+        el.appendChild(threadPanel);
 
         var logPane = document.createElement('div');
         logPane.className = 'console-log-pane';
@@ -923,12 +930,17 @@
         renderHeader(run);
         renderFactsRow(run);
         renderStepStrip(run);
+        if (computeHeaderState(run) === 'parked') {
+            showThreadPanel(run);
+        } else {
+            hideThreadPanel();
+        }
         manageDetailPoll(run);
     }
 
     function manageDetailPoll(run) {
         stopDetailPoll();
-        if (run.state === 'running' || run.state === 'pending' || run.state === 'waiting') {
+        if (run.state === 'running' || run.state === 'pending' || run.state === 'waiting' || run.state === 'parked') {
             detail.pollTimer = setInterval(function () {
                 var attempt = detail.attempts[detail.attemptIndex];
                 if (!attempt) return;
@@ -1014,6 +1026,7 @@
     function headerPillLabel(headerState, run) {
         if (headerState === 'done') return run.state;
         if (headerState === 'needs_you') return 'needs you';
+        if (headerState === 'parked' && run.parked_seconds) return 'parked · ' + formatDuration(run.parked_seconds);
         return headerState;
     }
 
@@ -1040,6 +1053,8 @@
             actions.appendChild(actionButton('Workflow', function () { showWorkflowInfo(run); }));
             actions.appendChild(actionButton('Cancel', function () { cancelRun(run); }, 'btn-danger'));
         } else if (headerState === 'queued') {
+            actions.appendChild(actionButton('Cancel', function () { cancelRun(run); }, 'btn-danger'));
+        } else if (headerState === 'parked') {
             actions.appendChild(actionButton('Cancel', function () { cancelRun(run); }, 'btn-danger'));
         } else if (headerState === 'done') {
             actions.appendChild(actionButton('Open branch', function () { showBranch(run); }));
@@ -1346,6 +1361,7 @@
     }
 
     function stepDotClass(step) {
+        if (step.result === 'parked') return 'run-dot-parked';
         if (!step.result) return 'run-dot-running';
         if (step.result === 'fail' || step.result === 'error') return 'run-dot-failed';
         return 'run-dot-succeeded';
@@ -1398,6 +1414,170 @@
                 detail.stepLines = [{ timestamp: '', type: 'status', step_name: scope.step_name, content: 'No output available for this step.' }];
                 renderLogLines();
             });
+    }
+
+    // ---------- centre pane: parked thread panel ----------
+
+    // showThreadPanel reveals the help-thread transcript + reply box in
+    // place of the log pane, for a run parked awaiting a reply (see
+    // computeHeaderState). Loads the transcript once per run id; the detail
+    // poll (see manageDetailPoll) re-renders the header/facts/step-strip
+    // around it as the parked run's state changes, but doesn't need to
+    // reload the transcript on every tick.
+    function showThreadPanel(run) {
+        var panel = document.getElementById('console-thread-panel');
+        var logPane = document.getElementById('console-log-pane');
+        if (!panel || !logPane) return;
+        logPane.hidden = true;
+        panel.hidden = false;
+
+        if (detail.threadLoadedFor === run.id) return;
+        loadThreadPanel(run);
+    }
+
+    function hideThreadPanel() {
+        var panel = document.getElementById('console-thread-panel');
+        var logPane = document.getElementById('console-log-pane');
+        if (panel) panel.hidden = true;
+        if (logPane) logPane.hidden = false;
+        if (detail) detail.threadLoadedFor = '';
+    }
+
+    function loadThreadPanel(run) {
+        var panel = document.getElementById('console-thread-panel');
+        panel.innerHTML = '';
+        var loading = document.createElement('div');
+        loading.className = 'console-centre-empty';
+        loading.textContent = 'Loading thread…';
+        panel.appendChild(loading);
+
+        fetch('/api/runs/' + encodeURIComponent(run.id) + '/thread')
+            .then(function (r) {
+                if (!r.ok) throw new Error('thread not available');
+                return r.json();
+            })
+            .then(function (thread) {
+                if (!detail || !detail.run || detail.run.id !== run.id) return; // stale — user navigated away
+                detail.threadLoadedFor = run.id;
+                renderThreadPanel(thread, run);
+            })
+            .catch(function () {
+                if (!detail || !detail.run || detail.run.id !== run.id) return;
+                panel.innerHTML = '';
+                var err = document.createElement('div');
+                err.className = 'console-centre-empty';
+                err.textContent = 'Failed to load the help thread for this run.';
+                panel.appendChild(err);
+            });
+    }
+
+    function renderThreadPanel(thread, run) {
+        var panel = document.getElementById('console-thread-panel');
+        panel.innerHTML = '';
+
+        var head = document.createElement('div');
+        head.className = 'console-thread-head';
+        var title = document.createElement('h3');
+        title.textContent = thread.title || 'Help thread';
+        head.appendChild(title);
+        var meta = document.createElement('span');
+        meta.className = 'console-thread-meta';
+        var metaBits = ['Parked ' + formatDuration(run.parked_seconds || 0)];
+        if (thread.address) metaBits.push(thread.address);
+        meta.textContent = metaBits.join(' · ');
+        head.appendChild(meta);
+        panel.appendChild(head);
+
+        var transcript = document.createElement('div');
+        transcript.className = 'console-thread-transcript';
+        (thread.messages || []).forEach(function (m) {
+            transcript.appendChild(renderThreadMessage(m));
+        });
+        panel.appendChild(transcript);
+
+        panel.appendChild(renderThreadReplyBox(run));
+    }
+
+    function renderThreadMessage(m) {
+        var row = document.createElement('div');
+        row.className = 'console-thread-message console-thread-message-' + (m.author === 'user' ? 'user' : 'agent');
+
+        var meta = document.createElement('div');
+        meta.className = 'console-thread-message-meta';
+        meta.textContent = (m.author === 'user' ? 'You' : 'Agent') + ' · ' + formatTimestamp(m.created_at);
+        row.appendChild(meta);
+
+        var body = document.createElement('div');
+        body.className = 'console-thread-message-body';
+        body.textContent = m.body;
+        row.appendChild(body);
+
+        if (m.options && m.options.length) {
+            var opts = document.createElement('div');
+            opts.className = 'console-thread-message-options';
+            opts.textContent = 'Options: ' + m.options.join(', ');
+            row.appendChild(opts);
+        }
+
+        return row;
+    }
+
+    // renderThreadReplyBox builds the reply form. Submitting posts through
+    // /api/runs/{id}/thread/reply, which the daemon serves via the same
+    // ReplyThread RPC `cloche threads reply` uses (see cmd/cloched wiring),
+    // so the run resumes exactly as it would from the CLI. The detail poll
+    // (still active while state === 'parked') picks up the resulting state
+    // change on its next tick, no manual refresh needed here — a
+    // best-effort immediate refresh just makes it feel instant.
+    function renderThreadReplyBox(run) {
+        var form = document.createElement('form');
+        form.className = 'console-thread-reply';
+
+        var textarea = document.createElement('textarea');
+        textarea.className = 'console-thread-reply-input';
+        textarea.rows = 3;
+        textarea.placeholder = 'Reply to resume the run…';
+        form.appendChild(textarea);
+
+        var row = document.createElement('div');
+        row.className = 'console-thread-reply-row';
+        var err = document.createElement('span');
+        err.className = 'console-thread-reply-error';
+        row.appendChild(err);
+        var send = document.createElement('button');
+        send.type = 'submit';
+        send.className = 'btn btn-sm btn-primary';
+        send.textContent = 'Reply';
+        row.appendChild(send);
+        form.appendChild(row);
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var body = textarea.value.trim();
+            if (!body || send.disabled) return;
+            send.disabled = true;
+            send.textContent = 'Sending…';
+            err.textContent = '';
+            fetch('/api/runs/' + encodeURIComponent(run.id) + '/thread/reply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ body: body })
+            }).then(function (r) {
+                if (!r.ok) throw new Error('reply failed');
+                textarea.value = '';
+                send.disabled = false;
+                send.textContent = 'Reply';
+                return fetchRunDetail(run.id);
+            }).then(function (fresh) {
+                if (detail && detail.run && detail.run.id === run.id) applyRunDetail(fresh);
+            }).catch(function () {
+                send.disabled = false;
+                send.textContent = 'Reply';
+                err.textContent = 'Failed to send reply. Try again.';
+            });
+        });
+
+        return form;
     }
 
     // ---------- centre pane: log pane ----------

@@ -109,6 +109,24 @@ func WithActivityStore(as ports.ActivityStore) HandlerOption {
 	return func(h *Handler) { h.activityStore = as }
 }
 
+// WithGetThreadFunc sets the function used to resolve a help-thread address
+// (or bare thread ID) to its summary and full message transcript, backing
+// the parked-run pane (see handler_thread.go). Optional; when unset, the
+// thread endpoint reports the help channel as unavailable.
+func WithGetThreadFunc(fn GetThreadFunc) HandlerOption {
+	return func(h *Handler) { h.getThreadFn = fn }
+}
+
+// WithReplyThreadFunc sets the function used to post a reply to a help
+// thread. Must go through the same path as `cloche threads reply` —
+// including resuming a parked run — so cmd/cloched wires this directly to
+// the daemon's ReplyThread RPC handler rather than reimplementing it.
+// Optional; when unset, the reply endpoint reports the help channel as
+// unavailable.
+func WithReplyThreadFunc(fn ReplyThreadFunc) HandlerOption {
+	return func(h *Handler) { h.replyThreadFn = fn }
+}
+
 //go:embed templates/*.html static/*
 var content embed.FS
 
@@ -228,8 +246,10 @@ type Handler struct {
 	stopLoopFn        func(ctx context.Context, projectDir string) error
 	stopRunFn         func(ctx context.Context, taskID string) error
 	scanFn            func(ctx context.Context, projectDir string) (string, error)
-	mcpSecret         []byte      // enables /mcp when non-empty; see WithHelpMCP
-	askHelpFn         AskHelpFunc // handles ask_user tool calls on /mcp
+	getThreadFn       GetThreadFunc   // resolves a help thread for the parked-run pane
+	replyThreadFn     ReplyThreadFunc // posts a reply to a help thread; same path as `cloche threads reply`
+	mcpSecret         []byte          // enables /mcp when non-empty; see WithHelpMCP
+	askHelpFn         AskHelpFunc     // handles ask_user tool calls on /mcp
 	pages             map[string]*template.Template
 	mux               *http.ServeMux
 }
@@ -293,6 +313,8 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/runs", h.handleAPIRuns)
 	h.mux.HandleFunc("GET /api/polls", h.handleAPIPolls)
 	h.mux.HandleFunc("GET /api/runs/{id}", h.handleAPIRunDetail)
+	h.mux.HandleFunc("GET /api/runs/{id}/thread", h.handleAPIRunThread)
+	h.mux.HandleFunc("POST /api/runs/{id}/thread/reply", h.handleAPIRunThreadReply)
 	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
 	h.mux.HandleFunc("POST /api/runs/{id}/stop", h.handleAPIStopRun)
 	h.mux.HandleFunc("DELETE /api/runs/{id}/container", h.handleAPIDeleteContainer)
@@ -773,6 +795,11 @@ type apiRunDetail struct {
 	TokenUsage     []apiAgentTokens `json:"token_usage,omitempty"`
 	PromptFile     string           `json:"prompt_file,omitempty"`
 	GitRevision    string           `json:"git_revision,omitempty"`
+	// ParkedTitle and ParkedSeconds are set when State == "parked" (a run
+	// awaiting a help-thread reply): the question's title and how long ago
+	// the parked step completed. Backs the parked-run pane's header.
+	ParkedTitle   string `json:"parked_title,omitempty"`
+	ParkedSeconds int64  `json:"parked_seconds,omitempty"`
 }
 
 func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
@@ -1210,8 +1237,31 @@ func (h *Handler) handleAPIRunDetail(w http.ResponseWriter, r *http.Request) {
 		GitRevision:    shortSHA(run.BaseSHA),
 	}
 
+	if run.State == domain.RunStateParked {
+		detail.ParkedTitle = run.ParkedTitle
+		detail.ParkedSeconds = h.parkedSeconds(r.Context(), id)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(detail)
+}
+
+// parkedSeconds returns how many seconds have elapsed since runID's parked
+// step (the reserved "parked" result — see domain.StepParked) completed, or
+// 0 if no such step is recorded. Reads raw captures directly rather than
+// domain.Run.StepExecutions, which GetRun never populates (see resumeRun's
+// comment on the same subtlety).
+func (h *Handler) parkedSeconds(ctx context.Context, runID string) int64 {
+	caps, err := h.captures.GetCaptures(ctx, runID)
+	if err != nil {
+		return 0
+	}
+	for _, s := range mergeCaptures(caps) {
+		if s.Result == domain.StepParked && !s.CompletedAt.IsZero() {
+			return int64(time.Since(s.CompletedAt).Seconds())
+		}
+	}
+	return 0
 }
 
 func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {
@@ -1298,8 +1348,10 @@ func (h *Handler) handleAPIStopRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Only allow stopping active runs
-	if run.State != domain.RunStatePending && run.State != domain.RunStateRunning {
+	// Only allow stopping active runs. RunStateParked is included so a run
+	// stuck awaiting a help-thread reply can be cancelled from the parked
+	// pane instead of only being resumable.
+	if run.State != domain.RunStatePending && run.State != domain.RunStateRunning && run.State != domain.RunStateParked {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "run is not active"})
