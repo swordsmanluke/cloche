@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -121,6 +122,93 @@ func TestActivityStore_ProjectIsolation(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, gotB, 1)
 	assert.Equal(t, "b1", gotB[0].AttemptID)
+}
+
+func TestActivityStore_AllProjects(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	require.NoError(t, store.AppendActivityEntry(ctx, "/proj/a", activitylog.Entry{
+		Kind: activitylog.KindAttemptStarted, AttemptID: "a1", Timestamp: time.Now(),
+	}))
+	require.NoError(t, store.AppendActivityEntry(ctx, "/proj/b", activitylog.Entry{
+		Kind: activitylog.KindAttemptStarted, AttemptID: "b1", Timestamp: time.Now(),
+	}))
+
+	got, err := store.ReadActivityEntries(ctx, "", activitylog.ReadOptions{})
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	dirs := map[string]bool{got[0].ProjectDir: true, got[1].ProjectDir: true}
+	assert.True(t, dirs["/proj/a"])
+	assert.True(t, dirs["/proj/b"])
+}
+
+func TestActivityStore_LimitAndBeforeIDCursor(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	projectDir := "/proj/tail"
+	base := time.Now().UTC().Truncate(time.Second)
+	for i := 0; i < 5; i++ {
+		require.NoError(t, store.AppendActivityEntry(ctx, projectDir, activitylog.Entry{
+			Timestamp: base.Add(time.Duration(i) * time.Second),
+			Kind:      activitylog.KindAttemptStarted,
+			AttemptID: fmt.Sprintf("a%d", i),
+		}))
+	}
+
+	// First page: most recent 2, still oldest-first within the page.
+	page1, err := store.ReadActivityEntries(ctx, projectDir, activitylog.ReadOptions{Limit: 2})
+	require.NoError(t, err)
+	require.Len(t, page1, 2)
+	assert.Equal(t, "a3", page1[0].AttemptID)
+	assert.Equal(t, "a4", page1[1].AttemptID)
+	require.NotZero(t, page1[0].ID)
+
+	// Page backwards from the oldest entry seen so far.
+	page2, err := store.ReadActivityEntries(ctx, projectDir, activitylog.ReadOptions{Limit: 2, BeforeID: page1[0].ID})
+	require.NoError(t, err)
+	require.Len(t, page2, 2)
+	assert.Equal(t, "a1", page2[0].AttemptID)
+	assert.Equal(t, "a2", page2[1].AttemptID)
+
+	page3, err := store.ReadActivityEntries(ctx, projectDir, activitylog.ReadOptions{Limit: 2, BeforeID: page2[0].ID})
+	require.NoError(t, err)
+	require.Len(t, page3, 1)
+	assert.Equal(t, "a0", page3[0].AttemptID)
+}
+
+func TestActivityStore_FailuresOnly(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	projectDir := "/proj/failures"
+	now := time.Now()
+
+	require.NoError(t, store.AppendActivityEntry(ctx, projectDir, activitylog.Entry{
+		Timestamp: now, Kind: activitylog.KindAttemptEnded, State: "succeeded",
+	}))
+	require.NoError(t, store.AppendActivityEntry(ctx, projectDir, activitylog.Entry{
+		Timestamp: now.Add(time.Second), Kind: activitylog.KindAttemptEnded, State: "failed",
+	}))
+	require.NoError(t, store.AppendActivityEntry(ctx, projectDir, activitylog.Entry{
+		Timestamp: now.Add(2 * time.Second), Kind: activitylog.KindStepCompleted, StepName: "s1", Result: "fail",
+	}))
+	require.NoError(t, store.AppendActivityEntry(ctx, projectDir, activitylog.Entry{
+		Timestamp: now.Add(3 * time.Second), Kind: activitylog.KindStepCompleted, StepName: "s1", Result: "success",
+	}))
+
+	got, err := store.ReadActivityEntries(ctx, projectDir, activitylog.ReadOptions{FailuresOnly: true})
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.True(t, got[0].IsFailure())
+	assert.True(t, got[1].IsFailure())
 }
 
 func TestActivityStore_ImplementsActivityStore(t *testing.T) {

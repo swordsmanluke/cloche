@@ -20,10 +20,26 @@
             <span><kbd>tab</kbd> project</span>
             <span><kbd>enter</kbd> open</span>
             <span><kbd>esc</kbd> stack</span>
+            <span><kbd>a</kbd> activity</span>
             <span><kbd>?</kbd> keys</span>
         </div>
-        <div class="console-ticker" id="console-ticker">—</div>
+        <button type="button" class="console-ticker" id="console-ticker" aria-label="Open activity stream">—</button>
     </footer>
+    <div class="console-activity-overlay" id="console-activity-overlay" hidden>
+        <div class="console-activity-panel" role="dialog" aria-modal="true" aria-label="Activity stream">
+            <div class="console-activity-header">
+                <h2>Activity</h2>
+                <div class="console-activity-filters">
+                    <label><input type="radio" name="console-activity-scope" id="console-activity-scope-project" value="project" checked> This project</label>
+                    <label><input type="radio" name="console-activity-scope" id="console-activity-scope-all" value="all"> All projects</label>
+                    <label><input type="checkbox" id="console-activity-failures-only"> Failures only</label>
+                </div>
+                <button type="button" id="console-activity-close" class="btn btn-secondary btn-sm">Close</button>
+            </div>
+            <div class="console-activity-list" id="console-activity-list"></div>
+            <button type="button" class="console-load-earlier" id="console-activity-load-earlier" hidden>Load earlier</button>
+        </div>
+    </div>
     <div class="console-help-overlay" id="console-help-overlay" hidden>
         <div class="console-help-panel" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
             <h2>Keyboard shortcuts</h2>
@@ -32,6 +48,7 @@
                 <dt>Tab / Shift+Tab</dt><dd>Switch project</dd>
                 <dt>Enter</dt><dd>Open the selected task</dd>
                 <dt>Esc</dt><dd>Return to the stack</dd>
+                <dt>a</dt><dd>Open the activity stream</dd>
                 <dt>?</dt><dd>Toggle this help</dd>
             </dl>
             <button type="button" id="console-help-close" class="btn btn-secondary btn-sm">Close</button>

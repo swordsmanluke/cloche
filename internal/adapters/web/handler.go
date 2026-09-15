@@ -102,6 +102,13 @@ func WithScanFunc(fn func(ctx context.Context, projectDir string) (string, error
 	return func(h *Handler) { h.scanFn = fn }
 }
 
+// WithActivityStore sets the store backing the activity ticker/stream API
+// (see handler_activity.go). Optional; when unset, the endpoint returns an
+// empty stream.
+func WithActivityStore(as ports.ActivityStore) HandlerOption {
+	return func(h *Handler) { h.activityStore = as }
+}
+
 //go:embed templates/*.html static/*
 var content embed.FS
 
@@ -213,6 +220,7 @@ type Handler struct {
 	logBroadcast      *logstream.Broadcaster
 	taskProvider      TaskProvider
 	taskStore         ports.TaskStore
+	activityStore     ports.ActivityStore
 	attentionProvider AttentionProvider
 	occupancyProvider OccupancyProvider
 	orchestrateFn     func(ctx context.Context, projectDir string) (int, error)
@@ -298,6 +306,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks", h.handleAPITasks)
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks/stack", h.handleAPITaskStack)
 	h.mux.HandleFunc("GET /api/projects/{name}/attention", h.handleAPIProjectAttention)
+	h.mux.HandleFunc("GET /api/activity", h.handleAPIActivity)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
 	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
 	h.mux.HandleFunc("GET /api/projects/{name}/loop/status", h.handleAPILoopStatus)

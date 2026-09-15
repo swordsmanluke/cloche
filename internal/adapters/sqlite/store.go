@@ -1184,12 +1184,24 @@ func (s *Store) AppendActivityEntry(ctx context.Context, projectDir string, entr
 	return err
 }
 
-// ReadActivityEntries returns activity log entries for projectDir, optionally
-// filtered by the time range in opts. Results are ordered by timestamp ascending.
+// ReadActivityEntries returns activity log entries, optionally filtered by
+// the time range, failure status, and cursor in opts. projectDir restricts
+// to a single project; empty means all projects (ProjectDir is populated on
+// each returned entry in that case).
+//
+// When opts.Limit is zero, results are ordered oldest-first over the whole
+// matching range (used by the `cloche activity` CLI). When opts.Limit is
+// set, the most recent Limit matching entries are returned instead (still
+// oldest-first), which combined with opts.BeforeID lets a caller page a tail
+// backwards into older history without ever scanning the full table.
 func (s *Store) ReadActivityEntries(ctx context.Context, projectDir string, opts activitylog.ReadOptions) ([]activitylog.Entry, error) {
-	query := `SELECT ts, kind, task_id, attempt_id, workflow, step, result, state, COALESCE(message, '')
-	          FROM activity_log WHERE project_dir = ?`
-	args := []interface{}{projectDir}
+	query := `SELECT id, ts, kind, project_dir, task_id, attempt_id, workflow, step, result, state, COALESCE(message, '')
+	          FROM activity_log WHERE 1 = 1`
+	var args []interface{}
+	if projectDir != "" {
+		query += ` AND project_dir = ?`
+		args = append(args, projectDir)
+	}
 	if !opts.Since.IsZero() {
 		query += ` AND ts >= ?`
 		args = append(args, formatTime(opts.Since))
@@ -1198,7 +1210,19 @@ func (s *Store) ReadActivityEntries(ctx context.Context, projectDir string, opts
 		query += ` AND ts <= ?`
 		args = append(args, formatTime(opts.Until))
 	}
-	query += ` ORDER BY ts ASC, id ASC`
+	if opts.BeforeID > 0 {
+		query += ` AND id < ?`
+		args = append(args, opts.BeforeID)
+	}
+	if opts.FailuresOnly {
+		query += ` AND ((kind = 'attempt_ended' AND state = 'failed') OR (kind = 'step_completed' AND result = 'fail'))`
+	}
+	if opts.Limit > 0 {
+		query += ` ORDER BY id DESC LIMIT ?`
+		args = append(args, opts.Limit)
+	} else {
+		query += ` ORDER BY ts ASC, id ASC`
+	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -1210,14 +1234,22 @@ func (s *Store) ReadActivityEntries(ctx context.Context, projectDir string, opts
 	for rows.Next() {
 		var e activitylog.Entry
 		var ts, kind string
-		if err := rows.Scan(&ts, &kind, &e.TaskID, &e.AttemptID, &e.WorkflowName, &e.StepName, &e.Result, &e.State, &e.Message); err != nil {
+		if err := rows.Scan(&e.ID, &ts, &kind, &e.ProjectDir, &e.TaskID, &e.AttemptID, &e.WorkflowName, &e.StepName, &e.Result, &e.State, &e.Message); err != nil {
 			return nil, err
 		}
 		e.Timestamp = parseTime(ts)
 		e.Kind = activitylog.EventKind(kind)
 		entries = append(entries, e)
 	}
-	return entries, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if opts.Limit > 0 {
+		for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
+			entries[i], entries[j] = entries[j], entries[i]
+		}
+	}
+	return entries, nil
 }
 
 const maxErrorMessageLen = 1000

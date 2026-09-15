@@ -95,12 +95,25 @@ The pre-console URLs (`/`, `/projects/{name}[/runs]`, `/runs[/{id}]`, `/tasks/{i
 | `Tab` / `Shift+Tab` | Switch to the next / previous project |
 | `Enter` | Open the selected task in the centre pane |
 | `Esc` | Return to the stack (clears the centre pane) |
+| `a` | Open the activity stream |
 | `?` | Toggle the keyboard shortcuts overlay |
 
 ### Foot bar
 
-Shows the keybindings above and a one-line activity ticker placeholder on the right (filled
-in by a separate ticket).
+Shows the keybindings on the left and a one-line activity ticker on the right — the most
+recent `activity_log` event for the active project, polled from `GET /api/activity`
+every 5s. Repeated events with the same signature (project, kind, workflow, step,
+outcome) on the same day collapse into one line with an ordinal count, e.g.
+`intent-scan failed · 8th today`, reusing the day-scoped grouping approach from the
+built-in-failure-summary grouping (see `buildBuiltinFailureSummaries` in
+`internal/adapters/web/handler.go`).
+
+Clicking the ticker (or pressing `a`) expands it into a scrollable activity stream
+overlay, with filters for **This project** / **All projects** and **Failures only**. The
+stream is always a bounded tail (never the full `activity_log` table): the first page
+covers today plus a fixed page size, and a **Load earlier** button pages further into
+history via an opaque cursor (an `activity_log` row ID), the same pattern the task
+stack's "Done today" group uses for its own cursor.
 
 ---
 
@@ -119,6 +132,9 @@ The dashboard's JSON endpoints remain stable and are also used by the CLI
 - `GET /api/runs`, `GET /api/runs/{id}`, `GET /api/runs/{id}/stream` — run listing, detail,
   and live SSE log streaming.
 - `GET /api/failed-tasks` — failed-but-still-open tasks and built-in workflow failures.
+- `GET /api/activity` — the activity ticker/stream (see Foot bar above), filtered by
+  `?project=<slug>` (all projects when omitted) and `?failures_only=1`, paged via
+  `?before=<cursor>&limit=<n>`.
 - `GET /api/projects/{name}/intent/...` — intent requirements, domains, and scan control.
 
 These are unchanged by the console-shell rework; only the HTML pages that used to render

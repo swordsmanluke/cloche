@@ -952,7 +952,78 @@ details pre {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
 }
+.console-ticker:hover { color: var(--text); }
+.console-ticker.console-ticker-failure { color: var(--badge-failed-text); }
+
+.console-activity-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+}
+
+.console-activity-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    width: min(720px, 90vw);
+    height: min(560px, 80vh);
+    display: flex;
+    flex-direction: column;
+}
+
+.console-activity-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+.console-activity-header h2 { margin: 0; font-size: 1.1rem; }
+
+.console-activity-filters {
+    display: flex;
+    gap: 1rem;
+    flex: 1 1 auto;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+.console-activity-filters label { display: flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+
+.console-activity-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    border-top: 1px solid var(--border);
+    padding-top: 0.5rem;
+}
+
+.console-activity-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0.25rem 0.1rem;
+    font-size: 0.85rem;
+    border-bottom: 1px solid transparent;
+}
+.console-activity-row-time { color: var(--text-muted); font-family: var(--mono); font-size: 0.8rem; flex: 0 0 auto; }
+.console-activity-row-project { color: var(--text-muted); flex: 0 0 auto; }
+.console-activity-row-text { flex: 1 1 auto; }
+.console-activity-row-failure .console-activity-row-text { color: var(--badge-failed-text); }
+
+.console-activity-empty { color: var(--text-muted); padding: 0.5rem 0.1rem; }
 
 .console-help-overlay {
     position: fixed;

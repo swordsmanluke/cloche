@@ -1511,7 +1511,8 @@ gRPC — set `CLOCHE_DB` to point at a non-default database path, default
 recorded automatically by the orchestration loop and host workflow runs. Output columns:
 `TIME`, `KIND`, `TASK`, `ATTEMPT`, `WORKFLOW`, `STEP`, `OUTCOME`.
 
-Event kinds: `attempt_started`, `attempt_ended`, `step_started`, `step_completed`.
+Event kinds: `attempt_started`, `attempt_ended`, `step_started`, `step_completed`,
+`help_asked`, `help_answered`, `help_parked`, `help_resumed`.
 
 **Activity log subsystem.** Implemented in `internal/activitylog/`. A `Logger` wraps an
 `Appender` (the SQLite `ActivityStore`) and records `Entry` values for each event. Each

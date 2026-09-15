@@ -33,12 +33,19 @@ const (
 
 // Entry is one record in the activity log. Fields are omitted when empty.
 type Entry struct {
-	Timestamp    time.Time `json:"ts"`
-	Kind         EventKind `json:"kind"`
-	TaskID       string    `json:"task_id,omitempty"`
-	AttemptID    string    `json:"attempt_id,omitempty"`
-	WorkflowName string    `json:"workflow,omitempty"`
-	StepName     string    `json:"step,omitempty"`
+	// ID is the store's row identifier, populated on read. Zero for entries
+	// not yet persisted (e.g. freshly built by Logger.Append's caller).
+	ID        int64     `json:"id,omitempty"`
+	Timestamp time.Time `json:"ts"`
+	Kind      EventKind `json:"kind"`
+	// ProjectDir is populated on read when the query spans multiple projects
+	// (projectDir == "" in ReadActivityEntries); omitted for single-project
+	// reads since the caller already knows which project it asked for.
+	ProjectDir   string `json:"-"`
+	TaskID       string `json:"task_id,omitempty"`
+	AttemptID    string `json:"attempt_id,omitempty"`
+	WorkflowName string `json:"workflow,omitempty"`
+	StepName     string `json:"step,omitempty"`
 	// Result is set for KindStepCompleted entries (e.g. "success", "fail").
 	Result string `json:"result,omitempty"`
 	// State is set for KindAttemptEnded entries (e.g. "succeeded", "failed").
@@ -48,12 +55,30 @@ type Entry struct {
 	Message string `json:"message,omitempty"`
 }
 
-// ReadOptions controls optional time-range filtering for activity log reads.
+// ReadOptions controls optional filtering and pagination for activity log
+// reads.
 type ReadOptions struct {
 	// Since, when non-zero, excludes entries before this time.
 	Since time.Time
 	// Until, when non-zero, excludes entries after this time.
 	Until time.Time
+	// BeforeID, when non-zero, excludes entries with ID >= BeforeID. Used
+	// together with Limit to page a tail backwards into older history.
+	BeforeID int64
+	// Limit, when non-zero, caps the number of entries returned to the most
+	// recent Limit matching entries (still returned oldest-first). Zero means
+	// unbounded.
+	Limit int
+	// FailuresOnly, when true, restricts results to failure-ish entries
+	// (a failed attempt or a failed step).
+	FailuresOnly bool
+}
+
+// IsFailure reports whether e represents a failure-ish event: a failed
+// attempt or a failed step.
+func (e Entry) IsFailure() bool {
+	return (e.Kind == KindAttemptEnded && e.State == "failed") ||
+		(e.Kind == KindStepCompleted && e.Result == "fail")
 }
 
 // Appender is the interface used by Logger to persist entries.

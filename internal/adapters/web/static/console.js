@@ -13,6 +13,7 @@
 
     var STACK_POLL_MS = 4000;
     var INSTRUMENTS_POLL_MS = 5000;
+    var TICKER_POLL_MS = 5000;
 
     var state = {
         projects: [],
@@ -27,7 +28,15 @@
         selectedIndex: -1,
         loopRunning: false,
         stackTimer: null,
-        instrumentsTimer: null
+        instrumentsTimer: null,
+        tickerTimer: null,
+        activity: {
+            open: false,
+            scope: 'project',   // 'project' | 'all'
+            failuresOnly: false,
+            entries: [],
+            cursor: null
+        }
     };
 
     // ---------- routing ----------
@@ -186,16 +195,22 @@
 
         stopStackPolling();
         stopInstrumentsPolling();
+        stopTickerPolling();
         renderTabBar();
         renderCentrePane(null, null);
 
         loadInstruments();
         startInstrumentsPolling();
 
+        loadTicker();
+        startTickerPolling();
+
         loadStack(true).then(function () {
             startStackPolling();
             if (state.activeTaskId) selectTaskById(state.activeTaskId);
         });
+
+        if (state.activity.open && state.activity.scope === 'project') loadActivityStream(true);
 
         if (opts.pushHistory) pushLocation(slug, state.activeTaskId);
     }
@@ -501,6 +516,15 @@
             return;
         }
 
+        var activityOverlay = document.getElementById('console-activity-overlay');
+        if (!activityOverlay.hidden) {
+            if (e.key === 'Escape' || e.key === 'a') {
+                toggleActivity(false);
+                e.preventDefault();
+            }
+            return;
+        }
+
         switch (e.key) {
             case 'j':
                 moveSelection(1);
@@ -522,6 +546,10 @@
                 switchProject(e.shiftKey ? -1 : 1);
                 e.preventDefault();
                 break;
+            case 'a':
+                toggleActivity(true);
+                e.preventDefault();
+                break;
             case '?':
                 toggleHelp(true);
                 e.preventDefault();
@@ -535,6 +563,125 @@
         document.getElementById('console-help-overlay').hidden = !show;
     }
     document.getElementById('console-help-close').addEventListener('click', function () { toggleHelp(false); });
+
+    // ---------- activity ticker & stream ----------
+
+    function loadTicker() {
+        var slug = state.activeSlug;
+        var tickerEl = document.getElementById('console-ticker');
+        if (!slug) {
+            tickerEl.textContent = '—';
+            return Promise.resolve();
+        }
+        return fetch('/api/activity?project=' + encodeURIComponent(slug) + '&limit=1')
+            .then(function (r) { return r.json(); })
+            .then(function (resp) {
+                if (slug !== state.activeSlug) return; // stale response from a since-abandoned project
+                var entries = (resp && resp.entries) || [];
+                var latest = entries[0];
+                tickerEl.textContent = latest ? latest.text : '—';
+                tickerEl.classList.toggle('console-ticker-failure', !!(latest && latest.failure));
+            })
+            .catch(function () {});
+    }
+
+    function startTickerPolling() {
+        stopTickerPolling();
+        state.tickerTimer = setInterval(loadTicker, TICKER_POLL_MS);
+    }
+
+    function stopTickerPolling() {
+        if (state.tickerTimer) {
+            clearInterval(state.tickerTimer);
+            state.tickerTimer = null;
+        }
+    }
+
+    document.getElementById('console-ticker').addEventListener('click', function () { toggleActivity(true); });
+
+    function toggleActivity(show) {
+        state.activity.open = show;
+        document.getElementById('console-activity-overlay').hidden = !show;
+        if (show) loadActivityStream(true);
+    }
+    document.getElementById('console-activity-close').addEventListener('click', function () { toggleActivity(false); });
+    document.getElementById('console-activity-load-earlier').addEventListener('click', function () { loadActivityStream(false); });
+
+    document.getElementById('console-activity-scope-project').addEventListener('change', function () {
+        state.activity.scope = 'project';
+        loadActivityStream(true);
+    });
+    document.getElementById('console-activity-scope-all').addEventListener('change', function () {
+        state.activity.scope = 'all';
+        loadActivityStream(true);
+    });
+    document.getElementById('console-activity-failures-only').addEventListener('change', function (e) {
+        state.activity.failuresOnly = e.target.checked;
+        loadActivityStream(true);
+    });
+
+    function activityStreamURL(cursor) {
+        var params = new URLSearchParams();
+        if (state.activity.scope === 'project' && state.activeSlug) params.set('project', state.activeSlug);
+        if (state.activity.failuresOnly) params.set('failures_only', '1');
+        if (cursor) params.set('before', cursor);
+        return '/api/activity?' + params.toString();
+    }
+
+    function loadActivityStream(initial) {
+        if (initial) {
+            state.activity.entries = [];
+            state.activity.cursor = null;
+        }
+        return fetch(activityStreamURL(initial ? null : state.activity.cursor))
+            .then(function (r) { return r.json(); })
+            .then(function (resp) {
+                var entries = (resp && resp.entries) || [];
+                state.activity.entries = state.activity.entries.concat(entries);
+                state.activity.cursor = resp && resp.cursor;
+                renderActivityStream();
+            })
+            .catch(function () {});
+    }
+
+    function renderActivityStream() {
+        var list = document.getElementById('console-activity-list');
+        list.innerHTML = '';
+
+        if (!state.activity.entries.length) {
+            var empty = document.createElement('div');
+            empty.className = 'console-activity-empty';
+            empty.textContent = 'No activity.';
+            list.appendChild(empty);
+        }
+
+        state.activity.entries.forEach(function (entry) {
+            var row = document.createElement('div');
+            row.className = 'console-activity-row' + (entry.failure ? ' console-activity-row-failure' : '');
+
+            var time = document.createElement('span');
+            time.className = 'console-activity-row-time';
+            time.textContent = formatTimestamp(entry.ts);
+            row.appendChild(time);
+
+            if (state.activity.scope === 'all' && entry.project_label) {
+                var proj = document.createElement('span');
+                proj.className = 'console-activity-row-project';
+                proj.textContent = entry.project_label;
+                row.appendChild(proj);
+            }
+
+            var text = document.createElement('span');
+            text.className = 'console-activity-row-text';
+            text.textContent = entry.text;
+            row.appendChild(text);
+
+            list.appendChild(row);
+        });
+
+        var earlierBtn = document.getElementById('console-activity-load-earlier');
+        earlierBtn.hidden = !state.activity.cursor;
+    }
 
     // ---------- centre pane ----------
 
