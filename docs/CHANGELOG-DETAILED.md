@@ -1,5 +1,37 @@
 # Cloche Detailed Changelog
 
+## v3.23.0 — 2026-09-15
+
+### Breaking
+
+- `d35c42f` Renames the Go module path from `github.com/cloche-dev/cloche` to `github.com/swordsmanluke/cloche`, correcting `go.mod` and all internal imports to match the actual repository owner (`cloche-dev` was never a real org). Migration: any `go install github.com/cloche-dev/cloche/...` command or code importing the module must switch to `github.com/swordsmanluke/cloche`.
+
+### Features
+
+- `470c815` Adds a "commit" step to the built-in `intent-scan` workflow that stages and commits any changes under `.cloche/intent/` (scoped strictly to that path, retrying a few times on git index-lock contention), so a scan no longer leaves the working tree dirty for a human or a later merge step to clean up.
+
+### Fixes
+
+- `eee1ae2` Fixes a race in the in-container agent session where the daemon tearing down the gRPC stream for a step that just timed out could be misclassified as a transport error rather than a clean cancellation; also reworks the task detail facts row into a single instrument strip with attempt chips in place of a separate attempt-tabs row.
+
+### UI/UX
+
+- `a8a7d5a` Self-hosts the console's IBM Plex Mono/Sans fonts as vendored `.woff2` files and reworks the color palette and typography to match the reference console mock, removing the runtime dependency on Google Fonts.
+- `57d05c4` Reworks the task detail step strip so a spawned child run's steps render inline (shaded and indented) immediately after their parent step, replacing the previous separate sub-row cluster.
+- `a39aa43` Redesigns the task stack rows with a status dot, a two-line title, and a right-aligned elapsed/reason column, replacing the previous single-line title-plus-meta layout.
+- `9ea3461` Reworks the console tab bar and daemon instruments strip (loop toggle, slot pips, burn rate, daemon version) into a flush bordered bar with a "Cloche" brand mark, and changes the idle-project overflow control to read "+N idle".
+- `41a855f` Replaces the log pane's form-control toolbar with a flat status band (scope chip, type-filter chips, a click-to-toggle live/follow indicator, and a line count) and adds inline colorization of log line content for tool calls and pass/fail/warning keywords.
+- `5e3161c` Adds keyboard shortcuts for following the live log (`f`) and releasing/closing the open needs-you task (`r`/`x`), replaces the foot bar's full keybinding list with a short set of hints contextual to the selected task's state, and makes the activity ticker pack several recent entries instead of showing only the latest one.
+
+### Internal
+
+- `b51d650` Vendors the "Console, restructured" reference design mock (`docs/design/console-restructured-mock.html`) as ground truth for this release's console-fidelity work.
+- `fd33fbd` Updates the project's self-hosted documentation-audit workflow prompts to record a per-finding outcome (resolved / needs-code-change / not-resolved) and adds an escape hatch for findings where the code, not the doc, is actually wrong.
+- `0d98172` Commits auto-generated `.cloche/intent/` output (13 new requirements, domain-map updates) from post-task intent scans run during this batch of work.
+- `57d7754` Commits auto-generated `.cloche/intent/` output (one requirement superseded, `domains.yaml` updated) from a post-task intent scan.
+- `f12222c` Corrects `docs/workflows.md` to state that a host-workflow script/poll step's working directory defaulting to the main git worktree is a default, not a guaranteed invariant.
+- `07037c2` Corrects a code comment in `internal/intent/scan/builtin.go` that incorrectly claimed `CLOCHE_PROJECT_DIR` is the main git worktree for intent-scan runs; no behavior change.
+
 ## v3.22.0 — 2026-09-15
 
 ### Breaking

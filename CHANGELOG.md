@@ -1,5 +1,26 @@
 # Cloche Changelog
 
+## v3.23.0 — 2026-09-15
+
+### Breaking changes
+
+- Renames the Go module path from `github.com/cloche-dev/cloche` to `github.com/swordsmanluke/cloche`, correcting it to match the actual repository owner. Migration: update any `go install github.com/cloche-dev/cloche/...` command or code importing the module to use `github.com/swordsmanluke/cloche` instead.
+
+### Features
+
+- Rebuilds the web console to match the "Console, restructured" reference design. The shell moves to a warm dark palette with an amber accent and a mono-first type ramp, with IBM Plex Mono/Sans now self-hosted as vendored `.woff2` files so the dashboard no longer fetches fonts from Google at runtime.
+- Task stack rows gain a coloured status dot, a two-line task id and title, and a right-aligned elapsed/reason column, so a task's state is legible at a glance instead of inferred from which group it sits under.
+- The task detail header becomes a single identity line — task id, state pill, title, actions — over a horizontal facts band, with attempt history inline as chips rather than a separate row of tabs.
+- Step strips render as one continuous progression, with a spawned child run's steps shaded and indented inline after their parent step.
+- The log pane replaces its form-control toolbar with a flat status band (scope, type-filter chips, a click-to-toggle live/follow indicator, line count) and colours log content semantically — tool calls, and pass/fail/warning output — instead of tinting whole lines by source type.
+- The tab bar and daemon instruments become one flush bar carrying loop state, slot occupancy as pips, burn rate and daemon version.
+- The foot bar now shows a packed activity ticker and a short set of key hints contextual to the selected task's state, with new shortcuts for following the live log (`f`) and releasing or closing an open needs-you task (`r`/`x`).
+- The built-in `intent-scan` workflow now commits any changes it writes under `.cloche/intent/` (requirements, `domains.yaml`) itself, scoped strictly to that path, instead of leaving the working tree dirty for a human to commit.
+
+### Notable fixes
+
+- Fixed a race where a step timing out could have its agent-session stream teardown misclassified as a transport error instead of a clean cancellation, which could surface as a spurious step failure right at the timeout boundary.
+
 ## v3.22.0 — 2026-09-15
 
 ### Breaking changes
