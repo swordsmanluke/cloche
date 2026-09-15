@@ -22,8 +22,8 @@ domains:
     description: Intent requirement extraction, storage, scoping, and prompt injection (.cloche/intent/).
     paths: ["internal/intent/**", "docs/plans/2026-09-13-intent-continuity-design.md", "docs/plans/2026-09-13-intent-continuity-implementation.md"]
   - name: web-dashboard
-    description: The daemon's web dashboard — project/run views, HTTP API, live log streaming UI.
-    paths: ["internal/adapters/web/**", "internal/logstream/**", "docs/web-dashboard.md", "docs/design/ui-pages.md"]
+    description: The daemon's web dashboard — project/run views, HTTP API, live log streaming UI, the "Needs You" attention feed, and the prompt-revision ledger.
+    paths: ["internal/adapters/web/**", "internal/logstream/**", "internal/attention/**", "internal/promptrev/**", "docs/web-dashboard.md", "docs/design/ui-pages.md"]
   - name: versioning-release
     description: Version-string policy and the changelog/release host-workflow pipeline.
     paths: ["internal/version/**", ".cloche/scripts/release-*.sh", ".cloche/scripts/changelog-*.sh", ".cloche/prompts/draft-changelog.md", "docs/plans/2026-04-15-release-process-design.md"]

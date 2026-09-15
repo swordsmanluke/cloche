@@ -1,4 +1,4 @@
-last_commit: dbfe56a7ea46c6be0040381c68b995cffcdd38e9
+last_commit: ecaf84c412bbd13eea412c8351cd4812c93c3173
 scanned_runs:
     - cloche-0vqg
     - rxth-main
@@ -251,6 +251,45 @@ scanned_runs:
     - ztya-intent-scan
     - zume-changelog
     - zzbs-main
+    - 41nz-intent-scan
+    - 4gzt-intent-scan
+    - 5jdo-intent-scan
+    - 76ws-main
+    - 7sn4-intent-scan
+    - 83zq-main
+    - alx0-main
+    - bbbi-main
+    - c87a-intent-scan
+    - dnj7-main
+    - gxyt-main
+    - ibjm-main
+    - kgbi-main
+    - kgoy-intent-scan
+    - kq9o-intent-scan
+    - kwt8-intent-scan
+    - lc4j-intent-scan
+    - m3sd-main
+    - mksu-main
+    - mls8-main
+    - or75-intent-scan
+    - puoe-intent-scan
+    - rsfr-main
+    - tomt-main
+    - twkn-intent-scan
+    - u1wf-main
+    - user-4gzt
+    - user-5jdo
+    - user-7sn4
+    - user-kq9o
+    - user-puoe
+    - uztf-main
+    - vapd-main
+    - vd9j-intent-scan
+    - w9c6-main
+    - w9uk-intent-scan
+    - x7te-main
+    - xn7q-main
+    - z8w7-main
 scanned_docs:
     .cloche/prompts/document-check-missing.md: b4a0d12b5d77da1ffa4769610956891ddb89e8ba591c4c363f5d09dfdcae08e1
     .cloche/prompts/document-investigate.md: 15983e5f69fe6fdd9b7e5f21179d5db65be08356c4b6082fe85e28831f76fa9b
@@ -278,7 +317,7 @@ scanned_docs:
     docs/CHANGELOG-DETAILED.md: 91a440e9c1a4630a616dcc9538c4886de3fd64d69dce6d24ed276749a4eb3f11
     docs/INSTALL.md: 7d9684ef8d5264589d0980a5096ae0bbf6cb696398fd6830a8a24129495941b9
     docs/SAFETY.md: 1e025a1f37b5d21f7f226f1d8777e1a9726c13aedbb43ab37a8f174d61f53a59
-    docs/USAGE.md: 7f97fccaca4a9a0054d626c19715a91c8e136d7f88731a05155ca1a79c6f29a6
+    docs/USAGE.md: 7b90914879e6fa421114ee028d0a665ed38a50242b056dee6b2727a5b465b0f5
     docs/agent-setup-claude.md: 745544b08f6362cd2ed1c918ed53e5a387e183872c9e6f086aeb1ea8f8690fda
     docs/agent-setup-codex.md: 5137671f134e534a5c49bf8e6f26765c3f3916dfb9a98ed92e22a2aad5ad1cfe
     docs/built-in-agents.md: dd37264a2d03ff45978a319f69020a118aab69c5387029047645f35a0cbe4b82
@@ -300,9 +339,9 @@ scanned_docs:
     docs/init/3-run-the-loop.md: 5514c69195f39bb5801fd75504a916e86d2ebf07d6f29d3ff54b0d3fd7fd8e1c
     docs/init/4-passing-data-between-steps.md: 016cdd5b3d93527ab55d64c74e08d4d9ad57473067b4b9c0c3dab3b76702f881
     docs/init/5-how-changes-land.md: 594a3470a666c6bffb9a98f507567876f55e1d349c57bcc5d9acf8170451d750
-    docs/init/6-swapping-the-task-tracker.md: 008b1fa5946aed7af0cd23d4684a416bebc778d5f5d9d4f023575705d0160602
+    docs/init/6-swapping-the-task-tracker.md: 8dc2df1eff1ab7d883902dad5731f60d6c3463b35af2e9731f1f1fe7546b2dfa
     docs/init/README.md: f16cc2cce0950a2bccd1260416fb05a22568c58ebd290396f4a3b2dedc113584
-    docs/intent.md: af86fbe5b1da627b0b0f37a7a3f26518a7051eb08d8057bec34758adbc410177
+    docs/intent.md: 16f39c59b20664885ff4f63c8e417ed10a951b13443a9b348c2f9a1a19d0d7bb
     docs/plans/2026-02-20-cloche-implementation.md: 4316ef7a359d9b31ee3963b51dd455bd70d9d52c462ff1ffbc8c2857bd21cb9f
     docs/plans/2026-02-20-cloche-system-design.md: 854a59c2a74e7fc3455efc2eec3a31c673de04ad569a04bc5ff60ec315cb7561
     docs/plans/2026-02-20-edge-selection-design.md: a94c3d7db5e013f7bbe1a562ccb7e515f88e9fe3634620c1209c62b6791eaec5
@@ -350,5 +389,5 @@ scanned_docs:
     docs/plans/spikes/2026-09-13-intent-retrieval/README.md: cbd4159fb69d08f1ff1c5972b7ff578a0db782f2fc0f9cac3e2add3cee0cf46f
     docs/run-isolation/architecture.md: 5f322ad76fedc1012b67f450ac1df9c328ef628ef90285f5ebd4c94a201d4b43
     docs/run-isolation/index.md: 06461a1f739a3b6fba4f5331fa668c15058808f59938b284c4e953a291ae6916
-    docs/web-dashboard.md: 89eb1ae2278bb30cdd429acadbf0ca9618d8875cba9f5a86b26c0cd923e436d7
-    docs/workflows.md: 2d11f859d68eb1b7555a417a6fbbee90588b8838a3793c8bf7e4d762504fc4d3
+    docs/web-dashboard.md: 74f77fdab137faa136b890d692daa3fd1ebfe8d0c243e3a0b28430f6892aca6d
+    docs/workflows.md: 4117de5a2e9ec8d1df0dbc7b92faa63d800ae608d19a5a301e61746535116451
