@@ -111,7 +111,7 @@ Extraction is an agent job, run through Cloche itself. `intent-scan` is a **buil
 host workflow** — its graph, agent prompts, and script steps are compiled into the
 `cloched`/`cloche` binaries (see [`docs/workflows.md`](workflows.md#built-in-workflows)),
 so it's available in any project with no setup. `cloche intent scan` (alias for
-`cloche run intent-scan`) dispatches it; the workflow has five steps:
+`cloche run intent-scan`) dispatches it; the workflow has six steps:
 
 1. **discover-domains** — surveys the repo layout and proposes/updates
    `domains.yaml`. Full survey on first scan; incremental proposals afterwards,
@@ -139,6 +139,14 @@ so it's available in any project with no setup. `cloche intent scan` (alias for
    - A `user_edited` requirement's statement and scope are never rewritten in
      place — only `supersede` may touch it, and only its status.
    - Nothing is ever deleted; `superseded` is the terminal state.
+6. **commit** — stages and commits any changes under `.cloche/intent/` (and only
+   that path — never `git add -A` / `git commit -a`), so a scan never leaves the
+   main worktree dirty for a human or a later container-authored merge step to
+   clean up. No-ops cleanly (no empty commit) when the scan found nothing new. The
+   commit message reports what `apply-reconcile` actually did (counts of created,
+   superseded, merged, and dropped candidates) plus whether `domains.yaml`
+   changed. Retries a few times on index-lock contention (e.g. a concurrent scan
+   or merge step) before failing.
 
 ```
 cloche intent scan            # incremental: only material since the last scan
