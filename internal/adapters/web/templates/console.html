@@ -22,21 +22,8 @@
         <main class="console-centre" id="console-centre" aria-label="Task detail"></main>
     </div>
     <footer class="console-footbar" id="console-footbar">
-        <div class="console-keys" id="console-keys">
-            <span><kbd>j</kbd>/<kbd>k</kbd> move</span>
-            <span><kbd>tab</kbd> project</span>
-            <span><kbd>enter</kbd> open</span>
-            <span><kbd>esc</kbd> stack</span>
-            <span><kbd>a</kbd> activity</span>
-            <span><kbd>l</kbd> ledger</span>
-            <span><kbd>[</kbd>/<kbd>]</kbd> attempt</span>
-            <span><kbd>g</kbd>/<kbd>G</kbd> log top/bottom</span>
-            <span><kbd>w</kbd> workflows</span>
-            <span><kbd>i</kbd> intent</span>
-            <span><kbd>c</kbd> containers / compare log</span>
-            <span><kbd>?</kbd> keys</span>
-        </div>
         <button type="button" class="console-ticker" id="console-ticker" aria-label="Open activity stream">—</button>
+        <div class="console-keys" id="console-keys"></div>
     </footer>
     <div class="console-activity-overlay" id="console-activity-overlay" hidden>
         <div class="console-activity-panel" role="dialog" aria-modal="true" aria-label="Activity stream">
@@ -74,6 +61,9 @@
                 <dt>l</dt><dd>Open the project ledger</dd>
                 <dt>[ / ]</dt><dd>Switch to the previous / next attempt</dd>
                 <dt>g / G</dt><dd>Scroll the log to the top / bottom</dd>
+                <dt>f</dt><dd>Toggle following the live log to its newest line</dd>
+                <dt>r</dt><dd>Release your claim on the open needs-you task (when available)</dd>
+                <dt>x</dt><dd>Close the open needs-you task in the tracker (when available)</dd>
                 <dt>w</dt><dd>Open the Workflows view</dd>
                 <dt>i</dt><dd>Open the Intent view</dd>
                 <dt>c</dt><dd>Open the Containers view, or toggle the needs-you compare view / single-attempt log when one is open</dd>

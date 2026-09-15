@@ -14,6 +14,10 @@
     var STACK_POLL_MS = 4000;
     var INSTRUMENTS_POLL_MS = 5000;
     var TICKER_POLL_MS = 5000;
+    // How many recent activity entries the foot ticker packs into its one
+    // ellipsised line (see renderTicker) — enough to read as a feed, not so
+    // many the request/DOM cost is noticeable.
+    var TICKER_ENTRY_LIMIT = 8;
     // How often the tab bar's project list (health/active/loop/attention) is
     // refreshed in the background. Cheaper than the stack poll since it
     // covers every project, not just the active one.
@@ -810,6 +814,15 @@
             case 'G':
                 if (detail) { scrollLogTo('bottom'); e.preventDefault(); }
                 break;
+            case 'f':
+                if (detail && !detail.compareMode) { toggleLogFollow(); e.preventDefault(); }
+                break;
+            case 'r':
+                if (detail && hasNeedsYouAction('release')) { releaseTask(); e.preventDefault(); }
+                break;
+            case 'x':
+                if (detail && hasNeedsYouAction('close')) { closeTask(); e.preventDefault(); }
+                break;
             default:
                 break;
         }
@@ -829,16 +842,41 @@
             tickerEl.textContent = '—';
             return Promise.resolve();
         }
-        return fetch('/api/activity?project=' + encodeURIComponent(slug) + '&limit=1')
+        return fetch('/api/activity?project=' + encodeURIComponent(slug) + '&limit=' + TICKER_ENTRY_LIMIT)
             .then(function (r) { return r.json(); })
             .then(function (resp) {
                 if (slug !== state.activeSlug) return; // stale response from a since-abandoned project
-                var entries = (resp && resp.entries) || [];
-                var latest = entries[0];
-                tickerEl.textContent = latest ? latest.text : '—';
-                tickerEl.classList.toggle('console-ticker-failure', !!(latest && latest.failure));
+                renderTicker(tickerEl, (resp && resp.entries) || []);
             })
             .catch(function () {});
+    }
+
+    // renderTicker packs the most recent activity entries (newest first,
+    // matching /api/activity's order) into the single ellipsised foot line —
+    // it is the widest thing in the foot because it is the only content, so
+    // as many recent entries as fit are shown rather than just the latest
+    // one. Failed entries are coloured --bad inline; everything else stays
+    // --tx2 (inherited).
+    function renderTicker(tickerEl, entries) {
+        tickerEl.innerHTML = '';
+        if (!entries.length) {
+            tickerEl.textContent = '—';
+            return;
+        }
+        entries.forEach(function (entry, i) {
+            if (i > 0) tickerEl.appendChild(document.createTextNode(' · '));
+            var frag = document.createElement('span');
+            if (entry.failure) frag.className = 'console-ticker-frag-bad';
+            frag.textContent = formatTickerTime(entry.ts) + ' ' + entry.text;
+            tickerEl.appendChild(frag);
+        });
+    }
+
+    function formatTickerTime(iso) {
+        if (!iso) return '';
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        return d.toTimeString().slice(0, 8);
     }
 
     function startTickerPolling() {
@@ -1153,6 +1191,7 @@
             empty.className = 'console-centre-empty';
             empty.textContent = 'Select a task from the stack.';
             el.appendChild(empty);
+            renderFootKeys();
             return;
         }
 
@@ -1185,6 +1224,7 @@
 
         renderDetailShell();
         renderWhyLine();
+        renderFootKeys();
 
         if (!detail.taskId) {
             // Ad-hoc run (no task record) — there's exactly one implicit attempt.
@@ -1327,6 +1367,7 @@
     function applyRunDetail(run) {
         detail.run = run;
         renderHeader(run);
+        renderFootKeys();
         renderFactsRow(run);
         renderStepStrip(run);
         if (computeHeaderState(run) === 'parked') {
@@ -1498,13 +1539,11 @@
     // ... show no actions yet" until their own tickets add them.
     function renderNeedsYouActions(actions) {
         var entry = detail.entry || {};
-        var available = entry.actions || [];
-        function has(a) { return available.indexOf(a) !== -1; }
 
-        if (has('release')) {
+        if (hasNeedsYouAction('release')) {
             actions.appendChild(actionButton('Release claim', function () { releaseTask(); }));
         }
-        if (has('close')) {
+        if (hasNeedsYouAction('close')) {
             var closeBtn = actionButton('Close in tracker', function () { closeTask(); }, 'btn-danger');
             if (!entry.close_available) {
                 closeBtn.disabled = true;
@@ -1512,12 +1551,86 @@
             }
             actions.appendChild(closeBtn);
         }
-        if (has('run-once')) {
+        if (hasNeedsYouAction('run-once')) {
             actions.appendChild(actionButton('Run once…', function () { openRunOncePanel(); }));
         }
-        if (has('mute')) {
+        if (hasNeedsYouAction('mute')) {
             actions.appendChild(actionButton('Mute', function () { muteAttentionItem(); }));
         }
+    }
+
+    // hasNeedsYouAction reports whether the open needs-you item's own
+    // Actions list (see internal/attention) offers the named action —
+    // shared by renderNeedsYouActions (which buttons to draw), the 'r'/'x'
+    // keyboard shortcuts, and the foot key hints (which hints are truthful).
+    function hasNeedsYouAction(name) {
+        var available = (detail && detail.entry && detail.entry.actions) || [];
+        return available.indexOf(name) !== -1;
+    }
+
+    // ---------- foot key hints ----------
+
+    // footKeySpec returns the short, contextual set of key hints for the
+    // foot bar (see renderFootKeys) — it changes with the selected task's
+    // state rather than always listing every shortcut, so it never
+    // advertises an action that doesn't apply to what's open. g/G and the
+    // log filter hint live in the log bar instead of here (log-pane
+    // ticket); the full shortcut list stays behind '?'.
+    function footKeySpec() {
+        var headerState = detail ? computeHeaderState(detail.run) : null;
+
+        if (headerState === 'needs_you') {
+            var hints = [
+                { keys: ['j', 'k'], label: 'task' },
+                { keys: ['[', ']'], label: 'attempt' }
+            ];
+            if (hasNeedsYouAction('release')) hints.push({ keys: ['r'], label: 'release' });
+            if (hasNeedsYouAction('close')) hints.push({ keys: ['x'], label: 'close' });
+            return hints;
+        }
+
+        if (headerState === 'running') {
+            return [
+                { keys: ['j', 'k'], label: 'task' },
+                { keys: ['[', ']'], label: 'attempt' },
+                { keys: ['tab'], label: 'project' },
+                { keys: ['f'], label: 'follow' },
+                { keys: ['a'], label: 'activity' }
+            ];
+        }
+
+        if (detail) {
+            return [
+                { keys: ['j', 'k'], label: 'task' },
+                { keys: ['[', ']'], label: 'attempt' },
+                { keys: ['tab'], label: 'project' },
+                { keys: ['a'], label: 'activity' }
+            ];
+        }
+
+        return [
+            { keys: ['j', 'k'], label: 'task' },
+            { keys: ['enter'], label: 'open' },
+            { keys: ['tab'], label: 'project' },
+            { keys: ['a'], label: 'activity' }
+        ];
+    }
+
+    function renderFootKeys() {
+        var el = document.getElementById('console-keys');
+        if (!el) return;
+        el.innerHTML = '';
+        footKeySpec().forEach(function (hint) {
+            var span = document.createElement('span');
+            hint.keys.forEach(function (key, i) {
+                if (i > 0) span.appendChild(document.createTextNode('/'));
+                var kbd = document.createElement('kbd');
+                kbd.textContent = key;
+                span.appendChild(kbd);
+            });
+            span.appendChild(document.createTextNode(' ' + hint.label));
+            el.appendChild(span);
+        });
     }
 
     // afterNeedsYouAction refreshes the task stack in place (no page reload)

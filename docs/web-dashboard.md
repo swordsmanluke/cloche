@@ -170,6 +170,9 @@ once the project list loads if that preference is empty or stale.
 | `l` | Open the project ledger |
 | `[` / `]` | Switch to the previous / next attempt |
 | `g` / `G` | Scroll the log to the top / bottom |
+| `f` | Toggle following the live log to its newest line |
+| `r` | Release your claim on the open needs-you task (when available) |
+| `x` | Close the open needs-you task in the tracker (when available) |
 | `w` | Open the Workflows view |
 | `i` | Open the Intent view |
 | `c` | Open the Containers view, or toggle the needs-you compare view / single-attempt log when one is open |
@@ -177,12 +180,21 @@ once the project list loads if that preference is empty or stale.
 
 ### Foot bar
 
-Shows the keybindings on the left and a one-line activity ticker on the right — the most
-recent `activity_log` event for the active project, polled from `GET /api/activity`
-every 5s. Repeated events with the same signature (project, kind, workflow, step,
-outcome) on the same day collapse into one line with an ordinal count, e.g.
-`intent-scan failed · 8th today`, reusing the day-scoped grouping approach from the
-built-in-failure-summary grouping (see `buildBuiltinFailureSummaries` in
+Shows a one-line activity ticker on the left and a short, contextual set of key hints on
+the right — the ticker is the only real content, so it gets the width; the hints are
+chrome that changes with the selected task's state rather than always listing every
+shortcut (the full list stays behind `?`). A running task shows `j`/`k`, `[`/`]`, `tab`,
+`f`, `a`; a needs-you task shows `j`/`k`, `[`/`]`, and whichever of `r`/`x` its attention
+item actually offers; anything else falls back to a short baseline. `g`/`G` and the log
+type filter live in the log bar instead, since they act on the log pane, not the task.
+
+The ticker packs as many of the most recent `activity_log` events for the active project
+as fit on the line (newest first, polled from `GET /api/activity` every 5s), each prefixed
+with its `HH:MM:SS` time and separated by ` · `, with failed entries coloured red. Repeated
+events with the same signature (project,
+kind, workflow, step, outcome) on the same day collapse into one line with an ordinal
+count, e.g. `intent-scan failed · 8th today`, reusing the day-scoped grouping approach
+from the built-in-failure-summary grouping (see `buildBuiltinFailureSummaries` in
 `internal/adapters/web/handler.go`).
 
 Clicking the ticker (or pressing `a`) expands it into a scrollable activity stream
