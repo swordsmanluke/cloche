@@ -8,10 +8,10 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/intent"
-	"github.com/cloche-dev/cloche/internal/intent/embed"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/intent"
+	"github.com/swordsmanluke/cloche/internal/intent/embed"
 )
 
 // spikeRequirement and spikeQuery mirror the JSON shape of the corpus

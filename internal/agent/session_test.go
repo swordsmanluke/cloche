@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
-	"github.com/cloche-dev/cloche/internal/agent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
+	"github.com/swordsmanluke/cloche/internal/agent"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

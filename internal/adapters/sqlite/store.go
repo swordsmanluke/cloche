@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/activitylog"
-	"github.com/cloche-dev/cloche/internal/builtin"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/swordsmanluke/cloche/internal/activitylog"
+	"github.com/swordsmanluke/cloche/internal/builtin"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/ports"
 	_ "modernc.org/sqlite"
 )
 

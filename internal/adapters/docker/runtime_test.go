@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/adapters/docker"
-	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/adapters/docker"
+	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
 func skipIfNoDocker(t *testing.T) {

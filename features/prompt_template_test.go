@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
-	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/cucumber/godog"
+	"github.com/swordsmanluke/cloche/internal/adapters/agents/prompt"
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
 )
 
 // promptTemplateCtx holds per-scenario state for prompt-templating BDD scenarios.

@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/cloche-dev/cloche/internal/mcpauth"
-	"github.com/cloche-dev/cloche/internal/version"
+	"github.com/swordsmanluke/cloche/internal/mcpauth"
+	"github.com/swordsmanluke/cloche/internal/version"
 )
 
 // AskHelpFunc handles an ask_user MCP tool call for an authenticated run.

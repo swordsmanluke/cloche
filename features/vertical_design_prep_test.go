@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/cucumber/godog"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/dsl"
 )
 
 // verticalDesignPrepCtx holds per-scenario state for vertical design-prep BDD scenarios.

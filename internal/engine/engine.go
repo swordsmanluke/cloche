@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 const (

@@ -8,10 +8,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
-	"github.com/cloche-dev/cloche/internal/mcpauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
+	"github.com/swordsmanluke/cloche/internal/mcpauth"
 )
 
 func setupMCPHandler(t *testing.T, fn AskHelpFunc) (*Handler, []byte) {

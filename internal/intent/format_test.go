@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/intent"
 	"github.com/stretchr/testify/assert"
+	"github.com/swordsmanluke/cloche/internal/intent"
 )
 
 func TestFormatBlock_EmptySelectionRendersNothing(t *testing.T) {

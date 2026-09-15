@@ -8,9 +8,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/activitylog"
-	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
-	"github.com/cloche-dev/cloche/internal/config"
+	"github.com/swordsmanluke/cloche/internal/activitylog"
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
+	"github.com/swordsmanluke/cloche/internal/config"
 )
 
 // cmdActivity reads the project's activity log from the daemon's SQLite

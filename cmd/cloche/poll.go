@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
 )
 
 func cmdPoll(client pb.ClocheServiceClient, args []string) {

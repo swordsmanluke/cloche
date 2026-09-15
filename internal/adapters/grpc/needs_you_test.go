@@ -9,15 +9,15 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
-	server "github.com/cloche-dev/cloche/internal/adapters/grpc"
-	"github.com/cloche-dev/cloche/internal/adapters/local"
-	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
-	"github.com/cloche-dev/cloche/internal/attention"
-	"github.com/cloche-dev/cloche/internal/host"
-	"github.com/cloche-dev/cloche/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
+	server "github.com/swordsmanluke/cloche/internal/adapters/grpc"
+	"github.com/swordsmanluke/cloche/internal/adapters/local"
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
+	"github.com/swordsmanluke/cloche/internal/attention"
+	"github.com/swordsmanluke/cloche/internal/host"
+	"github.com/swordsmanluke/cloche/internal/protocol"
 )
 
 func TestServer_CloseTask_NoContract(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/cloche-dev/cloche/internal/config"
+	"github.com/swordsmanluke/cloche/internal/config"
 )
 
 // resolveDebugAddr returns the daemon's debug HTTP address from, in order:

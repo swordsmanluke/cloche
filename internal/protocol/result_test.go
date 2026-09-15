@@ -3,8 +3,8 @@ package protocol_test
 import (
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/protocol"
 	"github.com/stretchr/testify/assert"
+	"github.com/swordsmanluke/cloche/internal/protocol"
 )
 
 func TestExtractResult_Found(t *testing.T) {

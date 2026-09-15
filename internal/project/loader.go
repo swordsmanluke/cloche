@@ -3,8 +3,8 @@ package project
 import (
 	"fmt"
 
-	"github.com/cloche-dev/cloche/internal/config"
-	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/config"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 // Load reads the project configuration from <dir>/.cloche/config.toml and returns

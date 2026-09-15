@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/cloche-dev/cloche/internal/intent/embed"
+	"github.com/swordsmanluke/cloche/internal/intent/embed"
 )
 
 // Injection is the outcome of resolving one step's requirements block: the

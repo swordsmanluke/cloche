@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package cloche.v1;
 
-option go_package = "github.com/cloche-dev/cloche/api/clochepb";
+option go_package = "github.com/swordsmanluke/cloche/api/clochepb";
 
 service ClocheService {
   rpc RunWorkflow(RunWorkflowRequest) returns (RunWorkflowResponse);

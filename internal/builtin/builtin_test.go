@@ -3,9 +3,9 @@ package builtin_test
 import (
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/builtin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/builtin"
 )
 
 func TestLookup_Found(t *testing.T) {

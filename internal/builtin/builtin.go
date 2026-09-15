@@ -5,8 +5,8 @@
 package builtin
 
 import (
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/intent/scan"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/intent/scan"
 )
 
 // factories returns a fresh *domain.Workflow per call so callers can't

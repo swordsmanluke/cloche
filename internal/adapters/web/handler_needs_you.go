@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/cloche-dev/cloche/internal/host"
+	"github.com/swordsmanluke/cloche/internal/host"
 )
 
 // apiAttentionItem mirrors attention.Item for the GET

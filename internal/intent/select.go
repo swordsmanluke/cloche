@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cloche-dev/cloche/internal/intent/embed"
+	"github.com/swordsmanluke/cloche/internal/intent/embed"
 )
 
 // topK is the number of semantic matches considered per selection, per the

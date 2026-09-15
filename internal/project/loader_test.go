@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/project"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/project"
 )
 
 func setup(t *testing.T, configContent string) string {

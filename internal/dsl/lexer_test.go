@@ -3,9 +3,9 @@ package dsl_test
 import (
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/dsl"
 )
 
 func TestLexer_SimpleWorkflow(t *testing.T) {

@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
-	"github.com/cloche-dev/cloche/internal/adapters/docker"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
+	"github.com/swordsmanluke/cloche/internal/adapters/docker"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
 // fakeRuntime is a minimal ContainerRuntime stub for pool tests.

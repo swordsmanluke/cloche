@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/attention"
-	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/attention"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 const taskStackProjectDir = "/home/user/projects/stackapp"

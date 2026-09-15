@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
 )
 
 // WriteReposList renders the "cloche project repos list" table to w.

@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	initdocs "github.com/cloche-dev/cloche/docs/init"
-	"github.com/cloche-dev/cloche/internal/config"
+	initdocs "github.com/swordsmanluke/cloche/docs/init"
+	"github.com/swordsmanluke/cloche/internal/config"
 	"golang.org/x/term"
 )
 

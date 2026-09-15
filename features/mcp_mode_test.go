@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/BurntSushi/toml"
-	"github.com/cloche-dev/cloche/internal/config"
 	"github.com/cucumber/godog"
+	"github.com/swordsmanluke/cloche/internal/config"
 )
 
 func init() { registerScenarios(initMCPModeScenarios) }

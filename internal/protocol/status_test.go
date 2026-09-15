@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/protocol"
 )
 
 func TestStatusWriter_WritesJSONLines(t *testing.T) {

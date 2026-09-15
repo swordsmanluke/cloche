@@ -9,15 +9,15 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
-	"github.com/cloche-dev/cloche/internal/activitylog"
-	"github.com/cloche-dev/cloche/internal/adapters/docker"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/host"
-	"github.com/cloche-dev/cloche/internal/ports"
-	"github.com/cloche-dev/cloche/internal/runcontext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
+	"github.com/swordsmanluke/cloche/internal/activitylog"
+	"github.com/swordsmanluke/cloche/internal/adapters/docker"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/host"
+	"github.com/swordsmanluke/cloche/internal/ports"
+	"github.com/swordsmanluke/cloche/internal/runcontext"
 	"google.golang.org/grpc/metadata"
 )
 

@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/logstream"
 )
 
 func setupHandlerWithBroadcaster(t *testing.T) (*Handler, *sqlite.Store, *logstream.Broadcaster) {

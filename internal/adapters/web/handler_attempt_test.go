@@ -11,11 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/logstream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/logstream"
 )
 
 // writeV2FullLog writes a full.log at the v2 path:

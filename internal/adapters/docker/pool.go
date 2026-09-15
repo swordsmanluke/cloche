@@ -12,9 +12,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/ports"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
 // agentReadyTimeoutDefault is the maximum time SessionFor waits for an

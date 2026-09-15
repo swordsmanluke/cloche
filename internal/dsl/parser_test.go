@@ -3,10 +3,10 @@ package dsl_test
 import (
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/dsl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/dsl"
 )
 
 func TestParser_FullWorkflow(t *testing.T) {

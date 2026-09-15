@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/activitylog"
-	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
-	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/activitylog"
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 func setupHandlerWithActivity(t *testing.T) (*Handler, *sqlite.Store) {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
 )
 
 // HardStopRunner abstracts the hard-stop operation (shutting down in-flight /

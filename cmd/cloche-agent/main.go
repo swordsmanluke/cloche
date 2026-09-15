@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/cloche-dev/cloche/internal/agent"
-	"github.com/cloche-dev/cloche/internal/version"
+	"github.com/swordsmanluke/cloche/internal/agent"
+	"github.com/swordsmanluke/cloche/internal/version"
 )
 
 func main() {

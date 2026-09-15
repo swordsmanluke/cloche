@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
-	"github.com/cloche-dev/cloche/internal/adapters/docker"
-	"github.com/cloche-dev/cloche/internal/config"
-	"github.com/cloche-dev/cloche/internal/version"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
+	"github.com/swordsmanluke/cloche/internal/adapters/docker"
+	"github.com/swordsmanluke/cloche/internal/config"
+	"github.com/swordsmanluke/cloche/internal/version"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

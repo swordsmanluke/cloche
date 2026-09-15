@@ -3,9 +3,9 @@ package docker
 import (
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/mcpauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/mcpauth"
 )
 
 func TestMCPEnvArgs_Disabled(t *testing.T) {

@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 // HelpChannel delivers agent questions to the user over one integration and

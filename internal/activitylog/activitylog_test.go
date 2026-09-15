@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/activitylog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/activitylog"
 )
 
 // fakeStore is a simple in-memory Appender for testing.

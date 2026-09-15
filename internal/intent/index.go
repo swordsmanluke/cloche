@@ -11,7 +11,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/cloche-dev/cloche/internal/intent/embed"
+	"github.com/swordsmanluke/cloche/internal/intent/embed"
 )
 
 // Item is one unit of text to embed and index: a requirement's composed

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cloche-dev/cloche/internal/config"
+	"github.com/swordsmanluke/cloche/internal/config"
 )
 
 // RepoSeed pins a repository's state for a clean snapshot: the commit to

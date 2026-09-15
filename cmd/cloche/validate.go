@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/config"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/dsl"
-	"github.com/cloche-dev/cloche/internal/engine"
+	"github.com/swordsmanluke/cloche/internal/config"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/dsl"
+	"github.com/swordsmanluke/cloche/internal/engine"
 )
 
 func cmdValidate(args []string) {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	initdocs "github.com/cloche-dev/cloche/docs/init"
+	initdocs "github.com/swordsmanluke/cloche/docs/init"
 )
 
 // TestMain stubs the beads CLI hooks so tests never shell out to a real bd.

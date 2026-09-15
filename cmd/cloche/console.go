@@ -10,7 +10,7 @@ import (
 	"strings"
 	"syscall"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
 	"golang.org/x/term"
 )
 

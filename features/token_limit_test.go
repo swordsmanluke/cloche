@@ -7,10 +7,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/dsl"
-	"github.com/cloche-dev/cloche/internal/engine"
 	"github.com/cucumber/godog"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/dsl"
+	"github.com/swordsmanluke/cloche/internal/engine"
 )
 
 // tokenLimitCtx holds per-scenario state for token-limit BDD scenarios.

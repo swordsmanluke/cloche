@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 // AgentAdapter executes a single agent step inside the container.

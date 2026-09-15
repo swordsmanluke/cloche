@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cloche-dev/cloche/internal/config"
-	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/config"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 // resolvedRepo describes one repository the daemon should extract changes into

@@ -3,11 +3,11 @@ package grpc
 import (
 	"context"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
-	"github.com/cloche-dev/cloche/internal/adapters/docker"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/host"
-	"github.com/cloche-dev/cloche/internal/logstream"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
+	"github.com/swordsmanluke/cloche/internal/adapters/docker"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/host"
+	"github.com/swordsmanluke/cloche/internal/logstream"
 	rpcgrpc "google.golang.org/grpc"
 )
 

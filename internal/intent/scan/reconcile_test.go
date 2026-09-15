@@ -3,10 +3,10 @@ package scan_test
 import (
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/intent"
-	"github.com/cloche-dev/cloche/internal/intent/scan"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/intent"
+	"github.com/swordsmanluke/cloche/internal/intent/scan"
 )
 
 func newTestStore(t *testing.T) *intent.Store {

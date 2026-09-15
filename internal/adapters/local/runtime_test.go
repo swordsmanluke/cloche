@@ -5,10 +5,10 @@ import (
 	"io"
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/adapters/local"
-	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/adapters/local"
+	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
 func TestLocalRuntime_StartAndWait(t *testing.T) {

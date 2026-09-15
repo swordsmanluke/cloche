@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/cloche-dev/cloche/internal/intent"
+	"github.com/swordsmanluke/cloche/internal/intent"
 )
 
 // CandidateFields are the fields the extract step writes for a proposed

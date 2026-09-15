@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	server "github.com/cloche-dev/cloche/internal/adapters/grpc"
-	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	server "github.com/swordsmanluke/cloche/internal/adapters/grpc"
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
 )
 
 func TestDaemonState_NoPool(t *testing.T) {

@@ -11,8 +11,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
-	"github.com/cloche-dev/cloche/internal/config"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
+	"github.com/swordsmanluke/cloche/internal/config"
 )
 
 type healthData struct {

@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
-	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/adapters/agents/prompt"
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
 )
 
 // sqliteKVReader adapts a sqlite.Store as a prompt.KVReader for integration tests.

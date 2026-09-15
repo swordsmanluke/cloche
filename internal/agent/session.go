@@ -14,12 +14,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
-	"github.com/cloche-dev/cloche/internal/adapters/agents/generic"
-	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/logstream"
-	"github.com/cloche-dev/cloche/internal/protocol"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
+	"github.com/swordsmanluke/cloche/internal/adapters/agents/generic"
+	"github.com/swordsmanluke/cloche/internal/adapters/agents/prompt"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/logstream"
+	"github.com/swordsmanluke/cloche/internal/protocol"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
 // DefaultParkAfter is the default grace period before a blocked ask is parked.

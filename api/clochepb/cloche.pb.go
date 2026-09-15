@@ -6526,7 +6526,7 @@ const file_cloche_proto_rawDesc = "" +
 	"\aAskHelp\x12\x19.cloche.v1.AskHelpRequest\x1a\x1a.cloche.v1.AskHelpResponse\x12L\n" +
 	"\vListThreads\x12\x1d.cloche.v1.ListThreadsRequest\x1a\x1e.cloche.v1.ListThreadsResponse\x12F\n" +
 	"\tGetThread\x12\x1b.cloche.v1.GetThreadRequest\x1a\x1c.cloche.v1.GetThreadResponse\x12L\n" +
-	"\vReplyThread\x12\x1d.cloche.v1.ReplyThreadRequest\x1a\x1e.cloche.v1.ReplyThreadResponseB+Z)github.com/cloche-dev/cloche/api/clochepbb\x06proto3"
+	"\vReplyThread\x12\x1d.cloche.v1.ReplyThreadRequest\x1a\x1e.cloche.v1.ReplyThreadResponseB.Z,github.com/swordsmanluke/cloche/api/clochepbb\x06proto3"
 
 var (
 	file_cloche_proto_rawDescOnce sync.Once

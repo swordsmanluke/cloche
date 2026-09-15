@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/adapters/agents/prompt"
 )
 
 // fakeKVReader is an in-memory KVReader for tests.

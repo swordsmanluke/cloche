@@ -3,8 +3,8 @@ package mcpauth_test
 import (
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/mcpauth"
 	"github.com/stretchr/testify/assert"
+	"github.com/swordsmanluke/cloche/internal/mcpauth"
 )
 
 func TestToken_Deterministic(t *testing.T) {

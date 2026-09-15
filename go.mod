@@ -1,4 +1,4 @@
-module github.com/cloche-dev/cloche
+module github.com/swordsmanluke/cloche
 
 go 1.25.3
 

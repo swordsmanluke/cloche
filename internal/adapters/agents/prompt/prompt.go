@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/protocol"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/protocol"
 )
 
 // defaultAgentArgs maps known agent commands to their default arguments.

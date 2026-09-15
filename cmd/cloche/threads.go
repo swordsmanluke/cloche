@@ -7,7 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
 )
 
 // cmdThreads dispatches `cloche threads [list|show|reply]`. Bare `cloche

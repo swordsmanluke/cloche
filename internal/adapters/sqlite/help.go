@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
 const helpThreadSelectColumns = `SELECT id, channel, name, task_id, attempt_id, run_id, step_name, title, state, created_at, updated_at, archived_at`

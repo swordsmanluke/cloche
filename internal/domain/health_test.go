@@ -3,8 +3,8 @@ package domain_test
 import (
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/stretchr/testify/assert"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 func makeRuns(states ...domain.RunState) []domain.Run {

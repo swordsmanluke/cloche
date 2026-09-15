@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/intent"
-	"github.com/cloche-dev/cloche/internal/promptrev"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/intent"
+	"github.com/swordsmanluke/cloche/internal/promptrev"
 )
 
 // apiLedgerPoint is one day's pass-rate bucket in the ledger's

@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 func TestWorkflow_Validate_ValidGraph(t *testing.T) {

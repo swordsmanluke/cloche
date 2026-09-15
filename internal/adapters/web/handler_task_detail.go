@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 // apiAttempt is one attempt's summary for the console's attempt-tab facts row.

@@ -19,14 +19,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/attention"
-	"github.com/cloche-dev/cloche/internal/builtin"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/dsl"
-	"github.com/cloche-dev/cloche/internal/intent"
-	"github.com/cloche-dev/cloche/internal/logstream"
-	"github.com/cloche-dev/cloche/internal/ports"
-	"github.com/cloche-dev/cloche/internal/version"
+	"github.com/swordsmanluke/cloche/internal/attention"
+	"github.com/swordsmanluke/cloche/internal/builtin"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/dsl"
+	"github.com/swordsmanluke/cloche/internal/intent"
+	"github.com/swordsmanluke/cloche/internal/logstream"
+	"github.com/swordsmanluke/cloche/internal/ports"
+	"github.com/swordsmanluke/cloche/internal/version"
 )
 
 // HandlerOption configures optional Handler dependencies.

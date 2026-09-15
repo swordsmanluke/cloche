@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/config"
-	"github.com/cloche-dev/cloche/internal/mcpauth"
-	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/swordsmanluke/cloche/internal/config"
+	"github.com/swordsmanluke/cloche/internal/mcpauth"
+	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
 type Runtime struct {

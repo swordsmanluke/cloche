@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/intent/scan"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/intent/scan"
 )
 
 func TestBuiltinWorkflow_Validates(t *testing.T) {

@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/attention"
-	"github.com/cloche-dev/cloche/internal/builtin"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/host"
-	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/swordsmanluke/cloche/internal/attention"
+	"github.com/swordsmanluke/cloche/internal/builtin"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/host"
+	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
 // Group caps for the task-stack API. Each is a bounded live/recent set;

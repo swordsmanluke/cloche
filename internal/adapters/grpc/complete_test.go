@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
-	server "github.com/cloche-dev/cloche/internal/adapters/grpc"
-	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
-	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
+	server "github.com/swordsmanluke/cloche/internal/adapters/grpc"
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 func TestServer_Complete_Subcommands(t *testing.T) {

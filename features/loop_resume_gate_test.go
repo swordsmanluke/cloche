@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
 	"github.com/cucumber/godog"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
 	grpclib "google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

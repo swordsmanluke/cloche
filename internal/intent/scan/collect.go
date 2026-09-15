@@ -18,7 +18,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cloche-dev/cloche/internal/intent"
+	"github.com/swordsmanluke/cloche/internal/intent"
 )
 
 // DefaultDocGlobs are the doc paths mined when a project doesn't configure

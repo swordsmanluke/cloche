@@ -11,15 +11,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
-	"github.com/cloche-dev/cloche/internal/config"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/engine"
-	"github.com/cloche-dev/cloche/internal/intent"
-	"github.com/cloche-dev/cloche/internal/ports"
-	"github.com/cloche-dev/cloche/internal/promptrev"
-	"github.com/cloche-dev/cloche/internal/protocol"
-	"github.com/cloche-dev/cloche/internal/runcontext"
+	"github.com/swordsmanluke/cloche/internal/adapters/agents/prompt"
+	"github.com/swordsmanluke/cloche/internal/config"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/engine"
+	"github.com/swordsmanluke/cloche/internal/intent"
+	"github.com/swordsmanluke/cloche/internal/ports"
+	"github.com/swordsmanluke/cloche/internal/promptrev"
+	"github.com/swordsmanluke/cloche/internal/protocol"
+	"github.com/swordsmanluke/cloche/internal/runcontext"
 )
 
 // Executor implements engine.StepExecutor for host workflow steps (scripts and

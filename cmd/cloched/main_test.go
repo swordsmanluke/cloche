@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	adaptgrpc "github.com/cloche-dev/cloche/internal/adapters/grpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	adaptgrpc "github.com/swordsmanluke/cloche/internal/adapters/grpc"
 )
 
 func TestFilterNestedProjects(t *testing.T) {

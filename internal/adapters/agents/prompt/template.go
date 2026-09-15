@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
 // KVReader aliases the canonical port type so existing package-local references

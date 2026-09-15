@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/builtin"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/dsl"
+	"github.com/swordsmanluke/cloche/internal/builtin"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/dsl"
 )
 
 // fileRefRegex matches the DSL's file("...") config-value syntax used for

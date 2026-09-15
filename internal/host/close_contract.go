@@ -3,7 +3,7 @@ package host
 import (
 	"errors"
 
-	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 // ErrNoCloseContract is returned by callers dispatching the close/cancel task

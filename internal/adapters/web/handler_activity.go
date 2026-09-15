@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/activitylog"
+	"github.com/swordsmanluke/cloche/internal/activitylog"
 )
 
 // Page size bounds for the activity stream API. The stream is always a

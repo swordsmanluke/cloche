@@ -7,14 +7,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
-	server "github.com/cloche-dev/cloche/internal/adapters/grpc"
-	"github.com/cloche-dev/cloche/internal/adapters/local"
-	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
+	server "github.com/swordsmanluke/cloche/internal/adapters/grpc"
+	"github.com/swordsmanluke/cloche/internal/adapters/local"
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/protocol"
 )
 
 // TestServer_RunWorkflow_TagsUserInitiated covers RunWorkflow's container-run

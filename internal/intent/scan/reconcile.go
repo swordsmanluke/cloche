@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/intent"
+	"github.com/swordsmanluke/cloche/internal/intent"
 )
 
 // Action is one reconcile decision for a candidate: create a new

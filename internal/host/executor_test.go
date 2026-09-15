@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/engine"
-	"github.com/cloche-dev/cloche/internal/logstream"
-	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/engine"
+	"github.com/swordsmanluke/cloche/internal/logstream"
+	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
 func TestGitIdentityEnv(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/dsl"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/dsl"
 )
 
 // agentNameBackfilled tracks which projects have already had their

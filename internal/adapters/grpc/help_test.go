@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
-	server "github.com/cloche-dev/cloche/internal/adapters/grpc"
-	"github.com/cloche-dev/cloche/internal/adapters/sqlite"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/help"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
+	server "github.com/swordsmanluke/cloche/internal/adapters/grpc"
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/help"
 )
 
 func newHelpTestServer(t *testing.T) (*server.ClocheServer, *sqlite.Store, *help.Router) {

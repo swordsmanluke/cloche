@@ -10,10 +10,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/builtin"
-	"github.com/cloche-dev/cloche/internal/domain"
-	"github.com/cloche-dev/cloche/internal/host"
-	"github.com/cloche-dev/cloche/internal/ports"
+	"github.com/swordsmanluke/cloche/internal/builtin"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/host"
+	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
 // Kind identifies why an Item needs attention.

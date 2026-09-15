@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
-	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/adapters/agents/prompt"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 // mapKV is a minimal in-memory prompt.KVReader stub for exercising

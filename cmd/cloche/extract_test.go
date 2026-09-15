@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
 	"google.golang.org/grpc"
 )
 

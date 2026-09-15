@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/config"
+	"github.com/swordsmanluke/cloche/internal/config"
 )
 
 const initLLMTimeout = 30 * time.Second

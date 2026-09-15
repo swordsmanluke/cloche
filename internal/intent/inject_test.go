@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cloche-dev/cloche/internal/intent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/intent"
 )
 
 func TestResolve_NoIntentDir_Dormant(t *testing.T) {

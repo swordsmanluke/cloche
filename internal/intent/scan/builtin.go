@@ -3,7 +3,7 @@ package scan
 import (
 	_ "embed"
 
-	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 //go:embed prompts/discover-domains.md

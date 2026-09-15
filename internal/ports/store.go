@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/activitylog"
-	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/activitylog"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 // UsageQuery holds filter parameters for token usage aggregation queries.

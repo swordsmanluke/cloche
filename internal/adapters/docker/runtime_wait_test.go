@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloche-dev/cloche/internal/ports"
 	"github.com/stretchr/testify/assert"
+	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
 func TestStartedSuccessfully(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	pb "github.com/cloche-dev/cloche/api/clochepb"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
 )
 
 func cmdExtract(ctx context.Context, client pb.ClocheServiceClient, args []string) {
