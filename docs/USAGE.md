@@ -1167,10 +1167,14 @@ Branch: <branch-name>        # omitted when --no-git
 ### `cloche health`
 
 ```
-cloche health
+cloche health [--project <dir>]
 ```
 
 Show per-project pass/fail summary. Requires `CLOCHE_HTTP`.
+
+| Flag | Description |
+|------|-------------|
+| `--project <dir>` | Scope the summary to one project directory, instead of listing all registered projects. The daemon maps the directory to its registered project, so this works from any checkout. |
 
 If the HTTP request fails, `cloche health` falls back to `GetVersion` over gRPC to tell
 apart a fully-down daemon from one whose web dashboard listener is down (e.g. stuck
@@ -1418,7 +1422,7 @@ state. Requires `CLOCHE_HTTP` (talks to the daemon's web API).
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--project <dir>` | current directory name | Project to query tasks for. |
+| `--project <dir>` | current working directory | Project directory to query tasks for. The daemon maps the directory to its registered project, so this works from any checkout. |
 
 ### `cloche loop`
 

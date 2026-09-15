@@ -6,8 +6,9 @@
     <div class="project-card">
         <div class="project-header">
             <span class="health-dot health-{{healthColor .Health.Status}}" title="{{.Health.Status}}"></span>
-            <a href="/projects/{{.Label}}" class="project-name">{{.Label}}</a>
+            <a href="/projects/{{.Slug}}" class="project-name">{{.Label}}</a>
         </div>
+        <div class="project-dir mono">{{.Dir}}</div>
         <div class="project-stats">
             <div class="stat">
                 <span class="stat-value">{{.Health.Passed}}/{{.Health.Total}}</span>
@@ -24,8 +25,8 @@
             {{end}}
         </div>
         <div class="project-actions">
-            <a href="/projects/{{.Label}}/runs" class="btn btn-secondary">View Runs</a>
-            <button class="btn btn-primary btn-sm" onclick="triggerOrchestrator(this, '{{.Label}}')">Trigger Orchestrator</button>
+            <a href="/projects/{{.Slug}}/runs" class="btn btn-secondary">View Runs</a>
+            <button class="btn btn-primary btn-sm" onclick="triggerOrchestrator(this, '{{.Slug}}')">Trigger Orchestrator</button>
         </div>
     </div>
     {{end}}
@@ -35,10 +36,10 @@
 
 {{define "scripts"}}
 <script>
-function triggerOrchestrator(btn, label) {
+function triggerOrchestrator(btn, slug) {
     btn.disabled = true;
     btn.textContent = 'Triggering...';
-    fetch('/api/projects/' + encodeURIComponent(label) + '/trigger', {method: 'POST'})
+    fetch('/api/projects/' + encodeURIComponent(slug) + '/trigger', {method: 'POST'})
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.dispatched > 0) {

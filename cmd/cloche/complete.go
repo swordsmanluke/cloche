@@ -225,7 +225,10 @@ func staticCompletions(subcommand string, index int, words []string, cur string)
 	case "validate":
 		// no flags yet
 
-	case "health", "project", "tasks":
+	case "health", "tasks":
+		candidates = []string{"--project"}
+
+	case "project":
 		// no flags
 	}
 

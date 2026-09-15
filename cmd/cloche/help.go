@@ -119,11 +119,17 @@ Examples:
 
 	"health": `cloche health — Show project health summary
 
-Queries the daemon's HTTP API for a summary of all registered projects
-and their pass/fail test counts.
+Queries the daemon's HTTP API for a summary of registered projects and
+their pass/fail test counts.
 
 Usage:
-  cloche health
+  cloche health [--project <dir>]
+
+Flags:
+  --project <dir>    Scope the summary to one project directory, instead of
+                     listing all registered projects. The daemon maps the
+                     directory to its registered project, so this works
+                     from any checkout.
 
 Environment:
   CLOCHE_HTTP    Daemon HTTP address (e.g. "localhost:8080"). Required.
@@ -131,6 +137,7 @@ Environment:
 Examples:
   export CLOCHE_HTTP=localhost:8080
   cloche health
+  cloche health --project /home/user/workspace/my-app
 `,
 
 	"run": `cloche run — Launch a workflow run
@@ -443,8 +450,9 @@ Usage:
   cloche tasks [--project <dir>]
 
 Flags:
-  --project <dir>    Project directory name to query (default: current
-                     directory basename).
+  --project <dir>    Project directory to query (default: current working
+                     directory). The daemon maps the directory to its
+                     registered project, so this works from any checkout.
 
 Environment:
   CLOCHE_HTTP    Daemon HTTP address (default: "localhost:8080").
@@ -453,7 +461,7 @@ Output columns: ID, STATUS, ASSIGNED, RUN, TITLE
 
 Examples:
   cloche tasks
-  cloche tasks --project my-app
+  cloche tasks --project /home/user/workspace/my-app
 `,
 
 	"loop": `cloche loop — Manage the orchestration loop

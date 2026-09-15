@@ -1,11 +1,12 @@
 {{define "content"}}
 <h1><a href="/">Projects</a> / {{.Label}}</h1>
+<div class="project-dir mono" style="margin-top:-0.5rem;margin-bottom:1rem">{{.Dir}}</div>
 
 <div class="run-history" style="margin-bottom:1rem">
     {{range .RecentRuns}}
     <a href="/runs/{{.ID}}"><span class="run-dot run-dot-{{.State}}" title="{{.ID}}: {{.State}}"></span></a>
     {{end}}
-    <a href="/projects/{{.Label}}/runs" class="btn btn-secondary btn-sm" style="margin-left:0.5rem">View all runs</a>
+    <a href="/projects/{{.Slug}}/runs" class="btn btn-secondary btn-sm" style="margin-left:0.5rem">View all runs</a>
     <button class="btn btn-secondary btn-sm" id="loop-toggle-btn" onclick="toggleLoop()" style="margin-left:0.5rem">...</button>
     {{if .ContainerCount}}
     <button class="btn btn-danger btn-sm" id="delete-containers-btn" onclick="deleteAllContainers()" style="margin-left:0.5rem">Delete {{.ContainerCount}} container{{if gt .ContainerCount 1}}s{{end}}</button>
@@ -89,10 +90,10 @@
 
 {{define "scripts"}}
 <script>
-var projectLabel = {{.Label}};
+var projectSlug = {{.Slug}};
 
 function loadProjectInfo() {
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/info')
+    fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/info')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             var html = '<dl class="run-meta" style="margin:0">';
@@ -125,7 +126,7 @@ function toggleDiff(el) {
     }
     var file = el.getAttribute('data-file');
     var sha = el.getAttribute('data-sha');
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/info/prompt-diff?file=' + encodeURIComponent(file) + '&sha=' + encodeURIComponent(sha))
+    fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/info/prompt-diff?file=' + encodeURIComponent(file) + '&sha=' + encodeURIComponent(sha))
         .then(function(r) { return r.text(); })
         .then(function(text) {
             var pre = document.createElement('pre');
@@ -139,7 +140,7 @@ var workflowsData = [];
 var activeLocation = 'container';
 
 function loadWorkflows() {
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/workflows')
+    fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/workflows')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             workflowsData = data || [];
@@ -688,7 +689,7 @@ function openDrawer(workflowName, stepName) {
     document.getElementById('drawer-body').innerHTML = body;
     document.getElementById('step-drawer').classList.add('drawer-open');
 
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/workflows/' + encodeURIComponent(workflowName) + '/steps/' + encodeURIComponent(stepName) + '/content')
+    fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/workflows/' + encodeURIComponent(workflowName) + '/steps/' + encodeURIComponent(stepName) + '/content')
         .then(function(r) { if (r.ok) return r.text(); return ''; })
         .then(function(text) {
             var el = document.getElementById('drawer-content');
@@ -711,7 +712,7 @@ document.addEventListener('keydown', function(e) {
 window.deleteAllContainers = function() {
     var btn = document.getElementById('delete-containers-btn');
     if (btn) btn.disabled = true;
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/containers', { method: 'DELETE' })
+    fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/containers', { method: 'DELETE' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (btn) {
@@ -735,7 +736,7 @@ function escapeHtml(s) {
 }
 
 function releaseTask(taskId) {
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/tasks/' + encodeURIComponent(taskId) + '/release', { method: 'POST' })
+    fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/tasks/' + encodeURIComponent(taskId) + '/release', { method: 'POST' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.error) {
@@ -778,7 +779,7 @@ function renderTaskTable(tasks, showRelease) {
 }
 
 function loadTasks() {
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/tasks')
+    fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/tasks')
         .then(function(r) { return r.json(); })
         .then(function(tasks) {
             var inProgress = [];
@@ -806,7 +807,7 @@ function formatTokenCount(n) {
 }
 
 function loadTokenUsage() {
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/usage')
+    fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/usage')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             var br = data.burn_rate_1h || [];
@@ -878,7 +879,7 @@ function formatIntentTime(s) {
 
 function loadIntent() {
     if (!document.getElementById('intent-panel')) return;
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/intent/requirements')
+    fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/intent/requirements')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             intentData = data || { requirements: [], last_scan_at: '' };
@@ -886,7 +887,7 @@ function loadIntent() {
             renderRequirements();
         })
         .catch(function() {});
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/intent/domains')
+    fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/intent/domains')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             domainsData = data || { version: 1, domains: [] };
@@ -898,7 +899,7 @@ function loadIntent() {
 function scanIntent() {
     var btn = document.getElementById('intent-scan-btn');
     if (btn) btn.disabled = true;
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/intent/scan', { method: 'POST' })
+    fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/intent/scan', { method: 'POST' })
         .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
         .then(function(res) {
             if (btn) btn.disabled = false;
@@ -957,7 +958,7 @@ function renderRequirements() {
 
 function toggleRequirementStatus(id, currentStatus) {
     var next = currentStatus === 'disabled' ? 'active' : 'disabled';
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/intent/requirements', {
+    fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/intent/requirements', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: id, status: next })
@@ -998,7 +999,7 @@ function saveIntentEdit(id) {
     var domains = document.getElementById('intent-edit-domains').value
         .split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; });
 
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/intent/requirements', {
+    fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/intent/requirements', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1053,7 +1054,7 @@ function addDomainRow() {
 }
 
 function saveDomains() {
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/intent/domains', {
+    fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/intent/domains', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(domainsData)
@@ -1083,7 +1084,7 @@ function updateLoopButton(running) {
 }
 
 function loadLoopStatus() {
-    fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/loop/status')
+    fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/loop/status')
         .then(function(r) { return r.json(); })
         .then(function(data) { updateLoopButton(!!data.running); })
         .catch(function() {});
@@ -1093,7 +1094,7 @@ function toggleLoop() {
     var btn = document.getElementById('loop-toggle-btn');
     if (btn) btn.disabled = true;
     if (loopRunning) {
-        fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/loop/stop', { method: 'POST' })
+        fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/loop/stop', { method: 'POST' })
             .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
             .then(function(res) {
                 if (res.ok) {
@@ -1108,7 +1109,7 @@ function toggleLoop() {
                 alert('Failed to stop loop');
             });
     } else {
-        fetch('/api/projects/' + encodeURIComponent(projectLabel) + '/trigger', { method: 'POST' })
+        fetch('/api/projects/' + encodeURIComponent(projectSlug) + '/trigger', { method: 'POST' })
             .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
             .then(function(res) {
                 if (res.ok) {

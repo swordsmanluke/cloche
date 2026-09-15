@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -49,8 +50,22 @@ func cmdHealth(args []string) {
 		os.Exit(1)
 	}
 
-	url := "http://" + httpAddr + "/api/projects"
-	resp, err := http.Get(url)
+	// Optional --project <dir> scopes the summary to one project; the daemon
+	// maps the directory to its registered project, so this works the same
+	// way regardless of what slug/label it was assigned.
+	projectDir := ""
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--project" && i+1 < len(args) {
+			i++
+			projectDir = args[i]
+		}
+	}
+
+	reqURL := "http://" + httpAddr + "/api/projects"
+	if projectDir != "" {
+		reqURL += "?project=" + url.QueryEscape(projectDir)
+	}
+	resp, err := http.Get(reqURL)
 	if err != nil {
 		// The dial failure looks identical whether the whole daemon is down
 		// or just its web dashboard (e.g. stuck retrying a bind failure).

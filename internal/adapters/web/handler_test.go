@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -436,25 +438,54 @@ func TestHelpers(t *testing.T) {
 	})
 
 	t.Run("projectLabels", func(t *testing.T) {
-		// No conflict: show base name only
+		// Always just the base name, even on collision — the directory path
+		// disambiguates in the UI, not the label.
 		labels := projectLabels([]string{"/home/user/alpha", "/home/user/beta"})
 		assert.Equal(t, "alpha", labels["/home/user/alpha"])
 		assert.Equal(t, "beta", labels["/home/user/beta"])
 
-		// Conflict: two dirs share the same base name
 		labels = projectLabels([]string{"/home/foo/bar", "/home/baz/bar"})
-		assert.Equal(t, "foo/bar", labels["/home/foo/bar"])
-		assert.Equal(t, "baz/bar", labels["/home/baz/bar"])
-
-		// Mixed: some conflict, some don't
-		labels = projectLabels([]string{"/a/bar", "/b/bar", "/c/unique"})
-		assert.Equal(t, "a/bar", labels["/a/bar"])
-		assert.Equal(t, "b/bar", labels["/b/bar"])
-		assert.Equal(t, "unique", labels["/c/unique"])
+		assert.Equal(t, "bar", labels["/home/foo/bar"])
+		assert.Equal(t, "bar", labels["/home/baz/bar"])
 
 		// Empty list
 		labels = projectLabels(nil)
 		assert.Empty(t, labels)
+	})
+
+	t.Run("projectSlugs", func(t *testing.T) {
+		// No conflict: the slug is just the base name.
+		slugs := projectSlugs([]string{"/home/user/alpha", "/home/user/beta"})
+		assert.Equal(t, "alpha", slugs["/home/user/alpha"])
+		assert.Equal(t, "beta", slugs["/home/user/beta"])
+
+		// Conflict: parent name joined with "--", and the slug never
+		// contains "/" so it's always safe to interpolate into a URL path
+		// segment without escaping.
+		slugs = projectSlugs([]string{"/home/foo/bar", "/home/baz/bar"})
+		assert.Equal(t, "foo--bar", slugs["/home/foo/bar"])
+		assert.Equal(t, "baz--bar", slugs["/home/baz/bar"])
+		for _, s := range slugs {
+			assert.NotContains(t, s, "/")
+		}
+
+		// Mixed: some conflict, some don't
+		slugs = projectSlugs([]string{"/a/bar", "/b/bar", "/c/unique"})
+		assert.Equal(t, "a--bar", slugs["/a/bar"])
+		assert.Equal(t, "b--bar", slugs["/b/bar"])
+		assert.Equal(t, "unique", slugs["/c/unique"])
+
+		// Empty list
+		slugs = projectSlugs(nil)
+		assert.Empty(t, slugs)
+	})
+
+	t.Run("legacyProjectLabels", func(t *testing.T) {
+		// Reproduces the pre-slug "parent/base" format, kept only so
+		// resolveProjectDir can still match old bookmarked URLs.
+		legacy := legacyProjectLabels([]string{"/home/foo/bar", "/home/baz/bar"})
+		assert.Equal(t, "foo/bar", legacy["/home/foo/bar"])
+		assert.Equal(t, "baz/bar", legacy["/home/baz/bar"])
 	})
 }
 
@@ -498,6 +529,85 @@ func TestRunsList_ProjectFilter(t *testing.T) {
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusFound, w.Code)
 	assert.Equal(t, "/projects/alpha/runs", w.Header().Get("Location"))
+}
+
+// TestProjectsPage_CollidingBasenames_AllLinksResolve registers two projects
+// that share a basename (e.g. "workspace/cloche" and "repos/cloche") and
+// walks every link rendered on the projects page, asserting each resolves
+// with 200. Guards against regressions where a raw, unescaped "/"-bearing
+// label is interpolated into an href, splitting it into an extra path
+// segment that 404s against the GET /projects/{name} route.
+func TestProjectsPage_CollidingBasenames_AllLinksResolve(t *testing.T) {
+	h, store := setupHandler(t)
+	seedRunWithProject(t, store, "col-1", "develop", domain.RunStateSucceeded, "/home/user/workspace/cloche")
+	seedRunWithProject(t, store, "col-2", "develop", domain.RunStateSucceeded, "/home/user/repos/cloche")
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+
+	// Both projects display as "cloche"; their slugs must disambiguate.
+	assert.Contains(t, body, "workspace--cloche")
+	assert.Contains(t, body, "repos--cloche")
+	// The colliding display name must never leak a raw "/" into an href.
+	assert.NotContains(t, body, `href="/projects/workspace/cloche`)
+	assert.NotContains(t, body, `href="/projects/repos/cloche`)
+
+	hrefRe := regexp.MustCompile(`href="(/projects/[^"]+)"`)
+	matches := hrefRe.FindAllStringSubmatch(body, -1)
+	require.NotEmpty(t, matches)
+
+	seen := map[string]bool{}
+	for _, m := range matches {
+		link := m[1]
+		seen[link] = true
+		req2 := httptest.NewRequest("GET", link, nil)
+		w2 := httptest.NewRecorder()
+		h.ServeHTTP(w2, req2)
+		assert.Equal(t, http.StatusOK, w2.Code, "GET %s", link)
+	}
+
+	for _, want := range []string{
+		"/projects/workspace--cloche",
+		"/projects/workspace--cloche/runs",
+		"/projects/repos--cloche",
+		"/projects/repos--cloche/runs",
+	} {
+		assert.True(t, seen[want], "expected projects page to link to %s", want)
+	}
+}
+
+// TestResolveProjectDir_BackwardCompat verifies resolveProjectDir still
+// accepts the pre-slug "parent/base" label (percent-encoded, for one
+// release, to keep old bookmarks working) and the raw project directory
+// (so callers like the CLI can send the directory it already knows and let
+// the daemon map it, without duplicating slug logic client-side).
+func TestResolveProjectDir_BackwardCompat(t *testing.T) {
+	h, store := setupHandler(t)
+	seedRunWithProject(t, store, "bc-1", "develop", domain.RunStateSucceeded, "/home/user/workspace/cloche")
+	seedRunWithProject(t, store, "bc-2", "develop", domain.RunStateSucceeded, "/home/user/repos/cloche")
+
+	// Current canonical slug.
+	req := httptest.NewRequest("GET", "/projects/workspace--cloche", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Legacy "parent/base" label, percent-encoded as JS's encodeURIComponent
+	// would have produced for an old bookmark.
+	req = httptest.NewRequest("GET", "/projects/workspace%2Fcloche", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Raw project directory, percent-encoded the same way — what the CLI
+	// now sends directly instead of computing a slug.
+	req = httptest.NewRequest("GET", "/api/projects/"+url.PathEscape("/home/user/workspace/cloche")+"/tasks", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestRunsList_ProjectColumn(t *testing.T) {

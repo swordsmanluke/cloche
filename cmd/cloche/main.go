@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1343,7 +1344,10 @@ func cmdTasks(args []string) {
 		httpAddr = "localhost:8080"
 	}
 
-	// Determine project label from --project flag or current directory
+	// Determine the project directory from --project or the current
+	// directory, and send it as-is — the daemon maps it to the registered
+	// project, so this works regardless of what slug/label the dashboard
+	// assigned it (e.g. when the basename collides with another project).
 	projectDir := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -1356,11 +1360,10 @@ func cmdTasks(args []string) {
 	}
 
 	if projectDir == "" {
-		cwd, _ := os.Getwd()
-		projectDir = filepath.Base(cwd)
+		projectDir, _ = os.Getwd()
 	}
 
-	tasksURL := fmt.Sprintf("http://%s/api/projects/%s/tasks", httpAddr, projectDir)
+	tasksURL := fmt.Sprintf("http://%s/api/projects/%s/tasks", httpAddr, url.PathEscape(projectDir))
 	resp, err := http.Get(tasksURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error connecting to daemon web API: %v\n", err)

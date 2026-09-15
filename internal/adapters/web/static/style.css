@@ -309,6 +309,12 @@ details pre {
     font-size: 1.05rem;
 }
 
+.project-dir {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    word-break: break-all;
+}
+
 /* Health indicator dots */
 .health-dot {
     display: inline-block;

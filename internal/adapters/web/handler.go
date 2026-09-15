@@ -238,6 +238,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 type projectOverviewEntry struct {
 	Dir         string
 	Label       string
+	Slug        string
 	Health      domain.HealthResult
 	RecentRuns  []recentRunDot
 	ActiveCount int
@@ -265,6 +266,7 @@ const healthWindowSize = 10
 func (h *Handler) handleProjectOverview(w http.ResponseWriter, r *http.Request) {
 	projects, _ := h.store.ListProjects(r.Context())
 	labels := projectLabels(projects)
+	slugs := projectSlugs(projects)
 
 	var entries []projectOverviewEntry
 	for _, dir := range projects {
@@ -304,6 +306,7 @@ func (h *Handler) handleProjectOverview(w http.ResponseWriter, r *http.Request) 
 		entries = append(entries, projectOverviewEntry{
 			Dir:         dir,
 			Label:       labels[dir],
+			Slug:        slugs[dir],
 			Health:      health,
 			RecentRuns:  dots,
 			ActiveCount: activeCount,
@@ -311,7 +314,7 @@ func (h *Handler) handleProjectOverview(w http.ResponseWriter, r *http.Request) 
 	}
 
 	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Label < entries[j].Label
+		return entries[i].Dir < entries[j].Dir
 	})
 
 	data := map[string]any{
@@ -486,12 +489,12 @@ func (h *Handler) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleRunsList(w http.ResponseWriter, r *http.Request) {
 	projectFilter := r.URL.Query().Get("project")
 
-	// Redirect ?project=<dir> to clean URL /projects/<label>/runs.
+	// Redirect ?project=<dir> to clean URL /projects/<slug>/runs.
 	if projectFilter != "" {
 		projects, _ := h.store.ListProjects(r.Context())
-		labels := projectLabels(projects)
-		if label, ok := labels[projectFilter]; ok {
-			http.Redirect(w, r, "/projects/"+url.PathEscape(label)+"/runs", http.StatusFound)
+		slugs := projectSlugs(projects)
+		if slug, ok := slugs[projectFilter]; ok {
+			http.Redirect(w, r, "/projects/"+url.PathEscape(slug)+"/runs", http.StatusFound)
 			return
 		}
 	}
@@ -515,6 +518,7 @@ func (h *Handler) renderRunsList(w http.ResponseWriter, r *http.Request, project
 
 	projects, _ := h.store.ListProjects(r.Context())
 	labels := projectLabels(projects)
+	slugs := projectSlugs(projects)
 
 	// Count retained containers per project
 	containerCounts := map[string]int{}
@@ -527,10 +531,10 @@ func (h *Handler) renderRunsList(w http.ResponseWriter, r *http.Request, project
 
 	var projectList []projectEntry
 	for _, dir := range projects {
-		projectList = append(projectList, projectEntry{Dir: dir, Label: labels[dir], ContainerCount: containerCounts[dir]})
+		projectList = append(projectList, projectEntry{Dir: dir, Label: labels[dir], Slug: slugs[dir], ContainerCount: containerCounts[dir]})
 	}
 	sort.Slice(projectList, func(i, j int) bool {
-		return projectList[i].Label < projectList[j].Label
+		return projectList[i].Dir < projectList[j].Dir
 	})
 
 	var totalContainerCount int
@@ -542,16 +546,17 @@ func (h *Handler) renderRunsList(w http.ResponseWriter, r *http.Request, project
 	grouped := groupAndSortRuns(runs, labels, taskTitles)
 	polls := h.collectPolls(r.Context(), runs, labels, taskTitles)
 
-	// Build a JSON map of dir→label for the template JS.
-	dirToLabel := map[string]string{}
+	// Build a JSON map of dir→slug for the template JS to build project links.
+	dirToSlug := map[string]string{}
 	for _, p := range projectList {
-		dirToLabel[p.Dir] = p.Label
+		dirToSlug[p.Dir] = p.Slug
 	}
 
-	// Resolve the label for the active project filter, if any.
-	var projectLabel string
+	// Resolve the label/slug for the active project filter, if any.
+	var projectLabel, projectSlug string
 	if projectFilter != "" {
 		projectLabel = labels[projectFilter]
+		projectSlug = slugs[projectFilter]
 	}
 
 	data := map[string]any{
@@ -561,8 +566,9 @@ func (h *Handler) renderRunsList(w http.ResponseWriter, r *http.Request, project
 		"Projects":            projectList,
 		"ProjectFilter":       projectFilter,
 		"ProjectLabel":        projectLabel,
+		"ProjectSlug":         projectSlug,
 		"ProjectLabels":       labels,
-		"DirToLabel":          dirToLabel,
+		"DirToSlug":           dirToSlug,
 		"TotalContainerCount": totalContainerCount,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -1171,12 +1177,12 @@ func (h *Handler) taskTitlesFromRuns(runs []*domain.Run) map[string]string {
 func (h *Handler) handleAPIRuns(w http.ResponseWriter, r *http.Request) {
 	projectFilter := r.URL.Query().Get("project")
 
-	// Redirect ?project=<dir> to clean URL /api/projects/<label>/runs.
+	// Redirect ?project=<dir> to clean URL /api/projects/<slug>/runs.
 	if projectFilter != "" {
 		projects, _ := h.store.ListProjects(r.Context())
-		labels := projectLabels(projects)
-		if label, ok := labels[projectFilter]; ok {
-			http.Redirect(w, r, "/api/projects/"+url.PathEscape(label)+"/runs", http.StatusFound)
+		slugs := projectSlugs(projects)
+		if slug, ok := slugs[projectFilter]; ok {
+			http.Redirect(w, r, "/api/projects/"+url.PathEscape(slug)+"/runs", http.StatusFound)
 			return
 		}
 	}
@@ -1249,6 +1255,21 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	labels := projectLabels(projects)
+	slugs := projectSlugs(projects)
+
+	// Optional ?project=<dir> filters the result to a single project, letting
+	// callers (e.g. `cloche health`) send the directory they already know
+	// instead of computing a slug/label client-side.
+	if projectFilter := r.URL.Query().Get("project"); projectFilter != "" {
+		var filtered []string
+		for _, dir := range projects {
+			if dir == projectFilter {
+				filtered = append(filtered, dir)
+				break
+			}
+		}
+		projects = filtered
+	}
 
 	type apiHealth struct {
 		Status string `json:"status"`
@@ -1259,6 +1280,7 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 	type apiProject struct {
 		Dir         string    `json:"dir"`
 		Label       string    `json:"label"`
+		Slug        string    `json:"slug"`
 		Health      apiHealth `json:"health"`
 		ActiveCount int       `json:"active_count"`
 	}
@@ -1279,6 +1301,7 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 		result[i] = apiProject{
 			Dir:   dir,
 			Label: labels[dir],
+			Slug:  slugs[dir],
 			Health: apiHealth{
 				Status: string(health.Status),
 				Passed: health.Passed,
@@ -2035,15 +2058,26 @@ func parseFullLogLine(text string) logstream.LogLine {
 
 // --- Project detail handlers ---
 
-// resolveProjectDir resolves a project label from the URL to its directory path.
-// Returns (dir, label, ok). Writes a JSON error response if not found.
+// resolveProjectDir resolves the {name} URL segment to a project directory.
+// It accepts, in order: the current URL-safe slug (see projectSlugs), the
+// literal project directory (so callers that already know the absolute path
+// — e.g. the CLI — can skip slug computation entirely and let the daemon map
+// it), and the pre-slug "parent/base" label format for one release, so old
+// bookmarks keep working. Returns (dir, slug, ok), where slug is always the
+// current canonical slug for dir, suitable for building further links.
+// Writes a JSON error response if not found.
 func (h *Handler) resolveProjectDir(w http.ResponseWriter, r *http.Request) (string, string, bool) {
-	label := r.PathValue("name")
+	name := r.PathValue("name")
 	projects, _ := h.store.ListProjects(r.Context())
-	labels := projectLabels(projects)
-	for dir, l := range labels {
-		if l == label {
-			return dir, label, true
+	slugs := projectSlugs(projects)
+	for dir, slug := range slugs {
+		if slug == name || dir == name {
+			return dir, slug, true
+		}
+	}
+	for dir, label := range legacyProjectLabels(projects) {
+		if label == name {
+			return dir, slugs[dir], true
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -2053,10 +2087,11 @@ func (h *Handler) resolveProjectDir(w http.ResponseWriter, r *http.Request) (str
 }
 
 func (h *Handler) handleProjectDetail(w http.ResponseWriter, r *http.Request) {
-	dir, label, ok := h.resolveProjectDir(w, r)
+	dir, slug, ok := h.resolveProjectDir(w, r)
 	if !ok {
 		return
 	}
+	label := filepath.Base(dir)
 
 	runs, _ := h.store.ListRunsByProject(r.Context(), dir, time.Time{})
 	n := 10
@@ -2078,6 +2113,7 @@ func (h *Handler) handleProjectDetail(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{
 		"Title":          label,
 		"Label":          label,
+		"Slug":           slug,
 		"Dir":            dir,
 		"RecentRuns":     dots,
 		"ContainerCount": containerCount,
@@ -3330,14 +3366,26 @@ func shortContainerID(id string) string {
 	return id
 }
 
-// projectLabels builds a mapping from full project directory paths to short
-// display labels. Each label is the final directory component (e.g.
-// "myproject" from "/home/user/workspace/myproject"). When two projects share
-// the same final name, the parent directory is prepended to disambiguate
-// (e.g. "foo/bar" vs "baz/bar").
+// projectLabels builds a mapping from full project directory paths to
+// display names. The display name is always the final directory component
+// (e.g. "myproject" from "/home/user/workspace/myproject"), even when two
+// projects share it — the directory path itself disambiguates them in the
+// UI. See projectSlugs for the unique, URL-safe identifier used in links.
 func projectLabels(dirs []string) map[string]string {
 	labels := make(map[string]string, len(dirs))
-	// Group dirs by their base name to detect conflicts.
+	for _, d := range dirs {
+		labels[d] = filepath.Base(d)
+	}
+	return labels
+}
+
+// legacyProjectLabels reproduces the pre-slug label format ("parent/base"
+// for colliding basenames, otherwise just "base"), kept only so
+// resolveProjectDir can still match bookmarked URLs from before slugs
+// existed. New links must use projectSlugs instead, since this format
+// contains "/" and breaks when interpolated directly into an href.
+func legacyProjectLabels(dirs []string) map[string]string {
+	labels := make(map[string]string, len(dirs))
 	byBase := map[string][]string{}
 	for _, d := range dirs {
 		base := filepath.Base(d)
@@ -3356,8 +3404,42 @@ func projectLabels(dirs []string) map[string]string {
 	return labels
 }
 
+// projectSlugs builds a mapping from full project directory paths to
+// unique, URL-safe slugs that never contain "/". Each slug is the final
+// directory component; when two projects share a basename, the parent
+// directory name is prepended, joined by "--" (e.g. "workspace--cloche" vs
+// "repos--cloche"). Any further collision (e.g. two parents that already
+// contain "--") is broken with a numeric suffix.
+func projectSlugs(dirs []string) map[string]string {
+	slugs := make(map[string]string, len(dirs))
+	byBase := map[string][]string{}
+	for _, d := range dirs {
+		base := filepath.Base(d)
+		byBase[base] = append(byBase[base], d)
+	}
+	for base, paths := range byBase {
+		if len(paths) == 1 {
+			slugs[paths[0]] = base
+			continue
+		}
+		sort.Strings(paths)
+		used := make(map[string]bool, len(paths))
+		for _, p := range paths {
+			parent := filepath.Base(filepath.Dir(p))
+			slug := parent + "--" + base
+			for n := 2; used[slug]; n++ {
+				slug = fmt.Sprintf("%s--%s-%d", parent, base, n)
+			}
+			used[slug] = true
+			slugs[p] = slug
+		}
+	}
+	return slugs
+}
+
 type projectEntry struct {
 	Dir            string
 	Label          string
+	Slug           string
 	ContainerCount int
 }
