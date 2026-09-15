@@ -74,15 +74,37 @@ Click a row (or select it with `j`/`k` and press Enter) to open it in the centre
 
 ### Centre pane
 
-Shows the selected task's header and a facts row (status, timing, current step, or outcome,
-depending on which group it came from). This is a placeholder host — the full detail pane
-(logs, steps, DAG, etc.) is a separate ticket.
+Shows the selected task's full detail:
+
+- **Header** — task ID, a state pill (running / needs you / queued / succeeded / failed /
+  parked), the title, and state-dependent actions: running → Console (raw container
+  output), Workflow (step/wire summary), Cancel; done → Open branch, Diff, Delete
+  container; queued → Cancel. Needs-you and parked tasks show no actions yet.
+- **Facts row** — attempt tabs (number, run ID, outcome, duration; only shown when a task
+  has more than one attempt; `[` and `]` switch between them), plus the selected attempt's
+  top-level run ID, child run IDs, container ID and state, token usage per agent, the
+  prompt file and git revision used, and (on a retried attempt) which step the previous
+  attempt failed at. Backed by `GET /api/projects/{slug}/tasks/{taskId}/attempts` for the
+  attempt list and `GET /api/runs/{id}` for the selected attempt's detail.
+- **Step strip** — one horizontal segment per step of the top-level run, with a spawned
+  child run's steps inlined in a row beneath the workflow step that spawned them (the
+  flattened-run tree already used by `GET /api/runs/{id}`). Each segment shows a result
+  dot and duration; poll steps also show their last poll time and count. The live (or
+  selected) segment is highlighted. Clicking a segment scopes the log below to that step's
+  output (`GET /api/runs/{id}/steps/{step}/output`); clicking it again clears the scope.
+- **Log** — full pane width. Unscoped, it's an SSE stream (`GET /api/attempts/{id}/stream`)
+  with a follow toggle, a replay of the last ~1000 lines, and "load earlier" paging
+  (`GET /api/attempts/{id}/logs`). A type filter (all/llm/script/status), a wrap toggle,
+  and `g`/`G` (scroll to top/bottom) are always available. Every line keeps its timestamp,
+  type, and originating step. An SSE error shows "Disconnected" — only an explicit `done`
+  event marks the stream "Complete".
 
 ### Routing
 
-URLs follow `/{project-slug}` and `/{project-slug}/{task-id}`; `?attempt=` and `?step=`
-are reserved for a future detail pane. Selecting a project or task updates the URL via
-`history.pushState` without a page reload; browser back/forward works as expected.
+URLs follow `/{project-slug}` and `/{project-slug}/{task-id}`. Selecting a project or task
+updates the URL via `history.pushState` without a page reload; browser back/forward works
+as expected. Attempt and step-scope selection are client-side state, not reflected in the
+URL yet.
 
 The pre-console URLs (`/`, `/projects/{name}[/runs]`, `/runs[/{id}]`, `/tasks/{id}`,
 `/failed-tasks`) redirect into the new scheme for one release before being removed.
@@ -96,6 +118,8 @@ The pre-console URLs (`/`, `/projects/{name}[/runs]`, `/runs[/{id}]`, `/tasks/{i
 | `Enter` | Open the selected task in the centre pane |
 | `Esc` | Return to the stack (clears the centre pane) |
 | `a` | Open the activity stream |
+| `[` / `]` | Switch to the previous / next attempt |
+| `g` / `G` | Scroll the log to the top / bottom |
 | `?` | Toggle the keyboard shortcuts overlay |
 
 ### Foot bar
@@ -125,12 +149,23 @@ The dashboard's JSON endpoints remain stable and are also used by the CLI
 - `GET /api/projects` — per-project health, active-run count, and attention count.
 - `GET /api/projects/{name}/tasks` — the orchestration loop's live task snapshot.
 - `GET /api/projects/{name}/tasks/stack` — the grouped, bounded task stack (see above).
+- `GET /api/projects/{name}/tasks/{taskId}/attempts` — a task's attempts (oldest first),
+  each with its run ID, outcome, duration, and retry reason — backs the centre pane's
+  attempt tabs.
 - `GET /api/projects/{name}/loop/status`, `POST /loop/stop`, `POST /trigger` — loop control.
 - `GET /api/projects/{name}/loop/occupancy`, `GET /api/projects/occupancy` — concurrency
   slots and queue depth, per-project and all-projects.
 - `GET /api/projects/{name}/usage` — token burn rate and 24h totals.
-- `GET /api/runs`, `GET /api/runs/{id}`, `GET /api/runs/{id}/stream` — run listing, detail,
+- `GET /api/runs`, `GET /api/runs/{id}`, `GET /api/runs/{id}/stream` — run listing, detail
+  (steps, child runs, container state, per-agent token totals, prompt file/git revision),
   and live SSE log streaming.
+- `GET /api/runs/{id}/steps/{step}/output` — a single step's raw output, for the step strip.
+- `GET /api/runs/{id}/branch`, `GET /api/runs/{id}/diff` — the run's extracted result
+  branch(es) and their diff against the run's base revision.
+- `GET /api/runs/{id}/console` — the raw (unparsed) container log, for the header's Console
+  action.
+- `GET /api/attempts/{id}/stream`, `GET /api/attempts/{id}/logs` — SSE streaming and
+  paginated log lines across an attempt's host run and any spawned child runs.
 - `GET /api/failed-tasks` — failed-but-still-open tasks and built-in workflow failures.
 - `GET /api/activity` — the activity ticker/stream (see Foot bar above), filtered by
   `?project=<slug>` (all projects when omitted) and `?failures_only=1`, paged via

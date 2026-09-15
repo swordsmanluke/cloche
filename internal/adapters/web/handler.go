@@ -296,6 +296,9 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
 	h.mux.HandleFunc("POST /api/runs/{id}/stop", h.handleAPIStopRun)
 	h.mux.HandleFunc("DELETE /api/runs/{id}/container", h.handleAPIDeleteContainer)
+	h.mux.HandleFunc("GET /api/runs/{id}/branch", h.handleAPIRunBranch)
+	h.mux.HandleFunc("GET /api/runs/{id}/diff", h.handleAPIRunDiff)
+	h.mux.HandleFunc("GET /api/runs/{id}/console", h.handleAPIRunConsole)
 	h.mux.HandleFunc("DELETE /api/projects/{name}/containers", h.handleAPIDeleteProjectContainers)
 	h.mux.HandleFunc("DELETE /api/containers", h.handleAPIDeleteAllContainers)
 	h.mux.HandleFunc("GET /api/projects/{name}/usage", h.handleAPIProjectUsage)
@@ -305,6 +308,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/projects/{name}/workflows/{workflow}/steps/{step}/content", h.handleAPIStepContent)
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks", h.handleAPITasks)
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks/stack", h.handleAPITaskStack)
+	h.mux.HandleFunc("GET /api/projects/{name}/tasks/{taskId}/attempts", h.handleAPITaskAttempts)
 	h.mux.HandleFunc("GET /api/projects/{name}/attention", h.handleAPIProjectAttention)
 	h.mux.HandleFunc("GET /api/activity", h.handleAPIActivity)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
@@ -579,6 +583,12 @@ func (h *Handler) flattenRunFrom(ctx context.Context, runID string, depth, paren
 			as.ChildRunID = child.ID
 			as.ChildState = string(child.State)
 		}
+		if pollStore, ok := h.store.(ports.PollStore); ok {
+			if rec, err := pollStore.GetPoll(ctx, runID, s.StepName); err == nil && rec != nil {
+				as.LastPollAt = formatTime(rec.LastPollAt)
+				as.PollCount = rec.PollCount
+			}
+		}
 		result = append(result, as)
 
 		if child != nil {
@@ -707,13 +717,61 @@ type apiStep struct {
 	ParentIndex int    `json:"parent_index"`
 	ChildRunID  string `json:"child_run_id,omitempty"`
 	ChildState  string `json:"child_state,omitempty"`
+	// Poll fields, set only while the step is an active poll step (see
+	// ports.PollStore) — for the step strip's "last poll time and count".
+	LastPollAt string `json:"last_poll_at,omitempty"`
+	PollCount  int    `json:"poll_count,omitempty"`
+}
+
+// apiAgentTokens is one agent's token totals, aggregated across a run's
+// (and its inlined child runs') steps for the facts row's "tokens" fact.
+type apiAgentTokens struct {
+	AgentName    string `json:"agent_name"`
+	InputTokens  int64  `json:"input_tokens"`
+	OutputTokens int64  `json:"output_tokens"`
+}
+
+// aggregateTokenUsage sums input/output tokens per agent across steps
+// (including inlined child-run steps), preserving first-seen agent order.
+func aggregateTokenUsage(steps []apiStep) []apiAgentTokens {
+	var order []string
+	totals := map[string]*apiAgentTokens{}
+	for _, s := range steps {
+		if !s.HasUsage || s.AgentName == "" {
+			continue
+		}
+		t, ok := totals[s.AgentName]
+		if !ok {
+			t = &apiAgentTokens{AgentName: s.AgentName}
+			totals[s.AgentName] = t
+			order = append(order, s.AgentName)
+		}
+		t.InputTokens += s.InputTokens
+		t.OutputTokens += s.OutputTokens
+	}
+	result := make([]apiAgentTokens, 0, len(order))
+	for _, name := range order {
+		result = append(result, *totals[name])
+	}
+	return result
+}
+
+// shortSHA truncates a git SHA to its short (7-char) form for display.
+func shortSHA(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
 }
 
 type apiRunDetail struct {
 	apiRun
-	ContainerState string    `json:"container_state"`
-	Steps          []apiStep `json:"steps"`
-	ChildRuns      []apiRun  `json:"child_runs,omitempty"`
+	ContainerState string           `json:"container_state"`
+	Steps          []apiStep        `json:"steps"`
+	ChildRuns      []apiRun         `json:"child_runs,omitempty"`
+	TokenUsage     []apiAgentTokens `json:"token_usage,omitempty"`
+	PromptFile     string           `json:"prompt_file,omitempty"`
+	GitRevision    string           `json:"git_revision,omitempty"`
 }
 
 func toAPIRun(r *domain.Run, labels map[string]string) apiRun {
@@ -1146,6 +1204,9 @@ func (h *Handler) handleAPIRunDetail(w http.ResponseWriter, r *http.Request) {
 		ContainerState: h.containerState(r.Context(), run),
 		Steps:          steps,
 		ChildRuns:      apiChildren,
+		TokenUsage:     aggregateTokenUsage(steps),
+		PromptFile:     resolvePromptFile(run.ProjectDir, run.WorkflowName),
+		GitRevision:    shortSHA(run.BaseSHA),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -2303,17 +2364,10 @@ func (h *Handler) handleAPIWorkflows(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(workflows)
 }
 
-func (h *Handler) handleAPIStepContent(w http.ResponseWriter, r *http.Request) {
-	dir, _, ok := h.resolveProjectDir(w, r)
-	if !ok {
-		return
-	}
-	workflowName := r.PathValue("workflow")
-	stepName := r.PathValue("step")
-
-	// Find the workflow by scanning all .cloche files
+// lookupWorkflow finds a workflow by name, scanning a project's .cloche
+// files first and falling back to built-ins. Returns nil if not found.
+func lookupWorkflow(dir, workflowName string) *domain.Workflow {
 	clocheDir := filepath.Join(dir, ".cloche")
-	var wf *domain.Workflow
 	entries, _ := os.ReadDir(clocheDir)
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".cloche") {
@@ -2328,15 +2382,49 @@ func (h *Handler) handleAPIStepContent(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if found, ok := wfs[workflowName]; ok {
-			wf = found
-			break
+			return found
 		}
 	}
+	if found, ok := builtin.Lookup(workflowName); ok {
+		return found
+	}
+	return nil
+}
+
+// promptFileRefRegex matches the DSL's file("...") config-value syntax,
+// e.g. `prompt = file(".cloche/prompts/implement.md")`.
+var promptFileRefRegex = regexp.MustCompile(`^file\("(.+)"\)$`)
+
+// resolvePromptFile returns the prompt template path configured on the
+// first step (in file order) of the named workflow that references one via
+// file("..."), or "" if the workflow can't be found or has no such step
+// (e.g. its prompt is an inline string rather than a file reference).
+func resolvePromptFile(dir, workflowName string) string {
+	wf := lookupWorkflow(dir, workflowName)
 	if wf == nil {
-		if found, ok := builtin.Lookup(workflowName); ok {
-			wf = found
+		return ""
+	}
+	for _, s := range wf.Steps {
+		p, ok := s.Config["prompt"]
+		if !ok {
+			continue
+		}
+		if m := promptFileRefRegex.FindStringSubmatch(p); m != nil {
+			return m[1]
 		}
 	}
+	return ""
+}
+
+func (h *Handler) handleAPIStepContent(w http.ResponseWriter, r *http.Request) {
+	dir, _, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	workflowName := r.PathValue("workflow")
+	stepName := r.PathValue("step")
+
+	wf := lookupWorkflow(dir, workflowName)
 	if wf == nil {
 		http.Error(w, "workflow not found", http.StatusNotFound)
 		return
