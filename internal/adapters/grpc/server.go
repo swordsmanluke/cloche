@@ -471,10 +471,19 @@ func (s *ClocheServer) recordStepComplete(ctx context.Context, runID, stepName s
 			CompletedAt: now,
 		}
 		if result.TokenUsage != nil {
+			agentName := result.TokenUsage.AgentName
+			if agentName == "" {
+				// Backward compatibility with older cloche-agent builds that
+				// didn't report their own agent name over the wire.
+				agentName = agentNameForStep(run.ProjectDir, run.WorkflowName, stepName)
+			}
+			if agentName == "" {
+				agentName = domain.UnattributedAgent
+			}
 			exec.Usage = &domain.TokenUsage{
 				InputTokens:  result.TokenUsage.InputTokens,
 				OutputTokens: result.TokenUsage.OutputTokens,
-				AgentName:    agentNameForStep(run.ProjectDir, run.WorkflowName, stepName),
+				AgentName:    agentName,
 			}
 		}
 		_ = s.captures.SaveCapture(ctx, runID, exec)
@@ -493,9 +502,10 @@ func (s *ClocheServer) recordStepComplete(ctx context.Context, runID, stepName s
 	}
 }
 
-// agentNameForStep returns the agent name configured for the given step in the
-// workflow file. Returns an empty string if the workflow cannot be loaded or
-// the step has no agent configured.
+// agentNameForStep returns the agent command configured for the given step in
+// the workflow file (either an explicit agent_command or one resolved from an
+// `agent = <alias>` reference). Returns an empty string if the workflow
+// cannot be loaded or the step has no agent command configured.
 func agentNameForStep(projectDir, workflowName, stepName string) string {
 	if projectDir == "" || workflowName == "" || stepName == "" {
 		return ""
@@ -505,15 +515,7 @@ func agentNameForStep(projectDir, workflowName, stepName string) string {
 	if err != nil {
 		return ""
 	}
-	wf, err := dsl.ParseForContainer(string(data))
-	if err != nil {
-		return ""
-	}
-	step, ok := wf.Steps[stepName]
-	if !ok {
-		return ""
-	}
-	return step.Config["agent"]
+	return dsl.AgentCommandForStep(data, stepName)
 }
 
 // failInFlightSteps marks every active step in the run as failed. This is

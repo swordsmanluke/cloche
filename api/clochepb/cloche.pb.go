@@ -5283,6 +5283,7 @@ type TokenUsage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	InputTokens   int64                  `protobuf:"varint,1,opt,name=input_tokens,json=inputTokens,proto3" json:"input_tokens,omitempty"`
 	OutputTokens  int64                  `protobuf:"varint,2,opt,name=output_tokens,json=outputTokens,proto3" json:"output_tokens,omitempty"`
+	AgentName     string                 `protobuf:"bytes,3,opt,name=agent_name,json=agentName,proto3" json:"agent_name,omitempty"` // resolved agent command, e.g. "claude"; may be empty for old agents
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5329,6 +5330,13 @@ func (x *TokenUsage) GetOutputTokens() int64 {
 		return x.OutputTokens
 	}
 	return 0
+}
+
+func (x *TokenUsage) GetAgentName() string {
+	if x != nil {
+		return x.AgentName
+	}
+	return ""
 }
 
 // AskHelpRequest opens or continues a help thread from an agent step.
@@ -6421,11 +6429,13 @@ const file_cloche_proto_rawDesc = "" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1b\n" +
 	"\tstep_name\x18\x02 \x01(\tR\bstepName\"\n" +
 	"\n" +
-	"\bShutdown\"T\n" +
+	"\bShutdown\"s\n" +
 	"\n" +
 	"TokenUsage\x12!\n" +
 	"\finput_tokens\x18\x01 \x01(\x03R\vinputTokens\x12#\n" +
-	"\routput_tokens\x18\x02 \x01(\x03R\foutputTokens\"\x97\x02\n" +
+	"\routput_tokens\x18\x02 \x01(\x03R\foutputTokens\x12\x1d\n" +
+	"\n" +
+	"agent_name\x18\x03 \x01(\tR\tagentName\"\x97\x02\n" +
 	"\x0eAskHelpRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +

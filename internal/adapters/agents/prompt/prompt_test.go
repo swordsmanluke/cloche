@@ -771,6 +771,79 @@ func TestPromptAdapter_SetsAgentNameViaUsageCommand(t *testing.T) {
 	assert.Equal(t, int64(75), sr.Usage.OutputTokens)
 }
 
+// TestPromptAdapter_UsageAlwaysCarriesAgentName asserts the invariant that
+// every non-nil StepResult.Usage the prompt adapter returns has a non-empty
+// AgentName, across every code path that can produce one: the buffered
+// (StatusWriter == nil) stream-json extraction, the streaming
+// (StatusWriter != nil) per-line extraction, and the usage_command fallback.
+// A usage record with an empty AgentName is silently unattributed once it
+// reaches the store's per-agent breakdown (see cloche-bb79).
+func TestPromptAdapter_UsageAlwaysCarriesAgentName(t *testing.T) {
+	streamJSON := `{"type":"result","subtype":"success","result":"CLOCHE_RESULT:%s:success","usage":{"input_tokens":100,"output_tokens":50}}`
+
+	tests := []struct {
+		name       string
+		adapter    func(statusBuf *bytes.Buffer) *prompt.Adapter
+		stepConfig map[string]string
+	}{
+		{
+			name: "buffered stream-json usage",
+			adapter: func(_ *bytes.Buffer) *prompt.Adapter {
+				return &prompt.Adapter{
+					Commands:     []string{"sh"},
+					ExplicitArgs: []string{"-c", "cat > /dev/null && printf '" + streamJSON + "\\n' \"$CLOCHE_RESULT_NONCE\""},
+				}
+			},
+			stepConfig: map[string]string{"prompt": "Do something."},
+		},
+		{
+			name: "streaming stream-json usage",
+			adapter: func(statusBuf *bytes.Buffer) *prompt.Adapter {
+				return &prompt.Adapter{
+					Commands:     []string{"sh"},
+					ExplicitArgs: []string{"-c", "cat > /dev/null && printf '" + streamJSON + "\\n' \"$CLOCHE_RESULT_NONCE\""},
+					StatusWriter: protocol.NewStatusWriter(statusBuf),
+				}
+			},
+			stepConfig: map[string]string{"prompt": "Do something."},
+		},
+		{
+			name: "usage_command fallback",
+			adapter: func(_ *bytes.Buffer) *prompt.Adapter {
+				return &prompt.Adapter{
+					Commands:     []string{"sh"},
+					ExplicitArgs: []string{"-c", "cat > /dev/null && echo ok && echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
+				}
+			},
+			stepConfig: map[string]string{
+				"prompt":        "Do something.",
+				"usage_command": `echo '{"input_tokens":200,"output_tokens":75}'`,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			var statusBuf bytes.Buffer
+			adapter := tc.adapter(&statusBuf)
+
+			step := &domain.Step{
+				Name:    "implement",
+				Type:    domain.StepTypeAgent,
+				Results: []string{"success", "fail"},
+				Config:  tc.stepConfig,
+			}
+
+			sr, err := adapter.Execute(context.Background(), step, dir)
+			require.NoError(t, err)
+			assert.Equal(t, "success", sr.Result)
+			require.NotNil(t, sr.Usage, "expected a usage record to be captured")
+			assert.NotEmpty(t, sr.Usage.AgentName, "usage record must carry a non-empty agent name")
+		})
+	}
+}
+
 func TestPromptAdapter_ExtraEnvPropagatedToAgent(t *testing.T) {
 	dir := t.TempDir()
 

@@ -725,6 +725,11 @@ Each completed agent step records:
 | `agent_name` | Which agent ran the step (e.g. `claude`, `codex`) |
 
 These are stored per step execution and can be aggregated over any time window.
+`agent_name` is the resolved agent command — if the step used `agent = <identifier>`,
+this is the alias's expanded `command`, not the alias itself. Rows where the agent
+can't be determined (e.g. usage recorded by an older `cloche-agent` build, or the
+step's workflow file is no longer on disk) are labeled `unattributed` rather than
+left blank.
 
 ### How Tracking Works Per Agent
 

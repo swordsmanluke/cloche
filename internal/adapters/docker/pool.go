@@ -89,10 +89,19 @@ func (cs *ContainerSession) ExecuteStep(ctx context.Context, step *domain.Step, 
 	case result := <-ch:
 		var usage *domain.TokenUsage
 		if result.TokenUsage != nil {
+			agentName := result.TokenUsage.AgentName
+			if agentName == "" {
+				// Backward compatibility with older cloche-agent builds that
+				// didn't report their own agent name over the wire.
+				agentName = step.Config["agent_command"]
+			}
+			if agentName == "" {
+				agentName = domain.UnattributedAgent
+			}
 			usage = &domain.TokenUsage{
 				InputTokens:  result.TokenUsage.InputTokens,
 				OutputTokens: result.TokenUsage.OutputTokens,
-				AgentName:    step.Config["agent"],
+				AgentName:    agentName,
 			}
 		}
 		return domain.StepResult{Result: result.Result, Usage: usage, Skipped: result.Skipped}, nil

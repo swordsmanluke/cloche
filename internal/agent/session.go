@@ -338,6 +338,7 @@ func (s *Session) executeStep(
 		tokenUsage = &pb.TokenUsage{
 			InputTokens:  sr.Usage.InputTokens,
 			OutputTokens: sr.Usage.OutputTokens,
+			AgentName:    sr.Usage.AgentName,
 		}
 	}
 

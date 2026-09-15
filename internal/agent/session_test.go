@@ -210,6 +210,54 @@ func TestSession_ExecuteAgentStep(t *testing.T) {
 	}
 }
 
+// TestSession_ExecuteAgentStep_UsageCarriesAgentName verifies that when the
+// prompt adapter reports token usage, the AgentName travels all the way
+// through the pb.StepResult sent back to the daemon. A prior bug built
+// pb.TokenUsage from only InputTokens/OutputTokens, silently dropping
+// AgentName before it ever left the container (cloche-bb79).
+func TestSession_ExecuteAgentStep_UsageCarriesAgentName(t *testing.T) {
+	dir := t.TempDir()
+
+	mockAgent := filepath.Join(dir, "mock-agent.sh")
+	streamJSON := `{"type":"result","subtype":"success","result":"CLOCHE_RESULT:%s:success","usage":{"input_tokens":10,"output_tokens":5}}`
+	require.NoError(t, os.WriteFile(mockAgent, []byte(
+		"#!/bin/sh\ncat > /dev/null\nprintf '"+streamJSON+"\\n' \"$CLOCHE_RESULT_NONCE\"\n",
+	), 0755))
+
+	srv := newFakeServer([]*pb.ExecuteStep{
+		{
+			StepName:  "implement",
+			StepType:  "agent",
+			Config:    map[string]string{"prompt": "Do something.", "agent_command": mockAgent},
+			RequestId: "req-usage",
+		},
+	})
+	addr := startFakeServer(t, srv)
+
+	sess := agent.NewSession(agent.SessionConfig{
+		Addr:    addr,
+		RunID:   "run-usage",
+		WorkDir: dir,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err := sess.Run(ctx)
+	require.NoError(t, err)
+
+	select {
+	case result := <-srv.results:
+		assert.Equal(t, "success", result.Result)
+		require.NotNil(t, result.TokenUsage)
+		assert.Equal(t, mockAgent, result.TokenUsage.AgentName)
+		assert.Equal(t, int64(10), result.TokenUsage.InputTokens)
+		assert.Equal(t, int64(5), result.TokenUsage.OutputTokens)
+	default:
+		t.Fatal("StepResult not received")
+	}
+}
+
 func TestSession_StepLogStreaming(t *testing.T) {
 	// A script step that emits multiple lines.
 	srv := newFakeServer([]*pb.ExecuteStep{

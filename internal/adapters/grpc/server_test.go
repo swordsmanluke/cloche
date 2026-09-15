@@ -4917,6 +4917,32 @@ func TestAgentNameForStep(t *testing.T) {
 	})
 }
 
+// TestAgentNameForStep_BareAgentCommand covers the common real-world case
+// where a step sets agent_command directly instead of referencing a named
+// agents { } alias — the style used by every workflow in this repo's own
+// .cloche/host.cloche. A prior bug read step.Config["agent"] (the alias key,
+// only ever set when an alias is used) instead of the resolved
+// agent_command, so this shape always returned "" (cloche-bb79).
+func TestAgentNameForStep_BareAgentCommand(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+
+	wf := `workflow develop {
+  step build {
+    agent_command = "claude"
+    prompt = "build the thing"
+    results = [success, fail]
+  }
+  build:success -> done
+  build:fail -> abort
+}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "develop.cloche"), []byte(wf), 0644))
+
+	name := server.AgentNameForStep(dir, "develop", "build")
+	assert.Equal(t, "claude", name)
+}
+
 // TestServer_StreamLogs_CompoundStepName verifies that a compound step name
 // (e.g. "develop:implement") serves logs from the sub-workflow's extracted
 // log subdirectory (.cloche/logs/<task>/<attempt>/develop/implement.log).

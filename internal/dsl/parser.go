@@ -72,6 +72,35 @@ func ParseForContainer(input string) (*domain.Workflow, error) {
 	return Parse(input, WithLocation(domain.LocationContainer))
 }
 
+// AgentCommandForStep parses a container workflow file and returns the
+// resolved agent command for stepName (from an explicit agent_command, or
+// via an `agent = <alias>` reference into an `agents { }` block). Returns ""
+// if the file can't be parsed, the step doesn't exist, or no agent command
+// is configured for it.
+func AgentCommandForStep(data []byte, stepName string) string {
+	return AgentCommandsForWorkflow(data)[stepName]
+}
+
+// AgentCommandsForWorkflow parses a container workflow file and returns the
+// resolved agent command for every step (from an explicit agent_command, or
+// via an `agent = <alias>` reference into an `agents { }` block). Steps with
+// no agent command configured are omitted. Returns an empty map if the file
+// can't be parsed.
+func AgentCommandsForWorkflow(data []byte) map[string]string {
+	commands := map[string]string{}
+	wf, err := ParseForContainer(string(data))
+	if err != nil {
+		return commands
+	}
+	wf.ResolveAgents()
+	for name, step := range wf.Steps {
+		if cmd := step.Config["agent_command"]; cmd != "" {
+			commands[name] = cmd
+		}
+	}
+	return commands
+}
+
 // ParseAll parses a .cloche file that may contain multiple workflows.
 // Workflows default to LocationContainer but a "host { }" block overrides
 // the location to LocationHost, so any .cloche file can define host workflows.

@@ -148,6 +148,22 @@ func (s *Store) MigrateProjectLogs(projectDir string) error {
 		return nil
 	}
 
+	if err := s.migrateProjectLogsOnce(projectDir); err != nil {
+		return err
+	}
+
+	// Independent of the v2-logs migration above (which may already be
+	// marked done on projects that predate this fix): backfill any
+	// step_executions rows left with an empty agent_name because usage was
+	// recorded before the agent name made it through the pipeline.
+	if err := s.backfillAgentNamesOnce(projectDir); err != nil {
+		log.Printf("agent_name backfill for %s: %v", projectDir, err)
+	}
+
+	return nil
+}
+
+func (s *Store) migrateProjectLogsOnce(projectDir string) error {
 	// Fast path: already migrated in this process lifetime.
 	migratedProjectsMu.Lock()
 	if migratedProjects[projectDir] {

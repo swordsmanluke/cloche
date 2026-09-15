@@ -1,5 +1,10 @@
 package domain
 
+// UnattributedAgent labels a usage record whose agent could not be
+// determined from either the executing adapter or the step's config,
+// distinguishing it from a record that was simply never populated.
+const UnattributedAgent = "unattributed"
+
 // TokenUsage holds token consumption for a single agent step execution.
 type TokenUsage struct {
 	InputTokens  int64
