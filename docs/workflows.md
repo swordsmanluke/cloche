@@ -672,10 +672,13 @@ File state accumulates naturally across steps.
 **Host workflows** (those with a `host { }` block) are parsed and executed by the daemon
 on the host machine. Any `.cloche` file may contain host workflows; the daemon
 orchestrates them in two phases (list-tasks → main). Script steps run via
-`sh -c` with the
-working directory set to the **main git worktree** (i.e. the main branch checkout), even
-if the project directory is a linked worktree on a different branch. This ensures
-host-workflow scripts from main are used for all runs. Workflow steps (`workflow_name`)
+`sh -c`. Their working directory defaults to the **main git worktree** (i.e. the main
+branch checkout), even if the project directory is a linked worktree on a different
+branch, so that host-workflow scripts from main are used for all runs. This is a
+default, not an invariant: the daemon resolves it with `MainWorktreeDir()`, which falls
+back to the project directory on any error (not a git repository, `git` unavailable,
+`git worktree list` failing). Scripts that care which tree they are operating on should
+resolve it at runtime rather than assume. Workflow steps (`workflow_name`)
 dispatch container runs through the daemon. Environment variables (`CLOCHE_TASK_ID`,
 `CLOCHE_PROJECT_DIR`, `CLOCHE_RUN_ID`, `CLOCHE_ATTEMPT_ID`) are injected into all step
 types — script, poll, and agent. Agent steps receive these variables directly in
@@ -775,10 +778,10 @@ explicit `code-review:timeout -> <step>` wire suppresses the implicit `abort` wi
 ### Script execution environment
 
 Poll scripts run under `sh -c` in both host and container workflows. In a host
-workflow, the working directory is set to the **main git worktree** of the project
-(same rule as host-workflow script steps). In a container workflow, the working
-directory is `/workspace/`. The following environment variables are injected on every
-invocation:
+workflow, the working directory defaults to the **main git worktree** of the project
+(same rule, and same fallback, as host-workflow script steps). In a container
+workflow, the working directory is `/workspace/`. The following environment
+variables are injected on every invocation:
 
 | Variable              | Host | Container | Description |
 |-----------------------|:----:|:---------:|-------------|
