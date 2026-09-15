@@ -51,8 +51,8 @@ This is an "unknown agent" `agent_command` (docs/built-in-agents.md
 - `CLOCHE_RESULT_NONCE` arrives in the environment.
 - Exactly one `CLOCHE_RESULT:<nonce>:<name>` line must reach stdout. The
   wrapper prefers to pass through whatever marker line the model itself
-  produced (instructed to echo it verbatim in `cli.SYSTEM_PROMPT`); if the
-  model forgets, `cli._fallback_marker` synthesizes one from whether edits
+  produced (instructed to echo it verbatim in `cli.build_system_prompt`); if
+  the model forgets, `cli._fallback_marker` synthesizes one from whether edits
   were applied, using a result name the step actually declared (parsed back
   out of the `## Result Selection` block Cloche put in the prompt). Cloche's
   own engine also issues a recovery turn on a missing marker — this is a
@@ -63,11 +63,26 @@ This is an "unknown agent" `agent_command` (docs/built-in-agents.md
 
 Edit format: one fenced code block per changed file, headed by the file's
 project-relative path, containing the file's complete new contents (whole-
-file rewrite — no diff format for a weak model to get subtly wrong). See
-`agent_command/edits.py`. Paths are resolved and checked against the
-working directory before anything is written; a path that would escape it
-(`../...`, an absolute path) fails the whole step rather than writing
-partial edits anywhere.
+file rewrite — no diff format for a weak model to get subtly wrong). A
+fence header may end with ` NEW` (e.g. ` ```newmodule.py NEW`) to mark a
+deliberately brand-new file. See `agent_command/edits.py`. Before writing
+anything, every block is checked:
+
+- Paths are resolved against the working directory; one that would escape
+  it (`../...`, an absolute path) fails the whole step
+  (`UnsafePathError`).
+- A path containing `edits.EXAMPLE_PLACEHOLDER_PATH` — the system prompt's
+  illustrative example — fails the whole step (`PlaceholderPathError`),
+  since a weak model has echoed that example verbatim instead of
+  substituting the real target path.
+- If none of the proposed paths match a file that already exists in the
+  working directory, and none is marked `NEW`, the step fails
+  (`NoExistingFileOverlapError`) rather than silently creating an unrelated
+  file and reporting success — the retrieval spike's worst failure mode
+  for the A/B experiment. `cli.build_system_prompt` also injects the
+  working directory's actual file listing into the system prompt and
+  instructs the model to copy an existing path verbatim, so this is
+  defense-in-depth rather than the only guard.
 
 ## Layout
 

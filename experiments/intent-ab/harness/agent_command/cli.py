@@ -29,16 +29,35 @@ from .ollama_client import (
     OllamaError,
 )
 
-SYSTEM_PROMPT = """You are a coding assistant that edits files by rewriting them whole.
+
+def build_system_prompt(workdir: str) -> str:
+    """Build the system prompt for one invocation, listing the workdir's
+    actual files so the model has real paths to copy instead of a generic
+    example (see edits.EXAMPLE_PLACEHOLDER_PATH and the no-overlap check in
+    edits.apply_edits — both exist because bonsai has echoed a format
+    example's path verbatim instead of substituting the real target)."""
+    existing = edits.list_workdir_files(workdir)
+    listing = "\n".join(f"- {p}" for p in existing) if existing else "(none — the working directory is empty)"
+    return f"""You are a coding assistant that edits files by rewriting them whole.
+
+Files that currently exist in this project:
+{listing}
 
 To change a file, output a fenced code block whose opening line is three
-backticks immediately followed by the file's path relative to the project
-root (no space, no language tag), then the file's COMPLETE new contents,
-then a closing fenced line of three backticks. Example:
+backticks immediately followed by the file's path (no space, no language
+tag), then the file's COMPLETE new contents, then a closing fenced line of
+three backticks. You MUST use the exact existing path of the file you are
+changing, copied verbatim from the listing above — never guess, abbreviate,
+paraphrase, or invent a path. If you are deliberately creating a brand-new
+file that is not in the listing above, add the word NEW after the path on
+that same opening fence line (e.g. ```newmodule.py NEW).
 
-```path/to/file.py
-def add(a, b):
-    return a + b
+The fence below only illustrates the syntax; {edits.EXAMPLE_PLACEHOLDER_PATH!r}
+is a stand-in, not a real path — never write it verbatim, always replace it
+with a real path from the listing above (or a genuinely new path marked NEW):
+
+```{edits.EXAMPLE_PLACEHOLDER_PATH}
+<file contents go here>
 ```
 
 Output one such block per file you change, and nothing else inside the
@@ -103,7 +122,7 @@ def run(prompt: str, nonce: str, workdir: str, client: OllamaClient, out=sys.std
         return cot.strip_chain_of_thought(raw_content) == ""
 
     try:
-        raw_content = client.complete_with_retry(SYSTEM_PROMPT, prompt, is_empty)
+        raw_content = client.complete_with_retry(build_system_prompt(workdir), prompt, is_empty)
     except OllamaError as e:
         print(f"agent_command: {e}", file=err)
         raw_content = ""
@@ -119,7 +138,7 @@ def run(prompt: str, nonce: str, workdir: str, client: OllamaClient, out=sys.std
     try:
         blocks = edits.parse_edit_blocks(clean_content)
         applied = edits.apply_edits(workdir, blocks)
-    except edits.UnsafePathError as e:
+    except (edits.UnsafePathError, edits.PlaceholderPathError, edits.NoExistingFileOverlapError) as e:
         print(f"agent_command: {e}", file=err)
         print(_fallback_marker(prompt, nonce, "fail"), file=out)
         return 0
