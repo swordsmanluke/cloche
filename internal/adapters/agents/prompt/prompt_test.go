@@ -1,6 +1,7 @@
 package prompt_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/cloche-dev/cloche/internal/adapters/agents/prompt"
 	"github.com/cloche-dev/cloche/internal/domain"
+	"github.com/cloche-dev/cloche/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -904,6 +906,157 @@ func TestPromptAdapter_ResumeReusesPersistedNonce(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", sr.Result, "resumed call must classify using the same nonce the agent originally learned")
 	assert.Equal(t, firstNonce, readResultNonce(t, dir, taskID, "implement"))
+}
+
+// recoveryProbeScript returns a fake agent script that distinguishes the
+// initial invocation from the follow-up recovery invocation by checking for
+// the "-c" resume flag maybeRecoverMissingMarker prepends for non-claude
+// commands (see runRecoveryTurn): $1 is unset on the first call and "-c" on
+// the recovery call. onRecovery is the shell snippet run when $1 == "-c".
+func recoveryProbeScript(onRecovery string) string {
+	return "#!/bin/sh\ncat > /dev/null\n" +
+		"if [ \"$1\" = \"-c\" ]; then\n" + onRecovery + "\nfi\n" +
+		"echo 'did real work, forgot the marker'\n"
+}
+
+// TestPromptAdapter_RecoversMissingMarkerAfterExitZero is the regression
+// test for cloche-usjb/cloche-fnn6: an agent that exits 0 with real,
+// test-passing work but drops the trailing CLOCHE_RESULT marker (a failure
+// mode long sessions hit systematically) gets exactly one follow-up turn
+// resuming the same invocation before being classified as a failure. When
+// that follow-up turn emits the marker, its result is honored.
+func TestPromptAdapter_RecoversMissingMarkerAfterExitZero(t *testing.T) {
+	dir := t.TempDir()
+
+	script := filepath.Join(dir, "forgetful-agent.sh")
+	require.NoError(t, os.WriteFile(script, []byte(
+		recoveryProbeScript("echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success\nexit 0"),
+	), 0755))
+
+	adapter := &prompt.Adapter{
+		Commands: []string{script},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result, "recovery turn's marker must be honored")
+
+	// Both turns' output should be preserved in the step log.
+	outputPath := filepath.Join(dir, ".cloche", "output", "implement.log")
+	data, err := os.ReadFile(outputPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "did real work, forgot the marker")
+}
+
+// TestPromptAdapter_RecoveryStillMissingMarkerFails verifies that when the
+// one recovery turn also fails to produce a marker, the adapter keeps the
+// existing conservative "fail" (cloche-anu5) rather than retrying again or
+// defaulting to success.
+func TestPromptAdapter_RecoveryStillMissingMarkerFails(t *testing.T) {
+	dir := t.TempDir()
+
+	// Never emits a marker, on either the initial or the recovery call.
+	script := filepath.Join(dir, "forgetful-agent.sh")
+	require.NoError(t, os.WriteFile(script, []byte(
+		"#!/bin/sh\ncat > /dev/null\necho 'did real work, forgot the marker'\n",
+	), 0755))
+
+	adapter := &prompt.Adapter{
+		Commands: []string{script},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "fail", sr.Result)
+}
+
+// TestPromptAdapter_RecoveryNotAttemptedOnNonzeroExit verifies the recovery
+// turn only ever fires for the exit-0-no-marker case: a command that exits
+// nonzero without a marker is unaffected and must not trigger a follow-up
+// invocation. The script would report "success" if the recovery flag were
+// ever passed to it, so a "fail" result proves the follow-up never ran.
+func TestPromptAdapter_RecoveryNotAttemptedOnNonzeroExit(t *testing.T) {
+	dir := t.TempDir()
+
+	script := filepath.Join(dir, "crashing-agent.sh")
+	require.NoError(t, os.WriteFile(script, []byte(
+		"#!/bin/sh\ncat > /dev/null\n"+
+			"if [ \"$1\" = \"-c\" ]; then\necho CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success\nexit 0\nfi\n"+
+			"echo 'crashed without marker'\nexit 1\n",
+	), 0755))
+
+	adapter := &prompt.Adapter{
+		Commands: []string{script},
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "fail", sr.Result)
+
+	outputPath := filepath.Join(dir, ".cloche", "output", "implement.log")
+	data, err := os.ReadFile(outputPath)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "success", "recovery turn must not run for a nonzero exit")
+}
+
+// TestPromptAdapter_RecoveryTurnLoggedToStatusWriter verifies the recovery
+// turn is logged via StatusWriter, satisfying the requirement that a
+// recovery attempt is visible in the step's live log stream.
+func TestPromptAdapter_RecoveryTurnLoggedToStatusWriter(t *testing.T) {
+	dir := t.TempDir()
+
+	script := filepath.Join(dir, "forgetful-agent.sh")
+	require.NoError(t, os.WriteFile(script, []byte(
+		recoveryProbeScript("echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success\nexit 0"),
+	), 0755))
+
+	var statusBuf bytes.Buffer
+	adapter := &prompt.Adapter{
+		Commands:     []string{script},
+		StatusWriter: protocol.NewStatusWriter(&statusBuf),
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result)
+
+	msgs, err := protocol.ParseStatusStream(statusBuf.Bytes())
+	require.NoError(t, err)
+	var loggedRecovery bool
+	for _, m := range msgs {
+		if m.Type == protocol.MsgLog && strings.Contains(m.Message, "recovery turn") {
+			loggedRecovery = true
+		}
+	}
+	assert.True(t, loggedRecovery, "recovery turn must be logged via StatusWriter")
 }
 
 func TestParseCommands(t *testing.T) {

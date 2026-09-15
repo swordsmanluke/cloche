@@ -326,14 +326,24 @@ func (a *Adapter) captureSessionID(ctx context.Context, command string, output [
 	if a.KVWriter == nil || command != "claude" {
 		return
 	}
+	sid := findSessionID(output)
+	if sid == "" {
+		return
+	}
+	if err := a.KVWriter.Set(ctx, kvAgentSessionID, sid); err != nil {
+		log.Printf("prompt: failed to persist session_id: %v", err)
+	}
+}
+
+// findSessionID scans output line-by-line for a session_id (see
+// extractSessionID), returning the first one found or "".
+func findSessionID(output []byte) string {
 	for _, line := range bytes.Split(output, []byte("\n")) {
 		if sid := extractSessionID(line); sid != "" {
-			if err := a.KVWriter.Set(ctx, kvAgentSessionID, sid); err != nil {
-				log.Printf("prompt: failed to persist session_id: %v", err)
-			}
-			return
+			return sid
 		}
 	}
+	return ""
 }
 
 // extractSessionID looks for a top-level "session_id" field on a streaming-JSON
@@ -400,7 +410,6 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 
 		runErr := cmd.Run()
 		stdoutBytes := stdoutBuf.Bytes()
-		stdout = stdoutBytes
 
 		// Mirror the streaming path below: check the raw output for
 		// agent-level errors before classifying extracted text, since
@@ -426,6 +435,8 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 			usage.AgentName = command
 		}
 		a.captureSessionID(ctx, command, stdoutBytes)
+
+		result, stdout, usage, fallbackErr = a.maybeRecoverMissingMarker(ctx, command, workDir, stepName, nonce, stdoutBytes, runErr, result, usage, fallbackErr)
 		return
 	}
 
@@ -488,19 +499,23 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 
 	waitErr := cmd.Wait()
 	a.captureSessionID(ctx, command, rawBuf.Bytes())
+	rawStdout := rawBuf.Bytes()
 	// Check raw output for agent-level errors (e.g. error_during_execution
 	// from rate limits) before classifying the extracted text.
-	if bytes.Contains(rawBuf.Bytes(), []byte(`"error_during_execution"`)) {
-		return "fail", rawBuf.Bytes(), usage, fmt.Errorf("command %q reported error_during_execution", command)
+	if bytes.Contains(rawStdout, []byte(`"error_during_execution"`)) {
+		result, fallbackErr = "fail", fmt.Errorf("command %q reported error_during_execution", command)
+	} else {
+		// Prefer extracted text (stream-json) for result classification; fall
+		// back to raw output for non-JSON commands (scripts, non-claude
+		// agents).
+		classifyBuf := textBuf.Bytes()
+		if len(bytes.TrimSpace(classifyBuf)) == 0 {
+			classifyBuf = rawStdout
+		}
+		result, _, fallbackErr = a.classifyResult(command, classifyBuf, waitErr, nonce)
 	}
-	// Prefer extracted text (stream-json) for result classification; fall back
-	// to raw output for non-JSON commands (scripts, non-claude agents).
-	classifyBuf := textBuf.Bytes()
-	if len(bytes.TrimSpace(classifyBuf)) == 0 {
-		classifyBuf = rawBuf.Bytes()
-	}
-	result, _, fallbackErr = a.classifyResult(command, classifyBuf, waitErr, nonce)
-	return result, rawBuf.Bytes(), usage, fallbackErr
+	result, stdout, usage, fallbackErr = a.maybeRecoverMissingMarker(ctx, command, workDir, stepName, nonce, rawStdout, waitErr, result, usage, fallbackErr)
+	return result, stdout, usage, fallbackErr
 }
 
 // classifyResult interprets the command's exit status and stdout to determine
@@ -540,6 +555,116 @@ func (a *Adapter) classifyResult(command string, stdoutBytes []byte, runErr erro
 		return "fail", stdoutBytes, fmt.Errorf("command %q exited 0 but produced no CLOCHE_RESULT marker", command)
 	}
 	return markerResult, stdoutBytes, nil
+}
+
+// maybeRecoverMissingMarker checks whether the invocation that just finished
+// is eligible for the missing-marker recovery turn — exited 0, produced
+// substantive output, but no CLOCHE_RESULT marker (the failure mode long
+// agent sessions systematically hit: the trailing "## Result Selection"
+// instruction gets dropped after many turns even though the work itself is
+// complete — see cloche-usjb, cloche-fnn6). When eligible, issues exactly
+// one follow-up invocation resuming the same session (see runRecoveryTurn)
+// and folds its output into rawStdout for logging/history. When not
+// eligible, or the recovery turn still has no marker, returns the inputs
+// unchanged so the caller keeps the existing conservative fail (cloche-anu5).
+func (a *Adapter) maybeRecoverMissingMarker(ctx context.Context, command, workDir, stepName, nonce string, rawStdout []byte, runErr error, result string, usage *domain.TokenUsage, fallbackErr error) (string, []byte, *domain.TokenUsage, error) {
+	if fallbackErr == nil || runErr != nil {
+		// Not eligible: either already definitive, or the command didn't
+		// exit 0 (a nonzero exit without a marker is left to the existing
+		// fallback/fail path unchanged).
+		return result, rawStdout, usage, fallbackErr
+	}
+	if bytes.Contains(rawStdout, []byte(`"error_during_execution"`)) {
+		return result, rawStdout, usage, fallbackErr
+	}
+	classifyBuf := extractStreamOutputText(rawStdout)
+	if len(bytes.TrimSpace(classifyBuf)) == 0 {
+		classifyBuf = rawStdout
+	}
+	if len(bytes.TrimSpace(classifyBuf)) == 0 {
+		// Exited 0 with no output at all (auth/config issue) — a different
+		// failure mode than "did real work but forgot the marker"; a
+		// recovery turn has nothing to resume.
+		return result, rawStdout, usage, fallbackErr
+	}
+
+	sessionID := findSessionID(rawStdout)
+	recResult, recRaw, recUsage, found := a.runRecoveryTurn(ctx, command, workDir, stepName, nonce, sessionID)
+	combined := append(append([]byte{}, rawStdout...), recRaw...)
+	if !found {
+		return result, combined, usage, fallbackErr
+	}
+	if recUsage != nil {
+		usage = recUsage
+	}
+	return recResult, combined, usage, nil
+}
+
+// recoveryPrompt is the minimal follow-up prompt issued by runRecoveryTurn.
+func recoveryPrompt(nonce string) string {
+	return fmt.Sprintf("Print exactly one result marker line now: %s%s:<result-name>. Nothing else.", protocol.ResultPrefix, nonce)
+}
+
+// runRecoveryTurn issues the single follow-up invocation for a missing
+// marker (see maybeRecoverMissingMarker), resuming the session that just ran
+// when one was captured — falling back to the generic "-c" continue flag
+// otherwise, mirroring the ResumeConversation convention tryCommand already
+// uses for park+resume. The caller (maybeRecoverMissingMarker) is what caps
+// this to exactly one call per step invocation; this function itself never
+// recurses.
+func (a *Adapter) runRecoveryTurn(ctx context.Context, command, workDir, stepName, nonce, sessionID string) (result string, rawOutput []byte, usage *domain.TokenUsage, found bool) {
+	if a.StatusWriter != nil {
+		a.StatusWriter.Log(stepName, "no CLOCHE_RESULT marker found; issuing one recovery turn")
+	} else {
+		log.Printf("prompt: step %q exited 0 with no CLOCHE_RESULT marker; issuing one recovery turn", stepName)
+	}
+
+	args := a.argsFor(command)
+	if command == "claude" && sessionID != "" {
+		args = append([]string{"--resume", sessionID}, args...)
+	} else {
+		args = append([]string{"-c"}, args...)
+	}
+	args = append(args, mcpConfigArgs(command)...)
+
+	cmd := exec.CommandContext(ctx, command, args...)
+	cmd.Dir = workDir
+	cmd.Stdin = strings.NewReader(recoveryPrompt(nonce))
+	cmd.Env = append(os.Environ(), "CLOCHE_RESULT_NONCE="+nonce)
+	if len(a.ExtraEnv) > 0 {
+		cmd.Env = append(cmd.Env, a.ExtraEnv...)
+	}
+
+	var stdoutBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	runErr := cmd.Run()
+	rawOutput = stdoutBuf.Bytes()
+
+	classifyBuf := extractStreamOutputText(rawOutput)
+	if len(bytes.TrimSpace(classifyBuf)) == 0 {
+		classifyBuf = rawOutput
+	}
+	usage = scanOutputForUsage(rawOutput)
+	if usage != nil {
+		usage.AgentName = command
+	}
+	a.captureSessionID(ctx, command, rawOutput)
+
+	if runErr != nil {
+		if a.StatusWriter != nil {
+			a.StatusWriter.Log(stepName, fmt.Sprintf("recovery turn failed to run: %v", runErr))
+		}
+		return "", rawOutput, usage, false
+	}
+
+	markerResult, _, ok := protocol.ExtractNoncedResult(classifyBuf, nonce)
+	if !ok {
+		if a.StatusWriter != nil {
+			a.StatusWriter.Log(stepName, "recovery turn still produced no CLOCHE_RESULT marker")
+		}
+		return "", rawOutput, usage, false
+	}
+	return markerResult, rawOutput, usage, true
 }
 
 // runUsageCommand executes a shell command and parses its JSON output as token usage.

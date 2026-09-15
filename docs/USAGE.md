@@ -290,7 +290,7 @@ Rules:
 - Marker lines are **stripped** from captured output (not passed to logs or downstream steps).
 - The result name must match one of the step's declared `results`.
 - For script steps with no marker: exit 0 = `success`, exit non-zero = `fail`.
-- For agent steps: a marker (regardless of exit code) is used as the result. Without a marker, the adapter falls back to the next agent in the fallback chain (or returns `fail` if last) — this includes exit 0, since an agent that exits 0 without a marker can't be trusted as a success.
+- For agent steps: a marker (regardless of exit code) is used as the result. Without a marker, the adapter falls back to the next agent in the fallback chain (or returns `fail` if last) — this includes exit 0, since an agent that exits 0 without a marker can't be trusted as a success. Exception: if the command exited 0 with substantive output but no marker (and no `error_during_execution` report), the adapter first issues one recovery turn — resuming the same session and asking it to print only the marker — before falling back or failing; see [Fallback Chains](#fallback-chains).
 - **Agent steps use a nonced marker**, `CLOCHE_RESULT:{{ $result_nonce }}:<name>` (see [Prompt Assembly](#prompt-assembly)), not the bare form above. A free-form coding agent's own transcript can otherwise reproduce the literal string `CLOCHE_RESULT:success` while grepping code, editing test fixtures, or discussing this very protocol; framing the marker with a per-step random nonce means only a line the agent deliberately copied from its own instructions counts, so quoted or incidental mentions elsewhere in the transcript are left alone as ordinary text. Poll and skip steps are author-controlled and keep the unnonced form.
 - **Host workflow script (`run`) steps also receive a per-invocation nonce**, exported as `CLOCHE_RESULT_NONCE`, so a script that shells out to another command (e.g. `cloche intent collect-sources`) can frame its marker as `CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:<name>` to stay immune to unrelated `CLOCHE_RESULT:` text elsewhere in its own output (collected docs, commit messages, echoed source, etc.). The executor prefers a nonce-framed marker when present, falling back to the bare form for scripts that don't use it — existing unnonced scripts keep working unchanged.
 
@@ -338,6 +338,7 @@ agent_command = "claude,gemini,codex"
 ```
 
 - **Command not found / failed to start** — try next command
+- **Exit 0 with substantive output but no `CLOCHE_RESULT` marker** (and no `error_during_execution` report) — issue one recovery turn first: resume the same session (`--resume <session-id>` for `claude`, `-c` otherwise) and ask it to print only the marker. If the recovery turn produces one, use that result (no fallback); otherwise, try next command as below.
 - **Exit 0 or non-zero, without a `CLOCHE_RESULT` marker** (including no output at all, or an `error_during_execution` report) — try next command
 - **Exit 0 or non-zero, with a `CLOCHE_RESULT` marker** — use that result (no fallback)
 - **All commands fail to start** — step returns an error
