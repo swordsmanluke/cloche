@@ -170,7 +170,7 @@
 
         if (plan.folded.length) {
             moreBtn.hidden = false;
-            moreBtn.textContent = 'More (' + plan.folded.length + ') ▾';
+            moreBtn.textContent = '+ ' + plan.folded.length + ' idle ▾';
             sortedProjects(plan.folded).forEach(function (p) { menuEl.appendChild(renderTab(p, true)); });
         } else {
             moreBtn.hidden = true;
@@ -216,19 +216,30 @@
         label.textContent = p.label;
         btn.appendChild(label);
 
-        if (p.active_count) {
-            var count = document.createElement('span');
-            count.className = 'console-tab-count';
-            count.textContent = String(p.active_count);
-            btn.appendChild(count);
-        }
+        if (p.active_count || p.attention_count) {
+            var meta = document.createElement('span');
+            meta.className = 'console-tab-meta';
 
-        if (p.attention_count) {
-            var flag = document.createElement('span');
-            flag.className = 'console-tab-flag';
-            flag.title = p.attention_count + ' need' + (p.attention_count === 1 ? 's' : '') + ' you';
-            flag.textContent = '!';
-            btn.appendChild(flag);
+            if (p.active_count) {
+                var count = document.createElement('span');
+                count.className = 'console-tab-count';
+                count.textContent = p.active_count + ' ▸';
+                meta.appendChild(count);
+            }
+
+            if (p.active_count && p.attention_count) {
+                meta.appendChild(document.createTextNode(' · '));
+            }
+
+            if (p.attention_count) {
+                var flag = document.createElement('span');
+                flag.className = 'console-tab-flag';
+                flag.title = p.attention_count + ' need' + (p.attention_count === 1 ? 's' : '') + ' you';
+                flag.textContent = p.attention_count + ' ⚑';
+                meta.appendChild(flag);
+            }
+
+            btn.appendChild(meta);
         }
 
         btn.addEventListener('click', function () {
@@ -3558,36 +3569,69 @@
 
         state.loopRunning = !!(data.loop && data.loop.running);
 
+        var loopSpan = instrumentSpan('console-loop');
+        loopSpan.appendChild(document.createTextNode('loop '));
         var loopBtn = document.createElement('button');
         loopBtn.type = 'button';
         loopBtn.id = 'console-loop-toggle';
-        loopBtn.className = 'btn btn-sm ' + (state.loopRunning ? 'btn-danger' : 'btn-secondary');
-        loopBtn.textContent = state.loopRunning ? 'Stop loop' : 'Start loop';
+        loopBtn.className = 'console-instrument-toggle' + (state.loopRunning ? ' on' : '');
+        loopBtn.textContent = state.loopRunning ? 'running' : 'stopped';
+        loopBtn.title = state.loopRunning ? 'Stop loop' : 'Start loop';
         loopBtn.addEventListener('click', toggleLoop);
-        el.appendChild(loopBtn);
+        loopSpan.appendChild(loopBtn);
+        el.appendChild(loopSpan);
 
         var occ = data.occupancy || {};
         var busy = (occ.slots || []).length;
         var max = occ.max_concurrency || 0;
-        el.appendChild(instrumentSpan('console-slot-meter', 'Slots ' + busy + '/' + max));
-        el.appendChild(instrumentSpan('console-queue-depth', 'Queue ' + ((occ.queued || []).length)));
-        el.appendChild(instrumentSpan('console-burn', 'Burn ' + formatBurn(data.usage)));
+
+        var slotsSpan = instrumentSpan('console-slot-meter');
+        slotsSpan.appendChild(document.createTextNode('slots '));
+        var pips = document.createElement('b');
+        pips.className = 'console-slots-pips';
+        for (var i = 0; i < max; i++) {
+            var pip = document.createElement('i');
+            if (i < busy) pip.className = 'busy';
+            pips.appendChild(pip);
+        }
+        slotsSpan.appendChild(pips);
+        slotsSpan.appendChild(document.createTextNode(' '));
+        var slotsVal = document.createElement('b');
+        slotsVal.textContent = busy + '/' + max;
+        slotsSpan.appendChild(slotsVal);
+        slotsSpan.appendChild(document.createTextNode(' · queue '));
+        var queueVal = document.createElement('b');
+        queueVal.textContent = String((occ.queued || []).length);
+        slotsSpan.appendChild(queueVal);
+        el.appendChild(slotsSpan);
+
+        var burnSpan = instrumentSpan('console-burn');
+        burnSpan.appendChild(document.createTextNode('burn '));
+        var burnVal = document.createElement('b');
+        burnVal.className = 'ac';
+        burnVal.textContent = formatBurn(data.usage);
+        burnSpan.appendChild(burnVal);
+        el.appendChild(burnSpan);
+
+        var daemonSpan = instrumentSpan('console-version');
+        daemonSpan.appendChild(document.createTextNode('daemon '));
+        var daemonVal = document.createElement('b');
+        daemonVal.textContent = root.dataset.clocheVersion || '';
+        daemonSpan.appendChild(daemonVal);
+        el.appendChild(daemonSpan);
 
         var ledgerBtn = document.createElement('button');
         ledgerBtn.type = 'button';
         ledgerBtn.id = 'console-ledger-btn';
-        ledgerBtn.className = 'btn btn-secondary btn-sm';
+        ledgerBtn.className = 'console-action-btn';
         ledgerBtn.textContent = 'Ledger';
         ledgerBtn.addEventListener('click', function () { toggleLedger(true); });
         el.appendChild(ledgerBtn);
-
-        el.appendChild(instrumentSpan('console-version', 'v' + (root.dataset.clocheVersion || '')));
     }
 
-    function instrumentSpan(cls, text) {
+    function instrumentSpan(cls) {
         var span = document.createElement('span');
         span.className = 'console-instrument ' + cls;
-        span.textContent = text;
         return span;
     }
 

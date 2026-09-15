@@ -49,7 +49,7 @@ and a centre pane, routed by project and task rather than by a fixed set of page
 ### Tab bar
 
 Across the top: one tab per registered project (a health dot, a running-count badge, and
-a `!` attention flag when something needs you). The fold rule always keeps the active
+an attention flag when something needs you). The fold rule always keeps the active
 project and anything with live activity (a running loop, active runs, or attention items)
 visible, then fills a fixed budget of remaining slots with the most recently active
 projects (by latest run start); only genuinely stale, inactive projects beyond that budget
@@ -60,13 +60,13 @@ data behind `attention_count` hasn't refreshed recently.
 
 On the right, daemon instruments for the active project:
 
-- **Start loop / Stop loop** — toggles the orchestration loop (`POST /trigger` to start,
-  `POST /loop/stop` to stop).
-- **Slots** — busy/max concurrency slots (`GET /loop/occupancy`).
-- **Queue** — how many tasks are waiting for a free slot.
+- **Loop** — toggles the orchestration loop, showing "running"/"stopped" (`POST /trigger`
+  to start, `POST /loop/stop` to stop).
+- **Slots** — busy/max concurrency slots plus how many tasks are waiting for a free slot
+  (`GET /loop/occupancy`).
 - **Burn** — combined token burn rate across agents over the last hour (`GET /usage`).
-- **Ledger** — opens the project ledger overlay (see below).
 - **Version** — the daemon's version.
+- **Ledger** — opens the project ledger overlay (see below).
 
 ### Task stack
 

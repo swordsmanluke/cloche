@@ -446,17 +446,31 @@ h2 {
 
 .console-tabbar {
     display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 0.75rem;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
     background: var(--pnl);
     border-bottom: 1px solid var(--ln);
     position: relative;
 }
 
+.console-brand {
+    font-family: var(--font-sans);
+    font-weight: 800;
+    font-size: 0.95rem;
+    color: var(--tx);
+    padding: 0.5rem 0.9rem;
+    border-right: 1px solid var(--ln);
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+
 .console-project-tabs {
     display: flex;
-    gap: 0.25rem;
+    align-items: stretch;
+    gap: 0;
     overflow-x: auto;
     flex: 1 1 auto;
     min-width: 0;
@@ -465,24 +479,26 @@ h2 {
 .console-tab {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.3rem 0.6rem;
-    border: 1px solid transparent;
-    border-radius: var(--radius);
+    gap: 0.45rem;
+    padding: 0.5rem 0.8rem;
+    border: 0;
+    border-right: 1px solid var(--ln);
+    border-radius: 0;
     background: transparent;
     color: var(--tx2);
     font: inherit;
-    font-size: 0.85rem;
+    font-size: 0.74rem;
     cursor: pointer;
     white-space: nowrap;
+    flex: 0 0 auto;
 }
 
-.console-tab:hover { color: var(--tx); background: var(--bg); }
+.console-tab:hover { color: var(--tx); background: var(--pnl2); }
 
 .console-tab-active {
     color: var(--tx);
     background: var(--bg);
-    border-color: var(--ln);
+    box-shadow: inset 0 2px 0 var(--ac);
 }
 
 .console-tab:focus-visible,
@@ -493,29 +509,41 @@ h2 {
     outline-offset: 1px;
 }
 
+.console-tab-meta {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.15rem;
+    font-size: 0.66rem;
+    white-space: nowrap;
+}
+
 .console-tab-count {
-    background: var(--badge-running-bg);
-    color: var(--badge-running-text);
-    border-radius: 999px;
-    font-size: 0.7rem;
-    padding: 0 0.4em;
+    color: var(--mu);
+    font-variant-numeric: tabular-nums;
 }
 
 .console-tab-flag {
-    color: var(--badge-failed-text);
-    font-weight: 700;
+    color: var(--warn);
+    font-variant-numeric: tabular-nums;
 }
 
 .console-more-btn {
+    display: inline-flex;
+    align-items: center;
     background: transparent;
-    border: 1px solid var(--ln);
-    color: var(--tx2);
-    border-radius: var(--radius);
-    padding: 0.3rem 0.6rem;
-    font-size: 0.8rem;
+    border: 0;
+    border-right: 1px solid var(--ln);
+    border-radius: 0;
+    color: var(--mu);
+    padding: 0.5rem 0.8rem;
+    font: inherit;
+    font-size: 0.74rem;
     cursor: pointer;
+    white-space: nowrap;
     flex: 0 0 auto;
 }
+
+.console-more-btn:hover { color: var(--tx2); background: var(--pnl2); }
 
 .console-idle-menu {
     position: absolute;
@@ -533,18 +561,97 @@ h2 {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
-.console-idle-menu .console-tab { justify-content: flex-start; }
+.console-idle-menu .console-tab {
+    justify-content: flex-start;
+    border-right: 0;
+    border-bottom: 1px solid var(--ln);
+}
 
-.console-instruments {
+.console-idle-menu .console-tab:last-child { border-bottom: 0; }
+
+.console-stale-hint {
+    padding: 0 0.6rem;
+}
+
+.console-view-buttons {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    font-size: 0.8rem;
+    gap: 0;
+    flex: 0 0 auto;
+    border-left: 1px solid var(--ln);
+}
+
+.console-action-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.7rem;
+    border: 0;
+    border-right: 1px solid var(--ln);
+    border-radius: 0;
+    background: transparent;
+    color: var(--tx2);
+    font: inherit;
+    font-size: 0.7rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.console-action-btn:hover { color: var(--tx); background: var(--pnl2); }
+.console-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.console-instruments {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+    padding: 0 0.9rem;
+    font-size: 0.7rem;
     color: var(--tx2);
     flex: 0 0 auto;
 }
 
 .console-instrument { white-space: nowrap; }
+.console-instrument b { color: var(--tx); font-weight: 500; font-variant-numeric: tabular-nums; }
+.console-instrument b.ac { color: var(--ac); }
+.console-instrument b.on { color: var(--ok); }
+
+.console-instrument-toggle {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--tx);
+    cursor: pointer;
+}
+
+.console-instrument-toggle.on { color: var(--ok); }
+.console-instrument-toggle:hover { text-decoration: underline; }
+.console-instrument-toggle:disabled { opacity: 0.6; cursor: not-allowed; text-decoration: none; }
+
+.console-slots-pips {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: -1px;
+}
+
+.console-slots-pips i {
+    display: inline-block;
+    width: 7px;
+    height: 11px;
+    margin-right: 2px;
+    background: var(--ln);
+    font-style: normal;
+}
+
+.console-slots-pips i.busy { background: var(--ac); }
+.console-slots-pips i:last-child { margin-right: 0; }
+
+#console-ledger-btn.console-action-btn {
+    border-left: 1px solid var(--ln);
+    border-right: 0;
+}
 
 .console-body {
     flex: 1 1 auto;
@@ -658,11 +765,12 @@ h2 {
 
 .console-tab-skeleton {
     width: 5.5rem;
-    height: 1.6rem;
+    height: 2rem;
     background: var(--pnl2);
-    opacity: 0.6;
-    border: 1px solid var(--ln);
-    border-radius: var(--radius);
+    opacity: 0.5;
+    border: 0;
+    border-right: 1px solid var(--ln);
+    border-radius: 0;
     animation: console-skeleton-pulse 1.2s ease-in-out infinite;
 }
 
@@ -1217,14 +1325,6 @@ h2 {
 }
 
 /* ===== Secondary views (Workflows / Intent / Containers) ===== */
-
-.console-view-buttons {
-    display: flex;
-    gap: 0.35rem;
-    flex: 0 0 auto;
-}
-
-.console-view-buttons .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
 
 .console-view-overlay {
     position: fixed;
