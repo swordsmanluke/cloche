@@ -1,0 +1,20 @@
+{
+  "commit_message": "bd: seed the 2-task smoke-test stub list (E5 acceptance)",
+  "nodes": [
+    {
+      "key": "stub-01",
+      "title": "Stub task one",
+      "type": "task",
+      "description": "Smoke-test placeholder task. Not part of the frozen 12-task Bract build list (.cloche/tasks/seed-tasks.json) — used only to prove the arm driver runs a project to task-list exhaustion end-to-end."
+    },
+    {
+      "key": "stub-02",
+      "title": "Stub task two",
+      "type": "task",
+      "description": "Second smoke-test placeholder task, blocked on stub-01, exercising the same one-ready-task-at-a-time ordering the real task list relies on."
+    }
+  ],
+  "edges": [
+    { "from_key": "stub-02", "to_key": "stub-01", "type": "blocks" }
+  ]
+}

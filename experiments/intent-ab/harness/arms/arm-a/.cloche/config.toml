@@ -1,0 +1,19 @@
+# Arm A ("vanilla") overlay (E5) — see docs/plans/2026-09-14-intent-ab-experiment-protocol.md.
+#
+# Intent tracking must stay fully dormant: scan_after_tasks = false means no
+# scan is ever enqueued automatically, and since this arm's project tree
+# never gets a `cloche intent scan` run by hand either, `.cloche/intent/`
+# never comes into existence — the harness's contamination assert
+# (arm_driver/contamination.py) checks this at every poll, not just here.
+active = true
+
+[daemon]
+image = "intent-ab-arm-a:latest"
+
+[intent]
+scan_after_tasks = false
+
+[git]
+# name    = ""
+# email   = ""
+# ssh_key = ""

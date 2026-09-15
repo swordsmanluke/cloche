@@ -926,7 +926,8 @@ cloche doctor [--project <dir>] [--verbose] [--timeout <duration>]
 ```
 
 Runs checks in order and prints a status line for each. Exits with code 1
-if any check fails. Checks 6–10 only run when the current (or `--project`) directory
+if any check fails. Project config, Workflow syntax, Image source dir, Project image
+build, and Agent binary only run when the current (or `--project`) directory
 contains a `.cloche/` subdirectory.
 
 | Check | Description |
@@ -936,6 +937,7 @@ contains a `.cloche/` subdirectory.
 | Daemon | Calls `GetVersion` over gRPC to verify the daemon is reachable. Address from `CLOCHE_ADDR` or default `0.0.0.0:50051`. |
 | Agent auth | Checks `ANTHROPIC_API_KEY` or `~/.claude/` session data. Soft check (warning, not fatal). |
 | Git SSH key | Loads the merged config and checks that the `[git] ssh_key` file (if configured) exists and is readable. Soft check (warning, not fatal). |
+| Beads CLI (bd) | Checks whether `bd` is on `PATH`. Soft check (warning, not fatal) — the generated task workflow reads tasks from beads. |
 | Project config | Loads `.cloche/config.toml`, reports parse errors, warns if `active = false` or `TODO(cloche-init)` markers remain. |
 | Workflow syntax | Parses all `.cloche/*.cloche` files using the same logic as `cloche validate`. |
 | Image source dir | Warns (not fatal) when the existing project image was built from a different source directory. The next `EnsureImage` call will rebuild it automatically. |

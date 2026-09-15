@@ -1,0 +1,21 @@
+# Arm B ("intent") overlay (E5) — see docs/plans/2026-09-14-intent-ab-experiment-protocol.md.
+#
+# Everything else is left at its default: scan_after_tasks defaults to true
+# (stated explicitly below only for documentation — it matches the built-in
+# default), so the first completed `main` task bootstraps `.cloche/intent/`
+# via the built-in intent-scan workflow, and injection is automatic from
+# then on. token_budget is tuned down from the ~2000-token default for the
+# 16k-context executor (frozen value, see the protocol doc's Harness section).
+active = true
+
+[daemon]
+image = "intent-ab-arm-b:latest"
+
+[intent]
+scan_after_tasks = true
+token_budget     = 1000
+
+[git]
+# name    = ""
+# email   = ""
+# ssh_key = ""

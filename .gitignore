@@ -1,5 +1,11 @@
 .env
 bin/
+# The bonsai executor wrapper's actual entry point (E4) — not a build
+# artifact, unlike every other bin/ this repo has. Without this negation
+# the unanchored "bin/" rule above silently drops it (this is why it went
+# missing from the E4 commit in the first place; see harness/README.md).
+!experiments/intent-ab/harness/bin/
+!experiments/intent-ab/harness/bin/**
 .serena/
 
 # Claude Code local settings

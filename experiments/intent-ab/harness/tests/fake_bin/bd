@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""Fake `bd` (beads task tracker CLI) for test_driver_integration.py. See
+../fake_driver_lib.py for the state machine and why this exists."""
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from tests import fake_driver_lib as lib  # noqa: E402
+
+
+def main(argv):
+    if not argv:
+        print("usage: bd <command> [args...]", file=sys.stderr)
+        return 1
+
+    command = argv[0]
+    if command == "init":
+        state = lib.load()
+        lib.save(state)
+        return 0
+
+    if command == "create" and len(argv) >= 3 and argv[1] == "--graph":
+        lib.create_graph(argv[2])
+        return 0
+
+    if command == "ready" and "--json" in argv:
+        state = lib.load()
+        response = lib.tick_ready(state)
+        print(json.dumps(response))
+        return 0
+
+    print(f"fake bd: unsupported invocation: {argv}", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
