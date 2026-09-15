@@ -535,6 +535,29 @@ h2 {
 
 .console-stack-empty { color: var(--text-muted); font-size: 0.8rem; padding: 0.25rem 0.5rem; }
 
+.console-stack-loading { font-style: italic; }
+
+.console-tab-skeleton {
+    width: 5.5rem;
+    height: 1.6rem;
+    background: var(--bg-surface);
+    opacity: 0.6;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    animation: console-skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes console-skeleton-pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.8; }
+}
+
+.console-stale-hint {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
 .console-load-earlier {
     width: 100%;
     margin-top: 0.5rem;

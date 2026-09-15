@@ -49,9 +49,14 @@ and a centre pane, routed by project and task rather than by a fixed set of page
 ### Tab bar
 
 Across the top: one tab per registered project (a health dot, a running-count badge, and
-a `!` attention flag when something needs you), with idle projects (no active runs, nothing
-needing attention) folded into a **More** menu to keep the bar short. Clicking a tab
-switches projects without a page navigation.
+a `!` attention flag when something needs you). The fold rule always keeps the active
+project and anything with live activity (a running loop, active runs, or attention items)
+visible, then fills a fixed budget of remaining slots with the most recently active
+projects (by latest run start); only genuinely stale, inactive projects beyond that budget
+fold into a **More** menu. This keeps a stopped loop with no current activity from folding
+every other project down to a single visible tab. Clicking a tab switches projects without
+a page navigation. A staleness hint appears next to the tab bar when the cached attention
+data behind `attention_count` hasn't refreshed recently.
 
 On the right, daemon instruments for the active project:
 
@@ -138,8 +143,13 @@ updates the URL via `history.pushState` without a page reload; browser back/forw
 as expected. Attempt and step-scope selection are client-side state, not reflected in the
 URL yet.
 
-The pre-console URLs (`/`, `/projects/{name}[/runs]`, `/runs[/{id}]`, `/tasks/{id}`,
+The pre-console URLs (`/projects/{name}[/runs]`, `/runs[/{id}]`, `/tasks/{id}`,
 `/failed-tasks`) redirect into the new scheme for one release before being removed.
+`GET /` no longer redirects — it renders the console shell directly at `/`, seeded with a
+best-effort landing project (the project with the most recently started run, falling back
+to alphabetical-by-slug). The client then prefers the last project the user actually
+viewed, if any, persisted client-side in `localStorage`, upgrading to the server's pick
+once the project list loads if that preference is empty or stale.
 
 ### Keyboard
 
@@ -232,9 +242,10 @@ at the attempt's start time. Escape or `l` closes the overlay.
 The dashboard's JSON endpoints remain stable and are also used by the CLI
 (`cloche health`, `cloche tasks`, etc.):
 
-- `GET /api/projects` — per-project health, active-run count, and attention count
+- `GET /api/projects` — per-project health, active-run count, attention count
   (`attention_count`/`attention_computed_at`, read from the background attention cache —
-  see `internal/attention.Cache` — rather than computed per request).
+  see `internal/attention.Cache` — rather than computed per request), and `loop_running`/
+  `latest_run_at` (used by the tab bar's fold rule and the "/" landing-project fallback).
 - `GET /api/projects/{name}/attention` — the full "Needs you" item list for one project
   plus `computed_at`, from the same cache; `computed_at` is empty for a project that
   hasn't been refreshed yet.

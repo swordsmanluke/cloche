@@ -1025,6 +1025,12 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 		ActiveCount         int       `json:"active_count"`
 		AttentionCount      int       `json:"attention_count"`
 		AttentionComputedAt string    `json:"attention_computed_at"`
+		// LoopRunning and LatestRunAt are cheap fields (derived from data
+		// already fetched for health/active_count) that the console tab bar
+		// uses to decide which idle projects still deserve a visible tab
+		// instead of folding into "More" — see the fold rule in console.js.
+		LoopRunning bool   `json:"loop_running"`
+		LatestRunAt string `json:"latest_run_at"`
 	}
 	result := make([]apiProject, len(projects))
 	for i, dir := range projects {
@@ -1035,9 +1041,13 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 		}
 		health := domain.CalculateHealth(runValues, healthWindowSize)
 		var activeCount int
+		var latestRunAt time.Time
 		for _, rr := range runs {
 			if rr.State == domain.RunStatePending || rr.State == domain.RunStateRunning {
 				activeCount++
+			}
+			if rr.StartedAt.After(latestRunAt) {
+				latestRunAt = rr.StartedAt
 			}
 		}
 		var attentionSnap attention.Snapshot
@@ -1057,6 +1067,8 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 			ActiveCount:         activeCount,
 			AttentionCount:      len(attentionSnap.Items),
 			AttentionComputedAt: apiTimeString(attentionSnap.ComputedAt),
+			LoopRunning:         h.loopStatusFn != nil && h.loopStatusFn(dir),
+			LatestRunAt:         apiTimeString(latestRunAt),
 		}
 	}
 
@@ -1960,11 +1972,18 @@ func (h *Handler) handleConsoleShell(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	label := filepath.Base(dir)
+	h.renderConsoleShellForSlug(w, dir, slug, r.PathValue("taskID"))
+}
+
+// renderConsoleShellForSlug renders the console shell frame for a resolved
+// project directory/slug. Shared by handleConsoleShell (explicit
+// /{slug}[/{taskID}] URLs) and handleLegacyRoot (GET / picks a best-effort
+// landing project itself).
+func (h *Handler) renderConsoleShellForSlug(w http.ResponseWriter, dir, slug, taskID string) {
 	data := map[string]any{
-		"Title":       label,
+		"Title":       filepath.Base(dir),
 		"ProjectSlug": slug,
-		"TaskID":      r.PathValue("taskID"),
+		"TaskID":      taskID,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.pages["console"].ExecuteTemplate(w, "layout", data); err != nil {
@@ -1993,22 +2012,52 @@ func (h *Handler) renderEmptyConsoleShell(w http.ResponseWriter) {
 // /{project-slug}[/{task-id}] scheme for one release before being removed
 // entirely.
 
-// handleLegacyRoot redirects GET / to the console shell for a default
-// project (the alphabetically first by slug), or renders the shell with no
-// project selected when none are registered yet.
+// handleLegacyRoot renders the console shell for GET / directly (no
+// redirect, so the URL stays "/"), seeding it with a best-effort landing
+// project: the project with the most recently started run, falling back to
+// alphabetical-by-slug when nothing has run yet or run times tie. The shell
+// stays at "/" rather than jumping the address bar straight to a project's
+// URL so the console.js boot can still prefer the last project the user
+// actually viewed (persisted client-side in localStorage) over this
+// server-computed default — see init()/resolveLandingSlug() in console.js.
+// Renders the shell with no project selected when none are registered yet.
 func (h *Handler) handleLegacyRoot(w http.ResponseWriter, r *http.Request) {
 	projects, _ := h.store.ListProjects(r.Context())
 	if len(projects) == 0 {
 		h.renderEmptyConsoleShell(w)
 		return
 	}
+	dir, slug := h.pickLandingProject(r.Context(), projects)
+	h.renderConsoleShellForSlug(w, dir, slug, "")
+}
+
+// pickLandingProject picks a default project for the bare "/" route: the
+// project with the most recently started run, tie-broken (including the
+// all-runs-still-pending case, where every run's StartedAt is zero) by
+// alphabetical slug for determinism.
+func (h *Handler) pickLandingProject(ctx context.Context, projects []string) (dir, slug string) {
 	slugs := projectSlugs(projects)
-	sorted := make([]string, 0, len(slugs))
-	for _, slug := range slugs {
-		sorted = append(sorted, slug)
+	runs, _ := h.store.ListRuns(ctx, time.Time{})
+	latest := make(map[string]time.Time, len(projects))
+	for _, run := range runs {
+		if run.ProjectDir == "" {
+			continue
+		}
+		if run.StartedAt.After(latest[run.ProjectDir]) {
+			latest[run.ProjectDir] = run.StartedAt
+		}
 	}
-	sort.Strings(sorted)
-	http.Redirect(w, r, "/"+url.PathEscape(sorted[0]), http.StatusFound)
+
+	var bestDir, bestSlug string
+	var bestTime time.Time
+	for _, d := range projects {
+		s := slugs[d]
+		t := latest[d]
+		if bestDir == "" || t.After(bestTime) || (t.Equal(bestTime) && s < bestSlug) {
+			bestDir, bestSlug, bestTime = d, s, t
+		}
+	}
+	return bestDir, bestSlug
 }
 
 // handleLegacyProjectRedirect redirects GET /projects/{name} and

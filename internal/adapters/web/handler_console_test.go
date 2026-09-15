@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/cloche-dev/cloche/internal/domain"
 	"github.com/stretchr/testify/assert"
@@ -65,17 +66,38 @@ func TestConsoleStatic_ServesConsoleJS(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "console-project-tabs")
 }
 
-func TestLegacyRoot_RedirectsToFirstProjectSlug(t *testing.T) {
+func TestLegacyRoot_RendersShellForMostRecentRunProject(t *testing.T) {
 	h, store := setupHandler(t)
 	seedRunWithProject(t, store, "lr-1", "develop", domain.RunStateSucceeded, "/home/user/zeta")
 	seedRunWithProject(t, store, "lr-2", "develop", domain.RunStateSucceeded, "/home/user/alpha")
+
+	// zeta's run is older alphabetically-first "alpha" would win a naive sort,
+	// but zeta's run should win because it started more recently.
+	run, err := store.GetRun(t.Context(), "lr-1")
+	assert.NoError(t, err)
+	run.StartedAt = time.Now().Add(time.Hour)
+	assert.NoError(t, store.UpdateRun(t.Context(), run))
 
 	req := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusFound, w.Code)
-	assert.Equal(t, "/alpha", w.Header().Get("Location"))
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Empty(t, w.Header().Get("Location"), "GET / should render the shell directly so client-side JS can still override the landing project via localStorage")
+	assert.Contains(t, w.Body.String(), `data-project-slug="zeta"`)
+}
+
+func TestLegacyRoot_FallsBackToAlphabeticalWhenNoRunHasStarted(t *testing.T) {
+	h, store := setupHandler(t)
+	seedRunWithProject(t, store, "lr-3", "develop", domain.RunStatePending, "/home/user/zeta")
+	seedRunWithProject(t, store, "lr-4", "develop", domain.RunStatePending, "/home/user/alpha")
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `data-project-slug="alpha"`)
 }
 
 func TestLegacyRoot_NoProjects_RendersEmptyShell(t *testing.T) {

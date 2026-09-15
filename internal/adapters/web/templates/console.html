@@ -8,6 +8,7 @@
         <button type="button" class="console-more-btn" id="console-more-btn" hidden
                 aria-haspopup="true" aria-expanded="false">More ▾</button>
         <div class="console-idle-menu" id="console-idle-menu" hidden></div>
+        <span class="console-stale-hint" id="console-attention-stale" hidden></span>
         <div class="console-view-buttons" id="console-view-buttons">
             <button type="button" class="btn btn-secondary btn-sm" id="console-view-workflows-btn" title="Workflows (w)">Workflows</button>
             <button type="button" class="btn btn-secondary btn-sm" id="console-view-intent-btn" title="Intent (i)">Intent</button>
@@ -105,4 +106,4 @@
     </div>
 </div>
 {{end}}
-{{define "scripts"}}<script src="/static/console.js"></script>{{end}}
+{{define "scripts"}}<script src="/static/console-tabs.js"></script><script src="/static/console.js"></script>{{end}}

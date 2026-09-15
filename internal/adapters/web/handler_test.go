@@ -586,6 +586,36 @@ func TestAPIProjects(t *testing.T) {
 	assert.Equal(t, 1, byDir["/home/user/beta"].ActiveCount)
 }
 
+func TestAPIProjects_LoopRunningAndLatestRunAt(t *testing.T) {
+	h, store := setupHandler(t)
+	seedRunWithProject(t, store, "lra-1", "develop", domain.RunStateSucceeded, "/home/user/alpha")
+	seedRunWithProject(t, store, "lra-2", "develop", domain.RunStateRunning, "/home/user/beta")
+
+	h.loopStatusFn = func(dir string) bool { return dir == "/home/user/beta" }
+
+	req := httptest.NewRequest("GET", "/api/projects", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	type project struct {
+		Dir         string `json:"dir"`
+		LoopRunning bool   `json:"loop_running"`
+		LatestRunAt string `json:"latest_run_at"`
+	}
+	var projects []project
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &projects))
+
+	byDir := map[string]project{}
+	for _, p := range projects {
+		byDir[p.Dir] = p
+	}
+	assert.False(t, byDir["/home/user/alpha"].LoopRunning)
+	assert.True(t, byDir["/home/user/beta"].LoopRunning)
+	assert.NotEmpty(t, byDir["/home/user/alpha"].LatestRunAt)
+	assert.NotEmpty(t, byDir["/home/user/beta"].LatestRunAt)
+}
+
 func TestProjectOverview_Empty(t *testing.T) {
 	h, _ := setupHandler(t)
 

@@ -14,9 +14,25 @@
     var STACK_POLL_MS = 4000;
     var INSTRUMENTS_POLL_MS = 5000;
     var TICKER_POLL_MS = 5000;
+    // How often the tab bar's project list (health/active/loop/attention) is
+    // refreshed in the background. Cheaper than the stack poll since it
+    // covers every project, not just the active one.
+    var PROJECTS_POLL_MS = 15000;
+    // How many project tabs the fold rule keeps visible before spilling into
+    // "More" — see computeTabPlan(). Not a true pixel-width measurement, but
+    // a fixed budget large enough that a quiet loop never folds every
+    // project down to a single visible tab.
+    var TAB_VISIBLE_BUDGET = 8;
+    // Matches internal/attention.DefaultRefreshInterval — attention data
+    // older than this is flagged stale in the tab bar rather than presented
+    // as current.
+    var ATTENTION_STALE_MS = 60000;
+    var LAST_PROJECT_STORAGE_KEY = 'cloche:lastProjectSlug';
 
     var state = {
         projects: [],
+        projectsStatus: 'loading', // 'loading' | 'ready' | 'error'
+        projectsTimer: null,
         activeSlug: '',
         activeTaskId: '',
         stack: null,          // last "today" window from the server
@@ -71,60 +87,120 @@
 
     // ---------- tab bar ----------
 
+    // Fetches the tab bar's project list. Never gates first paint: callers
+    // render a skeleton via renderTabBar() before this resolves, and this
+    // patches in real data (including attention counts, which ride along on
+    // the same cached-and-fast /api/projects response) whenever it lands.
     function loadProjects() {
-        return fetch('/api/projects').then(function (r) { return r.json(); }).then(function (projects) {
+        return fetch('/api/projects').then(function (r) {
+            if (!r.ok) throw new Error('bad status ' + r.status);
+            return r.json();
+        }).then(function (projects) {
             state.projects = projects || [];
+            state.projectsStatus = 'ready';
             renderTabBar();
         }).catch(function () {
-            state.projects = [];
+            state.projectsStatus = 'error';
+            renderTabBar();
         });
     }
 
-    function sortedProjects(list) {
-        return list.slice().sort(function (a, b) {
-            if (a.label === b.label) return a.slug < b.slug ? -1 : (a.slug > b.slug ? 1 : 0);
-            return a.label < b.label ? -1 : 1;
-        });
+    function startProjectsPolling() {
+        stopProjectsPolling();
+        state.projectsTimer = setInterval(loadProjects, PROJECTS_POLL_MS);
+    }
+
+    function stopProjectsPolling() {
+        if (state.projectsTimer) {
+            clearInterval(state.projectsTimer);
+            state.projectsTimer = null;
+        }
+    }
+
+    // Fold-rule/landing-project decision logic lives in console-tabs.js
+    // (loaded before this script — see console.html) so it can be unit
+    // tested without a DOM. sortedProjects is used pervasively below, so
+    // keep a local alias.
+    var sortedProjects = ConsoleTabs.sortedProjects;
+
+    function renderTabBarSkeleton() {
+        var tabsEl = document.getElementById('console-project-tabs');
+        var moreBtn = document.getElementById('console-more-btn');
+        var menuEl = document.getElementById('console-idle-menu');
+        tabsEl.innerHTML = '';
+        menuEl.innerHTML = '';
+        moreBtn.hidden = true;
+        menuEl.hidden = true;
+        for (var i = 0; i < 3; i++) {
+            var sk = document.createElement('span');
+            sk.className = 'console-tab-skeleton';
+            sk.setAttribute('aria-hidden', 'true');
+            tabsEl.appendChild(sk);
+        }
     }
 
     function renderTabBar() {
         var tabsEl = document.getElementById('console-project-tabs');
         var moreBtn = document.getElementById('console-more-btn');
         var menuEl = document.getElementById('console-idle-menu');
+
+        if (!state.projects.length && state.projectsStatus === 'loading') {
+            renderTabBarSkeleton();
+            renderStalenessHint([]);
+            return;
+        }
+
         tabsEl.innerHTML = '';
         menuEl.innerHTML = '';
 
         if (!state.projects.length) {
             var none = document.createElement('span');
             none.className = 'console-tab-count';
-            none.textContent = 'No projects registered';
+            none.textContent = state.projectsStatus === 'error' ? 'Could not load projects' : 'No projects registered';
             tabsEl.appendChild(none);
             moreBtn.hidden = true;
             menuEl.hidden = true;
+            renderStalenessHint([]);
             return;
         }
 
-        var visible = [];
-        var idle = [];
-        state.projects.forEach(function (p) {
-            var isIdle = (p.active_count || 0) === 0 && (p.attention_count || 0) === 0;
-            if (isIdle && p.slug !== state.activeSlug) {
-                idle.push(p);
-            } else {
-                visible.push(p);
-            }
-        });
+        var plan = ConsoleTabs.computeTabPlan(state.projects, state.activeSlug, TAB_VISIBLE_BUDGET);
 
-        sortedProjects(visible).forEach(function (p) { tabsEl.appendChild(renderTab(p, false)); });
+        sortedProjects(plan.visible).forEach(function (p) { tabsEl.appendChild(renderTab(p, false)); });
 
-        if (idle.length) {
+        if (plan.folded.length) {
             moreBtn.hidden = false;
-            moreBtn.textContent = 'More (' + idle.length + ') ▾';
-            sortedProjects(idle).forEach(function (p) { menuEl.appendChild(renderTab(p, true)); });
+            moreBtn.textContent = 'More (' + plan.folded.length + ') ▾';
+            sortedProjects(plan.folded).forEach(function (p) { menuEl.appendChild(renderTab(p, true)); });
         } else {
             moreBtn.hidden = true;
             menuEl.hidden = true;
         }
+
+        renderStalenessHint(state.projects);
+    }
+
+    // Flags the tab bar when the cached attention data behind attention_count
+    // is older than the cache's own refresh interval — a stuck/slow refresher
+    // rather than genuinely fresh "zero items".
+    function renderStalenessHint(projects) {
+        var el = document.getElementById('console-attention-stale');
+        if (!el) return;
+        var oldest = null;
+        projects.forEach(function (p) {
+            if (!p.attention_computed_at) return;
+            var t = Date.parse(p.attention_computed_at);
+            if (isNaN(t)) return;
+            if (oldest === null || t < oldest) oldest = t;
+        });
+        if (oldest === null || (Date.now() - oldest) <= ATTENTION_STALE_MS) {
+            el.hidden = true;
+            return;
+        }
+        var ageSeconds = Math.round((Date.now() - oldest) / 1000);
+        el.hidden = false;
+        el.textContent = 'attention data stale (' + formatDuration(ageSeconds) + ' old)';
+        el.title = 'The attention cache has not refreshed in over ' + formatDuration(Math.round(ATTENTION_STALE_MS / 1000));
     }
 
     function renderTab(p, inMenu) {
@@ -183,6 +259,14 @@
 
     // ---------- project selection ----------
 
+    // Persists the last project the user viewed so a bare "/" visit can land
+    // there next time (see resolveLandingSlug/reconcileLandingProject in init()).
+    function rememberLastProject(slug) {
+        try {
+            localStorage.setItem(LAST_PROJECT_STORAGE_KEY, slug);
+        } catch (e) { /* storage unavailable (private mode, disabled, etc.) */ }
+    }
+
     function selectProject(slug, opts) {
         opts = opts || {};
         if (!slug) return;
@@ -197,6 +281,8 @@
         state.rowOrder = [];
         state.selectedIndex = -1;
 
+        rememberLastProject(slug);
+
         closeView();
         scanStatus = null;
 
@@ -204,6 +290,7 @@
         stopInstrumentsPolling();
         stopTickerPolling();
         renderTabBar();
+        renderStackSkeleton();
         renderCentrePane(null, null);
         updateViewButtonsEnabled();
 
@@ -240,6 +327,7 @@
         var headers = {};
         if (!initial && state.stackEtag) headers['If-None-Match'] = state.stackEtag;
         return fetch(url, { headers: headers }).then(function (r) {
+            if (!r.ok && r.status !== 304) throw new Error('bad status ' + r.status);
             if (r.status === 304) return null;
             state.stackEtag = r.headers.get('ETag');
             return r.json();
@@ -249,7 +337,13 @@
             state.doneCursor = stack.cursor || null;
             if (initial) state.extraDone = [];
             renderMergedStack(initial);
-        }).catch(function () {});
+        }).catch(function () {
+            // First load failed outright (as opposed to just being slow):
+            // swap the "Loading…" skeleton for a retry message. Stack
+            // polling (started by the caller regardless) will replace it
+            // once a request succeeds.
+            if (initial && !state.stack) renderStackError();
+        });
     }
 
     function startStackPolling() {
@@ -289,6 +383,41 @@
 
     function rowKey(group, entry) {
         return group + ':' + (entry.task_id || entry.run_id || entry.title);
+    }
+
+    // Painted immediately on project selection, before /tasks/stack resolves,
+    // so the frame never sits blank while the request is in flight.
+    function renderStackSkeleton() {
+        var container = document.getElementById('console-stack');
+        container.innerHTML = '';
+        GROUPS.forEach(function (g) {
+            var section = document.createElement('section');
+            section.className = 'console-stack-group';
+
+            var h = document.createElement('h3');
+            h.className = 'console-stack-group-title';
+            h.appendChild(document.createTextNode(g.label + ' '));
+            section.appendChild(h);
+
+            var list = document.createElement('div');
+            list.className = 'console-stack-list';
+            var row = document.createElement('div');
+            row.className = 'console-stack-empty console-stack-loading';
+            row.textContent = 'Loading…';
+            list.appendChild(row);
+            section.appendChild(list);
+
+            container.appendChild(section);
+        });
+    }
+
+    function renderStackError() {
+        var container = document.getElementById('console-stack');
+        container.innerHTML = '';
+        var msg = document.createElement('div');
+        msg.className = 'console-stack-empty';
+        msg.textContent = 'Could not load tasks — retrying…';
+        container.appendChild(msg);
     }
 
     function renderStack(stack, initial) {
@@ -3483,20 +3612,57 @@
 
     // ---------- init ----------
 
+    // Landing project for a bare "/" visit (loc.slug === ''): the last
+    // project the user viewed, read synchronously from localStorage so it
+    // doesn't cost a request; falling back to the server's own best-effort
+    // pick (root.dataset.projectSlug — most recent run, else alphabetical;
+    // see handleLegacyRoot) until the project list loads and
+    // reconcileLandingProject() can confirm or correct it.
+    function lastViewedSlug() {
+        try {
+            return localStorage.getItem(LAST_PROJECT_STORAGE_KEY);
+        } catch (e) { /* storage unavailable */ }
+        return null;
+    }
+
+    function resolveLandingSlug() {
+        return ConsoleTabs.pickLandingSlug(lastViewedSlug(), [], root.dataset.projectSlug || '');
+    }
+
+    // Runs once the project list has actually loaded, and only for a bare
+    // "/" visit: upgrades the optimistic landing guess (localStorage or the
+    // server's default) to the true "most recent run, else alphabetical"
+    // project if that guess was empty or no longer valid (e.g. a
+    // localStorage entry for a project that's since been removed).
+    function reconcileLandingProject() {
+        if (!state.projects.length) return;
+        var target = ConsoleTabs.pickLandingSlug(lastViewedSlug(), state.projects, root.dataset.projectSlug || '');
+        if (target && target !== state.activeSlug) {
+            selectProject(target, { pushHistory: false });
+        }
+    }
+
     function init() {
         var loc = parseLocation();
-        var initialSlug = loc.slug || root.dataset.projectSlug || '';
+        var explicitSlug = loc.slug || '';
         var initialTaskId = loc.taskId || root.dataset.taskId || '';
+        var initialSlug = explicitSlug || resolveLandingSlug();
 
-        loadProjects().then(function () {
-            if (!initialSlug && state.projects.length) {
-                initialSlug = sortedProjects(state.projects)[0].slug;
-            }
-            if (initialSlug) {
-                selectProject(initialSlug, { taskId: initialTaskId, pushHistory: false });
-            } else {
-                renderCentrePane(null, null);
-            }
+        // Paint the tab bar skeleton immediately; nothing below gates on a
+        // network round trip.
+        renderTabBar();
+
+        var projectsPromise = loadProjects();
+        startProjectsPolling();
+
+        if (initialSlug) {
+            selectProject(initialSlug, { taskId: initialTaskId, pushHistory: false });
+        } else {
+            renderCentrePane(null, null);
+        }
+
+        projectsPromise.then(function () {
+            if (!explicitSlug) reconcileLandingProject();
         });
     }
 
