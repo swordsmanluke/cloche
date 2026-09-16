@@ -2059,6 +2059,20 @@ func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) 
 		return nil, fmt.Errorf("listing tasks: %w", err)
 	}
 
+	// Built-in-ness is a property of the run's resolved workflow, not the
+	// task record itself — a synthetic task created for the automatic
+	// intent-scan trigger is 1:1 with a single built-in workflow run, so any
+	// one associated run tells us whether to mark the whole task. Looked up
+	// for every task in one batched query rather than one query per task.
+	var isBuiltinByTask map[string]bool
+	if bl, ok := s.store.(ports.BuiltinLookup); ok {
+		ids := make([]string, len(tasks))
+		for i, task := range tasks {
+			ids[i] = task.ID
+		}
+		isBuiltinByTask, _ = bl.IsBuiltinByTaskIDs(ctx, ids)
+	}
+
 	resp := &pb.ListTasksResponse{}
 	for _, task := range tasks {
 		sum := &pb.TaskSummary{
@@ -2068,16 +2082,10 @@ func (s *ClocheServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) 
 			ProjectDir:   task.ProjectDir,
 			CreatedAt:    task.CreatedAt.String(),
 			AttemptCount: int32(len(task.Attempts)),
+			IsBuiltin:    isBuiltinByTask[task.ID],
 		}
 		if la := task.LatestAttempt(); la != nil {
 			sum.LatestAttemptId = la.ID
-		}
-		// Built-in-ness is a property of the run's resolved workflow, not the
-		// task record itself — a synthetic task created for the automatic
-		// intent-scan trigger is 1:1 with a single built-in workflow run, so
-		// any one associated run tells us whether to mark the whole task.
-		if taskRuns, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{TaskID: task.ID, Limit: 1}); err == nil && len(taskRuns) > 0 {
-			sum.IsBuiltin = taskRuns[0].IsBuiltin
 		}
 		state := s.deriveTaskRunState(ctx, task)
 		sum.Status = state.Status

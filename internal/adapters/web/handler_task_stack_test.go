@@ -525,3 +525,100 @@ func TestDecodeTaskStackCursor_Empty(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, has)
 }
+
+// TestAPITaskStack_OldDoneRunExcludedFromDefaultView verifies buildTaskStack
+// bounds its run window to the current day: a run that completed well before
+// today must not appear in the no-cursor (default) response.
+func TestAPITaskStack_OldDoneRunExcludedFromDefaultView(t *testing.T) {
+	h, store := setupHandler(t)
+	h.taskStore = store
+	ctx := context.Background()
+
+	old := time.Now().Add(-36 * time.Hour)
+	task := &domain.Task{ID: "task-old", Title: "Old task", Source: domain.TaskSourceExternal, ProjectDir: taskStackProjectDir, CreatedAt: old}
+	require.NoError(t, store.SaveTask(ctx, task))
+	attempt := &domain.Attempt{ID: "att-old", TaskID: "task-old", StartedAt: old, EndedAt: old, Result: domain.AttemptResultSucceeded}
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	run := domain.NewRun("run-old", "develop")
+	run.ProjectDir = taskStackProjectDir
+	run.TaskID = "task-old"
+	run.AttemptID = "att-old"
+	run.State = domain.RunStateSucceeded
+	run.StartedAt = old
+	run.CompletedAt = old
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	_, stack := getTaskStack(t, h, "")
+	assert.Empty(t, stack.DoneToday)
+}
+
+// TestAPITaskStack_CursorPagesOlderDoneRuns verifies that a run outside the
+// default (today-only) window is still reachable by paging the Done group
+// via the cursor, and that its task's title is resolved correctly even
+// though the task wasn't referenced by any run in the initial page's window.
+func TestAPITaskStack_CursorPagesOlderDoneRuns(t *testing.T) {
+	h, store := setupHandler(t)
+	h.taskStore = store
+	ctx := context.Background()
+
+	old := time.Now().Add(-36 * time.Hour)
+	task := &domain.Task{ID: "task-old2", Title: "Old task 2", Source: domain.TaskSourceExternal, ProjectDir: taskStackProjectDir, CreatedAt: old}
+	require.NoError(t, store.SaveTask(ctx, task))
+	attempt := &domain.Attempt{ID: "att-old2", TaskID: "task-old2", StartedAt: old, EndedAt: old, Result: domain.AttemptResultSucceeded}
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	run := domain.NewRun("run-old2", "develop")
+	run.ProjectDir = taskStackProjectDir
+	run.TaskID = "task-old2"
+	run.AttemptID = "att-old2"
+	run.State = domain.RunStateSucceeded
+	run.StartedAt = old
+	run.CompletedAt = old
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	_, first := getTaskStack(t, h, "")
+	require.Empty(t, first.DoneToday)
+	require.NotEmpty(t, first.Cursor, "expected a cursor into older history")
+
+	_, second := getTaskStack(t, h, "?cursor="+first.Cursor)
+	require.Len(t, second.DoneToday, 1)
+	assert.Equal(t, "task-old2", second.DoneToday[0].TaskID)
+	assert.Equal(t, "Old task 2", second.DoneToday[0].Title)
+}
+
+// TestAPITaskStack_NeedsYou_TitleForTaskOutsideRunWindow verifies that a
+// NeedsYou item's title still resolves even when the referenced task's only
+// run falls outside the bounded run window buildTaskStack fetches — the
+// task ID set passed to ListTasksByIDs must include attention item task IDs,
+// not just task IDs discovered from the windowed runs.
+func TestAPITaskStack_NeedsYou_TitleForTaskOutsideRunWindow(t *testing.T) {
+	h, store := setupHandler(t)
+	h.taskStore = store
+	ctx := context.Background()
+
+	seed := domain.NewRun("seed", "develop")
+	seed.ProjectDir = taskStackProjectDir
+	seed.State = domain.RunStateSucceeded
+	seed.StartedAt = time.Now()
+	seed.CompletedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, seed))
+
+	old := time.Now().Add(-36 * time.Hour)
+	task := &domain.Task{ID: "task-stale", Title: "Stale claim task", Source: domain.TaskSourceExternal, ProjectDir: taskStackProjectDir, CreatedAt: old}
+	require.NoError(t, store.SaveTask(ctx, task))
+
+	since := time.Now().Add(-time.Hour)
+	h.attentionProvider = &mockAttentionProvider{
+		items: map[string][]attention.Item{
+			taskStackProjectDir: {
+				{Kind: attention.KindStaleClaim, ProjectDir: taskStackProjectDir, TaskID: "task-stale", RunID: "", Reason: "no active run", Since: since, Actions: []string{"retry"}},
+			},
+		},
+	}
+
+	_, stack := getTaskStack(t, h, "")
+	require.Len(t, stack.NeedsYou, 1)
+	assert.Equal(t, "task-stale", stack.NeedsYou[0].TaskID)
+	assert.Equal(t, "Stale claim task", stack.NeedsYou[0].Title)
+}

@@ -198,15 +198,58 @@ type doneCandidate struct {
 // buildTaskStack derives the grouped task list for projectDir from runs (and,
 // when available, tasks/attempts) in the store — never from the orchestration
 // loop's in-memory snapshot. See GetLoopTasks for the snapshot this replaces.
+// It reads only what it renders: runs are bounded to the visible window (the
+// current day, or everything before the cursor, plus any run in an active
+// state regardless of age) and only the tasks referenced by those runs (and
+// by the attention/occupancy items below) are loaded, rather than every task
+// and run the project has ever had.
 func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursorTime time.Time, hasCursor bool) (*TaskStack, error) {
-	runs, err := h.store.ListRunsByProject(ctx, projectDir, time.Time{})
+	now := time.Now()
+	runFilter := domain.RunListFilter{ProjectDir: projectDir}
+	if hasCursor {
+		runFilter.Before = cursorTime
+	} else {
+		runFilter.Since = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	}
+	runs, err := h.store.ListRunsFiltered(ctx, runFilter)
 	if err != nil {
 		return nil, fmt.Errorf("listing runs: %w", err)
 	}
 
+	var attentionItems []attention.Item
+	if h.attentionProvider != nil {
+		attentionItems = h.attentionProvider.AttentionSnapshot(projectDir).Items
+	}
+	var queued []QueuedItem
+	if h.occupancyProvider != nil {
+		if occ, ok := h.occupancyProvider.LoopOccupancySnapshot(projectDir); ok {
+			queued = occ.Queued
+		}
+	}
+
 	var tasksByID map[string]*domain.Task
 	if h.taskStore != nil {
-		tasks, err := h.taskStore.ListTasks(ctx, projectDir)
+		needed := make(map[string]struct{})
+		for _, r := range runs {
+			if r.TaskID != "" {
+				needed[r.TaskID] = struct{}{}
+			}
+		}
+		for _, item := range attentionItems {
+			if item.TaskID != "" {
+				needed[item.TaskID] = struct{}{}
+			}
+		}
+		for _, q := range queued {
+			if q.TaskID != "" {
+				needed[q.TaskID] = struct{}{}
+			}
+		}
+		ids := make([]string, 0, len(needed))
+		for id := range needed {
+			ids = append(ids, id)
+		}
+		tasks, err := h.taskStore.ListTasksByIDs(ctx, ids)
 		if err != nil {
 			return nil, fmt.Errorf("listing tasks: %w", err)
 		}
@@ -223,40 +266,36 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursorT
 		DoneToday: []TaskStackDone{},
 	}
 
-	if h.attentionProvider != nil {
-		items := h.attentionProvider.AttentionSnapshot(projectDir).Items
-		// Resolved at most once per build (a .cloche glob+parse), and only
-		// when a stale-claim/repeat-failure item actually needs it.
-		closeAvailable := -1 // -1 = not yet resolved, 0 = false, 1 = true
-		for _, item := range items {
-			if len(stack.NeedsYou) >= taskStackNeedsYouCap {
-				break
-			}
-			entry := TaskStackNeedsYou{
-				Kind:    string(item.Kind),
-				TaskID:  item.TaskID,
-				RunID:   item.RunID,
-				Title:   taskDisplayTitle(tasksByID[item.TaskID], nil),
-				Reason:  item.Reason,
-				Since:   apiTimeString(item.Since),
-				Actions: item.Actions,
-				Key:     item.Key,
-			}
-			if item.Kind == attention.KindStaleClaim || item.Kind == attention.KindRepeatFailure {
-				if closeAvailable == -1 {
-					_, ok := host.ResolveCloseTaskWorkflow(projectDir)
-					closeAvailable = 0
-					if ok {
-						closeAvailable = 1
-					}
-				}
-				entry.CloseAvailable = closeAvailable == 1
-			}
-			stack.NeedsYou = append(stack.NeedsYou, entry)
+	// Resolved at most once per build (a .cloche glob+parse), and only when
+	// a stale-claim/repeat-failure item actually needs it.
+	closeAvailable := -1 // -1 = not yet resolved, 0 = false, 1 = true
+	for _, item := range attentionItems {
+		if len(stack.NeedsYou) >= taskStackNeedsYouCap {
+			break
 		}
+		entry := TaskStackNeedsYou{
+			Kind:    string(item.Kind),
+			TaskID:  item.TaskID,
+			RunID:   item.RunID,
+			Title:   taskDisplayTitle(tasksByID[item.TaskID], nil),
+			Reason:  item.Reason,
+			Since:   apiTimeString(item.Since),
+			Actions: item.Actions,
+			Key:     item.Key,
+		}
+		if item.Kind == attention.KindStaleClaim || item.Kind == attention.KindRepeatFailure {
+			if closeAvailable == -1 {
+				_, ok := host.ResolveCloseTaskWorkflow(projectDir)
+				closeAvailable = 0
+				if ok {
+					closeAvailable = 1
+				}
+			}
+			entry.CloseAvailable = closeAvailable == 1
+		}
+		stack.NeedsYou = append(stack.NeedsYou, entry)
 	}
 
-	now := time.Now()
 	stack.DoneTodayDate = doneTodayDateLabel(now)
 	var doneCandidates []doneCandidate
 
@@ -309,21 +348,33 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursorT
 	})
 	stack.DoneToday, stack.Cursor = paginateDone(doneCandidates, cursorTime, hasCursor, now)
 
-	if h.occupancyProvider != nil {
-		if occ, ok := h.occupancyProvider.LoopOccupancySnapshot(projectDir); ok {
-			for _, q := range occ.Queued {
-				if len(stack.Queued) >= taskStackQueuedCap {
-					break
-				}
-				stack.Queued = append(stack.Queued, TaskStackQueued{
-					TaskID: q.TaskID,
-					Title:  taskDisplayTitle(tasksByID[q.TaskID], nil),
-					RunID:  q.RunID,
-					Reason: q.Reason,
-					Since:  q.Since,
-				})
+	// paginateDone can only detect "more remain" from the candidates it was
+	// given, which on the default (no-cursor) view are bounded to today's
+	// runs. Probe for older history separately rather than loading it, so
+	// the cursor stays correct without widening the run window.
+	if !hasCursor && stack.Cursor == "" {
+		boundary := runFilter.Since
+		if len(doneCandidates) > 0 {
+			boundary = doneCandidates[len(doneCandidates)-1].completedAt
+		}
+		if probe, ok := h.store.(ports.RunHistoryProbe); ok {
+			if has, err := probe.HasCompletedRunBefore(ctx, projectDir, boundary); err == nil && has {
+				stack.Cursor = encodeTaskStackCursor(boundary)
 			}
 		}
+	}
+
+	for _, q := range queued {
+		if len(stack.Queued) >= taskStackQueuedCap {
+			break
+		}
+		stack.Queued = append(stack.Queued, TaskStackQueued{
+			TaskID: q.TaskID,
+			Title:  taskDisplayTitle(tasksByID[q.TaskID], nil),
+			RunID:  q.RunID,
+			Reason: q.Reason,
+			Since:  q.Since,
+		})
 	}
 
 	return stack, nil

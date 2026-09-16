@@ -79,6 +79,21 @@ type LedgerBackfillStatus interface {
 	LedgerBackfillPending(ctx context.Context, projectDir string) (bool, error)
 }
 
+// RunHistoryProbe is an optional interface that a RunStore may implement to
+// cheaply answer "is there any completed run further back than this point"
+// without loading the runs themselves — used by the task-stack API to know
+// whether to offer a cursor into older history without scanning it.
+type RunHistoryProbe interface {
+	HasCompletedRunBefore(ctx context.Context, projectDir string, before time.Time) (bool, error)
+}
+
+// BuiltinLookup is an optional interface that a RunStore may implement to
+// batch the "is this task's runs a built-in workflow" check across many
+// tasks in a single query, rather than one ListRunsFiltered call per task.
+type BuiltinLookup interface {
+	IsBuiltinByTaskIDs(ctx context.Context, taskIDs []string) (map[string]bool, error)
+}
+
 type CaptureStore interface {
 	SaveCapture(ctx context.Context, runID string, exec *domain.StepExecution) error
 	GetCaptures(ctx context.Context, runID string) ([]*domain.StepExecution, error)
@@ -107,6 +122,10 @@ type TaskStore interface {
 	SaveTask(ctx context.Context, task *domain.Task) error
 	GetTask(ctx context.Context, id string) (*domain.Task, error)
 	ListTasks(ctx context.Context, projectDir string) ([]*domain.Task, error)
+	// ListTasksByIDs loads exactly the given tasks (with attempts populated)
+	// in a bounded query, for callers that already know which tasks they
+	// need rather than a whole project's list.
+	ListTasksByIDs(ctx context.Context, ids []string) ([]*domain.Task, error)
 }
 
 type AttemptLogEntry struct {

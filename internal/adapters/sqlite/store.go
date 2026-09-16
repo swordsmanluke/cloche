@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/swordsmanluke/cloche/internal/activitylog"
@@ -34,6 +35,13 @@ func NewStore(dsn string) (*Store, error) {
 	// never sees concurrent writers (WAL + busy_timeout as defense-in-depth).
 	db.SetMaxOpenConns(1)
 
+	return NewStoreWithDB(db)
+}
+
+// NewStoreWithDB wraps an already-opened *sql.DB, running migrations against
+// it. Exposed mainly so tests can inject a wrapped driver (e.g. to count
+// queries) while still going through the same migration path as NewStore.
+func NewStoreWithDB(db *sql.DB) (*Store, error) {
 	if err := migrate(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrating: %w", err)
@@ -464,6 +472,27 @@ func (s *Store) CountActiveRunsByProject(ctx context.Context, projectDir string,
 	return count, err
 }
 
+// HasCompletedRunBefore reports whether projectDir has at least one
+// terminal-state run completed strictly before the given time, without
+// loading the run itself. Implements ports.RunHistoryProbe.
+func (s *Store) HasCompletedRunBefore(ctx context.Context, projectDir string, before time.Time) (bool, error) {
+	var exists int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT EXISTS(
+			SELECT 1 FROM runs
+			WHERE project_dir = ?
+			  AND state IN ('succeeded', 'failed', 'cancelled')
+			  AND completed_at < ?
+			LIMIT 1
+		)`,
+		projectDir, formatTime(before),
+	).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists != 0, nil
+}
+
 func (s *Store) ListRunsFiltered(ctx context.Context, filter domain.RunListFilter) ([]*domain.Run, error) {
 	query := `SELECT ` + runSelectCols + ` FROM runs WHERE 1=1`
 	var args []interface{}
@@ -484,9 +513,19 @@ func (s *Store) ListRunsFiltered(ctx context.Context, filter domain.RunListFilte
 		query += ` AND attempt_id = ?`
 		args = append(args, filter.AttemptID)
 	}
-	if !filter.Since.IsZero() {
-		query += ` AND (completed_at >= ? OR state IN ('running', 'pending'))`
-		args = append(args, formatTime(filter.Since))
+	if !filter.Since.IsZero() || !filter.Before.IsZero() {
+		timeClause := ""
+		var timeArgs []interface{}
+		if !filter.Since.IsZero() {
+			timeClause += ` AND completed_at >= ?`
+			timeArgs = append(timeArgs, formatTime(filter.Since))
+		}
+		if !filter.Before.IsZero() {
+			timeClause += ` AND completed_at < ?`
+			timeArgs = append(timeArgs, formatTime(filter.Before))
+		}
+		query += ` AND (state IN ('running', 'pending', 'waiting', 'parked') OR (1=1` + timeClause + `))`
+		args = append(args, timeArgs...)
 	}
 
 	query += ` ORDER BY CASE WHEN state = 'running' THEN 0 ELSE 1 END, started_at DESC`
@@ -501,6 +540,49 @@ func (s *Store) ListRunsFiltered(ctx context.Context, filter domain.RunListFilte
 	}
 	defer rows.Close()
 	return scanRuns(rows)
+}
+
+// IsBuiltinByTaskIDs returns, for each of taskIDs that has at least one run,
+// whether that task's runs are built-in workflow runs — taken from a single
+// representative run per task (the same running-priority/most-recent-first
+// pick ListRunsFiltered's default ordering would return), in one batched
+// query rather than one query per task. Implements ports.BuiltinLookup.
+func (s *Store) IsBuiltinByTaskIDs(ctx context.Context, taskIDs []string) (map[string]bool, error) {
+	if len(taskIDs) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(taskIDs))
+	args := make([]interface{}, len(taskIDs))
+	for i, id := range taskIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT task_id, is_builtin FROM (
+			SELECT task_id, COALESCE(is_builtin,0) AS is_builtin,
+			       ROW_NUMBER() OVER (
+			           PARTITION BY task_id
+			           ORDER BY CASE WHEN state = 'running' THEN 0 ELSE 1 END, started_at DESC
+			       ) AS rn
+			FROM runs
+			WHERE task_id IN (`+strings.Join(placeholders, ",")+`)
+		) WHERE rn = 1`,
+		args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]bool, len(taskIDs))
+	for rows.Next() {
+		var taskID string
+		var isBuiltin int
+		if err := rows.Scan(&taskID, &isBuiltin); err != nil {
+			return nil, err
+		}
+		result[taskID] = isBuiltin != 0
+	}
+	return result, rows.Err()
 }
 
 func (s *Store) ListProjects(ctx context.Context) ([]string, error) {
@@ -757,16 +839,128 @@ func (s *Store) ListTasks(ctx context.Context, projectDir string) ([]*domain.Tas
 		return nil, err
 	}
 
-	// Populate attempts for each task
+	attemptsByTask, err := s.listAttemptsByProject(ctx, projectDir)
+	if err != nil {
+		return nil, err
+	}
 	for _, task := range tasks {
-		attempts, err := s.ListAttempts(ctx, task.ID)
-		if err != nil {
-			return nil, err
-		}
-		task.Attempts = attempts
+		task.Attempts = attemptsByTask[task.ID]
 		task.Status = task.DeriveStatus()
 	}
 	return tasks, nil
+}
+
+// ListTasksByIDs loads exactly the given tasks, with attempts populated via a
+// single joined query — used by callers (e.g. the task-stack API) that
+// already know which tasks they need rather than the whole project's list.
+func (s *Store) ListTasksByIDs(ctx context.Context, ids []string) ([]*domain.Task, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, title, source, project_dir, created_at FROM tasks WHERE id IN (`+inClause+`) ORDER BY created_at DESC`,
+		args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tasks []*domain.Task
+	for rows.Next() {
+		task := &domain.Task{}
+		var createdAt string
+		if err := rows.Scan(&task.ID, &task.Title, &task.Source, &task.ProjectDir, &createdAt); err != nil {
+			return nil, err
+		}
+		task.CreatedAt = parseTime(createdAt)
+		tasks = append(tasks, task)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	attemptsByTask, err := s.listAttemptsByTaskIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, task := range tasks {
+		task.Attempts = attemptsByTask[task.ID]
+		task.Status = task.DeriveStatus()
+	}
+	return tasks, nil
+}
+
+// listAttemptsByProject loads every attempt for tasks in projectDir (or
+// every attempt across all projects, when projectDir is empty) in a single
+// joined query, grouped by task ID — the batched counterpart to ListAttempts
+// used by ListTasks so it doesn't issue one query per task.
+func (s *Store) listAttemptsByProject(ctx context.Context, projectDir string) (map[string][]*domain.Attempt, error) {
+	var rows *sql.Rows
+	var err error
+	if projectDir == "" {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT a.id, a.task_id, a.started_at, COALESCE(a.ended_at,''), a.result, COALESCE(a.previous_attempt_id,'')
+			 FROM attempts a ORDER BY a.task_id, a.started_at ASC`)
+	} else {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT a.id, a.task_id, a.started_at, COALESCE(a.ended_at,''), a.result, COALESCE(a.previous_attempt_id,'')
+			 FROM attempts a JOIN tasks t ON t.id = a.task_id
+			 WHERE t.project_dir = ? ORDER BY a.task_id, a.started_at ASC`, projectDir)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanAttemptsByTask(rows)
+}
+
+// listAttemptsByTaskIDs loads every attempt for the given task IDs in a
+// single query, grouped by task ID.
+func (s *Store) listAttemptsByTaskIDs(ctx context.Context, taskIDs []string) (map[string][]*domain.Attempt, error) {
+	if len(taskIDs) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(taskIDs))
+	args := make([]interface{}, len(taskIDs))
+	for i, id := range taskIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, task_id, started_at, COALESCE(ended_at,''), result, COALESCE(previous_attempt_id,'')
+		 FROM attempts WHERE task_id IN (`+strings.Join(placeholders, ",")+`) ORDER BY task_id, started_at ASC`,
+		args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanAttemptsByTask(rows)
+}
+
+// scanAttemptsByTask scans attempt rows (id, task_id, started_at, ended_at,
+// result, previous_attempt_id) into a map keyed by task ID.
+func scanAttemptsByTask(rows *sql.Rows) (map[string][]*domain.Attempt, error) {
+	byTask := make(map[string][]*domain.Attempt)
+	for rows.Next() {
+		attempt := &domain.Attempt{}
+		var startedAt, endedAt string
+		if err := rows.Scan(&attempt.ID, &attempt.TaskID, &startedAt, &endedAt, &attempt.Result, &attempt.PreviousAttemptID); err != nil {
+			return nil, err
+		}
+		attempt.StartedAt = parseTime(startedAt)
+		attempt.EndedAt = parseTime(endedAt)
+		byTask[attempt.TaskID] = append(byTask[attempt.TaskID], attempt)
+	}
+	return byTask, rows.Err()
 }
 
 func (s *Store) SaveAttempt(ctx context.Context, attempt *domain.Attempt) error {

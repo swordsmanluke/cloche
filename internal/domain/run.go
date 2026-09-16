@@ -26,7 +26,14 @@ type RunListFilter struct {
 	TaskID     string
 	AttemptID  string
 	Limit      int
-	Since      time.Time
+	// Since, when set, restricts terminal-state runs to those completed at
+	// or after this time; runs in an active state (pending/running/waiting/
+	// parked) are always included regardless of Since/Before.
+	Since time.Time
+	// Before, when set, restricts terminal-state runs to those completed
+	// strictly before this time. Combine with Since for a bounded window,
+	// or use alone to page further into the past (e.g. task-stack cursor).
+	Before time.Time
 }
 
 type StepExecution struct {

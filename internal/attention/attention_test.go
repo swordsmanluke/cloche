@@ -148,6 +148,15 @@ func (f *fakeTaskStore) GetTask(_ context.Context, id string) (*domain.Task, err
 	return t, nil
 }
 func (f *fakeTaskStore) ListTasks(context.Context, string) ([]*domain.Task, error) { return nil, nil }
+func (f *fakeTaskStore) ListTasksByIDs(_ context.Context, ids []string) ([]*domain.Task, error) {
+	var out []*domain.Task
+	for _, id := range ids {
+		if t, ok := f.tasks[id]; ok {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
 
 const testProject = "/proj"
 

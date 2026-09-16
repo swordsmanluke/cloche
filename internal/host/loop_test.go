@@ -54,6 +54,19 @@ func (f *fakeTaskStore) ListTasks(_ context.Context, _ string) ([]*domain.Task, 
 	return out, nil
 }
 
+func (f *fakeTaskStore) ListTasksByIDs(_ context.Context, ids []string) ([]*domain.Task, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*domain.Task, 0, len(ids))
+	for _, id := range ids {
+		if t, ok := f.tasks[id]; ok {
+			cp := *t
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+
 var _ ports.TaskStore = (*fakeTaskStore)(nil)
 
 func TestLoop_StartStop(t *testing.T) {
