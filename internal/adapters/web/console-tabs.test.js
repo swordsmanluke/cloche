@@ -116,3 +116,42 @@ test('sortedProjects orders by label then slug', () => {
     ];
     assert.deepEqual(ConsoleTabs.sortedProjects(projects).map((p) => p.slug), ['a', 'b']);
 });
+
+function workflow(name, location) {
+    return { name: name, location: location || 'container' };
+}
+
+test('orderWorkflowTabs pins list-tasks then main ahead of the rest, sorted case-insensitively (container location)', () => {
+    const workflows = [
+        workflow('Zebra', 'container'),
+        workflow('main', 'container'),
+        workflow('apple', 'container'),
+        workflow('list-tasks', 'container'),
+        workflow('Banana', 'container')
+    ];
+    const result = ConsoleTabs.orderWorkflowTabs(workflows);
+    assert.deepEqual(result.ordered.map((w) => w.name), ['list-tasks', 'main', 'apple', 'Banana', 'Zebra']);
+    assert.equal(result.specialCount, 2);
+});
+
+test('orderWorkflowTabs pins list-tasks then main ahead of the rest, sorted case-insensitively (host location)', () => {
+    const workflows = [
+        workflow('release', 'host'),
+        workflow('Changelog', 'host'),
+        workflow('main', 'host'),
+        workflow('list-tasks', 'host')
+    ];
+    const result = ConsoleTabs.orderWorkflowTabs(workflows);
+    assert.deepEqual(result.ordered.map((w) => w.name), ['list-tasks', 'main', 'Changelog', 'release']);
+    assert.equal(result.specialCount, 2);
+});
+
+test('orderWorkflowTabs only includes whichever of list-tasks/main are actually present, in that order', () => {
+    const withMainOnly = ConsoleTabs.orderWorkflowTabs([workflow('zeta'), workflow('main'), workflow('alpha')]);
+    assert.deepEqual(withMainOnly.ordered.map((w) => w.name), ['main', 'alpha', 'zeta']);
+    assert.equal(withMainOnly.specialCount, 1);
+
+    const withNeither = ConsoleTabs.orderWorkflowTabs([workflow('zeta'), workflow('alpha')]);
+    assert.deepEqual(withNeither.ordered.map((w) => w.name), ['alpha', 'zeta']);
+    assert.equal(withNeither.specialCount, 0);
+});

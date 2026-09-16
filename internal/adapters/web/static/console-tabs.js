@@ -78,11 +78,39 @@
         return mostRecentSlug(projects);
     }
 
+    // Orchestration entry points, shown first and in this order (ahead of a
+    // separator) regardless of location, because they're the workflows a
+    // user reaches for first rather than ones they browse alphabetically.
+    var SPECIAL_WORKFLOW_NAMES = ['list-tasks', 'main'];
+
+    // Order a location's workflow tabs: list-tasks then main (whichever are
+    // present, in that order), then every other workflow sorted
+    // case-insensitively by name. specialCount tells the caller how many
+    // leading entries are "special" so it knows where to render the
+    // separator bar (0 means no separator, since there's nothing to divide
+    // from the rest).
+    function orderWorkflowTabs(workflows) {
+        var byName = {};
+        workflows.forEach(function (wf) { byName[wf.name] = wf; });
+
+        var special = SPECIAL_WORKFLOW_NAMES.filter(function (name) {
+            return Object.prototype.hasOwnProperty.call(byName, name);
+        }).map(function (name) { return byName[name]; });
+
+        var specialNames = {};
+        SPECIAL_WORKFLOW_NAMES.forEach(function (name) { specialNames[name] = true; });
+        var rest = workflows.filter(function (wf) { return !specialNames[wf.name]; });
+        rest.sort(function (a, b) { return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }); });
+
+        return { ordered: special.concat(rest), specialCount: special.length };
+    }
+
     return {
         sortedProjects: sortedProjects,
         projectRecencyMs: projectRecencyMs,
         computeTabPlan: computeTabPlan,
         mostRecentSlug: mostRecentSlug,
-        pickLandingSlug: pickLandingSlug
+        pickLandingSlug: pickLandingSlug,
+        orderWorkflowTabs: orderWorkflowTabs
     };
 }));

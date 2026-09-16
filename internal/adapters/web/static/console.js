@@ -2843,16 +2843,19 @@
                 var hasContainer = workflowsData.some(function (wf) { return wf.location === 'container'; });
                 var hasHost = workflowsData.some(function (wf) { return wf.location === 'host'; });
 
+                activeLocation = hasContainer ? 'container' : 'host';
+
                 var locationTabs = document.getElementById('location-tabs');
                 if (hasContainer && hasHost) {
                     locationTabs.innerHTML =
-                        '<button type="button" class="tab-btn tab-active" data-location="container">Container</button>' +
-                        '<button type="button" class="tab-btn" data-location="host">Host</button>';
+                        '<button type="button" class="tab-btn' + (activeLocation === 'host' ? ' tab-active' : '') +
+                        '" data-location="host">Host</button>' +
+                        '<button type="button" class="tab-btn' + (activeLocation === 'container' ? ' tab-active' : '') +
+                        '" data-location="container">Container</button>';
                 } else {
                     locationTabs.innerHTML = '';
                 }
 
-                activeLocation = hasContainer ? 'container' : 'host';
                 renderWorkflowTabs();
             })
             .catch(function () {
@@ -2869,22 +2872,34 @@
         renderWorkflowTabs();
     }
 
-    function renderWorkflowTabs() {
+    // list-tasks and main are the orchestration entry points, so they're
+    // pinned first (in that order) ahead of a separator; everything else
+    // follows sorted case-insensitively by name. See ConsoleTabs.orderWorkflowTabs.
+    function orderedWorkflowsForActiveLocation() {
         var filtered = workflowsData.filter(function (wf) { return wf.location === activeLocation; });
+        return ConsoleTabs.orderWorkflowTabs(filtered);
+    }
+
+    function renderWorkflowTabs() {
+        var order = orderedWorkflowsForActiveLocation();
+        var ordered = order.ordered;
         var tabs = document.getElementById('workflow-tabs');
 
-        if (filtered.length === 0) {
+        if (ordered.length === 0) {
             tabs.innerHTML = '';
             document.getElementById('workflow-dag').innerHTML = '<p class="empty">No ' + activeLocation + ' workflows found</p>';
             return;
         }
 
-        if (filtered.length > 1) {
+        if (ordered.length > 1) {
             var html = '';
-            filtered.forEach(function (wf, i) {
+            ordered.forEach(function (wf, i) {
                 var badge = wf.builtin ? ' <span class="badge badge-cancelled">built-in</span>' : '';
                 html += '<button type="button" class="tab-btn' + (i === 0 ? ' tab-active' : '') +
                     '" data-workflow-index="' + i + '">' + escapeHtml(wf.name) + badge + '</button>';
+                if (order.specialCount > 0 && i === order.specialCount - 1 && i < ordered.length - 1) {
+                    html += '<span class="tab-sep" aria-hidden="true"></span>';
+                }
             });
             tabs.innerHTML = html;
         } else {
@@ -2894,10 +2909,10 @@
     }
 
     function showFilteredWorkflow(idx) {
-        var filtered = workflowsData.filter(function (wf) { return wf.location === activeLocation; });
+        var ordered = orderedWorkflowsForActiveLocation().ordered;
         var btns = document.querySelectorAll('#workflow-tabs .tab-btn');
         Array.prototype.forEach.call(btns, function (b, i) { b.classList.toggle('tab-active', i === idx); });
-        showWorkflow(filtered[idx]);
+        showWorkflow(ordered[idx]);
     }
 
     function showWorkflow(wf) {
