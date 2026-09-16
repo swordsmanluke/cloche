@@ -26,7 +26,9 @@ DEFAULT_TEMPERATURE = 0.8  # Ollama's own default; deliberately not 0.
 MIN_TEMPERATURE = 0.1
 DEFAULT_MAX_TOKENS = 6000  # the spike's num_predict value
 MAX_TOKENS_CEILING = 8192
-DEFAULT_TIMEOUT_SECONDS = 120
+# A 1-bit reasoning model on a 16k context can take minutes to first byte on
+# a real task prompt; 120s produced spurious TimeoutErrors in the pilot.
+DEFAULT_TIMEOUT_SECONDS = 600
 
 
 class OllamaError(RuntimeError):
@@ -83,6 +85,11 @@ class OllamaClient:
                 body = json.loads(resp.read().decode("utf-8"))
         except urllib.error.URLError as e:
             raise OllamaError(f"could not reach {self.base_url}: {e}") from e
+        except (TimeoutError, OSError) as e:
+            # Socket-level timeouts surface as TimeoutError/OSError, not
+            # URLError; they must take the same graceful-fail path instead
+            # of tracebacking to exit 1 (seen in pilot run t6kr).
+            raise OllamaError(f"timeout/socket error talking to {self.base_url}: {e}") from e
         except json.JSONDecodeError as e:
             raise OllamaError(f"non-JSON response from {self.base_url}: {e}") from e
 
