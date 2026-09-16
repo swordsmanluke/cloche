@@ -1,4 +1,4 @@
-last_commit: 07037c2d90061aecffc75f83a052e89c537dfade
+last_commit: dfce5ffd8b6e59580688057abc32fc421d582e00
 scanned_runs:
     - cloche-0vqg
     - rxth-main
@@ -317,6 +317,15 @@ scanned_runs:
     - user-a5c0
     - b4xc-intent-scan
     - user-b4xc
+    - 0550-main
+    - 36p0-intent-scan
+    - 4gu7-main
+    - 5dzc-intent-scan
+    - j2k6-changelog
+    - mplk-release
+    - user-5dzc
+    - vnd4-main
+    - xj0k-main
 scanned_docs:
     .cloche/prompts/document-check-missing.md: 154c933c83042dcb0b3f14e9c451226e6eab14bcdcbc9889fa4edef52d7c1283
     .cloche/prompts/document-investigate.md: 0bb6d7225ed9fa53f36269540994d74e7beef92a717e13794a86cfffdd8652d9
@@ -341,7 +350,7 @@ scanned_docs:
     .cloche/prompts/vertical-write-design.md: dabb4c1a25390cae07f8f02ec07fb7990cdf868035f9929d69d63d71f5a6d43f
     CLAUDE.md: da02089c0d4c1207a2f0b4b6f5b41315d914c5655ae3d2f434635cd975ad8e1a
     README.md: 423d6816a7a62264229d2b5630ca014e4e3da5af320a9cf45459bdfb37edd222
-    docs/CHANGELOG-DETAILED.md: 8977c58061918ef836518bbb1120a2479302b29911e5eda4076c8a9e4d46a42b
+    docs/CHANGELOG-DETAILED.md: dff1423e449b0e4f66a5649c0b7307a8bec37dd67a393fddccb9a2257e18f68b
     docs/INSTALL.md: 02d98ffd4057cfb5f26935f68a131d81cf232b445417029d1555a081712d68e9
     docs/SAFETY.md: 1e025a1f37b5d21f7f226f1d8777e1a9726c13aedbb43ab37a8f174d61f53a59
     docs/USAGE.md: 7b90914879e6fa421114ee028d0a665ed38a50242b056dee6b2727a5b465b0f5
@@ -416,5 +425,5 @@ scanned_docs:
     docs/plans/spikes/2026-09-13-intent-retrieval/README.md: cbd4159fb69d08f1ff1c5972b7ff578a0db782f2fc0f9cac3e2add3cee0cf46f
     docs/run-isolation/architecture.md: 5f322ad76fedc1012b67f450ac1df9c328ef628ef90285f5ebd4c94a201d4b43
     docs/run-isolation/index.md: 06461a1f739a3b6fba4f5331fa668c15058808f59938b284c4e953a291ae6916
-    docs/web-dashboard.md: 8f651fc2f3474bfbe245dc8e6c74264895048d465d02eb53207946c0a3332ac8
+    docs/web-dashboard.md: 82d016947a0694604415dcddb426d6c5873e8a5f032dc12a558d13fcc307d63d
     docs/workflows.md: fca4c3bb2d324a68435eea18afca3e1a4ee60560675303509bc050046d087de7
