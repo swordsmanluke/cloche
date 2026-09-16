@@ -1,4 +1,4 @@
-last_commit: 08badb9fa7fb2ad4737ef84dc1ad4fa3de37027a
+last_commit: 90d47acdd86067c74ec5c55437d0c416a2a1cd3d
 scanned_runs:
     - cloche-0vqg
     - rxth-main
@@ -337,6 +337,22 @@ scanned_runs:
     - 5xvg-intent-scan
     - user-5xvg
     - yqg3-main
+    - 49py-main
+    - 5wc9-intent-scan
+    - 6hr4-main
+    - 94gy-intent-scan
+    - a9nw-main
+    - cloche-eiil.30
+    - eg34-intent-scan
+    - jq9y-main
+    - kwjg-intent-scan
+    - o91i-main
+    - user-5wc9
+    - user-94gy
+    - user-kwjg
+    - xnv8-intent-scan
+    - cadx-intent-scan
+    - user-cadx
 scanned_docs:
     .cloche/prompts/document-check-missing.md: 154c933c83042dcb0b3f14e9c451226e6eab14bcdcbc9889fa4edef52d7c1283
     .cloche/prompts/document-investigate.md: 0bb6d7225ed9fa53f36269540994d74e7beef92a717e13794a86cfffdd8652d9
@@ -436,5 +452,5 @@ scanned_docs:
     docs/plans/spikes/2026-09-13-intent-retrieval/README.md: cbd4159fb69d08f1ff1c5972b7ff578a0db782f2fc0f9cac3e2add3cee0cf46f
     docs/run-isolation/architecture.md: 5f322ad76fedc1012b67f450ac1df9c328ef628ef90285f5ebd4c94a201d4b43
     docs/run-isolation/index.md: 06461a1f739a3b6fba4f5331fa668c15058808f59938b284c4e953a291ae6916
-    docs/web-dashboard.md: 9fd54cb1e6409a108a4f427ee017e2a6ba713b931461ab3d5cdb2607c97b7a23
+    docs/web-dashboard.md: 16478e7ef5822c9086ccac175871126b26558e76fb89711cf200f84a937d5ac6
     docs/workflows.md: fca4c3bb2d324a68435eea18afca3e1a4ee60560675303509bc050046d087de7

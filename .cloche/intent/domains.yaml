@@ -5,7 +5,7 @@ domains:
     paths: ["internal/dsl/**", "docs/workflows.md", "docs/plans/2026-09-14-reusable-modules-design.md"]
   - name: cli
     description: The cloche CLI client — subcommands, flags, project init/scaffolding, output formatting.
-    paths: ["cmd/cloche/**", "docs/USAGE.md"]
+    paths: ["cmd/cloche/**", "docs/USAGE.md", "docs/init/**"]
   - name: daemon-host-orchestration
     description: The cloched daemon's orchestration loop, host workflow executor, task pipeline (list-tasks/main/release-task), built-in workflow registry, activity-event logging, and per-task run-context paths.
     paths: ["cmd/cloched/**", "internal/engine/**", "internal/host/**", "internal/builtin/**", "internal/activitylog/**", "internal/runcontext/**", "docs/plans/2026-03-06-host-workflow-design.md", "docs/design/human-in-the-loop.md", "docs/plans/2026-05-28-mcp-mode.md"]
