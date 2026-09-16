@@ -109,6 +109,9 @@ func (f *fakeStore) CountActiveRunsByProject(_ context.Context, _ string, _ bool
 func (f *fakeStore) ListRunsFiltered(_ context.Context, _ domain.RunListFilter) ([]*domain.Run, error) {
 	return nil, nil
 }
+func (f *fakeStore) ListDoneRunsByProject(_ context.Context, _ string, _ time.Time, _ int) ([]*domain.Run, error) {
+	return nil, nil
+}
 func (f *fakeStore) ListProjects(_ context.Context) ([]string, error) {
 	return nil, nil
 }

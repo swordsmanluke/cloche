@@ -709,8 +709,6 @@ h2 {
 
 .console-stack-group-count { color: var(--mu); font-weight: 400; }
 
-.console-stack-group-date { color: var(--mu); font-weight: 400; }
-
 .console-stack-list { display: flex; flex-direction: column; gap: 0.15rem; }
 
 .console-stack-row {

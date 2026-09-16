@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,13 +19,25 @@ import (
 	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
-// Group caps for the task-stack API. Each is a bounded live/recent set;
-// "earlier" done entries page past taskStackDoneCap via the cursor.
+// Group caps for the task-stack API's live/recent groups (Needs you,
+// Running, Queued — each a bounded snapshot of current state). The Done
+// group instead pages: defaultDonePageSize/maxDonePageSize bound each page,
+// and the "cursor" query parameter reaches further into the past.
 const (
 	taskStackNeedsYouCap = 20
 	taskStackRunningCap  = 50
 	taskStackQueuedCap   = 50
-	taskStackDoneCap     = 20
+
+	defaultDonePageSize = 25
+	maxDonePageSize     = 100
+
+	// taskStackDoneFetchBatch is the minimum number of rows requested per
+	// underlying ListDoneRunsByProject call while filling a Done page.
+	// Retried tasks can shadow multiple rows down to a single deduped
+	// entry, so a page's worth of query rows doesn't always yield a page's
+	// worth of entries; batching bounds how many extra round trips that
+	// costs without ever scanning the whole run history in one query.
+	taskStackDoneFetchBatch = 50
 )
 
 // TaskStackNeedsYou is a "needs you" entry in the task-stack response,
@@ -79,18 +91,15 @@ type TaskStackDone struct {
 
 // TaskStack is the bounded, grouped task list the console renders, derived
 // from runs in the store rather than the orchestration loop's in-memory
-// snapshot (see GetLoopTasks). Cursor, when set, pages the Done group
-// further into the past via the "cursor" query parameter.
+// snapshot (see GetLoopTasks). Done holds every completed task ordered
+// newest-first, regardless of age, one page at a time; Cursor, when set,
+// pages further into the past via the "cursor" query parameter.
 type TaskStack struct {
-	NeedsYou  []TaskStackNeedsYou `json:"needs_you"`
-	Running   []TaskStackRunning  `json:"running"`
-	Queued    []TaskStackQueued   `json:"queued"`
-	DoneToday []TaskStackDone     `json:"done_today"`
-	// DoneTodayDate is the daemon-local calendar date (e.g. "15 Sep") the
-	// Done-today group's day boundary falls on, so the console can show the
-	// cutoff in the group header rather than leaving it implicit.
-	DoneTodayDate string `json:"done_today_date,omitempty"`
-	Cursor        string `json:"cursor,omitempty"`
+	NeedsYou []TaskStackNeedsYou `json:"needs_you"`
+	Running  []TaskStackRunning  `json:"running"`
+	Queued   []TaskStackQueued   `json:"queued"`
+	Done     []TaskStackDone     `json:"done"`
+	Cursor   string              `json:"cursor,omitempty"`
 }
 
 // handleAPITaskStack returns the bounded, grouped task list for a project.
@@ -103,7 +112,7 @@ func (h *Handler) handleAPITaskStack(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cursorParam := r.URL.Query().Get("cursor")
-	cursorTime, hasCursor, err := decodeTaskStackCursor(cursorParam)
+	cursor, hasCursor, err := decodeTaskStackCursor(cursorParam)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -111,7 +120,22 @@ func (h *Handler) handleAPITaskStack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stack, err := h.buildTaskStack(r.Context(), dir, cursorTime, hasCursor)
+	pageSize := defaultDonePageSize
+	if raw := r.URL.Query().Get("page_size"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n <= 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("invalid page_size: %q", raw)})
+			return
+		}
+		if n > maxDonePageSize {
+			n = maxDonePageSize
+		}
+		pageSize = n
+	}
+
+	stack, err := h.buildTaskStack(r.Context(), dir, cursor, hasCursor, pageSize)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -159,63 +183,58 @@ func taskStackETag(body []byte) string {
 	return `"` + hex.EncodeToString(sum[:])[:16] + `"`
 }
 
-// encodeTaskStackCursor/decodeTaskStackCursor implement an opaque cursor
-// over the Done group's completion timestamp: "earlier" means "completed_at
-// strictly before this cursor".
-func encodeTaskStackCursor(t time.Time) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(t.UTC().Format(time.RFC3339Nano)))
+// doneCursor identifies a specific Done entry to page from: "earlier" means
+// "everything after this entry in the (completed_at DESC, task key) order".
+// Carrying the task key alongside the timestamp (rather than the timestamp
+// alone) keeps pagination stable when two entries share a completed_at.
+type doneCursor struct {
+	CompletedAt time.Time `json:"t"`
+	TaskKey     string    `json:"k"`
 }
 
-func decodeTaskStackCursor(s string) (time.Time, bool, error) {
+func encodeTaskStackCursor(c doneCursor) string {
+	raw, _ := json.Marshal(struct {
+		T string `json:"t"`
+		K string `json:"k"`
+	}{T: c.CompletedAt.UTC().Format(time.RFC3339Nano), K: c.TaskKey})
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+func decodeTaskStackCursor(s string) (doneCursor, bool, error) {
 	if s == "" {
-		return time.Time{}, false, nil
+		return doneCursor{}, false, nil
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(s)
 	if err != nil {
-		return time.Time{}, false, fmt.Errorf("decoding cursor: %w", err)
+		return doneCursor{}, false, fmt.Errorf("decoding cursor: %w", err)
 	}
-	t, err := time.Parse(time.RFC3339Nano, string(raw))
+	var payload struct {
+		T string `json:"t"`
+		K string `json:"k"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return doneCursor{}, false, fmt.Errorf("parsing cursor: %w", err)
+	}
+	t, err := time.Parse(time.RFC3339Nano, payload.T)
 	if err != nil {
-		return time.Time{}, false, fmt.Errorf("parsing cursor time: %w", err)
+		return doneCursor{}, false, fmt.Errorf("parsing cursor time: %w", err)
 	}
-	return t, true, nil
+	return doneCursor{CompletedAt: t, TaskKey: payload.K}, true, nil
 }
 
-// doneTodayDateLabel formats now's calendar date in its own time zone (the
-// daemon's local zone in production) as a short display label, matching the
-// day boundary paginateDone uses to decide what counts as "today".
-func doneTodayDateLabel(now time.Time) string {
-	return now.Format("2 Jan")
-}
-
-// doneCandidate pairs a rendered Done entry with its completion time, kept
-// alongside the entry so filtering/sorting doesn't need to re-parse it.
+// doneCandidate pairs a rendered Done entry with its completion time and
+// task key, kept alongside the entry so cursor construction doesn't need to
+// re-derive them.
 type doneCandidate struct {
 	entry       TaskStackDone
 	completedAt time.Time
+	taskKey     string
 }
 
 // buildTaskStack derives the grouped task list for projectDir from runs (and,
 // when available, tasks/attempts) in the store — never from the orchestration
 // loop's in-memory snapshot. See GetLoopTasks for the snapshot this replaces.
-// It reads only what it renders: runs are bounded to the visible window (the
-// current day, or everything before the cursor, plus any run in an active
-// state regardless of age) and only the tasks referenced by those runs (and
-// by the attention/occupancy items below) are loaded, rather than every task
-// and run the project has ever had.
-func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursorTime time.Time, hasCursor bool) (*TaskStack, error) {
-	now := time.Now()
-	runFilter := domain.RunListFilter{ProjectDir: projectDir}
-	if hasCursor {
-		runFilter.Before = cursorTime
-	} else {
-		runFilter.Since = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	}
-	runs, err := h.store.ListRunsFiltered(ctx, runFilter)
-	if err != nil {
-		return nil, fmt.Errorf("listing runs: %w", err)
-	}
-
+func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor doneCursor, hasCursor bool, pageSize int) (*TaskStack, error) {
 	var attentionItems []attention.Item
 	if h.attentionProvider != nil {
 		attentionItems = h.attentionProvider.AttentionSnapshot(projectDir).Items
@@ -229,27 +248,7 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursorT
 
 	var tasksByID map[string]*domain.Task
 	if h.taskStore != nil {
-		needed := make(map[string]struct{})
-		for _, r := range runs {
-			if r.TaskID != "" {
-				needed[r.TaskID] = struct{}{}
-			}
-		}
-		for _, item := range attentionItems {
-			if item.TaskID != "" {
-				needed[item.TaskID] = struct{}{}
-			}
-		}
-		for _, q := range queued {
-			if q.TaskID != "" {
-				needed[q.TaskID] = struct{}{}
-			}
-		}
-		ids := make([]string, 0, len(needed))
-		for id := range needed {
-			ids = append(ids, id)
-		}
-		tasks, err := h.taskStore.ListTasksByIDs(ctx, ids)
+		tasks, err := h.taskStore.ListTasks(ctx, projectDir)
 		if err != nil {
 			return nil, fmt.Errorf("listing tasks: %w", err)
 		}
@@ -260,10 +259,10 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursorT
 	}
 
 	stack := &TaskStack{
-		NeedsYou:  []TaskStackNeedsYou{},
-		Running:   []TaskStackRunning{},
-		Queued:    []TaskStackQueued{},
-		DoneToday: []TaskStackDone{},
+		NeedsYou: []TaskStackNeedsYou{},
+		Running:  []TaskStackRunning{},
+		Queued:   []TaskStackQueued{},
+		Done:     []TaskStackDone{},
 	}
 
 	// Resolved at most once per build (a .cloche glob+parse), and only when
@@ -296,73 +295,57 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursorT
 		stack.NeedsYou = append(stack.NeedsYou, entry)
 	}
 
-	stack.DoneTodayDate = doneTodayDateLabel(now)
-	var doneCandidates []doneCandidate
+	now := time.Now()
+	activeTaskKeys := map[string]bool{}
 
-	for _, group := range groupTopLevelRunsByTask(runs) {
+	// Running: bounded to currently pending/running runs (inherently a
+	// small set, regardless of how much completed history the project has
+	// accumulated) rather than scanning every run ever recorded.
+	pending, err := h.store.ListRunsFiltered(ctx, domain.RunListFilter{ProjectDir: projectDir, State: domain.RunStatePending})
+	if err != nil {
+		return nil, fmt.Errorf("listing pending runs: %w", err)
+	}
+	runningState, err := h.store.ListRunsFiltered(ctx, domain.RunListFilter{ProjectDir: projectDir, State: domain.RunStateRunning})
+	if err != nil {
+		return nil, fmt.Errorf("listing running runs: %w", err)
+	}
+	activeRuns := append(pending, runningState...)
+
+	for _, group := range groupTopLevelRunsByTask(activeRuns) {
 		taskID := group[0].TaskID
 		task := tasksByID[taskID]
 		if isExcludedBuiltinTask(ctx, h.taskStore, task, group) {
 			continue
 		}
-
-		if active := latestRunInState(group, domain.RunStatePending, domain.RunStateRunning); active != nil {
-			if len(stack.Running) < taskStackRunningCap {
-				start := runStartTime(active, task)
-				elapsed := time.Duration(0)
-				if !start.IsZero() {
-					elapsed = now.Sub(start)
-				}
-				stack.Running = append(stack.Running, TaskStackRunning{
-					TaskID:         taskID,
-					Title:          taskDisplayTitle(task, active),
-					RunID:          active.ID,
-					Attempt:        attemptNumber(task, active),
-					CurrentStep:    strings.Join(active.ActiveSteps, ","),
-					StartedAt:      apiTimeString(start),
-					ElapsedSeconds: int64(elapsed.Seconds()),
-				})
-			}
+		active := latestRunInState(group, domain.RunStatePending, domain.RunStateRunning)
+		if active == nil {
 			continue
 		}
-
-		latest := latestRunInState(group, domain.RunStateSucceeded, domain.RunStateFailed, domain.RunStateCancelled)
-		if latest == nil || latest.CompletedAt.IsZero() {
-			continue
-		}
-		doneCandidates = append(doneCandidates, doneCandidate{
-			entry: TaskStackDone{
-				TaskID:          taskID,
-				Title:           taskDisplayTitle(task, latest),
-				RunID:           latest.ID,
-				Outcome:         string(latest.State),
-				CompletedAt:     apiTimeString(latest.CompletedAt),
-				DurationSeconds: int64(latest.CompletedAt.Sub(latest.StartedAt).Seconds()),
-			},
-			completedAt: latest.CompletedAt,
-		})
-	}
-
-	sort.SliceStable(doneCandidates, func(i, j int) bool {
-		return doneCandidates[i].completedAt.After(doneCandidates[j].completedAt)
-	})
-	stack.DoneToday, stack.Cursor = paginateDone(doneCandidates, cursorTime, hasCursor, now)
-
-	// paginateDone can only detect "more remain" from the candidates it was
-	// given, which on the default (no-cursor) view are bounded to today's
-	// runs. Probe for older history separately rather than loading it, so
-	// the cursor stays correct without widening the run window.
-	if !hasCursor && stack.Cursor == "" {
-		boundary := runFilter.Since
-		if len(doneCandidates) > 0 {
-			boundary = doneCandidates[len(doneCandidates)-1].completedAt
-		}
-		if probe, ok := h.store.(ports.RunHistoryProbe); ok {
-			if has, err := probe.HasCompletedRunBefore(ctx, projectDir, boundary); err == nil && has {
-				stack.Cursor = encodeTaskStackCursor(boundary)
+		activeTaskKeys[runGroupKey(active)] = true
+		if len(stack.Running) < taskStackRunningCap {
+			start := runStartTime(active, task)
+			elapsed := time.Duration(0)
+			if !start.IsZero() {
+				elapsed = now.Sub(start)
 			}
+			stack.Running = append(stack.Running, TaskStackRunning{
+				TaskID:         taskID,
+				Title:          taskDisplayTitle(task, active),
+				RunID:          active.ID,
+				Attempt:        attemptNumber(task, active),
+				CurrentStep:    strings.Join(active.ActiveSteps, ","),
+				StartedAt:      apiTimeString(start),
+				ElapsedSeconds: int64(elapsed.Seconds()),
+			})
 		}
 	}
+
+	doneEntries, nextCursor, err := h.fetchDonePage(ctx, projectDir, tasksByID, activeTaskKeys, cursor, hasCursor, pageSize)
+	if err != nil {
+		return nil, fmt.Errorf("listing done runs: %w", err)
+	}
+	stack.Done = doneEntries
+	stack.Cursor = nextCursor
 
 	for _, q := range queued {
 		if len(stack.Queued) >= taskStackQueuedCap {
@@ -380,55 +363,124 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursorT
 	return stack, nil
 }
 
-// paginateDone selects the page of done candidates (already sorted newest
-// first) for the current request: today's completions when no cursor is
-// given, or everything strictly before the cursor otherwise. It returns the
-// page and a cursor for the next "earlier" page, if more remain.
-func paginateDone(candidates []doneCandidate, cursorTime time.Time, hasCursor bool, now time.Time) ([]TaskStackDone, string) {
-	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+// fetchDonePage returns one page of Done entries (newest first), starting
+// strictly after cursor when hasCursor is set, deduped to at most one entry
+// per task (the task's own group already picked its latest terminal run;
+// here we're deduping across possibly-multiple terminal attempts of the same
+// task returned by the underlying query), excluding any task that currently
+// has an active run (it belongs in Running, not Done), and excluding
+// user-initiated builtin-workflow runs (see isExcludedBuiltinTask) just as
+// the Running group does.
+//
+// It queries the store in bounded batches (ListDoneRunsByProject, scoped by
+// completed_at range and a row limit) rather than loading the project's
+// entire run history, expanding the batch only as far as needed to fill the
+// page — see the N+1 fix this preserves (cloche-eiil.19). Each batch is
+// fetched inclusive of the cursor's own completed_at (ListDoneRunsByProject's
+// before is an "at or before" bound), since excluding it outright would also
+// silently drop any other entry sharing that exact timestamp; the loop above
+// skips back past the cursor's own entry explicitly instead.
+func (h *Handler) fetchDonePage(ctx context.Context, projectDir string, tasksByID map[string]*domain.Task, activeTaskKeys map[string]bool, cursor doneCursor, hasCursor bool, pageSize int) ([]TaskStackDone, string, error) {
+	before := time.Time{}
+	if hasCursor {
+		before = cursor.CompletedAt
+	}
 
-	var eligible []doneCandidate
-	for _, c := range candidates {
-		if hasCursor {
-			if c.completedAt.Before(cursorTime) {
-				eligible = append(eligible, c)
-			}
-		} else if !c.completedAt.Before(startOfToday) {
-			eligible = append(eligible, c)
+	batchSize := pageSize + 1
+	if batchSize < taskStackDoneFetchBatch {
+		batchSize = taskStackDoneFetchBatch
+	}
+
+	seen := map[string]bool{}
+	var page []doneCandidate
+	passedCursor := !hasCursor
+
+	for {
+		batch, err := h.store.ListDoneRunsByProject(ctx, projectDir, before, batchSize)
+		if err != nil {
+			return nil, "", err
 		}
-	}
+		if len(batch) == 0 {
+			return finalizeDonePage(page, pageSize, "")
+		}
 
-	page := eligible
-	truncated := false
-	if len(page) > taskStackDoneCap {
-		page = page[:taskStackDoneCap]
-		truncated = true
-	}
+		for _, r := range batch {
+			key := runGroupKey(r)
+			if !passedCursor {
+				if r.CompletedAt.Equal(cursor.CompletedAt) && key == cursor.TaskKey {
+					// This is the cursor's own entry (already shown on a
+					// previous page) — skip it, then start collecting from
+					// whatever comes next in scan order.
+					passedCursor = true
+					continue
+				}
+				if !r.CompletedAt.Before(cursor.CompletedAt) {
+					// Still within the tie cluster at the cursor's
+					// timestamp but not yet at the cursor's own entry —
+					// already shown on a previous page too.
+					continue
+				}
+				// Strictly older than the cursor: the exact boundary row
+				// must have been deleted since the previous page was
+				// built. Treat this as the start of the next page.
+				passedCursor = true
+			}
 
+			if seen[key] || activeTaskKeys[key] {
+				continue
+			}
+			if isExcludedBuiltinTask(ctx, h.taskStore, tasksByID[r.TaskID], []*domain.Run{r}) {
+				continue
+			}
+			seen[key] = true
+			page = append(page, doneCandidate{
+				entry:       buildDoneEntry(r, tasksByID[r.TaskID]),
+				completedAt: r.CompletedAt,
+				taskKey:     key,
+			})
+			if len(page) > pageSize {
+				last := page[pageSize-1]
+				return finalizeDonePage(page, pageSize, encodeTaskStackCursor(doneCursor{CompletedAt: last.completedAt, TaskKey: last.taskKey}))
+			}
+		}
+
+		if len(batch) < batchSize {
+			return finalizeDonePage(page, pageSize, "")
+		}
+		before = batch[len(batch)-1].CompletedAt
+	}
+}
+
+func finalizeDonePage(page []doneCandidate, pageSize int, cursor string) ([]TaskStackDone, string, error) {
+	if len(page) > pageSize {
+		page = page[:pageSize]
+	}
 	entries := make([]TaskStackDone, len(page))
 	for i, c := range page {
 		entries[i] = c.entry
 	}
+	return entries, cursor, nil
+}
 
-	switch {
-	case truncated:
-		return entries, encodeTaskStackCursor(page[len(page)-1].completedAt)
-	case !hasCursor:
-		// The (uncapped) today-view is exhausted; offer a cursor into older
-		// history if any completed run precedes what was just shown.
-		boundary := startOfToday
-		if len(page) > 0 {
-			boundary = page[len(page)-1].completedAt
-		}
-		for _, c := range candidates {
-			if c.completedAt.Before(boundary) {
-				return entries, encodeTaskStackCursor(boundary)
-			}
-		}
-		return entries, ""
-	default:
-		return entries, ""
+func buildDoneEntry(r *domain.Run, task *domain.Task) TaskStackDone {
+	return TaskStackDone{
+		TaskID:          r.TaskID,
+		Title:           taskDisplayTitle(task, r),
+		RunID:           r.ID,
+		Outcome:         string(r.State),
+		CompletedAt:     apiTimeString(r.CompletedAt),
+		DurationSeconds: int64(r.CompletedAt.Sub(r.StartedAt).Seconds()),
 	}
+}
+
+// runGroupKey identifies the task-stack group a run belongs to: its task ID,
+// or a synthetic per-run key for ad-hoc `cloche run` invocations (no task
+// ID), so each becomes its own single-run group.
+func runGroupKey(r *domain.Run) string {
+	if r.TaskID != "" {
+		return r.TaskID
+	}
+	return "adhoc:" + r.ID
 }
 
 // groupTopLevelRunsByTask groups top-level runs (not list-tasks, not a child
@@ -450,10 +502,7 @@ func groupTopLevelRunsByTask(runs []*domain.Run) [][]*domain.Run {
 		if r.ParentRunID != "" && byID[r.ParentRunID] != nil {
 			continue
 		}
-		key := r.TaskID
-		if key == "" {
-			key = "adhoc:" + r.ID
-		}
+		key := runGroupKey(r)
 		if _, seen := groups[key]; !seen {
 			order = append(order, key)
 		}

@@ -176,7 +176,7 @@ test('[ and ] scope the log to the previous/next step in strip order, crossing i
     ];
     const window = await bootConsole({
         stack: {
-            needs_you: [], queued: [], done_today: [],
+            needs_you: [], queued: [], done: [],
             running: [{ task_id: 'cloche-abcd', title: 'multi-step task', run_id: 'r1', attempt: 1, elapsed_seconds: 10 }]
         },
         attemptsByTask: {
@@ -236,7 +236,7 @@ test('[ and ] scope the log to the previous/next step in strip order, crossing i
 });
 
 test('no task selected: short baseline hints, no task-specific keys', async () => {
-    const window = await bootConsole({ stack: { needs_you: [], running: [], queued: [], done_today: [] } });
+    const window = await bootConsole({ stack: { needs_you: [], running: [], queued: [], done: [] } });
     try {
         assert.deepEqual(footHints(window), ['j/k task', 'enter open', 'tab project', 'a activity']);
     } finally {
@@ -247,7 +247,7 @@ test('no task selected: short baseline hints, no task-specific keys', async () =
 test('running task: j/k, attempt, project, follow, activity — no g/G or filter', async () => {
     const window = await bootConsole({
         stack: {
-            needs_you: [], queued: [], done_today: [],
+            needs_you: [], queued: [], done: [],
             running: [{ task_id: 'cloche-fnn6', title: 'hidden acceptance corpus', run_id: 'r1', attempt: 1, elapsed_seconds: 10 }]
         },
         attemptsByTask: {
@@ -266,7 +266,7 @@ test('running task: j/k, attempt, project, follow, activity — no g/G or filter
 test('needs-you task: only the actions the attention item actually offers show up', async () => {
     const window = await bootConsole({
         stack: {
-            running: [], queued: [], done_today: [],
+            running: [], queued: [], done: [],
             needs_you: [{ kind: 'stale-claim', task_id: 'cloche-usjb', title: 'bonsai wrapper', reason: 'failed x3', since: new Date().toISOString(), actions: ['release', 'close'] }]
         },
         attemptsByTask: {
@@ -285,7 +285,7 @@ test('needs-you task: only the actions the attention item actually offers show u
 test('needs-you task with no release/close action: hints drop to the base pair', async () => {
     const window = await bootConsole({
         stack: {
-            running: [], queued: [], done_today: [],
+            running: [], queued: [], done: [],
             needs_you: [{ kind: 'parked', task_id: 'cloche-park', title: 'agent waiting for reply', reason: 'waiting', since: new Date().toISOString(), actions: ['mute'] }]
         },
         attemptsByTask: {
@@ -303,7 +303,7 @@ test('needs-you task with no release/close action: hints drop to the base pair',
 
 test('foot ticker: packs recent entries newest-first, separated by " · ", failed entries flagged for --bad styling', async () => {
     const window = await bootConsole({
-        stack: { needs_you: [], running: [], queued: [], done_today: [] },
+        stack: { needs_you: [], running: [], queued: [], done: [] },
         activityEntries: [
             { ts: '2026-09-14T17:08:27Z', text: 'intent-scan failed', failure: true },
             { ts: '2026-09-14T17:07:41Z', text: '7pf5 succeeded', failure: false }

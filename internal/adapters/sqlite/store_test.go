@@ -1165,6 +1165,89 @@ func TestListRunsFiltered_SinceUsesCompletedAt(t *testing.T) {
 	assert.False(t, ids["old"], "old completed run should be excluded")
 }
 
+func TestListDoneRunsByProject_OrdersNewestFirstAndExcludesNonTerminal(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	base := time.Now()
+
+	mk := func(id string, state domain.RunState, completedAt time.Time) {
+		r := domain.NewRun(id, "develop")
+		r.ProjectDir = "/proj"
+		r.State = state
+		r.StartedAt = completedAt.Add(-time.Minute)
+		r.CompletedAt = completedAt
+		require.NoError(t, store.CreateRun(ctx, r))
+	}
+	mk("oldest", domain.RunStateSucceeded, base.Add(-3*time.Hour))
+	mk("middle", domain.RunStateFailed, base.Add(-2*time.Hour))
+	mk("newest", domain.RunStateCancelled, base.Add(-1*time.Hour))
+
+	// Not terminal: excluded regardless of completed_at.
+	running := domain.NewRun("still-running", "develop")
+	running.ProjectDir = "/proj"
+	running.State = domain.RunStateRunning
+	running.StartedAt = base.Add(-30 * time.Minute)
+	require.NoError(t, store.CreateRun(ctx, running))
+
+	// A child run and a list-tasks run: excluded even though terminal.
+	child := domain.NewRun("child", "develop")
+	child.ProjectDir = "/proj"
+	child.State = domain.RunStateSucceeded
+	child.StartedAt = base.Add(-90 * time.Minute)
+	child.CompletedAt = base.Add(-80 * time.Minute)
+	child.ParentRunID = "some-host-run"
+	require.NoError(t, store.CreateRun(ctx, child))
+
+	listTasks := domain.NewRun("lt", "list-tasks")
+	listTasks.ProjectDir = "/proj"
+	listTasks.State = domain.RunStateSucceeded
+	listTasks.StartedAt = base.Add(-70 * time.Minute)
+	listTasks.CompletedAt = base.Add(-60 * time.Minute)
+	require.NoError(t, store.CreateRun(ctx, listTasks))
+
+	runs, err := store.ListDoneRunsByProject(ctx, "/proj", time.Time{}, 0)
+	require.NoError(t, err)
+	require.Len(t, runs, 3)
+	assert.Equal(t, []string{"newest", "middle", "oldest"}, []string{runs[0].ID, runs[1].ID, runs[2].ID})
+}
+
+func TestListDoneRunsByProject_BeforeAndLimit(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	base := time.Now()
+
+	var completedAts []time.Time
+	for i := 0; i < 5; i++ {
+		completedAt := base.Add(-time.Duration(i) * time.Hour)
+		completedAts = append(completedAts, completedAt)
+		r := domain.NewRun(fmt.Sprintf("r%d", i), "develop")
+		r.ProjectDir = "/proj"
+		r.State = domain.RunStateSucceeded
+		r.StartedAt = completedAt.Add(-time.Minute)
+		r.CompletedAt = completedAt
+		require.NoError(t, store.CreateRun(ctx, r))
+	}
+
+	page, err := store.ListDoneRunsByProject(ctx, "/proj", time.Time{}, 2)
+	require.NoError(t, err)
+	require.Len(t, page, 2)
+	assert.Equal(t, []string{"r0", "r1"}, []string{page[0].ID, page[1].ID})
+
+	// before is inclusive, so paging strictly past r1 means querying up to
+	// and including it and skipping the first row — the caller's job (see
+	// handler_task_stack.go's fetchDonePage), not this method's.
+	next, err := store.ListDoneRunsByProject(ctx, "/proj", page[1].CompletedAt, 3)
+	require.NoError(t, err)
+	require.Len(t, next, 3)
+	assert.Equal(t, []string{"r1", "r2", "r3"}, []string{next[0].ID, next[1].ID, next[2].ID})
+}
+
 func TestTaskStore_SaveAndGet(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

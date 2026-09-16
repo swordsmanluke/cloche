@@ -115,7 +115,7 @@ async function mockBackend(page) {
         }
         if (/\/tasks\/stack$/.test(p)) {
             return jsonRoute(route, {
-                needs_you: [], queued: [], done_today: [],
+                needs_you: [], queued: [], done: [],
                 running: [{ task_id: TASK_ID, title: 'CSS bug: step strip clipped', run_id: RUN_ID, kind: 'main', since: new Date().toISOString() }]
             });
         }

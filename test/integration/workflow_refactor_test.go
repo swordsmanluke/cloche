@@ -233,6 +233,9 @@ func (s *fakeRunStore) CountActiveRunsByProject(_ context.Context, _ string, _ b
 func (s *fakeRunStore) ListRunsFiltered(_ context.Context, _ domain.RunListFilter) ([]*domain.Run, error) {
 	return nil, nil
 }
+func (s *fakeRunStore) ListDoneRunsByProject(_ context.Context, _ string, _ time.Time, _ int) ([]*domain.Run, error) {
+	return nil, nil
+}
 func (s *fakeRunStore) ListProjects(_ context.Context) ([]string, error) { return nil, nil }
 func (s *fakeRunStore) ListChildRuns(_ context.Context, parentRunID string) ([]*domain.Run, error) {
 	s.mu.Lock()

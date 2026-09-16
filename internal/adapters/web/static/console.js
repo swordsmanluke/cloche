@@ -8,7 +8,7 @@
         { key: 'needs_you', field: 'needs_you', label: 'Needs you' },
         { key: 'running', field: 'running', label: 'Running' },
         { key: 'queued', field: 'queued', label: 'Queued' },
-        { key: 'done_today', field: 'done_today', label: 'Done today' }
+        { key: 'done', field: 'done', label: 'Done' }
     ];
 
     var STACK_POLL_MS = 4000;
@@ -39,7 +39,7 @@
         projectsTimer: null,
         activeSlug: '',
         activeTaskId: '',
-        stack: null,          // last "today" window from the server
+        stack: null,          // last first-page snapshot from the server
         stackEtag: null,
         extraDone: [],         // accumulated "earlier" pages fetched via cursor
         doneCursor: null,
@@ -378,20 +378,24 @@
         var url = '/api/projects/' + encodeURIComponent(state.activeSlug) +
             '/tasks/stack?cursor=' + encodeURIComponent(state.doneCursor);
         fetch(url).then(function (r) { return r.json(); }).then(function (stack) {
-            state.extraDone = state.extraDone.concat(stack.done_today || []);
+            state.extraDone = state.extraDone.concat(stack.done || []);
             state.doneCursor = stack.cursor || null;
             renderMergedStack(false);
         }).catch(function () {});
     }
 
+    // renderMergedStack combines the latest first page (state.stack, which
+    // the 4s poll keeps refreshing so new completions show up promptly) with
+    // every "earlier" page loaded so far (state.extraDone, which the poll
+    // never discards) — so scrolling back through Done survives a poll
+    // instead of resetting to page one each time.
     function renderMergedStack(initial) {
         if (!state.stack) return;
         var merged = {
             needs_you: state.stack.needs_you || [],
             running: state.stack.running || [],
             queued: state.stack.queued || [],
-            done_today: (state.stack.done_today || []).concat(state.extraDone),
-            done_today_date: state.stack.done_today_date,
+            done: (state.stack.done || []).concat(state.extraDone),
             cursor: state.doneCursor
         };
         renderStack(merged, initial);
@@ -449,12 +453,6 @@
                 h.className = 'console-stack-group-title' + (g.key === 'needs_you' ? ' console-stack-group-title-warn' : '');
                 var titleWrap = document.createElement('span');
                 titleWrap.appendChild(document.createTextNode(g.label));
-                if (g.key === 'done_today') {
-                    var dateSpan = document.createElement('span');
-                    dateSpan.className = 'console-stack-group-date';
-                    dateSpan.id = 'console-stack-date-' + g.key;
-                    titleWrap.appendChild(dateSpan);
-                }
                 h.appendChild(titleWrap);
                 var count = document.createElement('span');
                 count.className = 'console-stack-group-count';
@@ -480,22 +478,12 @@
         }
 
         GROUPS.forEach(function (g) { diffGroup(g.key, stack[g.field] || []); });
-        updateDoneTodayDate(stack.done_today_date);
 
         var earlierBtn2 = document.getElementById('console-load-earlier');
         if (earlierBtn2) earlierBtn2.hidden = !stack.cursor;
 
         rebuildFlatIndex();
         applySelectionHighlight();
-    }
-
-    // updateDoneTodayDate reflects the daemon's day-boundary date (e.g. "15
-    // Sep") in the Done-today header, so the cutoff behind the group is
-    // visible rather than implicit — see done_today_date in TaskStack.
-    function updateDoneTodayDate(dateLabel) {
-        var el = document.getElementById('console-stack-date-done_today');
-        if (!el) return;
-        el.textContent = dateLabel ? (' · ' + dateLabel) : '';
     }
 
     function diffGroup(groupKey, entries) {
@@ -533,9 +521,9 @@
         // Needs you / Running / Queued disappear entirely when empty, rather
         // than showing a header over a dash placeholder — they reappear on
         // the next poll (STACK_POLL_MS) as soon as they have rows. Done
-        // today always stays visible, dash and all, since it's the
-        // paginated group users expect to keep finding in the same place.
-        var alwaysShown = groupKey === 'done_today';
+        // always stays visible, dash and all, since it's the paginated
+        // group users expect to keep finding in the same place.
+        var alwaysShown = groupKey === 'done';
         section.hidden = !alwaysShown && entries.length === 0;
 
         var empty = list.querySelector('.console-stack-empty');
@@ -599,7 +587,7 @@
             case 'needs_you': return 'y';
             case 'running': return 'b';
             case 'queued': return 'x';
-            case 'done_today':
+            case 'done':
                 if (entry.outcome === 'succeeded') return 'g';
                 if (entry.outcome === 'failed') return 'r';
                 return 'x';
@@ -621,7 +609,7 @@
                 return (entry.current_step ? entry.current_step + ' · ' : '') + formatElapsed(entry.elapsed_seconds);
             case 'queued':
                 return entry.reason || '';
-            case 'done_today':
+            case 'done':
                 return (entry.outcome || '') + ' · ' + formatDuration(entry.duration_seconds);
             default:
                 return '';

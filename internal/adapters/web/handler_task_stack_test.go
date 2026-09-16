@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
 	"github.com/swordsmanluke/cloche/internal/attention"
 	"github.com/swordsmanluke/cloche/internal/domain"
 )
@@ -60,7 +62,7 @@ func TestAPITaskStack_Running(t *testing.T) {
 	assert.Equal(t, 1, entry.Attempt)
 	assert.Equal(t, "build", entry.CurrentStep)
 	assert.GreaterOrEqual(t, entry.ElapsedSeconds, int64(100))
-	assert.Empty(t, stack.DoneToday)
+	assert.Empty(t, stack.Done)
 	assert.Empty(t, stack.Queued)
 	assert.Empty(t, stack.NeedsYou)
 }
@@ -99,7 +101,7 @@ func TestAPITaskStack_AttemptNumberSecondAttempt(t *testing.T) {
 	require.Len(t, stack.Running, 1)
 	assert.Equal(t, "run-2", stack.Running[0].RunID)
 	assert.Equal(t, 2, stack.Running[0].Attempt)
-	assert.Empty(t, stack.DoneToday, "the active attempt supersedes the failed one for grouping purposes")
+	assert.Empty(t, stack.Done, "the active attempt supersedes the failed one for grouping purposes")
 }
 
 func TestAPITaskStack_AdHocRunIsSyntheticSingleAttempt(t *testing.T) {
@@ -120,7 +122,7 @@ func TestAPITaskStack_AdHocRunIsSyntheticSingleAttempt(t *testing.T) {
 	assert.Equal(t, 1, stack.Running[0].Attempt)
 }
 
-func TestAPITaskStack_DoneToday(t *testing.T) {
+func TestAPITaskStack_Done(t *testing.T) {
 	h, store := setupHandler(t)
 	h.taskStore = store
 	ctx := context.Background()
@@ -140,8 +142,8 @@ func TestAPITaskStack_DoneToday(t *testing.T) {
 	require.NoError(t, store.CreateRun(ctx, run))
 
 	_, stack := getTaskStack(t, h, "")
-	require.Len(t, stack.DoneToday, 1)
-	entry := stack.DoneToday[0]
+	require.Len(t, stack.Done, 1)
+	entry := stack.Done[0]
 	assert.Equal(t, "task-3", entry.TaskID)
 	assert.Equal(t, "Ship it", entry.Title)
 	assert.Equal(t, "succeeded", entry.Outcome)
@@ -149,19 +151,25 @@ func TestAPITaskStack_DoneToday(t *testing.T) {
 	assert.Empty(t, stack.Running)
 }
 
-func TestAPITaskStack_DoneTodayDate(t *testing.T) {
+// TestAPITaskStack_Done_NoAgeBoundary confirms the Done group is no longer
+// restricted to "today": a task completed several days ago still shows up on
+// the first page (superseding cloche-eiil.24, the UTC-midnight bug — there's
+// no midnight boundary left to get wrong).
+func TestAPITaskStack_Done_NoAgeBoundary(t *testing.T) {
 	h, store := setupHandler(t)
 	ctx := context.Background()
 
-	seed := domain.NewRun("seed", "develop")
-	seed.ProjectDir = taskStackProjectDir
-	seed.State = domain.RunStateSucceeded
-	seed.StartedAt = time.Now()
-	seed.CompletedAt = time.Now()
-	require.NoError(t, store.CreateRun(ctx, seed))
+	old := domain.NewRun("run-old", "develop")
+	old.ProjectDir = taskStackProjectDir
+	old.TaskID = "task-old"
+	old.State = domain.RunStateSucceeded
+	old.StartedAt = time.Now().Add(-96 * time.Hour)
+	old.CompletedAt = time.Now().Add(-95 * time.Hour)
+	require.NoError(t, store.CreateRun(ctx, old))
 
 	_, stack := getTaskStack(t, h, "")
-	assert.Equal(t, doneTodayDateLabel(time.Now()), stack.DoneTodayDate)
+	require.Len(t, stack.Done, 1)
+	assert.Equal(t, "task-old", stack.Done[0].TaskID)
 }
 
 func TestAPITaskStack_ExcludesUserInitiatedBuiltinRun(t *testing.T) {
@@ -197,6 +205,29 @@ func TestAPITaskStack_ExcludesUserInitiatedBuiltinRun(t *testing.T) {
 	_, stack := getTaskStack(t, h, "")
 	require.Len(t, stack.Running, 1)
 	assert.Equal(t, "run-auto", stack.Running[0].RunID)
+}
+
+// TestAPITaskStack_ExcludesUserInitiatedBuiltinRun_Done covers the Done
+// side of the same exclusion: a manually triggered builtin run that has
+// since completed must stay out of Done, not just Running.
+func TestAPITaskStack_ExcludesUserInitiatedBuiltinRun_Done(t *testing.T) {
+	h, store := setupHandler(t)
+	h.taskStore = store
+	ctx := context.Background()
+
+	manualTask := &domain.Task{ID: "user-manual2", Title: "manual scan", Source: domain.TaskSourceUserInitiated, ProjectDir: taskStackProjectDir, CreatedAt: time.Now()}
+	require.NoError(t, store.SaveTask(ctx, manualTask))
+	manualRun := domain.NewRun("run-manual-done", "intent-scan")
+	manualRun.ProjectDir = taskStackProjectDir
+	manualRun.TaskID = "user-manual2"
+	manualRun.IsHost = true
+	manualRun.State = domain.RunStateSucceeded
+	manualRun.StartedAt = time.Now().Add(-time.Minute)
+	manualRun.CompletedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, manualRun))
+
+	_, stack := getTaskStack(t, h, "")
+	assert.Empty(t, stack.Done, "a completed manual builtin run must stay excluded from Done")
 }
 
 func TestAPITaskStack_Queued(t *testing.T) {
@@ -345,7 +376,7 @@ func TestAPITaskStack_NoProvidersConfigured(t *testing.T) {
 	assert.NotNil(t, stack.NeedsYou)
 	assert.NotNil(t, stack.Queued)
 	assert.NotNil(t, stack.Running)
-	assert.NotNil(t, stack.DoneToday)
+	assert.NotNil(t, stack.Done)
 }
 
 func TestAPITaskStack_ProjectNotFound(t *testing.T) {
@@ -429,90 +460,132 @@ func TestStackForETag_IgnoresElapsedSeconds(t *testing.T) {
 	assert.NotEqual(t, taskStackETag(baseBody), taskStackETag(changedBody))
 }
 
-func TestPaginateDone_CapsAndPagesByCursor(t *testing.T) {
-	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
-	startOfToday := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
+// seedDoneRun creates a top-level, terminal run for taskStackProjectDir with
+// the given task ID and completion time, one task per run (no retries).
+func seedDoneRun(t *testing.T, store *sqlite.Store, id, taskID string, completedAt time.Time) {
+	t.Helper()
+	run := domain.NewRun(id, "develop")
+	run.ProjectDir = taskStackProjectDir
+	run.TaskID = taskID
+	run.State = domain.RunStateSucceeded
+	run.StartedAt = completedAt.Add(-time.Minute)
+	run.CompletedAt = completedAt
+	require.NoError(t, store.CreateRun(context.Background(), run))
+}
 
-	var candidates []doneCandidate
-	// 25 completions earlier today (newest first as paginateDone expects).
-	for i := 0; i < 25; i++ {
-		completedAt := now.Add(-time.Duration(i) * time.Minute)
-		candidates = append(candidates, doneCandidate{
-			entry:       TaskStackDone{TaskID: "today", RunID: "r"},
-			completedAt: completedAt,
-		})
+func TestAPITaskStack_DonePagesNewestFirstRegardlessOfAge(t *testing.T) {
+	h, store := setupHandler(t)
+	now := time.Now()
+
+	// 30 completions spread across several days — old enough that a
+	// "today" boundary would have hidden most of them.
+	for i := 0; i < 30; i++ {
+		seedDoneRun(t, store, fmt.Sprintf("run-%02d", i), fmt.Sprintf("task-%02d", i), now.Add(-time.Duration(i)*6*time.Hour))
 	}
-	// 3 completions from yesterday.
-	for i := 0; i < 3; i++ {
-		completedAt := startOfToday.Add(-time.Duration(i+1) * time.Hour)
-		candidates = append(candidates, doneCandidate{
-			entry:       TaskStackDone{TaskID: "yesterday", RunID: "r"},
-			completedAt: completedAt,
-		})
+
+	_, page1 := getTaskStack(t, h, "")
+	assert.Len(t, page1.Done, defaultDonePageSize)
+	require.NotEmpty(t, page1.Cursor)
+	for i, entry := range page1.Done {
+		assert.Equal(t, fmt.Sprintf("task-%02d", i), entry.TaskID, "page 1 must be newest-first with no age cutoff")
 	}
 
-	page, cursor := paginateDone(candidates, time.Time{}, false, now)
-	assert.Len(t, page, taskStackDoneCap)
-	require.NotEmpty(t, cursor)
+	_, page2 := getTaskStack(t, h, "?cursor="+page1.Cursor)
+	assert.Len(t, page2.Done, 30-defaultDonePageSize)
+	assert.Empty(t, page2.Cursor, "all done entries fit in two pages")
+	for i, entry := range page2.Done {
+		assert.Equal(t, fmt.Sprintf("task-%02d", defaultDonePageSize+i), entry.TaskID)
+	}
+}
 
-	cursorTime, hasCursor, err := decodeTaskStackCursor(cursor)
+func TestAPITaskStack_DonePageSizeParam(t *testing.T) {
+	h, store := setupHandler(t)
+	now := time.Now()
+	for i := 0; i < 10; i++ {
+		seedDoneRun(t, store, fmt.Sprintf("run-%02d", i), fmt.Sprintf("task-%02d", i), now.Add(-time.Duration(i)*time.Minute))
+	}
+
+	_, small := getTaskStack(t, h, "?page_size=3")
+	assert.Len(t, small.Done, 3)
+	require.NotEmpty(t, small.Cursor)
+
+	_, all := getTaskStack(t, h, "?page_size=100")
+	assert.Len(t, all.Done, 10)
+	assert.Empty(t, all.Cursor)
+
+	resp, _ := getTaskStack(t, h, "?page_size=notanumber")
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestAPITaskStack_DonePageSizeClampedToMax(t *testing.T) {
+	h, store := setupHandler(t)
+	now := time.Now()
+	for i := 0; i < maxDonePageSize+10; i++ {
+		seedDoneRun(t, store, fmt.Sprintf("run-%03d", i), fmt.Sprintf("task-%03d", i), now.Add(-time.Duration(i)*time.Minute))
+	}
+
+	_, stack := getTaskStack(t, h, "?page_size=100000")
+	assert.Len(t, stack.Done, maxDonePageSize, "page_size above the max is clamped rather than rejected or unbounded")
+	assert.NotEmpty(t, stack.Cursor)
+}
+
+// TestAPITaskStack_DoneCursorStableOnTies covers the "completed_at + task
+// id" half of the cursor: two entries sharing an exact completion timestamp
+// must each appear exactly once across pages, and repeating the same
+// (no-cursor) request must always return the same first page.
+func TestAPITaskStack_DoneCursorStableOnTies(t *testing.T) {
+	h, store := setupHandler(t)
+	tie := time.Now()
+	seedDoneRun(t, store, "run-a", "task-a", tie)
+	seedDoneRun(t, store, "run-b", "task-b", tie)
+
+	_, first := getTaskStack(t, h, "?page_size=1")
+	require.Len(t, first.Done, 1)
+	require.NotEmpty(t, first.Cursor)
+
+	// Re-running the same first-page request must be deterministic.
+	_, firstAgain := getTaskStack(t, h, "?page_size=1")
+	require.Len(t, firstAgain.Done, 1)
+	assert.Equal(t, first.Done[0].TaskID, firstAgain.Done[0].TaskID, "first page must be stable across repeated requests")
+	assert.Equal(t, first.Cursor, firstAgain.Cursor)
+
+	_, second := getTaskStack(t, h, "?page_size=1&cursor="+first.Cursor)
+	require.Len(t, second.Done, 1)
+	assert.Empty(t, second.Cursor)
+	assert.NotEqual(t, first.Done[0].TaskID, second.Done[0].TaskID, "the tied entry must not repeat on the next page")
+
+	seen := map[string]bool{first.Done[0].TaskID: true, second.Done[0].TaskID: true}
+	assert.True(t, seen["task-a"] && seen["task-b"], "both tied entries must be reachable, exactly once, across the two pages")
+}
+
+// TestAPITaskStack_DoneDedupesRetriesToLatestAttempt covers the bounded
+// query's dedup: a task with two terminal attempts (a failed retry followed
+// by a later success) must appear once in Done, as its latest attempt.
+func TestAPITaskStack_DoneDedupesRetriesToLatestAttempt(t *testing.T) {
+	h, store := setupHandler(t)
+	now := time.Now()
+	seedDoneRun(t, store, "run-1-fail", "task-retried", now.Add(-time.Hour))
+	run2 := domain.NewRun("run-2-succeed", "develop")
+	run2.ProjectDir = taskStackProjectDir
+	run2.TaskID = "task-retried"
+	run2.State = domain.RunStateSucceeded
+	run2.StartedAt = now.Add(-time.Minute)
+	run2.CompletedAt = now
+	require.NoError(t, store.CreateRun(context.Background(), run2))
+
+	_, stack := getTaskStack(t, h, "")
+	require.Len(t, stack.Done, 1)
+	assert.Equal(t, "run-2-succeed", stack.Done[0].RunID, "only the latest terminal attempt should appear")
+}
+
+func TestEncodeDecodeTaskStackCursor_RoundTrip(t *testing.T) {
+	want := doneCursor{CompletedAt: time.Now().UTC().Truncate(time.Nanosecond), TaskKey: "task-xyz"}
+	encoded := encodeTaskStackCursor(want)
+	got, has, err := decodeTaskStackCursor(encoded)
 	require.NoError(t, err)
-	require.True(t, hasCursor)
-
-	page2, cursor2 := paginateDone(candidates, cursorTime, true, now)
-	// 5 remaining today entries + 3 from yesterday = 8, under the cap, so no further cursor.
-	assert.Len(t, page2, 8)
-	assert.Empty(t, cursor2)
-	for _, e := range page2[:5] {
-		assert.Equal(t, "today", e.TaskID)
-	}
-	for _, e := range page2[5:] {
-		assert.Equal(t, "yesterday", e.TaskID)
-	}
-}
-
-func TestPaginateDone_NoCompletionsTodayOffersCursorToOlderHistory(t *testing.T) {
-	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
-	yesterday := now.Add(-24 * time.Hour)
-
-	candidates := []doneCandidate{
-		{entry: TaskStackDone{TaskID: "old", RunID: "r"}, completedAt: yesterday},
-	}
-
-	page, cursor := paginateDone(candidates, time.Time{}, false, now)
-	assert.Empty(t, page)
-	require.NotEmpty(t, cursor)
-
-	cursorTime, hasCursor, err := decodeTaskStackCursor(cursor)
-	require.NoError(t, err)
-	require.True(t, hasCursor)
-	page2, cursor2 := paginateDone(candidates, cursorTime, true, now)
-	require.Len(t, page2, 1)
-	assert.Equal(t, "old", page2[0].TaskID)
-	assert.Empty(t, cursor2)
-}
-
-func TestPaginateDone_UsesDaemonLocalDayNotUTC(t *testing.T) {
-	// 01:00 UTC on 16 Sep is 18:00 PDT on 15 Sep — the daemon's local
-	// "today" hasn't rolled over yet even though UTC's has.
-	pdt := time.FixedZone("PDT", -7*3600)
-	now := time.Date(2026, 9, 16, 1, 0, 0, 0, time.UTC).In(pdt)
-
-	completedAt := time.Date(2026, 9, 15, 15, 0, 0, 0, pdt) // 3pm PDT, same local day as now
-	candidates := []doneCandidate{
-		{entry: TaskStackDone{TaskID: "afternoon-pdt", RunID: "r"}, completedAt: completedAt},
-	}
-
-	page, cursor := paginateDone(candidates, time.Time{}, false, now)
-	require.Len(t, page, 1, "a task completed earlier the same local day must appear in today's group")
-	assert.Equal(t, "afternoon-pdt", page[0].TaskID)
-	assert.Empty(t, cursor)
-}
-
-func TestDoneTodayDateLabel_UsesGivenZone(t *testing.T) {
-	pdt := time.FixedZone("PDT", -7*3600)
-	now := time.Date(2026, 9, 16, 1, 0, 0, 0, time.UTC).In(pdt)
-	assert.Equal(t, "15 Sep", doneTodayDateLabel(now))
+	require.True(t, has)
+	assert.True(t, want.CompletedAt.Equal(got.CompletedAt))
+	assert.Equal(t, want.TaskKey, got.TaskKey)
 }
 
 func TestDecodeTaskStackCursor_Invalid(t *testing.T) {
@@ -524,101 +597,4 @@ func TestDecodeTaskStackCursor_Empty(t *testing.T) {
 	_, has, err := decodeTaskStackCursor("")
 	require.NoError(t, err)
 	assert.False(t, has)
-}
-
-// TestAPITaskStack_OldDoneRunExcludedFromDefaultView verifies buildTaskStack
-// bounds its run window to the current day: a run that completed well before
-// today must not appear in the no-cursor (default) response.
-func TestAPITaskStack_OldDoneRunExcludedFromDefaultView(t *testing.T) {
-	h, store := setupHandler(t)
-	h.taskStore = store
-	ctx := context.Background()
-
-	old := time.Now().Add(-36 * time.Hour)
-	task := &domain.Task{ID: "task-old", Title: "Old task", Source: domain.TaskSourceExternal, ProjectDir: taskStackProjectDir, CreatedAt: old}
-	require.NoError(t, store.SaveTask(ctx, task))
-	attempt := &domain.Attempt{ID: "att-old", TaskID: "task-old", StartedAt: old, EndedAt: old, Result: domain.AttemptResultSucceeded}
-	require.NoError(t, store.SaveAttempt(ctx, attempt))
-
-	run := domain.NewRun("run-old", "develop")
-	run.ProjectDir = taskStackProjectDir
-	run.TaskID = "task-old"
-	run.AttemptID = "att-old"
-	run.State = domain.RunStateSucceeded
-	run.StartedAt = old
-	run.CompletedAt = old
-	require.NoError(t, store.CreateRun(ctx, run))
-
-	_, stack := getTaskStack(t, h, "")
-	assert.Empty(t, stack.DoneToday)
-}
-
-// TestAPITaskStack_CursorPagesOlderDoneRuns verifies that a run outside the
-// default (today-only) window is still reachable by paging the Done group
-// via the cursor, and that its task's title is resolved correctly even
-// though the task wasn't referenced by any run in the initial page's window.
-func TestAPITaskStack_CursorPagesOlderDoneRuns(t *testing.T) {
-	h, store := setupHandler(t)
-	h.taskStore = store
-	ctx := context.Background()
-
-	old := time.Now().Add(-36 * time.Hour)
-	task := &domain.Task{ID: "task-old2", Title: "Old task 2", Source: domain.TaskSourceExternal, ProjectDir: taskStackProjectDir, CreatedAt: old}
-	require.NoError(t, store.SaveTask(ctx, task))
-	attempt := &domain.Attempt{ID: "att-old2", TaskID: "task-old2", StartedAt: old, EndedAt: old, Result: domain.AttemptResultSucceeded}
-	require.NoError(t, store.SaveAttempt(ctx, attempt))
-
-	run := domain.NewRun("run-old2", "develop")
-	run.ProjectDir = taskStackProjectDir
-	run.TaskID = "task-old2"
-	run.AttemptID = "att-old2"
-	run.State = domain.RunStateSucceeded
-	run.StartedAt = old
-	run.CompletedAt = old
-	require.NoError(t, store.CreateRun(ctx, run))
-
-	_, first := getTaskStack(t, h, "")
-	require.Empty(t, first.DoneToday)
-	require.NotEmpty(t, first.Cursor, "expected a cursor into older history")
-
-	_, second := getTaskStack(t, h, "?cursor="+first.Cursor)
-	require.Len(t, second.DoneToday, 1)
-	assert.Equal(t, "task-old2", second.DoneToday[0].TaskID)
-	assert.Equal(t, "Old task 2", second.DoneToday[0].Title)
-}
-
-// TestAPITaskStack_NeedsYou_TitleForTaskOutsideRunWindow verifies that a
-// NeedsYou item's title still resolves even when the referenced task's only
-// run falls outside the bounded run window buildTaskStack fetches — the
-// task ID set passed to ListTasksByIDs must include attention item task IDs,
-// not just task IDs discovered from the windowed runs.
-func TestAPITaskStack_NeedsYou_TitleForTaskOutsideRunWindow(t *testing.T) {
-	h, store := setupHandler(t)
-	h.taskStore = store
-	ctx := context.Background()
-
-	seed := domain.NewRun("seed", "develop")
-	seed.ProjectDir = taskStackProjectDir
-	seed.State = domain.RunStateSucceeded
-	seed.StartedAt = time.Now()
-	seed.CompletedAt = time.Now()
-	require.NoError(t, store.CreateRun(ctx, seed))
-
-	old := time.Now().Add(-36 * time.Hour)
-	task := &domain.Task{ID: "task-stale", Title: "Stale claim task", Source: domain.TaskSourceExternal, ProjectDir: taskStackProjectDir, CreatedAt: old}
-	require.NoError(t, store.SaveTask(ctx, task))
-
-	since := time.Now().Add(-time.Hour)
-	h.attentionProvider = &mockAttentionProvider{
-		items: map[string][]attention.Item{
-			taskStackProjectDir: {
-				{Kind: attention.KindStaleClaim, ProjectDir: taskStackProjectDir, TaskID: "task-stale", RunID: "", Reason: "no active run", Since: since, Actions: []string{"retry"}},
-			},
-		},
-	}
-
-	_, stack := getTaskStack(t, h, "")
-	require.Len(t, stack.NeedsYou, 1)
-	assert.Equal(t, "task-stale", stack.NeedsYou[0].TaskID)
-	assert.Equal(t, "Stale claim task", stack.NeedsYou[0].Title)
 }

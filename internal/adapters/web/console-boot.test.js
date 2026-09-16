@@ -87,7 +87,7 @@ test('boot paints tab bar and stack skeletons synchronously, before any fetch re
     const fetchStub = makeStubFetch({
         projectsDelayMs: Infinity, // never resolves — see makeStubFetch
         projects: [],
-        stack: { needs_you: [], running: [], queued: [], done_today: [] }
+        stack: { needs_you: [], running: [], queued: [], done: [] }
     });
     const window = bootConsole(dom, fetchStub);
     try {
@@ -129,7 +129,7 @@ test('stack and tab bar populate within 2s even when /api/projects (the attentio
         }],
         stack: {
             needs_you: [{ kind: 'parked', task_id: 't1', title: 'Needs a decision', reason: 'parked', since: new Date().toISOString() }],
-            running: [], queued: [], done_today: []
+            running: [], queued: [], done: []
         }
     });
     const window = bootConsole(dom, fetchStub);

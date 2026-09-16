@@ -34,6 +34,18 @@ type RunStore interface {
 	// runs (used by the occupancy summary's no-loop-registered fallback).
 	CountActiveRunsByProject(ctx context.Context, projectDir string, hostOnly bool) (int, error)
 	ListRunsFiltered(ctx context.Context, filter domain.RunListFilter) ([]*domain.Run, error)
+	// ListDoneRunsByProject returns top-level, terminal-state (succeeded/
+	// failed/cancelled) runs for projectDir with a non-zero CompletedAt,
+	// newest-completed first (ties broken deterministically, not merely by
+	// natural table order, so a caller re-issuing the same query gets the
+	// same order back). When before is non-zero, only runs completed at or
+	// before it are considered — an inclusive bound, so a caller paging via
+	// a (completed_at, task) cursor can still see every entry that shares
+	// the cursor's exact completed_at and skip past its own entry itself.
+	// limit bounds how many rows come back, so a page of the task-stack's
+	// Done group can be fetched without scanning every run the project has
+	// ever recorded.
+	ListDoneRunsByProject(ctx context.Context, projectDir string, before time.Time, limit int) ([]*domain.Run, error)
 	ListProjects(ctx context.Context) ([]string, error)
 	ListChildRuns(ctx context.Context, parentRunID string) ([]*domain.Run, error)
 	QueryUsage(ctx context.Context, q UsageQuery) ([]domain.UsageSummary, error)

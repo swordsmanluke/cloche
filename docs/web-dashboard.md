@@ -71,14 +71,15 @@ On the right, daemon instruments for the active project:
 ### Task stack
 
 The left rail groups the active project's tasks — **Needs you**, **Running**, **Queued**,
-**Done today** (with a **Load earlier** button paging further into history) — from
+**Done** (with a **Load earlier** button paging further into history) — from
 `GET /api/projects/{slug}/tasks/stack`. **Needs you**, **Running**, and **Queued** are
 omitted entirely when empty, reappearing on the next poll as soon as they have rows;
-**Done today** always stays visible, with a dash placeholder when empty, since it's the
-paginated group users expect to keep finding in the same place. The **Done today** header
-shows the daemon-local calendar date its day boundary falls on (e.g. "Done today · 15
-Sep", from the stack's `done_today_date`), since "today" is the daemon's local day, not
-UTC.
+**Done** always stays visible, with a dash placeholder when empty, since it's the
+paginated group users expect to keep finding in the same place. Done has no age cutoff —
+it shows every completed task, newest first, a page (default 25, max 100 via `page_size`)
+at a time — and its opaque `cursor` is stable across requests, keyed on completion time
+plus task ID so entries with the same completion timestamp neither repeat nor drop across
+pages.
 
 It polls every few seconds using conditional GET
 (`ETag`/`If-None-Match`), so a poll with nothing new costs a 304 rather than a re-render;
@@ -215,7 +216,7 @@ overlay, with filters for **This project** / **All projects** and **Failures onl
 stream is always a bounded tail (never the full `activity_log` table): the first page
 covers today plus a fixed page size, and a **Load earlier** button pages further into
 history via an opaque cursor (an `activity_log` row ID), the same pattern the task
-stack's "Done today" group uses for its own cursor.
+stack's "Done" group uses for its own cursor.
 
 ### Secondary views: Workflows, Requirements, Containers
 

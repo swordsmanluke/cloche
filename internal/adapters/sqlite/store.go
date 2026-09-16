@@ -527,6 +527,42 @@ func (s *Store) ListRecentRunsByProject(ctx context.Context, projectDir string, 
 	return scanRuns(rows)
 }
 
+// ListDoneRunsByProject implements ports.RunStore. It restricts the scan to
+// top-level (no parent run), non-list-tasks, terminal-state runs so the
+// task-stack Done group can page through completion history without ever
+// loading the full run table (see handler_task_stack.go's fetchDonePage).
+// before, when set, is inclusive: callers wanting to resume strictly after a
+// specific row handle that exclusion themselves (see fetchDonePage), so ties
+// on completed_at aren't silently dropped at a page boundary.
+func (s *Store) ListDoneRunsByProject(ctx context.Context, projectDir string, before time.Time, limit int) ([]*domain.Run, error) {
+	query := `SELECT ` + runSelectCols + ` FROM runs
+		WHERE project_dir = ?
+		  AND COALESCE(parent_run_id, '') = ''
+		  AND workflow_name != 'list-tasks'
+		  AND state IN ('succeeded', 'failed', 'cancelled')
+		  AND COALESCE(completed_at, '') != ''`
+	args := []interface{}{projectDir}
+	if !before.IsZero() {
+		query += ` AND completed_at <= ?`
+		args = append(args, formatTime(before))
+	}
+	// A deterministic secondary sort (rather than leaving completed_at ties
+	// in whatever order SQLite happens to return) is what makes the Done
+	// page's cursor stable: paging from a cursor re-scans the same order
+	// every time, so a tie never gets skipped or repeated across pages.
+	query += ` ORDER BY completed_at DESC, task_id DESC, id DESC`
+	if limit > 0 {
+		query += fmt.Sprintf(` LIMIT %d`, limit)
+	}
+
+	rows, err := s.read.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanRuns(rows)
+}
+
 // CountActiveRunsByProject returns the number of pending/running runs for a
 // project. hostOnly, when true, restricts the count to host-orchestration
 // runs.
