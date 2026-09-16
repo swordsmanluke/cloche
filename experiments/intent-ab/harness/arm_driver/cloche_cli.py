@@ -55,10 +55,27 @@ class Toolchain:
     # -- bd (task tracker) ------------------------------------------------
 
     def bd_init(self):
-        self._run(["bd", "init", "--non-interactive"])
+        self._run(["bd", "init", "--quiet", "--skip-hooks"])
 
     def bd_create_graph(self, task_list_path: Path):
-        self._run(["bd", "create", "--graph", str(task_list_path)])
+        # The installed bd has no --graph bulk mode; create nodes one at a
+        # time with explicit ids, then wire "blocks" edges via bd dep.
+        # Node keys become issue ids under the project prefix.
+        graph = json.loads(task_list_path.read_text())
+        ids = {}
+        for node in graph["nodes"]:
+            result = self._run([
+                "bd", "create", f"{node['key']}: {node['title']}",
+                "--type", node.get("type", "task"),
+                "-d", node.get("description", ""),
+                "--silent",
+            ])
+            ids[node["key"]] = result.stdout.strip().splitlines()[-1]
+        for edge in graph.get("edges", []):
+            if edge.get("type") != "blocks":
+                continue
+            # from_key depends on to_key (to_key blocks from_key)
+            self._run(["bd", "dep", "add", ids[edge["from_key"]], ids[edge["to_key"]]])
 
     def bd_ready(self) -> list:
         result = self._run(["bd", "ready", "--json"])

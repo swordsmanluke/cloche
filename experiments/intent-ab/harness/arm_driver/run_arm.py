@@ -1,3 +1,4 @@
+import subprocess
 """Run one arm end-to-end (E5): clone seed at a ref, wire in the bonsai
 wrapper, apply the arm overlay, register the project, bootstrap the task
 tracker, start the loop, poll to task-list exhaustion or a budget/wall cap
@@ -55,6 +56,14 @@ def setup_arm_tree(arm: str, target_dir: Path, seed_source: Path = DEFAULT_SEED_
     overlay.copy_into(target_dir, "agent_command", HARNESS_ROOT / "agent_command")
     overlay.copy_into(target_dir, "bin", HARNESS_ROOT / "bin")
     overlay.apply_overlay(target_dir, overlay_dirs_for(arm))
+    # Containers seed from a clean git snapshot of HEAD (req-065f):
+    # uncommitted overlay files would be invisible in-container, so the
+    # composed tree must be committed before any run is dispatched.
+    subprocess.run(["git", "add", "-A"], cwd=target_dir, check=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", f"arm overlay: wrapper + arm-{arm} config"],
+        cwd=target_dir, check=True,
+    )
 
 
 def assert_clean(arm: str, target_dir: Path, eval_corpus_dir: Path = DEFAULT_EVAL_CORPUS_DIR) -> None:
