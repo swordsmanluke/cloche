@@ -154,6 +154,36 @@ func TestExtractResultUsage_InvalidJSON(t *testing.T) {
 	assert.Nil(t, got)
 }
 
+func TestExtractInterimUsage_ClaudeAssistantEvent(t *testing.T) {
+	line := []byte(`{"type":"assistant","message":{"content":[{"type":"text","text":"working..."}],"usage":{"input_tokens":800,"output_tokens":120}}}`)
+	got := extractInterimUsage(line)
+	require.NotNil(t, got)
+	assert.Equal(t, int64(800), got.InputTokens)
+	assert.Equal(t, int64(120), got.OutputTokens)
+}
+
+func TestExtractInterimUsage_OpencodeStepFinish(t *testing.T) {
+	line := []byte(`{"type":"step_finish","part":{"tokens":{"input":300,"output":40}}}`)
+	got := extractInterimUsage(line)
+	require.NotNil(t, got)
+	assert.Equal(t, int64(300), got.InputTokens)
+	assert.Equal(t, int64(40), got.OutputTokens)
+}
+
+func TestExtractInterimUsage_ResultEventIgnored(t *testing.T) {
+	// The final "result" event is handled by extractResultUsage, not the
+	// interim path — extractInterimUsage should not double-report it.
+	line := []byte(`{"type":"result","subtype":"success","result":"CLOCHE_RESULT:success","usage":{"input_tokens":12345,"output_tokens":6789}}`)
+	got := extractInterimUsage(line)
+	assert.Nil(t, got)
+}
+
+func TestExtractInterimUsage_NoUsage(t *testing.T) {
+	line := []byte(`{"type":"assistant","message":{"content":[{"type":"text","text":"no usage here"}]}}`)
+	got := extractInterimUsage(line)
+	assert.Nil(t, got)
+}
+
 func TestScanOutputForUsage_FindsUsageInOutput(t *testing.T) {
 	output := []byte(`{"type":"system","subtype":"init"}` + "\n" +
 		`{"type":"assistant","message":{"content":[]}}` + "\n" +

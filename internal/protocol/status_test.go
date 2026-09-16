@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/protocol"
 )
 
@@ -57,4 +58,32 @@ func TestStatusWriter_LogMessage(t *testing.T) {
 
 	assert.Equal(t, protocol.MsgLog, msgs[0].Type)
 	assert.Equal(t, "running tests...", msgs[0].Message)
+}
+
+func TestStatusWriter_Usage(t *testing.T) {
+	var buf bytes.Buffer
+	w := protocol.NewStatusWriter(&buf)
+
+	w.Usage("code", &domain.TokenUsage{InputTokens: 500, OutputTokens: 120, AgentName: "claude"})
+
+	msgs, err := protocol.ParseStatusStream(buf.Bytes())
+	require.NoError(t, err)
+	require.Len(t, msgs, 1)
+
+	assert.Equal(t, protocol.MsgUsage, msgs[0].Type)
+	assert.Equal(t, "code", msgs[0].StepName)
+	assert.Equal(t, int64(500), msgs[0].InputTokens)
+	assert.Equal(t, int64(120), msgs[0].OutputTokens)
+	assert.Equal(t, "claude", msgs[0].AgentName)
+}
+
+func TestStatusWriter_UsageNilIsNoOp(t *testing.T) {
+	var buf bytes.Buffer
+	w := protocol.NewStatusWriter(&buf)
+
+	w.Usage("code", nil)
+
+	msgs, err := protocol.ParseStatusStream(buf.Bytes())
+	require.NoError(t, err)
+	assert.Empty(t, msgs)
 }

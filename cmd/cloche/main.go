@@ -717,9 +717,12 @@ func printBurnRate(ctx context.Context, client pb.ClocheServiceClient, w io.Writ
 		if s.TotalTokens == 0 {
 			continue
 		}
-		burnStr := fmt.Sprintf("~%.1fk/hr", s.BurnRate/1000)
+		burnStr := fmt.Sprintf("%.1fk/hr", s.BurnRate/1000)
 		if s.BurnRate < 1000 {
-			burnStr = fmt.Sprintf("~%.0f/hr", s.BurnRate)
+			burnStr = fmt.Sprintf("%.0f/hr", s.BurnRate)
+		}
+		if s.InFlight {
+			burnStr = "~" + burnStr
 		}
 		fmt.Fprintf(w, "  %-10s %s in / %s out   %s total   %s\n",
 			s.AgentName,

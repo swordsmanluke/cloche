@@ -1729,6 +1729,130 @@ func TestQueryUsage_ZeroWindowNoBurnRate(t *testing.T) {
 	assert.Equal(t, int64(150), summaries[0].TotalTokens)
 }
 
+// TestQueryUsage_InFlightStepContributesToBurnRate verifies the fix for the
+// "Burn N/hr reads 0 while steps are running" bug: a step with no completed
+// capture yet, but a running total recorded via UpdateStreamingUsage, should
+// contribute to QueryUsage's totals and burn rate immediately rather than
+// only once it completes.
+func TestQueryUsage_InFlightStepContributesToBurnRate(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now()
+
+	run := domain.NewRun("r-inflight", "develop")
+	run.ProjectDir = "/proj"
+	run.State = domain.RunStateRunning
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.SaveCapture(ctx, "r-inflight", &domain.StepExecution{
+		StepName:  "implement",
+		StartedAt: now.Add(-5 * time.Minute),
+	}))
+
+	require.NoError(t, store.UpdateStreamingUsage(ctx, "r-inflight", "implement", "/proj",
+		&domain.TokenUsage{InputTokens: 3000, OutputTokens: 700, AgentName: "claude"},
+		now.Add(-5*time.Minute)))
+
+	summaries, err := store.QueryUsage(ctx, ports.UsageQuery{
+		ProjectDir: "/proj",
+		Since:      now.Add(-time.Hour),
+		Until:      now,
+	})
+	require.NoError(t, err)
+	require.Len(t, summaries, 1)
+	assert.Equal(t, "claude", summaries[0].AgentName)
+	assert.Equal(t, int64(3700), summaries[0].TotalTokens)
+	assert.True(t, summaries[0].InFlight)
+	assert.Greater(t, summaries[0].BurnRate, float64(0))
+}
+
+// TestQueryUsage_CompletedUsageSupersedesStreamedExactlyOnce verifies that
+// once a step's final usage is persisted (via SaveCapture) and its streaming
+// entry cleared (via ClearStreamingUsage — what recordStepComplete does on
+// the daemon side), QueryUsage reflects only the persisted total: the
+// in-flight figure is superseded exactly once, never added on top of it.
+func TestQueryUsage_CompletedUsageSupersedesStreamedExactlyOnce(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now()
+
+	run := domain.NewRun("r-settle", "develop")
+	run.ProjectDir = "/proj"
+	run.State = domain.RunStateRunning
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.SaveCapture(ctx, "r-settle", &domain.StepExecution{
+		StepName:  "implement",
+		StartedAt: now.Add(-5 * time.Minute),
+	}))
+	require.NoError(t, store.UpdateStreamingUsage(ctx, "r-settle", "implement", "/proj",
+		&domain.TokenUsage{InputTokens: 3000, OutputTokens: 700, AgentName: "claude"},
+		now.Add(-5*time.Minute)))
+
+	// Step completes: its final, settled usage is saved and the streaming
+	// entry is cleared — mirroring recordStepComplete in the grpc server.
+	require.NoError(t, store.SaveCapture(ctx, "r-settle", &domain.StepExecution{
+		StepName:    "implement",
+		Result:      "success",
+		CompletedAt: now,
+		Usage:       &domain.TokenUsage{InputTokens: 3200, OutputTokens: 750, AgentName: "claude"},
+	}))
+	require.NoError(t, store.ClearStreamingUsage(ctx, "r-settle", "implement"))
+
+	summaries, err := store.QueryUsage(ctx, ports.UsageQuery{
+		ProjectDir: "/proj",
+		Since:      now.Add(-time.Hour),
+		Until:      now,
+	})
+	require.NoError(t, err)
+	require.Len(t, summaries, 1)
+	assert.Equal(t, int64(3950), summaries[0].TotalTokens, "final usage should supersede the streamed total, not add to it")
+	assert.False(t, summaries[0].InFlight)
+
+	usage, err := store.GetStreamingUsage(ctx, "r-settle")
+	require.NoError(t, err)
+	assert.Empty(t, usage, "streaming entry should be cleared once the step's final usage is persisted")
+}
+
+// TestQueryUsage_WindowsByStepStartTime verifies the secondary bug: a step
+// that started before the query window but happened to finish inside it must
+// no longer be counted (its work mostly predates the window), while a step
+// that started inside the window is counted even though it hasn't completed
+// yet. Windowing by started_at — not completed_at — is what makes both true.
+func TestQueryUsage_WindowsByStepStartTime(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	now := time.Now()
+
+	run := domain.NewRun("r-window", "develop")
+	run.ProjectDir = "/proj"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// Started well before the window, but completed just inside it.
+	require.NoError(t, store.SaveCapture(ctx, "r-window", &domain.StepExecution{
+		StepName:    "long-step",
+		Result:      "success",
+		StartedAt:   now.Add(-90 * time.Minute),
+		CompletedAt: now.Add(-10 * time.Minute),
+		Usage:       &domain.TokenUsage{InputTokens: 9000, OutputTokens: 1000, AgentName: "claude"},
+	}))
+
+	summaries, err := store.QueryUsage(ctx, ports.UsageQuery{
+		ProjectDir: "/proj",
+		Since:      now.Add(-time.Hour),
+		Until:      now,
+	})
+	require.NoError(t, err)
+	assert.Empty(t, summaries, "a step that started outside the window shouldn't be attributed to it just because it finished inside")
+}
+
 func TestListRunsFiltered_NoFilters(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

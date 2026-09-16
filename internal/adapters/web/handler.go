@@ -520,6 +520,25 @@ func (h *Handler) flattenRunFrom(ctx context.Context, runID string, depth, paren
 	childRuns, _ := h.store.ListChildRuns(ctx, runID)
 
 	steps := mergeCaptures(caps)
+	// Steps still running have no completed capture yet, so mergeCaptures
+	// leaves them without usage; fill it in from the streaming tracker so
+	// the facts row's "tokens" total reflects work in progress instead of
+	// reading zero until the step completes.
+	if tracker, ok := h.captures.(ports.StreamingUsageTracker); ok {
+		if streaming, err := tracker.GetStreamingUsage(ctx, runID); err == nil {
+			for i := range steps {
+				if steps[i].HasUsage {
+					continue
+				}
+				if u, ok := streaming[steps[i].StepName]; ok {
+					steps[i].AgentName = u.AgentName
+					steps[i].InputTokens = u.InputTokens
+					steps[i].OutputTokens = u.OutputTokens
+					steps[i].HasUsage = true
+				}
+			}
+		}
+	}
 	consumed := make(map[string]bool)
 
 	var result []apiStep
@@ -2007,6 +2026,10 @@ type apiUsageSummary struct {
 	OutputTokens int64   `json:"output_tokens"`
 	TotalTokens  int64   `json:"total_tokens"`
 	BurnRate     float64 `json:"burn_rate"` // tokens/hour
+	// InFlight is true when this summary includes tokens streamed from a
+	// step that is still running; the console shows "~" before the burn
+	// rate when set.
+	InFlight bool `json:"in_flight,omitempty"`
 }
 
 // apiProjectUsage is the JSON response for /api/projects/{name}/usage.
@@ -2050,6 +2073,7 @@ func (h *Handler) handleAPIProjectUsage(w http.ResponseWriter, r *http.Request) 
 				OutputTokens: s.OutputTokens,
 				TotalTokens:  s.TotalTokens,
 				BurnRate:     s.BurnRate,
+				InFlight:     s.InFlight,
 			}
 		}
 		return out

@@ -4165,8 +4165,10 @@
     function formatBurn(usage) {
         var rows = (usage && usage.burn_rate_1h) || [];
         var total = rows.reduce(function (sum, r) { return sum + (r.burn_rate || 0); }, 0);
-        if (total <= 0) return '0/hr';
-        return formatNumber(total) + '/hr';
+        var inFlight = rows.some(function (r) { return r.in_flight; });
+        var prefix = inFlight ? '~' : '';
+        if (total <= 0) return prefix + '0/hr';
+        return prefix + formatNumber(total) + '/hr';
     }
 
     function formatNumber(n) {

@@ -655,8 +655,10 @@ func (w *grpcStatusWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// processLine parses a single JSON-encoded StatusMessage and, if it is a MsgLog
-// entry, sends a corresponding StepLog message over the gRPC stream.
+// processLine parses a single JSON-encoded StatusMessage and, if it is a
+// MsgLog or MsgUsage entry, sends a corresponding StepLog message over the
+// gRPC stream (usage piggybacks on StepLog via its optional Usage field
+// rather than a Line, since it's not a log line).
 func (w *grpcStatusWriter) processLine(line []byte) {
 	if len(bytes.TrimSpace(line)) == 0 {
 		return
@@ -665,22 +667,36 @@ func (w *grpcStatusWriter) processLine(line []byte) {
 	if err := json.Unmarshal(line, &msg); err != nil {
 		return
 	}
-	if msg.Type != protocol.MsgLog {
-		return
-	}
-	if step, _ := w.currentLLMStep.Load().(string); step != "" && step == msg.StepName {
-		if w.ulog != nil {
-			w.ulog.Log(logstream.TypeLLM, msg.Message)
+	switch msg.Type {
+	case protocol.MsgLog:
+		if step, _ := w.currentLLMStep.Load().(string); step != "" && step == msg.StepName {
+			if w.ulog != nil {
+				w.ulog.Log(logstream.TypeLLM, msg.Message)
+			}
+			appendLLMLogLine(w.workDir, msg.StepName, msg.Message)
 		}
-		appendLLMLogLine(w.workDir, msg.StepName, msg.Message)
-	}
-	_ = w.send(&pb.AgentMessage{
-		Payload: &pb.AgentMessage_StepLog{
-			StepLog: &pb.StepLog{
-				StepName:  msg.StepName,
-				Line:      msg.Message,
-				Timestamp: msg.Timestamp.UnixNano(),
+		_ = w.send(&pb.AgentMessage{
+			Payload: &pb.AgentMessage_StepLog{
+				StepLog: &pb.StepLog{
+					StepName:  msg.StepName,
+					Line:      msg.Message,
+					Timestamp: msg.Timestamp.UnixNano(),
+				},
 			},
-		},
-	})
+		})
+	case protocol.MsgUsage:
+		_ = w.send(&pb.AgentMessage{
+			Payload: &pb.AgentMessage_StepLog{
+				StepLog: &pb.StepLog{
+					StepName:  msg.StepName,
+					Timestamp: msg.Timestamp.UnixNano(),
+					Usage: &pb.TokenUsage{
+						InputTokens:  msg.InputTokens,
+						OutputTokens: msg.OutputTokens,
+						AgentName:    msg.AgentName,
+					},
+				},
+			},
+		})
+	}
 }

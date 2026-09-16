@@ -4771,6 +4771,91 @@ func TestAgentSession_DisconnectFailsInFlightSteps(t *testing.T) {
 	assert.True(t, failed, "in-flight step should be recorded as failed on disconnect")
 }
 
+// TestAgentSession_StepLogUsageStreamsInFlightBurnRate verifies the fix for
+// the "Burn N/hr reads 0 while steps are running" bug: a StepLog carrying a
+// running usage total (as the prompt adapter now streams while a step is
+// still executing) should make QueryUsage report non-zero tokens and a
+// non-zero burn rate immediately, before the step's StepResult arrives. Once
+// the step completes, its persisted final usage must supersede the streamed
+// total exactly once — not be added on top of it.
+func TestAgentSession_StepLogUsageStreamsInFlightBurnRate(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	run := domain.NewRun("run-usage-stream-1", "develop")
+	run.ProjectDir = "/proj-stream"
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	rt := &fakeDockerRuntime{}
+	pool := newFakePoolWithRuntime(rt)
+	srv := server.NewClocheServerWithCaptures(store, store, rt.asContainerRuntime(), "")
+	srv.SetContainerPool(pool)
+	srv.RegisterContainerRun("ctr-usage-stream-1", "run-usage-stream-1")
+
+	stream := newFakeAgentStream(ctx)
+	done := make(chan error, 1)
+	go func() { done <- srv.AgentSession(stream) }()
+
+	stream.push(&pb.AgentMessage{Payload: &pb.AgentMessage_Ready{Ready: &pb.AgentReady{RunId: "ctr-usage-stream-1"}}})
+	stream.push(&pb.AgentMessage{Payload: &pb.AgentMessage_StepStarted{StepStarted: &pb.StepStarted{RequestId: "req-usage-1", StepName: "implement"}}})
+	stream.push(&pb.AgentMessage{Payload: &pb.AgentMessage_StepLog{StepLog: &pb.StepLog{
+		StepName: "implement",
+		Usage:    &pb.TokenUsage{InputTokens: 4000, OutputTokens: 1000, AgentName: "claude"},
+	}}})
+	// Give the receive loop a moment to process the pushed messages before
+	// querying — Recv() runs asynchronously off the buffered channel.
+	time.Sleep(100 * time.Millisecond)
+
+	summaries, err := store.QueryUsage(ctx, ports.UsageQuery{
+		ProjectDir: "/proj-stream",
+		Since:      time.Now().Add(-time.Hour),
+		Until:      time.Now(),
+	})
+	require.NoError(t, err)
+	require.Len(t, summaries, 1)
+	assert.Equal(t, int64(5000), summaries[0].TotalTokens, "in-flight usage should be visible before the step completes")
+	assert.True(t, summaries[0].InFlight)
+	assert.Greater(t, summaries[0].BurnRate, float64(0), "burn rate should be non-zero while the step is running")
+
+	// The per-task token total (cmd/cloche status's "Tokens:" line, sourced
+	// from GetStatus's StepExecutions) should also reflect the in-flight
+	// figure before the step completes.
+	statusResp, err := srv.GetStatus(ctx, &pb.GetStatusRequest{RunId: "run-usage-stream-1"})
+	require.NoError(t, err)
+	var sawInFlightTokens bool
+	for _, se := range statusResp.StepExecutions {
+		if se.StepName == "implement" && se.CompletedAt == "0001-01-01 00:00:00 +0000 UTC" {
+			assert.Equal(t, int64(4000), se.InputTokens)
+			assert.Equal(t, int64(1000), se.OutputTokens)
+			sawInFlightTokens = true
+		}
+	}
+	assert.True(t, sawInFlightTokens, "expected the running step's capture to carry streamed usage")
+
+	// Complete the step with its final (settled) usage.
+	stream.push(&pb.AgentMessage{Payload: &pb.AgentMessage_StepResult{StepResult: &pb.StepResult{
+		RequestId:  "req-usage-1",
+		Result:     "success",
+		TokenUsage: &pb.TokenUsage{InputTokens: 4200, OutputTokens: 1100, AgentName: "claude"},
+	}}})
+	stream.close()
+	require.NoError(t, <-done)
+
+	summaries, err = store.QueryUsage(ctx, ports.UsageQuery{
+		ProjectDir: "/proj-stream",
+		Since:      time.Now().Add(-time.Hour),
+		Until:      time.Now(),
+	})
+	require.NoError(t, err)
+	require.Len(t, summaries, 1)
+	assert.Equal(t, int64(5300), summaries[0].TotalTokens, "final usage should supersede the streamed total, not add to it")
+	assert.False(t, summaries[0].InFlight)
+}
+
 // fakeDockerRuntime is a no-op ContainerRuntime for AgentSession tests.
 // It wraps a *docker.ContainerPool-compatible interface but does nothing.
 type fakeDockerRuntime struct{}

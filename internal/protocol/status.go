@@ -18,6 +18,7 @@ const (
 	MsgRunCompleted  MessageType = "run_completed"
 	MsgRunTitle      MessageType = "run_title"
 	MsgLog           MessageType = "log"
+	MsgUsage         MessageType = "usage"
 	MsgError         MessageType = "error"
 )
 
@@ -70,6 +71,23 @@ func (s *StatusWriter) RunTitle(title string) {
 
 func (s *StatusWriter) Log(stepName, message string) {
 	s.write(StatusMessage{Type: MsgLog, StepName: stepName, Message: message})
+}
+
+// Usage emits a running (not-yet-final) token usage total for a step that is
+// still executing, so a long-running step's burn rate doesn't read as zero
+// until it completes. Superseded by the step's StepCompleted usage once it
+// finishes.
+func (s *StatusWriter) Usage(stepName string, usage *domain.TokenUsage) {
+	if usage == nil {
+		return
+	}
+	s.write(StatusMessage{
+		Type:         MsgUsage,
+		StepName:     stepName,
+		InputTokens:  usage.InputTokens,
+		OutputTokens: usage.OutputTokens,
+		AgentName:    usage.AgentName,
+	})
 }
 
 func (s *StatusWriter) Error(stepName, message string) {

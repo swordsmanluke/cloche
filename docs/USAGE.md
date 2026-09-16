@@ -797,13 +797,15 @@ section at the bottom if any usage data exists for the last hour:
 ```
 Token usage (last 1h):
   claude     4,521 in / 2,103 out   6,624 total   ~18.2k/hr
-  codex      1,200 in /   890 out   2,090 total   ~5.7k/hr
+  codex      1,200 in /   890 out   2,090 total   5.7k/hr
 ```
 
 Each row shows the agent name, input/output token counts, total tokens, and the
-burn rate (total tokens per hour over the last hour). The burn rate uses `~Xk/hr`
-notation for values ≥ 1,000 and `~X/hr` for smaller values. The section is omitted
-entirely when no usage data is available.
+burn rate (total tokens per hour over the last hour). The burn rate uses `Xk/hr`
+notation for values ≥ 1,000 and `X/hr` for smaller values, prefixed with `~` when
+the total includes tokens streamed from a step that's still running (a live
+estimate, not yet superseded by that step's final recorded usage). The section is
+omitted entirely when no usage data is available.
 
 **Task status** (`cloche status <task-id>`) includes a `Tokens` line showing total
 consumption across all attempts for that task, broken down by agent:
@@ -844,6 +846,7 @@ message UsageSummary {
   int64  output_tokens = 3;
   int64  total_tokens  = 4;
   double burn_rate     = 5; // tokens per hour (0 when window_seconds = 0)
+  bool   in_flight     = 6; // true if this includes a still-running step's streamed usage
 }
 ```
 

@@ -1132,6 +1132,57 @@ func TestPromptAdapter_RecoveryTurnLoggedToStatusWriter(t *testing.T) {
 	assert.True(t, loggedRecovery, "recovery turn must be logged via StatusWriter")
 }
 
+// TestPromptAdapter_StreamsInterimUsageBeforeCompletion verifies the fix for
+// the "Burn N/hr reads 0 while steps are running" bug at the adapter layer:
+// a per-turn usage event (Claude's "assistant" message) seen mid-stream must
+// be pushed to StatusWriter as a running total before the step finishes, and
+// the step's final usage (from the "result" event) must supersede — not add
+// to — that running total in the returned StepResult.
+func TestPromptAdapter_StreamsInterimUsageBeforeCompletion(t *testing.T) {
+	dir := t.TempDir()
+
+	script := filepath.Join(dir, "streaming-agent.sh")
+	require.NoError(t, os.WriteFile(script, []byte(
+		"#!/bin/sh\ncat > /dev/null\n"+
+			`echo '{"type":"assistant","message":{"content":[{"type":"text","text":"working"}],"usage":{"input_tokens":500,"output_tokens":50}}}'`+"\n"+
+			`printf '{"type":"result","subtype":"success","result":"CLOCHE_RESULT:%s:success","usage":{"input_tokens":900,"output_tokens":120}}\n' "$CLOCHE_RESULT_NONCE"`+"\n",
+	), 0755))
+
+	var statusBuf bytes.Buffer
+	adapter := &prompt.Adapter{
+		Commands:     []string{script},
+		StatusWriter: protocol.NewStatusWriter(&statusBuf),
+	}
+
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result)
+
+	// Final usage (from the "result" event) is the authoritative total.
+	require.NotNil(t, sr.Usage)
+	assert.Equal(t, int64(900), sr.Usage.InputTokens)
+	assert.Equal(t, int64(120), sr.Usage.OutputTokens)
+
+	msgs, err := protocol.ParseStatusStream(statusBuf.Bytes())
+	require.NoError(t, err)
+	var sawInterimUsage bool
+	for _, m := range msgs {
+		if m.Type == protocol.MsgUsage && m.StepName == "implement" {
+			assert.Equal(t, int64(500), m.InputTokens)
+			assert.Equal(t, int64(50), m.OutputTokens)
+			sawInterimUsage = true
+		}
+	}
+	assert.True(t, sawInterimUsage, "a running usage total should stream via StatusWriter before the step completes")
+}
+
 func TestParseCommands(t *testing.T) {
 	tests := []struct {
 		input    string

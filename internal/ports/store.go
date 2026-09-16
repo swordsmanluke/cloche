@@ -122,6 +122,23 @@ type CaptureStore interface {
 	GetCaptures(ctx context.Context, runID string) ([]*domain.StepExecution, error)
 }
 
+// StreamingUsageTracker is an optional interface a CaptureStore may implement
+// to track ephemeral token usage for a step that is still running, streamed
+// from the agent's stream-json output as it works. Unlike SaveCapture, this
+// is not persisted — it exists only so burn-rate queries and per-run token
+// totals can include work-in-progress instead of reading zero until the step
+// completes. UpdateStreamingUsage overwrites the running total for (runID,
+// stepName) each time it's called; ClearStreamingUsage removes it once the
+// step's final usage has been saved via SaveCapture, so the two are never
+// both counted.
+type StreamingUsageTracker interface {
+	UpdateStreamingUsage(ctx context.Context, runID, stepName, projectDir string, usage *domain.TokenUsage, startedAt time.Time) error
+	ClearStreamingUsage(ctx context.Context, runID, stepName string) error
+	// GetStreamingUsage returns the running usage for every still-in-flight
+	// step of runID, keyed by step name.
+	GetStreamingUsage(ctx context.Context, runID string) (map[string]*domain.TokenUsage, error)
+}
+
 type LogFileEntry struct {
 	ID        int64
 	RunID     string

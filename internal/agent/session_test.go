@@ -436,6 +436,67 @@ check:
 	assert.True(t, found, "expected log line should have been streamed as StepLog")
 }
 
+// TestSession_GRPCStatusWriter_UsageForwarding verifies the fix for the
+// "Burn N/hr reads 0 while steps are running" bug: a per-turn usage event
+// seen mid-stream by the prompt adapter must reach the daemon as a StepLog
+// carrying a TokenUsage (piggybacked, not a log Line) before the step's
+// StepResult arrives with its own, final usage.
+func TestSession_GRPCStatusWriter_UsageForwarding(t *testing.T) {
+	dir := t.TempDir()
+
+	mockAgent := filepath.Join(dir, "mock-agent.sh")
+	require.NoError(t, os.WriteFile(mockAgent, []byte(
+		"#!/bin/sh\ncat > /dev/null\n"+
+			`echo '{"type":"assistant","message":{"content":[{"type":"text","text":"working"}],"usage":{"input_tokens":500,"output_tokens":50}}}'`+"\n"+
+			`printf '{"type":"result","subtype":"success","result":"CLOCHE_RESULT:%s:success","usage":{"input_tokens":900,"output_tokens":120}}\n' "$CLOCHE_RESULT_NONCE"`+"\n",
+	), 0755))
+
+	srv := newFakeServer([]*pb.ExecuteStep{
+		{
+			StepName:  "implement",
+			StepType:  "agent",
+			Config:    map[string]string{"prompt": "Do something.", "agent_command": mockAgent},
+			RequestId: "req-usage-stream",
+		},
+	})
+	addr := startFakeServer(t, srv)
+
+	sess := agent.NewSession(agent.SessionConfig{
+		Addr:    addr,
+		RunID:   "run-usage-stream",
+		WorkDir: dir,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err := sess.Run(ctx)
+	require.NoError(t, err)
+
+	var foundInterim bool
+	for {
+		select {
+		case l := <-srv.logs:
+			if l.Usage != nil && l.Usage.InputTokens == 500 && l.Usage.OutputTokens == 50 {
+				foundInterim = true
+			}
+		default:
+			goto check
+		}
+	}
+check:
+	assert.True(t, foundInterim, "a running usage total should have streamed as a StepLog before the step completed")
+
+	select {
+	case result := <-srv.results:
+		require.NotNil(t, result.TokenUsage)
+		assert.Equal(t, int64(900), result.TokenUsage.InputTokens, "the final StepResult usage should be the settled total, not the interim one")
+		assert.Equal(t, int64(120), result.TokenUsage.OutputTokens)
+	default:
+		t.Fatal("StepResult not received")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Poll step tests
 // ---------------------------------------------------------------------------

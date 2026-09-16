@@ -2249,6 +2249,56 @@ func TestAPIRunDetail_WithUsage(t *testing.T) {
 	assert.Equal(t, true, step["has_usage"])
 }
 
+// TestAPIRunDetail_InFlightUsage verifies the fix for the "Burn N/hr reads 0
+// while steps are running" bug at the console's per-task facts row: a step
+// that has only started (no completed capture yet) but has streamed usage
+// via the daemon's StreamingUsageTracker should still report a non-zero
+// token total in the run-detail JSON, instead of reading zero until the step
+// completes.
+func TestAPIRunDetail_InFlightUsage(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("api-run-inflight-1", "develop")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	require.NoError(t, store.SaveCapture(ctx, "api-run-inflight-1", &domain.StepExecution{
+		StepName:  "implement",
+		StartedAt: time.Now(),
+	}))
+	require.NoError(t, store.UpdateStreamingUsage(ctx, "api-run-inflight-1", "implement", "", &domain.TokenUsage{
+		InputTokens:  600,
+		OutputTokens: 150,
+		AgentName:    "claude",
+	}, time.Now()))
+
+	req := httptest.NewRequest("GET", "/api/runs/api-run-inflight-1", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+
+	steps, _ := resp["steps"].([]interface{})
+	require.Len(t, steps, 1)
+	step := steps[0].(map[string]interface{})
+	assert.Equal(t, "implement", step["step_name"])
+	assert.Equal(t, "claude", step["agent_name"])
+	assert.Equal(t, float64(600), step["input_tokens"])
+	assert.Equal(t, float64(150), step["output_tokens"])
+	assert.Equal(t, true, step["has_usage"])
+
+	tokenUsage, _ := resp["token_usage"].([]interface{})
+	require.Len(t, tokenUsage, 1)
+	agentTotals := tokenUsage[0].(map[string]interface{})
+	assert.Equal(t, "claude", agentTotals["agent_name"])
+	assert.Equal(t, float64(600), agentTotals["input_tokens"])
+	assert.Equal(t, float64(150), agentTotals["output_tokens"])
+}
+
 func TestMergeCaptures_WithUsage(t *testing.T) {
 	now := time.Now()
 	caps := []*domain.StepExecution{

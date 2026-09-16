@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -35,6 +36,27 @@ type Store struct {
 	// read is a pool of read-only connections used by all Get/List/Query
 	// methods. WAL semantics mean reads never block behind the writer.
 	read *sql.DB
+
+	// inFlightMu guards inFlight, the ephemeral (non-persisted) streaming
+	// usage cache — see StreamingUsageTracker.
+	inFlightMu sync.Mutex
+	inFlight   map[inFlightUsageKey]inFlightUsageEntry
+}
+
+// inFlightUsageKey identifies a single running step's streaming usage entry.
+type inFlightUsageKey struct {
+	runID    string
+	stepName string
+}
+
+// inFlightUsageEntry is the running usage total tracked for a step that
+// hasn't completed yet (see StreamingUsageTracker).
+type inFlightUsageEntry struct {
+	projectDir   string
+	agentName    string
+	inputTokens  int64
+	outputTokens int64
+	startedAt    time.Time
 }
 
 func NewStore(dsn string) (*Store, error) {
@@ -762,14 +784,85 @@ func (s *Store) SaveCapture(ctx context.Context, runID string, exec *domain.Step
 		outputTokens = exec.Usage.OutputTokens
 		agentName = exec.Usage.AgentName
 	}
+
+	startedAt := exec.StartedAt
+	if startedAt.IsZero() && !exec.CompletedAt.IsZero() {
+		// Completion-only capture (recordStepComplete/OnStepComplete save the
+		// started_at and completed_at halves of a step as two separate rows,
+		// leaving this one's StartedAt unset). Backfill it from the step's
+		// still-open start row so QueryUsage can window usage by when the
+		// work actually happened, not just when it finished.
+		var startedAtStr string
+		err := s.read.QueryRowContext(ctx,
+			`SELECT started_at FROM step_executions
+			 WHERE run_id = ? AND step_name = ? AND started_at != '' AND completed_at = ''
+			 ORDER BY id DESC LIMIT 1`, runID, exec.StepName).Scan(&startedAtStr)
+		if err == nil {
+			startedAt = parseTime(startedAtStr)
+		}
+	}
+
 	_, err := s.write.ExecContext(ctx,
 		`INSERT INTO step_executions (run_id, step_name, result, started_at, completed_at, logs, git_ref, input_tokens, output_tokens, agent_name)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		runID, exec.StepName, exec.Result,
-		formatTime(exec.StartedAt), formatTime(exec.CompletedAt),
+		formatTime(startedAt), formatTime(exec.CompletedAt),
 		exec.Logs, exec.GitRef, inputTokens, outputTokens, agentName,
 	)
 	return err
+}
+
+// UpdateStreamingUsage records the running (not-yet-final) token usage for a
+// step that is still executing. See ports.StreamingUsageTracker.
+func (s *Store) UpdateStreamingUsage(ctx context.Context, runID, stepName, projectDir string, usage *domain.TokenUsage, startedAt time.Time) error {
+	if usage == nil {
+		return nil
+	}
+	s.inFlightMu.Lock()
+	defer s.inFlightMu.Unlock()
+	if s.inFlight == nil {
+		s.inFlight = make(map[inFlightUsageKey]inFlightUsageEntry)
+	}
+	s.inFlight[inFlightUsageKey{runID: runID, stepName: stepName}] = inFlightUsageEntry{
+		projectDir:   projectDir,
+		agentName:    usage.AgentName,
+		inputTokens:  usage.InputTokens,
+		outputTokens: usage.OutputTokens,
+		startedAt:    startedAt,
+	}
+	return nil
+}
+
+// ClearStreamingUsage removes a step's running usage entry, typically once
+// its final usage has been persisted via SaveCapture. See
+// ports.StreamingUsageTracker.
+func (s *Store) ClearStreamingUsage(ctx context.Context, runID, stepName string) error {
+	s.inFlightMu.Lock()
+	defer s.inFlightMu.Unlock()
+	delete(s.inFlight, inFlightUsageKey{runID: runID, stepName: stepName})
+	return nil
+}
+
+// GetStreamingUsage returns the running usage for every in-flight step of
+// runID, keyed by step name. See ports.StreamingUsageTracker.
+func (s *Store) GetStreamingUsage(ctx context.Context, runID string) (map[string]*domain.TokenUsage, error) {
+	s.inFlightMu.Lock()
+	defer s.inFlightMu.Unlock()
+	var out map[string]*domain.TokenUsage
+	for k, v := range s.inFlight {
+		if k.runID != runID {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]*domain.TokenUsage)
+		}
+		out[k.stepName] = &domain.TokenUsage{
+			InputTokens:  v.inputTokens,
+			OutputTokens: v.outputTokens,
+			AgentName:    v.agentName,
+		}
+	}
+	return out, nil
 }
 
 func (s *Store) GetCaptures(ctx context.Context, runID string) ([]*domain.StepExecution, error) {
@@ -808,6 +901,10 @@ func (s *Store) QueryUsage(ctx context.Context, q ports.UsageQuery) ([]domain.Us
 	sinceStr := formatTime(q.Since)
 	untilStr := formatTime(q.Until)
 
+	// Windowed by started_at, not completed_at: a step's tokens are earned
+	// while it runs, so attributing them to the hour it happened to finish
+	// in (rather than the hour it did the work) misattributes any step that
+	// straddles a window boundary.
 	rows, err := s.read.QueryContext(ctx,
 		`SELECT
 			COALESCE(se.agent_name, '') AS agent_name,
@@ -815,10 +912,11 @@ func (s *Store) QueryUsage(ctx context.Context, q ports.UsageQuery) ([]domain.Us
 			SUM(se.output_tokens) AS output_tokens
 		FROM step_executions se
 		JOIN runs r ON se.run_id = r.id
-		WHERE (? = '' OR r.project_dir = ?)
+		WHERE se.completed_at != ''
+		  AND (? = '' OR r.project_dir = ?)
 		  AND (? = '' OR se.agent_name = ?)
-		  AND (? = '' OR se.completed_at >= ?)
-		  AND (? = '' OR se.completed_at <= ?)
+		  AND (? = '' OR se.started_at >= ?)
+		  AND (? = '' OR se.started_at <= ?)
 		GROUP BY COALESCE(se.agent_name, '')`,
 		q.ProjectDir, q.ProjectDir,
 		q.AgentName, q.AgentName,
@@ -840,20 +938,63 @@ func (s *Store) QueryUsage(ctx context.Context, q ports.UsageQuery) ([]domain.Us
 		windowSeconds = int64(until.Sub(q.Since).Seconds())
 	}
 
-	var summaries []domain.UsageSummary
+	byAgent := make(map[string]*domain.UsageSummary)
+	var order []string
 	for rows.Next() {
-		var summary domain.UsageSummary
-		if err := rows.Scan(&summary.AgentName, &summary.InputTokens, &summary.OutputTokens); err != nil {
+		var agentName string
+		var input, output int64
+		if err := rows.Scan(&agentName, &input, &output); err != nil {
 			return nil, err
 		}
+		byAgent[agentName] = &domain.UsageSummary{AgentName: agentName, InputTokens: input, OutputTokens: output}
+		order = append(order, agentName)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Merge in still-running steps' streamed usage so the burn rate reflects
+	// work in progress instead of reading zero until each step completes.
+	// Entries are keyed by the same started_at window as completed rows
+	// above, and disappear the moment a step's final usage is persisted (see
+	// ClearStreamingUsage), so a step is never counted in both places.
+	s.inFlightMu.Lock()
+	for _, entry := range s.inFlight {
+		if q.ProjectDir != "" && entry.projectDir != q.ProjectDir {
+			continue
+		}
+		if q.AgentName != "" && entry.agentName != q.AgentName {
+			continue
+		}
+		if !q.Since.IsZero() && !entry.startedAt.IsZero() && entry.startedAt.Before(q.Since) {
+			continue
+		}
+		if !q.Until.IsZero() && !entry.startedAt.IsZero() && entry.startedAt.After(q.Until) {
+			continue
+		}
+		summary, ok := byAgent[entry.agentName]
+		if !ok {
+			summary = &domain.UsageSummary{AgentName: entry.agentName}
+			byAgent[entry.agentName] = summary
+			order = append(order, entry.agentName)
+		}
+		summary.InputTokens += entry.inputTokens
+		summary.OutputTokens += entry.outputTokens
+		summary.InFlight = true
+	}
+	s.inFlightMu.Unlock()
+
+	summaries := make([]domain.UsageSummary, 0, len(order))
+	for _, name := range order {
+		summary := byAgent[name]
 		summary.TotalTokens = summary.InputTokens + summary.OutputTokens
 		summary.WindowSeconds = windowSeconds
 		if windowSeconds > 0 {
 			summary.BurnRate = float64(summary.TotalTokens) / (float64(windowSeconds) / 3600.0)
 		}
-		summaries = append(summaries, summary)
+		summaries = append(summaries, *summary)
 	}
-	return summaries, rows.Err()
+	return summaries, nil
 }
 
 func (s *Store) SaveLogFile(ctx context.Context, entry *ports.LogFileEntry) error {

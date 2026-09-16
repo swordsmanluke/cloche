@@ -457,6 +457,14 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 	// lineBuf accumulates text deltas into lines for streaming.
 	var lineBuf strings.Builder
 
+	// interimUsage accumulates a running token total from per-turn events
+	// (Claude "assistant" messages, opencode "step_finish") so a long step
+	// reports a live, growing usage figure instead of reading zero until the
+	// final "result" event arrives at process exit. It is streamed to the
+	// daemon via StatusWriter.Usage and superseded by the definitive `usage`
+	// captured from extractResultUsage once the step completes.
+	var interimUsage domain.TokenUsage
+
 	scanner := bufio.NewScanner(pipe)
 	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
 	for scanner.Scan() {
@@ -468,6 +476,14 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 		if u := extractResultUsage(raw); u != nil {
 			u.AgentName = command
 			usage = u
+		}
+
+		if u := extractInterimUsage(raw); u != nil {
+			interimUsage.InputTokens += u.InputTokens
+			interimUsage.OutputTokens += u.OutputTokens
+			interimUsage.AgentName = command
+			snapshot := interimUsage
+			a.StatusWriter.Usage(stepName, &snapshot)
 		}
 
 		text := extractStreamText(raw)
@@ -885,6 +901,52 @@ func extractResultUsage(line []byte) *domain.TokenUsage {
 			InputTokens:  event.Part.Tokens.Input,
 			OutputTokens: event.Part.Tokens.Output,
 		}
+	}
+	return nil
+}
+
+// extractInterimUsage parses a streaming-JSON event line for a per-turn usage
+// delta to accumulate into a running total while a step is still executing.
+// Unlike extractResultUsage (Claude's "result" event, which is the step's
+// single authoritative total but only appears once the whole invocation
+// exits), this recognizes events that fire once per conversational turn —
+// Claude's "assistant" event and opencode's "step_finish" — so a long
+// multi-turn step has a live, growing figure well before it completes.
+//
+// Summing each turn's usage is an approximation, not an exact replica of the
+// final total (Claude's per-turn input_tokens reflects that turn's full
+// resent context, not just the newly added tokens), but it only needs to be
+// a reasonable live estimate: the final StepResult usage always supersedes
+// it once the step completes.
+func extractInterimUsage(line []byte) *domain.TokenUsage {
+	if !bytes.Contains(line, []byte(`"usage"`)) && !bytes.Contains(line, []byte(`"tokens"`)) {
+		return nil
+	}
+	var envelope struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(line, &envelope) != nil {
+		return nil
+	}
+	switch envelope.Type {
+	case "assistant":
+		var event struct {
+			Message struct {
+				Usage *struct {
+					InputTokens  int64 `json:"input_tokens"`
+					OutputTokens int64 `json:"output_tokens"`
+				} `json:"usage"`
+			} `json:"message"`
+		}
+		if json.Unmarshal(line, &event) != nil || event.Message.Usage == nil {
+			return nil
+		}
+		return &domain.TokenUsage{
+			InputTokens:  event.Message.Usage.InputTokens,
+			OutputTokens: event.Message.Usage.OutputTokens,
+		}
+	case "step_finish":
+		return extractResultUsage(line)
 	}
 	return nil
 }

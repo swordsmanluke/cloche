@@ -365,19 +365,26 @@ func (s *ClocheServer) AgentSession(stream pb.ClocheService_AgentSessionServer) 
 			}
 
 		case *pb.AgentMessage_StepLog:
-			if s.logBroadcast != nil && payload.StepLog != nil {
-				if rid := resolveRunID(); rid != "" {
-					sl := payload.StepLog
-					ts := time.Now().Format(time.RFC3339)
-					if sl.Timestamp != 0 {
-						ts = time.Unix(0, sl.Timestamp).Format(time.RFC3339)
+			if payload.StepLog != nil {
+				sl := payload.StepLog
+				if sl.Usage != nil {
+					if rid := resolveRunID(); rid != "" {
+						s.recordStepUsage(ctx, rid, sl.StepName, sl.Usage)
 					}
-					s.logBroadcast.Publish(rid, logstream.LogLine{
-						Timestamp: ts,
-						Type:      "llm",
-						Content:   sl.Line,
-						StepName:  sl.StepName,
-					})
+				}
+				if s.logBroadcast != nil && sl.Line != "" {
+					if rid := resolveRunID(); rid != "" {
+						ts := time.Now().Format(time.RFC3339)
+						if sl.Timestamp != 0 {
+							ts = time.Unix(0, sl.Timestamp).Format(time.RFC3339)
+						}
+						s.logBroadcast.Publish(rid, logstream.LogLine{
+							Timestamp: ts,
+							Type:      "llm",
+							Content:   sl.Line,
+							StepName:  sl.StepName,
+						})
+					}
 				}
 			}
 
@@ -453,6 +460,39 @@ func (s *ClocheServer) recordStepStart(ctx context.Context, runID, stepName stri
 	}
 }
 
+// recordStepUsage records a running (not-yet-final) token usage update for a
+// step that is still executing, streamed from the agent as it works, so
+// burn-rate queries can include work in progress instead of reading zero
+// until the step completes. No-op if the captures store doesn't support
+// streaming usage (see ports.StreamingUsageTracker) or the run can't be
+// resolved.
+func (s *ClocheServer) recordStepUsage(ctx context.Context, runID, stepName string, usage *pb.TokenUsage) {
+	tracker, ok := s.captures.(ports.StreamingUsageTracker)
+	if !ok || usage == nil {
+		return
+	}
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil {
+		return
+	}
+	// Resolve the step's actual start time from its still-open capture row,
+	// so QueryUsage can window this in-flight usage the same way it windows
+	// completed usage (by started_at). Falls back to now if not found.
+	startedAt := time.Now()
+	if caps, err := s.captures.GetCaptures(ctx, runID); err == nil {
+		for _, c := range caps {
+			if c.StepName == stepName && c.CompletedAt.IsZero() && !c.StartedAt.IsZero() {
+				startedAt = c.StartedAt
+			}
+		}
+	}
+	_ = tracker.UpdateStreamingUsage(ctx, runID, stepName, run.ProjectDir, &domain.TokenUsage{
+		InputTokens:  usage.InputTokens,
+		OutputTokens: usage.OutputTokens,
+		AgentName:    usage.AgentName,
+	}, startedAt)
+}
+
 // recordStepComplete records that a step has completed: updates the run in the
 // store, saves a capture entry with optional token usage, and broadcasts a log
 // line to live-stream subscribers. When result.Skipped is true, the step is
@@ -494,6 +534,11 @@ func (s *ClocheServer) recordStepComplete(ctx context.Context, runID, stepName s
 		}
 		_ = s.captures.SaveCapture(ctx, runID, exec)
 	}
+	// The step's final usage (if any) has just been persisted above:
+	// clear its streaming entry so it isn't double-counted by QueryUsage.
+	if tracker, ok := s.captures.(ports.StreamingUsageTracker); ok {
+		_ = tracker.ClearStreamingUsage(ctx, runID, stepName)
+	}
 	statusMsg := "step_completed: " + stepName + " -> " + result.Result
 	if result.Skipped {
 		statusMsg = "step_skipped: " + stepName + " -> " + result.Result
@@ -532,6 +577,7 @@ func (s *ClocheServer) failInFlightSteps(ctx context.Context, runID string) {
 		return
 	}
 	now := time.Now()
+	tracker, hasTracker := s.captures.(ports.StreamingUsageTracker)
 	for _, stepName := range run.ActiveSteps {
 		run.RecordStepComplete(stepName, "fail")
 		if s.captures != nil {
@@ -540,6 +586,9 @@ func (s *ClocheServer) failInFlightSteps(ctx context.Context, runID string) {
 				Result:      "fail",
 				CompletedAt: now,
 			})
+		}
+		if hasTracker {
+			_ = tracker.ClearStreamingUsage(ctx, runID, stepName)
 		}
 	}
 	_ = s.store.UpdateRun(ctx, run)
@@ -2691,6 +2740,14 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 	if s.captures != nil {
 		captures, err := s.captures.GetCaptures(ctx, run.ID)
 		if err == nil {
+			// A step still running has only its start-only capture (no
+			// Usage); fill it in from the streaming tracker so token totals
+			// (e.g. cmd/cloche status) reflect work in progress rather than
+			// reading zero until the step completes.
+			var streaming map[string]*domain.TokenUsage
+			if tracker, ok := s.captures.(ports.StreamingUsageTracker); ok {
+				streaming, _ = tracker.GetStreamingUsage(ctx, run.ID)
+			}
 			for _, exec := range captures {
 				se := &pb.StepExecutionStatus{
 					StepName:    exec.StepName,
@@ -2703,6 +2760,12 @@ func (s *ClocheServer) GetStatus(ctx context.Context, req *pb.GetStatusRequest) 
 					se.InputTokens = exec.Usage.InputTokens
 					se.OutputTokens = exec.Usage.OutputTokens
 					se.AgentName = exec.Usage.AgentName
+				} else if exec.CompletedAt.IsZero() {
+					if u, ok := streaming[exec.StepName]; ok {
+						se.InputTokens = u.InputTokens
+						se.OutputTokens = u.OutputTokens
+						se.AgentName = u.AgentName
+					}
 				}
 				resp.StepExecutions = append(resp.StepExecutions, se)
 			}
@@ -4572,6 +4635,7 @@ func (s *ClocheServer) GetUsage(ctx context.Context, req *pb.GetUsageRequest) (*
 			OutputTokens: s.OutputTokens,
 			TotalTokens:  s.TotalTokens,
 			BurnRate:     s.BurnRate,
+			InFlight:     s.InFlight,
 		})
 	}
 	return resp, nil
