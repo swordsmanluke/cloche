@@ -391,6 +391,7 @@
             running: state.stack.running || [],
             queued: state.stack.queued || [],
             done_today: (state.stack.done_today || []).concat(state.extraDone),
+            done_today_date: state.stack.done_today_date,
             cursor: state.doneCursor
         };
         renderStack(merged, initial);
@@ -446,7 +447,15 @@
 
                 var h = document.createElement('h3');
                 h.className = 'console-stack-group-title' + (g.key === 'needs_you' ? ' console-stack-group-title-warn' : '');
-                h.appendChild(document.createTextNode(g.label + ' '));
+                var titleWrap = document.createElement('span');
+                titleWrap.appendChild(document.createTextNode(g.label));
+                if (g.key === 'done_today') {
+                    var dateSpan = document.createElement('span');
+                    dateSpan.className = 'console-stack-group-date';
+                    dateSpan.id = 'console-stack-date-' + g.key;
+                    titleWrap.appendChild(dateSpan);
+                }
+                h.appendChild(titleWrap);
                 var count = document.createElement('span');
                 count.className = 'console-stack-group-count';
                 h.appendChild(count);
@@ -471,12 +480,22 @@
         }
 
         GROUPS.forEach(function (g) { diffGroup(g.key, stack[g.field] || []); });
+        updateDoneTodayDate(stack.done_today_date);
 
         var earlierBtn2 = document.getElementById('console-load-earlier');
         if (earlierBtn2) earlierBtn2.hidden = !stack.cursor;
 
         rebuildFlatIndex();
         applySelectionHighlight();
+    }
+
+    // updateDoneTodayDate reflects the daemon's day-boundary date (e.g. "15
+    // Sep") in the Done-today header, so the cutoff behind the group is
+    // visible rather than implicit — see done_today_date in TaskStack.
+    function updateDoneTodayDate(dateLabel) {
+        var el = document.getElementById('console-stack-date-done_today');
+        if (!el) return;
+        el.textContent = dateLabel ? (' · ' + dateLabel) : '';
     }
 
     function diffGroup(groupKey, entries) {

@@ -149,6 +149,21 @@ func TestAPITaskStack_DoneToday(t *testing.T) {
 	assert.Empty(t, stack.Running)
 }
 
+func TestAPITaskStack_DoneTodayDate(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	seed := domain.NewRun("seed", "develop")
+	seed.ProjectDir = taskStackProjectDir
+	seed.State = domain.RunStateSucceeded
+	seed.StartedAt = time.Now()
+	seed.CompletedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, seed))
+
+	_, stack := getTaskStack(t, h, "")
+	assert.Equal(t, doneTodayDateLabel(time.Now()), stack.DoneTodayDate)
+}
+
 func TestAPITaskStack_ExcludesUserInitiatedBuiltinRun(t *testing.T) {
 	h, store := setupHandler(t)
 	h.taskStore = store
@@ -475,6 +490,29 @@ func TestPaginateDone_NoCompletionsTodayOffersCursorToOlderHistory(t *testing.T)
 	require.Len(t, page2, 1)
 	assert.Equal(t, "old", page2[0].TaskID)
 	assert.Empty(t, cursor2)
+}
+
+func TestPaginateDone_UsesDaemonLocalDayNotUTC(t *testing.T) {
+	// 01:00 UTC on 16 Sep is 18:00 PDT on 15 Sep — the daemon's local
+	// "today" hasn't rolled over yet even though UTC's has.
+	pdt := time.FixedZone("PDT", -7*3600)
+	now := time.Date(2026, 9, 16, 1, 0, 0, 0, time.UTC).In(pdt)
+
+	completedAt := time.Date(2026, 9, 15, 15, 0, 0, 0, pdt) // 3pm PDT, same local day as now
+	candidates := []doneCandidate{
+		{entry: TaskStackDone{TaskID: "afternoon-pdt", RunID: "r"}, completedAt: completedAt},
+	}
+
+	page, cursor := paginateDone(candidates, time.Time{}, false, now)
+	require.Len(t, page, 1, "a task completed earlier the same local day must appear in today's group")
+	assert.Equal(t, "afternoon-pdt", page[0].TaskID)
+	assert.Empty(t, cursor)
+}
+
+func TestDoneTodayDateLabel_UsesGivenZone(t *testing.T) {
+	pdt := time.FixedZone("PDT", -7*3600)
+	now := time.Date(2026, 9, 16, 1, 0, 0, 0, time.UTC).In(pdt)
+	assert.Equal(t, "15 Sep", doneTodayDateLabel(now))
 }
 
 func TestDecodeTaskStackCursor_Invalid(t *testing.T) {

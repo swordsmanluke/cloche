@@ -72,7 +72,11 @@ On the right, daemon instruments for the active project:
 
 The left rail groups the active project's tasks — **Needs you**, **Running**, **Queued**,
 **Done today** (with a **Load earlier** button paging further into history) — from
-`GET /api/projects/{slug}/tasks/stack`. It polls every few seconds using conditional GET
+`GET /api/projects/{slug}/tasks/stack`. The **Done today** header shows the daemon-local
+calendar date its day boundary falls on (e.g. "Done today · 15 Sep", from the stack's
+`done_today_date`), since "today" is the daemon's local day, not UTC.
+
+It polls every few seconds using conditional GET
 (`ETag`/`If-None-Match`), so a poll with nothing new costs a 304 rather than a re-render;
 when something *has* changed, only the affected rows update in place.
 

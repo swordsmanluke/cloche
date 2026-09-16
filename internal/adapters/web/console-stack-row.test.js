@@ -154,3 +154,21 @@ test('done-today rows: green dot for a succeeded outcome, red for failed', async
         window.close();
     }
 });
+
+test('done-today header shows the server-supplied day-boundary date', async () => {
+    const window = await bootConsole({
+        needs_you: [], running: [], queued: [],
+        done_today: [
+            { task_id: 'cloche-7pf5', title: 'recover missing result marker', run_id: 'r3', outcome: 'succeeded', duration_seconds: 480 }
+        ],
+        done_today_date: '15 Sep'
+    });
+    try {
+        const headers = window.document.querySelectorAll('.console-stack-group-title');
+        const doneHeader = Array.from(headers).find((h) => h.textContent.indexOf('Done today') === 0);
+        assert.ok(doneHeader, 'Done today header exists');
+        assert.equal(doneHeader.querySelector('.console-stack-group-date').textContent, ' · 15 Sep');
+    } finally {
+        window.close();
+    }
+});

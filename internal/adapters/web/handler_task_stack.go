@@ -86,7 +86,11 @@ type TaskStack struct {
 	Running   []TaskStackRunning  `json:"running"`
 	Queued    []TaskStackQueued   `json:"queued"`
 	DoneToday []TaskStackDone     `json:"done_today"`
-	Cursor    string              `json:"cursor,omitempty"`
+	// DoneTodayDate is the daemon-local calendar date (e.g. "15 Sep") the
+	// Done-today group's day boundary falls on, so the console can show the
+	// cutoff in the group header rather than leaving it implicit.
+	DoneTodayDate string `json:"done_today_date,omitempty"`
+	Cursor        string `json:"cursor,omitempty"`
 }
 
 // handleAPITaskStack returns the bounded, grouped task list for a project.
@@ -177,6 +181,13 @@ func decodeTaskStackCursor(s string) (time.Time, bool, error) {
 	return t, true, nil
 }
 
+// doneTodayDateLabel formats now's calendar date in its own time zone (the
+// daemon's local zone in production) as a short display label, matching the
+// day boundary paginateDone uses to decide what counts as "today".
+func doneTodayDateLabel(now time.Time) string {
+	return now.Format("2 Jan")
+}
+
 // doneCandidate pairs a rendered Done entry with its completion time, kept
 // alongside the entry so filtering/sorting doesn't need to re-parse it.
 type doneCandidate struct {
@@ -246,6 +257,7 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursorT
 	}
 
 	now := time.Now()
+	stack.DoneTodayDate = doneTodayDateLabel(now)
 	var doneCandidates []doneCandidate
 
 	for _, group := range groupTopLevelRunsByTask(runs) {
@@ -322,7 +334,7 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursorT
 // given, or everything strictly before the cursor otherwise. It returns the
 // page and a cursor for the next "earlier" page, if more remain.
 func paginateDone(candidates []doneCandidate, cursorTime time.Time, hasCursor bool, now time.Time) ([]TaskStackDone, string) {
-	startOfToday := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
 	var eligible []doneCandidate
 	for _, c := range candidates {
