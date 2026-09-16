@@ -116,11 +116,12 @@ Shows the selected task's full detail:
 - **Facts row** — a single wrapping strip of label/value pairs. When a task has more than
   one attempt, its leading entry is a group of attempt chips (attempt number + short run
   ID; outcome and duration are in the chip's tooltip; the current attempt and any failed
-  attempts are colored distinctly; `[` and `]` switch between them). The rest of the strip
-  is the selected attempt's top-level run ID, child run IDs, container ID and state, token
-  usage per agent, the prompt file and git revision used, and (on a retried attempt) which
-  step the previous attempt failed at. Backed by `GET /api/projects/{slug}/tasks/{taskId}/attempts`
-  for the attempt list and `GET /api/runs/{id}` for the selected attempt's detail.
+  attempts are colored distinctly; `Shift+[` and `Shift+]` switch between them). The rest
+  of the strip is the selected attempt's top-level run ID, child run IDs, container ID and
+  state, token usage per agent, the prompt file and git revision used, and (on a retried
+  attempt) which step the previous attempt failed at. Backed by
+  `GET /api/projects/{slug}/tasks/{taskId}/attempts` for the attempt list and
+  `GET /api/runs/{id}` for the selected attempt's detail.
 - **Step strip** — one horizontal segment per step of the top-level run, with a spawned
   child run's steps inlined immediately after the workflow step that spawned them (the
   flattened-run tree already used by `GET /api/runs/{id}`) — the parent segment gets a `↳`
@@ -178,7 +179,8 @@ once the project list loads if that preference is empty or stale.
 | `Esc` | Close an open drawer/view, else return to the stack (clears the centre pane) |
 | `a` | Open the activity stream |
 | `l` | Open the project ledger |
-| `[` / `]` | Switch to the previous / next attempt |
+| `[` / `]` | Scope the log to the previous / next step, crossing into child-run steps and wrapping at the ends |
+| `Shift+[` / `Shift+]` | Switch to the previous / next attempt |
 | `g` / `G` | Scroll the log to the top / bottom |
 | `f` | Toggle following the live log to its newest line |
 | `r` | Release your claim on the open needs-you task (when available) |
@@ -193,10 +195,11 @@ once the project list loads if that preference is empty or stale.
 Shows a one-line activity ticker on the left and a short, contextual set of key hints on
 the right — the ticker is the only real content, so it gets the width; the hints are
 chrome that changes with the selected task's state rather than always listing every
-shortcut (the full list stays behind `?`). A running task shows `j`/`k`, `[`/`]`, `tab`,
-`f`, `a`; a needs-you task shows `j`/`k`, `[`/`]`, and whichever of `r`/`x` its attention
-item actually offers; anything else falls back to a short baseline. `g`/`G` and the log
-type filter live in the log bar instead, since they act on the log pane, not the task.
+shortcut (the full list stays behind `?`). A running task shows `j`/`k`, `[`/`]` step,
+`⇧[`/`⇧]` attempt, `tab`, `f`, `a`; a needs-you task shows `j`/`k`, `[`/`]` step, `⇧[`/`⇧]`
+attempt, and whichever of `r`/`x` its attention item actually offers; anything else falls
+back to a short baseline. `g`/`G` and the log type filter live in the log bar instead,
+since they act on the log pane, not the task.
 
 The ticker packs as many of the most recent `activity_log` events for the active project
 as fit on the line (newest first, polled from `GET /api/activity` every 5s), each prefixed

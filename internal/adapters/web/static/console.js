@@ -831,9 +831,15 @@
                 e.preventDefault();
                 break;
             case '[':
-                if (detail) { switchAttempt(-1); e.preventDefault(); }
+                if (detail) { switchStep(-1); e.preventDefault(); }
                 break;
             case ']':
+                if (detail) { switchStep(1); e.preventDefault(); }
+                break;
+            case '{':
+                if (detail) { switchAttempt(-1); e.preventDefault(); }
+                break;
+            case '}':
                 if (detail) { switchAttempt(1); e.preventDefault(); }
                 break;
             case 'g':
@@ -1621,7 +1627,8 @@
         if (headerState === 'needs_you') {
             var hints = [
                 { keys: ['j', 'k'], label: 'task' },
-                { keys: ['[', ']'], label: 'attempt' }
+                { keys: ['[', ']'], label: 'step' },
+                { keys: ['⇧[', '⇧]'], label: 'attempt' }
             ];
             if (hasNeedsYouAction('release')) hints.push({ keys: ['r'], label: 'release' });
             if (hasNeedsYouAction('close')) hints.push({ keys: ['x'], label: 'close' });
@@ -1631,7 +1638,8 @@
         if (headerState === 'running') {
             return [
                 { keys: ['j', 'k'], label: 'task' },
-                { keys: ['[', ']'], label: 'attempt' },
+                { keys: ['[', ']'], label: 'step' },
+                { keys: ['⇧[', '⇧]'], label: 'attempt' },
                 { keys: ['tab'], label: 'project' },
                 { keys: ['f'], label: 'follow' },
                 { keys: ['a'], label: 'activity' }
@@ -1641,7 +1649,8 @@
         if (detail) {
             return [
                 { keys: ['j', 'k'], label: 'task' },
-                { keys: ['[', ']'], label: 'attempt' },
+                { keys: ['[', ']'], label: 'step' },
+                { keys: ['⇧[', '⇧]'], label: 'attempt' },
                 { keys: ['tab'], label: 'project' },
                 { keys: ['a'], label: 'activity' }
             ];
@@ -2066,9 +2075,38 @@
             clearStepScope();
             return;
         }
+        scopeToStep(step);
+    }
+
+    function scopeToStep(step) {
+        if (!detail) return;
         detail.scopedStep = { run_id: step.run_id, step_name: step.step_name };
         if (detail.run) renderStepStrip(detail.run);
         loadStepOutput();
+    }
+
+    // switchStep moves the scoped step by delta through the flattened step
+    // list (see flattenRun on the server), which is already in strip order —
+    // a workflow step immediately followed by its child-run steps — so this
+    // walks it directly rather than re-deriving strip order via
+    // clusterSteps. Wraps at both ends; with nothing scoped yet, ']' starts
+    // at the first step and '[' at the last, same as wrapping from an
+    // implicit "before the start" position.
+    function switchStep(delta) {
+        if (!detail || !detail.run) return;
+        var steps = detail.run.steps || [];
+        if (!steps.length) return;
+        var currentIndex = -1;
+        if (detail.scopedStep) {
+            for (var i = 0; i < steps.length; i++) {
+                if (steps[i].run_id === detail.scopedStep.run_id && steps[i].step_name === detail.scopedStep.step_name) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+        }
+        var next = ((currentIndex + delta) % steps.length + steps.length) % steps.length;
+        scopeToStep(steps[next]);
     }
 
     function clearStepScope() {

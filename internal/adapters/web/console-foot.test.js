@@ -144,6 +144,97 @@ async function selectFirstRow(window) {
     }
 }
 
+async function waitFor(predicate) {
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+        if (predicate()) return true;
+        await delay(20);
+    }
+    return predicate();
+}
+
+function dispatchKey(window, key) {
+    window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: key, bubbles: true, cancelable: true }));
+}
+
+function selectedStepName(window) {
+    const seg = window.document.querySelector('.console-step-strip .console-step-segment-selected .console-step-segment-name');
+    return seg ? seg.textContent.trim() : null;
+}
+
+function currentAttemptChipText(window) {
+    const chip = window.document.querySelector('.console-attempt-chip-on');
+    return chip ? chip.textContent.trim() : null;
+}
+
+test('[ and ] scope the log to the previous/next step in strip order, crossing into child-run steps and wrapping at the ends', async () => {
+    const r1Steps = [
+        { run_id: 'r1', step_name: 'alpha', depth: 0, result: 'success', duration: '1s' },
+        { run_id: 'child-r1', step_name: 'inner-a', depth: 1, result: 'success', duration: '1s' },
+        { run_id: 'child-r1', step_name: 'inner-b', depth: 1, result: 'success', duration: '1s' },
+        { run_id: 'r1', step_name: 'beta', depth: 0, result: 'success', duration: '1s' }
+    ];
+    const window = await bootConsole({
+        stack: {
+            needs_you: [], queued: [], done_today: [],
+            running: [{ task_id: 'cloche-abcd', title: 'multi-step task', run_id: 'r1', attempt: 1, elapsed_seconds: 10 }]
+        },
+        attemptsByTask: {
+            'cloche-abcd': {
+                title: 'multi-step task',
+                attempts: [
+                    { attempt_num: 1, attempt_id: 'a1', run_id: 'r1', outcome: '' },
+                    { attempt_num: 2, attempt_id: 'a2', run_id: 'r2', outcome: '' }
+                ]
+            }
+        },
+        runsById: {
+            r1: { id: 'r1', state: 'succeeded', steps: r1Steps },
+            r2: { id: 'r2', state: 'succeeded', steps: [{ run_id: 'r2', step_name: 'gamma', depth: 0, result: 'success', duration: '1s' }] }
+        }
+    });
+    try {
+        await selectFirstRow(window);
+        assert.ok(await waitFor(() => window.document.querySelectorAll('.console-step-strip .console-step-segment').length === 4));
+
+        // Nothing scoped yet: ']' starts at the first step.
+        dispatchKey(window, ']');
+        assert.ok(await waitFor(() => (selectedStepName(window) || '').indexOf('alpha') !== -1));
+
+        // Crosses into the child-run steps in strip order.
+        dispatchKey(window, ']');
+        assert.equal(selectedStepName(window), 'inner-a');
+        dispatchKey(window, ']');
+        assert.equal(selectedStepName(window), 'inner-b');
+        dispatchKey(window, ']');
+        assert.ok((selectedStepName(window) || '').indexOf('beta') !== -1);
+
+        // Wraps back to the first step past the end.
+        dispatchKey(window, ']');
+        assert.ok((selectedStepName(window) || '').indexOf('alpha') !== -1);
+
+        // Wraps to the last step going backward past the start.
+        dispatchKey(window, '[');
+        assert.ok((selectedStepName(window) || '').indexOf('beta') !== -1);
+
+        // Shift+] switches attempts instead (a less prominent binding),
+        // resetting the step strip to the new attempt's run.
+        dispatchKey(window, '}');
+        assert.ok(await waitFor(() => currentAttemptChipText(window) === '2 r2'));
+        assert.ok(await waitFor(() => window.document.querySelectorAll('.console-step-strip .console-step-segment').length === 1));
+        assert.equal(selectedStepName(window), null);
+
+        dispatchKey(window, ']');
+        assert.ok((selectedStepName(window) || '').indexOf('gamma') !== -1);
+
+        // Shift+[ switches back to the previous attempt.
+        dispatchKey(window, '{');
+        assert.ok(await waitFor(() => currentAttemptChipText(window) === '1 r1'));
+    } finally {
+        window.close();
+    }
+});
+
 test('no task selected: short baseline hints, no task-specific keys', async () => {
     const window = await bootConsole({ stack: { needs_you: [], running: [], queued: [], done_today: [] } });
     try {
@@ -166,7 +257,7 @@ test('running task: j/k, attempt, project, follow, activity — no g/G or filter
     });
     try {
         await selectFirstRow(window);
-        assert.deepEqual(footHints(window), ['j/k task', '[/] attempt', 'tab project', 'f follow', 'a activity']);
+        assert.deepEqual(footHints(window), ['j/k task', '[/] step', '⇧[/⇧] attempt', 'tab project', 'f follow', 'a activity']);
     } finally {
         window.close();
     }
@@ -185,7 +276,7 @@ test('needs-you task: only the actions the attention item actually offers show u
     });
     try {
         await selectFirstRow(window);
-        assert.deepEqual(footHints(window), ['j/k task', '[/] attempt', 'r release', 'x close']);
+        assert.deepEqual(footHints(window), ['j/k task', '[/] step', '⇧[/⇧] attempt', 'r release', 'x close']);
     } finally {
         window.close();
     }
@@ -204,7 +295,7 @@ test('needs-you task with no release/close action: hints drop to the base pair',
     });
     try {
         await selectFirstRow(window);
-        assert.deepEqual(footHints(window), ['j/k task', '[/] attempt']);
+        assert.deepEqual(footHints(window), ['j/k task', '[/] step', '⇧[/⇧] attempt']);
     } finally {
         window.close();
     }
