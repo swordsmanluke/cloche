@@ -1024,9 +1024,11 @@ h2 {
 .console-step-strip {
     display: flex;
     align-items: stretch;
+    flex: 0 0 auto;
     padding: 0.6rem 1.1rem;
     border-bottom: 1px solid var(--ln);
     overflow-x: auto;
+    overflow-y: hidden;
 }
 
 .console-step-segment {
