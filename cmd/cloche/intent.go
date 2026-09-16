@@ -782,12 +782,8 @@ func printFullRescanPreview(projectDir string, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-	var repos []scan.RepoInput
-	for _, r := range cfg.Repositories {
-		repos = append(repos, scan.RepoInput{Name: r.Name, Dir: filepath.Join(projectDir, r.Path)})
-	}
 
-	collection, _, err := scan.CollectMulti(scan.RepoInput{Dir: projectDir}, repos, &intent.ScanState{}, nil, excludedIntentTrackingSteps(projectDir))
+	collection, err := scan.Collect(projectDir, cfg, &intent.ScanState{}, nil, excludedIntentTrackingSteps(projectDir))
 	if err != nil {
 		return err
 	}
@@ -898,11 +894,7 @@ func runIntentCollectSources(projectDir, outDir string, full bool) (*scan.Collec
 
 	cfg, err := config.Load(absProjectDir)
 	if err != nil {
-		return nil, intent.ScanStats{}, fmt.Errorf("loading config: %w", err)
-	}
-	var repos []scan.RepoInput
-	for _, r := range cfg.Repositories {
-		repos = append(repos, scan.RepoInput{Name: r.Name, Dir: filepath.Join(absProjectDir, r.Path)})
+		cfg = nil // soft-fail: a project with no config.toml is legacy single-tree
 	}
 
 	collectFrom := prev
@@ -910,11 +902,14 @@ func runIntentCollectSources(projectDir, outDir string, full bool) (*scan.Collec
 		collectFrom = &intent.ScanState{}
 	}
 
-	collection, next, err := scan.CollectMulti(scan.RepoInput{Dir: absProjectDir}, repos, collectFrom, nil, excludedIntentTrackingSteps(absProjectDir))
+	collection, err := scan.Collect(absProjectDir, cfg, collectFrom, nil, excludedIntentTrackingSteps(absProjectDir))
 	if err != nil {
 		return nil, intent.ScanStats{}, err
 	}
+
+	next := collection.NextState(prev)
 	next.LastScanAt = time.Now().UTC()
+	next.LastScanStats = collection.Stats
 
 	if err := store.SaveScanState(next); err != nil {
 		return nil, intent.ScanStats{}, fmt.Errorf("saving scan state: %w", err)

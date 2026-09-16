@@ -21,6 +21,7 @@ import (
 
 	"github.com/swordsmanluke/cloche/internal/attention"
 	"github.com/swordsmanluke/cloche/internal/builtin"
+	"github.com/swordsmanluke/cloche/internal/config"
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/dsl"
 	"github.com/swordsmanluke/cloche/internal/intent"
@@ -2046,6 +2047,7 @@ func (h *Handler) handleAPIPromptDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	file := r.URL.Query().Get("file")
 	sha := r.URL.Query().Get("sha")
+	repo := r.URL.Query().Get("repo")
 	if sha == "" {
 		http.Error(w, "sha required", http.StatusBadRequest)
 		return
@@ -2059,6 +2061,16 @@ func (h *Handler) handleAPIPromptDiff(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	gitDir := dir
+	if repo != "" {
+		resolved, ok := resolveRepoDir(dir, repo)
+		if !ok {
+			http.Error(w, "unknown repo", http.StatusNotFound)
+			return
+		}
+		gitDir = resolved
+	}
+
 	// file is optional: omitted (e.g. an intent requirement's commit
 	// provenance, which isn't tied to one file), the whole commit is shown.
 	var cmd *exec.Cmd
@@ -2067,7 +2079,7 @@ func (h *Handler) handleAPIPromptDiff(w http.ResponseWriter, r *http.Request) {
 	} else {
 		cmd = exec.Command("git", "show", sha)
 	}
-	cmd.Dir = dir
+	cmd.Dir = gitDir
 	out, err := cmd.Output()
 	if err != nil {
 		http.Error(w, "diff not available", http.StatusNotFound)
@@ -2075,6 +2087,25 @@ func (h *Handler) handleAPIPromptDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Write(out)
+}
+
+// resolveRepoDir resolves repoSubPath (a [[repositories]] entry's SubPath,
+// e.g. "repos/anarkana" — see config.ResolvedRepo) to that repository's
+// absolute working-tree directory within the project at projectDir. Returns
+// false if the project has no config.toml, or no configured repository
+// matches — repoSubPath is only ever compared against the known configured
+// set, never used to build a path directly, so it carries no traversal risk.
+func resolveRepoDir(projectDir, repoSubPath string) (string, bool) {
+	cfg, err := config.Load(projectDir)
+	if err != nil {
+		return "", false
+	}
+	for _, r := range cfg.ResolveRepositories(projectDir) {
+		if r.SubPath == repoSubPath {
+			return r.Path, true
+		}
+	}
+	return "", false
 }
 
 func (h *Handler) handleAPIWorkflows(w http.ResponseWriter, r *http.Request) {
@@ -2599,12 +2630,28 @@ func provenanceLink(label string, p intent.Provenance) string {
 	case intent.ProvenancePrompt:
 		return "/tasks/" + url.PathEscape(p.Ref)
 	case intent.ProvenanceCommit:
-		return "/api/projects/" + url.PathEscape(label) + "/info/prompt-diff?sha=" + url.QueryEscape(p.Ref)
+		repo, sha := splitCommitRef(p.Ref)
+		link := "/api/projects/" + url.PathEscape(label) + "/info/prompt-diff?sha=" + url.QueryEscape(sha)
+		if repo != "" {
+			link += "&repo=" + url.QueryEscape(repo)
+		}
+		return link
 	case intent.ProvenanceDoc:
 		return "/api/projects/" + url.PathEscape(label) + "/intent/doc?path=" + url.QueryEscape(p.Ref)
 	default:
 		return ""
 	}
+}
+
+// splitCommitRef splits a commit provenance ref into its repo qualifier and
+// bare SHA. A ref of the form "<repo-subpath>@<sha>" (see
+// scan.CommitSource.Ref) yields both; a bare SHA (the project root, or any
+// legacy project with no [[repositories]] configured) yields repo == "".
+func splitCommitRef(ref string) (repo, sha string) {
+	if i := strings.LastIndex(ref, "@"); i >= 0 {
+		return ref[:i], ref[i+1:]
+	}
+	return "", ref
 }
 
 func toAPIScope(s intent.Scope) apiScope {

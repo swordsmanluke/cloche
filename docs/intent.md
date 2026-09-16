@@ -167,18 +167,41 @@ hand.
 empty, so the very first scan of a project already walks everything it looks at: every
 doc matching the configured globs, the full `git log`, and every existing
 `.cloche/runs/` directory — there's no separate "shallow first pass" to worry about.
+`collect-sources` walks the project directory itself plus every repository declared in
+`.cloche/config.toml`'s `[[repositories]]` (see `internal/intent/scan/collect.go`),
+resolved the same way container extraction resolves them (`internal/adapters/grpc/repos.go`
+/ `config.ResolveRepositories`). A project with no `[[repositories]]` configured scans
+just the project directory, exactly as before repositories existed.
 
 **Multi-repo projects.** In a project laid out as a thin orchestration wrapper with one
 or more repositories checked out under it (e.g. `repos/<name>/`, declared via
 `[[repositories]]` — see `docs/workflows.md`), the wrapper's own `.git` history is
 typically tiny (often just one commit per completed task), while the real project
 history, docs, and design decisions live inside `repos/<name>/.git` and
-`repos/<name>/docs/`. `collect-sources` descends into every `[[repositories]]` entry in
-addition to the project root (see `internal/intent/scan/collect_multi.go`): each
-configured repo's docs, `git log`, and `.cloche/runs/`/`.cloche/logs/` are mined the
-same way the root's are, with their own independent cursors (`scan-state.yaml`'s
-`repos.<name>.*`), namespaced under `repos/<name>/` in the material handed to the
-extract step so a wrapper doc and a same-named doc inside a wrapped repo never collide.
+`repos/<name>/docs/`. `collect-sources` mines both: the wrapper's own docs, commits, and
+run transcripts, *and* each configured repository's docs (glob-matched relative to the
+repo's own root), `git log` (walked with that repo's own commit cursor), and
+`.cloche/runs/`/`.cloche/logs/` (if the repo has its own `.cloche/` state — most
+wrapped repos won't).
+
+Material from a configured repository is provenance-tagged with its location so a
+requirement's source is never ambiguous: a doc at `repos/anarkana/docs/x.md` is recorded
+with `provenance.ref = "repos/anarkana/docs/x.md"`, and a commit is recorded as
+`provenance.ref = "repos/anarkana@<sha>"` (a bare SHA, as before, for a commit at the
+project root or in a legacy project with no `[[repositories]]`). The dashboard's
+provenance links resolve these the same way: a doc link reads the file at its
+repo-qualified path (already project-relative, so no extra plumbing is needed), and the
+commit link (`GET /api/projects/{name}/info/prompt-diff`) takes an additional `repo=`
+query parameter naming the repo's configured path, so `git show`/`git diff` run inside
+that repo's own working tree instead of the wrapper's.
+
+Each source (the project root, and every configured repository) keeps its own
+incremental-scan cursor in `scan-state.yaml`, so a commit merged into `repos/anarkana`
+doesn't cause the wrapper's own already-mined commits to be re-walked, or vice versa. A
+`scan-state.yaml` written before this feature (a single top-level cursor rather than one
+per repo) is migrated automatically on the next scan: the old cursor becomes the project
+root's cursor, and every configured repository starts its own incremental history from
+scratch on its next scan (equivalent to that repo's first scan).
 
 **Collection stats.** Because a thin scan (a handful of docs, one commit, one
 transcript) otherwise looks the same as a rich one until the resulting requirements turn

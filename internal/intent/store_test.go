@@ -160,10 +160,19 @@ func TestStore_SaveAndLoadScanState(t *testing.T) {
 	store := intent.NewStore(dir)
 
 	st := &intent.ScanState{
-		LastCommit:  "abc123",
-		ScannedRuns: []string{"run-1", "run-2"},
-		ScannedDocs: map[string]string{"CLAUDE.md": "deadbeef"},
-		LastScanAt:  time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC),
+		Repos: map[string]*intent.RepoScanState{
+			"": {
+				LastCommit:  "abc123",
+				ScannedRuns: []string{"run-1", "run-2"},
+				ScannedDocs: map[string]string{"CLAUDE.md": "deadbeef"},
+			},
+			"anarkana": {
+				LastCommit:  "def456",
+				ScannedRuns: []string{"run-3"},
+				ScannedDocs: map[string]string{"docs/x.md": "cafebabe"},
+			},
+		},
+		LastScanAt: time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC),
 	}
 
 	require.NoError(t, store.SaveScanState(st))
@@ -175,15 +184,17 @@ func TestStore_SaveAndLoadScanState(t *testing.T) {
 	assert.Equal(t, st, got)
 }
 
-func TestStore_SaveAndLoadScanState_WithReposAndStats(t *testing.T) {
+func TestStore_SaveAndLoadScanState_WithStats(t *testing.T) {
 	dir := t.TempDir()
 	store := intent.NewStore(dir)
 
 	st := &intent.ScanState{
-		LastCommit:  "abc123",
-		ScannedRuns: []string{"run-1"},
-		ScannedDocs: map[string]string{"CLAUDE.md": "deadbeef"},
-		Repos: map[string]*intent.RepoCursor{
+		Repos: map[string]*intent.RepoScanState{
+			"": {
+				LastCommit:  "abc123",
+				ScannedRuns: []string{"run-1"},
+				ScannedDocs: map[string]string{"CLAUDE.md": "deadbeef"},
+			},
 			"docs-repo": {
 				LastCommit:  "def456",
 				ScannedRuns: []string{"run-2"},
@@ -202,6 +213,35 @@ func TestStore_SaveAndLoadScanState_WithReposAndStats(t *testing.T) {
 	require.NoError(t, err)
 	got.LastScanAt = st.LastScanAt // avoid time.Time equality gotchas (wall/monotonic)
 	assert.Equal(t, st, got)
+}
+
+// TestStore_LoadScanState_MigratesLegacySingleCursor guards the migration
+// path for a pre-multi-repo scan-state.yaml: LoadScanState folds the old
+// top-level cursor fields into Repos[""] (the project root's cursor) rather
+// than losing them, so an existing single-repo project's incremental scan
+// stays incremental across the upgrade.
+func TestStore_LoadScanState_MigratesLegacySingleCursor(t *testing.T) {
+	dir := t.TempDir()
+	store := intent.NewStore(dir)
+
+	legacy := &intent.ScanState{
+		LastCommit:  "abc123",
+		ScannedRuns: []string{"run-1", "run-2"},
+		ScannedDocs: map[string]string{"CLAUDE.md": "deadbeef"},
+	}
+	require.NoError(t, store.SaveScanState(legacy))
+
+	got, err := store.LoadScanState()
+	require.NoError(t, err)
+
+	assert.Empty(t, got.LastCommit, "legacy top-level cursor should be cleared after migration")
+	assert.Empty(t, got.ScannedRuns)
+	assert.Empty(t, got.ScannedDocs)
+
+	require.Contains(t, got.Repos, "")
+	assert.Equal(t, "abc123", got.Repos[""].LastCommit)
+	assert.Equal(t, []string{"run-1", "run-2"}, got.Repos[""].ScannedRuns)
+	assert.Equal(t, map[string]string{"CLAUDE.md": "deadbeef"}, got.Repos[""].ScannedDocs)
 }
 
 func TestStore_Exists(t *testing.T) {

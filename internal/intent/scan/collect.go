@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/swordsmanluke/cloche/internal/config"
 	"github.com/swordsmanluke/cloche/internal/intent"
 )
 
@@ -36,24 +37,59 @@ var noiseCommitRe = regexp.MustCompile(`^Version \d+\.\d+\.\d+$`)
 
 // DocSource is one changed-or-new doc file since the last scan.
 type DocSource struct {
-	Path    string // project-relative
+	// Repo is the SubPath of the repository this doc came from ("" for the
+	// project root itself, or any legacy project with no [[repositories]]
+	// configured).
+	Repo string
+	// Path is project-root-relative, already qualified by Repo when Repo is
+	// set (e.g. "repos/anarkana/docs/x.md") — this is exactly the
+	// provenance ref an extract-step candidate should record for a doc.
+	Path    string
 	Content string
 	Hash    string // sha256 hex of Content
 }
 
 // CommitSource is one non-noise commit since the last scan's LastCommit cursor.
 type CommitSource struct {
+	// Repo is the SubPath of the repository this commit belongs to ("" for
+	// the project root itself, or any legacy project with no
+	// [[repositories]] configured).
+	Repo    string
 	SHA     string
 	Subject string
 	Patch   string
 }
 
+// Ref renders c's provenance-ready commit identifier: the bare SHA at the
+// project root / a legacy project, or "<repo-subpath>@<sha>" for a
+// configured repository.
+func (c CommitSource) Ref() string {
+	if c.Repo == "" {
+		return c.SHA
+	}
+	return c.Repo + "@" + c.SHA
+}
+
 // RunSource is the task prompt and/or transcript material for one run
 // directory not yet covered by the last scan's ScannedRuns cursor.
 type RunSource struct {
-	ID         string // .cloche/runs/<id> directory name
+	// Repo is the SubPath of the repository this run belongs to ("" for the
+	// project root itself, or any legacy project with no [[repositories]]
+	// configured).
+	Repo       string
+	ID         string // .cloche/runs/<id> directory name, unqualified
 	TaskPrompt string
 	Transcript string
+}
+
+// Ref renders r's provenance-ready run identifier: the bare run ID at the
+// project root / a legacy project, or "<repo-subpath>/<run-id>" for a
+// configured repository.
+func (r RunSource) Ref() string {
+	if r.Repo == "" {
+		return r.ID
+	}
+	return r.Repo + "/" + r.ID
 }
 
 // maxTranscriptBytes caps how much log content is pulled in per run so a
@@ -67,15 +103,17 @@ type Collection struct {
 	Commits []CommitSource
 	Runs    []RunSource
 
-	// headCommit is the resolved HEAD sha at collection time (empty if the
-	// project isn't a git repo or has no commits). The cursor always
-	// advances to it, independent of how many commits were kept after
-	// noise filtering, so noise-only ranges don't get re-walked forever.
-	headCommit string
-	// visitedRuns are every run directory examined, including ones with no
-	// task prompt or transcript content, so an empty run directory isn't
-	// re-examined on every scan.
-	visitedRuns []string
+	// nextRepos holds the advanced RepoScanState for every source Collect
+	// walked, keyed by repo name ("" for the project root). NextState
+	// overlays this onto prev's cursors for repos Collect didn't touch.
+	nextRepos map[string]*intent.RepoScanState
+
+	// Stats records what this pass collected, per repo (root plus every
+	// configured [[repositories]] entry), for callers that persist it as
+	// ScanState.LastScanStats and report it (collect-sources' per-repo log
+	// lines, `cloche intent scan`'s summary, the Requirements view's meta
+	// line).
+	Stats intent.ScanStats
 }
 
 // HasNew reports whether Collect found anything worth handing to the extract
@@ -85,37 +123,67 @@ func (c *Collection) HasNew() bool {
 }
 
 // NextState returns the ScanState to persist after a scan that collected c,
-// advancing prev's cursors. prev is never mutated.
+// advancing prev's per-repo cursors. prev is never mutated.
 func (c *Collection) NextState(prev *intent.ScanState) *intent.ScanState {
 	if prev == nil {
 		prev = &intent.ScanState{}
 	}
 	next := &intent.ScanState{
-		LastCommit:  prev.LastCommit,
-		ScannedRuns: append([]string{}, prev.ScannedRuns...),
-		ScannedDocs: map[string]string{},
+		Repos:      map[string]*intent.RepoScanState{},
+		LastScanAt: prev.LastScanAt,
 	}
-	for k, v := range prev.ScannedDocs {
-		next.ScannedDocs[k] = v
+	for name, rs := range prev.Repos {
+		next.Repos[name] = rs
 	}
-	for _, d := range c.Docs {
-		next.ScannedDocs[d.Path] = d.Hash
+	for name, rs := range c.nextRepos {
+		next.Repos[name] = rs
 	}
-	if c.headCommit != "" {
-		next.LastCommit = c.headCommit
-	}
-	next.ScannedRuns = append(next.ScannedRuns, c.visitedRuns...)
 	return next
 }
 
-// Collect gathers material changed since prev's cursors: docs matching
-// docGlobs (DefaultDocGlobs when empty) whose content hash changed, commits
-// since prev.LastCommit with per-task version-bump noise filtered out, and
-// run directories under .cloche/runs/ not yet listed in prev.ScannedRuns.
+// RepoSource is one source tree Collect walks: the project root itself, or
+// one repository declared via [[repositories]].
+type RepoSource struct {
+	// Name is the repo's [[repositories]] name ("" for the project root).
+	Name string
+	// Path is the absolute filesystem path to the source tree.
+	Path string
+	// SubPath is Path's location relative to the project root ("" for the
+	// project root itself). Used to qualify provenance refs and on-disk
+	// output paths so multiple repos' material never collides.
+	SubPath string
+}
+
+// repoSources returns the project root plus every repository configured via
+// cfg's [[repositories]] entries. The project root is always included: even
+// a thin orchestration wrapper's own docs, commits, and runs may carry
+// intent, so a project with configured repositories is scanned as root +
+// repos, never repos instead of root. A nil cfg or one with no configured
+// repositories returns just the project root, matching pre-multi-repo
+// behavior exactly.
+func repoSources(projectDir string, cfg *config.Config) []RepoSource {
+	sources := []RepoSource{{Path: projectDir}}
+	if cfg == nil || len(cfg.Repositories) == 0 {
+		return sources
+	}
+	for _, r := range cfg.ResolveRepositories(projectDir) {
+		sources = append(sources, RepoSource{Name: r.Name, Path: r.Path, SubPath: r.SubPath})
+	}
+	return sources
+}
+
+// Collect gathers material changed since prev's cursors, across the project
+// root and every repository configured via cfg's [[repositories]] (see
+// repoSources): docs matching docGlobs (DefaultDocGlobs when empty) whose
+// content hash changed, commits since each source's own LastCommit cursor
+// with per-task version-bump noise filtered out, and run directories under
+// each source's .cloche/runs/ not yet listed in its ScannedRuns cursor.
 // excludedSteps names steps configured with `intent_tracking = false`:
 // their log files are left out of each run's mined Transcript so
-// noise/sensitive step output never seeds requirements.
-func Collect(projectDir string, prev *intent.ScanState, docGlobs []string, excludedSteps map[string]bool) (*Collection, error) {
+// noise/sensitive step output never seeds requirements. cfg may be nil, in
+// which case only the project root is scanned, exactly as before
+// [[repositories]] existed.
+func Collect(projectDir string, cfg *config.Config, prev *intent.ScanState, docGlobs []string, excludedSteps map[string]bool) (*Collection, error) {
 	if prev == nil {
 		prev = &intent.ScanState{}
 	}
@@ -123,28 +191,151 @@ func Collect(projectDir string, prev *intent.ScanState, docGlobs []string, exclu
 		docGlobs = DefaultDocGlobs
 	}
 
-	docs, err := collectDocs(projectDir, prev.ScannedDocs, docGlobs)
-	if err != nil {
-		return nil, fmt.Errorf("intent scan: collecting docs: %w", err)
+	coll := &Collection{nextRepos: map[string]*intent.RepoScanState{}}
+
+	for _, src := range repoSources(projectDir, cfg) {
+		repoPrev := prev.Repos[src.Name]
+		if repoPrev == nil {
+			repoPrev = &intent.RepoScanState{}
+		}
+
+		docs, err := collectDocs(src.Path, repoPrev.ScannedDocs, docGlobs)
+		if err != nil {
+			return nil, fmt.Errorf("intent scan: collecting docs for %s: %w", repoLabel(src), err)
+		}
+
+		commits, head, err := collectCommits(src.Path, repoPrev.LastCommit)
+		if err != nil {
+			return nil, fmt.Errorf("intent scan: collecting commits for %s: %w", repoLabel(src), err)
+		}
+
+		runs, visited, err := collectRuns(src.Path, repoPrev.ScannedRuns, excludedSteps)
+		if err != nil {
+			return nil, fmt.Errorf("intent scan: collecting runs for %s: %w", repoLabel(src), err)
+		}
+
+		nextDocs := map[string]string{}
+		for k, v := range repoPrev.ScannedDocs {
+			nextDocs[k] = v
+		}
+		for _, d := range docs {
+			nextDocs[d.Path] = d.Hash
+			coll.Docs = append(coll.Docs, DocSource{
+				Repo:    src.SubPath,
+				Path:    qualifyPath(src.SubPath, d.Path),
+				Content: d.Content,
+				Hash:    d.Hash,
+			})
+		}
+
+		for _, cm := range commits {
+			coll.Commits = append(coll.Commits, CommitSource{
+				Repo:    src.SubPath,
+				SHA:     cm.SHA,
+				Subject: cm.Subject,
+				Patch:   cm.Patch,
+			})
+		}
+
+		for _, r := range runs {
+			coll.Runs = append(coll.Runs, RunSource{
+				Repo:       src.SubPath,
+				ID:         r.ID,
+				TaskPrompt: r.TaskPrompt,
+				Transcript: r.Transcript,
+			})
+		}
+
+		nextCommit := repoPrev.LastCommit
+		if head != "" {
+			nextCommit = head
+		}
+		coll.nextRepos[src.Name] = &intent.RepoScanState{
+			LastCommit:  nextCommit,
+			ScannedRuns: append(append([]string{}, repoPrev.ScannedRuns...), visited...),
+			ScannedDocs: nextDocs,
+		}
+
+		coll.Stats.Repos = append(coll.Stats.Repos, repoStatsFor(src.Name, docs, commits, runs, repoPrev.ScannedDocs))
 	}
 
-	commits, head, err := collectCommits(projectDir, prev.LastCommit)
-	if err != nil {
-		return nil, fmt.Errorf("intent scan: collecting commits: %w", err)
+	return coll, nil
+}
+
+// repoLabel names src for an error message: "the project root" for the
+// project's own tree, or its configured repo name otherwise.
+func repoLabel(src RepoSource) string {
+	if src.Name == "" {
+		return "the project root"
+	}
+	return src.Name
+}
+
+// repoStatsFor builds the RepoStats summary for one repo source's collection
+// pass: docs classified new (unseen path) vs. changed (known path, new
+// hash) against prevDocHashes, commit count and oldest..newest SHA range,
+// run count, and total bytes handed to extract.
+func repoStatsFor(name string, docs []DocSource, commits []CommitSource, runs []RunSource, prevDocHashes map[string]string) intent.RepoStats {
+	var docsNew, docsChanged int
+	var bytes int64
+	for _, d := range docs {
+		if _, known := prevDocHashes[d.Path]; known {
+			docsChanged++
+		} else {
+			docsNew++
+		}
+		bytes += int64(len(d.Content))
+	}
+	for _, cm := range commits {
+		bytes += int64(len(cm.Patch))
+	}
+	for _, r := range runs {
+		bytes += int64(len(r.TaskPrompt)) + int64(len(r.Transcript))
 	}
 
-	runs, visited, err := collectRuns(projectDir, prev.ScannedRuns, excludedSteps)
-	if err != nil {
-		return nil, fmt.Errorf("intent scan: collecting runs: %w", err)
+	return intent.RepoStats{
+		Name:        name,
+		DocsNew:     docsNew,
+		DocsChanged: docsChanged,
+		Commits:     len(commits),
+		CommitRange: commitRange(commits),
+		Runs:        len(runs),
+		Bytes:       bytes,
 	}
+}
 
-	return &Collection{
-		Docs:        docs,
-		Commits:     commits,
-		Runs:        runs,
-		headCommit:  head,
-		visitedRuns: visited,
-	}, nil
+// commitRange formats the oldest..newest short SHA collected, or "" when
+// commits is empty. git log (what collectCommits wraps) lists newest first,
+// so commits[0] is the newest and commits[len-1] is the oldest.
+func commitRange(commits []CommitSource) string {
+	if len(commits) == 0 {
+		return ""
+	}
+	newest := shortSHA(commits[0].SHA)
+	oldest := shortSHA(commits[len(commits)-1].SHA)
+	if oldest == newest {
+		return oldest
+	}
+	return oldest + ".." + newest
+}
+
+func shortSHA(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
+}
+
+// qualifyPath prefixes a repo-root-relative logical path (a doc path, a run
+// ID) with its repo's location so multi-repo material never collides and so
+// provenance refs disambiguate which repo they came from. Project-root
+// material (subPath == "") is returned unprefixed, keeping single-repo
+// projects' refs exactly as before [[repositories]] existed.
+func qualifyPath(subPath, rel string) string {
+	if subPath == "" {
+		return rel
+	}
+	return subPath + "/" + rel
 }
 
 func collectDocs(projectDir string, prevHashes map[string]string, docGlobs []string) ([]DocSource, error) {
@@ -415,9 +606,11 @@ func transcriptLogStepName(fileName string) string {
 }
 
 // Write lays out the collected material under outDir for the extract step
-// to read: outDir/docs/<path>, outDir/commits.txt + outDir/diffs/<sha>.patch,
-// outDir/runs/<id>/{task_prompt.md,transcript.log}, and a manifest.json
-// summarizing what's present.
+// to read: outDir/docs/<path> (already repo-qualified for a non-root
+// source), outDir/commits.txt (one repo-qualified ref per line, see
+// CommitSource.Ref) + outDir/diffs/<sha-or-repo-sha>.patch,
+// outDir/runs/<ref>/{task_prompt.md,transcript.log} (ref per
+// RunSource.Ref), and a manifest.json summarizing what's present.
 func (c *Collection) Write(outDir string) error {
 	manifest := struct {
 		Docs    []string `json:"docs"`
@@ -443,15 +636,23 @@ func (c *Collection) Write(outDir string) error {
 		}
 		var commitsTxt strings.Builder
 		for _, cm := range c.Commits {
-			fmt.Fprintf(&commitsTxt, "%s\t%s\n", cm.SHA, cm.Subject)
+			ref := cm.Ref()
+			fmt.Fprintf(&commitsTxt, "%s\t%s\n", ref, cm.Subject)
 			short := cm.SHA
 			if len(short) > 7 {
 				short = short[:7]
 			}
-			if err := os.WriteFile(filepath.Join(diffsDir, short+".patch"), []byte(cm.Patch), 0o644); err != nil {
+			// Prefix the patch filename with the repo when set, so commits
+			// from different repos that happen to share a short SHA prefix
+			// can't collide.
+			base := short
+			if cm.Repo != "" {
+				base = strings.ReplaceAll(cm.Repo, "/", "-") + "-" + short
+			}
+			if err := os.WriteFile(filepath.Join(diffsDir, base+".patch"), []byte(cm.Patch), 0o644); err != nil {
 				return err
 			}
-			manifest.Commits = append(manifest.Commits, cm.SHA)
+			manifest.Commits = append(manifest.Commits, ref)
 		}
 		if err := os.WriteFile(filepath.Join(outDir, "commits.txt"), []byte(commitsTxt.String()), 0o644); err != nil {
 			return err
@@ -459,7 +660,8 @@ func (c *Collection) Write(outDir string) error {
 	}
 
 	for _, r := range c.Runs {
-		dir := filepath.Join(outDir, "runs", r.ID)
+		ref := r.Ref()
+		dir := filepath.Join(outDir, "runs", filepath.FromSlash(ref))
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
@@ -473,7 +675,7 @@ func (c *Collection) Write(outDir string) error {
 				return err
 			}
 		}
-		manifest.Runs = append(manifest.Runs, r.ID)
+		manifest.Runs = append(manifest.Runs, ref)
 	}
 
 	if err := os.MkdirAll(outDir, 0o755); err != nil {

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -296,6 +297,46 @@ func TestAPIIntentDoc_RejectsTraversal(t *testing.T) {
 	assert.NotEqual(t, http.StatusOK, w.Code)
 }
 
+// TestAPIPromptDiff_RepoParam verifies that a repo-qualified commit
+// provenance ref resolves against the configured sub-repo's own git
+// history, not the project root's — the multi-repo intent scan gap tracked
+// in docs/intent.md.
+func TestAPIPromptDiff_RepoParam(t *testing.T) {
+	h, dir, label := setupIntentProject(t)
+
+	repoDir := filepath.Join(dir, "repos", "anarkana")
+	require.NoError(t, os.MkdirAll(repoDir, 0o755))
+	runGitCmd(t, repoDir, "init", "-q")
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "README.md"), []byte("hello"), 0o644))
+	runGitCmd(t, repoDir, "add", "README.md")
+	runGitCmd(t, repoDir, "commit", "-q", "-m", "Add README")
+	sha := strings.TrimSpace(runGitCmd(t, repoDir, "rev-parse", "HEAD"))
+
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "config.toml"), []byte(`
+[[repositories]]
+name = "anarkana"
+path = "./repos/anarkana"
+`), 0o644))
+
+	req := httptest.NewRequest("GET", "/api/projects/"+label+"/info/prompt-diff?sha="+sha+"&repo=repos/anarkana", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Contains(t, w.Body.String(), "Add README")
+}
+
+func TestAPIPromptDiff_UnknownRepoParam(t *testing.T) {
+	h, _, label := setupIntentProject(t)
+
+	req := httptest.NewRequest("GET", "/api/projects/"+label+"/info/prompt-diff?sha=abc123&repo=repos/ghost", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
 func TestProvenanceLink(t *testing.T) {
 	cases := []struct {
 		name string
@@ -305,6 +346,7 @@ func TestProvenanceLink(t *testing.T) {
 		{"transcript", intent.Provenance{Kind: intent.ProvenanceTranscript, Ref: "run-1"}, "/runs/run-1"},
 		{"prompt", intent.Provenance{Kind: intent.ProvenancePrompt, Ref: "task-1"}, "/tasks/task-1"},
 		{"commit", intent.Provenance{Kind: intent.ProvenanceCommit, Ref: "abc123"}, "/api/projects/my-proj/info/prompt-diff?sha=abc123"},
+		{"commit, repo-qualified", intent.Provenance{Kind: intent.ProvenanceCommit, Ref: "repos/anarkana@abc123"}, "/api/projects/my-proj/info/prompt-diff?sha=abc123&repo=repos%2Fanarkana"},
 		{"doc", intent.Provenance{Kind: intent.ProvenanceDoc, Ref: "docs/x.md"}, "/api/projects/my-proj/intent/doc?path=docs%2Fx.md"},
 		{"user, no ref", intent.Provenance{Kind: intent.ProvenanceUser, Ref: ""}, ""},
 	}

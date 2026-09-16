@@ -16,11 +16,20 @@ TEMP="$(cloche get temp_file_dir)"
 Under `$SOURCES`:
 
 - `docs/<path>` — full content of each changed or new doc file, at its
-  original project-relative path.
-- `commits.txt` — `<sha>\t<subject>` per new commit (noise already filtered),
-  and `diffs/<short-sha>.patch` for each.
-- `runs/<id>/task_prompt.md` and `runs/<id>/transcript.log` — task prompts
-  and step-output transcripts from runs not yet mined.
+  original project-relative path. On a project with repositories configured
+  via `[[repositories]]`, a doc from inside one is prefixed with its repo
+  path (e.g. `docs/repos/anarkana/README.md` for the doc at
+  `repos/anarkana/README.md`) — use that full path verbatim as `ref`.
+- `commits.txt` — `<ref>\t<subject>` per new commit (noise already
+  filtered), and `diffs/<short-sha>.patch` (or `diffs/<repo>-<short-sha>.patch`
+  for a repo commit) for each. `ref` is already the exact string to use for
+  `provenance.ref`: a bare SHA for the project's own history, or
+  `<repo>@<sha>` (e.g. `repos/anarkana@abc1234...`) for a commit from a
+  configured repository.
+- `runs/<ref>/task_prompt.md` and `runs/<ref>/transcript.log` — task prompts
+  and step-output transcripts from runs not yet mined. `ref` is the run ID,
+  optionally prefixed with its repo (e.g. `repos/anarkana/run-42`) — use it
+  verbatim as `provenance.ref`.
 - `manifest.json` — a summary listing of everything above, if you want a
   quick index before reading files individually.
 
@@ -96,9 +105,11 @@ Write `$TEMP/candidates.json`:
 - `confidence` is `"high"` / `"medium"` / `"low"` — your judgment of how
   durable and unambiguous the source material makes this requirement.
 - `provenance.kind` is `"doc"`, `"transcript"`, `"prompt"`, or `"commit"`
-  matching where the material came from; `ref` is the file path (optionally
-  `#heading`), run ID, task ID, or commit SHA; `extracted_at` is the current
-  UTC time in RFC3339; `extracted_by` is `"intent-scan"`.
+  matching where the material came from; `ref` is the file path under
+  `docs/` (optionally `#heading`), the run ref under `runs/`, or the commit
+  ref from `commits.txt` — copy it verbatim, repo prefix included, rather
+  than stripping it; `extracted_at` is the current UTC time in RFC3339;
+  `extracted_by` is `"intent-scan"`.
 - Omit `candidates.json`'s `candidates` array entirely (`{"candidates": []}`)
   if nothing in the sources meets the bar above — that's a valid, expected
   outcome, not a failure.

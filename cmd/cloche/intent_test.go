@@ -19,6 +19,19 @@ import (
 	"google.golang.org/grpc"
 )
 
+func runGitCmd(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+}
+
 func TestPrintResultMarker_FramesWithNonceWhenSet(t *testing.T) {
 	t.Setenv("CLOCHE_RESULT_NONCE", "abc123")
 
@@ -178,6 +191,74 @@ func TestRunIntentCollectSources_FullResetsCursors(t *testing.T) {
 	if c4.HasNew() {
 		t.Fatalf("expected the scan-state cursor to be re-synced after --full, got docs=%d commits=%d runs=%d",
 			len(c4.Docs), len(c4.Commits), len(c4.Runs))
+	}
+}
+
+// TestRunIntentCollectSources_MultiRepo reproduces the wrapper-project gap
+// from docs/intent.md's "Multi-repo projects" section: a thin orchestration
+// wrapper with a repository checked out under repos/<name>/, declared via
+// [[repositories]] in .cloche/config.toml. Before this feature,
+// collect-sources never descended into repos/anarkana/ at all; now it must
+// pick up that repo's own doc and commit.
+func TestRunIntentCollectSources_MultiRepo(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "out")
+
+	if err := os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".cloche", "config.toml"), []byte(`
+[[repositories]]
+name = "anarkana"
+path = "./repos/anarkana"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	repoDir := filepath.Join(dir, "repos", "anarkana")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGitCmd(t, repoDir, "init", "-q")
+	if err := os.WriteFile(filepath.Join(repoDir, "README.md"), []byte("the real history lives here"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitCmd(t, repoDir, "add", "README.md")
+	runGitCmd(t, repoDir, "commit", "-q", "-m", "Add README")
+
+	c, _, err := runIntentCollectSources(dir, out, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !c.HasNew() {
+		t.Fatalf("expected the repo's own doc and commit to be collected")
+	}
+
+	var docPaths []string
+	for _, d := range c.Docs {
+		docPaths = append(docPaths, d.Path)
+	}
+	if len(docPaths) != 1 || docPaths[0] != "repos/anarkana/README.md" {
+		t.Fatalf("expected repo-qualified doc path, got %v", docPaths)
+	}
+
+	if len(c.Commits) != 1 || c.Commits[0].Ref() == "" || !strings.HasPrefix(c.Commits[0].Ref(), "repos/anarkana@") {
+		t.Fatalf("expected repo-qualified commit ref, got %+v", c.Commits)
+	}
+
+	if _, err := os.Stat(filepath.Join(out, "docs", "repos", "anarkana", "README.md")); err != nil {
+		t.Fatalf("expected collected doc written under out/docs/repos/anarkana/: %v", err)
+	}
+
+	// The wrapper's own project root has no docs/commits in this fixture,
+	// so a second run without any wrapper-root or repo change is quiet
+	// again — the per-repo cursor advanced independently for both sources.
+	c2, _, err := runIntentCollectSources(dir, out, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c2.HasNew() {
+		t.Fatalf("expected the per-repo cursor to have advanced past the repo's README and commit")
 	}
 }
 
