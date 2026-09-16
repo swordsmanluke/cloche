@@ -150,7 +150,7 @@ so it's available in any project with no setup. `cloche intent scan` (alias for
 
 ```
 cloche intent scan            # incremental: only material since the last scan
-cloche intent scan --full     # force a full domain re-survey
+cloche intent scan --full     # currently has no effect beyond the incremental run — see below
 ```
 
 A project can still override the built-in by defining its own `intent-scan` workflow
@@ -159,6 +159,42 @@ workflows always take precedence over built-ins of the same name. `collect-sourc
 `apply-reconcile` (`cloche intent collect-sources` / `cloche intent apply-reconcile`)
 are the plumbing subcommands the workflow's script steps invoke — not normally run by
 hand.
+
+**What the first scan covers.** `collect-sources`' cursors (`scan-state.yaml`) start
+empty, so the very first scan of a project already walks everything it looks at: every
+doc matching the configured globs, the full `git log`, and every existing
+`.cloche/runs/` directory — there's no separate "shallow first pass" to worry about.
+The catch is *where* it looks: `collect-sources` roots every source — doc globs,
+`git log`, and `.cloche/runs/`/`.cloche/logs/` — strictly at the project directory
+itself (see `internal/intent/scan/collect.go`). It does not read `.cloche/config.toml`'s
+`[[repositories]]` entries at all.
+
+**Multi-repo projects.** In a project laid out as a thin orchestration wrapper with one
+or more repositories checked out under it (e.g. `repos/<name>/`, declared via
+`[[repositories]]` — see `docs/workflows.md`), the wrapper's own `.git` history is
+typically tiny (often just one commit per completed task), while the real project
+history, docs, and design decisions live inside `repos/<name>/.git` and
+`repos/<name>/docs/`. Because `collect-sources` never descends into configured
+repositories, a scan on a project like this — first scan or incremental — only ever
+mines the wrapper's own docs, commits, and run transcripts. In practice this shows up
+as "the scan only found the feature that just landed": the wrapper's one recent commit
+and run *is* the entirety of what got collected, no matter how long the wrapped
+repositories' real history is. Today, working around this means keeping durable docs
+(`CLAUDE.md`, design docs) at the wrapper root, or running `cloche intent scan` from
+inside the repository you want mined directly (its own `.cloche/` state is separate
+from the wrapper's). Making `collect-sources` iterate every configured repository is
+tracked as a follow-up; it is not yet implemented.
+
+**`--full` does not currently reset collection cursors.** `cloche intent scan --full`
+passes `--full` through as the run's task prompt, but no step reads it:
+`collect-sources` ignores the run prompt entirely and only ever mines material since
+`scan-state.yaml`'s cursors, and `discover-domains` decides whether to do a full domain
+survey purely by whether `domains.yaml` already exists, independent of this flag. So
+`--full` has no effect on how much material `collect-sources` collects — there is
+currently no supported way to force a full re-collection of a project's docs/commits/
+runs after the first scan has already advanced past them (short of deleting
+`.cloche/intent/scan-state.yaml`, which also discards the doc-hash and scanned-run
+cursors). This is tracked as a follow-up.
 
 **Incremental scans on task completion.** By default (`intent.scan_after_tasks = true`),
 an incremental scan is enqueued automatically after each completed `main` orchestration
@@ -335,3 +371,8 @@ cloche intent list
 Review what got extracted (`cloche intent list`, `cloche intent show <id>`), edit or
 disable anything wrong, and commit `.cloche/intent/`. From then on, injection is
 automatic, and incremental scans keep it current as the project evolves.
+
+The `--full` above is really just "run the alias now"; since `scan-state.yaml` doesn't
+exist yet, this first invocation already mines everything `collect-sources` looks at —
+see "What the first scan covers" above for what that includes and, for a multi-repo
+project, what it doesn't.
