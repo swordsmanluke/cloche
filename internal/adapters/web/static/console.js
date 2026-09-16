@@ -2905,9 +2905,21 @@
         activeLocation = loc;
         var btns = document.querySelectorAll('#location-tabs .tab-btn');
         Array.prototype.forEach.call(btns, function (b) {
-            b.classList.toggle('tab-active', b.getAttribute('data-location') === loc);
+            var active = b.getAttribute('data-location') === loc;
+            b.classList.toggle('tab-active', active);
+            if (active) scrollTabIntoView(b);
         });
         renderWorkflowTabs();
+    }
+
+    // Scrolls a tab button into view within its own scrollable .tab-bar
+    // without dragging the rest of the page (e.g. the DAG below) along —
+    // 'nearest' on both axes limits the scroll to whichever ancestor
+    // actually needs to move.
+    function scrollTabIntoView(btn) {
+        if (btn && btn.scrollIntoView) {
+            btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
     }
 
     // list-tasks and main are the orchestration entry points, so they're
@@ -2950,6 +2962,7 @@
         var ordered = orderedWorkflowsForActiveLocation().ordered;
         var btns = document.querySelectorAll('#workflow-tabs .tab-btn');
         Array.prototype.forEach.call(btns, function (b, i) { b.classList.toggle('tab-active', i === idx); });
+        if (btns[idx]) scrollTabIntoView(btns[idx]);
         showWorkflow(ordered[idx]);
     }
 

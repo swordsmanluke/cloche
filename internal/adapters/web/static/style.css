@@ -321,10 +321,17 @@ h2 {
     gap: 0;
     border-bottom: 1px solid var(--ln);
     margin-bottom: 1rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-wrap: nowrap;
+    scrollbar-width: thin;
 }
 .tab-bar:empty {
     display: none;
 }
+.tab-bar::-webkit-scrollbar { height: 6px; }
+.tab-bar::-webkit-scrollbar-track { background: transparent; }
+.tab-bar::-webkit-scrollbar-thumb { background: var(--ln); border-radius: 3px; }
 
 .tab-btn {
     padding: 0.4rem 1rem;
@@ -336,6 +343,8 @@ h2 {
     border-bottom: 2px solid transparent;
     color: var(--tx2);
     cursor: pointer;
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .tab-btn:hover { color: var(--tx); }
