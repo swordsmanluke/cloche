@@ -1,6 +1,6 @@
 repos:
     "":
-        last_commit: 7a6ad115496bb883b8105bc257cc923dc610b70f
+        last_commit: 821aab3423f11485b51bb234422df1d9dedd3db5
         scanned_runs:
             - cloche-0vqg
             - rxth-main
@@ -385,6 +385,8 @@ repos:
             - user-rkao
             - user-wsq6
             - wsq6-develop-opencode
+            - 4pyn-intent-scan
+            - user-4pyn
         scanned_docs:
             .cloche/prompts/document-check-missing.md: 154c933c83042dcb0b3f14e9c451226e6eab14bcdcbc9889fa4edef52d7c1283
             .cloche/prompts/document-investigate.md: 0bb6d7225ed9fa53f36269540994d74e7beef92a717e13794a86cfffdd8652d9
@@ -412,7 +414,7 @@ repos:
             docs/CHANGELOG-DETAILED.md: dff1423e449b0e4f66a5649c0b7307a8bec37dd67a393fddccb9a2257e18f68b
             docs/INSTALL.md: 02d98ffd4057cfb5f26935f68a131d81cf232b445417029d1555a081712d68e9
             docs/SAFETY.md: 1e025a1f37b5d21f7f226f1d8777e1a9726c13aedbb43ab37a8f174d61f53a59
-            docs/USAGE.md: 989a2fd45015d2c78cccd1da709dd02bbac2f0ca447e484355b6b33cd86fd6dc
+            docs/USAGE.md: 07ebe9b35012c3b0adc41b42745a7945a621de2b6adb794e25165200022b616a
             docs/agent-setup-claude.md: 745544b08f6362cd2ed1c918ed53e5a387e183872c9e6f086aeb1ea8f8690fda
             docs/agent-setup-codex.md: 5137671f134e534a5c49bf8e6f26765c3f3916dfb9a98ed92e22a2aad5ad1cfe
             docs/built-in-agents.md: dd37264a2d03ff45978a319f69020a118aab69c5387029047645f35a0cbe4b82
@@ -486,13 +488,13 @@ repos:
             docs/run-isolation/index.md: 06461a1f739a3b6fba4f5331fa668c15058808f59938b284c4e953a291ae6916
             docs/web-dashboard.md: c79191dec76b2ae3bc557136b458a27f11dcdf365288425465f7eb932a6e0965
             docs/workflows.md: fca4c3bb2d324a68435eea18afca3e1a4ee60560675303509bc050046d087de7
-last_scan_at: 2026-09-16T19:56:18.550448574Z
+last_scan_at: 2026-09-16T20:04:49.294857548Z
 last_scan_stats:
     repos:
         - name: ""
           docs_new: 0
           docs_changed: 1
-          commits: 4
-          commit_range: c78f7ad..63104e0
-          runs: 3
-          bytes: 144217
+          commits: 2
+          commit_range: 311b9b3..319c3d7
+          runs: 1
+          bytes: 278281
