@@ -150,6 +150,15 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("v3 runs composite key migration: %w", err)
 	}
 
+	// v3.1: Secondary indexes on runs/step_executions/attempts/log_files —
+	// these tables previously only had primary keys, so every lookup by
+	// project_dir, task_id, parent_run_id, attempt_id, state, or run_id was
+	// a full table scan. Must run after migrateRunsCompositeKey, which
+	// recreates the runs table (and would otherwise drop these indexes).
+	if err := migrateSecondaryIndexes(db); err != nil {
+		return fmt.Errorf("secondary indexes migration: %w", err)
+	}
+
 	// v4: Add previous_attempt_id to attempts for resume lineage tracing.
 	// Idempotent — ignored if column already exists.
 	db.Exec(`ALTER TABLE attempts ADD COLUMN previous_attempt_id TEXT NOT NULL DEFAULT ''`)
