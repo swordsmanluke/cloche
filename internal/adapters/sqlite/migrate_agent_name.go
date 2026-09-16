@@ -34,7 +34,7 @@ func (s *Store) backfillAgentNamesOnce(projectDir string) error {
 
 	migrationID := "agent-name-backfill:" + projectDir
 	var count int
-	row := s.db.QueryRow(`SELECT COUNT(*) FROM _migrations WHERE id = ?`, migrationID)
+	row := s.write.QueryRow(`SELECT COUNT(*) FROM _migrations WHERE id = ?`, migrationID)
 	if err := row.Scan(&count); err == nil && count > 0 {
 		agentNameBackfilledMu.Lock()
 		agentNameBackfilled[projectDir] = true
@@ -42,11 +42,11 @@ func (s *Store) backfillAgentNamesOnce(projectDir string) error {
 		return nil
 	}
 
-	if err := backfillAgentNames(s.db, projectDir); err != nil {
+	if err := backfillAgentNames(s.write, projectDir); err != nil {
 		return err
 	}
 
-	s.db.Exec(`INSERT OR IGNORE INTO _migrations (id, applied_at) VALUES (?, ?)`,
+	s.write.Exec(`INSERT OR IGNORE INTO _migrations (id, applied_at) VALUES (?, ?)`,
 		migrationID, time.Now().UTC().Format(time.RFC3339))
 
 	agentNameBackfilledMu.Lock()

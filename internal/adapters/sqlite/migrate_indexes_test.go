@@ -25,8 +25,8 @@ func TestMigrateSecondaryIndexes_Idempotent(t *testing.T) {
 	// NewStore already ran the migration once via migrate(); run it twice
 	// more directly to exercise both the _migrations-gated fast path and
 	// the underlying idempotent CREATE INDEX IF NOT EXISTS statements.
-	require.NoError(t, migrateSecondaryIndexes(store.db))
-	require.NoError(t, migrateSecondaryIndexes(store.db))
+	require.NoError(t, migrateSecondaryIndexes(store.write))
+	require.NoError(t, migrateSecondaryIndexes(store.write))
 
 	for _, idx := range []string{
 		"runs_project_dir_started_at",
@@ -39,7 +39,7 @@ func TestMigrateSecondaryIndexes_Idempotent(t *testing.T) {
 		"log_files_run_id",
 	} {
 		var name string
-		err := store.db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?`, idx).Scan(&name)
+		err := store.write.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?`, idx).Scan(&name)
 		require.NoError(t, err, "expected index %s to exist", idx)
 		assert.Equal(t, idx, name)
 	}
@@ -54,8 +54,8 @@ func TestMigrateSecondaryIndexes_QueryPlansUseIndex(t *testing.T) {
 	require.NoError(t, err)
 	defer store.Close()
 
-	require.NoError(t, migrateSecondaryIndexes(store.db))
-	require.NoError(t, migrateSecondaryIndexes(store.db))
+	require.NoError(t, migrateSecondaryIndexes(store.write))
+	require.NoError(t, migrateSecondaryIndexes(store.write))
 
 	ctx := context.Background()
 	projectDir := t.TempDir()
@@ -74,7 +74,7 @@ func TestMigrateSecondaryIndexes_QueryPlansUseIndex(t *testing.T) {
 	require.NoError(t, store.SaveCapture(ctx, "main-bold-fox", &domain.StepExecution{StepName: "implement"}))
 
 	require.NoError(t, store.SaveTask(ctx, &domain.Task{ID: "task-1", Title: "t", Source: domain.TaskSourceExternal, ProjectDir: projectDir}))
-	_, err = store.db.ExecContext(ctx,
+	_, err = store.write.ExecContext(ctx,
 		`INSERT INTO attempts (id, task_id, started_at, result, project_dir) VALUES (?, ?, ?, ?, ?)`,
 		"attempt-1", "task-1", "2026-01-01T00:00:00Z", "succeeded", projectDir)
 	require.NoError(t, err)
@@ -121,7 +121,7 @@ func TestMigrateSecondaryIndexes_QueryPlansUseIndex(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			plan := explainQueryPlan(t, store.db, tc.query, tc.args...)
+			plan := explainQueryPlan(t, store.write, tc.query, tc.args...)
 			assert.Contains(t, plan, "SEARCH", "plan for %s should use SEARCH, got: %s", tc.name, plan)
 			assert.Contains(t, plan, "USING INDEX "+tc.wantIndex, "plan for %s should use index %s, got: %s", tc.name, tc.wantIndex, plan)
 			assert.NotContains(t, plan, "SCAN", "plan for %s should not be a full scan, got: %s", tc.name, plan)

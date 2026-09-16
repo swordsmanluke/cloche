@@ -51,26 +51,26 @@ func TestMigrateProjectLogs_CreatesTasksFromRuns(t *testing.T) {
 
 	// Verify tasks table was populated by migration
 	var taskCount int
-	err = store.db.QueryRow(`SELECT COUNT(*) FROM tasks`).Scan(&taskCount)
+	err = store.write.QueryRow(`SELECT COUNT(*) FROM tasks`).Scan(&taskCount)
 	require.NoError(t, err)
 	assert.Equal(t, 2, taskCount, "should have 2 tasks: one external, one user-initiated")
 
 	// Verify attempts were created
 	var attemptCount int
-	err = store.db.QueryRow(`SELECT COUNT(*) FROM attempts`).Scan(&attemptCount)
+	err = store.write.QueryRow(`SELECT COUNT(*) FROM attempts`).Scan(&attemptCount)
 	require.NoError(t, err)
 	assert.Equal(t, 3, attemptCount, "should have 3 attempts (one per top-level run)")
 
 	// Verify the external task exists
 	var title, source string
-	err = store.db.QueryRow(`SELECT title, source FROM tasks WHERE id = 'cloche-123'`).Scan(&title, &source)
+	err = store.write.QueryRow(`SELECT title, source FROM tasks WHERE id = 'cloche-123'`).Scan(&title, &source)
 	require.NoError(t, err)
 	assert.Equal(t, "Fix the widget", title)
 	assert.Equal(t, "external", source)
 
 	// Verify user-initiated task was created for r3
 	var userSource string
-	err = store.db.QueryRow(`SELECT source FROM tasks WHERE id != 'cloche-123'`).Scan(&userSource)
+	err = store.write.QueryRow(`SELECT source FROM tasks WHERE id != 'cloche-123'`).Scan(&userSource)
 	require.NoError(t, err)
 	assert.Equal(t, "user-initiated", userSource)
 }
@@ -102,7 +102,7 @@ func TestMigrateProjectLogs_MovesLogFiles(t *testing.T) {
 
 	// Find the attempt ID that was generated
 	var attemptID string
-	err = store.db.QueryRow(`SELECT id FROM attempts WHERE task_id = 'task-abc'`).Scan(&attemptID)
+	err = store.write.QueryRow(`SELECT id FROM attempts WHERE task_id = 'task-abc'`).Scan(&attemptID)
 	require.NoError(t, err)
 	require.NotEmpty(t, attemptID)
 
@@ -137,8 +137,8 @@ func TestMigrateProjectLogs_Idempotent(t *testing.T) {
 
 	// Should still have exactly 1 task, 1 attempt
 	var taskCount, attemptCount int
-	store.db.QueryRow(`SELECT COUNT(*) FROM tasks`).Scan(&taskCount)
-	store.db.QueryRow(`SELECT COUNT(*) FROM attempts`).Scan(&attemptCount)
+	store.write.QueryRow(`SELECT COUNT(*) FROM tasks`).Scan(&taskCount)
+	store.write.QueryRow(`SELECT COUNT(*) FROM attempts`).Scan(&attemptCount)
 	assert.Equal(t, 1, taskCount)
 	assert.Equal(t, 1, attemptCount)
 }
@@ -172,14 +172,14 @@ func TestMigrateProjectLogs_ParentChildLinking(t *testing.T) {
 
 	// Both should share the same attempt_id
 	var parentAttempt, childAttempt string
-	store.db.QueryRow(`SELECT attempt_id FROM runs WHERE id = 'main-bold-fox'`).Scan(&parentAttempt)
-	store.db.QueryRow(`SELECT attempt_id FROM runs WHERE id = 'develop-calm-owl'`).Scan(&childAttempt)
+	store.write.QueryRow(`SELECT attempt_id FROM runs WHERE id = 'main-bold-fox'`).Scan(&parentAttempt)
+	store.write.QueryRow(`SELECT attempt_id FROM runs WHERE id = 'develop-calm-owl'`).Scan(&childAttempt)
 	assert.NotEmpty(t, parentAttempt)
 	assert.Equal(t, parentAttempt, childAttempt, "parent and child should share attempt ID")
 
 	// Only 1 attempt should exist (not 2)
 	var attemptCount int
-	store.db.QueryRow(`SELECT COUNT(*) FROM attempts`).Scan(&attemptCount)
+	store.write.QueryRow(`SELECT COUNT(*) FROM attempts`).Scan(&attemptCount)
 	assert.Equal(t, 1, attemptCount)
 }
 
@@ -210,17 +210,17 @@ func TestMigrateProjectLogs_PerProject(t *testing.T) {
 
 	// Project A's run should be migrated
 	var attemptA string
-	store.db.QueryRow(`SELECT attempt_id FROM runs WHERE id = 'run-a'`).Scan(&attemptA)
+	store.write.QueryRow(`SELECT attempt_id FROM runs WHERE id = 'run-a'`).Scan(&attemptA)
 	assert.NotEmpty(t, attemptA, "project A run should have attempt_id")
 
 	// Project B's run should NOT be migrated yet
 	var attemptB string
-	store.db.QueryRow(`SELECT attempt_id FROM runs WHERE id = 'run-b'`).Scan(&attemptB)
+	store.write.QueryRow(`SELECT attempt_id FROM runs WHERE id = 'run-b'`).Scan(&attemptB)
 	assert.Empty(t, attemptB, "project B run should not have attempt_id yet")
 
 	// Now migrate project B
 	require.NoError(t, store.MigrateProjectLogs(projectB))
-	store.db.QueryRow(`SELECT attempt_id FROM runs WHERE id = 'run-b'`).Scan(&attemptB)
+	store.write.QueryRow(`SELECT attempt_id FROM runs WHERE id = 'run-b'`).Scan(&attemptB)
 	assert.NotEmpty(t, attemptB, "project B run should have attempt_id after migration")
 }
 

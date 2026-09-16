@@ -23,7 +23,7 @@ const ledgerBackfillMigrationPrefix = "ledger-prompt-rev-backfill:"
 // backfill_pending flag instead of blocking a request on it.
 func (s *Store) LedgerBackfillPending(ctx context.Context, projectDir string) (bool, error) {
 	var count int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM _migrations WHERE id = ?`,
+	err := s.write.QueryRowContext(ctx, `SELECT COUNT(*) FROM _migrations WHERE id = ?`,
 		ledgerBackfillMigrationPrefix+projectDir).Scan(&count)
 	if err != nil {
 		return false, err
@@ -72,7 +72,7 @@ func (s *Store) RunLedgerPromptRevisionBackfill(ctx context.Context, parallel in
 		if !s.backfillProjectPromptRevisions(ctx, dir, sem) {
 			return // ctx cancelled mid-sweep; leave unmarked so the next daemon start resumes here
 		}
-		if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO _migrations (id, applied_at) VALUES (?, ?)`,
+		if _, err := s.write.ExecContext(ctx, `INSERT OR IGNORE INTO _migrations (id, applied_at) VALUES (?, ?)`,
 			ledgerBackfillMigrationPrefix+dir, time.Now().UTC().Format(time.RFC3339)); err != nil {
 			log.Printf("ledger backfill: marking %s done: %v", dir, err)
 		}
@@ -120,7 +120,7 @@ func (s *Store) backfillProjectPromptRevisions(ctx context.Context, dir string, 
 // projectDir with no "*:prompt_rev" context_kv row at all — i.e. attempts
 // that predate live dispatch-time recording and haven't been backfilled yet.
 func (s *Store) pendingLedgerBackfillAttempts(ctx context.Context, projectDir string) ([]pendingAttempt, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.write.QueryContext(ctx, `
 		SELECT a.id, a.task_id, a.started_at
 		FROM attempts a
 		WHERE a.project_dir = ?

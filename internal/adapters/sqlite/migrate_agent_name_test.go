@@ -47,7 +47,7 @@ func TestBackfillAgentNames_InfersFromWorkflowConfig(t *testing.T) {
 	require.NoError(t, store.MigrateProjectLogs(projectDir))
 
 	var agentName string
-	require.NoError(t, store.db.QueryRow(
+	require.NoError(t, store.write.QueryRow(
 		`SELECT agent_name FROM step_executions WHERE run_id = ? AND step_name = 'build'`, run.ID,
 	).Scan(&agentName))
 	assert.Equal(t, "claude", agentName)
@@ -77,7 +77,7 @@ func TestBackfillAgentNames_LabelsUnattributedWhenNotInferable(t *testing.T) {
 	require.NoError(t, store.MigrateProjectLogs(projectDir))
 
 	var agentName string
-	require.NoError(t, store.db.QueryRow(
+	require.NoError(t, store.write.QueryRow(
 		`SELECT agent_name FROM step_executions WHERE run_id = ? AND step_name = 'build'`, run.ID,
 	).Scan(&agentName))
 	assert.Equal(t, domain.UnattributedAgent, agentName)
@@ -107,7 +107,7 @@ func TestBackfillAgentNames_SkipsRowsWithoutUsage(t *testing.T) {
 	require.NoError(t, store.MigrateProjectLogs(projectDir))
 
 	var agentName string
-	require.NoError(t, store.db.QueryRow(
+	require.NoError(t, store.write.QueryRow(
 		`SELECT agent_name FROM step_executions WHERE run_id = ? AND step_name = 'script-step'`, run.ID,
 	).Scan(&agentName))
 	assert.Equal(t, "", agentName)
@@ -137,7 +137,7 @@ func TestBackfillAgentNames_Idempotent(t *testing.T) {
 	require.NoError(t, store.MigrateProjectLogs(projectDir))
 
 	var count int
-	require.NoError(t, store.db.QueryRow(
+	require.NoError(t, store.write.QueryRow(
 		`SELECT COUNT(*) FROM step_executions WHERE run_id = ? AND agent_name = ?`, run.ID, domain.UnattributedAgent,
 	).Scan(&count))
 	assert.Equal(t, 1, count)

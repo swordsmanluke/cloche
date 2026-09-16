@@ -45,7 +45,7 @@ func nullableTimePtr(t *time.Time) interface{} {
 
 // CreateThread inserts a new help thread.
 func (s *Store) CreateThread(ctx context.Context, thread *domain.HelpThread) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.write.ExecContext(ctx,
 		`INSERT INTO help_threads (id, channel, name, task_id, attempt_id, run_id, step_name, title, state, created_at, updated_at, archived_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		thread.ID, thread.Channel, thread.Name, thread.TaskID, thread.AttemptID, thread.RunID, thread.StepName,
@@ -57,7 +57,7 @@ func (s *Store) CreateThread(ctx context.Context, thread *domain.HelpThread) err
 
 // AppendMessage inserts a new message and bumps the thread's updated_at.
 func (s *Store) AppendMessage(ctx context.Context, msg *domain.HelpMessage) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.write.ExecContext(ctx,
 		`INSERT INTO help_messages (id, thread_id, author, body, options, ask_key, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		msg.ID, msg.ThreadID, string(msg.Author), msg.Body, strings.Join(msg.Options, ","), msg.AskKey, formatTime(msg.CreatedAt),
@@ -65,12 +65,12 @@ func (s *Store) AppendMessage(ctx context.Context, msg *domain.HelpMessage) erro
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE help_threads SET updated_at = ? WHERE id = ?`, formatTime(time.Now()), msg.ThreadID)
+	_, err = s.write.ExecContext(ctx, `UPDATE help_threads SET updated_at = ? WHERE id = ?`, formatTime(time.Now()), msg.ThreadID)
 	return err
 }
 
 func (s *Store) scanThreadByID(ctx context.Context, id string) (*domain.HelpThread, error) {
-	row := s.db.QueryRowContext(ctx, helpThreadSelectColumns+` FROM help_threads WHERE id = ?`, id)
+	row := s.read.QueryRowContext(ctx, helpThreadSelectColumns+` FROM help_threads WHERE id = ?`, id)
 	t, err := scanHelpThread(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -82,7 +82,7 @@ func (s *Store) scanThreadByID(ctx context.Context, id string) (*domain.HelpThre
 }
 
 func (s *Store) listMessages(ctx context.Context, threadID string) ([]domain.HelpMessage, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT id, thread_id, author, body, options, ask_key, created_at FROM help_messages WHERE thread_id = ? ORDER BY created_at ASC, id ASC`,
 		threadID)
 	if err != nil {
@@ -132,7 +132,7 @@ func (s *Store) ResolveThread(ctx context.Context, address string) (*domain.Help
 	}
 
 	if channel, name, ok := strings.Cut(address, "/"); ok {
-		row := s.db.QueryRowContext(ctx, helpThreadSelectColumns+` FROM help_threads WHERE channel = ? AND name = ?`, channel, name)
+		row := s.read.QueryRowContext(ctx, helpThreadSelectColumns+` FROM help_threads WHERE channel = ? AND name = ?`, channel, name)
 		t, err := scanHelpThread(row)
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("no help thread found matching %q", address)
@@ -148,7 +148,7 @@ func (s *Store) ResolveThread(ctx context.Context, address string) (*domain.Help
 		}
 	}
 
-	rows, err := s.db.QueryContext(ctx, helpThreadSelectColumns+` FROM help_threads WHERE name = ?`, address)
+	rows, err := s.read.QueryContext(ctx, helpThreadSelectColumns+` FROM help_threads WHERE name = ?`, address)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +190,7 @@ func (s *Store) ListThreads(ctx context.Context, filter ports.HelpThreadFilter) 
 	}
 	query += ` ORDER BY created_at DESC`
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.read.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +209,7 @@ func (s *Store) ListThreads(ctx context.Context, filter ports.HelpThreadFilter) 
 
 // ListOpenThreadsByRun returns threads awaiting a user reply for the given run.
 func (s *Store) ListOpenThreadsByRun(ctx context.Context, runID string) ([]*domain.HelpThread, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		helpThreadSelectColumns+` FROM help_threads WHERE run_id = ? AND state = ? ORDER BY created_at DESC`,
 		runID, string(domain.ThreadStateAwaitingUser))
 	if err != nil {
@@ -230,7 +230,7 @@ func (s *Store) ListOpenThreadsByRun(ctx context.Context, runID string) ([]*doma
 
 // SetThreadState updates a thread's state and bumps updated_at.
 func (s *Store) SetThreadState(ctx context.Context, threadID string, state domain.ThreadState) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE help_threads SET state = ?, updated_at = ? WHERE id = ?`,
+	_, err := s.write.ExecContext(ctx, `UPDATE help_threads SET state = ?, updated_at = ? WHERE id = ?`,
 		string(state), formatTime(time.Now()), threadID)
 	return err
 }
@@ -240,7 +240,7 @@ func (s *Store) SetThreadState(ctx context.Context, threadID string, state domai
 // the next name suffix ("schema-choice-7").
 func (s *Store) CountThreadsWithNamePrefix(ctx context.Context, channel, prefix string) (int, error) {
 	var count int
-	err := s.db.QueryRowContext(ctx,
+	err := s.read.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM help_threads WHERE channel = ? AND (name = ? OR name LIKE ?)`,
 		channel, prefix, prefix+"-%").Scan(&count)
 	return count, err
@@ -249,7 +249,7 @@ func (s *Store) CountThreadsWithNamePrefix(ctx context.Context, channel, prefix 
 // ArchiveThreadsByTask moves all of a task's non-archived threads to the
 // archived state. Called when the owning task completes successfully.
 func (s *Store) ArchiveThreadsByTask(ctx context.Context, taskID string) (int64, error) {
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.write.ExecContext(ctx,
 		`UPDATE help_threads SET state = ?, archived_at = ?, updated_at = ? WHERE task_id = ? AND state != ?`,
 		string(domain.ThreadStateArchived), formatTime(time.Now()), formatTime(time.Now()), taskID, string(domain.ThreadStateArchived))
 	if err != nil {
@@ -261,7 +261,7 @@ func (s *Store) ArchiveThreadsByTask(ctx context.Context, taskID string) (int64,
 // DeleteArchivedThreadsOlderThan deletes archived threads (and their
 // messages/bindings) whose ArchivedAt is before cutoff.
 func (s *Store) DeleteArchivedThreadsOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT id FROM help_threads WHERE state = ? AND archived_at IS NOT NULL AND archived_at < ?`,
 		string(domain.ThreadStateArchived), formatTime(cutoff))
 	if err != nil {
@@ -284,13 +284,13 @@ func (s *Store) DeleteArchivedThreadsOlderThan(ctx context.Context, cutoff time.
 
 	var deleted int64
 	for _, id := range ids {
-		if _, err := s.db.ExecContext(ctx, `DELETE FROM help_messages WHERE thread_id = ?`, id); err != nil {
+		if _, err := s.write.ExecContext(ctx, `DELETE FROM help_messages WHERE thread_id = ?`, id); err != nil {
 			return deleted, err
 		}
-		if _, err := s.db.ExecContext(ctx, `DELETE FROM help_bindings WHERE thread_id = ?`, id); err != nil {
+		if _, err := s.write.ExecContext(ctx, `DELETE FROM help_bindings WHERE thread_id = ?`, id); err != nil {
 			return deleted, err
 		}
-		res, err := s.db.ExecContext(ctx, `DELETE FROM help_threads WHERE id = ?`, id)
+		res, err := s.write.ExecContext(ctx, `DELETE FROM help_threads WHERE id = ?`, id)
 		if err != nil {
 			return deleted, err
 		}
@@ -303,7 +303,7 @@ func (s *Store) DeleteArchivedThreadsOlderThan(ctx context.Context, cutoff time.
 
 // BindExternal maps an external channel id (e.g. Slack thread_ts) to a thread.
 func (s *Store) BindExternal(ctx context.Context, threadID, channelName, externalID string) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.write.ExecContext(ctx,
 		`INSERT INTO help_bindings (thread_id, channel_name, external_id) VALUES (?, ?, ?)
 		 ON CONFLICT(channel_name, external_id) DO UPDATE SET thread_id = excluded.thread_id`,
 		threadID, channelName, externalID)
@@ -313,7 +313,7 @@ func (s *Store) BindExternal(ctx context.Context, threadID, channelName, externa
 // ResolveExternal looks up a thread ID by external channel id. Returns "" if unbound.
 func (s *Store) ResolveExternal(ctx context.Context, channelName, externalID string) (string, error) {
 	var threadID string
-	err := s.db.QueryRowContext(ctx,
+	err := s.read.QueryRowContext(ctx,
 		`SELECT thread_id FROM help_bindings WHERE channel_name = ? AND external_id = ?`,
 		channelName, externalID).Scan(&threadID)
 	if err == sql.ErrNoRows {
@@ -326,7 +326,7 @@ func (s *Store) ResolveExternal(ctx context.Context, channelName, externalID str
 // thread ID, returns the external id bound for that channel, or "" if unbound.
 func (s *Store) GetExternalID(ctx context.Context, threadID, channelName string) (string, error) {
 	var externalID string
-	err := s.db.QueryRowContext(ctx,
+	err := s.read.QueryRowContext(ctx,
 		`SELECT external_id FROM help_bindings WHERE thread_id = ? AND channel_name = ?`,
 		threadID, channelName).Scan(&externalID)
 	if err == sql.ErrNoRows {
@@ -339,7 +339,7 @@ func (s *Store) GetExternalID(ctx context.Context, threadID, channelName string)
 // has since received a user reply in the same thread, and returns the
 // earliest such reply. Used for idempotent replay of generic steps.
 func (s *Store) FindAskAnswer(ctx context.Context, runID, askKey string) (answer, threadID string, found bool, err error) {
-	row := s.db.QueryRowContext(ctx, `
+	row := s.read.QueryRowContext(ctx, `
 		SELECT m2.body, t.id
 		FROM help_threads t
 		JOIN help_messages m1 ON m1.thread_id = t.id AND m1.author = 'agent' AND m1.ask_key = ?

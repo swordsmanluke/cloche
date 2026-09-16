@@ -174,7 +174,7 @@ func (s *Store) migrateProjectLogsOnce(projectDir string) error {
 
 	migrationID := "v2-logs:" + projectDir
 	var count int
-	row := s.db.QueryRow(`SELECT COUNT(*) FROM _migrations WHERE id = ?`, migrationID)
+	row := s.write.QueryRow(`SELECT COUNT(*) FROM _migrations WHERE id = ?`, migrationID)
 	if err := row.Scan(&count); err == nil && count > 0 {
 		migratedProjectsMu.Lock()
 		migratedProjects[projectDir] = true
@@ -182,16 +182,16 @@ func (s *Store) migrateProjectLogsOnce(projectDir string) error {
 		return nil
 	}
 
-	if err := migrateProjectRuns(s.db, projectDir); err != nil {
+	if err := migrateProjectRuns(s.write, projectDir); err != nil {
 		return err
 	}
 
 	// Clean up old .cloche/<run-id>/ directories that may still contain
 	// orphaned runtime state (prompt.txt, context.json) from before the
 	// move to .cloche/runs/<task-id>/.
-	cleanupOldRunDirs(s.db, projectDir)
+	cleanupOldRunDirs(s.write, projectDir)
 
-	s.db.Exec(`INSERT OR IGNORE INTO _migrations (id, applied_at) VALUES (?, ?)`,
+	s.write.Exec(`INSERT OR IGNORE INTO _migrations (id, applied_at) VALUES (?, ?)`,
 		migrationID, time.Now().UTC().Format(time.RFC3339))
 
 	migratedProjectsMu.Lock()

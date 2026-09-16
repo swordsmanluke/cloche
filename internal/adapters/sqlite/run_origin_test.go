@@ -63,7 +63,7 @@ func TestBackfillRunOrigin(t *testing.T) {
 	defer store.Close()
 
 	insertLegacyRun := func(id, workflowName, taskID string) {
-		_, err := store.db.Exec(
+		_, err := store.write.Exec(
 			`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, task_id, attempt_id)
 			 VALUES (?, ?, 'failed', '', '', '', ?, ?)`,
 			id, workflowName, taskID, id,
@@ -77,9 +77,9 @@ func TestBackfillRunOrigin(t *testing.T) {
 
 	// NewStore already ran (and gated) the backfill once against an empty
 	// table; reset the gate so it actually processes the rows above.
-	_, err = store.db.Exec(`DELETE FROM _migrations WHERE id = 'run-origin-backfill-v1'`)
+	_, err = store.write.Exec(`DELETE FROM _migrations WHERE id = 'run-origin-backfill-v1'`)
 	require.NoError(t, err)
-	require.NoError(t, backfillRunOrigin(store.db))
+	require.NoError(t, backfillRunOrigin(store.write))
 
 	scan, err := store.GetRun(context.Background(), "legacy-scan")
 	require.NoError(t, err)
@@ -102,7 +102,7 @@ func TestBackfillRunOrigin(t *testing.T) {
 	// reclassified.
 	scan.UserInitiated = true
 	require.NoError(t, store.UpdateRun(context.Background(), scan))
-	require.NoError(t, backfillRunOrigin(store.db))
+	require.NoError(t, backfillRunOrigin(store.write))
 	scanAgain, err := store.GetRun(context.Background(), "legacy-scan")
 	require.NoError(t, err)
 	assert.True(t, scanAgain.UserInitiated, "the one-shot gate must not re-run and clobber a later legitimate update")

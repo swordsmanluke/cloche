@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/swordsmanluke/cloche/internal/activitylog"
@@ -15,43 +17,109 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// readPoolSize is the number of concurrent connections in the read pool.
+// WAL mode allows this many readers to proceed in parallel with each other
+// and with the single writer, instead of every Get/List/Query call queuing
+// behind whichever request currently holds the one connection.
+const readPoolSize = 8
+
+// memoryDBSeq disambiguates successive ":memory:" DSNs within one process
+// (e.g. one per test) so they don't share a single named in-memory database.
+var memoryDBSeq atomic.Int64
+
 type Store struct {
-	db *sql.DB
+	// write is the single connection used for all mutations and
+	// migrations, serializing Go-side writes so SQLite never sees
+	// concurrent writers (WAL + busy_timeout as defense-in-depth).
+	write *sql.DB
+	// read is a pool of read-only connections used by all Get/List/Query
+	// methods. WAL semantics mean reads never block behind the writer.
+	read *sql.DB
 }
 
 func NewStore(dsn string) (*Store, error) {
-	db, err := sql.Open("sqlite", dsn)
+	base := memoryAwareDSN(dsn)
+
+	write, err := sql.Open("sqlite", withPragmas(base, "busy_timeout(5000)", "journal_mode(WAL)"))
 	if err != nil {
-		return nil, fmt.Errorf("opening sqlite: %w", err)
+		return nil, fmt.Errorf("opening sqlite (write): %w", err)
 	}
+	write.SetMaxOpenConns(1)
 
-	// Enable WAL mode for concurrent read/write access
-	db.Exec("PRAGMA journal_mode=WAL")
+	read, err := sql.Open("sqlite", withPragmas(base, "busy_timeout(5000)", "query_only(1)"))
+	if err != nil {
+		write.Close()
+		return nil, fmt.Errorf("opening sqlite (read): %w", err)
+	}
+	read.SetMaxOpenConns(readPoolSize)
 
-	// Wait up to 5 seconds when the database is locked instead of failing immediately
-	db.Exec("PRAGMA busy_timeout=5000")
+	return newStore(write, read)
+}
 
-	// Serialize all Go-side access through a single connection so SQLite
-	// never sees concurrent writers (WAL + busy_timeout as defense-in-depth).
-	db.SetMaxOpenConns(1)
+// memoryAwareDSN rewrites a literal ":memory:" DSN into a uniquely-named,
+// shared-cache in-memory database. Without this, the write pool and read
+// pool (and even separate connections within the same pool) would each get
+// their own private, empty in-memory database instead of sharing one.
+func memoryAwareDSN(dsn string) string {
+	if dsn != ":memory:" {
+		return dsn
+	}
+	return fmt.Sprintf("file:clochemem%d?mode=memory&cache=shared", memoryDBSeq.Add(1))
+}
 
-	return NewStoreWithDB(db)
+// withPragmas appends one or more sqlite `_pragma` DSN parameters. These are
+// applied by the driver to every connection it opens, unlike a one-off
+// db.Exec("PRAGMA ...") call which only affects whichever single connection
+// happens to run it — the distinction that matters once a pool holds more
+// than one connection (the read pool).
+func withPragmas(dsn string, pragmas ...string) string {
+	v := url.Values{}
+	for _, p := range pragmas {
+		v.Add("_pragma", p)
+	}
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+	return dsn + sep + v.Encode()
 }
 
 // NewStoreWithDB wraps an already-opened *sql.DB, running migrations against
-// it. Exposed mainly so tests can inject a wrapped driver (e.g. to count
-// queries) while still going through the same migration path as NewStore.
+// it and using it for both reads and writes. Exposed mainly so tests can
+// inject a wrapped driver (e.g. to count queries) while still going through
+// the same migration path as NewStore.
 func NewStoreWithDB(db *sql.DB) (*Store, error) {
-	if err := migrate(db); err != nil {
-		db.Close()
+	return newStore(db, db)
+}
+
+// NewStoreWithDBs wraps already-opened write and read *sql.DB handles,
+// running migrations against write. Exposed so tests can instrument the
+// read and write pools independently (e.g. to prove reads run concurrently)
+// while still going through the same migration path as NewStore.
+func NewStoreWithDBs(write, read *sql.DB) (*Store, error) {
+	return newStore(write, read)
+}
+
+func newStore(write, read *sql.DB) (*Store, error) {
+	if err := migrate(write); err != nil {
+		write.Close()
+		if read != write {
+			read.Close()
+		}
 		return nil, fmt.Errorf("migrating: %w", err)
 	}
 
-	return &Store{db: db}, nil
+	return &Store{write: write, read: read}, nil
 }
 
 func (s *Store) Close() error {
-	return s.db.Close()
+	if s.read != s.write {
+		if err := s.read.Close(); err != nil {
+			s.write.Close()
+			return err
+		}
+	}
+	return s.write.Close()
 }
 
 func migrate(db *sql.DB) error {
@@ -307,7 +375,7 @@ func migrate(db *sql.DB) error {
 }
 
 func (s *Store) CreateRun(ctx context.Context, run *domain.Run) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.write.ExecContext(ctx,
 		`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, project_dir, error_message, container_id, base_sha, container_kept, title, is_host, parent_run_id, task_id, task_title, attempt_id, parent_step_name, parked_thread_id, parked_title, is_builtin, user_initiated)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID, run.WorkflowName, string(run.State), run.ActiveStepsString(),
@@ -339,7 +407,7 @@ func scanRun(scanner interface{ Scan(...any) error }) (*domain.Run, error) {
 }
 
 func (s *Store) GetRun(ctx context.Context, id string) (*domain.Run, error) {
-	row := s.db.QueryRowContext(ctx,
+	row := s.read.QueryRowContext(ctx,
 		`SELECT `+runSelectCols+` FROM runs WHERE id = ? ORDER BY pk DESC LIMIT 1`, id)
 
 	run, err := scanRun(row)
@@ -353,7 +421,7 @@ func (s *Store) GetRun(ctx context.Context, id string) (*domain.Run, error) {
 // This is the preferred lookup when the attempt is known, since run IDs are
 // only unique within an attempt.
 func (s *Store) GetRunByAttempt(ctx context.Context, attemptID, id string) (*domain.Run, error) {
-	row := s.db.QueryRowContext(ctx,
+	row := s.read.QueryRowContext(ctx,
 		`SELECT `+runSelectCols+` FROM runs WHERE attempt_id = ? AND id = ? LIMIT 1`, attemptID, id)
 
 	run, err := scanRun(row)
@@ -367,7 +435,7 @@ func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 	// Use pk when available (populated after reads); fall back to
 	// attempt_id+id composite which is unique by schema constraint.
 	if run.PK != 0 {
-		_, err := s.db.ExecContext(ctx,
+		_, err := s.write.ExecContext(ctx,
 			`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ?, parent_step_name = ?, parked_thread_id = ?, parked_title = ?, is_builtin = ?, user_initiated = ? WHERE pk = ?`,
 			string(run.State), run.ActiveStepsString(),
 			formatTime(run.StartedAt), formatTime(run.CompletedAt),
@@ -375,7 +443,7 @@ func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 		)
 		return err
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.write.ExecContext(ctx,
 		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ?, parent_step_name = ?, parked_thread_id = ?, parked_title = ?, is_builtin = ?, user_initiated = ? WHERE attempt_id = ? AND id = ?`,
 		string(run.State), run.ActiveStepsString(),
 		formatTime(run.StartedAt), formatTime(run.CompletedAt),
@@ -386,11 +454,11 @@ func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 }
 
 func (s *Store) DeleteRun(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM step_executions WHERE run_id = ?`, id)
+	_, err := s.write.ExecContext(ctx, `DELETE FROM step_executions WHERE run_id = ?`, id)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `DELETE FROM runs WHERE id = ?`, id)
+	_, err = s.write.ExecContext(ctx, `DELETE FROM runs WHERE id = ?`, id)
 	return err
 }
 
@@ -398,10 +466,10 @@ func (s *Store) ListRuns(ctx context.Context, since time.Time) ([]*domain.Run, e
 	var rows *sql.Rows
 	var err error
 	if since.IsZero() {
-		rows, err = s.db.QueryContext(ctx,
+		rows, err = s.read.QueryContext(ctx,
 			`SELECT `+runSelectCols+` FROM runs ORDER BY CASE WHEN state = 'running' THEN 0 ELSE 1 END, started_at DESC`)
 	} else {
-		rows, err = s.db.QueryContext(ctx,
+		rows, err = s.read.QueryContext(ctx,
 			`SELECT `+runSelectCols+` FROM runs WHERE started_at >= ? ORDER BY CASE WHEN state = 'running' THEN 0 ELSE 1 END, started_at DESC`,
 			formatTime(since))
 	}
@@ -429,11 +497,11 @@ func (s *Store) ListRunsByProject(ctx context.Context, projectDir string, since 
 	var rows *sql.Rows
 	var err error
 	if since.IsZero() {
-		rows, err = s.db.QueryContext(ctx,
+		rows, err = s.read.QueryContext(ctx,
 			`SELECT `+runSelectCols+` FROM runs WHERE project_dir = ? ORDER BY CASE WHEN state = 'running' THEN 0 ELSE 1 END, started_at DESC`,
 			projectDir)
 	} else {
-		rows, err = s.db.QueryContext(ctx,
+		rows, err = s.read.QueryContext(ctx,
 			`SELECT `+runSelectCols+` FROM runs WHERE project_dir = ? AND started_at >= ? ORDER BY CASE WHEN state = 'running' THEN 0 ELSE 1 END, started_at DESC`,
 			projectDir, formatTime(since))
 	}
@@ -449,7 +517,7 @@ func (s *Store) ListRunsByProject(ctx context.Context, projectDir string, since 
 // runs_project_dir_started_at index, so — unlike ListRunsByProject — cost
 // doesn't grow with the project's full run history.
 func (s *Store) ListRecentRunsByProject(ctx context.Context, projectDir string, limit int) ([]*domain.Run, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT `+runSelectCols+` FROM runs WHERE project_dir = ? ORDER BY started_at DESC LIMIT ?`,
 		projectDir, limit)
 	if err != nil {
@@ -468,7 +536,7 @@ func (s *Store) CountActiveRunsByProject(ctx context.Context, projectDir string,
 		query += ` AND is_host = 1`
 	}
 	var count int
-	err := s.db.QueryRowContext(ctx, query, projectDir).Scan(&count)
+	err := s.read.QueryRowContext(ctx, query, projectDir).Scan(&count)
 	return count, err
 }
 
@@ -477,7 +545,7 @@ func (s *Store) CountActiveRunsByProject(ctx context.Context, projectDir string,
 // loading the run itself. Implements ports.RunHistoryProbe.
 func (s *Store) HasCompletedRunBefore(ctx context.Context, projectDir string, before time.Time) (bool, error) {
 	var exists int
-	err := s.db.QueryRowContext(ctx,
+	err := s.read.QueryRowContext(ctx,
 		`SELECT EXISTS(
 			SELECT 1 FROM runs
 			WHERE project_dir = ?
@@ -534,7 +602,7 @@ func (s *Store) ListRunsFiltered(ctx context.Context, filter domain.RunListFilte
 		query += fmt.Sprintf(` LIMIT %d`, filter.Limit)
 	}
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.read.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -557,7 +625,7 @@ func (s *Store) IsBuiltinByTaskIDs(ctx context.Context, taskIDs []string) (map[s
 		placeholders[i] = "?"
 		args[i] = id
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT task_id, is_builtin FROM (
 			SELECT task_id, COALESCE(is_builtin,0) AS is_builtin,
 			       ROW_NUMBER() OVER (
@@ -586,7 +654,7 @@ func (s *Store) IsBuiltinByTaskIDs(ctx context.Context, taskIDs []string) (map[s
 }
 
 func (s *Store) ListProjects(ctx context.Context) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT DISTINCT project_dir FROM runs WHERE project_dir != '' AND project_dir NOT LIKE '%/.gitworktrees/%' ORDER BY project_dir`)
 	if err != nil {
 		return nil, err
@@ -605,7 +673,7 @@ func (s *Store) ListProjects(ctx context.Context) ([]string, error) {
 }
 
 func (s *Store) ListChildRuns(ctx context.Context, parentRunID string) ([]*domain.Run, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT `+runSelectCols+` FROM runs WHERE parent_run_id = ? ORDER BY started_at ASC`,
 		parentRunID)
 	if err != nil {
@@ -623,7 +691,7 @@ func (s *Store) SaveCapture(ctx context.Context, runID string, exec *domain.Step
 		outputTokens = exec.Usage.OutputTokens
 		agentName = exec.Usage.AgentName
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.write.ExecContext(ctx,
 		`INSERT INTO step_executions (run_id, step_name, result, started_at, completed_at, logs, git_ref, input_tokens, output_tokens, agent_name)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		runID, exec.StepName, exec.Result,
@@ -634,7 +702,7 @@ func (s *Store) SaveCapture(ctx context.Context, runID string, exec *domain.Step
 }
 
 func (s *Store) GetCaptures(ctx context.Context, runID string) ([]*domain.StepExecution, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT step_name, result, started_at, completed_at, COALESCE(logs,''), COALESCE(git_ref,''), COALESCE(input_tokens,0), COALESCE(output_tokens,0), COALESCE(agent_name,'')
 		 FROM step_executions WHERE run_id = ? ORDER BY id`, runID)
 	if err != nil {
@@ -669,7 +737,7 @@ func (s *Store) QueryUsage(ctx context.Context, q ports.UsageQuery) ([]domain.Us
 	sinceStr := formatTime(q.Since)
 	untilStr := formatTime(q.Until)
 
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT
 			COALESCE(se.agent_name, '') AS agent_name,
 			SUM(se.input_tokens) AS input_tokens,
@@ -718,7 +786,7 @@ func (s *Store) QueryUsage(ctx context.Context, q ports.UsageQuery) ([]domain.Us
 }
 
 func (s *Store) SaveLogFile(ctx context.Context, entry *ports.LogFileEntry) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.write.ExecContext(ctx,
 		`INSERT INTO log_files (run_id, step_name, file_type, file_path, file_size, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
 		entry.RunID, entry.StepName, entry.FileType, entry.FilePath, entry.FileSize,
@@ -728,7 +796,7 @@ func (s *Store) SaveLogFile(ctx context.Context, entry *ports.LogFileEntry) erro
 }
 
 func (s *Store) GetLogFiles(ctx context.Context, runID string) ([]*ports.LogFileEntry, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT id, run_id, COALESCE(step_name,''), file_type, file_path, COALESCE(file_size,0), created_at
 		 FROM log_files WHERE run_id = ? ORDER BY id`, runID)
 	if err != nil {
@@ -739,7 +807,7 @@ func (s *Store) GetLogFiles(ctx context.Context, runID string) ([]*ports.LogFile
 }
 
 func (s *Store) GetLogFilesByStep(ctx context.Context, runID, stepName string) ([]*ports.LogFileEntry, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT id, run_id, COALESCE(step_name,''), file_type, file_path, COALESCE(file_size,0), created_at
 		 FROM log_files WHERE run_id = ? AND step_name = ? ORDER BY id`, runID, stepName)
 	if err != nil {
@@ -750,7 +818,7 @@ func (s *Store) GetLogFilesByStep(ctx context.Context, runID, stepName string) (
 }
 
 func (s *Store) GetLogFileByType(ctx context.Context, runID, fileType string) ([]*ports.LogFileEntry, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT id, run_id, COALESCE(step_name,''), file_type, file_path, COALESCE(file_size,0), created_at
 		 FROM log_files WHERE run_id = ? AND file_type = ? ORDER BY id`, runID, fileType)
 	if err != nil {
@@ -775,7 +843,7 @@ func scanLogFiles(rows *sql.Rows) ([]*ports.LogFileEntry, error) {
 }
 
 func (s *Store) SaveTask(ctx context.Context, task *domain.Task) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.write.ExecContext(ctx,
 		`INSERT OR REPLACE INTO tasks (id, title, source, project_dir, created_at)
 		 VALUES (?, ?, ?, ?, ?)`,
 		task.ID, task.Title, string(task.Source), task.ProjectDir, formatTime(task.CreatedAt),
@@ -784,7 +852,7 @@ func (s *Store) SaveTask(ctx context.Context, task *domain.Task) error {
 }
 
 func (s *Store) GetTask(ctx context.Context, id string) (*domain.Task, error) {
-	row := s.db.QueryRowContext(ctx,
+	row := s.read.QueryRowContext(ctx,
 		`SELECT id, title, source, project_dir, created_at FROM tasks WHERE id = ?`, id)
 
 	task := &domain.Task{}
@@ -813,10 +881,10 @@ func (s *Store) ListTasks(ctx context.Context, projectDir string) ([]*domain.Tas
 		err  error
 	)
 	if projectDir == "" {
-		rows, err = s.db.QueryContext(ctx,
+		rows, err = s.read.QueryContext(ctx,
 			`SELECT id, title, source, project_dir, created_at FROM tasks ORDER BY created_at DESC`)
 	} else {
-		rows, err = s.db.QueryContext(ctx,
+		rows, err = s.read.QueryContext(ctx,
 			`SELECT id, title, source, project_dir, created_at FROM tasks WHERE project_dir = ? ORDER BY created_at DESC`,
 			projectDir)
 	}
@@ -866,7 +934,7 @@ func (s *Store) ListTasksByIDs(ctx context.Context, ids []string) ([]*domain.Tas
 	}
 	inClause := strings.Join(placeholders, ",")
 
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT id, title, source, project_dir, created_at FROM tasks WHERE id IN (`+inClause+`) ORDER BY created_at DESC`,
 		args...)
 	if err != nil {
@@ -907,11 +975,11 @@ func (s *Store) listAttemptsByProject(ctx context.Context, projectDir string) (m
 	var rows *sql.Rows
 	var err error
 	if projectDir == "" {
-		rows, err = s.db.QueryContext(ctx,
+		rows, err = s.read.QueryContext(ctx,
 			`SELECT a.id, a.task_id, a.started_at, COALESCE(a.ended_at,''), a.result, COALESCE(a.previous_attempt_id,'')
 			 FROM attempts a ORDER BY a.task_id, a.started_at ASC`)
 	} else {
-		rows, err = s.db.QueryContext(ctx,
+		rows, err = s.read.QueryContext(ctx,
 			`SELECT a.id, a.task_id, a.started_at, COALESCE(a.ended_at,''), a.result, COALESCE(a.previous_attempt_id,'')
 			 FROM attempts a JOIN tasks t ON t.id = a.task_id
 			 WHERE t.project_dir = ? ORDER BY a.task_id, a.started_at ASC`, projectDir)
@@ -935,7 +1003,7 @@ func (s *Store) listAttemptsByTaskIDs(ctx context.Context, taskIDs []string) (ma
 		placeholders[i] = "?"
 		args[i] = id
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT id, task_id, started_at, COALESCE(ended_at,''), result, COALESCE(previous_attempt_id,'')
 		 FROM attempts WHERE task_id IN (`+strings.Join(placeholders, ",")+`) ORDER BY task_id, started_at ASC`,
 		args...)
@@ -964,7 +1032,7 @@ func scanAttemptsByTask(rows *sql.Rows) (map[string][]*domain.Attempt, error) {
 }
 
 func (s *Store) SaveAttempt(ctx context.Context, attempt *domain.Attempt) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.write.ExecContext(ctx,
 		`INSERT OR REPLACE INTO attempts (id, task_id, started_at, ended_at, result, project_dir, previous_attempt_id)
 		 VALUES (?, ?, ?, ?, ?, (SELECT project_dir FROM tasks WHERE id = ?), ?)`,
 		attempt.ID, attempt.TaskID, formatTime(attempt.StartedAt),
@@ -975,7 +1043,7 @@ func (s *Store) SaveAttempt(ctx context.Context, attempt *domain.Attempt) error 
 }
 
 func (s *Store) GetAttempt(ctx context.Context, id string) (*domain.Attempt, error) {
-	row := s.db.QueryRowContext(ctx,
+	row := s.read.QueryRowContext(ctx,
 		`SELECT id, task_id, started_at, COALESCE(ended_at,''), result, COALESCE(previous_attempt_id,'') FROM attempts WHERE id = ?`, id)
 
 	attempt := &domain.Attempt{}
@@ -993,7 +1061,7 @@ func (s *Store) GetAttempt(ctx context.Context, id string) (*domain.Attempt, err
 }
 
 func (s *Store) ListAttempts(ctx context.Context, taskID string) ([]*domain.Attempt, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT id, task_id, started_at, COALESCE(ended_at,''), result, COALESCE(previous_attempt_id,'')
 		 FROM attempts WHERE task_id = ? ORDER BY started_at ASC`, taskID)
 	if err != nil {
@@ -1016,7 +1084,7 @@ func (s *Store) ListAttempts(ctx context.Context, taskID string) ([]*domain.Atte
 }
 
 func (s *Store) SaveAttemptLog(ctx context.Context, entry *ports.AttemptLogEntry) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.write.ExecContext(ctx,
 		`INSERT INTO attempt_logs (attempt_id, task_id, file_type, file_path, file_size, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
 		entry.AttemptID, entry.TaskID, entry.FileType, entry.FilePath, entry.FileSize,
@@ -1026,7 +1094,7 @@ func (s *Store) SaveAttemptLog(ctx context.Context, entry *ports.AttemptLogEntry
 }
 
 func (s *Store) GetAttemptLogs(ctx context.Context, attemptID string) ([]*ports.AttemptLogEntry, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT id, attempt_id, task_id, file_type, file_path, COALESCE(file_size,0), created_at
 		 FROM attempt_logs WHERE attempt_id = ? ORDER BY id`, attemptID)
 	if err != nil {
@@ -1049,7 +1117,7 @@ func (s *Store) GetAttemptLogs(ctx context.Context, attemptID string) ([]*ports.
 
 func (s *Store) FailStaleAttempts(ctx context.Context) (int64, error) {
 	now := formatTime(time.Now())
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.write.ExecContext(ctx,
 		`UPDATE attempts SET result = 'failed', ended_at = ?
 		 WHERE result = 'running'`,
 		now,
@@ -1062,7 +1130,7 @@ func (s *Store) FailStaleAttempts(ctx context.Context) (int64, error) {
 
 func (s *Store) FailStaleRuns(ctx context.Context) (int64, error) {
 	now := formatTime(time.Now())
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.write.ExecContext(ctx,
 		`UPDATE runs SET state = 'failed', completed_at = ?, error_message = 'daemon restarted while run was active'
 		 WHERE state IN ('pending', 'running', 'waiting')`,
 		now,
@@ -1077,7 +1145,7 @@ func (s *Store) FailStaleRuns(ctx context.Context) (int64, error) {
 // as 'parked' so they are not failed at daemon restart and can be reviewed by the operator.
 func (s *Store) ParkRunsByProject(ctx context.Context, projectDir string) (int64, error) {
 	now := formatTime(time.Now())
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.write.ExecContext(ctx,
 		`UPDATE runs SET state = 'parked', completed_at = ?
 		 WHERE project_dir = ? AND state IN ('pending', 'running', 'waiting')`,
 		now, projectDir,
@@ -1091,7 +1159,7 @@ func (s *Store) ParkRunsByProject(ctx context.Context, projectDir string) (int64
 // CountParkedRunsByProject returns the number of runs in 'parked' state for the project.
 func (s *Store) CountParkedRunsByProject(ctx context.Context, projectDir string) (int32, error) {
 	var count int32
-	err := s.db.QueryRowContext(ctx,
+	err := s.read.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM runs WHERE project_dir = ? AND state = 'parked'`,
 		projectDir,
 	).Scan(&count)
@@ -1100,7 +1168,7 @@ func (s *Store) CountParkedRunsByProject(ctx context.Context, projectDir string)
 
 // UpsertPoll inserts or updates the poll record for a poll step.
 func (s *Store) UpsertPoll(ctx context.Context, record *ports.PollRecord) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.write.ExecContext(ctx,
 		`INSERT INTO step_polls (run_id, step_name, started_at, last_poll_at, poll_count)
 		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT(run_id, step_name) DO UPDATE SET
@@ -1115,7 +1183,7 @@ func (s *Store) UpsertPoll(ctx context.Context, record *ports.PollRecord) error 
 
 // GetPoll retrieves the poll record for a specific (run_id, step_name).
 func (s *Store) GetPoll(ctx context.Context, runID, stepName string) (*ports.PollRecord, error) {
-	row := s.db.QueryRowContext(ctx,
+	row := s.read.QueryRowContext(ctx,
 		`SELECT run_id, step_name, started_at, last_poll_at, poll_count
 		 FROM step_polls WHERE run_id = ? AND step_name = ?`,
 		runID, stepName,
@@ -1137,7 +1205,7 @@ func (s *Store) GetPoll(ctx context.Context, runID, stepName string) (*ports.Pol
 // DeletePoll removes the poll record for a (run_id, step_name). Called
 // when a poll step completes (either via decision or failure/timeout).
 func (s *Store) DeletePoll(ctx context.Context, runID, stepName string) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.write.ExecContext(ctx,
 		`DELETE FROM step_polls WHERE run_id = ? AND step_name = ?`,
 		runID, stepName,
 	)
@@ -1146,7 +1214,7 @@ func (s *Store) DeletePoll(ctx context.Context, runID, stepName string) error {
 
 // ListPolls returns all active poll records for the given run.
 func (s *Store) ListPolls(ctx context.Context, runID string) ([]*ports.PollRecord, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT run_id, step_name, started_at, last_poll_at, poll_count
 		 FROM step_polls WHERE run_id = ?`,
 		runID,
@@ -1227,7 +1295,7 @@ func (s *Store) GetContextKey(ctx context.Context, taskID, attemptID, runID, key
 		scopes = append(scopes, [2]string{"", ""})
 	}
 	for _, sc := range scopes {
-		row := s.db.QueryRowContext(ctx,
+		row := s.read.QueryRowContext(ctx,
 			`SELECT value FROM context_kv WHERE task_id = ? AND attempt_id = ? AND run_id = ? AND key = ?`,
 			taskID, sc[0], sc[1], key)
 		var value string
@@ -1244,7 +1312,7 @@ func (s *Store) GetContextKey(ctx context.Context, taskID, attemptID, runID, key
 }
 
 func (s *Store) SetContextKey(ctx context.Context, taskID, attemptID, runID, key, value string) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.write.ExecContext(ctx,
 		`INSERT INTO context_kv (task_id, attempt_id, run_id, key, value, updated_at)
 		 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		 ON CONFLICT(task_id, attempt_id, run_id, key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
@@ -1253,7 +1321,7 @@ func (s *Store) SetContextKey(ctx context.Context, taskID, attemptID, runID, key
 }
 
 func (s *Store) ListContextKeys(ctx context.Context, taskID, attemptID, runID string) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT key FROM context_kv WHERE task_id = ? AND attempt_id = ? AND run_id = ? ORDER BY key`,
 		taskID, attemptID, runID)
 	if err != nil {
@@ -1277,7 +1345,7 @@ func (s *Store) ListContextKeys(ctx context.Context, taskID, attemptID, runID st
 // ledger view's prompt-revision and requirement-injection tables) rather
 // than the single-scope lookups GetContextKey/ListContextKeys provide.
 func (s *Store) ListContextKVForProject(ctx context.Context, projectDir string) ([]ports.ContextKVRow, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.read.QueryContext(ctx, `
 		SELECT ck.task_id, ck.attempt_id, ck.run_id, ck.key, ck.value
 		FROM context_kv ck
 		JOIN attempts a ON a.task_id = ck.task_id AND a.id = ck.attempt_id
@@ -1303,7 +1371,7 @@ func (s *Store) ListContextKVForProject(ctx context.Context, projectDir string) 
 // runs) tied to that attempt. Used by the ledger view's "mean tokens"
 // aggregates grouped by prompt revision or requirement.
 func (s *Store) AttemptTokenTotals(ctx context.Context, projectDir string) (map[string]int64, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.read.QueryContext(ctx, `
 		SELECT a.id, COALESCE(SUM(se.input_tokens), 0) + COALESCE(SUM(se.output_tokens), 0)
 		FROM attempts a
 		JOIN runs r ON r.attempt_id = a.id
@@ -1413,7 +1481,7 @@ func migrateContextKVRunID(db *sql.DB) error {
 }
 
 func (s *Store) DeleteContextKeys(ctx context.Context, taskID, attemptID string) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.write.ExecContext(ctx,
 		`DELETE FROM context_kv WHERE task_id = ? AND attempt_id = ?`,
 		taskID, attemptID)
 	return err
@@ -1423,7 +1491,7 @@ func (s *Store) DeleteContextKeys(ctx context.Context, taskID, attemptID string)
 // access (no rows exist), it auto-seeds a single repository whose path is the
 // project root, making it the implicit default by being the only entry.
 func (s *Store) ListRepositories(ctx context.Context, projectDir string) ([]*domain.Repository, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.read.QueryContext(ctx,
 		`SELECT name, path, remote_url FROM repositories WHERE project_dir = ?`, projectDir)
 	if err != nil {
 		return nil, err
@@ -1447,7 +1515,7 @@ func (s *Store) ListRepositories(ctx context.Context, projectDir string) ([]*dom
 			Name: filepath.Base(projectDir),
 			Path: projectDir,
 		}
-		_, err := s.db.ExecContext(ctx,
+		_, err := s.write.ExecContext(ctx,
 			`INSERT INTO repositories (project_dir, name, path, remote_url) VALUES (?, ?, ?, ?)`,
 			projectDir, seed.Name, seed.Path, seed.RemoteURL)
 		if err != nil {
@@ -1461,7 +1529,7 @@ func (s *Store) ListRepositories(ctx context.Context, projectDir string) ([]*dom
 
 // AppendActivityEntry inserts one activity log entry for the given project.
 func (s *Store) AppendActivityEntry(ctx context.Context, projectDir string, entry activitylog.Entry) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.write.ExecContext(ctx,
 		`INSERT INTO activity_log (ts, kind, project_dir, task_id, attempt_id, workflow, step, result, state, message)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		formatTime(entry.Timestamp), string(entry.Kind), projectDir,
@@ -1510,7 +1578,7 @@ func (s *Store) ReadActivityEntries(ctx context.Context, projectDir string, opts
 		query += ` ORDER BY ts ASC, id ASC`
 	}
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.read.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
