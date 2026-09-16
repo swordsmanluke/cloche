@@ -26,6 +26,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/intent"
 	"github.com/swordsmanluke/cloche/internal/logstream"
 	"github.com/swordsmanluke/cloche/internal/ports"
+	"github.com/swordsmanluke/cloche/internal/promptrev"
 	"github.com/swordsmanluke/cloche/internal/version"
 )
 
@@ -271,10 +272,11 @@ type Handler struct {
 	stopLoopFn        func(ctx context.Context, projectDir string) error
 	stopRunFn         func(ctx context.Context, taskID string) error
 	scanFn            func(ctx context.Context, projectDir string) (string, error)
-	getThreadFn       GetThreadFunc   // resolves a help thread for the parked-run pane
-	replyThreadFn     ReplyThreadFunc // posts a reply to a help thread; same path as `cloche threads reply`
-	mcpSecret         []byte          // enables /mcp when non-empty; see WithHelpMCP
-	askHelpFn         AskHelpFunc     // handles ask_user tool calls on /mcp
+	getThreadFn       GetThreadFunc           // resolves a help thread for the parked-run pane
+	replyThreadFn     ReplyThreadFunc         // posts a reply to a help thread; same path as `cloche threads reply`
+	mcpSecret         []byte                  // enables /mcp when non-empty; see WithHelpMCP
+	askHelpFn         AskHelpFunc             // handles ask_user tool calls on /mcp
+	history           *promptrev.HistoryCache // per-file git history cache for the ledger view
 	pages             map[string]*template.Template
 	mux               *http.ServeMux
 }
@@ -306,6 +308,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h := &Handler{
 		store:    store,
 		captures: captures,
+		history:  promptrev.NewHistoryCache(),
 		pages:    pages,
 		mux:      http.NewServeMux(),
 	}

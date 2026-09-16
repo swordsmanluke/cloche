@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os/exec"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/intent"
+	"github.com/swordsmanluke/cloche/internal/ports"
 	"github.com/swordsmanluke/cloche/internal/promptrev"
 )
 
@@ -80,6 +80,11 @@ type apiLedgerResponse struct {
 	PromptFiles            []apiLedgerPromptFile       `json:"prompt_files"`
 	Requirements           []apiLedgerRequirement      `json:"requirements"`
 	TaskRequirements       []apiLedgerTaskRequirements `json:"task_requirements"`
+	// BackfillPending is true while the one-time historical prompt-revision
+	// backfill (internal/adapters/sqlite/ledger_backfill.go) hasn't finished
+	// sweeping this project yet, so PromptFiles only reflects attempts
+	// recorded so far rather than the full history.
+	BackfillPending bool `json:"backfill_pending,omitempty"`
 }
 
 // ledgerAttempt is the flattened view of one attempt used by the
@@ -120,11 +125,14 @@ func ledgerIsTerminal(r domain.AttemptResult) bool {
 
 // handleAPILedger serves the per-project ledger view: pass rate over time,
 // tokens per succeeded task, mean attempts to success, prompt-revision
-// outcomes, and requirement-injection cross-references. See
-// docs/plans for the design; the underlying data is recorded at dispatch
-// time by host.Executor.recordPromptRevisionKV / seedIntentKV and their
-// grpc.DaemonExecutor counterparts, with best-effort backfill (via git log
-// timestamps) for attempts that predate that recording.
+// outcomes, and requirement-injection cross-references. See docs/plans for
+// the design; the underlying data is recorded at dispatch time by
+// host.Executor.recordPromptRevisionKV / seedIntentKV and their
+// grpc.DaemonExecutor counterparts, with attempts that predate that
+// recording backfilled once by a background job at daemon start (see
+// internal/adapters/sqlite/ledger_backfill.go) rather than on this request
+// path — BackfillPending in the response reports whether that sweep has
+// reached this project yet.
 func (h *Handler) handleAPILedger(w http.ResponseWriter, r *http.Request) {
 	dir, _, ok := h.resolveProjectDir(w, r)
 	if !ok {
@@ -150,6 +158,8 @@ func (h *Handler) handleAPILedger(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	resp.BackfillPending = h.ledgerBackfillPending(ctx, dir)
 
 	tokenTotals, _ := h.store.AttemptTokenTotals(ctx, dir)
 	kvRows, _ := h.store.ListContextKVForProject(ctx, dir)
@@ -194,7 +204,6 @@ func (h *Handler) handleAPILedger(w http.ResponseWriter, r *http.Request) {
 	fillLedgerSummary(&resp, tasks, tokenTotals)
 
 	fileRevStats := map[string]map[string]*revStat{}
-	attemptFilesRecorded := map[string]bool{}
 	for _, a := range attempts {
 		kv := perAttempt[a.id]
 		if kv == nil {
@@ -206,20 +215,9 @@ func (h *Handler) handleAPILedger(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			addRevStat(fileRevStats, file, rev, a)
-			attemptFilesRecorded[a.id] = true
 		}
 	}
-	// Backfill: attempts with no live-recorded prompt revision at all (they
-	// predate recordPromptRevisionKV) are attributed to the prompt file(s)
-	// their executed steps reference today, at the git revision effective
-	// at the attempt's start time.
-	for _, a := range attempts {
-		if attemptFilesRecorded[a.id] || !ledgerIsTerminal(a.result) {
-			continue
-		}
-		backfillPromptRevisions(h, ctx, dir, a, fileRevStats)
-	}
-	resp.PromptFiles = buildLedgerPromptFiles(dir, fileRevStats)
+	resp.PromptFiles = buildLedgerPromptFiles(h.history, dir, fileRevStats)
 
 	reqToTasks := map[string]map[string]bool{}
 	taskToReqs := map[string]map[string]bool{}
@@ -328,46 +326,12 @@ func addRevStat(m map[string]map[string]*revStat, file, rev string, a ledgerAtte
 	s.tokenSum += a.tokens
 }
 
-// backfillPromptRevisions attributes a legacy attempt (one with no
-// live-recorded prompt_rev KV) to the prompt file(s) its executed steps
-// reference in the workflow definition today, at the git revision that was
-// effective as of the attempt's start time. Best-effort: any lookup failure
-// just skips that attempt/file.
-func backfillPromptRevisions(h *Handler, ctx context.Context, dir string, a ledgerAttempt, fileRevStats map[string]map[string]*revStat) {
-	runs, err := h.store.ListRunsFiltered(ctx, domain.RunListFilter{ProjectDir: dir, AttemptID: a.id})
-	if err != nil {
-		return
-	}
-	seenFiles := map[string]bool{}
-	for _, run := range runs {
-		files := promptrev.ResolveWorkflowPromptFiles(dir, run.WorkflowName)
-		if len(files) == 0 || h.captures == nil {
-			continue
-		}
-		execs, err := h.captures.GetCaptures(ctx, run.ID)
-		if err != nil {
-			continue
-		}
-		for _, se := range execs {
-			relPath, ok := files[se.StepName]
-			if !ok || seenFiles[relPath] {
-				continue
-			}
-			rev := promptrev.GitRevisionAt(dir, relPath, a.startedAt)
-			if rev == "" {
-				continue
-			}
-			seenFiles[relPath] = true
-			addRevStat(fileRevStats, relPath, rev, a)
-		}
-	}
-}
-
 // buildLedgerPromptFiles turns the accumulated per-(file,revision) stats
 // into the API shape, ordering each file's revisions newest-first using
-// `git log --follow` history and computing the before/after comparison for
-// the most recent change that has recorded attempts.
-func buildLedgerPromptFiles(dir string, fileRevStats map[string]map[string]*revStat) []apiLedgerPromptFile {
+// history's cached `git log --follow` history and computing the
+// before/after comparison for the most recent change that has recorded
+// attempts.
+func buildLedgerPromptFiles(history *promptrev.HistoryCache, dir string, fileRevStats map[string]map[string]*revStat) []apiLedgerPromptFile {
 	files := make([]string, 0, len(fileRevStats))
 	for f := range fileRevStats {
 		files = append(files, f)
@@ -377,17 +341,17 @@ func buildLedgerPromptFiles(dir string, fileRevStats map[string]map[string]*revS
 	var out []apiLedgerPromptFile
 	for _, file := range files {
 		revStats := fileRevStats[file]
-		history := promptFileGitHistory(dir, file)
+		commits := history.History(dir, file)
 
 		var revisions []apiLedgerRevision
 		seen := map[string]bool{}
-		for _, c := range history {
-			s, ok := revStats[c.sha]
+		for _, c := range commits {
+			s, ok := revStats[c.SHA]
 			if !ok {
 				continue
 			}
-			revisions = append(revisions, toAPILedgerRevision(c.sha, c.date, c.message, s))
-			seen[c.sha] = true
+			revisions = append(revisions, toAPILedgerRevision(c.SHA, c.Date, c.Message, s))
+			seen[c.SHA] = true
 		}
 		// Revisions with recorded stats but missing from git history (e.g. a
 		// shallow clone, or --follow losing track across an unusual rename)
@@ -427,36 +391,21 @@ func toAPILedgerRevision(sha, date, message string, s *revStat) apiLedgerRevisio
 	return rev
 }
 
-// promptFileCommit is one entry of a prompt file's git history, newest first.
-type promptFileCommit struct {
-	sha, date, message string
-}
-
-// promptFileGitHistory returns relPath's commit history within dir, newest
-// first, or nil if dir isn't a git repo / the file has no history.
-func promptFileGitHistory(dir, relPath string) []promptFileCommit {
-	cmd := exec.Command("git", "log", "--follow", "--format=%H%x1f%aI%x1f%s", "--", relPath)
-	cmd.Dir = dir
-	out, err := cmd.Output()
+// ledgerBackfillPending reports whether the background prompt-revision
+// backfill (internal/adapters/sqlite/ledger_backfill.go) hasn't finished
+// sweeping dir yet. h.store implementing ports.LedgerBackfillStatus is
+// optional (only sqlite.Store does), so a store that doesn't implement it
+// (e.g. a test fake) is treated as always caught up.
+func (h *Handler) ledgerBackfillPending(ctx context.Context, dir string) bool {
+	lb, ok := h.store.(ports.LedgerBackfillStatus)
+	if !ok {
+		return false
+	}
+	pending, err := lb.LedgerBackfillPending(ctx, dir)
 	if err != nil {
-		return nil
+		return false
 	}
-	var history []promptFileCommit
-	for _, line := range strings.Split(strings.TrimSuffix(string(out), "\n"), "\n") {
-		if line == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "\x1f", 3)
-		if len(parts) < 3 {
-			continue
-		}
-		date := parts[1]
-		if t, err := time.Parse(time.RFC3339, date); err == nil {
-			date = t.Format("2006-01-02")
-		}
-		history = append(history, promptFileCommit{sha: parts[0], date: date, message: parts[2]})
-	}
-	return history
+	return pending
 }
 
 // buildLedgerRequirements turns the accumulated requirement<->task index

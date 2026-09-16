@@ -70,6 +70,15 @@ type ProjectMigrator interface {
 	MigrateProjectLogs(projectDir string) error
 }
 
+// LedgerBackfillStatus is an optional interface a RunStore may implement to
+// report whether the one-time historical prompt-revision backfill (see
+// internal/adapters/sqlite/ledger_backfill.go) has finished for a project.
+// The ledger handler uses this to surface a backfill_pending flag instead of
+// running the backfill itself on a request path.
+type LedgerBackfillStatus interface {
+	LedgerBackfillPending(ctx context.Context, projectDir string) (bool, error)
+}
+
 type CaptureStore interface {
 	SaveCapture(ctx context.Context, runID string, exec *domain.StepExecution) error
 	GetCaptures(ctx context.Context, runID string) ([]*domain.StepExecution, error)

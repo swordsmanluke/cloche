@@ -87,6 +87,16 @@ func main() {
 		fmt.Fprintf(os.Stderr, "startup: marked %d stale attempt(s) as failed\n", n)
 	}
 
+	// Backfill historical ledger prompt-revisions once, in the background:
+	// attempts that predate dispatch-time recording (host.Executor.
+	// recordPromptRevisionKV) never get one on the ledger request path (see
+	// internal/adapters/web/handler_ledger.go) — this sweep is what catches
+	// them up, resumable across restarts via internal/adapters/sqlite/
+	// ledger_backfill.go.
+	ledgerBackfillCtx, ledgerBackfillCancel := context.WithCancel(context.Background())
+	defer ledgerBackfillCancel()
+	go store.RunLedgerPromptRevisionBackfill(ledgerBackfillCtx, 0)
+
 	runtime, err := initRuntime(globalCfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to init runtime: %v\n", err)

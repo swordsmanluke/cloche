@@ -260,9 +260,14 @@ summarizing outcomes across every attempt, from `GET /api/projects/{slug}/ledger
 Attribution of an attempt to a prompt revision is recorded at step-dispatch time
 (`host.Executor.recordPromptRevisionKV` and its `grpc.DaemonExecutor` counterpart for
 container steps), keyed by the resolved prompt file and the git commit that last
-touched it as of dispatch. Attempts that predate this recording are backfilled
-best-effort using the workflow's current prompt-file references and `git log` history
-at the attempt's start time. Escape or `l` closes the overlay.
+touched it as of dispatch. Attempts that predate this recording are backfilled once by
+a bounded-parallelism background job at daemon start
+(`sqlite.Store.RunLedgerPromptRevisionBackfill`, gated via `_migrations` so it resumes
+across restarts instead of redoing finished projects) rather than on this request path;
+while that sweep hasn't reached a project yet, the response reports what's recorded so
+far plus `backfill_pending: true` instead of blocking. Per-file `git log --follow`
+history is cached keyed on the repo's current HEAD (`promptrev.HistoryCache`), so a
+request only ever shells out again after a new commit. Escape or `l` closes the overlay.
 
 ---
 
@@ -320,7 +325,8 @@ The dashboard's JSON endpoints remain stable and are also used by the CLI
   per-container delete for the Containers view.
 - `GET /api/projects/{name}/ledger` — pass rate over time, mean attempts/tokens to
   success, per-prompt-file revision outcomes, and requirement-injection
-  cross-references (see Ledger above).
+  cross-references (see Ledger above); `backfill_pending: true` while the historical
+  prompt-revision backfill hasn't reached this project yet.
 
 These are unchanged by the console-shell rework; only the HTML pages that used to render
 around them were replaced.
