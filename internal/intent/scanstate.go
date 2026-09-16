@@ -21,6 +21,26 @@ type ScanState struct {
 	// (e.g. the dashboard's new-since-scan badge) can tell which requirements
 	// were created by the most recent scan. Zero means no scan has run yet.
 	LastScanAt time.Time `yaml:"last_scan_at,omitempty"`
+	// Repos holds the collection cursors for each configured
+	// [[repositories]] entry collect-sources has descended into, keyed by
+	// the repository's configured name. The project root's own cursors stay
+	// in the fields above, unchanged from before repos existed, so a
+	// scan-state.yaml from a project with no configured repos round-trips
+	// exactly as it always has.
+	Repos map[string]*RepoCursor `yaml:"repos,omitempty"`
+	// LastScanStats records the per-repo collection counts from the most
+	// recent collect-sources pass (root plus every configured repo), so the
+	// Requirements view and `cloche intent scan` can show a thin scan is
+	// thin instead of looking identical to a rich one.
+	LastScanStats ScanStats `yaml:"last_scan_stats,omitempty"`
+}
+
+// RepoCursor holds the same three collection cursors as ScanState's
+// top-level fields, scoped to one configured [[repositories]] entry.
+type RepoCursor struct {
+	LastCommit  string            `yaml:"last_commit,omitempty"`
+	ScannedRuns []string          `yaml:"scanned_runs,omitempty"`
+	ScannedDocs map[string]string `yaml:"scanned_docs,omitempty"`
 }
 
 // LoadScanState reads scan-state.yaml. A missing file yields a zero-value

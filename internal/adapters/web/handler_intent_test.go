@@ -108,6 +108,32 @@ func TestAPIIntentRequirements_NewSinceScan(t *testing.T) {
 	assert.True(t, byStatement["new"].NewSinceScan)
 }
 
+func TestAPIIntentRequirements_LastScanStats(t *testing.T) {
+	h, dir, label := setupIntentProject(t)
+	store := intent.NewStore(dir)
+
+	require.NoError(t, store.SaveScanState(&intent.ScanState{
+		LastScanStats: intent.ScanStats{Repos: []intent.RepoStats{
+			{Name: "", DocsNew: 2, DocsChanged: 1, Commits: 4, CommitRange: "abc1234..def5678", Runs: 3, Bytes: 1024},
+			{Name: "docs-repo", DocsNew: 0, DocsChanged: 0, Commits: 0, Runs: 0},
+		}},
+	}))
+
+	req := httptest.NewRequest("GET", "/api/projects/"+label+"/intent/requirements", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp apiRequirementsResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.NotNil(t, resp.LastScanStats)
+	require.Len(t, resp.LastScanStats.Repos, 2)
+	assert.Equal(t, 2, resp.LastScanStats.Repos[0].DocsNew)
+	assert.Equal(t, "abc1234..def5678", resp.LastScanStats.Repos[0].CommitRange)
+	assert.Equal(t, "docs-repo", resp.LastScanStats.Repos[1].Name)
+	assert.Equal(t, 0, resp.LastScanStats.Repos[1].Commits)
+}
+
 func TestAPIIntentRequirementsPatch_RoundTrips(t *testing.T) {
 	h, dir, label := setupIntentProject(t)
 	store := intent.NewStore(dir)

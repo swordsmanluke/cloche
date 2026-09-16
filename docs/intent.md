@@ -164,26 +164,31 @@ hand.
 empty, so the very first scan of a project already walks everything it looks at: every
 doc matching the configured globs, the full `git log`, and every existing
 `.cloche/runs/` directory — there's no separate "shallow first pass" to worry about.
-The catch is *where* it looks: `collect-sources` roots every source — doc globs,
-`git log`, and `.cloche/runs/`/`.cloche/logs/` — strictly at the project directory
-itself (see `internal/intent/scan/collect.go`). It does not read `.cloche/config.toml`'s
-`[[repositories]]` entries at all.
 
 **Multi-repo projects.** In a project laid out as a thin orchestration wrapper with one
 or more repositories checked out under it (e.g. `repos/<name>/`, declared via
 `[[repositories]]` — see `docs/workflows.md`), the wrapper's own `.git` history is
 typically tiny (often just one commit per completed task), while the real project
 history, docs, and design decisions live inside `repos/<name>/.git` and
-`repos/<name>/docs/`. Because `collect-sources` never descends into configured
-repositories, a scan on a project like this — first scan or incremental — only ever
-mines the wrapper's own docs, commits, and run transcripts. In practice this shows up
-as "the scan only found the feature that just landed": the wrapper's one recent commit
-and run *is* the entirety of what got collected, no matter how long the wrapped
-repositories' real history is. Today, working around this means keeping durable docs
-(`CLAUDE.md`, design docs) at the wrapper root, or running `cloche intent scan` from
-inside the repository you want mined directly (its own `.cloche/` state is separate
-from the wrapper's). Making `collect-sources` iterate every configured repository is
-tracked as a follow-up; it is not yet implemented.
+`repos/<name>/docs/`. `collect-sources` descends into every `[[repositories]]` entry in
+addition to the project root (see `internal/intent/scan/collect_multi.go`): each
+configured repo's docs, `git log`, and `.cloche/runs/`/`.cloche/logs/` are mined the
+same way the root's are, with their own independent cursors (`scan-state.yaml`'s
+`repos.<name>.*`), namespaced under `repos/<name>/` in the material handed to the
+extract step so a wrapper doc and a same-named doc inside a wrapped repo never collide.
+
+**Collection stats.** Because a thin scan (a handful of docs, one commit, one
+transcript) otherwise looks the same as a rich one until the resulting requirements turn
+out sparse, every `collect-sources` pass records what it collected, per repo: docs
+(new/changed), commits (oldest..newest SHA range), runs/transcripts, and bytes handed to
+extract. `collect-sources` logs one summary line per repo (visible in the intent-scan
+run's step output); the aggregate goes in `scan-state.yaml` as `last_scan_stats`,
+returned alongside `last_scan_at` by `GET /api/projects/{slug}/intent/requirements`, and
+shown in the Requirements view's meta line ("last scan: 12 docs · 48 commits · 6
+transcripts across 2 repos") — which also warns when a configured repository
+contributed nothing, usually a sign of a stale `[[repositories]]` path or a directory
+that isn't actually a git checkout. `cloche intent scan` prints the same aggregate
+summary once the run finishes.
 
 **`--full` does not currently reset collection cursors.** `cloche intent scan --full`
 passes `--full` through as the run's task prompt, but no step reads it:
@@ -374,5 +379,5 @@ automatic, and incremental scans keep it current as the project evolves.
 
 The `--full` above is really just "run the alias now"; since `scan-state.yaml` doesn't
 exist yet, this first invocation already mines everything `collect-sources` looks at —
-see "What the first scan covers" above for what that includes and, for a multi-repo
-project, what it doesn't.
+see "What the first scan covers" above for what that includes, and "Multi-repo
+projects" above for what a project with `[[repositories]]` entries gets on top.

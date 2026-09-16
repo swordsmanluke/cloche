@@ -42,7 +42,7 @@ func TestRunIntentCollectSources_QuietThenNew(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "out")
 
-	c, err := runIntentCollectSources(dir, out)
+	c, stats, err := runIntentCollectSources(dir, out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -52,11 +52,14 @@ func TestRunIntentCollectSources_QuietThenNew(t *testing.T) {
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
 		t.Fatalf("expected no output dir written for a quiet scan")
 	}
+	if len(stats.Repos) != 1 || stats.Repos[0].Name != "" || !stats.Repos[0].Empty() {
+		t.Fatalf("expected one empty root-repo RepoStats, got %+v", stats.Repos)
+	}
 
 	if err := os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("hello"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	c2, err := runIntentCollectSources(dir, out)
+	c2, stats2, err := runIntentCollectSources(dir, out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -66,14 +69,29 @@ func TestRunIntentCollectSources_QuietThenNew(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(out, "docs", "CLAUDE.md")); err != nil {
 		t.Fatalf("expected collected doc written to out dir: %v", err)
 	}
+	if len(stats2.Repos) != 1 || stats2.Repos[0].DocsNew != 1 {
+		t.Fatalf("expected 1 new doc in root-repo stats, got %+v", stats2.Repos)
+	}
 
 	// Cursor should have advanced so a third run is quiet again.
-	c3, err := runIntentCollectSources(dir, out)
+	c3, stats3, err := runIntentCollectSources(dir, out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if c3.HasNew() {
 		t.Fatalf("expected the scan-state cursor to have advanced past CLAUDE.md")
+	}
+	if len(stats3.Repos) != 1 || !stats3.Repos[0].Empty() {
+		t.Fatalf("expected an empty root-repo RepoStats on the quiet re-scan, got %+v", stats3.Repos)
+	}
+
+	// LastScanAt should now be populated after these runs.
+	st, err := intent.NewStore(dir).LoadScanState()
+	if err != nil {
+		t.Fatalf("unexpected error loading scan state: %v", err)
+	}
+	if st.LastScanAt.IsZero() {
+		t.Fatalf("expected LastScanAt to be set after a scan")
 	}
 }
 
@@ -580,6 +598,66 @@ func TestIntentScan_FullFlag(t *testing.T) {
 	}
 }
 
+// TestIntentScan_PrintsSummaryOnSuccess exercises the "prints the same
+// summary when the run finishes" behavior: once the polled run reaches
+// "succeeded", intentScanWithClient reads the project's scan-state.yaml
+// (written by collect-sources during the run) and prints the aggregate
+// stats line, including a warning for a configured repo that contributed
+// nothing.
+func TestIntentScan_PrintsSummaryOnSuccess(t *testing.T) {
+	dir := t.TempDir()
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(oldWD) })
+
+	store := intent.NewStore(dir)
+	if err := store.SaveScanState(&intent.ScanState{
+		LastScanStats: intent.ScanStats{Repos: []intent.RepoStats{
+			{Name: "", DocsNew: 3, DocsChanged: 1, Commits: 5, Runs: 2},
+			{Name: "docs-repo", DocsNew: 0, DocsChanged: 0, Commits: 0, Runs: 0},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	mock := &intentMockClient{
+		runResp:    &pb.RunWorkflowResponse{RunId: "run-3"},
+		statusResp: &pb.GetStatusResponse{RunId: "run-3", State: "succeeded"},
+	}
+
+	var buf bytes.Buffer
+	if err := intentScanWithClient(context.Background(), mock, nil, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{"4 docs", "5 commits", "2 transcripts", "across 2 repos", "docs-repo contributed nothing"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected output to contain %q, got: %s", want, out)
+		}
+	}
+}
+
+func TestIntentScan_NoSummaryOnFailure(t *testing.T) {
+	mock := &intentMockClient{
+		runResp:    &pb.RunWorkflowResponse{RunId: "run-4"},
+		statusResp: &pb.GetStatusResponse{RunId: "run-4", State: "failed", ErrorMessage: "boom"},
+	}
+
+	var buf bytes.Buffer
+	if err := intentScanWithClient(context.Background(), mock, nil, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "intent scan failed") {
+		t.Fatalf("expected failure message, got: %s", buf.String())
+	}
+}
+
 // intentMockClient implements the gRPC methods needed by intentScanWithClient.
 type intentMockClient struct {
 	pb.ClocheServiceClient
@@ -587,11 +665,23 @@ type intentMockClient struct {
 	runResp *pb.RunWorkflowResponse
 	runErr  error
 	lastReq *pb.RunWorkflowRequest
+
+	// statusResp is returned by GetStatus; defaults to an immediate
+	// "succeeded" state for the run ID being polled when unset, so tests
+	// that don't care about polling behavior aren't forced to wire it up.
+	statusResp *pb.GetStatusResponse
 }
 
 func (m *intentMockClient) RunWorkflow(_ context.Context, req *pb.RunWorkflowRequest, _ ...grpc.CallOption) (*pb.RunWorkflowResponse, error) {
 	m.lastReq = req
 	return m.runResp, m.runErr
+}
+
+func (m *intentMockClient) GetStatus(_ context.Context, req *pb.GetStatusRequest, _ ...grpc.CallOption) (*pb.GetStatusResponse, error) {
+	if m.statusResp != nil {
+		return m.statusResp, nil
+	}
+	return &pb.GetStatusResponse{RunId: req.Id, State: "succeeded"}, nil
 }
 
 // mustCreate is a test helper that creates and saves a requirement via the
@@ -728,7 +818,7 @@ func TestIntentScan_EndToEnd_FixtureProject(t *testing.T) {
 
 	// Step: collect-sources (real, deterministic).
 	sourcesOut := filepath.Join(dir, "sources")
-	collection, err := runIntentCollectSources(dir, sourcesOut)
+	collection, _, err := runIntentCollectSources(dir, sourcesOut)
 	if err != nil {
 		t.Fatalf("collect-sources: %v", err)
 	}
@@ -844,7 +934,7 @@ func TestIntentScan_EndToEnd_FixtureProject(t *testing.T) {
 
 	// Re-running collect-sources is now quiet (the "re-running a quiet scan
 	// is a no-op" acceptance criterion).
-	collection2, err := runIntentCollectSources(dir, sourcesOut)
+	collection2, _, err := runIntentCollectSources(dir, sourcesOut)
 	if err != nil {
 		t.Fatalf("second collect-sources: %v", err)
 	}

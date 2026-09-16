@@ -175,6 +175,35 @@ func TestStore_SaveAndLoadScanState(t *testing.T) {
 	assert.Equal(t, st, got)
 }
 
+func TestStore_SaveAndLoadScanState_WithReposAndStats(t *testing.T) {
+	dir := t.TempDir()
+	store := intent.NewStore(dir)
+
+	st := &intent.ScanState{
+		LastCommit:  "abc123",
+		ScannedRuns: []string{"run-1"},
+		ScannedDocs: map[string]string{"CLAUDE.md": "deadbeef"},
+		Repos: map[string]*intent.RepoCursor{
+			"docs-repo": {
+				LastCommit:  "def456",
+				ScannedRuns: []string{"run-2"},
+				ScannedDocs: map[string]string{"README.md": "cafebabe"},
+			},
+		},
+		LastScanStats: intent.ScanStats{Repos: []intent.RepoStats{
+			{Name: "", DocsNew: 1, Commits: 2, Runs: 1, Bytes: 512},
+			{Name: "docs-repo", DocsNew: 0, DocsChanged: 1, Commits: 0, Runs: 1, Bytes: 128},
+		}},
+	}
+
+	require.NoError(t, store.SaveScanState(st))
+
+	got, err := store.LoadScanState()
+	require.NoError(t, err)
+	got.LastScanAt = st.LastScanAt // avoid time.Time equality gotchas (wall/monotonic)
+	assert.Equal(t, st, got)
+}
+
 func TestStore_Exists(t *testing.T) {
 	dir := t.TempDir()
 	store := intent.NewStore(dir)

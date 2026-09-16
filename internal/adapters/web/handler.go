@@ -2510,8 +2510,47 @@ type apiRequirement struct {
 
 // apiRequirementsResponse is the response body for GET .../intent/requirements.
 type apiRequirementsResponse struct {
-	Requirements []apiRequirement `json:"requirements"`
-	LastScanAt   string           `json:"last_scan_at,omitempty"`
+	Requirements  []apiRequirement `json:"requirements"`
+	LastScanAt    string           `json:"last_scan_at,omitempty"`
+	LastScanStats *apiScanStats    `json:"last_scan_stats,omitempty"`
+}
+
+// apiRepoStats is the JSON representation of an intent.RepoStats.
+type apiRepoStats struct {
+	Name        string `json:"name"`
+	DocsNew     int    `json:"docs_new"`
+	DocsChanged int    `json:"docs_changed"`
+	Commits     int    `json:"commits"`
+	CommitRange string `json:"commit_range,omitempty"`
+	Runs        int    `json:"runs"`
+	Bytes       int64  `json:"bytes"`
+}
+
+// apiScanStats is the JSON representation of an intent.ScanStats: the
+// Requirements view's meta line uses it to show how much material the last
+// scan collected, per repo, and to warn about a configured repo that
+// contributed nothing.
+type apiScanStats struct {
+	Repos []apiRepoStats `json:"repos,omitempty"`
+}
+
+func toAPIScanStats(s intent.ScanStats) *apiScanStats {
+	if len(s.Repos) == 0 {
+		return nil
+	}
+	out := &apiScanStats{Repos: make([]apiRepoStats, len(s.Repos))}
+	for i, r := range s.Repos {
+		out.Repos[i] = apiRepoStats{
+			Name:        r.Name,
+			DocsNew:     r.DocsNew,
+			DocsChanged: r.DocsChanged,
+			Commits:     r.Commits,
+			CommitRange: r.CommitRange,
+			Runs:        r.Runs,
+			Bytes:       r.Bytes,
+		}
+	}
+	return out
 }
 
 // apiDomain is the JSON representation of an intent.Domain.
@@ -2624,8 +2663,9 @@ func (h *Handler) handleAPIIntentRequirementsList(w http.ResponseWriter, r *http
 	}
 
 	resp := apiRequirementsResponse{
-		Requirements: make([]apiRequirement, len(reqs)),
-		LastScanAt:   apiTimeString(scanState.LastScanAt),
+		Requirements:  make([]apiRequirement, len(reqs)),
+		LastScanAt:    apiTimeString(scanState.LastScanAt),
+		LastScanStats: toAPIScanStats(scanState.LastScanStats),
 	}
 	for i, req := range reqs {
 		resp.Requirements[i] = toAPIRequirement(req, label, scanState.LastScanAt)

@@ -633,15 +633,15 @@ func intentScanCommand(args []string, w io.Writer) error {
 	defer conn.Close()
 
 	client := pb.NewClocheServiceClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	return intentScanWithClient(ctx, client, args, w)
+	return intentScanWithClient(context.Background(), client, args, w)
 }
 
 // intentScanWithClient does the actual RunWorkflow dispatch, split out from
 // intentScanCommand so it can be tested against a fake ClocheServiceClient
-// without dialing a real daemon.
+// without dialing a real daemon. It then waits for the run to finish and
+// prints the same collection summary the Requirements view shows, so a
+// foreground `cloche intent scan` gives useful feedback instead of just a
+// run ID.
 func intentScanWithClient(ctx context.Context, client pb.ClocheServiceClient, args []string, w io.Writer) error {
 	var full bool
 	for _, a := range args {
@@ -656,11 +656,13 @@ func intentScanWithClient(ctx context.Context, client pb.ClocheServiceClient, ar
 		prompt = "--full"
 	}
 
-	resp, err := client.RunWorkflow(ctx, &pb.RunWorkflowRequest{
+	runCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	resp, err := client.RunWorkflow(runCtx, &pb.RunWorkflowRequest{
 		WorkflowName: "intent-scan",
 		ProjectDir:   cwd,
 		Prompt:       prompt,
 	})
+	cancel()
 	if err != nil {
 		return err
 	}
@@ -672,7 +674,84 @@ func intentScanWithClient(ctx context.Context, client pb.ClocheServiceClient, ar
 	if resp.AttemptId != "" {
 		fmt.Fprintf(w, "Attempt:     %s\n", resp.AttemptId)
 	}
+
+	state, err := waitForIntentScan(ctx, client, resp.RunId, w)
+	if err != nil {
+		fmt.Fprintf(w, "(could not wait for the scan to finish: %v)\n", err)
+		return nil
+	}
+	if state != "succeeded" {
+		fmt.Fprintf(w, "intent scan %s\n", state)
+		return nil
+	}
+
+	if stats, err := loadScanStats(cwd); err == nil {
+		fmt.Fprintln(w, formatScanSummaryLine(stats))
+	}
 	return nil
+}
+
+// waitForIntentScan polls the daemon for runID's status until it reaches a
+// terminal state (succeeded, failed, cancelled), printing each step's
+// result as it lands, the same way `cloche poll` does.
+func waitForIntentScan(ctx context.Context, client pb.ClocheServiceClient, runID string, w io.Writer) (string, error) {
+	var lastStepCount int
+	for {
+		getCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		resp, err := client.GetStatus(getCtx, &pb.GetStatusRequest{Id: runID})
+		cancel()
+		if err != nil {
+			return "", err
+		}
+
+		for i := lastStepCount; i < len(resp.StepExecutions); i++ {
+			exec := resp.StepExecutions[i]
+			if exec.Result != "" {
+				fmt.Fprintf(w, "  %s: %s\n", exec.StepName, exec.Result)
+			}
+		}
+		lastStepCount = len(resp.StepExecutions)
+
+		if isTerminalState(resp.State) {
+			return resp.State, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
+// loadScanStats reads the project's scan-state.yaml and returns the most
+// recent collect-sources pass's per-repo stats.
+func loadScanStats(projectDir string) (intent.ScanStats, error) {
+	absDir, err := filepath.Abs(projectDir)
+	if err != nil {
+		return intent.ScanStats{}, err
+	}
+	st, err := intent.NewStore(absDir).LoadScanState()
+	if err != nil {
+		return intent.ScanStats{}, err
+	}
+	return st.LastScanStats, nil
+}
+
+// formatScanSummaryLine formats a ScanStats as the aggregate summary shown
+// by `cloche intent scan` and the Requirements view's meta line: total docs,
+// commits, and runs/transcripts collected across however many repos were
+// scanned, plus a warning for any configured repo that contributed nothing.
+func formatScanSummaryLine(stats intent.ScanStats) string {
+	line := fmt.Sprintf("last scan: %d docs · %d commits · %d transcripts",
+		stats.TotalDocs(), stats.TotalCommits(), stats.TotalRuns())
+	if len(stats.Repos) > 1 {
+		line += fmt.Sprintf(" across %d repos", len(stats.Repos))
+	}
+	if empty := stats.EmptyRepoNames(); len(empty) > 0 {
+		line += fmt.Sprintf(" (warning: %s contributed nothing)", strings.Join(empty, ", "))
+	}
+	return line
 }
 
 // printResultMarker prints the CLOCHE_RESULT marker for name, framed with
@@ -712,10 +791,14 @@ func cmdIntentCollectSources(args []string) {
 		os.Exit(1)
 	}
 
-	collection, err := runIntentCollectSources(projectDir, outDir)
+	collection, stats, err := runIntentCollectSources(projectDir, outDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
+	}
+
+	for _, r := range stats.Repos {
+		fmt.Println(formatRepoStatsLine(r))
 	}
 
 	if !collection.HasNew() {
@@ -729,39 +812,67 @@ func cmdIntentCollectSources(args []string) {
 	printResultMarker("success")
 }
 
+// formatRepoStatsLine formats one repo's RepoStats as the per-repo summary
+// line collect-sources logs: docs collected (new/changed), commits
+// collected (range), runs/transcripts collected, and bytes handed to the
+// extract step. The root repo (Name == "") is labeled ".".
+func formatRepoStatsLine(r intent.RepoStats) string {
+	name := r.Name
+	if name == "" {
+		name = "."
+	}
+	commitRange := r.CommitRange
+	if commitRange == "" {
+		commitRange = "-"
+	}
+	return fmt.Sprintf("repo %s: %d new doc(s), %d changed doc(s), %d commit(s) (%s), %d run(s)/transcript(s), %d byte(s) handed to extract",
+		name, r.DocsNew, r.DocsChanged, r.Commits, commitRange, r.Runs, r.Bytes)
+}
+
 // runIntentCollectSources loads the project's scan-state cursors, collects
-// material that's changed since, writes it to outDir when there is any,
-// and persists the advanced cursors either way — so noise-only commits and
-// empty run dirs aren't re-walked on the next scan even when this run was
-// quiet.
-func runIntentCollectSources(projectDir, outDir string) (*scan.Collection, error) {
+// material that's changed since (from the project root and any configured
+// [[repositories]] entries), writes it to outDir when there is any, and
+// persists the advanced cursors and this pass's per-repo stats either way —
+// so noise-only commits and empty run dirs aren't re-walked on the next
+// scan even when this run was quiet.
+func runIntentCollectSources(projectDir, outDir string) (*scan.Collection, intent.ScanStats, error) {
 	absProjectDir, err := filepath.Abs(projectDir)
 	if err != nil {
-		return nil, fmt.Errorf("resolving project dir: %w", err)
+		return nil, intent.ScanStats{}, fmt.Errorf("resolving project dir: %w", err)
 	}
 
 	store := intent.NewStore(absProjectDir)
 	prev, err := store.LoadScanState()
 	if err != nil {
-		return nil, fmt.Errorf("loading scan state: %w", err)
+		return nil, intent.ScanStats{}, fmt.Errorf("loading scan state: %w", err)
 	}
 
-	collection, err := scan.Collect(absProjectDir, prev, nil, excludedIntentTrackingSteps(absProjectDir))
+	cfg, err := config.Load(absProjectDir)
 	if err != nil {
-		return nil, err
+		return nil, intent.ScanStats{}, fmt.Errorf("loading config: %w", err)
+	}
+	var repos []scan.RepoInput
+	for _, r := range cfg.Repositories {
+		repos = append(repos, scan.RepoInput{Name: r.Name, Dir: filepath.Join(absProjectDir, r.Path)})
 	}
 
-	if err := store.SaveScanState(collection.NextState(prev)); err != nil {
-		return nil, fmt.Errorf("saving scan state: %w", err)
+	collection, next, err := scan.CollectMulti(scan.RepoInput{Dir: absProjectDir}, repos, prev, nil, excludedIntentTrackingSteps(absProjectDir))
+	if err != nil {
+		return nil, intent.ScanStats{}, err
+	}
+	next.LastScanAt = time.Now().UTC()
+
+	if err := store.SaveScanState(next); err != nil {
+		return nil, intent.ScanStats{}, fmt.Errorf("saving scan state: %w", err)
 	}
 
 	if collection.HasNew() {
 		if err := collection.Write(outDir); err != nil {
-			return nil, fmt.Errorf("writing collected sources: %w", err)
+			return nil, intent.ScanStats{}, fmt.Errorf("writing collected sources: %w", err)
 		}
 	}
 
-	return collection, nil
+	return collection, next.LastScanStats, nil
 }
 
 func cmdIntentApplyReconcile(args []string) {

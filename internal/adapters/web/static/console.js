@@ -3408,13 +3408,32 @@
 
     // ---------- Requirements view ----------
 
-    var intentData = { requirements: [], last_scan_at: '' };
+    var intentData = { requirements: [], last_scan_at: '', last_scan_stats: null };
     var domainsData = { version: 1, domains: [] };
     var scanStatus = null; // { runId, state, taskId }
     var scanPollTimer = null;
 
     function formatIntentTime(s) {
         return s ? formatTimestamp(s) : 'never';
+    }
+
+    // formatScanStats renders a ScanStats (last_scan_stats) as the
+    // "N docs · M commits · K transcripts across R repos" summary, plus a
+    // warning listing any configured repo that contributed nothing.
+    function formatScanStats(stats) {
+        if (!stats || !stats.repos || !stats.repos.length) return '';
+        var totalDocs = 0, totalCommits = 0, totalRuns = 0, emptyNames = [];
+        stats.repos.forEach(function (r) {
+            var docs = (r.docs_new || 0) + (r.docs_changed || 0);
+            totalDocs += docs;
+            totalCommits += r.commits || 0;
+            totalRuns += r.runs || 0;
+            if (r.name && docs === 0 && !r.commits && !r.runs) emptyNames.push(r.name);
+        });
+        var line = totalDocs + ' docs · ' + totalCommits + ' commits · ' + totalRuns + ' transcripts';
+        if (stats.repos.length > 1) line += ' across ' + stats.repos.length + ' repos';
+        if (emptyNames.length) line += ' (warning: ' + emptyNames.join(', ') + ' contributed nothing)';
+        return line;
     }
 
     function isTerminalRunState(s) {
@@ -3466,9 +3485,14 @@
         fetch('/api/projects/' + encodeURIComponent(state.activeSlug) + '/intent/requirements')
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                intentData = data || { requirements: [], last_scan_at: '' };
+                intentData = data || { requirements: [], last_scan_at: '', last_scan_stats: null };
                 var metaEl = document.getElementById('intent-meta');
-                if (metaEl) metaEl.textContent = 'Last scan: ' + formatIntentTime(intentData.last_scan_at);
+                if (metaEl) {
+                    var line = 'Last scan: ' + formatIntentTime(intentData.last_scan_at);
+                    var statsLine = formatScanStats(intentData.last_scan_stats);
+                    if (statsLine) line += ' — ' + statsLine;
+                    metaEl.textContent = line;
+                }
                 renderRequirements();
             })
             .catch(function () {});
