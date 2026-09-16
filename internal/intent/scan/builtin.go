@@ -15,6 +15,10 @@ var extractPrompt string
 //go:embed prompts/reconcile.md
 var reconcilePrompt string
 
+// collectSourcesScript forwards CLOCHE_INTENT_FULL — set by
+// intentScanWithClient's RunWorkflowRequest.Env for `cloche intent scan
+// --full`, never via the run prompt — as an explicit --full flag to
+// collect-sources, which resets its scan-state cursors for this run.
 const collectSourcesScript = `set -eu
 PROJECT_DIR="${CLOCHE_PROJECT_DIR:-.}"
 TEMP=$(cloche get temp_file_dir)
@@ -23,7 +27,11 @@ if [ -z "$TEMP" ]; then
   exit 1
 fi
 OUT="$TEMP/intent-scan-sources"
-cloche intent collect-sources --project "$PROJECT_DIR" --out "$OUT"
+FULL_FLAG=""
+if [ -n "${CLOCHE_INTENT_FULL:-}" ]; then
+  FULL_FLAG="--full"
+fi
+cloche intent collect-sources --project "$PROJECT_DIR" --out "$OUT" $FULL_FLAG
 cloche set intent_scan_sources_dir "$OUT"
 `
 

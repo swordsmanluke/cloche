@@ -12,6 +12,15 @@ import (
 	"github.com/swordsmanluke/cloche/internal/intent"
 )
 
+// TestEnvMapToSlice covers the conversion runHostWorkflow relies on to turn
+// RunWorkflowRequest.Env (e.g. CLOCHE_INTENT_FULL=1 for `cloche intent scan
+// --full`) into host.Runner.ExtraEnv.
+func TestEnvMapToSlice(t *testing.T) {
+	assert.Nil(t, envMapToSlice(nil))
+	assert.Nil(t, envMapToSlice(map[string]string{}))
+	assert.Equal(t, []string{"CLOCHE_INTENT_FULL=1"}, envMapToSlice(map[string]string{"CLOCHE_INTENT_FULL": "1"}))
+}
+
 func newIntentFixtureProjectForGRPC(t *testing.T) (dir, reqID string) {
 	t.Helper()
 	dir = t.TempDir()

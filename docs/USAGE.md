@@ -1366,7 +1366,7 @@ the same RPC `cloche run` uses.
 | `enable` | Sets `status=active`. |
 | `add` | Creates a new requirement with provenance `kind=user` and `user_edited=true`. Project-scoped unless `--domain` is given (repeatable for multiple domains). |
 | `preview` | Renders the exact block an agent step would receive: runs the same selection (status filter, deterministic scope match, semantic retrieval, token budget) and formatting the daemon uses for prompt injection. `--workflow`/`--step` supply scope context (repos, domains, prompt template name) from the project's `.cloche/*.cloche` files; `--prompt` supplies the task description used for semantic retrieval. |
-| `scan` | Alias for `cloche run intent-scan`; dispatches the built-in extraction workflow. `--full` forces a full re-scan instead of an incremental one. |
+| `scan` | Alias for `cloche run intent-scan`; dispatches the built-in extraction workflow. `--full` resets `collect-sources`' cursors (doc hashes, last commit, scanned runs) for this run only, so everything is re-mined from scratch instead of just material changed since the last scan; existing requirements are kept, not discarded — reconcile still merges/supersedes them as usual. Prints what it's about to re-mine (docs/commits/runs counts) before dispatching. |
 
 | Env var | Description |
 |---------|-------------|

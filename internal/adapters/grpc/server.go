@@ -588,9 +588,7 @@ func (s *ClocheServer) handleHostWorkflowRequest(ctx context.Context, containerR
 		Executor:     s.daemonExecutorFor(projectDir, taskID, attemptID),
 		TaskID:       taskID,
 		AttemptID:    attemptID,
-	}
-	for k, v := range req.Env {
-		runner.ExtraEnv = append(runner.ExtraEnv, k+"="+v)
+		ExtraEnv:     envMapToSlice(req.Env),
 	}
 
 	result, err := runner.RunNamedWithID(ctx, projectDir, req.WorkflowName, childRunID)
@@ -730,6 +728,19 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	return &pb.RunWorkflowResponse{RunId: runID, TaskId: run.TaskID, AttemptId: run.AttemptID}, nil
 }
 
+// envMapToSlice converts a proto map<string,string> env field into
+// "KEY=VALUE" entries suitable for host.Runner.ExtraEnv. Nil-safe.
+func envMapToSlice(env map[string]string) []string {
+	if len(env) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(env))
+	for k, v := range env {
+		out = append(out, k+"="+v)
+	}
+	return out
+}
+
 // runHostWorkflow dispatches a host workflow via the host runner, returning
 // immediately while the workflow runs in a background goroutine. userInitiated
 // is passed explicitly by the caller rather than inferred from ctx: every
@@ -760,6 +771,7 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 		LogBroadcast:  s.logBroadcast,
 		ActivityLog:   s.activityLoggerFor(req.ProjectDir),
 		Executor:      s.daemonExecutorFor(req.ProjectDir, taskID, attemptID),
+		ExtraEnv:      envMapToSlice(req.Env),
 		TaskID:        taskID,
 		AttemptID:     attemptID,
 		UserInitiated: userInitiated,

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -42,7 +43,7 @@ func TestRunIntentCollectSources_QuietThenNew(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "out")
 
-	c, stats, err := runIntentCollectSources(dir, out)
+	c, stats, err := runIntentCollectSources(dir, out, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -59,7 +60,7 @@ func TestRunIntentCollectSources_QuietThenNew(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("hello"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	c2, stats2, err := runIntentCollectSources(dir, out)
+	c2, stats2, err := runIntentCollectSources(dir, out, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -74,7 +75,7 @@ func TestRunIntentCollectSources_QuietThenNew(t *testing.T) {
 	}
 
 	// Cursor should have advanced so a third run is quiet again.
-	c3, stats3, err := runIntentCollectSources(dir, out)
+	c3, stats3, err := runIntentCollectSources(dir, out, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -92,6 +93,91 @@ func TestRunIntentCollectSources_QuietThenNew(t *testing.T) {
 	}
 	if st.LastScanAt.IsZero() {
 		t.Fatalf("expected LastScanAt to be set after a scan")
+	}
+}
+
+// TestRunIntentCollectSources_FullResetsCursors covers the ticket's
+// acceptance criterion: a --full run re-mines the doc, commit, and run
+// material scan-state.yaml already recorded, without leaving the cursor
+// stuck re-mining forever afterward.
+func TestRunIntentCollectSources_FullResetsCursors(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "out")
+
+	if err := os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
+		)
+		if cmdOut, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, cmdOut)
+		}
+	}
+	runGit("init", "-q")
+	runGit("add", "CLAUDE.md")
+	runGit("commit", "-q", "-m", "Add CLAUDE.md")
+
+	runDir := filepath.Join(dir, ".cloche", "runs", "run-1")
+	if err := os.MkdirAll(runDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(runDir, "task_prompt.md"), []byte("do the thing"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// First (incremental) run records the doc, commit, and run into
+	// scan-state.yaml's cursors.
+	c1, _, err := runIntentCollectSources(dir, out, false)
+	if err != nil {
+		t.Fatalf("first collect-sources: %v", err)
+	}
+	if len(c1.Docs) != 1 || len(c1.Commits) != 1 || len(c1.Runs) != 1 {
+		t.Fatalf("expected the first scan to pick up the doc, commit, and run, got docs=%d commits=%d runs=%d",
+			len(c1.Docs), len(c1.Commits), len(c1.Runs))
+	}
+
+	// A normal incremental run is now quiet — everything is already
+	// recorded in scan-state.yaml.
+	c2, _, err := runIntentCollectSources(dir, out, false)
+	if err != nil {
+		t.Fatalf("second collect-sources: %v", err)
+	}
+	if c2.HasNew() {
+		t.Fatalf("expected the second (incremental) scan to be quiet, got docs=%d commits=%d runs=%d",
+			len(c2.Docs), len(c2.Commits), len(c2.Runs))
+	}
+
+	// --full re-mines the doc, commit, and run despite scan-state already
+	// recording them.
+	c3, _, err := runIntentCollectSources(dir, out, true)
+	if err != nil {
+		t.Fatalf("full collect-sources: %v", err)
+	}
+	if len(c3.Docs) != 1 || c3.Docs[0].Path != "CLAUDE.md" {
+		t.Fatalf("expected --full to re-collect CLAUDE.md, got %+v", c3.Docs)
+	}
+	if len(c3.Commits) != 1 {
+		t.Fatalf("expected --full to re-collect the commit, got %+v", c3.Commits)
+	}
+	if len(c3.Runs) != 1 || c3.Runs[0].ID != "run-1" {
+		t.Fatalf("expected --full to re-collect run-1, got %+v", c3.Runs)
+	}
+
+	// After --full, cursors are back in sync with current state — a
+	// following incremental run is quiet again rather than re-mining
+	// forever.
+	c4, _, err := runIntentCollectSources(dir, out, false)
+	if err != nil {
+		t.Fatalf("fourth collect-sources: %v", err)
+	}
+	if c4.HasNew() {
+		t.Fatalf("expected the scan-state cursor to be re-synced after --full, got docs=%d commits=%d runs=%d",
+			len(c4.Docs), len(c4.Commits), len(c4.Runs))
 	}
 }
 
@@ -581,6 +667,9 @@ func TestIntentScan_DispatchesWorkflow(t *testing.T) {
 	if mock.lastReq.Prompt != "" {
 		t.Errorf("expected no prompt without --full, got %q", mock.lastReq.Prompt)
 	}
+	if len(mock.lastReq.Env) != 0 {
+		t.Errorf("expected no env without --full, got %v", mock.lastReq.Env)
+	}
 	if !strings.Contains(buf.String(), "run-1") {
 		t.Errorf("expected run id in output, got: %s", buf.String())
 	}
@@ -593,8 +682,17 @@ func TestIntentScan_FullFlag(t *testing.T) {
 	if err := intentScanWithClient(context.Background(), mock, []string{"--full"}, &buf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if mock.lastReq.Prompt != "--full" {
-		t.Errorf("expected --full to be forwarded, got prompt %q", mock.lastReq.Prompt)
+	// --full must reach collect-sources/discover-domains via an explicit env
+	// var on the run, never via the prompt text (nothing reads the host
+	// workflow run's prompt).
+	if mock.lastReq.Prompt != "" {
+		t.Errorf("expected --full not to be forwarded via prompt, got %q", mock.lastReq.Prompt)
+	}
+	if got := mock.lastReq.Env["CLOCHE_INTENT_FULL"]; got != "1" {
+		t.Errorf("expected CLOCHE_INTENT_FULL=1 in env, got %q (env=%v)", got, mock.lastReq.Env)
+	}
+	if !strings.Contains(buf.String(), "re-mining") {
+		t.Errorf("expected a re-mine preview to be printed, got: %s", buf.String())
 	}
 }
 
@@ -818,7 +916,7 @@ func TestIntentScan_EndToEnd_FixtureProject(t *testing.T) {
 
 	// Step: collect-sources (real, deterministic).
 	sourcesOut := filepath.Join(dir, "sources")
-	collection, _, err := runIntentCollectSources(dir, sourcesOut)
+	collection, _, err := runIntentCollectSources(dir, sourcesOut, false)
 	if err != nil {
 		t.Fatalf("collect-sources: %v", err)
 	}
@@ -934,7 +1032,7 @@ func TestIntentScan_EndToEnd_FixtureProject(t *testing.T) {
 
 	// Re-running collect-sources is now quiet (the "re-running a quiet scan
 	// is a no-op" acceptance criterion).
-	collection2, _, err := runIntentCollectSources(dir, sourcesOut)
+	collection2, _, err := runIntentCollectSources(dir, sourcesOut, false)
 	if err != nil {
 		t.Fatalf("second collect-sources: %v", err)
 	}

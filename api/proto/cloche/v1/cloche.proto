@@ -108,6 +108,9 @@ message RunWorkflowRequest {
   bool keep_container = 5;
   string title = 6;
   string issue_id = 7;
+  // env vars passed to a host workflow's steps (e.g. CLOCHE_INTENT_FULL for
+  // `cloche intent scan --full`); ignored for container workflow runs.
+  map<string, string> env = 8;
 }
 
 message RunWorkflowResponse {

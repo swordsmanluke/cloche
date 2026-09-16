@@ -13,18 +13,22 @@ DOMAINS_FILE="$CLOCHE_PROJECT_DIR/.cloche/intent/domains.yaml"
 
 ## Mode
 
-- **If `$DOMAINS_FILE` does not exist** (first scan): do a full survey. Read
-  the top-level directory layout, `internal/*/` package names and their doc
-  comments, `cmd/*/` binaries, and `docs/plans/*design*.md` files to
-  understand the project's major systems. Propose 5–12 domains — enough to
-  be useful for scoping, not so many that they're noise. Prefer domains that
-  map to a package or a small cluster of related packages over one domain
-  per file.
-- **If `$DOMAINS_FILE` already exists** (incremental scan): read it first.
-  Propose only additions for genuinely new top-level packages or doc areas
-  that don't fit an existing domain, and description touch-ups for domains
-  whose scope has visibly drifted from their `paths`. Leave everything else
-  alone.
+- **If `$DOMAINS_FILE` does not exist, or `$CLOCHE_INTENT_FULL` is set**
+  (first scan, or a forced full re-survey via `cloche intent scan --full`):
+  do a full survey. Read the top-level directory layout, `internal/*/`
+  package names and their doc comments, `cmd/*/` binaries, and
+  `docs/plans/*design*.md` files to understand the project's major systems.
+  Propose 5–12 domains — enough to be useful for scoping, not so many that
+  they're noise. Prefer domains that map to a package or a small cluster of
+  related packages over one domain per file. On a `--full` re-survey of an
+  existing `$DOMAINS_FILE`, still respect the hard rule below — a full
+  survey may propose new domains and description touch-ups, never rewrite a
+  `user_edited: true` domain.
+- **Otherwise** (`$DOMAINS_FILE` already exists and no forced full
+  re-survey): read it first. Propose only additions for genuinely new
+  top-level packages or doc areas that don't fit an existing domain, and
+  description touch-ups for domains whose scope has visibly drifted from
+  their `paths`. Leave everything else alone.
 
 ## Hard rule: respect `user_edited`
 

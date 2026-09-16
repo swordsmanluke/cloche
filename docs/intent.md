@@ -114,14 +114,17 @@ so it's available in any project with no setup. `cloche intent scan` (alias for
 `cloche run intent-scan`) dispatches it; the workflow has six steps:
 
 1. **discover-domains** — surveys the repo layout and proposes/updates
-   `domains.yaml`. Full survey on first scan; incremental proposals afterwards,
+   `domains.yaml`. Full survey on first scan (or on a `--full` run, regardless of
+   whether `domains.yaml` already exists); incremental proposals otherwise,
    respecting `user_edited` domains.
 2. **collect-sources** — deterministic, no LLM. Gathers material changed since the
    last scan: doc files (`CLAUDE.md`, `README*`, `docs/**/*.md`,
    `.cloche/prompts/**` by default), completed-run transcripts and task prompts not
    yet mined, and `git log` since the last scanned commit (noise-filtered the same
    way the changelog workflow is). Emits `none` — a no-op — when every source is
-   already at its cursor, so a quiet re-scan does nothing.
+   already at its cursor, so a quiet re-scan does nothing. On a `--full` run, the
+   cursors (doc hashes, last commit, scanned runs) are reset for this run, so
+   everything is re-mined from scratch.
 3. **extract** — reads the collected material plus `domains.yaml` and writes
    candidate requirements: statement, rationale, proposed scope, confidence,
    provenance, and 2–5 retrieval hints per candidate. Only durable, prescriptive
@@ -150,7 +153,7 @@ so it's available in any project with no setup. `cloche intent scan` (alias for
 
 ```
 cloche intent scan            # incremental: only material since the last scan
-cloche intent scan --full     # currently has no effect beyond the incremental run — see below
+cloche intent scan --full     # resets collection cursors for this run — see below
 ```
 
 A project can still override the built-in by defining its own `intent-scan` workflow
@@ -190,16 +193,20 @@ contributed nothing, usually a sign of a stale `[[repositories]]` path or a dire
 that isn't actually a git checkout. `cloche intent scan` prints the same aggregate
 summary once the run finishes.
 
-**`--full` does not currently reset collection cursors.** `cloche intent scan --full`
-passes `--full` through as the run's task prompt, but no step reads it:
-`collect-sources` ignores the run prompt entirely and only ever mines material since
-`scan-state.yaml`'s cursors, and `discover-domains` decides whether to do a full domain
-survey purely by whether `domains.yaml` already exists, independent of this flag. So
-`--full` has no effect on how much material `collect-sources` collects — there is
-currently no supported way to force a full re-collection of a project's docs/commits/
-runs after the first scan has already advanced past them (short of deleting
-`.cloche/intent/scan-state.yaml`, which also discards the doc-hash and scanned-run
-cursors). This is tracked as a follow-up.
+**`--full` resets collection cursors.** `cloche intent scan --full` reaches
+`collect-sources` and `discover-domains` through an explicit `CLOCHE_INTENT_FULL` env
+var on the run — not the run prompt, which no step reads. `collect-sources` treats
+`scan-state.yaml`'s cursors (doc hashes, last commit, scanned runs) as empty for this
+run only, so every doc, the full `git log`, and every `.cloche/runs/` directory are
+re-mined regardless of what a previous scan already advanced past; the cursors persist
+back in sync with current state afterward, so the next incremental scan is quiet again
+rather than re-mining forever. `discover-domains` does a full domain survey regardless
+of whether `domains.yaml` already exists. Neither step discards existing requirements —
+`reconcile`/`apply-reconcile` still run as usual, merging or superseding candidates
+against what's already tracked. Before dispatching, `cloche intent scan --full` prints
+what it's about to re-mine (doc/commit/run counts). Because `collect-sources` roots
+every source strictly at the project directory (see the multi-repo caveat above),
+`--full` re-mines that one repo, not any `[[repositories]]` entries.
 
 **Incremental scans on task completion.** By default (`intent.scan_after_tasks = true`),
 an incremental scan is enqueued automatically after each completed `main` orchestration

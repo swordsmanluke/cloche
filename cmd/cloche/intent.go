@@ -42,9 +42,15 @@ Subcommands:
   enable <id>         Enable a requirement
   add <statement>     Add a requirement manually
   preview             Preview the intent block for a workflow/step/prompt
-  scan                Dispatch the intent-scan host workflow
+  scan [--full]       Dispatch the intent-scan host workflow. --full resets
+                      collection cursors for this run (docs/commits/runs are
+                      re-mined from scratch; existing requirements are kept,
+                      not discarded) and prints what it's about to re-mine
+                      before dispatching
   collect-sources     Gather docs/git-log/run material changed since the last
-                      scan into --out, advancing .cloche/intent/scan-state.yaml
+                      scan into --out, advancing .cloche/intent/scan-state.yaml.
+                      --full resets the cursors for this run instead of
+                      reading them from scan-state.yaml
   apply-reconcile     Apply a reconcile step's reconcile.json to .cloche/intent/,
                       enforcing the scan's hard rules
 `)
@@ -651,16 +657,26 @@ func intentScanWithClient(ctx context.Context, client pb.ClocheServiceClient, ar
 	}
 
 	cwd, _ := os.Getwd()
-	var prompt string
+
+	var env map[string]string
 	if full {
-		prompt = "--full"
+		// CLOCHE_INTENT_FULL is how --full reaches the workflow's steps: an
+		// explicit env var, not the run prompt (nothing reads the prompt for
+		// a host workflow run — see runHostWorkflow). collect-sources honors
+		// it by resetting its cursors for this run; discover-domains honors
+		// it by forcing a full domain survey regardless of whether
+		// domains.yaml already exists.
+		env = map[string]string{"CLOCHE_INTENT_FULL": "1"}
+		if err := printFullRescanPreview(cwd, w); err != nil {
+			fmt.Fprintf(w, "(could not preview --full re-mine: %v)\n", err)
+		}
 	}
 
 	runCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	resp, err := client.RunWorkflow(runCtx, &pb.RunWorkflowRequest{
 		WorkflowName: "intent-scan",
 		ProjectDir:   cwd,
-		Prompt:       prompt,
+		Env:          env,
 	})
 	cancel()
 	if err != nil {
@@ -754,6 +770,32 @@ func formatScanSummaryLine(stats intent.ScanStats) string {
 	return line
 }
 
+// printFullRescanPreview reports what a --full scan is about to re-mine,
+// computed by collecting against a reset cursor the same way collect-sources
+// does when CLOCHE_INTENT_FULL is set. This is a client-side, read-only
+// preview — it doesn't persist anything; the dispatched workflow's
+// collect-sources step does the real collection and cursor advance. Mirrors
+// runIntentCollectSources's repo resolution so the preview accounts for
+// every configured [[repositories]] entry, not just the project root.
+func printFullRescanPreview(projectDir string, w io.Writer) error {
+	cfg, err := config.Load(projectDir)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+	var repos []scan.RepoInput
+	for _, r := range cfg.Repositories {
+		repos = append(repos, scan.RepoInput{Name: r.Name, Dir: filepath.Join(projectDir, r.Path)})
+	}
+
+	collection, _, err := scan.CollectMulti(scan.RepoInput{Dir: projectDir}, repos, &intent.ScanState{}, nil, excludedIntentTrackingSteps(projectDir))
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(w, "--full: re-mining %d doc(s), %d commit(s), %d run(s) from %s\n",
+		len(collection.Docs), len(collection.Commits), len(collection.Runs), projectDir)
+	return nil
+}
+
 // printResultMarker prints the CLOCHE_RESULT marker for name, framed with
 // the step nonce from CLOCHE_RESULT_NONCE when the caller (the host
 // executor) set one, so the marker can't be confused with unrelated
@@ -772,6 +814,7 @@ func printResultMarker(name string) {
 func cmdIntentCollectSources(args []string) {
 	projectDir, _ := os.Getwd()
 	outDir := ""
+	var full bool
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--project":
@@ -784,6 +827,8 @@ func cmdIntentCollectSources(args []string) {
 				i++
 				outDir = args[i]
 			}
+		case "--full":
+			full = true
 		}
 	}
 	if outDir == "" {
@@ -791,7 +836,7 @@ func cmdIntentCollectSources(args []string) {
 		os.Exit(1)
 	}
 
-	collection, stats, err := runIntentCollectSources(projectDir, outDir)
+	collection, stats, err := runIntentCollectSources(projectDir, outDir, full)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -834,8 +879,12 @@ func formatRepoStatsLine(r intent.RepoStats) string {
 // [[repositories]] entries), writes it to outDir when there is any, and
 // persists the advanced cursors and this pass's per-repo stats either way —
 // so noise-only commits and empty run dirs aren't re-walked on the next
-// scan even when this run was quiet.
-func runIntentCollectSources(projectDir, outDir string) (*scan.Collection, intent.ScanStats, error) {
+// scan even when this run was quiet. When full is true, the persisted
+// cursors (doc hashes, last commit, scanned runs) are treated as empty for
+// this run — re-mining everything collect-sources looks at — without
+// touching .cloche/intent/requirements/ at all; reconcile still
+// merges/supersedes existing requirements as usual.
+func runIntentCollectSources(projectDir, outDir string, full bool) (*scan.Collection, intent.ScanStats, error) {
 	absProjectDir, err := filepath.Abs(projectDir)
 	if err != nil {
 		return nil, intent.ScanStats{}, fmt.Errorf("resolving project dir: %w", err)
@@ -856,7 +905,12 @@ func runIntentCollectSources(projectDir, outDir string) (*scan.Collection, inten
 		repos = append(repos, scan.RepoInput{Name: r.Name, Dir: filepath.Join(absProjectDir, r.Path)})
 	}
 
-	collection, next, err := scan.CollectMulti(scan.RepoInput{Dir: absProjectDir}, repos, prev, nil, excludedIntentTrackingSteps(absProjectDir))
+	collectFrom := prev
+	if full {
+		collectFrom = &intent.ScanState{}
+	}
+
+	collection, next, err := scan.CollectMulti(scan.RepoInput{Dir: absProjectDir}, repos, collectFrom, nil, excludedIntentTrackingSteps(absProjectDir))
 	if err != nil {
 		return nil, intent.ScanStats{}, err
 	}

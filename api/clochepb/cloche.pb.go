@@ -30,6 +30,9 @@ type RunWorkflowRequest struct {
 	KeepContainer bool                   `protobuf:"varint,5,opt,name=keep_container,json=keepContainer,proto3" json:"keep_container,omitempty"`
 	Title         string                 `protobuf:"bytes,6,opt,name=title,proto3" json:"title,omitempty"`
 	IssueId       string                 `protobuf:"bytes,7,opt,name=issue_id,json=issueId,proto3" json:"issue_id,omitempty"`
+	// env vars passed to a host workflow's steps (e.g. CLOCHE_INTENT_FULL for
+	// `cloche intent scan --full`); ignored for container workflow runs.
+	Env           map[string]string `protobuf:"bytes,8,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -111,6 +114,13 @@ func (x *RunWorkflowRequest) GetIssueId() string {
 		return x.IssueId
 	}
 	return ""
+}
+
+func (x *RunWorkflowRequest) GetEnv() map[string]string {
+	if x != nil {
+		return x.Env
+	}
+	return nil
 }
 
 type RunWorkflowResponse struct {
@@ -2572,7 +2582,8 @@ func (*ListLoopOccupancyRequest) Descriptor() ([]byte, []int) {
 
 // ProjectOccupancySummary is a cheap per-project rollup for a dashboard tab
 // bar: how many slots are busy, how many things are queued, and overall
-// health. attention_count is always 0 until the attention-model ticket lands.
+// health. attention_count is read from the background-refreshed attention
+// cache (see internal/attention.Cache), never computed on this request.
 type ProjectOccupancySummary struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	ProjectDir     string                 `protobuf:"bytes,1,opt,name=project_dir,json=projectDir,proto3" json:"project_dir,omitempty"`
@@ -6001,7 +6012,7 @@ var File_cloche_proto protoreflect.FileDescriptor
 
 const file_cloche_proto_rawDesc = "" +
 	"\n" +
-	"\fcloche.proto\x12\tcloche.v1\"\xe0\x01\n" +
+	"\fcloche.proto\x12\tcloche.v1\"\xd2\x02\n" +
 	"\x12RunWorkflowRequest\x12#\n" +
 	"\rworkflow_name\x18\x01 \x01(\tR\fworkflowName\x12\x1f\n" +
 	"\vproject_dir\x18\x02 \x01(\tR\n" +
@@ -6010,7 +6021,11 @@ const file_cloche_proto_rawDesc = "" +
 	"\x06prompt\x18\x04 \x01(\tR\x06prompt\x12%\n" +
 	"\x0ekeep_container\x18\x05 \x01(\bR\rkeepContainer\x12\x14\n" +
 	"\x05title\x18\x06 \x01(\tR\x05title\x12\x19\n" +
-	"\bissue_id\x18\a \x01(\tR\aissueId\"d\n" +
+	"\bissue_id\x18\a \x01(\tR\aissueId\x128\n" +
+	"\x03env\x18\b \x03(\v2&.cloche.v1.RunWorkflowRequest.EnvEntryR\x03env\x1a6\n" +
+	"\bEnvEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"d\n" +
 	"\x13RunWorkflowResponse\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x1d\n" +
@@ -6540,7 +6555,7 @@ func file_cloche_proto_rawDescGZIP() []byte {
 	return file_cloche_proto_rawDescData
 }
 
-var file_cloche_proto_msgTypes = make([]protoimpl.MessageInfo, 92)
+var file_cloche_proto_msgTypes = make([]protoimpl.MessageInfo, 93)
 var file_cloche_proto_goTypes = []any{
 	(*RunWorkflowRequest)(nil),        // 0: cloche.v1.RunWorkflowRequest
 	(*RunWorkflowResponse)(nil),       // 1: cloche.v1.RunWorkflowResponse
@@ -6632,109 +6647,111 @@ var file_cloche_proto_goTypes = []any{
 	(*GetThreadResponse)(nil),         // 87: cloche.v1.GetThreadResponse
 	(*ReplyThreadRequest)(nil),        // 88: cloche.v1.ReplyThreadRequest
 	(*ReplyThreadResponse)(nil),       // 89: cloche.v1.ReplyThreadResponse
-	nil,                               // 90: cloche.v1.ExecuteStep.ConfigEntry
-	nil,                               // 91: cloche.v1.HostWorkflowRequest.EnvEntry
+	nil,                               // 90: cloche.v1.RunWorkflowRequest.EnvEntry
+	nil,                               // 91: cloche.v1.ExecuteStep.ConfigEntry
+	nil,                               // 92: cloche.v1.HostWorkflowRequest.EnvEntry
 }
 var file_cloche_proto_depIdxs = []int32{
-	4,  // 0: cloche.v1.GetStatusResponse.step_executions:type_name -> cloche.v1.StepExecutionStatus
-	17, // 1: cloche.v1.ListRunsResponse.runs:type_name -> cloche.v1.RunSummary
-	17, // 2: cloche.v1.GetProjectInfoResponse.active_runs:type_name -> cloche.v1.RunSummary
-	27, // 3: cloche.v1.GetProjectInfoResponse.repositories:type_name -> cloche.v1.Repository
-	30, // 4: cloche.v1.GetAttentionResponse.items:type_name -> cloche.v1.AttentionItem
-	33, // 5: cloche.v1.GetLoopOccupancyResponse.slots:type_name -> cloche.v1.OccupancySlot
-	34, // 6: cloche.v1.GetLoopOccupancyResponse.queued:type_name -> cloche.v1.QueuedItem
-	35, // 7: cloche.v1.GetLoopOccupancyResponse.polls:type_name -> cloche.v1.PollItem
-	38, // 8: cloche.v1.ListLoopOccupancyResponse.projects:type_name -> cloche.v1.ProjectOccupancySummary
-	43, // 9: cloche.v1.ListTasksResponse.tasks:type_name -> cloche.v1.TaskSummary
-	46, // 10: cloche.v1.GetTaskResponse.attempts:type_name -> cloche.v1.AttemptSummary
-	54, // 11: cloche.v1.GetUsageResponse.summaries:type_name -> cloche.v1.UsageSummary
-	57, // 12: cloche.v1.ConsoleInput.start:type_name -> cloche.v1.ConsoleStart
-	59, // 13: cloche.v1.ConsoleInput.resize:type_name -> cloche.v1.TerminalSize
-	58, // 14: cloche.v1.ConsoleOutput.started:type_name -> cloche.v1.ConsoleStarted
-	60, // 15: cloche.v1.ConsoleOutput.exited:type_name -> cloche.v1.ConsoleExited
-	69, // 16: cloche.v1.AgentMessage.ready:type_name -> cloche.v1.AgentReady
-	71, // 17: cloche.v1.AgentMessage.step_result:type_name -> cloche.v1.StepResult
-	72, // 18: cloche.v1.AgentMessage.step_log:type_name -> cloche.v1.StepLog
-	73, // 19: cloche.v1.AgentMessage.step_started:type_name -> cloche.v1.StepStarted
-	74, // 20: cloche.v1.AgentMessage.host_request:type_name -> cloche.v1.HostWorkflowRequest
-	70, // 21: cloche.v1.DaemonMessage.execute_step:type_name -> cloche.v1.ExecuteStep
-	76, // 22: cloche.v1.DaemonMessage.step_cancelled:type_name -> cloche.v1.StepCancelled
-	75, // 23: cloche.v1.DaemonMessage.host_result:type_name -> cloche.v1.HostWorkflowResult
-	78, // 24: cloche.v1.DaemonMessage.shutdown:type_name -> cloche.v1.Shutdown
-	77, // 25: cloche.v1.DaemonMessage.park_step:type_name -> cloche.v1.ParkStep
-	90, // 26: cloche.v1.ExecuteStep.config:type_name -> cloche.v1.ExecuteStep.ConfigEntry
-	79, // 27: cloche.v1.StepResult.token_usage:type_name -> cloche.v1.TokenUsage
-	91, // 28: cloche.v1.HostWorkflowRequest.env:type_name -> cloche.v1.HostWorkflowRequest.EnvEntry
-	83, // 29: cloche.v1.ListThreadsResponse.threads:type_name -> cloche.v1.HelpThreadSummary
-	83, // 30: cloche.v1.GetThreadResponse.thread:type_name -> cloche.v1.HelpThreadSummary
-	86, // 31: cloche.v1.GetThreadResponse.messages:type_name -> cloche.v1.HelpMessageEntry
-	0,  // 32: cloche.v1.ClocheService.RunWorkflow:input_type -> cloche.v1.RunWorkflowRequest
-	2,  // 33: cloche.v1.ClocheService.GetStatus:input_type -> cloche.v1.GetStatusRequest
-	5,  // 34: cloche.v1.ClocheService.StreamLogs:input_type -> cloche.v1.StreamLogsRequest
-	7,  // 35: cloche.v1.ClocheService.StopRun:input_type -> cloche.v1.StopRunRequest
-	15, // 36: cloche.v1.ClocheService.ListRuns:input_type -> cloche.v1.ListRunsRequest
-	42, // 37: cloche.v1.ClocheService.ListTasks:input_type -> cloche.v1.ListTasksRequest
-	45, // 38: cloche.v1.ClocheService.GetTask:input_type -> cloche.v1.GetTaskRequest
-	48, // 39: cloche.v1.ClocheService.GetAttempt:input_type -> cloche.v1.GetAttemptRequest
-	9,  // 40: cloche.v1.ClocheService.Shutdown:input_type -> cloche.v1.ShutdownRequest
-	11, // 41: cloche.v1.ClocheService.DeleteContainer:input_type -> cloche.v1.DeleteContainerRequest
-	13, // 42: cloche.v1.ClocheService.ExtractRun:input_type -> cloche.v1.ExtractRunRequest
-	18, // 43: cloche.v1.ClocheService.EnableLoop:input_type -> cloche.v1.EnableLoopRequest
-	20, // 44: cloche.v1.ClocheService.DisableLoop:input_type -> cloche.v1.DisableLoopRequest
-	22, // 45: cloche.v1.ClocheService.ResumeLoop:input_type -> cloche.v1.ResumeLoopRequest
-	24, // 46: cloche.v1.ClocheService.QuiesceRuns:input_type -> cloche.v1.QuiesceRunsRequest
-	26, // 47: cloche.v1.ClocheService.GetProjectInfo:input_type -> cloche.v1.GetProjectInfoRequest
-	29, // 48: cloche.v1.ClocheService.GetAttention:input_type -> cloche.v1.GetAttentionRequest
-	32, // 49: cloche.v1.ClocheService.GetLoopOccupancy:input_type -> cloche.v1.GetLoopOccupancyRequest
-	37, // 50: cloche.v1.ClocheService.ListLoopOccupancy:input_type -> cloche.v1.ListLoopOccupancyRequest
-	40, // 51: cloche.v1.ClocheService.GetVersion:input_type -> cloche.v1.GetVersionRequest
-	50, // 52: cloche.v1.ClocheService.Complete:input_type -> cloche.v1.CompleteRequest
-	52, // 53: cloche.v1.ClocheService.GetUsage:input_type -> cloche.v1.GetUsageRequest
-	55, // 54: cloche.v1.ClocheService.Console:input_type -> cloche.v1.ConsoleInput
-	61, // 55: cloche.v1.ClocheService.GetContextKey:input_type -> cloche.v1.GetContextKeyRequest
-	63, // 56: cloche.v1.ClocheService.SetContextKey:input_type -> cloche.v1.SetContextKeyRequest
-	65, // 57: cloche.v1.ClocheService.ListContextKeys:input_type -> cloche.v1.ListContextKeysRequest
-	67, // 58: cloche.v1.ClocheService.AgentSession:input_type -> cloche.v1.AgentMessage
-	80, // 59: cloche.v1.ClocheService.AskHelp:input_type -> cloche.v1.AskHelpRequest
-	82, // 60: cloche.v1.ClocheService.ListThreads:input_type -> cloche.v1.ListThreadsRequest
-	85, // 61: cloche.v1.ClocheService.GetThread:input_type -> cloche.v1.GetThreadRequest
-	88, // 62: cloche.v1.ClocheService.ReplyThread:input_type -> cloche.v1.ReplyThreadRequest
-	1,  // 63: cloche.v1.ClocheService.RunWorkflow:output_type -> cloche.v1.RunWorkflowResponse
-	3,  // 64: cloche.v1.ClocheService.GetStatus:output_type -> cloche.v1.GetStatusResponse
-	6,  // 65: cloche.v1.ClocheService.StreamLogs:output_type -> cloche.v1.LogEntry
-	8,  // 66: cloche.v1.ClocheService.StopRun:output_type -> cloche.v1.StopRunResponse
-	16, // 67: cloche.v1.ClocheService.ListRuns:output_type -> cloche.v1.ListRunsResponse
-	44, // 68: cloche.v1.ClocheService.ListTasks:output_type -> cloche.v1.ListTasksResponse
-	47, // 69: cloche.v1.ClocheService.GetTask:output_type -> cloche.v1.GetTaskResponse
-	49, // 70: cloche.v1.ClocheService.GetAttempt:output_type -> cloche.v1.GetAttemptResponse
-	10, // 71: cloche.v1.ClocheService.Shutdown:output_type -> cloche.v1.ShutdownResponse
-	12, // 72: cloche.v1.ClocheService.DeleteContainer:output_type -> cloche.v1.DeleteContainerResponse
-	14, // 73: cloche.v1.ClocheService.ExtractRun:output_type -> cloche.v1.ExtractRunResponse
-	19, // 74: cloche.v1.ClocheService.EnableLoop:output_type -> cloche.v1.EnableLoopResponse
-	21, // 75: cloche.v1.ClocheService.DisableLoop:output_type -> cloche.v1.DisableLoopResponse
-	23, // 76: cloche.v1.ClocheService.ResumeLoop:output_type -> cloche.v1.ResumeLoopResponse
-	25, // 77: cloche.v1.ClocheService.QuiesceRuns:output_type -> cloche.v1.QuiesceRunsResponse
-	28, // 78: cloche.v1.ClocheService.GetProjectInfo:output_type -> cloche.v1.GetProjectInfoResponse
-	31, // 79: cloche.v1.ClocheService.GetAttention:output_type -> cloche.v1.GetAttentionResponse
-	36, // 80: cloche.v1.ClocheService.GetLoopOccupancy:output_type -> cloche.v1.GetLoopOccupancyResponse
-	39, // 81: cloche.v1.ClocheService.ListLoopOccupancy:output_type -> cloche.v1.ListLoopOccupancyResponse
-	41, // 82: cloche.v1.ClocheService.GetVersion:output_type -> cloche.v1.GetVersionResponse
-	51, // 83: cloche.v1.ClocheService.Complete:output_type -> cloche.v1.CompleteResponse
-	53, // 84: cloche.v1.ClocheService.GetUsage:output_type -> cloche.v1.GetUsageResponse
-	56, // 85: cloche.v1.ClocheService.Console:output_type -> cloche.v1.ConsoleOutput
-	62, // 86: cloche.v1.ClocheService.GetContextKey:output_type -> cloche.v1.GetContextKeyResponse
-	64, // 87: cloche.v1.ClocheService.SetContextKey:output_type -> cloche.v1.SetContextKeyResponse
-	66, // 88: cloche.v1.ClocheService.ListContextKeys:output_type -> cloche.v1.ListContextKeysResponse
-	68, // 89: cloche.v1.ClocheService.AgentSession:output_type -> cloche.v1.DaemonMessage
-	81, // 90: cloche.v1.ClocheService.AskHelp:output_type -> cloche.v1.AskHelpResponse
-	84, // 91: cloche.v1.ClocheService.ListThreads:output_type -> cloche.v1.ListThreadsResponse
-	87, // 92: cloche.v1.ClocheService.GetThread:output_type -> cloche.v1.GetThreadResponse
-	89, // 93: cloche.v1.ClocheService.ReplyThread:output_type -> cloche.v1.ReplyThreadResponse
-	63, // [63:94] is the sub-list for method output_type
-	32, // [32:63] is the sub-list for method input_type
-	32, // [32:32] is the sub-list for extension type_name
-	32, // [32:32] is the sub-list for extension extendee
-	0,  // [0:32] is the sub-list for field type_name
+	90, // 0: cloche.v1.RunWorkflowRequest.env:type_name -> cloche.v1.RunWorkflowRequest.EnvEntry
+	4,  // 1: cloche.v1.GetStatusResponse.step_executions:type_name -> cloche.v1.StepExecutionStatus
+	17, // 2: cloche.v1.ListRunsResponse.runs:type_name -> cloche.v1.RunSummary
+	17, // 3: cloche.v1.GetProjectInfoResponse.active_runs:type_name -> cloche.v1.RunSummary
+	27, // 4: cloche.v1.GetProjectInfoResponse.repositories:type_name -> cloche.v1.Repository
+	30, // 5: cloche.v1.GetAttentionResponse.items:type_name -> cloche.v1.AttentionItem
+	33, // 6: cloche.v1.GetLoopOccupancyResponse.slots:type_name -> cloche.v1.OccupancySlot
+	34, // 7: cloche.v1.GetLoopOccupancyResponse.queued:type_name -> cloche.v1.QueuedItem
+	35, // 8: cloche.v1.GetLoopOccupancyResponse.polls:type_name -> cloche.v1.PollItem
+	38, // 9: cloche.v1.ListLoopOccupancyResponse.projects:type_name -> cloche.v1.ProjectOccupancySummary
+	43, // 10: cloche.v1.ListTasksResponse.tasks:type_name -> cloche.v1.TaskSummary
+	46, // 11: cloche.v1.GetTaskResponse.attempts:type_name -> cloche.v1.AttemptSummary
+	54, // 12: cloche.v1.GetUsageResponse.summaries:type_name -> cloche.v1.UsageSummary
+	57, // 13: cloche.v1.ConsoleInput.start:type_name -> cloche.v1.ConsoleStart
+	59, // 14: cloche.v1.ConsoleInput.resize:type_name -> cloche.v1.TerminalSize
+	58, // 15: cloche.v1.ConsoleOutput.started:type_name -> cloche.v1.ConsoleStarted
+	60, // 16: cloche.v1.ConsoleOutput.exited:type_name -> cloche.v1.ConsoleExited
+	69, // 17: cloche.v1.AgentMessage.ready:type_name -> cloche.v1.AgentReady
+	71, // 18: cloche.v1.AgentMessage.step_result:type_name -> cloche.v1.StepResult
+	72, // 19: cloche.v1.AgentMessage.step_log:type_name -> cloche.v1.StepLog
+	73, // 20: cloche.v1.AgentMessage.step_started:type_name -> cloche.v1.StepStarted
+	74, // 21: cloche.v1.AgentMessage.host_request:type_name -> cloche.v1.HostWorkflowRequest
+	70, // 22: cloche.v1.DaemonMessage.execute_step:type_name -> cloche.v1.ExecuteStep
+	76, // 23: cloche.v1.DaemonMessage.step_cancelled:type_name -> cloche.v1.StepCancelled
+	75, // 24: cloche.v1.DaemonMessage.host_result:type_name -> cloche.v1.HostWorkflowResult
+	78, // 25: cloche.v1.DaemonMessage.shutdown:type_name -> cloche.v1.Shutdown
+	77, // 26: cloche.v1.DaemonMessage.park_step:type_name -> cloche.v1.ParkStep
+	91, // 27: cloche.v1.ExecuteStep.config:type_name -> cloche.v1.ExecuteStep.ConfigEntry
+	79, // 28: cloche.v1.StepResult.token_usage:type_name -> cloche.v1.TokenUsage
+	92, // 29: cloche.v1.HostWorkflowRequest.env:type_name -> cloche.v1.HostWorkflowRequest.EnvEntry
+	83, // 30: cloche.v1.ListThreadsResponse.threads:type_name -> cloche.v1.HelpThreadSummary
+	83, // 31: cloche.v1.GetThreadResponse.thread:type_name -> cloche.v1.HelpThreadSummary
+	86, // 32: cloche.v1.GetThreadResponse.messages:type_name -> cloche.v1.HelpMessageEntry
+	0,  // 33: cloche.v1.ClocheService.RunWorkflow:input_type -> cloche.v1.RunWorkflowRequest
+	2,  // 34: cloche.v1.ClocheService.GetStatus:input_type -> cloche.v1.GetStatusRequest
+	5,  // 35: cloche.v1.ClocheService.StreamLogs:input_type -> cloche.v1.StreamLogsRequest
+	7,  // 36: cloche.v1.ClocheService.StopRun:input_type -> cloche.v1.StopRunRequest
+	15, // 37: cloche.v1.ClocheService.ListRuns:input_type -> cloche.v1.ListRunsRequest
+	42, // 38: cloche.v1.ClocheService.ListTasks:input_type -> cloche.v1.ListTasksRequest
+	45, // 39: cloche.v1.ClocheService.GetTask:input_type -> cloche.v1.GetTaskRequest
+	48, // 40: cloche.v1.ClocheService.GetAttempt:input_type -> cloche.v1.GetAttemptRequest
+	9,  // 41: cloche.v1.ClocheService.Shutdown:input_type -> cloche.v1.ShutdownRequest
+	11, // 42: cloche.v1.ClocheService.DeleteContainer:input_type -> cloche.v1.DeleteContainerRequest
+	13, // 43: cloche.v1.ClocheService.ExtractRun:input_type -> cloche.v1.ExtractRunRequest
+	18, // 44: cloche.v1.ClocheService.EnableLoop:input_type -> cloche.v1.EnableLoopRequest
+	20, // 45: cloche.v1.ClocheService.DisableLoop:input_type -> cloche.v1.DisableLoopRequest
+	22, // 46: cloche.v1.ClocheService.ResumeLoop:input_type -> cloche.v1.ResumeLoopRequest
+	24, // 47: cloche.v1.ClocheService.QuiesceRuns:input_type -> cloche.v1.QuiesceRunsRequest
+	26, // 48: cloche.v1.ClocheService.GetProjectInfo:input_type -> cloche.v1.GetProjectInfoRequest
+	29, // 49: cloche.v1.ClocheService.GetAttention:input_type -> cloche.v1.GetAttentionRequest
+	32, // 50: cloche.v1.ClocheService.GetLoopOccupancy:input_type -> cloche.v1.GetLoopOccupancyRequest
+	37, // 51: cloche.v1.ClocheService.ListLoopOccupancy:input_type -> cloche.v1.ListLoopOccupancyRequest
+	40, // 52: cloche.v1.ClocheService.GetVersion:input_type -> cloche.v1.GetVersionRequest
+	50, // 53: cloche.v1.ClocheService.Complete:input_type -> cloche.v1.CompleteRequest
+	52, // 54: cloche.v1.ClocheService.GetUsage:input_type -> cloche.v1.GetUsageRequest
+	55, // 55: cloche.v1.ClocheService.Console:input_type -> cloche.v1.ConsoleInput
+	61, // 56: cloche.v1.ClocheService.GetContextKey:input_type -> cloche.v1.GetContextKeyRequest
+	63, // 57: cloche.v1.ClocheService.SetContextKey:input_type -> cloche.v1.SetContextKeyRequest
+	65, // 58: cloche.v1.ClocheService.ListContextKeys:input_type -> cloche.v1.ListContextKeysRequest
+	67, // 59: cloche.v1.ClocheService.AgentSession:input_type -> cloche.v1.AgentMessage
+	80, // 60: cloche.v1.ClocheService.AskHelp:input_type -> cloche.v1.AskHelpRequest
+	82, // 61: cloche.v1.ClocheService.ListThreads:input_type -> cloche.v1.ListThreadsRequest
+	85, // 62: cloche.v1.ClocheService.GetThread:input_type -> cloche.v1.GetThreadRequest
+	88, // 63: cloche.v1.ClocheService.ReplyThread:input_type -> cloche.v1.ReplyThreadRequest
+	1,  // 64: cloche.v1.ClocheService.RunWorkflow:output_type -> cloche.v1.RunWorkflowResponse
+	3,  // 65: cloche.v1.ClocheService.GetStatus:output_type -> cloche.v1.GetStatusResponse
+	6,  // 66: cloche.v1.ClocheService.StreamLogs:output_type -> cloche.v1.LogEntry
+	8,  // 67: cloche.v1.ClocheService.StopRun:output_type -> cloche.v1.StopRunResponse
+	16, // 68: cloche.v1.ClocheService.ListRuns:output_type -> cloche.v1.ListRunsResponse
+	44, // 69: cloche.v1.ClocheService.ListTasks:output_type -> cloche.v1.ListTasksResponse
+	47, // 70: cloche.v1.ClocheService.GetTask:output_type -> cloche.v1.GetTaskResponse
+	49, // 71: cloche.v1.ClocheService.GetAttempt:output_type -> cloche.v1.GetAttemptResponse
+	10, // 72: cloche.v1.ClocheService.Shutdown:output_type -> cloche.v1.ShutdownResponse
+	12, // 73: cloche.v1.ClocheService.DeleteContainer:output_type -> cloche.v1.DeleteContainerResponse
+	14, // 74: cloche.v1.ClocheService.ExtractRun:output_type -> cloche.v1.ExtractRunResponse
+	19, // 75: cloche.v1.ClocheService.EnableLoop:output_type -> cloche.v1.EnableLoopResponse
+	21, // 76: cloche.v1.ClocheService.DisableLoop:output_type -> cloche.v1.DisableLoopResponse
+	23, // 77: cloche.v1.ClocheService.ResumeLoop:output_type -> cloche.v1.ResumeLoopResponse
+	25, // 78: cloche.v1.ClocheService.QuiesceRuns:output_type -> cloche.v1.QuiesceRunsResponse
+	28, // 79: cloche.v1.ClocheService.GetProjectInfo:output_type -> cloche.v1.GetProjectInfoResponse
+	31, // 80: cloche.v1.ClocheService.GetAttention:output_type -> cloche.v1.GetAttentionResponse
+	36, // 81: cloche.v1.ClocheService.GetLoopOccupancy:output_type -> cloche.v1.GetLoopOccupancyResponse
+	39, // 82: cloche.v1.ClocheService.ListLoopOccupancy:output_type -> cloche.v1.ListLoopOccupancyResponse
+	41, // 83: cloche.v1.ClocheService.GetVersion:output_type -> cloche.v1.GetVersionResponse
+	51, // 84: cloche.v1.ClocheService.Complete:output_type -> cloche.v1.CompleteResponse
+	53, // 85: cloche.v1.ClocheService.GetUsage:output_type -> cloche.v1.GetUsageResponse
+	56, // 86: cloche.v1.ClocheService.Console:output_type -> cloche.v1.ConsoleOutput
+	62, // 87: cloche.v1.ClocheService.GetContextKey:output_type -> cloche.v1.GetContextKeyResponse
+	64, // 88: cloche.v1.ClocheService.SetContextKey:output_type -> cloche.v1.SetContextKeyResponse
+	66, // 89: cloche.v1.ClocheService.ListContextKeys:output_type -> cloche.v1.ListContextKeysResponse
+	68, // 90: cloche.v1.ClocheService.AgentSession:output_type -> cloche.v1.DaemonMessage
+	81, // 91: cloche.v1.ClocheService.AskHelp:output_type -> cloche.v1.AskHelpResponse
+	84, // 92: cloche.v1.ClocheService.ListThreads:output_type -> cloche.v1.ListThreadsResponse
+	87, // 93: cloche.v1.ClocheService.GetThread:output_type -> cloche.v1.GetThreadResponse
+	89, // 94: cloche.v1.ClocheService.ReplyThread:output_type -> cloche.v1.ReplyThreadResponse
+	64, // [64:95] is the sub-list for method output_type
+	33, // [33:64] is the sub-list for method input_type
+	33, // [33:33] is the sub-list for extension type_name
+	33, // [33:33] is the sub-list for extension extendee
+	0,  // [0:33] is the sub-list for field type_name
 }
 
 func init() { file_cloche_proto_init() }
@@ -6772,7 +6789,7 @@ func file_cloche_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cloche_proto_rawDesc), len(file_cloche_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   92,
+			NumMessages:   93,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

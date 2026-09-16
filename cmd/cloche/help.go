@@ -704,8 +704,13 @@ Subcommands:
              project's .cloche/*.cloche files; --prompt supplies the task
              description used for semantic retrieval.
   scan       Alias for "cloche run intent-scan"; dispatches the built-in
-             extraction workflow. --full forces a full re-scan instead of
-             an incremental one.
+             extraction workflow. --full resets collect-sources' cursors
+             (doc hashes, last commit, scanned runs) for this run only, so
+             everything is re-mined from scratch instead of just material
+             changed since the last scan; existing requirements are kept,
+             not discarded — reconcile still merges/supersedes them as
+             usual. Prints what it's about to re-mine (docs/commits/runs
+             counts) before dispatching.
 
 Environment:
   EDITOR, VISUAL    Editor used by "edit" (default: vi).
