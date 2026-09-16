@@ -134,7 +134,10 @@ so it's available in any project with no setup. `cloche intent scan` (alias for
    decides **create** (novel), **merge** (already tracked, no-op), **supersede**
    (contradicts an active requirement with newer evidence — a new file is created,
    the old one flipped to `status: superseded`), or **drop** (not durable intent
-   after all).
+   after all). Emits `none` — a no-op, wired straight to done like
+   collect-sources' `none` — when `extract` found zero candidates, so the workflow
+   ends here rather than falling through to `apply-reconcile` with no
+   `reconcile.json` to apply.
 5. **apply-reconcile** — a post-step validation script that writes the reconcile
    step's decisions to `.cloche/intent/` and enforces the hard rules regardless of
    what the agent proposed:

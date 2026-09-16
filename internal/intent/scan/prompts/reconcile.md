@@ -10,7 +10,10 @@ requirement is now wrong, or not actually durable intent after all?
 TEMP="$(cloche get temp_file_dir)"
 ```
 
-- `$TEMP/candidates.json` — the extract step's output.
+- `$TEMP/candidates.json` — the extract step's output. If its `candidates`
+  array is empty, there is nothing to reconcile: do not write
+  `reconcile.json` at all — skip straight to emitting `CLOCHE_RESULT:none`
+  (see Results below).
 - `$CLOCHE_PROJECT_DIR/.cloche/intent/requirements/*.md` — every existing
   requirement (markdown with YAML frontmatter: `id`, `status`, `scope`,
   `confidence`, `user_edited`, `provenance`, plus the statement/rationale
@@ -87,5 +90,9 @@ Write `$TEMP/reconcile.json`:
 ## Results
 
 - Emit `CLOCHE_RESULT:success` once `$TEMP/reconcile.json` is written.
+- Emit `CLOCHE_RESULT:none` — without writing `reconcile.json` — if
+  `candidates.json`'s `candidates` array is empty. This is a valid, expected
+  outcome (extract found nothing durable this run), not a failure; the
+  workflow ends here rather than moving on to apply a nonexistent file.
 - Emit `CLOCHE_RESULT:fail` if the candidates or existing requirements can't
   be read, or the output can't be written.

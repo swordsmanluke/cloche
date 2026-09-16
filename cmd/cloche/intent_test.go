@@ -347,7 +347,7 @@ func TestRunIntentApplyReconcile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report, err := runIntentApplyReconcile(dir, reconcilePath)
+	report, err := runIntentApplyReconcile(dir, reconcilePath, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -373,8 +373,64 @@ func TestRunIntentApplyReconcile_HardRuleViolationAppliesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := runIntentApplyReconcile(dir, reconcilePath); err == nil {
+	if _, err := runIntentApplyReconcile(dir, reconcilePath, ""); err == nil {
 		t.Fatalf("expected an error for an invalid action")
+	}
+}
+
+// TestRunIntentApplyReconcile_MissingFileZeroCandidates_NoOpSuccess covers
+// the case a reconcile agent that ends without writing reconcile.json
+// because extract found nothing to reconcile: candidates.json exists with an
+// empty list, so the missing reconcile.json is expected, not a failure.
+func TestRunIntentApplyReconcile_MissingFileZeroCandidates_NoOpSuccess(t *testing.T) {
+	dir := t.TempDir()
+	candidatesPath := filepath.Join(dir, "candidates.json")
+	if err := os.WriteFile(candidatesPath, []byte(`{"candidates": []}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	reconcilePath := filepath.Join(dir, "reconcile.json") // never written
+
+	report, err := runIntentApplyReconcile(dir, reconcilePath, candidatesPath)
+	if err != nil {
+		t.Fatalf("expected no-op success, got error: %v", err)
+	}
+	if report != nil {
+		t.Fatalf("expected a nil report for the no-op path, got %+v", report)
+	}
+}
+
+// TestRunIntentApplyReconcile_MissingFileWithCandidates_Fails covers the bug
+// this guards against: the reconcile agent reports success without writing
+// reconcile.json even though extract found real candidates to act on. That
+// must surface as a step failure, not be silently swallowed as a no-op.
+func TestRunIntentApplyReconcile_MissingFileWithCandidates_Fails(t *testing.T) {
+	dir := t.TempDir()
+	candidatesPath := filepath.Join(dir, "candidates.json")
+	candidatesJSON := `{"candidates": [
+		{"statement": "Never bump major without asking.", "scope": {"level": "project"}, "confidence": "high", "provenance": {"kind": "doc", "ref": "CLAUDE.md"}}
+	]}`
+	if err := os.WriteFile(candidatesPath, []byte(candidatesJSON), 0644); err != nil {
+		t.Fatal(err)
+	}
+	reconcilePath := filepath.Join(dir, "reconcile.json") // never written
+
+	_, err := runIntentApplyReconcile(dir, reconcilePath, candidatesPath)
+	if err == nil {
+		t.Fatalf("expected an error when candidates exist but reconcile.json is missing")
+	}
+}
+
+// TestRunIntentApplyReconcile_MissingFileNoCandidatesFile_FailsClosed covers
+// a missing reconcile.json with no candidates.json to consult either — we
+// can't tell whether anything was lost, so this must fail closed like the
+// pre-existing behavior rather than silently no-op.
+func TestRunIntentApplyReconcile_MissingFileNoCandidatesFile_FailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	reconcilePath := filepath.Join(dir, "reconcile.json") // never written
+
+	_, err := runIntentApplyReconcile(dir, reconcilePath, "")
+	if err == nil {
+		t.Fatalf("expected an error when neither reconcile.json nor a candidates file exists")
 	}
 }
 
@@ -1066,7 +1122,7 @@ func TestIntentScan_EndToEnd_FixtureProject(t *testing.T) {
 	}
 
 	// Step: apply-reconcile (real).
-	report, err := runIntentApplyReconcile(dir, reconcilePath)
+	report, err := runIntentApplyReconcile(dir, reconcilePath, "")
 	if err != nil {
 		t.Fatalf("apply-reconcile: %v", err)
 	}

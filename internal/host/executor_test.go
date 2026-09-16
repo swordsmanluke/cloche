@@ -1264,6 +1264,14 @@ func TestRunner_PersistsHostRunOnFailure(t *testing.T) {
 	assert.True(t, hostRun.IsHost)
 	assert.Equal(t, domain.RunStateFailed, hostRun.State)
 	assert.False(t, hostRun.CompletedAt.IsZero())
+
+	// A step routed to `abort` via a declared wire (as opposed to a Go-level
+	// engine error) must still leave a non-empty ErrorMessage naming the
+	// failing step, so the failure is visible in `cloche list --runs` and the
+	// console's Needs you / builtin-failures item instead of being recorded
+	// as a bare "failed" with no explanation.
+	assert.NotEmpty(t, hostRun.ErrorMessage)
+	assert.Contains(t, hostRun.ErrorMessage, "bad")
 }
 
 // --- RunNamed tests ---

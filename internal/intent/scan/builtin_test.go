@@ -1,6 +1,7 @@
 package scan_test
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/engine"
 	"github.com/swordsmanluke/cloche/internal/intent/scan"
 )
 
@@ -37,6 +40,7 @@ func TestBuiltinWorkflow_Shape(t *testing.T) {
 		"extract:success":          "reconcile",
 		"extract:fail":             "abort",
 		"reconcile:success":        "apply-reconcile",
+		"reconcile:none":           "done",
 		"reconcile:fail":           "abort",
 		"apply-reconcile:success":  "commit",
 		"apply-reconcile:fail":     "abort",
@@ -173,4 +177,66 @@ func TestBuiltinWorkflow_IndependentInstances(t *testing.T) {
 
 	a.Steps["extract"].Config["timeout"] = "mutated"
 	assert.NotEqual(t, "mutated", b.Steps["extract"].Config["timeout"])
+}
+
+// scriptedExecutor is a fake engine.StepExecutor driven by a fixed
+// stepName -> result map, recording which steps actually ran so tests can
+// assert on the workflow's wiring behavior without invoking real agents or
+// scripts.
+type scriptedExecutor struct {
+	results  map[string]string
+	executed []string
+}
+
+func (e *scriptedExecutor) Execute(_ context.Context, step *domain.Step) (domain.StepResult, error) {
+	e.executed = append(e.executed, step.Name)
+	result, ok := e.results[step.Name]
+	if !ok {
+		return domain.StepResult{}, nil
+	}
+	return domain.StepResult{Result: result}, nil
+}
+
+// TestBuiltinWorkflow_ReconcileNone_SkipsApplyReconcile reproduces the "zero
+// candidates" case from cloche-26029ae7feb8: when reconcile has nothing to
+// act on, it must route via its `none` result straight to done, the same way
+// collect-sources does, rather than falling through to apply-reconcile with
+// no reconcile.json to apply.
+func TestBuiltinWorkflow_ReconcileNone_SkipsApplyReconcile(t *testing.T) {
+	exec := &scriptedExecutor{results: map[string]string{
+		"discover-domains": "success",
+		"collect-sources":  "success",
+		"extract":          "success",
+		"reconcile":        "none",
+	}}
+
+	eng := engine.New(exec)
+	run, err := eng.Run(context.Background(), scan.BuiltinWorkflow())
+	require.NoError(t, err)
+
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+	assert.NotContains(t, exec.executed, "apply-reconcile", "apply-reconcile must not run when reconcile reports no candidates")
+	assert.NotContains(t, exec.executed, "commit")
+}
+
+// TestBuiltinWorkflow_ApplyReconcileFail_FailsRun reproduces the observed bug
+// at the wiring level: a reconcile step that reports "success" but whose
+// apply-reconcile step then fails (e.g. because reconcile.json was never
+// written) must fail the whole run via the declared fail -> abort wire.
+func TestBuiltinWorkflow_ApplyReconcileFail_FailsRun(t *testing.T) {
+	exec := &scriptedExecutor{results: map[string]string{
+		"discover-domains": "success",
+		"collect-sources":  "success",
+		"extract":          "success",
+		"reconcile":        "success",
+		"apply-reconcile":  "fail",
+	}}
+
+	eng := engine.New(exec)
+	run, err := eng.Run(context.Background(), scan.BuiltinWorkflow())
+	require.NoError(t, err)
+
+	assert.Equal(t, domain.RunStateFailed, run.State)
+	assert.Equal(t, "apply-reconcile", run.FindFirstFailedStep())
+	assert.NotContains(t, exec.executed, "commit", "commit must not run after apply-reconcile fails")
 }

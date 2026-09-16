@@ -52,7 +52,9 @@ Subcommands:
                       --full resets the cursors for this run instead of
                       reading them from scan-state.yaml
   apply-reconcile     Apply a reconcile step's reconcile.json to .cloche/intent/,
-                      enforcing the scan's hard rules
+                      enforcing the scan's hard rules. --candidates-file lets a
+                      missing reconcile.json be treated as a no-op success when
+                      candidates.json has zero candidates, instead of failing
 `)
 		if len(args) == 0 {
 			os.Exit(1)
@@ -927,6 +929,7 @@ func runIntentCollectSources(projectDir, outDir string, full bool) (*scan.Collec
 func cmdIntentApplyReconcile(args []string) {
 	projectDir, _ := os.Getwd()
 	reconcilePath := ""
+	candidatesPath := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--project":
@@ -939,6 +942,11 @@ func cmdIntentApplyReconcile(args []string) {
 				i++
 				reconcilePath = args[i]
 			}
+		case "--candidates-file":
+			if i+1 < len(args) {
+				i++
+				candidatesPath = args[i]
+			}
 		}
 	}
 	if reconcilePath == "" {
@@ -946,11 +954,16 @@ func cmdIntentApplyReconcile(args []string) {
 		os.Exit(1)
 	}
 
-	report, err := runIntentApplyReconcile(projectDir, reconcilePath)
+	report, err := runIntentApplyReconcile(projectDir, reconcilePath, candidatesPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		printResultMarker("fail")
 		os.Exit(1)
+	}
+	if report == nil {
+		fmt.Println("no candidates to reconcile, nothing to apply")
+		printResultMarker("success")
+		return
 	}
 
 	fmt.Printf("created %d, superseded %d, merged %d, dropped %d\n",
@@ -961,7 +974,16 @@ func cmdIntentApplyReconcile(args []string) {
 // runIntentApplyReconcile reads a reconcile.json produced by the reconcile
 // agent step and applies it to the project's .cloche/intent/ store, failing
 // closed (no changes at all) if any action violates a hard rule.
-func runIntentApplyReconcile(projectDir, reconcilePath string) (*scan.Report, error) {
+//
+// A missing reconcile.json is only a hard failure when candidatesPath shows
+// there was something to reconcile: the reconcile agent occasionally reports
+// success without writing its output (see cloche-26029ae7feb8), and extract
+// producing zero candidates is a legitimate reason for reconcile to have
+// nothing to write in the first place — that case must return (nil, nil), a
+// no-op success, not an error. A missing/unreadable candidatesPath when
+// reconcile.json is also missing can't be told apart from "should have
+// written something", so it fails closed like before.
+func runIntentApplyReconcile(projectDir, reconcilePath, candidatesPath string) (*scan.Report, error) {
 	absProjectDir, err := filepath.Abs(projectDir)
 	if err != nil {
 		return nil, fmt.Errorf("resolving project dir: %w", err)
@@ -969,7 +991,17 @@ func runIntentApplyReconcile(projectDir, reconcilePath string) (*scan.Report, er
 
 	data, err := os.ReadFile(reconcilePath)
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", reconcilePath, err)
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("reading %s: %w", reconcilePath, err)
+		}
+		hasCandidates, candErr := candidatesFileHasCandidates(candidatesPath)
+		if candErr != nil {
+			return nil, fmt.Errorf("%s not found, and checking %s: %w", reconcilePath, candidatesPath, candErr)
+		}
+		if hasCandidates {
+			return nil, fmt.Errorf("%s not found but %s has candidates — did the reconcile step write it?", reconcilePath, candidatesPath)
+		}
+		return nil, nil
 	}
 	actions, err := scan.ParseReconcileActions(data)
 	if err != nil {
@@ -978,4 +1010,21 @@ func runIntentApplyReconcile(projectDir, reconcilePath string) (*scan.Report, er
 
 	store := intent.NewStore(absProjectDir)
 	return scan.Apply(store, actions)
+}
+
+// candidatesFileHasCandidates reports whether the extract step's
+// candidates.json (at path) lists at least one candidate.
+func candidatesFileHasCandidates(path string) (bool, error) {
+	if path == "" {
+		return false, fmt.Errorf("no --candidates-file given")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	candidates, err := scan.ParseCandidates(data)
+	if err != nil {
+		return false, err
+	}
+	return len(candidates) > 0, nil
 }

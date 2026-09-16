@@ -233,6 +233,8 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 			if hostRun.State != domain.RunStateCancelled {
 				if runErr != nil {
 					hostRun.Fail(runErr.Error())
+				} else if result.State == domain.RunStateFailed {
+					hostRun.Fail(describeStepFailure(run))
 				} else {
 					hostRun.Complete(result.State)
 				}
@@ -420,6 +422,8 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 			if hostRun.State != domain.RunStateCancelled {
 				if runErr != nil {
 					hostRun.Fail(runErr.Error())
+				} else if result.State == domain.RunStateFailed {
+					hostRun.Fail(describeStepFailure(engRun))
 				} else {
 					hostRun.Complete(result.State)
 				}
@@ -611,6 +615,8 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 			if hostRunFinal.State != domain.RunStateCancelled {
 				if runErr != nil {
 					hostRunFinal.Fail(runErr.Error())
+				} else if result.State == domain.RunStateFailed {
+					hostRunFinal.Fail(describeStepFailure(engRun))
 				} else {
 					hostRunFinal.Complete(result.State)
 				}
@@ -757,6 +763,28 @@ func cleanupRunContext(ctx context.Context, store ports.RunStore, projectDir, ta
 	}
 	runDir := filepath.Join(projectDir, ".cloche", "runs", taskID)
 	_ = os.RemoveAll(runDir)
+}
+
+// describeStepFailure builds a human-readable error message for a host
+// workflow run that ended in RunStateFailed via a normal `fail -> abort`
+// wire rather than a Go-level error from the engine. Without this, such runs
+// call hostRun.Complete(Failed) with an empty ErrorMessage — the run shows
+// up as failed but with no indication of which step or why, both in `cloche
+// list --runs` and in the console's Needs you / builtin-failures item.
+func describeStepFailure(run *domain.Run) string {
+	if run == nil {
+		return "workflow aborted"
+	}
+	stepName := run.FindFirstFailedStep()
+	if stepName == "" {
+		return "workflow aborted"
+	}
+	for _, se := range run.StepExecutions {
+		if se.StepName == stepName {
+			return fmt.Sprintf("step %q returned %q", stepName, se.Result)
+		}
+	}
+	return fmt.Sprintf("step %q failed", stepName)
 }
 
 // findHostWorkflow searches all .cloche files in a project for a host workflow

@@ -35,6 +35,14 @@ cloche intent collect-sources --project "$PROJECT_DIR" --out "$OUT" $FULL_FLAG
 cloche set intent_scan_sources_dir "$OUT"
 `
 
+// applyReconcileScript delegates the missing-file decision to `cloche intent
+// apply-reconcile` itself (see cmdIntentApplyReconcile in cmd/cloche/
+// intent.go) rather than failing here on a bare `[ -f "$RECONCILE_FILE" ]`
+// check: a reconcile.json missing because extract found zero candidates
+// (candidates.json has an empty list) is a no-op success, not a failure —
+// only a missing reconcile.json alongside a non-empty candidates.json is a
+// real step failure (the reconcile agent claimed success without writing
+// its output).
 const applyReconcileScript = `set -eu
 PROJECT_DIR="${CLOCHE_PROJECT_DIR:-.}"
 TEMP=$(cloche get temp_file_dir)
@@ -42,12 +50,7 @@ if [ -z "$TEMP" ]; then
   echo "error: temp_file_dir not set in KV store" >&2
   exit 1
 fi
-RECONCILE_FILE="$TEMP/reconcile.json"
-if [ ! -f "$RECONCILE_FILE" ]; then
-  echo "error: $RECONCILE_FILE not found — did the reconcile step write it?" >&2
-  exit 1
-fi
-cloche intent apply-reconcile --project "$PROJECT_DIR" --reconcile-file "$RECONCILE_FILE"
+cloche intent apply-reconcile --project "$PROJECT_DIR" --reconcile-file "$TEMP/reconcile.json" --candidates-file "$TEMP/candidates.json"
 `
 
 // commitScript commits any changes apply-reconcile wrote under
@@ -170,7 +173,7 @@ func BuiltinWorkflow() *domain.Workflow {
 					"prompt":  reconcilePrompt,
 					"timeout": "20m",
 				},
-				Results: []string{"success", "fail"},
+				Results: []string{"success", "none", "fail"},
 			},
 			"apply-reconcile": {
 				Name: "apply-reconcile",
@@ -198,6 +201,7 @@ func BuiltinWorkflow() *domain.Workflow {
 			{From: "extract", Result: "success", To: "reconcile"},
 			{From: "extract", Result: "fail", To: domain.StepAbort},
 			{From: "reconcile", Result: "success", To: "apply-reconcile"},
+			{From: "reconcile", Result: "none", To: domain.StepDone},
 			{From: "reconcile", Result: "fail", To: domain.StepAbort},
 			{From: "apply-reconcile", Result: "success", To: "commit"},
 			{From: "apply-reconcile", Result: "fail", To: domain.StepAbort},
