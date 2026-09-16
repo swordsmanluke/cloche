@@ -431,8 +431,7 @@ func IsUserInitiatedBuiltinRun(ctx context.Context, taskStore ports.TaskStore, r
 }
 
 // topLevelRuns splits runs into top-level (non-child, non-list-tasks) runs
-// and a parent-run-ID -> child-runs map, mirroring the grouping used by the
-// failed-open-tasks dashboard (internal/adapters/web.buildFailedOpenTasks).
+// and a parent-run-ID -> child-runs map.
 func topLevelRuns(runs []*domain.Run) ([]*domain.Run, map[string][]*domain.Run) {
 	byID := map[string]*domain.Run{}
 	for _, r := range runs {

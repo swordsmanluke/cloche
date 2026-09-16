@@ -288,9 +288,9 @@ The dashboard's JSON endpoints remain stable and are also used by the CLI
 - `GET /api/projects/{name}/loop/occupancy`, `GET /api/projects/occupancy` — concurrency
   slots and queue depth, per-project and all-projects.
 - `GET /api/projects/{name}/usage` — token burn rate and 24h totals.
-- `GET /api/runs`, `GET /api/runs/{id}`, `GET /api/runs/{id}/stream` — run listing, detail
-  (steps, child runs, container state, per-agent token totals, prompt file/git revision),
-  and live SSE log streaming.
+- `GET /api/runs/{id}`, `GET /api/runs/{id}/stream` — run detail (steps, child runs,
+  container state, per-agent token totals, prompt file/git revision) and live SSE log
+  streaming.
 - `GET /api/runs/{id}/steps/{step}/output` — a single step's raw output, for the step strip.
 - `GET /api/runs/{id}/thread`, `POST /api/runs/{id}/thread/reply` — the help thread a parked
   run is awaiting a reply on, and posting a reply (same path as `cloche threads reply`,
@@ -301,7 +301,6 @@ The dashboard's JSON endpoints remain stable and are also used by the CLI
   action.
 - `GET /api/attempts/{id}/stream`, `GET /api/attempts/{id}/logs` — SSE streaming and
   paginated log lines across an attempt's host run and any spawned child runs.
-- `GET /api/failed-tasks` — failed-but-still-open tasks and built-in workflow failures.
 - `GET /api/activity` — the activity ticker/stream (see Foot bar above), filtered by
   `?project=<slug>` (all projects when omitted) and `?failures_only=1`, paged via
   `?before=<cursor>&limit=<n>`.
