@@ -500,7 +500,8 @@
 
     function diffGroup(groupKey, entries) {
         var list = document.getElementById('console-stack-list-' + groupKey);
-        var countEl = list.parentElement.querySelector('.console-stack-group-count');
+        var section = list.parentElement;
+        var countEl = section.querySelector('.console-stack-group-count');
         countEl.textContent = entries.length ? String(entries.length) : '';
 
         var seen = {};
@@ -529,8 +530,16 @@
             }
         });
 
+        // Needs you / Running / Queued disappear entirely when empty, rather
+        // than showing a header over a dash placeholder — they reappear on
+        // the next poll (STACK_POLL_MS) as soon as they have rows. Done
+        // today always stays visible, dash and all, since it's the
+        // paginated group users expect to keep finding in the same place.
+        var alwaysShown = groupKey === 'done_today';
+        section.hidden = !alwaysShown && entries.length === 0;
+
         var empty = list.querySelector('.console-stack-empty');
-        if (entries.length === 0) {
+        if (entries.length === 0 && alwaysShown) {
             if (!empty) {
                 empty = document.createElement('div');
                 empty.className = 'console-stack-empty';

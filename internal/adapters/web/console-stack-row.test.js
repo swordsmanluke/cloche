@@ -172,3 +172,82 @@ test('done-today header shows the server-supplied day-boundary date', async () =
         window.close();
     }
 });
+
+// installStackPollShim intercepts window.setInterval and hands back the
+// registered callbacks keyed by delay, so a test can fire the 4s stack poll
+// on demand instead of waiting on a real timer.
+function installStackPollShim(window) {
+    const timers = {};
+    const origSetInterval = window.setInterval.bind(window);
+    window.setInterval = function (fn, ms) {
+        timers[ms] = fn;
+        return origSetInterval(fn, ms);
+    };
+    return timers;
+}
+
+function groupSection(window, label) {
+    const headers = window.document.querySelectorAll('.console-stack-group-title');
+    const header = Array.from(headers).find((h) => h.textContent.indexOf(label) === 0);
+    return header && header.closest('.console-stack-group');
+}
+
+test('empty Needs you / Running / Queued groups are omitted; Done today always stays, dash and all', async () => {
+    let stack = {
+        needs_you: [],
+        running: [{ task_id: 'cloche-fnn6', title: 'hidden acceptance corpus', run_id: 'r1', attempt: 1, elapsed_seconds: 10 }],
+        queued: [],
+        done_today: []
+    };
+    const dom = new JSDOM(
+        '<!DOCTYPE html><html><body>' + consoleContentMarkup('myproj') + '</body></html>',
+        { url: 'http://localhost/myproj', runScripts: 'outside-only' }
+    );
+    const { window } = dom;
+    const timers = installStackPollShim(window);
+    window.fetch = function (url) {
+        if (url === '/api/projects') return jsonResponse([]);
+        if (/\/tasks\/stack(\?|$)/.test(url)) return jsonResponse(stack, { ETag: 'W/"stack-1"' });
+        return jsonResponse({});
+    };
+    window.eval(CONSOLE_TABS_SRC);
+    window.eval(CONSOLE_JS_SRC);
+
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+        if (window.document.querySelector('.console-stack-row')) break;
+        await delay(20);
+    }
+
+    try {
+        assert.equal(groupSection(window, 'Needs you').hidden, true, 'empty Needs you group is omitted');
+        assert.equal(groupSection(window, 'Queued').hidden, true, 'empty Queued group is omitted');
+        assert.equal(groupSection(window, 'Running').hidden, false, 'non-empty Running group stays visible');
+
+        var doneSection = groupSection(window, 'Done today');
+        assert.equal(doneSection.hidden, false, 'Done today always stays visible, even when empty');
+        assert.ok(doneSection.querySelector('.console-stack-empty'), 'empty Done today still shows its dash placeholder');
+        assert.equal(groupSection(window, 'Needs you').querySelector('.console-stack-empty'), null, 'omitted groups do not render a dash placeholder');
+
+        // Simulate the next 4s poll finding a Needs-you row and losing its Running one.
+        stack = {
+            needs_you: [{ task_id: 'cloche-usjb', title: 'bonsai executor wrapper', reason: 'failed ×3' }],
+            running: [],
+            queued: [],
+            done_today: []
+        };
+        assert.ok(timers[4000], 'stack poll interval was registered');
+        timers[4000]();
+
+        const reappearDeadline = Date.now() + 2000;
+        while (Date.now() < reappearDeadline) {
+            if (groupSection(window, 'Needs you').hidden === false) break;
+            await delay(20);
+        }
+
+        assert.equal(groupSection(window, 'Needs you').hidden, false, 'Needs you reappears as soon as it has rows');
+        assert.equal(groupSection(window, 'Running').hidden, true, 'Running is omitted again once it empties out');
+    } finally {
+        window.close();
+    }
+});
