@@ -1,5 +1,63 @@
 # Cloche Detailed Changelog
 
+## v3.24.0 — 2026-09-16
+
+### Breaking
+
+- `3a6f033` Removed the dashboard's `GET /api/runs`, `GET /api/projects/{name}/runs`, and `GET /api/failed-tasks` endpoints and their server-side grouping/filtering logic, now superseded by the task-stack API. Migration: switch any integration to `GET /api/projects/{slug}/tasks/stack` and the related task-stack/activity endpoints.
+
+### Features
+
+- `a2f61d0` Web console task stack can now be scoped to a single repository within a multi-repo project via a new sub-tab row, with per-repo running/needs-you badges and `/{project}/{repo}/{task}` routes.
+- `adcd377` Intent scan's `collect-sources` step now collects docs, commits, and run history from every configured `[[repositories]]` entry, not just the project root, with independent per-repo cursors; `cloche intent scan` now blocks until the run finishes and prints a per-repo summary.
+- `bdfe9f8` Web dashboard gains a "System" tab grouping tasks/runs with no owning project, which were previously invisible in the console.
+- `819ba39` Task stack's "Done" group is now a fully paginated history of completed tasks (newest first, `page_size` query param) instead of only showing today's; the JSON field is renamed `done_today` to `done`.
+- `41634bb` Task detail log pane gains step-scoped navigation: `[`/`]` jump to the previous/next step, including child-run steps; attempt switching moves to `Shift+[`/`Shift+]`.
+
+### Fixes
+
+- `9df0db0` Fixed the burn-rate display reading `0` while a step was still running; token usage now streams incrementally from the agent's output as a step executes, and usage queries window by step start time rather than completion time. In-flight totals are now marked with a `~` prefix in `cloche status`/`cloche get usage` and the web console.
+- `a800852` Fixed `cloche intent apply-reconcile` failing when a reconcile agent had nothing to write because `extract` found zero candidates (now a no-op success via a new `--candidates-file` flag), while still failing closed if candidates existed but `reconcile.json` was never written. Host workflow runs that fail via a declared wire now record which step failed instead of leaving the error message blank.
+- `97ef9ea` Fixed multi-repo intent scan attribution: sources collected from a `[[repositories]]` sub-repo are now correctly repo-tagged end-to-end, the dashboard's commit-diff links resolve against the correct sub-repo working tree, and per-repo scan-state cursors auto-migrate from the old format. `cloche intent scan` no longer aborts when `.cloche/config.toml` is missing.
+- `3b8e8c6` Fixed `cloche intent scan --full` being a documented no-op; it now actually forces a full re-scan, resetting `collect-sources` cursors and forcing `discover-domains` to do a full survey, without discarding existing requirements.
+- `4a2f2b3` Fixed runs waiting at a `poll` step being excluded from project health, active-run counts, and the task stack's "Running" group; a waiting run now shows a "waiting · poll `<step>` · last poll `<n>` ago" annotation.
+- `35d543d` Fixed the Workflows view's tab strip dragging the whole DAG panel sideways when there were many tabs; tab bars now scroll independently and the active tab auto-scrolls into view.
+- `9c64734` Fixed the ledger dashboard's prompt-revision backfill running inline, and shelling out to `git log`, on every page request; it now runs once as a resumable background sweep at daemon startup, with a `backfill_pending` flag so the UI can show partial data instead of blocking.
+- `f8ffffa` Fixed the task detail step strip being squashed by the log pane below it on tasks with several steps.
+- `6ed188b` Fixed the task stack's "Done today" boundary comparing against UTC midnight instead of the daemon's local midnight (uncertain — please review: this grouping was replaced later in this release by `819ba39`'s fully paginated "Done" history, so the fix's specific mechanism no longer applies to the final shipped behavior).
+
+### UI/UX
+
+- `6618a1d` Renamed the web console's "Intent" view/button to "Requirements" for clarity.
+- `ae65282` Reordered the web console's workflow tabs to pin `list-tasks` and `main` first, and fixed the Container/Host location tabs sometimes showing the wrong one as active.
+- `7b0eb5f` Task stack rail now hides the Needs you / Running / Queued groups entirely when empty, reappearing on the next poll; the Done group always stays visible.
+
+### Internal
+
+- `e99980e` Documented that `cloche intent scan --full` had no effect and that `collect-sources` didn't descend into `[[repositories]]` sub-repos — both addressed later in this release by `3b8e8c6` and `adcd377`.
+- `7f2b055` Split the SQLite store's single connection into a dedicated write connection plus an 8-connection WAL read pool, so concurrent reads no longer queue behind each other or behind writes.
+- `c21dd83` Eliminated N+1 query patterns in task/run listing (batched attempt and builtin-status lookups) and bounded the dashboard's task-stack queries to the visible window.
+- `2513324` Replaced full-history run scans used for project health and loop-occupancy summaries with bounded, index-backed queries.
+- `c728815` Added a design mockup comparing three UI approaches for grouping the console by repository; no shipped code.
+- `807b25b` Added CLI regression tests for subcommand dispatch parsing; no behavior change.
+- `01502b2` Added a startup migration creating secondary indexes on the daemon's core tables (runs, step_executions, attempts, log_files) to avoid full table scans on common lookups.
+- `6014c14` Intent scan state refresh (cursor update, no new requirements).
+- `ebe8530` Intent scan: created 5, superseded 0, merged 0, dropped 0 requirements.
+- `c78f7ad` Intent scan: created 3, superseded 1, merged 8, dropped 0 requirements.
+- `5aa33c9` Intent scan: created 2, superseded 0, merged 5, dropped 0 requirements.
+- `824d0d1` Intent scan: created 2, superseded 0, merged 4, dropped 0 requirements.
+- `2b8a626` Intent scan: created 3, superseded 0, merged 1, dropped 0 requirements; `domains.yaml` updated.
+- `d9a286c` Intent scan: created 0, superseded 1, merged 3, dropped 0 requirements.
+- `548cb5e` Intent scan: created 1, superseded 0, merged 0, dropped 0 requirements.
+- `d3a8a49` Intent scan: state refresh, no requirement changes.
+- `d94f381` Intent scan: created 3, superseded 0, merged 0, dropped 0 requirements.
+- `346fbf0` Intent scan: created 1, superseded 0, merged 6, dropped 0 requirements.
+- `d1ebe33` Intent scan: created 5, superseded 0, merged 0, dropped 0 requirements.
+- `54b414b` Fixed the intent-ab research harness's wrapper to inline `DESIGN.md`, since one arm's agent returned empty content without it. Internal experiment tooling, not shipped in the product.
+- `e058f65` Fixed the intent-ab research harness's pilot-mode task unclaim so the loop survives step failures. Internal experiment tooling, not shipped in the product.
+- `ab02a7b` Increased the intent-ab research harness's wrapper timeout to 600s and made it catch socket timeouts gracefully. Internal experiment tooling, not shipped in the product.
+- `3cd9a87` Armed the intent-ab research harness's arm driver against the real `bd` CLI and made it commit the overlay before dispatch. Internal experiment tooling, not shipped in the product.
+
 ## v3.23.0 — 2026-09-15
 
 ### Breaking

@@ -1,5 +1,28 @@
 # Cloche Changelog
 
+## v3.24.0 — 2026-09-16
+
+### Breaking changes
+
+- Removed the web dashboard's older `GET /api/runs`, `GET /api/projects/{name}/runs`, and `GET /api/failed-tasks` endpoints, now that the task-stack API supersedes them. Migration: any script or integration polling those routes must switch to `GET /api/projects/{slug}/tasks/stack` (and the related task-stack/activity endpoints) — the old routes now 404.
+
+### Features
+
+- The web console now groups multi-repo projects by repository, with a sub-tab row to scope the task stack to one repo and per-repo running/needs-you badges.
+- `cloche intent scan`'s `collect-sources` step now descends into every configured `[[repositories]]` entry, not just the project root, with independent per-repo cursors and a per-repo stats summary printed on the CLI.
+- The web dashboard gains a "System" tab that surfaces tasks and runs with no owning project (e.g. `cloche run` invoked outside a registered project), which were previously invisible in the console.
+- The task stack's "Done" group is now a fully paginated history of every completed task instead of just today's, with a stable cursor for loading further back.
+- Task detail log navigation gains step-scoped stepping — `[`/`]` jump to the previous/next step, including child-run steps — with attempt switching moved to `Shift+[`/`Shift+]`.
+
+### Notable fixes
+
+- Fixed the console/CLI burn-rate display reading `0` while a step was still running; token usage now streams incrementally as a step executes, and in-flight totals are marked with a `~` prefix distinct from settled totals.
+- Fixed `cloche intent apply-reconcile` failing when a reconcile agent legitimately had nothing to reconcile, and made host workflow failures always record which step failed instead of a bare "failed" with no explanation.
+- Fixed multi-repo intent scanning so sources collected from a `[[repositories]]` sub-repo are correctly attributed to that repo end-to-end, including the dashboard's commit-diff links; `cloche intent scan` no longer aborts when `.cloche/config.toml` is missing.
+- Fixed `cloche intent scan --full` being a silent no-op; it now actually forces a full re-scan.
+- Fixed runs waiting at a `poll` step being miscounted and disappearing from the dashboard's active-run counts and "Running" group.
+- Fixed the ledger dashboard's prompt-revision backfill running inline on every page request; it now runs once as a background sweep at daemon startup.
+
 ## v3.23.0 — 2026-09-15
 
 ### Breaking changes
