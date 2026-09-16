@@ -1,4 +1,4 @@
-last_commit: f9b69eb7b16638e0d4da0d3977408794b523dfb8
+last_commit: 08badb9fa7fb2ad4737ef84dc1ad4fa3de37027a
 scanned_runs:
     - cloche-0vqg
     - rxth-main
@@ -334,6 +334,9 @@ scanned_runs:
     - sc8y-main
     - user-mwmo
     - yqf6-main
+    - 5xvg-intent-scan
+    - user-5xvg
+    - yqg3-main
 scanned_docs:
     .cloche/prompts/document-check-missing.md: 154c933c83042dcb0b3f14e9c451226e6eab14bcdcbc9889fa4edef52d7c1283
     .cloche/prompts/document-investigate.md: 0bb6d7225ed9fa53f36269540994d74e7beef92a717e13794a86cfffdd8652d9
