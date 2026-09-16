@@ -4207,7 +4207,7 @@ func (s *ClocheServer) ListLoopOccupancy(ctx context.Context, req *pb.ListLoopOc
 
 	resp := &pb.ListLoopOccupancyResponse{}
 	for _, dir := range dirs {
-		runs, _ := s.store.ListRunsByProject(ctx, dir, time.Time{})
+		runs, _ := s.store.ListRecentRunsByProject(ctx, dir, occupancyHealthWindow)
 		runValues := make([]domain.Run, len(runs))
 		for i, r := range runs {
 			runValues[i] = *r
@@ -4220,11 +4220,7 @@ func (s *ClocheServer) ListLoopOccupancy(ctx context.Context, req *pb.ListLoopOc
 			running = len(occ.Slots)
 			queued = len(occ.Queued)
 		} else {
-			for _, r := range runs {
-				if r.IsHost && (r.State == domain.RunStatePending || r.State == domain.RunStateRunning) {
-					running++
-				}
-			}
+			running, _ = s.store.CountActiveRunsByProject(ctx, dir, true)
 		}
 
 		resp.Projects = append(resp.Projects, &pb.ProjectOccupancySummary{

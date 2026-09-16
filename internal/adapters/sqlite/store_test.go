@@ -421,6 +421,88 @@ func TestListRunsByProject(t *testing.T) {
 	assert.Empty(t, runs)
 }
 
+func TestListRecentRunsByProject(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	// Create 15 runs for project-a with increasing start times, plus one
+	// run for a different project that should never appear.
+	for i := 0; i < 15; i++ {
+		r := domain.NewRun(fmt.Sprintf("proj-a-%d", i), "develop")
+		r.ProjectDir = "/home/user/project-a"
+		r.StartedAt = time.Now().Add(time.Duration(i) * time.Minute)
+		r.State = domain.RunStateSucceeded
+		require.NoError(t, store.CreateRun(ctx, r))
+	}
+	rB := domain.NewRun("proj-b-1", "develop")
+	rB.ProjectDir = "/home/user/project-b"
+	rB.StartedAt = time.Now().Add(time.Hour)
+	rB.State = domain.RunStateSucceeded
+	require.NoError(t, store.CreateRun(ctx, rB))
+
+	runs, err := store.ListRecentRunsByProject(ctx, "/home/user/project-a", 10)
+	require.NoError(t, err)
+	require.Len(t, runs, 10)
+	// Ordered most-recent-first: the highest index (latest StartedAt) comes first.
+	assert.Equal(t, "proj-a-14", runs[0].ID)
+	assert.Equal(t, "proj-a-5", runs[9].ID)
+	for _, r := range runs {
+		assert.Equal(t, "/home/user/project-a", r.ProjectDir)
+	}
+
+	// Fewer runs than the limit returns all of them.
+	runs, err = store.ListRecentRunsByProject(ctx, "/home/user/project-b", 10)
+	require.NoError(t, err)
+	assert.Len(t, runs, 1)
+
+	// Nonexistent project returns no runs.
+	runs, err = store.ListRecentRunsByProject(ctx, "/nonexistent", 10)
+	require.NoError(t, err)
+	assert.Empty(t, runs)
+}
+
+func TestCountActiveRunsByProject(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	makeRun := func(id, projectDir string, state domain.RunState, isHost bool) {
+		r := domain.NewRun(id, "develop")
+		r.ProjectDir = projectDir
+		r.State = state
+		r.IsHost = isHost
+		require.NoError(t, store.CreateRun(ctx, r))
+	}
+
+	makeRun("r1", "/home/user/project-a", domain.RunStatePending, false)
+	makeRun("r2", "/home/user/project-a", domain.RunStateRunning, true)
+	makeRun("r3", "/home/user/project-a", domain.RunStateSucceeded, false)
+	makeRun("r4", "/home/user/project-a", domain.RunStateFailed, true)
+	makeRun("r5", "/home/user/project-b", domain.RunStateRunning, false)
+
+	count, err := store.CountActiveRunsByProject(ctx, "/home/user/project-a", false)
+	require.NoError(t, err)
+	assert.Equal(t, 2, count)
+
+	// hostOnly restricts to the one pending/running run with IsHost set.
+	count, err = store.CountActiveRunsByProject(ctx, "/home/user/project-a", true)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+
+	count, err = store.CountActiveRunsByProject(ctx, "/home/user/project-b", false)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+
+	count, err = store.CountActiveRunsByProject(ctx, "/nonexistent", false)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
 func TestListProjects(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

@@ -40,6 +40,12 @@ func (f *fakeRunStore) ListRunsByProject(_ context.Context, projectDir string, _
 	}
 	return out, nil
 }
+func (f *fakeRunStore) ListRecentRunsByProject(_ context.Context, _ string, _ int) ([]*domain.Run, error) {
+	return nil, nil
+}
+func (f *fakeRunStore) CountActiveRunsByProject(_ context.Context, _ string, _ bool) (int, error) {
+	return 0, nil
+}
 func (f *fakeRunStore) ListRunsFiltered(context.Context, domain.RunListFilter) ([]*domain.Run, error) {
 	return nil, nil
 }

@@ -224,6 +224,12 @@ func (s *fakeRunStore) ListRuns(_ context.Context, _ time.Time) ([]*domain.Run, 
 func (s *fakeRunStore) ListRunsByProject(_ context.Context, _ string, _ time.Time) ([]*domain.Run, error) {
 	return nil, nil
 }
+func (s *fakeRunStore) ListRecentRunsByProject(_ context.Context, _ string, _ int) ([]*domain.Run, error) {
+	return nil, nil
+}
+func (s *fakeRunStore) CountActiveRunsByProject(_ context.Context, _ string, _ bool) (int, error) {
+	return 0, nil
+}
 func (s *fakeRunStore) ListRunsFiltered(_ context.Context, _ domain.RunListFilter) ([]*domain.Run, error) {
 	return nil, nil
 }

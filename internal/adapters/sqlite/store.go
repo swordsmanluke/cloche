@@ -436,6 +436,34 @@ func (s *Store) ListRunsByProject(ctx context.Context, projectDir string, since 
 	return scanRuns(rows)
 }
 
+// ListRecentRunsByProject returns the limit most recent runs for a project,
+// ordered strictly by start time (most recent first). Backed by the
+// runs_project_dir_started_at index, so — unlike ListRunsByProject — cost
+// doesn't grow with the project's full run history.
+func (s *Store) ListRecentRunsByProject(ctx context.Context, projectDir string, limit int) ([]*domain.Run, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+runSelectCols+` FROM runs WHERE project_dir = ? ORDER BY started_at DESC LIMIT ?`,
+		projectDir, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanRuns(rows)
+}
+
+// CountActiveRunsByProject returns the number of pending/running runs for a
+// project. hostOnly, when true, restricts the count to host-orchestration
+// runs.
+func (s *Store) CountActiveRunsByProject(ctx context.Context, projectDir string, hostOnly bool) (int, error) {
+	query := `SELECT COUNT(*) FROM runs WHERE project_dir = ? AND state IN ('pending', 'running')`
+	if hostOnly {
+		query += ` AND is_host = 1`
+	}
+	var count int
+	err := s.db.QueryRowContext(ctx, query, projectDir).Scan(&count)
+	return count, err
+}
+
 func (s *Store) ListRunsFiltered(ctx context.Context, filter domain.RunListFilter) ([]*domain.Run, error) {
 	query := `SELECT ` + runSelectCols + ` FROM runs WHERE 1=1`
 	var args []interface{}

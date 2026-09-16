@@ -748,6 +748,12 @@ func (f *fakeRunStore) ListRuns(_ context.Context, _ time.Time) ([]*domain.Run, 
 func (f *fakeRunStore) ListRunsByProject(_ context.Context, _ string, _ time.Time) ([]*domain.Run, error) {
 	return nil, nil
 }
+func (f *fakeRunStore) ListRecentRunsByProject(_ context.Context, _ string, _ int) ([]*domain.Run, error) {
+	return nil, nil
+}
+func (f *fakeRunStore) CountActiveRunsByProject(_ context.Context, _ string, _ bool) (int, error) {
+	return 0, nil
+}
 func (f *fakeRunStore) ListRunsFiltered(_ context.Context, _ domain.RunListFilter) ([]*domain.Run, error) {
 	return nil, nil
 }

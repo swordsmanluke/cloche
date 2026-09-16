@@ -842,21 +842,17 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 	}
 	result := make([]apiProject, len(projects))
 	for i, dir := range projects {
-		runs, _ := h.store.ListRunsByProject(r.Context(), dir, time.Time{})
+		runs, _ := h.store.ListRecentRunsByProject(r.Context(), dir, healthWindowSize)
 		runValues := make([]domain.Run, len(runs))
 		for j, rr := range runs {
 			runValues[j] = *rr
 		}
 		health := domain.CalculateHealth(runValues, healthWindowSize)
-		var activeCount int
+		activeCount, _ := h.store.CountActiveRunsByProject(r.Context(), dir, false)
 		var latestRunAt time.Time
-		for _, rr := range runs {
-			if rr.State == domain.RunStatePending || rr.State == domain.RunStateRunning {
-				activeCount++
-			}
-			if rr.StartedAt.After(latestRunAt) {
-				latestRunAt = rr.StartedAt
-			}
+		if len(runs) > 0 {
+			// runs is ordered most-recent-first, so the head is the latest.
+			latestRunAt = runs[0].StartedAt
 		}
 		var attentionSnap attention.Snapshot
 		if h.attentionProvider != nil {
