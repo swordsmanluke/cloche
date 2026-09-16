@@ -840,6 +840,78 @@ func TestCmdStatusOverview_NeedsYou_Empty(t *testing.T) {
 	}
 }
 
+// TestCmdStatus_AllFlagDispatchesToGlobalOverview verifies that "cloche
+// status --all" is parsed as the --all flag (not a positional task ID) and
+// forces the global overview even when run from inside a project directory
+// (which would otherwise select the project-specific view).
+func TestCmdStatus_AllFlagDispatchesToGlobalOverview(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(dir+"/.cloche", 0755); err != nil {
+		t.Fatal(err)
+	}
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(origDir)
+
+	client := &statusMockClient{
+		versionResp:  &pb.GetVersionResponse{Version: "1.0.0"},
+		listRunsResp: &pb.ListRunsResponse{},
+	}
+
+	out := captureStdout(t, func() {
+		cmdStatus(context.Background(), client, []string{"--all"})
+	})
+
+	if strings.Contains(out, "Project:") {
+		t.Errorf("expected --all to select the global overview (no 'Project:' line), got:\n%s", out)
+	}
+	if !strings.Contains(out, "Daemon version: 1.0.0") {
+		t.Errorf("expected daemon version in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Runs (past hour): 0 / 0 succeeded") {
+		t.Errorf("expected global runs summary, got:\n%s", out)
+	}
+}
+
+// TestCmdStatus_NoFlagsDispatchesToProjectOverview is the counterpart to
+// TestCmdStatus_AllFlagDispatchesToGlobalOverview: without --all, running
+// inside a project directory selects the project-specific view.
+func TestCmdStatus_NoFlagsDispatchesToProjectOverview(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(dir+"/.cloche", 0755); err != nil {
+		t.Fatal(err)
+	}
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(origDir)
+
+	client := &statusMockClient{
+		versionResp: &pb.GetVersionResponse{Version: "1.0.0"},
+		projectInfoResp: &pb.GetProjectInfoResponse{
+			Name: "myproject",
+		},
+		listRunsResp: &pb.ListRunsResponse{},
+	}
+
+	out := captureStdout(t, func() {
+		cmdStatus(context.Background(), client, nil)
+	})
+
+	if !strings.Contains(out, "Project: myproject") {
+		t.Errorf("expected project overview, got:\n%s", out)
+	}
+}
+
 func TestStatusHelpText(t *testing.T) {
 	text, ok := subcommandHelp["status"]
 	if !ok {

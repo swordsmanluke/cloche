@@ -52,3 +52,18 @@ func TestCmdThreads_BareNoColorFlag(t *testing.T) {
 		t.Errorf("expected clean 'No open threads.' output, got %q", output)
 	}
 }
+
+// TestCmdThreads_ListVerbWithNoColorFlag verifies "cloche threads list
+// --no-color" (explicit "list" verb followed by a flag) dispatches through
+// the "list" case rather than being treated as a single unrecognized command.
+func TestCmdThreads_ListVerbWithNoColorFlag(t *testing.T) {
+	client := &threadsMockClient{listThreadsResp: &pb.ListThreadsResponse{}}
+
+	output := captureStdout(t, func() {
+		cmdThreads(context.Background(), client, []string{"list", "--no-color"})
+	})
+
+	if output != "No open threads.\n" {
+		t.Errorf("expected clean 'No open threads.' output, got %q", output)
+	}
+}
