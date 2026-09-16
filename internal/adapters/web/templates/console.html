@@ -17,6 +17,7 @@
         </div>
         <div class="console-instruments" id="console-instruments"></div>
     </header>
+    <nav class="console-subtabs" id="console-subtabs" aria-label="Repositories" hidden></nav>
     <div class="console-body">
         <aside class="console-stack" id="console-stack" aria-label="Task stack"></aside>
         <main class="console-centre" id="console-centre" aria-label="Task detail"></main>
@@ -63,7 +64,8 @@
                 <dt>Shift+[ / Shift+]</dt><dd>Switch to the previous / next attempt</dd>
                 <dt>g / G</dt><dd>Scroll the log to the top / bottom</dd>
                 <dt>f</dt><dd>Toggle following the live log to its newest line</dd>
-                <dt>r</dt><dd>Release your claim on the open needs-you task (when available)</dd>
+                <dt>r</dt><dd>Release your claim on the open needs-you task (when available); otherwise cycles the repo sub-tabs (when the project has more than one repository)</dd>
+                <dt>Shift+R</dt><dd>Jump straight to the "all repos" sub-tab (when the project has more than one repository)</dd>
                 <dt>x</dt><dd>Close the open needs-you task in the tracker (when available)</dd>
                 <dt>w</dt><dd>Open the Workflows view</dd>
                 <dt>i</dt><dd>Open the Requirements view</dd>

@@ -105,12 +105,69 @@
         return { ordered: special.concat(rest), specialCount: special.length };
     }
 
+    // repoNamesForProject returns the repo names a project's console should
+    // render sub-tabs for, or null for a legacy project (see docs/design/
+    // console-repo-grouping-mock.html, option 1): no [[repositories]]
+    // configured, or exactly one (the auto-seeded/explicit implicit
+    // default) — either way there's nothing to disambiguate, so the
+    // sub-tab row is omitted entirely rather than rendered with one entry.
+    function repoNamesForProject(project) {
+        var repos = (project && project.repositories) || [];
+        if (repos.length <= 1) return null;
+        return repos.map(function (r) { return r.name; });
+    }
+
+    // normalizeRepo maps a URL repo segment to its canonical form: "" means
+    // "all repos". Anything not in names (including "all" itself, and any
+    // unrecognized value) also normalizes to "" so a stale/bad repo segment
+    // degrades to the merged view rather than a dead end.
+    function normalizeRepo(name, names) {
+        if (!name || name === 'all') return '';
+        return names.indexOf(name) !== -1 ? name : '';
+    }
+
+    // resolveRepoAndTask disambiguates the path segments after a project
+    // slug (e.g. "anarkana", "manager-fnn6", or "anarkana/manager-fnn6")
+    // into a repo scope and a task ID, per the URL scheme in docs/design/
+    // console-repo-grouping-mock.html, option 1:
+    //   legacy (project === null, or repoNamesForProject returns null):
+    //     rest[0], if present, is always the task ID — /{project}/{task}.
+    //   multi-repo: rest[0] is the repo segment only when it exactly
+    //     matches a configured repo name (or "all"); otherwise it's a
+    //     legacy-shaped task-only link (/{project}/{task}, "all repos"
+    //     scope) that must keep working. Two segments are always
+    //     /{project}/{repo}/{task}.
+    // project may be null (e.g. before the project list has loaded) — that
+    // is treated the same as a legacy project, an optimistic guess the
+    // caller should reconcile once the real project data (with
+    // .repositories) is available.
+    function resolveRepoAndTask(project, rest) {
+        var names = repoNamesForProject(project);
+        rest = rest || [];
+        if (!names) {
+            return { repo: '', taskId: rest[0] || '' };
+        }
+        if (rest.length >= 2) {
+            return { repo: normalizeRepo(rest[0], names), taskId: rest[1] };
+        }
+        if (rest.length === 1) {
+            if (rest[0] === 'all' || names.indexOf(rest[0]) !== -1) {
+                return { repo: normalizeRepo(rest[0], names), taskId: '' };
+            }
+            return { repo: '', taskId: rest[0] };
+        }
+        return { repo: '', taskId: '' };
+    }
+
     return {
         sortedProjects: sortedProjects,
         projectRecencyMs: projectRecencyMs,
         computeTabPlan: computeTabPlan,
         mostRecentSlug: mostRecentSlug,
         pickLandingSlug: pickLandingSlug,
-        orderWorkflowTabs: orderWorkflowTabs
+        orderWorkflowTabs: orderWorkflowTabs,
+        repoNamesForProject: repoNamesForProject,
+        normalizeRepo: normalizeRepo,
+        resolveRepoAndTask: resolveRepoAndTask
     };
 }));

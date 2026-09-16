@@ -137,6 +137,73 @@ test('queued row: idle grey dot', async () => {
     }
 });
 
+// bootConsoleWithProject is bootConsole, but with a real /api/projects entry
+// (rather than an empty list) so ConsoleTabs.repoNamesForProject can resolve
+// the active project's repo grouping.
+async function bootConsoleWithProject(project, stack) {
+    const dom = new JSDOM(
+        '<!DOCTYPE html><html><body>' + consoleContentMarkup(project.slug) + '</body></html>',
+        { url: 'http://localhost/' + project.slug, runScripts: 'outside-only' }
+    );
+    const { window } = dom;
+    window.fetch = function (url) {
+        if (url === '/api/projects') return jsonResponse([project]);
+        if (/\/tasks\/stack(\?|$)/.test(url)) return jsonResponse(stack, { ETag: 'W/"stack-1"' });
+        return jsonResponse({});
+    };
+    window.eval(CONSOLE_TABS_SRC);
+    window.eval(CONSOLE_JS_SRC);
+
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+        if (window.document.querySelector('.console-stack-row')) break;
+        await delay(20);
+    }
+    return window;
+}
+
+test('all-repos view on a multi-repo project: rows carry a small repo tag so the merged view stays legible', async () => {
+    const window = await bootConsoleWithProject(
+        { slug: 'manager', label: 'manager', repositories: [{ name: 'manager', path: '.' }, { name: 'anarkana', path: './repos/anarkana' }] },
+        {
+            needs_you: [], queued: [], done: [],
+            running: [{ task_id: 'manager-fnn6', title: 'Port event bus to typed channels', run_id: 'r1', attempt: 1, elapsed_seconds: 10, repository: 'anarkana' }]
+        }
+    );
+    try {
+        // The project list resolves asynchronously; wait for the repo tag
+        // (which depends on it) to actually render.
+        const deadline = Date.now() + 2000;
+        while (Date.now() < deadline) {
+            if (window.document.querySelector('.console-stack-row-repotag')) break;
+            await delay(20);
+        }
+        const idEl = window.document.querySelector('.console-stack-row-id');
+        assert.ok(idEl.querySelector('.console-stack-row-repotag'), 'a repo tag must be present in the all-repos view');
+        assert.equal(idEl.textContent, 'manager-fnn6 · anarkana');
+    } finally {
+        window.close();
+    }
+});
+
+test('a legacy (single/no-repo) project never renders a repo tag, even if a run somehow carries one', async () => {
+    const window = await bootConsoleWithProject(
+        { slug: 'myproj', label: 'myproj' },
+        {
+            needs_you: [], queued: [], done: [],
+            running: [{ task_id: 'cloche-fnn6', title: 'some task', run_id: 'r1', attempt: 1, elapsed_seconds: 10, repository: 'stray' }]
+        }
+    );
+    try {
+        await delay(50);
+        const idEl = window.document.querySelector('.console-stack-row-id');
+        assert.equal(idEl.querySelector('.console-stack-row-repotag'), null);
+        assert.equal(idEl.textContent, 'cloche-fnn6');
+    } finally {
+        window.close();
+    }
+});
+
 test('done rows: green dot for a succeeded outcome, red for failed', async () => {
     const window = await bootConsole({
         needs_you: [], running: [], queued: [],

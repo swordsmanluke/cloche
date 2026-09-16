@@ -100,6 +100,13 @@ type Run struct {
 	TaskTitle      string // title from the task tracker, for display after the task leaves the active snapshot
 	AttemptID      string // ID of the attempt this run belongs to (v2)
 
+	// Repository is the [[repositories]] name (RepositoryConfig.Name) this
+	// run's workflow was scoped to, set at dispatch time from the resolved
+	// workflow's single declared repo (see domain.SingleRepo). Empty for
+	// legacy single-tree projects, workflows declaring zero or multiple
+	// repos, and runs recorded before this field existed.
+	Repository string
+
 	// IsBuiltin is true when the workflow actually resolved for this run is a
 	// built-in one (see internal/builtin), rather than parsed from a project's
 	// .cloche files — even if a project workflow shares the built-in's name and

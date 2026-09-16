@@ -43,6 +43,10 @@
         projectsTimer: null,
         activeSlug: '',
         activeTaskId: '',
+        // activeRepo is a RepositoryConfig.Name, or '' for "all repos" (the
+        // default, and the only value a legacy/single-repo project ever
+        // has) — see docs/design/console-repo-grouping-mock.html, option 1.
+        activeRepo: '',
         stack: null,          // last first-page snapshot from the server
         stackEtag: null,
         extraDone: [],         // accumulated "earlier" pages fetched via cursor
@@ -69,28 +73,42 @@
 
     // ---------- routing ----------
 
+    // parseLocation splits the path into a slug and up to two further
+    // segments ("rest") — legacy /{project}/{task}, or multi-repo
+    // /{project}[/{repo}]/{task}. Which interpretation applies depends on
+    // the project's configured repo names, so disambiguating rest is left
+    // to ConsoleTabs.resolveRepoAndTask (see docs/design/
+    // console-repo-grouping-mock.html, option 1) rather than done here.
     function parseLocation() {
-        var segments = location.pathname.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+        var segments = location.pathname.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean).map(decodeURIComponent);
         var params = new URLSearchParams(location.search);
         return {
-            slug: segments[0] ? decodeURIComponent(segments[0]) : '',
-            taskId: segments[1] ? decodeURIComponent(segments[1]) : '',
+            slug: segments[0] || '',
+            rest: segments.slice(1),
             attempt: params.get('attempt') || '',
             step: params.get('step') || ''
         };
     }
 
-    function pushLocation(slug, taskId) {
+    function pushLocation(slug, repo, taskId) {
         var path = '/' + encodeURIComponent(slug);
+        if (repo) path += '/' + encodeURIComponent(repo);
         if (taskId) path += '/' + encodeURIComponent(taskId);
         if (path !== location.pathname) {
-            history.pushState({ slug: slug, taskId: taskId }, '', path + location.search);
+            history.pushState({ slug: slug, repo: repo, taskId: taskId }, '', path + location.search);
         }
+    }
+
+    function findProject(slug) {
+        var match = null;
+        state.projects.forEach(function (p) { if (p.slug === slug) match = p; });
+        return match;
     }
 
     window.addEventListener('popstate', function () {
         var loc = parseLocation();
-        selectProject(loc.slug, { taskId: loc.taskId, pushHistory: false });
+        var resolved = ConsoleTabs.resolveRepoAndTask(findProject(loc.slug), loc.rest);
+        selectProject(loc.slug, { repo: resolved.repo, taskId: resolved.taskId, pushHistory: false });
     });
 
     // ---------- tab bar ----------
@@ -107,6 +125,13 @@
             state.projects = projects || [];
             state.projectsStatus = 'ready';
             renderTabBar();
+            // The sub-tab row (and each row's "all repos" repo tag) needs
+            // .repositories from this same response, which can resolve
+            // after the stack already painted without it — refresh both
+            // once real project data is in, rather than waiting for the
+            // next stack poll.
+            renderSubtabs();
+            if (state.stack) renderMergedStack(false);
         }).catch(function () {
             state.projectsStatus = 'error';
             renderTabBar();
@@ -291,6 +316,7 @@
         if (!slug) return;
 
         state.activeSlug = slug;
+        state.activeRepo = opts.repo || '';
         state.activeTaskId = opts.taskId || '';
         state.stack = null;
         state.stackEtag = null;
@@ -309,6 +335,7 @@
         stopInstrumentsPolling();
         stopTickerPolling();
         renderTabBar();
+        renderSubtabs();
         renderStackSkeleton();
         renderCentrePane(null, null);
         updateViewButtonsEnabled();
@@ -321,12 +348,13 @@
 
         loadStack(true).then(function () {
             startStackPolling();
+            renderSubtabs();
             if (state.activeTaskId) selectTaskById(state.activeTaskId);
         });
 
         if (state.activity.open && state.activity.scope === 'project') loadActivityStream(true);
 
-        if (opts.pushHistory) pushLocation(slug, state.activeTaskId);
+        if (opts.pushHistory) pushLocation(slug, state.activeRepo, state.activeTaskId);
     }
 
     function switchProject(delta) {
@@ -338,11 +366,127 @@
         selectProject(slugs[idx], { pushHistory: true });
     }
 
+    // ---------- repo sub-tabs (docs/design/console-repo-grouping-mock.html, option 1) ----------
+
+    function currentProject() {
+        return findProject(state.activeSlug);
+    }
+
+    // selectRepo scopes the stack to repo ('' = all repos), reloading it
+    // from scratch (the previous scope's data can't be filtered client-side
+    // — see the ?repo= server-side aggregation) while leaving the rest of
+    // the project (instruments, ticker, tab bar) alone.
+    function selectRepo(repo, opts) {
+        opts = opts || {};
+        if (repo === state.activeRepo) {
+            if (opts.pushHistory) pushLocation(state.activeSlug, repo, state.activeTaskId);
+            return;
+        }
+        state.activeRepo = repo;
+        state.activeTaskId = opts.taskId || '';
+        state.stack = null;
+        state.stackEtag = null;
+        state.extraDone = [];
+        state.doneCursor = null;
+        state.rowEls = {};
+        state.rowOrder = [];
+        state.selectedIndex = -1;
+
+        renderSubtabs();
+        renderStackSkeleton();
+        renderCentrePane(null, null);
+
+        loadStack(true).then(function () {
+            renderSubtabs();
+            if (state.activeTaskId) selectTaskById(state.activeTaskId);
+        });
+
+        if (opts.pushHistory) pushLocation(state.activeSlug, repo, state.activeTaskId);
+    }
+
+    // switchRepo cycles the repo sub-tabs ("all repos" plus every
+    // configured repo, in that order); a no-op on a legacy project (no
+    // sub-tab row) since ConsoleTabs.repoNamesForProject returns null.
+    function switchRepo(delta) {
+        var names = ConsoleTabs.repoNamesForProject(currentProject());
+        if (!names) return;
+        var order = [''].concat(names);
+        var idx = order.indexOf(state.activeRepo);
+        if (idx === -1) idx = 0;
+        idx = (idx + delta + order.length) % order.length;
+        selectRepo(order[idx], { pushHistory: true });
+    }
+
+    function renderSubtabs() {
+        var row = document.getElementById('console-subtabs');
+        if (!row) return;
+        var names = ConsoleTabs.repoNamesForProject(currentProject());
+        if (!names) {
+            row.hidden = true;
+            row.innerHTML = '';
+            return;
+        }
+        row.hidden = false;
+        row.innerHTML = '';
+
+        var lbl = document.createElement('span');
+        lbl.className = 'console-subtabs-label';
+        lbl.textContent = 'repo';
+        row.appendChild(lbl);
+
+        var counts = (state.stack && state.stack.repo_counts) || {};
+
+        function makeSubtab(repoName, label) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'console-subtab' + (state.activeRepo === repoName ? ' console-subtab-active' : '');
+
+            var text = document.createElement('span');
+            text.textContent = label;
+            btn.appendChild(text);
+
+            var c = repoName === ''
+                ? Object.keys(counts).reduce(function (acc, key) {
+                    var rc = counts[key] || {};
+                    acc.running += rc.running || 0;
+                    acc.needs_you += rc.needs_you || 0;
+                    return acc;
+                }, { running: 0, needs_you: 0 })
+                : (counts[repoName] || { running: 0, needs_you: 0 });
+
+            if (c.running || c.needs_you) {
+                var meta = document.createElement('span');
+                meta.className = 'console-tab-meta';
+                if (c.running) {
+                    var count = document.createElement('span');
+                    count.className = 'console-tab-count';
+                    count.textContent = c.running + ' ▸';
+                    meta.appendChild(count);
+                }
+                if (c.running && c.needs_you) meta.appendChild(document.createTextNode(' · '));
+                if (c.needs_you) {
+                    var flag = document.createElement('span');
+                    flag.className = 'console-tab-flag';
+                    flag.textContent = c.needs_you + ' ⚑';
+                    meta.appendChild(flag);
+                }
+                btn.appendChild(meta);
+            }
+
+            btn.addEventListener('click', function () { selectRepo(repoName, { pushHistory: true }); });
+            row.appendChild(btn);
+        }
+
+        makeSubtab('', 'all repos');
+        names.forEach(function (name) { makeSubtab(name, name); });
+    }
+
     // ---------- task stack ----------
 
     function loadStack(initial) {
         if (!state.activeSlug) return Promise.resolve();
         var url = '/api/projects/' + encodeURIComponent(state.activeSlug) + '/tasks/stack';
+        if (state.activeRepo) url += '?repo=' + encodeURIComponent(state.activeRepo);
         var headers = {};
         if (!initial && state.stackEtag) headers['If-None-Match'] = state.stackEtag;
         return fetch(url, { headers: headers }).then(function (r) {
@@ -381,6 +525,7 @@
         if (!state.doneCursor || !state.activeSlug) return;
         var url = '/api/projects/' + encodeURIComponent(state.activeSlug) +
             '/tasks/stack?cursor=' + encodeURIComponent(state.doneCursor);
+        if (state.activeRepo) url += '&repo=' + encodeURIComponent(state.activeRepo);
         fetch(url).then(function (r) { return r.json(); }).then(function (stack) {
             state.extraDone = state.extraDone.concat(stack.done || []);
             state.doneCursor = stack.cursor || null;
@@ -486,6 +631,7 @@
         var earlierBtn2 = document.getElementById('console-load-earlier');
         if (earlierBtn2) earlierBtn2.hidden = !stack.cursor;
 
+        renderSubtabs();
         rebuildFlatIndex();
         applySelectionHighlight();
     }
@@ -569,6 +715,16 @@
         var id = document.createElement('div');
         id.className = 'console-stack-row-id';
         id.textContent = rowIdText(entry);
+        // In the "all repos" view of a multi-repo project, a small repo tag
+        // keeps the merged view legible (docs/design/
+        // console-repo-grouping-mock.html's "problem today" frame) without
+        // scoping away the interleaving the way a sub-tab does.
+        if (!state.activeRepo && entry.repository && ConsoleTabs.repoNamesForProject(currentProject())) {
+            var repoTag = document.createElement('span');
+            repoTag.className = 'console-stack-row-repotag';
+            repoTag.textContent = ' · ' + entry.repository;
+            id.appendChild(repoTag);
+        }
         text.appendChild(id);
 
         var title = document.createElement('div');
@@ -677,13 +833,13 @@
         if (!el) return;
         state.activeTaskId = el.__entry.task_id || '';
         renderCentrePane(el.__entry, el.__group);
-        pushLocation(state.activeSlug, state.activeTaskId);
+        pushLocation(state.activeSlug, state.activeRepo, state.activeTaskId);
     }
 
     function deselect() {
         state.activeTaskId = '';
         renderCentrePane(null, null);
-        pushLocation(state.activeSlug, '');
+        pushLocation(state.activeSlug, state.activeRepo, '');
     }
 
     function selectTaskById(taskId) {
@@ -844,7 +1000,23 @@
                 if (detail && !detail.compareMode) { toggleLogFollow(); e.preventDefault(); }
                 break;
             case 'r':
-                if (detail && hasNeedsYouAction('release')) { releaseTask(); e.preventDefault(); }
+                // 'r' releases a needs-you task's claim when one is open
+                // (pre-existing binding); otherwise it cycles the repo
+                // sub-tabs (no-op on a legacy project) — see
+                // docs/design/console-repo-grouping-mock.html, option 1.
+                if (detail && hasNeedsYouAction('release')) {
+                    releaseTask();
+                    e.preventDefault();
+                } else if (ConsoleTabs.repoNamesForProject(currentProject())) {
+                    switchRepo(1);
+                    e.preventDefault();
+                }
+                break;
+            case 'R':
+                if (ConsoleTabs.repoNamesForProject(currentProject())) {
+                    selectRepo('', { pushHistory: true });
+                    e.preventDefault();
+                }
                 break;
             case 'x':
                 if (detail && hasNeedsYouAction('close')) { closeTask(); e.preventDefault(); }
@@ -1649,12 +1821,14 @@
             ];
         }
 
-        return [
+        var base = [
             { keys: ['j', 'k'], label: 'task' },
             { keys: ['enter'], label: 'open' },
             { keys: ['tab'], label: 'project' },
             { keys: ['a'], label: 'activity' }
         ];
+        if (ConsoleTabs.repoNamesForProject(currentProject())) base.push({ keys: ['r'], label: 'repo' });
+        return base;
     }
 
     function renderFootKeys() {
@@ -4054,11 +4228,32 @@
         }
     }
 
+    // reconcileRepoFromURL re-resolves the current URL's rest segments once
+    // real project data (with .repositories) is available, upgrading the
+    // optimistic legacy guess init() made before that data existed — see
+    // ConsoleTabs.resolveRepoAndTask, which needs to know whether the
+    // project is multi-repo to tell a repo segment from a task ID.
+    function reconcileRepoFromURL() {
+        var loc = parseLocation();
+        if (loc.slug !== state.activeSlug) return; // navigated elsewhere before this resolved
+        var resolved = ConsoleTabs.resolveRepoAndTask(currentProject(), loc.rest);
+        if (resolved.repo !== state.activeRepo) {
+            selectRepo(resolved.repo, { pushHistory: false, taskId: resolved.taskId || state.activeTaskId });
+        } else {
+            renderSubtabs();
+        }
+    }
+
     function init() {
         var loc = parseLocation();
         var explicitSlug = loc.slug || '';
-        var initialTaskId = loc.taskId || root.dataset.taskId || '';
         var initialSlug = explicitSlug || resolveLandingSlug();
+        // Optimistic legacy guess: the project list (and thus its
+        // .repositories) hasn't loaded yet, so a single rest segment is
+        // assumed to be a task ID until reconcileRepoFromURL can check it
+        // against the real repo list below.
+        var rest = loc.rest.length ? loc.rest : (root.dataset.taskId ? [root.dataset.taskId] : []);
+        var initial = ConsoleTabs.resolveRepoAndTask(null, rest);
 
         // Paint the tab bar skeleton immediately; nothing below gates on a
         // network round trip.
@@ -4068,13 +4263,17 @@
         startProjectsPolling();
 
         if (initialSlug) {
-            selectProject(initialSlug, { taskId: initialTaskId, pushHistory: false });
+            selectProject(initialSlug, { repo: initial.repo, taskId: initial.taskId, pushHistory: false });
         } else {
             renderCentrePane(null, null);
         }
 
         projectsPromise.then(function () {
-            if (!explicitSlug) reconcileLandingProject();
+            if (!explicitSlug) {
+                reconcileLandingProject();
+                return;
+            }
+            reconcileRepoFromURL();
         });
     }
 

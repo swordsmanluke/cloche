@@ -681,6 +681,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	if wfLookupErr == nil {
 		if wf, ok := allWFs[workflowName]; ok {
 			run.IsBuiltin = wf.Builtin
+			run.Repository = domain.SingleRepo(wf.Repos)
 		}
 	}
 	if run.TaskID == "" {
@@ -1257,6 +1258,7 @@ func (s *ClocheServer) resumeContainerRunWithPool(ctx context.Context, run *doma
 	newRun.ParentRunID = run.ParentRunID
 	newRun.IsBuiltin = wf.Builtin
 	newRun.UserInitiated = run.UserInitiated
+	newRun.Repository = run.Repository
 	if err := s.store.CreateRun(ctx, newRun); err != nil {
 		return nil, fmt.Errorf("creating resume run record: %w", err)
 	}
@@ -1493,6 +1495,7 @@ func (s *ClocheServer) resumeContainerRunLegacy(ctx context.Context, run *domain
 	newRun.ParentRunID = run.ParentRunID
 	newRun.IsBuiltin = run.IsBuiltin
 	newRun.UserInitiated = run.UserInitiated
+	newRun.Repository = run.Repository
 	if err := s.store.CreateRun(ctx, newRun); err != nil {
 		return nil, fmt.Errorf("creating resume run record: %w", err)
 	}

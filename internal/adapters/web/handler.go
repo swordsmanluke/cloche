@@ -27,6 +27,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/intent"
 	"github.com/swordsmanluke/cloche/internal/logstream"
 	"github.com/swordsmanluke/cloche/internal/ports"
+	"github.com/swordsmanluke/cloche/internal/project"
 	"github.com/swordsmanluke/cloche/internal/promptrev"
 	"github.com/swordsmanluke/cloche/internal/version"
 )
@@ -829,6 +830,15 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 		Failed int    `json:"failed"`
 		Total  int    `json:"total"`
 	}
+	// apiRepository is one [[repositories]] entry declared in a project's
+	// .cloche/config.toml, as surfaced to the console tab bar so it can
+	// decide whether to render the repo sub-tab row (see docs/design/
+	// console-repo-grouping-mock.html, option 1) — only projects declaring
+	// more than one repository get one.
+	type apiRepository struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+	}
 	type apiProject struct {
 		Dir                 string    `json:"dir"`
 		Label               string    `json:"label"`
@@ -843,6 +853,10 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 		// instead of folding into "More" — see the fold rule in console.js.
 		LoopRunning bool   `json:"loop_running"`
 		LatestRunAt string `json:"latest_run_at"`
+		// Repositories lists every [[repositories]] entry declared for this
+		// project (empty for legacy single-tree projects). The console only
+		// renders the repo sub-tab row when there is more than one.
+		Repositories []apiRepository `json:"repositories,omitempty"`
 	}
 	buildProject := func(dir, label, slug string, loopCapable bool) apiProject {
 		runs, _ := h.store.ListRecentRunsByProject(r.Context(), dir, healthWindowSize)
@@ -861,6 +875,14 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 		if h.attentionProvider != nil {
 			attentionSnap = h.attentionProvider.AttentionSnapshot(dir)
 		}
+		var repos []apiRepository
+		if dir != "" {
+			if proj, err := project.Load(dir); err == nil {
+				for _, r := range proj.Repositories {
+					repos = append(repos, apiRepository{Name: r.Name, Path: r.Path})
+				}
+			}
+		}
 		return apiProject{
 			Dir:   dir,
 			Label: label,
@@ -876,6 +898,7 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 			AttentionComputedAt: apiTimeString(attentionSnap.ComputedAt),
 			LoopRunning:         loopCapable && h.loopStatusFn != nil && h.loopStatusFn(dir),
 			LatestRunAt:         apiTimeString(latestRunAt),
+			Repositories:        repos,
 		}
 	}
 

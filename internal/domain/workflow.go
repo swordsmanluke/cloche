@@ -129,6 +129,17 @@ type Workflow struct {
 	Builtin   bool              // true for workflows constructed in Go and registered via internal/builtin, rather than parsed from a project's .cloche files
 }
 
+// SingleRepo returns the one repository name in repos, or "" when repos is
+// empty or declares more than one — used to backfill Run.Repository at
+// dispatch time, since a run can only be unambiguously attributed to a
+// single repo's sub-tab.
+func SingleRepo(repos []string) string {
+	if len(repos) == 1 {
+		return repos[0]
+	}
+	return ""
+}
+
 // ContainerID returns the container id for this workflow.
 // For host workflows this returns an empty string.
 // For container workflows it returns the explicit id from the container block,

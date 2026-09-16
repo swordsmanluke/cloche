@@ -641,3 +641,172 @@ func TestDecodeTaskStackCursor_Empty(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, has)
 }
+
+// TestAPITaskStack_RepoScoping covers a multi-repo project end to end: every
+// group carries a Repository, ?repo=<name> scopes each group to it, ?repo=all
+// (and no repo param at all) is the merged view, and RepoCounts always
+// reflects the full, unscoped picture regardless of the current scope — see
+// docs/design/console-repo-grouping-mock.html, option 1.
+func TestAPITaskStack_RepoScoping(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+	projectDir := t.TempDir()
+	slug := filepath.Base(projectDir)
+
+	runningManager := domain.NewRun("run-manager-running", "develop")
+	runningManager.ProjectDir = projectDir
+	runningManager.TaskID = "task-manager-running"
+	runningManager.State = domain.RunStateRunning
+	runningManager.StartedAt = time.Now().Add(-time.Minute)
+	runningManager.Repository = "manager"
+	require.NoError(t, store.CreateRun(ctx, runningManager))
+
+	runningAnarkana := domain.NewRun("run-anarkana-running", "develop")
+	runningAnarkana.ProjectDir = projectDir
+	runningAnarkana.TaskID = "task-anarkana-running"
+	runningAnarkana.State = domain.RunStateRunning
+	runningAnarkana.StartedAt = time.Now().Add(-time.Minute)
+	runningAnarkana.Repository = "anarkana"
+	require.NoError(t, store.CreateRun(ctx, runningAnarkana))
+
+	doneManager := domain.NewRun("run-manager-done", "develop")
+	doneManager.ProjectDir = projectDir
+	doneManager.TaskID = "task-manager-done"
+	doneManager.State = domain.RunStateSucceeded
+	doneManager.StartedAt = time.Now().Add(-time.Hour)
+	doneManager.CompletedAt = time.Now().Add(-time.Minute)
+	doneManager.Repository = "manager"
+	require.NoError(t, store.CreateRun(ctx, doneManager))
+
+	needsYouRun := domain.NewRun("run-anarkana-needsyou", "develop")
+	needsYouRun.ProjectDir = projectDir
+	needsYouRun.TaskID = "task-anarkana-needsyou"
+	needsYouRun.State = domain.RunStateFailed
+	needsYouRun.Repository = "anarkana"
+	require.NoError(t, store.CreateRun(ctx, needsYouRun))
+
+	// Parked is neither an active state (so this doesn't leak into Running)
+	// nor a terminal state ListDoneRunsByProject queries for (so it doesn't
+	// leak into Done either) — it exists purely so repositoryForRun's
+	// RunID -> Repository lookup for the queued item below has something
+	// real to resolve, mirroring how a "resuming" queued item references a
+	// genuine run without this test needing to model concurrency slots.
+	queuedRun := domain.NewRun("run-manager-queued", "develop")
+	queuedRun.ProjectDir = projectDir
+	queuedRun.TaskID = "task-manager-queued"
+	queuedRun.State = domain.RunStateParked
+	queuedRun.Repository = "manager"
+	require.NoError(t, store.CreateRun(ctx, queuedRun))
+
+	h.attentionProvider = &mockAttentionProvider{
+		items: map[string][]attention.Item{
+			projectDir: {
+				{Kind: attention.KindRepeatFailure, ProjectDir: projectDir, TaskID: "task-anarkana-needsyou", RunID: "run-anarkana-needsyou", Reason: "3 failures", Since: time.Now()},
+			},
+		},
+	}
+	h.occupancyProvider = &fakeOccupancyProvider{
+		snapshots: map[string]LoopOccupancy{
+			projectDir: {
+				Queued: []QueuedItem{{TaskID: "task-manager-queued", RunID: "run-manager-queued", Reason: "capacity", Since: "2026-01-01T00:00:00Z"}},
+			},
+		},
+	}
+
+	getStack := func(query string) TaskStack {
+		t.Helper()
+		req := httptest.NewRequest("GET", "/api/projects/"+slug+"/tasks/stack"+query, nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+		var stack TaskStack
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&stack))
+		return stack
+	}
+
+	// Unscoped ("all repos"): every group holds both repos' entries, and
+	// every entry carries its Repository.
+	all := getStack("")
+
+	require.Len(t, all.Running, 2)
+	require.Len(t, all.NeedsYou, 1)
+	require.Len(t, all.Queued, 1)
+	require.Len(t, all.Done, 1)
+	assert.Equal(t, "anarkana", all.NeedsYou[0].Repository)
+	assert.Equal(t, "manager", all.Queued[0].Repository)
+	assert.Equal(t, "manager", all.Done[0].Repository)
+
+	require.Contains(t, all.RepoCounts, "manager")
+	require.Contains(t, all.RepoCounts, "anarkana")
+	assert.Equal(t, TaskStackRepoCounts{NeedsYou: 0, Running: 1, Queued: 1, Done: 1}, all.RepoCounts["manager"])
+	assert.Equal(t, TaskStackRepoCounts{NeedsYou: 1, Running: 1, Queued: 0, Done: 0}, all.RepoCounts["anarkana"])
+
+	// ?repo=all is a synonym for the same merged view.
+	allAgain := getStack("?repo=all")
+	assert.Equal(t, len(all.Running), len(allAgain.Running))
+
+	// Scoped to "manager": only manager's entries appear in every group, but
+	// RepoCounts is unchanged (still describes both repos).
+	manager := getStack("?repo=manager")
+	require.Len(t, manager.Running, 1)
+	assert.Equal(t, "task-manager-running", manager.Running[0].TaskID)
+	assert.Equal(t, "manager", manager.Running[0].Repository)
+	assert.Empty(t, manager.NeedsYou, "anarkana's needs-you item must not leak into the manager-scoped view")
+	require.Len(t, manager.Queued, 1)
+	assert.Equal(t, "task-manager-queued", manager.Queued[0].TaskID)
+	require.Len(t, manager.Done, 1)
+	assert.Equal(t, "task-manager-done", manager.Done[0].TaskID)
+	assert.Equal(t, all.RepoCounts, manager.RepoCounts)
+
+	// Scoped to "anarkana": only anarkana's entries appear.
+	anarkana := getStack("?repo=anarkana")
+	require.Len(t, anarkana.Running, 1)
+	assert.Equal(t, "task-anarkana-running", anarkana.Running[0].TaskID)
+	require.Len(t, anarkana.NeedsYou, 1)
+	assert.Equal(t, "task-anarkana-needsyou", anarkana.NeedsYou[0].TaskID)
+	assert.Empty(t, anarkana.Queued)
+	assert.Empty(t, anarkana.Done)
+}
+
+// TestAPITaskStack_LegacyProjectOmitsRepositoryFields asserts that a legacy
+// (single/no-repo) project's stack response is byte-shape-identical to what
+// it was before this feature on the fields that matter: every entry's
+// "repository" key is absent (empty + omitempty) rather than
+// present-and-blank. (RepoCounts itself still comes back — a map keyed by
+// "" for these unassigned runs — but the console never looks at it for a
+// project whose /api/projects entry declares one or zero repositories, so
+// its presence is harmless.)
+func TestAPITaskStack_LegacyProjectOmitsRepositoryFields(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("run-legacy", "develop")
+	run.ProjectDir = taskStackProjectDir
+	run.TaskID = "task-legacy"
+	run.State = domain.RunStateRunning
+	run.StartedAt = time.Now()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	seedDoneRun(t, store, "run-legacy-done", "task-legacy-done", time.Now())
+
+	resp, err := http.NewRequest("GET", "/api/projects/stackapp/tasks/stack", nil)
+	require.NoError(t, err)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, resp)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var raw map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &raw))
+
+	var runningRaw []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw["running"], &runningRaw))
+	require.Len(t, runningRaw, 1)
+	_, hasRepo := runningRaw[0]["repository"]
+	assert.False(t, hasRepo, "legacy running entries must omit \"repository\" entirely")
+
+	var doneRaw []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw["done"], &doneRaw))
+	require.Len(t, doneRaw, 1)
+	_, hasDoneRepo := doneRaw[0]["repository"]
+	assert.False(t, hasDoneRepo, "legacy done entries must omit \"repository\" entirely")
+}

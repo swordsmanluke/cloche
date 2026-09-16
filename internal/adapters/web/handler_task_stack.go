@@ -56,6 +56,10 @@ type TaskStackNeedsYou struct {
 	// disable the "close" action with a hint instead of only discovering
 	// it's unavailable after the user clicks it.
 	CloseAvailable bool `json:"close_available,omitempty"`
+	// Repository is the RepositoryConfig.Name the underlying run was
+	// dispatched against (see domain.Run.Repository), empty for legacy runs
+	// or runs recorded before this field existed.
+	Repository string `json:"repository,omitempty"`
 }
 
 // TaskStackRunning is a task with a pending or running top-level run.
@@ -67,16 +71,18 @@ type TaskStackRunning struct {
 	CurrentStep    string `json:"current_step,omitempty"`
 	StartedAt      string `json:"started_at,omitempty"`
 	ElapsedSeconds int64  `json:"elapsed_seconds"`
+	Repository     string `json:"repository,omitempty"`
 }
 
 // TaskStackQueued is a task or run waiting for a concurrency slot, sourced
 // from the loop's occupancy model.
 type TaskStackQueued struct {
-	TaskID string `json:"task_id,omitempty"`
-	Title  string `json:"title,omitempty"`
-	RunID  string `json:"run_id,omitempty"`
-	Reason string `json:"reason"`
-	Since  string `json:"since"`
+	TaskID     string `json:"task_id,omitempty"`
+	Title      string `json:"title,omitempty"`
+	RunID      string `json:"run_id,omitempty"`
+	Reason     string `json:"reason"`
+	Since      string `json:"since"`
+	Repository string `json:"repository,omitempty"`
 }
 
 // TaskStackDone is a task whose latest attempt reached a terminal state.
@@ -87,6 +93,21 @@ type TaskStackDone struct {
 	Outcome         string `json:"outcome"`
 	CompletedAt     string `json:"completed_at"`
 	DurationSeconds int64  `json:"duration_seconds"`
+	Repository      string `json:"repository,omitempty"`
+}
+
+// TaskStackRepoCounts is one repository's aggregate counts across every
+// group, used to badge the console's repo sub-tabs (see docs/design/
+// console-repo-grouping-mock.html, option 1) without a separate request per
+// repo. Computed from the project's full, unfiltered stack regardless of any
+// ?repo= scoping applied to the rest of the response, and keyed by
+// RepositoryConfig.Name in TaskStack.RepoCounts ("" holds legacy/unassigned
+// runs). The "all repos" badge is the sum of every entry in that map.
+type TaskStackRepoCounts struct {
+	NeedsYou int `json:"needs_you"`
+	Running  int `json:"running"`
+	Queued   int `json:"queued"`
+	Done     int `json:"done"`
 }
 
 // TaskStack is the bounded, grouped task list the console renders, derived
@@ -100,6 +121,11 @@ type TaskStack struct {
 	Queued   []TaskStackQueued   `json:"queued"`
 	Done     []TaskStackDone     `json:"done"`
 	Cursor   string              `json:"cursor,omitempty"`
+	// RepoCounts is omitted for legacy (non-multi-repo) projects' responses
+	// only in the sense that it is then a single "" entry; the console only
+	// renders sub-tabs (and thus only looks at this field) when the
+	// project's /api/projects entry declares more than one repository.
+	RepoCounts map[string]TaskStackRepoCounts `json:"repo_counts,omitempty"`
 }
 
 // handleAPITaskStack returns the bounded, grouped task list for a project.
@@ -135,7 +161,15 @@ func (h *Handler) handleAPITaskStack(w http.ResponseWriter, r *http.Request) {
 		pageSize = n
 	}
 
-	stack, err := h.buildTaskStack(r.Context(), dir, cursor, hasCursor, pageSize)
+	// ?repo=<name> scopes the returned groups to one [[repositories]] entry;
+	// omitted or "all" is a synonym for the merged, unscoped view (see
+	// docs/design/console-repo-grouping-mock.html, option 1's URL scheme).
+	repoFilter := r.URL.Query().Get("repo")
+	if repoFilter == "all" {
+		repoFilter = ""
+	}
+
+	stack, err := h.buildTaskStack(r.Context(), dir, cursor, hasCursor, pageSize, repoFilter)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -234,7 +268,12 @@ type doneCandidate struct {
 // buildTaskStack derives the grouped task list for projectDir from runs (and,
 // when available, tasks/attempts) in the store — never from the orchestration
 // loop's in-memory snapshot. See GetLoopTasks for the snapshot this replaces.
-func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor doneCursor, hasCursor bool, pageSize int) (*TaskStack, error) {
+// repoFilter, when non-empty, scopes NeedsYou/Running/Queued/Done to a single
+// RepositoryConfig.Name; RepoCounts is always computed from the full,
+// unscoped data regardless of repoFilter, so the console can badge every
+// repo sub-tab from one response (see docs/design/console-repo-grouping-mock.html,
+// option 1).
+func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor doneCursor, hasCursor bool, pageSize int, repoFilter string) (*TaskStack, error) {
 	var attentionItems []attention.Item
 	if h.attentionProvider != nil {
 		attentionItems = h.attentionProvider.AttentionSnapshot(projectDir).Items
@@ -259,29 +298,48 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 		}
 	}
 
-	stack := &TaskStack{
-		NeedsYou: []TaskStackNeedsYou{},
-		Running:  []TaskStackRunning{},
-		Queued:   []TaskStackQueued{},
-		Done:     []TaskStackDone{},
+	repoCounts := map[string]TaskStackRepoCounts{}
+	countRepo := func(repo string, mutate func(*TaskStackRepoCounts)) {
+		c := repoCounts[repo]
+		mutate(&c)
+		repoCounts[repo] = c
 	}
+
+	stack := &TaskStack{
+		NeedsYou:   []TaskStackNeedsYou{},
+		Running:    []TaskStackRunning{},
+		Queued:     []TaskStackQueued{},
+		Done:       []TaskStackDone{},
+		RepoCounts: repoCounts,
+	}
+
+	// runRepoCache memoizes RunID -> Repository lookups for NeedsYou/Queued
+	// entries, which only carry a RunID and need a store round trip to
+	// resolve it (Running/Done entries already hold the *domain.Run).
+	runRepoCache := map[string]string{}
 
 	// Resolved at most once per build (a .cloche glob+parse), and only when
 	// a stale-claim/repeat-failure item actually needs it.
 	closeAvailable := -1 // -1 = not yet resolved, 0 = false, 1 = true
 	for _, item := range attentionItems {
+		repo := h.repositoryForRun(ctx, item.RunID, runRepoCache)
+		countRepo(repo, func(c *TaskStackRepoCounts) { c.NeedsYou++ })
+		if repoFilter != "" && repo != repoFilter {
+			continue
+		}
 		if len(stack.NeedsYou) >= taskStackNeedsYouCap {
-			break
+			continue
 		}
 		entry := TaskStackNeedsYou{
-			Kind:    string(item.Kind),
-			TaskID:  item.TaskID,
-			RunID:   item.RunID,
-			Title:   taskDisplayTitle(tasksByID[item.TaskID], nil),
-			Reason:  item.Reason,
-			Since:   apiTimeString(item.Since),
-			Actions: item.Actions,
-			Key:     item.Key,
+			Kind:       string(item.Kind),
+			TaskID:     item.TaskID,
+			RunID:      item.RunID,
+			Title:      taskDisplayTitle(tasksByID[item.TaskID], nil),
+			Reason:     item.Reason,
+			Since:      apiTimeString(item.Since),
+			Actions:    item.Actions,
+			Key:        item.Key,
+			Repository: repo,
 		}
 		if item.Kind == attention.KindStaleClaim || item.Kind == attention.KindRepeatFailure {
 			if closeAvailable == -1 {
@@ -326,7 +384,15 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 		if active == nil {
 			continue
 		}
+		// Marked regardless of repoFilter: Done's active-task exclusion
+		// must still work when the current scope is a different repo.
 		activeTaskKeys[runGroupKey(active)] = true
+
+		repo := active.Repository
+		countRepo(repo, func(c *TaskStackRepoCounts) { c.Running++ })
+		if repoFilter != "" && repo != repoFilter {
+			continue
+		}
 		if len(stack.Running) < taskStackRunningCap {
 			start := runStartTime(active, task)
 			elapsed := time.Duration(0)
@@ -345,31 +411,64 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 				CurrentStep:    currentStep,
 				StartedAt:      apiTimeString(start),
 				ElapsedSeconds: int64(elapsed.Seconds()),
+				Repository:     repo,
 			})
 		}
 	}
 
-	doneEntries, nextCursor, err := h.fetchDonePage(ctx, projectDir, tasksByID, activeTaskKeys, cursor, hasCursor, pageSize)
+	doneEntries, nextCursor, err := h.fetchDonePage(ctx, projectDir, tasksByID, activeTaskKeys, cursor, hasCursor, pageSize, repoFilter)
 	if err != nil {
 		return nil, fmt.Errorf("listing done runs: %w", err)
 	}
 	stack.Done = doneEntries
 	stack.Cursor = nextCursor
 
+	if counter, ok := h.store.(ports.DoneRepoCounter); ok {
+		if doneCounts, err := counter.CountDoneRunsByProjectGroupedByRepo(ctx, projectDir); err == nil {
+			for repo, n := range doneCounts {
+				countRepo(repo, func(c *TaskStackRepoCounts) { c.Done = n })
+			}
+		}
+	}
+
 	for _, q := range queued {
+		repo := h.repositoryForRun(ctx, q.RunID, runRepoCache)
+		countRepo(repo, func(c *TaskStackRepoCounts) { c.Queued++ })
+		if repoFilter != "" && repo != repoFilter {
+			continue
+		}
 		if len(stack.Queued) >= taskStackQueuedCap {
-			break
+			continue
 		}
 		stack.Queued = append(stack.Queued, TaskStackQueued{
-			TaskID: q.TaskID,
-			Title:  taskDisplayTitle(tasksByID[q.TaskID], nil),
-			RunID:  q.RunID,
-			Reason: q.Reason,
-			Since:  q.Since,
+			TaskID:     q.TaskID,
+			Title:      taskDisplayTitle(tasksByID[q.TaskID], nil),
+			RunID:      q.RunID,
+			Reason:     q.Reason,
+			Since:      q.Since,
+			Repository: repo,
 		})
 	}
 
 	return stack, nil
+}
+
+// repositoryForRun resolves the RepositoryConfig.Name a run was dispatched
+// against, memoized in cache since NeedsYou/Queued entries only carry a
+// RunID and are otherwise looked up one at a time.
+func (h *Handler) repositoryForRun(ctx context.Context, runID string, cache map[string]string) string {
+	if runID == "" {
+		return ""
+	}
+	if repo, ok := cache[runID]; ok {
+		return repo
+	}
+	repo := ""
+	if run, err := h.store.GetRun(ctx, runID); err == nil {
+		repo = run.Repository
+	}
+	cache[runID] = repo
+	return repo
 }
 
 // fetchDonePage returns one page of Done entries (newest first), starting
@@ -389,7 +488,7 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 // before is an "at or before" bound), since excluding it outright would also
 // silently drop any other entry sharing that exact timestamp; the loop above
 // skips back past the cursor's own entry explicitly instead.
-func (h *Handler) fetchDonePage(ctx context.Context, projectDir string, tasksByID map[string]*domain.Task, activeTaskKeys map[string]bool, cursor doneCursor, hasCursor bool, pageSize int) ([]TaskStackDone, string, error) {
+func (h *Handler) fetchDonePage(ctx context.Context, projectDir string, tasksByID map[string]*domain.Task, activeTaskKeys map[string]bool, cursor doneCursor, hasCursor bool, pageSize int, repoFilter string) ([]TaskStackDone, string, error) {
 	before := time.Time{}
 	if hasCursor {
 		before = cursor.CompletedAt
@@ -438,10 +537,13 @@ func (h *Handler) fetchDonePage(ctx context.Context, projectDir string, tasksByI
 			if seen[key] || activeTaskKeys[key] {
 				continue
 			}
+			seen[key] = true
+			if repoFilter != "" && r.Repository != repoFilter {
+				continue
+			}
 			if isExcludedBuiltinTask(ctx, h.taskStore, tasksByID[r.TaskID], []*domain.Run{r}) {
 				continue
 			}
-			seen[key] = true
 			page = append(page, doneCandidate{
 				entry:       buildDoneEntry(r, tasksByID[r.TaskID]),
 				completedAt: r.CompletedAt,
@@ -479,6 +581,7 @@ func buildDoneEntry(r *domain.Run, task *domain.Task) TaskStackDone {
 		Outcome:         string(r.State),
 		CompletedAt:     apiTimeString(r.CompletedAt),
 		DurationSeconds: int64(r.CompletedAt.Sub(r.StartedAt).Seconds()),
+		Repository:      r.Repository,
 	}
 }
 

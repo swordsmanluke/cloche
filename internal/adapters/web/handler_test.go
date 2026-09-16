@@ -541,6 +541,70 @@ func TestAPIProjects(t *testing.T) {
 	assert.Equal(t, 1, byDir["/home/user/beta"].ActiveCount)
 }
 
+func TestAPIProjects_Repositories(t *testing.T) {
+	h, store := setupHandler(t)
+
+	multiRepoDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(multiRepoDir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(multiRepoDir, ".cloche", "config.toml"), []byte(`
+[[repositories]]
+name = "manager"
+path = "."
+
+[[repositories]]
+name = "anarkana"
+path = "./repos/anarkana"
+`), 0644))
+
+	legacyDir := t.TempDir()
+
+	seedRunWithProject(t, store, "multi-1", "develop", domain.RunStateSucceeded, multiRepoDir)
+	seedRunWithProject(t, store, "legacy-1", "develop", domain.RunStateSucceeded, legacyDir)
+
+	req := httptest.NewRequest("GET", "/api/projects", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	type apiRepository struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+	}
+	type project struct {
+		Dir          string          `json:"dir"`
+		Repositories []apiRepository `json:"repositories"`
+	}
+	var projects []project
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &projects))
+
+	byDir := map[string]project{}
+	for _, p := range projects {
+		byDir[p.Dir] = p
+	}
+
+	multi := byDir[multiRepoDir]
+	require.Len(t, multi.Repositories, 2)
+	assert.Equal(t, "manager", multi.Repositories[0].Name)
+	assert.Equal(t, "anarkana", multi.Repositories[1].Name)
+	assert.Equal(t, "./repos/anarkana", multi.Repositories[1].Path)
+
+	// Legacy project (no [[repositories]] configured): the field is
+	// entirely absent, not an empty array — the console's contract for
+	// "render no sub-tab row" (see docs/design/console-repo-grouping-mock.html).
+	legacyRaw := map[string]json.RawMessage{}
+	var rawProjects []map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &rawProjects))
+	for _, raw := range rawProjects {
+		var dir string
+		require.NoError(t, json.Unmarshal(raw["dir"], &dir))
+		if dir == legacyDir {
+			legacyRaw = raw
+		}
+	}
+	_, hasRepositories := legacyRaw["repositories"]
+	assert.False(t, hasRepositories, "legacy project must omit the repositories field entirely")
+}
+
 func TestAPIProjects_ActiveCountIncludesWaitingRun(t *testing.T) {
 	h, store := setupHandler(t)
 

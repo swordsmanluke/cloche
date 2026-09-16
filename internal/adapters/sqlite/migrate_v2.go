@@ -105,20 +105,21 @@ func migrateRunsCompositeKey(db *sql.DB) error {
 			parked_title TEXT NOT NULL DEFAULT '',
 			is_builtin INTEGER NOT NULL DEFAULT 0,
 			user_initiated INTEGER NOT NULL DEFAULT 0,
+			repository TEXT NOT NULL DEFAULT '',
 			UNIQUE(attempt_id, id)
 		)`,
 		`INSERT OR IGNORE INTO runs_new
 			(id, workflow_name, state, active_steps, started_at, completed_at,
 			 project_dir, error_message, container_id, base_sha, container_kept,
 			 title, is_host, parent_run_id, task_id, task_title, attempt_id,
-			 parent_step_name, parked_thread_id, parked_title, is_builtin, user_initiated)
+			 parent_step_name, parked_thread_id, parked_title, is_builtin, user_initiated, repository)
 		 SELECT id, workflow_name, state, active_steps, started_at, completed_at,
 			project_dir, COALESCE(error_message,''), COALESCE(container_id,''),
 			COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,''),
 			COALESCE(is_host,0), COALESCE(parent_run_id,''), COALESCE(task_id,''),
 			COALESCE(task_title,''), COALESCE(attempt_id,''),
 			parent_step_name, COALESCE(parked_thread_id,''), COALESCE(parked_title,''),
-			COALESCE(is_builtin,0), COALESCE(user_initiated,0)
+			COALESCE(is_builtin,0), COALESCE(user_initiated,0), COALESCE(repository,'')
 		 FROM runs`,
 		`DROP TABLE runs`,
 		`ALTER TABLE runs_new RENAME TO runs`,

@@ -155,3 +155,67 @@ test('orderWorkflowTabs only includes whichever of list-tasks/main are actually 
     assert.deepEqual(withNeither.ordered.map((w) => w.name), ['alpha', 'zeta']);
     assert.equal(withNeither.specialCount, 0);
 });
+
+// ---------- repo grouping (docs/design/console-repo-grouping-mock.html, option 1) ----------
+
+function multiRepoProject() {
+    return project({
+        slug: 'manager',
+        repositories: [{ name: 'manager', path: '.' }, { name: 'anarkana', path: './repos/anarkana' }]
+    });
+}
+
+test('repoNamesForProject returns null for a project with no repositories', () => {
+    assert.equal(ConsoleTabs.repoNamesForProject(project()), null);
+});
+
+test('repoNamesForProject returns null for a project with exactly one repository (implicit default)', () => {
+    assert.equal(ConsoleTabs.repoNamesForProject(project({ repositories: [{ name: 'only', path: '.' }] })), null);
+});
+
+test('repoNamesForProject returns null for a null project (not yet loaded)', () => {
+    assert.equal(ConsoleTabs.repoNamesForProject(null), null);
+});
+
+test('repoNamesForProject returns every repo name for a multi-repo project', () => {
+    assert.deepEqual(ConsoleTabs.repoNamesForProject(multiRepoProject()), ['manager', 'anarkana']);
+});
+
+test('normalizeRepo maps "all" and unknown names to "" (all repos)', () => {
+    const names = ['manager', 'anarkana'];
+    assert.equal(ConsoleTabs.normalizeRepo('all', names), '');
+    assert.equal(ConsoleTabs.normalizeRepo('', names), '');
+    assert.equal(ConsoleTabs.normalizeRepo('nonexistent', names), '');
+    assert.equal(ConsoleTabs.normalizeRepo('anarkana', names), 'anarkana');
+});
+
+test('resolveRepoAndTask on a legacy project always treats the first segment as a task ID', () => {
+    assert.deepEqual(ConsoleTabs.resolveRepoAndTask(project(), []), { repo: '', taskId: '' });
+    assert.deepEqual(ConsoleTabs.resolveRepoAndTask(project(), ['task-123']), { repo: '', taskId: 'task-123' });
+    // Even a segment that happens to be named like a repo has no repo list
+    // to match against, so it stays a task ID on a legacy project.
+    assert.deepEqual(ConsoleTabs.resolveRepoAndTask(project(), ['anarkana']), { repo: '', taskId: 'anarkana' });
+});
+
+test('resolveRepoAndTask on a null project (not yet loaded) is treated as legacy', () => {
+    assert.deepEqual(ConsoleTabs.resolveRepoAndTask(null, ['manager-fnn6']), { repo: '', taskId: 'manager-fnn6' });
+});
+
+test('resolveRepoAndTask on a multi-repo project: bare project URL is "all repos", no task', () => {
+    assert.deepEqual(ConsoleTabs.resolveRepoAndTask(multiRepoProject(), []), { repo: '', taskId: '' });
+});
+
+test('resolveRepoAndTask on a multi-repo project: one segment matching a repo name scopes the stack, no task', () => {
+    assert.deepEqual(ConsoleTabs.resolveRepoAndTask(multiRepoProject(), ['anarkana']), { repo: 'anarkana', taskId: '' });
+    assert.deepEqual(ConsoleTabs.resolveRepoAndTask(multiRepoProject(), ['all']), { repo: '', taskId: '' });
+});
+
+test('resolveRepoAndTask on a multi-repo project: one segment not matching any repo name is a legacy task-only link', () => {
+    assert.deepEqual(ConsoleTabs.resolveRepoAndTask(multiRepoProject(), ['manager-fnn6']), { repo: '', taskId: 'manager-fnn6' });
+});
+
+test('resolveRepoAndTask on a multi-repo project: two segments are always /{repo}/{task}', () => {
+    assert.deepEqual(ConsoleTabs.resolveRepoAndTask(multiRepoProject(), ['anarkana', 'manager-fnn6']), { repo: 'anarkana', taskId: 'manager-fnn6' });
+    // An invalid repo segment normalizes to "all" rather than rejecting the link.
+    assert.deepEqual(ConsoleTabs.resolveRepoAndTask(multiRepoProject(), ['bogus', 'manager-fnn6']), { repo: '', taskId: 'manager-fnn6' });
+});

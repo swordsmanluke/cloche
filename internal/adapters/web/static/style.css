@@ -679,6 +679,56 @@ h2 {
     border-right: 0;
 }
 
+/* Repo sub-tab row — see docs/design/console-repo-grouping-mock.html,
+   option 1. Rendered only for a project with more than one configured
+   repository; a legacy/single-repo project's console.js leaves this
+   `hidden`, so the body grid drops straight from .console-tabbar to
+   .console-body exactly as it did before this row existed. */
+.console-subtabs {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    background: var(--pnl2);
+    border-bottom: 1px solid var(--ln);
+}
+
+.console-subtabs-label {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.62rem;
+    color: var(--mu);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    border-right: 1px solid var(--ln);
+    flex: 0 0 auto;
+}
+
+.console-subtab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem;
+    border: 0;
+    border-right: 1px solid var(--ln);
+    border-radius: 0;
+    background: transparent;
+    color: var(--tx2);
+    font: inherit;
+    font-size: 0.7rem;
+    cursor: pointer;
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+
+.console-subtab:hover { color: var(--tx); background: var(--pnl3); }
+
+.console-subtab-active {
+    color: var(--tx);
+    background: var(--pnl3);
+    box-shadow: inset 0 2px 0 var(--ac);
+}
+
 .console-body {
     flex: 1 1 auto;
     display: flex;
@@ -763,6 +813,7 @@ h2 {
 .console-stack-row-text { min-width: 0; }
 
 .console-stack-row-id { color: var(--tx); font-size: 0.72rem; font-family: var(--mono); }
+.console-stack-row-repotag { color: var(--mu); font-weight: normal; }
 
 .console-stack-row-title {
     color: var(--tx2);

@@ -122,6 +122,7 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		hostRun.ParentRunID = r.ParentRunID
 		hostRun.IsBuiltin = wf.Builtin
 		hostRun.UserInitiated = r.UserInitiated
+		hostRun.Repository = domain.SingleRepo(wf.Repos)
 		if err := r.Store.CreateRun(ctx, hostRun); err != nil {
 			return nil, fmt.Errorf("creating host run record: %w", err)
 		}
@@ -509,6 +510,7 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 	hostRun.ParentRunID = oldRun.ParentRunID
 	hostRun.IsBuiltin = wf.Builtin
 	hostRun.UserInitiated = oldRun.UserInitiated
+	hostRun.Repository = oldRun.Repository
 	if err := r.Store.CreateRun(ctx, hostRun); err != nil {
 		return nil, fmt.Errorf("creating resume run record: %w", err)
 	}

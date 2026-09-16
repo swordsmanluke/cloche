@@ -106,6 +106,17 @@ type BuiltinLookup interface {
 	IsBuiltinByTaskIDs(ctx context.Context, taskIDs []string) (map[string]bool, error)
 }
 
+// DoneRepoCounter is an optional interface a RunStore may implement to
+// count terminal-state runs per repository for a project in one query,
+// badging the console's repo sub-tabs (see web.TaskStackRepoCounts) without
+// re-deriving the deduped, paginated Done list. The result is approximate
+// relative to that list — it counts every terminal run, not just each
+// task's latest attempt — which is an acceptable trade-off for a badge
+// count. Keyed by RepositoryConfig.Name ("" for legacy/unassigned runs).
+type DoneRepoCounter interface {
+	CountDoneRunsByProjectGroupedByRepo(ctx context.Context, projectDir string) (map[string]int, error)
+}
+
 type CaptureStore interface {
 	SaveCapture(ctx context.Context, runID string, exec *domain.StepExecution) error
 	GetCaptures(ctx context.Context, runID string) ([]*domain.StepExecution, error)

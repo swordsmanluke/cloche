@@ -63,6 +63,18 @@ e.g. a `cloche run` invoked outside a registered project. It only appears once s
 actually exists, and has no orchestration loop of its own (the Loop instrument is disabled
 there).
 
+### Repo sub-tabs
+
+A project declaring more than one `[[repositories]]` entry in `.cloche/config.toml` gets a
+second row directly beneath the project tab row: a small "repo" label, an **all repos**
+pseudo-tab (the default — today's merged view), then one sub-tab per configured
+repository, each carrying the same running-count/attention badges as project tabs.
+Selecting a repo sub-tab scopes the task stack to that repo only — the other repos' rows
+are removed from the stack entirely, not merely labelled. Legacy projects (no
+`[[repositories]]`, or exactly one — the auto-seeded implicit default) render no sub-tab
+row at all: the body grid goes straight from the project tab row to the stack, identical
+to a project registered before this feature existed.
+
 On the right, daemon instruments for the active project:
 
 - **Loop** — toggles the orchestration loop, showing "running"/"stopped" (`POST /trigger`
@@ -173,6 +185,14 @@ updates the URL via `history.pushState` without a page reload; browser back/forw
 as expected. Attempt and step-scope selection are client-side state, not reflected in the
 URL yet.
 
+For a multi-repo project (see Repo sub-tabs above), a repo segment can appear between the
+project slug and the task ID: `/{project-slug}/{repo}/{task-id}`. Omitting the repo segment
+is a synonym for "all repos" — `/{project-slug}` and `/{project-slug}/all` are equivalent,
+and `/{project-slug}/{task-id}` (the legacy shape) keeps working unchanged, since a segment
+is only ever read as a repo when it exactly matches one of the project's configured repo
+names. `/{project-slug}/{repo}` alone is a bookmarkable link to that repo's scoped stack
+with no task selected.
+
 The pre-console URLs (`/projects/{name}[/runs]`, `/runs[/{id}]`, `/tasks/{id}`,
 `/failed-tasks`) redirect into the new scheme for one release before being removed.
 `GET /` no longer redirects — it renders the console shell directly at `/`, seeded with a
@@ -195,7 +215,8 @@ once the project list loads if that preference is empty or stale.
 | `Shift+[` / `Shift+]` | Switch to the previous / next attempt |
 | `g` / `G` | Scroll the log to the top / bottom |
 | `f` | Toggle following the live log to its newest line |
-| `r` | Release your claim on the open needs-you task (when available) |
+| `r` | Release your claim on the open needs-you task (when available); otherwise cycles the repo sub-tabs (multi-repo projects only) |
+| `Shift+R` | Jump straight to the "all repos" sub-tab (multi-repo projects only) |
 | `x` | Close the open needs-you task in the tracker (when available) |
 | `w` | Open the Workflows view |
 | `i` | Open the Requirements view |
@@ -297,12 +318,19 @@ The dashboard's JSON endpoints remain stable and are also used by the CLI
   `latest_run_at` (used by the tab bar's fold rule and the "/" landing-project fallback).
   Also includes the synthetic `system` project (see Tab bar above) once any project-less
   task or run exists; omitted otherwise, and always omitted when the request passes
-  `?project=`.
+  `?project=`. `repositories: [{name, path}]` lists every `[[repositories]]` entry declared
+  for the project (omitted for a legacy project); the console only renders the repo
+  sub-tab row when there is more than one.
 - `GET /api/projects/{name}/attention` — the full "Needs you" item list for one project
   plus `computed_at`, from the same cache; `computed_at` is empty for a project that
   hasn't been refreshed yet.
 - `GET /api/projects/{name}/tasks` — the orchestration loop's live task snapshot.
 - `GET /api/projects/{name}/tasks/stack` — the grouped, bounded task stack (see above).
+  Each entry carries a `repository` (the `RepositoryConfig.Name` its run was dispatched
+  against; omitted for legacy runs). `?repo=<name>` (or `?repo=all`/omitted) scopes every
+  group to one repo; `repo_counts` always reports the full, unscoped per-repo aggregate
+  (`needs_you`/`running`/`queued`/`done` counts) regardless of the current `?repo=` scope,
+  so the console can badge every repo sub-tab from one response.
 - `GET /api/projects/{name}/tasks/{taskId}/attempts` — a task's attempts (oldest first),
   each with its run ID, outcome, duration, retry reason, and the step it itself failed at
   (`failed_step`) — backs the centre pane's attempt tabs and the needs-you compare view.
