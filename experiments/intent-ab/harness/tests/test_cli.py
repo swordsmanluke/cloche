@@ -35,6 +35,19 @@ class TestBuildSystemPrompt(unittest.TestCase):
         prompt = build_system_prompt(self.tmp)
         self.assertIn("NEW", prompt)
 
+    def test_inlines_design_doc_when_present(self):
+        with open(os.path.join(self.tmp, "DESIGN.md"), "w") as f:
+            f.write("## Section 10: Standing Constraints\nNo stray print().\n")
+        prompt = build_system_prompt(self.tmp)
+        self.assertIn("Standing Constraints", prompt)
+        self.assertIn("No stray print().", prompt)
+
+    def test_no_design_doc_section_when_absent(self):
+        # Must degrade quietly (no "DESIGN.md" file exists in the task's
+        # workdir) rather than crash or claim there's a spec to follow.
+        prompt = build_system_prompt(self.tmp)
+        self.assertNotIn("full specification", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -30,6 +30,26 @@ from .ollama_client import (
 )
 
 
+def read_project_spec(workdir: str) -> str:
+    """Reads DESIGN.md from the workdir root, if present.
+
+    This wrapper is a single-shot completion, not a tool-using agent — it
+    has no way to run `cat` or otherwise read a file itself. Task prompts
+    routinely tell the model to "read DESIGN.md" (the project's spec) before
+    writing code, but until this function existed, that content was never
+    actually placed in front of the model. The result was consistently
+    empty completions (verified against a real pilot task prompt: 3/3 raw
+    completions were 0 chars without the spec inlined, vs. a substantive
+    non-empty attempt once it was) rather than merely low-quality ones —
+    the model had nothing concrete to reason about.
+    """
+    try:
+        with open(os.path.join(workdir, "DESIGN.md"), "r", encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
 def build_system_prompt(workdir: str) -> str:
     """Build the system prompt for one invocation, listing the workdir's
     actual files so the model has real paths to copy instead of a generic
@@ -38,8 +58,14 @@ def build_system_prompt(workdir: str) -> str:
     example's path verbatim instead of substituting the real target)."""
     existing = edits.list_workdir_files(workdir)
     listing = "\n".join(f"- {p}" for p in existing) if existing else "(none — the working directory is empty)"
+    spec = read_project_spec(workdir)
+    spec_section = (
+        f"\n\nThe project's full specification (DESIGN.md), which you must follow exactly,"
+        f" including where it differs from your own priors:\n\n{spec}\n"
+        if spec else ""
+    )
     return f"""You are a coding assistant that edits files by rewriting them whole.
-
+{spec_section}
 Files that currently exist in this project:
 {listing}
 
