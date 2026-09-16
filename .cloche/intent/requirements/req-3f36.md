@@ -1,6 +1,7 @@
 ---
 id: req-3f36
-status: active
+status: superseded
+superseded_by: req-fbb9
 scope:
     level: domain
     domains:
@@ -19,7 +20,7 @@ provenance:
     extracted_at: 2026-09-16T15:35:27Z
     extracted_by: intent-scan
 created: 2026-09-16T15:36:26.881086325Z
-updated: 2026-09-16T15:36:26.881086325Z
+updated: 2026-09-16T15:49:06.908012212Z
 ---
 
 Ledger prompt-revision attribution is recorded at step-dispatch time (keyed by the resolved prompt file and the git commit that last touched it as of dispatch), not recomputed per ledger request. Pre-existing attempts are backfilled best-effort from the workflow's current prompt-file references and git history at the attempt's start time, and per-file git history is cached rather than shelled out to on every request.
