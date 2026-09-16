@@ -541,6 +541,36 @@ func TestAPIProjects(t *testing.T) {
 	assert.Equal(t, 1, byDir["/home/user/beta"].ActiveCount)
 }
 
+func TestAPIProjects_ActiveCountIncludesWaitingRun(t *testing.T) {
+	h, store := setupHandler(t)
+
+	// A project whose only run is "waiting" (parked at a poll step) must
+	// still count as active — it must not fold into "More" on the tab bar.
+	run := domain.NewRun("waiting-only", "develop")
+	run.ProjectDir = "/home/user/gamma"
+	run.Start()
+	run.State = domain.RunStateWaiting
+	require.NoError(t, store.CreateRun(context.Background(), run))
+
+	req := httptest.NewRequest("GET", "/api/projects", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	type project struct {
+		Dir         string `json:"dir"`
+		ActiveCount int    `json:"active_count"`
+	}
+	var projects []project
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &projects))
+
+	byDir := map[string]project{}
+	for _, p := range projects {
+		byDir[p.Dir] = p
+	}
+	assert.Equal(t, 1, byDir["/home/user/gamma"].ActiveCount)
+}
+
 func TestAPIProjects_LoopRunningAndLatestRunAt(t *testing.T) {
 	h, store := setupHandler(t)
 	seedRunWithProject(t, store, "lra-1", "develop", domain.RunStateSucceeded, "/home/user/alpha")

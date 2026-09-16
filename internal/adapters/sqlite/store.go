@@ -564,8 +564,12 @@ func (s *Store) ListDoneRunsByProject(ctx context.Context, projectDir string, be
 }
 
 // CountActiveRunsByProject returns the number of pending/running runs for a
-// project. hostOnly, when true, restricts the count to host-orchestration
-// runs.
+// project — deliberately excluding waiting/parked runs, since this mirrors
+// the concurrency-slot occupancy concept (a waiting run holds no slot; see
+// internal/host's occupancy model), not the broader "should this show as
+// active in the console" idea (see domain.ActiveRunStates /
+// web.Handler.countVisibleActiveRuns for that). hostOnly, when true,
+// restricts the count to host-orchestration runs.
 func (s *Store) CountActiveRunsByProject(ctx context.Context, projectDir string, hostOnly bool) (int, error) {
 	query := `SELECT COUNT(*) FROM runs WHERE project_dir = ? AND state IN ('pending', 'running')`
 	if hostOnly {

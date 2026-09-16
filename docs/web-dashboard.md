@@ -81,6 +81,11 @@ at a time — and its opaque `cursor` is stable across requests, keyed on comple
 plus task ID so entries with the same completion timestamp neither repeat nor drop across
 pages.
 
+A run waiting at a `poll` step (state `waiting`) stays in **Running** rather than getting
+a group of its own — its row's step label reads `waiting · poll <step> · last poll <n>
+ago · <count> polls` (degrading to `waiting · poll <step>`, or bare `waiting`, if poll
+bookkeeping or the step name isn't available) in place of the usual current-step name.
+
 It polls every few seconds using conditional GET
 (`ETag`/`If-None-Match`), so a poll with nothing new costs a 304 rather than a re-render;
 when something *has* changed, only the affected rows update in place.
@@ -92,8 +97,9 @@ Click a row (or select it with `j`/`k` and press Enter) to open it in the centre
 Shows the selected task's full detail:
 
 - **Header** — task ID, a state pill (running / needs you / queued / succeeded / failed /
-  parked — parked also shows how long the run has been parked, e.g. "parked · 12m"), the
-  title, and state-dependent actions: running → Console (raw container output), Workflow
+  parked — parked also shows how long the run has been parked, e.g. "parked · 12m"; a run
+  waiting at a `poll` step shows "waiting" instead of "running"), the
+  title, and state-dependent actions: running (including waiting) → Console (raw container output), Workflow
   (step/wire summary), Cancel; done → Open branch, Diff, Delete container; queued → Cancel;
   parked → Cancel. A needs-you task's actions come from the attention item's own `actions`
   list (see below) rather than a fixed set per state.

@@ -298,18 +298,22 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 	now := time.Now()
 	activeTaskKeys := map[string]bool{}
 
-	// Running: bounded to currently pending/running runs (inherently a
-	// small set, regardless of how much completed history the project has
-	// accumulated) rather than scanning every run ever recorded.
-	pending, err := h.store.ListRunsFiltered(ctx, domain.RunListFilter{ProjectDir: projectDir, State: domain.RunStatePending})
-	if err != nil {
-		return nil, fmt.Errorf("listing pending runs: %w", err)
+	// Running: bounded to currently active runs (see domain.ActiveRunStates
+	// — pending, running, waiting; inherently a small set, regardless of
+	// how much completed history the project has accumulated) rather than
+	// scanning every run ever recorded. A waiting run holds no concurrency
+	// slot (see internal/host's occupancy model) but must still show up
+	// here as a live task, not vanish — it merges into this same group with
+	// a "waiting · poll <step> · ..." annotation rather than a group of its
+	// own.
+	var activeRuns []*domain.Run
+	for _, state := range domain.ActiveRunStates {
+		runs, err := h.store.ListRunsFiltered(ctx, domain.RunListFilter{ProjectDir: projectDir, State: state})
+		if err != nil {
+			return nil, fmt.Errorf("listing %s runs: %w", state, err)
+		}
+		activeRuns = append(activeRuns, runs...)
 	}
-	runningState, err := h.store.ListRunsFiltered(ctx, domain.RunListFilter{ProjectDir: projectDir, State: domain.RunStateRunning})
-	if err != nil {
-		return nil, fmt.Errorf("listing running runs: %w", err)
-	}
-	activeRuns := append(pending, runningState...)
 
 	for _, group := range groupTopLevelRunsByTask(activeRuns) {
 		taskID := group[0].TaskID
@@ -317,7 +321,7 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 		if isExcludedBuiltinTask(ctx, h.taskStore, task, group) {
 			continue
 		}
-		active := latestRunInState(group, domain.RunStatePending, domain.RunStateRunning)
+		active := latestRunInState(group, domain.ActiveRunStates...)
 		if active == nil {
 			continue
 		}
@@ -328,12 +332,16 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 			if !start.IsZero() {
 				elapsed = now.Sub(start)
 			}
+			currentStep := strings.Join(active.ActiveSteps, ",")
+			if active.State == domain.RunStateWaiting {
+				currentStep = h.waitingAnnotation(ctx, active, now)
+			}
 			stack.Running = append(stack.Running, TaskStackRunning{
 				TaskID:         taskID,
 				Title:          taskDisplayTitle(task, active),
 				RunID:          active.ID,
 				Attempt:        attemptNumber(task, active),
-				CurrentStep:    strings.Join(active.ActiveSteps, ","),
+				CurrentStep:    currentStep,
 				StartedAt:      apiTimeString(start),
 				ElapsedSeconds: int64(elapsed.Seconds()),
 			})
@@ -536,6 +544,30 @@ func latestRunInState(group []*domain.Run, states ...domain.RunState) *domain.Ru
 		}
 	}
 	return latest
+}
+
+// waitingAnnotation builds the Running-group display string for a waiting
+// run: "waiting · poll <step> · last poll <elapsed> ago · <n> polls" when
+// poll bookkeeping (ports.PollStore) is available, degrading gracefully to
+// "waiting · poll <step>" or bare "waiting" when the step name or poll
+// record can't be resolved.
+func (h *Handler) waitingAnnotation(ctx context.Context, run *domain.Run, now time.Time) string {
+	step := ""
+	if len(run.ActiveSteps) > 0 {
+		step = run.ActiveSteps[0]
+	}
+	if step == "" {
+		return "waiting"
+	}
+	pollStore, ok := h.store.(ports.PollStore)
+	if !ok {
+		return "waiting · poll " + step
+	}
+	rec, err := pollStore.GetPoll(ctx, run.ID, step)
+	if err != nil || rec == nil {
+		return "waiting · poll " + step
+	}
+	return fmt.Sprintf("waiting · poll %s · last poll %s ago · %d polls", step, formatDuration(rec.LastPollAt, now), rec.PollCount)
 }
 
 // isExcludedBuiltinTask reports whether group represents a user-initiated

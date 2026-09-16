@@ -24,7 +24,8 @@ type HealthResult struct {
 //
 // Status rules:
 //   - Grey: no runs provided
-//   - Blue: all runs in the window are still in-progress (pending/running)
+//   - Blue: all runs in the window are still in-progress (pending/running/
+//     waiting) or parked
 //   - Green: all completed runs passed (succeeded)
 //   - Red: all completed runs failed (failed/cancelled)
 //   - Yellow: mix of passed and failed completed runs
@@ -48,7 +49,9 @@ func CalculateHealth(runs []Run, windowSize int) HealthResult {
 			passed++
 		case RunStateFailed, RunStateCancelled:
 			failed++
-		// pending, running — neither passed nor failed
+		// Active states (see IsActiveRunState: pending, running, waiting)
+		// and parked runs count toward Total but are neither passed nor
+		// failed — they haven't reached a terminal outcome yet.
 		}
 	}
 

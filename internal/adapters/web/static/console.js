@@ -1494,6 +1494,7 @@
         if (headerState === 'done') return run.state;
         if (headerState === 'needs_you') return 'needs you';
         if (headerState === 'parked' && run.parked_seconds) return 'parked · ' + formatDuration(run.parked_seconds);
+        if (headerState === 'running' && run.state === 'waiting') return 'waiting';
         return headerState;
     }
 

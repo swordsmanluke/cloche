@@ -16,6 +16,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
 	"github.com/swordsmanluke/cloche/internal/attention"
 	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
 const taskStackProjectDir = "/home/user/projects/stackapp"
@@ -65,6 +66,48 @@ func TestAPITaskStack_Running(t *testing.T) {
 	assert.Empty(t, stack.Done)
 	assert.Empty(t, stack.Queued)
 	assert.Empty(t, stack.NeedsYou)
+}
+
+func TestAPITaskStack_Running_WaitingRunIncluded(t *testing.T) {
+	h, store := setupHandler(t)
+	h.taskStore = store
+	ctx := context.Background()
+
+	task := &domain.Task{ID: "task-waiting", Title: "Poll for CI", Source: domain.TaskSourceExternal, ProjectDir: taskStackProjectDir, CreatedAt: time.Now()}
+	require.NoError(t, store.SaveTask(ctx, task))
+	attempt := &domain.Attempt{ID: "att-waiting", TaskID: "task-waiting", StartedAt: time.Now().Add(-5 * time.Minute), Result: domain.AttemptResultRunning}
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	run := domain.NewRun("run-waiting", "develop")
+	run.ProjectDir = taskStackProjectDir
+	run.TaskID = "task-waiting"
+	run.AttemptID = "att-waiting"
+	run.State = domain.RunStateWaiting
+	run.StartedAt = attempt.StartedAt
+	run.ActiveSteps = []string{"wait-for-ci"}
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	pollStore, ok := ports.RunStore(store).(ports.PollStore)
+	require.True(t, ok, "sqlite.Store must implement ports.PollStore")
+	lastPollAt := time.Now().Add(-30 * time.Second)
+	require.NoError(t, pollStore.UpsertPoll(ctx, &ports.PollRecord{
+		RunID:      run.ID,
+		StepName:   "wait-for-ci",
+		StartedAt:  attempt.StartedAt,
+		LastPollAt: lastPollAt,
+		PollCount:  4,
+	}))
+
+	resp, stack := getTaskStack(t, h, "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Len(t, stack.Running, 1)
+	entry := stack.Running[0]
+	assert.Equal(t, "task-waiting", entry.TaskID)
+	assert.Equal(t, "run-waiting", entry.RunID)
+	assert.Contains(t, entry.CurrentStep, "waiting")
+	assert.Contains(t, entry.CurrentStep, "poll wait-for-ci")
+	assert.Contains(t, entry.CurrentStep, "4 polls")
+	assert.Empty(t, stack.Done)
 }
 
 func TestAPITaskStack_AttemptNumberSecondAttempt(t *testing.T) {

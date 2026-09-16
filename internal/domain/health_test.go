@@ -201,6 +201,34 @@ func TestCalculateHealth_SingleRun_Failed(t *testing.T) {
 	assert.Equal(t, 1, result.Total)
 }
 
+func TestCalculateHealth_Blue_AllWaiting(t *testing.T) {
+	runs := makeRuns(
+		domain.RunStateWaiting,
+		domain.RunStateWaiting,
+	)
+	result := domain.CalculateHealth(runs, 5)
+	assert.Equal(t, domain.HealthBlue, result.Status)
+	assert.Equal(t, 0, result.Passed)
+	assert.Equal(t, 0, result.Failed)
+	assert.Equal(t, 2, result.Total)
+}
+
+func TestCalculateHealth_Green_WithWaitingAndParkedRuns(t *testing.T) {
+	// Waiting and parked runs, like pending/running, haven't reached a
+	// terminal outcome yet — they count toward Total but not Passed/Failed.
+	runs := makeRuns(
+		domain.RunStateWaiting,
+		domain.RunStateParked,
+		domain.RunStateSucceeded,
+		domain.RunStateSucceeded,
+	)
+	result := domain.CalculateHealth(runs, 5)
+	assert.Equal(t, domain.HealthGreen, result.Status)
+	assert.Equal(t, 2, result.Passed)
+	assert.Equal(t, 0, result.Failed)
+	assert.Equal(t, 4, result.Total)
+}
+
 func TestCalculateHealth_WindowSize_One(t *testing.T) {
 	runs := makeRuns(
 		domain.RunStateSucceeded,

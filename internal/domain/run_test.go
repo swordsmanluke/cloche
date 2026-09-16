@@ -453,3 +453,23 @@ func TestAttemptAggregateStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestIsActiveRunState(t *testing.T) {
+	tests := []struct {
+		state domain.RunState
+		want  bool
+	}{
+		{domain.RunStatePending, true},
+		{domain.RunStateRunning, true},
+		{domain.RunStateWaiting, true},
+		{domain.RunStateParked, false},
+		{domain.RunStateSucceeded, false},
+		{domain.RunStateFailed, false},
+		{domain.RunStateCancelled, false},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.state), func(t *testing.T) {
+			assert.Equal(t, tt.want, domain.IsActiveRunState(tt.state))
+		})
+	}
+}

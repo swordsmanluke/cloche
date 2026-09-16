@@ -19,6 +19,33 @@ const (
 	RunStateParked RunState = "parked"
 )
 
+// ActiveRunStates lists every RunState that IsActiveRunState reports as
+// active: pending (not yet started), running, and waiting (parked at a poll
+// step, driven asynchronously without holding a concurrency slot).
+//
+// RunStateParked is deliberately excluded: a parked run has been explicitly
+// quiesced (by an operator via `cloche loop quiesce`, or by the help-channel
+// park mechanism) rather than progressing on its own, and already gets its
+// own dedicated visibility in the console — the "parked" header pill/bucket,
+// and (for help-channel parks awaiting a reply) the NeedsYou/attention list.
+// Folding it into "active" here would misrepresent a deliberately-paused run
+// as in-progress. Callers that need to enumerate active states one at a time
+// (e.g. querying a store which only filters by a single state) should
+// iterate this slice rather than hand-rolling the list.
+var ActiveRunStates = []RunState{RunStatePending, RunStateRunning, RunStateWaiting}
+
+// IsActiveRunState reports whether state is one of ActiveRunStates — i.e.
+// the run is still in progress rather than finished or explicitly parked.
+// See ActiveRunStates for why RunStateParked is excluded.
+func IsActiveRunState(state RunState) bool {
+	for _, s := range ActiveRunStates {
+		if s == state {
+			return true
+		}
+	}
+	return false
+}
+
 // RunListFilter holds optional filters for listing runs.
 type RunListFilter struct {
 	ProjectDir string

@@ -851,7 +851,7 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 			runValues[j] = *rr
 		}
 		health := domain.CalculateHealth(runValues, healthWindowSize)
-		activeCount, _ := h.store.CountActiveRunsByProject(r.Context(), dir, false)
+		activeCount := h.countVisibleActiveRuns(r.Context(), dir)
 		var latestRunAt time.Time
 		if len(runs) > 0 {
 			// runs is ordered most-recent-first, so the head is the latest.
@@ -881,6 +881,21 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+// countVisibleActiveRuns counts runs in dir whose state is one of
+// domain.ActiveRunStates (pending/running/waiting), for the project tab
+// bar's active_count. Deliberately not sqlite.Store.CountActiveRunsByProject
+// — that method counts pending/running only, mirroring the concurrency-slot
+// occupancy concept (a waiting run holds no slot), which is a narrower idea
+// than "should this project's tab show as active".
+func (h *Handler) countVisibleActiveRuns(ctx context.Context, dir string) int {
+	count := 0
+	for _, state := range domain.ActiveRunStates {
+		runs, _ := h.store.ListRunsFiltered(ctx, domain.RunListFilter{ProjectDir: dir, State: state})
+		count += len(runs)
+	}
+	return count
 }
 
 func (h *Handler) handleAPIRunDetail(w http.ResponseWriter, r *http.Request) {
