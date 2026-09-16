@@ -186,7 +186,7 @@ once the project list loads if that preference is empty or stale.
 | `r` | Release your claim on the open needs-you task (when available) |
 | `x` | Close the open needs-you task in the tracker (when available) |
 | `w` | Open the Workflows view |
-| `i` | Open the Intent view |
+| `i` | Open the Requirements view |
 | `c` | Open the Containers view, or toggle the needs-you compare view / single-attempt log when one is open |
 | `?` | Toggle the keyboard shortcuts overlay |
 
@@ -217,7 +217,7 @@ covers today plus a fixed page size, and a **Load earlier** button pages further
 history via an opaque cursor (an `activity_log` row ID), the same pattern the task
 stack's "Done today" group uses for its own cursor.
 
-### Secondary views: Workflows, Intent, Containers
+### Secondary views: Workflows, Requirements, Containers
 
 Three header buttons (and matching shortcuts `w` / `i` / `c`) open project-scoped views as
 an overlay on top of the console shell — they don't navigate away from the current
@@ -231,7 +231,7 @@ falling back to the stack-deselect behavior described above.
   keys it uses (`prompt`, `run`, `poll`, `interval`, `agent`, `agent_command`, `agent_args`,
   `intent_tracking`, `workflow_name`, `max_attempts`), plus the referenced prompt/script
   content (`GET /api/projects/{slug}/workflows/{workflow}/steps/{step}/content`).
-- **Intent** — the requirements table, its edit drawer, and the domain editor, driven by
+- **Requirements** — the requirements table, its edit drawer, and the domain editor, driven by
   the same `GET/PATCH /api/projects/{slug}/intent/requirements` and
   `GET/PUT /api/projects/{slug}/intent/domains` endpoints as before. **Scan now**
   (`POST /api/projects/{slug}/intent/scan`) shows the dispatched run's id and live state

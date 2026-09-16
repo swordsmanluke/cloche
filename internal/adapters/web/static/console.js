@@ -2767,7 +2767,7 @@
         viewer.scrollTop = where === 'top' ? 0 : viewer.scrollHeight;
     }
 
-    // ---------- secondary views (Workflows / Intent / Containers) ----------
+    // ---------- secondary views (Workflows / Requirements / Containers) ----------
     //
     // These are opened from the header (buttons + w/i/c shortcuts), not
     // routed pages — the console shell stays on the current project/task URL
@@ -3400,7 +3400,7 @@
             .catch(function () {});
     }
 
-    // ---------- Intent view ----------
+    // ---------- Requirements view ----------
 
     var intentData = { requirements: [], last_scan_at: '' };
     var domainsData = { version: 1, domains: [] };
@@ -3417,7 +3417,7 @@
 
     function openIntentView() {
         if (!state.activeSlug) return;
-        openView('Intent');
+        openView('Requirements');
         var body = document.getElementById('console-view-body');
         body.innerHTML =
             '<div style="margin-bottom:0.75rem">' +
