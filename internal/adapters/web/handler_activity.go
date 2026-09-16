@@ -49,7 +49,8 @@ type activityStreamResponse struct {
 }
 
 // handleAPIActivity serves the activity ticker/stream: GET /api/activity,
-// optionally filtered by ?project=<slug> (all projects when omitted) and
+// optionally filtered by ?project=<slug> (all projects when omitted;
+// SystemProjectSlug for just the synthetic system project) and
 // ?failures_only=1, paged via ?before=<cursor>&limit=<n>. The response is
 // always a bounded tail with repeated same-signature entries collapsed into
 // one line with a count (see groupActivityEntries), never the full table.
@@ -57,15 +58,26 @@ func (h *Handler) handleAPIActivity(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	w.Header().Set("Content-Type", "application/json")
 
+	// systemOnly marks an explicit request for the synthetic "system" project
+	// (SystemProjectSlug): activity for project-less runs. It's tracked
+	// separately from projectDir because ReadActivityEntries treats an empty
+	// projectDir as "all projects" — the same value the system project's
+	// rows actually carry — so it can't be told apart by projectDir alone;
+	// see the systemOnly filtering below.
 	projectDir := ""
+	systemOnly := false
 	if slug := q.Get("project"); slug != "" {
-		dir, ok := h.projectDirForSlug(r, slug)
-		if !ok {
-			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{"error": "project not found"})
-			return
+		if slug == SystemProjectSlug {
+			systemOnly = true
+		} else {
+			dir, ok := h.projectDirForSlug(r, slug)
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]string{"error": "project not found"})
+				return
+			}
+			projectDir = dir
 		}
-		projectDir = dir
 	}
 
 	if h.activityStore == nil {
@@ -110,15 +122,31 @@ func (h *Handler) handleAPIActivity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// displayEntries narrows entries to project-less rows for an explicit
+	// system-project request; the pagination logic below still reasons about
+	// the raw (unfiltered) entries/limit, since that's what actually bounds
+	// the underlying query.
+	displayEntries := entries
 	labels := map[string]string{}
-	if projectDir == "" {
+	switch {
+	case systemOnly:
+		filtered := make([]activitylog.Entry, 0, len(entries))
+		for _, e := range entries {
+			if e.ProjectDir == "" {
+				filtered = append(filtered, e)
+			}
+		}
+		displayEntries = filtered
+		labels[""] = SystemProjectLabel
+	case projectDir == "":
 		dirs, _ := h.store.ListProjects(r.Context())
 		labels = projectLabels(dirs)
-	} else {
+		labels[""] = SystemProjectLabel
+	default:
 		labels[projectDir] = projectLabels([]string{projectDir})[projectDir]
 	}
 
-	resp := activityStreamResponse{Entries: groupActivityEntries(entries, labels, now)}
+	resp := activityStreamResponse{Entries: groupActivityEntries(displayEntries, labels, now)}
 
 	switch {
 	case len(entries) == 0:

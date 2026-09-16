@@ -58,10 +58,15 @@ every other project down to a single visible tab. Clicking a tab switches projec
 a page navigation. A staleness hint appears next to the tab bar when the cached attention
 data behind `attention_count` hasn't refreshed recently.
 
+A synthetic **System** tab (slug `system`) groups tasks and runs with no owning project —
+e.g. a `cloche run` invoked outside a registered project. It only appears once such a row
+actually exists, and has no orchestration loop of its own (the Loop instrument is disabled
+there).
+
 On the right, daemon instruments for the active project:
 
 - **Loop** — toggles the orchestration loop, showing "running"/"stopped" (`POST /trigger`
-  to start, `POST /loop/stop` to stop).
+  to start, `POST /loop/stop` to stop); disabled on the System tab, which has no loop.
 - **Slots** — busy/max concurrency slots plus how many tasks are waiting for a free slot
   (`GET /loop/occupancy`).
 - **Burn** — combined token burn rate across agents over the last hour (`GET /usage`).
@@ -290,6 +295,9 @@ The dashboard's JSON endpoints remain stable and are also used by the CLI
   (`attention_count`/`attention_computed_at`, read from the background attention cache —
   see `internal/attention.Cache` — rather than computed per request), and `loop_running`/
   `latest_run_at` (used by the tab bar's fold rule and the "/" landing-project fallback).
+  Also includes the synthetic `system` project (see Tab bar above) once any project-less
+  task or run exists; omitted otherwise, and always omitted when the request passes
+  `?project=`.
 - `GET /api/projects/{name}/attention` — the full "Needs you" item list for one project
   plus `computed_at`, from the same cache; `computed_at` is empty for a project that
   hasn't been refreshed yet.
@@ -325,8 +333,8 @@ The dashboard's JSON endpoints remain stable and are also used by the CLI
 - `GET /api/attempts/{id}/stream`, `GET /api/attempts/{id}/logs` — SSE streaming and
   paginated log lines across an attempt's host run and any spawned child runs.
 - `GET /api/activity` — the activity ticker/stream (see Foot bar above), filtered by
-  `?project=<slug>` (all projects when omitted) and `?failures_only=1`, paged via
-  `?before=<cursor>&limit=<n>`.
+  `?project=<slug>` (all projects when omitted; `system` for just the synthetic System
+  project) and `?failures_only=1`, paged via `?before=<cursor>&limit=<n>`.
 - `GET /api/projects/{name}/intent/...` — intent requirements, domains, and scan control.
 - `GET /api/projects/{name}/workflows`, `GET .../workflows/{workflow}/steps/{step}/content` —
   workflow structure and step content for the Workflows view's DAG and drawer.

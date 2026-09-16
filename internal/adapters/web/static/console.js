@@ -32,6 +32,10 @@
     // as current.
     var ATTENTION_STALE_MS = 60000;
     var LAST_PROJECT_STORAGE_KEY = 'cloche:lastProjectSlug';
+    // Matches web.SystemProjectSlug — the synthetic tab grouping tasks/runs
+    // with no owning project. It has no orchestration loop, so loop controls
+    // are disabled rather than wired up to start/stop.
+    var SYSTEM_PROJECT_SLUG = 'system';
 
     var state = {
         projects: [],
@@ -3876,6 +3880,8 @@
 
         state.loopRunning = !!(data.loop && data.loop.running);
 
+        var isSystemProject = state.activeSlug === SYSTEM_PROJECT_SLUG;
+
         var loopSpan = instrumentSpan('console-loop');
         loopSpan.appendChild(document.createTextNode('loop '));
         var loopBtn = document.createElement('button');
@@ -3883,8 +3889,13 @@
         loopBtn.id = 'console-loop-toggle';
         loopBtn.className = 'console-instrument-toggle' + (state.loopRunning ? ' on' : '');
         loopBtn.textContent = state.loopRunning ? 'running' : 'stopped';
-        loopBtn.title = state.loopRunning ? 'Stop loop' : 'Start loop';
-        loopBtn.addEventListener('click', toggleLoop);
+        if (isSystemProject) {
+            loopBtn.disabled = true;
+            loopBtn.title = 'No orchestration loop for the system project';
+        } else {
+            loopBtn.title = state.loopRunning ? 'Stop loop' : 'Start loop';
+            loopBtn.addEventListener('click', toggleLoop);
+        }
         loopSpan.appendChild(loopBtn);
         el.appendChild(loopSpan);
 

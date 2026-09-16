@@ -252,6 +252,7 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 		if err != nil {
 			return nil, fmt.Errorf("listing tasks: %w", err)
 		}
+		tasks = filterTasksByProjectDir(tasks, projectDir)
 		tasksByID = make(map[string]*domain.Task, len(tasks))
 		for _, t := range tasks {
 			tasksByID[t.ID] = t
@@ -312,7 +313,7 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 		if err != nil {
 			return nil, fmt.Errorf("listing %s runs: %w", state, err)
 		}
-		activeRuns = append(activeRuns, runs...)
+		activeRuns = append(activeRuns, filterRunsByProjectDir(runs, projectDir)...)
 	}
 
 	for _, group := range groupTopLevelRunsByTask(activeRuns) {

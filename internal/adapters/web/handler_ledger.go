@@ -158,6 +158,7 @@ func (h *Handler) handleAPILedger(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	tasks = filterTasksByProjectDir(tasks, dir)
 
 	resp.BackfillPending = h.ledgerBackfillPending(ctx, dir)
 
@@ -341,7 +342,12 @@ func buildLedgerPromptFiles(history *promptrev.HistoryCache, dir string, fileRev
 	var out []apiLedgerPromptFile
 	for _, file := range files {
 		revStats := fileRevStats[file]
-		commits := history.History(dir, file)
+		// The synthetic system project (dir "") has no git checkout to walk;
+		// its revisions surface as history-less orphans below instead.
+		var commits []promptrev.Commit
+		if dir != "" {
+			commits = history.History(dir, file)
+		}
 
 		var revisions []apiLedgerRevision
 		seen := map[string]bool{}
@@ -413,9 +419,13 @@ func (h *Handler) ledgerBackfillPending(ctx context.Context, dir string) bool {
 // store when a .cloche/intent/ directory exists.
 func buildLedgerRequirements(dir string, taskByID map[string]*domain.Task, reqToTasks, taskToReqs map[string]map[string]bool) ([]apiLedgerRequirement, []apiLedgerTaskRequirements) {
 	statements := map[string]string{}
-	if reqs, err := intent.NewStore(dir).ListRequirements(); err == nil {
-		for _, req := range reqs {
-			statements[req.ID] = req.Body
+	// The synthetic system project (dir "") has no .cloche/intent/ of its
+	// own to resolve requirement statements from.
+	if dir != "" {
+		if reqs, err := intent.NewStore(dir).ListRequirements(); err == nil {
+			for _, req := range reqs {
+				statements[req.ID] = req.Body
+			}
 		}
 	}
 

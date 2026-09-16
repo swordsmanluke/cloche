@@ -843,8 +843,7 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 		LoopRunning bool   `json:"loop_running"`
 		LatestRunAt string `json:"latest_run_at"`
 	}
-	result := make([]apiProject, len(projects))
-	for i, dir := range projects {
+	buildProject := func(dir, label, slug string, loopCapable bool) apiProject {
 		runs, _ := h.store.ListRecentRunsByProject(r.Context(), dir, healthWindowSize)
 		runValues := make([]domain.Run, len(runs))
 		for j, rr := range runs {
@@ -861,10 +860,10 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 		if h.attentionProvider != nil {
 			attentionSnap = h.attentionProvider.AttentionSnapshot(dir)
 		}
-		result[i] = apiProject{
+		return apiProject{
 			Dir:   dir,
-			Label: labels[dir],
-			Slug:  slugs[dir],
+			Label: label,
+			Slug:  slug,
 			Health: apiHealth{
 				Status: string(health.Status),
 				Passed: health.Passed,
@@ -874,8 +873,24 @@ func (h *Handler) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
 			ActiveCount:         activeCount,
 			AttentionCount:      len(attentionSnap.Items),
 			AttentionComputedAt: apiTimeString(attentionSnap.ComputedAt),
-			LoopRunning:         h.loopStatusFn != nil && h.loopStatusFn(dir),
+			LoopRunning:         loopCapable && h.loopStatusFn != nil && h.loopStatusFn(dir),
 			LatestRunAt:         apiTimeString(latestRunAt),
+		}
+	}
+
+	result := make([]apiProject, len(projects))
+	for i, dir := range projects {
+		result[i] = buildProject(dir, labels[dir], slugs[dir], true)
+	}
+
+	// The synthetic "system" project groups tasks/runs with no owning
+	// project (ProjectDir "") — see SystemProjectSlug. It only appears once
+	// such a row actually exists (checked via a single bounded read, not
+	// unconditionally) and is skipped when the caller asked for a specific
+	// registered project via ?project=.
+	if r.URL.Query().Get("project") == "" {
+		if systemRuns, _ := h.store.ListRecentRunsByProject(r.Context(), "", 1); len(systemRuns) > 0 {
+			result = append(result, buildProject("", SystemProjectLabel, SystemProjectSlug, false))
 		}
 	}
 
@@ -1757,14 +1772,26 @@ func parseFullLogLine(text string) logstream.LogLine {
 
 // --- Project detail handlers ---
 
+// SystemProjectSlug is the synthetic project tab that groups tasks and runs
+// with no owning project (ProjectDir "") — e.g. a `cloche run` invoked
+// outside a registered project, or historical rows that predate recording
+// the invoking directory. See resolveProjectDir and handleAPIProjects.
+const SystemProjectSlug = "system"
+
+// SystemProjectLabel is the display label for SystemProjectSlug.
+const SystemProjectLabel = "System"
+
 // resolveProjectDir resolves the {name} URL segment to a project directory.
 // It accepts, in order: the current URL-safe slug (see projectSlugs), the
 // literal project directory (so callers that already know the absolute path
 // — e.g. the CLI — can skip slug computation entirely and let the daemon map
-// it), and the pre-slug "parent/base" label format for one release, so old
-// bookmarks keep working. Returns (dir, slug, ok), where slug is always the
-// current canonical slug for dir, suitable for building further links.
-// Writes a JSON error response if not found.
+// it), the pre-slug "parent/base" label format for one release (so old
+// bookmarks keep working), and the synthetic SystemProjectSlug, which always
+// resolves to ProjectDir "" regardless of whether any project-less rows
+// currently exist (so a direct link never 404s out from under a client that
+// raced the tab bar's own visibility check). Returns (dir, slug, ok), where
+// slug is always the current canonical slug for dir, suitable for building
+// further links. Writes a JSON error response if not found.
 func (h *Handler) resolveProjectDir(w http.ResponseWriter, r *http.Request) (string, string, bool) {
 	name := r.PathValue("name")
 	projects, _ := h.store.ListProjects(r.Context())
@@ -1778,6 +1805,9 @@ func (h *Handler) resolveProjectDir(w http.ResponseWriter, r *http.Request) (str
 		if label == name {
 			return dir, slugs[dir], true
 		}
+	}
+	if name == SystemProjectSlug {
+		return "", SystemProjectSlug, true
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotFound)
@@ -1802,8 +1832,12 @@ func (h *Handler) handleConsoleShell(w http.ResponseWriter, r *http.Request) {
 // /{slug}[/{taskID}] URLs) and handleLegacyRoot (GET / picks a best-effort
 // landing project itself).
 func (h *Handler) renderConsoleShellForSlug(w http.ResponseWriter, dir, slug, taskID string) {
+	title := filepath.Base(dir)
+	if slug == SystemProjectSlug {
+		title = SystemProjectLabel
+	}
 	data := map[string]any{
-		"Title":       filepath.Base(dir),
+		"Title":       title,
 		"ProjectSlug": slug,
 		"TaskID":      taskID,
 	}
@@ -2179,6 +2213,13 @@ var promptFileRefRegex = regexp.MustCompile(`^file\("(.+)"\)$`)
 // file("..."), or "" if the workflow can't be found or has no such step
 // (e.g. its prompt is an inline string rather than a file reference).
 func resolvePromptFile(dir, workflowName string) string {
+	// The synthetic system project (dir "" — see SystemProjectSlug) has no
+	// .cloche/ of its own; lookupWorkflow resolves relative to dir, and
+	// joining onto "" would resolve relative to the daemon's own working
+	// directory instead of correctly finding nothing.
+	if dir == "" {
+		return ""
+	}
 	wf := lookupWorkflow(dir, workflowName)
 	if wf == nil {
 		return ""
@@ -2924,6 +2965,44 @@ func formatRunTimingAt(state domain.RunState, startedAt, completedAt, now time.T
 		ago := now.Sub(completedAt)
 		return formatSmartDuration(d) + ", " + roundRelativeTime(ago)
 	}
+}
+
+// filterRunsByProjectDir narrows runs to those whose ProjectDir is actually
+// dir. Several ports.RunStore queries (e.g. ListRunsFiltered) treat an empty
+// ProjectDir filter as "no filter" rather than a literal match — a
+// convention that predates the synthetic "system" project (dir == "", see
+// SystemProjectSlug) and can't change without breaking those queries'
+// existing callers. This re-narrows the result for the one dir value where
+// that convention now disagrees with what the caller actually wants: a
+// literal match on ProjectDir == "". A no-op for any other dir, since the
+// underlying query already scoped to it.
+func filterRunsByProjectDir(runs []*domain.Run, dir string) []*domain.Run {
+	if dir != "" {
+		return runs
+	}
+	filtered := make([]*domain.Run, 0, len(runs))
+	for _, r := range runs {
+		if r.ProjectDir == "" {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
+}
+
+// filterTasksByProjectDir is filterRunsByProjectDir's counterpart for
+// ports.TaskStore.ListTasks, which has the same "empty ProjectDir means
+// every project" convention.
+func filterTasksByProjectDir(tasks []*domain.Task, dir string) []*domain.Task {
+	if dir != "" {
+		return tasks
+	}
+	filtered := make([]*domain.Task, 0, len(tasks))
+	for _, t := range tasks {
+		if t.ProjectDir == "" {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered
 }
 
 // projectLabels builds a mapping from full project directory paths to

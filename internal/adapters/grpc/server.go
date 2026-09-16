@@ -3754,15 +3754,24 @@ func (s *ClocheServer) GetLoopTasks(projectDir string) []web.TaskEntry {
 // the web dashboard — which runs in-process with the daemon — can call it
 // directly rather than over gRPC.
 func (s *ClocheServer) AttentionItems(ctx context.Context, projectDir string) ([]attention.Item, error) {
-	cfg, err := config.Load(projectDir)
-	if err != nil {
-		cfg = &config.Config{}
-	}
-	def := attention.DefaultConfig()
-	aCfg := attention.Config{
-		RepeatFailureThreshold: cfg.Attention.RepeatFailureThreshold,
-		LongPollThreshold:      parseDurationOr(cfg.Attention.LongPollThreshold, def.LongPollThreshold),
-		BuiltinFailureWindow:   parseDurationOr(cfg.Attention.BuiltinFailureWindow, def.BuiltinFailureWindow),
+	aCfg := attention.DefaultConfig()
+
+	// The synthetic "system" project (projectDir "" — see
+	// web.SystemProjectSlug) groups tasks/runs with no owning project, so it
+	// has no .cloche/ of its own: config.Load and host.FindHostWorkflows
+	// resolve paths by joining onto projectDir, and joining onto "" would
+	// resolve relative to the daemon's own working directory instead of
+	// correctly finding nothing — skip both rather than risk picking up
+	// whatever project happens to be checked out there.
+	if projectDir != "" {
+		if cfg, err := config.Load(projectDir); err == nil {
+			def := attention.DefaultConfig()
+			aCfg = attention.Config{
+				RepeatFailureThreshold: cfg.Attention.RepeatFailureThreshold,
+				LongPollThreshold:      parseDurationOr(cfg.Attention.LongPollThreshold, def.LongPollThreshold),
+				BuiltinFailureWindow:   parseDurationOr(cfg.Attention.BuiltinFailureWindow, def.BuiltinFailureWindow),
+			}
+		}
 	}
 
 	deps := attention.Deps{RunStore: s.store, TaskStore: s.taskStore, Config: aCfg}
@@ -3775,12 +3784,14 @@ func (s *ClocheServer) AttentionItems(ctx context.Context, projectDir string) ([
 
 	// The tracker must be queried fresh (never via the loop's cached
 	// GetTaskSnapshot) so stale-claim/repeat-failure reflect live state.
-	if hostWFs, _ := host.FindHostWorkflows(projectDir); hostWFs != nil {
-		if _, hasListTasks := hostWFs["list-tasks"]; hasListTasks {
-			deps.Tasks = func(ctx context.Context, projDir string) ([]host.Task, error) {
-				runner := &host.Runner{Store: s.store}
-				tasks, _, err := host.RunListTasksWorkflow(ctx, runner, projDir)
-				return tasks, err
+	if projectDir != "" {
+		if hostWFs, _ := host.FindHostWorkflows(projectDir); hostWFs != nil {
+			if _, hasListTasks := hostWFs["list-tasks"]; hasListTasks {
+				deps.Tasks = func(ctx context.Context, projDir string) ([]host.Task, error) {
+					runner := &host.Runner{Store: s.store}
+					tasks, _, err := host.RunListTasksWorkflow(ctx, runner, projDir)
+					return tasks, err
+				}
 			}
 		}
 	}
@@ -3837,7 +3848,19 @@ func (s *ClocheServer) GetAttention(ctx context.Context, req *pb.GetAttentionReq
 // that don't need the cache).
 func (s *ClocheServer) StartAttentionCache(ctx context.Context, interval time.Duration, parallel int) {
 	s.attentionCache = attention.NewCache(s.AttentionItems, interval, parallel)
-	go s.attentionCache.Run(ctx, s.store.ListProjects)
+	go s.attentionCache.Run(ctx, s.listProjectsWithSystem)
+}
+
+// listProjectsWithSystem lists registered projects plus the synthetic
+// "system" project (projectDir "") that groups user-initiated tasks/runs
+// with no owning project — see web.SystemProjectSlug. Always appended
+// (even with no such rows currently) so the attention cache keeps it warm.
+func (s *ClocheServer) listProjectsWithSystem(ctx context.Context) ([]string, error) {
+	dirs, err := s.store.ListProjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return append(dirs, ""), nil
 }
 
 // AttentionSnapshot implements web.AttentionProvider: it reads the
@@ -3855,9 +3878,11 @@ func (s *ClocheServer) AttentionSnapshot(projectDir string) attention.Snapshot {
 // TriggerAttentionRefresh asynchronously recomputes projectDir's attention
 // set outside the timer — called after a run in that project reaches a
 // terminal state or a help thread changes, so the "Needs you" set doesn't
-// wait for the next tick. No-op if the cache hasn't been started.
+// wait for the next tick. projectDir "" refreshes the synthetic "system"
+// project (see web.SystemProjectSlug). No-op if the cache hasn't been
+// started.
 func (s *ClocheServer) TriggerAttentionRefresh(projectDir string) {
-	if s.attentionCache == nil || projectDir == "" {
+	if s.attentionCache == nil {
 		return
 	}
 	s.attentionCache.Refresh(projectDir)

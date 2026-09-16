@@ -251,7 +251,14 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	// workflowSpec is "workflow" or "workflow:step"; extract the workflow name for image lookup.
 	workflowName, _, _ := strings.Cut(workflowSpec, ":")
 
-	cwd, _ := os.Getwd()
+	// A run whose ProjectDir can't be determined lands in the daemon's
+	// "system" bucket (project_dir "") rather than under any project tab —
+	// fail loudly here instead of silently sending "".
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Resolve image from workflow file (soft failure — fall back to daemon default).
 	// Try loading from any .cloche file; only extract image for container workflows.
