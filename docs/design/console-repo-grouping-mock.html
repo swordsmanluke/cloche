@@ -1,0 +1,356 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Console: group tabs and stack by repository — mockups</title>
+<!--
+  Design-only mockups for cloche-eiil ("group project tabs and the task
+  stack by repository"). Reuses the tab bar / stack / row anatomy and the
+  CSS custom properties from internal/adapters/web/static/style.css :root,
+  in the same illustrative-content style as
+  docs/design/console-restructured-mock.html. Nothing here is implemented;
+  it's for human review of the three shapes below and a recommendation.
+
+  Project and repository names are real, taken from this machine's own
+  .cloche/config.toml [[repositories]] entries and docs/CHANGELOG-DETAILED.md
+  (repos/anarkana, repos/cloche). Task ids, titles, timings and counts are
+  illustrative — they show the width the real content needs, not the real
+  content.
+-->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; background: #0f1412; color: #d8ded9; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+.wrap { max-width: 1400px; margin: 0 auto; padding: 1rem; }
+.frame { border: 1px solid #26302b; border-radius: 10px; overflow: hidden; margin-bottom: .5rem; }
+.frame .bar { display: flex; align-items: center; gap: .6rem; padding: .45rem .9rem; border-bottom: 1px solid #26302b; background: #151b18; font-size: .78rem; color: #5f6b65; }
+.frame .bar .dots { display: inline-flex; gap: .3rem; }
+.frame .bar .dots i { width: 9px; height: 9px; border-radius: 50%; background: #26302b; display: inline-block; }
+.frame .bar .url { font-family: "IBM Plex Mono", monospace; margin-left: .4rem; }
+.frame .scroller { overflow-x: auto; }
+.vision .head { display: grid; gap: .8rem; margin-bottom: 1.5rem; }
+.vision .num { font-weight: 800; font-size: .85rem; letter-spacing: .1em; color: #4fb8ab; }
+.vision h2 { font-size: 1.6rem; margin: 0; }
+.vision h3.opt { font-size: 1.15rem; margin: 0 0 .2rem; color: #d8ded9; }
+.vision .thesis, .vision .question { color: #97a39c; max-width: 74ch; }
+.caption { font-size: .85rem; color: #5f6b65; margin-top: .6rem; max-width: 86ch; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.2rem 2rem; margin-top: 1.2rem; margin-bottom: 2.6rem; }
+.cols ul { padding-left: 1.1rem; font-size: .92rem; color: #97a39c; }
+.cols li { margin-bottom: .35rem; }
+.cols li b { color: #d8ded9; }
+.cols code { background: #151b18; border: 1px solid #26302b; border-radius: 3px; padding: .05rem .3rem; color: #d8ded9; font-size: .88em; }
+.opt-block { padding: 2rem 0; border-top: 1px solid #26302b; }
+.opt-block:first-of-type { border-top: none; }
+kbd { border: 1px solid #26302b; border-radius: 3px; padding: 0 .3rem; color: #97a39c; font-family: "IBM Plex Mono", monospace; font-size: .85em; }
+@keyframes rgpulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+
+/* ==================== base tab bar / stack, copied from console-restructured-mock.html (.m5), renamed .rg ==================== */
+.rg { --bg: #0f1412; --pnl: #151b18; --pnl2: #1b2320; --pnl3: #222b27; --ln: #26302b; --tx: #d8ded9; --tx2: #97a39c; --mu: #5f6b65; --ac: #e0a458; --acs: #3a2c16;
+      --run: #5aa9ff; --ok: #6fcf97; --bad: #ef7c72; --warn: #e0a458;
+      min-width: 1180px; background: var(--bg); color: var(--tx); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; line-height: 1.45; }
+.rg .tabs { display: flex; align-items: stretch; border-bottom: 1px solid var(--ln); background: var(--pnl); }
+.rg .tabs.wrap2 { flex-wrap: wrap; }
+.rg .brand { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: .95rem; color: var(--tx); padding: .5rem .9rem; border-right: 1px solid var(--ln); display: flex; align-items: center; }
+.rg .tab { display: flex; align-items: center; gap: .45rem; padding: .5rem .8rem; color: var(--tx2); border-right: 1px solid var(--ln); font-size: .74rem; white-space: nowrap; }
+.rg .tab.on { background: var(--bg); color: var(--tx); box-shadow: inset 0 2px 0 var(--ac); }
+.rg .tab .d { width: 7px; height: 7px; border-radius: 50%; }
+.rg .tab .n { color: var(--mu); font-size: .66rem; }
+.rg .d.g { background: var(--ok); } .rg .d.y { background: var(--warn); } .rg .d.r { background: var(--bad); } .rg .d.b { background: var(--run); } .rg .d.x { background: var(--ln); }
+.rg .hud { margin-left: auto; display: flex; gap: 1.2rem; align-items: center; padding: 0 .9rem; font-size: .7rem; color: var(--tx2); }
+.rg .hud b { color: var(--tx); font-weight: 500; font-variant-numeric: tabular-nums; }
+.rg .hud b.ac { color: var(--ac); } .rg .hud b.on { color: var(--ok); }
+.rg .body { display: grid; grid-template-columns: 300px 1fr; min-height: 360px; }
+.rg .stack { border-right: 1px solid var(--ln); background: var(--pnl); padding-bottom: .6rem; overflow: hidden; }
+.rg .stack .h { font-size: .62rem; color: var(--mu); letter-spacing: .08em; text-transform: uppercase; padding: .55rem .8rem .25rem; display: flex; justify-content: space-between; }
+.rg .stack .h.warn { color: var(--warn); }
+.rg .row { display: grid; grid-template-columns: 8px 1fr auto; gap: .5rem; align-items: start; padding: .3rem .8rem; cursor: pointer; border-left: 2px solid transparent; }
+.rg .row:hover { background: var(--pnl2); }
+.rg .row.on { background: var(--pnl2); border-left-color: var(--ac); }
+.rg .row .d { width: 7px; height: 7px; border-radius: 50%; margin-top: 4px; }
+.rg .row .d.run { animation: rgpulse 1.6s infinite; }
+.rg .row .id { color: var(--tx); font-size: .72rem; }
+.rg .row .t { color: var(--tx2); font-size: .66rem; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-family: "IBM Plex Sans", sans-serif; }
+.rg .row .e { color: var(--mu); font-size: .66rem; font-variant-numeric: tabular-nums; white-space: nowrap; padding-top: 1px; }
+.rg .main { display: flex; align-items: center; justify-content: center; color: var(--mu); font-size: .78rem; min-width: 0; }
+.rg .main .dh { display: flex; align-items: baseline; gap: 1rem; padding: .7rem 1.1rem; border-bottom: 1px solid var(--ln); width: 100%; }
+.rg .main .id { color: var(--tx); font-size: .82rem; }
+.rg .main .title { font-family: "IBM Plex Sans", sans-serif; color: var(--tx2); font-size: .78rem; }
+.rg .main .pill { font-size: .62rem; padding: .05rem .45rem; border-radius: 3px; letter-spacing: .04em; text-transform: uppercase; background: #1e3a5f; color: #93c5fd; }
+.rg .main .placeholder { padding: 2rem; }
+.rg .foot { display: flex; gap: 1rem; padding: .35rem 1.1rem; border-top: 1px solid var(--ln); background: var(--pnl); font-size: .64rem; color: var(--mu); align-items: center; }
+
+/* ==== option 1: nested repo sub-tab row beneath the project tab row ==== */
+.rg .subtabs { display: flex; align-items: stretch; border-bottom: 1px solid var(--ln); background: var(--pnl2); }
+.rg .subtabs .lbl { padding: .4rem .8rem; font-size: .62rem; color: var(--mu); letter-spacing: .06em; text-transform: uppercase; display: flex; align-items: center; border-right: 1px solid var(--ln); }
+.rg .subtab { padding: .4rem .75rem; font-size: .7rem; color: var(--tx2); border-right: 1px solid var(--ln); display: flex; align-items: center; gap: .4rem; }
+.rg .subtab.on { color: var(--tx); background: var(--pnl3); box-shadow: inset 0 2px 0 var(--ac); }
+.rg .subtab .n { color: var(--mu); font-size: .62rem; }
+
+/* ==== option 2: repo segments grouped inside one project tab, stack subdivided by repo headers ==== */
+.rg .tabgroup { display: flex; align-items: stretch; border-right: 1px solid var(--ln); }
+.rg .tabgroup .glabel { padding: .5rem .3rem .5rem .8rem; font-size: .74rem; color: var(--tx); display: flex; align-items: center; gap: .35rem; }
+.rg .gseg { padding: .5rem .55rem; font-size: .66rem; color: var(--tx2); border-left: 1px solid var(--ln); display: flex; align-items: center; gap: .3rem; }
+.rg .gseg.on { color: var(--tx); background: var(--pnl3); box-shadow: inset 0 2px 0 var(--ac); }
+.rg .gseg .n { color: var(--mu); font-size: .6rem; }
+.rg .repohead { font-size: .6rem; letter-spacing: .06em; text-transform: uppercase; color: var(--mu); padding: .3rem .8rem .1rem; margin-top: .15rem; display: flex; gap: .4rem; align-items: center; }
+.rg .repohead .ln { flex: 1; height: 1px; background: var(--ln); }
+
+/* ==== option 3: repo chip on each stack row, optional filter strip ==== */
+.rg .row .chip { font-size: .58rem; color: var(--tx2); border: 1px solid var(--ln); border-radius: 3px; padding: 0 .3rem; white-space: nowrap; align-self: start; margin-top: 1px; }
+.rg .repofilter { display: flex; gap: .3rem; padding: .45rem .8rem .3rem; flex-wrap: wrap; }
+.rg .repofilter span { font-size: .62rem; color: var(--tx2); border: 1px solid var(--ln); border-radius: 3px; padding: .05rem .45rem; }
+.rg .repofilter span.on { color: var(--tx); border-color: var(--ac); background: var(--acs); }
+
+/* ==== "problem today" flat stack ==== */
+.rg .row.mixed .id .repotag { color: var(--mu); font-size: .6rem; font-weight: normal; }
+</style>
+
+<section class="vision" id="repo-grouping">
+  <div class="head">
+    <span class="num">DESIGN ONLY — cloche-eiil</span>
+    <h2>Group project tabs and the task stack by repository</h2>
+    <p class="thesis">Some Cloche projects declare more than one <code>[[repositories]]</code> entry in <code>.cloche/config.toml</code> — an app repo plus a nested checkout, for example. Today the console's project tab bar and task stack are keyed only by project: tasks from every repo in that project land in the same flat stack, distinguishable only by reading the task title. This ticket proposes three shapes for separating them, each shown against real projects and repos from this machine: <b>manager</b> (repos <code>manager</code> + <code>repos/anarkana</code>) and <b>wrapped_cloche</b> (repos <code>wrapped_cloche</code> + <code>repos/cloche</code>). Legacy single-repo projects — <b>cloche</b>, <b>weave</b>, <b>job_huntr</b>, <b>candy</b> — must render exactly as they do today.</p>
+  </div>
+
+  <div class="frame">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">localhost:8080/manager</span></div>
+    <div class="scroller">
+    <div class="rg">
+      <div class="tabs">
+        <span class="brand">Cloche</span>
+        <span class="tab"><span class="d y"></span>cloche <span class="n">5 ▸ · 3 ⚑</span></span>
+        <span class="tab"><span class="d y"></span>weave <span class="n">1 ⚑</span></span>
+        <span class="tab"><span class="d y"></span>wrapped_cloche <span class="n">1 ⚑</span></span>
+        <span class="tab on"><span class="d g"></span>manager <span class="n">2 ▸</span></span>
+        <span class="tab"><span class="d y"></span>job_huntr</span>
+        <span class="tab"><span class="d r"></span>candy</span>
+        <div class="hud">
+          <span>loop <b class="on">running</b></span>
+          <span>slots <b>5/5</b> · queue <b>1</b></span>
+        </div>
+      </div>
+      <div class="body">
+        <div class="stack">
+          <div class="h warn"><span>Needs you</span><span>2</span></div>
+          <div class="row mixed"><span class="d y"></span><div><div class="id">manager-usjb <span class="repotag">· anarkana</span></div><div class="t">WS reconnect storm after daemon restart</div></div><span class="e warn">failed ×3</span></div>
+          <div class="row mixed"><span class="d y"></span><div><div class="id">manager-jf2q <span class="repotag">· manager</span></div><div class="t">Slot gauge shows stale count after project rename</div></div><span class="e warn">×2</span></div>
+          <div class="h"><span>Running</span><span>2</span></div>
+          <div class="row mixed on"><span class="d b run"></span><div><div class="id">manager-fnn6 <span class="repotag">· anarkana</span></div><div class="t">Port event bus to typed channels</div></div><span class="e">2m 04</span></div>
+          <div class="row mixed"><span class="d b run"></span><div><div class="id">manager-ccgl <span class="repotag">· manager</span></div><div class="t">Add per-repo occupancy to status page</div></div><span class="e">1m 25</span></div>
+          <div class="h"><span>Done today</span><span>3</span></div>
+          <div class="row mixed"><span class="d g"></span><div><div class="id">manager-7pf5 <span class="repotag">· manager</span></div><div class="t">Fix stale project cache after repo rename</div></div><span class="e">8m</span></div>
+          <div class="row mixed"><span class="d g"></span><div><div class="id">manager-hkhg <span class="repotag">· anarkana</span></div><div class="t">Bump go.mod to 1.24</div></div><span class="e">15m</span></div>
+          <div class="row mixed"><span class="d g"></span><div><div class="id">manager-3pos <span class="repotag">· manager</span></div><div class="t">Wire attention cache refresh interval to config</div></div><span class="e">21m</span></div>
+        </div>
+        <div class="main"><div class="placeholder">← select a task</div></div>
+      </div>
+    </div>
+    </div>
+  </div>
+  <p class="caption">The problem today: <b>manager</b> mixes tasks from its own repo and from <code>repos/anarkana</code> in one flat stack. The only clue is reading each task's title — nothing in the row structure says which repo it belongs to, and nothing in the tab bar hints that this project has more than one.</p>
+
+  <div class="opt-block" id="option-1">
+    <h3 class="opt">Option 1 — Nested tabs</h3>
+    <p class="thesis">A second tab row appears under the project row, but only for projects with more than one repository. It lists each configured repo plus an <b>all repos</b> pseudo-tab (the default, equivalent to today's merged view). Selecting a repo sub-tab scopes the stack to that repo only — the interleaving disappears rather than just being labelled.</p>
+    <div class="frame">
+      <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">localhost:8080/manager/anarkana</span></div>
+      <div class="scroller">
+      <div class="rg">
+        <div class="tabs">
+          <span class="brand">Cloche</span>
+          <span class="tab"><span class="d y"></span>cloche <span class="n">5 ▸ · 3 ⚑</span></span>
+          <span class="tab"><span class="d y"></span>weave <span class="n">1 ⚑</span></span>
+          <span class="tab"><span class="d y"></span>wrapped_cloche <span class="n">1 ⚑</span></span>
+          <span class="tab on"><span class="d g"></span>manager <span class="n">2 ▸</span></span>
+          <span class="tab"><span class="d y"></span>job_huntr</span>
+          <span class="tab"><span class="d r"></span>candy</span>
+          <div class="hud"><span>loop <b class="on">running</b></span><span>slots <b>5/5</b> · queue <b>1</b></span></div>
+        </div>
+        <div class="subtabs">
+          <span class="lbl">repo</span>
+          <span class="subtab">all repos <span class="n">2 ▸ · 2 ⚑</span></span>
+          <span class="subtab">manager <span class="n">1 ▸ · 1 ⚑</span></span>
+          <span class="subtab on">anarkana <span class="n">1 ▸ · 1 ⚑</span></span>
+        </div>
+        <div class="body">
+          <div class="stack">
+            <div class="h warn"><span>Needs you</span><span>1</span></div>
+            <div class="row"><span class="d y"></span><div><div class="id">manager-usjb</div><div class="t">WS reconnect storm after daemon restart</div></div><span class="e warn">failed ×3</span></div>
+            <div class="h"><span>Running</span><span>1</span></div>
+            <div class="row on"><span class="d b run"></span><div><div class="id">manager-fnn6</div><div class="t">Port event bus to typed channels</div></div><span class="e">2m 04</span></div>
+            <div class="h"><span>Done today</span><span>1</span></div>
+            <div class="row"><span class="d g"></span><div><div class="id">manager-hkhg</div><div class="t">Bump go.mod to 1.24</div></div><span class="e">15m</span></div>
+          </div>
+          <div class="main"><div class="placeholder">← select a task</div></div>
+        </div>
+      </div>
+      </div>
+    </div>
+    <p class="caption">Same shape applied to <b>wrapped_cloche</b>: sub-tabs read <code>all repos</code> · <code>wrapped_cloche</code> · <code>cloche</code>, URL <code>/wrapped_cloche/cloche</code>. Clicking a legacy project tab (<code>cloche</code>, <code>weave</code>, <code>job_huntr</code>, <code>candy</code>) shows <b>no</b> subtabs row at all — the body grid drops straight from the project tab row to the stack, identical to today's layout and height.</p>
+    <div class="cols">
+      <div>
+        <h3>Legacy rendering</h3>
+        <ul><li>No <code>[[repositories]]</code> configured (or exactly one, the auto-seeded implicit default) → the subtabs row is omitted entirely, not collapsed-empty. Zero added height, zero added markup.</li></ul>
+        <h3>Keyboard</h3>
+        <ul>
+          <li><kbd>tab</kbd> / <kbd>shift+tab</kbd> — cycle project tabs, unchanged.</li>
+          <li><kbd>r</kbd> / <kbd>shift+r</kbd> — cycle repo sub-tabs (no-op on legacy projects); <kbd>R</kbd> jumps straight to "all repos".</li>
+          <li><kbd>j</kbd> / <kbd>k</kbd> — move within the stack, unchanged; the stack itself is just shorter once scoped to one repo.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>URL scheme</h3>
+        <ul>
+          <li>Legacy: <code>/{project}/{task}</code>, unchanged.</li>
+          <li>Multi-repo: <code>/{project}/{repo}/{task}</code>; omitting <code>{repo}</code> is a synonym for <code>all</code> (today's behavior). <code>/manager</code> ≡ <code>/manager/all</code>.</li>
+          <li>Deep links to a single repo's stack (<code>/manager/anarkana</code>) are bookmarkable — the strongest fit for the ticket's "interleaved and indistinguishable" complaint, since scoping removes the interleaving instead of just labelling it.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>API additions</h3>
+        <ul>
+          <li>Projects list (tab bar): add <code>repositories: [{name, path}]</code> per project, sourced from <code>config.Repositories</code> / <code>resolvedRepo</code> (<code>internal/adapters/grpc/repos.go</code>) — needed to render the sub-tab row and its counts before any stack request.</li>
+          <li>Stack API: add a <code>repository</code> field to every stack entry (<code>TaskStackNeedsYou/Running/Queued/Done</code>, <code>internal/adapters/web/handler_task_stack.go</code>), matching <code>RepositoryConfig.Name</code>; legacy runs report an empty/omitted repo.</li>
+          <li>Stack endpoint needs a <code>?repo=</code> filter (or repo-scoped route) plus <b>per-repo</b> aggregate counts (needs-you/running/queued/done) for the sub-tab badges — a new small aggregation, not just a filter, since today's counts are computed project-wide.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="opt-block" id="option-2">
+    <h3 class="opt">Option 2 — Grouped tabs</h3>
+    <p class="thesis">The project tab row stays one row. For a multi-repo project, its tab expands into a small group: a project label followed by repo segments in the same connected-strip style already used for the step strip in <code>console-restructured-mock.html</code> (<code>.seg</code>). The stack stays merged (no scoping, no "all repos" toggle needed) but each state group (Needs you / Running / Queued / Done) is subdivided by a thin repo header.</p>
+    <div class="frame">
+      <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">localhost:8080/manager</span></div>
+      <div class="scroller">
+      <div class="rg">
+        <div class="tabs">
+          <span class="brand">Cloche</span>
+          <span class="tab"><span class="d y"></span>cloche <span class="n">5 ▸ · 3 ⚑</span></span>
+          <span class="tab"><span class="d y"></span>weave <span class="n">1 ⚑</span></span>
+          <span class="tab"><span class="d y"></span>wrapped_cloche <span class="n">1 ⚑</span></span>
+          <span class="tabgroup">
+            <span class="glabel"><span class="d g"></span>manager</span>
+            <span class="gseg on">manager <span class="n">1 ▸ · 1 ⚑</span></span>
+            <span class="gseg">anarkana <span class="n">1 ▸ · 1 ⚑</span></span>
+          </span>
+          <span class="tab"><span class="d y"></span>job_huntr</span>
+          <span class="tab"><span class="d r"></span>candy</span>
+          <div class="hud"><span>loop <b class="on">running</b></span><span>slots <b>5/5</b> · queue <b>1</b></span></div>
+        </div>
+        <div class="body">
+          <div class="stack">
+            <div class="h warn"><span>Needs you</span><span>2</span></div>
+            <div class="repohead">anarkana<span class="ln"></span></div>
+            <div class="row"><span class="d y"></span><div><div class="id">manager-usjb</div><div class="t">WS reconnect storm after daemon restart</div></div><span class="e warn">failed ×3</span></div>
+            <div class="repohead">manager<span class="ln"></span></div>
+            <div class="row"><span class="d y"></span><div><div class="id">manager-jf2q</div><div class="t">Slot gauge shows stale count after project rename</div></div><span class="e warn">×2</span></div>
+            <div class="h"><span>Running</span><span>2</span></div>
+            <div class="repohead">anarkana<span class="ln"></span></div>
+            <div class="row on"><span class="d b run"></span><div><div class="id">manager-fnn6</div><div class="t">Port event bus to typed channels</div></div><span class="e">2m 04</span></div>
+            <div class="repohead">manager<span class="ln"></span></div>
+            <div class="row"><span class="d b run"></span><div><div class="id">manager-ccgl</div><div class="t">Add per-repo occupancy to status page</div></div><span class="e">1m 25</span></div>
+          </div>
+          <div class="main"><div class="placeholder">← select a task</div></div>
+        </div>
+      </div>
+      </div>
+    </div>
+    <p class="caption">Clicking a segment (e.g. <code>anarkana</code>) filters the group headers shown, without leaving the project — URL becomes <code>/manager/anarkana</code>; clicking the project label or the other segment again clears the filter back to <code>/manager</code>. For <b>wrapped_cloche</b> the group reads <code>wrapped_cloche [ wrapped_cloche | cloche ]</code>. Legacy projects render as a plain <code>.tab</code>, exactly as before — no group wrapper, no segments, no repo headers in their stack.</p>
+    <div class="cols">
+      <div>
+        <h3>Legacy rendering</h3>
+        <ul><li>Single/no repo → plain <code>.tab</code>, and the stack's state groups have no <code>.repohead</code> rows — identical DOM shape to today.</li></ul>
+        <h3>Keyboard</h3>
+        <ul>
+          <li><kbd>tab</kbd> / <kbd>shift+tab</kbd> — cycle top-level project tabs/groups, unchanged.</li>
+          <li><kbd>→</kbd> / <kbd>←</kbd> — while a grouped tab has focus, step through its repo segments (filters group headers); no-op on plain tabs.</li>
+          <li><kbd>j</kbd> / <kbd>k</kbd> — move within the stack, unchanged; still crosses repo headers when unfiltered.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>URL scheme</h3>
+        <ul>
+          <li>Legacy: <code>/{project}/{task}</code>, unchanged.</li>
+          <li>Multi-repo, unfiltered: <code>/{project}/{task}</code> — same as legacy, since nothing is scoped by default.</li>
+          <li>Multi-repo, segment-filtered: <code>/{project}/{repo}/{task}</code>, same shape as Option 1's URL but semantically "filter the merged view" rather than "switch stack".</li>
+        </ul>
+      </div>
+      <div>
+        <h3>API additions</h3>
+        <ul>
+          <li>Same two additions as Option 1: <code>repositories</code> on the projects list, <code>repository</code> on each stack entry.</li>
+          <li>Per-repo aggregate counts for the segment badges (same new aggregation as Option 1).</li>
+          <li>Additionally: the stack response has to come back <b>already ordered/grouped by repo within each state</b> (or the client needs enough info — repo name is enough — to group client-side), which Option 1 and 3 don't require since they either scope server-side or don't group rows at all.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="opt-block" id="option-3">
+    <h3 class="opt">Option 3 — Repo as a stack facet</h3>
+    <p class="thesis">The project tab bar is untouched — no new row, no grouping, nothing to learn there. Each stack row gains a small repo chip next to its id. An optional filter strip of repo chips sits above the stack, shown only when the project has more than one repository, to collapse the list to one repo without leaving the page.</p>
+    <div class="frame">
+      <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">localhost:8080/manager</span></div>
+      <div class="scroller">
+      <div class="rg">
+        <div class="tabs">
+          <span class="brand">Cloche</span>
+          <span class="tab"><span class="d y"></span>cloche <span class="n">5 ▸ · 3 ⚑</span></span>
+          <span class="tab"><span class="d y"></span>weave <span class="n">1 ⚑</span></span>
+          <span class="tab"><span class="d y"></span>wrapped_cloche <span class="n">1 ⚑</span></span>
+          <span class="tab on"><span class="d g"></span>manager <span class="n">2 ▸</span></span>
+          <span class="tab"><span class="d y"></span>job_huntr</span>
+          <span class="tab"><span class="d r"></span>candy</span>
+          <div class="hud"><span>loop <b class="on">running</b></span><span>slots <b>5/5</b> · queue <b>1</b></span></div>
+        </div>
+        <div class="body">
+          <div class="stack">
+            <div class="repofilter"><span class="on">all</span><span>manager</span><span>anarkana</span></div>
+            <div class="h warn"><span>Needs you</span><span>2</span></div>
+            <div class="row"><span class="d y"></span><div><div class="id">manager-usjb</div><div class="t">WS reconnect storm after daemon restart</div></div><span class="chip">anarkana</span><span class="e warn">failed ×3</span></div>
+            <div class="row"><span class="d y"></span><div><div class="id">manager-jf2q</div><div class="t">Slot gauge shows stale count after project rename</div></div><span class="chip">manager</span><span class="e warn">×2</span></div>
+            <div class="h"><span>Running</span><span>2</span></div>
+            <div class="row on"><span class="d b run"></span><div><div class="id">manager-fnn6</div><div class="t">Port event bus to typed channels</div></div><span class="chip">anarkana</span><span class="e">2m 04</span></div>
+            <div class="row"><span class="d b run"></span><div><div class="id">manager-ccgl</div><div class="t">Add per-repo occupancy to status page</div></div><span class="chip">manager</span><span class="e">1m 25</span></div>
+          </div>
+          <div class="main"><div class="placeholder">← select a task</div></div>
+        </div>
+      </div>
+      </div>
+    </div>
+    <p class="caption">Same shape on <b>wrapped_cloche</b>: filter strip reads <code>all · wrapped_cloche · cloche</code>, rows carry a <code>cloche</code> or <code>wrapped_cloche</code> chip. Legacy projects show no filter strip and no chip column at all — the row grid stays <code>[dot | id/title | elapsed]</code>, byte-identical to today's markup.</p>
+    <div class="cols">
+      <div>
+        <h3>Legacy rendering</h3>
+        <ul><li>Single/no repo → the <code>.repofilter</code> strip and every row's <code>.chip</code> are omitted (not rendered empty). Cheapest of the three to keep legacy pixel-identical, since nothing about the tab row or the row grid changes shape.</li></ul>
+        <h3>Keyboard</h3>
+        <ul>
+          <li><kbd>tab</kbd>, <kbd>j</kbd>, <kbd>k</kbd> — entirely unchanged.</li>
+          <li><kbd>r</kbd> — cycle the repo filter chips (no-op on legacy projects); this is the only new binding.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>URL scheme</h3>
+        <ul>
+          <li><code>/{project}/{task}</code> everywhere, legacy and multi-repo alike — repo is an attribute of a task, not a scoping segment, and task ids are already unique within a project.</li>
+          <li>Filter state is a query param, <code>/{project}?repo=anarkana</code>, so it's shareable but optional — the canonical task URL never changes shape.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>API additions</h3>
+        <ul>
+          <li>Only one: <code>repository</code> on each stack entry (same field as the other two options). No new aggregation endpoint — the filter strip can be built client-side from the repo names already present on stack rows, and per-repo counts are a client-side <code>reduce</code> over what's already fetched.</li>
+          <li>Projects list API can stay as-is; the tab bar doesn't need to know about repos at all.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="opt-block" id="recommendation">
+    <h3 class="opt">Recommendation: Option 1 — Nested tabs</h3>
+    <p class="thesis">The ticket's complaint is that tasks from different repos are "interleaved and indistinguishable." A chip (Option 3) fixes <i>indistinguishable</i> cheaply but leaves the interleaving in place — you still scan past the other repo's rows to find what you want, just with a label to explain why they're there. Nested tabs (Option 1) fixes both: selecting a repo sub-tab removes the other repo's rows from the stack entirely, and "all repos" is still one click away for anyone who wants the merged view. It also produces the cleanest bookmarkable URL (<code>/manager/anarkana</code>) for the case this ticket is really about — sitting in one repo's context for a stretch of work.</p>
+    <p class="thesis">Option 2 (grouped tabs) is a reasonable middle ground visually — it reuses the existing segmented-strip language from the step strip — but it's the most expensive to build (server-side grouping inside each state bucket, not just a filter) for a benefit (seeing both repos "at once, organized") that's mostly already available from Option 1's "all repos" tab.</p>
+    <p class="thesis"><b>Rollout note:</b> all three options need the same first increment — a <code>repository</code> field on stack entries and <code>repositories</code> on the projects list — so Option 3's chip could ship first as the cheap, low-risk increment, with Option 1's scoped sub-tabs layered on top of the same data once it's proven out. They are not mutually exclusive: Option 1 could keep the chip in the "all repos" view for the same reason Option 3 has it.</p>
+  </div>
+
+  <p class="foot">Project and repo names (manager / repos/anarkana, wrapped_cloche / repos/cloche, cloche, weave, job_huntr, candy) are real, drawn from this machine's project registry and docs/CHANGELOG-DETAILED.md. Task ids, titles, elapsed times and counts are illustrative.</p>
+</section>
