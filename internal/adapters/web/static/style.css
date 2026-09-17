@@ -1527,8 +1527,8 @@ h2 {
     border: 1px solid var(--ln);
     border-radius: var(--radius);
     padding: 1.25rem;
-    width: min(720px, 90vw);
-    height: min(560px, 80vh);
+    width: calc(100vw - 2.5rem);
+    height: calc(100vh - 2.5rem);
     display: flex;
     flex-direction: column;
 }
@@ -1590,8 +1590,8 @@ h2 {
     border: 1px solid var(--ln);
     border-radius: var(--radius);
     padding: 1.25rem;
-    width: min(900px, 92vw);
-    height: min(720px, 85vh);
+    width: calc(100vw - 2.5rem);
+    height: calc(100vh - 2.5rem);
     display: flex;
     flex-direction: column;
 }
@@ -1681,22 +1681,26 @@ h2 {
     inset: 0;
     background: rgba(0, 0, 0, 0.6);
     display: flex;
-    align-items: stretch;
+    align-items: center;
     justify-content: center;
     z-index: 40;
-    padding: 2.5rem;
 }
 
 .console-view-panel {
     background: var(--bg);
     border: 1px solid var(--ln);
     border-radius: var(--radius);
-    width: 100%;
-    max-width: 1100px;
-    max-height: 100%;
+    width: calc(100vw - 2.5rem);
+    height: calc(100vh - 2.5rem);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+}
+
+@media (min-width: 1024px) {
+    .console-activity-panel,
+    .console-ledger-panel,
+    .console-view-panel { width: calc(100vw - 4rem); height: calc(100vh - 4rem); }
 }
 
 .console-view-topbar {
@@ -1734,6 +1738,5 @@ h2 {
 }
 
 @media (max-width: 768px) {
-    .console-view-overlay { padding: 0; }
-    .console-view-panel { max-width: none; border-radius: 0; }
+    .console-view-panel { width: 100vw; height: 100vh; border-radius: 0; }
 }

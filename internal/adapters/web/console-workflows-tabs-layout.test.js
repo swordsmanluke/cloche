@@ -193,3 +193,50 @@ test('workflows view: tab bars scroll on their own, the DAG panel does not move 
         await browser.close();
     }
 });
+
+// The secondary-view panel (Workflows/Requirements/Containers) must scale
+// with the viewport instead of stopping at a fixed max-width (it used to cap
+// out at 1100px, wasting most of a wide screen). At >=1024px the CSS gutter
+// (static/style.css .console-view-panel, >=1024px media query) is 2rem per
+// side, so the panel should track `100vw - 4rem` at any width above that
+// breakpoint, with the same gutter at both a laptop-ish and an ultrawide size.
+test('workflows view: panel width tracks the viewport minus a constant gutter', async function () {
+    const browser = await firefox.launch({ headless: true });
+    try {
+        const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+        await mockBackend(page);
+        await page.goto('http://cloche.test/' + PROJECT_SLUG + '/' + TASK_ID);
+
+        await page.click('#console-views-btn');
+        await page.click('#console-view-workflows-btn');
+        await page.waitForSelector('#workflow-tabs .tab-btn');
+
+        const panel = page.locator('#console-view-overlay .console-view-panel');
+
+        async function gutterAt(width, height) {
+            await page.setViewportSize({ width: width, height: height });
+            const box = await panel.boundingBox();
+            return { left: box.x, right: width - (box.x + box.width), width: box.width };
+        }
+
+        const narrow = await gutterAt(1280, 900);
+        const wide = await gutterAt(2560, 1440);
+
+        // 2rem (32px at the default 16px root) on each side, i.e. 4rem total.
+        assert.ok(Math.abs(narrow.width - (1280 - 64)) < 1,
+            'panel width at 1280px viewport should be ~100vw - 4rem, got ' + narrow.width);
+        assert.ok(Math.abs(wide.width - (2560 - 64)) < 1,
+            'panel width at 2560px viewport should be ~100vw - 4rem, got ' + wide.width);
+
+        // The gutter itself (not just the panel's absolute width) must stay
+        // constant as the viewport grows — this is what distinguishes
+        // viewport-relative sizing from the old 1100px max-width cap, which
+        // would have made the gutter balloon on a wide screen instead.
+        assert.ok(Math.abs(narrow.left - wide.left) < 1,
+            'left gutter should be constant across viewport widths (1280px: ' + narrow.left + ', 2560px: ' + wide.left + ')');
+        assert.ok(Math.abs(narrow.right - wide.right) < 1,
+            'right gutter should be constant across viewport widths (1280px: ' + narrow.right + ', 2560px: ' + wide.right + ')');
+    } finally {
+        await browser.close();
+    }
+});
