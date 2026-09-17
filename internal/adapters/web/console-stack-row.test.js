@@ -57,6 +57,10 @@ async function bootConsole(stack) {
         { url: 'http://localhost/myproj', runScripts: 'outside-only' }
     );
     const { window } = dom;
+    // jsdom doesn't implement scrollIntoView, called whenever a stack row is
+    // selected (applySelectionHighlight) — stub it so selecting/clicking a
+    // row doesn't throw.
+    window.HTMLElement.prototype.scrollIntoView = function () {};
     window.fetch = makeStubFetch(stack);
     window.eval(CONSOLE_TABS_SRC);
     window.eval(CONSOLE_JS_SRC);
@@ -146,6 +150,7 @@ async function bootConsoleWithProject(project, stack) {
         { url: 'http://localhost/' + project.slug, runScripts: 'outside-only' }
     );
     const { window } = dom;
+    window.HTMLElement.prototype.scrollIntoView = function () {};
     window.fetch = function (url) {
         if (url === '/api/projects') return jsonResponse([project]);
         if (/\/tasks\/stack(\?|$)/.test(url)) return jsonResponse(stack, { ETag: 'W/"stack-1"' });
@@ -304,10 +309,10 @@ function groupSection(window, label) {
     return header && header.closest('.console-stack-group');
 }
 
-test('empty Needs you / Running / Queued groups are omitted; Done always stays, dash and all', async () => {
+test('empty Needs you / Queued groups are omitted; Running and Done always stay, dash and all', async () => {
     let stack = {
         needs_you: [],
-        running: [{ task_id: 'cloche-fnn6', title: 'hidden acceptance corpus', run_id: 'r1', attempt: 1, elapsed_seconds: 10 }],
+        running: [],
         queued: [],
         done: []
     };
@@ -316,7 +321,111 @@ test('empty Needs you / Running / Queued groups are omitted; Done always stays, 
         { url: 'http://localhost/myproj', runScripts: 'outside-only' }
     );
     const { window } = dom;
+    window.HTMLElement.prototype.scrollIntoView = function () {};
     const timers = installStackPollShim(window);
+    window.fetch = function (url) {
+        if (url === '/api/projects') return jsonResponse([]);
+        if (/\/tasks\/stack(\?|$)/.test(url)) return jsonResponse(stack, { ETag: 'W/"stack-1"' });
+        return jsonResponse({});
+    };
+    window.eval(CONSOLE_TABS_SRC);
+    window.eval(CONSOLE_JS_SRC);
+
+    // Wait for the real render (which has a .console-stack-group-count
+    // element) rather than the loading skeleton (which doesn't), since an
+    // all-empty stack never produces a .console-stack-row to key off of.
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+        if (window.document.querySelector('.console-stack-group-count')) break;
+        await delay(20);
+    }
+
+    try {
+        assert.equal(groupSection(window, 'Needs you').hidden, true, 'empty Needs you group is omitted');
+        assert.equal(groupSection(window, 'Queued').hidden, true, 'empty Queued group is omitted');
+
+        var runningSection = groupSection(window, 'Running');
+        assert.equal(runningSection.hidden, false, 'Running always stays visible, even when empty');
+        assert.ok(runningSection.querySelector('.console-stack-empty'), 'empty Running still shows its dash placeholder');
+        assert.equal(runningSection.querySelector('.console-stack-group-count').textContent, '0', 'empty Running count reads 0, not blank');
+
+        var doneSection = groupSection(window, 'Done');
+        assert.equal(doneSection.hidden, false, 'Done always stays visible, even when empty');
+        assert.ok(doneSection.querySelector('.console-stack-empty'), 'empty Done still shows its dash placeholder');
+        assert.equal(groupSection(window, 'Needs you').querySelector('.console-stack-empty'), null, 'omitted groups do not render a dash placeholder');
+
+        // Simulate the next 4s poll finding a Needs-you row and a Running one.
+        stack = {
+            needs_you: [{ task_id: 'cloche-usjb', title: 'bonsai executor wrapper', reason: 'failed ×3' }],
+            running: [{ task_id: 'cloche-fnn6', title: 'hidden acceptance corpus', run_id: 'r1', attempt: 1, elapsed_seconds: 10 }],
+            queued: [],
+            done: []
+        };
+        assert.ok(timers[4000], 'stack poll interval was registered');
+        timers[4000]();
+
+        const reappearDeadline = Date.now() + 2000;
+        while (Date.now() < reappearDeadline) {
+            if (groupSection(window, 'Needs you').hidden === false) break;
+            await delay(20);
+        }
+
+        assert.equal(groupSection(window, 'Needs you').hidden, false, 'Needs you reappears as soon as it has rows');
+        assert.equal(groupSection(window, 'Running').hidden, false, 'Running stays visible with rows too');
+
+        // Losing its only row again should not make Running disappear.
+        stack = { needs_you: [], running: [], queued: [], done: [] };
+        timers[4000]();
+        const emptyAgainDeadline = Date.now() + 2000;
+        while (Date.now() < emptyAgainDeadline) {
+            if (groupSection(window, 'Needs you').hidden === true) break;
+            await delay(20);
+        }
+        assert.equal(groupSection(window, 'Running').hidden, false, 'Running stays visible even after emptying out again');
+        assert.equal(groupSection(window, 'Needs you').hidden, true, 'Needs you is omitted again once it empties out');
+    } finally {
+        window.close();
+    }
+});
+
+test('Done toggle: clicking the header collapses the body while the header and count stay visible', async () => {
+    const window = await bootConsole({
+        needs_you: [], running: [], queued: [],
+        done: [{ task_id: 'cloche-7pf5', title: 'recover missing result marker', run_id: 'r3', outcome: 'succeeded', duration_seconds: 480 }]
+    });
+    try {
+        const doneSection = groupSection(window, 'Done');
+        const header = doneSection.querySelector('.console-stack-group-title');
+        assert.equal(header.getAttribute('aria-expanded'), 'true', 'Done starts expanded by default');
+        assert.equal(doneSection.classList.contains('console-stack-group-collapsed'), false);
+
+        header.dispatchEvent(new window.Event('click', { bubbles: true }));
+
+        assert.equal(doneSection.classList.contains('console-stack-group-collapsed'), true, 'clicking the header collapses the body');
+        assert.equal(header.getAttribute('aria-expanded'), 'false');
+        assert.equal(doneSection.hidden, false, 'the header row stays visible when collapsed');
+        assert.equal(header.querySelector('.console-stack-group-count').textContent, '1', 'the count stays visible when collapsed');
+
+        header.dispatchEvent(new window.Event('click', { bubbles: true }));
+        assert.equal(doneSection.classList.contains('console-stack-group-collapsed'), false, 'clicking again re-expands');
+        assert.equal(header.getAttribute('aria-expanded'), 'true');
+    } finally {
+        window.close();
+    }
+});
+
+test('Done toggle: collapsed state persists to localStorage and survives a poll re-render', async () => {
+    const dom = new JSDOM(
+        '<!DOCTYPE html><html><body>' + consoleContentMarkup('myproj') + '</body></html>',
+        { url: 'http://localhost/myproj', runScripts: 'outside-only' }
+    );
+    const { window } = dom;
+    window.HTMLElement.prototype.scrollIntoView = function () {};
+    const timers = installStackPollShim(window);
+    const stack = {
+        needs_you: [], running: [], queued: [],
+        done: [{ task_id: 'cloche-7pf5', title: 'task', run_id: 'r3', outcome: 'succeeded', duration_seconds: 480 }]
+    };
     window.fetch = function (url) {
         if (url === '/api/projects') return jsonResponse([]);
         if (/\/tasks\/stack(\?|$)/.test(url)) return jsonResponse(stack, { ETag: 'W/"stack-1"' });
@@ -332,33 +441,98 @@ test('empty Needs you / Running / Queued groups are omitted; Done always stays, 
     }
 
     try {
-        assert.equal(groupSection(window, 'Needs you').hidden, true, 'empty Needs you group is omitted');
-        assert.equal(groupSection(window, 'Queued').hidden, true, 'empty Queued group is omitted');
-        assert.equal(groupSection(window, 'Running').hidden, false, 'non-empty Running group stays visible');
+        const doneSection = groupSection(window, 'Done');
+        const header = doneSection.querySelector('.console-stack-group-title');
+        header.dispatchEvent(new window.Event('click', { bubbles: true }));
+        assert.equal(window.localStorage.getItem('console.stack.done.collapsed'), '1', 'collapse persists to localStorage');
 
-        var doneSection = groupSection(window, 'Done');
-        assert.equal(doneSection.hidden, false, 'Done always stays visible, even when empty');
-        assert.ok(doneSection.querySelector('.console-stack-empty'), 'empty Done still shows its dash placeholder');
-        assert.equal(groupSection(window, 'Needs you').querySelector('.console-stack-empty'), null, 'omitted groups do not render a dash placeholder');
-
-        // Simulate the next 4s poll finding a Needs-you row and losing its Running one.
-        stack = {
-            needs_you: [{ task_id: 'cloche-usjb', title: 'bonsai executor wrapper', reason: 'failed ×3' }],
-            running: [],
-            queued: [],
-            done: []
-        };
+        // A poll re-render must not rebuild the section (which would lose
+        // the collapsed class) nor flip it back to expanded.
         assert.ok(timers[4000], 'stack poll interval was registered');
         timers[4000]();
+        await delay(50);
 
-        const reappearDeadline = Date.now() + 2000;
-        while (Date.now() < reappearDeadline) {
-            if (groupSection(window, 'Needs you').hidden === false) break;
-            await delay(20);
-        }
+        assert.equal(groupSection(window, 'Done').classList.contains('console-stack-group-collapsed'), true, 'collapsed state survives a poll re-render');
+    } finally {
+        window.close();
+    }
+});
 
-        assert.equal(groupSection(window, 'Needs you').hidden, false, 'Needs you reappears as soon as it has rows');
-        assert.equal(groupSection(window, 'Running').hidden, true, 'Running is omitted again once it empties out');
+test('Done toggle: falls back to expanded when localStorage throws on read or write', async () => {
+    const window = await bootConsole({
+        needs_you: [], running: [], queued: [],
+        done: [{ task_id: 'cloche-7pf5', title: 'task', run_id: 'r3', outcome: 'succeeded', duration_seconds: 480 }]
+    });
+    try {
+        const throwingStorage = {
+            getItem: () => { throw new Error('storage disabled'); },
+            setItem: () => { throw new Error('storage disabled'); }
+        };
+        Object.defineProperty(window, 'localStorage', { value: throwingStorage, configurable: true });
+
+        const doneSection = groupSection(window, 'Done');
+        const header = doneSection.querySelector('.console-stack-group-title');
+
+        assert.doesNotThrow(function () {
+            header.dispatchEvent(new window.Event('click', { bubbles: true }));
+        }, 'a throwing localStorage.setItem must not break the toggle');
+
+        assert.equal(doneSection.classList.contains('console-stack-group-collapsed'), true, 'the toggle still applies in memory even when persistence fails');
+    } finally {
+        window.close();
+    }
+});
+
+test('j/k skip the rows of a collapsed Done group, and selection moves off a Done row when it collapses', async () => {
+    const window = await bootConsole({
+        needs_you: [], running: [], queued: [],
+        done: [
+            { task_id: 'task-a', title: 'task a', run_id: 'run-a', outcome: 'succeeded', duration_seconds: 10 },
+            { task_id: 'task-b', title: 'task b', run_id: 'run-b', outcome: 'succeeded', duration_seconds: 20 }
+        ]
+    });
+    try {
+        const rows = window.document.querySelectorAll('.console-stack-row');
+        rows[0].click();
+        assert.ok(rows[0].classList.contains('console-stack-row-selected'), 'first Done row is selected');
+        // Opening a row kicks off an attempts-list fetch (renderCentrePane ->
+        // loadAttempts); let it settle before the window closes below, or its
+        // .then callback fires against an already-torn-down document.
+        await delay(50);
+
+        const header = groupSection(window, 'Done').querySelector('.console-stack-group-title');
+        header.dispatchEvent(new window.Event('click', { bubbles: true }));
+
+        assert.equal(rows[0].classList.contains('console-stack-row-selected'), false, 'selection moves off a Done row once its group collapses');
+
+        // With nothing else in the stack, j/k must not throw and must leave
+        // no row selected — there is nothing else to navigate to.
+        window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'j', bubbles: true }));
+        window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'k', bubbles: true }));
+        assert.equal(window.document.querySelectorAll('.console-stack-row-selected').length, 0, 'j/k do not select a collapsed row');
+    } finally {
+        window.close();
+    }
+});
+
+test('opening a Done task by URL expands a collapsed Done group', async () => {
+    const window = await bootConsole({
+        needs_you: [], running: [], queued: [],
+        done: [{ task_id: 'cloche-7pf5', title: 'recover missing result marker', run_id: 'r3', outcome: 'succeeded', duration_seconds: 480 }]
+    });
+    try {
+        const doneSection = groupSection(window, 'Done');
+        const header = doneSection.querySelector('.console-stack-group-title');
+        header.dispatchEvent(new window.Event('click', { bubbles: true }));
+        assert.equal(doneSection.classList.contains('console-stack-group-collapsed'), true, 'Done starts collapsed for this test');
+
+        window.history.pushState({}, '', '/myproj/cloche-7pf5');
+        window.dispatchEvent(new window.PopStateEvent('popstate'));
+        await delay(50);
+
+        assert.equal(groupSection(window, 'Done').classList.contains('console-stack-group-collapsed'), false, 'opening a Done task by URL expands the group');
+        const row = window.document.querySelector('.console-stack-row[data-key="done:cloche-7pf5"]');
+        assert.ok(row.classList.contains('console-stack-row-selected'), 'the opened Done row is selected once expanded');
     } finally {
         window.close();
     }

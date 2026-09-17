@@ -842,6 +842,22 @@ h2 {
 
 .console-stack-group-count { color: var(--mu); font-weight: 400; }
 
+.console-stack-group-title-toggle { cursor: pointer; user-select: none; }
+
+.console-stack-group-caret {
+    display: inline-block;
+    margin-left: 0.35rem;
+    font-size: 0.7em;
+    color: var(--mu);
+    transition: transform 0.1s ease;
+}
+
+.console-stack-group-caret::before { content: '▾'; }
+
+.console-stack-group-title-toggle[aria-expanded="false"] .console-stack-group-caret { transform: rotate(-90deg); }
+
+.console-stack-group-collapsed .console-stack-list { display: none; }
+
 .console-stack-list { display: flex; flex-direction: column; gap: var(--d-row-gap); }
 
 .console-stack-row {

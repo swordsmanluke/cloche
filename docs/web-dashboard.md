@@ -91,14 +91,22 @@ in the foot bar instead (see Foot bar).
 
 The left rail groups the active project's tasks — **Needs you**, **Running**, **Queued**,
 **Done** (with a **Load earlier** button paging further into history) — from
-`GET /api/projects/{slug}/tasks/stack`. **Needs you**, **Running**, and **Queued** are
-omitted entirely when empty, reappearing on the next poll as soon as they have rows;
-**Done** always stays visible, with a dash placeholder when empty, since it's the
-paginated group users expect to keep finding in the same place. Done has no age cutoff —
-it shows every completed task, newest first, a page (default 25, max 100 via `page_size`)
-at a time — and its opaque `cursor` is stable across requests, keyed on completion time
-plus task ID so entries with the same completion timestamp neither repeat nor drop across
-pages.
+`GET /api/projects/{slug}/tasks/stack`. **Needs you** and **Queued** are omitted
+entirely when empty, reappearing on the next poll as soon as they have rows.
+**Running** and **Done** always stay visible, with a dash placeholder when empty
+and a count of `0` in the header — Running as the always-on "nothing running"
+signal, Done since it's the paginated group users expect to keep finding in the
+same place. Done has no age cutoff — it shows every completed task, newest
+first, a page (default 25, max 100 via `page_size`) at a time — and its opaque
+`cursor` is stable across requests, keyed on completion time plus task ID so
+entries with the same completion timestamp neither repeat nor drop across pages.
+
+Clicking the **Done** header (or pressing Enter/Space on it) collapses its rows,
+leaving the header and count visible; the caret rotates to show state. The
+collapsed state persists to `localStorage` (falling back to expanded if storage
+throws) and survives poll re-renders. Collapsed Done rows drop out of `j`/`k`
+navigation order, and selection moves off a Done row if its group collapses
+while selected; opening a Done task directly by URL re-expands the group.
 
 A run waiting at a `poll` step (state `waiting`) stays in **Running** rather than getting
 a group of its own — its row's step label reads `waiting · poll <step> · last poll <n>

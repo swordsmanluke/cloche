@@ -54,6 +54,7 @@
         rowEls: {},            // key -> row element
         rowOrder: [],          // ordered list of keys, document order
         selectedIndex: -1,
+        doneCollapsed: loadStoredDoneCollapsed(),
         loopRunning: false,
         stackTimer: null,
         instrumentsTimer: null,
@@ -346,6 +347,26 @@
     applyDensity(loadStoredDensity());
     var densityToggleBtn = document.getElementById('console-density-toggle');
     if (densityToggleBtn) densityToggleBtn.addEventListener('click', toggleDensity);
+
+    // ---------- done-group collapse ----------
+
+    // Persists whether the Done stack group is collapsed, mirroring the
+    // density storage pattern above (try/catch around every read and write,
+    // since localStorage can throw). Defaults to expanded.
+    var DONE_COLLAPSED_STORAGE_KEY = 'console.stack.done.collapsed';
+
+    function loadStoredDoneCollapsed() {
+        try {
+            return localStorage.getItem(DONE_COLLAPSED_STORAGE_KEY) === '1';
+        } catch (e) { /* storage unavailable (private mode, disabled, etc.) */ }
+        return false;
+    }
+
+    function saveDoneCollapsed(value) {
+        try {
+            localStorage.setItem(DONE_COLLAPSED_STORAGE_KEY, value ? '1' : '0');
+        } catch (e) { /* storage unavailable (private mode, disabled, etc.) */ }
+    }
 
     // ---------- project selection ----------
 
@@ -648,11 +669,34 @@
                 h.className = 'console-stack-group-title' + (g.key === 'needs_you' ? ' console-stack-group-title-warn' : '');
                 var titleWrap = document.createElement('span');
                 titleWrap.appendChild(document.createTextNode(g.label));
+                if (g.key === 'done') {
+                    var caret = document.createElement('span');
+                    caret.className = 'console-stack-group-caret';
+                    caret.setAttribute('aria-hidden', 'true');
+                    titleWrap.appendChild(caret);
+                }
                 h.appendChild(titleWrap);
                 var count = document.createElement('span');
                 count.className = 'console-stack-group-count';
                 h.appendChild(count);
                 section.appendChild(h);
+
+                // Only Done collapses — Needs you / Running / Queued stay
+                // plain headers (Needs you / Queued disappear entirely when
+                // empty anyway; Running is the always-visible activity
+                // signal and isn't meant to be hidden by the user).
+                if (g.key === 'done') {
+                    h.classList.add('console-stack-group-title-toggle');
+                    h.setAttribute('role', 'button');
+                    h.setAttribute('tabindex', '0');
+                    h.addEventListener('click', toggleDoneCollapsed);
+                    h.addEventListener('keydown', function (e) {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            toggleDoneCollapsed();
+                            e.preventDefault();
+                        }
+                    });
+                }
 
                 var list = document.createElement('div');
                 list.className = 'console-stack-list';
@@ -674,19 +718,54 @@
 
         GROUPS.forEach(function (g) { diffGroup(g.key, stack[g.field] || []); });
 
-        var earlierBtn2 = document.getElementById('console-load-earlier');
-        if (earlierBtn2) earlierBtn2.hidden = !stack.cursor;
+        applyDoneCollapsedUI();
 
         renderSubtabs();
         rebuildFlatIndex();
         applySelectionHighlight();
     }
 
+    // applyDoneCollapsedUI syncs the Done section's collapsed class, its
+    // header's aria-expanded, and the "Load earlier" button's visibility
+    // with state.doneCollapsed. Called on every render (poll included) —
+    // it only ever toggles classes/attributes on the existing section, so
+    // it never rebuilds the DOM and so never disturbs the collapsed state
+    // a poll would otherwise stomp on.
+    function applyDoneCollapsedUI() {
+        var list = document.getElementById('console-stack-list-done');
+        var section = list && list.parentElement;
+        if (section) {
+            section.classList.toggle('console-stack-group-collapsed', state.doneCollapsed);
+            var header = section.querySelector('.console-stack-group-title');
+            if (header) header.setAttribute('aria-expanded', String(!state.doneCollapsed));
+        }
+        var earlierBtn = document.getElementById('console-load-earlier');
+        if (earlierBtn) earlierBtn.hidden = state.doneCollapsed || !state.doneCursor;
+    }
+
+    function setDoneCollapsed(collapsed) {
+        if (state.doneCollapsed === collapsed) return;
+        state.doneCollapsed = collapsed;
+        saveDoneCollapsed(collapsed);
+        applyDoneCollapsedUI();
+        rebuildFlatIndex();
+        applySelectionHighlight();
+    }
+
+    function toggleDoneCollapsed() {
+        setDoneCollapsed(!state.doneCollapsed);
+    }
+
     function diffGroup(groupKey, entries) {
         var list = document.getElementById('console-stack-list-' + groupKey);
         var section = list.parentElement;
         var countEl = section.querySelector('.console-stack-group-count');
-        countEl.textContent = entries.length ? String(entries.length) : '';
+        // Needs you / Queued disappear entirely when empty, so their count
+        // never needs to read "0" — but Running and Done stay in the stack
+        // even with no rows, and an empty header with a blank count would
+        // read as broken rather than "genuinely zero".
+        var alwaysShown = groupKey === 'running' || groupKey === 'done';
+        countEl.textContent = entries.length ? String(entries.length) : (alwaysShown ? '0' : '');
 
         var seen = {};
         var prevKeys = Object.keys(state.rowEls).filter(function (k) {
@@ -714,12 +793,13 @@
             }
         });
 
-        // Needs you / Running / Queued disappear entirely when empty, rather
-        // than showing a header over a dash placeholder — they reappear on
-        // the next poll (STACK_POLL_MS) as soon as they have rows. Done
-        // always stays visible, dash and all, since it's the paginated
-        // group users expect to keep finding in the same place.
-        var alwaysShown = groupKey === 'done';
+        // Needs you / Queued disappear entirely when empty, rather than
+        // showing a header over a dash placeholder — they reappear on the
+        // next poll (STACK_POLL_MS) as soon as they have rows. Running
+        // always stays visible (dash and all) so an idle system reads as
+        // "nothing running" rather than as a missing section; Done always
+        // stays visible too, since it's the paginated group users expect
+        // to keep finding in the same place.
         section.hidden = !alwaysShown && entries.length === 0;
 
         var empty = list.querySelector('.console-stack-empty');
@@ -851,17 +931,29 @@
     function rebuildFlatIndex() {
         var order = [];
         GROUPS.forEach(function (g) {
+            // A collapsed Done group's rows stay in the DOM (so re-expanding
+            // is instant) but drop out of the j/k navigation order.
+            if (g.key === 'done' && state.doneCollapsed) return;
             var list = document.getElementById('console-stack-list-' + g.key);
             Array.prototype.forEach.call(list.children, function (el) {
                 if (el.classList.contains('console-stack-row')) order.push(el.dataset.key);
             });
         });
-        // Preserve the current selection's identity across a re-render.
+        // Preserve the current selection's identity across a re-render. If
+        // the selected row just dropped out of the order (e.g. its group
+        // collapsed), move to the nearest remaining row instead of leaving
+        // a stale index, or clear the selection if nothing is left.
         var selectedKey = state.rowOrder[state.selectedIndex];
         state.rowOrder = order;
         if (selectedKey) {
             var idx = order.indexOf(selectedKey);
-            if (idx !== -1) state.selectedIndex = idx;
+            if (idx !== -1) {
+                state.selectedIndex = idx;
+            } else if (order.length) {
+                state.selectedIndex = Math.min(state.selectedIndex, order.length - 1);
+            } else {
+                state.selectedIndex = -1;
+            }
         }
     }
 
@@ -927,6 +1019,7 @@
             });
         });
         if (found) {
+            if (foundGroup === 'done' && state.doneCollapsed) setDoneCollapsed(false);
             var idx = state.rowOrder.indexOf(rowKey(foundGroup, found));
             setSelectedIndex(idx);
             renderCentrePane(found, foundGroup);
