@@ -301,6 +301,51 @@
     });
     document.addEventListener('click', closeIdleMenu);
 
+    // ---------- density ----------
+
+    // Persists the compact/comfortable choice across sessions (see
+    // toggleDensity and the 'd' key binding below); every read and write is
+    // wrapped since localStorage can throw (private browsing, disabled
+    // storage) rather than just being absent. Falls back to 'comfortable'
+    // whenever storage is unavailable or holds something unexpected.
+    var DENSITY_STORAGE_KEY = 'cloche:density';
+
+    function loadStoredDensity() {
+        try {
+            var v = localStorage.getItem(DENSITY_STORAGE_KEY);
+            if (v === 'comfortable' || v === 'compact') return v;
+        } catch (e) { /* storage unavailable (private mode, disabled, etc.) */ }
+        return 'comfortable';
+    }
+
+    function saveDensity(value) {
+        try {
+            localStorage.setItem(DENSITY_STORAGE_KEY, value);
+        } catch (e) { /* storage unavailable (private mode, disabled, etc.) */ }
+    }
+
+    // applyDensity only ever sets the data-density attribute and the
+    // toggle button's own label/state — every visual difference between
+    // the two modes lives in CSS tokens (see style.css), not here.
+    function applyDensity(value) {
+        root.setAttribute('data-density', value);
+        var btn = document.getElementById('console-density-toggle');
+        if (btn) {
+            btn.textContent = value === 'compact' ? 'Compact' : 'Comfortable';
+            btn.setAttribute('aria-pressed', String(value === 'compact'));
+        }
+    }
+
+    function toggleDensity() {
+        var next = root.getAttribute('data-density') === 'compact' ? 'comfortable' : 'compact';
+        applyDensity(next);
+        saveDensity(next);
+    }
+
+    applyDensity(loadStoredDensity());
+    var densityToggleBtn = document.getElementById('console-density-toggle');
+    if (densityToggleBtn) densityToggleBtn.addEventListener('click', toggleDensity);
+
     // ---------- project selection ----------
 
     // Persists the last project the user viewed so a bare "/" visit can land
@@ -998,6 +1043,10 @@
                 break;
             case 'l':
                 toggleLedger(true);
+                e.preventDefault();
+                break;
+            case 'd':
+                toggleDensity();
                 e.preventDefault();
                 break;
             case '?':

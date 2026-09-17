@@ -103,6 +103,7 @@ async function bootConsole(opts) {
     installFakeEventSource(window);
     installTestShims(window);
     window.fetch = makeStubFetch(opts.stack, opts.attemptsByTask || {}, opts.runsById || {}, opts.activityEntries);
+    if (opts.beforeScripts) opts.beforeScripts(window);
     window.eval(CONSOLE_TABS_SRC);
     window.eval(CONSOLE_JS_SRC);
 
@@ -155,6 +156,10 @@ async function waitFor(predicate) {
 
 function dispatchKey(window, key) {
     window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: key, bubbles: true, cancelable: true }));
+}
+
+function densityAttr(window) {
+    return window.document.getElementById('console-app').getAttribute('data-density');
 }
 
 function selectedStepName(window) {
@@ -323,6 +328,62 @@ test('foot ticker: packs recent entries newest-first, separated by " · ", faile
         const bad = ticker.querySelector('.console-ticker-frag-bad');
         assert.ok(bad, 'the failed entry is wrapped in a --bad fragment span');
         assert.match(bad.textContent, /intent-scan failed/);
+    } finally {
+        window.close();
+    }
+});
+
+test('density toggle: defaults to comfortable, and the footer button / "d" key flip and persist data-density', async () => {
+    const window = await bootConsole({ stack: { needs_you: [], running: [], queued: [], done: [] } });
+    try {
+        assert.equal(densityAttr(window), 'comfortable');
+        const btn = window.document.getElementById('console-density-toggle');
+        assert.ok(btn, 'footer exposes a density toggle button next to the key hints');
+        assert.equal(btn.textContent, 'Comfortable');
+
+        btn.dispatchEvent(new window.Event('click', { bubbles: true }));
+        assert.equal(densityAttr(window), 'compact');
+        assert.equal(btn.textContent, 'Compact');
+        assert.equal(window.localStorage.getItem('cloche:density'), 'compact');
+
+        dispatchKey(window, 'd');
+        assert.equal(densityAttr(window), 'comfortable');
+        assert.equal(btn.textContent, 'Comfortable');
+        assert.equal(window.localStorage.getItem('cloche:density'), 'comfortable');
+    } finally {
+        window.close();
+    }
+});
+
+test('density toggle: a stored "compact" choice is restored on boot', async () => {
+    const window = await bootConsole({
+        stack: { needs_you: [], running: [], queued: [], done: [] },
+        beforeScripts: (win) => { win.localStorage.setItem('cloche:density', 'compact'); }
+    });
+    try {
+        assert.equal(densityAttr(window), 'compact');
+        assert.equal(window.document.getElementById('console-density-toggle').textContent, 'Compact');
+    } finally {
+        window.close();
+    }
+});
+
+test('density toggle: falls back to comfortable, and keeps working, when localStorage is unavailable', async () => {
+    const window = await bootConsole({
+        stack: { needs_you: [], running: [], queued: [], done: [] },
+        beforeScripts: (win) => {
+            // Some environments (private browsing, storage disabled) throw
+            // just touching window.localStorage, not only on get/setItem.
+            Object.defineProperty(win, 'localStorage', {
+                get() { throw new Error('storage disabled'); }
+            });
+        }
+    });
+    try {
+        assert.equal(densityAttr(window), 'comfortable');
+        const btn = window.document.getElementById('console-density-toggle');
+        assert.doesNotThrow(() => btn.dispatchEvent(new window.Event('click', { bubbles: true })));
+        assert.equal(densityAttr(window), 'compact');
     } finally {
         window.close();
     }

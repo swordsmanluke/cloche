@@ -496,10 +496,28 @@ h2 {
 
 /* ===== Console shell ===== */
 
+/* Density tokens — #console-app's data-density attribute (toggled via the
+   footer button / 'd' key, see console.js) selects between these two token
+   sets; comfortable is the default, compact reproduces the console's
+   original, tighter spacing. Only these custom properties differ between
+   modes — every rule below just consumes them, so no renderer branches on
+   density. */
 .console-app {
     display: flex;
     flex-direction: column;
     height: 100vh;
+
+    --d-fs-base: 14px;
+    --d-row-pad: 0.45rem 0.5rem;
+    --d-row-gap: 6px;
+
+    font-size: var(--d-fs-base);
+}
+
+.console-app[data-density="compact"] {
+    --d-fs-base: 12px;
+    --d-row-pad: 0.3rem 0.5rem;
+    --d-row-gap: 0;
 }
 
 .console-tabbar {
@@ -791,7 +809,7 @@ h2 {
 
 .console-stack-group-count { color: var(--mu); font-weight: 400; }
 
-.console-stack-list { display: flex; flex-direction: column; gap: 6px; }
+.console-stack-list { display: flex; flex-direction: column; gap: var(--d-row-gap); }
 
 .console-stack-row {
     display: grid;
@@ -800,7 +818,7 @@ h2 {
     align-items: start;
     width: 100%;
     text-align: left;
-    padding: 0.45rem 0.5rem;
+    padding: var(--d-row-pad);
     border: none;
     border-left: 2px solid transparent;
     border-radius: var(--radius);
@@ -1375,6 +1393,20 @@ h2 {
     color: var(--tx2);
     font-family: var(--mono);
 }
+
+.console-density-toggle {
+    flex: 0 0 auto;
+    background: transparent;
+    border: 1px solid var(--ln);
+    border-radius: 3px;
+    padding: 0.1em 0.5em;
+    color: var(--tx2);
+    font: inherit;
+    font-size: var(--fs-xs);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.console-density-toggle:hover { color: var(--tx); background: var(--pnl2); }
 
 .console-ticker {
     flex: 1 1 auto;

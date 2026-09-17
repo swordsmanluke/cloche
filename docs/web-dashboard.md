@@ -221,6 +221,7 @@ once the project list loads if that preference is empty or stale.
 | `w` | Open the Workflows view |
 | `i` | Open the Requirements view |
 | `c` | Open the Containers view, or toggle the needs-you compare view / single-attempt log when one is open |
+| `d` | Toggle compact / comfortable density |
 | `?` | Toggle the keyboard shortcuts overlay |
 
 ### Foot bar
@@ -233,6 +234,12 @@ shortcut (the full list stays behind `?`). A running task shows `j`/`k`, `[`/`]`
 attempt, and whichever of `r`/`x` its attention item actually offers; anything else falls
 back to a short baseline. `g`/`G` and the log type filter live in the log bar instead,
 since they act on the log pane, not the task.
+
+A **density** toggle button sits at the right of the foot bar, next to the key hints,
+switching the console between "Comfortable" (default) and "Compact" spacing/font size —
+also bound to the `d` key. The choice persists across sessions in `localStorage`
+(`cloche:density`), falling back to Comfortable whenever storage is unavailable (e.g.
+private browsing).
 
 The ticker packs as many of the most recent `activity_log` events for the active project
 as fit on the line (newest first, polled from `GET /api/activity` every 5s), each prefixed
