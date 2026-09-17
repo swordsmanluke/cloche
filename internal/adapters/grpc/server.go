@@ -383,6 +383,7 @@ func (s *ClocheServer) AgentSession(stream pb.ClocheService_AgentSessionServer) 
 							Type:      "llm",
 							Content:   sl.Line,
 							StepName:  sl.StepName,
+							RunID:     rid,
 						})
 					}
 				}
@@ -456,6 +457,7 @@ func (s *ClocheServer) recordStepStart(ctx context.Context, runID, stepName stri
 			Type:      "status",
 			Content:   "step_started: " + stepName,
 			StepName:  stepName,
+			RunID:     runID,
 		})
 	}
 }
@@ -549,6 +551,7 @@ func (s *ClocheServer) recordStepComplete(ctx context.Context, runID, stepName s
 			Type:      "status",
 			Content:   statusMsg,
 			StepName:  stepName,
+			RunID:     runID,
 		})
 	}
 }
@@ -1797,6 +1800,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 					Type:      "llm",
 					Content:   msg.Message,
 					StepName:  msg.StepName,
+					RunID:     runID,
 				})
 			}
 		case protocol.MsgRunTitle:
@@ -4918,6 +4922,7 @@ func (s *ClocheServer) publishHelpEvent(projectDir, runID, taskID, attemptID, st
 			Type:      "status",
 			Content:   logLine,
 			StepName:  stepName,
+			RunID:     runID,
 		})
 	}
 	if logger := s.activityLoggerFor(projectDir); logger != nil {

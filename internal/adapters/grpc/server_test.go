@@ -4728,9 +4728,61 @@ func TestAgentSession_StepLogBroadcasts(t *testing.T) {
 	for _, l := range lines {
 		if l.Type == "llm" && strings.Contains(l.Content, "compiling...") {
 			found = true
+			assert.Equal(t, "run-log-1", l.RunID, "published line should carry the run id it belongs to")
 		}
 	}
 	assert.True(t, found, "StepLog should be published to broadcaster")
+}
+
+func TestAgentSession_StepStatusBroadcastsCarryRunID(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+
+	run := domain.NewRun("run-status-1", "develop")
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	broadcaster := logstream.NewBroadcaster()
+	sub := broadcaster.Subscribe("run-status-1")
+
+	rt := &fakeDockerRuntime{}
+	pool := newFakePoolWithRuntime(rt)
+	srv := server.NewClocheServerWithCaptures(store, store, rt.asContainerRuntime(), "")
+	srv.SetContainerPool(pool)
+	srv.SetLogBroadcaster(broadcaster)
+	srv.RegisterContainerRun("ctr-status-1", "run-status-1")
+
+	stream := newFakeAgentStream(ctx)
+	stream.push(&pb.AgentMessage{Payload: &pb.AgentMessage_Ready{Ready: &pb.AgentReady{RunId: "ctr-status-1"}}})
+	stream.push(&pb.AgentMessage{Payload: &pb.AgentMessage_StepStarted{StepStarted: &pb.StepStarted{RequestId: "req-1", StepName: "build"}}})
+	stream.push(&pb.AgentMessage{Payload: &pb.AgentMessage_StepResult{StepResult: &pb.StepResult{RequestId: "req-1", Result: "success"}}})
+	stream.close()
+
+	err = srv.AgentSession(stream)
+	require.NoError(t, err)
+
+	broadcaster.Finish("run-status-1")
+	var lines []logstream.LogLine
+	for line := range sub.C {
+		lines = append(lines, line)
+	}
+
+	var foundStarted, foundCompleted bool
+	for _, l := range lines {
+		if strings.Contains(l.Content, "step_started: build") {
+			foundStarted = true
+			assert.Equal(t, "run-status-1", l.RunID)
+		}
+		if strings.Contains(l.Content, "step_completed: build") {
+			foundCompleted = true
+			assert.Equal(t, "run-status-1", l.RunID)
+		}
+	}
+	assert.True(t, foundStarted, "should broadcast step_started with run id")
+	assert.True(t, foundCompleted, "should broadcast step_completed with run id")
 }
 
 func TestAgentSession_DisconnectFailsInFlightSteps(t *testing.T) {

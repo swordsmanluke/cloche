@@ -919,6 +919,7 @@ func (h *hostStatusHandler) OnStepStart(_ *domain.Run, step *domain.Step) {
 			Type:      "status",
 			Content:   "step_started: " + step.Name,
 			StepName:  step.Name,
+			RunID:     h.orchRunID,
 		})
 	}
 	if h.activityLog != nil {
@@ -1002,6 +1003,7 @@ func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, res
 				Type:      "script",
 				Content:   stepOutput,
 				StepName:  step.Name,
+				RunID:     h.orchRunID,
 			})
 		}
 		h.logBroadcast.Publish(h.orchRunID, logstream.LogLine{
@@ -1009,6 +1011,7 @@ func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, res
 			Type:      "status",
 			Content:   "step_completed: " + step.Name + " -> " + result,
 			StepName:  step.Name,
+			RunID:     h.orchRunID,
 		})
 	}
 }
@@ -1050,6 +1053,7 @@ func (h *hostStatusHandler) OnStepSkipped(_ *domain.Run, step *domain.Step, wire
 			Type:      "status",
 			Content:   "step_skipped: " + step.Name + " -> " + wire,
 			StepName:  step.Name,
+			RunID:     h.orchRunID,
 		})
 	}
 }

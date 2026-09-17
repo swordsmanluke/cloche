@@ -7,9 +7,17 @@ import (
 // LogLine is a single log entry broadcast to subscribers.
 type LogLine struct {
 	Timestamp string `json:"timestamp"`
-	Type      string `json:"type"`               // "status", "script", "llm"
+	Type      string `json:"type"`                // "status", "script", "llm"
 	Content   string `json:"content"`             // the log message
 	StepName  string `json:"step_name,omitempty"` // originating step
+	// RunID identifies which run published this line. Populated for
+	// live-broadcast lines (see Broadcaster.Publish callers); empty for
+	// lines reconstructed from an archived full.log, whose text format
+	// doesn't carry run identity. Needed to disambiguate a step name that's
+	// shared between a host run and a container run it dispatched, and to
+	// let the web console filter a scoped step's lines out of an attempt's
+	// fanned-in stream (see internal/adapters/web/static/console.js).
+	RunID string `json:"run_id,omitempty"`
 }
 
 // Subscriber receives log lines via a channel.

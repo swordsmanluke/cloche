@@ -1593,7 +1593,8 @@
             attemptIndex: -1,
             run: null,
             scopedStep: null,
-            stepLines: [],
+            scopeArchiveLines: [],   // backfill from /output when the stream has no history for the scope
+            scopeArchiveState: 'none', // 'none' | 'loading' | 'done'
             allLines: [],
             logKind: 'attempt', // 'attempt' | 'run' — which /api/{kind}s/{id}/stream to use
             logId: '',
@@ -1710,7 +1711,8 @@
         if (!detail) return;
         detail.attemptIndex = index;
         detail.scopedStep = null;
-        detail.stepLines = [];
+        detail.scopeArchiveLines = [];
+        detail.scopeArchiveState = 'none';
         stopDetailPoll();
 
         var attempt = detail.attempts[index];
@@ -1764,6 +1766,13 @@
         } else {
             hideThreadPanel();
         }
+        // A poll can change what the current scope means — a workflow step
+        // whose child run just appeared should start including its lines,
+        // and a step that just finished with nothing in the stream flips
+        // the placeholder from "waiting" to "no output" (see
+        // scopePlaceholderText) — re-render so that doesn't wait on the
+        // next streamed line.
+        if (detail.scopedStep) renderLogLines();
         manageDetailPoll(run);
     }
 
@@ -2478,8 +2487,12 @@
     function scopeToStep(step) {
         if (!detail) return;
         detail.scopedStep = { run_id: step.run_id, step_name: step.step_name };
+        detail.scopeArchiveLines = [];
+        detail.scopeArchiveState = 'none';
         if (detail.run) renderStepStrip(detail.run);
-        loadStepOutput();
+        updateLogScopeIndicator();
+        renderLogLines();
+        maybeFetchScopeArchive();
     }
 
     // switchStep moves the scoped step by delta through the flattened step
@@ -2509,37 +2522,134 @@
     function clearStepScope() {
         if (!detail) return;
         detail.scopedStep = null;
-        detail.stepLines = [];
+        detail.scopeArchiveLines = [];
+        detail.scopeArchiveState = 'none';
         if (detail.run) renderStepStrip(detail.run);
         updateLogScopeIndicator();
         renderLogLines();
     }
 
-    function loadStepOutput() {
+    // scopeStepIndex finds the flat-step-list index (see flattenRun on the
+    // server) of a (run_id, step_name) pair, or -1 if it isn't in the
+    // current step strip yet.
+    function scopeStepIndex(steps, runId, stepName) {
+        for (var i = 0; i < steps.length; i++) {
+            if (steps[i].run_id === runId && steps[i].step_name === stepName) return i;
+        }
+        return -1;
+    }
+
+    // scopeStepAt returns the step-strip entry a scope points at, or null.
+    function scopeStepAt(scope) {
+        var steps = (detail.run && detail.run.steps) || [];
+        var idx = scopeStepIndex(steps, scope.run_id, scope.step_name);
+        return idx === -1 ? null : steps[idx];
+    }
+
+    // scopeChildRunIDs returns the set of run ids spawned by the workflow
+    // step at idx, keyed by run id. Descendant steps of a workflow step are
+    // always contiguous immediately after it in the flattened list at
+    // depth > its own depth (see flattenRun's doc comment on the server),
+    // so a single forward scan suffices regardless of nesting depth.
+    function scopeChildRunIDs(steps, idx) {
+        var ids = {};
+        if (idx === -1 || !steps[idx].is_workflow) return ids;
+        var baseDepth = steps[idx].depth;
+        for (var i = idx + 1; i < steps.length; i++) {
+            if (steps[i].depth <= baseDepth) break;
+            ids[steps[i].run_id] = true;
+        }
+        return ids;
+    }
+
+    // buildScopeFilter returns a predicate matching the lines that belong
+    // to a scoped step: its own (run_id, step_name) exactly, plus — when
+    // the step spawned a child run (a workflow step like "develop") —
+    // every line published under that child run's id, regardless of which
+    // of its steps (implement/verify/test/...) produced it. This is what
+    // makes scoping a filter over the live stream rather than a fetch: see
+    // scopedLines.
+    function buildScopeFilter(scope) {
+        var steps = (detail.run && detail.run.steps) || [];
+        var idx = scopeStepIndex(steps, scope.run_id, scope.step_name);
+        var childRunIDs = scopeChildRunIDs(steps, idx);
+        return function (line) {
+            if (line.run_id === scope.run_id && line.step_name === scope.step_name) return true;
+            return !!childRunIDs[line.run_id];
+        };
+    }
+
+    // isWorkflowScope reports whether the current scope points at a
+    // workflow step (one that spawned/will spawn a child run), so callers
+    // can decide whether multiple distinct step names may legitimately
+    // appear together in the filtered output (see buildLogLineEl).
+    function isWorkflowScope() {
+        if (!detail.scopedStep) return false;
+        var step = scopeStepAt(detail.scopedStep);
+        return !!step && !!step.is_workflow;
+    }
+
+    // scopedLines returns the lines to render for the current scope: the
+    // live stream (detail.allLines) filtered by buildScopeFilter, with any
+    // archived backfill (see maybeFetchScopeArchive) merged ahead of it.
+    // The archive is never a substitute for the stream — once fetched it
+    // stays merged in while further matching lines keep appending live.
+    function scopedLines() {
+        if (!detail.scopedStep) return detail.allLines;
+        var matched = (detail.allLines || []).filter(buildScopeFilter(detail.scopedStep));
+        var archive = detail.scopeArchiveLines || [];
+        return archive.length ? archive.concat(matched) : matched;
+    }
+
+    // maybeFetchScopeArchive backfills a scoped step's output from the
+    // archived /output endpoint, but only when the live stream has no
+    // lines for it yet — e.g. a completed step whose broadcast history was
+    // already cleared, or a step reconnected to after a page reload. A
+    // step that already has matching lines streaming in never triggers a
+    // fetch. Safe to call repeatedly: it's a no-op once a fetch for the
+    // current scope is in flight or has resolved (see scopeArchiveState).
+    function maybeFetchScopeArchive() {
         if (!detail || !detail.scopedStep) return;
         var scope = detail.scopedStep;
+        var matched = (detail.allLines || []).filter(buildScopeFilter(scope));
+        if (matched.length > 0) return;
+        if (detail.scopeArchiveState !== 'none') return;
+        detail.scopeArchiveState = 'loading';
+
         var url = '/api/runs/' + encodeURIComponent(scope.run_id) + '/steps/' + encodeURIComponent(scope.step_name) + '/output';
         if (detail.logTypeFilter === 'llm' || detail.logTypeFilter === 'script') {
             url += '?type=' + detail.logTypeFilter;
         }
-        detail.stepLines = [];
-        updateLogScopeIndicator();
-        renderLogLines();
+        var stillScoped = function () {
+            return detail && detail.scopedStep && detail.scopedStep.run_id === scope.run_id && detail.scopedStep.step_name === scope.step_name;
+        };
         fetch(url)
             .then(function (r) { return r.ok ? r.text() : Promise.reject(); })
             .then(function (text) {
-                if (!detail || !detail.scopedStep || detail.scopedStep.run_id !== scope.run_id || detail.scopedStep.step_name !== scope.step_name) return;
+                if (!stillScoped()) return;
                 var lineType = detail.logTypeFilter === 'all' ? 'script' : detail.logTypeFilter;
-                detail.stepLines = text.split('\n').filter(function (l) { return l.length > 0; }).map(function (l) {
-                    return { timestamp: '', type: lineType, step_name: scope.step_name, content: l };
+                detail.scopeArchiveLines = text.split('\n').filter(function (l) { return l.length > 0; }).map(function (l) {
+                    return { timestamp: '', type: lineType, run_id: scope.run_id, step_name: scope.step_name, content: l };
                 });
+                detail.scopeArchiveState = 'done';
                 renderLogLines();
             })
             .catch(function () {
-                if (!detail || !detail.scopedStep) return;
-                detail.stepLines = [{ timestamp: '', type: 'status', step_name: scope.step_name, content: 'No output available for this step.' }];
+                if (!stillScoped()) return;
+                detail.scopeArchiveState = 'done';
                 renderLogLines();
             });
+    }
+
+    // scopePlaceholderText decides which message to show when a scope has
+    // no lines at all yet (see renderLogLines): a running step just hasn't
+    // produced output yet and will update live, while a finished step with
+    // nothing in the stream or the archive genuinely has no output.
+    function scopePlaceholderText() {
+        if (detail.scopeArchiveState === 'loading') return 'Waiting for output…';
+        var step = scopeStepAt(detail.scopedStep);
+        var finished = !!(step && step.result);
+        return finished ? 'No output available for this step.' : 'Waiting for output…';
     }
 
     // ---------- centre pane: parked thread panel ----------
@@ -2856,7 +2966,13 @@
                     c.classList.toggle('is-active', c === chip);
                 });
                 if (detail.scopedStep) {
-                    loadStepOutput();
+                    // The archive's line type depends on the ?type= query
+                    // param it was fetched with, so a filter change needs a
+                    // fresh backfill — see maybeFetchScopeArchive.
+                    detail.scopeArchiveLines = [];
+                    detail.scopeArchiveState = 'none';
+                    renderLogLines();
+                    maybeFetchScopeArchive();
                 } else {
                     renderLogLines();
                 }
@@ -2985,7 +3101,7 @@
     function updateLogCount() {
         var el = document.getElementById('console-log-count');
         if (!el || !detail) return;
-        var lines = detail.scopedStep ? detail.stepLines : detail.allLines;
+        var lines = detail.scopedStep ? scopedLines() : detail.allLines;
         var filter = detail.logTypeFilter;
         var n = (lines || []).filter(function (l) { return filter === 'all' || l.type === filter; }).length;
         el.textContent = n.toLocaleString() + (n === 1 ? ' line' : ' lines');
@@ -2996,6 +3112,8 @@
         detail.logKind = kind;
         detail.logId = id;
         detail.allLines = [];
+        detail.scopeArchiveLines = [];
+        detail.scopeArchiveState = 'none';
         detail.logSkipped = 0;
         renderLogLines();
         updateLogScopeIndicator();
@@ -3080,7 +3198,15 @@
     function appendLine(line) {
         if (!detail) return;
         detail.allLines.push(line);
-        if (detail.scopedStep) return;
+        if (detail.scopedStep) {
+            // Scope is a filter over the stream, not a separate fetch (see
+            // scopedLines) — a matching line means the view needs a
+            // re-render, both to append it in the right merged position
+            // relative to any archive backfill and to clear a "waiting for
+            // output" placeholder the first time content arrives.
+            if (buildScopeFilter(detail.scopedStep)(line)) renderLogLines();
+            return;
+        }
         if (detail.logTypeFilter !== 'all' && line.type !== detail.logTypeFilter) return;
         var pre = document.getElementById('console-log-content');
         if (!pre) return;
@@ -3179,7 +3305,11 @@
         var prefixParts = [];
         if (line.timestamp) prefixParts.push('[' + (t ? t.time : line.timestamp) + ']');
         prefixParts.push('[' + (line.type || '') + ']');
-        if (!detail.scopedStep && line.step_name) prefixParts.push('(' + line.step_name + ')');
+        // The step name is redundant when scoped to a single exact step
+        // (every line shares it), but a workflow-step scope (e.g. "develop")
+        // merges lines from multiple child-run steps (implement/verify/
+        // test/...), so it needs to stay to tell them apart.
+        if ((!detail.scopedStep || isWorkflowScope()) && line.step_name) prefixParts.push('(' + line.step_name + ')');
         var prefix = document.createElement('span');
         prefix.className = 'log-line-prefix';
         if (line.timestamp) prefix.title = line.timestamp;
@@ -3219,12 +3349,23 @@
         if (!pre || !detail) return;
         pre.innerHTML = '';
         delete pre.dataset.lastLogDate;
-        var lines = detail.scopedStep ? detail.stepLines : detail.allLines;
+        var lines = detail.scopedStep ? scopedLines() : detail.allLines;
         var filter = detail.logTypeFilter;
+        var visible = (lines || []).filter(function (line) { return filter === 'all' || line.type === filter; });
+
+        if (detail.scopedStep && !visible.length) {
+            var placeholder = document.createElement('span');
+            placeholder.className = 'log-line log-type-status';
+            placeholder.textContent = scopePlaceholderText();
+            placeholder.appendChild(document.createTextNode('\n'));
+            pre.appendChild(placeholder);
+            updateLogCount();
+            return;
+        }
+
         var frag = document.createDocumentFragment();
         var lastDate = '';
-        (lines || []).forEach(function (line) {
-            if (filter !== 'all' && line.type !== filter) return;
+        visible.forEach(function (line) {
             var t = logTimeParts(line.timestamp);
             if (t && lastDate && t.date !== lastDate) {
                 frag.appendChild(buildDateDividerEl(t.date));

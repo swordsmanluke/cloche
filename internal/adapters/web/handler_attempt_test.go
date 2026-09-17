@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -82,6 +84,73 @@ func TestAttemptStream_CompletedRun_V2LogPath(t *testing.T) {
 	assert.Equal(t, "step_started: implement", events[0].Content)
 	assert.Equal(t, "script", events[1].Type)
 	assert.Contains(t, body, "event: done")
+}
+
+// TestAttemptStream_ActiveRun_LineCarriesRunID exercises the host+child
+// fan-in path (see handleAPIAttemptStream): a running attempt with a host
+// run and a spawned child run picks the most-recently-active run to
+// subscribe to, and the JSON payload for each line must carry that run's
+// id so the client can match it against the step strip's (run_id,
+// step_name) pairs — see console.js scope filtering.
+func TestAttemptStream_ActiveRun_LineCarriesRunID(t *testing.T) {
+	h, store, b := setupHandlerWithBroadcaster(t)
+	ctx := context.Background()
+
+	host := domain.NewRun("host-run-1", "main")
+	host.TaskID = "task-rid"
+	host.AttemptID = "attempt-rid"
+	host.Start()
+	require.NoError(t, store.CreateRun(ctx, host))
+
+	child := domain.NewRun("child-run-1", "develop")
+	child.TaskID = "task-rid"
+	child.AttemptID = "attempt-rid"
+	child.ParentRunID = host.ID
+	child.ParentStepName = "develop"
+	child.Start()
+	require.NoError(t, store.CreateRun(ctx, child))
+
+	b.Subscribe("child-run-1")
+
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		b.Publish("child-run-1", logstream.LogLine{
+			Timestamp: "2026-03-03T10:15:00Z",
+			Type:      "status",
+			Content:   "step_started: implement",
+			StepName:  "implement",
+			RunID:     "child-run-1",
+		})
+		time.Sleep(50 * time.Millisecond)
+		b.Finish("child-run-1")
+	}()
+
+	resp, err := http.Get(srv.URL + "/api/attempts/attempt-rid/stream")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	var events []logstream.LogLine
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+			var ll logstream.LogLine
+			if json.Unmarshal([]byte(data), &ll) == nil {
+				events = append(events, ll)
+			}
+		}
+		if strings.HasPrefix(line, "event: done") {
+			break
+		}
+	}
+
+	require.Len(t, events, 1)
+	assert.Equal(t, "child-run-1", events[0].RunID)
+	assert.Equal(t, "implement", events[0].StepName)
 }
 
 func TestAttemptLogs_NotFound(t *testing.T) {

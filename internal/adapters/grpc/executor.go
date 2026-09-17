@@ -1045,6 +1045,7 @@ func (h *innerHostStatusHandler) OnStepStart(_ *domain.Run, step *domain.Step) {
 		Type:      "status",
 		Content:   "step_started: " + step.Name,
 		StepName:  step.Name,
+		RunID:     h.hostRunID,
 	})
 }
 
@@ -1068,6 +1069,7 @@ func (h *innerHostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step
 			Type:      "script",
 			Content:   string(data),
 			StepName:  step.Name,
+			RunID:     h.hostRunID,
 		})
 	}
 	h.logBroadcast.Publish(h.hostRunID, logstream.LogLine{
@@ -1075,6 +1077,7 @@ func (h *innerHostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step
 		Type:      "status",
 		Content:   "step_completed: " + step.Name + " -> " + result,
 		StepName:  step.Name,
+		RunID:     h.hostRunID,
 	})
 }
 
@@ -1087,6 +1090,7 @@ func (h *innerHostStatusHandler) OnStepSkipped(_ *domain.Run, step *domain.Step,
 		Type:      "status",
 		Content:   "step_skipped: " + step.Name + " -> " + wire,
 		StepName:  step.Name,
+		RunID:     h.hostRunID,
 	})
 }
 

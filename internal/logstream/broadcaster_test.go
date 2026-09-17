@@ -220,6 +220,28 @@ func TestBroadcaster_LogLineStepName(t *testing.T) {
 	}
 }
 
+func TestBroadcaster_LogLineRunID(t *testing.T) {
+	b := NewBroadcaster()
+	sub := b.Subscribe("run-1")
+
+	line := LogLine{
+		Timestamp: "2026-03-10T10:00:00Z",
+		Type:      "llm",
+		Content:   "Analyzing code...",
+		StepName:  "implement",
+		RunID:     "run-1",
+	}
+	b.Publish("run-1", line)
+
+	select {
+	case received := <-sub.C:
+		assert.Equal(t, "run-1", received.RunID)
+		assert.Equal(t, "implement", received.StepName)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for log line")
+	}
+}
+
 func TestBroadcaster_SlowSubscriberDropsMessages(t *testing.T) {
 	b := NewBroadcaster()
 

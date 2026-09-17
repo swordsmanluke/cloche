@@ -166,8 +166,16 @@ Shows the selected task's full detail:
   just its dot and name, with the duration surfaced via a native tooltip and revealed
   in-place on hover/focus. Poll steps also show their last poll time and count. The live
   (or selected) segment is highlighted. Clicking a segment scopes the log below to that
-  step's output (`GET /api/runs/{id}/steps/{step}/output`); clicking it again clears the
-  scope.
+  step: a client-side filter over the already-streaming lines, matched by `run_id` +
+  `step_name` (every SSE line carries the id of the run that published it, so a step name
+  shared between a host run and a container run it dispatched isn't ambiguous); scoping a
+  workflow step that spawned a child run (e.g. "develop") also includes every line
+  published under that child run's id, regardless of which of its steps produced them. Only
+  when the stream has no lines for the scope yet (a completed step whose broadcast history
+  was already cleared, or a step reconnected to after a page reload) does it fall back to
+  fetching the archived output (`GET /api/runs/{id}/steps/{step}/output`); once fetched,
+  the archive stays merged ahead of the live stream rather than replacing it. Clicking the
+  segment again clears the scope.
 - **Log** — full pane width, topped by a status band (not toolbar-style controls): a scope
   chip (`log`, or `log · <step name> ✕` when scoped — clicking it clears the scope), a type
   filter as chips (all/llm/script/status), a click-to-toggle live/follow indicator, and a
