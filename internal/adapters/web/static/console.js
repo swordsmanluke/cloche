@@ -709,10 +709,13 @@
         if (groupKey === 'running') dot.classList.add('console-stack-row-dot-pulse');
         row.appendChild(dot);
 
-        var text = document.createElement('div');
-        text.className = 'console-stack-row-text';
+        var content = document.createElement('div');
+        content.className = 'console-stack-row-content';
 
-        var id = document.createElement('div');
+        var line1 = document.createElement('div');
+        line1.className = 'console-stack-row-line1';
+
+        var id = document.createElement('span');
         id.className = 'console-stack-row-id';
         id.textContent = rowIdText(entry);
         // In the "all repos" view of a multi-repo project, a small repo tag
@@ -725,19 +728,40 @@
             repoTag.textContent = ' · ' + entry.repository;
             id.appendChild(repoTag);
         }
-        text.appendChild(id);
-
-        var title = document.createElement('div');
-        title.className = 'console-stack-row-title';
-        title.textContent = entry.title || entry.task_id || entry.run_id || '(untitled)';
-        text.appendChild(title);
-
-        row.appendChild(text);
+        line1.appendChild(id);
 
         var elapsed = document.createElement('span');
-        elapsed.className = 'console-stack-row-elapsed' + (groupKey === 'needs_you' ? ' console-stack-row-elapsed-warn' : '');
+        elapsed.className = 'console-stack-row-elapsed' + rowElapsedModifierClass(groupKey, entry);
         elapsed.textContent = rowMetaText(groupKey, entry);
-        row.appendChild(elapsed);
+        line1.appendChild(elapsed);
+
+        content.appendChild(line1);
+
+        // The id and title are frequently identical (user-* tasks default the
+        // title to the task id) — in that case the title line would just
+        // repeat line 1, so it's omitted entirely rather than left as a
+        // blank gap.
+        var idText = entry.task_id || entry.run_id || '';
+        var titleText = entry.title || '';
+        if (titleText && titleText !== idText) {
+            var title = document.createElement('div');
+            title.className = 'console-stack-row-title';
+            title.textContent = titleText;
+            content.appendChild(title);
+        }
+
+        row.appendChild(content);
+    }
+
+    // The status word ("succeeded" / "failed" / "cancelled") is redundant
+    // for a succeeded Done row — the dot colour and the Done group heading
+    // already say it — but stays for failed/cancelled/needs-you rows since
+    // those need to be scannable at a glance, coloured with the matching
+    // status token.
+    function rowElapsedModifierClass(groupKey, entry) {
+        if (groupKey === 'needs_you') return ' console-stack-row-elapsed-warn';
+        if (groupKey === 'done' && entry.outcome === 'failed') return ' console-stack-row-elapsed-bad';
+        return '';
     }
 
     // g = ok, y = warn/needs-you, r = failed, b = running, x = idle — mirrors
@@ -770,7 +794,9 @@
             case 'queued':
                 return entry.reason || '';
             case 'done':
-                return (entry.outcome || '') + ' · ' + formatDuration(entry.duration_seconds);
+                var duration = formatDuration(entry.duration_seconds);
+                if (entry.outcome === 'succeeded') return duration;
+                return (entry.outcome || '') + ' · ' + duration;
             default:
                 return '';
         }

@@ -767,16 +767,16 @@ h2 {
 
 .console-stack-group-count { color: var(--mu); font-weight: 400; }
 
-.console-stack-list { display: flex; flex-direction: column; gap: 0.15rem; }
+.console-stack-list { display: flex; flex-direction: column; gap: 6px; }
 
 .console-stack-row {
     display: grid;
-    grid-template-columns: 8px 1fr auto;
+    grid-template-columns: 8px 1fr;
     gap: 0.5rem;
     align-items: start;
     width: 100%;
     text-align: left;
-    padding: 0.3rem 0.5rem;
+    padding: 0.45rem 0.5rem;
     border: none;
     border-left: 2px solid transparent;
     border-radius: var(--radius);
@@ -818,9 +818,16 @@ h2 {
     .console-stack-row-dot-pulse { animation: none; }
 }
 
-.console-stack-row-text { min-width: 0; }
+.console-stack-row-content { min-width: 0; }
 
-.console-stack-row-id { color: var(--tx); font-size: var(--fs-xs); font-family: var(--mono); }
+.console-stack-row-line1 {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.console-stack-row-id { color: var(--tx); font-size: var(--fs-sm); font-family: var(--mono); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .console-stack-row-repotag { color: var(--mu); font-weight: normal; }
 
 .console-stack-row-title {
@@ -830,7 +837,7 @@ h2 {
     font-family: var(--font-sans);
     overflow: hidden;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 1;
     -webkit-box-orient: vertical;
 }
 
@@ -839,10 +846,11 @@ h2 {
     font-size: var(--fs-xs);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
-    padding-top: 1px;
+    flex-shrink: 0;
 }
 
 .console-stack-row-elapsed-warn { color: var(--warn); }
+.console-stack-row-elapsed-bad { color: var(--bad); }
 
 .console-stack-empty { color: var(--tx2); font-size: var(--fs-sm); padding: 0.25rem 0.5rem; }
 

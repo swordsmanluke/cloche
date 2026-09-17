@@ -222,6 +222,69 @@ test('done rows: green dot for a succeeded outcome, red for failed', async () =>
     }
 });
 
+test('done row: succeeded outcome drops the redundant status word, keeping only the duration', async () => {
+    const window = await bootConsole({
+        needs_you: [], running: [], queued: [],
+        done: [{ task_id: 'cloche-7pf5', title: 'recover missing result marker', run_id: 'r3', outcome: 'succeeded', duration_seconds: 480 }]
+    });
+    try {
+        const row = window.document.querySelector('.console-stack-row');
+        const elapsed = row.querySelector('.console-stack-row-elapsed');
+        assert.equal(elapsed.textContent, '8m', 'the "succeeded" word is dropped — the dot colour and Done heading already say it');
+        assert.equal(elapsed.classList.contains('console-stack-row-elapsed-bad'), false);
+    } finally {
+        window.close();
+    }
+});
+
+test('done row: failed and cancelled outcomes keep the status word, scannable in the matching status colour', async () => {
+    const window = await bootConsole({
+        needs_you: [], running: [], queued: [],
+        done: [
+            { task_id: 'cloche-ulid', title: 'first attempt, retrying now', run_id: 'r4', outcome: 'failed', duration_seconds: 1740 },
+            { task_id: 'cloche-xq2p', title: 'stopped mid-run', run_id: 'r5', outcome: 'cancelled', duration_seconds: 60 }
+        ]
+    });
+    try {
+        const rows = window.document.querySelectorAll('.console-stack-row');
+        const failedElapsed = rows[0].querySelector('.console-stack-row-elapsed');
+        assert.equal(failedElapsed.textContent, 'failed · 29m');
+        assert.ok(failedElapsed.classList.contains('console-stack-row-elapsed-bad'), 'failed status word is coloured with the bad status token');
+
+        const cancelledElapsed = rows[1].querySelector('.console-stack-row-elapsed');
+        assert.equal(cancelledElapsed.textContent, 'cancelled · 1m');
+    } finally {
+        window.close();
+    }
+});
+
+test('row title is omitted (no empty gap) when it is identical to the task id, e.g. a default user-* task title', async () => {
+    const window = await bootConsole({
+        needs_you: [], running: [], queued: [],
+        done: [{ task_id: 'user-zfo8', title: 'user-zfo8', run_id: 'r6', outcome: 'succeeded', duration_seconds: 30 }]
+    });
+    try {
+        const row = window.document.querySelector('.console-stack-row');
+        assert.equal(row.querySelector('.console-stack-row-id').textContent, 'user-zfo8');
+        assert.equal(row.querySelector('.console-stack-row-title'), null, 'a title identical to the id renders no second line');
+    } finally {
+        window.close();
+    }
+});
+
+test('row title still renders on its own line when it differs from the task id', async () => {
+    const window = await bootConsole({
+        needs_you: [], running: [], queued: [],
+        done: [{ task_id: 'cloche-7pf5', title: 'recover missing result marker', run_id: 'r3', outcome: 'succeeded', duration_seconds: 480 }]
+    });
+    try {
+        const row = window.document.querySelector('.console-stack-row');
+        assert.equal(row.querySelector('.console-stack-row-title').textContent, 'recover missing result marker');
+    } finally {
+        window.close();
+    }
+});
+
 // installStackPollShim intercepts window.setInterval and hands back the
 // registered callbacks keyed by delay, so a test can fire the 4s stack poll
 // on demand instead of waiting on a real timer.
