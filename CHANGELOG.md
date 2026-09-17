@@ -1,5 +1,21 @@
 # Cloche Changelog
 
+## v3.24.11 — 2026-09-17
+
+### Features
+
+- The web console's task stack keeps a "Running" group visible even when empty (reading "0"), and its "Done" group can now be collapsed/expanded, with the choice persisted across sessions.
+- The console gains a density toggle (bound to the `d` key) that switches between "Comfortable" and "Compact" spacing, persisted in `localStorage`.
+
+### Console readability
+
+- Readability pass on the web console: a four-step type scale with an 11px floor and brighter secondary text; two-line task-stack rows with the current step on its own line and ids never truncated; a dimmed log prefix with time-of-day stamps and step section breaks; project tabs separated from a quieter instruments cluster with the secondary views folded behind a "Views" menu; and a two-row facts block with a single focal cell in the step strip.
+
+### Notable fixes
+
+- Fixed long-running poll tasks showing an absurd duration like `2065h12m` in `cloche status`/`cloche list` and the web dashboard; durations now roll into days past 24h and drop to days-only past 7 days.
+- Fixed the console log pane's step-scoped view showing stale or wrong output when a step name was shared between a host run and the container run it dispatched, and briefly flashing "no output" for a running step that just hadn't produced any yet.
+
 ## v3.24.0 — 2026-09-16
 
 ### Breaking changes

@@ -1,5 +1,31 @@
 # Cloche Detailed Changelog
 
+## v3.24.11 — 2026-09-17
+
+### Features
+
+- `74e57ce` The task stack's "Running" group now always stays visible (showing a "0" count when empty), and the "Done" group's header can be clicked (or toggled with Enter/Space) to collapse its rows; the collapsed state persists in `localStorage` and survives poll re-renders.
+- `852e54c` Added a density toggle to the console foot bar (also bound to the `d` key) that switches between "Comfortable" (default) and "Compact" spacing/font size, persisted in `localStorage`.
+
+### Fixes
+
+- `9c27a5c` Fixed duration/elapsed formatting overflowing to values like `2065h12m` for long-running poll tasks; the CLI and web dashboard now share one `internal/durationfmt` package that rolls hours into days past 24h and drops to days-only past 7 days.
+- `d11f751` Fixed the console log pane's step-scope filter to match on `(run_id, step_name)` instead of step name alone, so a step name shared between a host run and a container run it dispatched no longer shows the wrong lines; scoping is now a live filter over the streaming log with an archive fetch only as a fallback, and a running step with no output yet shows a "waiting" placeholder instead of briefly flashing "no output".
+
+### UI/UX
+
+- `6ce98c6` Task stack rows now show the current step on its own line instead of crowding it into the elapsed-time line, and the task id is no longer truncated with an ellipsis.
+- `bbeec47` The task detail "Facts row" is capped at two rows (a "run"/"attempt" row and a "status" row) regardless of how many facts a run has, and the step strip now highlights a single "focal" segment (the running step, or the first failed one) instead of showing every segment's dot and duration at once.
+- `f4a77f0` The console header's Workflows/Requirements/Containers/Ledger buttons are consolidated behind a single "Views ▾" menu (their `w`/`i`/`c`/`l` shortcuts still open each view directly); the daemon version moved from the header into the foot bar.
+- `5dac136` The console log pane now inserts a date divider between lines from different days, renders `step_started` status lines as section breaks instead of ordinary lines, and shows local time-of-day in the line prefix with the full timestamp available via tooltip.
+- `8bec8aa` Task stack rows omit the title line when it's identical to the task id, and drop the redundant "succeeded" status word for a succeeded "Done" row since the dot color and group heading already say it.
+
+### Internal
+
+- `d3e7ffc` Introduced a shared four-step CSS font-size scale (`--fs-xs/sm/md/lg`) used throughout the console stylesheet, and adjusted the `--tx2` secondary text color.
+- `48eada6` Routine `intent scan` bookkeeping commit updating `.cloche/intent/scan-state.yaml` cursors; no application code changes.
+- `3d8a4c0` Routine `intent scan` bookkeeping commit extracting one new requirement (`req-9205`, on the shared duration formatter) and updating scan-state cursors; no application code changes.
+
 ## v3.24.0 — 2026-09-16
 
 ### Breaking
