@@ -918,8 +918,17 @@ h2 {
     gap: 0.5rem;
 }
 
-.console-stack-row-id { color: var(--tx); font-size: var(--fs-sm); font-family: var(--mono); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.console-stack-row-id { color: var(--tx); font-size: var(--fs-sm); font-family: var(--mono); white-space: nowrap; flex-shrink: 0; }
 .console-stack-row-repotag { color: var(--mu); font-weight: normal; }
+
+.console-stack-row-step {
+    color: var(--mu);
+    font-size: var(--fs-xs);
+    line-height: 1.5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 .console-stack-row-title {
     color: var(--tx2);

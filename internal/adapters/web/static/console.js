@@ -863,6 +863,18 @@
 
         content.appendChild(line1);
 
+        // The step line sits between line 1 (id + elapsed) and the title —
+        // its own element rather than crowding into line1, since id/elapsed
+        // must never lose space to it (see rowStepText). Done rows never
+        // show it: the step is meaningless once a run has finished.
+        var stepText = rowStepText(groupKey, entry);
+        if (stepText) {
+            var step = document.createElement('div');
+            step.className = 'console-stack-row-step';
+            step.textContent = stepText;
+            content.appendChild(step);
+        }
+
         // The id and title are frequently identical (user-* tasks default the
         // title to the task id) — in that case the title line would just
         // repeat line 1, so it's omitted entirely rather than left as a
@@ -916,7 +928,7 @@
             case 'needs_you':
                 return entry.reason || '';
             case 'running':
-                return (entry.current_step ? entry.current_step + ' · ' : '') + formatElapsed(entry.elapsed_seconds);
+                return formatElapsed(entry.elapsed_seconds);
             case 'queued':
                 return entry.reason || '';
             case 'done':
@@ -926,6 +938,16 @@
             default:
                 return '';
         }
+    }
+
+    // The step line (line 2) only ever shows for a task whose step is
+    // actually known and still moving — Running always has one, and
+    // Needs you / Queued render it too when a step happens to be known
+    // (e.g. a needs-you row surfaced mid-step). Done never does: the step
+    // is meaningless once a run has finished.
+    function rowStepText(groupKey, entry) {
+        if (groupKey === 'done') return '';
+        return entry.current_step || '';
     }
 
     function rebuildFlatIndex() {

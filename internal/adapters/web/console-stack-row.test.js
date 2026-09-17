@@ -127,6 +127,124 @@ test('running row: id line has no attempt suffix for a first attempt', async () 
     }
 });
 
+test('running row: id, step, and title render as separate elements in that order, and the id never carries ellipsis/truncation styling or sits inside the step element', async () => {
+    const window = await bootConsole({
+        needs_you: [],
+        running: [{ task_id: 'cloche-zhn6.10', title: 'move the step line off line 1', run_id: 'r1', attempt: 1, current_step: 'develop,implement', elapsed_seconds: 22320 }],
+        queued: [], done: []
+    });
+    try {
+        const row = window.document.querySelector('.console-stack-row');
+        const content = row.querySelector('.console-stack-row-content');
+        const idEl = content.querySelector('.console-stack-row-id');
+        const stepEl = content.querySelector('.console-stack-row-step');
+        const titleEl = content.querySelector('.console-stack-row-title');
+
+        assert.ok(idEl, 'id element must be present');
+        assert.ok(stepEl, 'step element must be present for a running row with a known step');
+        assert.ok(titleEl, 'title element must be present');
+
+        // Order: line1 (holding the id) comes before the step line, which
+        // comes before the title — three stacked elements, not one crowded
+        // line1.
+        const order = Array.prototype.indexOf.call(content.children, idEl.closest('.console-stack-row-line1'));
+        const stepOrder = Array.prototype.indexOf.call(content.children, stepEl);
+        const titleOrder = Array.prototype.indexOf.call(content.children, titleEl);
+        assert.ok(order < stepOrder && stepOrder < titleOrder, 'id line, then step, then title, in that order');
+
+        assert.equal(idEl.textContent, 'cloche-zhn6.10', 'the id is never truncated, however long');
+        assert.equal(idEl.className, 'console-stack-row-id', 'the id element carries no ellipsis/truncation modifier class');
+        assert.equal(stepEl.closest('.console-stack-row-id'), null, 'the id is not nested inside the step element');
+        assert.equal(idEl.closest('.console-stack-row-step'), null, 'the id is not nested inside the step element');
+
+        assert.equal(stepEl.textContent, 'develop,implement');
+        // The step no longer crowds into the elapsed text on line 1.
+        const elapsed = row.querySelector('.console-stack-row-elapsed');
+        assert.equal(elapsed.textContent, '6h 12m');
+    } finally {
+        window.close();
+    }
+});
+
+test('done row: never renders a step element, even though the field could in principle be present', async () => {
+    const window = await bootConsole({
+        needs_you: [], running: [], queued: [],
+        done: [{ task_id: 'cloche-7pf5', title: 'recover missing result marker', run_id: 'r3', outcome: 'succeeded', duration_seconds: 480, current_step: 'finalize' }]
+    });
+    try {
+        const row = window.document.querySelector('.console-stack-row');
+        assert.equal(row.querySelector('.console-stack-row-step'), null, 'a done row never shows a step line');
+    } finally {
+        window.close();
+    }
+});
+
+test('running row: with no known step, the row renders no step element at all (no empty line-2 gap)', async () => {
+    const window = await bootConsole({
+        needs_you: [], queued: [], done: [],
+        running: [{ task_id: 'cloche-ccgl', title: 'twelve-task list', run_id: 'r2', attempt: 1, elapsed_seconds: 85 }]
+    });
+    try {
+        const row = window.document.querySelector('.console-stack-row');
+        assert.equal(row.querySelector('.console-stack-row-step'), null, 'no step element when current_step is unknown');
+    } finally {
+        window.close();
+    }
+});
+
+test('updateRow (via the 4s poll) updates an existing running row\'s step text in place, reusing the same row element', async () => {
+    let stack = {
+        needs_you: [], queued: [], done: [],
+        running: [{ task_id: 'cloche-fnn6', title: 'hidden acceptance corpus', run_id: 'r1', attempt: 1, current_step: 'develop', elapsed_seconds: 30 }]
+    };
+    const dom = new JSDOM(
+        '<!DOCTYPE html><html><body>' + consoleContentMarkup('myproj') + '</body></html>',
+        { url: 'http://localhost/myproj', runScripts: 'outside-only' }
+    );
+    const { window } = dom;
+    const timers = installStackPollShim(window);
+    window.fetch = function (url) {
+        if (url === '/api/projects') return jsonResponse([]);
+        if (/\/tasks\/stack(\?|$)/.test(url)) return jsonResponse(stack, { ETag: 'W/"stack-1"' });
+        return jsonResponse({});
+    };
+    window.eval(CONSOLE_TABS_SRC);
+    window.eval(CONSOLE_JS_SRC);
+
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+        if (window.document.querySelector('.console-stack-row-step')) break;
+        await delay(20);
+    }
+
+    try {
+        const row = window.document.querySelector('.console-stack-row');
+        assert.equal(row.querySelector('.console-stack-row-step').textContent, 'develop');
+
+        stack = {
+            needs_you: [], queued: [], done: [],
+            running: [{ task_id: 'cloche-fnn6', title: 'hidden acceptance corpus', run_id: 'r1', attempt: 1, current_step: 'implement', elapsed_seconds: 34 }]
+        };
+        assert.ok(timers[4000], 'stack poll interval was registered');
+        timers[4000]();
+
+        const pollDeadline = Date.now() + 2000;
+        while (Date.now() < pollDeadline) {
+            const s = row.querySelector('.console-stack-row-step');
+            if (s && s.textContent === 'implement') break;
+            await delay(20);
+        }
+
+        assert.equal(
+            window.document.querySelector('.console-stack-row'), row,
+            'the poll reuses the same row element rather than rebuilding the whole row'
+        );
+        assert.equal(row.querySelector('.console-stack-row-step').textContent, 'implement', 'the step text updates in place on the 4s poll');
+    } finally {
+        window.close();
+    }
+});
+
 test('queued row: idle grey dot', async () => {
     const window = await bootConsole({
         needs_you: [], running: [],
