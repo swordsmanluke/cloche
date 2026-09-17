@@ -140,6 +140,7 @@ test('workflows view: tab bars scroll on their own, the DAG panel does not move 
         await mockBackend(page);
         await page.goto('http://cloche.test/' + PROJECT_SLUG + '/' + TASK_ID);
 
+        await page.click('#console-views-btn');
         await page.click('#console-view-workflows-btn');
         await page.waitForSelector('#workflow-tabs .tab-btn');
         await page.waitForSelector('#workflow-dag svg');

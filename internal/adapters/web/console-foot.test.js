@@ -306,6 +306,93 @@ test('needs-you task with no release/close action: hints drop to the base pair',
     }
 });
 
+test('footer shows the daemon version to the right of the key hints', async () => {
+    const window = await bootConsole({ stack: { needs_you: [], running: [], queued: [], done: [] } });
+    try {
+        const footbar = window.document.getElementById('console-footbar');
+        const keys = window.document.getElementById('console-keys');
+        const version = window.document.getElementById('console-daemon-version');
+        assert.ok(version, 'footer must contain a daemon version element');
+        assert.equal(version.textContent, 'test', 'version text comes from data-cloche-version');
+
+        const children = Array.from(footbar.children);
+        assert.ok(children.indexOf(keys) < children.indexOf(version),
+            'the version must sit to the right of (after, in DOM order) the key hints');
+    } finally {
+        window.close();
+    }
+});
+
+test('Workflows/Requirements/Containers/Ledger are folded behind a single Views menu button', async () => {
+    const window = await bootConsole({ stack: { needs_you: [], running: [], queued: [], done: [] } });
+    try {
+        const viewsBtn = window.document.getElementById('console-views-btn');
+        const menu = window.document.getElementById('console-views-menu');
+        assert.ok(viewsBtn, 'a single Views button must exist in the tab bar');
+        assert.equal(menu.hidden, true, 'the menu starts closed');
+
+        ['console-view-workflows-btn', 'console-view-intent-btn', 'console-view-containers-btn', 'console-ledger-btn']
+            .forEach((id) => {
+                const btn = window.document.getElementById(id);
+                assert.ok(btn, id + ' must still exist (inside the Views menu)');
+                assert.ok(menu.contains(btn), id + ' must be nested inside #console-views-menu');
+            });
+
+        viewsBtn.dispatchEvent(new window.Event('click', { bubbles: true }));
+        assert.equal(menu.hidden, false, 'clicking the Views button opens the menu');
+        assert.equal(viewsBtn.getAttribute('aria-expanded'), 'true');
+
+        // Clicking a menu item closes the menu (same pattern as the
+        // idle-projects menu closing after a tab is picked).
+        window.document.getElementById('console-view-workflows-btn')
+            .dispatchEvent(new window.Event('click', { bubbles: true }));
+        assert.equal(menu.hidden, true, 'picking a menu item closes the menu');
+        assert.equal(window.document.getElementById('console-view-overlay').hidden, false, 'and opens the Workflows view');
+
+        // Let openWorkflowsView's loadWorkflows() fetch/.then chain drain
+        // before the window is torn down (see bootConsole's own comment on
+        // the same pattern above).
+        await delay(50);
+    } finally {
+        window.close();
+    }
+});
+
+test('w/i/c/l keyboard shortcuts keep opening their views directly, independent of the Views menu', async () => {
+    const window = await bootConsole({ stack: { needs_you: [], running: [], queued: [], done: [] } });
+    try {
+        const viewOverlay = window.document.getElementById('console-view-overlay');
+        const viewTitle = window.document.getElementById('console-view-title');
+        const ledgerOverlay = window.document.getElementById('console-ledger-overlay');
+
+        dispatchKey(window, 'w');
+        assert.equal(viewOverlay.hidden, false);
+        assert.equal(viewTitle.textContent, 'Workflows');
+        // Let the view's own fetch/.then chain (loadWorkflows) land before
+        // closing it — closing tears down the elements it writes into.
+        await delay(50);
+        window.document.getElementById('console-view-close').dispatchEvent(new window.Event('click', { bubbles: true }));
+
+        dispatchKey(window, 'i');
+        assert.equal(viewOverlay.hidden, false);
+        assert.equal(viewTitle.textContent, 'Requirements');
+        await delay(50);
+        window.document.getElementById('console-view-close').dispatchEvent(new window.Event('click', { bubbles: true }));
+
+        dispatchKey(window, 'c');
+        assert.equal(viewOverlay.hidden, false);
+        assert.equal(viewTitle.textContent, 'Containers');
+        await delay(50);
+        window.document.getElementById('console-view-close').dispatchEvent(new window.Event('click', { bubbles: true }));
+
+        dispatchKey(window, 'l');
+        assert.equal(ledgerOverlay.hidden, false);
+        await delay(50);
+    } finally {
+        window.close();
+    }
+});
+
 test('foot ticker: packs recent entries newest-first, separated by " · ", failed entries flagged for --bad styling', async () => {
     const window = await bootConsole({
         stack: { needs_you: [], running: [], queued: [], done: [] },

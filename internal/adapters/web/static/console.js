@@ -294,6 +294,7 @@
 
     document.getElementById('console-more-btn').addEventListener('click', function (e) {
         e.stopPropagation();
+        closeViewsMenu();
         var menu = document.getElementById('console-idle-menu');
         var willOpen = menu.hidden;
         menu.hidden = !willOpen;
@@ -1906,6 +1907,13 @@
         return base;
     }
 
+    // The daemon version is static for the life of the page (baked into the
+    // template at render time), so this only needs to run once at boot.
+    function renderFooterVersion() {
+        var el = document.getElementById('console-daemon-version');
+        if (el) el.textContent = root.dataset.clocheVersion || '';
+    }
+
     function renderFootKeys() {
         var el = document.getElementById('console-keys');
         if (!el) return;
@@ -3132,17 +3140,40 @@
 
     function updateViewButtonsEnabled() {
         var disabled = !state.activeSlug;
-        ['console-view-workflows-btn', 'console-view-intent-btn', 'console-view-containers-btn'].forEach(function (id) {
+        ['console-view-workflows-btn', 'console-view-intent-btn', 'console-view-containers-btn', 'console-ledger-btn'].forEach(function (id) {
             document.getElementById(id).disabled = disabled;
         });
     }
 
+    // The Views menu folds Workflows/Requirements/Containers/Ledger behind
+    // one button, following the same open/close pattern as the idle-projects
+    // menu (console-more-btn / console-idle-menu) above.
+    function closeViewsMenu() {
+        var menu = document.getElementById('console-views-menu');
+        var btn = document.getElementById('console-views-btn');
+        if (!menu.hidden) {
+            menu.hidden = true;
+            btn.setAttribute('aria-expanded', 'false');
+        }
+    }
+
+    document.getElementById('console-views-btn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        closeIdleMenu();
+        var menu = document.getElementById('console-views-menu');
+        var willOpen = menu.hidden;
+        menu.hidden = !willOpen;
+        this.setAttribute('aria-expanded', String(willOpen));
+    });
+    document.addEventListener('click', closeViewsMenu);
+
     document.getElementById('console-view-close').addEventListener('click', closeView);
     document.getElementById('step-drawer-close').addEventListener('click', closeStepDrawer);
     document.getElementById('intent-drawer-close').addEventListener('click', closeIntentDrawer);
-    document.getElementById('console-view-workflows-btn').addEventListener('click', openWorkflowsView);
-    document.getElementById('console-view-intent-btn').addEventListener('click', openIntentView);
-    document.getElementById('console-view-containers-btn').addEventListener('click', openContainersView);
+    document.getElementById('console-view-workflows-btn').addEventListener('click', function () { closeViewsMenu(); openWorkflowsView(); });
+    document.getElementById('console-view-intent-btn').addEventListener('click', function () { closeViewsMenu(); openIntentView(); });
+    document.getElementById('console-view-containers-btn').addEventListener('click', function () { closeViewsMenu(); openContainersView(); });
+    document.getElementById('console-ledger-btn').addEventListener('click', function () { closeViewsMenu(); toggleLedger(true); });
     updateViewButtonsEnabled();
 
     // ---------- Workflows view ----------
@@ -4270,11 +4301,14 @@
         var slotsVal = document.createElement('b');
         slotsVal.textContent = busy + '/' + max;
         slotsSpan.appendChild(slotsVal);
-        slotsSpan.appendChild(document.createTextNode(' · queue '));
+        el.appendChild(slotsSpan);
+
+        var queueSpan = instrumentSpan('console-queue');
+        queueSpan.appendChild(document.createTextNode('queue '));
         var queueVal = document.createElement('b');
         queueVal.textContent = String((occ.queued || []).length);
-        slotsSpan.appendChild(queueVal);
-        el.appendChild(slotsSpan);
+        queueSpan.appendChild(queueVal);
+        el.appendChild(queueSpan);
 
         var burnSpan = instrumentSpan('console-burn');
         burnSpan.appendChild(document.createTextNode('burn '));
@@ -4283,21 +4317,6 @@
         burnVal.textContent = formatBurn(data.usage);
         burnSpan.appendChild(burnVal);
         el.appendChild(burnSpan);
-
-        var daemonSpan = instrumentSpan('console-version');
-        daemonSpan.appendChild(document.createTextNode('daemon '));
-        var daemonVal = document.createElement('b');
-        daemonVal.textContent = root.dataset.clocheVersion || '';
-        daemonSpan.appendChild(daemonVal);
-        el.appendChild(daemonSpan);
-
-        var ledgerBtn = document.createElement('button');
-        ledgerBtn.type = 'button';
-        ledgerBtn.id = 'console-ledger-btn';
-        ledgerBtn.className = 'console-action-btn';
-        ledgerBtn.textContent = 'Ledger';
-        ledgerBtn.addEventListener('click', function () { toggleLedger(true); });
-        el.appendChild(ledgerBtn);
     }
 
     function instrumentSpan(cls) {
@@ -4415,6 +4434,7 @@
         // Paint the tab bar skeleton immediately; nothing below gates on a
         // network round trip.
         renderTabBar();
+        renderFooterVersion();
 
         var projectsPromise = loadProjects();
         startProjectsPolling();

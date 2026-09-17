@@ -573,6 +573,7 @@ h2 {
 
 .console-tab-active {
     color: var(--tx);
+    font-weight: 600;
     background: var(--bg);
     box-shadow: inset 0 2px 0 var(--ac);
 }
@@ -649,20 +650,50 @@ h2 {
     padding: 0 0.6rem;
 }
 
-.console-view-buttons {
-    display: flex;
+.console-views-btn {
+    display: inline-flex;
     align-items: center;
-    gap: 0;
-    flex: 0 0 auto;
+    gap: 0.3rem;
+    background: transparent;
+    border: 0;
     border-left: 1px solid var(--ln);
+    border-radius: 0;
+    color: var(--tx2);
+    padding: 0.3rem 0.8rem;
+    font: inherit;
+    font-size: var(--fs-sm);
+    cursor: pointer;
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+
+.console-views-btn:hover,
+.console-views-btn[aria-expanded="true"] { color: var(--tx); background: var(--pnl2); }
+
+.console-views-menu {
+    position: absolute;
+    top: 100%;
+    right: 0.75rem;
+    margin-top: 0.25rem;
+    background: var(--pnl2);
+    border: 1px solid var(--ln);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    padding: 0.25rem;
+    z-index: 20;
+    min-width: 160px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .console-action-btn {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    padding: 0.3rem 0.7rem;
+    justify-content: flex-start;
+    width: 100%;
+    padding: 0.4rem 0.6rem;
     border: 0;
-    border-right: 1px solid var(--ln);
+    border-bottom: 1px solid var(--ln);
     border-radius: 0;
     background: transparent;
     color: var(--tx2);
@@ -670,11 +701,16 @@ h2 {
     font-size: var(--fs-xs);
     cursor: pointer;
     white-space: nowrap;
+    text-align: left;
 }
 
-.console-action-btn:hover { color: var(--tx); background: var(--pnl2); }
+.console-action-btn:last-child { border-bottom: 0; }
+.console-action-btn:hover { color: var(--tx); background: var(--pnl3); }
 .console-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Quiet right-hand cluster for the daemon instruments (loop / slots / queue
+   / burn) — the only text in the tab bar that sits on --pnl2, set off from
+   the rest of the strip by a hairline. */
 .console-instruments {
     margin-left: auto;
     display: flex;
@@ -682,7 +718,9 @@ h2 {
     gap: 1.1rem;
     padding: 0 0.9rem;
     font-size: var(--fs-xs);
-    color: var(--tx2);
+    color: var(--mu);
+    background: var(--pnl2);
+    border-left: 1px solid var(--ln);
     flex: 0 0 auto;
 }
 
@@ -714,8 +752,8 @@ h2 {
 
 .console-slots-pips i {
     display: inline-block;
-    width: 7px;
-    height: 11px;
+    width: 8px;
+    height: 12px;
     margin-right: 2px;
     background: var(--ln);
     font-style: normal;
@@ -723,11 +761,6 @@ h2 {
 
 .console-slots-pips i.busy { background: var(--ac); }
 .console-slots-pips i:last-child { margin-right: 0; }
-
-#console-ledger-btn.console-action-btn {
-    border-left: 1px solid var(--ln);
-    border-right: 0;
-}
 
 /* Repo sub-tab row — see docs/design/console-repo-grouping-mock.html,
    option 1. Rendered only for a project with more than one configured
@@ -1407,6 +1440,8 @@ h2 {
     white-space: nowrap;
 }
 .console-density-toggle:hover { color: var(--tx); background: var(--pnl2); }
+
+.console-daemon-version { flex: 0 0 auto; white-space: nowrap; color: var(--mu); }
 
 .console-ticker {
     flex: 1 1 auto;

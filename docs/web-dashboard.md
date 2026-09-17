@@ -82,8 +82,10 @@ On the right, daemon instruments for the active project:
 - **Slots** — busy/max concurrency slots plus how many tasks are waiting for a free slot
   (`GET /loop/occupancy`).
 - **Burn** — combined token burn rate across agents over the last hour (`GET /usage`).
-- **Version** — the daemon's version.
-- **Ledger** — opens the project ledger overlay (see below).
+
+A **Views ▾** button next to the instruments opens a menu with the Workflows,
+Requirements, Containers, and Ledger entries (see below); the daemon's version is shown
+in the foot bar instead (see Foot bar).
 
 ### Task stack
 
@@ -226,14 +228,16 @@ once the project list loads if that preference is empty or stale.
 
 ### Foot bar
 
-Shows a one-line activity ticker on the left and a short, contextual set of key hints on
-the right — the ticker is the only real content, so it gets the width; the hints are
+Shows a one-line activity ticker on the left and a short, contextual set of key hints in
+the middle — the ticker is the only real content, so it gets the width; the hints are
 chrome that changes with the selected task's state rather than always listing every
 shortcut (the full list stays behind `?`). A running task shows `j`/`k`, `[`/`]` step,
 `⇧[`/`⇧]` attempt, `tab`, `f`, `a`; a needs-you task shows `j`/`k`, `[`/`]` step, `⇧[`/`⇧]`
 attempt, and whichever of `r`/`x` its attention item actually offers; anything else falls
 back to a short baseline. `g`/`G` and the log type filter live in the log bar instead,
-since they act on the log pane, not the task.
+since they act on the log pane, not the task. The daemon's version sits to the right of
+the key hints, baked into the page at render time (it doesn't change during the page's
+lifetime, so it renders once at boot rather than polling).
 
 A **density** toggle button sits at the right of the foot bar, next to the key hints,
 switching the console between "Comfortable" (default) and "Compact" spacing/font size —
@@ -257,12 +261,15 @@ covers today plus a fixed page size, and a **Load earlier** button pages further
 history via an opaque cursor (an `activity_log` row ID), the same pattern the task
 stack's "Done" group uses for its own cursor.
 
-### Secondary views: Workflows, Requirements, Containers
+### Secondary views: Workflows, Requirements, Containers, Ledger
 
-Three header buttons (and matching shortcuts `w` / `i` / `c`) open project-scoped views as
-an overlay on top of the console shell — they don't navigate away from the current
-project/task URL. `Esc` closes the topmost open drawer first, then the view itself, before
-falling back to the stack-deselect behavior described above.
+A **Views ▾** button in the tab bar opens a menu folding Workflows, Requirements,
+Containers, and Ledger behind one control (the same open/close pattern as the idle-projects
+**More** menu); their keyboard shortcuts (`w` / `i` / `c` / `l`) still open each view
+directly, independent of the menu. Each opens a project-scoped view as an overlay on top
+of the console shell — none of them navigate away from the current project/task URL.
+`Esc` closes the topmost open drawer first, then the view itself, before falling back to
+the stack-deselect behavior described above.
 
 - **Workflows** — the read-only DAG of steps/wires for the active project's container and
   host workflows (`GET /api/projects/{slug}/workflows`), with location/workflow tabs when
@@ -287,7 +294,7 @@ falling back to the stack-deselect behavior described above.
 
 ### Ledger
 
-The **Ledger** instrument button (or pressing `l`) opens a per-project overlay
+The **Ledger** entry in the Views menu (or pressing `l`) opens a per-project overlay
 summarizing outcomes across every attempt, from `GET /api/projects/{slug}/ledger`:
 
 - **Summary** — mean attempts to success, mean tokens per succeeded task, and the

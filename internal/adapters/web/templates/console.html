@@ -11,10 +11,13 @@
                 aria-haspopup="true" aria-expanded="false"></button>
         <div class="console-idle-menu" id="console-idle-menu" hidden></div>
         <span class="console-stale-hint" id="console-attention-stale" hidden></span>
-        <div class="console-view-buttons" id="console-view-buttons">
+        <button type="button" class="console-views-btn" id="console-views-btn"
+                aria-haspopup="true" aria-expanded="false">Views ▾</button>
+        <div class="console-views-menu" id="console-views-menu" hidden>
             <button type="button" class="console-action-btn" id="console-view-workflows-btn" title="Workflows (w)">Workflows</button>
             <button type="button" class="console-action-btn" id="console-view-intent-btn" title="Requirements (i)">Requirements</button>
             <button type="button" class="console-action-btn" id="console-view-containers-btn" title="Containers (c)">Containers</button>
+            <button type="button" class="console-action-btn" id="console-ledger-btn" title="Ledger (l)">Ledger</button>
         </div>
         <div class="console-instruments" id="console-instruments"></div>
     </header>
@@ -28,6 +31,7 @@
         <div class="console-keys" id="console-keys"></div>
         <button type="button" class="console-density-toggle" id="console-density-toggle"
                 title="Toggle compact / comfortable density (d)" aria-pressed="false">Comfortable</button>
+        <span class="console-daemon-version" id="console-daemon-version"></span>
     </footer>
     <div class="console-activity-overlay" id="console-activity-overlay" hidden>
         <div class="console-activity-panel" role="dialog" aria-modal="true" aria-label="Activity stream">
