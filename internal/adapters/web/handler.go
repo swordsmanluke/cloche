@@ -24,6 +24,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/config"
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/dsl"
+	"github.com/swordsmanluke/cloche/internal/durationfmt"
 	"github.com/swordsmanluke/cloche/internal/intent"
 	"github.com/swordsmanluke/cloche/internal/logstream"
 	"github.com/swordsmanluke/cloche/internal/ports"
@@ -3012,24 +3013,14 @@ func formatDuration(start, end time.Time) string {
 	if d < time.Minute {
 		return fmt.Sprintf("%.1fs", d.Seconds())
 	}
-	return fmt.Sprintf("%dm%ds", int(d.Minutes()), int(d.Seconds())%60)
+	return durationfmt.Format(d, durationfmt.Style{ShowSeconds: true})
 }
 
-// formatSmartDuration formats a duration into a human-friendly short string.
-// Examples: "3s", "2m", "1h20m", "3h".
+// formatSmartDuration formats a duration into a human-friendly short string,
+// rolling hours into days for long-running tasks. Examples: "3s", "2m",
+// "1h20m", "1d0h", "12d".
 func formatSmartDuration(d time.Duration) string {
-	if d < time.Minute {
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
-	h := int(d.Hours())
-	m := int(d.Minutes()) % 60
-	if h == 0 {
-		return fmt.Sprintf("%dm", m)
-	}
-	if m == 0 {
-		return fmt.Sprintf("%dh", h)
-	}
-	return fmt.Sprintf("%dh%dm", h, m)
+	return durationfmt.Format(d, durationfmt.Style{})
 }
 
 // roundRelativeTime rounds a duration to neat display units:

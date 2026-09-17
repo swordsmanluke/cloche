@@ -4643,6 +4643,8 @@
 
     function formatElapsed(seconds) { return formatDuration(seconds); }
 
+    // Rolls hours into days for long-running tasks (a poll task that's been
+    // running for days would otherwise overflow to e.g. "2065h12m").
     function formatDuration(seconds) {
         seconds = seconds || 0;
         if (seconds < 60) return seconds + 's';
@@ -4650,7 +4652,11 @@
         if (m < 60) return m + 'm';
         var h = Math.floor(m / 60);
         m = m % 60;
-        return h + 'h' + (m ? ' ' + m + 'm' : '');
+        if (h < 24) return h + 'h ' + m + 'm';
+        var d = Math.floor(h / 24);
+        h = h % 24;
+        if (d < 7) return d + 'd ' + h + 'h';
+        return d + 'd';
     }
 
     function formatTimestamp(iso) {

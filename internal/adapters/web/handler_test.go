@@ -193,16 +193,21 @@ func TestHelpers(t *testing.T) {
 		assert.Equal(t, "500ms", formatDuration(now, now.Add(500*time.Millisecond)))
 		assert.Equal(t, "5.0s", formatDuration(now, now.Add(5*time.Second)))
 		assert.Equal(t, "2m30s", formatDuration(now, now.Add(2*time.Minute+30*time.Second)))
+		assert.Equal(t, "2d1h", formatDuration(now, now.Add(2*24*time.Hour+1*time.Hour+5*time.Minute)))
 	})
 
 	t.Run("formatSmartDuration", func(t *testing.T) {
 		assert.Equal(t, "0s", formatSmartDuration(0))
 		assert.Equal(t, "30s", formatSmartDuration(30*time.Second))
 		assert.Equal(t, "5m", formatSmartDuration(5*time.Minute))
-		assert.Equal(t, "1h", formatSmartDuration(1*time.Hour))
+		assert.Equal(t, "1h0m", formatSmartDuration(1*time.Hour))
 		assert.Equal(t, "1h20m", formatSmartDuration(1*time.Hour+20*time.Minute))
-		assert.Equal(t, "3h", formatSmartDuration(3*time.Hour))
+		assert.Equal(t, "3h0m", formatSmartDuration(3*time.Hour))
 		assert.Equal(t, "2h5m", formatSmartDuration(2*time.Hour+5*time.Minute+10*time.Second))
+		// Long-running tasks roll hours into days past 24h (was e.g. "86h12m").
+		assert.Equal(t, "1d0h", formatSmartDuration(24*time.Hour))
+		assert.Equal(t, "3d14h", formatSmartDuration(3*24*time.Hour+14*time.Hour+12*time.Minute))
+		assert.Equal(t, "7d", formatSmartDuration(7*24*time.Hour))
 	})
 
 	t.Run("roundRelativeTime", func(t *testing.T) {

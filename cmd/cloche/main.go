@@ -21,6 +21,7 @@ import (
 	pb "github.com/swordsmanluke/cloche/api/clochepb"
 	"github.com/swordsmanluke/cloche/internal/config"
 	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/durationfmt"
 	"github.com/swordsmanluke/cloche/internal/logstream"
 	"github.com/swordsmanluke/cloche/internal/version"
 	"google.golang.org/grpc"
@@ -877,14 +878,7 @@ func formatLastPollElapsed(lastPollAt string) string {
 	if err != nil {
 		return ""
 	}
-	d := time.Since(parsed)
-	if d < time.Minute {
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
-	if d < time.Hour {
-		return fmt.Sprintf("%dm%ds", int(d.Minutes()), int(d.Seconds())%60)
-	}
-	return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
+	return durationfmt.Format(time.Since(parsed), durationfmt.Style{ShowSeconds: true})
 }
 
 // formatDuration parses a Go time string and returns a human-readable duration since then.
@@ -893,14 +887,7 @@ func formatDuration(startedAt string) string {
 	if err != nil {
 		return startedAt
 	}
-	d := time.Since(parsed)
-	if d < time.Minute {
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
-	if d < time.Hour {
-		return fmt.Sprintf("%dm%ds", int(d.Minutes()), int(d.Seconds())%60)
-	}
-	return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
+	return durationfmt.Format(time.Since(parsed), durationfmt.Style{ShowSeconds: true})
 }
 
 func cmdList(ctx context.Context, client pb.ClocheServiceClient, args []string) {
