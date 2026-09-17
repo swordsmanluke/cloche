@@ -992,7 +992,7 @@ h2 {
     border-bottom: 1px solid var(--ln);
 }
 
-.console-task-id { color: var(--tx); font-size: var(--fs-md); }
+.console-task-id { color: var(--tx); font-size: var(--fs-sm); }
 
 .console-task-pill {
     font-size: var(--fs-xs);
@@ -1012,7 +1012,8 @@ h2 {
 .console-task-title {
     font-family: var(--font-sans);
     color: var(--tx2);
-    font-size: var(--fs-sm);
+    font-size: var(--fs-lg);
+    font-weight: 500;
     flex: 1;
     min-width: 0;
     overflow: hidden;
@@ -1020,6 +1021,11 @@ h2 {
     white-space: nowrap;
 }
 
+/* Also used by the workflow step drawer (openStepDrawer) — a plain
+   two-column key/value list, keys in --mu, values in the block's inherited
+   --tx text color. #console-facts-block (the merged facts+retry/timing
+   block in the task-detail header) layers padding/border on top of this;
+   see below. */
 .console-facts-row {
     display: grid;
     grid-template-columns: max-content 1fr;
@@ -1028,7 +1034,17 @@ h2 {
 }
 
 .console-facts-row dt { color: var(--mu); }
-.console-facts-row dd { margin: 0; }
+.console-facts-row dd { margin: 0; color: var(--tx); }
+
+/* The task-detail header's merged facts/retry/timing block: capped at two
+   dt/dd rows by renderFactsRow's factRowsForRun (a lead "run"/"attempt" row
+   and a "status" row), so it never grows past two rows before the step
+   strip. */
+#console-facts-block {
+    flex: 0 0 auto;
+    padding: 0.5rem 1.1rem;
+    border-bottom: 1px solid var(--ln);
+}
 
 .console-facts-note { color: var(--tx2); font-size: var(--fs-md); margin: 0; }
 
@@ -1142,21 +1158,6 @@ h2 {
 
 .console-action-diff { white-space: pre; }
 
-/* .facts — a single wrapping horizontal instrument strip, not a key/value
-   table: attempt chips are just its leading entry. */
-.console-facts-block {
-    display: flex;
-    flex-wrap: wrap;
-    flex: 0 0 auto;
-    gap: 1.6rem;
-    padding: 0.45rem 1.1rem;
-    border-bottom: 1px solid var(--ln);
-    font-size: var(--fs-xs);
-    color: var(--mu);
-}
-
-.console-facts-block b { color: var(--tx2); font-weight: 500; }
-
 .console-attempt-chips { display: inline-flex; gap: 0.25rem; }
 
 .console-attempt-chip {
@@ -1192,7 +1193,12 @@ h2 {
     display: grid;
     gap: 0.15rem;
     flex: none;
-    min-width: 118px;
+    /* Wide enough for a 12-char name + dot + arrow at 1600px without ever
+       truncating (no overflow/ellipsis is applied to the name — see
+       .console-step-segment-name below and the earlier flex-shrink
+       clipping bug, cloche-eiil.28/.24, that .console-step-strip's own
+       flex: 0 0 auto guards against). */
+    min-width: 128px;
     background: var(--pnl);
     border: 1px solid var(--ln);
     border-right: 0;
@@ -1218,6 +1224,7 @@ h2 {
     gap: 0.4rem;
     font-size: var(--fs-xs);
     color: var(--tx);
+    white-space: nowrap;
 }
 
 .console-step-segment-name .run-dot { width: 7px; height: 7px; }
@@ -1228,11 +1235,32 @@ h2 {
     font-variant-numeric: tabular-nums;
 }
 
+/* Only the focal cell (see focalStep in console.js — the running step, or
+   the first failed one when nothing is running) keeps its duration visible
+   at all times. Every other cell shows dot + name only; the same .meta
+   text is still in the DOM (so nothing reflows) but hidden until the cell
+   is hovered or focused, with the title attribute giving a native tooltip
+   in the meantime. */
+.console-step-segment:not(.console-step-segment-focal) .console-step-segment-meta {
+    opacity: 0;
+}
+
+.console-step-segment:not(.console-step-segment-focal):hover .console-step-segment-meta,
+.console-step-segment:not(.console-step-segment-focal):focus-visible .console-step-segment-meta {
+    opacity: 1;
+}
+
 .console-step-segment-child { background: var(--bg); }
 
 .console-step-segment-child .console-step-segment-name { padding-left: 0.5rem; }
 
 .console-step-segment-live { border-color: var(--ac); }
+
+.console-step-segment-focal { background: var(--pnl3); }
+
+.console-step-segment-focal .run-dot-running { background: var(--run); }
+
+.console-step-segment-focal-failed { background: color-mix(in srgb, var(--bad) 18%, transparent); }
 
 .console-step-segment-selected {
     background: var(--pnl3);

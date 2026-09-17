@@ -139,20 +139,24 @@ Shows the selected task's full detail:
   **Mute** (`POST /api/projects/{slug}/attention/mute`), which permanently suppresses that
   workflow's repeated-failure item. All four actions refresh the task stack in place
   (`GET .../tasks/stack`) rather than reloading the page.
-- **Facts row** — a single wrapping strip of label/value pairs. When a task has more than
-  one attempt, its leading entry is a group of attempt chips (attempt number + short run
-  ID; outcome and duration are in the chip's tooltip; the current attempt and any failed
-  attempts are colored distinctly; `Shift+[` and `Shift+]` switch between them). The rest
-  of the strip is the selected attempt's top-level run ID, child run IDs, container ID and
-  state, token usage per agent, the prompt file and git revision used, and (on a retried
-  attempt) which step the previous attempt failed at. Backed by
-  `GET /api/projects/{slug}/tasks/{taskId}/attempts` for the attempt list and
-  `GET /api/runs/{id}` for the selected attempt's detail.
+- **Facts row** — a merged key/value block capped at two rows regardless of how many facts
+  a run has. The lead row is labeled "run" (value: the top-level run ID) unless the task
+  has more than one attempt, in which case it's labeled "attempt" and its value leads with
+  a group of attempt chips (attempt number + short run ID; outcome and duration are in the
+  chip's tooltip; the current attempt and any failed attempts are colored distinctly;
+  `Shift+[` and `Shift+]` switch between them). Either way the lead row also carries child
+  run IDs, container ID and state, token usage per agent, and the prompt file and git
+  revision used. A second "status" row folds in the retry reason (on a retried attempt),
+  error message, and timing. Backed by `GET /api/projects/{slug}/tasks/{taskId}/attempts`
+  for the attempt list and `GET /api/runs/{id}` for the selected attempt's detail.
 - **Step strip** — one horizontal segment per step of the top-level run, with a spawned
   child run's steps inlined immediately after the workflow step that spawned them (the
   flattened-run tree already used by `GET /api/runs/{id}`) — the parent segment gets a `↳`
-  marker and its children render shaded and indented in the same strip. Each segment shows
-  a result dot and duration; poll steps also show their last poll time and count. The live
+  marker and its children render shaded and indented in the same strip. Only one segment is
+  "focal" — the running step if one is live, else the first failed step — with a filled
+  background and a permanently visible result dot and duration; every other segment shows
+  just its dot and name, with the duration surfaced via a native tooltip and revealed
+  in-place on hover/focus. Poll steps also show their last poll time and count. The live
   (or selected) segment is highlighted. Clicking a segment scopes the log below to that
   step's output (`GET /api/runs/{id}/steps/{step}/output`); clicking it again clears the
   scope.

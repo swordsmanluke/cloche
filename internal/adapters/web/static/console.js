@@ -1538,8 +1538,8 @@
         actionPanel.hidden = true;
         el.appendChild(actionPanel);
 
-        var facts = document.createElement('div');
-        facts.className = 'console-facts-block';
+        var facts = document.createElement('dl');
+        facts.className = 'console-facts-row';
         facts.id = 'console-facts-block';
         el.appendChild(facts);
 
@@ -1676,10 +1676,7 @@
     function renderNoAttempts() {
         var el = document.getElementById('console-facts-block');
         if (!el) return;
-        var note = document.createElement('p');
-        note.className = 'console-facts-note';
-        note.textContent = 'No attempts recorded for this task.';
-        el.appendChild(note);
+        appendFactRow(el, 'status', 'No attempts recorded for this task.');
     }
 
     function renderTaskNotFound() {
@@ -1694,10 +1691,7 @@
     function renderRunLoadError() {
         var el = document.getElementById('console-facts-block');
         if (!el) return;
-        var note = document.createElement('p');
-        note.className = 'console-facts-note';
-        note.textContent = 'Failed to load run detail.';
-        el.appendChild(note);
+        appendFactRow(el, 'status', 'Failed to load run detail.');
     }
 
     // ---------- centre pane: header + actions ----------
@@ -2136,52 +2130,46 @@
 
     // ---------- centre pane: facts row + attempt chips ----------
 
-    // renderFactsRow builds the .facts instrument strip: a single wrapping
-    // horizontal band of "label value" pairs, with the attempt chips (when
-    // there's more than one attempt) as its leading entry rather than a
-    // hoisted tab row above it.
+    // renderFactsRow builds the merged key/value block: at most two dt/dd
+    // rows (a leading "run"/"attempt" row with the core run facts, and a
+    // "status" row folding in retry reason/error/timing), so the header
+    // never grows past two rows before the step strip regardless of how
+    // many facts a run has. Keys render in --mu (dt), values in --tx (dd,
+    // the block's inherited text color) — see .console-facts-row.
     function renderFactsRow(run) {
         var container = document.getElementById('console-facts-block');
         if (!container) return;
         container.innerHTML = '';
 
-        if (detail.attempts.length > 1) {
-            container.appendChild(renderAttemptsFact());
-        }
-
-        factsForRun(run).forEach(function (f) {
-            var fact = document.createElement('span');
-            fact.className = 'console-fact';
-
-            var label = document.createElement('span');
-            label.className = 'console-fact-label';
-            label.textContent = f[0];
-            fact.appendChild(label);
-            fact.appendChild(document.createTextNode(' '));
-
-            var value = document.createElement('b');
-            value.textContent = f[1];
-            fact.appendChild(value);
-
-            container.appendChild(fact);
+        factRowsForRun(run).forEach(function (row) {
+            appendFactRow(container, row.label, row.text, row.chips);
         });
     }
 
-    // renderAttemptsFact renders the "attempt 1 s6hh 2 l0xa 3 vtmf" chip
-    // group as one fact among the others — bordered chips, current attempt
-    // amber-filled (.console-attempt-chip-on), failed attempts red
-    // (.console-attempt-chip-bad). Chips stay clickable for switching and
-    // the [ / ] keybinding still calls the same selectAttempt/switchAttempt.
-    function renderAttemptsFact() {
-        var fact = document.createElement('span');
-        fact.className = 'console-fact';
+    // appendFactRow adds one dt/dd pair to a .console-facts-row container.
+    // chips (when given) are interactive nodes (e.g. attempt tabs) prepended
+    // to the value cell ahead of the plain-text fact summary.
+    function appendFactRow(container, label, text, chips) {
+        var dt = document.createElement('dt');
+        dt.textContent = label;
+        container.appendChild(dt);
 
-        var label = document.createElement('span');
-        label.className = 'console-fact-label';
-        label.textContent = 'attempt';
-        fact.appendChild(label);
-        fact.appendChild(document.createTextNode(' '));
+        var dd = document.createElement('dd');
+        if (chips) {
+            dd.appendChild(chips);
+            if (text) dd.appendChild(document.createTextNode(' · '));
+        }
+        if (text) dd.appendChild(document.createTextNode(text));
+        container.appendChild(dd);
+    }
 
+    // renderAttemptChips renders the "1 s6hh 2 l0xa 3 vtmf" chip group —
+    // bordered chips, current attempt amber-filled (.console-attempt-chip-on),
+    // failed attempts red (.console-attempt-chip-bad). Chips stay clickable
+    // for switching and the [ / ] keybinding still calls
+    // selectAttempt/switchAttempt. Unchanged from the prior facts-row
+    // rendering — just relocated into the merged block's lead row.
+    function renderAttemptChips() {
         var chips = document.createElement('span');
         chips.className = 'console-attempt-chips';
         detail.attempts.forEach(function (a, i) {
@@ -2195,36 +2183,49 @@
             chip.addEventListener('click', function () { selectAttempt(i); });
             chips.appendChild(chip);
         });
-        fact.appendChild(chips);
-        return fact;
+        return chips;
     }
 
-    function factsForRun(run) {
-        if (!run) return [['status', 'Loading…']];
+    // factRowsForRun collapses every run fact into the lead row and the
+    // retry reason/error/timing into the status row — exactly two dt/dd
+    // rows, no matter how many individual facts a run carries.
+    function factRowsForRun(run) {
+        if (!run) return [{ label: 'status', text: 'Loading…' }];
 
-        var facts = [];
-        facts.push(['run', run.id]);
+        var multiAttempt = detail.attempts.length > 1;
+        var leadParts = [];
+        if (!multiAttempt) leadParts.push(run.id);
         if (run.child_runs && run.child_runs.length) {
-            facts.push(['child runs', run.child_runs.map(function (c) { return c.id; }).join(', ')]);
+            leadParts.push('child ' + run.child_runs.map(function (c) { return c.id; }).join(', '));
         }
-        facts.push(['container', (run.container_id ? shortId(run.container_id) : '—') + ' (' + (run.container_state || 'removed') + ')']);
+        leadParts.push('container ' + (run.container_id ? shortId(run.container_id) : '—') + ' (' + (run.container_state || 'removed') + ')');
         if (run.token_usage && run.token_usage.length) {
-            facts.push(['tokens', run.token_usage.map(function (u) {
+            leadParts.push('tokens ' + run.token_usage.map(function (u) {
                 return u.agent_name + ': ' + u.input_tokens + '/' + u.output_tokens;
-            }).join(', ')]);
+            }).join(', '));
         }
         if (run.prompt_file) {
-            facts.push(['prompt', run.prompt_file + (run.git_revision ? ' @ ' + run.git_revision : '')]);
+            leadParts.push('prompt ' + run.prompt_file + (run.git_revision ? ' @ ' + run.git_revision : ''));
         }
+
+        var rows = [{
+            label: multiAttempt ? 'attempt' : 'run',
+            chips: multiAttempt ? renderAttemptChips() : null,
+            text: leadParts.join(' · ')
+        }];
+
+        var statusParts = [];
         var attempt = detail.attempts[detail.attemptIndex];
         if (attempt && attempt.retry_reason) {
-            facts.push(['retry reason', 'previous attempt failed at "' + attempt.retry_reason + '"']);
+            statusParts.push('retry reason: previous attempt failed at "' + attempt.retry_reason + '"');
         }
         if (run.error_message) {
-            facts.push(['error', run.error_message]);
+            statusParts.push('error: ' + run.error_message);
         }
-        facts.push(['timing', run.timing || '—']);
-        return facts;
+        statusParts.push('timing ' + (run.timing || '—'));
+        rows.push({ label: 'status', text: statusParts.join(' · ') });
+
+        return rows;
     }
 
     function shortId(id) {
@@ -2247,12 +2248,31 @@
             return;
         }
 
-        clusterSteps(steps).forEach(function (cluster) {
-            container.appendChild(renderStepSegment(cluster.step, false, cluster.children.length > 0));
+        var clusters = clusterSteps(steps);
+        var focal = focalStep(clusters);
+
+        clusters.forEach(function (cluster) {
+            container.appendChild(renderStepSegment(cluster.step, false, cluster.children.length > 0, cluster.step === focal));
             cluster.children.forEach(function (child) {
-                container.appendChild(renderStepSegment(child, true, false));
+                container.appendChild(renderStepSegment(child, true, false, child === focal));
             });
         });
+    }
+
+    // focalStep picks the one segment that gets a filled background and a
+    // permanently visible duration: the running step if one is live
+    // (parent or inlined child), else the first failed step in strip order.
+    // Every other cell shows dot + name only, with its duration revealed on
+    // hover/focus instead.
+    function focalStep(clusters) {
+        var flat = [];
+        clusters.forEach(function (c) {
+            flat.push(c.step);
+            c.children.forEach(function (child) { flat.push(child); });
+        });
+        var running = flat.find(function (s) { return !s.result && !!s.started_at; });
+        if (running) return running;
+        return flat.find(function (s) { return s.result === 'fail' || s.result === 'error'; }) || null;
     }
 
     // clusterSteps groups the flattened step list (see flattenRun on the
@@ -2274,7 +2294,13 @@
         return clusters;
     }
 
-    function renderStepSegment(step, isChild, hasChildren) {
+    // renderStepSegment builds one step-strip cell. Only the focal cell (see
+    // focalStep) keeps a permanently visible duration and a filled
+    // background — every other cell shows just dot + name, with its
+    // duration surfaced via the title attribute (native tooltip) and a
+    // hover/focus style that reveals the same .console-step-segment-meta
+    // text (see style.css), so nothing is truncated to make room for it.
+    function renderStepSegment(step, isChild, hasChildren, isFocal) {
         var seg = document.createElement('button');
         seg.type = 'button';
         seg.className = 'console-step-segment' + (isChild ? ' console-step-segment-child' : '');
@@ -2283,6 +2309,10 @@
         var isLive = !step.result && !!step.started_at;
         if (isScoped) seg.classList.add('console-step-segment-selected');
         if (isLive) seg.classList.add('console-step-segment-live');
+        if (isFocal) {
+            seg.classList.add('console-step-segment-focal');
+            seg.classList.add(isLive ? 'console-step-segment-focal-running' : 'console-step-segment-focal-failed');
+        }
 
         var name = document.createElement('span');
         name.className = 'console-step-segment-name';
@@ -2305,6 +2335,8 @@
         meta.className = 'console-step-segment-meta';
         meta.textContent = metaText;
         seg.appendChild(meta);
+
+        if (!isFocal && metaText) seg.title = metaText;
 
         seg.addEventListener('click', function () { toggleStepScope(step); });
         return seg;

@@ -6,6 +6,14 @@
 // static/style.css in headless Firefox via Playwright, against a fully
 // route-mocked backend (no real cloched) — no real network, no Go server.
 //
+// Also covers the step-strip's "focal cell" treatment: the running (or,
+// failing that, first-failed) cell keeps a filled background and a visible
+// duration; every other cell shows dot + name only, with its duration
+// revealed on hover/focus. Screenshots of a succeeded and a failed task
+// (before/after this change) should be captured by hand when this suite is
+// run somewhere with the Playwright browser available — see the class-level
+// note below on why that can't happen in every environment.
+//
 // Requires `npx playwright install firefox` (and, on a bare Linux host,
 // the system libraries Firefox itself depends on) before running. Not part
 // of `npm test` for that reason — run explicitly with `npm run test:e2e`,
@@ -24,22 +32,29 @@ const CONSOLE_JS_SRC = fs.readFileSync(path.join(__dirname, 'static/console.js')
 const STYLE_CSS_SRC = fs.readFileSync(path.join(__dirname, 'static/style.css'), 'utf8');
 
 const PROJECT_SLUG = 'myproj';
-const TASK_ID = 'cloche-eiil8';
-const RUN_ID = 'run-eiil8-1';
+const RUNNING_TASK_ID = 'cloche-eiil8';
+const RUNNING_RUN_ID = 'run-eiil8-1';
+const FAILED_TASK_ID = 'cloche-usjb1';
+const FAILED_RUN_ID = 'run-usjb1-3';
+
+// Real browsers report step-strip layout at 1600px wide — the width named
+// by the cell-name-truncation requirement this suite guards ("cell names
+// must not truncate below 12 characters at 1600px wide").
+const VIEWPORT = { width: 1600, height: 900 };
 
 // Builds the real served page: templates/layout.html's "content" and
 // "scripts" blocks filled in exactly as handler_console.go would for
 // GET /{slug}/{taskId}, so this test breaks if the markup or console.js's
 // element IDs drift, instead of testing a hand-copied fixture that could
 // silently go stale.
-function pageHTML() {
+function pageHTML(taskId) {
     const contentRaw = fs.readFileSync(path.join(__dirname, 'templates/console.html'), 'utf8');
     const contentStart = contentRaw.indexOf('{{define "content"}}') + '{{define "content"}}'.length;
     const contentEnd = contentRaw.indexOf('{{define "scripts"}}');
     const content = contentRaw.slice(contentStart, contentEnd)
         .replace(/\{\{end\}\}\s*$/, '')
         .replace('{{.ProjectSlug}}', PROJECT_SLUG)
-        .replace('{{.TaskID}}', TASK_ID)
+        .replace('{{.TaskID}}', taskId)
         .replace('{{clocheVersion}}', 'test');
 
     return LAYOUT_SRC
@@ -53,8 +68,10 @@ function pageHTML() {
 // A step strip with many steps of varying name length, matching the bug
 // report's repro ("any task with several steps") and also exercising the
 // strip's horizontal scroll (long names/many steps) at the same time as
-// the vertical-clipping assertion below.
-function stepsFixture() {
+// the vertical-clipping assertion below. The last step is left running
+// (empty result, started_at set) so this fixture doubles as the "running
+// task" focal-cell scenario.
+function runningStepsFixture() {
     const names = [
         'claim-task', 'prepare-workspace', 'implement-feature-with-a-long-descriptive-name',
         'run-unit-tests', 'run-integration-tests', 'self-review', 'address-feedback',
@@ -63,7 +80,7 @@ function stepsFixture() {
     const now = Date.now();
     return names.map(function (name, i) {
         return {
-            run_id: RUN_ID,
+            run_id: RUNNING_RUN_ID,
             step_name: name,
             depth: 0,
             result: i < names.length - 1 ? 'success' : '',
@@ -71,6 +88,20 @@ function stepsFixture() {
             duration: i < names.length - 1 ? (30 + i) + 's' : null
         };
     });
+}
+
+// A workflow step ("develop") with its inlined child-run steps, the middle
+// one failing and the rest after it never starting — the needs-you/failed
+// shape from docs/design/console-restructured-mock.html's "usjb" example.
+function failedStepsFixture() {
+    return [
+        { run_id: FAILED_RUN_ID, step_name: 'claim-task', depth: 0, result: 'success', duration: '1.1s' },
+        { run_id: FAILED_RUN_ID, step_name: 'develop', depth: 0, result: 'fail', duration: '7m 40s' },
+        { run_id: 'child-' + FAILED_RUN_ID, step_name: 'implement', depth: 1, result: 'success', duration: '5m 12s' },
+        { run_id: 'child-' + FAILED_RUN_ID, step_name: 'test', depth: 1, result: 'fail', duration: '2m 28s' },
+        { run_id: 'child-' + FAILED_RUN_ID, step_name: 'review', depth: 1, result: '', started_at: '' },
+        { run_id: FAILED_RUN_ID, step_name: 'finalize', depth: 0, result: '', started_at: '' }
+    ];
 }
 
 // A long, realistic log body so the log pane's intrinsic (max-content)
@@ -92,14 +123,17 @@ function jsonRoute(route, body) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-async function mockBackend(page) {
+// mockBackend serves one task/run's worth of fixture data — the task ID,
+// run ID, run state and step list are all parameterized so the running and
+// failed scenarios below can share this same route table.
+async function mockBackend(page, opts) {
     await page.route('**/*', function (route) {
         const req = route.request();
         const url = new URL(req.url());
         const p = url.pathname;
 
-        if (p === '/' + PROJECT_SLUG + '/' + TASK_ID) {
-            return route.fulfill({ status: 200, contentType: 'text/html', body: pageHTML() });
+        if (p === '/' + PROJECT_SLUG + '/' + opts.taskId) {
+            return route.fulfill({ status: 200, contentType: 'text/html', body: pageHTML(opts.taskId) });
         }
         if (p === '/static/console-tabs.js') {
             return route.fulfill({ status: 200, contentType: 'application/javascript', body: CONSOLE_TABS_SRC });
@@ -116,19 +150,19 @@ async function mockBackend(page) {
         if (/\/tasks\/stack$/.test(p)) {
             return jsonRoute(route, {
                 needs_you: [], queued: [], done: [],
-                running: [{ task_id: TASK_ID, title: 'CSS bug: step strip clipped', run_id: RUN_ID, kind: 'main', since: new Date().toISOString() }]
+                running: [{ task_id: opts.taskId, title: opts.title, run_id: opts.runId, kind: 'main', since: new Date().toISOString() }]
             });
         }
-        if (new RegExp('/tasks/' + TASK_ID + '/attempts$').test(p)) {
+        if (new RegExp('/tasks/' + opts.taskId + '/attempts$').test(p)) {
             return jsonRoute(route, {
-                title: 'CSS bug: step strip clipped',
-                attempts: [{ attempt_num: 1, attempt_id: 'a1', run_id: RUN_ID, outcome: '', started_at: new Date().toISOString(), duration: '' }]
+                title: opts.title,
+                attempts: [{ attempt_num: 1, attempt_id: 'a1', run_id: opts.runId, outcome: opts.status === 'failed' ? 'failed' : '', started_at: new Date().toISOString(), duration: '' }]
             });
         }
-        if (p === '/api/runs/' + RUN_ID) {
-            return jsonRoute(route, { id: RUN_ID, task_id: TASK_ID, title: 'CSS bug: step strip clipped', status: 'running', steps: stepsFixture() });
+        if (p === '/api/runs/' + opts.runId) {
+            return jsonRoute(route, { id: opts.runId, task_id: opts.taskId, title: opts.title, state: opts.status, steps: opts.steps });
         }
-        if (p === '/api/attempts/' + encodeURIComponent('a1') + '/stream' || p === '/api/runs/' + RUN_ID + '/stream') {
+        if (p === '/api/attempts/' + encodeURIComponent('a1') + '/stream' || p === '/api/runs/' + opts.runId + '/stream') {
             return route.fulfill({ status: 200, contentType: 'text/event-stream', body: sseLogBody() });
         }
         // Everything else (instruments, ticker, ledger, workflows, thread,
@@ -138,14 +172,18 @@ async function mockBackend(page) {
     });
 }
 
-test('console-step-strip: every segment stays fully above the log viewer (no flex-shrink clipping)', async function () {
+async function gotoTask(page, opts) {
+    await mockBackend(page, opts);
+    await page.goto('http://cloche.test/' + PROJECT_SLUG + '/' + opts.taskId);
+    await page.waitForSelector('.console-step-strip .console-step-segment');
+}
+
+test('console-step-strip: every segment stays fully above the log viewer (no flex-shrink clipping), and cell names never truncate', async function () {
     const browser = await firefox.launch({ headless: true });
     try {
-        const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-        await mockBackend(page);
-        await page.goto('http://cloche.test/' + PROJECT_SLUG + '/' + TASK_ID);
+        const page = await browser.newPage({ viewport: VIEWPORT });
+        await gotoTask(page, { taskId: RUNNING_TASK_ID, runId: RUNNING_RUN_ID, title: 'CSS bug: step strip clipped', status: 'running', steps: runningStepsFixture() });
 
-        await page.waitForSelector('.console-step-strip .console-step-segment');
         // Let the mocked SSE stream's onmessage handlers flush into the DOM.
         await page.waitForFunction(function () {
             var pre = document.getElementById('console-log-content');
@@ -183,7 +221,101 @@ test('console-step-strip: every segment stays fully above the log viewer (no fle
                 'step segment content (scrollHeight ' + overflow.scrollHeight + ') must fit within its own box (clientHeight ' + overflow.clientHeight + ') — ' +
                 'if this fails, the segment is being squashed and its step name is clipped'
             );
+
+            // No cell may truncate its name below 12 characters at this
+            // width — in practice the name span carries no overflow/
+            // ellipsis styling at all, so this should never clip regardless
+            // of length; scrollWidth > clientWidth would mean a truncation
+            // style crept back in.
+            const nameOverflow = await segment.locator('.console-step-segment-name').evaluate(function (el) {
+                return { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, text: el.textContent };
+            });
+            assert.ok(
+                nameOverflow.scrollWidth <= nameOverflow.clientWidth + 0.5,
+                'step name "' + nameOverflow.text.trim() + '" must not be truncated (scrollWidth ' + nameOverflow.scrollWidth + ' > clientWidth ' + nameOverflow.clientWidth + ')'
+            );
         }
+    } finally {
+        await browser.close();
+    }
+});
+
+test('console-step-strip: the running step is the filled focal cell; other cells reveal their duration only on hover/focus', async function () {
+    const browser = await firefox.launch({ headless: true });
+    try {
+        const page = await browser.newPage({ viewport: VIEWPORT });
+        await gotoTask(page, { taskId: RUNNING_TASK_ID, runId: RUNNING_RUN_ID, title: 'CSS bug: step strip clipped', status: 'running', steps: runningStepsFixture() });
+
+        const segments = page.locator('.console-step-strip .console-step-segment');
+        const focal = page.locator('.console-step-strip .console-step-segment-focal');
+        await assert.doesNotReject(focal.waitFor({ state: 'attached', timeout: 5000 }));
+        assert.equal(await focal.count(), 1, 'exactly one segment should be focal');
+
+        const focalName = (await focal.locator('.console-step-segment-name').textContent()).trim();
+        assert.ok(focalName.indexOf('finalize-and-cleanup') !== -1, 'the running (last) step should be the focal cell, got: ' + focalName);
+
+        const focalStyle = await focal.evaluate(function (el) {
+            var cs = getComputedStyle(el);
+            var meta = el.querySelector('.console-step-segment-meta');
+            return { background: cs.backgroundColor, metaOpacity: getComputedStyle(meta).opacity, metaText: meta.textContent };
+        });
+        assert.equal(focalStyle.background, 'rgb(34, 43, 39)', 'focal running cell should be filled with --pnl3 (#222b27)');
+        assert.equal(focalStyle.metaOpacity, '1', 'the focal cell duration must always be visible');
+        assert.ok(/running/.test(focalStyle.metaText), 'the live focal cell should show a running indicator, got: ' + focalStyle.metaText);
+
+        const dotColor = await focal.locator('.run-dot').evaluate(function (el) { return getComputedStyle(el).backgroundColor; });
+        assert.equal(dotColor, 'rgb(90, 169, 255)', 'the focal running cell dot should use --run (#5aa9ff)');
+
+        // A non-focal cell: duration hidden until hover/focus, surfaced via
+        // the title attribute in the meantime.
+        const first = segments.first();
+        const beforeHover = await first.evaluate(function (el) {
+            return { opacity: getComputedStyle(el.querySelector('.console-step-segment-meta')).opacity, title: el.title };
+        });
+        assert.equal(beforeHover.opacity, '0', 'a non-focal cell should hide its duration by default');
+        assert.ok(beforeHover.title.length > 0, 'a non-focal cell should carry its duration in the title attribute');
+
+        await first.hover();
+        const afterHover = await first.evaluate(function (el) {
+            return getComputedStyle(el.querySelector('.console-step-segment-meta')).opacity;
+        });
+        assert.equal(afterHover, '1', 'hovering a non-focal cell should reveal its duration');
+
+        await first.focus();
+        const afterFocus = await first.evaluate(function (el) {
+            return getComputedStyle(el.querySelector('.console-step-segment-meta')).opacity;
+        });
+        assert.equal(afterFocus, '1', 'focusing a non-focal cell should also reveal its duration');
+    } finally {
+        await browser.close();
+    }
+});
+
+test('console-step-strip: on a failed task, the first failed step (not the un-started ones after it) is the filled focal cell', async function () {
+    const browser = await firefox.launch({ headless: true });
+    try {
+        const page = await browser.newPage({ viewport: VIEWPORT });
+        await gotoTask(page, { taskId: FAILED_TASK_ID, runId: FAILED_RUN_ID, title: 'Intent A/B: bonsai executor wrapper', status: 'failed', steps: failedStepsFixture() });
+
+        const focal = page.locator('.console-step-strip .console-step-segment-focal');
+        assert.equal(await focal.count(), 1, 'exactly one segment should be focal');
+        assert.equal(await focal.locator('.console-step-segment-child').count(), 0); // sanity: locator scoped correctly
+
+        const focalInfo = await focal.evaluate(function (el) {
+            return { name: el.querySelector('.console-step-segment-name').textContent.trim(), background: getComputedStyle(el).backgroundColor };
+        });
+        assert.equal(focalInfo.name, 'test', 'the first failed step ("test", nested under "develop") should be focal, not "develop" itself or the never-run "review"/"finalize"');
+
+        // color-mix(in srgb, var(--bad) 18%, transparent) resolves to the
+        // --bad rgb triple at partial alpha — assert the hue matches --bad
+        // and the cell isn't fully opaque (which would mean the running
+        // --pnl3 fill leaked into the failed case) or fully transparent
+        // (which would mean the focal styling didn't apply at all).
+        const m = focalInfo.background.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/);
+        assert.ok(m, 'expected an rgb/rgba background, got: ' + focalInfo.background);
+        assert.equal(m[1] + ',' + m[2] + ',' + m[3], '239,124,114', 'focal failed cell should be tinted with --bad (#ef7c72)');
+        const alpha = m[4] === undefined ? 1 : parseFloat(m[4]);
+        assert.ok(alpha > 0 && alpha < 1, 'focal failed cell should be --bad at low alpha, not fully opaque or fully transparent, got alpha=' + alpha);
     } finally {
         await browser.close();
     }
