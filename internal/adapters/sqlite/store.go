@@ -194,6 +194,7 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE runs ADD COLUMN is_builtin INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE runs ADD COLUMN user_initiated INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE runs ADD COLUMN repository TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE runs ADD COLUMN repositories TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, stmt := range alterStmts {
 		db.Exec(stmt) // ignore "duplicate column" errors
@@ -240,6 +241,15 @@ func migrate(db *sql.DB) error {
 	// same as any other one-shot global migration here.
 	if err := backfillRunOrigin(db); err != nil {
 		return fmt.Errorf("backfilling run origin columns: %w", err)
+	}
+
+	// Backfill runs.repositories for rows created before richer repo
+	// attribution existed (see internal/domain.ResolveRunRepositories), and
+	// fold runs whose project_dir was itself a sub-repo path into their
+	// parent project. Must run after the "repositories" column is added
+	// above and after migrateV2Schema created _migrations.
+	if err := backfillRunRepositories(db); err != nil {
+		return fmt.Errorf("backfilling run repositories: %w", err)
 	}
 
 	// v3: Recreate runs table with pk autoincrement + UNIQUE(attempt_id, id)
@@ -399,27 +409,28 @@ func migrate(db *sql.DB) error {
 
 func (s *Store) CreateRun(ctx context.Context, run *domain.Run) error {
 	_, err := s.write.ExecContext(ctx,
-		`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, project_dir, error_message, container_id, base_sha, container_kept, title, is_host, parent_run_id, task_id, task_title, attempt_id, parent_step_name, parked_thread_id, parked_title, is_builtin, user_initiated, repository)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO runs (id, workflow_name, state, active_steps, started_at, completed_at, project_dir, error_message, container_id, base_sha, container_kept, title, is_host, parent_run_id, task_id, task_title, attempt_id, parent_step_name, parked_thread_id, parked_title, is_builtin, user_initiated, repository, repositories)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID, run.WorkflowName, string(run.State), run.ActiveStepsString(),
-		formatTime(run.StartedAt), formatTime(run.CompletedAt), run.ProjectDir, truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, nullableString(run.ParentStepName), run.ParkedThreadID, run.ParkedTitle, boolToInt(run.IsBuiltin), boolToInt(run.UserInitiated), run.Repository,
+		formatTime(run.StartedAt), formatTime(run.CompletedAt), run.ProjectDir, truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, nullableString(run.ParentStepName), run.ParkedThreadID, run.ParkedTitle, boolToInt(run.IsBuiltin), boolToInt(run.UserInitiated), run.Repository, run.RepositoriesString(),
 	)
 	return err
 }
 
 // runSelectCols is the standard column list for scanning a Run row.
-const runSelectCols = `pk, id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,''), COALESCE(is_host,0), COALESCE(parent_run_id,''), COALESCE(task_id,''), COALESCE(task_title,''), COALESCE(attempt_id,''), COALESCE(parent_step_name,''), COALESCE(parked_thread_id,''), COALESCE(parked_title,''), COALESCE(is_builtin,0), COALESCE(user_initiated,0), COALESCE(repository,'')`
+const runSelectCols = `pk, id, workflow_name, state, active_steps, started_at, completed_at, project_dir, COALESCE(error_message,''), COALESCE(container_id,''), COALESCE(base_sha,''), COALESCE(container_kept,0), COALESCE(title,''), COALESCE(is_host,0), COALESCE(parent_run_id,''), COALESCE(task_id,''), COALESCE(task_title,''), COALESCE(attempt_id,''), COALESCE(parent_step_name,''), COALESCE(parked_thread_id,''), COALESCE(parked_title,''), COALESCE(is_builtin,0), COALESCE(user_initiated,0), COALESCE(repository,''), COALESCE(repositories,'')`
 
 // scanRun scans a single row into a *domain.Run.
 func scanRun(scanner interface{ Scan(...any) error }) (*domain.Run, error) {
 	run := &domain.Run{}
-	var activeSteps, startedAt, completedAt string
+	var activeSteps, startedAt, completedAt, repositories string
 	var containerKept, isHost, isBuiltin, userInitiated int
-	err := scanner.Scan(&run.PK, &run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage, &run.ContainerID, &run.BaseSHA, &containerKept, &run.Title, &isHost, &run.ParentRunID, &run.TaskID, &run.TaskTitle, &run.AttemptID, &run.ParentStepName, &run.ParkedThreadID, &run.ParkedTitle, &isBuiltin, &userInitiated, &run.Repository)
+	err := scanner.Scan(&run.PK, &run.ID, &run.WorkflowName, &run.State, &activeSteps, &startedAt, &completedAt, &run.ProjectDir, &run.ErrorMessage, &run.ContainerID, &run.BaseSHA, &containerKept, &run.Title, &isHost, &run.ParentRunID, &run.TaskID, &run.TaskTitle, &run.AttemptID, &run.ParentStepName, &run.ParkedThreadID, &run.ParkedTitle, &isBuiltin, &userInitiated, &run.Repository, &repositories)
 	if err != nil {
 		return nil, err
 	}
 	run.SetActiveStepsFromString(activeSteps)
+	run.SetRepositoriesFromString(repositories)
 	run.StartedAt = parseTime(startedAt)
 	run.CompletedAt = parseTime(completedAt)
 	run.ContainerKept = containerKept != 0
@@ -459,18 +470,18 @@ func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 	// attempt_id+id composite which is unique by schema constraint.
 	if run.PK != 0 {
 		_, err := s.write.ExecContext(ctx,
-			`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ?, parent_step_name = ?, parked_thread_id = ?, parked_title = ?, is_builtin = ?, user_initiated = ?, repository = ? WHERE pk = ?`,
+			`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ?, parent_step_name = ?, parked_thread_id = ?, parked_title = ?, is_builtin = ?, user_initiated = ?, repository = ?, repositories = ? WHERE pk = ?`,
 			string(run.State), run.ActiveStepsString(),
 			formatTime(run.StartedAt), formatTime(run.CompletedAt),
-			truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, nullableString(run.ParentStepName), run.ParkedThreadID, run.ParkedTitle, boolToInt(run.IsBuiltin), boolToInt(run.UserInitiated), run.Repository, run.PK,
+			truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, nullableString(run.ParentStepName), run.ParkedThreadID, run.ParkedTitle, boolToInt(run.IsBuiltin), boolToInt(run.UserInitiated), run.Repository, run.RepositoriesString(), run.PK,
 		)
 		return err
 	}
 	_, err := s.write.ExecContext(ctx,
-		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ?, parent_step_name = ?, parked_thread_id = ?, parked_title = ?, is_builtin = ?, user_initiated = ?, repository = ? WHERE attempt_id = ? AND id = ?`,
+		`UPDATE runs SET state = ?, active_steps = ?, started_at = ?, completed_at = ?, error_message = ?, container_id = ?, base_sha = ?, container_kept = ?, title = ?, is_host = ?, parent_run_id = ?, task_id = ?, task_title = ?, attempt_id = ?, parent_step_name = ?, parked_thread_id = ?, parked_title = ?, is_builtin = ?, user_initiated = ?, repository = ?, repositories = ? WHERE attempt_id = ? AND id = ?`,
 		string(run.State), run.ActiveStepsString(),
 		formatTime(run.StartedAt), formatTime(run.CompletedAt),
-		truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, nullableString(run.ParentStepName), run.ParkedThreadID, run.ParkedTitle, boolToInt(run.IsBuiltin), boolToInt(run.UserInitiated), run.Repository,
+		truncateErrorMessage(run.ErrorMessage), run.ContainerID, run.BaseSHA, boolToInt(run.ContainerKept), run.Title, boolToInt(run.IsHost), run.ParentRunID, run.TaskID, run.TaskTitle, run.AttemptID, nullableString(run.ParentStepName), run.ParkedThreadID, run.ParkedTitle, boolToInt(run.IsBuiltin), boolToInt(run.UserInitiated), run.Repository, run.RepositoriesString(),
 		run.AttemptID, run.ID,
 	)
 	return err
@@ -590,30 +601,51 @@ func (s *Store) ListDoneRunsByProject(ctx context.Context, projectDir string, be
 // per-repository count of terminal-state runs for projectDir, using the same
 // state/parent/workflow filter as ListDoneRunsByProject but without its
 // pagination or per-task dedup (see that interface's doc comment for why an
-// approximate count is an acceptable trade-off here).
+// approximate count is an acceptable trade-off here). A run attributed to
+// more than one repository (see domain.ResolveRunRepositories) increments
+// every one of its repos' counts, so the sum across the map's non-""
+// entries can exceed the row count; the "" entry is the unattributed count
+// (runs with no resolved repository at all), shown on the "all repos" tab.
 func (s *Store) CountDoneRunsByProjectGroupedByRepo(ctx context.Context, projectDir string) (map[string]int, error) {
 	rows, err := s.read.QueryContext(ctx, `
-		SELECT COALESCE(repository, ''), COUNT(*) FROM runs
+		SELECT COALESCE(repository, ''), COALESCE(repositories, '') FROM runs
 		WHERE project_dir = ?
 		  AND COALESCE(parent_run_id, '') = ''
 		  AND workflow_name != 'list-tasks'
 		  AND state IN ('succeeded', 'failed', 'cancelled')
-		  AND COALESCE(completed_at, '') != ''
-		GROUP BY COALESCE(repository, '')`, projectDir)
+		  AND COALESCE(completed_at, '') != ''`, projectDir)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	counts := map[string]int{}
 	for rows.Next() {
-		var repo string
-		var n int
-		if err := rows.Scan(&repo, &n); err != nil {
+		var repository, repositories string
+		if err := rows.Scan(&repository, &repositories); err != nil {
 			return nil, err
 		}
-		counts[repo] = n
+		repos := splitRepositories(repositories)
+		if len(repos) == 0 && repository != "" {
+			repos = []string{repository}
+		}
+		if len(repos) == 0 {
+			counts[""]++
+			continue
+		}
+		for _, repo := range repos {
+			counts[repo]++
+		}
 	}
 	return counts, rows.Err()
+}
+
+// splitRepositories parses a comma-joined runs.repositories column value
+// (see domain.Run.RepositoriesString) back into its component names.
+func splitRepositories(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, ",")
 }
 
 // CountActiveRunsByProject returns the number of pending/running runs for a

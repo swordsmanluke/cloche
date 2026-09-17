@@ -49,7 +49,8 @@ type DaemonExecutor struct {
 	allWFs map[string]*domain.Workflow
 
 	// store is used to set child_run_id in the KV store after extracting
-	// container results to a git branch.
+	// container results to a git branch, and to record which repos a host
+	// run's container sub-workflows touched (see recordTouchedRepositories).
 	store ports.RunStore
 
 	// logStore is used to index extracted container step log files so the web
@@ -510,6 +511,7 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		prepared, hasWorktrees := d.worktrees[poolKey]
 		if hasWorktrees && session != nil {
 			authorName, authorEmail := resolveGitIdentity(d.projectDir)
+			var touchedRepos []string
 			for _, p := range prepared {
 				log.Printf("daemon executor: extracting results for repo %q to branch %s", p.Repo.Name, p.Worktree.Branch)
 				if _, err := extractResultsFn(ctx, docker.ExtractOptions{
@@ -527,7 +529,16 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 					log.Printf("daemon executor: failed to extract results for repo %q: %v", p.Repo.Name, err)
 				} else {
 					log.Printf("daemon executor: branch %s in %s updated", p.Worktree.Branch, p.Repo.Path)
+					if p.Repo.Name != "" {
+						touchedRepos = append(touchedRepos, p.Repo.Name)
+					}
 				}
+			}
+			// Rule (c) of domain.ResolveRunRepositories: a successfully
+			// extracted repo is proof the enclosing host run touched it,
+			// even when the sub-workflow declares no repos of its own.
+			if len(touchedRepos) > 0 && d.hostExec != nil && d.hostExec.HostRunID != "" {
+				d.recordTouchedRepositories(ctx, d.hostExec.HostRunID, touchedRepos)
 			}
 		}
 
@@ -590,6 +601,28 @@ func (d *DaemonExecutor) resolveRepoBaseSHA(ctx context.Context, repoDir string)
 		}
 	}
 	return gitHEAD(repoDir)
+}
+
+// recordTouchedRepositories appends repoNames to hostRunID's persisted
+// Repositories set (rule c of domain.ResolveRunRepositories), deduping
+// against whatever's already recorded. A no-op if the run can't be loaded
+// (e.g. SkipRunRecord) or nothing new was touched.
+func (d *DaemonExecutor) recordTouchedRepositories(ctx context.Context, hostRunID string, repoNames []string) {
+	if d.store == nil {
+		return
+	}
+	run, err := d.store.GetRun(ctx, hostRunID)
+	if err != nil {
+		return
+	}
+	resolved := domain.ResolveRunRepositories(run.Repository, "", append(run.Repositories, repoNames...), nil)
+	if len(resolved) == len(run.Repositories) {
+		return // already recorded
+	}
+	run.Repositories = resolved
+	if err := d.store.UpdateRun(ctx, run); err != nil {
+		log.Printf("daemon executor: recording touched repositories %v for run %s: %v", repoNames, hostRunID, err)
+	}
 }
 
 // prepareExtractWorktrees pre-creates one extraction worktree+branch per repo

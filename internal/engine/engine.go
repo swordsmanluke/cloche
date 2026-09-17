@@ -143,6 +143,7 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 
 	run := domain.NewRun(generateRunID(), wf.Name)
 	run.Repository = domain.SingleRepo(wf.Repos)
+	run.Repositories = domain.ResolveRunRepositories(run.Repository, "", nil, wf.Repos)
 	run.Start()
 
 	// Check context cancellation before starting.

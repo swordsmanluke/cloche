@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -299,10 +300,24 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 	}
 
 	repoCounts := map[string]TaskStackRepoCounts{}
-	countRepo := func(repo string, mutate func(*TaskStackRepoCounts)) {
-		c := repoCounts[repo]
-		mutate(&c)
-		repoCounts[repo] = c
+	// countRepos increments mutate once per repo a run is attributed to (see
+	// domain.ResolveRunRepositories — a run can belong to more than one),
+	// or once under the "" (unattributed) bucket when repos is empty, so
+	// the sum of every group's counts always equals the number of runs
+	// rather than double-counting into RepoCounts without a matching
+	// increment anywhere for unattributed runs.
+	countRepos := func(repos []string, mutate func(*TaskStackRepoCounts)) {
+		if len(repos) == 0 {
+			c := repoCounts[""]
+			mutate(&c)
+			repoCounts[""] = c
+			return
+		}
+		for _, repo := range repos {
+			c := repoCounts[repo]
+			mutate(&c)
+			repoCounts[repo] = c
+		}
 	}
 
 	stack := &TaskStack{
@@ -313,18 +328,18 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 		RepoCounts: repoCounts,
 	}
 
-	// runRepoCache memoizes RunID -> Repository lookups for NeedsYou/Queued
+	// runRepoCache memoizes RunID -> Repositories lookups for NeedsYou/Queued
 	// entries, which only carry a RunID and need a store round trip to
 	// resolve it (Running/Done entries already hold the *domain.Run).
-	runRepoCache := map[string]string{}
+	runRepoCache := map[string][]string{}
 
 	// Resolved at most once per build (a .cloche glob+parse), and only when
 	// a stale-claim/repeat-failure item actually needs it.
 	closeAvailable := -1 // -1 = not yet resolved, 0 = false, 1 = true
 	for _, item := range attentionItems {
-		repo := h.repositoryForRun(ctx, item.RunID, runRepoCache)
-		countRepo(repo, func(c *TaskStackRepoCounts) { c.NeedsYou++ })
-		if repoFilter != "" && repo != repoFilter {
+		repos := h.repositoriesForRun(ctx, item.RunID, runRepoCache)
+		countRepos(repos, func(c *TaskStackRepoCounts) { c.NeedsYou++ })
+		if repoFilter != "" && !slices.Contains(repos, repoFilter) {
 			continue
 		}
 		if len(stack.NeedsYou) >= taskStackNeedsYouCap {
@@ -339,7 +354,7 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 			Since:      apiTimeString(item.Since),
 			Actions:    item.Actions,
 			Key:        item.Key,
-			Repository: repo,
+			Repository: primaryRepository(repos),
 		}
 		if item.Kind == attention.KindStaleClaim || item.Kind == attention.KindRepeatFailure {
 			if closeAvailable == -1 {
@@ -388,9 +403,9 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 		// must still work when the current scope is a different repo.
 		activeTaskKeys[runGroupKey(active)] = true
 
-		repo := active.Repository
-		countRepo(repo, func(c *TaskStackRepoCounts) { c.Running++ })
-		if repoFilter != "" && repo != repoFilter {
+		repos := runRepositories(active)
+		countRepos(repos, func(c *TaskStackRepoCounts) { c.Running++ })
+		if repoFilter != "" && !slices.Contains(repos, repoFilter) {
 			continue
 		}
 		if len(stack.Running) < taskStackRunningCap {
@@ -411,7 +426,7 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 				CurrentStep:    currentStep,
 				StartedAt:      apiTimeString(start),
 				ElapsedSeconds: int64(elapsed.Seconds()),
-				Repository:     repo,
+				Repository:     primaryRepository(repos),
 			})
 		}
 	}
@@ -426,15 +441,17 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 	if counter, ok := h.store.(ports.DoneRepoCounter); ok {
 		if doneCounts, err := counter.CountDoneRunsByProjectGroupedByRepo(ctx, projectDir); err == nil {
 			for repo, n := range doneCounts {
-				countRepo(repo, func(c *TaskStackRepoCounts) { c.Done = n })
+				c := repoCounts[repo]
+				c.Done = n
+				repoCounts[repo] = c
 			}
 		}
 	}
 
 	for _, q := range queued {
-		repo := h.repositoryForRun(ctx, q.RunID, runRepoCache)
-		countRepo(repo, func(c *TaskStackRepoCounts) { c.Queued++ })
-		if repoFilter != "" && repo != repoFilter {
+		repos := h.repositoriesForRun(ctx, q.RunID, runRepoCache)
+		countRepos(repos, func(c *TaskStackRepoCounts) { c.Queued++ })
+		if repoFilter != "" && !slices.Contains(repos, repoFilter) {
 			continue
 		}
 		if len(stack.Queued) >= taskStackQueuedCap {
@@ -446,29 +463,54 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 			RunID:      q.RunID,
 			Reason:     q.Reason,
 			Since:      q.Since,
-			Repository: repo,
+			Repository: primaryRepository(repos),
 		})
 	}
 
 	return stack, nil
 }
 
-// repositoryForRun resolves the RepositoryConfig.Name a run was dispatched
-// against, memoized in cache since NeedsYou/Queued entries only carry a
-// RunID and are otherwise looked up one at a time.
-func (h *Handler) repositoryForRun(ctx context.Context, runID string, cache map[string]string) string {
-	if runID == "" {
+// runRepositories returns the full set of repos run is attributed to (see
+// domain.ResolveRunRepositories), preferring the persisted Repositories set
+// but falling back to the single legacy Repository field for runs recorded
+// (or, in tests, constructed) before Repositories existed.
+func runRepositories(run *domain.Run) []string {
+	if len(run.Repositories) > 0 {
+		return run.Repositories
+	}
+	if run.Repository != "" {
+		return []string{run.Repository}
+	}
+	return nil
+}
+
+// primaryRepository returns the first entry of repos, or "" when repos is
+// unattributed. Used for the single "repository" field on rendered entries —
+// membership in a specific repo's sub-tab is decided by repoFilter against
+// the full set (see runRepositories), not by this one display value.
+func primaryRepository(repos []string) string {
+	if len(repos) == 0 {
 		return ""
 	}
-	if repo, ok := cache[runID]; ok {
-		return repo
+	return repos[0]
+}
+
+// repositoriesForRun resolves the set of repos a run belongs to, memoized in
+// cache since NeedsYou/Queued entries only carry a RunID and are otherwise
+// looked up one at a time.
+func (h *Handler) repositoriesForRun(ctx context.Context, runID string, cache map[string][]string) []string {
+	if runID == "" {
+		return nil
 	}
-	repo := ""
+	if repos, ok := cache[runID]; ok {
+		return repos
+	}
+	var repos []string
 	if run, err := h.store.GetRun(ctx, runID); err == nil {
-		repo = run.Repository
+		repos = runRepositories(run)
 	}
-	cache[runID] = repo
-	return repo
+	cache[runID] = repos
+	return repos
 }
 
 // fetchDonePage returns one page of Done entries (newest first), starting
@@ -538,7 +580,7 @@ func (h *Handler) fetchDonePage(ctx context.Context, projectDir string, tasksByI
 				continue
 			}
 			seen[key] = true
-			if repoFilter != "" && r.Repository != repoFilter {
+			if repoFilter != "" && !slices.Contains(runRepositories(r), repoFilter) {
 				continue
 			}
 			if isExcludedBuiltinTask(ctx, h.taskStore, tasksByID[r.TaskID], []*domain.Run{r}) {
@@ -581,7 +623,7 @@ func buildDoneEntry(r *domain.Run, task *domain.Task) TaskStackDone {
 		Outcome:         string(r.State),
 		CompletedAt:     apiTimeString(r.CompletedAt),
 		DurationSeconds: int64(r.CompletedAt.Sub(r.StartedAt).Seconds()),
-		Repository:      r.Repository,
+		Repository:      primaryRepository(runRepositories(r)),
 	}
 }
 

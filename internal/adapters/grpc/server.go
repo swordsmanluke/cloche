@@ -147,6 +147,39 @@ func (s *ClocheServer) refreshProject(dir string) *domain.Project {
 	return p
 }
 
+// foldSubRepoProjectDir resolves dir to its parent project's directory when
+// dir is itself a [[repositories]] path declared by some other known
+// project — the "cloche run" invoked from inside a sub-repo case (e.g.
+// wrapped_cloche's repos/cloche), which otherwise registers the sub-repo as
+// its own disconnected project (see docs bug report on repo sub-tabs).
+// Returns the parent project's dir and the matched repository name; when dir
+// isn't a sub-repo of any known project, returns dir unchanged and "".
+func (s *ClocheServer) foldSubRepoProjectDir(ctx context.Context, dir string) (string, string) {
+	if dir == "" {
+		return dir, ""
+	}
+	projects, err := s.store.ListProjects(ctx)
+	if err != nil {
+		return dir, ""
+	}
+	for _, projectDir := range projects {
+		if projectDir == dir {
+			continue
+		}
+		cfg, err := config.Load(projectDir)
+		if err != nil || len(cfg.Repositories) == 0 {
+			continue
+		}
+		for _, r := range cfg.ResolveRepositories(projectDir) {
+			if r.Name != "" && r.Path == dir {
+				log.Printf("folding sub-repo project_dir %s into parent project %s (repo %q)", dir, projectDir, r.Name)
+				return projectDir, r.Name
+			}
+		}
+	}
+	return dir, ""
+}
+
 // normalizeProjectDir resolves linked git worktrees back to the main worktree
 // of the repository. RPC handlers that take a project_dir from the caller
 // should run it through this helper so that running cloche from inside
@@ -659,6 +692,11 @@ func (s *ClocheServer) handleHostWorkflowRequest(ctx context.Context, containerR
 
 func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
 	req.ProjectDir = normalizeProjectDir(req.ProjectDir)
+	subRepoName := ""
+	if parentDir, repoName := s.foldSubRepoProjectDir(ctx, req.ProjectDir); repoName != "" {
+		req.ProjectDir = parentDir
+		subRepoName = repoName
+	}
 
 	// Refresh the project cache on every run so manual edits to config.toml
 	// between runs are picked up without restarting the daemon.
@@ -707,7 +745,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 			// (CLI `cloche run`, `cloche intent scan`, or the dashboard "Scan
 			// now" button) — never a propagated/loop-dispatched attempt — so
 			// this dispatch is always user-initiated.
-			return s.runHostWorkflow(ctx, req, true)
+			return s.runHostWorkflow(ctx, req, true, subRepoName)
 		}
 	}
 
@@ -730,12 +768,15 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	run.TaskID = req.IssueId
 	run.AttemptID = attemptID
 	run.UserInitiated = true
+	var wfRepos []string
 	if wfLookupErr == nil {
 		if wf, ok := allWFs[workflowName]; ok {
 			run.IsBuiltin = wf.Builtin
 			run.Repository = domain.SingleRepo(wf.Repos)
+			wfRepos = wf.Repos
 		}
 	}
+	run.Repositories = domain.ResolveRunRepositories(run.Repository, subRepoName, nil, wfRepos)
 	if run.TaskID == "" {
 		// User-initiated run: task ID was synthesized during ensureTaskAndAttempt.
 		// Derive it from the attempt prefix for backward compat with log paths.
@@ -800,8 +841,10 @@ func envMapToSlice(env map[string]string) []string {
 // caller of this function starts a fresh top-level dispatch (there is no
 // propagated attempt to check), so the two current callers — a direct
 // RunWorkflow request versus the automatic post-task intent-scan trigger —
-// are otherwise indistinguishable from ctx alone.
-func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowRequest, userInitiated bool) (*pb.RunWorkflowResponse, error) {
+// are otherwise indistinguishable from ctx alone. subRepoName is the
+// repository matched by RunWorkflow's foldSubRepoProjectDir, or "" when
+// req.ProjectDir wasn't resolved from a sub-repo path.
+func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowRequest, userInitiated bool, subRepoName string) (*pb.RunWorkflowResponse, error) {
 	// Check for a propagated attempt ID from a parent host executor.
 	attemptID := attemptIDFromContext(ctx)
 
@@ -828,6 +871,7 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 		TaskID:        taskID,
 		AttemptID:     attemptID,
 		UserInitiated: userInitiated,
+		SubRepo:       subRepoName,
 	}
 
 	runCtx, cancel := context.WithCancel(context.Background())
@@ -1311,6 +1355,7 @@ func (s *ClocheServer) resumeContainerRunWithPool(ctx context.Context, run *doma
 	newRun.IsBuiltin = wf.Builtin
 	newRun.UserInitiated = run.UserInitiated
 	newRun.Repository = run.Repository
+	newRun.Repositories = run.Repositories
 	if err := s.store.CreateRun(ctx, newRun); err != nil {
 		return nil, fmt.Errorf("creating resume run record: %w", err)
 	}
@@ -1548,6 +1593,7 @@ func (s *ClocheServer) resumeContainerRunLegacy(ctx context.Context, run *domain
 	newRun.IsBuiltin = run.IsBuiltin
 	newRun.UserInitiated = run.UserInitiated
 	newRun.Repository = run.Repository
+	newRun.Repositories = run.Repositories
 	if err := s.store.CreateRun(ctx, newRun); err != nil {
 		return nil, fmt.Errorf("creating resume run record: %w", err)
 	}
@@ -3750,7 +3796,7 @@ func (t *intentScanTrigger) EnqueueScan(ctx context.Context, projectDir, taskID 
 		ProjectDir:   projectDir,
 		WorkflowName: "intent-scan",
 		Title:        builtin.AutoTriggerTitles["intent-scan"],
-	}, false) // automatic trigger, not a user request
+	}, false, "") // automatic trigger, not a user request
 	return err
 }
 

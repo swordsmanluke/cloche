@@ -37,6 +37,12 @@ type Runner struct {
 	ExtraEnv      []string               // additional KEY=VALUE env vars passed to all steps
 	SkipRunRecord bool                   // when true, don't persist a run record to the store
 	UserInitiated bool                   // true when dispatched by an explicit user request rather than an automated trigger (see domain.Run.UserInitiated)
+	// SubRepo is the [[repositories]] name matched when projectDir was
+	// itself resolved from a sub-repo path (see
+	// grpc.ClocheServer.foldSubRepoProjectDir), attributed to the run via
+	// rule (b) of domain.ResolveRunRepositories. Empty for ordinary
+	// project-root dispatches.
+	SubRepo string
 }
 
 // containerCleaner is implemented by executors that manage container lifecycle
@@ -123,6 +129,7 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		hostRun.IsBuiltin = wf.Builtin
 		hostRun.UserInitiated = r.UserInitiated
 		hostRun.Repository = domain.SingleRepo(wf.Repos)
+		hostRun.Repositories = domain.ResolveRunRepositories(hostRun.Repository, r.SubRepo, nil, wf.Repos)
 		if err := r.Store.CreateRun(ctx, hostRun); err != nil {
 			return nil, fmt.Errorf("creating host run record: %w", err)
 		}
@@ -515,6 +522,7 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 	hostRun.IsBuiltin = wf.Builtin
 	hostRun.UserInitiated = oldRun.UserInitiated
 	hostRun.Repository = oldRun.Repository
+	hostRun.Repositories = oldRun.Repositories
 	if err := r.Store.CreateRun(ctx, hostRun); err != nil {
 		return nil, fmt.Errorf("creating resume run record: %w", err)
 	}

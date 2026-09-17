@@ -461,6 +461,56 @@ func TestExecutor_ScriptStep_NoRunID(t *testing.T) {
 	assert.Contains(t, string(data), "RUN_ID=\n")
 }
 
+// TestExecutor_ScriptStep_RepositoryPinRecordsTouchedRepo verifies rule (c)
+// of domain.ResolveRunRepositories: a step's "repository" config pins it to
+// a repo, and that repo must be recorded on the host run even when the
+// workflow itself declares no repos (the wrapped_cloche bug report's
+// motivating case).
+func TestExecutor_ScriptStep_RepositoryPinRecordsTouchedRepo(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	require.NoError(t, store.CreateRun(context.Background(), domain.NewRun("host-run-1", "main")))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		Store:      store,
+		HostRunID:  "host-run-1",
+	}
+
+	step := &domain.Step{
+		Name:    "build-backend",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo hi", "repository": "backend"},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result.Result)
+
+	run, err := store.GetRun(context.Background(), "host-run-1")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"backend"}, run.Repositories)
+
+	// A second step pinned to a different repo accumulates rather than
+	// overwriting.
+	step2 := &domain.Step{
+		Name:    "build-frontend",
+		Type:    domain.StepTypeScript,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"run": "echo hi", "repository": "frontend"},
+	}
+	_, err = executor.Execute(context.Background(), step2)
+	require.NoError(t, err)
+
+	run, err = store.GetRun(context.Background(), "host-run-1")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"backend", "frontend"}, run.Repositories)
+}
+
 func TestExecutor_ScriptStep_TaskIDEnvVar(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")

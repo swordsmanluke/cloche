@@ -810,3 +810,75 @@ func TestAPITaskStack_LegacyProjectOmitsRepositoryFields(t *testing.T) {
 	_, hasDoneRepo := doneRaw[0]["repository"]
 	assert.False(t, hasDoneRepo, "legacy done entries must omit \"repository\" entirely")
 }
+
+// TestAPITaskStack_RepoScoping_MultiRepoAndUnattributed reproduces the
+// wrapped_cloche bug report: a host workflow that declares no repos (or more
+// than one) previously left every one of its runs with an empty
+// run.Repository, so they only ever showed up under "all repos" and never
+// under the repo-specific sub-tab (?repo=cloche). With richer attribution
+// (domain.Run.Repositories, resolved by domain.ResolveRunRepositories) such
+// a run can be attributed to more than one repo's sub-tab at once, and a run
+// that still resolves to nothing is counted separately as unattributed
+// rather than silently vanishing from every named sub-tab.
+func TestAPITaskStack_RepoScoping_MultiRepoAndUnattributed(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+	projectDir := t.TempDir()
+	slug := filepath.Base(projectDir)
+
+	// A host workflow run belonging to more than one repo (rule d/c of
+	// domain.ResolveRunRepositories) — e.g. wrapped_cloche's "main" touching
+	// both repos/cloche and docs.
+	multiRepoRun := domain.NewRun("run-multi-repo", "main")
+	multiRepoRun.ProjectDir = projectDir
+	multiRepoRun.TaskID = "task-multi-repo"
+	multiRepoRun.State = domain.RunStateSucceeded
+	multiRepoRun.StartedAt = time.Now().Add(-time.Hour)
+	multiRepoRun.CompletedAt = time.Now().Add(-time.Minute)
+	multiRepoRun.Repositories = []string{"cloche", "docs"}
+	require.NoError(t, store.CreateRun(ctx, multiRepoRun))
+
+	// A run that resolves to no repository at all — must stay visible under
+	// "all repos" and be counted as unattributed, not dropped.
+	unattributedRun := domain.NewRun("run-unattributed", "main")
+	unattributedRun.ProjectDir = projectDir
+	unattributedRun.TaskID = "task-unattributed"
+	unattributedRun.State = domain.RunStateSucceeded
+	unattributedRun.StartedAt = time.Now().Add(-time.Hour)
+	unattributedRun.CompletedAt = time.Now().Add(-2 * time.Minute)
+	require.NoError(t, store.CreateRun(ctx, unattributedRun))
+
+	getStack := func(query string) TaskStack {
+		t.Helper()
+		req := httptest.NewRequest("GET", "/api/projects/"+slug+"/tasks/stack"+query, nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+		var stack TaskStack
+		require.NoError(t, json.NewDecoder(w.Body).Decode(&stack))
+		return stack
+	}
+
+	all := getStack("")
+	require.Len(t, all.Done, 2, "both runs remain visible under all repos")
+
+	// The bug this reproduces: ?repo=cloche must return the multi-repo run.
+	cloche := getStack("?repo=cloche")
+	require.Len(t, cloche.Done, 1)
+	assert.Equal(t, "task-multi-repo", cloche.Done[0].TaskID)
+
+	docs := getStack("?repo=docs")
+	require.Len(t, docs.Done, 1)
+	assert.Equal(t, "task-multi-repo", docs.Done[0].TaskID, "a multi-repo run appears under every repo it belongs to")
+
+	// The unattributed run must not leak into either named sub-tab.
+	assert.NotContains(t, []string{cloche.Done[0].TaskID}, "task-unattributed")
+	assert.NotContains(t, []string{docs.Done[0].TaskID}, "task-unattributed")
+
+	require.Contains(t, all.RepoCounts, "cloche")
+	require.Contains(t, all.RepoCounts, "docs")
+	require.Contains(t, all.RepoCounts, "", "unattributed runs are counted under the \"\" bucket")
+	assert.Equal(t, 1, all.RepoCounts["cloche"].Done)
+	assert.Equal(t, 1, all.RepoCounts["docs"].Done)
+	assert.Equal(t, 1, all.RepoCounts[""].Done, "the unattributed run is counted once, separately from either named repo")
+}

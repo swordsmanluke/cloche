@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/swordsmanluke/cloche/internal/activitylog"
 	"github.com/swordsmanluke/cloche/internal/adapters/docker"
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/engine"
 	"github.com/swordsmanluke/cloche/internal/host"
@@ -1759,4 +1760,39 @@ func TestDaemonExecutor_ContainerProjectDir_ScopesReposPerWorkflow(t *testing.T)
 	assert.NoDirExists(t, dirA, "Close should clean up all per-repo-set snapshots")
 	assert.NoDirExists(t, dirB)
 	assert.NoDirExists(t, dirAll)
+}
+
+// TestDaemonExecutor_RecordTouchedRepositories verifies rule (c) of
+// domain.ResolveRunRepositories: a repo a host run's container sub-workflow
+// successfully extracted results for must be recorded on the host run, even
+// when the sub-workflow declares no repos of its own — the wrapped_cloche
+// bug report's motivating case for host workflows that fan out across
+// multiple repos without declaring `repos = [...]` themselves.
+func TestDaemonExecutor_RecordTouchedRepositories(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	ctx := context.Background()
+	hostRun := domain.NewRun("host-run-1", "main")
+	require.NoError(t, store.CreateRun(ctx, hostRun))
+
+	de := &DaemonExecutor{store: store}
+	de.recordTouchedRepositories(ctx, "host-run-1", []string{"backend"})
+
+	got, err := store.GetRun(ctx, "host-run-1")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"backend"}, got.Repositories)
+
+	// A later extraction touching a different repo accumulates.
+	de.recordTouchedRepositories(ctx, "host-run-1", []string{"frontend"})
+	got, err = store.GetRun(ctx, "host-run-1")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"backend", "frontend"}, got.Repositories)
+
+	// Re-recording an already-touched repo is a no-op (still deduped).
+	de.recordTouchedRepositories(ctx, "host-run-1", []string{"backend"})
+	got, err = store.GetRun(ctx, "host-run-1")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"backend", "frontend"}, got.Repositories)
 }

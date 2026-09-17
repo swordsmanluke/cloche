@@ -557,6 +557,22 @@
                 btn.appendChild(meta);
             }
 
+            // The "" bucket in repo_counts holds runs that resolved to no
+            // repository at all (see domain.ResolveRunRepositories) — always
+            // shown under "all repos" already, but called out by name here
+            // so an attribution gap is visible instead of silently blending
+            // into the merged total.
+            if (repoName === '') {
+                var uc = counts[''] || {};
+                var unattributed = (uc.needs_you || 0) + (uc.running || 0) + (uc.queued || 0) + (uc.done || 0);
+                if (unattributed) {
+                    var unattributedMeta = document.createElement('span');
+                    unattributedMeta.className = 'console-tab-meta console-tab-unattributed';
+                    unattributedMeta.textContent = unattributed + ' unattributed';
+                    btn.appendChild(unattributedMeta);
+                }
+            }
+
             btn.addEventListener('click', function () { selectRepo(repoName, { pushHistory: true }); });
             row.appendChild(btn);
         }

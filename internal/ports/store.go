@@ -112,7 +112,11 @@ type BuiltinLookup interface {
 // re-deriving the deduped, paginated Done list. The result is approximate
 // relative to that list — it counts every terminal run, not just each
 // task's latest attempt — which is an acceptable trade-off for a badge
-// count. Keyed by RepositoryConfig.Name ("" for legacy/unassigned runs).
+// count. Keyed by RepositoryConfig.Name; a run attributed to more than one
+// repository (see domain.ResolveRunRepositories) increments every one of
+// its repos' counts, and "" is the unattributed count (runs that resolved
+// to no repository at all — including legacy runs recorded before repo
+// attribution existed).
 type DoneRepoCounter interface {
 	CountDoneRunsByProjectGroupedByRepo(ctx context.Context, projectDir string) (map[string]int, error)
 }

@@ -56,7 +56,7 @@ workflow "develop" {
 | `agent` | identifier | Reference a named agent declared in the workflow's `agent` block. Expands into `agent_command` and `agent_args`. Step-level `agent_command`/`agent_args` still override it. |
 | `usage_command` | string | Shell command to run after an agent step completes to capture token usage. Output must be JSON: `{"input_tokens": N, "output_tokens": N}`. If absent or the command fails, usage is not tracked. Overrides any adapter-level default (e.g. from `[agents.codex]` in `config.toml`). |
 | `prompt_step` | string | For workflow steps: which preceding step's output to use as the prompt. |
-| `repository` | string | Repository name (from `[[repositories]]` in `config.toml`) to pin this step to a specific repository. When set, the runtime selects that repository's workspace for the step. |
+| `repository` | string | Repository name (from `[[repositories]]` in `config.toml`) this host workflow step touches. Used only to attribute the run to that repo's console sub-tab (see [Repo sub-tabs](web-dashboard.md#repo-sub-tabs)) when the workflow itself doesn't declare `repos`; it does not change which files the step can access. |
 | `skip` | string | Shell command run before the step; exit 0 bypasses the step (follows `success` wire or a `CLOCHE_RESULT:<name>` marker). Exit non-zero runs the step normally. See [Skip Scripts](workflows.md#skip-scripts). |
 
 A step must have exactly one of `prompt`, `run`, `workflow_name`, or `poll`.
@@ -1941,6 +1941,17 @@ path = "./repos/frontend"
 | `url` | _(unset)_ | Remote URL (informational; not used by the runtime). |
 
 Repositories appear in `cloche project` output and in `cloche project repos list`.
+
+A run's console repo sub-tab (see [Repo sub-tabs](web-dashboard.md#repo-sub-tabs)) is
+decided by `internal/domain.ResolveRunRepositories`, which unions whichever of these
+signals apply, in order: (a) the workflow declared exactly one `repos` entry; (b) the
+run's `project_dir` is itself one of these `path` values — the "`cloche run` invoked
+from inside a sub-repo" case, folded back into the parent project; (c) a step's
+`repository` config key, or a repo a container sub-workflow actually extracted results
+into; (d) the workflow declares more than one `repos` entry, in which case it's
+attributed to all of them. A run can therefore belong to more than one repo's sub-tab.
+A run matching none of these is "unattributed": it appears only under "all repos" and is
+counted separately there rather than silently vanishing from every repo tab.
 
 ## `cloched` Flags
 

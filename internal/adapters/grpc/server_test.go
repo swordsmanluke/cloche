@@ -5645,3 +5645,57 @@ func TestAttentionSnapshot_NeverInvokesTracker(t *testing.T) {
 	_, statErr := os.Stat(marker)
 	require.NoError(t, statErr, "AttentionItems (the fresh-compute path) should invoke the tracker")
 }
+
+// TestServer_RunWorkflow_FoldsSubRepoProjectDir reproduces the secondary bug
+// from the repo sub-tab report: "cloche run" invoked from inside a
+// [[repositories]] sub-repo (e.g. wrapped_cloche/repos/cloche) must record
+// the run under the parent project's dir, attributed to the matched repo
+// (rule b of domain.ResolveRunRepositories), rather than registering the
+// sub-repo path as its own disconnected project.
+func TestServer_RunWorkflow_FoldsSubRepoProjectDir(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	parentDir := t.TempDir()
+	subRepoDir := filepath.Join(parentDir, "repos", "cloche")
+	require.NoError(t, os.MkdirAll(filepath.Join(parentDir, ".cloche"), 0755))
+	require.NoError(t, os.MkdirAll(subRepoDir, 0755))
+	configToml := "[[repositories]]\nname = \"cloche\"\npath = \"repos/cloche\"\n"
+	require.NoError(t, os.WriteFile(filepath.Join(parentDir, ".cloche", "config.toml"), []byte(configToml), 0644))
+
+	// Seed a prior run for parentDir so it's a known project (foldSubRepoProjectDir
+	// searches store.ListProjects for a matching [[repositories]] path).
+	seed := domain.NewRun("seed-run", "develop")
+	seed.ProjectDir = parentDir
+	require.NoError(t, store.CreateRun(context.Background(), seed))
+
+	msgs := []protocol.StatusMessage{
+		{Type: protocol.MsgStepStarted, StepName: "build"},
+		{Type: protocol.MsgStepCompleted, StepName: "build", Result: "success"},
+		{Type: protocol.MsgRunCompleted, Result: "succeeded"},
+	}
+	script := "#!/bin/sh\n"
+	for _, msg := range msgs {
+		data, _ := json.Marshal(msg)
+		script += "echo '" + string(data) + "'\n"
+	}
+	// Workflows resolve against req.ProjectDir *after* folding, so the
+	// workflow file must live under the parent project's .cloche/, not the
+	// sub-repo's.
+	require.NoError(t, os.WriteFile(filepath.Join(parentDir, ".cloche", "test.cloche"), []byte(script), 0755))
+
+	rt := local.NewRuntime("sh")
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "")
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   subRepoDir,
+	})
+	require.NoError(t, err)
+
+	run, err := store.GetRun(context.Background(), resp.RunId)
+	require.NoError(t, err)
+	assert.Equal(t, parentDir, run.ProjectDir, "run must be recorded against the parent project, not the sub-repo path")
+	assert.Equal(t, []string{"cloche"}, run.Repositories, "folded run is attributed to the matched sub-repo")
+}

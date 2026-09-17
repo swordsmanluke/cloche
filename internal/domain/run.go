@@ -107,6 +107,15 @@ type Run struct {
 	// repos, and runs recorded before this field existed.
 	Repository string
 
+	// Repositories is the full set of RepositoryConfig.Name values this run
+	// is attributed to, resolved by ResolveRunRepositories from Repository
+	// plus richer signals (project_dir, touched repos, a multi-repo
+	// workflow's declared list) that Repository alone can't capture. A run
+	// may belong to more than one repository; nil/empty means unattributed
+	// (shown only under the console's "all repos" tab). See
+	// ResolveRunRepositories for the resolution order.
+	Repositories []string
+
 	// IsBuiltin is true when the workflow actually resolved for this run is a
 	// built-in one (see internal/builtin), rather than parsed from a project's
 	// .cloche files — even if a project workflow shares the built-in's name and
@@ -198,6 +207,22 @@ func (r *Run) SetActiveStepsFromString(s string) {
 		return
 	}
 	r.ActiveSteps = strings.Split(s, ",")
+}
+
+// RepositoriesString returns a comma-separated representation of
+// Repositories for storage, mirroring ActiveStepsString.
+func (r *Run) RepositoriesString() string {
+	return strings.Join(r.Repositories, ",")
+}
+
+// SetRepositoriesFromString parses a comma-separated string into
+// Repositories, mirroring SetActiveStepsFromString.
+func (r *Run) SetRepositoriesFromString(s string) {
+	if s == "" {
+		r.Repositories = nil
+		return
+	}
+	r.Repositories = strings.Split(s, ",")
 }
 
 func (r *Run) Complete(state RunState) {

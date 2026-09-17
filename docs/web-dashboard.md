@@ -75,6 +75,18 @@ are removed from the stack entirely, not merely labelled. Legacy projects (no
 row at all: the body grid goes straight from the project tab row to the stack, identical
 to a project registered before this feature existed.
 
+Which sub-tab a task appears under is decided by `internal/domain.ResolveRunRepositories`
+(see the `[[repositories]]` reference in [USAGE.md](USAGE.md#repositories-1)), not just
+the workflow's own single-repo `repos` declaration — a host workflow that declares no
+`repos` at all (the documented default: "gets every configured repository") can still be
+attributed to the repos it actually touches, via a step's `repository` config key or the
+repos a container sub-workflow extracted results into, and a workflow declaring more than
+one `repos` entry is attributed to all of them. A task can therefore appear under more
+than one repo sub-tab at once; **all repos** always shows the union. A task matching none
+of these rules is unattributed — it still appears under **all repos** only, and is folded
+into that tab's counts as a separate "unattributed" figure rather than silently missing
+from every named sub-tab.
+
 On the right, daemon instruments for the active project:
 
 - **Loop** — toggles the orchestration loop, showing "running"/"stopped" (`POST /trigger`

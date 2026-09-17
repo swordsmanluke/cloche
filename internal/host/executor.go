@@ -96,6 +96,14 @@ var _ engine.StepExecutor = (*Executor)(nil)
 
 // Execute runs a single host workflow step.
 func (e *Executor) Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
+	// A step's "repository" pin (see domain.ValidateConfig's known step
+	// config keys) is a signal that this host run touches that repo, even
+	// when the workflow itself declares no repos (rule c of
+	// domain.ResolveRunRepositories).
+	if repoName := step.Config["repository"]; repoName != "" {
+		e.recordTouchedRepository(ctx, repoName)
+	}
+
 	// Seed run-level context once on first use (logged but not fatal on error).
 	if e.TaskID != "" && e.Store != nil {
 		e.seedOnce.Do(func() {
@@ -171,6 +179,28 @@ func (e *Executor) Execute(ctx context.Context, step *domain.Step) (domain.StepR
 	}
 
 	return result, err
+}
+
+// recordTouchedRepository appends repoName to the host run's persisted
+// Repositories set (rule c of domain.ResolveRunRepositories), a no-op if
+// it's already recorded or the run isn't persisted (e.g. list-tasks polling
+// with SkipRunRecord).
+func (e *Executor) recordTouchedRepository(ctx context.Context, repoName string) {
+	if e.Store == nil || e.HostRunID == "" {
+		return
+	}
+	run, err := e.Store.GetRun(ctx, e.HostRunID)
+	if err != nil {
+		return
+	}
+	resolved := domain.ResolveRunRepositories(run.Repository, "", append(run.Repositories, repoName), nil)
+	if len(resolved) == len(run.Repositories) {
+		return // already recorded
+	}
+	run.Repositories = resolved
+	if err := e.Store.UpdateRun(ctx, run); err != nil {
+		log.Printf("host executor: recording touched repository %q for run %s: %v", repoName, e.HostRunID, err)
+	}
 }
 
 // executeScript runs a shell command on the host.
