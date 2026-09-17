@@ -1,0 +1,131 @@
+{
+  "repo": "/home/lucas/workspace/bract-pilot/arm-b",
+  "drift": {
+    "D1": {
+      "id": "D1",
+      "method": "behavior",
+      "passed": true,
+      "detail": "error output is a single 'line N: <message>' line for lex/runtime errors",
+      "evidence": {}
+    },
+    "D2": {
+      "id": "D2",
+      "method": "behavior",
+      "passed": false,
+      "detail": "a 2500-deep call chain did not complete cleanly: exit=1 stdout='' stderr=\"line 5: '+' cannot be applied to strings\\n\"",
+      "evidence": {}
+    },
+    "D3": {
+      "id": "D3",
+      "method": "behavior",
+      "passed": true,
+      "detail": "negative-operand division/modulo truncate toward zero",
+      "evidence": {}
+    },
+    "D4": {
+      "id": "D4",
+      "method": "behavior",
+      "passed": true,
+      "detail": "prompt correct and Ctrl-D exits cleanly",
+      "evidence": {}
+    },
+    "D5": {
+      "id": "D5",
+      "method": "behavior",
+      "passed": true,
+      "detail": "fmt(fmt(x)) == fmt(x)",
+      "evidence": {}
+    }
+  },
+  "standing": {
+    "SC1": {
+      "id": "SC1",
+      "method": "static",
+      "passed": true,
+      "detail": "no third-party imports or dependency files",
+      "evidence": {}
+    },
+    "SC10": {
+      "id": "SC10",
+      "method": "static",
+      "passed": true,
+      "detail": "single bract/__main__.py dispatch point",
+      "evidence": {}
+    },
+    "SC11": {
+      "id": "SC11",
+      "method": "behavior",
+      "passed": true,
+      "detail": "error on the first source line reports 'line 1:'",
+      "evidence": {}
+    },
+    "SC12": {
+      "id": "SC12",
+      "method": "static",
+      "passed": true,
+      "detail": "no TODO/FIXME/stub found",
+      "evidence": {}
+    },
+    "SC2": {
+      "id": "SC2",
+      "method": "static",
+      "passed": true,
+      "detail": "no nested subpackages",
+      "evidence": {}
+    },
+    "SC3": {
+      "id": "SC3",
+      "method": "static",
+      "passed": false,
+      "detail": "'line N: msg' formatting duplicated across files: ['evaluator.py', 'lexer.py', 'parser.py']",
+      "evidence": {}
+    },
+    "SC4": {
+      "id": "SC4",
+      "method": "static",
+      "passed": true,
+      "detail": "no output calls outside the CLI layer",
+      "evidence": {}
+    },
+    "SC5": {
+      "id": "SC5",
+      "method": "static",
+      "passed": true,
+      "detail": "all token type names are SCREAMING_CASE",
+      "evidence": {}
+    },
+    "SC6": {
+      "id": "SC6",
+      "method": "behavior",
+      "passed": true,
+      "detail": "exit codes are exactly {0,1,2} and only set from the CLI layer",
+      "evidence": {}
+    },
+    "SC7": {
+      "id": "SC7",
+      "method": "static",
+      "passed": true,
+      "detail": "no eval/exec/compile usage",
+      "evidence": {}
+    },
+    "SC8": {
+      "id": "SC8",
+      "method": "static",
+      "passed": true,
+      "detail": "no mutated module-level state",
+      "evidence": {}
+    },
+    "SC9": {
+      "id": "SC9",
+      "method": "behavior",
+      "passed": true,
+      "detail": "formatting did not change program behavior",
+      "evidence": {}
+    }
+  },
+  "summary": {
+    "total": 17,
+    "passed": 15,
+    "failed": 2
+  }
+}

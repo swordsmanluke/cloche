@@ -1,0 +1,204 @@
+{
+  "overall": {
+    "total": 48,
+    "passed": 37,
+    "pass_rate": 0.7708333333333334
+  },
+  "feature_area": {
+    "arithmetic": {
+      "total": 9,
+      "passed": 9,
+      "pass_rate": 1.0
+    },
+    "bindings": {
+      "total": 6,
+      "passed": 3,
+      "pass_rate": 0.5
+    },
+    "cli": {
+      "total": 2,
+      "passed": 1,
+      "pass_rate": 0.5
+    },
+    "comparisons": {
+      "total": 5,
+      "passed": 4,
+      "pass_rate": 0.8
+    },
+    "control_flow": {
+      "total": 8,
+      "passed": 8,
+      "pass_rate": 1.0
+    },
+    "errors": {
+      "total": 1,
+      "passed": 1,
+      "pass_rate": 1.0
+    },
+    "functions": {
+      "total": 4,
+      "passed": 4,
+      "pass_rate": 1.0
+    },
+    "lexer": {
+      "total": 6,
+      "passed": 6,
+      "pass_rate": 1.0
+    },
+    "strings": {
+      "total": 6,
+      "passed": 0,
+      "pass_rate": 0.0
+    },
+    "values": {
+      "total": 1,
+      "passed": 1,
+      "pass_rate": 1.0
+    }
+  },
+  "prior_trap": {
+    "overall": {
+      "total": 16,
+      "passed": 12,
+      "pass_rate": 0.75
+    },
+    "by_trap": {
+      "D3": {
+        "total": 2,
+        "passed": 2,
+        "pass_rate": 1.0
+      },
+      "Q1": {
+        "total": 2,
+        "passed": 2,
+        "pass_rate": 1.0
+      },
+      "Q2": {
+        "total": 2,
+        "passed": 0,
+        "pass_rate": 0.0
+      },
+      "Q3": {
+        "total": 2,
+        "passed": 2,
+        "pass_rate": 1.0
+      },
+      "Q4": {
+        "total": 2,
+        "passed": 2,
+        "pass_rate": 1.0
+      },
+      "Q5": {
+        "total": 2,
+        "passed": 0,
+        "pass_rate": 0.0
+      },
+      "Q6": {
+        "total": 2,
+        "passed": 2,
+        "pass_rate": 1.0
+      },
+      "Q7": {
+        "total": 2,
+        "passed": 2,
+        "pass_rate": 1.0
+      }
+    }
+  },
+  "failures": [
+    {
+      "id": "q2-redeclare-same-scope",
+      "feature_area": "bindings",
+      "trap": "Q2",
+      "reasons": [
+        "stderr: expected \"line 2: 'x' is already declared\\n\", got 'line 2: \"\\'x\\' is already declared\"\\n'"
+      ]
+    },
+    {
+      "id": "q2-set-undeclared",
+      "feature_area": "bindings",
+      "trap": "Q2",
+      "reasons": [
+        "stderr: expected \"line 1: 'y' is not declared\\n\", got 'line 1: \"\\'y\\' is not declared\"\\n'"
+      ]
+    },
+    {
+      "id": "q5-index-zero-out-of-range",
+      "feature_area": "strings",
+      "trap": "Q5",
+      "reasons": [
+        "stderr: expected 'line 1: index out of range\\n', got 'line 1: \"\\'at\\' is not declared\"\\n'"
+      ]
+    },
+    {
+      "id": "q5-one-indexed-positive",
+      "feature_area": "strings",
+      "trap": "Q5",
+      "reasons": [
+        "exit code: expected 0, got 1",
+        "stderr: expected '', got 'line 1: \"\\'at\\' is not declared\"\\n'"
+      ]
+    },
+    {
+      "id": "str-len-various",
+      "feature_area": "strings",
+      "trap": null,
+      "reasons": [
+        "exit code: expected 0, got 1",
+        "stderr: expected '', got 'line 1: \"\\'len\\' is not declared\"\\n'"
+      ]
+    },
+    {
+      "id": "str-sub-two-arg",
+      "feature_area": "strings",
+      "trap": null,
+      "reasons": [
+        "exit code: expected 0, got 1",
+        "stderr: expected '', got 'line 1: \"\\'sub\\' is not declared\"\\n'"
+      ]
+    },
+    {
+      "id": "str-sub-start-gt-end-empty",
+      "feature_area": "strings",
+      "trap": null,
+      "reasons": [
+        "exit code: expected 0, got 1",
+        "stderr: expected '', got 'line 1: \"\\'sub\\' is not declared\"\\n'"
+      ]
+    },
+    {
+      "id": "str-at-non-string-error",
+      "feature_area": "strings",
+      "trap": null,
+      "reasons": [
+        "stderr: expected \"line 1: 'at' expects a string\\n\", got 'line 1: \"\\'at\\' is not declared\"\\n'"
+      ]
+    },
+    {
+      "id": "bind-let-scope-boundary",
+      "feature_area": "bindings",
+      "trap": null,
+      "reasons": [
+        "stderr: expected \"line 4: 'inner' is not declared\\n\", got 'line 4: \"\\'inner\\' is not declared\"\\n'"
+      ]
+    },
+    {
+      "id": "cmp-ordering-type-error",
+      "feature_area": "comparisons",
+      "trap": null,
+      "reasons": [
+        "exit code: expected 1, got 0",
+        "stderr: expected prefix 'line 1: ', got ''"
+      ]
+    },
+    {
+      "id": "cli-runtime-error-exit-one",
+      "feature_area": "cli",
+      "trap": null,
+      "reasons": [
+        "stderr: expected \"line 1: 'z' is not declared\\n\", got 'line 1: \"\\'z\\' is not declared\"\\n'"
+      ]
+    }
+  ],
+  "repo": "/home/lucas/workspace/bract-pilot/arm-a"
+}
