@@ -2852,7 +2852,15 @@
                 if (viewer && pre) {
                     var prevHeight = viewer.scrollHeight;
                     var frag = document.createDocumentFragment();
-                    visible.forEach(function (l) { frag.appendChild(buildLogLineEl(l)); });
+                    var lastDate = '';
+                    visible.forEach(function (l) {
+                        var t = logTimeParts(l.timestamp);
+                        if (t && lastDate && t.date !== lastDate) {
+                            frag.appendChild(buildDateDividerEl(t.date));
+                        }
+                        if (t) lastDate = t.date;
+                        frag.appendChild(buildLogLineEl(l));
+                    });
                     pre.insertBefore(frag, pre.firstChild);
                     viewer.scrollTop += viewer.scrollHeight - prevHeight;
                 }
@@ -2872,7 +2880,7 @@
         if (detail.logTypeFilter !== 'all' && line.type !== detail.logTypeFilter) return;
         var pre = document.getElementById('console-log-content');
         if (!pre) return;
-        pre.appendChild(buildLogLineEl(line));
+        appendLogLineEl(pre, line);
         updateLogCount();
         if (detail.logFollow) scrollLogTo('bottom');
     }
@@ -2899,7 +2907,7 @@
         if (type === 'status') {
             if (/->\s*success\b/i.test(content)) return 'g';
             if (/->\s*(fail|error)\b/i.test(content)) return 'w';
-            return '';
+            return 'st';
         }
         if (/\b(FAIL|ERROR|panic:|traceback)\b/i.test(content)) return 'b';
         if (/^ok\s+\S/.test(content) || /\b(succeeded|passed)\b/i.test(content)) return 'g';
@@ -2907,49 +2915,121 @@
         return '';
     }
 
+    // STEP_STARTED_RE matches the "step_started: <name>" status content
+    // cloche itself writes at the top of every step (see
+    // internal/host/runner.go / internal/adapters/grpc/server.go, same
+    // family as the "step_completed: <name> -> <result>" line classifyLogLine
+    // matches above). Lines matching it render as a section rule instead of
+    // an ordinary line — see buildSectionRuleEl.
+    var STEP_STARTED_RE = /^step_started\b:?\s*(.*)$/i;
+
+    // logTimeParts splits a "2026-09-16T20:04:26Z"-shaped timestamp into its
+    // date and time-of-day, without going through Date/toLocaleString —
+    // those convert to the viewer's local timezone, which would make the
+    // rendered time (and the date-divider boundary) depend on where the
+    // browser happens to be rather than on the log's own clock. Returns null
+    // for anything that doesn't look like that shape (empty scoped-step
+    // timestamps, malformed data).
+    function logTimeParts(iso) {
+        var m = typeof iso === 'string' && /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/.exec(iso);
+        return m ? { date: m[1], time: m[2] } : null;
+    }
+
+    // buildDateDividerEl renders a one-line divider marking a date change
+    // between consecutive log lines (see appendLogLineEl / renderLogLines).
+    function buildDateDividerEl(dateStr) {
+        var el = document.createElement('span');
+        el.className = 'log-date-divider';
+        el.textContent = dateStr;
+        el.appendChild(document.createTextNode('\n'));
+        return el;
+    }
+
+    // buildSectionRuleEl renders a "step_started" status line as a section
+    // break — a hairline above and just the step name — rather than the
+    // ordinary [time] [type] (step) content line, so a long run's log reads
+    // as a sequence of step sections instead of one undifferentiated stream.
+    function buildSectionRuleEl(line, content) {
+        var span = document.createElement('span');
+        span.className = 'log-line log-line-section log-type-status';
+        var m = STEP_STARTED_RE.exec(content);
+        span.textContent = line.step_name || (m && m[1]) || content;
+        span.appendChild(document.createTextNode('\n'));
+        return span;
+    }
+
     // buildLogLineEl renders one log line as a dimmed prefix span (timestamp
     // + type + step) followed by a separately-classed content span — never
-    // one whole-line colour (see classifyLogLine).
+    // one whole-line colour (see classifyLogLine). step_started status lines
+    // are the exception — see buildSectionRuleEl.
     function buildLogLineEl(line) {
+        var content = (line.content || '').trim();
+        if ((line.type || 'script') === 'status' && STEP_STARTED_RE.test(content)) {
+            return buildSectionRuleEl(line, content);
+        }
+
         var span = document.createElement('span');
         span.className = 'log-line log-type-' + (line.type || 'script');
 
+        var t = logTimeParts(line.timestamp);
         var prefixParts = [];
-        if (line.timestamp) prefixParts.push('[' + line.timestamp + ']');
+        if (line.timestamp) prefixParts.push('[' + (t ? t.time : line.timestamp) + ']');
         prefixParts.push('[' + (line.type || '') + ']');
         if (!detail.scopedStep && line.step_name) prefixParts.push('(' + line.step_name + ')');
         var prefix = document.createElement('span');
         prefix.className = 'log-line-prefix';
+        if (line.timestamp) prefix.title = line.timestamp;
         prefix.textContent = prefixParts.join(' ') + ' ';
         span.appendChild(prefix);
 
         var cls = classifyLogLine(line);
-        var content = document.createElement('span');
+        var contentEl = document.createElement('span');
         if (cls === 'tool') {
-            var m = TOOL_LINE_RE.exec((line.content || '').trim());
-            content.className = 'log-line-content log-line-tool';
-            content.textContent = '⚙ ' + (m ? m[1] : (line.content || '').trim());
+            var m = TOOL_LINE_RE.exec(content);
+            contentEl.className = 'log-line-content log-line-tool';
+            contentEl.textContent = '⚙ ' + (m ? m[1] : content);
         } else {
-            content.className = 'log-line-content' + (cls ? ' log-line-' + cls : '');
-            content.textContent = line.content || '';
+            contentEl.className = 'log-line-content' + (cls ? ' log-line-' + cls : '');
+            contentEl.textContent = line.content || '';
         }
-        span.appendChild(content);
+        span.appendChild(contentEl);
         span.appendChild(document.createTextNode('\n'));
         return span;
+    }
+
+    // appendLogLineEl appends one line to a live-rendered log <pre>,
+    // inserting a date divider first when the line's date differs from the
+    // last one rendered into this container (tracked via a dataset
+    // attribute so it survives across separate appendLine calls).
+    function appendLogLineEl(pre, line) {
+        var t = logTimeParts(line.timestamp);
+        if (t && pre.dataset.lastLogDate && t.date !== pre.dataset.lastLogDate) {
+            pre.appendChild(buildDateDividerEl(t.date));
+        }
+        pre.appendChild(buildLogLineEl(line));
+        if (t) pre.dataset.lastLogDate = t.date;
     }
 
     function renderLogLines() {
         var pre = document.getElementById('console-log-content');
         if (!pre || !detail) return;
         pre.innerHTML = '';
+        delete pre.dataset.lastLogDate;
         var lines = detail.scopedStep ? detail.stepLines : detail.allLines;
         var filter = detail.logTypeFilter;
         var frag = document.createDocumentFragment();
+        var lastDate = '';
         (lines || []).forEach(function (line) {
             if (filter !== 'all' && line.type !== filter) return;
+            var t = logTimeParts(line.timestamp);
+            if (t && lastDate && t.date !== lastDate) {
+                frag.appendChild(buildDateDividerEl(t.date));
+            }
+            if (t) lastDate = t.date;
             frag.appendChild(buildLogLineEl(line));
         });
         pre.appendChild(frag);
+        pre.dataset.lastLogDate = lastDate;
         updateLogCount();
         if (detail.logFollow) scrollLogTo('bottom');
     }

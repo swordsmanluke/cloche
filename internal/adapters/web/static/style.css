@@ -321,7 +321,31 @@ h2 {
 .log-line-g { color: var(--ok); }
 .log-line-b { color: var(--bad); }
 .log-line-w { color: var(--warn); }
+.log-line-st { color: var(--ac); }
 .log-line-tool { color: var(--tx2); }
+
+/* A date divider (see console.js buildDateDividerEl) marks a day boundary
+   between consecutive log lines. A step-started section rule (see
+   buildSectionRuleEl) marks a step boundary — a hairline above and just the
+   step name, so a long run's log reads as a sequence of step sections
+   rather than one undifferentiated stream. step_completed lines are not
+   section rules; they stay ordinary lines coloured by classifyLogLine. */
+.log-date-divider {
+    display: block;
+    color: var(--mu);
+    font-size: var(--fs-sm);
+    margin-top: 0.35rem;
+    padding-top: 0.35rem;
+    border-top: 1px solid var(--ln);
+}
+.log-line-section {
+    color: var(--tx2);
+    font-size: var(--fs-sm);
+    font-weight: 500;
+    margin-top: 0.35rem;
+    padding-top: 0.35rem;
+    border-top: 1px solid var(--ln);
+}
 
 /* Tabs */
 .tab-bar {
