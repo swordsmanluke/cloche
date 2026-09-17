@@ -323,24 +323,24 @@ test('footer shows the daemon version to the right of the key hints', async () =
     }
 });
 
-test('Workflows/Requirements/Containers/Ledger are folded behind a single Views menu button', async () => {
+test('Workflows/Requirements/Containers/Ledger are folded behind a single Tools menu button', async () => {
     const window = await bootConsole({ stack: { needs_you: [], running: [], queued: [], done: [] } });
     try {
-        const viewsBtn = window.document.getElementById('console-views-btn');
-        const menu = window.document.getElementById('console-views-menu');
-        assert.ok(viewsBtn, 'a single Views button must exist in the tab bar');
+        const toolsBtn = window.document.getElementById('console-tools-btn');
+        const menu = window.document.getElementById('console-tools-menu');
+        assert.ok(toolsBtn, 'a single Tools button must exist in the tab bar');
         assert.equal(menu.hidden, true, 'the menu starts closed');
 
         ['console-view-workflows-btn', 'console-view-intent-btn', 'console-view-containers-btn', 'console-ledger-btn']
             .forEach((id) => {
                 const btn = window.document.getElementById(id);
-                assert.ok(btn, id + ' must still exist (inside the Views menu)');
-                assert.ok(menu.contains(btn), id + ' must be nested inside #console-views-menu');
+                assert.ok(btn, id + ' must still exist (inside the Tools menu)');
+                assert.ok(menu.contains(btn), id + ' must be nested inside #console-tools-menu');
             });
 
-        viewsBtn.dispatchEvent(new window.Event('click', { bubbles: true }));
-        assert.equal(menu.hidden, false, 'clicking the Views button opens the menu');
-        assert.equal(viewsBtn.getAttribute('aria-expanded'), 'true');
+        toolsBtn.dispatchEvent(new window.Event('click', { bubbles: true }));
+        assert.equal(menu.hidden, false, 'clicking the Tools button opens the menu');
+        assert.equal(toolsBtn.getAttribute('aria-expanded'), 'true');
 
         // Clicking a menu item closes the menu (same pattern as the
         // idle-projects menu closing after a tab is picked).
@@ -358,7 +358,7 @@ test('Workflows/Requirements/Containers/Ledger are folded behind a single Views 
     }
 });
 
-test('w/i/c/l keyboard shortcuts keep opening their views directly, independent of the Views menu', async () => {
+test('w/i/c/l keyboard shortcuts keep opening their views directly, independent of the Tools menu', async () => {
     const window = await bootConsole({ stack: { needs_you: [], running: [], queued: [], done: [] } });
     try {
         const viewOverlay = window.document.getElementById('console-view-overlay');

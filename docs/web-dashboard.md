@@ -83,7 +83,7 @@ On the right, daemon instruments for the active project:
   (`GET /loop/occupancy`).
 - **Burn** — combined token burn rate across agents over the last hour (`GET /usage`).
 
-A **Views ▾** button next to the instruments opens a menu with the Workflows,
+A **Tools ▾** button next to the instruments opens a menu with the Workflows,
 Requirements, Containers, and Ledger entries (see below); the daemon's version is shown
 in the foot bar instead (see Foot bar).
 
@@ -283,7 +283,7 @@ stack's "Done" group uses for its own cursor.
 
 ### Secondary views: Workflows, Requirements, Containers, Ledger
 
-A **Views ▾** button in the tab bar opens a menu folding Workflows, Requirements,
+A **Tools ▾** button in the tab bar opens a menu folding Workflows, Requirements,
 Containers, and Ledger behind one control (the same open/close pattern as the idle-projects
 **More** menu); their keyboard shortcuts (`w` / `i` / `c` / `l`) still open each view
 directly, independent of the menu. Each opens a project-scoped view as an overlay on top
@@ -314,7 +314,7 @@ the stack-deselect behavior described above.
 
 ### Ledger
 
-The **Ledger** entry in the Views menu (or pressing `l`) opens a per-project overlay
+The **Ledger** entry in the Tools menu (or pressing `l`) opens a per-project overlay
 summarizing outcomes across every attempt, from `GET /api/projects/{slug}/ledger`:
 
 - **Summary** — mean attempts to success, mean tokens per succeeded task, and the

@@ -622,10 +622,18 @@ h2 {
 
 .console-more-btn:hover { color: var(--tx); background: var(--pnl2); }
 
-.console-idle-menu {
+.console-menu-wrap {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+}
+
+.console-idle-menu,
+.console-tools-menu {
     position: absolute;
     top: 100%;
-    left: 0.75rem;
+    left: 0;
+    right: auto;
     margin-top: 0.25rem;
     background: var(--pnl2);
     border: 1px solid var(--ln);
@@ -634,8 +642,11 @@ h2 {
     flex-direction: column;
     padding: 0.25rem;
     z-index: 20;
-    min-width: 180px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.console-idle-menu {
+    min-width: 180px;
 }
 
 .console-idle-menu .console-tab {
@@ -650,7 +661,7 @@ h2 {
     padding: 0 0.6rem;
 }
 
-.console-views-btn {
+.console-tools-btn {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
@@ -667,23 +678,11 @@ h2 {
     flex: 0 0 auto;
 }
 
-.console-views-btn:hover,
-.console-views-btn[aria-expanded="true"] { color: var(--tx); background: var(--pnl2); }
+.console-tools-btn:hover,
+.console-tools-btn[aria-expanded="true"] { color: var(--tx); background: var(--pnl2); }
 
-.console-views-menu {
-    position: absolute;
-    top: 100%;
-    right: 0.75rem;
-    margin-top: 0.25rem;
-    background: var(--pnl2);
-    border: 1px solid var(--ln);
-    border-radius: var(--radius);
-    display: flex;
-    flex-direction: column;
-    padding: 0.25rem;
-    z-index: 20;
+.console-tools-menu {
     min-width: 160px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .console-action-btn {

@@ -284,6 +284,22 @@
         return btn;
     }
 
+    // Anchors a header dropdown menu under its own button rather than the
+    // whole tab bar: the menu's positioned ancestor is wrapId's element
+    // (see .console-menu-wrap in style.css), so left: 0 already sits flush
+    // under the button; this only flips to right: 0 when that would push
+    // the menu past the right edge of the viewport.
+    function positionMenu(wrapId, menu) {
+        var wrap = document.getElementById(wrapId);
+        menu.style.left = '0';
+        menu.style.right = 'auto';
+        var wrapRect = wrap.getBoundingClientRect();
+        if (wrapRect.left + menu.offsetWidth > window.innerWidth) {
+            menu.style.left = 'auto';
+            menu.style.right = '0';
+        }
+    }
+
     function closeIdleMenu() {
         var menu = document.getElementById('console-idle-menu');
         var btn = document.getElementById('console-more-btn');
@@ -295,11 +311,12 @@
 
     document.getElementById('console-more-btn').addEventListener('click', function (e) {
         e.stopPropagation();
-        closeViewsMenu();
+        closeToolsMenu();
         var menu = document.getElementById('console-idle-menu');
         var willOpen = menu.hidden;
         menu.hidden = !willOpen;
         this.setAttribute('aria-expanded', String(willOpen));
+        if (willOpen) positionMenu('console-idle-wrap', menu);
     });
     document.addEventListener('click', closeIdleMenu);
 
@@ -3433,35 +3450,36 @@
         });
     }
 
-    // The Views menu folds Workflows/Requirements/Containers/Ledger behind
+    // The Tools menu folds Workflows/Requirements/Containers/Ledger behind
     // one button, following the same open/close pattern as the idle-projects
     // menu (console-more-btn / console-idle-menu) above.
-    function closeViewsMenu() {
-        var menu = document.getElementById('console-views-menu');
-        var btn = document.getElementById('console-views-btn');
+    function closeToolsMenu() {
+        var menu = document.getElementById('console-tools-menu');
+        var btn = document.getElementById('console-tools-btn');
         if (!menu.hidden) {
             menu.hidden = true;
             btn.setAttribute('aria-expanded', 'false');
         }
     }
 
-    document.getElementById('console-views-btn').addEventListener('click', function (e) {
+    document.getElementById('console-tools-btn').addEventListener('click', function (e) {
         e.stopPropagation();
         closeIdleMenu();
-        var menu = document.getElementById('console-views-menu');
+        var menu = document.getElementById('console-tools-menu');
         var willOpen = menu.hidden;
         menu.hidden = !willOpen;
         this.setAttribute('aria-expanded', String(willOpen));
+        if (willOpen) positionMenu('console-tools-wrap', menu);
     });
-    document.addEventListener('click', closeViewsMenu);
+    document.addEventListener('click', closeToolsMenu);
 
     document.getElementById('console-view-close').addEventListener('click', closeView);
     document.getElementById('step-drawer-close').addEventListener('click', closeStepDrawer);
     document.getElementById('intent-drawer-close').addEventListener('click', closeIntentDrawer);
-    document.getElementById('console-view-workflows-btn').addEventListener('click', function () { closeViewsMenu(); openWorkflowsView(); });
-    document.getElementById('console-view-intent-btn').addEventListener('click', function () { closeViewsMenu(); openIntentView(); });
-    document.getElementById('console-view-containers-btn').addEventListener('click', function () { closeViewsMenu(); openContainersView(); });
-    document.getElementById('console-ledger-btn').addEventListener('click', function () { closeViewsMenu(); toggleLedger(true); });
+    document.getElementById('console-view-workflows-btn').addEventListener('click', function () { closeToolsMenu(); openWorkflowsView(); });
+    document.getElementById('console-view-intent-btn').addEventListener('click', function () { closeToolsMenu(); openIntentView(); });
+    document.getElementById('console-view-containers-btn').addEventListener('click', function () { closeToolsMenu(); openContainersView(); });
+    document.getElementById('console-ledger-btn').addEventListener('click', function () { closeToolsMenu(); toggleLedger(true); });
     updateViewButtonsEnabled();
 
     // ---------- Workflows view ----------

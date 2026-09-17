@@ -7,17 +7,21 @@
     <header class="console-tabbar" id="console-tabbar">
         <span class="console-brand">Cloche</span>
         <nav class="console-project-tabs" id="console-project-tabs" aria-label="Projects"></nav>
-        <button type="button" class="console-more-btn" id="console-more-btn" hidden
-                aria-haspopup="true" aria-expanded="false"></button>
-        <div class="console-idle-menu" id="console-idle-menu" hidden></div>
+        <div class="console-menu-wrap" id="console-idle-wrap">
+            <button type="button" class="console-more-btn" id="console-more-btn" hidden
+                    aria-haspopup="true" aria-expanded="false"></button>
+            <div class="console-idle-menu" id="console-idle-menu" hidden></div>
+        </div>
         <span class="console-stale-hint" id="console-attention-stale" hidden></span>
-        <button type="button" class="console-views-btn" id="console-views-btn"
-                aria-haspopup="true" aria-expanded="false">Views ▾</button>
-        <div class="console-views-menu" id="console-views-menu" hidden>
-            <button type="button" class="console-action-btn" id="console-view-workflows-btn" title="Workflows (w)">Workflows</button>
-            <button type="button" class="console-action-btn" id="console-view-intent-btn" title="Requirements (i)">Requirements</button>
-            <button type="button" class="console-action-btn" id="console-view-containers-btn" title="Containers (c)">Containers</button>
-            <button type="button" class="console-action-btn" id="console-ledger-btn" title="Ledger (l)">Ledger</button>
+        <div class="console-menu-wrap" id="console-tools-wrap">
+            <button type="button" class="console-tools-btn" id="console-tools-btn"
+                    aria-haspopup="true" aria-expanded="false">Tools ▾</button>
+            <div class="console-tools-menu" id="console-tools-menu" hidden>
+                <button type="button" class="console-action-btn" id="console-view-workflows-btn" title="Workflows (w)">Workflows</button>
+                <button type="button" class="console-action-btn" id="console-view-intent-btn" title="Requirements (i)">Requirements</button>
+                <button type="button" class="console-action-btn" id="console-view-containers-btn" title="Containers (c)">Containers</button>
+                <button type="button" class="console-action-btn" id="console-ledger-btn" title="Ledger (l)">Ledger</button>
+            </div>
         </div>
         <div class="console-instruments" id="console-instruments"></div>
     </header>
