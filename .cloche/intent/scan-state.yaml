@@ -1,6 +1,6 @@
 repos:
     "":
-        last_commit: 821aab3423f11485b51bb234422df1d9dedd3db5
+        last_commit: b4d9653764f64ce6ea404891413227595be730fd
         scanned_runs:
             - cloche-0vqg
             - rxth-main
@@ -387,6 +387,34 @@ repos:
             - wsq6-develop-opencode
             - 4pyn-intent-scan
             - user-4pyn
+            - 0194-intent-scan
+            - 0uls-main
+            - 41h4-intent-scan
+            - 4lm5-changelog
+            - 7uvw-develop-opencode
+            - 8fbp-main
+            - ajxt-opencode-smoke
+            - aqzn-intent-scan
+            - cn1h-main
+            - dz26-main
+            - el3p-main
+            - j5s4-intent-scan
+            - o7yd-main
+            - pk7s-main
+            - q6wl-main
+            - qtta-intent-scan
+            - user-0194
+            - user-41h4
+            - user-7uvw
+            - user-ajxt
+            - user-aqzn
+            - user-j5s4
+            - user-qtta
+            - user-y7bp
+            - y7bp-develop-opencode
+            - zco0-release
+            - zf20-main
+            - zfo8-verify-opencode-dispatch
         scanned_docs:
             .cloche/prompts/document-check-missing.md: 154c933c83042dcb0b3f14e9c451226e6eab14bcdcbc9889fa4edef52d7c1283
             .cloche/prompts/document-investigate.md: 0bb6d7225ed9fa53f36269540994d74e7beef92a717e13794a86cfffdd8652d9
@@ -411,7 +439,7 @@ repos:
             .cloche/prompts/vertical-write-design.md: dabb4c1a25390cae07f8f02ec07fb7990cdf868035f9929d69d63d71f5a6d43f
             CLAUDE.md: da02089c0d4c1207a2f0b4b6f5b41315d914c5655ae3d2f434635cd975ad8e1a
             README.md: 423d6816a7a62264229d2b5630ca014e4e3da5af320a9cf45459bdfb37edd222
-            docs/CHANGELOG-DETAILED.md: dff1423e449b0e4f66a5649c0b7307a8bec37dd67a393fddccb9a2257e18f68b
+            docs/CHANGELOG-DETAILED.md: ce0325662142061023a44ab9dfd18da1deb313201bd3ca33f62ea7eaa9edd7de
             docs/INSTALL.md: 02d98ffd4057cfb5f26935f68a131d81cf232b445417029d1555a081712d68e9
             docs/SAFETY.md: 1e025a1f37b5d21f7f226f1d8777e1a9726c13aedbb43ab37a8f174d61f53a59
             docs/USAGE.md: 07ebe9b35012c3b0adc41b42745a7945a621de2b6adb794e25165200022b616a
@@ -486,15 +514,15 @@ repos:
             docs/plans/spikes/2026-09-13-intent-retrieval/README.md: cbd4159fb69d08f1ff1c5972b7ff578a0db782f2fc0f9cac3e2add3cee0cf46f
             docs/run-isolation/architecture.md: 5f322ad76fedc1012b67f450ac1df9c328ef628ef90285f5ebd4c94a201d4b43
             docs/run-isolation/index.md: 06461a1f739a3b6fba4f5331fa668c15058808f59938b284c4e953a291ae6916
-            docs/web-dashboard.md: c79191dec76b2ae3bc557136b458a27f11dcdf365288425465f7eb932a6e0965
+            docs/web-dashboard.md: 8bb662a9b40bc0edacee20484a7495d66ddfe400bd8b6c7e40f98354638e113e
             docs/workflows.md: fca4c3bb2d324a68435eea18afca3e1a4ee60560675303509bc050046d087de7
-last_scan_at: 2026-09-16T20:04:49.294857548Z
+last_scan_at: 2026-09-17T15:16:34.78615593Z
 last_scan_stats:
     repos:
         - name: ""
           docs_new: 0
-          docs_changed: 1
-          commits: 2
-          commit_range: 311b9b3..319c3d7
-          runs: 1
-          bytes: 278281
+          docs_changed: 2
+          commits: 10
+          commit_range: 6014c14..6ce98c6
+          runs: 17
+          bytes: 623229
