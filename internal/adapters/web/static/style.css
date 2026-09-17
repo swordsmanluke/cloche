@@ -61,7 +61,7 @@
     --pnl3: #222b27;
     --ln: #26302b;
     --tx: #d8ded9;
-    --tx2: #97a39c;
+    --tx2: #aab5ae;
     --mu: #5f6b65;
     --ac: #e0a458;
     --acs: #3a2c16;
@@ -75,6 +75,14 @@
     --font-sans: "IBM Plex Sans", system-ui, sans-serif;
     --mono: "IBM Plex Mono", ui-monospace, monospace;
     --radius: 4px;
+
+    /* Four-step type scale — every font-size in this file resolves to one
+       of these (see docs/plans for the console type-scale ticket). Nothing
+       user-visible goes below --fs-xs (11px). */
+    --fs-xs: 11px;
+    --fs-sm: 13px;
+    --fs-md: 14px;
+    --fs-lg: 16px;
 
     --badge-pending-bg: #78350f;
     --badge-pending-text: #fde68a;
@@ -107,7 +115,7 @@ html, body { height: 100%; }
 body {
     margin: 0;
     font-family: var(--font);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     background: var(--bg);
     color: var(--tx);
     line-height: 1.45;
@@ -123,7 +131,7 @@ a { color: var(--ac); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 h1 {
-    font-size: 1.4rem;
+    font-size: var(--fs-lg);
     margin: 0 0 1rem;
     display: flex;
     align-items: center;
@@ -134,7 +142,7 @@ h1 {
 h1 a { font-weight: 400; }
 
 h2 {
-    font-size: 1.1rem;
+    font-size: var(--fs-lg);
     margin: 1.5rem 0 0.75rem;
 }
 
@@ -143,7 +151,7 @@ h2 {
     display: inline-block;
     padding: 0.15em 0.55em;
     border-radius: var(--radius);
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     font-weight: 600;
     white-space: nowrap;
 }
@@ -164,7 +172,7 @@ h2 {
 .runs-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.9rem;
+    font-size: var(--fs-md);
 }
 
 .runs-table th,
@@ -177,7 +185,7 @@ h2 {
 .runs-table th {
     background: var(--pnl);
     font-weight: 600;
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     text-transform: uppercase;
     letter-spacing: 0.03em;
     color: var(--mu);
@@ -185,7 +193,7 @@ h2 {
 
 .runs-table tr:hover { background: var(--pnl2); }
 
-.mono { font-family: var(--mono); font-size: 0.85em; }
+.mono { font-family: var(--mono); font-size: var(--fs-sm); }
 .empty { color: var(--tx2); text-align: center; padding: 2rem 0; }
 
 /* Health indicator dots */
@@ -224,7 +232,7 @@ h2 {
     padding: 0.35em 0.75em;
     border-radius: var(--radius);
     font-family: var(--font);
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     font-weight: 600;
     border: 1px solid var(--ln);
     cursor: pointer;
@@ -257,7 +265,7 @@ h2 {
 
 .btn-danger:hover { opacity: 0.8; }
 
-.btn-sm { font-size: 0.75rem; padding: 0.15em 0.45em; }
+.btn-sm { font-size: var(--fs-sm); padding: 0.15em 0.45em; }
 
 .btn:disabled {
     opacity: 0.6;
@@ -278,10 +286,10 @@ h2 {
     margin: 0;
     padding: 0.75rem;
     font-family: var(--mono);
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     white-space: pre-wrap;
     word-break: break-word;
-    line-height: 1.4;
+    line-height: 1.5;
 }
 
 /* Load-earlier button inside log viewer */
@@ -294,7 +302,7 @@ h2 {
     border: none;
     border-bottom: 1px solid var(--ln);
     cursor: pointer;
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     font-family: var(--mono);
     color: var(--ac);
 }
@@ -336,7 +344,7 @@ h2 {
 .tab-btn {
     padding: 0.4rem 1rem;
     font-family: var(--font);
-    font-size: 0.85rem;
+    font-size: var(--fs-md);
     font-weight: 600;
     background: none;
     border: none;
@@ -373,7 +381,7 @@ h2 {
 
 .dag-node-text {
     font-family: var(--font);
-    font-size: 13px;
+    font-size: var(--fs-sm);
     fill: var(--tx);
 }
 
@@ -385,7 +393,7 @@ h2 {
 
 .dag-edge-label {
     font-family: var(--font);
-    font-size: 10px;
+    font-size: var(--fs-xs);
     fill: var(--mu);
     text-anchor: start;
 }
@@ -421,13 +429,13 @@ h2 {
     padding: 0.75rem 1rem;
     border-bottom: 1px solid var(--ln);
     font-weight: 700;
-    font-size: 1rem;
+    font-size: var(--fs-lg);
 }
 
 .drawer-close {
     background: none;
     border: none;
-    font-size: 1.4rem;
+    font-size: var(--fs-lg);
     cursor: pointer;
     color: var(--tx2);
     padding: 0 0.25rem;
@@ -447,7 +455,7 @@ h2 {
     border-radius: var(--radius);
     padding: 0.75rem;
     font-family: var(--mono);
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     max-height: 400px;
     overflow: auto;
     white-space: pre-wrap;
@@ -456,7 +464,7 @@ h2 {
 
 /* Responsive */
 @media (max-width: 768px) {
-    .runs-table { font-size: 0.8rem; }
+    .runs-table { font-size: var(--fs-sm); }
     .runs-table th, .runs-table td { padding: 0.4rem 0.5rem; }
     .log-viewer { max-height: 400px; }
     .drawer { width: 100%; right: -100%; }
@@ -483,7 +491,7 @@ h2 {
 .console-brand {
     font-family: var(--font-sans);
     font-weight: 800;
-    font-size: 0.95rem;
+    font-size: var(--fs-lg);
     color: var(--tx);
     padding: 0.5rem 0.9rem;
     border-right: 1px solid var(--ln);
@@ -513,7 +521,7 @@ h2 {
     background: transparent;
     color: var(--tx2);
     font: inherit;
-    font-size: 0.74rem;
+    font-size: var(--fs-xs);
     cursor: pointer;
     white-space: nowrap;
     flex: 0 0 auto;
@@ -539,7 +547,7 @@ h2 {
     display: inline-flex;
     align-items: baseline;
     gap: 0.15rem;
-    font-size: 0.66rem;
+    font-size: var(--fs-xs);
     white-space: nowrap;
 }
 
@@ -560,16 +568,16 @@ h2 {
     border: 0;
     border-right: 1px solid var(--ln);
     border-radius: 0;
-    color: var(--mu);
+    color: var(--tx2);
     padding: 0.5rem 0.8rem;
     font: inherit;
-    font-size: 0.74rem;
+    font-size: var(--fs-xs);
     cursor: pointer;
     white-space: nowrap;
     flex: 0 0 auto;
 }
 
-.console-more-btn:hover { color: var(--tx2); background: var(--pnl2); }
+.console-more-btn:hover { color: var(--tx); background: var(--pnl2); }
 
 .console-idle-menu {
     position: absolute;
@@ -617,7 +625,7 @@ h2 {
     background: transparent;
     color: var(--tx2);
     font: inherit;
-    font-size: 0.7rem;
+    font-size: var(--fs-xs);
     cursor: pointer;
     white-space: nowrap;
 }
@@ -631,7 +639,7 @@ h2 {
     align-items: center;
     gap: 1.1rem;
     padding: 0 0.9rem;
-    font-size: 0.7rem;
+    font-size: var(--fs-xs);
     color: var(--tx2);
     flex: 0 0 auto;
 }
@@ -694,7 +702,7 @@ h2 {
 
 .console-subtabs-label {
     padding: 0.4rem 0.8rem;
-    font-size: 0.62rem;
+    font-size: var(--fs-xs);
     color: var(--mu);
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -715,7 +723,7 @@ h2 {
     background: transparent;
     color: var(--tx2);
     font: inherit;
-    font-size: 0.7rem;
+    font-size: var(--fs-xs);
     cursor: pointer;
     white-space: nowrap;
     flex: 0 0 auto;
@@ -746,7 +754,7 @@ h2 {
 .console-stack-group { margin-bottom: 1rem; }
 
 .console-stack-group-title {
-    font-size: 0.62rem;
+    font-size: var(--fs-xs);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--mu);
@@ -812,13 +820,13 @@ h2 {
 
 .console-stack-row-text { min-width: 0; }
 
-.console-stack-row-id { color: var(--tx); font-size: 0.72rem; font-family: var(--mono); }
+.console-stack-row-id { color: var(--tx); font-size: var(--fs-xs); font-family: var(--mono); }
 .console-stack-row-repotag { color: var(--mu); font-weight: normal; }
 
 .console-stack-row-title {
     color: var(--tx2);
-    font-size: 0.66rem;
-    line-height: 1.3;
+    font-size: var(--fs-xs);
+    line-height: 1.5;
     font-family: var(--font-sans);
     overflow: hidden;
     display: -webkit-box;
@@ -828,7 +836,7 @@ h2 {
 
 .console-stack-row-elapsed {
     color: var(--mu);
-    font-size: 0.66rem;
+    font-size: var(--fs-xs);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
     padding-top: 1px;
@@ -836,7 +844,7 @@ h2 {
 
 .console-stack-row-elapsed-warn { color: var(--warn); }
 
-.console-stack-empty { color: var(--tx2); font-size: 0.8rem; padding: 0.25rem 0.5rem; }
+.console-stack-empty { color: var(--tx2); font-size: var(--fs-sm); padding: 0.25rem 0.5rem; }
 
 .console-stack-loading { font-style: italic; }
 
@@ -857,7 +865,7 @@ h2 {
 }
 
 .console-stale-hint {
-    font-size: 0.72rem;
+    font-size: var(--fs-xs);
     color: var(--tx2);
     white-space: nowrap;
 }
@@ -871,7 +879,7 @@ h2 {
     border-radius: var(--radius);
     padding: 0.4rem;
     cursor: pointer;
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
 }
 
 /* The centre pane is a column of auto-height bands (task-header / why-line
@@ -901,10 +909,10 @@ h2 {
     border-bottom: 1px solid var(--ln);
 }
 
-.console-task-id { color: var(--tx); font-size: 0.9rem; }
+.console-task-id { color: var(--tx); font-size: var(--fs-md); }
 
 .console-task-pill {
-    font-size: 0.62rem;
+    font-size: var(--fs-xs);
     padding: 0.05rem 0.45rem;
     border-radius: 3px;
     letter-spacing: 0.04em;
@@ -921,7 +929,7 @@ h2 {
 .console-task-title {
     font-family: var(--font-sans);
     color: var(--tx2);
-    font-size: 0.82rem;
+    font-size: var(--fs-sm);
     flex: 1;
     min-width: 0;
     overflow: hidden;
@@ -933,13 +941,13 @@ h2 {
     display: grid;
     grid-template-columns: max-content 1fr;
     gap: 0.35rem 1rem;
-    font-size: 0.9rem;
+    font-size: var(--fs-md);
 }
 
 .console-facts-row dt { color: var(--mu); }
 .console-facts-row dd { margin: 0; }
 
-.console-facts-note { color: var(--tx2); font-size: 0.85rem; margin: 0; }
+.console-facts-note { color: var(--tx2); font-size: var(--fs-md); margin: 0; }
 
 .console-header-actions { display: flex; gap: 0.4rem; margin-left: auto; }
 
@@ -948,7 +956,7 @@ h2 {
     color: var(--warn);
     flex: 0 0 auto;
     padding: 0.4rem 1.1rem;
-    font-size: 0.7rem;
+    font-size: var(--fs-xs);
     border-bottom: 1px solid var(--ln);
 }
 
@@ -958,12 +966,12 @@ h2 {
     gap: 0.4rem;
 }
 
-.console-run-once-form label { font-size: 0.8rem; color: var(--mu); }
+.console-run-once-form label { font-size: var(--fs-sm); color: var(--mu); }
 
 .console-run-once-form input,
 .console-run-once-form textarea {
     font-family: var(--font);
-    font-size: 0.85rem;
+    font-size: var(--fs-md);
     background: var(--bg);
     border: 1px solid var(--ln);
     border-radius: var(--radius);
@@ -998,7 +1006,7 @@ h2 {
     background: var(--pnl);
     border-bottom: 1px solid var(--ln);
     padding: 0.4em 0.6em;
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     color: var(--mu);
     white-space: nowrap;
     overflow: hidden;
@@ -1009,7 +1017,7 @@ h2 {
     margin: 0;
     padding: 0.6em;
     font-family: var(--mono);
-    font-size: 0.78rem;
+    font-size: var(--fs-sm);
     white-space: pre-wrap;
     word-break: break-word;
     overflow: auto;
@@ -1033,7 +1041,7 @@ h2 {
     margin-bottom: 0.5rem;
 }
 
-.console-action-panel-head h3 { margin: 0; font-size: 0.95rem; }
+.console-action-panel-head h3 { margin: 0; font-size: var(--fs-lg); }
 
 .console-action-pre {
     background: var(--bg);
@@ -1041,7 +1049,7 @@ h2 {
     border-radius: var(--radius);
     padding: 0.75rem;
     font-family: var(--mono);
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     white-space: pre-wrap;
     word-break: break-word;
     max-height: 400px;
@@ -1060,7 +1068,7 @@ h2 {
     gap: 1.6rem;
     padding: 0.45rem 1.1rem;
     border-bottom: 1px solid var(--ln);
-    font-size: 0.68rem;
+    font-size: var(--fs-xs);
     color: var(--mu);
 }
 
@@ -1074,7 +1082,7 @@ h2 {
     background: transparent;
     color: var(--tx2);
     font-family: var(--font);
-    font-size: 0.68rem;
+    font-size: var(--fs-xs);
     padding: 0 0.4rem;
     cursor: pointer;
 }
@@ -1125,14 +1133,14 @@ h2 {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    font-size: 0.72rem;
+    font-size: var(--fs-xs);
     color: var(--tx);
 }
 
 .console-step-segment-name .run-dot { width: 7px; height: 7px; }
 
 .console-step-segment-meta {
-    font-size: 0.62rem;
+    font-size: var(--fs-xs);
     color: var(--mu);
     font-variant-numeric: tabular-nums;
 }
@@ -1163,9 +1171,9 @@ h2 {
     gap: 0.6rem;
 }
 
-.console-thread-head h3 { margin: 0; font-size: 1rem; }
+.console-thread-head h3 { margin: 0; font-size: var(--fs-lg); }
 
-.console-thread-meta { color: var(--tx2); font-size: 0.82rem; }
+.console-thread-meta { color: var(--tx2); font-size: var(--fs-sm); }
 
 .console-thread-transcript {
     display: flex;
@@ -1188,16 +1196,16 @@ h2 {
 
 .console-thread-message-meta {
     color: var(--mu);
-    font-size: 0.75rem;
+    font-size: var(--fs-xs);
     margin-bottom: 0.3rem;
 }
 
-.console-thread-message-body { white-space: pre-wrap; word-break: break-word; font-size: 0.9rem; }
+.console-thread-message-body { white-space: pre-wrap; word-break: break-word; font-size: var(--fs-md); }
 
 .console-thread-message-options {
     margin-top: 0.4rem;
     color: var(--tx2);
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
 }
 
 .console-thread-reply {
@@ -1208,7 +1216,7 @@ h2 {
 
 .console-thread-reply-input {
     font-family: var(--font);
-    font-size: 0.9rem;
+    font-size: var(--fs-md);
     color: var(--tx);
     background: var(--bg);
     border: 1px solid var(--ln);
@@ -1224,7 +1232,7 @@ h2 {
     gap: 0.6rem;
 }
 
-.console-thread-reply-error { color: var(--badge-failed-text); font-size: 0.8rem; }
+.console-thread-reply-error { color: var(--badge-failed-text); font-size: var(--fs-sm); }
 
 /* Used by the compare view's badge toolbar (see renderCompareView); the
    ordinary single-attempt log uses .console-logbar instead. */
@@ -1255,7 +1263,7 @@ h2 {
     gap: 1rem;
     flex: 0 0 auto;
     padding: 0.35rem 1.1rem;
-    font-size: 0.7rem;
+    font-size: var(--fs-xs);
     color: var(--mu);
     background: var(--pnl);
     border-bottom: 1px solid var(--ln);
@@ -1309,7 +1317,7 @@ h2 {
 .console-log-viewer pre {
     margin: 0;
     padding: 0.6rem 1.1rem 0.8rem;
-    font-size: 0.7rem;
+    font-size: var(--fs-xs);
     line-height: 1.55;
     color: var(--tx2);
     white-space: pre;
@@ -1322,7 +1330,7 @@ h2 {
     padding: 0.35rem 0.75rem;
     background: var(--pnl);
     border-top: 1px solid var(--ln);
-    font-size: 0.64rem;
+    font-size: var(--fs-xs);
     color: var(--mu);
 }
 
@@ -1345,7 +1353,7 @@ h2 {
     white-space: nowrap;
     background: none;
     border: none;
-    color: inherit;
+    color: var(--tx2);
     font: inherit;
     cursor: pointer;
     padding: 0;
@@ -1380,13 +1388,13 @@ h2 {
     gap: 1rem;
     margin-bottom: 0.75rem;
 }
-.console-activity-header h2 { margin: 0; font-size: 1.1rem; }
+.console-activity-header h2 { margin: 0; font-size: var(--fs-lg); }
 
 .console-activity-filters {
     display: flex;
     gap: 1rem;
     flex: 1 1 auto;
-    font-size: 0.85rem;
+    font-size: var(--fs-md);
     color: var(--tx2);
 }
 .console-activity-filters label { display: flex; align-items: center; gap: 0.3rem; cursor: pointer; }
@@ -1406,10 +1414,10 @@ h2 {
     align-items: baseline;
     gap: 0.6rem;
     padding: 0.25rem 0.1rem;
-    font-size: 0.85rem;
+    font-size: var(--fs-md);
     border-bottom: 1px solid transparent;
 }
-.console-activity-row-time { color: var(--mu); font-family: var(--mono); font-size: 0.8rem; flex: 0 0 auto; }
+.console-activity-row-time { color: var(--mu); font-family: var(--mono); font-size: var(--fs-sm); flex: 0 0 auto; }
 .console-activity-row-project { color: var(--mu); flex: 0 0 auto; }
 .console-activity-row-text { flex: 1 1 auto; }
 .console-activity-row-failure .console-activity-row-text { color: var(--badge-failed-text); }
@@ -1444,7 +1452,7 @@ h2 {
     gap: 1rem;
     margin-bottom: 0.75rem;
 }
-.console-ledger-header h2 { margin: 0; font-size: 1.1rem; }
+.console-ledger-header h2 { margin: 0; font-size: var(--fs-lg); }
 
 .console-ledger-body {
     flex: 1 1 auto;
@@ -1454,7 +1462,7 @@ h2 {
 }
 
 .console-ledger-section { margin-bottom: 1.5rem; }
-.console-ledger-section h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+.console-ledger-section h3 { margin: 0 0 0.5rem; font-size: var(--fs-lg); }
 
 .console-ledger-stats { display: flex; gap: 1rem; margin-bottom: 0.75rem; }
 .console-ledger-stat {
@@ -1464,10 +1472,10 @@ h2 {
     padding: 0.5rem 0.85rem;
     flex: 1 1 0;
 }
-.console-ledger-stat-value { font-size: 1.2rem; font-weight: 600; }
-.console-ledger-stat-label { color: var(--mu); font-size: 0.75rem; }
+.console-ledger-stat-value { font-size: var(--fs-lg); font-weight: 600; }
+.console-ledger-stat-label { color: var(--mu); font-size: var(--fs-xs); }
 
-.console-ledger-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 0.5rem; }
+.console-ledger-table { width: 100%; border-collapse: collapse; font-size: var(--fs-md); margin-bottom: 0.5rem; }
 .console-ledger-table th, .console-ledger-table td {
     text-align: left;
     padding: 0.3rem 0.5rem;
@@ -1476,10 +1484,10 @@ h2 {
 .console-ledger-table th { color: var(--mu); font-weight: 500; }
 
 .console-ledger-file { margin-bottom: 1rem; }
-.console-ledger-file-path { font-family: var(--mono); font-size: 0.85rem; margin-bottom: 0.25rem; }
-.console-ledger-comparison { color: var(--tx2); font-size: 0.8rem; margin-bottom: 0.35rem; }
+.console-ledger-file-path { font-family: var(--mono); font-size: var(--fs-md); margin-bottom: 0.25rem; }
+.console-ledger-comparison { color: var(--tx2); font-size: var(--fs-sm); margin-bottom: 0.35rem; }
 .console-ledger-mono { font-family: var(--mono); }
-.console-ledger-requirement-text { color: var(--tx2); font-size: 0.78rem; margin-top: 0.15rem; }
+.console-ledger-requirement-text { color: var(--tx2); font-size: var(--fs-sm); margin-top: 0.15rem; }
 
 .console-ledger-empty { color: var(--tx2); padding: 0.5rem 0.1rem; }
 
@@ -1549,7 +1557,7 @@ h2 {
     background: var(--pnl);
 }
 
-.console-view-topbar h2 { margin: 0; font-size: 1.05rem; }
+.console-view-topbar h2 { margin: 0; font-size: var(--fs-lg); }
 
 .console-view-body {
     padding: 1.25rem;
@@ -1562,7 +1570,7 @@ h2 {
 .container-task-group { margin-bottom: 1.25rem; }
 
 .container-task-group-title {
-    font-size: 0.85rem;
+    font-size: var(--fs-md);
     font-weight: 700;
     color: var(--mu);
     margin: 0 0 0.4rem;
@@ -1570,7 +1578,7 @@ h2 {
 
 .container-scan-status {
     margin-top: 0.5rem;
-    font-size: 0.85rem;
+    font-size: var(--fs-md);
     color: var(--tx2);
 }
 
