@@ -1452,48 +1452,84 @@ func (h *Handler) handleAPIStream(w http.ResponseWriter, r *http.Request) {
 	// subscription that never receives messages, causing the browser to
 	// hang with no output.
 	if h.logBroadcast != nil && h.logBroadcast.IsActive(id) {
-		sub, history := h.logBroadcast.SubscribeWithHistory(id)
-		defer h.logBroadcast.Unsubscribe(id, sub)
-
-		// Send historical lines first so the frontend can populate step buffers
-		// for steps that already completed before this SSE connection opened.
-		for _, line := range history {
-			line = parseLLMLogLine(line)
-			if line.Type == "" {
-				continue
-			}
-			data, _ := json.Marshal(line)
-			fmt.Fprintf(w, "data: %s\n\n", data)
-		}
-		flusher.Flush()
-
-		ctx := r.Context()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case line, ok := <-sub.C:
-				if !ok {
-					// Stream finished (run completed)
-					fmt.Fprintf(w, "event: done\ndata: completed\n\n")
-					flusher.Flush()
-					return
-				}
-				line = parseLLMLogLine(line)
-				if line.Type == "" {
-					continue // skip protocol-only llm lines
-				}
-				data, _ := json.Marshal(line)
-				fmt.Fprintf(w, "data: %s\n\n", data)
-				flusher.Flush()
-			}
-		}
+		streamBroadcastLog(w, flusher, r, h.logBroadcast, id)
+		return
 	}
 
 	// Broadcaster not active for this run — fall back to full.log.
 	h.streamFullLog(w, flusher, run, defaultLogTail)
 	fmt.Fprintf(w, "event: done\ndata: %s\n\n", string(run.State))
 	flusher.Flush()
+}
+
+// lastEventSeq parses the browser-supplied Last-Event-ID header (sent
+// automatically by EventSource on reconnect, echoing the highest "id:"
+// value it has received) into the sequence number the client has already
+// consumed. Returns -1 (meaning "nothing yet, send from the start") when
+// the header is absent or unparseable — the same value a fresh connection
+// implicitly requests.
+func lastEventSeq(r *http.Request) int {
+	v := r.Header.Get("Last-Event-ID")
+	if v == "" {
+		return -1
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
+// streamBroadcastLog subscribes to the broadcaster's live stream for runID
+// and writes it to w as SSE, honoring Last-Event-ID for reconnect resume
+// (see logstream.Broadcaster.SubscribeFromSeq). Each log-line event carries
+// an "id:" field (its position in the run's history) so the browser sends
+// Last-Event-ID automatically on its next reconnect, letting the server
+// resume from there instead of replaying everything already delivered. If
+// the requested offset has fallen out of the broadcaster's retained
+// history window (see logstream.DefaultHistoryCap), a "reset" event is
+// sent first so the client knows to discard what it has and rebuild from
+// this fresh window rather than silently showing a gapped log.
+func streamBroadcastLog(w http.ResponseWriter, flusher http.Flusher, r *http.Request, b *logstream.Broadcaster, runID string) {
+	sub, lines, baseSeq, gapFree := b.SubscribeFromSeq(runID, lastEventSeq(r))
+	defer b.Unsubscribe(runID, sub)
+
+	if !gapFree {
+		fmt.Fprintf(w, "event: reset\ndata: {}\n\n")
+	}
+
+	seq := baseSeq
+	for _, line := range lines {
+		parsed := parseLLMLogLine(line)
+		if parsed.Type != "" {
+			data, _ := json.Marshal(parsed)
+			fmt.Fprintf(w, "id: %d\ndata: %s\n\n", seq, data)
+		}
+		seq++
+	}
+	flusher.Flush()
+
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case line, ok := <-sub.C:
+			if !ok {
+				// Stream finished (run completed)
+				fmt.Fprintf(w, "event: done\ndata: completed\n\n")
+				flusher.Flush()
+				return
+			}
+			parsed := parseLLMLogLine(line)
+			if parsed.Type != "" {
+				data, _ := json.Marshal(parsed)
+				fmt.Fprintf(w, "id: %d\ndata: %s\n\n", seq, data)
+				flusher.Flush()
+			}
+			seq++
+		}
+	}
 }
 
 // handleAPILogs serves paginated log lines as JSON for loading earlier output.
@@ -1614,39 +1650,8 @@ func (h *Handler) handleAPIAttemptStream(w http.ResponseWriter, r *http.Request)
 	}
 
 	if h.logBroadcast != nil && h.logBroadcast.IsActive(streamRunID) {
-		sub, history := h.logBroadcast.SubscribeWithHistory(streamRunID)
-		defer h.logBroadcast.Unsubscribe(streamRunID, sub)
-
-		for _, line := range history {
-			line = parseLLMLogLine(line)
-			if line.Type == "" {
-				continue
-			}
-			data, _ := json.Marshal(line)
-			fmt.Fprintf(w, "data: %s\n\n", data)
-		}
-		flusher.Flush()
-
-		ctx := r.Context()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case line, ok := <-sub.C:
-				if !ok {
-					fmt.Fprintf(w, "event: done\ndata: completed\n\n")
-					flusher.Flush()
-					return
-				}
-				line = parseLLMLogLine(line)
-				if line.Type == "" {
-					continue
-				}
-				data, _ := json.Marshal(line)
-				fmt.Fprintf(w, "data: %s\n\n", data)
-				flusher.Flush()
-			}
-		}
+		streamBroadcastLog(w, flusher, r, h.logBroadcast, streamRunID)
+		return
 	}
 
 	// Broadcaster not active — fall back to full.log.

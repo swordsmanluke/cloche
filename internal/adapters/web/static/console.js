@@ -14,6 +14,26 @@
     var STACK_POLL_MS = 4000;
     var INSTRUMENTS_POLL_MS = 5000;
     var TICKER_POLL_MS = 5000;
+    // Bounds on the live log stream buffer (detail.allLines) — see
+    // enforceLineCap. Oldest lines are dropped once either cap is exceeded;
+    // they stay fetchable via loadEarlierDetailLogs (backed by the on-disk
+    // full.log), so nothing is permanently lost, just evicted from memory.
+    var DEFAULT_LOG_LINE_CAP = 5000;
+    var DEFAULT_LOG_BYTE_CAP = 8 * 1024 * 1024; // ~8MB of line content
+    // A single rendered line's content past this length gets truncated with
+    // a "show more" affordance (see buildLogLineEl) — one enormous
+    // stream-JSON line otherwise dominates layout cost on its own.
+    var MAX_LOG_LINE_CHARS = 4000;
+    // How long a hidden tab keeps its detail EventSource open before
+    // closing it outright (reopened with one fresh fetch on return — see
+    // the visibilitychange handler).
+    var DETAIL_STREAM_HIDDEN_CLOSE_MS = 5 * 60 * 1000;
+    // requestAnimationFrame coalesces bursts of appended log lines into one
+    // DOM flush per paint; jsdom (tests) and very old browsers don't have
+    // it, so fall back to a ~1-frame timeout.
+    var scheduleFrame = (typeof window.requestAnimationFrame === 'function')
+        ? window.requestAnimationFrame.bind(window)
+        : function (cb) { return window.setTimeout(cb, 16); };
     // How many recent activity entries the foot ticker packs into its one
     // ellipsised line (see renderTicker) — enough to read as a feed, not so
     // many the request/DOM cost is noticeable.
@@ -1278,8 +1298,27 @@
 
     function toggleHelp(show) {
         document.getElementById('console-help-overlay').hidden = !show;
+        if (show) renderHelpPerf();
     }
     document.getElementById('console-help-close').addEventListener('click', function () { toggleHelp(false); });
+
+    // renderHelpPerf snapshots a few cheap counters into the help overlay so
+    // a slow/frozen tab can be diagnosed after the fact ("which one blew
+    // up") without attaching devtools mid-incident: how many lines are
+    // buffered vs actually in the DOM, how many times the stream has had to
+    // reconnect, and how long the last coalesced render took (see
+    // flushPendingAppend).
+    function renderHelpPerf() {
+        var el = document.getElementById('console-help-perf');
+        if (!el) return;
+        var pre = document.getElementById('console-log-content');
+        el.textContent = [
+            'stream lines: ' + (detail ? detail.allLines.length.toLocaleString() : 0),
+            'DOM log lines: ' + (pre ? pre.children.length.toLocaleString() : 0),
+            'reconnects: ' + (state.reconnectCount || 0),
+            'last render: ' + (lastLogRenderMs != null ? lastLogRenderMs.toFixed(1) + 'ms' : '—')
+        ].join(' · ');
+    }
 
     // ---------- activity ticker & stream ----------
 
@@ -1655,6 +1694,10 @@
             scopeArchiveLines: [],   // backfill from /output when the stream has no history for the scope
             scopeArchiveState: 'none', // 'none' | 'loading' | 'done'
             allLines: [],
+            allLinesBytes: 0,       // approximate byte size of allLines' content, for the byte cap (see enforceLineCap)
+            linesTrimmed: 0,        // count of lines enforceLineCap has evicted this stream, for the earlier-button notice
+            pendingAppend: [],      // lines queued for the next coalesced DOM flush (see appendLine/flushPendingAppend)
+            flushScheduled: false,
             logKind: 'attempt', // 'attempt' | 'run' — which /api/{kind}s/{id}/stream to use
             logId: '',
             logStatus: 'live',
@@ -1662,6 +1705,7 @@
             logWrap: false,
             logTypeFilter: 'all',
             logSkipped: 0,
+            streamPausedForVisibility: false, // set when the detail EventSource was closed because the tab was hidden too long (see visibilitychange handling)
             eventSource: null,
             pollTimer: null,
             threadLoadedFor: '', // run id the thread panel was last loaded for, '' = not loaded
@@ -3124,7 +3168,14 @@
             }
         }
         var earlierBtn = document.getElementById('console-log-earlier');
-        if (earlierBtn) earlierBtn.hidden = !!detail.scopedStep || !detail.logSkipped;
+        if (!earlierBtn) return;
+        earlierBtn.hidden = !!detail.scopedStep || !detail.logSkipped;
+        // Don't clobber the "Loading…" label mid-fetch (see loadEarlierDetailLogs).
+        if (!earlierBtn.hidden && !earlierBtn.disabled) {
+            earlierBtn.textContent = detail.linesTrimmed
+                ? detail.logSkipped.toLocaleString() + (detail.logSkipped === 1 ? ' earlier line trimmed · Load earlier' : ' earlier lines trimmed · Load earlier')
+                : 'Load earlier';
+        }
     }
 
     // setLogStatus updates the live/follow indicator in the log bar. Text
@@ -3166,13 +3217,20 @@
         el.textContent = n.toLocaleString() + (n === 1 ? ' line' : ' lines');
     }
 
+    // startDetailLogStream opens a fresh EventSource and resets all stream
+    // state first — the client has no offset yet, so per the reconnect
+    // protocol (see handler.go streamBroadcastLog) this is exactly the
+    // "no Last-Event-ID" case: a full replay is expected next, and the
+    // buffer/DOM must be clear before it arrives. A later automatic
+    // reconnect of this same EventSource does NOT come back through here —
+    // the browser resumes it with Last-Event-ID, and the server sends only
+    // what's new (see the 'reset' listener below for the one case where the
+    // server can't honor that and says so explicitly).
     function startDetailLogStream(kind, id) {
         stopLogStream();
         detail.logKind = kind;
         detail.logId = id;
-        detail.allLines = [];
-        detail.scopeArchiveLines = [];
-        detail.scopeArchiveState = 'none';
+        resetLogBuffer();
         detail.logSkipped = 0;
         renderLogLines();
         updateLogScopeIndicator();
@@ -3195,15 +3253,50 @@
                 updateLogScopeIndicator();
             } catch (err) { /* ignore malformed event */ }
         });
+        // The server sends this when a reconnect's Last-Event-ID has fallen
+        // out of its retained history window (see logstream.DefaultHistoryCap)
+        // and it can't resume gap-free — the replay that follows is a fresh
+        // window, not a continuation, so the client must discard what it has
+        // first rather than silently doubling up or showing a gap.
+        es.addEventListener('reset', function () {
+            resetLogBuffer();
+            renderLogLines();
+            console.warn('[cloche console] log stream resynced after reconnect (history window exceeded)');
+        });
         es.addEventListener('done', function () {
             setLogStatus('complete');
             es.close();
         });
         // A dropped connection is not completion — the run may still be
         // going. Only an explicit "done" event means the stream is over.
+        // The browser retries this same EventSource automatically, sending
+        // Last-Event-ID so the server can resume instead of replaying.
         es.onerror = function () {
             setLogStatus('disconnected');
+            state.reconnectCount = (state.reconnectCount || 0) + 1;
+            console.warn('[cloche console] log stream disconnected; browser will retry (reconnect #' + state.reconnectCount + ')');
         };
+    }
+
+    // resetLogBuffer clears the in-memory stream buffer and its rendered
+    // DOM, for the two moments a full replay is about to be consumed
+    // rather than an incremental append: opening a brand new stream, and
+    // the server-signalled 'reset' above.
+    function resetLogBuffer() {
+        if (!detail) return;
+        detail.allLines = [];
+        detail.allLinesBytes = 0;
+        detail.linesTrimmed = 0;
+        detail.pendingAppend = [];
+        detail.flushScheduled = false;
+        detail.scopeArchiveLines = [];
+        detail.scopeArchiveState = 'none';
+        var pre = document.getElementById('console-log-content');
+        if (pre) {
+            pre.innerHTML = '';
+            delete pre.dataset.lastLogDate;
+            delete pre.dataset.placeholder;
+        }
     }
 
     function stopLogStream() {
@@ -3245,33 +3338,129 @@
                     pre.insertBefore(frag, pre.firstChild);
                     viewer.scrollTop += viewer.scrollHeight - prevHeight;
                 }
+                if (btn) btn.disabled = false;
                 updateLogScopeIndicator();
                 updateLogCount();
-                if (btn) { btn.disabled = false; btn.textContent = 'Load earlier'; }
             })
             .catch(function () {
-                if (btn) { btn.disabled = false; btn.textContent = 'Load earlier'; }
+                if (btn) { btn.disabled = false; updateLogScopeIndicator(); }
             });
     }
 
+    // approxLineBytes estimates a LogLine's contribution to the byte cap
+    // (see enforceLineCap) — content length plus a fixed overhead for the
+    // timestamp/type/step_name fields, not an exact UTF-8/JSON byte count.
+    function approxLineBytes(line) {
+        return ((line && line.content) || '').length + 64;
+    }
+
+    // enforceLineCap bounds detail.allLines to DEFAULT_LOG_LINE_CAP lines
+    // (or detail.logByteCap bytes of content), dropping the oldest first.
+    // Trimming happens in a single splice once the buffer exceeds the cap
+    // by a slack margin, rather than shifting one element on every push —
+    // repeated Array#shift on a large array is itself O(n) per call, which
+    // would reintroduce an O(n) cost per line (see the appendLine doc
+    // comment on why that matters). Trimmed lines aren't lost: they're
+    // still on disk and fetchable via loadEarlierDetailLogs, so this only
+    // grows detail.logSkipped, the same counter that tracks the initial
+    // tail-limited fetch.
+    var LOG_CAP_SLACK = 200;
+    function enforceLineCap() {
+        if (!detail) return;
+        var lines = detail.allLines;
+        var lineCap = detail.logLineCap || DEFAULT_LOG_LINE_CAP;
+        var byteCap = detail.logByteCap || DEFAULT_LOG_BYTE_CAP;
+        if (lines.length <= lineCap + LOG_CAP_SLACK && detail.allLinesBytes <= byteCap) return;
+
+        var drop = 0;
+        var bytes = detail.allLinesBytes;
+        while (drop < lines.length && (lines.length - drop > lineCap || bytes > byteCap)) {
+            bytes -= approxLineBytes(lines[drop]);
+            drop++;
+        }
+        if (drop <= 0) return;
+        lines.splice(0, drop);
+        detail.allLinesBytes = bytes;
+        detail.logSkipped = (detail.logSkipped || 0) + drop;
+        detail.linesTrimmed = (detail.linesTrimmed || 0) + drop;
+        updateLogScopeIndicator();
+    }
+
+    // scheduleLogFlush coalesces a burst of appendLine calls into a single
+    // DOM update per animation frame (see flushPendingAppend) — without
+    // this, a flood of lines streaming in faster than the event loop drains
+    // would otherwise force one layout per line.
+    function scheduleLogFlush() {
+        if (!detail || detail.flushScheduled) return;
+        detail.flushScheduled = true;
+        scheduleFrame(flushPendingAppend);
+    }
+
+    // flushPendingAppend appends every line queued since the last flush as
+    // a single batch — one fragment build, one DOM insert, one scroll/count
+    // update, regardless of how many lines arrived this frame. Clears a
+    // scoped-view "waiting for output" placeholder on the first real line,
+    // same as an unscoped view starting empty.
+    function flushPendingAppend() {
+        if (!detail) return;
+        detail.flushScheduled = false;
+        var queue = detail.pendingAppend;
+        detail.pendingAppend = [];
+        if (!queue.length) return;
+        var pre = document.getElementById('console-log-content');
+        if (!pre) return;
+
+        var started = window.performance && window.performance.now ? window.performance.now() : Date.now();
+        if (pre.dataset.placeholder) {
+            pre.innerHTML = '';
+            delete pre.dataset.placeholder;
+            delete pre.dataset.lastLogDate;
+        }
+        queue.forEach(function (line) {
+            appendLogLineEl(pre, line);
+        });
+        // Bound DOM growth the same way the buffer itself is bounded —
+        // incremental appends never call renderLogLines() (which would
+        // naturally shed evicted lines on rebuild), so trim the oldest
+        // rendered elements here to match.
+        var domCap = (detail.logLineCap || DEFAULT_LOG_LINE_CAP) + LOG_CAP_SLACK;
+        while (pre.children.length > domCap) {
+            pre.removeChild(pre.firstChild);
+        }
+        lastLogRenderMs = (window.performance && window.performance.now ? window.performance.now() : Date.now()) - started;
+        updateLogCount();
+        if (detail.logFollow) scrollLogTo('bottom');
+    }
+
+    // lastLogRenderMs is surfaced in the help overlay's perf readout (see
+    // renderHelpPerf) — not part of detail so it survives a scope/attempt
+    // switch for at-a-glance "how slow was the last flush" diagnostics.
+    var lastLogRenderMs = null;
+
+    // appendLine is the single entry point for a new line arriving, live or
+    // scoped: it always appends exactly one element to the DOM (queued and
+    // coalesced via scheduleLogFlush/flushPendingAppend), the same as the
+    // unscoped path always did. A full renderLogLines() rebuild is reserved
+    // for scope changes, filter changes, and archive backfill merges (see
+    // scopeToStep/clearStepScope, the filter chip handler in
+    // renderLogPaneShell, and maybeFetchScopeArchive) — those change which
+    // lines are visible or their relative order, which a single append
+    // can't express. Scoping to a running step during a long stream used to
+    // mean an O(n) rebuild per line (O(n^2) over the run); this keeps it
+    // O(1) amortized per line, same as the unscoped view.
     function appendLine(line) {
         if (!detail) return;
         detail.allLines.push(line);
-        if (detail.scopedStep) {
-            // Scope is a filter over the stream, not a separate fetch (see
-            // scopedLines) — a matching line means the view needs a
-            // re-render, both to append it in the right merged position
-            // relative to any archive backfill and to clear a "waiting for
-            // output" placeholder the first time content arrives.
-            if (buildScopeFilter(detail.scopedStep)(line)) renderLogLines();
-            return;
-        }
-        if (detail.logTypeFilter !== 'all' && line.type !== detail.logTypeFilter) return;
-        var pre = document.getElementById('console-log-content');
-        if (!pre) return;
-        appendLogLineEl(pre, line);
-        updateLogCount();
-        if (detail.logFollow) scrollLogTo('bottom');
+        detail.allLinesBytes += approxLineBytes(line);
+        enforceLineCap();
+
+        var visible = detail.scopedStep
+            ? buildScopeFilter(detail.scopedStep)(line) && (detail.logTypeFilter === 'all' || line.type === detail.logTypeFilter)
+            : (detail.logTypeFilter === 'all' || line.type === detail.logTypeFilter);
+        if (!visible) return;
+
+        detail.pendingAppend.push(line);
+        scheduleLogFlush();
     }
 
     // TOOL_LINE_RE matches the "--- Tool: <call> ---" marker that
@@ -3383,7 +3572,21 @@
             contentEl.textContent = '⚙ ' + (m ? m[1] : content);
         } else {
             contentEl.className = 'log-line-content' + (cls ? ' log-line-' + cls : '');
-            contentEl.textContent = line.content || '';
+            var full = line.content || '';
+            if (full.length > MAX_LOG_LINE_CHARS) {
+                contentEl.textContent = full.slice(0, MAX_LOG_LINE_CHARS) + '… ';
+                var expand = document.createElement('button');
+                expand.type = 'button';
+                expand.className = 'log-line-expand';
+                expand.textContent = '[show more]';
+                expand.addEventListener('click', function (ev) {
+                    ev.stopPropagation();
+                    contentEl.textContent = full;
+                });
+                contentEl.appendChild(expand);
+            } else {
+                contentEl.textContent = full;
+            }
         }
         span.appendChild(contentEl);
         span.appendChild(document.createTextNode('\n'));
@@ -3406,8 +3609,14 @@
     function renderLogLines() {
         var pre = document.getElementById('console-log-content');
         if (!pre || !detail) return;
+        // A full rebuild supersedes anything queued for incremental append
+        // (see appendLine/flushPendingAppend) — those lines are already
+        // accounted for in detail.allLines, which this reads directly.
+        detail.pendingAppend = [];
+        detail.flushScheduled = false;
         pre.innerHTML = '';
         delete pre.dataset.lastLogDate;
+        delete pre.dataset.placeholder;
         var lines = detail.scopedStep ? scopedLines() : detail.allLines;
         var filter = detail.logTypeFilter;
         var visible = (lines || []).filter(function (line) { return filter === 'all' || line.type === filter; });
@@ -3418,6 +3627,7 @@
             placeholder.textContent = scopePlaceholderText();
             placeholder.appendChild(document.createTextNode('\n'));
             pre.appendChild(placeholder);
+            pre.dataset.placeholder = '1';
             updateLogCount();
             return;
         }
@@ -4773,6 +4983,72 @@
             renderSubtabs();
         }
     }
+
+    // ---------- background-tab throttling ----------
+    //
+    // A backgrounded console tab still ran every poll (stack/ticker/
+    // instruments/projects/detail) and kept its log EventSource open
+    // indefinitely — combined with the unbounded stream growth this fixed
+    // above, that's most of how a quiet background tab turned into a frozen
+    // one. Pause everything pollable while hidden, catch up with one
+    // immediate refresh the moment the tab is shown again, and give up the
+    // detail stream's connection entirely after a longer hidden stretch
+    // (cheap to reopen now that reconnects resume rather than replay — see
+    // startDetailLogStream/streamBroadcastLog).
+    var hiddenStreamCloseTimer = null;
+
+    function pauseBackgroundWork() {
+        stopProjectsPolling();
+        stopStackPolling();
+        stopTickerPolling();
+        stopInstrumentsPolling();
+        stopDetailPoll();
+        if (detail && detail.eventSource && !hiddenStreamCloseTimer) {
+            hiddenStreamCloseTimer = window.setTimeout(function () {
+                hiddenStreamCloseTimer = null;
+                if (detail) {
+                    stopLogStream();
+                    detail.streamPausedForVisibility = true;
+                }
+            }, DETAIL_STREAM_HIDDEN_CLOSE_MS);
+        }
+    }
+
+    function resumeBackgroundWork() {
+        if (hiddenStreamCloseTimer) {
+            window.clearTimeout(hiddenStreamCloseTimer);
+            hiddenStreamCloseTimer = null;
+        }
+        if (state.activeSlug) {
+            loadProjects();
+            startProjectsPolling();
+            loadStack(false);
+            startStackPolling();
+            loadTicker();
+            startTickerPolling();
+            loadInstruments();
+            startInstrumentsPolling();
+        }
+        if (detail && detail.streamPausedForVisibility) {
+            detail.streamPausedForVisibility = false;
+            startDetailLogStream(detail.logKind, detail.logId);
+        }
+        var attempt = detail && detail.attempts && detail.attempts[detail.attemptIndex];
+        if (attempt) {
+            fetchRunDetail(attempt.run_id).then(function (fresh) {
+                if (!detail) return;
+                applyRunDetail(fresh); // also restarts detail.pollTimer, see manageDetailPoll
+            }).catch(function () {});
+        }
+    }
+
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+            pauseBackgroundWork();
+        } else {
+            resumeBackgroundWork();
+        }
+    });
 
     function init() {
         var loc = parseLocation();

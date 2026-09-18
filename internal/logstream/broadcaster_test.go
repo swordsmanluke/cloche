@@ -268,3 +268,113 @@ func TestBroadcaster_SlowSubscriberDropsMessages(t *testing.T) {
 done:
 	require.Equal(t, 256, count, "should have received exactly buffer size messages")
 }
+
+func TestBroadcaster_HistoryCapEvictsOldest(t *testing.T) {
+	b := NewBroadcasterWithHistoryCap(3)
+	b.Start("run-1")
+
+	for i := 0; i < 5; i++ {
+		b.Publish("run-1", LogLine{Content: string(rune('a' + i))})
+	}
+
+	got := b.GetHistory("run-1")
+	require.Len(t, got, 3, "history should be capped at 3")
+	assert.Equal(t, "c", got[0].Content, "oldest retained line should be the 3rd published (0-indexed seq 2)")
+	assert.Equal(t, "e", got[2].Content)
+}
+
+func TestBroadcaster_NewBroadcasterWithHistoryCapDefaultsWhenNonPositive(t *testing.T) {
+	b := NewBroadcasterWithHistoryCap(0)
+	assert.Equal(t, DefaultHistoryCap, b.historyCap)
+
+	b2 := NewBroadcasterWithHistoryCap(-5)
+	assert.Equal(t, DefaultHistoryCap, b2.historyCap)
+}
+
+func TestBroadcaster_SubscribeFromSeq_FromStart(t *testing.T) {
+	b := NewBroadcaster()
+	b.Start("run-1")
+	b.Publish("run-1", LogLine{Content: "first"})
+	b.Publish("run-1", LogLine{Content: "second"})
+
+	sub, lines, baseSeq, ok := b.SubscribeFromSeq("run-1", -1)
+	defer b.Unsubscribe("run-1", sub)
+
+	assert.True(t, ok, "nothing evicted yet, should be gap-free")
+	assert.Equal(t, 0, baseSeq)
+	require.Len(t, lines, 2)
+	assert.Equal(t, "first", lines[0].Content)
+	assert.Equal(t, "second", lines[1].Content)
+
+	b.Publish("run-1", LogLine{Content: "third"})
+	select {
+	case l := <-sub.C:
+		assert.Equal(t, "third", l.Content, "line published after subscribing should arrive on the channel, continuing the same sequence")
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for live line")
+	}
+}
+
+func TestBroadcaster_SubscribeFromSeq_ResumesAfterOffset(t *testing.T) {
+	b := NewBroadcaster()
+	b.Start("run-1")
+	b.Publish("run-1", LogLine{Content: "a"}) // seq 0
+	b.Publish("run-1", LogLine{Content: "b"}) // seq 1
+	b.Publish("run-1", LogLine{Content: "c"}) // seq 2
+
+	// Client already has seq 0 (afterSeq=0) — resume should return only
+	// what's newer, not replay everything (the bug this fixes: a
+	// reconnecting client used to receive the whole history again).
+	sub, lines, baseSeq, ok := b.SubscribeFromSeq("run-1", 0)
+	defer b.Unsubscribe("run-1", sub)
+
+	assert.True(t, ok)
+	assert.Equal(t, 1, baseSeq)
+	require.Len(t, lines, 2)
+	assert.Equal(t, "b", lines[0].Content)
+	assert.Equal(t, "c", lines[1].Content)
+}
+
+func TestBroadcaster_SubscribeFromSeq_NotGapFreeAfterEviction(t *testing.T) {
+	b := NewBroadcasterWithHistoryCap(1)
+	b.Start("run-1")
+	b.Publish("run-1", LogLine{Content: "a"}) // seq 0 — client already has this
+	b.Publish("run-1", LogLine{Content: "b"}) // seq 1 — evicted below before the client ever sees it
+	b.Publish("run-1", LogLine{Content: "c"}) // seq 2, evicts seq 1 too (cap 1 retains only the newest)
+
+	// The client's last-seen seq (0) means it wants seq 1 onward, but seq 1
+	// ("b") has already fallen out of the retained window: resume can't be
+	// gap-free.
+	sub, lines, baseSeq, ok := b.SubscribeFromSeq("run-1", 0)
+	defer b.Unsubscribe("run-1", sub)
+
+	assert.False(t, ok, "the line after afterSeq has been evicted, resume must report not-gap-free")
+	assert.Equal(t, 2, baseSeq, "should still return whatever the retained window currently holds")
+	require.Len(t, lines, 1)
+	assert.Equal(t, "c", lines[0].Content)
+}
+
+func TestBroadcaster_SubscribeFromSeq_UnknownRunIsGapFreeAndEmpty(t *testing.T) {
+	b := NewBroadcaster()
+
+	sub, lines, baseSeq, ok := b.SubscribeFromSeq("never-started", -1)
+	defer b.Unsubscribe("never-started", sub)
+
+	assert.True(t, ok)
+	assert.Equal(t, 0, baseSeq)
+	assert.Empty(t, lines)
+}
+
+func TestBroadcaster_SubscribeFromSeq_FinishedRunReturnsClosedChannel(t *testing.T) {
+	b := NewBroadcaster()
+	b.Start("run-1")
+	b.Publish("run-1", LogLine{Content: "a"})
+	b.Finish("run-1")
+
+	sub, lines, _, ok := b.SubscribeFromSeq("run-1", -1)
+	assert.True(t, ok)
+	assert.Empty(t, lines, "Finish clears history to free memory; caller falls back to full.log")
+
+	_, chOk := <-sub.C
+	assert.False(t, chOk, "finished run should hand back a closed channel")
+}

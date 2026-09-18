@@ -152,6 +152,9 @@ test('log line prefix shows HH:MM:SS with the full ISO timestamp in a title attr
         const es = await waitForStream(sources);
 
         emit(es, { timestamp: '2026-09-16T20:04:26Z', type: 'script', step_name: 'build', content: 'building things' });
+        // Appends are coalesced into one flush per animation frame (see
+        // console.js scheduleLogFlush/flushPendingAppend) — give it a tick.
+        await delay(30);
 
         const els = logLineEls(window);
         assert.equal(els.length, 1);
@@ -178,12 +181,16 @@ test('date divider is inserted when the date changes between consecutive lines, 
 
         emit(es, { timestamp: '2026-09-16T23:59:00Z', type: 'script', step_name: 'build', content: 'end of day one' });
         emit(es, { timestamp: '2026-09-16T23:59:30Z', type: 'script', step_name: 'build', content: 'still day one' });
+        // Appends are coalesced into one flush per animation frame (see
+        // console.js scheduleLogFlush/flushPendingAppend) — give it a tick.
+        await delay(30);
 
         let els = logLineEls(window);
         assert.equal(els.length, 2, 'same-date consecutive lines must not get a divider between them');
         assert.ok(els.every((el) => !el.classList.contains('log-date-divider')));
 
         emit(es, { timestamp: '2026-09-17T00:00:05Z', type: 'script', step_name: 'build', content: 'day two begins' });
+        await delay(30);
 
         els = logLineEls(window);
         assert.equal(els.length, 4, 'a date-change divider element must be inserted before the new day\'s line');

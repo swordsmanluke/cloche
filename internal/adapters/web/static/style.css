@@ -313,8 +313,19 @@ h2 {
    classed by what the content actually is, never a single whole-line
    colour — see console.js buildLogLineEl/classifyLogLine. The log-type-*
    classes stay on the line for identification/filtering only; they carry
-   no colour of their own. */
-.log-line { display: block; color: var(--tx2); }
+   no colour of their own.
+   content-visibility skips layout/paint for lines scrolled out of view —
+   with a long-running scoped stream now rendering thousands of individual
+   <span> lines (see console.js appendLine), this keeps that cost bounded
+   to what's actually on screen instead of the whole pane. contain-intrinsic
+   height is a rough per-line estimate so the scrollbar doesn't jump as
+   off-screen lines get measured. */
+.log-line {
+    display: block;
+    color: var(--tx2);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 1.5em;
+}
 .log-line-prefix { color: var(--mu); }
 .log-line-content { color: var(--tx2); }
 .log-line-l { color: var(--tx); }
@@ -323,6 +334,21 @@ h2 {
 .log-line-w { color: var(--warn); }
 .log-line-st { color: var(--ac); }
 .log-line-tool { color: var(--tx2); }
+
+/* "[show more]" affordance for a line truncated past MAX_LOG_LINE_CHARS
+   (see console.js buildLogLineEl) — inline with the truncated content, not
+   its own line. */
+.log-line-expand {
+    background: none;
+    border: none;
+    padding: 0;
+    margin-left: 0.25rem;
+    color: var(--ac);
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: inherit;
+    text-decoration: underline;
+}
 
 /* A date divider (see console.js buildDateDividerEl) marks a day boundary
    between consecutive log lines. A step-started section rule (see
@@ -1669,6 +1695,18 @@ h2 {
 .console-help-panel dt { font-family: var(--mono); color: var(--tx); }
 .console-help-panel dd { margin: 0; color: var(--tx2); }
 .console-help-footnote { margin: 0.75rem 0; color: var(--tx2); font-size: var(--fs-sm); }
+
+/* Perf readout (see console.js renderHelpPerf) — a diagnostic line, not
+   part of the shortcut list, so it's set off with its own rule and a
+   quieter/smaller mono font. */
+.console-help-perf {
+    margin: 0.75rem 0;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--ln);
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    color: var(--mu);
+}
 
 @media (max-width: 768px) {
     .console-stack { width: 220px; flex-basis: 220px; }

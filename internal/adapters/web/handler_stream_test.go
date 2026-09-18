@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -152,6 +153,189 @@ func TestSSE_ActiveRun_StreamsLive(t *testing.T) {
 	assert.Equal(t, "step_started: build", events[0].Content)
 	assert.Equal(t, "script", events[1].Type)
 	assert.Equal(t, "compiling...", events[1].Content)
+}
+
+// readSSEEvents parses a raw SSE body into (event-name, id, data) tuples in
+// order, defaulting event to "message" per the SSE spec when no "event:"
+// field precedes a "data:" field. Each blank line ends one dispatched
+// event.
+type sseEvent struct {
+	event string
+	id    string
+	data  string
+}
+
+func readSSEEvents(body string) []sseEvent {
+	var events []sseEvent
+	cur := sseEvent{event: "message"}
+	for _, line := range strings.Split(body, "\n") {
+		switch {
+		case strings.HasPrefix(line, "event: "):
+			cur.event = strings.TrimPrefix(line, "event: ")
+		case strings.HasPrefix(line, "id: "):
+			cur.id = strings.TrimPrefix(line, "id: ")
+		case strings.HasPrefix(line, "data: "):
+			cur.data = strings.TrimPrefix(line, "data: ")
+		case line == "":
+			if cur.data != "" || cur.event != "message" {
+				events = append(events, cur)
+			}
+			cur = sseEvent{event: "message"}
+		}
+	}
+	return events
+}
+
+func TestSSE_ActiveRun_LogLinesCarrySequentialID(t *testing.T) {
+	h, store, b := setupHandlerWithBroadcaster(t)
+
+	ctx := context.Background()
+	run := domain.NewRun("sse-id-1", "develop")
+	run.ProjectDir = t.TempDir()
+	run.Start()
+	run.ContainerID = "abc123"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	b.Subscribe("sse-id-1")
+
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		b.Publish("sse-id-1", logstream.LogLine{Type: "status", Content: "first"})
+		b.Publish("sse-id-1", logstream.LogLine{Type: "script", Content: "second"})
+		time.Sleep(50 * time.Millisecond)
+		b.Finish("sse-id-1")
+	}()
+
+	resp, err := http.Get(srv.URL + "/api/runs/sse-id-1/stream")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	events := readSSEEvents(string(body))
+
+	var withIDs []sseEvent
+	for _, e := range events {
+		if e.id != "" {
+			withIDs = append(withIDs, e)
+		}
+	}
+	require.Len(t, withIDs, 2)
+	assert.Equal(t, "0", withIDs[0].id)
+	assert.Equal(t, "1", withIDs[1].id)
+}
+
+func TestSSE_ActiveRun_LastEventIDResumesWithoutReplay(t *testing.T) {
+	h, store, b := setupHandlerWithBroadcaster(t)
+
+	ctx := context.Background()
+	run := domain.NewRun("sse-resume-1", "develop")
+	run.ProjectDir = t.TempDir()
+	run.Start()
+	run.ContainerID = "abc123"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	b.Start("sse-resume-1")
+	b.Publish("sse-resume-1", logstream.LogLine{Type: "status", Content: "line0"})
+	b.Publish("sse-resume-1", logstream.LogLine{Type: "status", Content: "line1"})
+
+	// A fresh connection (no Last-Event-ID) replays everything published so
+	// far. Cancel its request context (rather than finishing the run) once
+	// the history has had time to flush, so the run stays active for the
+	// reconnect below — same as a real dropped connection.
+	reqCtx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest("GET", "/api/runs/sse-resume-1/stream", nil).WithContext(reqCtx)
+	w := httptest.NewRecorder()
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		cancel()
+	}()
+	h.ServeHTTP(w, req)
+	firstEvents := readSSEEvents(w.Body.String())
+	var firstLines []sseEvent
+	for _, e := range firstEvents {
+		if e.id != "" {
+			firstLines = append(firstLines, e)
+		}
+	}
+	require.Len(t, firstLines, 2, "fresh connection should replay both lines published before it")
+
+	// Reconnect with Last-Event-ID pointing at the last line the client
+	// already has — the bug this fixes: previously the server replayed the
+	// entire history again on every reconnect.
+	req2 := httptest.NewRequest("GET", "/api/runs/sse-resume-1/stream", nil)
+	req2.Header.Set("Last-Event-ID", "1")
+	w2 := httptest.NewRecorder()
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		b.Publish("sse-resume-1", logstream.LogLine{Type: "status", Content: "line2"})
+		time.Sleep(10 * time.Millisecond)
+		b.Finish("sse-resume-1")
+	}()
+	h.ServeHTTP(w2, req2)
+
+	var resumedLines []sseEvent
+	for _, e := range readSSEEvents(w2.Body.String()) {
+		if e.id != "" {
+			resumedLines = append(resumedLines, e)
+		}
+	}
+	require.Len(t, resumedLines, 1, "resume must send only the line published after the client's last-seen id, not a full replay")
+	assert.Equal(t, "2", resumedLines[0].id)
+
+	var line logstream.LogLine
+	require.NoError(t, json.Unmarshal([]byte(resumedLines[0].data), &line))
+	assert.Equal(t, "line2", line.Content)
+}
+
+func TestSSE_ActiveRun_ResetEventWhenResumeOffsetEvicted(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { store.Close() })
+
+	b := logstream.NewBroadcasterWithHistoryCap(1)
+	h, err := NewHandler(store, store, WithLogBroadcaster(b))
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	run := domain.NewRun("sse-evict-1", "develop")
+	run.ProjectDir = t.TempDir()
+	run.Start()
+	run.ContainerID = "abc123"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	b.Start("sse-evict-1")
+	b.Publish("sse-evict-1", logstream.LogLine{Type: "status", Content: "line0"}) // seq 0, client already has this
+	b.Publish("sse-evict-1", logstream.LogLine{Type: "status", Content: "line1"}) // seq 1 — evicted below before the client ever sees it
+	b.Publish("sse-evict-1", logstream.LogLine{Type: "status", Content: "line2"}) // seq 2, evicts seq 1 too (cap 1 retains only the newest)
+
+	// Client claims to have already seen seq 0 and wants seq 1 onward, but
+	// seq 1 has been evicted from the 1-line retained window — the server
+	// can't resume gap-free.
+	req := httptest.NewRequest("GET", "/api/runs/sse-evict-1/stream", nil)
+	req.Header.Set("Last-Event-ID", "0")
+	w := httptest.NewRecorder()
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		b.Finish("sse-evict-1")
+	}()
+	h.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	assert.Contains(t, body, "event: reset", "server must signal the client to discard its state before this replay")
+
+	events := readSSEEvents(body)
+	var withIDs []sseEvent
+	for _, e := range events {
+		if e.id != "" {
+			withIDs = append(withIDs, e)
+		}
+	}
+	require.Len(t, withIDs, 1, "only what's left in the retained window should be replayed")
+	assert.Equal(t, "2", withIDs[0].id)
 }
 
 func TestSSE_RunNotFound(t *testing.T) {

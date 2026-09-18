@@ -36,23 +36,53 @@ func (s *Subscriber) close() {
 	s.once.Do(func() { close(s.ch) })
 }
 
+// DefaultHistoryCap bounds how many lines a run's in-memory broadcast
+// history retains. Older lines are evicted once the cap is exceeded — they
+// remain readable from the run's on-disk full.log via the /logs endpoint
+// (see handleAPILogs), which is what "Load earlier" backfills from. Matches
+// the client's default detail.allLines window (see static/console.js) so a
+// freshly (re)connected subscriber's window lines up with what the browser
+// is willing to hold in memory.
+const DefaultHistoryCap = 5000
+
 // Broadcaster fans out log lines from active runs to multiple subscribers.
 // Thread-safe for concurrent use.
 type Broadcaster struct {
-	mu   sync.Mutex
-	runs map[string]*runBroadcast
+	mu         sync.Mutex
+	runs       map[string]*runBroadcast
+	historyCap int
 }
 
 type runBroadcast struct {
 	subscribers []*Subscriber
 	history     []LogLine
-	done        bool
+	// historyBase is the sequence number of history[0]. It advances past 0
+	// once the history cap starts evicting the oldest entries, so a seq
+	// number always identifies the same line regardless of eviction.
+	historyBase int
+	// nextSeq is the sequence number that will be assigned to the next
+	// published line. Every published line gets one, whether or not it
+	// stays within the retained window.
+	nextSeq int
+	done    bool
 }
 
-// NewBroadcaster creates a new Broadcaster.
+// NewBroadcaster creates a new Broadcaster with the default history cap.
 func NewBroadcaster() *Broadcaster {
+	return NewBroadcasterWithHistoryCap(DefaultHistoryCap)
+}
+
+// NewBroadcasterWithHistoryCap creates a Broadcaster whose per-run history
+// window is bounded at cap lines (DefaultHistoryCap if cap <= 0). Exposed
+// mainly so tests can exercise eviction without publishing thousands of
+// lines.
+func NewBroadcasterWithHistoryCap(cap int) *Broadcaster {
+	if cap <= 0 {
+		cap = DefaultHistoryCap
+	}
 	return &Broadcaster{
-		runs: make(map[string]*runBroadcast),
+		runs:       make(map[string]*runBroadcast),
+		historyCap: cap,
 	}
 }
 
@@ -117,6 +147,50 @@ func (b *Broadcaster) SubscribeWithHistory(runID string) (*Subscriber, []LogLine
 	return sub, history
 }
 
+// SubscribeFromSeq registers a subscriber and returns the lines published
+// after sequence number afterSeq that are still within the retained
+// history window, along with the sequence number of the first returned
+// line (or, if none are returned, the sequence number the next line —
+// whether from the returned slice or the subscriber's channel — will
+// carry). Every line delivered after via the channel continues that same
+// sequence, one per line, since Publish appends to history and fans out to
+// subscribers atomically under the same lock.
+//
+// ok is false when afterSeq predates the retained window (its lines have
+// already been evicted by the history cap) — the caller cannot resume
+// gap-free and should fall back to a full resync (see handleAPIStream's
+// "reset" SSE event) rather than presenting a silently incomplete stream.
+// Pass afterSeq -1 to request everything currently retained.
+func (b *Broadcaster) SubscribeFromSeq(runID string, afterSeq int) (sub *Subscriber, lines []LogLine, baseSeq int, ok bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	rb, exists := b.runs[runID]
+	if !exists {
+		rb = &runBroadcast{}
+		b.runs[runID] = rb
+	}
+
+	gapFree := afterSeq+1 >= rb.historyBase
+	startIdx := afterSeq + 1 - rb.historyBase
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	if startIdx < len(rb.history) {
+		lines = make([]LogLine, len(rb.history)-startIdx)
+		copy(lines, rb.history[startIdx:])
+	}
+	baseSeq = rb.historyBase + startIdx
+
+	sub = newSubscriber(256)
+	if rb.done {
+		sub.close()
+		return sub, lines, baseSeq, gapFree
+	}
+	rb.subscribers = append(rb.subscribers, sub)
+	return sub, lines, baseSeq, gapFree
+}
+
 // Unsubscribe removes a subscriber. Safe to call multiple times.
 func (b *Broadcaster) Unsubscribe(runID string, sub *Subscriber) {
 	b.mu.Lock()
@@ -147,7 +221,25 @@ func (b *Broadcaster) Publish(runID string, line LogLine) {
 		return
 	}
 
+	rb.nextSeq++
 	rb.history = append(rb.history, line)
+	historyCap := b.historyCap
+	if historyCap <= 0 {
+		historyCap = DefaultHistoryCap
+	}
+	if len(rb.history) > historyCap {
+		evict := len(rb.history) - historyCap
+		// Zero the evicted slots before reslicing: history[evict:] keeps
+		// the same backing array, so without this the evicted LogLines'
+		// (often large — a full Claude stream-JSON line) Content strings
+		// would stay reachable through it and never be freed, defeating
+		// the cap's whole point of bounding memory.
+		for i := range rb.history[:evict] {
+			rb.history[i] = LogLine{}
+		}
+		rb.history = rb.history[evict:]
+		rb.historyBase += evict
+	}
 
 	for _, sub := range rb.subscribers {
 		select {

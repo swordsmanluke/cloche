@@ -202,10 +202,19 @@ Shows the selected task's full detail:
   ~1000 lines and "load earlier" paging (`GET /api/attempts/{id}/logs`). Every line keeps
   its timestamp, type, and originating step, and its content is colorized by a simple
   classifier (tool-call markers, pass/fail/warning keywords, and step-transition
-  success/failure). The live indicator reads "● live" (plus "· following" while follow is
-  on — click it to toggle), "complete" once an explicit `done` event closes the stream, or
-  "disconnected" on an SSE error. When the run is parked (see below), the log pane is
-  replaced by the help-thread panel instead.
+  success/failure); a single line longer than 4000 characters is truncated with a
+  "[show more]" toggle so one oversized stream-JSON line can't dominate layout cost. The
+  live indicator reads "● live" (plus "· following" while follow is on — click it to
+  toggle), "complete" once an explicit `done` event closes the stream, or "disconnected"
+  on an SSE error — a dropped connection isn't treated as completion, since the browser's
+  `EventSource` retries automatically and the server resumes from the client's last
+  received line (via the SSE `Last-Event-ID` header) rather than replaying from the start;
+  if the gap exceeds the server's retained history it sends a `reset` event instead, and
+  the client discards its buffer and rebuilds from the fresh replay that follows. The
+  client also bounds its own in-memory buffer (~5000 lines / ~8MB of content, oldest
+  first) so a very long-running attempt can't grow the tab without limit — trimmed lines
+  are still fetchable via "Load earlier", which reports how many were trimmed. When the
+  run is parked (see below), the log pane is replaced by the help-thread panel instead.
 
 #### Parked pane
 
@@ -267,6 +276,11 @@ once the project list loads if that preference is empty or stale.
 Shortcuts only fire on bare keys (or Shift chords, e.g. `Shift+[`, `Shift+R`). Any
 Cmd/Ctrl/Alt chord is left untouched so the browser or OS handles it instead.
 
+The shortcuts overlay also shows a small performance readout (buffered stream lines vs.
+lines actually rendered in the DOM, log-stream reconnect count, and the last coalesced
+render time) — a way to diagnose a slow or frozen tab after the fact without attaching
+devtools mid-incident.
+
 ### Foot bar
 
 Shows a one-line activity ticker on the left and a short, contextual set of key hints in
@@ -279,6 +293,16 @@ back to a short baseline. `g`/`G` and the log type filter live in the log bar in
 since they act on the log pane, not the task. The daemon's version sits to the right of
 the key hints, baked into the page at render time (it doesn't change during the page's
 lifetime, so it renders once at boot rather than polling).
+
+### Background tabs
+
+While the console tab is hidden (`document.visibilityState`), all polling (stack, ticker,
+instruments, projects, and the detail pane's own poll) pauses; switching back triggers one
+immediate refresh of each rather than waiting for the next interval. If the tab stays
+hidden for more than 5 minutes, the open detail log stream is closed outright rather than
+left running unattended; returning to the tab opens a fresh stream and replays from
+scratch, same as a first load — affordable because the server's retained history is
+capped (see above), unlike the resume-from-last-line path a mere network drop takes.
 
 A **density** toggle button sits at the right of the foot bar, next to the key hints,
 switching the console between "Comfortable" (default) and "Compact" spacing/font size —
