@@ -120,6 +120,12 @@ throws) and survives poll re-renders. Collapsed Done rows drop out of `j`/`k`
 navigation order, and selection moves off a Done row if its group collapses
 while selected; opening a Done task directly by URL re-expands the group.
 
+A **Running** row's elapsed time measures the current retry's current step — the most
+recent of the task's active run start, its most recently (re)dispatched active child run,
+and the currently executing step — restarting at zero on every retry rather than growing
+across the whole task; the cumulative time since the task's first attempt is still
+available as the row's tooltip.
+
 A run waiting at a `poll` step (state `waiting`) stays in **Running** rather than getting
 a group of its own — its row's step label reads `waiting · poll <step> · last poll <n>
 ago · <count> polls` (degrading to `waiting · poll <step>`, or bare `waiting`, if poll

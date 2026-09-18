@@ -897,6 +897,15 @@
 
         content.appendChild(line1);
 
+        // The visible elapsed_seconds is scoped to the current retry/step
+        // (see currentUnitStart on the server) so it reads as "time in this
+        // attempt", not "time since this task first started" — but the
+        // cumulative figure is still useful, so it survives as a tooltip on
+        // the row rather than disappearing outright.
+        if (groupKey === 'running' && entry.total_elapsed_seconds) {
+            row.title = rowRunningTooltip(entry);
+        }
+
         // The step line sits between line 1 (id + elapsed) and the title —
         // its own element rather than crowding into line1, since id/elapsed
         // must never lose space to it (see rowStepText). Done rows never
@@ -955,6 +964,17 @@
         var id = entry.task_id || entry.run_id || '';
         if (entry.attempt && entry.attempt > 1) id += ' · a' + entry.attempt;
         return id;
+    }
+
+    // rowRunningTooltip builds the Running row's title/tooltip, e.g.
+    // "attempt 2 · 7m in implement · 41m total" — the per-retry elapsed
+    // shown on the row itself, plus the cumulative time since the task's
+    // very first attempt (total_elapsed_seconds), which the row's own text
+    // no longer surfaces directly.
+    function rowRunningTooltip(entry) {
+        var stepPart = formatElapsed(entry.elapsed_seconds);
+        if (entry.current_step) stepPart += ' in ' + entry.current_step;
+        return 'attempt ' + (entry.attempt || 1) + ' · ' + stepPart + ' · ' + formatElapsed(entry.total_elapsed_seconds) + ' total';
     }
 
     function rowMetaText(groupKey, entry) {

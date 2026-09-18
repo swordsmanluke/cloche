@@ -65,14 +65,24 @@ type TaskStackNeedsYou struct {
 
 // TaskStackRunning is a task with a pending or running top-level run.
 type TaskStackRunning struct {
-	TaskID         string `json:"task_id"`
-	Title          string `json:"title,omitempty"`
-	RunID          string `json:"run_id"`
-	Attempt        int    `json:"attempt"`
-	CurrentStep    string `json:"current_step,omitempty"`
-	StartedAt      string `json:"started_at,omitempty"`
-	ElapsedSeconds int64  `json:"elapsed_seconds"`
-	Repository     string `json:"repository,omitempty"`
+	TaskID      string `json:"task_id"`
+	Title       string `json:"title,omitempty"`
+	RunID       string `json:"run_id"`
+	Attempt     int    `json:"attempt"`
+	CurrentStep string `json:"current_step,omitempty"`
+	StartedAt   string `json:"started_at,omitempty"`
+	// ElapsedSeconds measures the current unit of work — the most recently
+	// (re)started step of the most recently (re)dispatched run for this task
+	// — so a retry (whether a host run re-dispatching a child run, or an
+	// in-DSL loop like test:fail -> fix within a single run) restarts this
+	// clock instead of accumulating across the whole task. See
+	// currentUnitStart.
+	ElapsedSeconds int64 `json:"elapsed_seconds"`
+	// TotalElapsedSeconds measures time since the task's very first attempt
+	// started, regardless of any retries since — the cumulative figure kept
+	// available (e.g. as a tooltip) alongside the per-retry ElapsedSeconds.
+	TotalElapsedSeconds int64  `json:"total_elapsed_seconds"`
+	Repository          string `json:"repository,omitempty"`
 }
 
 // TaskStackQueued is a task or run waiting for a concurrency slot, sourced
@@ -409,24 +419,33 @@ func (h *Handler) buildTaskStack(ctx context.Context, projectDir string, cursor 
 			continue
 		}
 		if len(stack.Running) < taskStackRunningCap {
-			start := runStartTime(active, task)
+			start := h.currentUnitStart(ctx, active, task)
 			elapsed := time.Duration(0)
 			if !start.IsZero() {
 				elapsed = now.Sub(start)
+			}
+			totalStart := firstAttemptStart(task)
+			if totalStart.IsZero() {
+				totalStart = start
+			}
+			totalElapsed := time.Duration(0)
+			if !totalStart.IsZero() {
+				totalElapsed = now.Sub(totalStart)
 			}
 			currentStep := strings.Join(active.ActiveSteps, ",")
 			if active.State == domain.RunStateWaiting {
 				currentStep = h.waitingAnnotation(ctx, active, now)
 			}
 			stack.Running = append(stack.Running, TaskStackRunning{
-				TaskID:         taskID,
-				Title:          taskDisplayTitle(task, active),
-				RunID:          active.ID,
-				Attempt:        attemptNumber(task, active),
-				CurrentStep:    currentStep,
-				StartedAt:      apiTimeString(start),
-				ElapsedSeconds: int64(elapsed.Seconds()),
-				Repository:     primaryRepository(repos),
+				TaskID:              taskID,
+				Title:               taskDisplayTitle(task, active),
+				RunID:               active.ID,
+				Attempt:             attemptNumber(task, active),
+				CurrentStep:         currentStep,
+				StartedAt:           apiTimeString(start),
+				ElapsedSeconds:      int64(elapsed.Seconds()),
+				TotalElapsedSeconds: int64(totalElapsed.Seconds()),
+				Repository:          primaryRepository(repos),
 			})
 		}
 	}
@@ -752,6 +771,89 @@ func runStartTime(run *domain.Run, task *domain.Task) time.Time {
 		}
 	}
 	return time.Time{}
+}
+
+// firstAttemptStart returns the StartedAt of task's earliest attempt (task.Attempts
+// is ordered oldest-first by TaskStore.ListTasks), or the zero time when task
+// is nil or has no attempts (e.g. an ad-hoc run with no Task record).
+func firstAttemptStart(task *domain.Task) time.Time {
+	if task == nil || len(task.Attempts) == 0 {
+		return time.Time{}
+	}
+	return task.Attempts[0].StartedAt
+}
+
+// currentUnitStart resolves the start time of active's current unit of
+// work — the most recent of:
+//  1. active's own start (runStartTime),
+//  2. the start of its most recently started active child run (a host run
+//     re-dispatching a container run for a retry never restarts its own
+//     StartedAt, only the child's), and
+//  3. the start of the currently executing step (a step_executions row with
+//     no completed_at yet, per captures.GetCaptures) on whichever of active
+//     or that child is actually executing — covering an in-DSL retry loop
+//     (e.g. test:fail -> fix) that loops within a single run without
+//     spawning a new one.
+//
+// Because each of these starts no earlier than the one before it, the latest
+// of the three is always well-defined as "the current retry's current step".
+func (h *Handler) currentUnitStart(ctx context.Context, active *domain.Run, task *domain.Task) time.Time {
+	start := runStartTime(active, task)
+
+	var latestChild *domain.Run
+	if children, err := h.store.ListChildRuns(ctx, active.ID); err == nil {
+		for _, c := range children {
+			if !domain.IsActiveRunState(c.State) {
+				continue
+			}
+			if latestChild == nil || c.StartedAt.After(latestChild.StartedAt) {
+				latestChild = c
+			}
+		}
+	}
+	if latestChild != nil && latestChild.StartedAt.After(start) {
+		start = latestChild.StartedAt
+	}
+
+	if h.captures != nil {
+		if stepStart := h.currentStepStart(ctx, active.ID); stepStart.After(start) {
+			start = stepStart
+		}
+		if latestChild != nil {
+			if stepStart := h.currentStepStart(ctx, latestChild.ID); stepStart.After(start) {
+				start = stepStart
+			}
+		}
+	}
+
+	return start
+}
+
+// currentStepStart returns the StartedAt of runID's currently executing step
+// — a step_executions row whose step_started half (Result == "") has no
+// matching step_completed row yet — or the zero time if no step is currently
+// executing. Mirrors the pending-row tracking mergeCaptures uses to find
+// still-running steps for the step strip.
+func (h *Handler) currentStepStart(ctx context.Context, runID string) time.Time {
+	caps, err := h.captures.GetCaptures(ctx, runID)
+	if err != nil {
+		return time.Time{}
+	}
+	pending := map[string]time.Time{}
+	for _, c := range caps {
+		if c.Result == "" {
+			pending[c.StepName] = c.StartedAt
+			continue
+		}
+		delete(pending, c.StepName)
+	}
+	var latest time.Time
+	for _, t := range pending {
+		if t.After(latest) {
+			latest = t
+		}
+	}
+	return latest
 }
 
 // attemptNumber returns run's 1-based ordinal among task's attempts (ordered

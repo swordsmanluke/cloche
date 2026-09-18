@@ -989,6 +989,20 @@ func (h *Handler) handleAPIRunDetail(w http.ResponseWriter, r *http.Request) {
 		GitRevision:    shortSHA(run.BaseSHA),
 	}
 
+	// While running, the facts row's timing must agree with the task
+	// stack's Running row: elapsed since the current unit of work (the
+	// active run's own start, or its most recently (re)dispatched active
+	// child, or the currently executing step on either — see
+	// currentUnitStart), not the top-level run's own StartedAt, which stays
+	// fixed across a retry. task is nil here (unlike the task-stack's use of
+	// currentUnitStart) because run.StartedAt is already set for any run in
+	// RunStateRunning, so runStartTime's pending-attempt fallback never
+	// triggers.
+	if run.State == domain.RunStateRunning {
+		start := h.currentUnitStart(r.Context(), run, nil)
+		detail.Timing = formatRunTimingAt(run.State, start, run.CompletedAt, time.Now())
+	}
+
 	if run.State == domain.RunStateParked {
 		detail.ParkedTitle = run.ParkedTitle
 		detail.ParkedSeconds = h.parkedSeconds(r.Context(), id)

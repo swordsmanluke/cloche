@@ -113,6 +113,39 @@ test('running row: pulsing blue dot and id line includes the attempt suffix when
     }
 });
 
+test('running row: title/tooltip carries the per-retry step time alongside the cumulative total', async () => {
+    const window = await bootConsole({
+        needs_you: [],
+        running: [{
+            task_id: 'cloche-fnn6', title: 'hidden acceptance corpus', run_id: 'r1',
+            attempt: 2, current_step: 'implement', elapsed_seconds: 420, total_elapsed_seconds: 2460
+        }],
+        queued: [], done: []
+    });
+    try {
+        const row = window.document.querySelector('.console-stack-row');
+        assert.equal(row.title, 'attempt 2 · 7m in implement · 41m total');
+        // The visible row text stays the per-retry figure, not the total.
+        assert.equal(row.querySelector('.console-stack-row-elapsed').textContent, '7m');
+    } finally {
+        window.close();
+    }
+});
+
+test('running row: no tooltip is set when total_elapsed_seconds is absent (e.g. an ad-hoc run)', async () => {
+    const window = await bootConsole({
+        needs_you: [],
+        running: [{ task_id: 'cloche-ccgl', title: 'twelve-task list', run_id: 'r2', attempt: 1, elapsed_seconds: 85 }],
+        queued: [], done: []
+    });
+    try {
+        const row = window.document.querySelector('.console-stack-row');
+        assert.equal(row.title, '');
+    } finally {
+        window.close();
+    }
+});
+
 test('running row: id line has no attempt suffix for a first attempt', async () => {
     const window = await bootConsole({
         needs_you: [],

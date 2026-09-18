@@ -68,6 +68,89 @@ func TestAPITaskStack_Running(t *testing.T) {
 	assert.Empty(t, stack.NeedsYou)
 }
 
+// TestAPITaskStack_Running_ElapsedFollowsRetriedChildRun covers a host run
+// that re-dispatched a child container run for a retry: the Running row's
+// elapsed must reflect the child's own start (the current retry), not the
+// host run's original StartedAt from 40 minutes ago, while total_elapsed
+// still exposes the full time since the task's first attempt.
+func TestAPITaskStack_Running_ElapsedFollowsRetriedChildRun(t *testing.T) {
+	h, store := setupHandler(t)
+	h.taskStore = store
+	ctx := context.Background()
+	now := time.Now()
+
+	task := &domain.Task{ID: "task-retry", Title: "Flaky develop step", Source: domain.TaskSourceExternal, ProjectDir: taskStackProjectDir, CreatedAt: now}
+	require.NoError(t, store.SaveTask(ctx, task))
+	attempt := &domain.Attempt{ID: "att-retry", TaskID: "task-retry", StartedAt: now.Add(-40 * time.Minute), Result: domain.AttemptResultRunning}
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	host := domain.NewRun("host-run-1", "main")
+	host.ProjectDir = taskStackProjectDir
+	host.TaskID = "task-retry"
+	host.AttemptID = "att-retry"
+	host.IsHost = true
+	host.State = domain.RunStateRunning
+	host.StartedAt = attempt.StartedAt
+	host.ActiveSteps = []string{"develop"}
+	require.NoError(t, store.CreateRun(ctx, host))
+
+	child := domain.NewRun("child-run-1", "develop")
+	child.ProjectDir = taskStackProjectDir
+	child.TaskID = "task-retry"
+	child.AttemptID = "att-retry"
+	child.ParentRunID = host.ID
+	child.ParentStepName = "develop"
+	child.State = domain.RunStateRunning
+	child.StartedAt = now.Add(-7 * time.Minute)
+	require.NoError(t, store.CreateRun(ctx, child))
+
+	_, stack := getTaskStack(t, h, "")
+	require.Len(t, stack.Running, 1)
+	entry := stack.Running[0]
+	assert.Equal(t, "host-run-1", entry.RunID)
+	assert.InDelta(t, 420, entry.ElapsedSeconds, 5, "elapsed must follow the retried child run's own start, not the host run's original start")
+	assert.InDelta(t, 2400, entry.TotalElapsedSeconds, 5, "total elapsed must still reflect the task's first attempt")
+}
+
+// TestAPITaskStack_Running_ElapsedFollowsInRunStepRetry covers an in-DSL
+// retry loop (e.g. develop.cloche's test:fail -> fix) that stays within a
+// single run: the Running row's elapsed must reflect the currently executing
+// step's own start (from step_executions), not the run's StartedAt from
+// before the retry began.
+func TestAPITaskStack_Running_ElapsedFollowsInRunStepRetry(t *testing.T) {
+	h, store := setupHandler(t)
+	h.taskStore = store
+	ctx := context.Background()
+	now := time.Now()
+
+	task := &domain.Task{ID: "task-steploop", Title: "Fix flaky test", Source: domain.TaskSourceExternal, ProjectDir: taskStackProjectDir, CreatedAt: now}
+	require.NoError(t, store.SaveTask(ctx, task))
+	attempt := &domain.Attempt{ID: "att-steploop", TaskID: "task-steploop", StartedAt: now.Add(-30 * time.Minute), Result: domain.AttemptResultRunning}
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	run := domain.NewRun("run-steploop", "develop")
+	run.ProjectDir = taskStackProjectDir
+	run.TaskID = "task-steploop"
+	run.AttemptID = "att-steploop"
+	run.State = domain.RunStateRunning
+	run.StartedAt = attempt.StartedAt
+	run.ActiveSteps = []string{"fix"}
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	// The first step (test) started with the run and failed 20 minutes ago;
+	// the retry step (fix) started 6 minutes ago and is still running.
+	require.NoError(t, store.SaveCapture(ctx, run.ID, &domain.StepExecution{StepName: "test", StartedAt: run.StartedAt}))
+	require.NoError(t, store.SaveCapture(ctx, run.ID, &domain.StepExecution{StepName: "test", Result: "fail", CompletedAt: now.Add(-20 * time.Minute)}))
+	require.NoError(t, store.SaveCapture(ctx, run.ID, &domain.StepExecution{StepName: "fix", StartedAt: now.Add(-6 * time.Minute)}))
+
+	_, stack := getTaskStack(t, h, "")
+	require.Len(t, stack.Running, 1)
+	entry := stack.Running[0]
+	assert.Equal(t, "run-steploop", entry.RunID)
+	assert.InDelta(t, 360, entry.ElapsedSeconds, 5, "elapsed must follow the currently running step's own start, not the run's original start")
+	assert.InDelta(t, 1800, entry.TotalElapsedSeconds, 5, "total elapsed must still reflect the task's first attempt")
+}
+
 func TestAPITaskStack_Running_WaitingRunIncluded(t *testing.T) {
 	h, store := setupHandler(t)
 	h.taskStore = store
