@@ -1,6 +1,7 @@
 ---
 id: req-8f31
-status: active
+status: superseded
+superseded_by: req-a21c
 scope:
     level: domain
     domains:
@@ -19,7 +20,7 @@ provenance:
     extracted_at: 2026-09-16T15:35:27Z
     extracted_by: intent-scan
 created: 2026-09-16T15:36:26.880884203Z
-updated: 2026-09-16T15:36:26.880884203Z
+updated: 2026-09-18T21:31:56.554687036Z
 ---
 
 In the web dashboard's task stack, the Needs you / Running / Queued groups are omitted entirely when empty (each header and dash placeholder disappears), reappearing on the next poll as soon as they have rows again. The Done (today) group always stays visible, with a dash placeholder when empty, since it's the paginated group users expect to keep finding in the same place.
