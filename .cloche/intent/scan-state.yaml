@@ -1,6 +1,6 @@
 repos:
     "":
-        last_commit: e6c4384f893fa5844d11a13fc49557be5b1737ea
+        last_commit: bc43c9a26d26213cd5e1ef46748f62e5b762331f
         scanned_runs:
             - cloche-0vqg
             - rxth-main
@@ -420,6 +420,15 @@ repos:
             - 4b42-main
             - pz1s-intent-scan
             - user-pz1s
+            - 3gjz-main
+            - 870w-changelog
+            - qhgr-release
+            - rx2i-main
+            - ubr8-intent-scan
+            - user-ubr8
+            - user-vgnx
+            - vgnx-intent-scan
+            - x2pf-main
         scanned_docs:
             .cloche/prompts/document-check-missing.md: 154c933c83042dcb0b3f14e9c451226e6eab14bcdcbc9889fa4edef52d7c1283
             .cloche/prompts/document-investigate.md: 0bb6d7225ed9fa53f36269540994d74e7beef92a717e13794a86cfffdd8652d9
@@ -444,10 +453,10 @@ repos:
             .cloche/prompts/vertical-write-design.md: dabb4c1a25390cae07f8f02ec07fb7990cdf868035f9929d69d63d71f5a6d43f
             CLAUDE.md: da02089c0d4c1207a2f0b4b6f5b41315d914c5655ae3d2f434635cd975ad8e1a
             README.md: 423d6816a7a62264229d2b5630ca014e4e3da5af320a9cf45459bdfb37edd222
-            docs/CHANGELOG-DETAILED.md: ce0325662142061023a44ab9dfd18da1deb313201bd3ca33f62ea7eaa9edd7de
+            docs/CHANGELOG-DETAILED.md: 5e229a246a26bca09fb9d95f2577e5705743f3fc586f02b7303b762560db1618
             docs/INSTALL.md: 02d98ffd4057cfb5f26935f68a131d81cf232b445417029d1555a081712d68e9
             docs/SAFETY.md: 1e025a1f37b5d21f7f226f1d8777e1a9726c13aedbb43ab37a8f174d61f53a59
-            docs/USAGE.md: 07ebe9b35012c3b0adc41b42745a7945a621de2b6adb794e25165200022b616a
+            docs/USAGE.md: ee70d8fd060204da004997e22dde4b0c720fe82d467a38501f5e310ba14e6ba6
             docs/agent-setup-claude.md: 745544b08f6362cd2ed1c918ed53e5a387e183872c9e6f086aeb1ea8f8690fda
             docs/agent-setup-codex.md: 5137671f134e534a5c49bf8e6f26765c3f3916dfb9a98ed92e22a2aad5ad1cfe
             docs/built-in-agents.md: dd37264a2d03ff45978a319f69020a118aab69c5387029047645f35a0cbe4b82
@@ -517,17 +526,18 @@ repos:
             docs/plans/2026-09-14-intent-builtin-migration-design.md: 5b66a1d8a083e61502325c33557e50d300e90465f440b8d5c7c41e191ff9d0d8
             docs/plans/2026-09-14-reusable-modules-design.md: 8883eaca67d944aa75116c3b174d54cfbb28cb740cfed0e3ee0dbc80e10b73d3
             docs/plans/spikes/2026-09-13-intent-retrieval/README.md: cbd4159fb69d08f1ff1c5972b7ff578a0db782f2fc0f9cac3e2add3cee0cf46f
+            docs/plans/spikes/2026-09-17-intent-ab-pilot/README.md: bd762f62827f3b40902796fe00049f1c00f489410639da19079640f216ef6d5c
             docs/run-isolation/architecture.md: 5f322ad76fedc1012b67f450ac1df9c328ef628ef90285f5ebd4c94a201d4b43
             docs/run-isolation/index.md: 06461a1f739a3b6fba4f5331fa668c15058808f59938b284c4e953a291ae6916
-            docs/web-dashboard.md: 146352e3b8fc8a43140adcb5ad4f8b0450a7b67f4aafecc9c280c7ff2c7fc14c
+            docs/web-dashboard.md: 2225f29d0d374a9d0fdd06742ee078703745e9359d10081dc195c607207446c7
             docs/workflows.md: fca4c3bb2d324a68435eea18afca3e1a4ee60560675303509bc050046d087de7
-last_scan_at: 2026-09-17T16:33:10.503554546Z
+last_scan_at: 2026-09-17T23:05:30.847563175Z
 last_scan_stats:
     repos:
         - name: ""
-          docs_new: 0
-          docs_changed: 0
-          commits: 2
-          commit_range: 48eada6..9c27a5c
-          runs: 2
-          bytes: 85232
+          docs_new: 1
+          docs_changed: 3
+          commits: 6
+          commit_range: 3d8a4c0..537715c
+          runs: 5
+          bytes: 2222907
