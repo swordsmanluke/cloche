@@ -258,6 +258,9 @@ once the project list loads if that preference is empty or stale.
 | `d` | Toggle compact / comfortable density |
 | `?` | Toggle the keyboard shortcuts overlay |
 
+Shortcuts only fire on bare keys (or Shift chords, e.g. `Shift+[`, `Shift+R`). Any
+Cmd/Ctrl/Alt chord is left untouched so the browser or OS handles it instead.
+
 ### Foot bar
 
 Shows a one-line activity ticker on the left and a short, contextual set of key hints in

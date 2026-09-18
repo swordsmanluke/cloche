@@ -1668,6 +1668,7 @@ h2 {
 }
 .console-help-panel dt { font-family: var(--mono); color: var(--tx); }
 .console-help-panel dd { margin: 0; color: var(--tx2); }
+.console-help-footnote { margin: 0.75rem 0; color: var(--tx2); font-size: var(--fs-sm); }
 
 @media (max-width: 768px) {
     .console-stack { width: 220px; flex-basis: 220px; }

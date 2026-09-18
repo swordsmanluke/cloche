@@ -154,8 +154,11 @@ async function waitFor(predicate) {
     return predicate();
 }
 
-function dispatchKey(window, key) {
-    window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: key, bubbles: true, cancelable: true }));
+function dispatchKey(window, key, opts) {
+    var init = Object.assign({ key: key, bubbles: true, cancelable: true }, opts || {});
+    var event = new window.KeyboardEvent('keydown', init);
+    window.document.dispatchEvent(event);
+    return event;
 }
 
 function densityAttr(window) {
@@ -388,6 +391,64 @@ test('w/i/c/l keyboard shortcuts keep opening their views directly, independent 
         dispatchKey(window, 'l');
         assert.equal(ledgerOverlay.hidden, false);
         await delay(50);
+    } finally {
+        window.close();
+    }
+});
+
+test('Cmd/Ctrl chords are left to the browser instead of triggering single-letter shortcuts', async () => {
+    const window = await bootConsole({ stack: { needs_you: [], running: [], queued: [], done: [] } });
+    try {
+        const viewOverlay = window.document.getElementById('console-view-overlay');
+
+        var metaEvent = dispatchKey(window, 'c', { metaKey: true });
+        assert.equal(viewOverlay.hidden, true, 'Cmd+C must not open the Containers view');
+        assert.equal(metaEvent.defaultPrevented, false, 'Cmd+C must not be preventDefault-ed, so the browser can copy');
+
+        var ctrlEvent = dispatchKey(window, 'c', { ctrlKey: true });
+        assert.equal(viewOverlay.hidden, true, 'Ctrl+C must not open the Containers view');
+        assert.equal(ctrlEvent.defaultPrevented, false, 'Ctrl+C must not be preventDefault-ed, so the browser can copy');
+
+        // Plain 'c' (no modifier) still opens the Containers view.
+        dispatchKey(window, 'c');
+        assert.equal(viewOverlay.hidden, false, 'plain c still opens the Containers view');
+        // Let openContainersView's own fetch/.then chain land before closing
+        // (see bootConsole's comment on the same pattern above).
+        await delay(50);
+    } finally {
+        window.close();
+    }
+});
+
+test('Shift+] still switches attempt alongside the new Cmd/Ctrl guard', async () => {
+    const window = await bootConsole({
+        stack: {
+            needs_you: [], queued: [], done: [],
+            running: [{ task_id: 'cloche-abcd', title: 'two-attempt task', run_id: 'r1', attempt: 1, elapsed_seconds: 10 }]
+        },
+        attemptsByTask: {
+            'cloche-abcd': {
+                title: 'two-attempt task',
+                attempts: [
+                    { attempt_num: 1, attempt_id: 'a1', run_id: 'r1', outcome: '' },
+                    { attempt_num: 2, attempt_id: 'a2', run_id: 'r2', outcome: '' }
+                ]
+            }
+        },
+        runsById: {
+            r1: { id: 'r1', state: 'succeeded' },
+            r2: { id: 'r2', state: 'succeeded' }
+        }
+    });
+    try {
+        await selectFirstRow(window);
+        assert.ok(await waitFor(() => currentAttemptChipText(window) === '1 r1'));
+
+        // Browsers deliver Shift+] as key '}' (shiftKey true); the switch
+        // statement keys off e.key, so this is what a real chord looks like.
+        var event = dispatchKey(window, '}', { shiftKey: true });
+        assert.ok(await waitFor(() => currentAttemptChipText(window) === '2 r2'));
+        assert.equal(event.defaultPrevented, true, 'the shortcut still fires and prevents the default action');
     } finally {
         window.close();
     }

@@ -724,6 +724,7 @@
                     h.setAttribute('tabindex', '0');
                     h.addEventListener('click', toggleDoneCollapsed);
                     h.addEventListener('keydown', function (e) {
+                        if (e.metaKey || e.ctrlKey || e.altKey) return;
                         if (e.key === 'Enter' || e.key === ' ') {
                             toggleDoneCollapsed();
                             e.preventDefault();
@@ -1099,6 +1100,11 @@
 
     document.addEventListener('keydown', function (e) {
         if (isTypingTarget(e.target)) return;
+        // Every shortcut below is a bare key (or Shift-modified, e.g.
+        // Shift+[ / Shift+R). Any Cmd/Ctrl/Alt chord is left untouched so
+        // the browser or OS handles it (copy, reload, address bar, ...)
+        // instead of a shortcut whose letter happens to collide with it.
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
 
         var overlay = document.getElementById('console-help-overlay');
         if (!overlay.hidden) {
