@@ -294,16 +294,20 @@ func (p *ContainerPool) SessionFor(ctx context.Context, attemptID string, cfg po
 
 	// Auto-build the project image if missing or stale, mirroring the
 	// standalone-run path. Build from the live project dir (the seed snapshot
-	// may not contain an uncommitted Dockerfile). Failures fall through to
-	// Start, whose error reporting covers the genuinely broken cases.
+	// may not contain an uncommitted Dockerfile). A failed build aborts the
+	// attempt here rather than falling through to Start, whose "image not
+	// found" error would otherwise mask the real build failure.
 	if ensurer, ok := p.runtime.(ports.ImageEnsurer); ok {
 		buildDir := cfg.HostProjectDir
 		if buildDir == "" {
 			buildDir = cfg.ProjectDir
 		}
 		if buildDir != "" && cfg.Image != "" {
-			if err := ensurer.EnsureImage(ctx, buildDir, cfg.Image); err != nil {
-				log.Printf("pool: EnsureImage(%s) failed (continuing to start): %v", cfg.Image, err)
+			if err := ensureImage(ctx, ensurer, buildDir, cfg.Image, nil); err != nil {
+				p.mu.Lock()
+				delete(p.attempts, attemptID)
+				p.mu.Unlock()
+				return nil, err
 			}
 		}
 	}

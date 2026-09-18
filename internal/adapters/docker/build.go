@@ -7,12 +7,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
 const dockerfileHashLabel = "cloche.dockerfile.hash"
@@ -23,15 +26,23 @@ const sourceDirLabel = "cloche.source.dir"
 // Dockerfile. If the image does not exist or the Dockerfile has changed since
 // the image was built, it rebuilds automatically.
 func (r *Runtime) EnsureImage(ctx context.Context, projectDir, image string) error {
+	_, err := r.EnsureImageWithOutput(ctx, projectDir, image, nil)
+	return err
+}
+
+// EnsureImageWithOutput behaves like EnsureImage but additionally streams the
+// combined stdout/stderr of `docker build`, one line at a time, through
+// onLine (which may be nil). built reports whether a build actually ran.
+func (r *Runtime) EnsureImageWithOutput(ctx context.Context, projectDir, image string, onLine func(string)) (built bool, err error) {
 	dockerfilePath := filepath.Join(projectDir, ".cloche", "Dockerfile")
 
 	content, err := os.ReadFile(dockerfilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// No project Dockerfile — nothing to validate.
-			return nil
+			return false, nil
 		}
-		return fmt.Errorf("reading Dockerfile: %w", err)
+		return false, fmt.Errorf("reading Dockerfile: %w", err)
 	}
 
 	currentHash := hashBytes(content)
@@ -39,28 +50,28 @@ func (r *Runtime) EnsureImage(ctx context.Context, projectDir, image string) err
 	storedHash, err := imageLabel(ctx, image, dockerfileHashLabel)
 	if err != nil {
 		log.Printf("image %s not found or cannot inspect; building", image)
-		return buildImage(ctx, projectDir, dockerfilePath, image, currentHash, content)
+		return true, buildImage(ctx, projectDir, dockerfilePath, image, currentHash, content, onLine)
 	}
 
 	if storedHash != currentHash {
 		log.Printf("image %s is stale (have %s, want %s); rebuilding", image, storedHash[:12], currentHash[:12])
-		return buildImage(ctx, projectDir, dockerfilePath, image, currentHash, content)
+		return true, buildImage(ctx, projectDir, dockerfilePath, image, currentHash, content, onLine)
 	}
 
 	// Dockerfile hash matches — check if it was built from the same source dir.
 	if storedDir, err := imageLabel(ctx, image, sourceDirLabel); err == nil && storedDir != projectDir {
 		log.Printf("image %s was built from different source dir (%s); rebuilding", image, storedDir)
-		return buildImage(ctx, projectDir, dockerfilePath, image, currentHash, content)
+		return true, buildImage(ctx, projectDir, dockerfilePath, image, currentHash, content, onLine)
 	}
 
 	// Dockerfile hash matches — check if the base image has changed locally.
 	if baseStale, reason := isBaseImageStale(ctx, image, content); baseStale {
 		log.Printf("image %s base image is stale (%s); rebuilding", image, reason)
-		return buildImage(ctx, projectDir, dockerfilePath, image, currentHash, content)
+		return true, buildImage(ctx, projectDir, dockerfilePath, image, currentHash, content, onLine)
 	}
 
 	log.Printf("image %s is up-to-date (dockerfile hash %s)", image, currentHash[:12])
-	return nil
+	return false, nil
 }
 
 // parseBaseImage extracts the base image reference from the final FROM directive
@@ -164,8 +175,9 @@ func imageLabel(ctx context.Context, image, label string) (string, error) {
 
 // buildImage runs docker build for the project, tagging the result with the
 // given image name and embedding the Dockerfile hash and base image digest
-// as labels.
-func buildImage(ctx context.Context, projectDir, dockerfilePath, image, hash string, dockerfileContent []byte) error {
+// as labels. Combined stdout/stderr is streamed line by line to onLine (if
+// non-nil) as well as mirrored to the daemon's own stderr.
+func buildImage(ctx context.Context, projectDir, dockerfilePath, image, hash string, dockerfileContent []byte, onLine func(string)) error {
 	log.Printf("building image %s from %s", image, dockerfilePath)
 
 	args := []string{
@@ -186,20 +198,82 @@ func buildImage(ctx context.Context, projectDir, dockerfilePath, image, hash str
 	args = append(args, projectDir)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
-	cmd.Stdout = os.Stderr // stream build output to daemon stderr
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+
+	// Stream combined stdout/stderr line-by-line to onLine while still
+	// mirroring it to the daemon's own stderr, so a caller building a live
+	// run log doesn't lose the "tail -f cloched.log" fallback.
+	pr, pw := io.Pipe()
+	cmd.Stdout = pw
+	cmd.Stderr = pw
+
+	streamDone := make(chan struct{})
+	go func() {
+		defer close(streamDone)
+		scanner := bufio.NewScanner(pr)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for scanner.Scan() {
+			line := scanner.Text()
+			fmt.Fprintln(os.Stderr, line)
+			if onLine != nil {
+				onLine(line)
+			}
+		}
+	}()
+
+	runErr := cmd.Run()
+	pw.Close()
+	<-streamDone
+
+	if runErr != nil {
 		// Remove the tag so the bad image doesn't persist for future runs.
 		cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cleanCancel()
 		if rmiErr := exec.CommandContext(cleanCtx, "docker", "rmi", image).Run(); rmiErr != nil {
 			log.Printf("warning: could not remove stale image %s after build failure: %v", image, rmiErr)
 		}
-		return fmt.Errorf("building image %s: %w", image, err)
+		return fmt.Errorf("building image %s: %w", image, runErr)
 	}
 
 	log.Printf("image %s built successfully", image)
 	return nil
+}
+
+// ensureImage builds image via ensurer if needed, preferring the
+// output-capturing variant when available so a build failure's error carries
+// the last lines of `docker build` output instead of a bare exit status.
+// onLine, if non-nil, additionally receives each line of output as it's
+// produced.
+func ensureImage(ctx context.Context, ensurer ports.ImageEnsurer, projectDir, image string, onLine func(string)) error {
+	var lines []string
+	capture := func(line string) {
+		lines = append(lines, line)
+		if onLine != nil {
+			onLine(line)
+		}
+	}
+
+	var err error
+	if eo, ok := ensurer.(ports.ImageEnsurerWithOutput); ok {
+		_, err = eo.EnsureImageWithOutput(ctx, projectDir, image, capture)
+	} else {
+		err = ensurer.EnsureImage(ctx, projectDir, image)
+	}
+	if err == nil {
+		return nil
+	}
+	if len(lines) == 0 {
+		return fmt.Errorf("building image %s: %w", image, err)
+	}
+	return fmt.Errorf("building image %s: %w\n%s", image, err, strings.Join(lastLines(lines, 20), "\n"))
+}
+
+// lastLines returns the last n elements of lines, or all of them if there
+// are fewer than n.
+func lastLines(lines []string, n int) []string {
+	if len(lines) <= n {
+		return lines
+	}
+	return lines[len(lines)-n:]
 }
 
 // ImageSourceDir returns the source directory label stored on the given image.

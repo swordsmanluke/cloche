@@ -99,6 +99,41 @@ func TestEnsureImage_SkipsWhenUpToDate(t *testing.T) {
 	assert.Equal(t, hashBytes(dockerfile), label)
 }
 
+// TestBuildImage_StreamsOutputLineByLine verifies that buildImage streams
+// docker build's combined stdout/stderr through the onLine callback one line
+// at a time, using a fake "docker" executable on PATH instead of the real
+// thing so the test doesn't need Docker installed.
+func TestBuildImage_StreamsOutputLineByLine(t *testing.T) {
+	fakeDockerDir := t.TempDir()
+	script := "#!/bin/sh\n" +
+		"case \"$1\" in\n" +
+		"  build)\n" +
+		"    echo \"Step 1/2 : FROM alpine\"\n" +
+		"    echo \"Step 2/2 : RUN false\" >&2\n" +
+		"    exit 1\n" +
+		"    ;;\n" +
+		"  *)\n" +
+		"    exit 0\n" +
+		"    ;;\n" +
+		"esac\n"
+	require.NoError(t, os.WriteFile(filepath.Join(fakeDockerDir, "docker"), []byte(script), 0755))
+	t.Setenv("PATH", fakeDockerDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	dir := t.TempDir()
+	dockerfile := []byte("FROM alpine:latest\nRUN false\n")
+	dockerfilePath := filepath.Join(dir, "Dockerfile")
+	require.NoError(t, os.WriteFile(dockerfilePath, dockerfile, 0644))
+
+	var lines []string
+	err := buildImage(context.Background(), dir, dockerfilePath, "fake-image:latest", hashBytes(dockerfile), dockerfile, func(line string) {
+		lines = append(lines, line)
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, lines, "Step 1/2 : FROM alpine")
+	assert.Contains(t, lines, "Step 2/2 : RUN false")
+}
+
 func TestParseBaseImage(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -250,7 +285,7 @@ func TestBuildImage_RemovesTagOnFailure(t *testing.T) {
 	// Build a valid image first so the tag exists.
 	validDockerfile := []byte("FROM alpine:latest\nRUN echo valid\n")
 	require.NoError(t, os.WriteFile(dockerfilePath, validDockerfile, 0644))
-	require.NoError(t, buildImage(context.Background(), dir, dockerfilePath, image, hashBytes(validDockerfile), validDockerfile))
+	require.NoError(t, buildImage(context.Background(), dir, dockerfilePath, image, hashBytes(validDockerfile), validDockerfile, nil))
 
 	_, err := imageLabel(context.Background(), image, dockerfileHashLabel)
 	require.NoError(t, err, "image tag should exist after valid build")
@@ -258,7 +293,7 @@ func TestBuildImage_RemovesTagOnFailure(t *testing.T) {
 	// Now attempt a build with a Dockerfile that fails.
 	badDockerfile := []byte("FROM alpine:latest\nRUN nonexistent-command-xyz-that-will-fail\n")
 	require.NoError(t, os.WriteFile(dockerfilePath, badDockerfile, 0644))
-	err = buildImage(context.Background(), dir, dockerfilePath, image, hashBytes(badDockerfile), badDockerfile)
+	err = buildImage(context.Background(), dir, dockerfilePath, image, hashBytes(badDockerfile), badDockerfile, nil)
 	require.Error(t, err, "build should fail")
 
 	// The tag should have been removed after the failed build.

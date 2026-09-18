@@ -53,6 +53,17 @@ type ImageEnsurer interface {
 	EnsureImage(ctx context.Context, projectDir, image string) error
 }
 
+// ImageEnsurerWithOutput is an optional extension of ImageEnsurer for runtimes
+// that can stream the underlying `docker build` output. onLine is called once
+// per line of combined stdout/stderr as the build runs; it may be nil, in
+// which case output is only mirrored to the daemon's own stderr. built
+// reports whether a build actually ran, as opposed to the image already
+// being up-to-date.
+type ImageEnsurerWithOutput interface {
+	ImageEnsurer
+	EnsureImageWithOutput(ctx context.Context, projectDir, image string, onLine func(line string)) (built bool, err error)
+}
+
 // ContainerCommitter is an optional interface for creating an image from a
 // stopped container's filesystem state. Used for resume: the committed image
 // preserves all step outputs and workspace changes from the failed run.

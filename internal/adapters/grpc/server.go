@@ -1389,7 +1389,18 @@ func (s *ClocheServer) resumeContainerRunWithPool(ctx context.Context, run *doma
 	} else {
 		// Rebuild the container fresh from the config image; skip the commit so
 		// Dockerfile changes take effect.
-		s.ensureResumeImage(ctx, run.ProjectDir, image)
+		if s.logBroadcast != nil {
+			s.logBroadcast.Start(newRunID)
+		}
+		if err := s.ensureResumeImage(ctx, newRunID, newRun, run.ProjectDir, image); err != nil {
+			newRun.Fail(err.Error())
+			_ = s.store.UpdateRun(ctx, newRun)
+			if s.logBroadcast != nil {
+				s.logBroadcast.Finish(newRunID)
+			}
+			log.Printf("run %s: failed to ensure image for resume: %v", newRunID, err)
+			return nil, err
+		}
 		committedImages = nil
 	}
 
@@ -1403,15 +1414,122 @@ func (s *ClocheServer) resumeContainerRunWithPool(ctx context.Context, run *doma
 }
 
 // ensureResumeImage rebuilds the project image if the runtime supports it and
-// the Dockerfile has changed since the last build. Best-effort: logs on error.
-func (s *ClocheServer) ensureResumeImage(ctx context.Context, projectDir, image string) {
+// the Dockerfile has changed since the last build, giving the resumed run's
+// build the same live-streamed/persisted output and detailed failure message
+// as a fresh dispatch (see ensureImageForRun). No-op if the runtime doesn't
+// support ImageEnsurer.
+func (s *ClocheServer) ensureResumeImage(ctx context.Context, runID string, run *domain.Run, projectDir, image string) error {
 	ensurer, ok := s.container.(ports.ImageEnsurer)
 	if !ok {
+		return nil
+	}
+	return s.ensureImageForRun(ctx, runID, run, ensurer, projectDir, image)
+}
+
+// ensureImageForRun runs EnsureImage for a dispatched or resumed run,
+// publishing docker build output live to the run's log broadcast as an
+// "image-build" pseudo-step (so the console log pane and step-scoped view
+// show the build before the agent container ever starts), persisting the
+// captured output as .cloche/logs/<task>/<attempt>/image-build.log, and
+// indexing it via SaveLogFile so it remains visible after the run finishes.
+//
+// On failure, the returned error's message contains the last ~20 lines of
+// build output plus the underlying exit status, so run.ErrorMessage explains
+// what actually broke instead of a bare "exit status 1". Callers are
+// responsible for calling run.Fail with this error and Finish-ing the
+// broadcast; ensureImageForRun does not mutate run state itself.
+func (s *ClocheServer) ensureImageForRun(ctx context.Context, runID string, run *domain.Run, ensurer ports.ImageEnsurer, projectDir, image string) error {
+	var lines []string
+	publish := func(typ, content string) {
+		if s.logBroadcast == nil {
+			return
+		}
+		s.logBroadcast.Publish(runID, logstream.LogLine{
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			Type:      typ,
+			Content:   content,
+			StepName:  "image-build",
+			RunID:     runID,
+		})
+	}
+	onLine := func(line string) {
+		lines = append(lines, line)
+		publish("script", line)
+	}
+
+	var built bool
+	var buildErr error
+	if eo, ok := ensurer.(ports.ImageEnsurerWithOutput); ok {
+		built, buildErr = eo.EnsureImageWithOutput(ctx, projectDir, image, onLine)
+	} else {
+		buildErr = ensurer.EnsureImage(ctx, projectDir, image)
+	}
+
+	// Persist whatever output was captured, even on success, so the
+	// step-scoped log view has something to show for the build phase.
+	if len(lines) > 0 && run != nil {
+		s.saveImageBuildLog(ctx, run, lines)
+	}
+
+	if buildErr != nil {
+		publish("status", fmt.Sprintf("image build failed: %v", buildErr))
+		if len(lines) == 0 {
+			return fmt.Errorf("failed to ensure image: %v", buildErr)
+		}
+		return fmt.Errorf("failed to ensure image: %v\n%s", buildErr, strings.Join(lastLines(lines, 20), "\n"))
+	}
+
+	if built {
+		publish("status", fmt.Sprintf("image %s ready", image))
+	} else {
+		publish("status", fmt.Sprintf("image %s up to date", image))
+	}
+	return nil
+}
+
+// saveImageBuildLog persists captured docker build output as the run's
+// "image-build" pseudo-step log under .cloche/logs/<task>/<attempt>/ and
+// indexes it via SaveLogFile so GET /api/runs/{id}/steps/image-build/output
+// and the failed-attempt compare view can show it after the fact. Best
+// effort: logs and returns on any failure.
+func (s *ClocheServer) saveImageBuildLog(ctx context.Context, run *domain.Run, lines []string) {
+	if run.TaskID == "" || run.AttemptID == "" {
 		return
 	}
-	if err := ensurer.EnsureImage(ctx, projectDir, image); err != nil {
-		log.Printf("resume: EnsureImage(%s) failed (continuing): %v", image, err)
+	dir := filepath.Join(run.ProjectDir, ".cloche", "logs", run.TaskID, run.AttemptID)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		log.Printf("run %s: failed to create image-build log dir: %v", run.ID, err)
+		return
 	}
+	path := filepath.Join(dir, "image-build.log")
+	content := strings.Join(lines, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		log.Printf("run %s: failed to write image-build log: %v", run.ID, err)
+		return
+	}
+	if s.logStore == nil {
+		return
+	}
+	logEntry := &ports.LogFileEntry{
+		RunID:     run.ID,
+		StepName:  "image-build",
+		FileType:  "script",
+		FilePath:  path,
+		FileSize:  int64(len(content)),
+		CreatedAt: time.Now(),
+	}
+	if err := s.logStore.SaveLogFile(ctx, logEntry); err != nil {
+		log.Printf("run %s: failed to index image-build log: %v", run.ID, err)
+	}
+}
+
+// lastLines returns the last n elements of lines, or all of them if there
+// are fewer than n.
+func lastLines(lines []string, n int) []string {
+	if len(lines) <= n {
+		return lines
+	}
+	return lines[len(lines)-n:]
 }
 
 // runResumedContainerWorkflow runs the daemon-side engine for a resumed
@@ -1647,12 +1765,18 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 	// Parse the workflow name (strip any ":step" suffix that was already extracted).
 	workflowName, _, _ := strings.Cut(req.WorkflowName, ":")
 
+	// Register the run in the broadcaster before EnsureImage so the build's
+	// output can be published live even though the container hasn't started.
+	if s.logBroadcast != nil {
+		s.logBroadcast.Start(runID)
+	}
+
 	// Auto-rebuild image if the project Dockerfile has changed since last build.
 	if ensurer, ok := s.container.(ports.ImageEnsurer); ok {
-		if err := ensurer.EnsureImage(ctx, req.ProjectDir, image); err != nil {
-			run, _ := s.store.GetRun(ctx, runID)
+		run, _ := s.store.GetRun(ctx, runID)
+		if err := s.ensureImageForRun(ctx, runID, run, ensurer, req.ProjectDir, image); err != nil {
 			if run != nil {
-				run.Fail(fmt.Sprintf("failed to ensure image: %v", err))
+				run.Fail(err.Error())
 				_ = s.store.UpdateRun(ctx, run)
 			}
 			if s.logBroadcast != nil {
@@ -4593,6 +4717,11 @@ func (s *ClocheServer) indexLogFiles(ctx context.Context, runID, outputDir, work
 			fileType = "full"
 		case name == "container.log":
 			// container.log is internal, not indexed as a user-facing log type
+			continue
+		case name == "image-build.log":
+			// image-build.log is already indexed by ensureImageForRun as soon
+			// as the build finishes; re-indexing here would create a duplicate
+			// log_files row for the same step.
 			continue
 		case workflowName != "" && strings.HasPrefix(base, workflowName+"-llm-"):
 			// v2 workflow-prefixed LLM log: <workflow>-llm-<step>.log

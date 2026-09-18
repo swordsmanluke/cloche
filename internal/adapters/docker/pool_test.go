@@ -165,6 +165,36 @@ func TestContainerPool_SessionFor_CreatesContainer(t *testing.T) {
 	assert.Equal(t, 1, rt.startedCount())
 }
 
+// ensuringFakeRuntime wraps fakeRuntime with an EnsureImage that always fails,
+// to verify SessionFor aborts before calling Start when the build fails.
+type ensuringFakeRuntime struct {
+	fakeRuntime
+	ensureErr error
+}
+
+func (e *ensuringFakeRuntime) EnsureImage(_ context.Context, _, _ string) error {
+	return e.ensureErr
+}
+
+func TestContainerPool_SessionFor_FailedBuildDoesNotStart(t *testing.T) {
+	rt := &ensuringFakeRuntime{ensureErr: fmt.Errorf("build failed: Dockerfile syntax error")}
+	pool := docker.NewContainerPool(rt)
+
+	ctx := context.Background()
+	cfg := ports.ContainerConfig{Image: "test-image", ProjectDir: "/some/project", AttemptID: "att-build-fail"}
+
+	sess, err := pool.SessionFor(ctx, "att-build-fail", cfg)
+	require.Error(t, err)
+	assert.Nil(t, sess)
+	assert.Contains(t, err.Error(), "build failed: Dockerfile syntax error")
+	assert.Equal(t, 0, rt.startedCount(), "Start should not be called when EnsureImage fails")
+
+	// The attempt entry should be cleaned up so a retry is possible.
+	sess2, err2 := pool.SessionFor(ctx, "att-build-fail", cfg)
+	assert.Error(t, err2)
+	assert.Nil(t, sess2)
+}
+
 func TestContainerPool_SessionFor_ReusesExistingSession(t *testing.T) {
 	rt := &fakeRuntime{}
 	pool := docker.NewContainerPool(rt)

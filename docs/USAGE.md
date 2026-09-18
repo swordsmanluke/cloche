@@ -1168,6 +1168,8 @@ Without `-f`, displays all logs captured to date and exits (even for active runs
 
 Log streaming is backed by `internal/logstream`. Inside the container, a `Writer` records timestamped, type-prefixed entries (`status`, `script`, `llm`) to `full.log`. On the daemon side, a `Broadcaster` fans log lines to multiple concurrent subscribers (CLI follow mode, web dashboard live view), retaining an in-memory history for each active run; the history is released when the run finishes. The broadcaster runs for the lifetime of the workflow run and is closed when the run completes or the daemon shuts down. Each log line is parsed for tool-call blocks (`ParseClaudeStream`) before being forwarded to subscribers so the web dashboard can format agent output distinctly from plain script output.
 
+Before the agent container even starts, the daemon rebuilds the project image if the Dockerfile has changed (see `EnsureImage`). This runs as a pseudo-step named `image-build`: `docker build`'s combined stdout/stderr is streamed live to the run's log (as `script`-typed lines under the `image-build` step), and a final `status` line reports either `image <name> ready`, `image <name> up to date`, or the build failure. The output is also persisted to `.cloche/logs/<task-id>/<attempt-id>/image-build.log` and indexed like any other step log, so `cloche logs <id> --step image-build` and the web dashboard's step output view (`GET /api/runs/{id}/steps/image-build/output`) show it — including for attempts that failed during the build and never reached the agent.
+
 ### `cloche poll`
 
 ```
@@ -1756,6 +1758,7 @@ my-project/
 │       └── <task-id>/        # Grouped by task (ticket or user-initiated run)
 │           └── <attempt-id>/ # One directory per attempt
 │               ├── full.log                  # Unified log (all steps)
+│               ├── image-build.log           # docker build output (pre-agent pseudo-step)
 │               ├── <workflow>-<step>.log     # Per-step script output
 │               └── <workflow>-llm-<step>.log # Per-step LLM conversation
 ├── cloche_init_test/

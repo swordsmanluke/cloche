@@ -1422,6 +1422,101 @@ func TestServer_RunWorkflow_EnsureImageFailure(t *testing.T) {
 	assert.Contains(t, status.ErrorMessage, "failed to ensure image")
 }
 
+// ensuringOutputRuntime wraps a local.Runtime and implements
+// ports.ImageEnsurerWithOutput so tests can control the simulated docker
+// build output and gate exactly when it's emitted (via proceed).
+type ensuringOutputRuntime struct {
+	*local.Runtime
+	lines   []string
+	err     error
+	proceed chan struct{} // closed by the test to release EnsureImageWithOutput
+}
+
+func (e *ensuringOutputRuntime) EnsureImage(ctx context.Context, projectDir, image string) error {
+	_, err := e.EnsureImageWithOutput(ctx, projectDir, image, nil)
+	return err
+}
+
+func (e *ensuringOutputRuntime) EnsureImageWithOutput(ctx context.Context, projectDir, image string, onLine func(string)) (bool, error) {
+	if e.proceed != nil {
+		<-e.proceed
+	}
+	for _, l := range e.lines {
+		if onLine != nil {
+			onLine(l)
+		}
+	}
+	return true, e.err
+}
+
+func TestServer_RunWorkflow_ImageBuildOutputPublishedAndIndexed(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "test.cloche"), []byte("#!/bin/sh\necho ok\n"), 0755))
+
+	rt := &ensuringOutputRuntime{
+		Runtime: local.NewRuntime("sh"),
+		lines:   []string{"Step 1/3 : FROM alpine", "Step 2/3 : RUN foo"},
+		proceed: make(chan struct{}),
+	}
+	srv := server.NewClocheServerWithCaptures(store, store, rt, "test-image:latest")
+	srv.SetLogStore(store)
+	broadcaster := logstream.NewBroadcaster()
+	srv.SetLogBroadcaster(broadcaster)
+
+	resp, err := srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+	})
+	require.NoError(t, err)
+
+	// Subscribe before releasing the fake build so we can't race its Publish calls.
+	sub := broadcaster.Subscribe(resp.RunId)
+	close(rt.proceed)
+
+	var buildLines []string
+	deadline := time.After(5 * time.Second)
+collect:
+	for {
+		select {
+		case line, ok := <-sub.C:
+			if !ok {
+				break collect
+			}
+			if line.StepName == "image-build" {
+				buildLines = append(buildLines, line.Content)
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for run to finish broadcasting")
+		}
+	}
+
+	assert.Contains(t, buildLines, "Step 1/3 : FROM alpine")
+	assert.Contains(t, buildLines, "Step 2/3 : RUN foo")
+	found := false
+	for _, l := range buildLines {
+		if strings.Contains(l, "ready") {
+			found = true
+		}
+	}
+	assert.True(t, found, "should publish a final 'image ready' status line, got: %v", buildLines)
+
+	// The build output should also be persisted and indexed as the
+	// "image-build" pseudo-step log.
+	logFiles, err := store.GetLogFilesByStep(context.Background(), resp.RunId, "image-build")
+	require.NoError(t, err)
+	require.Len(t, logFiles, 1)
+	assert.Equal(t, "script", logFiles[0].FileType)
+	data, err := os.ReadFile(logFiles[0].FilePath)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "Step 1/3 : FROM alpine")
+	assert.Contains(t, string(data), "Step 2/3 : RUN foo")
+}
+
 func TestServer_LogIndexing(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

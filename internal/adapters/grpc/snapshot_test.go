@@ -306,6 +306,38 @@ func runResumeForkTest(t *testing.T, mode resumeRebuildMode) int {
 	return rt.commitCalled
 }
 
+// failingEnsureRuntime is a tarCopyRuntime whose EnsureImage always fails, used
+// to verify a resumed run aborts (rather than continuing with a stale image)
+// when the pre-resume image build fails.
+type failingEnsureRuntime struct {
+	tarCopyRuntime
+	ensureErr error
+}
+
+func (r *failingEnsureRuntime) EnsureImage(_ context.Context, _, _ string) error {
+	return r.ensureErr
+}
+
+func TestResumeContainerRunWithPool_ImageBuildFailureAbortsResume(t *testing.T) {
+	dir := writeResumeProject(t)
+
+	rt := &failingEnsureRuntime{ensureErr: fmt.Errorf("build failed: bad RUN line")}
+	pool := docker.NewContainerPool(rt)
+
+	srv := newResumeForkServer(rt, pool)
+
+	oldRun := domain.NewRun("develop-old2", "develop")
+	oldRun.ProjectDir = dir
+	oldRun.AttemptID = "old-att-2"
+	oldRun.State = domain.RunStateFailed
+
+	resp, err := srv.resumeContainerRunWithPool(context.Background(), oldRun, "build", resumeRebuild)
+	require.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "failed to ensure image")
+	assert.Contains(t, err.Error(), "build failed: bad RUN line")
+}
+
 func TestResumeContainerRunWithPool_RebuildSkipsCommit(t *testing.T) {
 	assert.Equal(t, 0, runResumeForkTest(t, resumeRebuild),
 		"rebuild mode must NOT commit the failed attempt's containers")
