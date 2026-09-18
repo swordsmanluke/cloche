@@ -1,5 +1,21 @@
 # Cloche Detailed Changelog
 
+## v3.24.14 — 2026-09-18
+
+### Fixes
+
+- `537715c` Fixed the web console's repo sub-tab attribution: a host workflow run that touches multiple repositories, or declares none of its own, previously always fell back to "all repos" only; run attribution now unions the workflow's declared repo(s), a step's `repository` pin, repos a container sub-workflow actually extracted results into, and — for `cloche run` invoked from inside a `[[repositories]]` sub-repo path — the matched repo, with existing rows backfilled on daemon startup and unattributed runs counted separately rather than silently disappearing from a named sub-tab.
+
+### UI/UX
+
+- `f99ec48` The web console's Workflows/Requirements/Containers overlay panel no longer caps out at a fixed 1100px width; it now scales with the viewport (minus a constant gutter) so it uses the available space on wide screens.
+- `b31bb24` Renamed the web console's "Views ▾" menu to "Tools ▾" and fixed it (and the idle-projects "More" menu) to open flush under their own trigger button instead of being anchored to the edge of the whole tab bar.
+
+### Internal
+
+- `383ea54` Routine `intent scan` bookkeeping commit updating `.cloche/intent/scan-state.yaml` cursors; no application code changes.
+- `0e3a497` Added a research spike doc (`docs/plans/spikes/2026-09-17-intent-ab-pilot/`) recording an A/B pilot comparing intent-continuity arms; docs/data only, no application code changes.
+
 ## v3.24.11 — 2026-09-17
 
 ### Features

@@ -1,5 +1,11 @@
 # Cloche Changelog
 
+## v3.24.14 — 2026-09-18
+
+### Notable fixes
+
+- Fixed the web console's per-repository sub-tabs: host workflow runs that touch more than one repository, or don't declare a single repo up front, are now attributed to every relevant repo sub-tab (and to a distinct "unattributed" count) instead of appearing only under "all repos".
+
 ## v3.24.11 — 2026-09-17
 
 ### Features
