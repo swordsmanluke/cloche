@@ -1,6 +1,6 @@
 repos:
     "":
-        last_commit: 41a49f739146226d4723ef748036a9280022fd7c
+        last_commit: 5091960eb2ddfc6857d2917b8531e5c78720da98
         scanned_runs:
             - cloche-0vqg
             - rxth-main
@@ -438,6 +438,8 @@ repos:
             - u98d-main
             - user-mvml
             - vgy5-changelog
+            - l8vu-intent-scan
+            - user-l8vu
         scanned_docs:
             .cloche/prompts/document-check-missing.md: 154c933c83042dcb0b3f14e9c451226e6eab14bcdcbc9889fa4edef52d7c1283
             .cloche/prompts/document-investigate.md: 0bb6d7225ed9fa53f36269540994d74e7beef92a717e13794a86cfffdd8652d9
@@ -538,15 +540,15 @@ repos:
             docs/plans/spikes/2026-09-17-intent-ab-pilot/README.md: bd762f62827f3b40902796fe00049f1c00f489410639da19079640f216ef6d5c
             docs/run-isolation/architecture.md: 5f322ad76fedc1012b67f450ac1df9c328ef628ef90285f5ebd4c94a201d4b43
             docs/run-isolation/index.md: 06461a1f739a3b6fba4f5331fa668c15058808f59938b284c4e953a291ae6916
-            docs/web-dashboard.md: 33ac31422a4852d96de42c7b1f1e88ab44ec3eae38cb862a5fd1c4c0dfcb0c37
+            docs/web-dashboard.md: 5c9165219a3bb2100e3d7dcdf39eeb877e2a73ddecc0b23ac6026f62d86f7c15
             docs/workflows.md: fca4c3bb2d324a68435eea18afca3e1a4ee60560675303509bc050046d087de7
-last_scan_at: 2026-09-18T21:28:33.369734461Z
+last_scan_at: 2026-09-18T21:36:10.365247903Z
 last_scan_stats:
     repos:
         - name: ""
           docs_new: 0
-          docs_changed: 2
-          commits: 3
-          commit_range: 383ea54..c26df00
-          runs: 5
-          bytes: 188826
+          docs_changed: 1
+          commits: 2
+          commit_range: 5133fd3..5c5b88f
+          runs: 1
+          bytes: 120971
