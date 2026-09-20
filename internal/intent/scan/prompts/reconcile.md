@@ -20,6 +20,11 @@ TEMP="$(cloche get temp_file_dir)"
   body). Read all of them, including `disabled` and `superseded` ones — you
   need their status to decide correctly.
 
+Everything you need is in those files. Any `## User Request` text below is
+only the previous step's closing summary — not your input. The one exception:
+if it says a previous attempt reported success without writing
+`reconcile.json`, that was you; do the work and write the file this time.
+
 ## Decide one action per candidate
 
 - **`create`** — the candidate describes intent not already covered by any

@@ -281,7 +281,7 @@ File contents and shell stdout are **not** re-templated.
 | `$run_id` | Run identifier |
 | `$step_name` | Name of the current step |
 | `$workdir` | Working directory for the step |
-| `$prev_output` | Preceding step's captured stdout |
+| `$prev_output` | Preceding step's output. For an agent predecessor on the host this is only its final message, not the stream-json transcript; script output is passed verbatim |
 | `$task_description` | Content of the user prompt (`--prompt` flag) |
 | `$result_nonce` | Per-step random nonce that frames this step's `CLOCHE_RESULT` marker (`CLOCHE_RESULT:{{ $result_nonce }}:<name>`) — see [Result Protocol](USAGE.md#result-protocol) |
 

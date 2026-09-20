@@ -1102,6 +1102,53 @@ func TestExecutor_AgentStep_PrevOutput(t *testing.T) {
 	assert.Equal(t, "the task description", string(data))
 }
 
+// An agent predecessor's log is a raw stream-json transcript; only its final
+// result text may reach the next agent step's prompt.
+func TestExecutor_AgentStep_PrevOutput_StreamJSONCondensed(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+
+	transcript := `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cat huge"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","content":"HUGE TOOL RESULT"}]}}
+{"type":"result","subtype":"success","result":"wrote candidates.json"}
+`
+	require.NoError(t, os.WriteFile(filepath.Join(outputDir, "extract.log"), []byte(transcript), 0644))
+
+	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > captured_prompt.txt\necho CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success\n"), 0755))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		HostRunID:  "test-host-run",
+		TaskID:     "test-task-id",
+		Wires: []domain.Wire{
+			{From: "extract", Result: "success", To: "reconcile"},
+		},
+	}
+
+	step := &domain.Step{
+		Name:    "reconcile",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config: map[string]string{
+			"prompt":        "Reconcile.",
+			"agent_command": mockAgent,
+		},
+	}
+
+	result, err := executor.Execute(context.Background(), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", result.Result)
+
+	captured, err := os.ReadFile(filepath.Join(tmpDir, "captured_prompt.txt"))
+	require.NoError(t, err)
+	assert.Contains(t, string(captured), "wrote candidates.json")
+	assert.NotContains(t, string(captured), "HUGE TOOL RESULT")
+	assert.NotContains(t, string(captured), `"type"`)
+}
+
 func TestExecutor_AgentStep_PromptStep(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputDir := filepath.Join(tmpDir, "output")

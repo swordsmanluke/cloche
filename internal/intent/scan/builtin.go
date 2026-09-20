@@ -35,6 +35,30 @@ cloche intent collect-sources --project "$PROJECT_DIR" --out "$OUT" $FULL_FLAG
 cloche set intent_scan_sources_dir "$OUT"
 `
 
+// checkReconcileScript verifies the reconcile agent actually produced its
+// output before anything downstream trusts its "success": an agent that
+// claims success without writing reconcile.json is routed back to reconcile
+// (bounded by that step's max_attempts) instead of failing the whole scan in
+// apply-reconcile. Its stdout becomes the retried reconcile step's
+// "## User Request" input, so the message is written to the agent. A retry
+// that finds candidates.json empty should report "none", which ends the
+// workflow without coming back here.
+const checkReconcileScript = `set -eu
+TEMP=$(cloche get temp_file_dir)
+if [ -z "$TEMP" ]; then
+  echo "error: temp_file_dir not set in KV store" >&2
+  exit 1
+fi
+if [ -s "$TEMP/reconcile.json" ]; then
+  echo "reconcile.json present"
+  exit 0
+fi
+echo "Your previous attempt reported success, but $TEMP/reconcile.json does not exist or is empty."
+echo "Do the reconcile work now and write that file before reporting success."
+echo "If $TEMP/candidates.json has an empty candidates array, report none instead."
+exit 1
+`
+
 // applyReconcileScript delegates the missing-file decision to `cloche intent
 // apply-reconcile` itself (see cmdIntentApplyReconcile in cmd/cloche/
 // intent.go) rather than failing here on a bare `[ -f "$RECONCILE_FILE" ]`
@@ -170,10 +194,19 @@ func BuiltinWorkflow() *domain.Workflow {
 				Name: "reconcile",
 				Type: domain.StepTypeAgent,
 				Config: map[string]string{
-					"prompt":  reconcilePrompt,
-					"timeout": "20m",
+					"prompt":       reconcilePrompt,
+					"timeout":      "20m",
+					"max_attempts": "3",
 				},
-				Results: []string{"success", "none", "fail"},
+				Results: []string{"success", "none", "fail", "give-up"},
+			},
+			"check-reconcile": {
+				Name: "check-reconcile",
+				Type: domain.StepTypeScript,
+				Config: map[string]string{
+					"run": checkReconcileScript,
+				},
+				Results: []string{"success", "fail"},
 			},
 			"apply-reconcile": {
 				Name: "apply-reconcile",
@@ -198,11 +231,19 @@ func BuiltinWorkflow() *domain.Workflow {
 			{From: "collect-sources", Result: "success", To: "extract"},
 			{From: "collect-sources", Result: "none", To: domain.StepDone},
 			{From: "collect-sources", Result: "fail", To: domain.StepAbort},
+			// check-reconcile's wire into reconcile is listed before extract's
+			// on purpose: the host executor forwards the output of the first
+			// inbound wire whose step has run, so a retried reconcile sees
+			// check-reconcile's "you didn't write the file" message rather
+			// than extract's summary again.
+			{From: "check-reconcile", Result: "fail", To: "reconcile"},
 			{From: "extract", Result: "success", To: "reconcile"},
 			{From: "extract", Result: "fail", To: domain.StepAbort},
-			{From: "reconcile", Result: "success", To: "apply-reconcile"},
+			{From: "reconcile", Result: "success", To: "check-reconcile"},
 			{From: "reconcile", Result: "none", To: domain.StepDone},
 			{From: "reconcile", Result: "fail", To: domain.StepAbort},
+			{From: "reconcile", Result: "give-up", To: domain.StepAbort},
+			{From: "check-reconcile", Result: "success", To: "apply-reconcile"},
 			{From: "apply-reconcile", Result: "success", To: "commit"},
 			{From: "apply-reconcile", Result: "fail", To: domain.StepAbort},
 			{From: "commit", Result: "success", To: domain.StepDone},

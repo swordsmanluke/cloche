@@ -29,7 +29,7 @@ func TestBuiltinWorkflow_Shape(t *testing.T) {
 	assert.Equal(t, "intent-scan", wf.Name)
 	assert.True(t, wf.Builtin)
 	assert.Equal(t, "discover-domains", wf.EntryStep)
-	assert.Len(t, wf.Steps, 6)
+	assert.Len(t, wf.Steps, 7)
 
 	wantWires := map[string]string{
 		"discover-domains:success": "collect-sources",
@@ -39,9 +39,12 @@ func TestBuiltinWorkflow_Shape(t *testing.T) {
 		"collect-sources:fail":     "abort",
 		"extract:success":          "reconcile",
 		"extract:fail":             "abort",
-		"reconcile:success":        "apply-reconcile",
+		"reconcile:success":        "check-reconcile",
 		"reconcile:none":           "done",
 		"reconcile:fail":           "abort",
+		"reconcile:give-up":        "abort",
+		"check-reconcile:success":  "apply-reconcile",
+		"check-reconcile:fail":     "reconcile",
 		"apply-reconcile:success":  "commit",
 		"apply-reconcile:fail":     "abort",
 		"commit:success":           "done",
@@ -65,7 +68,7 @@ func TestBuiltinWorkflow_Shape(t *testing.T) {
 func TestBuiltinWorkflow_ScriptsAreDashCompatible(t *testing.T) {
 	wf := scan.BuiltinWorkflow()
 
-	for _, name := range []string{"collect-sources", "apply-reconcile", "commit"} {
+	for _, name := range []string{"collect-sources", "check-reconcile", "apply-reconcile", "commit"} {
 		step, ok := wf.Steps[name]
 		require.True(t, ok, "step %s should exist", name)
 		script := step.Config["run"]
@@ -229,6 +232,7 @@ func TestBuiltinWorkflow_ApplyReconcileFail_FailsRun(t *testing.T) {
 		"collect-sources":  "success",
 		"extract":          "success",
 		"reconcile":        "success",
+		"check-reconcile":  "success",
 		"apply-reconcile":  "fail",
 	}}
 
@@ -239,4 +243,63 @@ func TestBuiltinWorkflow_ApplyReconcileFail_FailsRun(t *testing.T) {
 	assert.Equal(t, domain.RunStateFailed, run.State)
 	assert.Equal(t, "apply-reconcile", run.FindFirstFailedStep())
 	assert.NotContains(t, exec.executed, "commit", "commit must not run after apply-reconcile fails")
+}
+
+// TestBuiltinWorkflow_ReconcileClaimsSuccessWithoutOutput_RetriesThenAborts
+// covers a reconcile agent that keeps reporting success without writing
+// reconcile.json: check-reconcile routes it back to reconcile, and
+// reconcile's max_attempts bounds the loop so the run aborts on give-up
+// instead of spinning or reaching apply-reconcile.
+func TestBuiltinWorkflow_ReconcileClaimsSuccessWithoutOutput_RetriesThenAborts(t *testing.T) {
+	exec := &scriptedExecutor{results: map[string]string{
+		"discover-domains": "success",
+		"collect-sources":  "success",
+		"extract":          "success",
+		"reconcile":        "success",
+		"check-reconcile":  "fail",
+	}}
+
+	eng := engine.New(exec)
+	run, err := eng.Run(context.Background(), scan.BuiltinWorkflow())
+	require.NoError(t, err)
+
+	assert.Equal(t, domain.RunStateFailed, run.State)
+	reconciles := 0
+	for _, name := range exec.executed {
+		if name == "reconcile" {
+			reconciles++
+		}
+	}
+	assert.Equal(t, 3, reconciles, "reconcile should run exactly max_attempts times")
+	assert.NotContains(t, exec.executed, "apply-reconcile")
+}
+
+// TestCheckReconcileScript runs the check-reconcile step script the way the
+// host executor does (sh -c) against a stub `cloche get temp_file_dir`.
+func TestCheckReconcileScript(t *testing.T) {
+	script := scan.BuiltinWorkflow().Steps["check-reconcile"].Config["run"]
+
+	temp := t.TempDir()
+	bin := t.TempDir()
+	stub := "#!/bin/sh\necho '" + temp + "'\n"
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "cloche"), []byte(stub), 0755))
+
+	run := func() (string, error) {
+		cmd := exec.Command("sh", "-c", script)
+		cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+
+	out, err := run()
+	assert.Error(t, err, "missing reconcile.json must fail")
+	assert.Contains(t, out, "reconcile.json does not exist")
+
+	require.NoError(t, os.WriteFile(filepath.Join(temp, "reconcile.json"), nil, 0644))
+	_, err = run()
+	assert.Error(t, err, "empty reconcile.json must fail")
+
+	require.NoError(t, os.WriteFile(filepath.Join(temp, "reconcile.json"), []byte(`{"actions":[]}`), 0644))
+	_, err = run()
+	assert.NoError(t, err)
 }

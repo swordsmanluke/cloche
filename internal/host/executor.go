@@ -444,16 +444,18 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 
 	// Write previous step output as user prompt so the adapter can pick it up.
 	// Also set PrevOutput on the adapter so {previous_output} in templates
-	// substitutes only the immediate predecessor's log content.
+	// substitutes only the immediate predecessor's log content. An agent
+	// predecessor's log is a raw stream-json transcript; only its final text
+	// is forwarded (see prompt.CondensePrevOutput).
 	var promptContent string
 	promptSource := step.Config["prompt_step"]
 	if promptSource != "" {
 		if data, err := os.ReadFile(e.stepOutputFile(promptSource)); err == nil {
-			promptContent = string(data)
+			promptContent = prompt.CondensePrevOutput(data)
 		}
 	} else if prev := e.findPrevOutput(step); prev != "" {
 		if data, err := os.ReadFile(prev); err == nil {
-			promptContent = string(data)
+			promptContent = prompt.CondensePrevOutput(data)
 		}
 	}
 

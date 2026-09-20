@@ -138,14 +138,19 @@ so it's available in any project with no setup. `cloche intent scan` (alias for
    collect-sources' `none` — when `extract` found zero candidates, so the workflow
    ends here rather than falling through to `apply-reconcile` with no
    `reconcile.json` to apply.
-5. **apply-reconcile** — a post-step validation script that writes the reconcile
+5. **check-reconcile** — a script that verifies `reconcile.json` actually exists
+   and is non-empty before trusting reconcile's `success`. An agent that claims
+   success without writing its output is routed back to **reconcile** with a
+   message saying so; reconcile has `max_attempts = 3`, after which the scan
+   aborts via `give-up`.
+6. **apply-reconcile** — a post-step validation script that writes the reconcile
    step's decisions to `.cloche/intent/` and enforces the hard rules regardless of
    what the agent proposed:
    - A `disabled` requirement is never re-enabled or superseded away.
    - A `user_edited` requirement's statement and scope are never rewritten in
      place — only `supersede` may touch it, and only its status.
    - Nothing is ever deleted; `superseded` is the terminal state.
-6. **commit** — stages and commits any changes under `.cloche/intent/` (and only
+7. **commit** — stages and commits any changes under `.cloche/intent/` (and only
    that path — never `git add -A` / `git commit -a`), so a scan never leaves the
    main worktree dirty for a human or a later container-authored merge step to
    clean up. No-ops cleanly (no empty commit) when the scan found nothing new. The
