@@ -1,5 +1,20 @@
 # Cloche Detailed Changelog
 
+## v3.24.18 — 2026-09-20
+
+### Fixes
+
+- `c26df00` Fixed the web console's global keyboard shortcuts firing on Cmd/Ctrl/Alt-modified keystrokes (e.g. Cmd+C, Ctrl+R), hijacking the browser's own copy/reload/etc.; shortcuts now only fire on bare keys or Shift chords.
+- `5c5b88f` Fixed the task stack's Running row and the task-detail facts row showing elapsed time accumulated across a task's whole retry history; both now show time scoped to the current retry (the run's own start, its most recently re-dispatched child run, or the currently executing step, whichever is latest), with the cumulative total moved to a tooltip.
+- `b85bf97` Fixed a failed Docker image build silently letting the container-start step proceed (surfacing only a generic "image not found" error); a build failure now aborts the attempt immediately with the last lines of `docker build` output in the error, and a build's output — success or failure — is streamed live into the run's log as a new `image-build` step, persisted to `.cloche/logs/<task>/<attempt>/image-build.log` and viewable via `cloche logs --step image-build` or the dashboard's step output view.
+- `a9338a6` Fixed the web console's live log stream to resume from a reconnect by sequence number instead of risking a silently incomplete replay (falling back to a `reset` event and a full replay only when the gap exceeds retained history), capped the daemon's per-run retained log history and the client's in-memory buffer to bound memory on long-running tasks, truncated any single log line over 4000 characters behind a "show more" toggle, and paused the console's polling/streaming while its browser tab is hidden.
+
+### Internal
+
+- `5133fd3` Routine intent scan bookkeeping commit extracting two new requirements (req-16b9 on the keyboard-shortcut modifier guard, req-710e on multi-repo task attribution) and superseding req-8f31 with req-a21c on task-stack group visibility; no application code changes.
+- `9503da4` Routine intent scan bookkeeping commit extracting one new requirement (req-ca41, on the running-task elapsed-time convention) and updating scan-state cursors; no application code changes.
+- `25d4733` Routine intent scan bookkeeping commit updating `.cloche/intent/scan-state.yaml` cursors; no application code changes.
+
 ## v3.24.14 — 2026-09-18
 
 ### Fixes

@@ -1,5 +1,14 @@
 # Cloche Changelog
 
+## v3.24.18 — 2026-09-20
+
+### Notable fixes
+
+- Fixed the web console's global keyboard shortcuts to leave Cmd/Ctrl/Alt-modified keystrokes (e.g. Cmd+C, Ctrl+R) to the browser instead of firing a matching single-letter shortcut.
+- Fixed the web console's Running row and task-detail facts row showing elapsed time that grew across a task's entire retry history; they now show time scoped to the current retry, with the cumulative total available as a tooltip.
+- Fixed a failed Docker image build silently falling through to container start (surfacing only a confusing "image not found" error); a build failure now aborts the run immediately with the actual `docker build` output, and a build's output is streamed live into the run's log as a new `image-build` step.
+- Fixed the web console's live log stream to resume gap-free after a dropped connection instead of risking a silently incomplete replay, and bounded both the daemon's per-run log history and the client's log buffer so a long-running task can't grow memory or the browser tab without limit.
+
 ## v3.24.14 — 2026-09-18
 
 ### Notable fixes
