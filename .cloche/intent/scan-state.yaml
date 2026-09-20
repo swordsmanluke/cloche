@@ -1,6 +1,6 @@
 repos:
     "":
-        last_commit: 5091960eb2ddfc6857d2917b8531e5c78720da98
+        last_commit: 129fcfc9130cf1d2e25d4a3bb429deed8bf12506
         scanned_runs:
             - cloche-0vqg
             - rxth-main
@@ -440,6 +440,10 @@ repos:
             - vgy5-changelog
             - l8vu-intent-scan
             - user-l8vu
+            - epl5-intent-scan
+            - mno5-intent-scan
+            - user-epl5
+            - user-mno5
         scanned_docs:
             .cloche/prompts/document-check-missing.md: 154c933c83042dcb0b3f14e9c451226e6eab14bcdcbc9889fa4edef52d7c1283
             .cloche/prompts/document-investigate.md: 0bb6d7225ed9fa53f36269540994d74e7beef92a717e13794a86cfffdd8652d9
@@ -467,7 +471,7 @@ repos:
             docs/CHANGELOG-DETAILED.md: a244b95f37be12cb7cbc9bd2d27a3969c5f346b26b35555e346f9cd1d7a30c3d
             docs/INSTALL.md: 02d98ffd4057cfb5f26935f68a131d81cf232b445417029d1555a081712d68e9
             docs/SAFETY.md: 1e025a1f37b5d21f7f226f1d8777e1a9726c13aedbb43ab37a8f174d61f53a59
-            docs/USAGE.md: ee70d8fd060204da004997e22dde4b0c720fe82d467a38501f5e310ba14e6ba6
+            docs/USAGE.md: 6e865d37d906a0a5b26a85772a96805651a54ab20cc948dfb50b324504e57a2d
             docs/agent-setup-claude.md: 745544b08f6362cd2ed1c918ed53e5a387e183872c9e6f086aeb1ea8f8690fda
             docs/agent-setup-codex.md: 5137671f134e534a5c49bf8e6f26765c3f3916dfb9a98ed92e22a2aad5ad1cfe
             docs/built-in-agents.md: dd37264a2d03ff45978a319f69020a118aab69c5387029047645f35a0cbe4b82
@@ -540,15 +544,15 @@ repos:
             docs/plans/spikes/2026-09-17-intent-ab-pilot/README.md: bd762f62827f3b40902796fe00049f1c00f489410639da19079640f216ef6d5c
             docs/run-isolation/architecture.md: 5f322ad76fedc1012b67f450ac1df9c328ef628ef90285f5ebd4c94a201d4b43
             docs/run-isolation/index.md: 06461a1f739a3b6fba4f5331fa668c15058808f59938b284c4e953a291ae6916
-            docs/web-dashboard.md: 5c9165219a3bb2100e3d7dcdf39eeb877e2a73ddecc0b23ac6026f62d86f7c15
+            docs/web-dashboard.md: 202b351135f9a98e14c64aa6d90d1b1eb7eaba68a7ff160c8d19a1bd872b60ad
             docs/workflows.md: fca4c3bb2d324a68435eea18afca3e1a4ee60560675303509bc050046d087de7
-last_scan_at: 2026-09-18T21:36:10.365247903Z
+last_scan_at: 2026-09-18T21:47:33.612072644Z
 last_scan_stats:
     repos:
         - name: ""
           docs_new: 0
-          docs_changed: 1
-          commits: 2
-          commit_range: 5133fd3..5c5b88f
-          runs: 1
-          bytes: 120971
+          docs_changed: 2
+          commits: 3
+          commit_range: 9503da4..a9338a6
+          runs: 2
+          bytes: 368042
