@@ -167,6 +167,9 @@ func TestCmdInit_GitignoreEntries(t *testing.T) {
 	if !strings.Contains(content, ".cloche/.loop-stopped") {
 		t.Error(".gitignore should contain .cloche/.loop-stopped")
 	}
+	if !strings.Contains(content, ".cloche/intent-index/") {
+		t.Error(".gitignore should contain .cloche/intent-index/")
+	}
 	if strings.Contains(content, ".cloche/task_list.json") {
 		t.Error(".gitignore should no longer contain .cloche/task_list.json")
 	}

@@ -46,8 +46,11 @@ copy to drift out of sync.
 └── scan-state.yaml         # extraction cursors (last scanned commit, docs, runs)
 ```
 
-A sibling `.cloche/intent-index/` directory holds the embedding index — a derived,
-gitignored artifact, never committed. It self-heals: any requirement whose content
+A sibling `.cloche/intent-index/` directory holds the embedding index — a derived
+artifact, never committed. It is rewritten by ordinary agent steps (not just the
+scan), so it carries its own `.gitignore` and `cloche init` also adds it to the
+project's; a project set up before this existed only needs the index written once
+to become clean. It self-heals: any requirement whose content
 hash or embedding-model ID doesn't match is re-embedded on load.
 
 ### Requirement file format
@@ -134,10 +137,9 @@ so it's available in any project with no setup. `cloche intent scan` (alias for
    decides **create** (novel), **merge** (already tracked, no-op), **supersede**
    (contradicts an active requirement with newer evidence — a new file is created,
    the old one flipped to `status: superseded`), or **drop** (not durable intent
-   after all). Emits `none` — a no-op, wired straight to done like
-   collect-sources' `none` — when `extract` found zero candidates, so the workflow
-   ends here rather than falling through to `apply-reconcile` with no
-   `reconcile.json` to apply.
+   after all). Emits `none` when `extract` found zero candidates; like
+   collect-sources' `none`, this skips straight to **commit** rather than falling
+   through to `apply-reconcile` with no `reconcile.json` to apply.
 5. **check-reconcile** — a script that verifies `reconcile.json` actually exists
    and is non-empty before trusting reconcile's `success`. An agent that claims
    success without writing its output is routed back to **reconcile** with a
@@ -157,7 +159,14 @@ so it's available in any project with no setup. `cloche intent scan` (alias for
    commit message reports what `apply-reconcile` actually did (counts of created,
    superseded, merged, and dropped candidates) plus whether `domains.yaml`
    changed. Retries a few times on index-lock contention (e.g. a concurrent scan
-   or merge step) before failing.
+   or merge step) before failing. Every non-failing path ends here — including
+   the `none` exits — because `collect-sources` has already advanced
+   `scan-state.yaml` by then and `discover-domains` may have rewritten
+   `domains.yaml`.
+8. **abort-cleanup** — runs on every failing path before the run aborts. It
+   reverts `scan-state.yaml` (so the failed window is rescanned next time) and
+   commits anything else the scan produced under `.cloche/intent/`, so a failed
+   scan never leaves the main worktree dirty either.
 
 ```
 cloche intent scan            # incremental: only material since the last scan

@@ -29,26 +29,28 @@ func TestBuiltinWorkflow_Shape(t *testing.T) {
 	assert.Equal(t, "intent-scan", wf.Name)
 	assert.True(t, wf.Builtin)
 	assert.Equal(t, "discover-domains", wf.EntryStep)
-	assert.Len(t, wf.Steps, 7)
+	assert.Len(t, wf.Steps, 8)
 
 	wantWires := map[string]string{
 		"discover-domains:success": "collect-sources",
-		"discover-domains:fail":    "abort",
+		"discover-domains:fail":    "abort-cleanup",
 		"collect-sources:success":  "extract",
-		"collect-sources:none":     "done",
-		"collect-sources:fail":     "abort",
+		"collect-sources:none":     "commit",
+		"collect-sources:fail":     "abort-cleanup",
 		"extract:success":          "reconcile",
-		"extract:fail":             "abort",
+		"extract:fail":             "abort-cleanup",
 		"reconcile:success":        "check-reconcile",
-		"reconcile:none":           "done",
-		"reconcile:fail":           "abort",
-		"reconcile:give-up":        "abort",
+		"reconcile:none":           "commit",
+		"reconcile:fail":           "abort-cleanup",
+		"reconcile:give-up":        "abort-cleanup",
 		"check-reconcile:success":  "apply-reconcile",
 		"check-reconcile:fail":     "reconcile",
 		"apply-reconcile:success":  "commit",
-		"apply-reconcile:fail":     "abort",
+		"apply-reconcile:fail":     "abort-cleanup",
 		"commit:success":           "done",
 		"commit:fail":              "abort",
+		"abort-cleanup:success":    "abort",
+		"abort-cleanup:fail":       "abort",
 	}
 	assert.Len(t, wf.Wiring, len(wantWires))
 	for _, wire := range wf.Wiring {
@@ -68,7 +70,7 @@ func TestBuiltinWorkflow_Shape(t *testing.T) {
 func TestBuiltinWorkflow_ScriptsAreDashCompatible(t *testing.T) {
 	wf := scan.BuiltinWorkflow()
 
-	for _, name := range []string{"collect-sources", "check-reconcile", "apply-reconcile", "commit"} {
+	for _, name := range []string{"collect-sources", "check-reconcile", "apply-reconcile", "commit", "abort-cleanup"} {
 		step, ok := wf.Steps[name]
 		require.True(t, ok, "step %s should exist", name)
 		script := step.Config["run"]
@@ -211,6 +213,7 @@ func TestBuiltinWorkflow_ReconcileNone_SkipsApplyReconcile(t *testing.T) {
 		"collect-sources":  "success",
 		"extract":          "success",
 		"reconcile":        "none",
+		"commit":           "success",
 	}}
 
 	eng := engine.New(exec)
@@ -219,7 +222,7 @@ func TestBuiltinWorkflow_ReconcileNone_SkipsApplyReconcile(t *testing.T) {
 
 	assert.Equal(t, domain.RunStateSucceeded, run.State)
 	assert.NotContains(t, exec.executed, "apply-reconcile", "apply-reconcile must not run when reconcile reports no candidates")
-	assert.NotContains(t, exec.executed, "commit")
+	assert.Contains(t, exec.executed, "commit", "commit must still run so scan-state.yaml/domains.yaml don't stay dirty")
 }
 
 // TestBuiltinWorkflow_ApplyReconcileFail_FailsRun reproduces the observed bug
@@ -234,6 +237,7 @@ func TestBuiltinWorkflow_ApplyReconcileFail_FailsRun(t *testing.T) {
 		"reconcile":        "success",
 		"check-reconcile":  "success",
 		"apply-reconcile":  "fail",
+		"abort-cleanup":    "success",
 	}}
 
 	eng := engine.New(exec)
@@ -243,6 +247,7 @@ func TestBuiltinWorkflow_ApplyReconcileFail_FailsRun(t *testing.T) {
 	assert.Equal(t, domain.RunStateFailed, run.State)
 	assert.Equal(t, "apply-reconcile", run.FindFirstFailedStep())
 	assert.NotContains(t, exec.executed, "commit", "commit must not run after apply-reconcile fails")
+	assert.Contains(t, exec.executed, "abort-cleanup", "abort-cleanup must leave the worktree clean")
 }
 
 // TestBuiltinWorkflow_ReconcileClaimsSuccessWithoutOutput_RetriesThenAborts
@@ -257,6 +262,7 @@ func TestBuiltinWorkflow_ReconcileClaimsSuccessWithoutOutput_RetriesThenAborts(t
 		"extract":          "success",
 		"reconcile":        "success",
 		"check-reconcile":  "fail",
+		"abort-cleanup":    "success",
 	}}
 
 	eng := engine.New(exec)
@@ -302,4 +308,106 @@ func TestCheckReconcileScript(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(temp, "reconcile.json"), []byte(`{"actions":[]}`), 0644))
 	_, err = run()
 	assert.NoError(t, err)
+}
+
+// Every path out of the scan must leave .cloche/intent/ committed: the
+// `none` exits skip apply-reconcile but collect-sources has already advanced
+// scan-state.yaml (cloche's own history has hand-made "update
+// scan-state.yaml" commits from exactly this leak).
+func TestBuiltinWorkflow_CollectSourcesNone_StillCommits(t *testing.T) {
+	exec := &scriptedExecutor{results: map[string]string{
+		"discover-domains": "success",
+		"collect-sources":  "none",
+		"commit":           "success",
+	}}
+
+	eng := engine.New(exec)
+	run, err := eng.Run(context.Background(), scan.BuiltinWorkflow())
+	require.NoError(t, err)
+
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+	assert.Equal(t, []string{"discover-domains", "collect-sources", "commit"}, exec.executed)
+}
+
+func TestBuiltinWorkflow_CommitScript_IgnoresNonSummaryPrevOutput(t *testing.T) {
+	dir := t.TempDir()
+	runGitCommit(t, dir, "init", "-q")
+	intentDir := filepath.Join(dir, ".cloche", "intent")
+	require.NoError(t, os.MkdirAll(intentDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(intentDir, "scan-state.yaml"), []byte("cursor: 1\n"), 0644))
+	runGitCommit(t, dir, "add", ".")
+	runGitCommit(t, dir, "commit", "-q", "-m", "init")
+
+	// collect-sources advanced the cursor, then reconcile reported none: the
+	// predecessor log is an agent transcript, not an apply-reconcile summary.
+	require.NoError(t, os.WriteFile(filepath.Join(intentDir, "scan-state.yaml"), []byte("cursor: 2\n"), 0644))
+	prevOutputFile := filepath.Join(t.TempDir(), "reconcile.log")
+	require.NoError(t, os.WriteFile(prevOutputFile, []byte(`{"type":"result","result":"nothing to do"}`+"\n"), 0644))
+
+	out, err := runCommitScript(t, dir, prevOutputFile)
+	require.NoError(t, err, out)
+
+	msg := strings.TrimSpace(runGitCommit(t, dir, "log", "-1", "--format=%s"))
+	assert.Equal(t, "intent scan: scan state updated", msg)
+	assert.Empty(t, runGitCommit(t, dir, "status", "--porcelain"))
+}
+
+// runAbortCleanupScript mirrors runCommitScript for the abort-cleanup step.
+func runAbortCleanupScript(t *testing.T, dir string) (string, error) {
+	t.Helper()
+	script := scan.BuiltinWorkflow().Steps["abort-cleanup"].Config["run"]
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "CLOCHE_PROJECT_DIR="+dir,
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com")
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func TestBuiltinWorkflow_AbortCleanupScript_RevertsCursorCommitsRest(t *testing.T) {
+	dir := t.TempDir()
+	runGitCommit(t, dir, "init", "-q")
+	intentDir := filepath.Join(dir, ".cloche", "intent")
+	require.NoError(t, os.MkdirAll(intentDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(intentDir, "scan-state.yaml"), []byte("cursor: 1\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(intentDir, "domains.yaml"), []byte("version: 1\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello\n"), 0644))
+	runGitCommit(t, dir, "add", ".")
+	runGitCommit(t, dir, "commit", "-q", "-m", "init")
+
+	// discover-domains rewrote domains.yaml, collect-sources advanced the
+	// cursor, then extract failed. An unrelated dirty file must survive.
+	require.NoError(t, os.WriteFile(filepath.Join(intentDir, "scan-state.yaml"), []byte("cursor: 2\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(intentDir, "domains.yaml"), []byte("version: 2\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello again\n"), 0644))
+
+	out, err := runAbortCleanupScript(t, dir)
+	require.NoError(t, err, out)
+	assert.Contains(t, out, "reverted")
+	assert.Contains(t, out, "committed")
+
+	state, err := os.ReadFile(filepath.Join(intentDir, "scan-state.yaml"))
+	require.NoError(t, err)
+	assert.Equal(t, "cursor: 1\n", string(state), "cursor must be rewound so the failed window is rescanned")
+
+	status := runGitCommit(t, dir, "status", "--porcelain")
+	assert.Contains(t, status, "README.md")
+	assert.NotContains(t, status, ".cloche/intent")
+	msg := strings.TrimSpace(runGitCommit(t, dir, "log", "-1", "--format=%s"))
+	assert.Equal(t, "intent scan: partial results (scan aborted); domains.yaml updated", msg)
+}
+
+func TestBuiltinWorkflow_AbortCleanupScript_NoOpWhenClean(t *testing.T) {
+	dir := t.TempDir()
+	runGitCommit(t, dir, "init", "-q")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "intent"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "intent", "domains.yaml"), []byte("version: 1\n"), 0644))
+	runGitCommit(t, dir, "add", ".")
+	runGitCommit(t, dir, "commit", "-q", "-m", "init")
+
+	before := runGitCommit(t, dir, "rev-parse", "HEAD")
+	out, err := runAbortCleanupScript(t, dir)
+	require.NoError(t, err, out)
+	assert.Equal(t, before, runGitCommit(t, dir, "rev-parse", "HEAD"))
 }

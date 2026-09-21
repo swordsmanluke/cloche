@@ -171,6 +171,17 @@ func (ix *Index) save() error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("intent: creating intent-index dir: %w", err)
 	}
+	// The index is rewritten by any agent step's prompt assembly, well
+	// outside the scan workflow that commits .cloche/intent/. Projects
+	// initialised before this directory existed have no .gitignore entry for
+	// it, so make it self-ignoring rather than leave vectors.json dirtying
+	// the working tree and blocking merges.
+	ignorePath := filepath.Join(dir, ".gitignore")
+	if _, statErr := os.Stat(ignorePath); os.IsNotExist(statErr) {
+		if writeErr := os.WriteFile(ignorePath, []byte("*\n"), 0o644); writeErr != nil {
+			return fmt.Errorf("intent: writing intent-index .gitignore: %w", writeErr)
+		}
+	}
 
 	tmp, err := os.CreateTemp(dir, "vectors-*.json.tmp")
 	if err != nil {

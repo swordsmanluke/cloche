@@ -1154,6 +1154,7 @@ func cmdInit(args []string) {
 		".cloche/output/",
 		".cloche/history.log",
 		".cloche/.loop-stopped",
+		".cloche/intent-index/",
 		".gitworktrees/",
 	})
 

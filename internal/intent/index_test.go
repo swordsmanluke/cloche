@@ -3,6 +3,8 @@ package intent_test
 import (
 	"context"
 	"math"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -180,4 +182,19 @@ func TestIndex_EmbedQueryCachesPerText(t *testing.T) {
 	_, err = ix.EmbedQuery(context.Background(), "a different query")
 	require.NoError(t, err)
 	assert.Equal(t, 2, stub.calls)
+}
+
+// The index is rewritten by ordinary agent steps, outside the scan workflow
+// that commits .cloche/intent/, so it must ignore itself: a project whose
+// .gitignore predates intent-index/ would otherwise see vectors.json dirty
+// the working tree after every step.
+func TestIndex_SyncWritesSelfIgnoringGitignore(t *testing.T) {
+	dir := t.TempDir()
+	ix, err := intent.NewIndex(dir, newStub("stub:v1"))
+	require.NoError(t, err)
+	require.NoError(t, ix.Sync(context.Background(), []intent.Item{{ID: "a", Text: "hello"}}))
+
+	data, err := os.ReadFile(filepath.Join(dir, ".cloche", "intent-index", ".gitignore"))
+	require.NoError(t, err)
+	assert.Equal(t, "*\n", string(data))
 }
