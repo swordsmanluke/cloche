@@ -197,9 +197,58 @@ pursuing:**
    to `claude-haiku-4-5` (or another small hosted model) as the frozen
    executor before committing to 3x replications.
 
+## Follow-up: recommendation tickets, worked by Haiku (2026-09-20/21)
+
+The four recommendation items above (plus a fifth, separate decision-only
+ticket for the bonsai-vs-Haiku question) were filed as bead tickets against
+Cloche's own tracker — `cloche-zuub`, `cloche-rx3t`, `cloche-3rqj`,
+`cloche-3aus`, `cloche-8od1` (all labeled `haiku-test`) — and worked using
+`claude-haiku-4-5-20251001` as the executor, via a new `develop-haiku.cloche`
+/ `host-haiku.cloche` workflow pair added to the main project (mirrors
+`develop.cloche`/`host.cloche`, pinned to Haiku, named so the orchestration
+loop's own `list-tasks`/`main` auto-dispatch never picks them up — reachable
+only via `cloche run main-haiku --issue <id>`). Dispatched with the
+orchestration loop stopped and the host checkout on a dedicated
+`haiku-test-infra` branch (not `main`), so a bad Haiku-driven change to
+Cloche's own daemon/engine code couldn't land on `main` unreviewed —
+`merge-to-base.sh` merges into whatever branch is checked out on the host, so
+this was sufficient isolation without needing a second worktree.
+
+All 5 runs completed the full pipeline (`implement` → `test` → `update-docs`
+→ `merge` → `bump-version` → `close-task`) unattended and auto-merged to
+`haiku-test-infra`, `go test ./...` green on every one. But **passing tests
+turned out to be a weak proxy for satisfying the ticket** — Cloche's pipeline
+has no acceptance-criteria verification step, only a test-suite gate, so a
+plausible-looking, test-passing change closes a ticket regardless of whether
+it actually did what the acceptance criteria asked:
+
+| Ticket | Outcome |
+|---|---|
+| `cloche-3aus` (P1, stale-slot bug) | **Solid.** Real root-cause fix: moved `PollCoord.ReacquireSlot()` out of a `defer` (which fired on every return path) so it only fires on the actual completion branch, not on timeout/cancellation — exactly the leak the symptom described. New test added. |
+| `cloche-zuub` (injection logging) | **Marginal but compliant.** The per-step requirement-ID KV write the acceptance criteria asked for already existed before this ticket; net new contribution was a token-count field plus a debug log line. Technically meets the letter of the criteria, thinner than the ticket implied was needed. |
+| `cloche-rx3t` (string-builtins task-list gap) | **Partial.** Task description correctly amended (at/len/sub assigned to `03-evaluator-core`); reference implementation already had the builtins, so no regression. Acceptance also required tagging `seed-v2` as the frozen artifact — never done. |
+| `cloche-3rqj` (marker-drop metric) | **Partial.** `MarkerDropDetected`/`BareMarkerResult` correctly threaded through `StepResult` → `StepExecution` → `Run`, with tests — but never surfaced in `cloche status`/`cloche activity`, which was the actual acceptance criterion. The data model exists; nothing reads it yet. |
+| `cloche-8od1` (extraction branch deletion) | **False close.** The diff only changes multi-repo partial-failure rollback behavior in `prepareExtractWorktrees` (skip a failed repo instead of rolling back the whole batch) — the reported bug occurred on a single-repo project, where that code path never executes. No cleanup-path code was touched, no reproduction attempted, no recovery command documented; the accompanying "docs" diff is just line-number renumbering from the code shifting. None of the three acceptance options (reproduce / fix the cleanup path / document-with-recovery-command) was actually met. Reopened (see below).
+
+**Reading:** this sharpens, with a concrete non-toy example, the same
+pattern the D2/SC3 findings above showed on the Bract corpus — Haiku (and
+likely any executor under this pipeline) will readily produce output that
+passes the *checked* bar (tests) while missing the *intended* bar
+(acceptance criteria), because Cloche currently only automates the former.
+4 of 5 tickets closed with an incomplete or absent match to their stated
+acceptance criteria despite 5/5 green test runs. Worth its own follow-up:
+an acceptance-criteria check (even a cheap one — an agent step that reads
+the ticket's `ACCEPTANCE CRITERIA` block and the diff before `close-task`)
+would likely have caught at least 3 of these 4 before merge.
+
+`cloche-8od1` was reopened rather than left closed on a non-fix, since a bug
+ticket marked done is worse than one left open — it suppresses the exact
+signal (branches vanishing during real runs) that motivated filing it.
+
 ## Artifacts
 
 - Arm A: `/home/lucas/workspace/bract-pilot/arm-a` (branch `main`)
 - Arm B: `/home/lucas/workspace/bract-pilot/arm-b` (branch `main`)
 - Raw corpus/audit JSON: `/tmp/intent-ab-results/arm-{a,b}-{corpus,audit}.json`
 - Judge bundle: `/tmp/intent-ab-results/judge-bundle/` (+ key file, kept separate)
+- Haiku-test-ticket infra: `.cloche/develop-haiku.cloche`, `.cloche/host-haiku.cloche` (main); results on branch `haiku-test-infra`
