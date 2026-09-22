@@ -198,6 +198,27 @@ def check_sc5(repo: Path) -> Verdict:
                                 names.add(t.id)
 
     if not names:
+        # A module-level table of string constants (LET = "LET", IDENT = "IDENT",
+        # ...) is the other common shape for a token-type set; round one and
+        # the x4 replications' arm A both used it and were wrongly reported
+        # as "no table found". Take any module that defines at least five
+        # module-level `NAME = "<str>"` assignments as the token table.
+        for path in iter_py_files(repo):
+            tree = parse_module(path)
+            if tree is None:
+                continue
+            consts = [
+                t.id
+                for stmt in tree.body
+                if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Constant)
+                and isinstance(stmt.value.value, str)
+                for t in stmt.targets
+                if isinstance(t, ast.Name)
+            ]
+            if len(consts) >= 5:
+                names.update(consts)
+
+    if not names:
         return Verdict(
             id="SC5",
             method="static",
@@ -274,7 +295,12 @@ def check_sc7(repo: Path) -> Verdict:
         if tree is None:
             continue
         for node in calls_named(tree, {"eval", "exec", "compile"}):
-            violations.append(f"{path.name}:{node.lineno}")
+            # Only Python's builtins count. A method on the interpreter's own
+            # objects (`interpreter.eval(program)`) is the tree-walker doing
+            # its job, not a translation onto Python's eval — x4 arm-b-r1 was
+            # wrongly flagged for exactly that.
+            if isinstance(node.func, ast.Name):
+                violations.append(f"{path.name}:{node.lineno}")
     return Verdict(
         id="SC7",
         method="static",
