@@ -83,6 +83,7 @@ def run_to_completion(tc: Toolchain, arm: str, target_dir: Path,
                        poll_interval_seconds: float = 5.0,
                        wall_cap_seconds: float = 3600.0,
                        max_attempts=None, monitor=None, should_stop=None,
+                       drain_seconds: float = 1200.0,
                        sleep=time.sleep, clock=time.monotonic) -> dict:
     """Start the loop, poll until the task list is exhausted or a cap
     fires, then stop the loop. `bd ready --json` is the exhaustion check:
@@ -131,6 +132,14 @@ def run_to_completion(tc: Toolchain, arm: str, target_dir: Path,
                 break
 
             sleep(poll_interval_seconds)
+
+        if stop_reason == StopReason.EXHAUSTED:
+            # The last merged task enqueues an intent-scan (arm B) that runs
+            # after the task list is already exhausted; stopping the loop and
+            # snapshotting .cloche/intent/ before it finishes would drop the
+            # final scan from the extractor audit. Wait for busy slots to
+            # drain, bounded.
+            _drain(tc, drain_seconds, poll_interval_seconds, sleep, clock)
     finally:
         tc.loop_stop()
 
@@ -139,6 +148,21 @@ def run_to_completion(tc: Toolchain, arm: str, target_dir: Path,
     if monitor is not None:
         result["events"] = list(monitor.events)
     return result
+
+
+def _drain(tc, drain_seconds, poll_interval_seconds, sleep, clock) -> None:
+    """Wait until `cloche status` reports no busy slots (in-flight runs such
+    as the post-task intent-scan have finished), or `drain_seconds` pass."""
+    status_fn = getattr(tc, "project_status_text", None)
+    if status_fn is None or drain_seconds <= 0:
+        return
+    from .monitors import parse_status
+    start = clock()
+    while clock() - start < drain_seconds:
+        busy = parse_status(status_fn()).get("busy")
+        if not busy:
+            return
+        sleep(max(poll_interval_seconds, 1.0))
 
 
 def collect_metrics(tc: Toolchain, arm: str) -> dict:
