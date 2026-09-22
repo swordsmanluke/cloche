@@ -1,9 +1,9 @@
-import subprocess
-"""Run one arm end-to-end (E5): clone seed at a ref, wire in the bonsai
-wrapper, apply the arm overlay, register the project, bootstrap the task
-tracker, start the loop, poll to task-list exhaustion or a budget/wall cap
-(re-checking the contamination invariants on every tick), stop the loop,
-and collect process metrics.
+"""Run one arm end-to-end (E5/E8): clone seed at a ref, apply the arm
+overlay, register the project, bootstrap the task tracker, start the loop,
+poll to task-list exhaustion or a cap (re-checking the contamination
+invariants on every tick, and — when a monitor is attached — classifying
+infrastructure vs execution failures, see monitors.py), stop the loop, and
+collect process metrics.
 
 See ../arms/README.md for the overlay composition and
 ../../../docs/plans/2026-09-14-intent-ab-experiment-protocol.md ("Process
@@ -12,6 +12,7 @@ context-composition tax) is a best-effort text scrape rather than a
 structured query — no CLI command exposes those numbers directly; see
 metrics.py's docstring.
 """
+import subprocess
 import time
 from pathlib import Path
 
@@ -39,6 +40,9 @@ class StopReason:
     EXHAUSTED = "task_list_exhausted"
     WALL_CAP = "wall_clock_cap"
     ATTEMPT_CAP = "attempt_budget_cap"
+    EXTERNAL = "stopped_externally"
+    # Monitor-driven stops carry the monitor's own kind string
+    # ("infra:..." or "exec:task_attempt_cap"); see monitors.Kind.
 
 
 def overlay_dirs_for(arm: str):
@@ -49,19 +53,16 @@ def overlay_dirs_for(arm: str):
 
 def setup_arm_tree(arm: str, target_dir: Path, seed_source: Path = DEFAULT_SEED_SOURCE,
                     ref: str = DEFAULT_REF) -> None:
-    """Clone seed at `ref` into `target_dir`, then layer in the bonsai
-    wrapper's live source and the arm overlay (../arms/README.md's
-    composition order)."""
+    """Clone seed at `ref` into `target_dir`, then layer in the arm overlay
+    (../arms/README.md's composition order)."""
     seed.clone_seed(seed_source, ref, target_dir)
-    overlay.copy_into(target_dir, "agent_command", HARNESS_ROOT / "agent_command")
-    overlay.copy_into(target_dir, "bin", HARNESS_ROOT / "bin")
     overlay.apply_overlay(target_dir, overlay_dirs_for(arm))
     # Containers seed from a clean git snapshot of HEAD (req-065f):
     # uncommitted overlay files would be invisible in-container, so the
     # composed tree must be committed before any run is dispatched.
     subprocess.run(["git", "add", "-A"], cwd=target_dir, check=True)
     subprocess.run(
-        ["git", "commit", "-q", "-m", f"arm overlay: wrapper + arm-{arm} config"],
+        ["git", "commit", "-q", "-m", f"arm overlay: arm-{arm} config"],
         cwd=target_dir, check=True,
     )
 
@@ -81,13 +82,18 @@ def run_to_completion(tc: Toolchain, arm: str, target_dir: Path,
                        eval_corpus_dir: Path = DEFAULT_EVAL_CORPUS_DIR,
                        poll_interval_seconds: float = 5.0,
                        wall_cap_seconds: float = 3600.0,
-                       max_attempts=None,
+                       max_attempts=None, monitor=None, should_stop=None,
                        sleep=time.sleep, clock=time.monotonic) -> dict:
     """Start the loop, poll until the task list is exhausted or a cap
     fires, then stop the loop. `bd ready --json` is the exhaustion check:
     it lists both open and in_progress tasks (get-tasks.py's own model of
     readiness), so an empty result means every task is closed, not merely
-    that nothing is claimable this instant."""
+    that nothing is claimable this instant.
+
+    `monitor` (monitors.InfraMonitor) is consulted every tick with the
+    activity log; a non-None return is an abort kind and becomes the stop
+    reason. `should_stop()` lets a sibling arm's infra abort stop this one.
+    """
     assert_clean(arm, target_dir, eval_corpus_dir)
     tc.loop_start()
     start = clock()
@@ -96,14 +102,28 @@ def run_to_completion(tc: Toolchain, arm: str, target_dir: Path,
         while True:
             assert_clean(arm, target_dir, eval_corpus_dir)
 
+            if should_stop is not None and should_stop():
+                stop_reason = StopReason.EXTERNAL
+                break
+
             if clock() - start >= wall_cap_seconds:
                 stop_reason = StopReason.WALL_CAP
                 break
 
+            entries = None
+            if max_attempts is not None or monitor is not None:
+                entries = tc.activity_json()
+
             if max_attempts is not None:
-                attempted = metrics.summarize_activity(tc.activity_json())["total_attempts"]
+                attempted = metrics.summarize_activity(entries)["total_attempts"]
                 if attempted >= max_attempts:
                     stop_reason = StopReason.ATTEMPT_CAP
+                    break
+
+            if monitor is not None:
+                kind = monitor.check(entries)
+                if kind:
+                    stop_reason = kind
                     break
 
             if not tc.bd_ready():
@@ -115,7 +135,10 @@ def run_to_completion(tc: Toolchain, arm: str, target_dir: Path,
         tc.loop_stop()
 
     assert_clean(arm, target_dir, eval_corpus_dir)
-    return {"stop_reason": stop_reason, "elapsed_seconds": clock() - start}
+    result = {"stop_reason": stop_reason, "elapsed_seconds": clock() - start}
+    if monitor is not None:
+        result["events"] = list(monitor.events)
+    return result
 
 
 def collect_metrics(tc: Toolchain, arm: str) -> dict:
@@ -155,9 +178,10 @@ def run_arm(arm: str, target_dir: Path, task_list: Path = None,
             seed_source: Path = DEFAULT_SEED_SOURCE, ref: str = DEFAULT_REF,
             eval_corpus_dir: Path = DEFAULT_EVAL_CORPUS_DIR,
             poll_interval_seconds: float = 5.0, wall_cap_seconds: float = 3600.0,
-            max_attempts=None, toolchain_factory=Toolchain,
-            sleep=time.sleep, clock=time.monotonic) -> dict:
-    """Full procedure for one arm. Returns a JSON-serializable report."""
+            max_attempts=None, toolchain_factory=Toolchain, monitor_factory=None,
+            should_stop=None, sleep=time.sleep, clock=time.monotonic) -> dict:
+    """Full procedure for one arm. Returns a JSON-serializable report.
+    `monitor_factory(tc)` builds a monitors.InfraMonitor for the run."""
     target_dir = Path(target_dir)
     task_list = Path(task_list).resolve() if task_list is not None else DEFAULT_TASK_LIST
 
@@ -168,10 +192,12 @@ def run_arm(arm: str, target_dir: Path, task_list: Path = None,
     tc.cloche_init()
     bootstrap_tracker(tc, task_list)
 
+    monitor = monitor_factory(tc) if monitor_factory is not None else None
     run_result = run_to_completion(
         tc, arm, target_dir, eval_corpus_dir=eval_corpus_dir,
         poll_interval_seconds=poll_interval_seconds, wall_cap_seconds=wall_cap_seconds,
-        max_attempts=max_attempts, sleep=sleep, clock=clock,
+        max_attempts=max_attempts, monitor=monitor, should_stop=should_stop,
+        sleep=sleep, clock=clock,
     )
     process_metrics = collect_metrics(tc, arm)
 

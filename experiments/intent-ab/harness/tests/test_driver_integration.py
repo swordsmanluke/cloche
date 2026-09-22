@@ -116,17 +116,22 @@ class TestArmDriverSmoke(unittest.TestCase):
         config = (target / ".cloche" / "config.toml").read_text()
         self.assertIn("token_budget     = 1000", config)
 
-    def test_wrapper_and_common_overlay_are_wired_into_both_arms(self):
+    def test_common_overlay_pins_the_executor_in_both_arms(self):
         for arm in ("a", "b"):
             report = self._run(arm)
             target = Path(report["target_dir"])
-            self.assertTrue((target / "agent_command" / "cli.py").exists())
-            self.assertTrue((target / "bin" / "agent_command").exists())
             develop = (target / ".cloche" / "develop.cloche").read_text()
-            self.assertIn('agent_command = "bin/agent_command"', develop)
+            # Executor is a controlled constant across arms (protocol design
+            # table): both get the same pinned model via the common overlay.
+            self.assertIn('agent_command = "claude"', develop)
+            self.assertIn("claude-haiku-4-5", develop)
+            # The bonsai wrapper (E4) is no longer wired in anywhere.
+            self.assertFalse((target / "bin" / "agent_command").exists())
             # The fixture's own placeholder develop.cloche must have been
             # overridden by the common/ overlay, not left in place.
             self.assertNotIn("workflow develop {}", develop)
+            config = (target / ".cloche" / "config.toml").read_text()
+            self.assertIn("max_consecutive_failures = 12", config)
 
     def test_tokens_are_collected_from_status_scrape(self):
         report = self._run("a")

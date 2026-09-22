@@ -10,6 +10,14 @@ active = true
 [daemon]
 image = "intent-ab-arm-a:latest"
 
+# One task at a time (the task list is a dependency chain anyway), and a
+# high consecutive-failure ceiling: retries of a hard task are an execution
+# outcome the driver caps per task (arm_driver/monitors.py), not something
+# the daemon should halt the loop over and have mistaken for a stall.
+[orchestration]
+concurrency              = 1
+max_consecutive_failures = 12
+
 [intent]
 scan_after_tasks = false
 

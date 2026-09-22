@@ -29,12 +29,26 @@ same budgets.
 | `intent.scan_after_tasks` | `false` | `true` (default) |
 | Injection | dormant (no intent dir) | automatic |
 | Extractor / hint writer | — | production shape: Claude-class agent |
-| Executor (all coding steps) | bonsai-8b-16k | bonsai-8b-16k |
+| Executor (all coding steps) | claude-haiku-4-5 (amended, was bonsai-8b-16k) | claude-haiku-4-5 (amended, was bonsai-8b-16k) |
 
 Extraction uses the shipped configuration (capable scanner, weak executor)
 because the claim under test is *does the feature as shipped help* — not whether
 a weak model can also write its own hints. An all-local extraction sub-arm is a
 possible follow-up, not part of this run.
+
+> **Amendment (2026-09-22).** The executor is `claude-haiku-4-5-20251001`, driven
+> through Cloche's native `claude` adapter, in both arms. bonsai-8b-16k failed
+> pre-scoring in three independent harnesses during the pilot (see
+> `docs/plans/spikes/2026-09-17-intent-ab-pilot/README.md`, "Executor
+> substitution"). The hypothesis is unchanged — a weaker model is where
+> keeping requirements fresh should matter most, and the effect is expected
+> to persist, less dramatically, in larger models — but the executor is now a
+> small hosted model rather than a small local one. Frozen seed for the
+> replications: **`seed-v2 = <sha>`** (string builtins assigned to task
+> `03-evaluator-core`, which `seed-v1` never assigned to any task; recorded
+> as a commit SHA rather than a git tag, since Cloche's container extraction
+> carries branches only and a tag is not something either arm can produce or
+> be gated on).
 
 **Replication:** pilot of 1 run per arm first, to shake out the harness and
 calibrate task difficulty. Proceed to replications (target 3/arm) only if the

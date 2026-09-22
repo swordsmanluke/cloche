@@ -25,6 +25,17 @@ def main(argv):
         lib.create_graph(argv[2])
         return 0
 
+    if command == "create" and len(argv) >= 2:
+        # `bd create "<key>: <title>" --type T -d D --silent` -> prints the id
+        title = argv[1]
+        key, _, rest = title.partition(":")
+        print(lib.add_node(key.strip(), rest.strip() or key.strip()))
+        return 0
+
+    if command == "dep" and len(argv) >= 4 and argv[1] == "add":
+        lib.add_edge(argv[2], argv[3])
+        return 0
+
     if command == "ready" and "--json" in argv:
         state = lib.load()
         response = lib.tick_ready(state)

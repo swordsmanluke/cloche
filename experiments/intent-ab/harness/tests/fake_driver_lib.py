@@ -45,15 +45,12 @@ def _record(driver_state: dict, **entry) -> None:
     driver_state["activity"].append({"ts": _now(), **entry})
 
 
-def create_graph(graph_path) -> None:
-    """Simulates `bd create --graph <file>`: topologically sorts the
-    nodes/edges (edge type "blocks": from_key depends on to_key, same
-    convention as seed/.cloche/tasks/seed-tasks.json) into `order`."""
-    graph = json.loads(Path(graph_path).read_text())
-    nodes = {n["key"]: n for n in graph["nodes"]}
+def _topo_order(nodes: dict, edges: list) -> list:
+    """Edge type "blocks": from_key depends on to_key, same convention as
+    seed/.cloche/tasks/seed-tasks.json."""
     deps = {key: [] for key in nodes}
-    for edge in graph.get("edges", []):
-        if edge.get("type") == "blocks":
+    for edge in edges:
+        if edge.get("type", "blocks") == "blocks":
             deps[edge["from_key"]].append(edge["to_key"])
 
     order = []
@@ -67,12 +64,47 @@ def create_graph(graph_path) -> None:
             order.append(key)
             resolved.add(key)
             remaining.discard(key)
+    return order
 
-    state = load()
+
+def _install_graph(state: dict, nodes: dict, edges: list) -> None:
+    order = _topo_order(nodes, edges)
     state["order"] = order
     state["titles"] = {key: nodes[key].get("title", key) for key in order}
-    state["phase"] = {key: 0 for key in order}
+    state["phase"] = {key: state.get("phase", {}).get(key, 0) for key in order}
+    state.setdefault("closed", [])
+
+
+def create_graph(graph_path) -> None:
+    """Simulates the old `bd create --graph <file>` bulk form."""
+    graph = json.loads(Path(graph_path).read_text())
+    nodes = {n["key"]: n for n in graph["nodes"]}
+    state = load()
     state["closed"] = []
+    _install_graph(state, nodes, graph.get("edges", []))
+    save(state)
+
+
+def add_node(key: str, title: str) -> str:
+    """Simulates `bd create "<key>: <title>" ... --silent` (the form
+    arm_driver.cloche_cli.Toolchain.bd_create_graph uses): the node's id
+    is its key. Returns the id, which the fake prints."""
+    state = load()
+    nodes = dict(state.get("nodes", {}))
+    nodes[key] = {"key": key, "title": title}
+    state["nodes"] = nodes
+    _install_graph(state, nodes, state.get("edges", []))
+    save(state)
+    return key
+
+
+def add_edge(from_key: str, to_key: str) -> None:
+    """Simulates `bd dep add <from> <to>` (from depends on to)."""
+    state = load()
+    edges = list(state.get("edges", []))
+    edges.append({"type": "blocks", "from_key": from_key, "to_key": to_key})
+    state["edges"] = edges
+    _install_graph(state, state.get("nodes", {}), edges)
     save(state)
 
 

@@ -4,12 +4,19 @@
 # (stated explicitly below only for documentation — it matches the built-in
 # default), so the first completed `main` task bootstraps `.cloche/intent/`
 # via the built-in intent-scan workflow, and injection is automatic from
-# then on. token_budget is tuned down from the ~2000-token default for the
-# 16k-context executor (frozen value, see the protocol doc's Harness section).
+# then on. token_budget is tuned down from the ~2000-token default (frozen
+# value, see the protocol doc's Harness section).
 active = true
 
 [daemon]
 image = "intent-ab-arm-b:latest"
+
+# Same orchestration settings as arm A (controlled constant): one task at a
+# time, and retries capped per task by the driver rather than by the
+# daemon's consecutive-failure halt.
+[orchestration]
+concurrency              = 1
+max_consecutive_failures = 12
 
 [intent]
 scan_after_tasks = true

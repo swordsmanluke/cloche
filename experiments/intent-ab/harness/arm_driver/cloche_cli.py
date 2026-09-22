@@ -123,3 +123,37 @@ class Toolchain:
         """Best-effort: returns None if the key was never set for this task."""
         result = self._run(["cloche", "get", key], check=False, env_overrides={"CLOCHE_TASK_ID": task_id})
         return result.stdout.strip() if result.returncode == 0 else None
+
+    # -- monitors (arm_driver/monitors.py) -----------------------------------
+
+    def health_ok(self) -> bool:
+        """Daemon reachability: `cloche health` exits non-zero when the
+        daemon is down, regardless of any project's colour."""
+        return self._run(["cloche", "health"], check=False).returncode == 0
+
+    def project_status_text(self) -> str:
+        """`cloche status` in the project dir: loop state, `Slots:` line,
+        and the halt message when the daemon stopped the loop itself."""
+        result = self._run(["cloche", "status"], check=False)
+        return result.stdout if result.returncode == 0 else ""
+
+    def step_log(self, task_id: str, step: str, log_type: str = "full", limit: int = 400) -> str:
+        """Tail of one step's log for the task's latest attempt (best-effort,
+        empty on failure)."""
+        result = self._run(
+            ["cloche", "logs", task_id, "--step", step, "--type", log_type, "-l", str(limit)],
+            check=False,
+        )
+        return result.stdout if result.returncode == 0 else ""
+
+    def daemon_log_tail(self, path: str, lines: int = 120) -> str:
+        """Last `lines` of the daemon log that mention this project (or, if
+        none do, the raw tail), as evidence attached to an abort event."""
+        try:
+            with open(path, "r", errors="replace") as fh:
+                all_lines = fh.readlines()
+        except OSError as exc:
+            return f"(cannot read {path}: {exc})"
+        mine = [ln for ln in all_lines if str(self.project_dir) in ln]
+        chosen = mine if mine else all_lines
+        return "".join(chosen[-lines:])
