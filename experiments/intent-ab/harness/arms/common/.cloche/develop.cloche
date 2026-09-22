@@ -1,7 +1,9 @@
 // Overlay (E5, amended for seed-v2) on top of seed/.cloche/develop.cloche:
-// identical wiring, plus the workflow-level container{} block that pins
-// every prompt step to the executor. This file is applied to BOTH arms —
-// the executor is a controlled constant across arms (protocol doc, design
+// the seed's steps, plus the workflow-level container{} block that pins
+// every prompt step to the executor, and wiring in which the *test suite*
+// — not the agent's self-reported result marker — decides whether the
+// step's work stands. This file is applied to BOTH arms: the executor and
+// the wiring are controlled constants across arms (protocol doc, design
 // table), not part of what the arm-specific overlays vary.
 //
 // Executor: claude-haiku-4-5 via Cloche's native `claude` adapter. The
@@ -9,6 +11,18 @@
 // dropped after failing pre-scoring in three independent harnesses — see
 // docs/plans/spikes/2026-09-17-intent-ab-pilot/README.md, "Executor
 // substitution", and the protocol doc's amendment note.
+//
+// Wiring: implement:fail routes to commit, not abort. The round-one pilot
+// (and the first minutes of the replications) showed the dominant "failure"
+// of a Haiku implement step is the marker-drop bug — complete, test-passing
+// work followed by a bare CLOCHE_RESULT:success that the nonce classifier
+// correctly rejects (25–54% of attempts in round one; 13 of 24 in arm B).
+// That is a Cloche/model protocol interaction, not a quality signal, and
+// with pilot-mode unclaim it burned retry budget on finished tasks. So the
+// model's self-report is recorded (the driver's monitor classifies it, see
+// arm_driver/monitors.py) but never gates the pipeline: commit whatever was
+// produced, run the tests, and let fix-tests / give-up / abort handle real
+// failures deterministically. fix-tests is bounded by max_attempts.
 //
 // Named "develop" (dispatched by the seed's "main" host workflow)
 // deliberately: the daemon's scan_after_tasks auto-trigger is wired to the
@@ -41,15 +55,16 @@ workflow develop {
   step fix-tests {
     prompt       = file(".cloche/prompts/fix-tests.md")
     max_attempts = 2
-    results      = [success, fail]
+    results      = [success, fail, give-up]
   }
 
   implement:success  -> commit
-  implement:fail     -> abort
+  implement:fail     -> commit
   commit:success     -> test
   commit:fail        -> abort
   test:success       -> done
   test:fail          -> fix-tests
   fix-tests:success  -> test
-  fix-tests:fail     -> abort
+  fix-tests:fail     -> test
+  fix-tests:give-up  -> abort
 }
