@@ -409,6 +409,9 @@ func (dr *doctorRunner) checkProjectConfig() checkResult {
 	if !cfg.Active {
 		warnings = append(warnings, "active = false (project is inactive; set active = true to enable)")
 	}
+	for _, key := range config.UndecodedKeys(dr.projectDir) {
+		warnings = append(warnings, fmt.Sprintf("unknown key %q is ignored%s", key, configKeyHint(key)))
+	}
 
 	if cfg.Daemon.Image == "" {
 		warnings = append(warnings, "no image configured in [daemon] image (will use default cloche-agent:latest)")

@@ -196,6 +196,28 @@ func Load(projectDir string) (*Config, error) {
 	return &cfg, nil
 }
 
+// UndecodedKeys reports keys in <projectDir>/.cloche/config.toml that match
+// no known setting — typically a key placed in the wrong table (e.g.
+// `scan_after_tasks = false` at top level instead of under [intent]), which
+// toml.Decode otherwise ignores silently, leaving the default in force.
+// Returns nil when the file is absent or fails to parse (Load reports that).
+func UndecodedKeys(projectDir string) []string {
+	data, err := os.ReadFile(filepath.Join(projectDir, ".cloche", "config.toml"))
+	if err != nil {
+		return nil
+	}
+	cfg := defaults()
+	md, err := toml.Decode(string(data), &cfg)
+	if err != nil {
+		return nil
+	}
+	var keys []string
+	for _, k := range md.Undecoded() {
+		keys = append(keys, k.String())
+	}
+	return keys
+}
+
 // LoadGlobal reads the global daemon config from ~/.config/cloche/config.
 // Returns defaults if the file does not exist.
 func LoadGlobal() (*Config, error) {

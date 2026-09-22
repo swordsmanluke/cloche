@@ -74,6 +74,27 @@ func TestValidateProject_InvalidConfig(t *testing.T) {
 	}
 }
 
+func TestValidateProject_MisplacedConfigKey(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	os.MkdirAll(clocheDir, 0755)
+
+	// Top-level scan_after_tasks parses cleanly but is ignored — the default
+	// (true) stays in force, so scans keep firing "even though it's false".
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte("active = true\nscan_after_tasks = false\n"), 0644)
+
+	errs := validateProject(dir, "")
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e, `unknown key "scan_after_tasks"`) && strings.Contains(e, "[intent]") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected misplaced-key error pointing at [intent], got: %v", errs)
+	}
+}
+
 func TestValidateProject_InvalidWorkflowSyntax(t *testing.T) {
 	dir := t.TempDir()
 	clocheDir := filepath.Join(dir, ".cloche")

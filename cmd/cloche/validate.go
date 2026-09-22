@@ -185,7 +185,35 @@ func validateConfig(projectDir string) []string {
 		return []string{fmt.Sprintf("config.toml: %v", err)}
 	}
 
-	return nil
+	var errs []string
+	for _, key := range config.UndecodedKeys(projectDir) {
+		errs = append(errs, fmt.Sprintf("config.toml: unknown key %q is ignored%s", key, configKeyHint(key)))
+	}
+	return errs
+}
+
+// configKeyHint suggests the table a misplaced known key belongs under, so
+// e.g. a top-level `scan_after_tasks = false` (silently ignored, leaving the
+// default true in force) gets pointed at [intent].
+func configKeyHint(key string) string {
+	tables := map[string]string{
+		"scan_after_tasks": "intent",
+		"token_budget":     "intent",
+		"inject":           "intent",
+		"embedder":         "intent",
+		"concurrency":      "orchestration",
+		"stagger_seconds":  "orchestration",
+		"dedup_seconds":    "orchestration",
+		"image":            "daemon",
+	}
+	leaf := key
+	if i := strings.LastIndex(key, "."); i >= 0 {
+		leaf = key[i+1:]
+	}
+	if table, ok := tables[leaf]; ok && key != table+"."+leaf {
+		return fmt.Sprintf(" (did you mean [%s] %s?)", table, leaf)
+	}
+	return ""
 }
 
 // validateWorkflow validates a single workflow's structure.

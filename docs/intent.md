@@ -251,7 +251,10 @@ every source strictly at the project directory (see the multi-repo caveat above)
 **Incremental scans on task completion.** By default (`intent.scan_after_tasks = true`),
 an incremental scan is enqueued automatically after each completed `main` orchestration
 run, covering just that task's prompt, transcript, and commits. Set
-`intent.scan_after_tasks = false` in `config.toml` to opt out. Incremental scans are
+`intent.scan_after_tasks = false` in `config.toml` to opt out — under the `[intent]`
+table; a top-level `scan_after_tasks` is ignored, and `cloche validate` / `cloche doctor`
+flag it. The flag is re-read on every trigger, so the edit takes effect on a running
+loop without restarting anything. Incremental scans are
 cheap: `collect-sources`' cursors mean there's usually very little new material to mine,
 and a project is never scanned twice in parallel — if a scan is already queued or
 running, a new trigger is skipped.

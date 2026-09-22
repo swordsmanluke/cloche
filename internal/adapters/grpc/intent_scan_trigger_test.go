@@ -33,11 +33,12 @@ func TestCreatePhaseLoop_PostTaskScanner_DefaultOn_FreshProject(t *testing.T) {
 	assert.NoDirExists(t, filepath.Join(projectDir, ".cloche", "intent"), "wiring the scanner must not itself create .cloche/intent/")
 }
 
-// TestCreatePhaseLoop_PostTaskScanner_OptOut_MatchesPreFeatureBehavior covers
-// the other half of the ticket B fixture: a project that explicitly opts out
-// via scan_after_tasks = false gets no scanner wired, byte-identical to the
-// pre-feature (default-off) behavior.
-func TestCreatePhaseLoop_PostTaskScanner_OptOut_MatchesPreFeatureBehavior(t *testing.T) {
+// TestIntentScanTrigger_OptOut_CheckedAtTriggerTime covers the other half
+// of the ticket B fixture — scan_after_tasks = false must never enqueue a
+// scan — and that the flag is honoured when flipped on a live loop: active
+// projects get their loop at daemon startup, so a value cached at
+// construction would ignore config edits until the next restart.
+func TestIntentScanTrigger_OptOut_CheckedAtTriggerTime(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
 	defer store.Close()
@@ -45,15 +46,18 @@ func TestCreatePhaseLoop_PostTaskScanner_OptOut_MatchesPreFeatureBehavior(t *tes
 	srv := NewClocheServer(store, nil)
 	projectDir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(projectDir, ".cloche"), 0755))
-	require.NoError(t, os.WriteFile(
-		filepath.Join(projectDir, ".cloche", "config.toml"),
-		[]byte("[intent]\nscan_after_tasks = false\n"),
-		0644,
-	))
+	configPath := filepath.Join(projectDir, ".cloche", "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte("[intent]\nscan_after_tasks = true\n"), 0644))
 
 	loop := srv.createPhaseLoop(host.LoopConfig{ProjectDir: projectDir}, projectDir, time.Minute)
+	require.True(t, loop.PostTaskScannerConfigured())
 
-	assert.False(t, loop.PostTaskScannerConfigured(), "scan_after_tasks = false must disable the post-task scan trigger entirely")
+	// Opt out after the loop is already built.
+	require.NoError(t, os.WriteFile(configPath, []byte("[intent]\nscan_after_tasks = false\n"), 0644))
+
+	trigger := &intentScanTrigger{server: srv}
+	require.NoError(t, trigger.EnqueueScan(context.Background(), projectDir, "task-1"))
+	assert.Empty(t, srv.hostCancels, "scan_after_tasks = false must not dispatch a scan, even when set after the loop started")
 	assert.NoDirExists(t, filepath.Join(projectDir, ".cloche", "intent"))
 }
 

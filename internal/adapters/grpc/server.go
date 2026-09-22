@@ -3893,10 +3893,15 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	if s.helpRouter != nil {
 		loop.SetHelpArchiver(s.helpRouter)
 	}
+	// The scanner is always wired when the workflow resolves; whether a scan
+	// is actually enqueued is decided per trigger from the project config
+	// (see intentScanTrigger.EnqueueScan), so flipping scan_after_tasks in
+	// config.toml takes effect without restarting the loop or daemon.
 	if _, hasIntentScan := hostWFs["intent-scan"]; hasIntentScan {
-		if projCfg, err := config.Load(projectDir); err == nil && projCfg.Intent.ScanAfterTasks {
-			loop.SetPostTaskScanner(&intentScanTrigger{server: s})
-		}
+		loop.SetPostTaskScanner(&intentScanTrigger{server: s})
+	}
+	if unknown := config.UndecodedKeys(projectDir); len(unknown) > 0 {
+		log.Printf("orchestration loop: %s/.cloche/config.toml has unknown key(s) %s — ignored; check the table they are under", projectDir, strings.Join(unknown, ", "))
 	}
 	loop.SetOnAttemptComplete(s.TriggerAttentionRefresh)
 	return loop
@@ -3912,15 +3917,31 @@ type intentScanTrigger struct {
 }
 
 func (t *intentScanTrigger) EnqueueScan(ctx context.Context, projectDir, taskID string) error {
+	// Re-read the opt-out on every trigger rather than trusting a value
+	// captured when the loop was built: active projects get their loop at
+	// daemon startup, so a cached flag would ignore config edits until the
+	// next restart.
+	projCfg, err := config.Load(projectDir)
+	if err != nil {
+		log.Printf("intent-scan trigger: skipping for %s, config.toml unreadable: %v", projectDir, err)
+		return nil
+	}
+	if !projCfg.Intent.ScanAfterTasks {
+		log.Printf("intent-scan trigger: skipping for %s after task %s, intent.scan_after_tasks = false", projectDir, taskID)
+		return nil
+	}
 	if t.scanQueuedOrRunning(ctx, projectDir) {
 		log.Printf("intent-scan trigger: skipping for %s, a scan is already queued or running", projectDir)
 		return nil
 	}
-	_, err := t.server.runHostWorkflow(ctx, &pb.RunWorkflowRequest{
+	resp, err := t.server.runHostWorkflow(ctx, &pb.RunWorkflowRequest{
 		ProjectDir:   projectDir,
 		WorkflowName: "intent-scan",
 		Title:        builtin.AutoTriggerTitles["intent-scan"],
 	}, false, "") // automatic trigger, not a user request
+	if err == nil && resp != nil {
+		log.Printf("intent-scan trigger: enqueued %s for %s after task %s", resp.RunId, projectDir, taskID)
+	}
 	return err
 }
 

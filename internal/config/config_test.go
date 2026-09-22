@@ -421,3 +421,20 @@ func TestWriteGlobalConfigIfAbsent_HTTPDefault(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "localhost:8080", cfg.Daemon.HTTP)
 }
+
+func TestUndecodedKeys(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+
+	assert.Nil(t, UndecodedKeys(dir), "missing config.toml has no unknown keys")
+
+	// A misplaced opt-out (top level instead of [intent]) is the case that
+	// bites: it parses fine and leaves the default (true) in force.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "config.toml"),
+		[]byte("active = true\nscan_after_tasks = false\n\n[intent]\ntoken_budget = 500\nbogus = 1\n"), 0644))
+	assert.ElementsMatch(t, []string{"scan_after_tasks", "intent.bogus"}, UndecodedKeys(dir))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.True(t, cfg.Intent.ScanAfterTasks, "misplaced key must not have taken effect")
+}
