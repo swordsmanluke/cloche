@@ -116,6 +116,13 @@ class TestInfraMonitor(unittest.TestCase):
         self.assertIsNone(m.check(entries))
         self.assertEqual(len(m.events), 1)
 
+    def test_non_failure_results_are_not_events(self):
+        m, _ = self.make(FakeTC())
+        entries = [step_failed("user-scan1", "reconcile", result="none"),
+                   step_failed("t1", "skip-check", result="skipped")]
+        self.assertIsNone(m.check(entries))
+        self.assertEqual(m.events, [])
+
     def test_attempt_cap_is_an_execution_stop(self):
         m, _ = self.make(FakeTC())
         entries = [attempt_ended("t1", "failed")] * 3

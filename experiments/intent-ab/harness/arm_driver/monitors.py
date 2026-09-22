@@ -56,6 +56,16 @@ _LOOP_RE = re.compile(r"Orchestration loop:\s*(\w+)")
 _HALT_RE = re.compile(r"(?:halt|halted|stopped)[^\n]*?(?:error|because|due to)[^\n]*", re.I)
 
 
+FAILURE_RESULTS = frozenset({"fail", "failed", "timeout", "give-up", "token-limit", "error", "env-error"})
+
+
+def is_failure_result(result) -> bool:
+    """Step results are workflow-defined names; only the conventional
+    failure names count. An intent-scan's `reconcile -> none` (nothing to
+    reconcile) or a skip wire is not a failure."""
+    return (result or "").lower() in FAILURE_RESULTS
+
+
 def parse_status(text: str) -> dict:
     """Scrape the loop state, slot usage and any halt message out of
     `cloche status` run in the project directory."""
@@ -184,7 +194,7 @@ class InfraMonitor:
             self.last_progress = self.clock()
         self.processed = len(entries)
         for entry in new:
-            if entry.get("kind") != "step_completed" or entry.get("result") == "success":
+            if entry.get("kind") != "step_completed" or not is_failure_result(entry.get("result")):
                 continue
             step = entry.get("step") or ""
             task_id = entry.get("task_id") or ""
