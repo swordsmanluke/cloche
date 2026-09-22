@@ -44,7 +44,7 @@ possible follow-up, not part of this run.
 > keeping requirements fresh should matter most, and the effect is expected
 > to persist, less dramatically, in larger models — but the executor is now a
 > small hosted model rather than a small local one. Frozen seed for the
-> replications: **`seed-v2 = <sha>`** (string builtins assigned to task
+> replications: **`seed-v2 = 1578d3de`** (string builtins assigned to task
 > `03-evaluator-core`, which `seed-v1` never assigned to any task; recorded
 > as a commit SHA rather than a git tag, since Cloche's container extraction
 > carries branches only and a tag is not something either arm can produce or
