@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	pb "github.com/swordsmanluke/cloche/api/clochepb"
@@ -31,6 +33,9 @@ func projectCommand(args []string, addr string, w io.Writer) error {
 	// Check for subcommands first.
 	if len(args) >= 2 && args[0] == "repos" && args[1] == "list" {
 		return projectReposListCommand(args[2:], addr, w)
+	}
+	if len(args) >= 1 && args[0] == "purge" {
+		return projectPurgeCommand(args[1:], addr, w, os.Stdin)
 	}
 
 	var name string
@@ -200,4 +205,76 @@ func printProjectInfo(resp *pb.GetProjectInfoResponse, w io.Writer) {
 		fmt.Fprintf(w, "    name = \"main\"\n")
 		fmt.Fprintf(w, "    path = \".\"\n")
 	}
+}
+
+// projectPurgeCommand implements "cloche project purge": it deletes every
+// record the daemon holds for a project so it disappears from `cloche list`
+// and the console. The daemon refuses while the loop or any run is active;
+// this side only adds the confirmation, since the deletion is not reversible.
+func projectPurgeCommand(args []string, addr string, w io.Writer, in io.Reader) error {
+	var name, dir string
+	yes := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--name":
+			if i+1 < len(args) {
+				i++
+				name = args[i]
+			}
+		case "--yes", "-y":
+			yes = true
+		default:
+			if strings.HasPrefix(args[i], "-") {
+				return fmt.Errorf("unknown flag %q", args[i])
+			}
+			dir = args[i]
+		}
+	}
+	if name == "" && dir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("getting working directory: %w", err)
+		}
+		dir = cwd
+	}
+	if dir != "" {
+		abs, err := filepath.Abs(dir)
+		if err != nil {
+			return fmt.Errorf("resolving %s: %w", dir, err)
+		}
+		dir = abs
+	}
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+	defer conn.Close()
+	client := pb.NewClocheServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Look the project up first so the confirmation names what will go and
+	// a typo fails before anything is asked.
+	info, err := client.GetProjectInfo(ctx, &pb.GetProjectInfoRequest{ProjectDir: dir, Name: name})
+	if err != nil {
+		return fmt.Errorf("%w", err)
+	}
+	if !yes {
+		fmt.Fprintf(w, "This permanently deletes all runs, tasks, attempts and logs metadata for %s (%s) from the daemon.\n", info.Name, info.ProjectDir)
+		fmt.Fprintf(w, "Files under %s/.cloche/ are not touched. Continue? [y/N] ", info.ProjectDir)
+		var answer string
+		fmt.Fscanln(in, &answer)
+		if a := strings.ToLower(strings.TrimSpace(answer)); a != "y" && a != "yes" {
+			fmt.Fprintln(w, "aborted")
+			return nil
+		}
+	}
+
+	resp, err := client.PurgeProject(ctx, &pb.PurgeProjectRequest{ProjectDir: info.ProjectDir})
+	if err != nil {
+		return fmt.Errorf("%w", err)
+	}
+	fmt.Fprintf(w, "Purged project %s (%s): %d runs deleted\n", resp.Name, resp.ProjectDir, resp.RunsDeleted)
+	return nil
 }

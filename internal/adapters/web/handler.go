@@ -100,6 +100,13 @@ func WithStopLoopFunc(fn func(ctx context.Context, projectDir string) error) Han
 	return func(h *Handler) { h.stopLoopFn = fn }
 }
 
+// WithPurgeProjectFunc sets the function used to delete every daemon record
+// for a project (the console's "Remove project" action). Returns the number
+// of runs deleted.
+func WithPurgeProjectFunc(fn func(ctx context.Context, projectDir string) (int64, error)) HandlerOption {
+	return func(h *Handler) { h.purgeProjectFn = fn }
+}
+
 // WithStopRunFunc sets the function used to stop all active runs for a task.
 func WithStopRunFunc(fn func(ctx context.Context, taskID string) error) HandlerOption {
 	return func(h *Handler) { h.stopRunFn = fn }
@@ -273,6 +280,7 @@ type Handler struct {
 	orchestrateFn     func(ctx context.Context, projectDir string) (int, error)
 	loopStatusFn      func(projectDir string) bool
 	stopLoopFn        func(ctx context.Context, projectDir string) error
+	purgeProjectFn    func(ctx context.Context, projectDir string) (int64, error)
 	stopRunFn         func(ctx context.Context, taskID string) error
 	scanFn            func(ctx context.Context, projectDir string) (string, error)
 	getThreadFn       GetThreadFunc           // resolves a help thread for the parked-run pane
@@ -361,6 +369,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
 	h.mux.HandleFunc("GET /api/projects/{name}/loop/status", h.handleAPILoopStatus)
 	h.mux.HandleFunc("POST /api/projects/{name}/loop/stop", h.handleAPILoopStop)
+	h.mux.HandleFunc("DELETE /api/projects/{name}", h.handleAPIPurgeProject)
 	h.mux.HandleFunc("GET /api/projects/{name}/loop/occupancy", h.handleAPILoopOccupancy)
 	h.mux.HandleFunc("GET /api/projects/occupancy", h.handleAPIProjectsOccupancy)
 	h.mux.HandleFunc("GET /api/projects/{name}/intent/requirements", h.handleAPIIntentRequirementsList)
@@ -2527,6 +2536,34 @@ func (h *Handler) handleAPILoopStop(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "project": label})
+}
+
+// handleAPIPurgeProject deletes every daemon record for a project so it
+// drops out of the tab strip. The daemon side refuses while the loop or a
+// run is active; the console asks for confirmation before calling this.
+func (h *Handler) handleAPIPurgeProject(w http.ResponseWriter, r *http.Request) {
+	dir, label, ok := h.resolveProjectDir(w, r)
+	if !ok {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if dir == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "the system project cannot be removed"})
+		return
+	}
+	if h.purgeProjectFn == nil {
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "project removal not configured"})
+		return
+	}
+	deleted, err := h.purgeProjectFn(r.Context(), dir)
+	if err != nil {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]any{"status": "ok", "project": label, "runs_deleted": deleted})
 }
 
 // handleAPILoopOccupancy returns the orchestration loop's concurrency-slot

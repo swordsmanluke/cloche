@@ -1305,6 +1305,7 @@ Show project info and config.
 ```
 cloche project [--name <label>]
 cloche project repos list [--name <label>]
+cloche project purge [<dir>] [--name <label>] [--yes]
 ```
 
 By default, looks up the project by the current working directory. Use `--name` to look
@@ -1331,6 +1332,23 @@ NAME                  PATH                            URL
 backend               ./repos/backend                 https://github.com/example/backend
 frontend              ./repos/frontend
 ```
+
+`cloche project purge` removes a project from Cloche: it permanently deletes every
+record the daemon holds for it — runs, step executions, tasks, attempts, log-file
+metadata, KV, help threads, activity — so it no longer appears in `cloche list` or the
+console's tab strip. A project is just its run history, so this is the only way to
+retire one (finished experiments, deleted checkouts); it reappears automatically if
+you run something there again. The daemon refuses while the project's orchestration
+loop is running or any run is pending/running — stop those first. Files under the
+project's own `.cloche/` directory are not touched. Asks for confirmation unless
+`--yes` is given. The same action is available in the console under **Tools ▸ Remove
+project…** for the active project.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `<dir>` | _(cwd)_ | Project directory to purge. |
+| `--name <label>` | | Purge by label instead of directory. |
+| `--yes`, `-y` | | Skip the confirmation prompt. |
 
 **Project CLI rendering.** `cloche project repos list` output is rendered by
 `internal/projectcli` (`WriteReposList`), which formats the repository list as a

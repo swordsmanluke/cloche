@@ -711,6 +711,12 @@ h2 {
     min-width: 160px;
 }
 
+.console-action-btn.console-action-danger {
+    color: var(--error-text);
+    border-top: 1px solid var(--ln);
+    margin-top: 0.25rem;
+}
+
 .console-action-btn {
     display: flex;
     align-items: center;

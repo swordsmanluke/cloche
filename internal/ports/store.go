@@ -249,3 +249,13 @@ type HelpStore interface {
 	// instead of re-blocking or re-posting to channels.
 	FindAskAnswer(ctx context.Context, runID, askKey string) (answer, threadID string, found bool, err error)
 }
+
+// ProjectPurger is an optional interface a RunStore may implement to delete
+// every record the daemon holds for a project — runs, step executions,
+// tasks, attempts, logs metadata, KV, help threads, activity — so it stops
+// appearing as a project at all (the project list is derived from run
+// history; see RunStore.ListProjects). Files under the project's own
+// .cloche/ directory are not touched. Returns the number of runs deleted.
+type ProjectPurger interface {
+	PurgeProject(ctx context.Context, projectDir string) (int64, error)
+}

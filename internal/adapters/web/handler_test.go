@@ -2985,3 +2985,68 @@ func TestAPIRunDetail_FlattenRunLegacyFallback(t *testing.T) {
 	assert.Equal(t, "child-legacy", detail.Steps[1].RunID)
 	assert.Equal(t, 0, detail.Steps[1].ParentIndex)
 }
+
+func TestAPIPurgeProject(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	var purgedDir string
+	h.purgeProjectFn = func(_ context.Context, projectDir string) (int64, error) {
+		purgedDir = projectDir
+		return 3, nil
+	}
+
+	req := httptest.NewRequest("DELETE", "/api/projects/myapp", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "/home/user/projects/myapp", purgedDir)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "ok", resp["status"])
+	assert.Equal(t, "myapp", resp["project"])
+	assert.EqualValues(t, 3, resp["runs_deleted"])
+}
+
+func TestAPIPurgeProject_RefusedByDaemon(t *testing.T) {
+	h, store := setupHandler(t)
+	ctx := context.Background()
+
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	h.purgeProjectFn = func(_ context.Context, _ string) (int64, error) {
+		return 0, fmt.Errorf("project has a running orchestration loop")
+	}
+
+	req := httptest.NewRequest("DELETE", "/api/projects/myapp", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+	var resp map[string]string
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Contains(t, resp["error"], "running orchestration loop")
+}
+
+func TestAPIPurgeProject_NotConfiguredAndSystemProject(t *testing.T) {
+	h, store := setupHandler(t)
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(context.Background(), run))
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/projects/myapp", nil))
+	assert.Equal(t, http.StatusNotImplemented, w.Code)
+
+	h.purgeProjectFn = func(_ context.Context, _ string) (int64, error) { return 0, nil }
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/projects/"+SystemProjectSlug, nil))
+	assert.Equal(t, http.StatusBadRequest, w.Code, "the system pseudo-project must not be purgeable")
+}

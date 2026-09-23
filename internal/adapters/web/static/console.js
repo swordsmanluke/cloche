@@ -3725,6 +3725,36 @@
     });
     document.addEventListener('click', closeToolsMenu);
 
+    // "Remove project…" purges every daemon record for the active project so
+    // its tab disappears; the daemon refuses while the loop or a run is
+    // active and the error is shown as-is. Files in the project dir stay.
+    document.getElementById('console-remove-project-btn').addEventListener('click', function () {
+        closeToolsMenu();
+        var p = null;
+        state.projects.forEach(function (x) { if (x.slug === state.activeSlug) p = x; });
+        if (!p || state.activeSlug === SYSTEM_PROJECT_SLUG) return;
+        var msg = 'Remove "' + p.label + '" from Cloche?\n\nThis permanently deletes all of its runs, tasks and logs metadata from the daemon. ' +
+            'Files in the project directory are not touched. The project reappears if you run something there again.';
+        if (!window.confirm(msg)) return;
+        fetch('/api/projects/' + encodeURIComponent(state.activeSlug), { method: 'DELETE' })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+            .then(function (res) {
+                if (!res.ok) {
+                    alert('Could not remove project: ' + (res.data.error || 'unknown error'));
+                    return;
+                }
+                state.projects = state.projects.filter(function (x) { return x.slug !== p.slug; });
+                var next = state.projects.length ? ConsoleTabs.mostRecentSlug(state.projects) : null;
+                if (next) {
+                    selectProject(next);
+                } else {
+                    state.activeSlug = null;
+                    renderTabBar();
+                }
+            })
+            .catch(function () { alert('Could not remove project'); });
+    });
+
     document.getElementById('console-view-close').addEventListener('click', closeView);
     document.getElementById('step-drawer-close').addEventListener('click', closeStepDrawer);
     document.getElementById('intent-drawer-close').addEventListener('click', closeIntentDrawer);

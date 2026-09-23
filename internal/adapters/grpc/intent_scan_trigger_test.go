@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
 	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/host"
@@ -132,4 +133,40 @@ func TestIntentScanTrigger_EnqueueScan_SkipsWhenScanQueued(t *testing.T) {
 	err = trigger.EnqueueScan(ctx, projectDir, "task-1")
 	require.NoError(t, err)
 	assert.Empty(t, srv.hostCancels, "no new host run should be dispatched while a scan is already queued or running")
+}
+
+// TestPurgeProject_RefusesActiveRunThenPurges covers the daemon-side guard
+// and the happy path: a project with a pending run cannot be purged; once
+// the run is finished, purging removes the project entirely.
+func TestPurgeProject_RefusesActiveRunThenPurges(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	srv := NewClocheServer(store, nil)
+	ctx := context.Background()
+	projectDir := "/tmp/purge-fixture"
+
+	run := domain.NewRun("develop:run1", "develop")
+	run.ProjectDir = projectDir
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	_, err = srv.PurgeProject(ctx, &pb.PurgeProjectRequest{ProjectDir: projectDir})
+	require.Error(t, err, "a pending run must block the purge")
+	assert.Contains(t, err.Error(), "active run")
+
+	run.State = domain.RunStateSucceeded
+	require.NoError(t, store.UpdateRun(ctx, run))
+
+	resp, err := srv.PurgeProject(ctx, &pb.PurgeProjectRequest{Name: "purge-fixture"})
+	require.NoError(t, err)
+	assert.Equal(t, projectDir, resp.ProjectDir)
+	assert.EqualValues(t, 1, resp.RunsDeleted)
+
+	projects, err := store.ListProjects(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, projects)
+
+	_, err = srv.PurgeProject(ctx, &pb.PurgeProjectRequest{ProjectDir: projectDir})
+	assert.Error(t, err, "an unknown project must not purge silently")
 }

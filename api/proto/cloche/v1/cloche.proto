@@ -30,6 +30,13 @@ service ClocheService {
 
   rpc GetProjectInfo(GetProjectInfoRequest) returns (GetProjectInfoResponse);
 
+  // PurgeProject deletes every record the daemon holds for a project (runs,
+  // tasks, attempts, logs metadata, KV, help threads, activity) so it no
+  // longer appears in `cloche list`/the console. Refuses while the project's
+  // loop is running or it has pending/running runs. Files under the
+  // project's own .cloche/ are left alone.
+  rpc PurgeProject(PurgeProjectRequest) returns (PurgeProjectResponse);
+
   // GetAttention returns the "Needs you" attention set: items across a
   // project (or all projects) that require human action — parked runs,
   // stale tracker claims, repeated task failures, long-running polls, and
@@ -332,6 +339,17 @@ message GetProjectInfoResponse {
   int32 max_consecutive_failures = 15; // halt loop after N consecutive failures
   repeated Repository repositories = 16;
   int32 resumable_runs_count = 17; // count of runs parked/resumable (set by QuiesceRuns or daemon restart gate)
+}
+
+message PurgeProjectRequest {
+  string project_dir = 1;  // Resolve by absolute path
+  string name = 2;         // Resolve by project label (e.g. "cloche")
+}
+
+message PurgeProjectResponse {
+  string project_dir = 1;
+  string name = 2;
+  int64 runs_deleted = 3;
 }
 
 message GetAttentionRequest {

@@ -634,10 +634,16 @@ By default, looks up the project by the current working directory. Use
 Usage:
   cloche project [--name <label>]
   cloche project repos list [--name <label>]
+  cloche project purge [<dir>] [--name <label>] [--yes]
 
 Subcommands:
   repos list   Machine-readable table of configured [[repositories]] entries
                (name, path, url). Same lookup rules as the bare command.
+  purge        Remove a project from Cloche: permanently deletes all of its
+               runs, tasks, attempts and logs metadata from the daemon so it
+               drops out of 'cloche list' and the console. Refused while the
+               loop or any run is active. Files under the project's .cloche/
+               are not touched. Prompts unless --yes.
 
 Flags:
   --name <label>    Look up project by label (e.g. "cloche") instead of

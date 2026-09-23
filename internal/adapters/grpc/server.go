@@ -3961,6 +3961,78 @@ func (t *intentScanTrigger) scanQueuedOrRunning(ctx context.Context, projectDir 
 	return false
 }
 
+// PurgeProject deletes every daemon-held record for a project so it no longer
+// appears in the project list (which is derived from run history). It refuses
+// while the project's orchestration loop is running or any of its runs are
+// pending/running: the loop and the executors hold project state in memory
+// that would otherwise re-create rows behind the purge. The project's own
+// .cloche/ directory is never touched.
+func (s *ClocheServer) PurgeProject(ctx context.Context, req *pb.PurgeProjectRequest) (*pb.PurgeProjectResponse, error) {
+	purger, ok := s.store.(ports.ProjectPurger)
+	if !ok {
+		return nil, fmt.Errorf("store does not support purging projects")
+	}
+
+	projectDir, label, err := s.resolveProject(ctx, req.ProjectDir, req.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	s.mu.Lock()
+	loop, loopExists := s.loops[projectDir]
+	s.mu.Unlock()
+	if loopExists && loop != nil && loop.Running() {
+		return nil, fmt.Errorf("project %q has a running orchestration loop; stop it first (cloche loop stop)", label)
+	}
+	runs, err := s.store.ListRunsByProject(ctx, projectDir, time.Time{})
+	if err != nil {
+		return nil, fmt.Errorf("listing runs: %w", err)
+	}
+	for _, run := range runs {
+		if run.State == domain.RunStatePending || run.State == domain.RunStateRunning {
+			return nil, fmt.Errorf("project %q has active run %s; stop it first", label, run.ID)
+		}
+	}
+
+	deleted, err := purger.PurgeProject(ctx, projectDir)
+	if err != nil {
+		return nil, fmt.Errorf("purging project %q: %w", label, err)
+	}
+	s.mu.Lock()
+	delete(s.loops, projectDir)
+	s.mu.Unlock()
+	log.Printf("purged project %s (%d runs)", projectDir, deleted)
+	return &pb.PurgeProjectResponse{ProjectDir: projectDir, Name: label, RunsDeleted: deleted}, nil
+}
+
+// resolveProject turns a project_dir or label (exactly one required) into
+// the canonical project directory plus its label, as GetProjectInfo does.
+// A directory is accepted only if the store knows it: purging by a mistyped
+// path must not silently succeed with zero rows.
+func (s *ClocheServer) resolveProject(ctx context.Context, dir, name string) (string, string, error) {
+	projects, err := s.store.ListProjects(ctx)
+	if err != nil {
+		return "", "", fmt.Errorf("listing projects: %w", err)
+	}
+	labels := projectLabels(projects)
+	projectDir := normalizeProjectDir(dir)
+	if name != "" && projectDir == "" {
+		for d, label := range labels {
+			if label == name {
+				return d, label, nil
+			}
+		}
+		return "", "", fmt.Errorf("project %q not found", name)
+	}
+	if projectDir == "" {
+		return "", "", fmt.Errorf("project_dir or name is required")
+	}
+	if label, known := labels[projectDir]; known {
+		return projectDir, label, nil
+	}
+	return "", "", fmt.Errorf("project %q not found", projectDir)
+}
+
 // LoopRunning returns whether an orchestration loop is active and running for
 // the given project directory.
 func (s *ClocheServer) LoopRunning(projectDir string) bool {

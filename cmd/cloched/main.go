@@ -212,6 +212,13 @@ func main() {
 			}),
 			web.WithLoopStatusFunc(srv.LoopRunning),
 			web.WithStopLoopFunc(srv.StopLoop),
+			web.WithPurgeProjectFunc(func(ctx context.Context, projectDir string) (int64, error) {
+				resp, err := srv.PurgeProject(ctx, &pb.PurgeProjectRequest{ProjectDir: projectDir})
+				if err != nil {
+					return 0, err
+				}
+				return resp.RunsDeleted, nil
+			}),
 			web.WithStopRunFunc(func(ctx context.Context, taskID string) error {
 				_, err := srv.StopRun(ctx, &pb.StopRunRequest{TaskId: taskID})
 				return err
