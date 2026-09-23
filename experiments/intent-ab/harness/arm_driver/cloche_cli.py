@@ -126,6 +126,23 @@ class Toolchain:
 
     # -- monitors (arm_driver/monitors.py) -----------------------------------
 
+    def intent_store_error(self):
+        """Returns the error text if the project's intent store cannot be
+        resolved (e.g. a malformed domains.yaml, which makes intent.Resolve
+        fail and silently disables injection — cloche-etr2), else None.
+        `cloche intent preview` exercises the same load path the daemon uses."""
+        if not (self.project_dir / ".cloche" / "intent").is_dir():
+            return None
+        result = self._run(
+            ["cloche", "intent", "preview", "--workflow", "develop", "--step", "implement",
+             "--project", str(self.project_dir)],
+            check=False,
+        )
+        text = (result.stdout + result.stderr).strip()
+        if result.returncode != 0 or text.startswith("error:"):
+            return text[-500:] or f"exit {result.returncode}"
+        return None
+
     def health_ok(self) -> bool:
         """Daemon reachability: `cloche health` exits non-zero when the
         daemon is down, regardless of any project's colour."""

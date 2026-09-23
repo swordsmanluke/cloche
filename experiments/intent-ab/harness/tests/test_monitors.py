@@ -116,6 +116,19 @@ class TestInfraMonitor(unittest.TestCase):
         self.assertIsNone(m.check(entries))
         self.assertEqual(len(m.events), 1)
 
+    def test_unresolvable_intent_store_aborts(self):
+        tc = FakeTC()
+        tc.intent_store_error = lambda: "error: intent: parsing domains.yaml: yaml: line 22: mapping values are not allowed"
+        m, _ = self.make(tc)
+        self.assertEqual(m.check([]), Kind.INFRA_INTENT_STORE)
+        self.assertIn("domains.yaml", m.events[-1]["detail"])
+
+    def test_healthy_or_absent_intent_store_is_fine(self):
+        tc = FakeTC()
+        tc.intent_store_error = lambda: None
+        m, _ = self.make(tc)
+        self.assertIsNone(m.check([]))
+
     def test_non_failure_results_are_not_events(self):
         m, _ = self.make(FakeTC())
         entries = [step_failed("user-scan1", "reconcile", result="none"),

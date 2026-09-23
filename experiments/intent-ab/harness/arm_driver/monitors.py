@@ -31,6 +31,7 @@ class Kind:
     INFRA_LOOP_HALTED = "infra:loop_halted"
     INFRA_STALE_SLOT = "infra:stale_slot"
     INFRA_STALL = "infra:no_progress"
+    INFRA_INTENT_STORE = "infra:intent_store_invalid"
     EXEC_MARKER_DROP = "exec:marker_drop"
     EXEC_STEP_FAILED = "exec:step_failed"
     EXEC_LOOP_RESTARTED = "exec:loop_restarted"
@@ -168,6 +169,16 @@ class InfraMonitor:
         kind = self._check_new_entries(entries)
         if kind:
             return kind
+
+        # A store the daemon cannot resolve means every subsequent step runs
+        # with no injection at all — an arm B that has silently become arm A
+        # (x3 arm-b-r1 and x4 arm-b-r3, cloche-etr2). Abort rather than
+        # collect a replication that measures nothing.
+        store_err = getattr(self.tc, "intent_store_error", None)
+        if store_err is not None:
+            err = store_err()
+            if err:
+                return self._abort(Kind.INFRA_INTENT_STORE, f"intent store unresolvable: {err}")
 
         kind = self._check_attempt_cap(entries)
         if kind:
