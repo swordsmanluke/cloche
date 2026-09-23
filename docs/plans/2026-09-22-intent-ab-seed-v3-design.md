@@ -1,8 +1,11 @@
 # Intent A/B — seed-v3 design: harder tasks (proposal)
 
-**Status:** proposal, 2026-09-22. Follows the [replications results](spikes/2026-09-22-intent-ab-replications/README.md);
-amends the [protocol](2026-09-14-intent-ab-experiment-protocol.md). Decision taken: get
-off the ceiling with a harder task list, not a weaker executor.
+**Status:** proposal, 2026-09-22 — **on hold (2026-09-23)** until the mechanism
+validation in the [replications results](spikes/2026-09-22-intent-ab-replications/README.md#validation-of-the-mechanism-2026-09-23)
+is closed out: two of four arm-B runs had no injection (`cloche-etr2`), so seed-v2 has
+not yet produced a valid n=3 comparison. Harder tasks only if arms still fail identically
+with injection verified. Amends the [protocol](2026-09-14-intent-ab-experiment-protocol.md).
+Decision taken: get off the ceiling with a harder task list, not a weaker executor.
 
 ## Why harder, and harder how
 

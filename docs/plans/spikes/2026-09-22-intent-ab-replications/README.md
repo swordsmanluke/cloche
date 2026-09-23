@@ -127,6 +127,50 @@ records drops as events — none occurred. Round one's drops concentrated on lon
 checklist-shaped tasks under manual-recovery pressure; this round's runs were fast and
 unattended. Not root-caused.
 
+## Validation of the mechanism (2026-09-23)
+
+Before treating the above as an arm comparison, the intent-continuity chain was
+checked end to end, in order: is each failed requirement present in arm B's store; was it
+selected for the task that needed it; did it land in that task's prompt.
+
+1. **Presence.** SC3, SC4, D2 and D4 are present and clearly stated in all four arm-B
+   stores. `cmp-ordering-type-error` and `cf-nested-blocks-scope` have no requirement
+   in any store — and no explicit source: DESIGN.md only implies that ordering
+   operators are Integer-only (§1) and that block bodies get a fresh scope (§4), and no
+   task prompt states either. Seed under-specification, not extraction; arm A misses
+   them at the same rate.
+2. **Selection.** Reconstructed from each arm's store as of the task's dispatch (the scan
+   commits are in git) with `cloche intent preview` and the task text: in x4 arm B r2
+   the SC3 requirement was selected for tasks 4 and 7 and SC4's for tasks 7 and 11.
+3. **Injection.** The daemon logs `resolving intent injection for step "implement":
+   intent: parsing domains.yaml: … mapping values are not allowed` — without the project
+   path — on every post-scan implement step of **x3 arm B r1 and x4 arm B r3**. Their
+   first scan wrote a `domains.yaml` whose description contained an unquoted `: `;
+   `intent.Resolve` fails closed on that and nothing is injected. Ten of twelve tasks in
+   each of those runs ran with no memory. x4 arm B r1 and r2 logged no such error.
+   Filed `cloche-etr2` (P1): the scan agent hand-writes the file, `Resolve` should
+   degrade rather than disable, the log line should name the project.
+4. **Ground truth.** A copy of x4 arm B r3 with the implement prompt replaced by "echo
+   the prompt you received verbatim", run through the real pipeline on task 7: under the
+   broken store the prompt contained no requirements block; after quoting the YAML it
+   contained the block with exactly the nine IDs `preview` predicted, SC3's, SC4's and
+   D2's among them.
+
+**Corrected reading.** Only x4 arm B r1 and r2 are arm-B replications. Against arm A
+(x3 r1, x4 r1–r3): corpus B 46, 48 vs A 48, 47, 48, 48; audit losses (D2 excluded) B r1
+none, B r2 SC3; A r1 none, r2 none, r3 D4 + SC3. In B r2 the SC3 requirement was selected
+for tasks 4 and 7 and — the mechanism now verified — injected, and the final tree still
+duplicated the `line N:` formatting across four files: one real "injected but not
+followed" event, against one "not remembered" event (D4) in arm A. That is the entire
+between-arm evidence at n=2 vs n=4, and it is a tie.
+
+**Consequence for the plan.** Harder tasks are not yet justified. In order: fix
+`cloche-etr2` so the store cannot silently die; the driver now aborts an arm whose store
+is unresolvable (`infra:intent_store_invalid`); make the two under-specified rules
+explicit in the seed; then re-run seed-v2 at 3× to get a clean injected baseline. Only
+if arms still fail identically with injection verified does the seed-v3 task list
+(`docs/plans/2026-09-22-intent-ab-seed-v3-design.md`) go ahead.
+
 ## Reading
 
 - **The primary question is not answered by this round, and could not have been.**
