@@ -62,7 +62,6 @@ with open(prompt_path, "w") as f:
 
 subprocess.run(["cloche", "set", "task_prompt_path", prompt_path], check=True)
 
-# Intent retrieval query input (see module docstring). Host-side only.
 project_dir = os.environ.get("CLOCHE_PROJECT_DIR", ".")
 task_run_dir = os.path.join(project_dir, ".cloche", "runs", task_id)
 os.makedirs(task_run_dir, exist_ok=True)

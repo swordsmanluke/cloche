@@ -1,19 +1,9 @@
-# Arm A ("vanilla") overlay (E5) — see docs/plans/2026-09-14-intent-ab-experiment-protocol.md.
-#
-# Intent tracking must stay fully dormant: scan_after_tasks = false means no
-# scan is ever enqueued automatically, and since this arm's project tree
-# never gets a `cloche intent scan` run by hand either, `.cloche/intent/`
-# never comes into existence — the harness's contamination assert
-# (arm_driver/contamination.py) checks this at every poll, not just here.
+# See harness/arms/README.md for what each setting is for (kept out of this file on purpose).
 active = true
 
 [daemon]
 image = "intent-ab-arm-a:latest"
 
-# One task at a time (the task list is a dependency chain anyway), and a
-# high consecutive-failure ceiling: retries of a hard task are an execution
-# outcome the driver caps per task (arm_driver/monitors.py), not something
-# the daemon should halt the loop over and have mistaken for a stall.
 [orchestration]
 concurrency              = 1
 max_consecutive_failures = 12
@@ -22,6 +12,3 @@ max_consecutive_failures = 12
 scan_after_tasks = false
 
 [git]
-# name    = ""
-# email   = ""
-# ssh_key = ""

@@ -32,6 +32,35 @@ the 2-task stub list used for the driver's own smoke test.
   Bract build list (`seed/.cloche/tasks/seed-tasks.json`, E2) and must never
   be used for an actual pilot/replication run.
 
+## Why the overlay files carry no comments
+
+The intent scan mines the arm's commit history. In the x4 replications, the
+explanatory comments in these files were extracted into four
+"requirements" about experiment infrastructure (executor choice, the
+Dockerfile install method, the `prompt.txt` path, the develop wiring). So the
+overlay files are deliberately bare, the overlay is folded into the seed's
+initial commit rather than committed separately, and the rationale lives
+here instead:
+
+- `common/.cloche/develop.cloche` — `implement:fail -> commit -> test`: the
+  agent's self-reported result marker is recorded by the driver's monitor but
+  never gates the pipeline; the test suite does. Round one's dominant
+  "failure" was a finished task followed by a bare `CLOCHE_RESULT:success`
+  that the nonce classifier correctly rejected. `fix-tests` is bounded by
+  `max_attempts` → `give-up` → abort.
+- `common/.cloche/Dockerfile` — Claude Code is installed via NodeSource;
+  Debian bookworm's nodejs/npm packages have broken interdependencies on the
+  base image ("held broken packages").
+- `common/.cloche/scripts/prepare-prompt.py` — also writes the task prompt to
+  `.cloche/runs/<task-id>/prompt.txt`. The daemon builds each step's intent
+  retrieval query from the text at that path, which only `cloche run --prompt`
+  writes; without it every tracker-dispatched step queried on
+  `"implement develop"` and arm B injected the same four generic
+  requirements into every task (`cloche-hbcv`).
+- `arm-*/.cloche/config.toml` — `concurrency = 1` (the task list is a
+  chain); `max_consecutive_failures = 12` so retries are capped per task by
+  the driver, not by the daemon halting the loop.
+
 ## Composition order
 
 For a target arm, `arm_driver.overlay.apply_overlay` copies, in order (later

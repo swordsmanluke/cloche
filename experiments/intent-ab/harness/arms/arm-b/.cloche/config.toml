@@ -1,19 +1,9 @@
-# Arm B ("intent") overlay (E5) — see docs/plans/2026-09-14-intent-ab-experiment-protocol.md.
-#
-# Everything else is left at its default: scan_after_tasks defaults to true
-# (stated explicitly below only for documentation — it matches the built-in
-# default), so the first completed `main` task bootstraps `.cloche/intent/`
-# via the built-in intent-scan workflow, and injection is automatic from
-# then on. token_budget is tuned down from the ~2000-token default (frozen
-# value, see the protocol doc's Harness section).
+# See harness/arms/README.md for what each setting is for (kept out of this file on purpose).
 active = true
 
 [daemon]
 image = "intent-ab-arm-b:latest"
 
-# Same orchestration settings as arm A (controlled constant): one task at a
-# time, and retries capped per task by the driver rather than by the
-# daemon's consecutive-failure halt.
 [orchestration]
 concurrency              = 1
 max_consecutive_failures = 12
@@ -23,6 +13,3 @@ scan_after_tasks = true
 token_budget     = 1000
 
 [git]
-# name    = ""
-# email   = ""
-# ssh_key = ""

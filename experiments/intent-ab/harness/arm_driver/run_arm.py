@@ -12,6 +12,7 @@ context-composition tax) is a best-effort text scrape rather than a
 structured query — no CLI command exposes those numbers directly; see
 metrics.py's docstring.
 """
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -59,11 +60,17 @@ def setup_arm_tree(arm: str, target_dir: Path, seed_source: Path = DEFAULT_SEED_
     overlay.apply_overlay(target_dir, overlay_dirs_for(arm))
     # Containers seed from a clean git snapshot of HEAD (req-065f):
     # uncommitted overlay files would be invisible in-container, so the
-    # composed tree must be committed before any run is dispatched.
+    # composed tree must be committed before any run is dispatched. It is
+    # folded into the seed's initial commit rather than added as a second
+    # one: the intent scan mines commit history, and a separate "overlay"
+    # commit was extracted into experiment-infrastructure "requirements"
+    # in the x4 replications.
     subprocess.run(["git", "add", "-A"], cwd=target_dir, check=True)
     subprocess.run(
-        ["git", "commit", "-q", "-m", f"arm overlay: arm-{arm} config"],
+        ["git", "commit", "-q", "--amend", "--no-edit"],
         cwd=target_dir, check=True,
+        env={**os.environ, "GIT_AUTHOR_NAME": "cloche", "GIT_AUTHOR_EMAIL": "cloche@local",
+             "GIT_COMMITTER_NAME": "cloche", "GIT_COMMITTER_EMAIL": "cloche@local"},
     )
 
 
