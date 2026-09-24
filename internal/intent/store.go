@@ -2,6 +2,7 @@ package intent
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -102,7 +103,10 @@ func (s *Store) ListRequirements() ([]*Requirement, error) {
 		}
 		req, err := ParseRequirement(data)
 		if err != nil {
-			return nil, fmt.Errorf("intent: %s: %w", e.Name(), err)
+			// One unreadable file must not take every other requirement
+			// out of injection with it. Skip it and say so loudly.
+			log.Printf("ERROR intent: skipping unreadable requirement %s (%v) — run `cloche intent validate`", e.Name(), err)
+			continue
 		}
 		s.cache[path] = cacheEntry{modTime: info.ModTime(), req: req}
 		reqs = append(reqs, req)

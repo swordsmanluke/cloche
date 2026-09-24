@@ -44,7 +44,12 @@ func Resolve(ctx context.Context, projectDir string, query Query, opts Options, 
 	}
 	dm, err := store.LoadDomains()
 	if err != nil {
-		return Injection{}, true, err
+		// Degrade, don't disable: a domains.yaml the daemon cannot parse
+		// used to make every step run with no injection at all while the
+		// scan kept reporting success (cloche-etr2). Inject without domain
+		// scoping and say so where it is easy to find.
+		log.Printf("ERROR intent: %v — injecting WITHOUT domain scoping for %s until the file is fixed (`cloche intent validate`)", err, projectDir)
+		dm = &DomainMap{Version: 1}
 	}
 
 	var idx *Index

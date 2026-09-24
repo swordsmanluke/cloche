@@ -113,6 +113,7 @@ func cmdDoctor(args []string) {
 	if info, err := os.Stat(clocheDir); err == nil && info.IsDir() {
 		results = append(results, dr.checkProjectConfig())
 		results = append(results, dr.checkWorkflows())
+		results = append(results, dr.checkIntentStore())
 		results = append(results, dr.checkImageSourceDir())
 
 		imageResult := dr.checkImageBuild()
@@ -436,6 +437,26 @@ func (dr *doctorRunner) checkProjectConfig() checkResult {
 	}
 
 	return checkResult{label: label, status: checkOK}
+}
+
+// checkIntentStore verifies the daemon can load .cloche/intent/ (domains.yaml
+// and every requirement file). An unloadable store used to disable
+// injection for the whole project with no visible symptom (cloche-etr2).
+func (dr *doctorRunner) checkIntentStore() checkResult {
+	label := "Checking intent store"
+	if _, err := os.Stat(filepath.Join(dr.projectDir, ".cloche", "intent")); err != nil {
+		return checkResult{label: label, status: checkOK, detail: "no .cloche/intent/ (intent continuity dormant until the first scan)"}
+	}
+	problems, nReqs, nDomains := validateIntentStore(dr.projectDir)
+	if len(problems) > 0 {
+		return checkResult{
+			label:       label,
+			status:      checkFail,
+			detail:      strings.Join(problems, "; "),
+			remediation: "Fix or remove the unreadable file(s); until then requirements are injected without domain scoping and unreadable requirements are skipped. `cloche intent validate` lists them.",
+		}
+	}
+	return checkResult{label: label, status: checkOK, detail: fmt.Sprintf("%d requirements, %d domains", nReqs, nDomains)}
 }
 
 // scanForTODOMarkers counts files under clocheDir containing TODO(cloche-init) markers.

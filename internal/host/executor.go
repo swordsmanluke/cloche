@@ -502,9 +502,24 @@ func (e *Executor) seedIntentKV(ctx context.Context, step *domain.Step) {
 		return
 	}
 
+	// Task text comes from the task_prompt_path KV file (pipelines) or the
+	// prompt.txt `cloche run --prompt` writes; see the daemon executor's
+	// taskTextForIntent for the same rule.
 	var taskDescription string
-	if data, readErr := os.ReadFile(runcontext.PromptPath(e.ProjectDir, e.TaskID)); readErr == nil {
-		taskDescription = string(data)
+	if e.Store != nil {
+		if p, ok, _ := e.Store.GetContextKey(ctx, e.TaskID, e.AttemptID, e.HostRunID, "task_prompt_path"); ok && p != "" {
+			if !filepath.IsAbs(p) {
+				p = filepath.Join(e.ProjectDir, p)
+			}
+			if data, readErr := os.ReadFile(p); readErr == nil && len(data) > 0 {
+				taskDescription = string(data)
+			}
+		}
+	}
+	if taskDescription == "" {
+		if data, readErr := os.ReadFile(runcontext.PromptPath(e.ProjectDir, e.TaskID)); readErr == nil {
+			taskDescription = string(data)
+		}
 	}
 	query := intent.Query{
 		TaskDescription: taskDescription,
@@ -516,19 +531,22 @@ func (e *Executor) seedIntentKV(ctx context.Context, step *domain.Step) {
 
 	injection, active, err := intent.Resolve(ctx, e.ProjectDir, query, opts, cfg.Intent.Embedder)
 	if err != nil {
-		log.Printf("host executor: resolving intent injection for step %q: %v", step.Name, err)
+		log.Printf("ERROR intent: injection unavailable for project %s task %s step %q — the run continues without requirements: %v", e.ProjectDir, e.TaskID, step.Name, err)
 		return
 	}
 	if !active {
 		return
 	}
 	if setErr := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, e.HostRunID, "intent", injection.Block); setErr != nil {
-		log.Printf("host executor: seeding intent KV for step %q: %v", step.Name, setErr)
+		log.Printf("ERROR intent: seeding intent KV for project %s task %s step %q: %v", e.ProjectDir, e.TaskID, step.Name, setErr)
 	}
 	key := fmt.Sprintf("%s:%s:intent", e.WorkflowName, step.Name)
 	if setErr := e.Store.SetContextKey(ctx, e.TaskID, e.AttemptID, e.HostRunID, key, strings.Join(injection.IDs, ",")); setErr != nil {
-		log.Printf("host executor: recording injected intent IDs for step %q: %v", step.Name, setErr)
+		log.Printf("ERROR intent: recording injected intent IDs for project %s task %s step %q: %v", e.ProjectDir, e.TaskID, step.Name, setErr)
 	}
+	// IDs only — the block itself is KV content and is not logged.
+	log.Printf("intent: injected %d requirement(s) into project %s task %s step %q: %s (task text: %d bytes)",
+		len(injection.IDs), e.ProjectDir, e.TaskID, step.Name, strings.Join(injection.IDs, ","), len(taskDescription))
 }
 
 // recordPromptRevisionKV records which prompt file (if any) this step's

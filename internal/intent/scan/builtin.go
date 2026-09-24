@@ -15,6 +15,23 @@ var extractPrompt string
 //go:embed prompts/reconcile.md
 var reconcilePrompt string
 
+//go:embed prompts/repair-domains.md
+var repairDomainsPrompt string
+
+// checkDomainsScript turns the discover-domains agent's domains.csv into
+// domains.yaml via `cloche intent apply-domains`, which validates the CSV
+// and marshals the YAML itself. On a validation failure its stdout lists the
+// problems and becomes the repair-domains step's {{ $prev_output }}.
+const checkDomainsScript = `set -eu
+PROJECT_DIR="${CLOCHE_PROJECT_DIR:-.}"
+TEMP=$(cloche get temp_file_dir)
+if [ -z "$TEMP" ]; then
+  echo "error: temp_file_dir not set in KV store" >&2
+  exit 1
+fi
+cloche intent apply-domains --project "$PROJECT_DIR" --csv "$TEMP/domains.csv"
+`
+
 // collectSourcesScript forwards CLOCHE_INTENT_FULL — set by
 // intentScanWithClient's RunWorkflowRequest.Env for `cloche intent scan
 // --full`, never via the run prompt — as an explicit --full flag to
@@ -108,6 +125,17 @@ commit_intent_dir() {
   fi
   if echo "$STATUS" | grep -q "domains.yaml"; then
     SUMMARY="$SUMMARY; domains.yaml updated"
+  fi
+
+  # Never commit a store the daemon cannot load: that silently disables
+  # injection for the whole project while every later scan reports success.
+  # Put the intent dir back to its last committed state instead, and fail
+  # loudly.
+  if ! cloche intent validate --project "$PROJECT_DIR"; then
+    echo "ERROR intent: store failed validation; reverting $INTENT_DIR to its last committed state and discarding this scan's output" >&2
+    git -C "$PROJECT_DIR" checkout -- "$INTENT_DIR" 2>/dev/null || true
+    git -C "$PROJECT_DIR" clean -fdq -- "$INTENT_DIR" 2>/dev/null || true
+    exit 1
   fi
 
   export GIT_AUTHOR_NAME="${CLOCHE_GIT_AUTHOR_NAME:-cloche}"
@@ -211,7 +239,25 @@ func BuiltinWorkflow() *domain.Workflow {
 					"prompt":  discoverDomainsPrompt,
 					"timeout": "10m",
 				},
+				Results: []string{"success", "none", "fail"},
+			},
+			"check-domains": {
+				Name: "check-domains",
+				Type: domain.StepTypeScript,
+				Config: map[string]string{
+					"run": checkDomainsScript,
+				},
 				Results: []string{"success", "fail"},
+			},
+			"repair-domains": {
+				Name: "repair-domains",
+				Type: domain.StepTypeAgent,
+				Config: map[string]string{
+					"prompt":       repairDomainsPrompt,
+					"timeout":      "5m",
+					"max_attempts": "2",
+				},
+				Results: []string{"success", "fail", "give-up"},
 			},
 			"collect-sources": {
 				Name: "collect-sources",
@@ -274,8 +320,18 @@ func BuiltinWorkflow() *domain.Workflow {
 			},
 		},
 		Wiring: []domain.Wire{
-			{From: "discover-domains", Result: "success", To: "collect-sources"},
+			// discover-domains hands off a CSV; check-domains (a script)
+			// validates it and writes domains.yaml; a validation failure goes
+			// to repair-domains, which fixes the CSV's format only — bounded
+			// by its max_attempts — and comes back to the same check.
+			{From: "discover-domains", Result: "success", To: "check-domains"},
+			{From: "discover-domains", Result: "none", To: "collect-sources"},
 			{From: "discover-domains", Result: "fail", To: "abort-cleanup"},
+			{From: "check-domains", Result: "success", To: "collect-sources"},
+			{From: "check-domains", Result: "fail", To: "repair-domains"},
+			{From: "repair-domains", Result: "success", To: "check-domains"},
+			{From: "repair-domains", Result: "fail", To: "abort-cleanup"},
+			{From: "repair-domains", Result: "give-up", To: "abort-cleanup"},
 			{From: "collect-sources", Result: "success", To: "extract"},
 			{From: "collect-sources", Result: "none", To: "commit"},
 			{From: "collect-sources", Result: "fail", To: "abort-cleanup"},

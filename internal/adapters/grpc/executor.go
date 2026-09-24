@@ -739,10 +739,13 @@ func (d *DaemonExecutor) seedIntentKV(ctx context.Context, step *domain.Step, wf
 		return
 	}
 
-	var taskDescription string
-	if data, readErr := os.ReadFile(runcontext.PromptPath(d.projectDir, d.taskID)); readErr == nil {
-		taskDescription = string(data)
-	}
+	// The retrieval query needs the task's text. Pipelines pass prompts as a
+	// file path in KV (task_prompt_path — KV values are capped at 1 KB, so
+	// the text itself never travels through KV); `cloche run --prompt`
+	// writes .cloche/runs/<task-id>/prompt.txt instead. Without either, the
+	// query is just "<step> <workflow>" and selection is the same for every
+	// task (cloche-hbcv).
+	taskDescription := taskTextForIntent(ctx, d.store, d.projectDir, d.taskID, d.attemptID, hostRunID)
 	query := intent.Query{
 		TaskDescription: taskDescription,
 		StepPromptName:  step.Name,
@@ -753,19 +756,43 @@ func (d *DaemonExecutor) seedIntentKV(ctx context.Context, step *domain.Step, wf
 
 	injection, active, err := intent.Resolve(ctx, d.projectDir, query, opts, daemonCfg.Intent.Embedder)
 	if err != nil {
-		log.Printf("daemon executor: resolving intent injection for step %q: %v", step.Name, err)
+		log.Printf("ERROR intent: injection unavailable for project %s task %s step %q — the run continues without requirements: %v", d.projectDir, d.taskID, step.Name, err)
 		return
 	}
 	if !active {
 		return
 	}
 	if setErr := d.store.SetContextKey(ctx, d.taskID, d.attemptID, hostRunID, "intent", injection.Block); setErr != nil {
-		log.Printf("daemon executor: seeding intent KV for step %q: %v", step.Name, setErr)
+		log.Printf("ERROR intent: seeding intent KV for project %s task %s step %q: %v", d.projectDir, d.taskID, step.Name, setErr)
 	}
 	key := fmt.Sprintf("%s:%s:intent", wf.Name, step.Name)
 	if setErr := d.store.SetContextKey(ctx, d.taskID, d.attemptID, hostRunID, key, strings.Join(injection.IDs, ",")); setErr != nil {
-		log.Printf("daemon executor: recording injected intent IDs for step %q: %v", step.Name, setErr)
+		log.Printf("ERROR intent: recording injected intent IDs for project %s task %s step %q: %v", d.projectDir, d.taskID, step.Name, setErr)
 	}
+	// IDs only — the block itself is KV content and is not logged.
+	log.Printf("intent: injected %d requirement(s) into project %s task %s step %q: %s (task text: %d bytes)",
+		len(injection.IDs), d.projectDir, d.taskID, step.Name, strings.Join(injection.IDs, ","), len(taskDescription))
+}
+
+// taskTextForIntent returns the task's prompt text for retrieval: the file
+// named by the task_prompt_path KV key (project-relative or absolute) when
+// a pipeline set one, else the prompt.txt `cloche run --prompt` writes, else
+// empty.
+func taskTextForIntent(ctx context.Context, store ports.RunStore, projectDir, taskID, attemptID, hostRunID string) string {
+	if store != nil {
+		if p, ok, _ := store.GetContextKey(ctx, taskID, attemptID, hostRunID, "task_prompt_path"); ok && p != "" {
+			if !filepath.IsAbs(p) {
+				p = filepath.Join(projectDir, p)
+			}
+			if data, err := os.ReadFile(p); err == nil && len(data) > 0 {
+				return string(data)
+			}
+		}
+	}
+	if data, err := os.ReadFile(runcontext.PromptPath(projectDir, taskID)); err == nil {
+		return string(data)
+	}
+	return ""
 }
 
 // recordPromptRevisionKV is the container-tier counterpart of

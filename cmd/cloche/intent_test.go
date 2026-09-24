@@ -1177,3 +1177,40 @@ func TestIntentScan_EndToEnd_FixtureProject(t *testing.T) {
 		t.Fatalf("expected the second scan to be quiet")
 	}
 }
+
+func TestValidateIntentStore_ReportsEveryUnloadableFile(t *testing.T) {
+	dir := t.TempDir()
+	reqDir := filepath.Join(dir, ".cloche", "intent", "requirements")
+	if err := os.MkdirAll(reqDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The exact shape that disabled injection in the A/B replications: an
+	// unquoted description containing ": ".
+	broken := "version: 1\ndomains:\n  - name: errors\n    description: Shared `line N: <message>` formatting\n    paths: [\"bract/errors.py\"]\n"
+	if err := os.WriteFile(filepath.Join(dir, ".cloche", "intent", "domains.yaml"), []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	good := "---\nid: req-good\nstatus: active\nscope:\n    level: project\nconfidence: high\n---\n\nFine.\n"
+	if err := os.WriteFile(filepath.Join(reqDir, "req-good.md"), []byte(good), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(reqDir, "req-bad.md"), []byte("no frontmatter"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	problems, nReqs, nDomains := validateIntentStore(dir)
+	if len(problems) != 2 {
+		t.Fatalf("want 2 problems, got %d: %v", len(problems), problems)
+	}
+	if !strings.Contains(problems[0], "domains.yaml") || !strings.Contains(problems[1], "req-bad.md") {
+		t.Fatalf("unexpected problems: %v", problems)
+	}
+	if nReqs != 1 || nDomains != 0 {
+		t.Fatalf("want 1 requirement and 0 domains loaded, got %d/%d", nReqs, nDomains)
+	}
+
+	// No intent dir at all is not a problem.
+	if p, _, _ := validateIntentStore(t.TempDir()); p != nil {
+		t.Fatalf("expected no problems for a project without an intent dir, got %v", p)
+	}
+}

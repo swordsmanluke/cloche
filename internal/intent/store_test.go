@@ -89,17 +89,21 @@ func TestStore_GetRequirement_RoundTrip(t *testing.T) {
 	assert.Equal(t, created, got)
 }
 
-func TestStore_ListRequirements_MalformedFileYieldsError(t *testing.T) {
+func TestStore_ListRequirements_MalformedFileIsSkippedNotFatal(t *testing.T) {
+	// One unreadable file must not take the whole store out of injection
+	// (cloche-etr2): it is skipped (and logged) and the rest still load.
 	dir := t.TempDir()
 	reqDir := filepath.Join(dir, ".cloche", "intent", "requirements")
 	require.NoError(t, os.MkdirAll(reqDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(reqDir, "req-bad0.md"), []byte("not frontmatter at all"), 0o644))
+	good := "---\nid: req-good\nstatus: active\nscope:\n    level: project\nconfidence: high\n---\n\nA fine requirement.\n"
+	require.NoError(t, os.WriteFile(filepath.Join(reqDir, "req-good.md"), []byte(good), 0o644))
 
 	store := intent.NewStore(dir)
 	reqs, err := store.ListRequirements()
-	require.Error(t, err)
-	assert.Nil(t, reqs)
-	assert.Contains(t, err.Error(), "req-bad0.md")
+	require.NoError(t, err)
+	require.Len(t, reqs, 1)
+	assert.Equal(t, "req-good", reqs[0].ID)
 }
 
 func TestStore_ListRequirements_UsesMtimeCache(t *testing.T) {

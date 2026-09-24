@@ -1,14 +1,16 @@
 # Discover the Project Domain Map
 
-Maintain `.cloche/intent/domains.yaml`, the map of this project's major
-architectural systems. This is what lets injected requirements be scoped to
-the part of the codebase a task actually touches instead of firehosed at
-every prompt.
+Identify this project's major architectural systems — the map that lets
+injected requirements be scoped to the part of the codebase a task actually
+touches instead of firehosed at every prompt. You write a plain CSV list;
+a script turns it into `.cloche/intent/domains.yaml`. Never write or edit
+`domains.yaml` yourself.
 
 ## Setup
 
 ```bash
 DOMAINS_FILE="$CLOCHE_PROJECT_DIR/.cloche/intent/domains.yaml"
+OUT="$(cloche get temp_file_dir)/domains.csv"
 ```
 
 ## Mode
@@ -20,50 +22,46 @@ DOMAINS_FILE="$CLOCHE_PROJECT_DIR/.cloche/intent/domains.yaml"
   `docs/plans/*design*.md` files to understand the project's major systems.
   Propose 5–12 domains — enough to be useful for scoping, not so many that
   they're noise. Prefer domains that map to a package or a small cluster of
-  related packages over one domain per file. On a `--full` re-survey of an
-  existing `$DOMAINS_FILE`, still respect the hard rule below — a full
-  survey may propose new domains and description touch-ups, never rewrite a
-  `user_edited: true` domain.
+  related packages over one domain per file.
 - **Otherwise** (`$DOMAINS_FILE` already exists and no forced full
-  re-survey): read it first. Propose only additions for genuinely new
-  top-level packages or doc areas that don't fit an existing domain, and
-  description touch-ups for domains whose scope has visibly drifted from
-  their `paths`. Leave everything else alone.
+  re-survey): read it first. Keep every existing domain, and add only
+  genuinely new top-level packages or doc areas that don't fit an existing
+  domain, plus description touch-ups for domains whose scope has visibly
+  drifted from their `paths`. If nothing needs to change, write nothing and
+  report `none`.
 
-## Hard rule: respect `user_edited`
+Domains marked `user_edited: true` in `$DOMAINS_FILE` were written or
+corrected by a human. Copy them into your list unchanged; the script keeps
+them as they are regardless of what you write for them.
 
-A domain entry may carry `user_edited: true` — a human wrote or corrected
-it. **Never modify or remove a `user_edited: true` domain's `name`,
-`description`, or `paths`.** You may still add new, separate domains.
+## Output
 
-## Format
+Write `$OUT` — the **full** list of domains that should exist (existing ones
+you are keeping, plus any additions), as CSV with exactly this header:
 
-```yaml
-version: 1
-domains:
-  - name: workflow-dsl
-    description: The .cloche workflow DSL — parser, validation, step types, wiring.
-    paths: ["internal/dsl/**", "docs/workflows.md"]
-  - name: versioning
-    description: Version string management, release process, changelog.
-    paths: ["internal/version/**", "docs/plans/*release*"]
-    user_edited: true
+```csv
+name,description,paths
+workflow-dsl,"The .cloche workflow DSL — parser, validation, step types, wiring.",internal/dsl/**;docs/workflows.md
+versioning,"Version string management, release process, changelog.",internal/version/**;docs/plans/*release*
 ```
 
-- `name` — short, kebab-case, stable (it's referenced by requirements'
-  `scope.domains`; renaming one orphans existing scoping until the next
-  scan reconciles it — prefer adding a new domain over renaming unless the
-  old name is clearly wrong).
+- `name` — short, kebab-case (`[a-z0-9-]`), stable: it's referenced by
+  requirements' `scope.domains`, so prefer adding a new domain over renaming
+  one.
 - `description` — one sentence, specific enough to disambiguate from
-  neighboring domains.
-- `paths` — glob patterns (relative to the project root) covering the
-  domain's source and docs.
-- Omit `user_edited` on domains you write or touch yourself; only a human
-  edit (via the dashboard or `cloche intent`) sets it to `true`.
+  neighbouring domains.
+- `paths` — one or more glob patterns relative to the project root,
+  separated by `;`.
+- Standard CSV quoting: wrap a field in double quotes if it contains a
+  comma, a double quote (write it as `""`), or a line break. Nothing else is
+  special — do not escape colons, backticks or anything else.
+
+A script validates the file and reports back if anything is malformed; you
+will get one chance to fix the CSV before the scan aborts.
 
 ## Results
 
-- Emit `CLOCHE_RESULT:success` once `$DOMAINS_FILE` is written (or, on an
-  incremental scan, confirmed to need no changes).
-- Emit `CLOCHE_RESULT:fail` if the project layout can't be read or the file
-  can't be written.
+- Emit `CLOCHE_RESULT:success` once `$OUT` is written.
+- Emit `CLOCHE_RESULT:none` on an incremental scan where the existing map
+  needs no changes (do not write `$OUT`).
+- Emit `CLOCHE_RESULT:fail` if the project layout can't be read.

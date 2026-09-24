@@ -67,6 +67,10 @@ Subcommands:
 		cmdIntentCollectSources(args[1:])
 	case "apply-reconcile":
 		cmdIntentApplyReconcile(args[1:])
+	case "apply-domains":
+		cmdIntentApplyDomains(args[1:])
+	case "validate":
+		cmdIntentValidate(args[1:])
 	default:
 		if err := intentCommand(args[0], args[1:], os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -924,6 +928,136 @@ func runIntentCollectSources(projectDir, outDir string, full bool) (*scan.Collec
 	}
 
 	return collection, next.LastScanStats, nil
+}
+
+// cmdIntentApplyDomains is the intent-scan's check-domains step: it turns the
+// discover-domains agent's domains.csv into domains.yaml. The agent never
+// writes YAML itself (a hand-written description containing ": " once
+// silently disabled injection for a whole project, cloche-etr2). Validation
+// problems are printed to stdout, one per line, and the command exits 1 —
+// that output is what the repair-domains step hands back to the agent.
+func cmdIntentApplyDomains(args []string) {
+	projectDir, _ := os.Getwd()
+	csvPath := ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--project":
+			if i+1 < len(args) {
+				i++
+				projectDir = args[i]
+			}
+		case "--csv":
+			if i+1 < len(args) {
+				i++
+				csvPath = args[i]
+			}
+		}
+	}
+	if csvPath == "" {
+		fmt.Fprintln(os.Stderr, "error: --csv is required")
+		os.Exit(1)
+	}
+	data, err := os.ReadFile(csvPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Printf("%s was not written. Write the full domain list there as CSV (header: name,description,paths; paths separated by ';') and report success.\n", csvPath)
+		} else {
+			fmt.Printf("%s could not be read: %v\n", csvPath, err)
+		}
+		os.Exit(1)
+	}
+	domains, problems := scan.ParseDomainsCSV(data)
+	if len(problems) > 0 {
+		fmt.Printf("%s failed validation:\n", csvPath)
+		for _, p := range problems {
+			fmt.Printf("  - %s\n", p)
+		}
+		fmt.Println("Fix the CSV file — only the CSV file — and report success.")
+		os.Exit(1)
+	}
+	absProjectDir, err := filepath.Abs(projectDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: resolving project dir: %v\n", err)
+		os.Exit(1)
+	}
+	store := intent.NewStore(absProjectDir)
+	existing, err := store.LoadDomains()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR intent: existing domains.yaml is unreadable (%v); rebuilding it from the proposal\n", err)
+		existing = &intent.DomainMap{Version: 1}
+	}
+	merged, notes := scan.MergeDomains(existing, domains)
+	if err := store.SaveDomains(merged); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	kept := 0
+	for _, d := range merged.Domains {
+		if d.UserEdited {
+			kept++
+		}
+	}
+	fmt.Printf("domains.yaml written: %d domains (%d user-edited kept as-is)\n", len(merged.Domains), kept)
+	for _, n := range notes {
+		fmt.Printf("  %s\n", n)
+	}
+}
+
+// cmdIntentValidate checks that the daemon will be able to load the intent
+// store: domains.yaml parses and every requirement file parses. The scan's
+// commit step refuses to commit a store that fails this, and `cloche doctor`
+// reports it, because a store the daemon cannot load silently disables
+// injection for the whole project.
+func cmdIntentValidate(args []string) {
+	projectDir, _ := os.Getwd()
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--project" && i+1 < len(args) {
+			i++
+			projectDir = args[i]
+		}
+	}
+	absProjectDir, err := filepath.Abs(projectDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: resolving project dir: %v\n", err)
+		os.Exit(1)
+	}
+	problems, nReqs, nDomains := validateIntentStore(absProjectDir)
+	if len(problems) > 0 {
+		for _, p := range problems {
+			fmt.Printf("ERROR intent: %s\n", p)
+		}
+		os.Exit(1)
+	}
+	fmt.Printf("intent store OK: %d requirements, %d domains\n", nReqs, nDomains)
+}
+
+// validateIntentStore returns every load problem in the project's intent
+// store (none if the store does not exist), plus the counts it loaded.
+func validateIntentStore(projectDir string) (problems []string, nReqs, nDomains int) {
+	store := intent.NewStore(projectDir)
+	if _, err := os.Stat(store.IntentDir()); err != nil {
+		return nil, 0, 0
+	}
+	dm, err := store.LoadDomains()
+	if err != nil {
+		problems = append(problems, err.Error())
+	} else {
+		nDomains = len(dm.Domains)
+	}
+	files, _ := filepath.Glob(filepath.Join(store.IntentDir(), "requirements", "*.md"))
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("reading %s: %v", filepath.Base(f), err))
+			continue
+		}
+		if _, err := intent.ParseRequirement(data); err != nil {
+			problems = append(problems, fmt.Sprintf("%s: %v", filepath.Base(f), err))
+			continue
+		}
+		nReqs++
+	}
+	return problems, nReqs, nDomains
 }
 
 func cmdIntentApplyReconcile(args []string) {

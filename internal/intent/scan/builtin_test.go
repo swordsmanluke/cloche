@@ -29,11 +29,17 @@ func TestBuiltinWorkflow_Shape(t *testing.T) {
 	assert.Equal(t, "intent-scan", wf.Name)
 	assert.True(t, wf.Builtin)
 	assert.Equal(t, "discover-domains", wf.EntryStep)
-	assert.Len(t, wf.Steps, 8)
+	assert.Len(t, wf.Steps, 10)
 
 	wantWires := map[string]string{
-		"discover-domains:success": "collect-sources",
+		"discover-domains:success": "check-domains",
+		"discover-domains:none":    "collect-sources",
 		"discover-domains:fail":    "abort-cleanup",
+		"check-domains:success":    "collect-sources",
+		"check-domains:fail":       "repair-domains",
+		"repair-domains:success":   "check-domains",
+		"repair-domains:fail":      "abort-cleanup",
+		"repair-domains:give-up":   "abort-cleanup",
 		"collect-sources:success":  "extract",
 		"collect-sources:none":     "commit",
 		"collect-sources:fail":     "abort-cleanup",
@@ -70,7 +76,7 @@ func TestBuiltinWorkflow_Shape(t *testing.T) {
 func TestBuiltinWorkflow_ScriptsAreDashCompatible(t *testing.T) {
 	wf := scan.BuiltinWorkflow()
 
-	for _, name := range []string{"collect-sources", "check-reconcile", "apply-reconcile", "commit", "abort-cleanup"} {
+	for _, name := range []string{"check-domains", "collect-sources", "check-reconcile", "apply-reconcile", "commit", "abort-cleanup"} {
 		step, ok := wf.Steps[name]
 		require.True(t, ok, "step %s should exist", name)
 		script := step.Config["run"]
@@ -100,10 +106,31 @@ func runGitCommit(t *testing.T, dir string, args ...string) string {
 // pointing at a file standing in for apply-reconcile's captured stdout.
 func runCommitScript(t *testing.T, dir, prevOutputFile string) (string, error) {
 	t.Helper()
-	script := scan.BuiltinWorkflow().Steps["commit"].Config["run"]
+	return runIntentDirScript(t, "commit", dir, prevOutputFile)
+}
+
+// stubClocheBin returns a directory holding a stub `cloche` whose
+// `intent validate` reports success (the fixtures here are valid) and whose
+// `get temp_file_dir` prints `temp`; everything else exits 0 silently. The
+// scripts under test must not depend on whichever real cloche is installed.
+func stubClocheBin(t *testing.T, temp string) string {
+	t.Helper()
+	bin := t.TempDir()
+	stub := "#!/bin/sh\n" +
+		"if [ \"$1\" = get ] && [ \"$2\" = temp_file_dir ]; then echo '" + temp + "'; exit 0; fi\n" +
+		"if [ \"$1\" = intent ] && [ \"$2\" = validate ]; then echo 'intent store OK (stub)'; exit 0; fi\n" +
+		"exit 0\n"
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "cloche"), []byte(stub), 0755))
+	return bin
+}
+
+func runIntentDirScript(t *testing.T, step, dir, prevOutputFile string) (string, error) {
+	t.Helper()
+	script := scan.BuiltinWorkflow().Steps[step].Config["run"]
 	cmd := exec.Command("sh", "-c", script)
 	cmd.Dir = dir
 	env := append(os.Environ(), "CLOCHE_PROJECT_DIR="+dir,
+		"PATH="+stubClocheBin(t, t.TempDir())+":"+os.Getenv("PATH"),
 		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
 		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com")
 	if prevOutputFile != "" {
@@ -210,6 +237,7 @@ func (e *scriptedExecutor) Execute(_ context.Context, step *domain.Step) (domain
 func TestBuiltinWorkflow_ReconcileNone_SkipsApplyReconcile(t *testing.T) {
 	exec := &scriptedExecutor{results: map[string]string{
 		"discover-domains": "success",
+		"check-domains":    "success",
 		"collect-sources":  "success",
 		"extract":          "success",
 		"reconcile":        "none",
@@ -232,6 +260,7 @@ func TestBuiltinWorkflow_ReconcileNone_SkipsApplyReconcile(t *testing.T) {
 func TestBuiltinWorkflow_ApplyReconcileFail_FailsRun(t *testing.T) {
 	exec := &scriptedExecutor{results: map[string]string{
 		"discover-domains": "success",
+		"check-domains":    "success",
 		"collect-sources":  "success",
 		"extract":          "success",
 		"reconcile":        "success",
@@ -258,6 +287,7 @@ func TestBuiltinWorkflow_ApplyReconcileFail_FailsRun(t *testing.T) {
 func TestBuiltinWorkflow_ReconcileClaimsSuccessWithoutOutput_RetriesThenAborts(t *testing.T) {
 	exec := &scriptedExecutor{results: map[string]string{
 		"discover-domains": "success",
+		"check-domains":    "success",
 		"collect-sources":  "success",
 		"extract":          "success",
 		"reconcile":        "success",
@@ -317,6 +347,7 @@ func TestCheckReconcileScript(t *testing.T) {
 func TestBuiltinWorkflow_CollectSourcesNone_StillCommits(t *testing.T) {
 	exec := &scriptedExecutor{results: map[string]string{
 		"discover-domains": "success",
+		"check-domains":    "success",
 		"collect-sources":  "none",
 		"commit":           "success",
 	}}
@@ -326,7 +357,7 @@ func TestBuiltinWorkflow_CollectSourcesNone_StillCommits(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, domain.RunStateSucceeded, run.State)
-	assert.Equal(t, []string{"discover-domains", "collect-sources", "commit"}, exec.executed)
+	assert.Equal(t, []string{"discover-domains", "check-domains", "collect-sources", "commit"}, exec.executed)
 }
 
 func TestBuiltinWorkflow_CommitScript_IgnoresNonSummaryPrevOutput(t *testing.T) {
@@ -355,14 +386,7 @@ func TestBuiltinWorkflow_CommitScript_IgnoresNonSummaryPrevOutput(t *testing.T) 
 // runAbortCleanupScript mirrors runCommitScript for the abort-cleanup step.
 func runAbortCleanupScript(t *testing.T, dir string) (string, error) {
 	t.Helper()
-	script := scan.BuiltinWorkflow().Steps["abort-cleanup"].Config["run"]
-	cmd := exec.Command("sh", "-c", script)
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "CLOCHE_PROJECT_DIR="+dir,
-		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
-		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com")
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+	return runIntentDirScript(t, "abort-cleanup", dir, "")
 }
 
 func TestBuiltinWorkflow_AbortCleanupScript_RevertsCursorCommitsRest(t *testing.T) {
@@ -410,4 +434,45 @@ func TestBuiltinWorkflow_AbortCleanupScript_NoOpWhenClean(t *testing.T) {
 	out, err := runAbortCleanupScript(t, dir)
 	require.NoError(t, err, out)
 	assert.Equal(t, before, runGitCommit(t, dir, "rev-parse", "HEAD"))
+}
+
+// TestBuiltinWorkflow_DomainsRepairLoop: a domains.csv that fails validation
+// goes to repair-domains and back to check-domains, never straight to abort.
+func TestBuiltinWorkflow_DomainsRepairLoop(t *testing.T) {
+	calls := 0
+	exec := &sequencedExecutor{results: map[string][]string{
+		"discover-domains": {"success"},
+		"check-domains":    {"fail", "success"},
+		"repair-domains":   {"success"},
+		"collect-sources":  {"none"},
+		"commit":           {"success"},
+	}, calls: &calls}
+
+	eng := engine.New(exec)
+	run, err := eng.Run(context.Background(), scan.BuiltinWorkflow())
+	require.NoError(t, err)
+
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+	assert.Equal(t, []string{"discover-domains", "check-domains", "repair-domains", "check-domains", "collect-sources", "commit"}, exec.executed)
+}
+
+// sequencedExecutor is scriptedExecutor with a per-step result sequence, for
+// steps that are expected to run more than once.
+type sequencedExecutor struct {
+	results  map[string][]string
+	executed []string
+	calls    *int
+}
+
+func (e *sequencedExecutor) Execute(_ context.Context, step *domain.Step) (domain.StepResult, error) {
+	e.executed = append(e.executed, step.Name)
+	seq := e.results[step.Name]
+	if len(seq) == 0 {
+		return domain.StepResult{}, nil
+	}
+	r := seq[0]
+	if len(seq) > 1 {
+		e.results[step.Name] = seq[1:]
+	}
+	return domain.StepResult{Result: r}, nil
 }
