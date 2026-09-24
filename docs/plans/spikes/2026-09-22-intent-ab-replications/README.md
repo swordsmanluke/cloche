@@ -219,8 +219,30 @@ per-commit D4 check:
   selected* and it argues for a larger budget or a project-level cap before the next
   round, not for harder tasks.
 
-Replications 2–3 started 19:09 UTC; the extractor audit on `x5/results/arm-b-r*-intent`
-runs when they finish.
+### Replication 2
+
+| | corpus | traps | audit | lost |
+|---|---|---|---|---|
+| arm A r2 | 48/48 | 16/16 | 17/18 | SC3 (`line N:` duplicated across `cli.py`, `errors.py`) |
+| arm B r2 | 48/48 | 16/16 | **18/18** | — |
+
+Both arms 12/12 first-attempt, 12/12 merges. Arm B's scans ran five repair loops
+(domains ×2, candidates ×1, reconcile ×2 — every one an unquoted comma in a free-text
+field), all fixed on the first retry; 0 give-ups, 0 `ERROR intent`. Store at the end:
+32 requirements, only 2 project-level (`req-624b` "fix the implementation, never the
+tests", `req-f276` test command), so each injection carried 5–7 requirements with 3–5
+domain-scoped slots.
+
+Selection, from the injection record: the SC3 requirement (`req-0138`, "every error …
+`line N: <message>` … sourced from one place") was injected into tasks 7–12 including
+task 11 (polish / standing-constraint audit), and the final tree passes SC3 — while arm
+A lost SC3 in both r1 and r2. The D2 requirement (`req-0a08`, no Python call stack) was
+injected into task 7 only; the D4 requirement (`req-7ff3`) into none of 9–12 (as in r1);
+both passed on the strength of the task's own implementation. Traps Q1–Q6 were injected
+into tasks 3–6 as expected.
+
+Replication 3 started 19:56 UTC; the extractor audit on `x5/results/arm-b-r*-intent`
+runs when it finishes.
 
 ## Reading
 
