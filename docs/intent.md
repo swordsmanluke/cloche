@@ -114,12 +114,24 @@ Extraction is an agent job, run through Cloche itself. `intent-scan` is a **buil
 host workflow** — its graph, agent prompts, and script steps are compiled into the
 `cloched`/`cloche` binaries (see [`docs/workflows.md`](workflows.md#built-in-workflows)),
 so it's available in any project with no setup. `cloche intent scan` (alias for
-`cloche run intent-scan`) dispatches it; the workflow has six steps:
+`cloche run intent-scan`) dispatches it. Every agent step hands off a plain CSV
+file; a script step validates it and writes the real artifact (`domains.yaml`,
+`candidates.json`, `reconcile.json`). A malformed hand-off goes to a small
+*repair* agent step that fixes the CSV's format only — never redoing the
+judgment — bounded by `max_attempts`; an agent that reports success without
+writing its file is re-run. No agent ever writes YAML or JSON itself: a
+hand-written `domains.yaml` with an unquoted `: ` once disabled injection for a
+whole project while every scan kept reporting success.
 
-1. **discover-domains** — surveys the repo layout and proposes/updates
-   `domains.yaml`. Full survey on first scan (or on a `--full` run, regardless of
-   whether `domains.yaml` already exists); incremental proposals otherwise,
-   respecting `user_edited` domains.
+1. **discover-domains** — surveys the repo layout and writes the full domain
+   list as `domains.csv` (`name,description,paths`, paths separated by `;`).
+   Full survey on first scan (or on a `--full` run); incremental additions and
+   touch-ups otherwise (`none` when nothing changes).
+   **check-domains** (`cloche intent apply-domains`) validates it, merges it
+   with the existing map — `user_edited` domains are kept verbatim by
+   construction, whatever the agent wrote for them — and writes `domains.yaml`
+   via the YAML marshaller. Problems → **repair-domains** (2 attempts) → back
+   to the check.
 2. **collect-sources** — deterministic, no LLM. Gathers material changed since the
    last scan: doc files (`CLAUDE.md`, `README*`, `docs/**/*.md`,
    `.cloche/prompts/**` by default), completed-run transcripts and task prompts not
@@ -129,33 +141,42 @@ so it's available in any project with no setup. `cloche intent scan` (alias for
    cursors (doc hashes, last commit, scanned runs) are reset for this run, so
    everything is re-mined from scratch.
 3. **extract** — reads the collected material plus `domains.yaml` and writes
-   candidate requirements: statement, rationale, proposed scope, confidence,
-   provenance, and 2–5 retrieval hints per candidate. Only durable, prescriptive
-   intent is extracted — not task-specific instructions, facts derivable from
-   reading the code, or transient state.
-4. **reconcile** — compares candidates against existing requirements and, for each,
-   decides **create** (novel), **merge** (already tracked, no-op), **supersede**
-   (contradicts an active requirement with newer evidence — a new file is created,
-   the old one flipped to `status: superseded`), or **drop** (not durable intent
-   after all). Emits `none` when `extract` found zero candidates; like
-   collect-sources' `none`, this skips straight to **commit** rather than falling
-   through to `apply-reconcile` with no `reconcile.json` to apply.
-5. **check-reconcile** — a script that verifies `reconcile.json` actually exists
-   and is non-empty before trusting reconcile's `success`. An agent that claims
-   success without writing its output is routed back to **reconcile** with a
-   message saying so; reconcile has `max_attempts = 3`, after which the scan
-   aborts via `give-up`.
-6. **apply-reconcile** — a post-step validation script that writes the reconcile
-   step's decisions to `.cloche/intent/` and enforces the hard rules regardless of
-   what the agent proposed:
+   `candidates.csv`: statement, rationale, proposed scope, 2–5 retrieval hints,
+   confidence and provenance per candidate (a header-only file means nothing
+   qualified). Only durable, prescriptive intent is extracted — not
+   task-specific instructions, facts derivable from reading the code, or
+   transient state. **check-candidates** (`cloche intent check-candidates`)
+   validates every row (enums, domain names from `domains.yaml`, hints) and
+   writes `candidates.json`, adding timestamps. Missing file → extract re-runs
+   (2 attempts); malformed → **repair-candidates** (2 attempts).
+4. **reconcile** — compares the candidates against existing requirements and
+   writes `reconcile.csv`, one row per candidate in order: **create** (novel),
+   **merge** (already tracked, no-op), **supersede** (contradicts an active
+   requirement with newer evidence — a new file is created, the old one flipped
+   to `status: superseded`), or **drop** (not durable intent after all). For
+   create/supersede, blank columns mean "as in the candidate". Emits `none`
+   when `extract` found zero candidates; like collect-sources' `none`, this
+   skips straight to **commit**.
+5. **check-reconcile** (`cloche intent check-reconcile`) — validates the CSV's
+   shape (exactly one row per candidate, valid actions and ids) *and* the
+   store's hard rules below, then writes `reconcile.json`. Missing file with
+   candidates pending → reconcile re-runs (`max_attempts = 3`, then `give-up`);
+   malformed or rule-violating → **repair-reconcile** (2 attempts), which fixes
+   only the rows named.
+6. **apply-reconcile** — writes the reconcile decisions to `.cloche/intent/`
+   through the requirement store, re-checking the hard rules regardless of what
+   the agent proposed:
    - A `disabled` requirement is never re-enabled or superseded away.
    - A `user_edited` requirement's statement and scope are never rewritten in
      place — only `supersede` may touch it, and only its status.
    - Nothing is ever deleted; `superseded` is the terminal state.
-7. **commit** — stages and commits any changes under `.cloche/intent/` (and only
-   that path — never `git add -A` / `git commit -a`), so a scan never leaves the
-   main worktree dirty for a human or a later container-authored merge step to
-   clean up. No-ops cleanly (no empty commit) when the scan found nothing new. The
+7. **commit** — first runs `cloche intent validate`: a store the daemon cannot
+   load (unparseable `domains.yaml` or requirement file) is never committed —
+   the intent directory is reverted to its last committed state and the step
+   fails loudly instead. Then stages and commits any changes under
+   `.cloche/intent/` (and only that path — never `git add -A` / `git commit
+   -a`), so a scan never leaves the main worktree dirty for a human or a later
+   container-authored merge step to clean up. No-ops cleanly (no empty commit) when the scan found nothing new. The
    commit message reports what `apply-reconcile` actually did (counts of created,
    superseded, merged, and dropped candidates) plus whether `domains.yaml`
    changed. Retries a few times on index-lock contention (e.g. a concurrent scan
