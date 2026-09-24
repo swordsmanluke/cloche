@@ -127,7 +127,10 @@ string indexing is exclusively through the `at`/`sub` builtins (§6).
 ## 4. Scoping
 
 Blocks (`{ ... }`) introduce a new lexical scope, including the bodies of
-`if`/`else`/`while` and `fn`. `fn` values close over their defining
+`if`/`else`/`while` and `fn`. A block's scope is created fresh every time
+the block is entered: each `while` iteration and each function call starts with
+an empty innermost scope, so a `let` inside a loop body declares anew on every
+iteration rather than colliding with the previous iteration's binding. `fn` values close over their defining
 environment (real closures — a returned inner `fn` still sees its outer
 `let` bindings after the outer call returns). Name resolution walks the
 scope chain from innermost to outermost; both `let`-declare and `set`-reassign
@@ -296,7 +299,10 @@ this version of the spec, and none of arithmetic on strings, indexing syntax
 ## 7. Arithmetic
 
 `+ - * /` operate on two `Integer`s and produce an `Integer`; mixing in any
-other type is a type error (§5, Q3, covers the `+`-on-strings special case
+other type is a type error. The ordering comparisons `< > <= >=` likewise take
+two `Integer`s and produce a `Boolean`: applying one to strings, booleans or
+`nil` is a runtime type error (`line N: '<' expects integers`, and likewise for
+the other three) — never a lexicographic or truthiness comparison (§5, Q3, covers the `+`-on-strings special case
 specifically because it's a trap; the same "type error, not coercion"
 principle applies to every other mismatched pairing). `%` is remainder,
 defined so that `(a / b) * b + (a % b) == a` — Bract does not specify which
