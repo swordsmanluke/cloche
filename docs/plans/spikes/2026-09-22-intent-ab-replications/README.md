@@ -258,35 +258,101 @@ parsing". r2's single noise item is the "working name Sprout was rejected" trivi
 needed the repair call once (r2: line 54, 11 columns — the same unquoted-comma slip the
 scan agents make).
 
-Replication 3 started 19:56 UTC.
+### Replication 3
 
-## Reading
+| | corpus | traps | audit | lost |
+|---|---|---|---|---|
+| arm A r3 | **45/48** | 16/16 | 16/18 | D2, SC3 (`line N:` duplicated across `cli.py`, `evaluator.py`, `lexer.py`, `parser.py`) |
+| arm B r3 | 48/48 | 16/16 | 17/18 | D2 |
 
-- **The primary question is not answered by this round, and could not have been.**
-  Round one's arm B and the x3 control injected generic constraints only (defect 2), and
-  even with task-specific injection Haiku sits at the corpus ceiling on this task list
-  (median 48/48 in both arms). Whatever intent continuity does for a weaker model,
-  seed-v2 + Haiku has no headroom to show it. The single signal in the predicted
-  direction — arm A dropping a drift correction (D4) once, arm B never — is one event.
-- **The secondary question has a clear answer.** The extractor recalls every planted
-  constraint from a clean seed (24/24 twice), produces mostly valid unseeded
-  requirements, and does extract rules from incidents (`req-a2c2`). It also extracts
-  whatever else is in the history, including experiment scaffolding — a hygiene
-  requirement on the seed, not a flaw in the mechanism.
-- **The pipeline is now correct for the experiment**: task-specific injection (verified
-  by preview and by the per-task prompt file), test-gated steps, infra monitors, and an
-  audit with the false negatives/positives removed.
+Arm A's three corpus misses: `str-at-non-string-error` (message printed as `at expects a
+string`, no quotes) and `fn-recursion` + `cf-if-else-chain`, where a `return` inside an
+`if` body evaluated through the task-5 "thunk" path escapes as a raw Python
+`ReturnValue` exception with a traceback — its iterative-evaluator attempt broke
+`return`-in-block and nothing later caught it. Arm B r3: three scan repairs (all
+recovered), 0 `ERROR intent`; store 35 requirements, 7 project-level. Its D2 requirement
+(`req-da4e`, "the evaluator must be iterative", created after task 5) was injected into
+tasks 6–8 and the tree still recurses — the same "injected, not acted on" shape as x4 B
+r2's SC3, on a check the reference implementation fails too. SC3's requirement
+(`req-b696`) was injected into tasks 3, 7, 8, 10, 12 and SC3 passes.
+
+Extractor audit r3: 35 graded, seeded recall **21/24** (Q1 Boolean-condition, SC7, SC11
+not extracted — the first recall misses in five audited stores), 13 unseeded, 11 valid,
+10 actionable, 3 incident-derived, 2 noise.
+
+### x5 totals (three replications each, injection verified on every arm-B implement step)
+
+| | corpus (144) | traps (48) | audit losses, D2 excluded |
+|---|---|---|---|
+| arm A | 141 (48, 48, 45) | 48 | SC3, SC3, SC3 |
+| arm B | **144** (48, 48, 48) | 48 | D4 (task-8 stream choice, see r1) |
+
+Process was identical in both arms: 12/12 tasks, one attempt each, 12/12 merges, no fix
+loops, in every replication; arm B took 3–4 min longer per run for its scans (10 scan
+repair loops across the three runs, 0 give-ups). No infra abort fired.
+
+The between-arm difference in x5 is entirely SC3 — "`line N:` formatting must come from
+one place" — which arm A lost in all three runs and arm B in none, with the SC3
+requirement injected into the polish task (11) in r2 and into 5–6 tasks per run in all
+three. That is the effect the experiment was designed to see: a standing constraint that
+the spec states once, that a weak executor drops when its context no longer contains it,
+and that injection keeps in front of it. It is one constraint, three of three, at n=3 —
+suggestive, not conclusive. Arm A's r3 corpus loss (45/48) has no arm-B counterpart in
+any of the seven clean arm-B runs (x4 r1–r2, x5 r1–r3: 46, 48, 48, 48, 48).
+
+## Reading (updated after x5, 2026-09-24)
+
+- **The mechanism is validated end to end.** Every failed requirement that the seed
+  states is present in the store (recall 24/24 in four of five audited stores, 21/24 in
+  the fifth); the ones that were absent were absent from the seed and are now explicit;
+  selection is reconstructible from the per-step injection record; injection is proven
+  by the echo diagnostic and by that record on every one of the 30 arm-B implement steps
+  in x5, with zero `ERROR intent` lines. This was Lucas's precondition for reading the
+  arms against each other at all.
+- **The primary question now has a first, small, positive signal.** x4 (n=2 clean B vs
+  n=4 A) was a tie. x5 (n=3 vs n=3, injection verified) is not: arm A lost SC3 in every
+  run and one corpus program set (45/48) in r3; arm B lost nothing but the excluded D2
+  and one task-8 stream choice (D4, r1). SC3 is exactly the kind of rule intent
+  continuity exists for — stated once in the spec, invisible in a later task's context,
+  and cheap to violate by adding one more `f"line {n}: …"` — and the SC3 requirement was
+  in arm B's prompt for 5–6 of 12 tasks in every run. Three of three on one constraint
+  at n=3 is suggestive; it is not a result. Haiku is otherwise still at the corpus
+  ceiling (285/288 across x5), so the experiment's remaining headroom is in the audit
+  and in longer histories, not in this corpus.
+- **The secondary question has a clear answer.** The extractor recalls the planted
+  constraints (24/24 ×4, 21/24 ×1), produces mostly valid unseeded requirements (x5: 42
+  unseeded, 40 valid, 33 actionable, 3 noise, 0 duplicates), and extracts real rules from
+  incidents — 11 of them across x5, e.g. "REPL keeps reading after an error", "closure
+  scope loss", "no statement of a failed program may have begun executing". The noise
+  it does produce is history trivia ("the name Sprout was rejected"), domain-scoped and
+  never selected for an implement step.
+- **Two mechanism findings for the next round.** (1) With `token_budget = 1000` a store
+  with 7–9 project-level requirements spends most of each injection on them (r1: 7 of
+  ~11 slots) and a domain-scoped requirement can go unselected for the rest of the run
+  (`req-a234`, r1). (2) "Injected, not acted on" is real and repeatable when the
+  requirement asks for a rewrite the current task has no reason to make (D2 in x5 B r3,
+  SC3 in x4 B r2): injection keeps a rule visible, it does not schedule the work.
+- **The scan's CSV/check/repair loop earns its keep**: 10 repair loops in x5 (every one
+  an unquoted comma in a free-text field, from Sonnet), 10 recoveries on the first
+  retry, 0 give-ups, versus the pre-fix behaviour where the same slip in YAML silently
+  disabled injection for the rest of the run.
 
 ## Next
 
-1. **Seed-v3:** D2 threshold above the recursion limit; overlay squashed and
-   comment-free; keep the string-builtins assignment.
-2. **Get off the ceiling** — one of: a longer or harder task list (the corpus needs
-   room for arm A to fail), or a weaker hosted executor. The hypothesis is about
-   weaker models; Haiku on 12 well-specified tasks is not weak enough to test it.
-3. **Cloche:** `cloche-hbcv` (retrieval query for tracker tasks) is the one fix that
-   matters for dogfooding — Cloche's own injection has been generic since the feature
-   shipped.
+1. **Replicate the SC3 signal before building on it**: another 3× on seed-v2.1 as-is
+   (cheap: ~45 min per arm-pair), pre-registering "arm A loses SC3, arm B does not" as
+   the hypothesis. If it holds at 6/6 vs 0/6 it is worth reporting as an effect.
+2. **Then widen the headroom** with the seed-v3 design (on hold): longer task list with
+   more cross-cutting standing constraints of the SC3 shape; fix the reference
+   evaluator so D2 becomes a live check; keep the string-builtins assignment.
+3. **Budget/selection**: raise `token_budget` or cap project-level requirements per
+   injection so domain-scoped ones are not crowded out; measured from the injection
+   record, not guessed.
+4. **Scan prompts**: add a quoted example row to `discover-domains.md`, `extract.md`,
+   `reconcile.md` and re-measure the repair rate (10/~36 scan steps in x5).
+5. **Cloche:** `cloche-hbcv` and `cloche-etr2` are fixed on main and `make install`ed;
+   the auto-scan-after-`main` path in Cloche's own pipeline still needs
+   `task_prompt_path` set by its `prepare-prompt` to get task-specific injection.
 
 ## Artifacts
 
