@@ -29,34 +29,45 @@ func TestBuiltinWorkflow_Shape(t *testing.T) {
 	assert.Equal(t, "intent-scan", wf.Name)
 	assert.True(t, wf.Builtin)
 	assert.Equal(t, "discover-domains", wf.EntryStep)
-	assert.Len(t, wf.Steps, 10)
+	assert.Len(t, wf.Steps, 13)
 
 	wantWires := map[string]string{
-		"discover-domains:success": "check-domains",
-		"discover-domains:none":    "collect-sources",
-		"discover-domains:fail":    "abort-cleanup",
-		"check-domains:success":    "collect-sources",
-		"check-domains:fail":       "repair-domains",
-		"repair-domains:success":   "check-domains",
-		"repair-domains:fail":      "abort-cleanup",
-		"repair-domains:give-up":   "abort-cleanup",
-		"collect-sources:success":  "extract",
-		"collect-sources:none":     "commit",
-		"collect-sources:fail":     "abort-cleanup",
-		"extract:success":          "reconcile",
-		"extract:fail":             "abort-cleanup",
-		"reconcile:success":        "check-reconcile",
-		"reconcile:none":           "commit",
-		"reconcile:fail":           "abort-cleanup",
-		"reconcile:give-up":        "abort-cleanup",
-		"check-reconcile:success":  "apply-reconcile",
-		"check-reconcile:fail":     "reconcile",
-		"apply-reconcile:success":  "commit",
-		"apply-reconcile:fail":     "abort-cleanup",
-		"commit:success":           "done",
-		"commit:fail":              "abort",
-		"abort-cleanup:success":    "abort",
-		"abort-cleanup:fail":       "abort",
+		"discover-domains:success":  "check-domains",
+		"discover-domains:none":     "collect-sources",
+		"discover-domains:fail":     "abort-cleanup",
+		"check-domains:success":     "collect-sources",
+		"check-domains:fail":        "repair-domains",
+		"repair-domains:success":    "check-domains",
+		"repair-domains:fail":       "abort-cleanup",
+		"repair-domains:give-up":    "abort-cleanup",
+		"collect-sources:success":   "extract",
+		"collect-sources:none":      "commit",
+		"collect-sources:fail":      "abort-cleanup",
+		"extract:success":           "check-candidates",
+		"extract:fail":              "abort-cleanup",
+		"extract:give-up":           "abort-cleanup",
+		"check-candidates:success":  "reconcile",
+		"check-candidates:missing":  "extract",
+		"check-candidates:fail":     "repair-candidates",
+		"repair-candidates:success": "check-candidates",
+		"repair-candidates:fail":    "abort-cleanup",
+		"repair-candidates:give-up": "abort-cleanup",
+		"reconcile:success":         "check-reconcile",
+		"reconcile:none":            "commit",
+		"reconcile:fail":            "abort-cleanup",
+		"reconcile:give-up":         "abort-cleanup",
+		"check-reconcile:success":   "apply-reconcile",
+		"check-reconcile:missing":   "reconcile",
+		"check-reconcile:fail":      "repair-reconcile",
+		"repair-reconcile:success":  "check-reconcile",
+		"repair-reconcile:fail":     "abort-cleanup",
+		"repair-reconcile:give-up":  "abort-cleanup",
+		"apply-reconcile:success":   "commit",
+		"apply-reconcile:fail":      "abort-cleanup",
+		"commit:success":            "done",
+		"commit:fail":               "abort",
+		"abort-cleanup:success":     "abort",
+		"abort-cleanup:fail":        "abort",
 	}
 	assert.Len(t, wf.Wiring, len(wantWires))
 	for _, wire := range wf.Wiring {
@@ -76,7 +87,7 @@ func TestBuiltinWorkflow_Shape(t *testing.T) {
 func TestBuiltinWorkflow_ScriptsAreDashCompatible(t *testing.T) {
 	wf := scan.BuiltinWorkflow()
 
-	for _, name := range []string{"check-domains", "collect-sources", "check-reconcile", "apply-reconcile", "commit", "abort-cleanup"} {
+	for _, name := range []string{"check-domains", "collect-sources", "check-candidates", "check-reconcile", "apply-reconcile", "commit", "abort-cleanup"} {
 		step, ok := wf.Steps[name]
 		require.True(t, ok, "step %s should exist", name)
 		script := step.Config["run"]
@@ -240,6 +251,7 @@ func TestBuiltinWorkflow_ReconcileNone_SkipsApplyReconcile(t *testing.T) {
 		"check-domains":    "success",
 		"collect-sources":  "success",
 		"extract":          "success",
+		"check-candidates": "success",
 		"reconcile":        "none",
 		"commit":           "success",
 	}}
@@ -263,6 +275,7 @@ func TestBuiltinWorkflow_ApplyReconcileFail_FailsRun(t *testing.T) {
 		"check-domains":    "success",
 		"collect-sources":  "success",
 		"extract":          "success",
+		"check-candidates": "success",
 		"reconcile":        "success",
 		"check-reconcile":  "success",
 		"apply-reconcile":  "fail",
@@ -290,8 +303,9 @@ func TestBuiltinWorkflow_ReconcileClaimsSuccessWithoutOutput_RetriesThenAborts(t
 		"check-domains":    "success",
 		"collect-sources":  "success",
 		"extract":          "success",
+		"check-candidates": "success",
 		"reconcile":        "success",
-		"check-reconcile":  "fail",
+		"check-reconcile":  "missing",
 		"abort-cleanup":    "success",
 	}}
 
@@ -310,34 +324,15 @@ func TestBuiltinWorkflow_ReconcileClaimsSuccessWithoutOutput_RetriesThenAborts(t
 	assert.NotContains(t, exec.executed, "apply-reconcile")
 }
 
-// TestCheckReconcileScript runs the check-reconcile step script the way the
-// host executor does (sh -c) against a stub `cloche get temp_file_dir`.
-func TestCheckReconcileScript(t *testing.T) {
-	script := scan.BuiltinWorkflow().Steps["check-reconcile"].Config["run"]
-
-	temp := t.TempDir()
-	bin := t.TempDir()
-	stub := "#!/bin/sh\necho '" + temp + "'\n"
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "cloche"), []byte(stub), 0755))
-
-	run := func() (string, error) {
-		cmd := exec.Command("sh", "-c", script)
-		cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))
-		out, err := cmd.CombinedOutput()
-		return string(out), err
-	}
-
-	out, err := run()
-	assert.Error(t, err, "missing reconcile.json must fail")
-	assert.Contains(t, out, "reconcile.json does not exist")
-
-	require.NoError(t, os.WriteFile(filepath.Join(temp, "reconcile.json"), nil, 0644))
-	_, err = run()
-	assert.Error(t, err, "empty reconcile.json must fail")
-
-	require.NoError(t, os.WriteFile(filepath.Join(temp, "reconcile.json"), []byte(`{"actions":[]}`), 0644))
-	_, err = run()
-	assert.NoError(t, err)
+// TestCheckScriptsDelegateToCLI: the check steps are thin wrappers around
+// `cloche intent check-*` (which validate the agents' CSV hand-offs and
+// write the JSON the apply step reads) — the logic lives in Go, not shell.
+func TestCheckScriptsDelegateToCLI(t *testing.T) {
+	wf := scan.BuiltinWorkflow()
+	assert.Contains(t, wf.Steps["check-domains"].Config["run"], `cloche intent apply-domains --project "$PROJECT_DIR" --csv "$TEMP/domains.csv"`)
+	assert.Contains(t, wf.Steps["check-candidates"].Config["run"], `cloche intent check-candidates --project "$PROJECT_DIR" --csv "$TEMP/candidates.csv" --out "$TEMP/candidates.json"`)
+	assert.Contains(t, wf.Steps["check-reconcile"].Config["run"], `cloche intent check-reconcile --project "$PROJECT_DIR" --csv "$TEMP/reconcile.csv" --candidates-file "$TEMP/candidates.json" --out "$TEMP/reconcile.json"`)
+	assert.Contains(t, wf.Steps["commit"].Config["run"], `cloche intent validate --project "$PROJECT_DIR"`)
 }
 
 // Every path out of the scan must leave .cloche/intent/ committed: the
@@ -475,4 +470,31 @@ func (e *sequencedExecutor) Execute(_ context.Context, step *domain.Step) (domai
 		e.results[step.Name] = seq[1:]
 	}
 	return domain.StepResult{Result: r}, nil
+}
+
+// TestBuiltinWorkflow_ReconcileRepairLoop: a malformed reconcile.csv goes to
+// repair-reconcile (format-only) and back through check-reconcile to apply —
+// the whole reconcile judgment is not re-run for a formatting problem.
+func TestBuiltinWorkflow_ReconcileRepairLoop(t *testing.T) {
+	calls := 0
+	exec := &sequencedExecutor{results: map[string][]string{
+		"discover-domains": {"success"},
+		"check-domains":    {"success"},
+		"collect-sources":  {"success"},
+		"extract":          {"success"},
+		"check-candidates": {"success"},
+		"reconcile":        {"success"},
+		"check-reconcile":  {"fail", "success"},
+		"repair-reconcile": {"success"},
+		"apply-reconcile":  {"success"},
+		"commit":           {"success"},
+	}, calls: &calls}
+
+	eng := engine.New(exec)
+	run, err := eng.Run(context.Background(), scan.BuiltinWorkflow())
+	require.NoError(t, err)
+
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+	assert.Equal(t, []string{"discover-domains", "check-domains", "collect-sources", "extract", "check-candidates",
+		"reconcile", "check-reconcile", "repair-reconcile", "check-reconcile", "apply-reconcile", "commit"}, exec.executed)
 }

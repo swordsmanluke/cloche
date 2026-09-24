@@ -77,46 +77,38 @@ no word overlap with the requirement's own statement.
 
 ## Output
 
-Write `$TEMP/candidates.json`:
+Write `$TEMP/candidates.csv` — a plain CSV, one row per candidate, with
+exactly this header:
 
-```json
-{
-  "candidates": [
-    {
-      "statement": "Never bump the major version unless explicitly told to.",
-      "rationale": "Major releases are batched manually at the maintainer's direction.",
-      "scope": { "level": "domain", "domains": ["versioning"] },
-      "hints": ["is this a major version bump", "breaking change version bump"],
-      "confidence": "high",
-      "provenance": {
-        "kind": "doc",
-        "ref": "CLAUDE.md#versioning",
-        "extracted_at": "2026-09-13T10:00:00Z",
-        "extracted_by": "intent-scan"
-      }
-    }
-  ]
-}
+```csv
+statement,rationale,scope_level,domains,hints,confidence,provenance_kind,provenance_ref
+"Never bump the major version unless explicitly told to.","Major releases are batched manually at the maintainer's direction.",domain,versioning,"is this a major version bump;breaking change version bump",high,doc,CLAUDE.md#versioning
+"Errors are one line: line N: <message>, never a traceback.",,project,,"traceback in output;why does the error have two lines",medium,commit,abc1234
 ```
 
-- `scope.level` is `"project"` (always injected — reserve this for
-  genuinely project-wide rules) or `"domain"` (with `scope.domains` naming
-  one or more entries from `domains.yaml`).
-- `confidence` is `"high"` / `"medium"` / `"low"` — your judgment of how
-  durable and unambiguous the source material makes this requirement.
-- `provenance.kind` is `"doc"`, `"transcript"`, `"prompt"`, or `"commit"`
-  matching where the material came from; `ref` is the file path under
+- `scope_level` is `project` (always injected — reserve this for genuinely
+  project-wide rules) or `domain`; `domains` then lists one or more names
+  from `domains.yaml`, separated by `;` (leave it empty for `project`).
+- `hints`: 2–5 phrases separated by `;`.
+- `confidence` is `high` / `medium` / `low` — your judgment of how durable
+  and unambiguous the source material makes this requirement.
+- `provenance_kind` is `doc`, `transcript`, `prompt`, or `commit` matching
+  where the material came from; `provenance_ref` is the file path under
   `docs/` (optionally `#heading`), the run ref under `runs/`, or the commit
-  ref from `commits.txt` — copy it verbatim, repo prefix included, rather
-  than stripping it; `extracted_at` is the current UTC time in RFC3339;
-  `extracted_by` is `"intent-scan"`.
-- Omit `candidates.json`'s `candidates` array entirely (`{"candidates": []}`)
-  if nothing in the sources meets the bar above — that's a valid, expected
-  outcome, not a failure.
+  ref from `commits.txt` — copy it verbatim, repo prefix included.
+- Standard CSV quoting: wrap a field in double quotes if it contains a
+  comma, a double quote (write it as `""`), or a line break. Nothing else is
+  special. Timestamps are added by the script; don't include them.
+- If nothing in the sources meets the bar above, write the header line
+  only — that's a valid, expected outcome, not a failure.
+
+A script validates the file and reports back if anything is malformed; you
+will get a chance to fix the CSV before the scan aborts. It then writes the
+`candidates.json` the reconcile step reads — never write that file yourself.
 
 ## Results
 
-- Emit `CLOCHE_RESULT:success` once `$TEMP/candidates.json` is written
-  (even if it's an empty candidate list).
+- Emit `CLOCHE_RESULT:success` once `$TEMP/candidates.csv` is written
+  (even if it's the header line only).
 - Emit `CLOCHE_RESULT:fail` if the sources can't be read or the output can't
   be written.

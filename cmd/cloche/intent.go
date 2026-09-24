@@ -69,6 +69,10 @@ Subcommands:
 		cmdIntentApplyReconcile(args[1:])
 	case "apply-domains":
 		cmdIntentApplyDomains(args[1:])
+	case "check-candidates":
+		cmdIntentCheckCandidates(args[1:])
+	case "check-reconcile":
+		cmdIntentCheckReconcile(args[1:])
 	case "validate":
 		cmdIntentValidate(args[1:])
 	default:
@@ -1001,6 +1005,196 @@ func cmdIntentApplyDomains(args []string) {
 	for _, n := range notes {
 		fmt.Printf("  %s\n", n)
 	}
+}
+
+// intentDomainNames returns the set of domain names in the project's map for
+// validating scope references; nil (not enforced) if the map can't be read.
+func intentDomainNames(projectDir string) map[string]bool {
+	dm, err := intent.NewStore(projectDir).LoadDomains()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: domains.yaml unreadable (%v); domain names not validated\n", err)
+		return nil
+	}
+	names := map[string]bool{}
+	for _, d := range dm.Domains {
+		names[d.Name] = true
+	}
+	return names
+}
+
+// printCSVProblems reports validation problems the way the repair prompts
+// expect them: on stdout, one per line, becoming the next step's
+// {{ $prev_output }}.
+func printCSVProblems(path string, problems []string) {
+	fmt.Printf("%s failed validation:\n", path)
+	for _, p := range problems {
+		fmt.Printf("  - %s\n", p)
+	}
+	fmt.Println("Fix the CSV file — only the CSV file — and report success.")
+}
+
+// cmdIntentCheckCandidates is the scan's check-candidates step: it turns the
+// extract agent's candidates.csv into the candidates.json the reconcile
+// step reads. A missing CSV reports the "missing" result (the extract step
+// is re-run); a malformed one reports its problems and fails (the
+// repair-candidates step fixes the CSV's format).
+func cmdIntentCheckCandidates(args []string) {
+	projectDir, _ := os.Getwd()
+	csvPath, outPath := "", ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--project":
+			if i+1 < len(args) {
+				i++
+				projectDir = args[i]
+			}
+		case "--csv":
+			if i+1 < len(args) {
+				i++
+				csvPath = args[i]
+			}
+		case "--out":
+			if i+1 < len(args) {
+				i++
+				outPath = args[i]
+			}
+		}
+	}
+	if csvPath == "" || outPath == "" {
+		fmt.Fprintln(os.Stderr, "error: --csv and --out are required")
+		os.Exit(1)
+	}
+	data, err := os.ReadFile(csvPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Printf("Your previous attempt reported success, but %s was not written. Do the extraction and write that file (header: %s) before reporting success; write only the header line if nothing qualifies.\n", csvPath, scan.CandidatesCSVHeader)
+			printResultMarker("missing")
+			os.Exit(1)
+		}
+		fmt.Printf("%s could not be read: %v\n", csvPath, err)
+		os.Exit(1)
+	}
+	absProjectDir, _ := filepath.Abs(projectDir)
+	candidates, problems := scan.ParseCandidatesCSV(data, intentDomainNames(absProjectDir), time.Now().UTC())
+	if len(problems) > 0 {
+		printCSVProblems(csvPath, problems)
+		os.Exit(1)
+	}
+	out, err := scan.MarshalCandidates(candidates)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := os.WriteFile(outPath, append(out, '\n'), 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "error: writing %s: %v\n", outPath, err)
+		os.Exit(1)
+	}
+	fmt.Printf("candidates.json written: %d candidate(s)\n", len(candidates))
+	printResultMarker("success")
+}
+
+// cmdIntentCheckReconcile is the scan's check-reconcile step: it turns the
+// reconcile agent's reconcile.csv into the reconcile.json apply-reconcile
+// consumes, checking shape (one row per candidate, valid actions and
+// fields) and the store's hard rules (never target a disabled/superseded
+// requirement, etc.) before anything is applied. Missing CSV with
+// candidates pending → "missing" (re-run reconcile); problems → fail
+// (repair-reconcile fixes the CSV).
+func cmdIntentCheckReconcile(args []string) {
+	projectDir, _ := os.Getwd()
+	csvPath, candidatesPath, outPath := "", "", ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--project":
+			if i+1 < len(args) {
+				i++
+				projectDir = args[i]
+			}
+		case "--csv":
+			if i+1 < len(args) {
+				i++
+				csvPath = args[i]
+			}
+		case "--candidates-file":
+			if i+1 < len(args) {
+				i++
+				candidatesPath = args[i]
+			}
+		case "--out":
+			if i+1 < len(args) {
+				i++
+				outPath = args[i]
+			}
+		}
+	}
+	if csvPath == "" || candidatesPath == "" || outPath == "" {
+		fmt.Fprintln(os.Stderr, "error: --csv, --candidates-file and --out are required")
+		os.Exit(1)
+	}
+	absProjectDir, _ := filepath.Abs(projectDir)
+	candData, err := os.ReadFile(candidatesPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: reading %s: %v\n", candidatesPath, err)
+		os.Exit(1)
+	}
+	candidates, err := scan.ParseCandidates(candData)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	data, err := os.ReadFile(csvPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			if len(candidates) == 0 {
+				// Nothing to reconcile; apply-reconcile treats an empty
+				// action list as a no-op success.
+				empty, _ := scan.MarshalReconcileActions(nil)
+				_ = os.WriteFile(outPath, append(empty, '\n'), 0o644)
+				fmt.Println("no candidates to reconcile")
+				printResultMarker("success")
+				return
+			}
+			fmt.Printf("Your previous attempt reported success, but %s was not written and there are %d candidate(s) to reconcile. Do the reconcile work and write that file (header: %s) before reporting success.\n", csvPath, len(candidates), scan.ReconcileCSVHeader)
+			printResultMarker("missing")
+			os.Exit(1)
+		}
+		fmt.Printf("%s could not be read: %v\n", csvPath, err)
+		os.Exit(1)
+	}
+	actions, problems := scan.ParseReconcileCSV(data, candidates, intentDomainNames(absProjectDir), time.Now().UTC())
+	if len(problems) > 0 {
+		printCSVProblems(csvPath, problems)
+		os.Exit(1)
+	}
+	store := intent.NewStore(absProjectDir)
+	reqs, err := store.ListRequirements()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	existing := map[string]*intent.Requirement{}
+	for _, r := range reqs {
+		existing[r.ID] = r
+	}
+	if violations := scan.Validate(existing, actions); len(violations) > 0 {
+		lines := make([]string, 0, len(violations))
+		for _, v := range violations {
+			lines = append(lines, fmt.Sprintf("row for candidate %d (%s): %s: %s", v.Index+1, v.Action.Action, v.Rule, v.Detail))
+		}
+		printCSVProblems(csvPath, lines)
+		os.Exit(1)
+	}
+	out, err := scan.MarshalReconcileActions(actions)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := os.WriteFile(outPath, append(out, '\n'), 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "error: writing %s: %v\n", outPath, err)
+		os.Exit(1)
+	}
+	fmt.Printf("reconcile.json written: %d action(s)\n", len(actions))
+	printResultMarker("success")
 }
 
 // cmdIntentValidate checks that the daemon will be able to load the intent

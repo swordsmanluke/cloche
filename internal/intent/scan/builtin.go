@@ -18,6 +18,26 @@ var reconcilePrompt string
 //go:embed prompts/repair-domains.md
 var repairDomainsPrompt string
 
+//go:embed prompts/repair-candidates.md
+var repairCandidatesPrompt string
+
+//go:embed prompts/repair-reconcile.md
+var repairReconcilePrompt string
+
+// checkCandidatesScript turns the extract agent's candidates.csv into
+// candidates.json (`cloche intent check-candidates`): "missing" when the
+// agent reported success without writing the file, fail with a problem list
+// when it is malformed, success with the JSON written otherwise.
+const checkCandidatesScript = `set -eu
+PROJECT_DIR="${CLOCHE_PROJECT_DIR:-.}"
+TEMP=$(cloche get temp_file_dir)
+if [ -z "$TEMP" ]; then
+  echo "error: temp_file_dir not set in KV store" >&2
+  exit 1
+fi
+cloche intent check-candidates --project "$PROJECT_DIR" --csv "$TEMP/candidates.csv" --out "$TEMP/candidates.json"
+`
+
 // checkDomainsScript turns the discover-domains agent's domains.csv into
 // domains.yaml via `cloche intent apply-domains`, which validates the CSV
 // and marshals the YAML itself. On a validation failure its stdout lists the
@@ -61,19 +81,13 @@ cloche set intent_scan_sources_dir "$OUT"
 // that finds candidates.json empty should report "none", which ends the
 // workflow without coming back here.
 const checkReconcileScript = `set -eu
+PROJECT_DIR="${CLOCHE_PROJECT_DIR:-.}"
 TEMP=$(cloche get temp_file_dir)
 if [ -z "$TEMP" ]; then
   echo "error: temp_file_dir not set in KV store" >&2
   exit 1
 fi
-if [ -s "$TEMP/reconcile.json" ]; then
-  echo "reconcile.json present"
-  exit 0
-fi
-echo "Your previous attempt reported success, but $TEMP/reconcile.json does not exist or is empty."
-echo "Do the reconcile work now and write that file before reporting success."
-echo "If $TEMP/candidates.json has an empty candidates array, report none instead."
-exit 1
+cloche intent check-reconcile --project "$PROJECT_DIR" --csv "$TEMP/reconcile.csv" --candidates-file "$TEMP/candidates.json" --out "$TEMP/reconcile.json"
 `
 
 // applyReconcileScript delegates the missing-file decision to `cloche intent
@@ -271,10 +285,29 @@ func BuiltinWorkflow() *domain.Workflow {
 				Name: "extract",
 				Type: domain.StepTypeAgent,
 				Config: map[string]string{
-					"prompt":  extractPrompt,
-					"timeout": "20m",
+					"prompt":       extractPrompt,
+					"timeout":      "20m",
+					"max_attempts": "2",
 				},
-				Results: []string{"success", "fail"},
+				Results: []string{"success", "fail", "give-up"},
+			},
+			"check-candidates": {
+				Name: "check-candidates",
+				Type: domain.StepTypeScript,
+				Config: map[string]string{
+					"run": checkCandidatesScript,
+				},
+				Results: []string{"success", "missing", "fail"},
+			},
+			"repair-candidates": {
+				Name: "repair-candidates",
+				Type: domain.StepTypeAgent,
+				Config: map[string]string{
+					"prompt":       repairCandidatesPrompt,
+					"timeout":      "10m",
+					"max_attempts": "2",
+				},
+				Results: []string{"success", "fail", "give-up"},
 			},
 			"reconcile": {
 				Name: "reconcile",
@@ -292,7 +325,17 @@ func BuiltinWorkflow() *domain.Workflow {
 				Config: map[string]string{
 					"run": checkReconcileScript,
 				},
-				Results: []string{"success", "fail"},
+				Results: []string{"success", "missing", "fail"},
+			},
+			"repair-reconcile": {
+				Name: "repair-reconcile",
+				Type: domain.StepTypeAgent,
+				Config: map[string]string{
+					"prompt":       repairReconcilePrompt,
+					"timeout":      "10m",
+					"max_attempts": "2",
+				},
+				Results: []string{"success", "fail", "give-up"},
 			},
 			"apply-reconcile": {
 				Name: "apply-reconcile",
@@ -332,22 +375,37 @@ func BuiltinWorkflow() *domain.Workflow {
 			{From: "repair-domains", Result: "success", To: "check-domains"},
 			{From: "repair-domains", Result: "fail", To: "abort-cleanup"},
 			{From: "repair-domains", Result: "give-up", To: "abort-cleanup"},
+			// Each agent hand-off is a CSV checked by a script. "missing"
+			// (the agent reported success without writing the file) re-runs
+			// the agent step; "fail" (malformed CSV or a hard-rule violation)
+			// goes to a format-only repair step bounded by its max_attempts.
+			// The check steps' wires back into extract/reconcile are listed
+			// before the forward wires on purpose: the host executor forwards
+			// the output of the first inbound wire whose step has run, so a
+			// re-run sees the check's message rather than the earlier step's
+			// summary again.
+			{From: "check-candidates", Result: "missing", To: "extract"},
 			{From: "collect-sources", Result: "success", To: "extract"},
 			{From: "collect-sources", Result: "none", To: "commit"},
 			{From: "collect-sources", Result: "fail", To: "abort-cleanup"},
-			// check-reconcile's wire into reconcile is listed before extract's
-			// on purpose: the host executor forwards the output of the first
-			// inbound wire whose step has run, so a retried reconcile sees
-			// check-reconcile's "you didn't write the file" message rather
-			// than extract's summary again.
-			{From: "check-reconcile", Result: "fail", To: "reconcile"},
-			{From: "extract", Result: "success", To: "reconcile"},
+			{From: "extract", Result: "success", To: "check-candidates"},
 			{From: "extract", Result: "fail", To: "abort-cleanup"},
+			{From: "extract", Result: "give-up", To: "abort-cleanup"},
+			{From: "check-candidates", Result: "fail", To: "repair-candidates"},
+			{From: "repair-candidates", Result: "success", To: "check-candidates"},
+			{From: "repair-candidates", Result: "fail", To: "abort-cleanup"},
+			{From: "repair-candidates", Result: "give-up", To: "abort-cleanup"},
+			{From: "check-reconcile", Result: "missing", To: "reconcile"},
+			{From: "check-candidates", Result: "success", To: "reconcile"},
 			{From: "reconcile", Result: "success", To: "check-reconcile"},
 			{From: "reconcile", Result: "none", To: "commit"},
 			{From: "reconcile", Result: "fail", To: "abort-cleanup"},
 			{From: "reconcile", Result: "give-up", To: "abort-cleanup"},
 			{From: "check-reconcile", Result: "success", To: "apply-reconcile"},
+			{From: "check-reconcile", Result: "fail", To: "repair-reconcile"},
+			{From: "repair-reconcile", Result: "success", To: "check-reconcile"},
+			{From: "repair-reconcile", Result: "fail", To: "abort-cleanup"},
+			{From: "repair-reconcile", Result: "give-up", To: "abort-cleanup"},
 			{From: "apply-reconcile", Result: "success", To: "commit"},
 			{From: "apply-reconcile", Result: "fail", To: "abort-cleanup"},
 			{From: "commit", Result: "success", To: domain.StepDone},

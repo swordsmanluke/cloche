@@ -12,7 +12,7 @@ TEMP="$(cloche get temp_file_dir)"
 
 - `$TEMP/candidates.json` — the extract step's output. If its `candidates`
   array is empty, there is nothing to reconcile: do not write
-  `reconcile.json` at all — skip straight to emitting `CLOCHE_RESULT:none`
+  `reconcile.csv` at all — skip straight to emitting `CLOCHE_RESULT:none`
   (see Results below).
 - `$CLOCHE_PROJECT_DIR/.cloche/intent/requirements/*.md` — every existing
   requirement (markdown with YAML frontmatter: `id`, `status`, `scope`,
@@ -23,7 +23,7 @@ TEMP="$(cloche get temp_file_dir)"
 Everything you need is in those files. Any `## User Request` text below is
 only the previous step's closing summary — not your input. The one exception:
 if it says a previous attempt reported success without writing
-`reconcile.json`, that was you; do the work and write the file this time.
+`reconcile.csv`, that was you; do the work and write the file this time.
 
 ## Decide one action per candidate
 
@@ -67,35 +67,42 @@ guessing.
 
 ## Output
 
-Write `$TEMP/reconcile.json`:
+Write `$TEMP/reconcile.csv` — a plain CSV with exactly one row per
+candidate in `candidates.json`, in the same order, with exactly this header:
 
-```json
-{
-  "actions": [
-    { "action": "create", "statement": "...", "rationale": "...", "scope": {"level": "project"}, "hints": [...], "confidence": "high", "provenance": {...} },
-    { "action": "merge", "existing_id": "req-a3f8", "reason": "duplicates existing requirement" },
-    { "action": "supersede", "existing_id": "req-b91c", "statement": "...", "rationale": "...", "scope": {...}, "confidence": "high", "provenance": {...}, "reason": "commit abc123 reverses this" },
-    { "action": "drop", "reason": "task-specific instruction, not durable intent" }
-  ]
-}
+```csv
+candidate,action,existing_id,reason,statement,rationale,scope_level,domains,hints,confidence,provenance_kind,provenance_ref
+1,create,,,,,,,,,,
+2,merge,req-a3f8,duplicates existing requirement,,,,,,,,
+3,supersede,req-b91c,commit abc123 reverses this,"The formatter must ... (clarified)",,,,,,,
+4,drop,,task-specific instruction; not durable intent,,,,,,,,
 ```
 
-- `create` and `supersede` carry the same fields as a candidate in
-  `candidates.json` (`statement`, `rationale`, `scope`, `hints`,
-  `confidence`, `provenance`) — copy them from the candidate, editing only
-  if reconciling against existing requirements gives you a clearer
-  statement or scope.
-- `merge`, `supersede`, and `drop`-with-a-target carry `existing_id`
-  (the target requirement's `id` from its frontmatter).
+- `candidate` is the 1-based index of the candidate the row answers.
+- `action` is `create`, `merge`, `supersede` or `drop`.
+- `existing_id` — the target requirement's `id` from its frontmatter — is
+  required for `merge` and `supersede`, optional for a `drop` that targets
+  an existing requirement.
 - `reason` is optional but encouraged — it's the trail a human reviews
   later; always include it for `supersede` and for a `drop` that targets an
   existing requirement.
-- One entry per candidate in `candidates.json`, in the same order.
+- For `create` and `supersede`, the remaining columns default to the
+  candidate's own values: leave them blank unless reconciling against
+  existing requirements gives you a clearer statement, rationale, scope,
+  hints (separated by `;`), confidence or provenance — fill only what you
+  are changing.
+- Standard CSV quoting: wrap a field in double quotes if it contains a
+  comma, a double quote (write it as `""`), or a line break.
+
+A script validates the file — its shape and the hard rules above — and
+reports back if anything is wrong; you will get a chance to fix the CSV
+before the scan aborts. It then writes `reconcile.json` for the apply step;
+never write that file yourself.
 
 ## Results
 
-- Emit `CLOCHE_RESULT:success` once `$TEMP/reconcile.json` is written.
-- Emit `CLOCHE_RESULT:none` — without writing `reconcile.json` — if
+- Emit `CLOCHE_RESULT:success` once `$TEMP/reconcile.csv` is written.
+- Emit `CLOCHE_RESULT:none` — without writing `reconcile.csv` — if
   `candidates.json`'s `candidates` array is empty. This is a valid, expected
   outcome (extract found nothing durable this run), not a failure; the
   workflow ends here rather than moving on to apply a nonexistent file.
