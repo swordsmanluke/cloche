@@ -1,0 +1,1145 @@
+{
+  "intent_dir": "/home/lucas/workspace/bract-pilot/x5/results/arm-b-r2-intent",
+  "judge": {
+    "cost_usd": 0.2886812,
+    "grades": {
+      "req-0138": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Restates D1 error format and SC3 shared formatter; accurate and actionable",
+        "seeded": "D1",
+        "specific": true,
+        "valid": true
+      },
+      "req-0a08": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Correctly restates D2's no-Python-stack-depth requirement for calls/blocks",
+        "seeded": "D2",
+        "specific": true,
+        "valid": true
+      },
+      "req-1682": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful Q2 restatement with exact error message wording",
+        "seeded": "Q2",
+        "specific": true,
+        "valid": true
+      },
+      "req-21d5": {
+        "actionable": true,
+        "category": "process",
+        "duplicate_of": null,
+        "note": "Process rule: treat DESIGN.md/task conflicts as bugs not guesses",
+        "seeded": null,
+        "specific": true,
+        "valid": true
+      },
+      "req-2aa0": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful SC10 restatement naming __main__.py as sole dispatch point",
+        "seeded": "SC10",
+        "specific": true,
+        "valid": true
+      },
+      "req-2e63": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Plausible REPL-vs-run distinction; not one of the listed planted ids",
+        "seeded": null,
+        "specific": true,
+        "valid": true
+      },
+      "req-31bd": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful Q7 restatement; also captures Q1's and/or boolean operand rule",
+        "seeded": "Q7",
+        "specific": true,
+        "valid": true
+      },
+      "req-3a6d": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Generalizes no-coercion rule beyond listed ids; consistent extra detail",
+        "seeded": null,
+        "specific": true,
+        "valid": true
+      },
+      "req-3de8": {
+        "actionable": false,
+        "category": "noise",
+        "duplicate_of": null,
+        "note": "Naming trivia; not a coding constraint and doesn't affect implementation",
+        "seeded": null,
+        "specific": true,
+        "valid": true
+      },
+      "req-3f9e": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Plausible REPL error-recovery behavior; not explicitly a planted constraint",
+        "seeded": null,
+        "specific": true,
+        "valid": true
+      },
+      "req-5f10": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful Q3 restatement with exact error message",
+        "seeded": "Q3",
+        "specific": true,
+        "valid": true
+      },
+      "req-624b": {
+        "actionable": true,
+        "category": "dev-incident",
+        "duplicate_of": null,
+        "note": "Test-policy rule reads as learned from an incident not spec",
+        "seeded": null,
+        "specific": true,
+        "valid": true
+      },
+      "req-7014": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Plausible closure/scoping detail; not one of the listed planted ids",
+        "seeded": null,
+        "specific": true,
+        "valid": true
+      },
+      "req-7c4f": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful SC9 restatement plus fmt-doesn't-modify-source detail",
+        "seeded": "SC9",
+        "specific": true,
+        "valid": true
+      },
+      "req-7ff3": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful D4 restatement with exact prompt string and EOF behavior",
+        "seeded": "D4",
+        "specific": true,
+        "valid": true
+      },
+      "req-8843": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Combines SC4 and SC8 into one no-globals/no-print rule accurately",
+        "seeded": "SC4;SC8",
+        "specific": true,
+        "valid": true
+      },
+      "req-9328": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Plausible no-subscript-syntax detail; consistent with Q5 but not a listed id",
+        "seeded": null,
+        "specific": true,
+        "valid": true
+      },
+      "req-9af3": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful SC7 restatement banning eval/exec/compile",
+        "seeded": "SC7",
+        "specific": true,
+        "valid": true
+      },
+      "req-b6fd": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful Q1 restatement for if/while conditions with exact error message",
+        "seeded": "Q1",
+        "specific": true,
+        "valid": true
+      },
+      "req-c24c": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful Q4 restatement; correctly bans ! and != tokens",
+        "seeded": "Q4",
+        "specific": true,
+        "valid": true
+      },
+      "req-ca3d": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful SC2 restatement of single-package layout",
+        "seeded": "SC2",
+        "specific": true,
+        "valid": true
+      },
+      "req-d0bc": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful SC5 restatement of SCREAMING_CASE token names",
+        "seeded": "SC5",
+        "specific": true,
+        "valid": true
+      },
+      "req-d3d7": {
+        "actionable": true,
+        "category": "process",
+        "duplicate_of": null,
+        "note": "Process rule: DESIGN.md frozen at seed-v1 with no post-freeze edits",
+        "seeded": null,
+        "specific": true,
+        "valid": true
+      },
+      "req-dab1": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful Q6 restatement banning chained comparisons",
+        "seeded": "Q6",
+        "specific": true,
+        "valid": true
+      },
+      "req-e120": {
+        "actionable": true,
+        "category": "process",
+        "duplicate_of": null,
+        "note": "Doc-scope process rule; README must defer to DESIGN.md",
+        "seeded": null,
+        "specific": true,
+        "valid": true
+      },
+      "req-e1be": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful Q5 restatement of 1-indexed string builtins",
+        "seeded": "Q5",
+        "specific": true,
+        "valid": true
+      },
+      "req-e2fa": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful SC12 restatement banning TODO/stub in reachable modules",
+        "seeded": "SC12",
+        "specific": true,
+        "valid": true
+      },
+      "req-e353": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful D5 restatement of fmt idempotence/byte-stability",
+        "seeded": "D5",
+        "specific": true,
+        "valid": true
+      },
+      "req-eebd": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful SC6 restatement of exit code set {0,1,2}",
+        "seeded": "SC6",
+        "specific": true,
+        "valid": true
+      },
+      "req-f276": {
+        "actionable": true,
+        "category": "process",
+        "duplicate_of": null,
+        "note": "Tooling process note: run unittest discover for the test suite",
+        "seeded": null,
+        "specific": true,
+        "valid": true
+      },
+      "req-f5d1": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful D3 restatement of truncate-toward-zero division/remainder",
+        "seeded": "D3",
+        "specific": true,
+        "valid": true
+      },
+      "req-fb56": {
+        "actionable": true,
+        "category": "spec-restatement",
+        "duplicate_of": null,
+        "note": "Faithful SC1 restatement: stdlib only no third-party packages",
+        "seeded": "SC1",
+        "specific": true,
+        "valid": true
+      }
+    },
+    "model": "claude-sonnet-5",
+    "recall": {
+      "D1": [
+        "req-0138"
+      ],
+      "D2": [
+        "req-0a08"
+      ],
+      "D3": [
+        "req-f5d1"
+      ],
+      "D4": [
+        "req-7ff3"
+      ],
+      "D5": [
+        "req-e353"
+      ],
+      "Q1": [
+        "req-b6fd",
+        "req-31bd"
+      ],
+      "Q2": [
+        "req-1682"
+      ],
+      "Q3": [
+        "req-5f10"
+      ],
+      "Q4": [
+        "req-c24c"
+      ],
+      "Q5": [
+        "req-e1be"
+      ],
+      "Q6": [
+        "req-dab1"
+      ],
+      "Q7": [
+        "req-31bd"
+      ],
+      "SC1": [
+        "req-fb56"
+      ],
+      "SC10": [
+        "req-2aa0"
+      ],
+      "SC11": [
+        "req-0138"
+      ],
+      "SC12": [
+        "req-e2fa"
+      ],
+      "SC2": [
+        "req-ca3d"
+      ],
+      "SC3": [
+        "req-0138"
+      ],
+      "SC4": [
+        "req-8843"
+      ],
+      "SC5": [
+        "req-d0bc"
+      ],
+      "SC6": [
+        "req-eebd"
+      ],
+      "SC7": [
+        "req-9af3"
+      ],
+      "SC8": [
+        "req-8843"
+      ],
+      "SC9": [
+        "req-7c4f"
+      ]
+    },
+    "repaired": "line 54: expected 9 columns, got 11"
+  },
+  "near_duplicates": [],
+  "recall": {
+    "D1": {
+      "judge_hits": [
+        "req-0138"
+      ],
+      "keyword_hits": [
+        "req-0138"
+      ],
+      "text": "Every user-visible error is exactly one `line N: <message>` line, no traceback"
+    },
+    "D2": {
+      "judge_hits": [
+        "req-0a08"
+      ],
+      "keyword_hits": [
+        "req-0a08"
+      ],
+      "text": "Evaluator is iterative for calls/blocks: user nesting depth never becomes Python stack depth"
+    },
+    "D3": {
+      "judge_hits": [
+        "req-f5d1"
+      ],
+      "keyword_hits": [
+        "req-f5d1"
+      ],
+      "text": "Integer division/remainder truncate toward zero for negative operands"
+    },
+    "D4": {
+      "judge_hits": [
+        "req-7ff3"
+      ],
+      "keyword_hits": [
+        "req-7ff3"
+      ],
+      "text": "REPL uses the exact prompt string and exits cleanly on EOF (Ctrl-D)"
+    },
+    "D5": {
+      "judge_hits": [
+        "req-e353"
+      ],
+      "keyword_hits": [
+        "req-e353"
+      ],
+      "text": "`bract fmt` is idempotent: fmt(fmt(x)) == fmt(x)"
+    },
+    "Q1": {
+      "judge_hits": [
+        "req-b6fd",
+        "req-31bd"
+      ],
+      "keyword_hits": [
+        "req-b6fd"
+      ],
+      "text": "Conditions (if/while, and/or operands) must be booleans; non-boolean is a runtime error"
+    },
+    "Q2": {
+      "judge_hits": [
+        "req-1682"
+      ],
+      "keyword_hits": [
+        "req-1682"
+      ],
+      "text": "`let` declares a new binding, `set` reassigns an existing one; bare assignment is a parse error"
+    },
+    "Q3": {
+      "judge_hits": [
+        "req-5f10"
+      ],
+      "keyword_hits": [
+        "req-5f10"
+      ],
+      "text": "String concatenation is `~`; `+` on strings is a type error"
+    },
+    "Q4": {
+      "judge_hits": [
+        "req-c24c"
+      ],
+      "keyword_hits": [
+        "req-c24c"
+      ],
+      "text": "Not-equals is `<>`; `!=` is a lex error"
+    },
+    "Q5": {
+      "judge_hits": [
+        "req-e1be"
+      ],
+      "keyword_hits": [
+        "req-0138",
+        "req-e1be"
+      ],
+      "text": "String builtins at/len/sub are 1-indexed"
+    },
+    "Q6": {
+      "judge_hits": [
+        "req-dab1"
+      ],
+      "keyword_hits": [
+        "req-dab1"
+      ],
+      "text": "Comparisons do not chain (a < b < c is a parse error)"
+    },
+    "Q7": {
+      "judge_hits": [
+        "req-31bd"
+      ],
+      "keyword_hits": [
+        "req-31bd"
+      ],
+      "text": "`and`/`or` never short-circuit; both operands are always evaluated"
+    },
+    "SC1": {
+      "judge_hits": [
+        "req-fb56"
+      ],
+      "keyword_hits": [
+        "req-fb56"
+      ],
+      "text": "Python standard library only; no third-party packages"
+    },
+    "SC10": {
+      "judge_hits": [
+        "req-2aa0"
+      ],
+      "keyword_hits": [
+        "req-2aa0",
+        "req-8843",
+        "req-e2fa"
+      ],
+      "text": "Every CLI entry point dispatched from a single bract/__main__.py"
+    },
+    "SC11": {
+      "judge_hits": [
+        "req-0138"
+      ],
+      "keyword_hits": [
+        "req-0138"
+      ],
+      "text": "Line numbers surfaced to users are 1-indexed"
+    },
+    "SC12": {
+      "judge_hits": [
+        "req-e2fa"
+      ],
+      "keyword_hits": [
+        "req-e2fa"
+      ],
+      "text": "No TODO/FIXME/pass-stub in modules reachable from __main__ once a feature is claimed complete"
+    },
+    "SC2": {
+      "judge_hits": [
+        "req-ca3d"
+      ],
+      "keyword_hits": [
+        "req-ca3d"
+      ],
+      "text": "Single-package layout: every module directly under bract/"
+    },
+    "SC3": {
+      "judge_hits": [
+        "req-0138"
+      ],
+      "keyword_hits": [
+        "req-0138"
+      ],
+      "text": "All errors rendered through one shared error-formatting path"
+    },
+    "SC4": {
+      "judge_hits": [
+        "req-8843"
+      ],
+      "keyword_hits": [
+        "req-8843"
+      ],
+      "text": "No print()/stdout/stderr writes outside the CLI module"
+    },
+    "SC5": {
+      "judge_hits": [
+        "req-d0bc"
+      ],
+      "keyword_hits": [
+        "req-d0bc"
+      ],
+      "text": "Token type names are SCREAMING_CASE"
+    },
+    "SC6": {
+      "judge_hits": [
+        "req-eebd"
+      ],
+      "keyword_hits": [
+        "req-7ff3",
+        "req-eebd"
+      ],
+      "text": "Exit codes are exactly {0,1,2}, produced only by the CLI dispatch"
+    },
+    "SC7": {
+      "judge_hits": [
+        "req-9af3"
+      ],
+      "keyword_hits": [
+        "req-9af3"
+      ],
+      "text": "No Python eval/exec/compile anywhere in bract/"
+    },
+    "SC8": {
+      "judge_hits": [
+        "req-8843"
+      ],
+      "keyword_hits": [
+        "req-8843"
+      ],
+      "text": "No module-level mutable interpreter state; state threaded through an Interpreter/Environment"
+    },
+    "SC9": {
+      "judge_hits": [
+        "req-7c4f"
+      ],
+      "keyword_hits": [
+        "req-7c4f"
+      ],
+      "text": "bract fmt only changes whitespace/indentation/brace placement, never AST"
+    }
+  },
+  "requirements": {
+    "req-0138": {
+      "confidence": "high",
+      "domains": [
+        "errors"
+      ],
+      "hints": [
+        "uncaught exception traceback showing in bract error output",
+        "multi-line error message",
+        "how should errors be formatted in bract",
+        "ad hoc print or raise for an error"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "Every error Bract reports (lex, parse, or runtime) is a single line on stderr in the exact form `line N: <message>` (1-indexed line), sourced from one shared error-formatting path \u2014 no stack traces, exception class names, ANSI color, or secondary lines. Every failure path must be caught and re-rendered through this format before reaching the user.",
+      "status": "active"
+    },
+    "req-0a08": {
+      "confidence": "high",
+      "domains": [
+        "evaluator"
+      ],
+      "hints": [
+        "deep recursion stack overflow in bract program",
+        "should I just raise sys.setrecursionlimit",
+        "RecursionError on deep call chain",
+        "iterative vs recursive tree-walking interpreter",
+        "how to support deep recursion without blowing the python stack"
+      ],
+      "provenance_kind": "prompt",
+      "provenance_ref": "b822-main",
+      "statement": "The Bract evaluator must not use Python's own call stack for recursive evaluation; implement function calls and nested block execution with an explicit stack/work-list instead.",
+      "status": "active"
+    },
+    "req-1682": {
+      "confidence": "high",
+      "domains": [
+        "evaluator",
+        "parser"
+      ],
+      "hints": [
+        "bare x = expr not parsing",
+        "assignment without let or set keyword",
+        "redeclaring a let variable in the same scope",
+        "set on an undeclared name",
+        "how do closures mutate captured state in bract"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "(Q2) `let x = expr;` declares a new binding and errors (`line N: 'x' is already declared`) if `x` already exists in that exact scope; `set x = expr;` reassigns an existing binding found by walking the scope chain outward and errors (`line N: 'x' is not declared`) if none exists. There is no bare `x = expr;` form \u2014 it's a parse error.",
+      "status": "active"
+    },
+    "req-21d5": {
+      "confidence": "high",
+      "domains": [
+        "language-spec"
+      ],
+      "hints": [
+        "task prompt disagrees with the spec which one wins",
+        "DESIGN.md and task description conflict",
+        "spec vs task instructions contradiction"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "Where DESIGN.md and a task description conflict, treat the conflict as a bug to flag, not license to guess.",
+      "status": "active"
+    },
+    "req-2aa0": {
+      "confidence": "high",
+      "domains": [
+        "cli"
+      ],
+      "hints": [
+        "adding a new entry point script for bract fmt",
+        "where does CLI dispatch live",
+        "separate script for each CLI subcommand"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "(SC10) Every CLI entry point (`bract`, `bract run`, `bract fmt`) is dispatched from a single `bract/__main__.py` \u2014 there is no second top-level script.",
+      "status": "active"
+    },
+    "req-2e63": {
+      "confidence": "high",
+      "domains": [
+        "cli"
+      ],
+      "hints": [
+        "why is bract run printing extra output",
+        "does bract run echo expression results",
+        "difference between REPL and file execution output",
+        "unexpected output when running a bract file"
+      ],
+      "provenance_kind": "prompt",
+      "provenance_ref": "pwl5-main",
+      "statement": "`bract run FILE` must not do the REPL's implicit result-printing \u2014 it should only emit output the program itself writes, plus the one-line error format on failure.",
+      "status": "active"
+    },
+    "req-31bd": {
+      "confidence": "high",
+      "domains": [
+        "evaluator"
+      ],
+      "hints": [
+        "should and/or short-circuit in bract",
+        "side effect not running in right operand of and",
+        "non-short-circuit boolean evaluation",
+        "does or stop evaluating after first true"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "(Q7) `and`/`or` never short-circuit \u2014 both operands are always evaluated in left-to-right order regardless of the left operand's value, so side effects in the right operand always happen. Both operands must be Boolean.",
+      "status": "active"
+    },
+    "req-3a6d": {
+      "confidence": "high",
+      "domains": [
+        "language-spec",
+        "evaluator"
+      ],
+      "hints": [
+        "should numbers auto-convert to strings",
+        "implicit coercion between int and bool",
+        "why is there no float type in bract"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "There is no float type and no implicit type conversion anywhere in Bract \u2014 every operator's operand types are fixed and a mismatch is always a runtime type error, never a coercion.",
+      "status": "active"
+    },
+    "req-3de8": {
+      "confidence": "medium",
+      "domains": [
+        "language-spec"
+      ],
+      "hints": [
+        "should we rename the bract project",
+        "is the name bract already taken",
+        "why isn't this project called sprout"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "The project's working name 'Sprout' was rejected due to collisions with at least four existing languages (including a same-shaped Python tree-walking interpreter on PyPI); the chosen name 'Bract' was explicitly checked for collisions and found clear (nearest hits: an unrelated Clojure config framework and the unrelated Bracmat language).",
+      "status": "active"
+    },
+    "req-3f9e": {
+      "confidence": "high",
+      "domains": [
+        "cli"
+      ],
+      "hints": [
+        "REPL crashing on a bad statement",
+        "should REPL exit after an error",
+        "bract repl error handling behavior"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "The REPL does not exit on a per-statement error \u2014 it reports the error the same way as any other error and continues reading the next statement.",
+      "status": "active"
+    },
+    "req-5f10": {
+      "confidence": "high",
+      "domains": [
+        "evaluator",
+        "lexer"
+      ],
+      "hints": [
+        "string concatenation with plus not working",
+        "+'' cannot be applied to strings error",
+        "how do I concatenate strings in bract",
+        "using + like Python or JS for strings"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "(Q3) `~` concatenates two strings and only two strings; `+` is exclusively integer addition. Applying `+` to one or two strings is a type error (`line N: '+' cannot be applied to strings`), not string concatenation or coercion.",
+      "status": "active"
+    },
+    "req-624b": {
+      "confidence": "high",
+      "domains": [],
+      "hints": [
+        "a test is failing should I edit the test",
+        "fix the code or fix the test",
+        "test file modification not allowed when fixing failures"
+      ],
+      "provenance_kind": "doc",
+      "provenance_ref": ".cloche/prompts/fix-tests.md",
+      "statement": "When tests are failing, fix the implementation \u2014 never modify the test files to make them pass.",
+      "status": "active"
+    },
+    "req-7014": {
+      "confidence": "high",
+      "domains": [
+        "evaluator"
+      ],
+      "hints": [
+        "let inside while loop colliding across iterations",
+        "closures not capturing the right variable",
+        "does fn close over its defining scope in bract",
+        "counter closure pattern"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "A block's lexical scope is created fresh every time it's entered \u2014 each `while` iteration and each function call starts with an empty innermost scope, so a `let` inside a loop body declares anew each iteration rather than colliding with the previous one. `fn` values close over their defining environment as real closures (a returned inner `fn` still sees outer `let` bindings after the outer call returns).",
+      "status": "active"
+    },
+    "req-7c4f": {
+      "confidence": "high",
+      "domains": [
+        "formatter"
+      ],
+      "hints": [
+        "bract fmt changing code semantics",
+        "does fmt overwrite the source file in place",
+        "formatter reordering expressions",
+        "canonical formatter AST preservation"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "`bract fmt FILE` writes a canonically formatted version to stdout without modifying the source file, and only ever changes whitespace, indentation, and brace placement \u2014 it never reorders, re-associates, or drops AST nodes (expression grouping, operator precedence, and evaluation order are exactly preserved).",
+      "status": "active"
+    },
+    "req-7ff3": {
+      "confidence": "high",
+      "domains": [
+        "cli"
+      ],
+      "hints": [
+        "what should the REPL prompt text be",
+        "Ctrl-D crashes the REPL",
+        "EOF handling in interactive mode",
+        "repl exit code on stdin close",
+        "uncaught EOFError in repl"
+      ],
+      "provenance_kind": "prompt",
+      "provenance_ref": "xgqx-main",
+      "statement": "The REPL prompt string must be exactly 'bract> ' (with one trailing space), and EOF on stdin (Ctrl-D) must end the session cleanly with exit code 0 \u2014 never raise an uncaught exception.",
+      "status": "active"
+    },
+    "req-8843": {
+      "confidence": "high",
+      "domains": [
+        "language-spec",
+        "evaluator"
+      ],
+      "hints": [
+        "using print() for debugging in evaluator.py",
+        "stray print statement in the lexer",
+        "global dict for variable bindings",
+        "test failures from shared state between runs"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "(SC4/SC8) No `print()` or stdout/stderr writes outside the CLI entry point, and no module-level mutable interpreter state (no global dict/list for bindings, call stack, or output) \u2014 lexer/parser/evaluator communicate only through return values and exceptions, with all interpreter state threaded explicitly through an Environment/Interpreter instance.",
+      "status": "active"
+    },
+    "req-9328": {
+      "confidence": "high",
+      "domains": [
+        "parser",
+        "builtins"
+      ],
+      "hints": [
+        "adding s[0] indexing syntax to the parser",
+        "bracket indexing for strings",
+        "subscript operator not in the grammar",
+        "convenience syntax for string access"
+      ],
+      "provenance_kind": "prompt",
+      "provenance_ref": "07fh-main",
+      "statement": "There is no subscript/index syntax (`s[0]`) anywhere in the Bract grammar \u2014 string indexing exists exclusively through the `at`/`sub` builtins; don't add bracket parsing as a convenience.",
+      "status": "active"
+    },
+    "req-9af3": {
+      "confidence": "high",
+      "domains": [
+        "evaluator"
+      ],
+      "hints": [
+        "using Python eval() to implement the bract evaluator",
+        "compiling the bract AST to Python bytecode",
+        "shortcut using exec for function calls"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "(SC7) No use of Python `eval`, `exec`, or `compile` anywhere in `bract/` \u2014 the interpreter must be a genuine tree-walker over its own AST, not a translation layer onto Python's.",
+      "status": "active"
+    },
+    "req-b6fd": {
+      "confidence": "high",
+      "domains": [
+        "evaluator"
+      ],
+      "hints": [
+        "if (0) not treated as falsy",
+        "why does if(\"\") error in bract",
+        "truthy falsy condition semantics",
+        "non-boolean while condition"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "(Q1) The condition of `if` and `while` must evaluate to a Boolean; any other type (including 0, \"\", nil) is a runtime type error `line N: condition must be a boolean` \u2014 there is no truthy/falsy coercion.",
+      "status": "active"
+    },
+    "req-c24c": {
+      "confidence": "high",
+      "domains": [
+        "lexer",
+        "parser"
+      ],
+      "hints": [
+        "implementing != operator in bract",
+        "unexpected character '!' error",
+        "how to write not-equals in bract",
+        "should the parser special-case !="
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "(Q4) There is no `!` token and no `!=` token in Bract \u2014 a stray `!` is a lex error (`line N: unexpected character '!'`) and `!=` never reaches the parser. Not-equals is spelled `<>`.",
+      "status": "active"
+    },
+    "req-ca3d": {
+      "confidence": "high",
+      "domains": [
+        "language-spec"
+      ],
+      "hints": [
+        "should I create a bract/core subpackage",
+        "nested module structure for the parser",
+        "where do new interpreter modules go"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "(SC2) Single-package layout: every interpreter module lives directly under `bract/` (e.g. `bract/lexer.py`) \u2014 no nested subpackages like `bract/core/parser/`.",
+      "status": "active"
+    },
+    "req-d0bc": {
+      "confidence": "high",
+      "domains": [
+        "lexer"
+      ],
+      "hints": [
+        "naming convention for token types",
+        "should token type be PascalCase or SCREAMING_CASE",
+        "TokenType enum naming in bract"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "(SC5) Token type names are SCREAMING_CASE (`LET`, `IDENT`, `INT`, `STRING`, `TILDE`, `NOTEQ`, ...).",
+      "status": "active"
+    },
+    "req-d3d7": {
+      "confidence": "high",
+      "domains": [
+        "language-spec"
+      ],
+      "hints": [
+        "should I edit DESIGN.md to fix a spec inconsistency",
+        "DESIGN.md seems wrong should I change it",
+        "where do implementation corrections go if not in the spec"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "DESIGN.md is frozen at seed-v1; nothing in it changes after the freeze tag is applied \u2014 corrections to the implementation arrive only as task-prompt text, never as edits to DESIGN.md itself.",
+      "status": "active"
+    },
+    "req-dab1": {
+      "confidence": "high",
+      "domains": [
+        "parser"
+      ],
+      "hints": [
+        "a < b < c parse error",
+        "chained comparison support in bract",
+        "comparisons do not chain error message",
+        "why doesn't a<b<c work"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "(Q6) The `comparison` grammar rule accepts at most one comp-op \u2014 `a < b < c` is a parse error (`line N: comparisons do not chain`), not left-to-right chaining. The workaround is explicit parenthesization: `(a < b) and (b < c)`.",
+      "status": "active"
+    },
+    "req-e120": {
+      "confidence": "high",
+      "domains": [
+        "language-spec"
+      ],
+      "hints": [
+        "should this go in the README or DESIGN.md",
+        "am I duplicating the language spec",
+        "README and DESIGN.md disagree",
+        "where do I document a new language rule"
+      ],
+      "provenance_kind": "prompt",
+      "provenance_ref": "digm-main",
+      "statement": "The README must not restate Bract's full grammar or semantics; it should point to DESIGN.md instead.",
+      "status": "active"
+    },
+    "req-e1be": {
+      "confidence": "high",
+      "domains": [
+        "builtins"
+      ],
+      "hints": [
+        "at(s,0) out of range error",
+        "off-by-one in string indexing",
+        "0-indexed vs 1-indexed string builtins",
+        "sub() range is inclusive or exclusive"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "(Q5) The string builtins `at`, `len`, `sub` are 1-indexed, not 0-indexed \u2014 `at(\"hello\", 1)` is `\"h\"`, and `at(\"hello\", 0)` is out of range (not the last or first character).",
+      "status": "active"
+    },
+    "req-e2fa": {
+      "confidence": "high",
+      "domains": [
+        "language-spec"
+      ],
+      "hints": [
+        "leaving a TODO in evaluator.py after marking the task done",
+        "stub implementation marked complete",
+        "pass placeholder left in a finished module"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "(SC12) No TODO/FIXME/pass-stub left in any module reachable from `bract/__main__.py` once a task claims to have completed the feature that module implements.",
+      "status": "active"
+    },
+    "req-e353": {
+      "confidence": "high",
+      "domains": [
+        "formatter"
+      ],
+      "hints": [
+        "formatter changes output on second run",
+        "fmt is not idempotent",
+        "does running fmt twice change the file",
+        "byte-stable formatter output requirement"
+      ],
+      "provenance_kind": "prompt",
+      "provenance_ref": "pwl5-main",
+      "statement": "`bract fmt` output must be byte-stable: formatting already-formatted output must be a no-op (fmt\u2218fmt = fmt).",
+      "status": "active"
+    },
+    "req-eebd": {
+      "confidence": "high",
+      "domains": [
+        "errors",
+        "cli"
+      ],
+      "hints": [
+        "what exit code should a runtime error return",
+        "lex error exit code",
+        "bract run exit code contract",
+        "non-zero exit code for something else"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "Exit codes are exactly {0, 1, 2} and only ever produced by `bract run` and the top-level CLI dispatch: 0 = success, 1 = runtime error, 2 = lex/parse error (program never started executing). No other exit code is ever returned.",
+      "status": "active"
+    },
+    "req-f276": {
+      "confidence": "medium",
+      "domains": [],
+      "hints": [
+        "how do I run bract's tests",
+        "test command for this project",
+        "running the test suite"
+      ],
+      "provenance_kind": "doc",
+      "provenance_ref": ".cloche/prompts/implement.md",
+      "statement": "Run the project's test suite with `python3 -m unittest discover -s tests -v`.",
+      "status": "active"
+    },
+    "req-f5d1": {
+      "confidence": "high",
+      "domains": [
+        "evaluator"
+      ],
+      "hints": [
+        "negative number division rounding in bract",
+        "floor vs truncate division",
+        "python // gives wrong result for negative dividend",
+        "implementing bract's / operator for negative operands"
+      ],
+      "provenance_kind": "prompt",
+      "provenance_ref": "eak7-main",
+      "statement": "Integer division and remainder truncate toward zero for mixed-sign operands, never floor; do not use Python's `/` or `//` directly for this since neither truncates toward zero for negative operands.",
+      "status": "active"
+    },
+    "req-fb56": {
+      "confidence": "high",
+      "domains": [
+        "language-spec"
+      ],
+      "hints": [
+        "can I use a pip package for bract",
+        "import requests in the evaluator",
+        "third party dependency allowed in bract",
+        "adding a library to requirements"
+      ],
+      "provenance_kind": "commit",
+      "provenance_ref": "ff12c80530e628fd52cbdfcd9ff08d102eb2eff0",
+      "statement": "(SC1) Python standard library only \u2014 no third-party package is ever imported, pip-installed, or listed in any dependency file.",
+      "status": "active"
+    }
+  },
+  "summary": {
+    "active": 32,
+    "by_confidence": {
+      "high": 30,
+      "medium": 2
+    },
+    "by_provenance_kind": {
+      "commit": 23,
+      "doc": 2,
+      "prompt": 7
+    },
+    "by_status": {
+      "active": 32
+    },
+    "domains": [
+      "builtins",
+      "cli",
+      "errors",
+      "evaluator",
+      "formatter",
+      "language-spec",
+      "lexer",
+      "parser"
+    ],
+    "hints_per_requirement": 3.72,
+    "judged": {
+      "duplicates_flagged": 0,
+      "graded": 32,
+      "noise": 1,
+      "seeded_recall_hit": 24,
+      "seeded_total": 24,
+      "unseeded": 11,
+      "unseeded_actionable": 10,
+      "unseeded_dev_incident": 1,
+      "unseeded_valid": 11
+    },
+    "keyword_recall_hit": 24,
+    "seeded_total": 24,
+    "total": 32
+  }
+}

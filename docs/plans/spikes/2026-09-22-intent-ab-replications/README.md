@@ -241,8 +241,24 @@ injected into task 7 only; the D4 requirement (`req-7ff3`) into none of 9–12 (
 both passed on the strength of the task's own implementation. Traps Q1–Q6 were injected
 into tasks 3–6 as expected.
 
-Replication 3 started 19:56 UTC; the extractor audit on `x5/results/arm-b-r*-intent`
-runs when it finishes.
+### Extractor audit, x5 r1–r2 (blind Sonnet judge; `results/x5-arm-b-r*-intent-audit.json`)
+
+| | graded | seeded recall | unseeded | valid | actionable | from incidents | noise | dup |
+|---|---|---|---|---|---|---|---|---|
+| r1 | 44 | 24/24 | 18 | 18 | 13 | 7 | 0 | 0 |
+| r2 | 32 | 24/24 | 11 | 11 | 10 | 1 | 1 | 0 |
+
+Recall of every planted constraint again 24/24 in both. The r1 incident-derived
+requirements are the ones the experiment wants to see — corrections learned during
+development, not restatements of the spec: "REPL keeps reading after an error",
+"binding collision across loop iterations", "`sub` with start > end", "no statement of a
+failed program may have begun executing", "closure scope loss", "don't add bracket
+parsing". r2's single noise item is the "working name Sprout was rejected" trivia
+(`req-3de8`, domain-scoped, never injected into an implement step). The judge's own CSV
+needed the repair call once (r2: line 54, 11 columns — the same unquoted-comma slip the
+scan agents make).
+
+Replication 3 started 19:56 UTC.
 
 ## Reading
 
