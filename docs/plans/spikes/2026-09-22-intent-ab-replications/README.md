@@ -171,6 +171,57 @@ explicit in the seed; then re-run seed-v2 at 3× to get a clean injected baselin
 if arms still fail identically with injection verified does the seed-v3 task list
 (`docs/plans/2026-09-22-intent-ab-seed-v3-design.md`) go ahead.
 
+## x5 — seed-v2.1 at 3×, injection verified per step (2026-09-24, in progress)
+
+Clean run on seed-v2.1 (`d34b8662`: ordering comparisons, fresh block scope and the D2
+depth made explicit) with the CSV/check/repair intent-scan (`681b0b8c`, `f701eb19`),
+the `task_prompt_path` retrieval fix (`cloche-hbcv`) and the per-step injection record
+(`intent: injected N requirement(s) into project … task … step "implement": <ids>`) in
+the daemon log. Monitors armed; no `ERROR intent` line and no infra abort so far.
+
+### Replication 1
+
+| | corpus | traps | audit (17) | lost |
+|---|---|---|---|---|
+| arm A r1 | 48/48 | 16/16 | 16 | SC3 (`line N:` formatting duplicated across evaluator/lexer/parser) |
+| arm B r1 | 48/48 | 16/16 | 15 | D2 (reference fails it too — excluded), **D4** |
+
+Both arms: 12/12 tasks, one attempt each, 12/12 merges, no fix loops. Score files:
+`results/x5-arm-{a,b}-r1-scores.json`. Arm B ran two scan repair loops live (domains.csv
+unquoted comma, 18 s; reconcile.csv with 13 columns, 26 s) — the pattern works.
+
+**Injection is verified for every implement step.** Ten arm-B implement steps after the
+first scan each logged 10–12 requirement IDs (store: 45 requirements, 9 project-level,
+36 domain-level; `token_budget = 1000`). Seven project-level requirements
+(`req-2e78, c15b, 9cf5, b44e, 656f, 9af0, 26a9`) appear in **every** injection; the
+remaining 3–5 slots go to domain-scoped ones.
+
+**The D4 loss is not a memory failure.** Reconstructed from the injection record plus a
+per-commit D4 check:
+
+- The D4 requirement (`req-a234`, "The REPL prompt string is exactly `bract> ` … EOF must
+  end the session cleanly with exit code 0", provenance `prompt ju6e-main`) was created
+  by the scan *after* task 8 at 18:53:44 — so it could not have been injected into task 8,
+  whose own prompt carried the correction verbatim.
+- Task 8's commit (`arm-b-r1-51c`) already fails D4, and every later commit does too.
+  Arm B's REPL branches on `isatty`: on a tty it uses `input("bract> ")`; on a pipe it
+  reads a line first and writes the prompt to **stderr** afterwards. The audit drives it
+  with an empty pipe and looks in stdout, so it sees no prompt at all. Arm A writes the
+  prompt to stdout unconditionally before each read. Neither DESIGN.md §9 nor the task
+  says which stream; both say "read a statement, evaluate…". So this is a task-8
+  implementation choice that the check's method disagrees with, in the same class as arm
+  A's x4 r3 D4 loss (there, arm A simply forgot the correction).
+- `req-a234` was selected for **none** of tasks 9–12 (`arm-b-r1-bep/n8j/5xx/04o`):
+  under the 1000-token budget the seven project-level requirements take most of the
+  slots and the domain-scoped `cli` requirement never ranks in. Those tasks (file runner,
+  fmt, …) had no reason to touch the REPL prompt, so a re-selection would probably not
+  have repaired it either — but this is the first verified case of *present, never
+  selected* and it argues for a larger budget or a project-level cap before the next
+  round, not for harder tasks.
+
+Replications 2–3 started 19:09 UTC; the extractor audit on `x5/results/arm-b-r*-intent`
+runs when they finish.
+
 ## Reading
 
 - **The primary question is not answered by this round, and could not have been.**
