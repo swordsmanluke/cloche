@@ -193,23 +193,76 @@ vague or partial matches.
 ## Extracted requirements (id: statement)
 {requirements}
 
-Return ONLY a JSON object, no prose, with this shape:
-{{
-  "recall": {{ "<seeded id>": ["<req id>", ...], ... }},   // every seeded id; [] if no requirement captures it faithfully
-  "grades": {{
-    "<req id>": {{
-      "seeded": "<seeded id or null>",           // which planted constraint it restates, if any
-      "category": "spec-restatement|dev-incident|process|noise",
-             // dev-incident = a rule that reads as learned from a bug/regression during development, not from the spec
-      "valid": true|false,                       // is it consistent with the reference constraints and plausible for this project
-      "actionable": true|false,                  // would a coding agent following it avoid a concrete regression
-      "specific": true|false,                    // names a concrete artifact/behavior rather than a platitude
-      "duplicate_of": "<req id or null>",
-      "note": "<= 20 words"
-    }}, ...
-  }}
-}}
+Return ONLY a CSV document, no prose and no code fence, with exactly this header:
+
+kind,id,seeded,category,valid,actionable,specific,duplicate_of,note
+
+- One `recall` row per planted constraint id: kind=recall, id=<planted id>,
+  seeded=<requirement ids that faithfully capture it, separated by ';' — empty if none>,
+  the remaining columns empty.
+- One `grade` row per extracted requirement: kind=grade, id=<req id>,
+  seeded=<planted id it restates, or empty>,
+  category=spec-restatement|dev-incident|process|noise
+    (dev-incident = a rule that reads as learned from a bug or regression during
+    development, not from the spec),
+  valid=true|false (consistent with the reference constraints and plausible here),
+  actionable=true|false (a coding agent following it would avoid a concrete regression),
+  specific=true|false (names a concrete artifact/behaviour rather than a platitude),
+  duplicate_of=<req id or empty>,
+  note=<= 20 words.
+- Quote any field containing a comma, a double quote (written as ""), or a line break.
 """
+
+
+def _claude(prompt: str, model: str, timeout: int):
+    r = subprocess.run(["claude", "-p", "--model", model, "--output-format", "json"],
+                       input=prompt, capture_output=True, text=True, timeout=timeout)
+    if r.returncode != 0:
+        return None, r.stderr.strip()[-1500:], None
+    try:
+        envelope = json.loads(r.stdout)
+        return envelope.get("result", ""), None, envelope.get("total_cost_usd")
+    except json.JSONDecodeError:
+        return r.stdout, None, None
+
+
+def parse_judge_csv(text: str):
+    """Parse the judge's CSV into {"recall": {...}, "grades": {...}}. Raises
+    ValueError with a message a repair prompt can hand back."""
+    import csv, io
+    body = text.strip()
+    body = re.sub(r"^```[a-z]*\n|\n```$", "", body).strip()
+    rows = list(csv.reader(io.StringIO(body)))
+    if not rows:
+        raise ValueError("no CSV rows at all")
+    header = [h.strip().lower() for h in rows[0]]
+    want = ["kind", "id", "seeded", "category", "valid", "actionable", "specific", "duplicate_of", "note"]
+    if header != want:
+        raise ValueError(f"header must be exactly {','.join(want)} (got {','.join(rows[0])})")
+    recall, grades, problems = {}, {}, []
+    for n, row in enumerate(rows[1:], start=2):
+        if not row or not any(c.strip() for c in row):
+            continue
+        if len(row) != len(want):
+            problems.append(f"line {n}: expected {len(want)} columns, got {len(row)}")
+            continue
+        row = [c.strip() for c in row]
+        kind, rid = row[0].lower(), row[1]
+        if kind == "recall":
+            recall[rid] = [x.strip() for x in row[2].split(";") if x.strip()]
+        elif kind == "grade":
+            def b(v):
+                return v.lower() == "true"
+            grades[rid] = {"seeded": row[2] or None, "category": row[3], "valid": b(row[4]),
+                           "actionable": b(row[5]), "specific": b(row[6]),
+                           "duplicate_of": row[7] or None, "note": row[8]}
+        else:
+            problems.append(f"line {n}: kind must be recall or grade (got {row[0]!r})")
+    if problems:
+        raise ValueError("; ".join(problems))
+    if not grades:
+        raise ValueError("no grade rows")
+    return {"recall": recall, "grades": grades}
 
 
 def run_judge(reqs: list, model: str, timeout: int = 600) -> dict:
@@ -217,24 +270,28 @@ def run_judge(reqs: list, model: str, timeout: int = 600) -> dict:
     requirements = "\n".join(f"- {r['id']}: {r['statement']}" for r in reqs
                              if r.get("status") in (None, "active"))
     prompt = JUDGE_PROMPT.format(seeded=seeded, requirements=requirements)
-    r = subprocess.run(["claude", "-p", "--model", model, "--output-format", "json"],
-                       input=prompt, capture_output=True, text=True, timeout=timeout)
-    if r.returncode != 0:
-        return {"error": r.stderr.strip()[-1500:]}
+    text, err, cost = _claude(prompt, model, timeout)
+    if err:
+        return {"error": err}
     try:
-        envelope = json.loads(r.stdout)
-        text = envelope.get("result", "")
-    except json.JSONDecodeError:
-        text = r.stdout
-    m = re.search(r"\{.*\}", text, re.S)
-    if not m:
-        return {"error": "judge returned no JSON", "raw": text[-1500:]}
-    try:
-        verdict = json.loads(m.group(0))
-    except json.JSONDecodeError as exc:
-        return {"error": f"judge JSON unparseable: {exc}", "raw": text[-1500:]}
+        verdict = parse_judge_csv(text)
+    except ValueError as exc:
+        # One repair call: reformat only, with the parser's complaint.
+        repair = ("Your previous answer could not be parsed as the requested CSV. "
+                  f"The parser said: {exc}\n\nReturn the same judgments again as ONLY the CSV "
+                  "document with the exact header, correctly quoted, no prose, no code fence.\n\n"
+                  "Previous answer:\n" + text)
+        text2, err2, cost2 = _claude(repair, model, timeout)
+        if err2:
+            return {"error": err2, "first_parse_error": str(exc)}
+        try:
+            verdict = parse_judge_csv(text2)
+        except ValueError as exc2:
+            return {"error": f"judge CSV unparseable after repair: {exc2}", "raw": text2[-1500:]}
+        verdict["repaired"] = str(exc)
+        cost = (cost or 0) + (cost2 or 0)
     verdict["model"] = model
-    verdict["cost_usd"] = envelope.get("total_cost_usd") if isinstance(envelope, dict) else None
+    verdict["cost_usd"] = cost
     return verdict
 
 
