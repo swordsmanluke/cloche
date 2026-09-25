@@ -463,6 +463,30 @@ Extractor audit r2: 24 graded, seeded recall 23/24 (D2 missed), 6 unseeded, 6 va
 actionable, 1 incident-derived, 0 noise, 0 duplicates. Store 26 requirements; 10 of 12
 steps injected (4–7 requirements each).
 
+The same per-merge SC3 trace over every verified run so far (P = passes after that
+task's merge; x6 A r1 has two merges whose messages the scan for merge commits missed):
+
+```
+task:         1  2  3  4  5  6  7  8  9 10 11 12
+x5  A r1      P  F  F  F  F  F  F  F  F  F  F  F     never consolidated
+x5  A r2      P  F  F  F  F  F  P  P  P  P  F  F     task 7 consolidated; task 11 re-broke it
+x5  A r3      P  F  F  F  F  F  F  F  F  F  F  F     never consolidated
+x6  A r1      P  F  F  F  F  F  P  P  P  P              task 7 consolidated
+x6  A r2      P  F  F  F  F  F  P  P  P  P  P        task 7 consolidated
+x5  B r1      P  F  F  F  F  F  P  P  P  P  P  P     task 7 consolidated
+x5  B r2      P  F  F  F  F  F  P  P  P  P  P  P     task 7 consolidated
+x5  B r3      P  F  F  P  P  P  P  P  P  P  P  P     task 4 consolidated (SC3 req injected there)
+x6  B r1      P  F  F  F  F  F  P  P  P  P  P  P     task 7 consolidated
+x6  B r2      P  F  F  F  F  F  F  F  F  F  F  F     never consolidated (rule injected at 4, 7, 10)
+```
+
+Task 2 breaks SC3 in 10 of 10 runs. The errors task (7) repairs it in 3 of 5 arm-A runs
+and 4 of 5 arm-B runs; arm B r3 repaired it earlier, at task 4, the first task that had
+the requirement in its prompt. The one late regression — a task undoing a consolidation
+done earlier — is arm A (x5 r2, task 11: the polish task added a `cli.py` with its own
+formatter). That event, and B r3's early repair, are the two observations in this table
+that look like memory at work; the rest is task-7 variance in both arms.
+
 ## Artifacts
 
 - Runs: `/home/lucas/workspace/bract-pilot/x4/` (report.json, results/*-scores.json,
