@@ -354,6 +354,34 @@ any of the seven clean arm-B runs (x4 r1–r2, x5 r1–r3: 46, 48, 48, 48, 48).
    the auto-scan-after-`main` path in Cloche's own pipeline still needs
    `task_prompt_path` set by its `prepare-prompt` to get task-specific injection.
 
+## x6 — pre-registered replication of the SC3 result (2026-09-25)
+
+**Hypothesis, stated before launch:** on seed-v2.1 with the x5 harness, arm A (no
+memory) fails SC3 in each replication and arm B (memory) does not. Prediction under the
+null: SC3 losses are independent of arm at roughly arm A's x4+x5 rate (4 of 6 runs), so
+3 arm-B runs would be expected to lose it about twice. Secondary predictions: corpus and
+traps at ceiling in both arms (no separation expected); D2 excluded (reference fails it);
+any D4 loss is inspected for the task-8 stream choice before being counted.
+
+**Isolation fixes applied before launch** (found while auditing what else could instruct
+Haiku inside the container; both arms were affected identically in x5, so x5 stands, but
+they are removed for x6):
+
+- The host's `~/.claude/settings.json` was copied whole into every container. It carried
+  a `SessionStart` hook (a host-path script — it ran and failed in every x5 session),
+  `model`, `effortLevel`, `alwaysThinkingEnabled` and permissions. Autonomous containers
+  now receive only the auth/env keys; interactive consoles are unchanged
+  (`internal/adapters/docker/authfiles.go`).
+- The exact prompt each agent step received is now written to
+  `.cloche/logs/<task>/<attempt>/<workflow>/<step>.prompt.md` beside its transcript, so
+  the presence/absence of the standing block in every arm-A and arm-B step is a file
+  read (`grep -c "Standing project requirements"`), not an inference from the daemon log.
+- Claude Code in the arm image is pinned to `2.1.281` (x5's version); an unpinned
+  `npm install -g` would have moved x6 to whatever shipped since.
+
+Everything else — seed-v2.1 `d34b8662`, task list, overlays, `token_budget = 1000`,
+executor `claude-haiku-4-5-20251001`, scan model Sonnet, monitors — is as in x5.
+
 ## Artifacts
 
 - Runs: `/home/lucas/workspace/bract-pilot/x4/` (report.json, results/*-scores.json,

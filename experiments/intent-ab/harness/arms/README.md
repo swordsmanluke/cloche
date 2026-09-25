@@ -50,7 +50,9 @@ here instead:
   `max_attempts` → `give-up` → abort.
 - `common/.cloche/Dockerfile` — Claude Code is installed via NodeSource;
   Debian bookworm's nodejs/npm packages have broken interdependencies on the
-  base image ("held broken packages").
+  base image ("held broken packages"). The version is pinned (`2.1.281`, the
+  one x5 ran on) so a replication built on a later day runs the same
+  executor harness as the runs it is compared with.
 - `common/.cloche/scripts/prepare-prompt.py` — also writes the task prompt to
   `.cloche/runs/<task-id>/prompt.txt`. The daemon builds each step's intent
   retrieval query from the text at that path, which only `cloche run --prompt`
