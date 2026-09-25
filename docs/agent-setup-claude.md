@@ -11,12 +11,22 @@ This guide covers configuring Cloche containers to use
 
 ## How Authentication Works
 
-Cloche copies three specific files from your host's `~/.claude/` directory
-(`.credentials.json`, `settings.json`, `settings.local.json`) into each container at
-`/home/agent/.claude/`. For interactive containers, `~/.claude.json` is also copied to
-`/home/agent/.claude.json`; it is skipped for autonomous (non-interactive) runs. This
-reuses your existing Claude Code session so containers authenticate without needing an
-API key.
+Cloche copies `~/.claude/.credentials.json` from your host into each container at
+`/home/agent/.claude/`. This reuses your existing Claude Code session so containers
+authenticate without needing an API key.
+
+What else is copied depends on the kind of container:
+
+- **Autonomous (workflow) runs** also get a `settings.json` reduced to its auth and
+  environment keys — `env`, `apiKeyHelper`, `forceLoginMethod`, `forceLoginOrgUUID`,
+  `awsAuthRefresh`, `awsCredentialExport`, `otelHeadersHelper`. Your host hooks,
+  `model`, effort/thinking preferences, `permissions`, plugins and output style are
+  left behind on purpose: hook scripts point at host paths that don't exist in the
+  container, and the rest would change how an agent step behaves from one machine to
+  the next. Inside a workflow, an agent is driven by its step prompt alone (plus
+  `--model` and any flags in `agent_args`). `settings.local.json` is not copied.
+- **Interactive consoles** get the full `settings.json`, `settings.local.json` and
+  `~/.claude.json`, since there you are the one driving.
 
 Files are copied (not bind-mounted) so each container gets its own copy, avoiding
 concurrent write conflicts when multiple runs execute in parallel.

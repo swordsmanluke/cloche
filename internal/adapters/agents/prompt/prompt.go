@@ -200,6 +200,15 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		}
 	}
 
+	// Persist exactly what the agent is given, next to its transcript, so
+	// "what was in the prompt" (injected requirements included) is a file
+	// read rather than a reconstruction. Overwritten on every attempt.
+	if promptDir, _ := a.resolveOutputDir(workDir); os.MkdirAll(promptDir, 0755) == nil {
+		if werr := os.WriteFile(filepath.Join(promptDir, step.Name+".prompt.md"), []byte(fullPrompt), 0644); werr != nil {
+			log.Printf("prompt: could not record %s prompt: %v", step.Name, werr)
+		}
+	}
+
 	// Try each command in the fallback chain
 	var lastResult string
 	var lastStdout []byte

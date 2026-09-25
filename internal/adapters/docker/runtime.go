@@ -274,11 +274,27 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		tmpAuth, tmpErr := os.MkdirTemp("", "cloche-auth")
 		if tmpErr == nil {
 			defer os.RemoveAll(tmpAuth)
+			// Autonomous runs get credentials plus the auth/env keys of
+			// settings.json only (see filterAgentSettings); settings.local.json
+			// is host permissions and is not copied. Interactive consoles get
+			// all three files unchanged.
 			for _, name := range []string{".credentials.json", "settings.json", "settings.local.json"} {
 				src := filepath.Join(claudeDir, name)
-				if data, err := os.ReadFile(src); err == nil {
-					os.WriteFile(filepath.Join(tmpAuth, name), data, 0644)
+				data, err := os.ReadFile(src)
+				if err != nil {
+					continue
 				}
+				if !cfg.Interactive {
+					if name == "settings.local.json" {
+						continue
+					}
+					if name == "settings.json" {
+						var kept []string
+						data, kept = filterAgentSettings(data)
+						log.Printf("runtime.Start: settings.json for %s reduced to auth keys %v (autonomous run)", containerID, kept)
+					}
+				}
+				os.WriteFile(filepath.Join(tmpAuth, name), data, 0644)
 			}
 			exec.CommandContext(ctx, "docker", "cp", tmpAuth+"/.", containerID+":/home/agent/.claude/").Run()
 		}

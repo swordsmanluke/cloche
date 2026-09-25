@@ -161,12 +161,14 @@ this directory — it is checked into version control.
 containers. Other environment variables must be explicitly passed via `CLOCHE_EXTRA_ENV`.
 Only pass what the agent needs.
 
-**Claude credentials.** Cloche copies three specific files from `~/.claude/`
-(`.credentials.json`, `settings.json`, `settings.local.json`) into containers for agent
-authentication. For interactive containers, `~/.claude.json` is also copied; it is
-skipped for autonomous runs. Files are copied (not mounted) so concurrent runs do not
-conflict. Be aware that these files are present in the container filesystem during the
-run.
+**Claude credentials.** Cloche copies `~/.claude/.credentials.json` into containers for
+agent authentication. Autonomous runs also receive a `settings.json` reduced to its
+auth/env keys (`env`, `apiKeyHelper`, `forceLoginMethod`, `forceLoginOrgUUID`,
+`awsAuthRefresh`, `awsCredentialExport`, `otelHeadersHelper`); host hooks, permissions,
+model and plugin settings are not forwarded. Interactive containers get the full
+`settings.json`, `settings.local.json` and `~/.claude.json`. Files are copied (not
+mounted) so concurrent runs do not conflict. Be aware that these files are present in
+the container filesystem during the run.
 
 **Do not bake secrets into Docker images.** Use environment variables or runtime
 injection rather than embedding API keys, tokens, or passwords in your Dockerfile or

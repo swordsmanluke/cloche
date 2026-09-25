@@ -46,6 +46,14 @@ func TestPromptAdapter_ExecutesCommand(t *testing.T) {
 	content, err := os.ReadFile(filepath.Join(dir, "result.txt"))
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "implemented")
+
+	// The exact prompt the agent was given is recorded beside its transcript
+	// (no AttemptID here, so the shared .cloche/output layout applies).
+	recorded, err := os.ReadFile(filepath.Join(dir, ".cloche", "output", "implement.prompt.md"))
+	require.NoError(t, err, "step prompt must be recorded")
+	assert.Contains(t, string(recorded), "You are a coding assistant.")
+	assert.Contains(t, string(recorded), "add a calculator")
+	assert.Contains(t, string(recorded), "CLOCHE_RESULT:", "the nonced marker instructions are part of what the agent saw")
 }
 
 func TestPromptAdapter_PreviousOutputSubstitution(t *testing.T) {
