@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -477,13 +478,20 @@ func TestExtractResultsContainerSubPath(t *testing.T) {
 		t.Errorf("dockerCp dst = %q, want %q", cpDst, wt.Dir+"/")
 	}
 
-	// containerCommitsFromDocker calls dockerExec with: git -C <path> log ...
-	if len(execArgs) < 3 || execArgs[0] != "git" || execArgs[1] != "-C" {
-		t.Fatalf("dockerExec args shape unexpected: %v", execArgs)
+	// containerCommitsFromDocker calls dockerExec with: git [-c …] -C <path> log ...
+	if got := gitCPath(execArgs); got != "/workspace/repos/cloche" {
+		t.Errorf("dockerExec git -C path = %q, want %q (args %v)", got, "/workspace/repos/cloche", execArgs)
 	}
-	if got := execArgs[2]; got != "/workspace/repos/cloche" {
-		t.Errorf("dockerExec git -C path = %q, want %q", got, "/workspace/repos/cloche")
+}
+
+// gitCPath returns the value following "-C" in a git argument list, or "".
+func gitCPath(args []string) string {
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "-C" {
+			return args[i+1]
+		}
 	}
+	return ""
 }
 
 // TestExtractResultsLegacyNoSubPath verifies that an empty ContainerSubPath
@@ -507,8 +515,8 @@ func TestExtractResultsLegacyNoSubPath(t *testing.T) {
 	var execPath string
 	origExec := dockerExec
 	dockerExec = func(_ context.Context, _ string, args ...string) ([]byte, error) {
-		if len(args) >= 3 && args[0] == "git" && args[1] == "-C" {
-			execPath = args[2]
+		if len(args) > 0 && args[0] == "git" {
+			execPath = gitCPath(args)
 		}
 		return []byte(""), nil
 	}
@@ -870,5 +878,44 @@ func TestBuildCommitMessageWithContainerCommits(t *testing.T) {
 	}
 	if !strings.Contains(msg, "Add unit tests") {
 		t.Error("expected second commit message in output")
+	}
+}
+
+// containerCommitsFromDocker runs git via docker exec as the container's
+// configured user (root) against a /workspace the entry wrapper chown'd to
+// agent; without safe.directory git refuses with "dubious ownership" and
+// every agent commit message was silently dropped from the extracted commit.
+func TestContainerCommitsFromDocker_LiftsSafeDirectoryCheck(t *testing.T) {
+	var execArgs []string
+	origExec := dockerExec
+	dockerExec = func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		execArgs = append([]string(nil), args...)
+		return []byte("Agent-written subject\n\nbody line\x00\n"), nil
+	}
+	t.Cleanup(func() { dockerExec = origExec })
+
+	got := containerCommitsFromDocker(context.Background(), "cid", "base", "repos/project")
+
+	want := []string{"git", "-c", "safe.directory=*", "-C", "/workspace/repos/project", "log", "--reverse", "--format=%B%x00", "base..HEAD"}
+	if strings.Join(execArgs, " ") != strings.Join(want, " ") {
+		t.Errorf("git args = %q, want %q", execArgs, want)
+	}
+	if !strings.HasPrefix(got, "  * Agent-written subject\n") {
+		t.Errorf("commits = %q, want agent subject first", got)
+	}
+	if firstAgentCommitSubject(got) != "Agent-written subject" {
+		t.Errorf("subject = %q", firstAgentCommitSubject(got))
+	}
+}
+
+func TestContainerCommitsFromDocker_ErrorYieldsEmpty(t *testing.T) {
+	origExec := dockerExec
+	dockerExec = func(_ context.Context, _ string, _ ...string) ([]byte, error) {
+		return nil, errors.New("exit status 128")
+	}
+	t.Cleanup(func() { dockerExec = origExec })
+
+	if got := containerCommitsFromDocker(context.Background(), "cid", "base", ""); got != "" {
+		t.Errorf("expected empty on error, got %q", got)
 	}
 }

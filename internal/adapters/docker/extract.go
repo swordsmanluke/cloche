@@ -3,7 +3,9 @@ package docker
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -436,9 +438,28 @@ func firstAgentCommitSubject(containerCommits string) string {
 // /workspace (used for multi-repo projects where each repo has its own git
 // history under /workspace/<sub>).
 func containerCommitsFromDocker(ctx context.Context, containerID, baseSHA, containerSubPath string) string {
+	// docker exec runs as the container's configured user — root, since the
+	// entry wrapper starts as root and only gosu's to "agent" for the
+	// workflow — while the wrapper has chown'd /workspace to agent. git
+	// (>= 2.35.2) refuses to read a repo owned by another user ("detected
+	// dubious ownership"), which silently discarded every agent commit
+	// message and left the extracted commit titled with the bookkeeping
+	// "cloche run …" line. safe.directory=* lifts that check for this one
+	// read-only command.
 	out, err := dockerExec(ctx, containerID,
-		"git", "-C", containerWorkspacePath(containerSubPath), "log", "--reverse", "--format=%B%x00", baseSHA+"..HEAD")
-	if err != nil || len(bytes.TrimSpace(out)) == 0 {
+		"git", "-c", "safe.directory=*", "-C", containerWorkspacePath(containerSubPath),
+		"log", "--reverse", "--format=%B%x00", baseSHA+"..HEAD")
+	if err != nil {
+		detail := ""
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			detail = ": " + strings.TrimSpace(string(exitErr.Stderr))
+		}
+		log.Printf("extract: reading agent commits from container %s (%s): %v%s",
+			containerID, containerWorkspacePath(containerSubPath), err, detail)
+		return ""
+	}
+	if len(bytes.TrimSpace(out)) == 0 {
 		return ""
 	}
 
