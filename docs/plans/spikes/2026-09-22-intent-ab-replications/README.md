@@ -382,6 +382,18 @@ they are removed for x6):
 Everything else — seed-v2.1 `d34b8662`, task list, overlays, `token_budget = 1000`,
 executor `claude-haiku-4-5-20251001`, scan model Sonnet, monitors — is as in x5.
 
+**Smoke test on the rebuilt daemon (3.24.24), echo diagnostic project, one real
+`main` run:** image rebuilt from the pinned Dockerfile; daemon logged
+`settings.json … reduced to auth keys [] (autonomous run)`; the container authenticated
+and ran Claude Code 2.1.281 as `claude-haiku-4-5-20251001`; the stream contains no
+`hook_started`; `develop/implement.prompt.md` was written (4.4 KB) with the
+`## Standing project requirements` block (8 IDs) above the task text. The run then
+"failed" for the right reason: the echo store had mined a requirement from the earlier
+echo diagnostic itself — `req-bae5`, "do not have an agent dump the full raw prompt into
+a committed file, even for a diagnostic" — and Haiku refused the echo task, citing it.
+An injected incident-derived requirement overriding a task prompt is the mechanism
+working end to end; the diagnostic prompt is simply no longer usable in that project.
+
 ## Artifacts
 
 - Runs: `/home/lucas/workspace/bract-pilot/x4/` (report.json, results/*-scores.json,
