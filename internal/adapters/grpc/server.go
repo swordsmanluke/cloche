@@ -67,6 +67,7 @@ type ClocheServer struct {
 	runIDs          map[string]string              // run_id -> container_id
 	containerRun    map[string]string              // container_id -> run_id
 	hostCancels     map[string]context.CancelFunc  // run_id -> cancel fn (for host runs)
+	attemptCancels  map[string]context.CancelFunc  // attempt_id -> cancel fn (loop-dispatched main runs)
 	loops           map[string]*host.Loop          // project_dir -> orchestration loop
 	activityLoggers map[string]*activitylog.Logger // project_dir -> activity logger
 	projects        map[string]*domain.Project     // project_dir -> cached project (refreshed on run)
@@ -93,6 +94,7 @@ func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *Cl
 		runIDs:            make(map[string]string),
 		containerRun:      make(map[string]string),
 		hostCancels:       make(map[string]context.CancelFunc),
+		attemptCancels:    make(map[string]context.CancelFunc),
 		loops:             make(map[string]*host.Loop),
 		activityLoggers:   make(map[string]*activitylog.Logger),
 		projects:          make(map[string]*domain.Project),
@@ -112,6 +114,7 @@ func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureSto
 		runIDs:            make(map[string]string),
 		containerRun:      make(map[string]string),
 		hostCancels:       make(map[string]context.CancelFunc),
+		attemptCancels:    make(map[string]context.CancelFunc),
 		loops:             make(map[string]*host.Loop),
 		activityLoggers:   make(map[string]*activitylog.Logger),
 		projects:          make(map[string]*domain.Project),
@@ -3519,12 +3522,16 @@ func (s *ClocheServer) StopRun(ctx context.Context, req *pb.StopRunRequest) (*pb
 		s.mu.Lock()
 		containerID, ok := s.runIDs[run.ID]
 		cancelFn, isHostRun := s.hostCancels[run.ID]
+		attemptCancel, isLoopRun := s.attemptCancels[run.AttemptID]
 		s.mu.Unlock()
 
 		if ok {
 			if stopErr := s.container.Stop(ctx, containerID); stopErr != nil {
 				log.Printf("server: stop task %s: stopping container for run %s: %v", taskID, run.ID, stopErr)
 			}
+		}
+		if !ok && !isHostRun && !isLoopRun {
+			log.Printf("server: stop task %s: run %s has no container or cancel registered; marking cancelled only", taskID, run.ID)
 		}
 
 		run.Complete(domain.RunStateCancelled)
@@ -3543,6 +3550,9 @@ func (s *ClocheServer) StopRun(ctx context.Context, req *pb.StopRunRequest) (*pb
 
 		if isHostRun {
 			cancelFn()
+		}
+		if isLoopRun {
+			attemptCancel()
 		}
 
 		stopped++
@@ -3867,6 +3877,23 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 
 	// Phase 2: main function
 	mainFn := func(ctx context.Context, projDir string, taskID string, taskTitle string, attemptID string) (*host.RunResult, error) {
+		// Loop-dispatched runs never pass through runHostWorkflow, so they
+		// have no hostCancels entry (and, being host runs, no runIDs entry
+		// either). Register a per-attempt cancel so StopRun can actually
+		// interrupt the engine — which in turn stops the attempt's
+		// containers via executeWorkflowStep's deferred CleanupAttempt.
+		// Without this, `cloche stop` only flipped the run's state in the
+		// store while the agent kept running.
+		ctx, cancel := context.WithCancel(ctx)
+		s.mu.Lock()
+		s.attemptCancels[attemptID] = cancel
+		s.mu.Unlock()
+		defer func() {
+			s.mu.Lock()
+			delete(s.attemptCancels, attemptID)
+			s.mu.Unlock()
+			cancel()
+		}()
 		runner := &host.Runner{
 			Store:        s.store,
 			Captures:     s.captures,

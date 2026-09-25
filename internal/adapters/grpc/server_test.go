@@ -3241,6 +3241,41 @@ func TestServer_StopRun_StopsAllActiveRunsForTask(t *testing.T) {
 	assert.Equal(t, domain.RunStateSucceeded, rDone.State)
 }
 
+// A loop-dispatched main run is a host run with no container of its own and
+// no hostCancels entry; stopping it must cancel the attempt's context so the
+// engine unwinds and the attempt's containers are stopped by the executor's
+// deferred cleanup. Before the attemptCancels registration, StopRun only
+// flipped the store state and the agent kept running.
+func TestServer_StopRun_CancelsLoopDispatchedHostRun(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+	ctx := context.Background()
+
+	run := domain.NewRun("main:att-1", "main")
+	run.TaskID = "TASK-LOOP"
+	run.AttemptID = "att-1"
+	run.IsHost = true
+	run.Start()
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	srv := server.NewClocheServerWithCaptures(store, store, &mockStopRuntime{}, "")
+	attemptCtx, cancel := context.WithCancel(context.Background())
+	srv.RegisterAttemptCancel("att-1", cancel)
+
+	_, err = srv.StopRun(ctx, &pb.StopRunRequest{TaskId: "TASK-LOOP"})
+	require.NoError(t, err)
+
+	select {
+	case <-attemptCtx.Done():
+	default:
+		t.Fatal("stopping the task must cancel the loop-dispatched attempt's context")
+	}
+	stored, err := store.GetRun(ctx, "main:att-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateCancelled, stored.State)
+}
+
 func TestServer_StopRun_ErrorWhenNoActiveRuns(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)

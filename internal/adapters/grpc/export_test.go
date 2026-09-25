@@ -31,6 +31,14 @@ func (s *ClocheServer) AddActiveRun(runID, containerID string) {
 	s.mu.Unlock()
 }
 
+// RegisterAttemptCancel registers a cancel func for a loop-dispatched
+// attempt, as createPhaseLoop's mainFn does.
+func (s *ClocheServer) RegisterAttemptCancel(attemptID string, cancel context.CancelFunc) {
+	s.mu.Lock()
+	s.attemptCancels[attemptID] = cancel
+	s.mu.Unlock()
+}
+
 // RegisterContainerRun registers a container-to-run mapping for testing.
 // This simulates what launchAndTrack does after starting a container.
 func (s *ClocheServer) RegisterContainerRun(containerID, runID string) {
