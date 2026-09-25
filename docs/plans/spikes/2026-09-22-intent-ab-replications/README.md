@@ -1,6 +1,6 @@
 # Intent A/B — Replications on seed-v2 (2026-09-22)
 
-**Status:** complete — 3 replications per arm (x4), plus one control replication (x3).
+**Status:** complete — x4 (3 per arm, two arm-B runs later found uninjected), x5 and x6 (3 per arm each, injection verified per step), plus one control (x3). Final evaluation: six verified pairs, no measurable effect on this list; extractor validated. See "Evaluation" below.
 Protocol: [`2026-09-14-intent-ab-experiment-protocol.md`](../../2026-09-14-intent-ab-experiment-protocol.md).
 Round one (pilot, n=1): [`2026-09-17-intent-ab-pilot/`](../2026-09-17-intent-ab-pilot/README.md).
 
@@ -171,7 +171,7 @@ explicit in the seed; then re-run seed-v2 at 3× to get a clean injected baselin
 if arms still fail identically with injection verified does the seed-v3 task list
 (`docs/plans/2026-09-22-intent-ab-seed-v3-design.md`) go ahead.
 
-## x5 — seed-v2.1 at 3×, injection verified per step (2026-09-24, in progress)
+## x5 — seed-v2.1 at 3×, injection verified per step (2026-09-24)
 
 Clean run on seed-v2.1 (`d34b8662`: ordering comparisons, fresh block scope and the D2
 depth made explicit) with the CSV/check/repair intent-scan (`681b0b8c`, `f701eb19`),
@@ -300,7 +300,7 @@ and that injection keeps in front of it. It is one constraint, three of three, a
 suggestive, not conclusive. Arm A's r3 corpus loss (45/48) has no arm-B counterpart in
 any of the seven clean arm-B runs (x4 r1–r2, x5 r1–r3: 46, 48, 48, 48, 48).
 
-## Reading (updated after x5, 2026-09-24)
+## Reading after x5 (2026-09-24, superseded by the final reading below)
 
 - **The mechanism is validated end to end.** Every failed requirement that the seed
   states is present in the store (recall 24/24 in four of five audited stores, 21/24 in
@@ -337,7 +337,7 @@ any of the seven clean arm-B runs (x4 r1–r2, x5 r1–r3: 46, 48, 48, 48, 48).
   retry, 0 give-ups, versus the pre-fix behaviour where the same slip in YAML silently
   disabled injection for the rest of the run.
 
-## Next
+## Next after x5 (superseded)
 
 1. **Replicate the SC3 signal before building on it**: another 3× on seed-v2.1 as-is
    (cheap: ~45 min per arm-pair), pre-registering "arm A loses SC3, arm B does not" as
@@ -486,6 +486,112 @@ the requirement in its prompt. The one late regression — a task undoing a cons
 done earlier — is arm A (x5 r2, task 11: the polish task added a `cli.py` with its own
 formatter). That event, and B r3's early repair, are the two observations in this table
 that look like memory at work; the rest is task-7 variance in both arms.
+
+### Replication 3
+
+| | corpus | traps | audit | lost |
+|---|---|---|---|---|
+| arm A r3 | 47/48 | 16/16 | 16/18 | D2, SC3 |
+| arm B r3 | 46/48 | 16/16 | 16/18 | D2, SC3 |
+
+Per-merge SC3: neither arm's task 7 consolidated (`A: P F F F F F F F F F`, `B: P F F F F
+F F F F F F F`). Arm A's corpus miss is one error message wording. Arm B's two misses
+are the binding-scope programs (`bind-shadow-inner-scope-ok` rejected a legal shadow;
+`bind-let-scope-boundary` accepted an illegal redeclaration) — and the scope rules
+`req-7b3e` ("`let` … shadowing an outer scope is fine") and `req-59c6` (fresh scope per
+iteration/call) were created by the scan after task 3 and were **in task 4's prompt**
+(`arm-b-r3-0na`), the task that implemented bindings. Injected, not followed, again.
+Extractor audit r3: 38 graded, seeded recall 20/24 (SC5, SC10, SC11, SC12 missed), 16
+unseeded, 16 valid, 15 actionable, 2 incident-derived, 1 noise, 0 duplicates.
+
+### x6 totals
+
+| | corpus (144) | traps (48) | audit losses, D2 excluded |
+|---|---|---|---|
+| arm A | 143 (48, 48, 47) | 48 | —, —, SC3 |
+| arm B | 142 (48, 48, 46) | 48 | SC4+SC12, SC3, SC3 |
+
+Process identical in both arms: 12/12 tasks first attempt, 12/12 merges, 0 fix loops,
+0 infra events, 0 `ERROR intent`, all six runs; arm B 44–46 min vs arm A 36–44 min
+(scans). The pre-registered hypothesis is rejected: arm A lost SC3 in 1 of 3 runs, arm B
+in 2 of 3.
+
+## Evaluation: six verified pairs (x5 + x6)
+
+Table stakes, as required before any comparison: extraction (seeded recall 24, 24, 21,
+23, 23, 20 of 24 across the six arm-B stores — 94%), selection (reconstructible from the
+per-step record in every run) and injection (verified by daemon log in x5 and by the
+recorded prompt file in x6 for all 60 post-scan implement steps; 0 `ERROR intent` lines
+in 12 runs) all work; the container gets nothing but the step prompt (host
+`settings.json` hooks/preferences no longer copied; arm A's and arm B's prompts differ
+only by the standing block, byte-for-byte on disk).
+
+| six replications each | corpus (288) | traps (96) | audit losses, D2 excluded | runs with a loss |
+|---|---|---|---|---|
+| arm A — no memory | 284 (98.6%) | 96 | SC3 ×4 | 4 of 6 |
+| arm B — intent continuity | 286 (99.3%) | 96 | SC3 ×2, SC4, SC12, D4 | 4 of 6 |
+
+**Result: no measurable effect of intent continuity on the quality of Haiku's Bract
+implementation over this 12-task list.** Both arms sit at the corpus ceiling and pass
+every anti-prior trap; audit losses are equal in count (4 vs 5) and in run frequency
+(4 of 6 each). Looked at per task rather than per run, the losses in both arms are the
+same thing — whether the task that owns a cross-cutting rule (task 7 for SC3, task 4 for
+scope, task 8 for D4) does that part of its own brief — and injecting the rule into that
+task's prompt did not change the odds: arm B's task 7 failed SC3 twice with the SC3
+requirement in front of it, its task 4 mis-scoped `let` with the scope rules in front of
+it, and its tasks 6–8 in x5 r3 left the evaluator recursive with "must be iterative" in
+front of them. Against that, two events are consistent with memory helping — arm B x5
+r3 consolidating error formatting at task 4, the first task to see the rule, and arm A
+x5 r2 re-breaking SC3 at task 11 — which is what a null effect with n=6 looks like.
+
+What *is* established:
+
+1. **The mechanism works and is now observable per step.** Present → selected →
+   injected is a file read (`<step>.prompt.md`) plus a log line, in every run.
+2. **The extractor (part b) delivers.** 94% seeded recall from a clean seed; 75 unseeded
+   requirements across six stores of which 73 are valid, 64 actionable, 18 learned from
+   incidents (REPL-continues-after-error, closure scope loss, no-partial-execution, …),
+   5 noise, 4 near-duplicates (one store). And, in the smoke test, an injected
+   incident-derived rule overrode a task prompt.
+3. **Injection ≠ compliance for Haiku.** The clearest new finding: a correct, specific
+   requirement in the prompt of the task that needs it was not sufficient in at least
+   four documented cases. Whatever intent continuity buys, on this executor it buys it
+   only when the model would have followed the rule anyway.
+4. **Budget crowding is real** (x5 r1: 7 project-level requirements in every injection;
+   D4's requirement never selected for tasks 9–12; x6 r2: the polish task did not
+   receive the SC3 requirement).
+5. **Two design limits of this seed** keep the primary question open rather than
+   answered "no": (a) every audited rule is also in DESIGN.md, which both arms read at
+   every task — the memory never held a rule the control could not see; (b) 12 tasks is
+   too short for a rule to be *forgotten* rather than *never applied*; x5 r2's task-11
+   regression is the only example of a late loss in twelve runs.
+
+## Reading (final, 2026-09-25)
+
+- Hypothesis H1 (intent continuity raises the quality of a weaker model's output across
+  tasks) is **not supported** by six verified replication pairs on seed-v2.1 with Haiku;
+  the pre-registered SC3 prediction failed. The effect, if any, is inside the per-task
+  variance of the executor on this list.
+- H2 (the extractor produces valid, useful, incident-derived requirements) is
+  **supported**, with the caveats that reconciliation occasionally creates duplicates
+  and that §10-style compound rules are sometimes captured loosely at first.
+- The pipeline and the measurement are sound: 144/144 merges, 0 marker drops, 0 infra
+  events across x5+x6; validated checkers; blind judge; per-step prompt records.
+
+## Next
+
+1. **If the primary question is worth pursuing**, change the seed, not the sample size:
+   put rules in the memory that the control cannot read (corrections delivered only
+   once, in one task's prompt, never in DESIGN.md — D1–D5 are the model, but their tasks
+   are also the ones that implement them), and make the list long enough (≥25 tasks)
+   that a rule must survive many unrelated tasks before it is tested. Track compliance
+   per task, not per final tree.
+2. **Mechanism:** cap project-level requirements per injection or raise
+   `token_budget`; measure from the prompt record.
+3. **Extractor:** quoted example row in the three CSV prompts; a reconcile-step check
+   for near-duplicates (x6 r1 created four).
+4. **Cloche:** the settings-isolation and prompt-record changes (`ed9aa322`, 3.24.24)
+   apply to every autonomous run, not just the experiment.
 
 ## Artifacts
 
