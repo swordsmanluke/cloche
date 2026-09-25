@@ -434,6 +434,35 @@ actionable, 4 incident-derived, 1 noise, **4 near-duplicates** flagged (the reco
 step created rather than merged: `05a5`/`3eac`→`2f18`, `0e7d`→`d6c4`, `115c`→`0ae3`) —
 the first store with duplicates.
 
+### Replication 2 — arm B loses SC3 with the rule in its prompt
+
+| | corpus | traps | audit | lost |
+|---|---|---|---|---|
+| arm A r2 | 48/48 | 16/16 | **18/18** | — |
+| arm B r2 | 48/48 | 16/16 | 17/18 | **SC3** (`cli.py`, `evaluator.py`, `lexer.py`, `parser.py`) |
+
+Running the SC3 checker at every merge commit of both arms settles what SC3 measures:
+
+```
+task:      1     2     3     4     5     6     7     8     9    10    11
+arm A r2  PASS  FAIL  FAIL  FAIL  FAIL  FAIL  PASS  PASS  PASS  PASS  PASS
+arm B r2  PASS  FAIL  FAIL  FAIL  FAIL  FAIL  FAIL  FAIL  FAIL  FAIL  FAIL
+```
+
+The parser task (2) *always* adds a second `line N:` formatter beside the lexer's — in
+every run of either arm — and the tree passes SC3 at the end only if the errors task (7)
+centralises the formatting. SC3 is therefore not "did the model remember a rule across
+ten tasks"; it is "did task 7 do the consolidation its own brief asks for", a per-run
+coin flip for Haiku. Arm B r2's task 7 had the SC3 requirement (`req-8b3c`, created by
+the first scan at 20:42, injected into tasks 4, 7 and 10) in its prompt and did not
+consolidate; task 11 (polish) did not receive it (7 of ~7 slots went elsewhere) and did
+not fix it either. This is the cleanest "injected, not followed" event so far — and arm
+A r2's task 7 did the consolidation with no memory at all.
+
+Extractor audit r2: 24 graded, seeded recall 23/24 (D2 missed), 6 unseeded, 6 valid, 6
+actionable, 1 incident-derived, 0 noise, 0 duplicates. Store 26 requirements; 10 of 12
+steps injected (4–7 requirements each).
+
 ## Artifacts
 
 - Runs: `/home/lucas/workspace/bract-pilot/x4/` (report.json, results/*-scores.json,
