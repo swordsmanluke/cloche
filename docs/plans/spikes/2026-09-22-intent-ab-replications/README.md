@@ -394,6 +394,46 @@ a committed file, even for a diagnostic" — and Haiku refused the echo task, ci
 An injected incident-derived requirement overriding a task prompt is the mechanism
 working end to end; the diagnostic prompt is simply no longer usable in that project.
 
+**Isolation verified on x6's own steps** (`results/x6-*`): task-1 prompts in the two arms
+are byte-identical except for the per-step nonce (2,640 bytes each, no block — the store
+does not exist yet); task 2 likewise (the post-task-1 scan, 12:55–12:58, was still
+running when task 2 was dispatched, so injection starts at task 3 by construction, in
+every arm-B run of x5 and x6); task 3 onward, arm B's prompt = arm A's prompt + the
+standing block, with the recorded IDs equal to the daemon's injection line. No
+`hook_started` in any stream; `settings.json` reduced to `[]` auth keys for every
+container; Claude Code 2.1.281; executor `claude-haiku-4-5-20251001`. One environmental
+difference from x5, identical in both arms: the daemon's extraction change of the morning
+(`3f8664bd`) preserves the in-container commit message, so merge commits now read
+`implement task changes` — text the arm-B scan mines.
+
+### Replication 1 — the pre-registered prediction fails immediately
+
+| | corpus | traps | audit | lost |
+|---|---|---|---|---|
+| arm A r1 | 48/48 | 16/16 | **18/18** | — (first arm-A run to pass D2) |
+| arm B r1 | 48/48 | 16/16 | 16/18 | SC4 (`errors.py:24 sys.stderr.write`), SC12 (stub `pass` in `evaluator.py`) |
+
+Arm A kept SC3. The x5 streak (3/3) was a small-n streak, not an arm-A property. Arm B's
+two losses, traced with the per-step prompt record (`.cloche/logs/<task>/<attempt>/develop/implement.prompt.md`):
+
+- Both violations entered at task 7 (errors; merge `a10a3d7`, 20:19 UTC). Task 7's prompt
+  carried `req-517b` ("every error rendered via one shared error-formatting path, not ad
+  hoc print/raise call sites" — the first scan's reading of §10) but not the exact SC4
+  rule; `req-b117` ("no module other than `bract/__main__.py` may call print /
+  sys.stdout.write / sys.stderr.write") was only created at 20:33, from task 11's own
+  prompt text, after task 11 had run. Same for SC12: `req-f6bd` (no stub bodies) was
+  created at 20:33 from the same prompt. So the polish task (11) had both rules in its
+  *task text* and still left both violations — that is Haiku, not memory — and no
+  earlier task ever had the precise rules to follow. An extraction-precision gap on §10
+  (the first scan produced the looser `517b`), not an injection gap.
+- Ten of twelve steps injected (5–8 requirements each; 36 in the store at the end, 5
+  project-level).
+
+Extractor audit r1: 35 graded, seeded recall 23/24 (Q3 missed), 11 unseeded, 11 valid, 10
+actionable, 4 incident-derived, 1 noise, **4 near-duplicates** flagged (the reconcile
+step created rather than merged: `05a5`/`3eac`→`2f18`, `0e7d`→`d6c4`, `115c`→`0ae3`) —
+the first store with duplicates.
+
 ## Artifacts
 
 - Runs: `/home/lucas/workspace/bract-pilot/x4/` (report.json, results/*-scores.json,
