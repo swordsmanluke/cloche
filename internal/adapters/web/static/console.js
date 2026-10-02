@@ -3153,7 +3153,7 @@
 
     function applyLogWrap() {
         var pre = document.getElementById('console-log-content');
-        if (pre) pre.style.whiteSpace = detail.logWrap ? 'pre-wrap' : 'pre';
+        if (pre) pre.classList.toggle('console-log-wrap', !!detail.logWrap);
     }
 
     function updateLogScopeIndicator() {

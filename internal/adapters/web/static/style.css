@@ -1481,6 +1481,13 @@ h2 {
     overflow-y: auto;
 }
 
+/* Wrap off (the default): the pre grows to its widest line so the viewer
+   scrolls horizontally. Without the explicit max-content width each
+   .log-line block is only as wide as the viewer, and content-visibility's
+   paint containment clips whatever overflows it — the tail of a long line
+   is neither visible nor counted toward the viewer's scroll width. Wrap on
+   (.console-log-wrap, toggled by console.js applyLogWrap) goes back to a
+   viewer-width pre whose lines wrap. */
 .console-log-viewer pre {
     margin: 0;
     padding: 0.6rem 1.1rem 0.8rem;
@@ -1488,6 +1495,18 @@ h2 {
     line-height: 1.55;
     color: var(--tx2);
     white-space: pre;
+    box-sizing: border-box;
+    width: max-content;
+    min-width: 100%;
+}
+.console-log-viewer pre.console-log-wrap {
+    white-space: pre-wrap;
+    width: auto;
+}
+/* Keep "Load earlier" pinned to the visible width while scrolled sideways. */
+.console-log-viewer .load-earlier-btn {
+    position: sticky;
+    left: 0;
 }
 
 .console-footbar {

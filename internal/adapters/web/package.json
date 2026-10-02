@@ -4,7 +4,7 @@
   "description": "JS unit/smoke tests for the console dashboard's static assets. Not part of the Go build; run with `npm test` from this directory.",
   "scripts": {
     "test": "node --test console-boot.test.js console-foot.test.js console-log-line.test.js console-log-scope.test.js console-log-stream.test.js console-stack-row.test.js console-tabs.test.js console-visibility.test.js duration-format.test.js",
-    "test:e2e": "node --test console-step-strip-layout.test.js console-repo-subtabs.test.js"
+    "test:e2e": "node --test console-step-strip-layout.test.js console-repo-subtabs.test.js console-log-hscroll-layout.test.js"
   },
   "devDependencies": {
     "jsdom": "^25.0.0",
