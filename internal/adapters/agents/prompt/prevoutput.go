@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"strings"
+
+	"github.com/swordsmanluke/cloche/internal/protocol"
 )
 
 // CondensePrevOutput reduces a predecessor step's output log to the text worth
@@ -57,12 +59,6 @@ func isStreamEvent(line []byte) bool {
 }
 
 func stripResultMarkers(s string) string {
-	var kept []string
-	for _, line := range strings.Split(s, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "CLOCHE_RESULT:") {
-			continue
-		}
-		kept = append(kept, line)
-	}
-	return strings.TrimSpace(strings.Join(kept, "\n"))
+	_, clean, _ := protocol.ExtractResult([]byte(s))
+	return strings.TrimSpace(string(clean))
 }

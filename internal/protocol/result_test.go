@@ -98,3 +98,57 @@ func TestExtractNoncedResult_LastWins(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, "second", result)
 }
+
+// Agents deep into a long context don't reliably honor "final line, by
+// itself": they wrap the marker in backticks or bold, add prose after it, or
+// keep talking on later lines. None of that may hide the marker.
+func TestExtractNoncedResult_MarkerNotOnItsOwnLine(t *testing.T) {
+	cases := []struct {
+		name   string
+		output string
+		want   string
+		clean  string
+	}{
+		{"backticked", "Done.\n`CLOCHE_RESULT:n0nce1:success`\n", "success", "Done.\n``\n"},
+		{"bold", "**CLOCHE_RESULT:n0nce1:success**\n", "success", "****\n"},
+		{"trailing prose", "CLOCHE_RESULT:n0nce1:success — all tests pass.\n", "success", " — all tests pass.\n"},
+		{"trailing period", "CLOCHE_RESULT:n0nce1:needs_research.\n", "needs_research", ".\n"},
+		{"leading prose", "Final answer: CLOCHE_RESULT:n0nce1:fail\n", "fail", "Final answer: \n"},
+		{"output after marker", "CLOCHE_RESULT:n0nce1:success\n\nLet me know if you need anything else.\n", "success", "\nLet me know if you need anything else.\n"},
+		{"hyphenated name", "CLOCHE_RESULT:n0nce1:needs-review\n", "needs-review", ""},
+		{"trailing dash is punctuation", "CLOCHE_RESULT:n0nce1:success- done\n", "success", "- done\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, clean, found := protocol.ExtractNoncedResult([]byte(tc.output), "n0nce1")
+			assert.True(t, found)
+			assert.Equal(t, tc.want, result)
+			assert.Equal(t, tc.clean, string(clean))
+		})
+	}
+}
+
+func TestExtractNoncedResult_LastWinsAcrossMixedPlacement(t *testing.T) {
+	output := []byte("CLOCHE_RESULT:n0nce1:fail\nActually the fix worked: `CLOCHE_RESULT:n0nce1:success`\n")
+	result, _, found := protocol.ExtractNoncedResult(output, "n0nce1")
+	assert.True(t, found)
+	assert.Equal(t, "success", result)
+}
+
+func TestExtractNoncedResult_PrefixWithoutNameIsNotAMarker(t *testing.T) {
+	output := []byte("print CLOCHE_RESULT:n0nce1: then the result name\n")
+	result, clean, found := protocol.ExtractNoncedResult(output, "n0nce1")
+	assert.False(t, found)
+	assert.Empty(t, result)
+	assert.Equal(t, string(output), string(clean))
+}
+
+// A bare-prefix scan (no nonce known, e.g. stripping markers from a previous
+// step's output) must excise a nonced marker whole, not leave ":success"
+// behind.
+func TestExtractResult_ExcisesNoncedMarkerWhole(t *testing.T) {
+	output := []byte("Wrote 4 candidates\nCLOCHE_RESULT:abc123:success\n")
+	_, clean, found := protocol.ExtractResult(output)
+	assert.True(t, found)
+	assert.Equal(t, "Wrote 4 candidates\n", string(clean))
+}
