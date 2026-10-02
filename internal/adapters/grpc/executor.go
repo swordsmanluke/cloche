@@ -285,10 +285,15 @@ func (d *DaemonExecutor) Close(succeeded bool) {
 }
 
 // repoWorktree pairs a resolved repo with the extract worktree+branch the
-// daemon prepared in that repo's git dir.
+// daemon prepared in that repo's git dir. BaseSHA is the commit the worktree
+// was branched from; extraction must reuse it rather than re-resolving, since
+// the repo's HEAD can move while the container runs (e.g. an intent scan
+// committing scan state) and the container's copy only has history up to the
+// SHA it started from.
 type repoWorktree struct {
 	Repo     resolvedRepo
 	Worktree docker.ExtractWorktree
+	BaseSHA  string
 }
 
 // removeExtractWorktree removes a pre-created extraction worktree and its
@@ -518,7 +523,7 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 					ContainerID:      session.ContainerID,
 					WorktreeDir:      p.Worktree.Dir,
 					Branch:           p.Worktree.Branch,
-					BaseSHA:          d.resolveRepoBaseSHA(ctx, p.Repo.Path),
+					BaseSHA:          p.BaseSHA,
 					RunID:            childRunID,
 					WorkflowName:     targetName,
 					Result:           resultLabel,
@@ -664,7 +669,7 @@ func (d *DaemonExecutor) prepareExtractWorktrees(ctx context.Context, poolKey st
 			return fmt.Errorf("preparing worktree for repo %q: %w", r.Name, prepErr)
 		}
 		log.Printf("daemon executor: prepared extract worktree at %s on branch %s (repo=%q)", wt.Dir, wt.Branch, r.Name)
-		prepared = append(prepared, repoWorktree{Repo: r, Worktree: wt})
+		prepared = append(prepared, repoWorktree{Repo: r, Worktree: wt, BaseSHA: baseSHA})
 	}
 	d.worktrees[poolKey] = prepared
 	d.writeRepoBranchKV(ctx, prepared)

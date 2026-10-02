@@ -1060,6 +1060,46 @@ func TestDaemonExecutor_WorkflowStep_PreCreatesWorktree(t *testing.T) {
 	assert.Equal(t, 1, prepareCalls, "second invocation must reuse the existing worktree")
 }
 
+// TestDaemonExecutor_PrepareExtractWorktrees_RecordsBaseSHA verifies that the
+// SHA each worktree was branched from is recorded for extraction to reuse.
+// HEAD moves while the container runs (intent scans commit scan state
+// mid-run); the container's copy doesn't have those commits, so re-resolving
+// the base at extraction time makes `git log <base>..HEAD` fail inside the
+// container and the extracted commit loses the agent's commit messages.
+func TestDaemonExecutor_PrepareExtractWorktrees_RecordsBaseSHA(t *testing.T) {
+	tmpDir := t.TempDir()
+	initGitRepo(t, tmpDir)
+	startSHA := gitHEAD(tmpDir)
+
+	origPrepare := prepareExtractWorktreeFn
+	prepareExtractWorktreeFn = func(_ context.Context, opts docker.PrepareOptions) (docker.ExtractWorktree, error) {
+		return docker.ExtractWorktree{Dir: opts.TargetDir, Branch: opts.Branch}, nil
+	}
+	t.Cleanup(func() { prepareExtractWorktreeFn = origPrepare })
+
+	containerWF := buildContainerWFForTest("develop")
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		Store:      &recordingRunStore{ctxKeys: map[string]string{}},
+		ProjectDir: tmpDir,
+		TaskID:     "task-base",
+		AttemptID:  "att-base",
+		AllWFs:     map[string]*domain.Workflow{"develop": containerWF},
+	})
+
+	poolKey := "att-base:" + containerWF.ContainerID()
+	require.NoError(t, de.prepareExtractWorktrees(context.Background(), poolKey, containerWF))
+
+	// Move HEAD after the worktree is prepared, as a concurrent host commit would.
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "later"), []byte("y"), 0644))
+	gitCmd(t, tmpDir, "add", "later")
+	gitCmd(t, tmpDir, "commit", "-m", "later")
+	require.NotEqual(t, startSHA, gitHEAD(tmpDir), "test setup: HEAD should have moved")
+
+	prepared := de.worktrees[poolKey]
+	require.Len(t, prepared, 1)
+	assert.Equal(t, startSHA, prepared[0].BaseSHA)
+}
+
 // recordingRunStore is a minimal RunStore that only supports SetContextKey —
 // used to assert which KV keys the executor writes. All other methods are no-ops.
 type recordingRunStore struct {
