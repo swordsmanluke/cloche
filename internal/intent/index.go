@@ -81,6 +81,12 @@ func NewIndex(projectDir string, embedder embed.Embedder) (*Index, error) {
 		}
 		return nil, fmt.Errorf("intent: reading index: %w", err)
 	}
+	// An index written before the directory became self-ignoring has no
+	// .gitignore and is never re-saved while its contents stay fresh, so it
+	// would sit in the working tree as untracked forever. Fix it on load.
+	if err := ensureIgnored(filepath.Dir(ix.path())); err != nil {
+		return nil, err
+	}
 
 	var f indexFile
 	if err := json.Unmarshal(data, &f); err != nil {
@@ -91,6 +97,23 @@ func NewIndex(projectDir string, embedder embed.Embedder) (*Index, error) {
 		ix.entries[e.ID] = e
 	}
 	return ix, nil
+}
+
+// ensureIgnored makes the intent-index directory self-ignoring. The index
+// is rewritten by any agent step's prompt assembly, well outside the scan
+// workflow that commits .cloche/intent/. Projects initialised before this
+// directory existed have no .gitignore entry for it, so rather than leave
+// vectors.json dirtying the working tree and blocking merges, the directory
+// carries its own. (A copy that was committed before this existed is
+// untracked by the scan's commit step; .gitignore can't do that.)
+func ensureIgnored(dir string) error {
+	ignorePath := filepath.Join(dir, ".gitignore")
+	if _, statErr := os.Stat(ignorePath); os.IsNotExist(statErr) {
+		if writeErr := os.WriteFile(ignorePath, []byte("*\n"), 0o644); writeErr != nil {
+			return fmt.Errorf("intent: writing intent-index .gitignore: %w", writeErr)
+		}
+	}
+	return nil
 }
 
 func (ix *Index) path() string {
@@ -146,9 +169,15 @@ func (ix *Index) Sync(ctx context.Context, items []Item) error {
 	}
 
 	ix.mu.Lock()
+	changed := len(stale) > 0 || len(fresh) != len(ix.entries)
 	ix.entries = fresh
 	ix.mu.Unlock()
 
+	// Nothing re-embedded and nothing dropped: the file on disk already
+	// says exactly this, so don't rewrite it on every step's injection.
+	if !changed {
+		return nil
+	}
 	return ix.save()
 }
 
@@ -171,16 +200,8 @@ func (ix *Index) save() error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("intent: creating intent-index dir: %w", err)
 	}
-	// The index is rewritten by any agent step's prompt assembly, well
-	// outside the scan workflow that commits .cloche/intent/. Projects
-	// initialised before this directory existed have no .gitignore entry for
-	// it, so make it self-ignoring rather than leave vectors.json dirtying
-	// the working tree and blocking merges.
-	ignorePath := filepath.Join(dir, ".gitignore")
-	if _, statErr := os.Stat(ignorePath); os.IsNotExist(statErr) {
-		if writeErr := os.WriteFile(ignorePath, []byte("*\n"), 0o644); writeErr != nil {
-			return fmt.Errorf("intent: writing intent-index .gitignore: %w", writeErr)
-		}
+	if err := ensureIgnored(dir); err != nil {
+		return err
 	}
 
 	tmp, err := os.CreateTemp(dir, "vectors-*.json.tmp")

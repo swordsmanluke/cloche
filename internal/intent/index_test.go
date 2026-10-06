@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -197,4 +198,51 @@ func TestIndex_SyncWritesSelfIgnoringGitignore(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(dir, ".cloche", "intent-index", ".gitignore"))
 	require.NoError(t, err)
 	assert.Equal(t, "*\n", string(data))
+}
+
+// An index written before the directory became self-ignoring has no
+// .gitignore, and Sync no longer rewrites a fresh index, so it has to be
+// repaired on load rather than on the next save.
+func TestIndex_NewIndexWritesMissingGitignore(t *testing.T) {
+	dir := t.TempDir()
+	indexDir := filepath.Join(dir, ".cloche", "intent-index")
+	require.NoError(t, os.MkdirAll(indexDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(indexDir, "vectors.json"), []byte(`{"version":1,"entries":[]}`), 0o644))
+
+	_, err := intent.NewIndex(dir, newStub("stub:v1"))
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filepath.Join(indexDir, ".gitignore"))
+	require.NoError(t, err)
+	assert.Equal(t, "*\n", string(data))
+
+	// No index on disk: nothing is created, not even the directory.
+	_, err = intent.NewIndex(t.TempDir(), newStub("stub:v1"))
+	require.NoError(t, err)
+}
+
+// Sync runs on every step's injection; when nothing was re-embedded or
+// dropped it must leave vectors.json alone instead of rewriting it.
+func TestIndex_SyncDoesNotRewriteFreshIndex(t *testing.T) {
+	dir := t.TempDir()
+	items := []intent.Item{{ID: "a", Text: "hello"}, {ID: "b", Text: "world"}}
+	ix, err := intent.NewIndex(dir, newStub("stub:v1"))
+	require.NoError(t, err)
+	require.NoError(t, ix.Sync(context.Background(), items))
+
+	path := filepath.Join(dir, ".cloche", "intent-index", "vectors.json")
+	require.NoError(t, os.Chtimes(path, time.Unix(1_000_000, 0), time.Unix(1_000_000, 0)))
+
+	ix2, err := intent.NewIndex(dir, newStub("stub:v1"))
+	require.NoError(t, err)
+	require.NoError(t, ix2.Sync(context.Background(), items))
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, time.Unix(1_000_000, 0), info.ModTime(), "fresh index must not be rewritten")
+
+	// Dropping an item is a change and must be persisted.
+	require.NoError(t, ix2.Sync(context.Background(), items[:1]))
+	info, err = os.Stat(path)
+	require.NoError(t, err)
+	assert.NotEqual(t, time.Unix(1_000_000, 0), info.ModTime(), "dropping an item must rewrite the index")
 }
