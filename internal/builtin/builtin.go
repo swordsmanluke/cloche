@@ -12,7 +12,8 @@ import (
 // factories returns a fresh *domain.Workflow per call so callers can't
 // mutate a shared instance across resolutions.
 var factories = map[string]func() *domain.Workflow{
-	"intent-scan": scan.BuiltinWorkflow,
+	"intent-scan":         scan.BuiltinWorkflow,
+	scan.RepoWorkflowName: scan.BuiltinRepoWorkflow,
 }
 
 // Lookup returns the built-in workflow with the given name, if any.

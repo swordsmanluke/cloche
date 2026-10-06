@@ -73,6 +73,8 @@ Subcommands:
 		cmdIntentCheckCandidates(args[1:])
 	case "check-reconcile":
 		cmdIntentCheckReconcile(args[1:])
+	case "next-pass":
+		cmdIntentNextPass(args[1:])
 	case "validate":
 		cmdIntentValidate(args[1:])
 	default:
@@ -151,10 +153,14 @@ func firstLine(s string) string {
 }
 
 func scopeLabel(s intent.Scope) string {
-	if s.Level == intent.ScopeLevelProject {
-		return "project"
+	label := "project"
+	if s.Level != intent.ScopeLevelProject {
+		label = strings.Join(s.Domains, ",")
 	}
-	return strings.Join(s.Domains, ",")
+	if len(s.Repos) > 0 {
+		label += " @" + strings.Join(s.Repos, ",")
+	}
+	return label
 }
 
 func containsString(list []string, v string) bool {
@@ -166,9 +172,13 @@ func containsString(list []string, v string) bool {
 	return false
 }
 
-// intentListCommand implements "cloche intent list [--domain D] [--status S]".
+// intentListCommand implements "cloche intent list [--domain D] [--status S]
+// [--repo R]". --repo shows what a step working on repo R would be eligible
+// for: R's own requirements plus global ones; --repo "" (or --global) shows
+// global requirements only.
 func intentListCommand(args []string, w io.Writer) error {
 	var domainFilter, statusFilter, projectDir string
+	var repoFilter *string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--domain":
@@ -176,6 +186,15 @@ func intentListCommand(args []string, w io.Writer) error {
 				i++
 				domainFilter = args[i]
 			}
+		case "--repo":
+			if i+1 < len(args) {
+				i++
+				v := args[i]
+				repoFilter = &v
+			}
+		case "--global":
+			v := ""
+			repoFilter = &v
 		case "--status":
 			if i+1 < len(args) {
 				i++
@@ -201,6 +220,9 @@ func intentListCommand(args []string, w io.Writer) error {
 			continue
 		}
 		if domainFilter != "" && !containsString(r.Scope.Domains, domainFilter) {
+			continue
+		}
+		if repoFilter != nil && !r.Scope.VisibleTo(*repoFilter) {
 			continue
 		}
 		filtered = append(filtered, r)
@@ -239,6 +261,11 @@ func intentShowCommand(args []string, w io.Writer) error {
 		fmt.Fprintf(w, "Superseded by: %s\n", req.SupersededBy)
 	}
 	fmt.Fprintf(w, "Scope:       %s\n", scopeLabel(req.Scope))
+	if len(req.Scope.Repos) > 0 {
+		fmt.Fprintf(w, "Repos:       %s\n", strings.Join(req.Scope.Repos, ", "))
+	} else {
+		fmt.Fprintf(w, "Repos:       all (global)\n")
+	}
 	if len(req.Scope.Paths) > 0 {
 		fmt.Fprintf(w, "Paths:       %s\n", strings.Join(req.Scope.Paths, ", "))
 	}
@@ -354,19 +381,25 @@ func intentSetStatusCommand(args []string, w io.Writer, status intent.Status) er
 	return nil
 }
 
-// intentAddCommand implements "cloche intent add <statement> [--domain D]...".
-// Manually authored requirements are always provenance kind=user and
-// user_edited=true — there's no scan to later "touch" them, so they start
-// out as canonical as any edited requirement.
+// intentAddCommand implements "cloche intent add <statement> [--domain D]...
+// [--repo R]...". Manually authored requirements are always provenance
+// kind=user and user_edited=true — there's no scan to later "touch" them,
+// so they start out as canonical as any edited requirement. Without --repo
+// the requirement is global; with it, it applies to the named repos only.
 func intentAddCommand(args []string, w io.Writer) error {
 	var projectDir, statement string
-	var domains []string
+	var domains, repos []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--domain":
 			if i+1 < len(args) {
 				i++
 				domains = append(domains, args[i])
+			}
+		case "--repo":
+			if i+1 < len(args) {
+				i++
+				repos = append(repos, args[i])
 			}
 		case "--project", "-p":
 			if i+1 < len(args) {
@@ -380,12 +413,23 @@ func intentAddCommand(args []string, w io.Writer) error {
 		}
 	}
 	if statement == "" {
-		return fmt.Errorf("usage: cloche intent add \"statement\" [--domain <name>]... [--project <dir>]")
+		return fmt.Errorf("usage: cloche intent add \"statement\" [--domain <name>]... [--repo <name>]... [--project <dir>]")
 	}
 
 	scope := intent.Scope{Level: intent.ScopeLevelProject}
 	if len(domains) > 0 {
 		scope = intent.Scope{Level: intent.ScopeLevelDomain, Domains: domains}
+	}
+	scope.Repos = repos
+	if len(repos) > 0 {
+		cfg, err := config.Load(resolveProjectDir(projectDir))
+		if err == nil && cfg != nil {
+			for _, r := range repos {
+				if !cfg.HasRepository(r) {
+					return fmt.Errorf("unknown repo %q: not a [[repositories]] entry in .cloche/config.toml", r)
+				}
+			}
+		}
 	}
 
 	store := intent.NewStore(resolveProjectDir(projectDir))
@@ -573,6 +617,7 @@ func intentPreviewCommand(args []string, w io.Writer) error {
 		if loaded, loadErr := loadWorkflow(projectDir, workflowName); loadErr == nil {
 			wf = loaded
 			query.Repos = resolveRepoPaths(cfg, wf.Repos)
+			query.RepoNames = wf.Repos
 			if d, ok := wf.Config["domains"]; ok {
 				query.Domains = splitCommaList(d)
 			}
@@ -1009,6 +1054,18 @@ func cmdIntentApplyDomains(args []string) {
 
 // intentDomainNames returns the set of domain names in the project's map for
 // validating scope references; nil (not enforced) if the map can't be read.
+// intentRepoRule builds the RepoRule for a scan pass over repo ("" for the
+// project root) from the project's configured [[repositories]] names. With
+// no readable config the known list is empty, which on a root pass rejects
+// any repos a candidate names — the right call for a single-repo project.
+func intentRepoRule(projectDir, repo string) scan.RepoRule {
+	rule := scan.RepoRule{Pass: repo}
+	if cfg, err := config.Load(projectDir); err == nil {
+		rule.Known = cfg.RepositoryNames()
+	}
+	return rule
+}
+
 func intentDomainNames(projectDir string) map[string]bool {
 	dm, err := intent.NewStore(projectDir).LoadDomains()
 	if err != nil {
@@ -1040,13 +1097,18 @@ func printCSVProblems(path string, problems []string) {
 // repair-candidates step fixes the CSV's format).
 func cmdIntentCheckCandidates(args []string) {
 	projectDir, _ := os.Getwd()
-	csvPath, outPath := "", ""
+	csvPath, outPath, repo := "", "", ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--project":
 			if i+1 < len(args) {
 				i++
 				projectDir = args[i]
+			}
+		case "--repo":
+			if i+1 < len(args) {
+				i++
+				repo = args[i]
 			}
 		case "--csv":
 			if i+1 < len(args) {
@@ -1075,7 +1137,7 @@ func cmdIntentCheckCandidates(args []string) {
 		os.Exit(1)
 	}
 	absProjectDir, _ := filepath.Abs(projectDir)
-	candidates, problems := scan.ParseCandidatesCSV(data, intentDomainNames(absProjectDir), time.Now().UTC())
+	candidates, problems := scan.ParseCandidatesCSV(data, intentDomainNames(absProjectDir), intentRepoRule(absProjectDir, repo), time.Now().UTC())
 	if len(problems) > 0 {
 		printCSVProblems(csvPath, problems)
 		os.Exit(1)
@@ -1102,13 +1164,18 @@ func cmdIntentCheckCandidates(args []string) {
 // (repair-reconcile fixes the CSV).
 func cmdIntentCheckReconcile(args []string) {
 	projectDir, _ := os.Getwd()
-	csvPath, candidatesPath, outPath := "", "", ""
+	csvPath, candidatesPath, outPath, repo := "", "", "", ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--project":
 			if i+1 < len(args) {
 				i++
 				projectDir = args[i]
+			}
+		case "--repo":
+			if i+1 < len(args) {
+				i++
+				repo = args[i]
 			}
 		case "--csv":
 			if i+1 < len(args) {
@@ -1161,7 +1228,7 @@ func cmdIntentCheckReconcile(args []string) {
 		fmt.Printf("%s could not be read: %v\n", csvPath, err)
 		os.Exit(1)
 	}
-	actions, problems := scan.ParseReconcileCSV(data, candidates, intentDomainNames(absProjectDir), time.Now().UTC())
+	actions, problems := scan.ParseReconcileCSV(data, candidates, intentDomainNames(absProjectDir), intentRepoRule(absProjectDir, repo), time.Now().UTC())
 	if len(problems) > 0 {
 		printCSVProblems(csvPath, problems)
 		os.Exit(1)
@@ -1176,7 +1243,7 @@ func cmdIntentCheckReconcile(args []string) {
 	for _, r := range reqs {
 		existing[r.ID] = r
 	}
-	if violations := scan.Validate(existing, actions); len(violations) > 0 {
+	if violations := scan.Validate(existing, actions, repo); len(violations) > 0 {
 		lines := make([]string, 0, len(violations))
 		for _, v := range violations {
 			lines = append(lines, fmt.Sprintf("row for candidate %d (%s): %s: %s", v.Index+1, v.Action.Action, v.Rule, v.Detail))
@@ -1258,12 +1325,24 @@ func cmdIntentApplyReconcile(args []string) {
 	projectDir, _ := os.Getwd()
 	reconcilePath := ""
 	candidatesPath := ""
+	repo := ""
+	summaryPath := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--project":
 			if i+1 < len(args) {
 				i++
 				projectDir = args[i]
+			}
+		case "--repo":
+			if i+1 < len(args) {
+				i++
+				repo = args[i]
+			}
+		case "--summary-file":
+			if i+1 < len(args) {
+				i++
+				summaryPath = args[i]
 			}
 		case "--reconcile-file":
 			if i+1 < len(args) {
@@ -1282,7 +1361,7 @@ func cmdIntentApplyReconcile(args []string) {
 		os.Exit(1)
 	}
 
-	report, err := runIntentApplyReconcile(projectDir, reconcilePath, candidatesPath)
+	report, err := runIntentApplyReconcile(projectDir, reconcilePath, candidatesPath, repo)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		printResultMarker("fail")
@@ -1294,9 +1373,92 @@ func cmdIntentApplyReconcile(args []string) {
 		return
 	}
 
-	fmt.Printf("created %d, superseded %d, merged %d, dropped %d\n",
+	summary := fmt.Sprintf("created %d, superseded %d, merged %d, dropped %d",
 		len(report.Created), len(report.Superseded), len(report.Merged), report.Dropped)
+	fmt.Println(summary)
+	if summaryPath != "" {
+		// One line per pass, for next-pass to aggregate into the scan's
+		// commit message once every pass has run.
+		if err := scan.AppendPassSummary(summaryPath, repo, summary); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: recording pass summary: %v\n", err)
+		}
+	}
 	printResultMarker("success")
+}
+
+// cmdIntentNextPass is the scan's next-pass step: it advances the cursor
+// over the passes collect-sources listed (see scan.Collection.Passes),
+// points the intent_scan_repo and intent_scan_sources_dir KV keys at the
+// next one, clears the previous pass's hand-off files from the temp dir,
+// and reports "pass" — or, once every pass has run, prints the aggregated
+// apply summary as its last line (the commit step's message) and reports
+// "done".
+func cmdIntentNextPass(args []string) {
+	sourcesDir, cursorPath, tempDir := "", "", ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--sources":
+			if i+1 < len(args) {
+				i++
+				sourcesDir = args[i]
+			}
+		case "--cursor":
+			if i+1 < len(args) {
+				i++
+				cursorPath = args[i]
+			}
+		case "--temp":
+			if i+1 < len(args) {
+				i++
+				tempDir = args[i]
+			}
+		}
+	}
+	if sourcesDir == "" || cursorPath == "" {
+		fmt.Fprintln(os.Stderr, "error: --sources and --cursor are required")
+		os.Exit(1)
+	}
+	passes, err := scan.ReadPasses(sourcesDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	next, total := scan.NextPass(cursorPath, len(passes))
+	if next >= total {
+		if tempDir != "" {
+			if summary := scan.AggregatePassSummaries(filepath.Join(tempDir, "scan-summary.txt")); summary != "" {
+				fmt.Printf("all %d pass(es) done\n%s\n", total, summary)
+			} else {
+				fmt.Printf("all %d pass(es) done; nothing applied\n", total)
+			}
+		}
+		printResultMarker("done")
+		return
+	}
+	pass := passes[next]
+	if err := setContextKey("intent_scan_repo", pass.Repo); err != nil {
+		fmt.Fprintf(os.Stderr, "error: setting intent_scan_repo: %v\n", err)
+		os.Exit(1)
+	}
+	if err := setContextKey("intent_scan_sources_dir", filepath.Join(sourcesDir, pass.Dir)); err != nil {
+		fmt.Fprintf(os.Stderr, "error: setting intent_scan_sources_dir: %v\n", err)
+		os.Exit(1)
+	}
+	if tempDir != "" {
+		for _, name := range []string{"candidates.csv", "candidates.json", "reconcile.csv", "reconcile.json"} {
+			os.Remove(filepath.Join(tempDir, name))
+		}
+	}
+	if err := scan.AdvancePass(cursorPath, next+1); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	label := "the project root"
+	if pass.Repo != "" {
+		label = "repo " + pass.Repo
+	}
+	fmt.Printf("scanning %s (pass %d of %d)\n", label, next+1, total)
+	printResultMarker("pass")
 }
 
 // runIntentApplyReconcile reads a reconcile.json produced by the reconcile
@@ -1311,7 +1473,7 @@ func cmdIntentApplyReconcile(args []string) {
 // no-op success, not an error. A missing/unreadable candidatesPath when
 // reconcile.json is also missing can't be told apart from "should have
 // written something", so it fails closed like before.
-func runIntentApplyReconcile(projectDir, reconcilePath, candidatesPath string) (*scan.Report, error) {
+func runIntentApplyReconcile(projectDir, reconcilePath, candidatesPath, repo string) (*scan.Report, error) {
 	absProjectDir, err := filepath.Abs(projectDir)
 	if err != nil {
 		return nil, fmt.Errorf("resolving project dir: %w", err)
@@ -1337,7 +1499,7 @@ func runIntentApplyReconcile(projectDir, reconcilePath, candidatesPath string) (
 	}
 
 	store := intent.NewStore(absProjectDir)
-	return scan.Apply(store, actions)
+	return scan.Apply(store, actions, repo)
 }
 
 // candidatesFileHasCandidates reports whether the extract step's

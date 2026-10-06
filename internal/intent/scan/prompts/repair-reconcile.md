@@ -14,11 +14,11 @@ The file is `$(cloche get temp_file_dir)/reconcile.csv`. Its format is
 exactly:
 
 ```csv
-candidate,action,existing_id,reason,statement,rationale,scope_level,domains,hints,confidence,provenance_kind,provenance_ref
-1,create,,,,,,,,,,
-2,merge,req-a3f8,duplicates existing requirement,,,,,,,,
-3,supersede,req-b91c,commit abc123 reverses this,"New statement",,,,,,,
-4,drop,,task-specific instruction,,,,,,,,
+candidate,action,existing_id,reason,statement,rationale,scope_level,domains,hints,confidence,provenance_kind,provenance_ref,repos
+1,create,,,,,,,,,,,
+2,merge,req-a3f8,duplicates existing requirement,,,,,,,,,
+3,supersede,req-b91c,commit abc123 reverses this,"New statement",,,,,,,,
+4,drop,,task-specific instruction,,,,,,,,,
 ```
 
 - Exactly one row per candidate in `candidates.json`, in order; `candidate`
@@ -28,6 +28,10 @@ candidate,action,existing_id,reason,statement,rationale,scope_level,domains,hint
   directory).
 - For `create`/`supersede`, leave a field blank to keep the candidate's own
   value; fill it only to change it.
+- A `merge`/`supersede` may only target a requirement visible to this pass:
+  one with no `scope.repos`, or whose `scope.repos` includes the repository
+  being scanned (`cloche get intent_scan_repo`). If the problem list says a
+  target is not visible, change that row to `create` (or `drop`).
 - If a row was rejected for a hard rule (targeting a `disabled` or
   `superseded` requirement, or `merge` into a `user_edited` one), change that
   row's action — `drop` it, or `supersede` the current successor — rather

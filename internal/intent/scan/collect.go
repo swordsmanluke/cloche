@@ -37,6 +37,9 @@ var noiseCommitRe = regexp.MustCompile(`^Version \d+\.\d+\.\d+$`)
 
 // DocSource is one changed-or-new doc file since the last scan.
 type DocSource struct {
+	// RepoName is the [[repositories]] name of the repository this doc came
+	// from ("" for the project root); it decides which scan pass reads it.
+	RepoName string
 	// Repo is the SubPath of the repository this doc came from ("" for the
 	// project root itself, or any legacy project with no [[repositories]]
 	// configured).
@@ -51,6 +54,9 @@ type DocSource struct {
 
 // CommitSource is one non-noise commit since the last scan's LastCommit cursor.
 type CommitSource struct {
+	// RepoName is the [[repositories]] name of the repository this commit
+	// belongs to ("" for the project root).
+	RepoName string
 	// Repo is the SubPath of the repository this commit belongs to ("" for
 	// the project root itself, or any legacy project with no
 	// [[repositories]] configured).
@@ -73,6 +79,9 @@ func (c CommitSource) Ref() string {
 // RunSource is the task prompt and/or transcript material for one run
 // directory not yet covered by the last scan's ScannedRuns cursor.
 type RunSource struct {
+	// RepoName is the [[repositories]] name of the repository this run
+	// belongs to ("" for the project root).
+	RepoName string
 	// Repo is the SubPath of the repository this run belongs to ("" for the
 	// project root itself, or any legacy project with no [[repositories]]
 	// configured).
@@ -107,6 +116,10 @@ type Collection struct {
 	// walked, keyed by repo name ("" for the project root). NextState
 	// overlays this onto prev's cursors for repos Collect didn't touch.
 	nextRepos map[string]*intent.RepoScanState
+	// sourceOrder is every source Collect walked, in the order it walked
+	// them (root first, then [[repositories]] in config order); Passes
+	// derives the scan passes from it.
+	sourceOrder []string
 
 	// Stats records what this pass collected, per repo (root plus every
 	// configured [[repositories]] entry), for callers that persist it as
@@ -194,6 +207,7 @@ func Collect(projectDir string, cfg *config.Config, prev *intent.ScanState, docG
 	coll := &Collection{nextRepos: map[string]*intent.RepoScanState{}}
 
 	for _, src := range repoSources(projectDir, cfg) {
+		coll.sourceOrder = append(coll.sourceOrder, src.Name)
 		repoPrev := prev.Repos[src.Name]
 		if repoPrev == nil {
 			repoPrev = &intent.RepoScanState{}
@@ -221,24 +235,27 @@ func Collect(projectDir string, cfg *config.Config, prev *intent.ScanState, docG
 		for _, d := range docs {
 			nextDocs[d.Path] = d.Hash
 			coll.Docs = append(coll.Docs, DocSource{
-				Repo:    src.SubPath,
-				Path:    qualifyPath(src.SubPath, d.Path),
-				Content: d.Content,
-				Hash:    d.Hash,
+				RepoName: src.Name,
+				Repo:     src.SubPath,
+				Path:     qualifyPath(src.SubPath, d.Path),
+				Content:  d.Content,
+				Hash:     d.Hash,
 			})
 		}
 
 		for _, cm := range commits {
 			coll.Commits = append(coll.Commits, CommitSource{
-				Repo:    src.SubPath,
-				SHA:     cm.SHA,
-				Subject: cm.Subject,
-				Patch:   cm.Patch,
+				RepoName: src.Name,
+				Repo:     src.SubPath,
+				SHA:      cm.SHA,
+				Subject:  cm.Subject,
+				Patch:    cm.Patch,
 			})
 		}
 
 		for _, r := range runs {
 			coll.Runs = append(coll.Runs, RunSource{
+				RepoName:   src.Name,
 				Repo:       src.SubPath,
 				ID:         r.ID,
 				TaskPrompt: r.TaskPrompt,
@@ -605,20 +622,127 @@ func transcriptLogStepName(fileName string) string {
 	return strings.TrimPrefix(base, "llm-")
 }
 
-// Write lays out the collected material under outDir for the extract step
-// to read: outDir/docs/<path> (already repo-qualified for a non-root
-// source), outDir/commits.txt (one repo-qualified ref per line, see
-// CommitSource.Ref) + outDir/diffs/<sha-or-repo-sha>.patch,
-// outDir/runs/<ref>/{task_prompt.md,transcript.log} (ref per
-// RunSource.Ref), and a manifest.json summarizing what's present.
+// PassesFile is the file under Write's outDir listing the scan passes in
+// order, one per line as "<repo-name>\t<subdir>" (the project root's name
+// is empty). The intent-scan workflow's next-pass step walks it.
+const PassesFile = "passes.txt"
+
+// Pass is one extract/reconcile pass of a scan: the material from a single
+// source tree, so a requirement is always attributed to the repo it came
+// from rather than guessed from a pile of every repo's material at once.
+type Pass struct {
+	// Repo is the [[repositories]] name, or "" for the project root.
+	Repo string
+	// Dir is the subdirectory of Write's outDir holding this pass's material.
+	Dir string
+}
+
+// Passes returns the scan passes for this collection: every configured
+// repository with new material, in config order, then the project root if
+// it has any. Repos come first so a repo's own requirements exist before
+// the root pass reconciles the wrapper's view of them; sources with nothing
+// new are skipped rather than handed to an agent with an empty directory.
+func (c *Collection) Passes() []Pass {
+	var passes []Pass
+	var root *Pass
+	for _, name := range c.sourceOrder {
+		if !c.hasNewFor(name) {
+			continue
+		}
+		p := Pass{Repo: name, Dir: passDir(name)}
+		if name == "" {
+			root = &p
+			continue
+		}
+		passes = append(passes, p)
+	}
+	if root != nil {
+		passes = append(passes, *root)
+	}
+	return passes
+}
+
+func (c *Collection) hasNewFor(repo string) bool {
+	for _, d := range c.Docs {
+		if d.RepoName == repo {
+			return true
+		}
+	}
+	for _, cm := range c.Commits {
+		if cm.RepoName == repo {
+			return true
+		}
+	}
+	for _, r := range c.Runs {
+		if r.RepoName == repo {
+			return true
+		}
+	}
+	return false
+}
+
+// passDir names the per-pass subdirectory: "root" for the project root,
+// otherwise the repo name with path separators flattened.
+func passDir(repo string) string {
+	if repo == "" {
+		return "root"
+	}
+	return strings.ReplaceAll(strings.ReplaceAll(repo, "/", "-"), string(filepath.Separator), "-")
+}
+
+// Write lays out the collected material under outDir, one subdirectory per
+// scan pass (see Passes), plus PassesFile listing them in order. Within a
+// pass's directory the layout is what the extract prompt documents:
+// docs/<path> (project-root-relative, repo-qualified for a repo source),
+// commits.txt (one repo-qualified ref per line, see CommitSource.Ref) +
+// diffs/<sha-or-repo-sha>.patch, runs/<ref>/{task_prompt.md,transcript.log}
+// (ref per RunSource.Ref), and a manifest.json summarizing what's present.
 func (c *Collection) Write(outDir string) error {
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return err
+	}
+	var passes strings.Builder
+	for _, p := range c.Passes() {
+		if err := c.writePass(filepath.Join(outDir, p.Dir), p.Repo); err != nil {
+			return err
+		}
+		fmt.Fprintf(&passes, "%s\t%s\n", p.Repo, p.Dir)
+	}
+	return os.WriteFile(filepath.Join(outDir, PassesFile), []byte(passes.String()), 0o644)
+}
+
+// ReadPasses reads the PassesFile Write left under outDir.
+func ReadPasses(outDir string) ([]Pass, error) {
+	data, err := os.ReadFile(filepath.Join(outDir, PassesFile))
+	if err != nil {
+		return nil, err
+	}
+	var passes []Pass
+	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		repo, dir, ok := strings.Cut(line, "\t")
+		if !ok {
+			return nil, fmt.Errorf("intent scan: malformed line in %s: %q", PassesFile, line)
+		}
+		passes = append(passes, Pass{Repo: repo, Dir: dir})
+	}
+	return passes, nil
+}
+
+func (c *Collection) writePass(outDir, repo string) error {
 	manifest := struct {
+		Repo    string   `json:"repo"`
 		Docs    []string `json:"docs"`
 		Commits []string `json:"commits"`
 		Runs    []string `json:"runs"`
-	}{}
+	}{Repo: repo}
 
 	for _, d := range c.Docs {
+		if d.RepoName != repo {
+			continue
+		}
 		path := filepath.Join(outDir, "docs", filepath.FromSlash(d.Path))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return err
@@ -629,37 +753,44 @@ func (c *Collection) Write(outDir string) error {
 		manifest.Docs = append(manifest.Docs, d.Path)
 	}
 
-	if len(c.Commits) > 0 {
-		diffsDir := filepath.Join(outDir, "diffs")
-		if err := os.MkdirAll(diffsDir, 0o755); err != nil {
-			return err
+	var commitsTxt strings.Builder
+	for _, cm := range c.Commits {
+		if cm.RepoName != repo {
+			continue
 		}
-		var commitsTxt strings.Builder
-		for _, cm := range c.Commits {
-			ref := cm.Ref()
-			fmt.Fprintf(&commitsTxt, "%s\t%s\n", ref, cm.Subject)
-			short := cm.SHA
-			if len(short) > 7 {
-				short = short[:7]
-			}
-			// Prefix the patch filename with the repo when set, so commits
-			// from different repos that happen to share a short SHA prefix
-			// can't collide.
-			base := short
-			if cm.Repo != "" {
-				base = strings.ReplaceAll(cm.Repo, "/", "-") + "-" + short
-			}
-			if err := os.WriteFile(filepath.Join(diffsDir, base+".patch"), []byte(cm.Patch), 0o644); err != nil {
+		if manifest.Commits == nil {
+			if err := os.MkdirAll(filepath.Join(outDir, "diffs"), 0o755); err != nil {
 				return err
 			}
-			manifest.Commits = append(manifest.Commits, ref)
 		}
+		ref := cm.Ref()
+		fmt.Fprintf(&commitsTxt, "%s\t%s\n", ref, cm.Subject)
+		short := cm.SHA
+		if len(short) > 7 {
+			short = short[:7]
+		}
+		// Prefix the patch filename with the repo when set, so commits
+		// from different repos that happen to share a short SHA prefix
+		// can't collide.
+		base := short
+		if cm.Repo != "" {
+			base = strings.ReplaceAll(cm.Repo, "/", "-") + "-" + short
+		}
+		if err := os.WriteFile(filepath.Join(outDir, "diffs", base+".patch"), []byte(cm.Patch), 0o644); err != nil {
+			return err
+		}
+		manifest.Commits = append(manifest.Commits, ref)
+	}
+	if manifest.Commits != nil {
 		if err := os.WriteFile(filepath.Join(outDir, "commits.txt"), []byte(commitsTxt.String()), 0o644); err != nil {
 			return err
 		}
 	}
 
 	for _, r := range c.Runs {
+		if r.RepoName != repo {
+			continue
+		}
 		ref := r.Ref()
 		dir := filepath.Join(outDir, "runs", filepath.FromSlash(ref))
 		if err := os.MkdirAll(dir, 0o755); err != nil {

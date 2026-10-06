@@ -80,8 +80,12 @@ func TestRunIntentCollectSources_QuietThenNew(t *testing.T) {
 	if !c2.HasNew() {
 		t.Fatalf("expected new material after adding CLAUDE.md")
 	}
-	if _, err := os.Stat(filepath.Join(out, "docs", "CLAUDE.md")); err != nil {
-		t.Fatalf("expected collected doc written to out dir: %v", err)
+	if _, err := os.Stat(filepath.Join(out, "root", "docs", "CLAUDE.md")); err != nil {
+		t.Fatalf("expected collected doc written to the root pass dir: %v", err)
+	}
+	passes, err := scan.ReadPasses(out)
+	if err != nil || len(passes) != 1 || passes[0].Repo != "" || passes[0].Dir != "root" {
+		t.Fatalf("expected a single root pass, got %+v (%v)", passes, err)
 	}
 	if len(stats2.Repos) != 1 || stats2.Repos[0].DocsNew != 1 {
 		t.Fatalf("expected 1 new doc in root-repo stats, got %+v", stats2.Repos)
@@ -246,8 +250,12 @@ path = "./repos/anarkana"
 		t.Fatalf("expected repo-qualified commit ref, got %+v", c.Commits)
 	}
 
-	if _, err := os.Stat(filepath.Join(out, "docs", "repos", "anarkana", "README.md")); err != nil {
-		t.Fatalf("expected collected doc written under out/docs/repos/anarkana/: %v", err)
+	if _, err := os.Stat(filepath.Join(out, "anarkana", "docs", "repos", "anarkana", "README.md")); err != nil {
+		t.Fatalf("expected collected doc written under the anarkana pass dir: %v", err)
+	}
+	passes, err := scan.ReadPasses(out)
+	if err != nil || len(passes) != 1 || passes[0].Repo != "anarkana" {
+		t.Fatalf("expected a single anarkana pass (the root had nothing new), got %+v (%v)", passes, err)
 	}
 
 	// The wrapper's own project root has no docs/commits in this fixture,
@@ -347,7 +355,7 @@ func TestRunIntentApplyReconcile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report, err := runIntentApplyReconcile(dir, reconcilePath, "")
+	report, err := runIntentApplyReconcile(dir, reconcilePath, "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -373,7 +381,7 @@ func TestRunIntentApplyReconcile_HardRuleViolationAppliesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := runIntentApplyReconcile(dir, reconcilePath, ""); err == nil {
+	if _, err := runIntentApplyReconcile(dir, reconcilePath, "", ""); err == nil {
 		t.Fatalf("expected an error for an invalid action")
 	}
 }
@@ -390,7 +398,7 @@ func TestRunIntentApplyReconcile_MissingFileZeroCandidates_NoOpSuccess(t *testin
 	}
 	reconcilePath := filepath.Join(dir, "reconcile.json") // never written
 
-	report, err := runIntentApplyReconcile(dir, reconcilePath, candidatesPath)
+	report, err := runIntentApplyReconcile(dir, reconcilePath, candidatesPath, "")
 	if err != nil {
 		t.Fatalf("expected no-op success, got error: %v", err)
 	}
@@ -414,7 +422,7 @@ func TestRunIntentApplyReconcile_MissingFileWithCandidates_Fails(t *testing.T) {
 	}
 	reconcilePath := filepath.Join(dir, "reconcile.json") // never written
 
-	_, err := runIntentApplyReconcile(dir, reconcilePath, candidatesPath)
+	_, err := runIntentApplyReconcile(dir, reconcilePath, candidatesPath, "")
 	if err == nil {
 		t.Fatalf("expected an error when candidates exist but reconcile.json is missing")
 	}
@@ -428,7 +436,7 @@ func TestRunIntentApplyReconcile_MissingFileNoCandidatesFile_FailsClosed(t *test
 	dir := t.TempDir()
 	reconcilePath := filepath.Join(dir, "reconcile.json") // never written
 
-	_, err := runIntentApplyReconcile(dir, reconcilePath, "")
+	_, err := runIntentApplyReconcile(dir, reconcilePath, "", "")
 	if err == nil {
 		t.Fatalf("expected an error when neither reconcile.json nor a candidates file exists")
 	}
@@ -1060,7 +1068,7 @@ func TestIntentScan_EndToEnd_FixtureProject(t *testing.T) {
 	if !collection.HasNew() {
 		t.Fatalf("expected CLAUDE.md to be picked up as new material")
 	}
-	if _, err := os.Stat(filepath.Join(sourcesOut, "docs", "CLAUDE.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(sourcesOut, "root", "docs", "CLAUDE.md")); err != nil {
 		t.Fatalf("expected collected doc: %v", err)
 	}
 
@@ -1122,7 +1130,7 @@ func TestIntentScan_EndToEnd_FixtureProject(t *testing.T) {
 	}
 
 	// Step: apply-reconcile (real).
-	report, err := runIntentApplyReconcile(dir, reconcilePath, "")
+	report, err := runIntentApplyReconcile(dir, reconcilePath, "", "")
 	if err != nil {
 		t.Fatalf("apply-reconcile: %v", err)
 	}
@@ -1212,5 +1220,75 @@ func TestValidateIntentStore_ReportsEveryUnloadableFile(t *testing.T) {
 	// No intent dir at all is not a problem.
 	if p, _, _ := validateIntentStore(t.TempDir()); p != nil {
 		t.Fatalf("expected no problems for a project without an intent dir, got %v", p)
+	}
+}
+
+// --repo lists what a step on that repo would be eligible for (its own plus
+// global requirements); --global lists global ones only. The repo shows up
+// in the scope column so a mis-scoped requirement is visible at a glance.
+func TestIntentList_FiltersByRepo(t *testing.T) {
+	dir := t.TempDir()
+	store := intent.NewStore(dir)
+	mustCreate(t, store, intent.StatusActive, intent.Scope{Level: intent.ScopeLevelProject}, "Global statement.")
+	mustCreate(t, store, intent.StatusActive, intent.Scope{Level: intent.ScopeLevelProject, Repos: []string{"alpha"}}, "Alpha statement.")
+	mustCreate(t, store, intent.StatusActive, intent.Scope{Level: intent.ScopeLevelProject, Repos: []string{"beta"}}, "Beta statement.")
+
+	var buf bytes.Buffer
+	if err := intentListCommand([]string{"--project", dir, "--repo", "alpha"}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{"Global statement.", "Alpha statement.", "project @alpha"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in output, got: %s", want, out)
+		}
+	}
+	if strings.Contains(out, "Beta statement.") {
+		t.Errorf("beta's requirement must not be listed for alpha, got: %s", out)
+	}
+
+	buf.Reset()
+	if err := intentListCommand([]string{"--project", dir, "--global"}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	out = buf.String()
+	if !strings.Contains(out, "Global statement.") || strings.Contains(out, "Alpha statement.") || strings.Contains(out, "Beta statement.") {
+		t.Errorf("--global must list only global requirements, got: %s", out)
+	}
+}
+
+func TestIntentAdd_RepoScope(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := "[[repositories]]\nname = \"alpha\"\npath = \"repos/alpha\"\n"
+	if err := os.WriteFile(filepath.Join(dir, ".cloche", "config.toml"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if err := intentAddCommand([]string{"--project", dir, "Alpha-only rule.", "--repo", "alpha"}, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reqs, err := intent.NewStore(dir).ListRequirements()
+	if err != nil || len(reqs) != 1 {
+		t.Fatalf("expected one requirement, got %d (%v)", len(reqs), err)
+	}
+	if got := reqs[0].Scope.Repos; len(got) != 1 || got[0] != "alpha" {
+		t.Errorf("expected scope.repos [alpha], got %v", got)
+	}
+
+	buf.Reset()
+	if err := intentAddCommand([]string{"--project", dir, "Nope.", "--repo", "gamma"}, &buf); err == nil || !strings.Contains(err.Error(), `unknown repo "gamma"`) {
+		t.Errorf("expected an unknown-repo error, got %v", err)
+	}
+
+	buf.Reset()
+	if err := intentShowCommand([]string{"--project", dir, reqs[0].ID}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "Repos:       alpha") {
+		t.Errorf("expected repos line in show output, got: %s", buf.String())
 	}
 }

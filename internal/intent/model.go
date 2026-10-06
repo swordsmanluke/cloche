@@ -54,12 +54,51 @@ const (
 
 // Scope describes what a Requirement applies to: always ("project" level) or
 // narrowed to one or more domains, optionally further narrowed by path globs
-// or languages.
+// or languages. Repos narrows it further still, to the named repositories
+// of a multi-repo project.
 type Scope struct {
 	Level     ScopeLevel `yaml:"level" json:"level"`
 	Domains   []string   `yaml:"domains,omitempty" json:"domains,omitempty"`
 	Paths     []string   `yaml:"paths,omitempty" json:"paths,omitempty"`
 	Languages []string   `yaml:"languages,omitempty" json:"languages,omitempty"`
+	// Repos lists the [[repositories]] names this requirement applies to.
+	// Empty means global: it applies to every repo and to the project root
+	// itself. A requirement mined from one repo is tagged with that repo
+	// and is never shown to steps working on another — most requirements
+	// only make sense inside the project they came from, and applying them
+	// elsewhere creates bugs.
+	Repos []string `yaml:"repos,omitempty" json:"repos,omitempty"`
+}
+
+// VisibleTo reports whether a requirement with this scope applies when
+// working on repo (a [[repositories]] name, or "" for the project root /
+// a step that declares no repos). A global scope is visible everywhere; a
+// repo-scoped one only to the repos it names.
+func (s Scope) VisibleTo(repo string) bool {
+	if len(s.Repos) == 0 {
+		return true
+	}
+	for _, r := range s.Repos {
+		if r == repo {
+			return true
+		}
+	}
+	return false
+}
+
+// VisibleToAny reports whether this scope applies to at least one of repos.
+// With no repos given it reduces to VisibleTo("") — global requirements
+// only, which is what a step with no declared repos receives.
+func (s Scope) VisibleToAny(repos []string) bool {
+	if len(repos) == 0 {
+		return s.VisibleTo("")
+	}
+	for _, r := range repos {
+		if s.VisibleTo(r) {
+			return true
+		}
+	}
+	return false
 }
 
 // Provenance records where a Requirement came from.

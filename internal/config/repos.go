@@ -50,3 +50,29 @@ func (c *Config) ResolveRepositories(projectDir string) []ResolvedRepo {
 	}
 	return out
 }
+
+// HasRepository reports whether name is a configured [[repositories]] entry.
+func (c *Config) HasRepository(name string) bool {
+	if c == nil {
+		return false
+	}
+	for _, r := range c.Repositories {
+		if r.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// RepositoryNames returns the configured [[repositories]] names in config
+// order (nil when none are configured).
+func (c *Config) RepositoryNames() []string {
+	if c == nil {
+		return nil
+	}
+	var names []string
+	for _, r := range c.Repositories {
+		names = append(names, r.Name)
+	}
+	return names
+}

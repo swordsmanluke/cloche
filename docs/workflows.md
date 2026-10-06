@@ -61,7 +61,9 @@ workflows with a `host {}` block.
 
 Some workflows are constructed in Go and compiled into the `cloched`/`cloche` binaries
 rather than parsed from a project's `.cloche` files, so they work in any project with no
-setup. `intent-scan` (see [`docs/intent.md`](intent.md)) is the first built-in.
+setup. `intent-scan` (see [`docs/intent.md`](intent.md)) is the first built-in; its
+per-repository sub-workflow `intent-scan-repo` is registered alongside it and is not
+meant to be run on its own.
 
 Built-in workflows are resolved *after* project workflow discovery: a project that
 defines its own workflow with the same name overrides the built-in entirely. `cloche

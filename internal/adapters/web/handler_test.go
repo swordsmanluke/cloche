@@ -843,8 +843,9 @@ func TestAPIWorkflows_IncludesHostWorkflows(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &workflows))
 
 	// Should have both container and host workflows, plus the intent-scan
-	// built-in (not overridden by this project).
-	assert.Len(t, workflows, 3)
+	// built-in and its intent-scan-repo sub-workflow (not overridden by this
+	// project).
+	assert.Len(t, workflows, 4)
 
 	var locations = map[string]string{}
 	for _, wf := range workflows {
@@ -1348,9 +1349,9 @@ func TestWorkflowAPI_ComplexGraph(t *testing.T) {
 		} `json:"wires"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &workflows))
-	// The project-defined "pipeline" plus the intent-scan built-in (not
-	// overridden by this project).
-	require.Len(t, workflows, 2)
+	// The project-defined "pipeline" plus the intent-scan built-in and its
+	// intent-scan-repo sub-workflow (not overridden by this project).
+	require.Len(t, workflows, 3)
 
 	var pipeline struct {
 		Name      string `json:"name"`

@@ -756,6 +756,7 @@ func (d *DaemonExecutor) seedIntentKV(ctx context.Context, step *domain.Step, wf
 		StepPromptName:  step.Name,
 		WorkflowName:    wf.Name,
 		Repos:           wf.Repos,
+		RepoNames:       wf.Repos,
 	}
 	opts := intent.Options{TokenBudget: daemonCfg.Intent.TokenBudget}
 

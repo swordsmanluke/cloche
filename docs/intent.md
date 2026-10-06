@@ -66,6 +66,7 @@ superseded_by: ""         # req id, when status == superseded
 scope:
   level: domain           # project | domain
   domains: [versioning]
+  repos: []                # [[repositories]] names; empty = global (every repo + the root)
   paths: []                # optional narrowing globs
   languages: []             # optional, e.g. [go]
 hints:                     # retrieval-only phrasings; embedded, never injected
@@ -139,15 +140,26 @@ whole project while every scan kept reporting success.
    way the changelog workflow is). Emits `none` — a no-op — when every source is
    already at its cursor, so a quiet re-scan does nothing. On a `--full` run, the
    cursors (doc hashes, last commit, scanned runs) are reset for this run, so
-   everything is re-mined from scratch.
-3. **extract** — reads the collected material plus `domains.yaml` and writes
+   everything is re-mined from scratch. The material is written out **one
+   directory per source tree** — each configured `[[repositories]]` entry with
+   something new, then the project root — and listed in `passes.txt`.
+   **next-pass** then walks that list: each pass runs the steps below as the
+   `intent-scan-repo` sub-workflow, with `intent_scan_repo` naming the repo
+   (empty for the root) and `intent_scan_sources_dir` pointing at its material
+   only. One pass per repo is deliberate: the agent never sees two repos'
+   material at once, so it can't attribute one repo's rule to another, and
+   each pass gets its own `max_attempts` budget. See "Multi-repo projects".
+3. **extract** — reads the pass's material plus `domains.yaml` and writes
    `candidates.csv`: statement, rationale, proposed scope, 2–5 retrieval hints,
    confidence and provenance per candidate (a header-only file means nothing
    qualified). Only durable, prescriptive intent is extracted — not
    task-specific instructions, facts derivable from reading the code, or
    transient state. **check-candidates** (`cloche intent check-candidates`)
    validates every row (enums, domain names from `domains.yaml`, hints) and
-   writes `candidates.json`, adding timestamps. Missing file → extract re-runs
+   writes `candidates.json`, adding timestamps. On a repository pass it also
+   sets every candidate's `scope.repos` to that repo, whatever the agent
+   wrote — attribution is not left to the model; on the root pass the agent's
+   `repos` column is honoured but must name configured repos. Missing file → extract re-runs
    (2 attempts); malformed → **repair-candidates** (2 attempts).
 4. **reconcile** — compares the candidates against existing requirements and
    writes `reconcile.csv`, one row per candidate in order: **create** (novel),
@@ -155,11 +167,13 @@ whole project while every scan kept reporting success.
    requirement with newer evidence — a new file is created, the old one flipped
    to `status: superseded`), or **drop** (not durable intent after all). For
    create/supersede, blank columns mean "as in the candidate". Emits `none`
-   when `extract` found zero candidates; like collect-sources' `none`, this
-   skips straight to **commit**.
+   when `extract` found zero candidates, which ends the pass. A pass may only
+   `merge` into or `supersede` requirements *visible* to its repo — the repo's
+   own plus global ones; a candidate that restates another repo's rule is new
+   intent for this repo and is created, never merged across.
 5. **check-reconcile** (`cloche intent check-reconcile`) — validates the CSV's
    shape (exactly one row per candidate, valid actions and ids) *and* the
-   store's hard rules below, then writes `reconcile.json`. Missing file with
+   store's hard rules below (including repo visibility), then writes `reconcile.json`. Missing file with
    candidates pending → reconcile re-runs (`max_attempts = 3`, then `give-up`);
    malformed or rule-violating → **repair-reconcile** (2 attempts), which fixes
    only the rows named.
@@ -170,6 +184,9 @@ whole project while every scan kept reporting success.
    - A `user_edited` requirement's statement and scope are never rewritten in
      place — only `supersede` may touch it, and only its status.
    - Nothing is ever deleted; `superseded` is the terminal state.
+   When the pass ends, **next-pass** moves to the next source tree, or — once
+   every pass has run — aggregates the passes' apply counts for the commit
+   message.
 7. **commit** — first runs `cloche intent validate`: a store the daemon cannot
    load (unparseable `domains.yaml` or requirement file) is never committed —
    the intent directory is reverted to its last committed state and the step
@@ -177,13 +194,20 @@ whole project while every scan kept reporting success.
    `.cloche/intent/` (and only that path — never `git add -A` / `git commit
    -a`), so a scan never leaves the main worktree dirty for a human or a later
    container-authored merge step to clean up. No-ops cleanly (no empty commit) when the scan found nothing new. The
-   commit message reports what `apply-reconcile` actually did (counts of created,
-   superseded, merged, and dropped candidates) plus whether `domains.yaml`
-   changed. Retries a few times on index-lock contention (e.g. a concurrent scan
-   or merge step) before failing. Every non-failing path ends here — including
-   the `none` exits — because `collect-sources` has already advanced
-   `scan-state.yaml` by then and `discover-domains` may have rewritten
-   `domains.yaml`.
+   commit message reports what `apply-reconcile` actually did across all passes
+   (counts of created, superseded, merged, and dropped candidates) plus whether
+   `domains.yaml` changed. Retries a few times on index-lock contention (e.g. a
+   concurrent scan or merge step) before failing. Every non-failing path ends
+   here — including the `none` exits — because `collect-sources` has already
+   advanced `scan-state.yaml` by then and `discover-domains` may have rewritten
+   `domains.yaml`. In a multi-repo project this commit always lands in the
+   **wrapper's** repository: intent tracking is owned by Cloche, not by the
+   project repos, even when a pass's requirements are about one of them.
+   The step also untracks `.cloche/intent-index/` if an older version of the
+   project ever committed it — that directory is the derived embedding cache,
+   rewritten by every injection and meant to stay out of git (it carries its own
+   `.gitignore`); a tracked copy is what makes `vectors.json` show up as
+   modified after every task run.
 8. **abort-cleanup** — runs on every failing path before the run aborts. It
    reverts `scan-state.yaml` (so the failed window is rescanned next time) and
    commits anything else the scan produced under `.cloche/intent/`, so a failed
@@ -232,6 +256,26 @@ repo-qualified path (already project-relative, so no extra plumbing is needed), 
 commit link (`GET /api/projects/{name}/info/prompt-diff`) takes an additional `repo=`
 query parameter naming the repo's configured path, so `git show`/`git diff` run inside
 that repo's own working tree instead of the wrapper's.
+
+**Scoping requirements to repositories.** Most requirements only make sense inside
+the project they came from — a rule about one repo's error format, applied to another
+repo, is a bug. So every requirement carries `scope.repos`: the `[[repositories]]` names
+it applies to, with an empty list meaning *global* (every repo and the wrapper root).
+The scan assigns it, not the agent: a pass over `repos/anarkana` tags everything it
+extracts with `anarkana`; the root pass over the wrapper's own docs and workflows
+produces global requirements unless the agent names specific repos a root doc is
+about. Repos never see each other's requirements — reconcile may only merge into or
+supersede requirements visible to the current pass, and injection filters on it
+before anything else (see "Injection"). The wrapper's own content *is* mined, for
+genuinely cross-repo rules (code quality, conventions, how the wrapper is operated);
+the extract prompt is told to narrow anything that isn't.
+
+`cloche intent list --repo <name>` shows what a step on that repo would be eligible
+for (its own plus global requirements); `--global` shows global ones only. A
+requirement scanned before this feature existed has no `repos` and is therefore
+global; if it is really about one repo, `cloche intent edit` it and set
+`scope.repos`, or `disable` it and let the next `--full` scan re-extract it under
+the right repo.
 
 Each source (the project root, and every configured repository) keeps its own
 incremental-scan cursor in `scan-state.yaml`, so a commit merged into `repos/anarkana`
@@ -287,6 +331,11 @@ stages:
 
 1. **Status** — only `active` requirements are visible; `disabled` and `superseded`
    ones never are.
+1. **Repo gate** — a requirement with `scope.repos` set is eligible only when the
+   workflow's declared `repos = [...]` names one of them; a step that declares no
+   repos receives global requirements only. This is a hard filter ahead of both
+   stages below — another repo's requirement can't surface on the strength of a
+   similarity score.
 2. **Deterministic scope match** — `level: project` requirements are always included.
    `level: domain` requirements are included when a requirement's domain matches the
    step's domain context: domains whose `paths` overlap the workflow's declared
@@ -390,12 +439,12 @@ selection is exclusively the daemon's job.
 ## CLI: `cloche intent`
 
 ```
-cloche intent list [--domain <name>] [--status <status>] [--project <dir>]
+cloche intent list [--domain <name>] [--status <status>] [--repo <name> | --global] [--project <dir>]
 cloche intent show <id> [--project <dir>]
 cloche intent edit <id> [--project <dir>]
 cloche intent disable <id> [--project <dir>]
 cloche intent enable <id> [--project <dir>]
-cloche intent add "<statement>" [--domain <name>]... [--project <dir>]
+cloche intent add "<statement>" [--domain <name>]... [--repo <name>]... [--project <dir>]
 cloche intent preview [--workflow <name>] [--step <name>] [--prompt "..."] [--project <dir>]
 cloche intent scan [--full]
 ```

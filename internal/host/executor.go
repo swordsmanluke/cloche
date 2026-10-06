@@ -526,6 +526,7 @@ func (e *Executor) seedIntentKV(ctx context.Context, step *domain.Step) {
 		StepPromptName:  step.Name,
 		WorkflowName:    e.WorkflowName,
 		Repos:           e.Repos,
+		RepoNames:       e.Repos,
 	}
 	opts := intent.Options{TokenBudget: cfg.Intent.TokenBudget}
 

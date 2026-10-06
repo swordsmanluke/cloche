@@ -30,7 +30,7 @@ func TestApply_Create(t *testing.T) {
 		{Action: scan.ActionCreate, CandidateFields: candidate("Never bump major without asking.")},
 	}
 
-	report, err := scan.Apply(store, actions)
+	report, err := scan.Apply(store, actions, "")
 	require.NoError(t, err)
 	require.Len(t, report.Created, 1)
 
@@ -55,7 +55,7 @@ func TestApply_Supersede(t *testing.T) {
 	actions := []scan.ReconcileAction{
 		{Action: scan.ActionSupersede, ExistingID: old.ID, CandidateFields: candidate("new statement")},
 	}
-	report, err := scan.Apply(store, actions)
+	report, err := scan.Apply(store, actions, "")
 	require.NoError(t, err)
 	require.Len(t, report.Superseded, 1)
 	require.Len(t, report.Created, 0, "supersede reports via Superseded, not Created")
@@ -86,7 +86,7 @@ func TestApply_MergeAndDropAreNoOps(t *testing.T) {
 		{Action: scan.ActionMerge, ExistingID: existing.ID},
 		{Action: scan.ActionDrop},
 	}
-	report, err := scan.Apply(store, actions)
+	report, err := scan.Apply(store, actions, "")
 	require.NoError(t, err)
 	assert.Equal(t, []string{existing.ID}, report.Merged)
 	assert.Equal(t, 1, report.Dropped)
@@ -111,7 +111,7 @@ func TestApply_NeverReenablesDisabled(t *testing.T) {
 		actions := []scan.ReconcileAction{
 			{Action: act, ExistingID: disabled.ID, CandidateFields: candidate("new statement")},
 		}
-		_, err := scan.Apply(store, actions)
+		_, err := scan.Apply(store, actions, "")
 		require.Error(t, err, "action %s against a disabled requirement must be rejected", act)
 		var verr *scan.ValidationError
 		require.ErrorAs(t, err, &verr)
@@ -139,7 +139,7 @@ func TestApply_NeverRewritesUserEditedInPlace(t *testing.T) {
 	actions := []scan.ReconcileAction{
 		{Action: scan.ActionSupersede, ExistingID: edited.ID, CandidateFields: candidate("machine-proposed replacement")},
 	}
-	_, err = scan.Apply(store, actions)
+	_, err = scan.Apply(store, actions, "")
 	require.NoError(t, err)
 
 	reloaded, err := store.GetRequirement(edited.ID)
@@ -165,7 +165,7 @@ func TestApply_NeverDeletes(t *testing.T) {
 	actions := []scan.ReconcileAction{
 		{Action: scan.Action("delete"), ExistingID: existing.ID},
 	}
-	_, err = scan.Apply(store, actions)
+	_, err = scan.Apply(store, actions, "")
 	require.Error(t, err)
 	var verr *scan.ValidationError
 	require.ErrorAs(t, err, &verr)
@@ -182,7 +182,7 @@ func TestApply_ValidationIsAllOrNothing(t *testing.T) {
 		{Action: scan.ActionCreate, CandidateFields: candidate("a fine new requirement")},
 		{Action: scan.ActionSupersede, ExistingID: "req-missing", CandidateFields: candidate("replacement")},
 	}
-	_, err := scan.Apply(store, actions)
+	_, err := scan.Apply(store, actions, "")
 	require.Error(t, err)
 
 	reqs, err := store.ListRequirements()
@@ -211,4 +211,45 @@ func TestParseAndMarshalReconcileActions_RoundTrip(t *testing.T) {
 	require.Len(t, out, 1)
 	assert.Equal(t, scan.ActionCreate, out[0].Action)
 	assert.Equal(t, "round trip me", out[0].Statement)
+}
+
+// Repos must not see each other's requirements: a repo pass may merge into
+// or supersede only requirements visible to that repo (its own or global
+// ones), and the root pass only global ones.
+func TestValidate_TargetMustBeVisibleToPass(t *testing.T) {
+	existing := map[string]*intent.Requirement{
+		"req-glob": {ID: "req-glob", Status: intent.StatusActive},
+		"req-alph": {ID: "req-alph", Status: intent.StatusActive, Scope: intent.Scope{Repos: []string{"alpha"}}},
+		"req-beta": {ID: "req-beta", Status: intent.StatusActive, Scope: intent.Scope{Repos: []string{"beta"}}},
+	}
+	merge := func(id string) scan.ReconcileAction {
+		return scan.ReconcileAction{Action: scan.ActionMerge, ExistingID: id}
+	}
+
+	assert.Empty(t, scan.Validate(existing, []scan.ReconcileAction{merge("req-glob"), merge("req-alph")}, "alpha"))
+	assert.Empty(t, scan.Validate(existing, []scan.ReconcileAction{merge("req-glob")}, ""))
+
+	v := scan.Validate(existing, []scan.ReconcileAction{merge("req-beta")}, "alpha")
+	require.Len(t, v, 1)
+	assert.Equal(t, "target_not_visible", v[0].Rule)
+
+	v = scan.Validate(existing, []scan.ReconcileAction{merge("req-alph")}, "")
+	require.Len(t, v, 1)
+	assert.Equal(t, "target_not_visible", v[0].Rule)
+
+	// Dropping with a reference to another repo's requirement is fine: it
+	// writes nothing and the reason is for a human reader.
+	assert.Empty(t, scan.Validate(existing, []scan.ReconcileAction{{Action: scan.ActionDrop, ExistingID: "req-beta"}}, "alpha"))
+}
+
+func TestApply_CreatePersistsRepos(t *testing.T) {
+	store := newTestStore(t)
+	c := candidate("Alpha-only rule.")
+	c.Scope.Repos = []string{"alpha"}
+	_, err := scan.Apply(store, []scan.ReconcileAction{{Action: scan.ActionCreate, CandidateFields: c}}, "alpha")
+	require.NoError(t, err)
+	reqs, err := store.ListRequirements()
+	require.NoError(t, err)
+	require.Len(t, reqs, 1)
+	assert.Equal(t, []string{"alpha"}, reqs[0].Scope.Repos)
 }

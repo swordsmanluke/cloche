@@ -1,6 +1,7 @@
 package scan_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -195,15 +196,21 @@ func TestCollection_Write(t *testing.T) {
 	out := t.TempDir()
 	require.NoError(t, c.Write(out))
 
-	docBytes, err := os.ReadFile(filepath.Join(out, "docs", "CLAUDE.md"))
+	// A single-repo project is one root pass; its material lands under
+	// out/root/ in the layout the extract prompt documents.
+	passes, err := scan.ReadPasses(out)
+	require.NoError(t, err)
+	assert.Equal(t, []scan.Pass{{Repo: "", Dir: "root"}}, passes)
+
+	docBytes, err := os.ReadFile(filepath.Join(out, "root", "docs", "CLAUDE.md"))
 	require.NoError(t, err)
 	assert.Equal(t, "hello", string(docBytes))
 
-	promptBytes, err := os.ReadFile(filepath.Join(out, "runs", "run-1", "task_prompt.md"))
+	promptBytes, err := os.ReadFile(filepath.Join(out, "root", "runs", "run-1", "task_prompt.md"))
 	require.NoError(t, err)
 	assert.Equal(t, "do the thing", string(promptBytes))
 
-	manifest, err := os.ReadFile(filepath.Join(out, "manifest.json"))
+	manifest, err := os.ReadFile(filepath.Join(out, "root", "manifest.json"))
 	require.NoError(t, err)
 	assert.Contains(t, string(manifest), "CLAUDE.md")
 	assert.Contains(t, string(manifest), "run-1")
@@ -317,23 +324,39 @@ func TestCollection_Write_MultiRepo(t *testing.T) {
 	out := t.TempDir()
 	require.NoError(t, c.Write(out))
 
-	rootDoc, err := os.ReadFile(filepath.Join(out, "docs", "CLAUDE.md"))
+	// One pass per source tree with new material: the repo first, then the
+	// wrapper root. Each pass only sees its own material, so the extract
+	// agent can't attribute a repo's rule to the wrapper or vice versa.
+	passes, err := scan.ReadPasses(out)
+	require.NoError(t, err)
+	assert.Equal(t, []scan.Pass{{Repo: "anarkana", Dir: "anarkana"}, {Repo: "", Dir: "root"}}, passes)
+
+	rootDoc, err := os.ReadFile(filepath.Join(out, "root", "docs", "CLAUDE.md"))
 	require.NoError(t, err)
 	assert.Equal(t, "wrapper doc", string(rootDoc))
+	assert.NoFileExists(t, filepath.Join(out, "root", "docs", "repos", "anarkana", "README.md"), "repo material must not appear in the root pass")
 
-	repoDoc, err := os.ReadFile(filepath.Join(out, "docs", "repos", "anarkana", "README.md"))
+	repoDoc, err := os.ReadFile(filepath.Join(out, "anarkana", "docs", "repos", "anarkana", "README.md"))
 	require.NoError(t, err)
 	assert.Equal(t, "repo doc", string(repoDoc))
+	assert.NoFileExists(t, filepath.Join(out, "anarkana", "docs", "CLAUDE.md"), "wrapper material must not appear in the repo pass")
 
-	wrapperPrompt, err := os.ReadFile(filepath.Join(out, "runs", "wrapper-run", "task_prompt.md"))
+	wrapperPrompt, err := os.ReadFile(filepath.Join(out, "root", "runs", "wrapper-run", "task_prompt.md"))
 	require.NoError(t, err)
 	assert.Equal(t, "wrapper task", string(wrapperPrompt))
 
-	repoPrompt, err := os.ReadFile(filepath.Join(out, "runs", "repos", "anarkana", "repo-run", "task_prompt.md"))
+	repoPrompt, err := os.ReadFile(filepath.Join(out, "anarkana", "runs", "repos", "anarkana", "repo-run", "task_prompt.md"))
 	require.NoError(t, err)
 	assert.Equal(t, "repo task", string(repoPrompt))
 
-	commitsTxt, err := os.ReadFile(filepath.Join(out, "commits.txt"))
+	commitsTxt, err := os.ReadFile(filepath.Join(out, "anarkana", "commits.txt"))
 	require.NoError(t, err)
 	assert.Contains(t, string(commitsTxt), "repos/anarkana@")
+	assert.NoFileExists(t, filepath.Join(out, "root", "commits.txt"), "the wrapper root had no commits")
+
+	var manifest struct{ Repo string }
+	data, err := os.ReadFile(filepath.Join(out, "anarkana", "manifest.json"))
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(data, &manifest))
+	assert.Equal(t, "anarkana", manifest.Repo)
 }

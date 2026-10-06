@@ -17,11 +17,61 @@ import (
 // line a repair step can hand straight back. The JSON files apply-reconcile
 // consumes are written by the check scripts from these parsers.
 
-// CandidatesCSVHeader is the exact header line of candidates.csv.
-const CandidatesCSVHeader = "statement,rationale,scope_level,domains,hints,confidence,provenance_kind,provenance_ref"
+// CandidatesCSVHeader is the exact header line of candidates.csv. The
+// trailing repos column was added for multi-repo projects; a file with the
+// pre-repos header (everything up to provenance_ref) is still accepted and
+// read as if every row's repos were blank.
+const CandidatesCSVHeader = "statement,rationale,scope_level,domains,hints,confidence,provenance_kind,provenance_ref,repos"
 
-// ReconcileCSVHeader is the exact header line of reconcile.csv.
-const ReconcileCSVHeader = "candidate,action,existing_id,reason,statement,rationale,scope_level,domains,hints,confidence,provenance_kind,provenance_ref"
+// ReconcileCSVHeader is the exact header line of reconcile.csv (same note
+// about the trailing repos column as CandidatesCSVHeader).
+const ReconcileCSVHeader = "candidate,action,existing_id,reason,statement,rationale,scope_level,domains,hints,confidence,provenance_kind,provenance_ref,repos"
+
+// reposColumn is the header name of the optional trailing column.
+const reposColumn = "repos"
+
+// RepoRule says how a candidate's repos column is treated for the scan pass
+// that produced it. The scan runs once per source tree (each configured
+// [[repositories]] entry, then the project root), and attribution is not
+// left to the agent: on a repo pass every requirement is tagged with that
+// repo whatever the column says, because a requirement mis-attributed to
+// another repo would be injected into work it does not apply to. On the
+// root pass (Pass == "") the column is honoured — the root's own docs can
+// legitimately describe one repo — but every name must be a configured
+// repo; anything else is a validation problem the repair step fixes.
+type RepoRule struct {
+	Pass  string
+	Known []string
+}
+
+func (r RepoRule) apply(line int, label string, repos []string) ([]string, []string) {
+	if r.Pass != "" {
+		return []string{r.Pass}, nil
+	}
+	var problems []string
+	for _, name := range repos {
+		if !containsString(r.Known, name) {
+			problems = append(problems, fmt.Sprintf("line %d: %s names unknown repo %q (configured repositories: %s)", line, label, name, knownReposLabel(r.Known)))
+		}
+	}
+	return repos, problems
+}
+
+func knownReposLabel(known []string) string {
+	if len(known) == 0 {
+		return "none; leave repos blank"
+	}
+	return strings.Join(known, ", ")
+}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
 
 func splitList(s string) []string {
 	var out []string
@@ -49,10 +99,13 @@ func readCSV(data []byte, header string) (rows [][]string, lines []int, problems
 	if err != nil {
 		return nil, nil, []string{fmt.Sprintf("line 1: %v", err)}
 	}
-	if len(got) != len(want) {
+	// A header without the trailing repos column is the pre-multi-repo
+	// shape; accept it and pad every row with a blank repos field.
+	legacy := len(got) == len(want)-1 && want[len(want)-1] == reposColumn
+	if !legacy && len(got) != len(want) {
 		return nil, nil, []string{fmt.Sprintf("line 1: header must be exactly %q (got %d columns)", header, len(got))}
 	}
-	for i := range want {
+	for i := range got {
 		if strings.ToLower(strings.TrimSpace(got[i])) != want[i] {
 			return nil, nil, []string{fmt.Sprintf("line 1: header must be exactly %q (column %d is %q, expected %q)", header, i+1, got[i], want[i])}
 		}
@@ -71,6 +124,12 @@ func readCSV(data []byte, header string) (rows [][]string, lines []int, problems
 		if len(rec) == 1 && strings.TrimSpace(rec[0]) == "" {
 			continue
 		}
+		// A row that stops short of the trailing repos column — under a
+		// legacy header, or an agent that wrote the new header but left the
+		// last field off blank rows — just has no repos.
+		if want[len(want)-1] == reposColumn && len(rec) == len(want)-1 {
+			rec = append(rec, "")
+		}
 		if len(rec) != len(want) {
 			problems = append(problems, fmt.Sprintf("line %d: expected %d columns, got %d — quote any field that contains a comma or a line break", line, len(want), len(rec)))
 			continue
@@ -85,14 +144,17 @@ func readCSV(data []byte, header string) (rows [][]string, lines []int, problems
 }
 
 // fieldsFromRow validates and converts the shared candidate columns
-// (statement..provenance_ref, given as a slice in that order). domainNames
-// is the set of known domains (nil/empty = not enforced).
-func fieldsFromRow(line int, label string, cols []string, domainNames map[string]bool, now time.Time) (CandidateFields, []string) {
+// (statement..provenance_ref,repos, given as a slice in that order).
+// domainNames is the set of known domains (nil/empty = not enforced); rule
+// decides the repos column (see RepoRule).
+func fieldsFromRow(line int, label string, cols []string, domainNames map[string]bool, rule RepoRule, now time.Time) (CandidateFields, []string) {
 	var problems []string
+	repos, repoProblems := rule.apply(line, label, splitList(cols[8]))
+	problems = append(problems, repoProblems...)
 	f := CandidateFields{
 		Statement:  cols[0],
 		Rationale:  cols[1],
-		Scope:      intent.Scope{Level: intent.ScopeLevel(strings.ToLower(cols[2])), Domains: splitList(cols[3])},
+		Scope:      intent.Scope{Level: intent.ScopeLevel(strings.ToLower(cols[2])), Domains: splitList(cols[3]), Repos: repos},
 		Hints:      splitList(cols[4]),
 		Confidence: intent.Confidence(strings.ToLower(cols[5])),
 		Provenance: intent.Provenance{
@@ -144,14 +206,14 @@ func fieldsFromRow(line int, label string, cols []string, domainNames map[string
 // ParseCandidatesCSV decodes candidates.csv. A header-only file is a valid
 // empty result. A non-empty problems slice means the candidates must not be
 // used.
-func ParseCandidatesCSV(data []byte, domainNames map[string]bool, now time.Time) ([]Candidate, []string) {
+func ParseCandidatesCSV(data []byte, domainNames map[string]bool, rule RepoRule, now time.Time) ([]Candidate, []string) {
 	rows, lines, problems := readCSV(data, CandidatesCSVHeader)
 	if len(problems) > 0 && rows == nil {
 		return nil, problems
 	}
 	var out []Candidate
 	for i, row := range rows {
-		f, p := fieldsFromRow(lines[i], fmt.Sprintf("candidate %d", i+1), row, domainNames, now)
+		f, p := fieldsFromRow(lines[i], fmt.Sprintf("candidate %d", i+1), row, domainNames, rule, now)
 		problems = append(problems, p...)
 		out = append(out, Candidate{CandidateFields: f})
 	}
@@ -170,7 +232,7 @@ func ParseCandidatesCSV(data []byte, domainNames map[string]bool, now time.Time)
 // filled from the candidate itself, so the agent only has to restate what it
 // changed. Hard-rule validation against existing requirements is the
 // caller's job (Validate); this only checks shape.
-func ParseReconcileCSV(data []byte, candidates []Candidate, domainNames map[string]bool, now time.Time) ([]ReconcileAction, []string) {
+func ParseReconcileCSV(data []byte, candidates []Candidate, domainNames map[string]bool, rule RepoRule, now time.Time) ([]ReconcileAction, []string) {
 	rows, lines, problems := readCSV(data, ReconcileCSVHeader)
 	if len(problems) > 0 && rows == nil {
 		return nil, problems
@@ -228,7 +290,10 @@ func ParseReconcileCSV(data []byte, candidates []Candidate, domainNames map[stri
 			if cols[7] == "" {
 				cols[7] = cand.Provenance.Ref
 			}
-			f, p := fieldsFromRow(line, fmt.Sprintf("action for candidate %d", idx), cols, domainNames, now)
+			if cols[8] == "" {
+				cols[8] = strings.Join(cand.Scope.Repos, ";")
+			}
+			f, p := fieldsFromRow(line, fmt.Sprintf("action for candidate %d", idx), cols, domainNames, rule, now)
 			problems = append(problems, p...)
 			a.CandidateFields = f
 			if a.Action == ActionSupersede && a.ExistingID == "" {

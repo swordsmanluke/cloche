@@ -33,6 +33,14 @@ type Query struct {
 	// Repos are the workflow's declared repos/paths, matched against each
 	// domain's Paths globs to compute the implicit domain context.
 	Repos []string
+	// RepoNames are the workflow's declared `repos = [...]` as
+	// [[repositories]] names. They gate selection outright: a requirement
+	// whose Scope.Repos is set is only eligible when it names one of these,
+	// and a step that declares none sees global requirements only. Unlike
+	// domain context, this is a hard filter applied before semantic
+	// retrieval too — a repo's requirements must never leak into another
+	// repo's step on the strength of a similarity score.
+	RepoNames []string
 	// Domains is the explicit step/workflow `domains = [...]` config key,
 	// unioned into the domain context regardless of path overlap.
 	Domains []string
@@ -80,6 +88,9 @@ func Select(ctx context.Context, reqs []*Requirement, domains []Domain, index *I
 	byID := make(map[string]*Requirement, len(reqs))
 	for _, r := range reqs {
 		if r.Status != StatusActive {
+			continue
+		}
+		if !r.Scope.VisibleToAny(query.RepoNames) {
 			continue
 		}
 		active = append(active, r)

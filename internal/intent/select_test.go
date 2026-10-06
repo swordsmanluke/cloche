@@ -240,3 +240,62 @@ func TestSelect_KeywordDegradedMode_ProducesSameShape(t *testing.T) {
 	assert.Contains(t, block, "## Standing project requirements")
 	assert.Contains(t, block, "[req-lexical]")
 }
+
+func repoReq(id string, repos []string, body string) *intent.Requirement {
+	return &intent.Requirement{
+		ID:         id,
+		Status:     intent.StatusActive,
+		Scope:      intent.Scope{Level: intent.ScopeLevelProject, Repos: repos},
+		Confidence: intent.ConfidenceHigh,
+		Updated:    t0,
+		Body:       body,
+	}
+}
+
+// Repo scope is a hard gate: a step working on repo X sees global
+// requirements plus X's own; a step declaring no repos sees global ones
+// only; another repo's requirements are never shown — not even when they
+// score well semantically, which is the path that bypasses domain scoping.
+func TestSelect_RepoScope_HardGate(t *testing.T) {
+	stub := &stubEmbedder{modelID: "stub:v1", vector: scoreVector}
+	reqs := []*intent.Requirement{
+		repoReq("req-global", nil, "SCORE:0.95 applies everywhere"),
+		repoReq("req-alpha", []string{"alpha"}, "SCORE:0.95 alpha only"),
+		repoReq("req-beta", []string{"beta"}, "SCORE:0.95 beta only, semantically a perfect hit"),
+		repoReq("req-both", []string{"alpha", "beta"}, "SCORE:0.95 alpha and beta"),
+	}
+	ix := syncedIndex(t, stub, reqs)
+
+	cases := []struct {
+		name  string
+		repos []string
+		want  []string
+	}{
+		{"step on alpha", []string{"alpha"}, []string{"req-alpha", "req-both", "req-global"}},
+		{"step on beta", []string{"beta"}, []string{"req-beta", "req-both", "req-global"}},
+		{"step on both", []string{"alpha", "beta"}, []string{"req-alpha", "req-beta", "req-both", "req-global"}},
+		{"step with no repos", nil, []string{"req-global"}},
+		{"step on an unknown repo", []string{"gamma"}, []string{"req-global"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := intent.Select(context.Background(), reqs, nil, ix, stub,
+				intent.Query{TaskDescription: "task text", RepoNames: tc.repos}, intent.Options{})
+			require.NoError(t, err)
+			assert.ElementsMatch(t, tc.want, selectedIDs(res))
+		})
+	}
+}
+
+func TestScope_VisibleTo(t *testing.T) {
+	global := intent.Scope{}
+	alpha := intent.Scope{Repos: []string{"alpha"}}
+	assert.True(t, global.VisibleTo(""))
+	assert.True(t, global.VisibleTo("alpha"))
+	assert.True(t, alpha.VisibleTo("alpha"))
+	assert.False(t, alpha.VisibleTo("beta"))
+	assert.False(t, alpha.VisibleTo(""), "the project root is not a repo")
+	assert.True(t, global.VisibleToAny(nil))
+	assert.False(t, alpha.VisibleToAny(nil))
+	assert.True(t, alpha.VisibleToAny([]string{"beta", "alpha"}))
+}

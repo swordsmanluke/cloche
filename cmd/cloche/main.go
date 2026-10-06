@@ -1664,12 +1664,6 @@ func cmdSet(args []string) {
 		os.Exit(1)
 	}
 
-	taskID, attemptID, runID, err := resolveRunContext()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-
 	key := args[0]
 	var value string
 	switch {
@@ -1691,10 +1685,23 @@ func cmdSet(args []string) {
 		value = args[1]
 	}
 
+	if err := setContextKey(key, value); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// setContextKey writes one run-context KV entry through the daemon, exactly
+// as `cloche set <key> <value>` does, for commands that set keys as a side
+// effect (e.g. `cloche intent next-pass`).
+func setContextKey(key, value string) error {
+	taskID, attemptID, runID, err := resolveRunContext()
+	if err != nil {
+		return err
+	}
 	conn, err := dialDaemon()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error connecting to daemon: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("connecting to daemon: %w", err)
 	}
 	defer conn.Close()
 
@@ -1709,10 +1716,7 @@ func cmdSet(args []string) {
 		Key:       key,
 		Value:     value,
 	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
+	return err
 }
 
 func cmdVersion() {

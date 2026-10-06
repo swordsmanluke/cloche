@@ -216,9 +216,9 @@ workflow main {
 
 	all, err := FindAllWorkflows(tmpDir)
 	require.NoError(t, err)
-	// 2 project-defined workflows plus the intent-scan built-in (not
-	// overridden by this project).
-	assert.Len(t, all, 3)
+	// 2 project-defined workflows plus the intent-scan built-in and its
+	// intent-scan-repo sub-workflow (not overridden by this project).
+	assert.Len(t, all, 4)
 	assert.Contains(t, all, "develop")
 	assert.Contains(t, all, "main")
 	assert.Contains(t, all, "intent-scan")
@@ -273,9 +273,9 @@ func TestFindAllWorkflows_IncludesContainerAndHost(t *testing.T) {
 
 	all, err := FindAllWorkflows(tmpDir)
 	require.NoError(t, err)
-	// 2 project-defined workflows plus the intent-scan built-in (not
-	// overridden by this project).
-	assert.Len(t, all, 3)
+	// 2 project-defined workflows plus the intent-scan built-in and its
+	// intent-scan-repo sub-workflow (not overridden by this project).
+	assert.Len(t, all, 4)
 	assert.Contains(t, all, "develop")
 	assert.Contains(t, all, "main")
 	assert.Contains(t, all, "intent-scan")
@@ -307,9 +307,10 @@ workflow main {
 
 	hostWFs, err := FindHostWorkflows(tmpDir)
 	require.NoError(t, err)
-	// "main" (project-defined) plus the intent-scan built-in; "develop" is a
-	// container workflow and must be excluded.
-	assert.Len(t, hostWFs, 2)
+	// "main" (project-defined) plus the intent-scan built-in and its
+	// intent-scan-repo sub-workflow; "develop" is a container workflow and
+	// must be excluded.
+	assert.Len(t, hostWFs, 3)
 	assert.Contains(t, hostWFs, "main")
 	assert.Contains(t, hostWFs, "intent-scan")
 	assert.NotContains(t, hostWFs, "develop")

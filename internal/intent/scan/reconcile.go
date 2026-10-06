@@ -3,6 +3,7 @@ package scan
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/swordsmanluke/cloche/internal/intent"
@@ -69,7 +70,13 @@ func (v Violation) Error() string {
 // distinct rule, because Apply never performs one — the only mutation Apply
 // makes to an existing requirement is flipping it to superseded, which is
 // the one operation the design permits even for user_edited requirements.
-func Validate(existing map[string]*intent.Requirement, actions []ReconcileAction) []Violation {
+//
+// pass is the repo this scan pass is reconciling ("" for the project
+// root). A merge or supersede may only target a requirement visible to
+// that repo — its own or a global one — because repos must not see each
+// other's requirements: a candidate from repo A that happens to restate a
+// rule tracked for repo B is new intent for A, not a duplicate of B's.
+func Validate(existing map[string]*intent.Requirement, actions []ReconcileAction, pass string) []Violation {
 	var violations []Violation
 	for i, a := range actions {
 		switch a.Action {
@@ -108,6 +115,13 @@ func Validate(existing map[string]*intent.Requirement, actions []ReconcileAction
 				})
 				continue
 			}
+			if !req.Scope.VisibleTo(pass) {
+				violations = append(violations, Violation{
+					i, a, "target_not_visible",
+					fmt.Sprintf("%s is scoped to repo(s) %s and is not visible to %s; candidate should be created (or dropped) instead", a.ExistingID, strings.Join(req.Scope.Repos, ", "), passLabel(pass)),
+				})
+				continue
+			}
 			if a.Action == ActionSupersede && a.Statement == "" {
 				violations = append(violations, Violation{i, a, "missing_statement", "supersede requires a replacement statement"})
 			}
@@ -116,6 +130,13 @@ func Validate(existing map[string]*intent.Requirement, actions []ReconcileAction
 		}
 	}
 	return violations
+}
+
+func passLabel(pass string) string {
+	if pass == "" {
+		return "the project root (global requirements only)"
+	}
+	return "repo " + pass
 }
 
 // Report summarizes what Apply did.
@@ -133,7 +154,7 @@ type Report struct {
 // untouched); merge and drop write nothing. Apply is all-or-nothing — if
 // Validate reports any violation, no action is applied and the violations
 // are returned as an error.
-func Apply(store *intent.Store, actions []ReconcileAction) (*Report, error) {
+func Apply(store *intent.Store, actions []ReconcileAction, pass string) (*Report, error) {
 	reqs, err := store.ListRequirements()
 	if err != nil {
 		return nil, fmt.Errorf("intent scan: loading existing requirements: %w", err)
@@ -143,7 +164,7 @@ func Apply(store *intent.Store, actions []ReconcileAction) (*Report, error) {
 		byID[r.ID] = r
 	}
 
-	if violations := Validate(byID, actions); len(violations) > 0 {
+	if violations := Validate(byID, actions, pass); len(violations) > 0 {
 		return nil, &ValidationError{Violations: violations}
 	}
 

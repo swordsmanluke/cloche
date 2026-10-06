@@ -11,7 +11,33 @@ the right requirement surfaces for the right future task.
 ```bash
 SOURCES="$(cloche get intent_scan_sources_dir)"
 TEMP="$(cloche get temp_file_dir)"
+REPO="$(cloche get intent_scan_repo)"
 ```
+
+## Which pass this is
+
+The scan runs **once per source tree**: once for each repository configured
+under `[[repositories]]` in `$CLOCHE_PROJECT_DIR/.cloche/config.toml`, and
+once for the project root itself. `$REPO` names the repository this pass is
+mining, or is empty for the project-root pass. `$SOURCES` holds *only* that
+tree's material; you will not see the other repos' files, commits or runs,
+and must not go looking for them.
+
+- **Repository pass (`$REPO` set):** everything you extract is about that
+  repository and will be tagged with it automatically — it is injected only
+  into work on that repo. Write what *this project* needs a future agent to
+  know; do not generalise to the other repositories or to the wrapper.
+- **Project-root pass (`$REPO` empty):** on a single-repo project this is
+  the whole project. On a multi-repo project the root is the orchestration
+  wrapper (its `.cloche/` workflows, prompts, `CLAUDE.md`, root docs), and
+  requirements from this pass are **global** — injected into every repo's
+  work — unless you name specific repos in the `repos` column. Extract only
+  what genuinely applies across the project (code-quality rules, cross-repo
+  conventions, how the wrapper is operated); a root doc that is really about
+  one repository should be tagged with that repo's name, and anything that
+  only concerns the wrapper's own plumbing should be scoped to `domain`
+  level or left out. A requirement that holds for one repo but is injected
+  into another creates bugs, so when in doubt, narrow.
 
 Under `$SOURCES`:
 
@@ -81,9 +107,10 @@ Write `$TEMP/candidates.csv` — a plain CSV, one row per candidate, with
 exactly this header:
 
 ```csv
-statement,rationale,scope_level,domains,hints,confidence,provenance_kind,provenance_ref
-"Never bump the major version unless explicitly told to.","Major releases are batched manually at the maintainer's direction.",domain,versioning,"is this a major version bump;breaking change version bump",high,doc,CLAUDE.md#versioning
-"Errors are one line: line N: <message>, never a traceback.",,project,,"traceback in output;why does the error have two lines",medium,commit,abc1234
+statement,rationale,scope_level,domains,hints,confidence,provenance_kind,provenance_ref,repos
+"Never bump the major version unless explicitly told to.","Major releases are batched manually at the maintainer's direction.",domain,versioning,"is this a major version bump;breaking change version bump",high,doc,CLAUDE.md#versioning,
+"Errors are one line: line N: <message>, never a traceback.",,project,,"traceback in output;why does the error have two lines",medium,commit,abc1234,
+"The CLI never writes outside its own config dir.",,project,,"where may the tool write files;unexpected file in home dir",high,doc,docs/design.md,anarkana
 ```
 
 - `scope_level` is `project` (always injected — reserve this for genuinely
@@ -92,6 +119,12 @@ statement,rationale,scope_level,domains,hints,confidence,provenance_kind,provena
 - `hints`: 2–5 phrases separated by `;`.
 - `confidence` is `high` / `medium` / `low` — your judgment of how durable
   and unambiguous the source material makes this requirement.
+- `repos`: which configured repositories the requirement applies to,
+  separated by `;`; blank means all of them (global). On a repository pass
+  leave it blank — it is set to `$REPO` for you regardless of what you
+  write. On the project-root pass, fill it in when a root doc is really
+  about particular repositories; only names from `[[repositories]]` are
+  accepted.
 - `provenance_kind` is `doc`, `transcript`, `prompt`, or `commit` matching
   where the material came from; `provenance_ref` is the file path under
   `docs/` (optionally `#heading`), the run ref under `runs/`, or the commit

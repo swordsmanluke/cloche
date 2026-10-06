@@ -2,6 +2,7 @@ package scan_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/builtin"
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/engine"
 	"github.com/swordsmanluke/cloche/internal/intent/scan"
@@ -29,46 +31,77 @@ func TestBuiltinWorkflow_Shape(t *testing.T) {
 	assert.Equal(t, "intent-scan", wf.Name)
 	assert.True(t, wf.Builtin)
 	assert.Equal(t, "discover-domains", wf.EntryStep)
-	assert.Len(t, wf.Steps, 13)
+	assert.Len(t, wf.Steps, 8)
+	assert.Equal(t, domain.StepTypeWorkflow, wf.Steps["scan-pass"].Type)
+	assert.Equal(t, scan.RepoWorkflowName, wf.Steps["scan-pass"].Config["workflow_name"])
 
 	wantWires := map[string]string{
-		"discover-domains:success":  "check-domains",
-		"discover-domains:none":     "collect-sources",
-		"discover-domains:fail":     "abort-cleanup",
-		"check-domains:success":     "collect-sources",
-		"check-domains:fail":        "repair-domains",
-		"repair-domains:success":    "check-domains",
-		"repair-domains:fail":       "abort-cleanup",
-		"repair-domains:give-up":    "abort-cleanup",
-		"collect-sources:success":   "extract",
-		"collect-sources:none":      "commit",
-		"collect-sources:fail":      "abort-cleanup",
+		"discover-domains:success": "check-domains",
+		"discover-domains:none":    "collect-sources",
+		"discover-domains:fail":    "abort-cleanup",
+		"check-domains:success":    "collect-sources",
+		"check-domains:fail":       "repair-domains",
+		"repair-domains:success":   "check-domains",
+		"repair-domains:fail":      "abort-cleanup",
+		"repair-domains:give-up":   "abort-cleanup",
+		"collect-sources:success":  "next-pass",
+		"collect-sources:none":     "commit",
+		"collect-sources:fail":     "abort-cleanup",
+		"next-pass:pass":           "scan-pass",
+		"next-pass:done":           "commit",
+		"next-pass:fail":           "abort-cleanup",
+		"scan-pass:success":        "next-pass",
+		"scan-pass:fail":           "abort-cleanup",
+		"scan-pass:timeout":        "abort-cleanup",
+		"commit:success":           "done",
+		"commit:fail":              "abort",
+		"abort-cleanup:success":    "abort",
+		"abort-cleanup:fail":       "abort",
+	}
+	assertWires(t, wf, wantWires)
+}
+
+// The per-pass sub-workflow holds the agent steps; each pass is a fresh
+// engine run of it, so its max_attempts budgets are per pass.
+func TestBuiltinRepoWorkflow_Shape(t *testing.T) {
+	wf := scan.BuiltinRepoWorkflow()
+	require.NoError(t, wf.Validate())
+	assert.Empty(t, wf.ValidateConfig())
+
+	assert.Equal(t, scan.RepoWorkflowName, wf.Name)
+	assert.True(t, wf.Builtin)
+	assert.Equal(t, domain.LocationHost, wf.Location)
+	assert.Equal(t, "extract", wf.EntryStep)
+	assert.Len(t, wf.Steps, 7)
+
+	wantWires := map[string]string{
 		"extract:success":           "check-candidates",
-		"extract:fail":              "abort-cleanup",
-		"extract:give-up":           "abort-cleanup",
+		"extract:fail":              "abort",
+		"extract:give-up":           "abort",
 		"check-candidates:success":  "reconcile",
 		"check-candidates:missing":  "extract",
 		"check-candidates:fail":     "repair-candidates",
 		"repair-candidates:success": "check-candidates",
-		"repair-candidates:fail":    "abort-cleanup",
-		"repair-candidates:give-up": "abort-cleanup",
+		"repair-candidates:fail":    "abort",
+		"repair-candidates:give-up": "abort",
 		"reconcile:success":         "check-reconcile",
-		"reconcile:none":            "commit",
-		"reconcile:fail":            "abort-cleanup",
-		"reconcile:give-up":         "abort-cleanup",
+		"reconcile:none":            "done",
+		"reconcile:fail":            "abort",
+		"reconcile:give-up":         "abort",
 		"check-reconcile:success":   "apply-reconcile",
 		"check-reconcile:missing":   "reconcile",
 		"check-reconcile:fail":      "repair-reconcile",
 		"repair-reconcile:success":  "check-reconcile",
-		"repair-reconcile:fail":     "abort-cleanup",
-		"repair-reconcile:give-up":  "abort-cleanup",
-		"apply-reconcile:success":   "commit",
-		"apply-reconcile:fail":      "abort-cleanup",
-		"commit:success":            "done",
-		"commit:fail":               "abort",
-		"abort-cleanup:success":     "abort",
-		"abort-cleanup:fail":        "abort",
+		"repair-reconcile:fail":     "abort",
+		"repair-reconcile:give-up":  "abort",
+		"apply-reconcile:success":   "done",
+		"apply-reconcile:fail":      "abort",
 	}
+	assertWires(t, wf, wantWires)
+}
+
+func assertWires(t *testing.T, wf *domain.Workflow, wantWires map[string]string) {
+	t.Helper()
 	assert.Len(t, wf.Wiring, len(wantWires))
 	for _, wire := range wf.Wiring {
 		key := wire.From + ":" + wire.Result
@@ -85,10 +118,15 @@ func TestBuiltinWorkflow_Shape(t *testing.T) {
 // (dash), which lacks it — the host executor always runs step "run" scripts
 // via `sh -c`, not bash. See cloche-la93 x cloche-ulid integration bug.
 func TestBuiltinWorkflow_ScriptsAreDashCompatible(t *testing.T) {
-	wf := scan.BuiltinWorkflow()
+	steps := map[string]*domain.Step{}
+	for _, wf := range []*domain.Workflow{scan.BuiltinWorkflow(), scan.BuiltinRepoWorkflow()} {
+		for name, step := range wf.Steps {
+			steps[name] = step
+		}
+	}
 
-	for _, name := range []string{"check-domains", "collect-sources", "check-candidates", "check-reconcile", "apply-reconcile", "commit", "abort-cleanup"} {
-		step, ok := wf.Steps[name]
+	for _, name := range []string{"check-domains", "collect-sources", "next-pass", "check-candidates", "check-reconcile", "apply-reconcile", "commit", "abort-cleanup"} {
+		step, ok := steps[name]
 		require.True(t, ok, "step %s should exist", name)
 		script := step.Config["run"]
 		require.NotEmpty(t, script, "step %s should have a run script", name)
@@ -218,8 +256,8 @@ func TestBuiltinWorkflow_IndependentInstances(t *testing.T) {
 		assert.NotEqualf(t, mapPtr(a.Steps[name].Config), mapPtr(b.Steps[name].Config), "step %s Config", name)
 	}
 
-	a.Steps["extract"].Config["timeout"] = "mutated"
-	assert.NotEqual(t, "mutated", b.Steps["extract"].Config["timeout"])
+	a.Steps["discover-domains"].Config["timeout"] = "mutated"
+	assert.NotEqual(t, "mutated", b.Steps["discover-domains"].Config["timeout"])
 }
 
 // scriptedExecutor is a fake engine.StepExecutor driven by a fixed
@@ -231,7 +269,10 @@ type scriptedExecutor struct {
 	executed []string
 }
 
-func (e *scriptedExecutor) Execute(_ context.Context, step *domain.Step) (domain.StepResult, error) {
+func (e *scriptedExecutor) Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
+	if step.Type == domain.StepTypeWorkflow {
+		return runSubWorkflow(ctx, e, step)
+	}
 	e.executed = append(e.executed, step.Name)
 	result, ok := e.results[step.Name]
 	if !ok {
@@ -240,21 +281,39 @@ func (e *scriptedExecutor) Execute(_ context.Context, step *domain.Step) (domain
 	return domain.StepResult{Result: result}, nil
 }
 
+// runSubWorkflow stands in for the daemon executor's handling of a
+// workflow-type step: run the named built-in as a nested engine run with
+// the same executor (so the inner steps are recorded in order) and map its
+// final state to success/fail, exactly as the daemon does.
+func runSubWorkflow(ctx context.Context, exec engine.StepExecutor, step *domain.Step) (domain.StepResult, error) {
+	sub, ok := builtin.Lookup(step.Config["workflow_name"])
+	if !ok {
+		return domain.StepResult{}, fmt.Errorf("unknown sub-workflow %q", step.Config["workflow_name"])
+	}
+	run, err := engine.New(exec).Run(ctx, sub)
+	if err != nil || run.State != domain.RunStateSucceeded {
+		return domain.StepResult{Result: "fail"}, nil
+	}
+	return domain.StepResult{Result: "success"}, nil
+}
+
 // TestBuiltinWorkflow_ReconcileNone_SkipsApplyReconcile reproduces the "zero
 // candidates" case from cloche-26029ae7feb8: when reconcile has nothing to
 // act on, it must route via its `none` result straight to done, the same way
 // collect-sources does, rather than falling through to apply-reconcile with
 // no reconcile.json to apply.
 func TestBuiltinWorkflow_ReconcileNone_SkipsApplyReconcile(t *testing.T) {
-	exec := &scriptedExecutor{results: map[string]string{
-		"discover-domains": "success",
-		"check-domains":    "success",
-		"collect-sources":  "success",
-		"extract":          "success",
-		"check-candidates": "success",
-		"reconcile":        "none",
-		"commit":           "success",
-	}}
+	calls := 0
+	exec := &sequencedExecutor{results: map[string][]string{
+		"discover-domains": {"success"},
+		"check-domains":    {"success"},
+		"collect-sources":  {"success"},
+		"next-pass":        {"pass", "done"},
+		"extract":          {"success"},
+		"check-candidates": {"success"},
+		"reconcile":        {"none"},
+		"commit":           {"success"},
+	}, calls: &calls}
 
 	eng := engine.New(exec)
 	run, err := eng.Run(context.Background(), scan.BuiltinWorkflow())
@@ -270,24 +329,27 @@ func TestBuiltinWorkflow_ReconcileNone_SkipsApplyReconcile(t *testing.T) {
 // apply-reconcile step then fails (e.g. because reconcile.json was never
 // written) must fail the whole run via the declared fail -> abort wire.
 func TestBuiltinWorkflow_ApplyReconcileFail_FailsRun(t *testing.T) {
-	exec := &scriptedExecutor{results: map[string]string{
-		"discover-domains": "success",
-		"check-domains":    "success",
-		"collect-sources":  "success",
-		"extract":          "success",
-		"check-candidates": "success",
-		"reconcile":        "success",
-		"check-reconcile":  "success",
-		"apply-reconcile":  "fail",
-		"abort-cleanup":    "success",
-	}}
+	calls := 0
+	exec := &sequencedExecutor{results: map[string][]string{
+		"discover-domains": {"success"},
+		"check-domains":    {"success"},
+		"collect-sources":  {"success"},
+		"next-pass":        {"pass", "done"},
+		"extract":          {"success"},
+		"check-candidates": {"success"},
+		"reconcile":        {"success"},
+		"check-reconcile":  {"success"},
+		"apply-reconcile":  {"fail"},
+		"abort-cleanup":    {"success"},
+	}, calls: &calls}
 
 	eng := engine.New(exec)
 	run, err := eng.Run(context.Background(), scan.BuiltinWorkflow())
 	require.NoError(t, err)
 
 	assert.Equal(t, domain.RunStateFailed, run.State)
-	assert.Equal(t, "apply-reconcile", run.FindFirstFailedStep())
+	assert.Equal(t, "scan-pass", run.FindFirstFailedStep(), "the failed pass is what the outer run reports")
+	assert.Contains(t, exec.executed, "apply-reconcile")
 	assert.NotContains(t, exec.executed, "commit", "commit must not run after apply-reconcile fails")
 	assert.Contains(t, exec.executed, "abort-cleanup", "abort-cleanup must leave the worktree clean")
 }
@@ -298,16 +360,18 @@ func TestBuiltinWorkflow_ApplyReconcileFail_FailsRun(t *testing.T) {
 // reconcile's max_attempts bounds the loop so the run aborts on give-up
 // instead of spinning or reaching apply-reconcile.
 func TestBuiltinWorkflow_ReconcileClaimsSuccessWithoutOutput_RetriesThenAborts(t *testing.T) {
-	exec := &scriptedExecutor{results: map[string]string{
-		"discover-domains": "success",
-		"check-domains":    "success",
-		"collect-sources":  "success",
-		"extract":          "success",
-		"check-candidates": "success",
-		"reconcile":        "success",
-		"check-reconcile":  "missing",
-		"abort-cleanup":    "success",
-	}}
+	calls := 0
+	exec := &sequencedExecutor{results: map[string][]string{
+		"discover-domains": {"success"},
+		"check-domains":    {"success"},
+		"collect-sources":  {"success"},
+		"next-pass":        {"pass", "done"},
+		"extract":          {"success"},
+		"check-candidates": {"success"},
+		"reconcile":        {"success"},
+		"check-reconcile":  {"missing"},
+		"abort-cleanup":    {"success"},
+	}, calls: &calls}
 
 	eng := engine.New(exec)
 	run, err := eng.Run(context.Background(), scan.BuiltinWorkflow())
@@ -329,9 +393,14 @@ func TestBuiltinWorkflow_ReconcileClaimsSuccessWithoutOutput_RetriesThenAborts(t
 // write the JSON the apply step reads) — the logic lives in Go, not shell.
 func TestCheckScriptsDelegateToCLI(t *testing.T) {
 	wf := scan.BuiltinWorkflow()
+	repo := scan.BuiltinRepoWorkflow()
 	assert.Contains(t, wf.Steps["check-domains"].Config["run"], `cloche intent apply-domains --project "$PROJECT_DIR" --csv "$TEMP/domains.csv"`)
-	assert.Contains(t, wf.Steps["check-candidates"].Config["run"], `cloche intent check-candidates --project "$PROJECT_DIR" --csv "$TEMP/candidates.csv" --out "$TEMP/candidates.json"`)
-	assert.Contains(t, wf.Steps["check-reconcile"].Config["run"], `cloche intent check-reconcile --project "$PROJECT_DIR" --csv "$TEMP/reconcile.csv" --candidates-file "$TEMP/candidates.json" --out "$TEMP/reconcile.json"`)
+	assert.Contains(t, wf.Steps["next-pass"].Config["run"], `cloche intent next-pass --sources "$OUT" --cursor "$TEMP/intent-scan-pass" --temp "$TEMP"`)
+	// The per-pass steps hand the pass's repo to the CLI, which forces it
+	// onto every candidate and gates reconcile targets by it.
+	assert.Contains(t, repo.Steps["check-candidates"].Config["run"], `cloche intent check-candidates --project "$PROJECT_DIR" --repo "$REPO" --csv "$TEMP/candidates.csv" --out "$TEMP/candidates.json"`)
+	assert.Contains(t, repo.Steps["check-reconcile"].Config["run"], `cloche intent check-reconcile --project "$PROJECT_DIR" --repo "$REPO" --csv "$TEMP/reconcile.csv" --candidates-file "$TEMP/candidates.json" --out "$TEMP/reconcile.json"`)
+	assert.Contains(t, repo.Steps["apply-reconcile"].Config["run"], `--repo "$REPO" --reconcile-file "$TEMP/reconcile.json" --candidates-file "$TEMP/candidates.json" --summary-file "$TEMP/scan-summary.txt"`)
 	assert.Contains(t, wf.Steps["commit"].Config["run"], `cloche intent validate --project "$PROJECT_DIR"`)
 }
 
@@ -459,7 +528,10 @@ type sequencedExecutor struct {
 	calls    *int
 }
 
-func (e *sequencedExecutor) Execute(_ context.Context, step *domain.Step) (domain.StepResult, error) {
+func (e *sequencedExecutor) Execute(ctx context.Context, step *domain.Step) (domain.StepResult, error) {
+	if step.Type == domain.StepTypeWorkflow {
+		return runSubWorkflow(ctx, e, step)
+	}
 	e.executed = append(e.executed, step.Name)
 	seq := e.results[step.Name]
 	if len(seq) == 0 {
@@ -481,6 +553,7 @@ func TestBuiltinWorkflow_ReconcileRepairLoop(t *testing.T) {
 		"discover-domains": {"success"},
 		"check-domains":    {"success"},
 		"collect-sources":  {"success"},
+		"next-pass":        {"pass", "done"},
 		"extract":          {"success"},
 		"check-candidates": {"success"},
 		"reconcile":        {"success"},
@@ -495,6 +568,76 @@ func TestBuiltinWorkflow_ReconcileRepairLoop(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, domain.RunStateSucceeded, run.State)
-	assert.Equal(t, []string{"discover-domains", "check-domains", "collect-sources", "extract", "check-candidates",
-		"reconcile", "check-reconcile", "repair-reconcile", "check-reconcile", "apply-reconcile", "commit"}, exec.executed)
+	assert.Equal(t, []string{"discover-domains", "check-domains", "collect-sources", "next-pass", "extract", "check-candidates",
+		"reconcile", "check-reconcile", "repair-reconcile", "check-reconcile", "apply-reconcile", "next-pass", "commit"}, exec.executed)
+}
+
+// A project that committed .cloche/intent-index/vectors.json before the
+// index became self-ignoring sees it modified after every task run — the
+// daemon rewrites it on injection and .gitignore has no effect on a tracked
+// file. The commit step is where cloche already commits intent state, so it
+// untracks the index there, even when nothing under .cloche/intent/ changed.
+func TestBuiltinWorkflow_CommitScript_UntracksCommittedIndex(t *testing.T) {
+	dir := t.TempDir()
+	runGitCommit(t, dir, "init", "-q")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche", "intent"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "intent", "domains.yaml"), []byte("version: 1\n"), 0644))
+	indexDir := filepath.Join(dir, ".cloche", "intent-index")
+	require.NoError(t, os.MkdirAll(indexDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(indexDir, "vectors.json"), []byte(`{"version":1}`), 0644))
+	runGitCommit(t, dir, "add", ".")
+	runGitCommit(t, dir, "commit", "-q", "-m", "init")
+
+	// What a task run leaves behind: the daemon re-saved the index (and made
+	// the directory self-ignoring), nothing under .cloche/intent/ changed.
+	require.NoError(t, os.WriteFile(filepath.Join(indexDir, "vectors.json"), []byte(`{"version":1,"entries":[]}`), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(indexDir, ".gitignore"), []byte("*\n"), 0644))
+
+	out, err := runCommitScript(t, dir, "")
+	require.NoError(t, err, out)
+	assert.Contains(t, out, "untracked derived index")
+	assert.Contains(t, out, "nothing to commit", "the intent dir itself was clean")
+
+	assert.Empty(t, runGitCommit(t, dir, "ls-files", "--", ".cloche/intent-index"), "index must no longer be tracked")
+	assert.Empty(t, runGitCommit(t, dir, "status", "--porcelain"), "working tree must be clean afterwards")
+	assert.FileExists(t, filepath.Join(indexDir, "vectors.json"), "the on-disk cache must survive")
+	assert.Contains(t, runGitCommit(t, dir, "log", "-1", "--format=%s"), "stop tracking")
+	assert.Contains(t, runGitCommit(t, dir, "show", "--stat", "--format=", "HEAD"), "vectors.json")
+}
+
+// Two passes, each of which needs a reconcile retry: the per-pass
+// sub-workflow gives every pass its own max_attempts budget, which an
+// in-workflow loop back to extract would not — the second repo would hit
+// give-up on the attempts the first one used up.
+func TestBuiltinWorkflow_EachPassGetsFreshAttempts(t *testing.T) {
+	calls := 0
+	exec := &sequencedExecutor{results: map[string][]string{
+		"discover-domains": {"success"},
+		"check-domains":    {"success"},
+		"collect-sources":  {"success"},
+		"next-pass":        {"pass", "pass", "done"},
+		"extract":          {"success"},
+		"check-candidates": {"success"},
+		"reconcile":        {"success"},
+		"check-reconcile":  {"missing", "missing", "success", "missing", "missing", "success"},
+		"apply-reconcile":  {"success"},
+		"commit":           {"success"},
+	}, calls: &calls}
+
+	run, err := engine.New(exec).Run(context.Background(), scan.BuiltinWorkflow())
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+
+	reconciles, applies := 0, 0
+	for _, name := range exec.executed {
+		switch name {
+		case "reconcile":
+			reconciles++
+		case "apply-reconcile":
+			applies++
+		}
+	}
+	assert.Equal(t, 6, reconciles, "three reconcile attempts per pass, twice")
+	assert.Equal(t, 2, applies)
+	assert.Equal(t, "commit", exec.executed[len(exec.executed)-1])
 }

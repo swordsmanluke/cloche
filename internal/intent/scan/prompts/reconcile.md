@@ -8,6 +8,7 @@ requirement is now wrong, or not actually durable intent after all?
 
 ```bash
 TEMP="$(cloche get temp_file_dir)"
+REPO="$(cloche get intent_scan_repo)"
 ```
 
 - `$TEMP/candidates.json` — the extract step's output. If its `candidates`
@@ -19,6 +20,23 @@ TEMP="$(cloche get temp_file_dir)"
   `confidence`, `user_edited`, `provenance`, plus the statement/rationale
   body). Read all of them, including `disabled` and `superseded` ones — you
   need their status to decide correctly.
+
+### Which requirements this pass can see
+
+The scan runs once per source tree, and `$REPO` is the repository this pass
+is reconciling (empty for the project root). A requirement's
+`scope.repos` lists the repositories it applies to; absent or empty means
+global. For this pass, the **visible** requirements are:
+
+- `$REPO` set: those whose `scope.repos` is empty **or** contains `$REPO`.
+- `$REPO` empty: those whose `scope.repos` is empty (global ones only).
+
+Candidates may only be judged against visible requirements. A candidate
+that restates a rule tracked for a *different* repository is new intent for
+this one — `create` it; do not `merge` into or `supersede` the other repo's
+requirement. (The validation step rejects a `merge`/`supersede` whose target
+is not visible.) Requirements that are not visible are still worth a glance
+for consistency of wording, nothing more.
 
 Everything you need is in those files. Any `## User Request` text below is
 only the previous step's closing summary — not your input. The one exception:
@@ -71,11 +89,11 @@ Write `$TEMP/reconcile.csv` — a plain CSV with exactly one row per
 candidate in `candidates.json`, in the same order, with exactly this header:
 
 ```csv
-candidate,action,existing_id,reason,statement,rationale,scope_level,domains,hints,confidence,provenance_kind,provenance_ref
-1,create,,,,,,,,,,
-2,merge,req-a3f8,duplicates existing requirement,,,,,,,,
-3,supersede,req-b91c,commit abc123 reverses this,"The formatter must ... (clarified)",,,,,,,
-4,drop,,task-specific instruction; not durable intent,,,,,,,,
+candidate,action,existing_id,reason,statement,rationale,scope_level,domains,hints,confidence,provenance_kind,provenance_ref,repos
+1,create,,,,,,,,,,,
+2,merge,req-a3f8,duplicates existing requirement,,,,,,,,,
+3,supersede,req-b91c,commit abc123 reverses this,"The formatter must ... (clarified)",,,,,,,,
+4,drop,,task-specific instruction; not durable intent,,,,,,,,,
 ```
 
 - `candidate` is the 1-based index of the candidate the row answers.
@@ -91,6 +109,9 @@ candidate,action,existing_id,reason,statement,rationale,scope_level,domains,hint
   existing requirements gives you a clearer statement, rationale, scope,
   hints (separated by `;`), confidence or provenance — fill only what you
   are changing.
+- `repos` follows the same rule as in extract: on a repository pass it is
+  forced to `$REPO` whatever you write; on the project-root pass it may
+  name configured repositories (separated by `;`) or stay blank for global.
 - Standard CSV quoting: wrap a field in double quotes if it contains a
   comma, a double quote (write it as `""`), or a line break.
 
