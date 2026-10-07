@@ -38,9 +38,34 @@ if [ ! -d "$WORKTREE_DIR" ]; then
   exit 1
 fi
 
-# Stash untracked files in the main working tree so they don't conflict with
-# the incoming branch during the fast-forward merge.
+# Stash local changes (tracked and untracked) in the main working tree so they
+# don't conflict with the incoming branch during the fast-forward merge.
 STASH_CREATED=0
+
+# restore_stash pops the stash created above. When the merged branch touched a
+# file the stash also carries (typically daemon-written state such as
+# .cloche/intent/scan-state.yaml), the pop conflicts and git leaves the entry
+# in place — which, left alone, accumulates one orphaned stash per merge.
+# Resolve such conflicts in favour of the stashed side (the local uncommitted
+# state we're trying to put back), leave everything unstaged as a clean pop
+# would, and drop the entry. A pop that fails before touching anything (no
+# conflicted paths) is left for a human, since nothing was partially applied.
+restore_stash() {
+  if git -C "$PROJECT_DIR" stash pop; then
+    return 0
+  fi
+  local conflicted
+  conflicted=$(git -C "$PROJECT_DIR" diff --name-only --diff-filter=U)
+  if [ -z "$conflicted" ]; then
+    echo "warning: could not restore stashed files — stash entry kept" >&2
+    return 1
+  fi
+  echo "warning: stash pop conflicted on: $(echo "$conflicted" | tr '\n' ' ')— keeping stashed version" >&2
+  echo "$conflicted" | git -C "$PROJECT_DIR" checkout --theirs --pathspec-from-file=- --
+  git -C "$PROJECT_DIR" reset -q
+  git -C "$PROJECT_DIR" stash drop -q
+  return 0
+}
 if ! git -C "$PROJECT_DIR" stash --include-untracked -m "cloche/merge-to-base: $BRANCH" 2>/dev/null; then
   echo "warning: could not stash untracked files — proceeding anyway" >&2
 else
@@ -55,7 +80,7 @@ if ! git -C "$WORKTREE_DIR" rebase "$BASE_BRANCH"; then
   echo "error: rebase failed — branch $BRANCH preserved for review" >&2
   git -C "$WORKTREE_DIR" rebase --abort 2>/dev/null || true
   if [ "$STASH_CREATED" -eq 1 ]; then
-    git -C "$PROJECT_DIR" stash pop || true
+    restore_stash || true
   fi
   exit 1
 fi
@@ -72,9 +97,9 @@ git -C "$PROJECT_DIR" update-ref "refs/heads/$BRANCH" "$REBASED_HEAD"
 # Fast-forward base branch, updating the working tree.
 git -C "$PROJECT_DIR" merge --ff-only "$BRANCH"
 
-# Restore stashed untracked files.
+# Restore stashed local changes.
 if [ "$STASH_CREATED" -eq 1 ]; then
-  git -C "$PROJECT_DIR" stash pop || echo "warning: could not restore stashed files" >&2
+  restore_stash || true
 fi
 
 # Delete the feature branch.
