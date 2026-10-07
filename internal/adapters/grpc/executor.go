@@ -122,6 +122,15 @@ type DaemonExecutor struct {
 	containerSeedCleanups map[string]func()
 	containerSeedTried    map[string]bool
 
+	// sessionContainers maps each pool key this executor obtained a session
+	// for to that session's container ID, so cleanup can tell which
+	// containers the pool kept (see cleanupPoolKey).
+	sessionContainers map[string]string
+	// keptContainer is set once cleanup has left a stopped container behind
+	// for debugging; Close flags the host run ContainerKept so the console's
+	// containers dashboard lists it and can prune it.
+	keptContainer bool
+
 	// closed tracks whether Close() has already been called.
 	closed bool
 }
@@ -270,9 +279,16 @@ func (d *DaemonExecutor) Close(succeeded bool) {
 	}
 	ctx := context.Background()
 	for key := range d.poolKeys {
-		if err := d.pool.CleanupAttempt(ctx, key, false, succeeded); err != nil {
-			log.Printf("daemon executor: cleanup pool key %s: %v", key, err)
-		}
+		d.cleanupPoolKey(ctx, key, succeeded)
+	}
+	if d.keptContainer {
+		d.updateHostRun(ctx, func(run *domain.Run) bool {
+			if run.ContainerKept {
+				return false
+			}
+			run.ContainerKept = true
+			return true
+		})
 	}
 	if succeeded {
 		for key, repos := range d.worktrees {
@@ -281,6 +297,63 @@ func (d *DaemonExecutor) Close(succeeded bool) {
 			}
 			delete(d.worktrees, key)
 		}
+	}
+}
+
+// cleanupPoolKey releases the pool session for key. The pool removes the
+// container on success and stops-but-keeps it otherwise (for debugging), so
+// a non-succeeded cleanup of a key that still holds a live session leaves a
+// kept container behind — remembered in keptContainer for Close to record
+// on the host run. A key whose session was already torn down (parked, or
+// cleaned up earlier on a sub-workflow failure) is a no-op in the pool and
+// keeps nothing new.
+func (d *DaemonExecutor) cleanupPoolKey(ctx context.Context, key string, succeeded bool) {
+	_, live := d.sessionContainers[key]
+	if err := d.pool.CleanupAttempt(ctx, key, false, succeeded); err != nil {
+		log.Printf("daemon executor: cleanup pool key %s: %v", key, err)
+	}
+	if live && !succeeded {
+		d.keptContainer = true
+	}
+	delete(d.sessionContainers, key)
+}
+
+// recordSessionContainer notes the container backing a pool key and
+// persists it on the host run so run readers (the console's run detail and
+// containers dashboard, cloche status/stop) can see which container a host
+// run is driving. Pool sessions are reused across sub-workflows sharing a
+// container.id, so the row is only rewritten when the ID actually changes.
+func (d *DaemonExecutor) recordSessionContainer(ctx context.Context, poolKey, containerID string) {
+	if d.sessionContainers == nil {
+		d.sessionContainers = make(map[string]string)
+	}
+	d.sessionContainers[poolKey] = containerID
+	d.updateHostRun(ctx, func(run *domain.Run) bool {
+		if run.ContainerID == containerID {
+			return false
+		}
+		run.ContainerID = containerID
+		return true
+	})
+}
+
+// updateHostRun applies mutate to a fresh copy of the host run row and
+// writes it back when mutate reports a change. Read-modify-write on the
+// live row rather than a cached struct, since the host runner and the
+// AgentSession handler update the same row concurrently.
+func (d *DaemonExecutor) updateHostRun(ctx context.Context, mutate func(*domain.Run) bool) {
+	if d.store == nil || d.hostExec == nil || d.hostExec.HostRunID == "" {
+		return
+	}
+	run, err := d.store.GetRun(ctx, d.hostExec.HostRunID)
+	if err != nil || run == nil {
+		return
+	}
+	if !mutate(run) {
+		return
+	}
+	if err := d.store.UpdateRun(ctx, run); err != nil {
+		log.Printf("daemon executor: updating host run %s: %v", run.ID, err)
 	}
 }
 
@@ -397,8 +470,7 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		defer func() {
 			if !succeeded {
 				// Use background context: the original ctx may already be cancelled.
-				cleanupCtx := context.Background()
-				_ = d.pool.CleanupAttempt(cleanupCtx, poolKey, false, false)
+				d.cleanupPoolKey(context.Background(), poolKey, false)
 			}
 		}()
 
@@ -903,6 +975,7 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 	if d.onContainerStart != nil {
 		d.onContainerStart(session.ContainerID)
 	}
+	d.recordSessionContainer(ctx, poolKey, session.ContainerID)
 
 	if step.Type == domain.StepTypeAgent {
 		d.seedIntentKV(ctx, step, wf, hostRunID)
@@ -949,6 +1022,7 @@ func (d *DaemonExecutor) handleStepParked(ctx context.Context, containerID, pool
 	if err := d.pool.CleanupAttempt(ctx, poolKey, false, true); err != nil {
 		log.Printf("daemon executor: failed to clean up parked container %s: %v", containerID, err)
 	}
+	delete(d.sessionContainers, poolKey)
 
 	if d.store != nil && d.taskID != "" {
 		_, containerWFID, _ := strings.Cut(poolKey, ":")

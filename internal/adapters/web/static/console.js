@@ -2425,7 +2425,11 @@
         if (run.child_runs && run.child_runs.length) {
             leadParts.push('child ' + run.child_runs.map(function (c) { return c.id; }).join(', '));
         }
-        leadParts.push('container ' + (run.container_id ? shortId(run.container_id) : '—') + ' (' + (run.container_state || 'removed') + ')');
+        // A run with no container ID never had one (host-only workflow, or a
+        // host run before its first container step) — don't call it removed.
+        leadParts.push(run.container_id
+            ? 'container ' + shortId(run.container_id) + ' (' + (run.container_state || 'removed') + ')'
+            : 'container —');
         if (run.token_usage && run.token_usage.length) {
             leadParts.push('tokens ' + run.token_usage.map(function (u) {
                 return u.agent_name + ': ' + u.input_tokens + '/' + u.output_tokens;
