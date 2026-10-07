@@ -102,6 +102,23 @@ func isIgnored(patterns []ignorePattern, relPath string, isDir bool) bool {
 	return ignored
 }
 
+// excludedFromCopy reports whether writeTarFromProject would have left the
+// file at relPath out of the container — either because the file itself
+// matches, or because an ancestor directory did and the walk pruned it.
+// relPath uses forward slashes and names a file, not a directory.
+func excludedFromCopy(patterns []ignorePattern, relPath string) bool {
+	if len(patterns) == 0 {
+		return false
+	}
+	parts := strings.Split(relPath, "/")
+	for i := 1; i < len(parts); i++ {
+		if isIgnored(patterns, strings.Join(parts[:i], "/"), true) {
+			return true
+		}
+	}
+	return isIgnored(patterns, relPath, false)
+}
+
 // matchGlob matches a gitignore-style glob against a path.
 // Supports *, ?, and ** (matches any number of path components).
 func matchGlob(pattern, name string) bool {

@@ -162,3 +162,30 @@ func TestIsIgnored_Empty(t *testing.T) {
 	assert.False(t, isIgnored(nil, "anything", false))
 	assert.False(t, isIgnored(nil, "anything", true))
 }
+
+func TestExcludedFromCopy(t *testing.T) {
+	patterns := []ignorePattern{
+		{pattern: ".cloche/runs", dirOnly: true, anchored: true},
+		{pattern: "*.sock", matchBase: true},
+		{pattern: "build", dirOnly: true, matchBase: true},
+	}
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{".cloche/runs/abc/prompt.md", true}, // ancestor dir pruned
+		{".cloche/runs", false},              // a file by that name is not the dir rule
+		{".cloche/develop.cloche", false},
+		{"daemon.sock", true},
+		{"services/api/build/out.js", true}, // unanchored dir rule at depth
+		{"services/api/main.go", false},
+	}
+	for _, c := range cases {
+		if got := excludedFromCopy(patterns, c.path); got != c.want {
+			t.Errorf("excludedFromCopy(%q) = %v, want %v", c.path, got, c.want)
+		}
+	}
+	if excludedFromCopy(nil, ".cloche/runs/x") {
+		t.Error("no patterns should exclude nothing")
+	}
+}

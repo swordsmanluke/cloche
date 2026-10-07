@@ -530,6 +530,7 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 					ContainerSubPath: p.Repo.SubPath,
 					AuthorName:       authorName,
 					AuthorEmail:      authorEmail,
+					ProjectDir:       d.projectDir,
 				}); err != nil {
 					log.Printf("daemon executor: failed to extract results for repo %q: %v", p.Repo.Name, err)
 				} else {

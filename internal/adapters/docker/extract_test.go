@@ -919,3 +919,273 @@ func TestContainerCommitsFromDocker_ErrorYieldsEmpty(t *testing.T) {
 		t.Errorf("expected empty on error, got %q", got)
 	}
 }
+
+// overrideDockerExecByCommand overrides dockerExec so that `git diff` (the
+// recorded-deletions probe) returns diffOut and `git log` (the commit-message
+// probe) returns logOut — the two container reads ExtractResults performs.
+func overrideDockerExecByCommand(t *testing.T, diffOut, logOut []byte) {
+	t.Helper()
+	orig := dockerExec
+	dockerExec = func(_ context.Context, _ string, cmd ...string) ([]byte, error) {
+		for _, a := range cmd {
+			switch a {
+			case "diff":
+				return diffOut, nil
+			case "log":
+				return logOut, nil
+			}
+		}
+		return nil, nil
+	}
+	t.Cleanup(func() { dockerExec = orig })
+}
+
+// nulJoined renders paths the way `git ... --name-only -z` does.
+func nulJoined(paths []string) []byte {
+	return []byte(strings.Join(paths, "\x00") + "\x00")
+}
+
+// TestExtractResults_LandsDeliberateMassDeletion verifies that a large
+// deletion the agent recorded in the container's git (committed or `git rm`'d)
+// is landed as-is, however lopsided the add/delete ratio — the mass-delete
+// heuristic only applies to deletions the container can't vouch for.
+func TestExtractResults_LandsDeliberateMassDeletion(t *testing.T) {
+	repoDir, baseSHA := setupTestRepoWithManyFiles(t, 80)
+
+	// The agent removed every file but one and committed the removal.
+	emptyish := t.TempDir()
+	if err := os.WriteFile(filepath.Join(emptyish, "lone.txt"), []byte("only thing\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	overrideDockerCp(t, emptyish)
+	var removed []string
+	for i := 0; i < 80; i++ {
+		removed = append(removed, "file"+itoa(i)+".txt")
+	}
+	overrideDockerExecByCommand(t, nulJoined(removed), []byte("Remove legacy subsystem\x00"))
+
+	runID := "deliberate-mass-delete"
+	wt := prepareForTest(t, repoDir, baseSHA, runID)
+
+	result, err := ExtractResults(context.Background(), ExtractOptions{
+		ContainerID:  "fake",
+		WorktreeDir:  wt.Dir,
+		Branch:       wt.Branch,
+		BaseSHA:      baseSHA,
+		RunID:        runID,
+		WorkflowName: "develop",
+		Result:       "succeeded",
+		ProjectDir:   repoDir,
+	})
+	if err != nil {
+		t.Fatalf("ExtractResults refused a deletion the container recorded: %v", err)
+	}
+	if result.CommitSHA == baseSHA {
+		t.Fatal("expected a new commit, got baseSHA")
+	}
+
+	cmd := exec.Command("git", "ls-tree", "-r", "--name-only", result.CommitSHA)
+	cmd.Dir = repoDir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(out)); got != "lone.txt" {
+		t.Errorf("extracted tree = %q, want only lone.txt", got)
+	}
+}
+
+// TestExtractResults_RefusesWhenOnlyPartOfMassDeletionIsRecorded verifies the
+// heuristic is evaluated on the unattributed remainder: if the container
+// vouches for a few deletions but most of the missing files were never staged
+// or committed as deleted, the incomplete-copy guard still trips.
+func TestExtractResults_RefusesWhenOnlyPartOfMassDeletionIsRecorded(t *testing.T) {
+	repoDir, baseSHA := setupTestRepoWithManyFiles(t, 80)
+
+	emptyish := t.TempDir()
+	if err := os.WriteFile(filepath.Join(emptyish, "lone.txt"), []byte("only thing\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	overrideDockerCp(t, emptyish)
+	overrideDockerExecByCommand(t, nulJoined([]string{"file0.txt", "file1.txt", "file2.txt"}), nil)
+
+	runID := "partial-record"
+	wt := prepareForTest(t, repoDir, baseSHA, runID)
+
+	_, err := ExtractResults(context.Background(), ExtractOptions{
+		ContainerID:  "fake",
+		WorktreeDir:  wt.Dir,
+		BaseSHA:      baseSHA,
+		RunID:        runID,
+		WorkflowName: "develop",
+		Result:       "failed",
+		ProjectDir:   repoDir,
+	})
+	if err == nil {
+		t.Fatal("expected ExtractResults to refuse: 77 of 80 deletions are unrecorded")
+	}
+	if !strings.Contains(err.Error(), "77 files") || !strings.Contains(err.Error(), "3 further deletion") {
+		t.Errorf("error should report the unattributed/recorded split: %v", err)
+	}
+}
+
+// TestExtractResults_RestoresClocheignoredTrackedFiles verifies that a tracked
+// file .clocheignore kept out of the container is restored from BaseSHA instead
+// of being committed as a deletion. Below the mass-delete threshold such
+// deletions used to land silently on every extraction.
+func TestExtractResults_RestoresClocheignoredTrackedFiles(t *testing.T) {
+	repoDir, baseSHA := setupTestRepoWithManyFiles(t, 5)
+
+	// Track a file under a path .clocheignore excludes, and a .clocheignore
+	// that excludes it. (The repo now has 7 tracked files at baseSHA.)
+	gitEnv := append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com",
+	)
+	run := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		cmd.Env = gitEnv
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("cmd %v: %s: %v", args, out, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	if err := os.MkdirAll(filepath.Join(repoDir, "secrets"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "secrets", "keep.txt"), []byte("tracked but not shipped\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, ".clocheignore"), []byte("secrets/\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	run("git", "add", ".")
+	run("git", "commit", "-m", "add ignored-but-tracked file")
+	baseSHA = run("git", "rev-parse", "HEAD")
+
+	// Container tree: everything the copy delivered (no secrets/), with the
+	// agent having deliberately deleted file0.txt and added new.txt.
+	fixture := t.TempDir()
+	for i := 1; i < 5; i++ {
+		if err := os.WriteFile(filepath.Join(fixture, "file"+itoa(i)+".txt"), []byte("content "+itoa(i)+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(fixture, ".clocheignore"), []byte("secrets/\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fixture, "new.txt"), []byte("new\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	overrideDockerCp(t, fixture)
+	overrideDockerExecByCommand(t, nulJoined([]string{"file0.txt"}), nil)
+
+	runID := "restore-ignored"
+	wt := prepareForTest(t, repoDir, baseSHA, runID)
+
+	result, err := ExtractResults(context.Background(), ExtractOptions{
+		ContainerID:  "fake",
+		WorktreeDir:  wt.Dir,
+		Branch:       wt.Branch,
+		BaseSHA:      baseSHA,
+		RunID:        runID,
+		WorkflowName: "develop",
+		Result:       "succeeded",
+		ProjectDir:   repoDir,
+	})
+	if err != nil {
+		t.Fatalf("ExtractResults: %v", err)
+	}
+
+	cmd := exec.Command("git", "diff", "--name-status", "--no-renames", baseSHA, result.CommitSHA)
+	cmd.Dir = repoDir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.TrimSpace(string(out))
+	want := "D\tfile0.txt\nA\tnew.txt"
+	if got != want {
+		t.Errorf("extracted diff vs base:\n%s\nwant:\n%s", got, want)
+	}
+	if data, err := os.ReadFile(filepath.Join(wt.Dir, "secrets", "keep.txt")); err != nil || string(data) != "tracked but not shipped\n" {
+		t.Errorf("secrets/keep.txt not restored in worktree: %v / %q", err, data)
+	}
+}
+
+// TestExtractResults_IgnoreRestoreScopedBySubPath verifies that for a
+// multi-repo extraction the .clocheignore match is made against the
+// project-relative path (sub path + repo-relative path), since the ignore
+// file lives at the project root while the worktree is one repository.
+func TestExtractResults_IgnoreRestoreScopedBySubPath(t *testing.T) {
+	// Project root holds .clocheignore; the repo lives under services/api.
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, ".clocheignore"), []byte("services/api/generated/\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	repoDir := filepath.Join(projectDir, "services", "api")
+	if err := os.MkdirAll(filepath.Join(repoDir, "generated"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	gitEnv := append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com",
+	)
+	run := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		cmd.Env = gitEnv
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("cmd %v: %s: %v", args, out, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	run("git", "init")
+	for _, f := range []string{"main.go", "generated/schema.go"} {
+		if err := os.WriteFile(filepath.Join(repoDir, f), []byte(f+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("git", "add", ".")
+	run("git", "commit", "-m", "init")
+	baseSHA := run("git", "rev-parse", "HEAD")
+
+	// Container copy of services/api lacks generated/ (ignored) — nothing else changed.
+	fixture := t.TempDir()
+	if err := os.WriteFile(filepath.Join(fixture, "main.go"), []byte("main.go\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	overrideDockerCp(t, fixture)
+	overrideDockerExecByCommand(t, nil, nil)
+
+	runID := "subpath-ignore"
+	wt := prepareForTest(t, repoDir, baseSHA, runID)
+	result, err := ExtractResults(context.Background(), ExtractOptions{
+		ContainerID:      "fake",
+		WorktreeDir:      wt.Dir,
+		Branch:           wt.Branch,
+		BaseSHA:          baseSHA,
+		RunID:            runID,
+		WorkflowName:     "develop",
+		Result:           "succeeded",
+		ContainerSubPath: "services/api",
+		ProjectDir:       projectDir,
+	})
+	if err != nil {
+		t.Fatalf("ExtractResults: %v", err)
+	}
+	cmd := exec.Command("git", "diff", "--name-status", baseSHA, result.CommitSHA)
+	cmd.Dir = repoDir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(out)); got != "" {
+		t.Errorf("expected an empty diff vs base (generated/ restored), got:\n%s", got)
+	}
+}

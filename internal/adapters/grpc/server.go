@@ -2062,6 +2062,7 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 				RunID:        runID,
 				WorkflowName: workflowName,
 				Result:       resultLabel,
+				ProjectDir:   extractRun.ProjectDir,
 			}); err != nil {
 				log.Printf("run %s: failed to extract results to branch: %v", runID, err)
 			} else {
@@ -3672,6 +3673,7 @@ func (s *ClocheServer) ExtractRun(ctx context.Context, req *pb.ExtractRunRequest
 		RunID:        run.ID,
 		WorkflowName: run.WorkflowName,
 		Result:       string(run.State),
+		ProjectDir:   run.ProjectDir,
 		TargetDir:    targetDir,
 		NoGit:        req.NoGit,
 	}

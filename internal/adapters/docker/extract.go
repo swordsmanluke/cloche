@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -57,6 +58,13 @@ type ExtractOptions struct {
 	// commit. Empty strings fall back to the built-in "cloche <cloche@local>".
 	AuthorName  string
 	AuthorEmail string
+
+	// ProjectDir is the host project root whose .clocheignore governed the
+	// container copy. When set, tracked files that .clocheignore excluded from
+	// the container are restored from BaseSHA rather than committed as
+	// deletions (the agent never saw them, so their absence is not a decision).
+	// Empty disables that restoration.
+	ProjectDir string
 
 	TargetDir string
 	NoGit     bool
@@ -253,21 +261,8 @@ func extractGit(ctx context.Context, opts ExtractOptions) (ExtractResult, error)
 		return ExtractResult{}, fmt.Errorf("git add: %s: %w", out, err)
 	}
 
-	// Sanity-gate the staged commit. If extraction would mass-delete files
-	// without producing comparable additions, the underlying container almost
-	// certainly didn't have a complete project copy (see bug cloche-9d59).
-	// Committing in that case overwrites the worktree branch with a wholesale
-	// "delete most of the project" commit, poisoning subsequent runs that read
-	// from the same branch. Refuse to commit and surface a clear error so the
-	// caller can decide what to do (typically: log it and fail the run).
-	if dels, adds, err := stagedFileCounts(ctx, opts.WorktreeDir); err == nil {
-		if dels > extractMaxDeletions && dels > adds*2 {
-			return ExtractResult{}, fmt.Errorf(
-				"extraction would delete %d files (with only %d additions); refusing to commit. "+
-					"This usually means the container's /workspace was incomplete — check the project copy. "+
-					"Override with CLOCHE_EXTRACT_ALLOW_MASS_DELETE=1 if the deletions are intentional.",
-				dels, adds)
-		}
+	if err := guardStagedDeletions(ctx, opts, gitEnv); err != nil {
+		return ExtractResult{}, err
 	}
 
 	commitMsg := buildCommitMessage(ctx, opts.WorktreeDir, gitEnv, opts.RunID, opts.WorkflowName, opts.Result, containerCommits)
@@ -295,48 +290,165 @@ func extractGit(ctx context.Context, opts ExtractOptions) (ExtractResult, error)
 }
 
 // extractMaxDeletions is the threshold above which the extraction sanity gate
-// kicks in. Combined with the deletions > additions*2 ratio check, this
-// catches "container was incomplete" cases without flagging legitimate large
-// refactors. Tuned for cloche projects where a typical run touches at most a
-// few dozen files.
+// kicks in for *unattributed* deletions. Combined with the deletions >
+// additions*2 ratio check, this catches "container was incomplete" cases
+// without flagging legitimate large refactors. Tuned for cloche projects where
+// a typical run touches at most a few dozen files.
 const extractMaxDeletions = 50
 
-// stagedFileCounts returns the number of staged additions and deletions in the
-// given worktree. Used by the extraction sanity gate to detect bad project
-// copies before they get committed (see ExtractResults).
+// guardStagedDeletions sorts the deletions `git add -A` staged in the worktree
+// by how they came about, and lets through only the ones the agent actually
+// decided on. Extraction stages "everything tracked at BaseSHA that is absent
+// from the container tree" as a deletion, which conflates three cases:
 //
-// Returns 0/0 with no error if `git diff --cached --diff-filter=...` fails
-// for any reason — in that case the caller falls through to the original
-// behavior rather than blocking on a transient git failure.
-func stagedFileCounts(ctx context.Context, worktreeDir string) (deletions, additions int, err error) {
-	if os.Getenv("CLOCHE_EXTRACT_ALLOW_MASS_DELETE") == "1" {
-		// Operator opt-out for legitimate mass-delete refactors.
-		return 0, 0, nil
+//   - Deliberate: the agent deleted the file and git in the container knows
+//     it (the deletion is committed or staged relative to BaseSHA). Landed
+//     unconditionally — a refactor that removes a subsystem is still a
+//     refactor at 500 files.
+//   - Incidental: the file is tracked but .clocheignore kept it out of the
+//     container. The agent never saw it, so its absence carries no intent.
+//     Restored from BaseSHA so the extracted commit leaves it alone.
+//   - Unattributed: absent from the container tree but never staged or
+//     committed as deleted there. Either an agent `rm` without `git rm`, or a
+//     container whose /workspace copy was incomplete (see bug cloche-9d59).
+//     Committing the latter overwrites the branch with a wholesale "delete
+//     most of the project" commit, poisoning subsequent runs that read from
+//     it, so only this bucket is subject to the mass-delete heuristic.
+//
+// CLOCHE_EXTRACT_ALLOW_MASS_DELETE=1 bypasses the heuristic; ignored-file
+// restoration still happens. A failure to read git state (host or container)
+// degrades to the permissive side rather than blocking on a transient error.
+func guardStagedDeletions(ctx context.Context, opts ExtractOptions, gitEnv []string) error {
+	staged, err := stagedPaths(ctx, opts.WorktreeDir, gitEnv, "D")
+	if err != nil || len(staged) == 0 {
+		return nil
 	}
-	count := func(filter string) (int, error) {
-		cmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--diff-filter="+filter, "--name-only")
-		cmd.Dir = worktreeDir
-		out, err := cmd.Output()
-		if err != nil {
-			return 0, err
+
+	if opts.ProjectDir != "" {
+		patterns, perr := parseClocheignore(opts.ProjectDir)
+		if perr != nil {
+			log.Printf("extract: parsing .clocheignore for deletion guard: %v", perr)
 		}
-		n := 0
-		for _, line := range strings.Split(string(out), "\n") {
-			if strings.TrimSpace(line) != "" {
-				n++
+		var ignored []string
+		var kept []string
+		for _, p := range staged {
+			if excludedFromCopy(patterns, path.Join(strings.Trim(opts.ContainerSubPath, "/"), p)) {
+				ignored = append(ignored, p)
+			} else {
+				kept = append(kept, p)
 			}
 		}
-		return n, nil
+		if len(ignored) > 0 {
+			if err := restoreFromBase(ctx, opts.WorktreeDir, gitEnv, opts.BaseSHA, ignored); err != nil {
+				return fmt.Errorf("restoring %d .clocheignore'd tracked files: %w", len(ignored), err)
+			}
+			log.Printf("extract: run %s: restored %d tracked file(s) excluded from the container by .clocheignore (%s)",
+				opts.RunID, len(ignored), samplePaths(ignored, 3))
+			staged = kept
+		}
 	}
-	dels, err := count("D")
+
+	if os.Getenv("CLOCHE_EXTRACT_ALLOW_MASS_DELETE") == "1" {
+		// Operator opt-out for mass deletions the container's git can't vouch for.
+		return nil
+	}
+
+	deliberate := containerRecordedDeletions(ctx, opts.ContainerID, opts.BaseSHA, opts.ContainerSubPath)
+	var unattributed []string
+	for _, p := range staged {
+		if !deliberate[p] {
+			unattributed = append(unattributed, p)
+		}
+	}
+	if len(unattributed) <= extractMaxDeletions {
+		return nil
+	}
+	adds, err := stagedPaths(ctx, opts.WorktreeDir, gitEnv, "A")
+	if err != nil || len(unattributed) <= len(adds)*2 {
+		return nil
+	}
+	return fmt.Errorf(
+		"extraction would delete %d files the container's git never recorded as deleted (e.g. %s), with only %d additions; refusing to commit. "+
+			"%d further deletion(s) are recorded in the container and would be kept. "+
+			"This usually means the container's /workspace was incomplete — check the project copy. "+
+			"If the agent removed these files without `git rm`, have it stage the deletion, or override with CLOCHE_EXTRACT_ALLOW_MASS_DELETE=1.",
+		len(unattributed), samplePaths(unattributed, 3), len(adds), len(staged)-len(unattributed))
+}
+
+// stagedPaths lists the paths staged in the worktree with the given
+// --diff-filter status. Renames are not collapsed, so a file the container
+// moved shows up as D plus A here exactly as it does in the container's own
+// diff against BaseSHA — the two views must agree for the intersection in
+// guardStagedDeletions to be meaningful.
+func stagedPaths(ctx context.Context, worktreeDir string, gitEnv []string, filter string) ([]string, error) {
+	cmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--no-renames", "--diff-filter="+filter, "--name-only", "-z")
+	cmd.Dir = worktreeDir
+	cmd.Env = gitEnv
+	out, err := cmd.Output()
 	if err != nil {
-		return 0, 0, err
+		return nil, err
 	}
-	adds, err := count("A")
+	return splitNUL(out), nil
+}
+
+// containerRecordedDeletions returns the set of paths (relative to the
+// container repo root) whose deletion the container's git index records
+// relative to baseSHA — i.e. committed by the agent, or staged and not yet
+// committed. Working-tree-only absences are deliberately not included: an
+// un-staged missing file looks identical whether the agent `rm`'d it or the
+// project copy never delivered it. Returns an empty set on any error.
+func containerRecordedDeletions(ctx context.Context, containerID, baseSHA, containerSubPath string) map[string]bool {
+	out, err := dockerExec(ctx, containerID,
+		"git", "-c", "safe.directory=*", "-C", containerWorkspacePath(containerSubPath),
+		"diff", "--cached", "--no-renames", "--diff-filter=D", "--name-only", "-z", baseSHA)
 	if err != nil {
-		return 0, 0, err
+		detail := ""
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			detail = ": " + strings.TrimSpace(string(exitErr.Stderr))
+		}
+		log.Printf("extract: reading recorded deletions from container %s (%s): %v%s",
+			containerID, containerWorkspacePath(containerSubPath), err, detail)
+		return nil
 	}
-	return dels, adds, nil
+	set := make(map[string]bool)
+	for _, p := range splitNUL(out) {
+		set[p] = true
+	}
+	return set
+}
+
+// restoreFromBase checks the given paths out of baseSHA into the worktree,
+// which also re-stages them so the pending commit no longer deletes them.
+func restoreFromBase(ctx context.Context, worktreeDir string, gitEnv []string, baseSHA string, paths []string) error {
+	cmd := exec.CommandContext(ctx, "git", "checkout", baseSHA, "--pathspec-from-file=-", "--pathspec-file-nul")
+	cmd.Dir = worktreeDir
+	cmd.Env = gitEnv
+	cmd.Stdin = strings.NewReader(strings.Join(paths, "\x00"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git checkout: %s: %w", out, err)
+	}
+	return nil
+}
+
+// splitNUL splits -z style git output into its non-empty entries.
+func splitNUL(out []byte) []string {
+	var paths []string
+	for _, p := range strings.Split(string(out), "\x00") {
+		if p != "" {
+			paths = append(paths, p)
+		}
+	}
+	return paths
+}
+
+// samplePaths renders up to n paths for an error or log line, with an
+// ellipsis count for the rest.
+func samplePaths(paths []string, n int) string {
+	if len(paths) <= n {
+		return strings.Join(paths, ", ")
+	}
+	return strings.Join(paths[:n], ", ") + fmt.Sprintf(", … %d more", len(paths)-n)
 }
 
 // buildCommitMessage generates a squash-style commit message. The title
