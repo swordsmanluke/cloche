@@ -1,5 +1,68 @@
 # Cloche Detailed Changelog
 
+## v3.25.3 — 2026-10-07
+
+### Breaking
+
+- `ed9aa32` Autonomous containers get a `settings.json` reduced to auth/env keys and every agent step records its exact prompt. Migration: agent steps that depended on host Claude Code hooks, model, permissions or plugins must carry those through the step prompt instead.
+
+### Features
+
+- `8f6e6d7` Intent requirements are scoped to repositories; scans run one pass per repo via a new `intent-scan-repo` sub-workflow and `next-pass` step; `cloche intent list --repo/--global` and `intent add --repo` added.
+- `1af0fed` Added `cloche project purge` (new gRPC endpoint and SQLite purge) and a console "Remove project…" action.
+- `bd9f944` `cloche validate`/`doctor` report misplaced config keys; `scan_after_tasks` is re-read per scan trigger.
+
+### Fixes
+
+- `0ac2813` Result markers are detected anywhere in the output, not only at the start of a line; last marker wins.
+- `8647a01` `cloche stop` cancels loop-dispatched runs via a per-attempt cancel func.
+- `c91ec59` Extraction lands deliberate deletions and restores `.clocheignore`'d tracked files.
+- `3f8664b` Extraction reads agent commits as root with `safe.directory=*`.
+- `b7f6360` Extraction reuses the base SHA the extract worktree was branched from.
+- `41d294a` `merge-to-base.sh` resolves stash-pop conflicts instead of orphaning the stash.
+- `a237133` Console shows a host run's live container instead of "(removed)".
+- `16b6522` Console log viewer scrolls horizontally when wrap is off.
+- `b460a2d` Intent index stops rewriting a fresh index and writes a self-ignoring `.gitignore`.
+- `7ee6d6a` Intent scan never leaves `.cloche/intent` or the intent index dirty (shared commit step, abort-cleanup step, lock retry).
+- `6402b19` Intent scan condenses previous-step transcripts and verifies reconcile output.
+- `681b0b8` Intent scan hands off domains as CSV; injection degrades instead of failing.
+- `f701eb1` Intent-scan extract and reconcile hand off CSV; validation scripts and repair steps fix the format.
+
+### Internal
+
+- `fa0f223` Docs: intent-scan step list for the CSV hand-off / check / repair pattern.
+- `3394b98` Pilot writeup: haiku-test ticket follow-up findings.
+- `35cc26f` intent-ab: x6 replications complete — final evaluation.
+- `50a369e` intent-ab: per-merge SC3 trace across all ten verified runs.
+- `098a7d4` intent-ab: x6 rep 2 results and per-commit SC3 trace.
+- `bf36acb` intent-ab: x6 rep 1 results.
+- `579c9db` intent-ab: x6 smoke test record.
+- `7a6367a` intent-ab protocol: record x6 overlay commit and isolation fixes.
+- `3de53d8` intent-ab harness: pin Claude Code 2.1.281; pre-register x6 hypothesis.
+- `63a2bdd` intent-ab: x5 complete — results and next steps.
+- `255558c` intent-ab: x5 extractor audits for arm B.
+- `da7fc42` intent-ab: x5 rep 2 results.
+- `d3fbadd` intent-ab: x5 rep 1 results.
+- `2ed3036` intent-ab protocol: record seed-v2.1.
+- `d34b866` intent-ab seed-v2.1: make ordering comparisons, fresh block scope and D2 depth explicit.
+- `adf7780` intent-ab harness: inline task text into implement.md; judge hands off CSV.
+- `cca754f` intent-ab: mechanism validation — two of four arm-B runs had no injection.
+- `6a5c61d` intent-ab arm_driver: abort an arm whose intent store cannot be resolved.
+- `0485f15` intent-ab: seed-v3 design proposal.
+- `834dd14` intent-ab overlays: comment-free files, overlay folded into seed commit.
+- `599d866` intent-ab: final replications results doc.
+- `e5a400a` intent-ab: replications results doc draft.
+- `2cbe6c1` intent-ab audit: fix SC5 false negative and SC7 false positive.
+- `944ea1b` intent-ab: extractor audit eval.
+- `fee2ca2` intent-ab protocol: record overlay/driver 0ce2f0d3.
+- `0ce2f0d` intent-ab overlay: write per-task `prompt.txt`.
+- `7d9206e` intent-ab arm_driver/monitors: only conventional failure results count as step failures.
+- `0057e94` intent-ab protocol: record arm overlay/driver commit.
+- `dca839e` intent-ab overlay: test step gates develop.
+- `7a886a4` intent-ab arm_driver: drain in-flight runs before stopping the loop.
+- `0191442` intent-ab protocol: record seed-v2 as frozen seed.
+- `1578d3d` intent-ab: seed-v2, Haiku overlays, replication driver.
+
 ## v3.24.18 — 2026-09-20
 
 ### Fixes

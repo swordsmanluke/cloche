@@ -1,5 +1,29 @@
 # Cloche Changelog
 
+## v3.25.3 — 2026-10-07
+
+### Breaking changes
+
+- Autonomous (workflow) containers now receive a `settings.json` reduced to its auth/env keys (`env`, `apiKeyHelper`, `forceLoginMethod`, `forceLoginOrgUUID`, `awsAuthRefresh`, `awsCredentialExport`, `otelHeadersHelper`); host hooks, model, effort/thinking, permissions and plugins are no longer copied in. Migration: if an agent step relied on host Claude Code preferences, move them into the step prompt or into the project's own configuration. Interactive consoles still get the full settings files.
+
+### Features
+
+- Intent requirements can be scoped to repositories: in multi-repo projects the scan runs one pass per repo, requirements carry a `scope.repos`, and a step only sees global requirements plus those for its own repo. `cloche intent list --repo/--global` and `cloche intent add --repo` expose the scope. ([design](docs/plans/2026-09-13-intent-continuity-design.md))
+- Added `cloche project purge` and a console "Remove project…" action to remove a project and its stored state.
+- Every agent step now records the exact prompt it was given (including injected requirements) next to its transcript.
+- `cloche validate` and `cloche doctor` flag known config keys placed in the wrong table (e.g. a top-level `scan_after_tasks`, which was silently ignored).
+
+### Notable fixes
+
+- `CLOCHE_RESULT:` markers are now detected anywhere in agent output (wrapped in backticks or bold, followed by prose, or followed by more text), with the last marker winning, instead of requiring the marker to start its own line.
+- `cloche stop` now actually cancels loop-dispatched runs; previously it only changed the run's recorded state while the agent kept running.
+- Extraction now lands deliberate file deletions and restores tracked files matched by `.clocheignore`, reads agent commits as root with `safe.directory=*`, and reuses the base SHA the extract worktree was branched from.
+- `merge-to-base` resolves stash-pop conflicts instead of orphaning the stash.
+- `scan_after_tasks` is re-read on every scan trigger, so changing it in `config.toml` takes effect without restarting the daemon.
+- Intent scans no longer leave `.cloche/intent` or the intent index dirty (which blocked later merges); the index now ignores itself and no longer rewrites a fresh index.
+- Intent scans hand off domains and candidates as CSV with validate/repair steps, previous-step transcripts are condensed, and a failed injection degrades instead of failing the step.
+- The console shows a host run's live container instead of "(removed)", and the log viewer scrolls horizontally when wrap is off.
+
 ## v3.24.18 — 2026-09-20
 
 ### Notable fixes
