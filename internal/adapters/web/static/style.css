@@ -1214,6 +1214,33 @@ h2 {
 
 .console-action-diff { white-space: pre; }
 
+/* Step input panel (see showStepInput): one labelled block per attempt. */
+.console-step-input-head {
+    font-size: var(--fs-xs);
+    color: var(--mu);
+    margin: 0.5rem 0 0.25rem;
+}
+.console-step-input-head:first-child { margin-top: 0; }
+.console-step-input-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* The "in" affordance on a step chip opens that step's input. Dim until the
+   chip is hovered/focused so the strip stays quiet. */
+.console-step-segment-input::before { content: "in"; }
+.console-step-segment-input {
+    margin-left: auto;
+    padding: 0 0.3rem;
+    border: 1px solid var(--ln);
+    border-radius: 3px;
+    font-size: var(--fs-xs);
+    color: var(--mu);
+    opacity: 0.45;
+    cursor: pointer;
+}
+.console-step-segment:hover .console-step-segment-input,
+.console-step-segment:focus-within .console-step-segment-input,
+.console-step-segment-input:focus { opacity: 1; }
+.console-step-segment-input:hover { color: var(--tx); background: var(--pnl); }
+
 .console-attempt-chips { display: inline-flex; gap: 0.25rem; }
 
 .console-attempt-chip {

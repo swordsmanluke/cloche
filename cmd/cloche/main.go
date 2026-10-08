@@ -387,13 +387,15 @@ func cmdResume(ctx context.Context, client pb.ClocheServiceClient, args []string
 }
 
 func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string) {
-	// Parse flags to detect --all before checking positional args.
-	var all bool
+	// Parse flags to detect --all / --input before checking positional args.
+	var all, input bool
 	var positional []string
 	for _, arg := range args {
 		switch arg {
 		case "--all":
 			all = true
+		case "--input":
+			input = true
 		case "--no-color":
 			// handled globally in main()
 		default:
@@ -402,8 +404,17 @@ func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string
 	}
 
 	if len(positional) > 1 {
-		fmt.Fprintf(os.Stderr, "usage: cloche status [<task-id>]\n")
+		fmt.Fprintf(os.Stderr, "usage: cloche status [<task-id> | <step-id> --input]\n")
 		os.Exit(1)
+	}
+
+	if input {
+		if len(positional) != 1 {
+			fmt.Fprintf(os.Stderr, "usage: cloche status <attempt>:<workflow>:<step> --input\n")
+			os.Exit(1)
+		}
+		cmdStatusStepInput(ctx, client, os.Stdout, positional[0])
+		return
 	}
 
 	// If a task ID is provided, show the latest attempt status for that task.
@@ -414,6 +425,32 @@ func cmdStatus(ctx context.Context, client pb.ClocheServiceClient, args []string
 
 	// No ID: show daemon status overview.
 	cmdStatusOverview(ctx, client, os.Stdout, all)
+}
+
+// cmdStatusStepInput prints the input a step ran with — the rendered prompt
+// of an agent step, or a script/poll step's command and environment summary
+// — one block per execution attempt, oldest first. Deliberately not part of
+// `cloche logs`: logs are a step's runtime output, this is what went in.
+func cmdStatusStepInput(ctx context.Context, client pb.ClocheServiceClient, w io.Writer, id string) {
+	resp, err := client.GetStepInputs(ctx, &pb.GetStepInputsRequest{Id: id})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %s\n", grpcStatus.Convert(err).Message())
+		os.Exit(1)
+	}
+	if len(resp.Inputs) == 0 {
+		fmt.Fprintf(w, "No input recorded for step %s of run %s.\n", resp.StepName, resp.RunId)
+		return
+	}
+	for i, in := range resp.Inputs {
+		if i > 0 {
+			fmt.Fprintln(w)
+		}
+		fmt.Fprintf(w, "=== %s:%s · attempt %d · %s · %s ===\n", colorID(resp.RunId), resp.StepName, in.Attempt, in.Kind, in.CreatedAt)
+		fmt.Fprint(w, in.Content)
+		if !strings.HasSuffix(in.Content, "\n") {
+			fmt.Fprintln(w)
+		}
+	}
 }
 
 // cmdStatusTaskLatest fetches the task and displays its latest attempt status.

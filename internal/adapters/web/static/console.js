@@ -2341,6 +2341,40 @@
             .catch(function () { pre.textContent = 'No diff available for this run.'; });
     }
 
+    // showStepInput opens the action panel on the exact input a step ran
+    // with — one block per execution attempt (a retried or resumed step
+    // keeps its original prompt alongside the retry prompt). Served by
+    // /api/runs/{id}/steps/{step}/input, deliberately separate from the
+    // step's log output.
+    function showStepInput(step) {
+        var body = document.createElement('div');
+        body.className = 'console-step-input';
+        var pre = actionPre('Loading…');
+        body.appendChild(pre);
+        showActionPanel('Input · ' + step.step_name, body);
+        fetch('/api/runs/' + encodeURIComponent(step.run_id) + '/steps/' + encodeURIComponent(step.step_name) + '/input')
+            .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+            .then(function (data) {
+                var inputs = data.inputs || [];
+                body.innerHTML = '';
+                if (!inputs.length) {
+                    body.appendChild(actionPre('No input recorded for this step.'));
+                    return;
+                }
+                inputs.forEach(function (entry) {
+                    var head = document.createElement('div');
+                    head.className = 'console-step-input-head';
+                    head.textContent = 'attempt ' + entry.attempt + ' · ' + entry.kind +
+                        (entry.created_at ? ' · ' + entry.created_at : '');
+                    body.appendChild(head);
+                    var content = actionPre(entry.content || '(empty)');
+                    content.classList.add('console-step-input-pre');
+                    body.appendChild(content);
+                });
+            })
+            .catch(function () { pre.textContent = 'Failed to load step input.'; });
+    }
+
     function cancelRun(run) {
         fetch('/api/runs/' + encodeURIComponent(run.id) + '/stop', { method: 'POST' })
             .then(function () { return fetchRunDetail(run.id); })
@@ -2555,6 +2589,25 @@
         var nameText = document.createElement('span');
         nameText.textContent = step.step_name + (hasChildren ? ' ↳' : '');
         name.appendChild(nameText);
+
+        // Opens the step's recorded input (rendered prompt / script command
+        // summary) in the action panel — kept apart from the log pane, which
+        // the chip itself scopes. A span rather than a nested button, since
+        // the segment is already a button; the click stops here so it
+        // doesn't also toggle the log scope.
+        var input = document.createElement('span');
+        input.className = 'console-step-segment-input';
+        input.setAttribute('role', 'button');
+        input.setAttribute('tabindex', '0');
+        input.setAttribute('aria-label', 'Show input for step ' + step.step_name);
+        input.title = 'Show the input this step ran with';
+        // Glyph comes from CSS (::before) so the span adds no text to the
+        // chip name that focalStep/tests read via textContent.
+        input.addEventListener('click', function (ev) { ev.stopPropagation(); showStepInput(step); });
+        input.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); showStepInput(step); }
+        });
+        name.appendChild(input);
 
         seg.appendChild(name);
 

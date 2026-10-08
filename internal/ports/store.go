@@ -126,6 +126,16 @@ type CaptureStore interface {
 	GetCaptures(ctx context.Context, runID string) ([]*domain.StepExecution, error)
 }
 
+// StepInputStore persists the input each execution of a step ran with (see
+// domain.StepInput). Inputs are run metadata: they are deleted with the run.
+type StepInputStore interface {
+	// SaveStepInput records in.Content for (in.RunID, in.StepName) as the next
+	// attempt and sets in.Attempt and in.CreatedAt accordingly.
+	SaveStepInput(ctx context.Context, in *domain.StepInput) error
+	// ListStepInputs returns a step's inputs in attempt order.
+	ListStepInputs(ctx context.Context, runID, stepName string) ([]*domain.StepInput, error)
+}
+
 // StreamingUsageTracker is an optional interface a CaptureStore may implement
 // to track ephemeral token usage for a step that is still running, streamed
 // from the agent's stream-json output as it works. Unlike SaveCapture, this

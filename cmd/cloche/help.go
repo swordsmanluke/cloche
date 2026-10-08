@@ -256,15 +256,26 @@ Examples:
 
 Without an ID, shows a daemon status overview for the current project.
 With a task ID, shows the latest attempt status for that task.
+With a step ID and --input, prints the input that step ran with.
 
 Usage:
   cloche status [<task-id>] [--all]
+  cloche status <step-id> --input
 
 Arguments:
   <task-id>   A task ID. When omitted, shows a daemon status overview.
 
 Flags:
   --all        Show global stats instead of project-specific stats (overview mode).
+  --input      Print the recorded input of the step named by the ID: the fully
+               rendered prompt an agent step was given (template filled in,
+               requirements injected), or a script/poll step's command and
+               environment summary. One block per execution attempt, oldest
+               first, so a retried step shows its original and retry prompts.
+               The ID must name a step: <attempt>:<workflow>:<step>,
+               <task>:<attempt>:<step> or <task>:<attempt>:<workflow>:<step>.
+               Kept separate from "cloche logs" on purpose — logs are what a
+               step produced, this is what it was given.
   --no-color   Disable ANSI color output (also respects NO_COLOR env var).
 
 Output (task ID):
@@ -290,6 +301,7 @@ Examples:
   cloche status TASK-123
   cloche status
   cloche status --all
+  cloche status a3f7:develop:implement --input
 `,
 
 	"logs": `cloche logs — Show logs for a task, attempt, workflow run, or step

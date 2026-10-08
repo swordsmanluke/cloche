@@ -85,6 +85,12 @@ service ClocheService {
   // ListContextKeys returns all keys in the per-attempt KV namespace.
   rpc ListContextKeys(ListContextKeysRequest) returns (ListContextKeysResponse);
 
+  // GetStepInputs returns the recorded inputs of one step of a run — the
+  // rendered prompt an agent step was given, or the command/environment
+  // summary of a script step — one entry per execution attempt. The id is
+  // any colon-delimited id that resolves to a step (see resolveRunIDFromID).
+  rpc GetStepInputs(GetStepInputsRequest) returns (GetStepInputsResponse);
+
   // AgentSession is a bidirectional stream between the daemon and an in-container
   // agent. The agent connects after container startup; the daemon sends step
   // execution commands; the agent sends back status events and results.
@@ -635,6 +641,7 @@ message AgentMessage {
     StepLog             step_log     = 3; // real-time log line from step
     StepStarted         step_started = 4; // step execution began
     HostWorkflowRequest host_request = 5; // agent requests host workflow
+    StepInput           step_input   = 6; // the input a step is about to run with
   }
 }
 
@@ -689,6 +696,35 @@ message StepLog {
 message StepStarted {
   string request_id = 1;
   string step_name  = 2;
+}
+
+// StepInput carries the exact input a step is about to execute with, sent by
+// the agent after assembling it and before launching the step: the rendered
+// prompt for an agent step (template filled in, requirements injected), or a
+// command/environment summary for a script or poll step. The daemon stores it
+// as run metadata so the input can be inspected while the step runs.
+message StepInput {
+  string request_id = 1;
+  string step_name  = 2;
+  string kind       = 3; // "prompt", "script" or "poll"
+  string content    = 4;
+}
+
+message GetStepInputsRequest {
+  string id = 1; // colon-delimited id resolving to a step
+}
+
+message StepInputEntry {
+  int32  attempt    = 1; // 1-based execution attempt within the run
+  string kind       = 2;
+  string content    = 3;
+  string created_at = 4; // RFC 3339
+}
+
+message GetStepInputsResponse {
+  string                  run_id    = 1;
+  string                  step_name = 2;
+  repeated StepInputEntry inputs    = 3;
 }
 
 // HostWorkflowRequest is sent by the agent to request the daemon run a host workflow.

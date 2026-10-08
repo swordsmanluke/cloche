@@ -26,6 +26,7 @@ func (s *Store) PurgeProject(ctx context.Context, projectDir string) (int64, err
 	const projThreads = `(SELECT id FROM help_threads WHERE run_id IN ` + projRuns + ` OR task_id IN ` + projTasks + `)`
 	stmts := []struct{ name, sql string }{
 		{"step_executions", `DELETE FROM step_executions WHERE run_id IN ` + projRuns},
+		{"step_inputs", `DELETE FROM step_inputs WHERE run_id IN ` + projRuns},
 		{"log_files", `DELETE FROM log_files WHERE run_id IN ` + projRuns},
 		{"step_polls", `DELETE FROM step_polls WHERE run_id IN ` + projRuns},
 		{"merge_queue", `DELETE FROM merge_queue WHERE project = ? OR run_id IN ` + projRuns},

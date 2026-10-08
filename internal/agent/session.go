@@ -20,6 +20,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/logstream"
 	"github.com/swordsmanluke/cloche/internal/protocol"
+	"github.com/swordsmanluke/cloche/internal/stepinput"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -42,6 +43,27 @@ type SessionConfig struct {
 type Session struct {
 	cfg            SessionConfig
 	stepLogOffsets map[string]int64 // tracks bytes already written to full.log per step
+	// sendInput reports a step's input to the daemon (set up in Run once the
+	// stream exists; see domain.StepInput).
+	sendInput func(stepName string, kind domain.StepInputKind, content string)
+}
+
+// kvKeys lists the KV keys visible to this run's steps, for recording which
+// `cloche get` lookups a script step could make. Best-effort: an error just
+// yields no keys.
+func (s *Session) kvKeys(kv pb.ClocheServiceClient) []string {
+	if kv == nil || s.cfg.TaskID == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	resp, err := kv.ListContextKeys(ctx, &pb.ListContextKeysRequest{
+		TaskId: s.cfg.TaskID, AttemptId: s.cfg.AttemptID, RunId: s.cfg.RunID,
+	})
+	if err != nil {
+		return nil
+	}
+	return resp.Keys
 }
 
 // NewSession creates a new Session with the given config.
@@ -149,6 +171,25 @@ func (s *Session) Run(ctx context.Context) error {
 		attemptID: s.cfg.AttemptID,
 		runID:     s.cfg.RunID,
 	}
+
+	// Report each step's input to the daemon before it runs (recorded as run
+	// metadata, see domain.StepInput): the rendered prompt for agent steps,
+	// a command/environment summary for script steps. Poll steps report
+	// theirs from executePollStep.
+	sendInput := func(stepName string, kind domain.StepInputKind, content string) {
+		_ = send(&pb.AgentMessage{
+			Payload: &pb.AgentMessage_StepInput{
+				StepInput: &pb.StepInput{StepName: stepName, Kind: string(kind), Content: content},
+			},
+		})
+	}
+	promptAdapter.OnInput = func(stepName, fullPrompt string) {
+		sendInput(stepName, domain.StepInputPrompt, fullPrompt)
+	}
+	genericAdapter.OnInput = func(stepName, command string, env []string) {
+		sendInput(stepName, domain.StepInputScript, stepinput.Script(command, env, s.kvKeys(kvClient)))
+	}
+	s.sendInput = sendInput
 
 	// Per-step context for cancellation support.
 	var stepMu sync.Mutex
@@ -407,6 +448,9 @@ func appendLLMLogLine(workDir, stepName, line string) {
 // polling loop. Modeled on the host executor's executePollStepStandalone.
 func (s *Session) executePollStep(ctx context.Context, step *domain.Step, workDir string) (domain.StepResult, error) {
 	intervalStr := step.Config["interval"]
+	if s.sendInput != nil {
+		s.sendInput(step.Name, domain.StepInputPoll, stepinput.Poll(intervalStr, step.Config["poll"]))
+	}
 	interval, err := time.ParseDuration(intervalStr)
 	if err != nil {
 		return domain.StepResult{}, fmt.Errorf("poll step %q: invalid interval %q: %w", step.Name, intervalStr, err)

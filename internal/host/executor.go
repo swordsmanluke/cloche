@@ -20,6 +20,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/promptrev"
 	"github.com/swordsmanluke/cloche/internal/protocol"
 	"github.com/swordsmanluke/cloche/internal/runcontext"
+	"github.com/swordsmanluke/cloche/internal/stepinput"
 )
 
 // Executor implements engine.StepExecutor for host workflow steps (scripts and
@@ -254,6 +255,8 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 	// contain (collected docs/commits, echoed source, etc.).
 	cmd.Env = append(cmd.Env, "CLOCHE_RESULT_NONCE="+nonce)
 
+	e.recordStepInput(ctx, step.Name, domain.StepInputScript, stepinput.Script(cmdStr, cmd.Env, e.kvKeys(ctx)))
+
 	output, err := cmd.CombinedOutput()
 
 	// Extract result marker: prefer the nonce-framed marker, falling back to
@@ -418,6 +421,9 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 		}
 		e.seedIntentKV(ctx, step)
 		e.recordPromptRevisionKV(ctx, step)
+	}
+	adapter.OnInput = func(stepName, fullPrompt string) {
+		e.recordStepInput(ctx, stepName, domain.StepInputPrompt, fullPrompt)
 	}
 
 	// Pass CLOCHE_* vars so the agent process can invoke `cloche get/set`.
@@ -639,6 +645,7 @@ func (e *Executor) executePollStep(ctx context.Context, step *domain.Step) (stri
 	if err != nil {
 		return "", fmt.Errorf("poll step %q: invalid interval %q: %w", step.Name, intervalStr, err)
 	}
+	e.recordStepInput(ctx, step.Name, domain.StepInputPoll, stepinput.Poll(intervalStr, step.Config["poll"]))
 
 	// Mark the run as waiting so cloche list/status surfaces it distinctly.
 	if e.Store != nil && e.HostRunID != "" {
@@ -866,4 +873,31 @@ func MainWorktreeDir(projectDir string) string {
 		}
 	}
 	return projectDir
+}
+
+// recordStepInput persists the input a step of this host run is about to run
+// with (see domain.StepInput), when the store keeps step inputs. Best-effort:
+// a failure is logged, never fatal to the step.
+func (e *Executor) recordStepInput(ctx context.Context, stepName string, kind domain.StepInputKind, content string) {
+	sis, ok := e.Store.(ports.StepInputStore)
+	if !ok || e.HostRunID == "" {
+		return
+	}
+	in := &domain.StepInput{RunID: e.HostRunID, StepName: stepName, Kind: kind, Content: content}
+	if err := sis.SaveStepInput(ctx, in); err != nil {
+		log.Printf("host executor: recording %s input for step %s: %v", kind, stepName, err)
+	}
+}
+
+// kvKeys lists the KV keys a script step of this run could `cloche get`, for
+// the recorded input. Best-effort: no store or an error yields no keys.
+func (e *Executor) kvKeys(ctx context.Context) []string {
+	if e.Store == nil || e.TaskID == "" {
+		return nil
+	}
+	keys, err := e.Store.ListContextKeys(ctx, e.TaskID, e.AttemptID, e.HostRunID)
+	if err != nil {
+		return nil
+	}
+	return keys
 }

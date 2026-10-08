@@ -1076,10 +1076,12 @@ are replayed through the wiring so downstream steps receive the same inputs.
 
 ```
 cloche status [<task-id>] [--all]
+cloche status <step-id> --input
 ```
 
 Without an ID, shows a daemon status overview. With a task ID, shows the latest attempt
-status for that task.
+status for that task. With a step ID and `--input`, prints the input that step ran with
+(see [Step inputs](#step-inputs)).
 
 | Argument | Output |
 |----------|--------|
@@ -1089,7 +1091,38 @@ status for that task.
 | Flag | Description |
 |------|-------------|
 | `--all` | Show global stats instead of project-specific stats (overview mode only). |
+| `--input` | Print the recorded input of the step the ID names, one block per execution attempt (oldest first). The ID must resolve to a step: `<attempt>:<workflow>:<step>`, `<task>:<attempt>:<step>` or `<task>:<attempt>:<workflow>:<step>`. |
 | `--no-color` | Disable ANSI color output. Set `CLOCHE_FORCE_COLOR=1` to force color on even when stdout is not a terminal. |
+
+#### Step inputs
+
+Every step records the exact input it ran with, just before it starts, as run metadata
+(stored with the run and deleted with it — see `cloche project purge`). This is the
+post-interpolation text, so it answers "what did the agent actually see?" without
+reconstructing it from the template:
+
+| Step type | Recorded input |
+|-----------|----------------|
+| agent (prompt) | The fully rendered prompt: template filled in, `{previous_output}` substituted, standing requirements injected, result-marker instructions appended. |
+| script | The command line; every `CLOCHE_*` environment variable with its value; the *names* of all other environment variables (values are never recorded — the inherited environment can hold tokens); and the names of the KV keys a `cloche get` could read. |
+| poll | The interval and the condition command. |
+
+A step that is retried or resumed (park/resume, `max_attempts`) gets a new attempt with
+its own input, so the original prompt and the retry prompt are both kept:
+
+```
+$ cloche status a3f7:develop:implement --input
+=== a3f7-develop:implement · attempt 1 · prompt · 2026-10-08T17:02:11Z ===
+## Standing project requirements
+...
+```
+
+In the web console each step chip carries an `in` affordance that opens the same
+inputs in the action panel. Inputs are deliberately kept apart from log output
+(`cloche logs`, the console log pane): logs are what a step *produced*, inputs are
+what it was *given*, and a prompt interleaved with log lines could be mistaken for
+instructions by an agent that later reads those logs. Agent steps additionally keep
+writing `<step>.prompt.md` next to their transcript for now.
 
 #### "Needs you"
 

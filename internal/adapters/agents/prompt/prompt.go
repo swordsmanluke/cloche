@@ -36,6 +36,7 @@ type Adapter struct {
 	PrevOutput         string                 // content of the immediate predecessor step's output log
 	ExtraEnv           []string               // additional KEY=VALUE env vars injected into the agent process
 	KV                 KVReader               // optional: KV store for {{ $var }} lookups; nil disables non-builtin vars
+	OnInput            func(stepName, prompt string) // optional: receives the fully assembled prompt just before the agent is launched (see domain.StepInput)
 	KVWriter           KVWriter               // optional: persists Claude's session_id so a later park+resume can `claude --resume`
 	OutputDir          string                 // directory for step output logs and history. Empty = derive <workDir>/.cloche/logs/<TaskID>/<AttemptID> when both IDs are set (the per-attempt layout every host-side reader uses), else <workDir>/.cloche/output. In-container callers MUST pin this to the workspace's .cloche/output: that path is the container's public surface (daemon extraction, feedback flag, session streaming), and the container adapter has task/attempt IDs set too, so the derived default would move logs where nothing looks.
 }
@@ -207,6 +208,12 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 		if werr := os.WriteFile(filepath.Join(promptDir, step.Name+".prompt.md"), []byte(fullPrompt), 0644); werr != nil {
 			log.Printf("prompt: could not record %s prompt: %v", step.Name, werr)
 		}
+	}
+	// Hand the same text to the caller for durable recording as run
+	// metadata (the daemon's step_inputs), where it survives log cleanup and
+	// every attempt is kept rather than overwritten.
+	if a.OnInput != nil {
+		a.OnInput(step.Name, fullPrompt)
 	}
 
 	// Try each command in the fallback chain

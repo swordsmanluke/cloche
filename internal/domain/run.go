@@ -63,6 +63,28 @@ type RunListFilter struct {
 	Before time.Time
 }
 
+// StepInputKind classifies what a StepInput's Content is.
+type StepInputKind string
+
+const (
+	StepInputPrompt StepInputKind = "prompt" // the rendered prompt an agent step was given
+	StepInputScript StepInputKind = "script" // a script step's command and environment summary
+	StepInputPoll   StepInputKind = "poll"   // a poll step's interval and condition
+)
+
+// StepInput is the exact input one execution of a step ran with, recorded
+// just before the step starts so it can be inspected while the step is
+// still running. Attempt counts executions of the same step within the run
+// (a resumed or retried step gets a new attempt with its own input).
+type StepInput struct {
+	RunID     string
+	StepName  string
+	Attempt   int
+	Kind      StepInputKind
+	Content   string
+	CreatedAt time.Time
+}
+
 type StepExecution struct {
 	StepName    string
 	Result      string

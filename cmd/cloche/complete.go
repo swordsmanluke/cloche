@@ -161,7 +161,7 @@ func staticCompletions(subcommand string, index int, words []string, cur string)
 		}
 
 	case "status":
-		candidates = []string{"--all"}
+		candidates = []string{"--all", "--input"}
 
 	case "logs":
 		switch prev {

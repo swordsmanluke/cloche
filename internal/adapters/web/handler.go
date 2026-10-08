@@ -344,6 +344,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/runs/{id}/thread", h.handleAPIRunThread)
 	h.mux.HandleFunc("POST /api/runs/{id}/thread/reply", h.handleAPIRunThreadReply)
 	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
+	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/input", h.handleAPIStepInput)
 	h.mux.HandleFunc("POST /api/runs/{id}/stop", h.handleAPIStopRun)
 	h.mux.HandleFunc("DELETE /api/runs/{id}/container", h.handleAPIDeleteContainer)
 	h.mux.HandleFunc("GET /api/runs/{id}/branch", h.handleAPIRunBranch)
@@ -1037,6 +1038,50 @@ func (h *Handler) parkedSeconds(ctx context.Context, runID string) int64 {
 		}
 	}
 	return 0
+}
+
+// apiStepInput is one recorded input of a step (see domain.StepInput).
+type apiStepInput struct {
+	Attempt   int    `json:"attempt"`
+	Kind      string `json:"kind"`
+	Content   string `json:"content"`
+	CreatedAt string `json:"created_at"`
+}
+
+// handleAPIStepInput serves the inputs a step ran with — the rendered prompt
+// of an agent step, or a script/poll step's command and environment summary
+// — one entry per execution attempt, oldest first. Kept apart from the
+// step's log output on purpose: the console shows it in its own panel, and
+// a prompt must never be interleaved with log lines that an agent may later
+// read.
+func (h *Handler) handleAPIStepInput(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	step := r.PathValue("step")
+	if _, err := h.store.GetRun(r.Context(), id); err != nil {
+		http.Error(w, "run not found", http.StatusNotFound)
+		return
+	}
+	sis, ok := h.store.(ports.StepInputStore)
+	if !ok {
+		http.Error(w, "step inputs are not stored", http.StatusNotImplemented)
+		return
+	}
+	inputs, err := sis.ListStepInputs(r.Context(), id, step)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	out := make([]apiStepInput, 0, len(inputs))
+	for _, in := range inputs {
+		out = append(out, apiStepInput{
+			Attempt:   in.Attempt,
+			Kind:      string(in.Kind),
+			Content:   in.Content,
+			CreatedAt: in.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"run_id": id, "step_name": step, "inputs": out})
 }
 
 func (h *Handler) handleAPIStepOutput(w http.ResponseWriter, r *http.Request) {

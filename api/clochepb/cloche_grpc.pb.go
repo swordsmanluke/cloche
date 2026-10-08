@@ -46,6 +46,7 @@ const (
 	ClocheService_GetContextKey_FullMethodName     = "/cloche.v1.ClocheService/GetContextKey"
 	ClocheService_SetContextKey_FullMethodName     = "/cloche.v1.ClocheService/SetContextKey"
 	ClocheService_ListContextKeys_FullMethodName   = "/cloche.v1.ClocheService/ListContextKeys"
+	ClocheService_GetStepInputs_FullMethodName     = "/cloche.v1.ClocheService/GetStepInputs"
 	ClocheService_AgentSession_FullMethodName      = "/cloche.v1.ClocheService/AgentSession"
 	ClocheService_AskHelp_FullMethodName           = "/cloche.v1.ClocheService/AskHelp"
 	ClocheService_ListThreads_FullMethodName       = "/cloche.v1.ClocheService/ListThreads"
@@ -115,6 +116,11 @@ type ClocheServiceClient interface {
 	SetContextKey(ctx context.Context, in *SetContextKeyRequest, opts ...grpc.CallOption) (*SetContextKeyResponse, error)
 	// ListContextKeys returns all keys in the per-attempt KV namespace.
 	ListContextKeys(ctx context.Context, in *ListContextKeysRequest, opts ...grpc.CallOption) (*ListContextKeysResponse, error)
+	// GetStepInputs returns the recorded inputs of one step of a run — the
+	// rendered prompt an agent step was given, or the command/environment
+	// summary of a script step — one entry per execution attempt. The id is
+	// any colon-delimited id that resolves to a step (see resolveRunIDFromID).
+	GetStepInputs(ctx context.Context, in *GetStepInputsRequest, opts ...grpc.CallOption) (*GetStepInputsResponse, error)
 	// AgentSession is a bidirectional stream between the daemon and an in-container
 	// agent. The agent connects after container startup; the daemon sends step
 	// execution commands; the agent sends back status events and results.
@@ -423,6 +429,16 @@ func (c *clocheServiceClient) ListContextKeys(ctx context.Context, in *ListConte
 	return out, nil
 }
 
+func (c *clocheServiceClient) GetStepInputs(ctx context.Context, in *GetStepInputsRequest, opts ...grpc.CallOption) (*GetStepInputsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetStepInputsResponse)
+	err := c.cc.Invoke(ctx, ClocheService_GetStepInputs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *clocheServiceClient) AgentSession(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AgentMessage, DaemonMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &ClocheService_ServiceDesc.Streams[2], ClocheService_AgentSession_FullMethodName, cOpts...)
@@ -538,6 +554,11 @@ type ClocheServiceServer interface {
 	SetContextKey(context.Context, *SetContextKeyRequest) (*SetContextKeyResponse, error)
 	// ListContextKeys returns all keys in the per-attempt KV namespace.
 	ListContextKeys(context.Context, *ListContextKeysRequest) (*ListContextKeysResponse, error)
+	// GetStepInputs returns the recorded inputs of one step of a run — the
+	// rendered prompt an agent step was given, or the command/environment
+	// summary of a script step — one entry per execution attempt. The id is
+	// any colon-delimited id that resolves to a step (see resolveRunIDFromID).
+	GetStepInputs(context.Context, *GetStepInputsRequest) (*GetStepInputsResponse, error)
 	// AgentSession is a bidirectional stream between the daemon and an in-container
 	// agent. The agent connects after container startup; the daemon sends step
 	// execution commands; the agent sends back status events and results.
@@ -644,6 +665,9 @@ func (UnimplementedClocheServiceServer) SetContextKey(context.Context, *SetConte
 }
 func (UnimplementedClocheServiceServer) ListContextKeys(context.Context, *ListContextKeysRequest) (*ListContextKeysResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListContextKeys not implemented")
+}
+func (UnimplementedClocheServiceServer) GetStepInputs(context.Context, *GetStepInputsRequest) (*GetStepInputsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetStepInputs not implemented")
 }
 func (UnimplementedClocheServiceServer) AgentSession(grpc.BidiStreamingServer[AgentMessage, DaemonMessage]) error {
 	return status.Error(codes.Unimplemented, "method AgentSession not implemented")
@@ -1149,6 +1173,24 @@ func _ClocheService_ListContextKeys_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClocheService_GetStepInputs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetStepInputsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).GetStepInputs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_GetStepInputs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).GetStepInputs(ctx, req.(*GetStepInputsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ClocheService_AgentSession_Handler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(ClocheServiceServer).AgentSession(&grpc.GenericServerStream[AgentMessage, DaemonMessage]{ServerStream: stream})
 }
@@ -1334,6 +1376,10 @@ var ClocheService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListContextKeys",
 			Handler:    _ClocheService_ListContextKeys_Handler,
+		},
+		{
+			MethodName: "GetStepInputs",
+			Handler:    _ClocheService_GetStepInputs_Handler,
 		},
 		{
 			MethodName: "AskHelp",

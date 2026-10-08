@@ -16,6 +16,7 @@ type Adapter struct {
 	StatusWriter *protocol.StatusWriter // optional: streams live output lines
 	RunID        string                 // optional: passed as CLOCHE_RUN_ID to child processes
 	OutputDir    string                 // directory for step output logs and history; empty = <workDir>/.cloche/output (the container workspace layout, isolated per run). Host callers must set a per-attempt dir so concurrent runs don't share files.
+	OnInput      func(stepName, command string, env []string) // optional: receives the command and the environment it will run with, just before execution (see domain.StepInput)
 }
 
 func New() *Adapter {
@@ -37,6 +38,14 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 			"CLOCHE_RUN_ID="+a.RunID,
 			"CLOCHE_PROJECT_DIR="+workDir,
 		)
+	}
+
+	if a.OnInput != nil {
+		env := cmd.Env
+		if env == nil {
+			env = os.Environ()
+		}
+		a.OnInput(step.Name, cmdStr, env)
 	}
 
 	var output []byte

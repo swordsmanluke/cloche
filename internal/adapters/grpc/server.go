@@ -455,6 +455,12 @@ func (s *ClocheServer) AgentSession(stream pb.ClocheService_AgentSessionServer) 
 				}
 			}
 
+		case *pb.AgentMessage_StepInput:
+			in := payload.StepInput
+			if rid := resolveRunID(); rid != "" && in.StepName != "" {
+				s.recordStepInput(ctx, rid, in.StepName, domain.StepInputKind(in.Kind), in.Content)
+			}
+
 		case *pb.AgentMessage_HostRequest:
 			req := payload.HostRequest
 			log.Printf("agent session: host workflow request (containerID=%s workflow=%s requestID=%s)",
@@ -5163,6 +5169,73 @@ func (s *ClocheServer) ListContextKeys(ctx context.Context, req *pb.ListContextK
 		return nil, err
 	}
 	return &pb.ListContextKeysResponse{Keys: keys}, nil
+}
+
+// stepInputStore returns the store's StepInputStore face, or nil when the
+// configured store doesn't keep step inputs (e.g. test fakes).
+func (s *ClocheServer) stepInputStore() ports.StepInputStore {
+	if sis, ok := s.store.(ports.StepInputStore); ok {
+		return sis
+	}
+	return nil
+}
+
+// recordStepInput persists the input a step is about to run with (see
+// domain.StepInput). Best-effort: a failure is logged, never fatal to the
+// step.
+func (s *ClocheServer) recordStepInput(ctx context.Context, runID, stepName string, kind domain.StepInputKind, content string) {
+	sis := s.stepInputStore()
+	if sis == nil {
+		return
+	}
+	err := sis.SaveStepInput(ctx, &domain.StepInput{RunID: runID, StepName: stepName, Kind: kind, Content: content})
+	if err != nil {
+		log.Printf("run %s: recording %s input for step %s: %v", runID, kind, stepName, err)
+	}
+}
+
+// GetStepInputs returns the recorded inputs of one step, resolving req.Id
+// through the same colon-delimited id grammar as logs and status. A
+// four-part task:attempt:workflow:step id is accepted alongside the three-part
+// forms resolveRunIDFromID handles.
+func (s *ClocheServer) GetStepInputs(ctx context.Context, req *pb.GetStepInputsRequest) (*pb.GetStepInputsResponse, error) {
+	id := req.Id
+	var trailingStep string
+	if parts := strings.Split(id, ":"); len(parts) == 4 {
+		id = strings.Join(parts[:3], ":")
+		trailingStep = parts[3]
+	}
+	runID, stepName, err := s.resolveRunIDFromID(ctx, id)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "%v", err)
+	}
+	if trailingStep != "" {
+		if stepName != "" {
+			return nil, status.Errorf(codes.InvalidArgument, "id %q names two steps", req.Id)
+		}
+		stepName = trailingStep
+	}
+	if stepName == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "id %q does not name a step; use <attempt>:<workflow>:<step> or <task>:<attempt>:<workflow>:<step>", req.Id)
+	}
+	sis := s.stepInputStore()
+	if sis == nil {
+		return nil, status.Error(codes.Unimplemented, "step inputs are not stored by this daemon")
+	}
+	inputs, err := sis.ListStepInputs(ctx, runID, stepName)
+	if err != nil {
+		return nil, err
+	}
+	resp := &pb.GetStepInputsResponse{RunId: runID, StepName: stepName}
+	for _, in := range inputs {
+		resp.Inputs = append(resp.Inputs, &pb.StepInputEntry{
+			Attempt:   int32(in.Attempt),
+			Kind:      string(in.Kind),
+			Content:   in.Content,
+			CreatedAt: in.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	return resp, nil
 }
 
 // channelForProject derives the help channel name for a project directory:

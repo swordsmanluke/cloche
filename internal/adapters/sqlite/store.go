@@ -341,6 +341,21 @@ func migrate(db *sql.DB) error {
 		return errHP
 	}
 
+	// Step inputs: the exact input each execution of a step ran with (see
+	// domain.StepInput). One row per (run, step, attempt); deleted with the run.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS step_inputs (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		run_id     TEXT NOT NULL,
+		step_name  TEXT NOT NULL,
+		attempt    INTEGER NOT NULL,
+		kind       TEXT NOT NULL,
+		content    TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		UNIQUE (run_id, step_name, attempt)
+	)`); err != nil {
+		return err
+	}
+
 	// v7: Per-project repository table. No `default` column — the sole row is
 	// the implicit default when auto-seeded on first access.
 	_, errRepo := db.Exec(`CREATE TABLE IF NOT EXISTS repositories (
@@ -490,6 +505,9 @@ func (s *Store) UpdateRun(ctx context.Context, run *domain.Run) error {
 func (s *Store) DeleteRun(ctx context.Context, id string) error {
 	_, err := s.write.ExecContext(ctx, `DELETE FROM step_executions WHERE run_id = ?`, id)
 	if err != nil {
+		return err
+	}
+	if _, err := s.write.ExecContext(ctx, `DELETE FROM step_inputs WHERE run_id = ?`, id); err != nil {
 		return err
 	}
 	_, err = s.write.ExecContext(ctx, `DELETE FROM runs WHERE id = ?`, id)
