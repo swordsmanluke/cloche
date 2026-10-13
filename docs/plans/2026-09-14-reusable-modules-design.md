@@ -1,7 +1,7 @@
 # Reusable Modules: Typed Inputs/Outputs and Namespacing
 
 **Date:** 2026-09-14
-**Status:** Proposed
+**Status:** Superseded by [2026-10-13-modules-design.md](2026-10-13-modules-design.md)
 
 ## Problem
 
