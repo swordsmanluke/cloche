@@ -1,6 +1,6 @@
 repos:
     "":
-        last_commit: 129fcfc9130cf1d2e25d4a3bb429deed8bf12506
+        last_commit: 919b11b9d39ddc46145968f9a24fad9be3d8cc49
         scanned_runs:
             - cloche-0vqg
             - rxth-main
@@ -444,6 +444,26 @@ repos:
             - mno5-intent-scan
             - user-epl5
             - user-mno5
+            - 2ljj-main
+            - 7gud-changelog
+            - 7gwu-main
+            - 9n77-main
+            - b55q-main-haiku
+            - dpva-main-haiku
+            - eaqx-release
+            - g3ev-release
+            - h245-main
+            - li82-main
+            - lvu7-main-haiku
+            - nvd1-main-haiku
+            - rgk3-main-haiku
+            - rllx-changelog
+            - thn1-main
+            - tilf-intent-scan
+            - tulm-main-haiku
+            - user-tilf
+            - vcqj-main-haiku
+            - w2sl-main-haiku
         scanned_docs:
             .cloche/prompts/document-check-missing.md: 154c933c83042dcb0b3f14e9c451226e6eab14bcdcbc9889fa4edef52d7c1283
             .cloche/prompts/document-investigate.md: 0bb6d7225ed9fa53f36269540994d74e7beef92a717e13794a86cfffdd8652d9
@@ -468,11 +488,11 @@ repos:
             .cloche/prompts/vertical-write-design.md: dabb4c1a25390cae07f8f02ec07fb7990cdf868035f9929d69d63d71f5a6d43f
             CLAUDE.md: da02089c0d4c1207a2f0b4b6f5b41315d914c5655ae3d2f434635cd975ad8e1a
             README.md: 423d6816a7a62264229d2b5630ca014e4e3da5af320a9cf45459bdfb37edd222
-            docs/CHANGELOG-DETAILED.md: a244b95f37be12cb7cbc9bd2d27a3969c5f346b26b35555e346f9cd1d7a30c3d
+            docs/CHANGELOG-DETAILED.md: 6cb1c326609ebbab796fabe8605aca89c8ea1eca8610d80a58a9f8124a2e4871
             docs/INSTALL.md: 02d98ffd4057cfb5f26935f68a131d81cf232b445417029d1555a081712d68e9
-            docs/SAFETY.md: 1e025a1f37b5d21f7f226f1d8777e1a9726c13aedbb43ab37a8f174d61f53a59
-            docs/USAGE.md: 6e865d37d906a0a5b26a85772a96805651a54ab20cc948dfb50b324504e57a2d
-            docs/agent-setup-claude.md: 745544b08f6362cd2ed1c918ed53e5a387e183872c9e6f086aeb1ea8f8690fda
+            docs/SAFETY.md: aa5213f1e3d7ceb48a39a6b81aac98ed50f8c83d3b9f794d88dc77a1afc558f3
+            docs/USAGE.md: 8a603891a0c41748831dc31fb1a139bc6ef8d959a2067d74c2a1fcb29fddbb3d
+            docs/agent-setup-claude.md: 42a7480ae3deba818f3b38fa022a27bb09615bd4065b9e9530b212bb449d12c4
             docs/agent-setup-codex.md: 5137671f134e534a5c49bf8e6f26765c3f3916dfb9a98ed92e22a2aad5ad1cfe
             docs/built-in-agents.md: dd37264a2d03ff45978a319f69020a118aab69c5387029047645f35a0cbe4b82
             docs/design/context-preservation.md: b912a26904f65e269c51db8e7131c32cb570470ecccad27f9a9d1d2423a42ef6
@@ -495,7 +515,7 @@ repos:
             docs/init/5-how-changes-land.md: 594a3470a666c6bffb9a98f507567876f55e1d349c57bcc5d9acf8170451d750
             docs/init/6-swapping-the-task-tracker.md: 8dc2df1eff1ab7d883902dad5731f60d6c3463b35af2e9731f1f1fe7546b2dfa
             docs/init/README.md: f16cc2cce0950a2bccd1260416fb05a22568c58ebd290396f4a3b2dedc113584
-            docs/intent.md: 7deaaab94306d13d50b66fbab75ae28bb435467ab02f64b66fd646b783f9e3b2
+            docs/intent.md: f18a3bffe0dfa148d154b427be48e58dc2e1bf00df0a77889b86a2a41a63682a
             docs/plans/2026-02-20-cloche-implementation.md: 4316ef7a359d9b31ee3963b51dd455bd70d9d52c462ff1ffbc8c2857bd21cb9f
             docs/plans/2026-02-20-cloche-system-design.md: 854a59c2a74e7fc3455efc2eec3a31c673de04ad569a04bc5ff60ec315cb7561
             docs/plans/2026-02-20-edge-selection-design.md: a94c3d7db5e013f7bbe1a562ccb7e515f88e9fe3634620c1209c62b6791eaec5
@@ -537,22 +557,25 @@ repos:
             docs/plans/2026-07-17-help-channel-design.md: a72bacf89d2d804ec28897dc72f0537405cc0bf58038d2f87558dc4f0232f192
             docs/plans/2026-09-13-intent-continuity-design.md: a414ca0193fd25ec3c59f5617a9e16b353433d71ddaa69e6f849c63b030c7a4c
             docs/plans/2026-09-13-intent-continuity-implementation.md: aab29683e0fa698927687b2474242cb6200a07256d9a28445b481085a05634b6
-            docs/plans/2026-09-14-intent-ab-experiment-protocol.md: f3bc71884bf809254002c99496fd7a459f61905e961ac5e4e88404e529e4d75d
+            docs/plans/2026-09-14-intent-ab-experiment-protocol.md: c8c9b9d8e884af46d4adfcc2e339b2d4f40ac3b8e744dd74cc701c6d97aa469d
             docs/plans/2026-09-14-intent-builtin-migration-design.md: 5b66a1d8a083e61502325c33557e50d300e90465f440b8d5c7c41e191ff9d0d8
-            docs/plans/2026-09-14-reusable-modules-design.md: 8883eaca67d944aa75116c3b174d54cfbb28cb740cfed0e3ee0dbc80e10b73d3
+            docs/plans/2026-09-14-reusable-modules-design.md: 9d458d54291a2f6c3d8d2789a1ef59e94be1a169a0a90c3fdeb38d2ec298ab93
+            docs/plans/2026-09-22-intent-ab-seed-v3-design.md: 3bde93d720759011ab9887b97f32a2caedf4e404f2db5ba18af6a1002c5097bf
+            docs/plans/2026-10-13-modules-design.md: 0dad86686dd60f8d3c664674cb7a706c62b869ab862348a6a5d82b36bfadd318
             docs/plans/spikes/2026-09-13-intent-retrieval/README.md: cbd4159fb69d08f1ff1c5972b7ff578a0db782f2fc0f9cac3e2add3cee0cf46f
-            docs/plans/spikes/2026-09-17-intent-ab-pilot/README.md: bd762f62827f3b40902796fe00049f1c00f489410639da19079640f216ef6d5c
+            docs/plans/spikes/2026-09-17-intent-ab-pilot/README.md: 5b6928de0f33e547e1035ffcf7192c3d204036d95a139c54d6ea33179aeb8530
+            docs/plans/spikes/2026-09-22-intent-ab-replications/README.md: 5c0fe38ff8447dd961d14e0523c9bbc09f273cb4773572f761b9e745c2db583a
             docs/run-isolation/architecture.md: 5f322ad76fedc1012b67f450ac1df9c328ef628ef90285f5ebd4c94a201d4b43
             docs/run-isolation/index.md: 06461a1f739a3b6fba4f5331fa668c15058808f59938b284c4e953a291ae6916
             docs/web-dashboard.md: 202b351135f9a98e14c64aa6d90d1b1eb7eaba68a7ff160c8d19a1bd872b60ad
-            docs/workflows.md: fca4c3bb2d324a68435eea18afca3e1a4ee60560675303509bc050046d087de7
-last_scan_at: 2026-09-18T21:47:33.612072644Z
+            docs/workflows.md: d4a00e993c8e847b36b3012874b82e6f56aecaee5d2b3182fbc39f58eef1555c
+last_scan_at: 2026-10-15T15:53:36.769854248Z
 last_scan_stats:
     repos:
         - name: ""
-          docs_new: 0
-          docs_changed: 2
-          commits: 3
-          commit_range: 9503da4..a9338a6
-          runs: 2
-          bytes: 368042
+          docs_new: 3
+          docs_changed: 9
+          commits: 55
+          commit_range: 25d4733..8e63296
+          runs: 15
+          bytes: 4415735
