@@ -3882,11 +3882,12 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	// If no list-tasks workflow is defined, return a single untracked sentinel
 	// task (empty ID) so the main workflow runs continuously.
 	var listTasksFn host.ListTasksFunc
-	if _, hasListTasks := hostWFs["list-tasks"]; hasListTasks {
+	if host.PhaseResolves(projectDir, host.SlotListTasks) {
 		listTasksFn = func(ctx context.Context, projDir string) ([]host.Task, error) {
 			runner := &host.Runner{
 				Store: s.store,
 			}
+			s.useModuleExecutor(runner, projDir, host.SlotListTasks)
 			tasks, _, err := host.RunListTasksWorkflow(ctx, runner, projDir)
 			return tasks, err
 		}
@@ -3932,6 +3933,22 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	}
 
 	loop := host.NewPhaseLoop(loopCfg, s.store, listTasksFn, mainFn)
+	// claim-task phase: runs before main for each picked task. Skipped when
+	// no claim-task resolves (main then claims for itself).
+	if host.PhaseResolves(projectDir, host.SlotClaimTask) {
+		loop.SetClaimFunc(func(ctx context.Context, projDir, taskID, attemptID string) (*host.ClaimResult, error) {
+			runner := &host.Runner{
+				Store:        s.store,
+				Captures:     s.captures,
+				LogBroadcast: s.logBroadcast,
+				ActivityLog:  alog,
+				Executor:     s.daemonExecutorFor(projDir, taskID, attemptID),
+				TaskID:       taskID,
+				AttemptID:    attemptID,
+			}
+			return host.RunClaimTask(ctx, runner, projDir, taskID, attemptID)
+		})
+	}
 	if s.taskStore != nil {
 		loop.SetTaskStore(s.taskStore)
 	}
@@ -4181,9 +4198,11 @@ func (s *ClocheServer) AttentionItems(ctx context.Context, projectDir string) ([
 	// GetTaskSnapshot) so stale-claim/repeat-failure reflect live state.
 	if projectDir != "" {
 		if hostWFs, _ := host.FindHostWorkflows(projectDir); hostWFs != nil {
-			if _, hasListTasks := hostWFs["list-tasks"]; hasListTasks {
+			_, hasListTasks := hostWFs["list-tasks"]
+			if hasListTasks || host.PhaseResolves(projectDir, host.SlotListTasks) {
 				deps.Tasks = func(ctx context.Context, projDir string) ([]host.Task, error) {
 					runner := &host.Runner{Store: s.store}
+					s.useModuleExecutor(runner, projDir, host.SlotListTasks)
 					tasks, _, err := host.RunListTasksWorkflow(ctx, runner, projDir)
 					return tasks, err
 				}
@@ -4294,6 +4313,15 @@ func parseDurationOr(s string, def time.Duration) time.Duration {
 		return def
 	}
 	return d
+}
+
+// useModuleExecutor gives runner a daemon executor when slot resolves to a
+// module workflow, so file() references and CLOCHE_MODULE_DIR work. Plain
+// project workflows keep the cheap default host executor.
+func (s *ClocheServer) useModuleExecutor(runner *host.Runner, projectDir, slot string) {
+	if wf, err := host.ResolvePhase(projectDir, slot); err == nil && wf.Module != "" {
+		runner.Executor = s.daemonExecutorFor(projectDir, "", "")
+	}
 }
 
 // ReleaseTask runs the release-task host workflow for a specific task,

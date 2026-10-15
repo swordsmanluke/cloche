@@ -385,6 +385,16 @@ outside `main` — e.g. giving up on a task with too many repeat failures. Also 
 on demand, also receives `CLOCHE_TASK_ID`. The dashboard disables the action with a
 hint when a project defines neither name.
 
+**`claim-task`** (optional) runs before `main` for each picked task. It declares
+`kv: task_id` and `out: task_title`, `out: task_body_path`; the outputs are passed on
+to `main`. A lost claim ends in `fail` with `claim_status = unavailable`, which the
+daemon treats as "skip this task for the dedup window", not an error. If no
+`claim-task` resolves, the phase is skipped and `main` claims the task itself.
+`list-tasks` may write `tasks_path` (a JSONL file) instead of printing to stdout;
+stdout parsing remains as a fallback. All of these phases, plus `release-task` and
+`close-task`, resolve through the root binds in `project.cloche`, so a tracker module
+can provide them (see `docs/plans/2026-10-13-modules-design.md`).
+
 Only `main` is required. If `list-tasks` is absent, the daemon runs `main`
 continuously using an untracked sentinel task.
 

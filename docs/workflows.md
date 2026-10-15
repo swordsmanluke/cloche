@@ -16,12 +16,16 @@ or `poll` type. This is the extension point for custom orchestration strategies.
 
 Any `.cloche` file can contain host workflows — they are not restricted to a specific
 filename. A single file may contain **multiple named workflows**. The daemon uses up to
-two workflow phases for orchestration:
+three workflow phases for orchestration:
 
 | Phase | Workflow name | Purpose |
 |-------|--------------|---------|
-| 1 | `list-tasks` | Discover available work. Output is JSONL (one task per line). |
-| 2 | `main` | Do the work. Receives a task ID via `CLOCHE_TASK_ID` env var. |
+| 1 | `list-tasks` | Discover available work. Writes a JSONL file named by the `tasks_path` output (or prints JSONL, one task per line, as a fallback). |
+| 2 | `claim-task` (optional) | Claim the picked task before `main`. Outputs `task_title` and `task_body_path` are passed to `main`. A lost claim ends in `fail` with `claim_status = unavailable`; the daemon skips the task for the dedup window. If absent, `main` claims the task itself. |
+| 3 | `main` | Do the work. Receives a task ID via `CLOCHE_TASK_ID` env var. |
+
+Each phase name (and `release-task` / `close-task`) resolves through the root binds in
+`project.cloche`, so a tracker module can provide it.
 
 Additionally, a **`release-task`** host workflow may be defined. This is not part of the
 automatic orchestration loop — it is invoked on demand (e.g. from the web dashboard) to

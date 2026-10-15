@@ -47,6 +47,11 @@ type ListTasksFunc func(ctx context.Context, projectDir string) ([]Task, error)
 // attemptID is the ID of the Attempt record created for this loop iteration.
 type MainFunc func(ctx context.Context, projectDir string, taskID string, taskTitle string, attemptID string) (*RunResult, error)
 
+// ClaimFunc runs the claim-task phase for a picked task before main. It
+// returns (nil, nil) when the project has no claim-task phase (main then
+// claims for itself). A lost claim is ClaimResult.Unavailable, not an error.
+type ClaimFunc func(ctx context.Context, projectDir, taskID, attemptID string) (*ClaimResult, error)
+
 // RunFunc is the legacy function signature for launching a host workflow run.
 // When taskID is non-empty, the runner should propagate it as CLOCHE_TASK_ID.
 // attemptID is the ID of the Attempt record for this run (may be empty).
@@ -122,6 +127,7 @@ type Loop struct {
 	config              LoopConfig
 	listTasks           ListTasksFunc
 	mainFn              MainFunc
+	claimFn             ClaimFunc // optional; claim-task phase run before main
 	store               ports.RunStore
 	taskStore           ports.TaskStore         // optional; ensures Task records exist when set
 	activityLog         *activitylog.Logger     // optional; records attempt lifecycle events
@@ -207,6 +213,12 @@ func NewPhaseLoop(cfg LoopConfig, store ports.RunStore, listTasksFn ListTasksFun
 // with NewLoop. Must be called before Start.
 func (l *Loop) SetTaskAssigner(a TaskAssigner) {
 	l.assigner = a
+}
+
+// SetClaimFunc configures the claim-task phase run for each picked task
+// before main. Must be called before Start.
+func (l *Loop) SetClaimFunc(fn ClaimFunc) {
+	l.claimFn = fn
 }
 
 // SetTaskStore configures a TaskStore so the loop can ensure Task records exist
@@ -390,8 +402,27 @@ func (l *Loop) runPhased() {
 				break // no assignable tasks
 			}
 
+			// Claim phase: runs before the attempt record exists, so a lost
+			// claim leaves no trace. The attempt ID is allocated up front
+			// because the phase's KV is namespaced by it.
+			attempt := domain.NewAttempt(taskID)
+			if l.claimFn != nil && taskID != "" {
+				claim, err := l.claimFn(context.Background(), l.config.ProjectDir, taskID, attempt.ID)
+				if err != nil {
+					log.Printf("orchestration loop: claim-task failed for %s task %s: %v", l.config.ProjectDir, taskID, err)
+					continue // task stays deduped for the dedup window
+				}
+				if claim != nil && claim.Unavailable {
+					log.Printf("orchestration loop: task %s unavailable (claimed elsewhere) for %s; skipping for dedup window", taskID, l.config.ProjectDir)
+					continue
+				}
+				if claim != nil && claim.Title != "" {
+					taskTitle = claim.Title
+				}
+			}
+
 			// Create an Attempt record for this loop iteration.
-			attemptID := l.createAttemptForTask(taskID, taskTitle, l.config.ProjectDir)
+			attemptID := l.saveAttemptForTask(attempt, taskTitle, l.config.ProjectDir)
 
 			// Launch main in a goroutine.
 			inFlight++
@@ -726,10 +757,16 @@ func (l *Loop) pickTaskFromPhase() (string, string, bool) {
 // random ID is generated when the store save fails, ensuring each concurrent
 // run gets a unique container pool key and KV namespace.
 func (l *Loop) createAttemptForTask(taskID, taskTitle, projectDir string) string {
-	// Always generate a unique attempt ID. Without one, concurrent tasks would
-	// share the same container pool key (attemptID+":"+containerID) and get
-	// routed to the same container, receiving the wrong task's environment vars.
-	attempt := domain.NewAttempt(taskID)
+	return l.saveAttemptForTask(domain.NewAttempt(taskID), taskTitle, projectDir)
+}
+
+// saveAttemptForTask persists a freshly created attempt (see
+// createAttemptForTask). Every attempt has a unique ID: without one,
+// concurrent tasks would share the same container pool key
+// (attemptID+":"+containerID) and get routed to the same container,
+// receiving the wrong task's environment vars.
+func (l *Loop) saveAttemptForTask(attempt *domain.Attempt, taskTitle, projectDir string) string {
+	taskID := attempt.TaskID
 
 	if taskID == "" {
 		// Sentinel task: no record to persist, but still need a unique ID.

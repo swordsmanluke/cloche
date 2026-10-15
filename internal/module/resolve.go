@@ -3,6 +3,7 @@ package module
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/swordsmanluke/cloche/internal/domain"
@@ -112,6 +113,10 @@ func (r *Registry) FrameFor(wf *domain.Workflow, step *domain.Step) Frame {
 	return f
 }
 
+// ErrSlotNotFound is wrapped by ResolveSlot's error when nothing — no bind,
+// project workflow or built-in — provides the slot.
+var ErrSlotNotFound = errors.New("slot not found")
+
 // Resolved is the outcome of ResolveSlot.
 type Resolved struct {
 	Workflow *domain.Workflow
@@ -186,7 +191,7 @@ func (rs *Resolver) ResolveSlot(stack CallStack, slot string) (*Resolved, error)
 			return &Resolved{Workflow: wf, Source: "built-in"}, nil
 		}
 	}
-	return nil, fmt.Errorf("workflow %q not found: no bind, project workflow, or built-in", slot)
+	return nil, fmt.Errorf("workflow %q not found: no bind, project workflow, or built-in: %w", slot, ErrSlotNotFound)
 }
 
 // resolveTarget resolves a bind's right-hand side: `module:workflow`, a bare

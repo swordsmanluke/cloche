@@ -2,6 +2,7 @@ package host
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/dsl"
 	"github.com/swordsmanluke/cloche/internal/engine"
 	"github.com/swordsmanluke/cloche/internal/logstream"
+	"github.com/swordsmanluke/cloche/internal/module"
 	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
@@ -24,19 +26,23 @@ var _ engine.StatusHandler = (*hostStatusHandler)(nil)
 
 // Runner executes a host workflow by parsing host.cloche and walking the step graph.
 type Runner struct {
-	Store         ports.RunStore
-	Captures      ports.CaptureStore     // optional: saves step captures for cloche logs
-	LogBroadcast  *logstream.Broadcaster // optional: publishes live log lines
-	ActivityLog   *activitylog.Logger    // optional: records step events to .cloche/activity.log
-	Executor      engine.StepExecutor    // optional: custom executor (e.g. DaemonExecutor); when nil, a default host.Executor is created
-	PollCoord     *PollCoordinator       // optional: coordinator for loop-driven poll step polling
-	TaskID        string                 // optional task ID assigned by the daemon loop
-	TaskTitle     string                 // optional task title for display in the web UI
-	AttemptID     string                 // optional attempt ID for v2 tracking
-	ParentRunID   string                 // optional parent run ID (links this run to another in the UI)
-	ExtraEnv      []string               // additional KEY=VALUE env vars passed to all steps
-	SkipRunRecord bool                   // when true, don't persist a run record to the store
-	UserInitiated bool                   // true when dispatched by an explicit user request rather than an automated trigger (see domain.Run.UserInitiated)
+	Store        ports.RunStore
+	Captures     ports.CaptureStore     // optional: saves step captures for cloche logs
+	LogBroadcast *logstream.Broadcaster // optional: publishes live log lines
+	ActivityLog  *activitylog.Logger    // optional: records step events to .cloche/activity.log
+	Executor     engine.StepExecutor    // optional: custom executor (e.g. DaemonExecutor); when nil, a default host.Executor is created
+	PollCoord    *PollCoordinator       // optional: coordinator for loop-driven poll step polling
+	TaskID       string                 // optional task ID assigned by the daemon loop
+	TaskTitle    string                 // optional task title for display in the web UI
+	AttemptID    string                 // optional attempt ID for v2 tracking
+	ParentRunID  string                 // optional parent run ID (links this run to another in the UI)
+	ExtraEnv     []string               // additional KEY=VALUE env vars passed to all steps
+	// KVTaskID/KVAttemptID give an ephemeral run (no TaskID, e.g. list-tasks)
+	// a KV namespace, so its scripts can `clo set` contract outputs.
+	KVTaskID      string
+	KVAttemptID   string
+	SkipRunRecord bool // when true, don't persist a run record to the store
+	UserInitiated bool // true when dispatched by an explicit user request rather than an automated trigger (see domain.Run.UserInitiated)
 	// SubRepo is the [[repositories]] name matched when projectDir was
 	// itself resolved from a sub-repo path (see
 	// grpc.ClocheServer.foldSubRepoProjectDir), attributed to the run via
@@ -88,6 +94,18 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 	if err != nil {
 		return nil, err
 	}
+	return r.runWorkflow(ctx, projectDir, wf, orchRunID)
+}
+
+// RunWorkflowDef executes an already-resolved host workflow (e.g. one a bind
+// resolved to a module export) using the provided run ID.
+func (r *Runner) RunWorkflowDef(ctx context.Context, projectDir string, wf *domain.Workflow, runID string) (*RunResult, error) {
+	return r.runWorkflow(ctx, projectDir, wf, runID)
+}
+
+// runWorkflow is the shared implementation behind runNamedWorkflow and
+// RunWorkflowDef.
+func (r *Runner) runWorkflow(ctx context.Context, projectDir string, wf *domain.Workflow, orchRunID string) (*RunResult, error) {
 
 	// Create output directory for step outputs.
 	// v2 runs use .cloche/logs/<taskID>/<attemptID>/; ephemeral runs
@@ -148,8 +166,8 @@ func (r *Runner) runNamedWorkflow(ctx context.Context, projectDir string, workfl
 		OutputDir:         outputDir,
 		Wires:             wf.Wiring,
 		HostRunID:         orchRunID,
-		TaskID:            r.TaskID,
-		AttemptID:         r.AttemptID,
+		TaskID:            firstNonEmpty(r.TaskID, r.KVTaskID),
+		AttemptID:         firstNonEmpty(r.AttemptID, r.KVAttemptID),
 		WorkflowName:      wf.Name,
 		Repos:             wf.Repos,
 		IntentTrackingOff: wf.Config["intent_tracking"] == "false",
@@ -722,7 +740,14 @@ func buildPreloadedResults(run *domain.Run, wf *domain.Workflow, resumeFrom stri
 // they are polling operations that would otherwise clutter the run history.
 func RunListTasksWorkflow(ctx context.Context, runner *Runner, projectDir string) ([]Task, *RunResult, error) {
 	runner.SkipRunRecord = true
-	result, err := runner.RunNamed(ctx, projectDir, "list-tasks")
+	// A synthetic KV namespace lets the workflow write its tasks_path output.
+	kvTask := "list-tasks"
+	kvAttempt := domain.GenerateAttemptID()
+	runner.KVTaskID, runner.KVAttemptID = kvTask, kvAttempt
+	if runner.Store != nil {
+		defer func() { _ = runner.Store.DeleteContextKeys(context.Background(), kvTask, kvAttempt) }()
+	}
+	result, err := runner.RunNamed(ctx, projectDir, SlotListTasks)
 	if result != nil && result.tmpOutputDir != "" {
 		defer os.RemoveAll(result.tmpOutputDir)
 	}
@@ -732,11 +757,35 @@ func RunListTasksWorkflow(ctx context.Context, runner *Runner, projectDir string
 	if result.State != domain.RunStateSucceeded {
 		return nil, result, fmt.Errorf("list-tasks workflow failed with state %s", result.State)
 	}
+
+	// Preferred: the tasks_path output names a JSONL file.
+	if runner.Store != nil {
+		if p, ok, _ := runner.Store.GetContextKey(ctx, kvTask, kvAttempt, result.RunID, "tasks_path"); ok && p != "" {
+			if !filepath.IsAbs(p) {
+				p = filepath.Join(MainWorktreeDir(projectDir), p)
+			}
+			data, err := os.ReadFile(p)
+			if err != nil {
+				return nil, result, fmt.Errorf("reading tasks_path %s: %w", p, err)
+			}
+			tasks, err := ParseTasksJSONL(string(data))
+			return tasks, result, err
+		}
+	}
+
+	// Fallback: JSONL on the final step's stdout.
 	tasks, err := ReadListTasksOutput(result.OutputDir)
 	if err != nil {
 		return nil, result, err
 	}
 	return tasks, result, nil
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 const extraEnvContextKey = "extra_env"
@@ -799,6 +848,16 @@ func describeStepFailure(run *domain.Run) string {
 // with the given name. A workflow is a host workflow if it contains a "host { }"
 // block in its definition.
 func findHostWorkflow(projectDir, workflowName string) (*domain.Workflow, error) {
+	// A root bind (project.cloche) can redirect the name to another workflow,
+	// e.g. a module export.
+	wf, err := ResolvePhase(projectDir, workflowName)
+	if err == nil {
+		return wf, nil
+	}
+	if !errors.Is(err, module.ErrSlotNotFound) && !errors.Is(err, errNotHostWorkflow) {
+		return nil, err
+	}
+
 	clocheDir := filepath.Join(projectDir, ".cloche")
 	entries, _ := filepath.Glob(filepath.Join(clocheDir, "*.cloche"))
 

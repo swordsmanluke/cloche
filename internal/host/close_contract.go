@@ -2,8 +2,6 @@ package host
 
 import (
 	"errors"
-
-	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 // ErrNoCloseContract is returned by callers dispatching the close/cancel task
@@ -27,12 +25,9 @@ var CloseTaskWorkflowNames = []string{"close-task", "cancel-task"}
 // when the .cloche files fail to parse) — callers should treat this as "the
 // action isn't available here", not an error.
 func ResolveCloseTaskWorkflow(projectDir string) (string, bool) {
-	all, err := FindAllWorkflows(projectDir)
-	if err != nil {
-		return "", false
-	}
 	for _, name := range CloseTaskWorkflowNames {
-		if wf, ok := all[name]; ok && wf.Location == domain.LocationHost {
+		// Resolves through root binds, so a tracker module's close-task counts.
+		if PhaseResolves(projectDir, name) {
 			return name, true
 		}
 	}
