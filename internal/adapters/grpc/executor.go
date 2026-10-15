@@ -293,7 +293,7 @@ func (d *DaemonExecutor) Close(succeeded bool) {
 	if succeeded {
 		for key, repos := range d.worktrees {
 			for _, p := range repos {
-				removeExtractWorktree(ctx, p.Repo.Path, p.Worktree)
+				removeExtractWorktree(ctx, p.Repo.Path, p.Worktree, false)
 			}
 			delete(d.worktrees, key)
 		}
@@ -369,18 +369,23 @@ type repoWorktree struct {
 	BaseSHA  string
 }
 
-// removeExtractWorktree removes a pre-created extraction worktree and its
-// branch. The git commands run with cwd = repoDir, which must be the repo
+// removeExtractWorktree removes a pre-created extraction worktree. The
+// extraction branch holds the run's committed results and is what downstream
+// steps (merge-to-base, finalize, cleanup-run.sh) consume, so it is only
+// deleted when deleteBranch is set — i.e. when the branch never carried
+// results (rollback of a failed prepare). Deleting it on a successful run
+// raced with those consumers and orphaned the extraction commit. The git
+// commands run with cwd = repoDir, which must be the repo
 // whose git tracks the branch/worktree (the wrapper-project root for legacy
 // single-tree mode, or a per-repo path for multi-repo). Best-effort: errors
 // are logged but not returned.
-func removeExtractWorktree(ctx context.Context, repoDir string, wt docker.ExtractWorktree) {
+func removeExtractWorktree(ctx context.Context, repoDir string, wt docker.ExtractWorktree, deleteBranch bool) {
 	rmCmd := exec.CommandContext(ctx, "git", "worktree", "remove", "--force", wt.Dir)
 	rmCmd.Dir = repoDir
 	if out, err := rmCmd.CombinedOutput(); err != nil {
 		log.Printf("daemon executor: git worktree remove %s: %s: %v", wt.Dir, out, err)
 	}
-	if wt.Branch != "" {
+	if deleteBranch && wt.Branch != "" {
 		brCmd := exec.CommandContext(ctx, "git", "branch", "-D", wt.Branch)
 		brCmd.Dir = repoDir
 		if out, err := brCmd.CombinedOutput(); err != nil {
@@ -754,7 +759,7 @@ func (d *DaemonExecutor) prepareExtractWorktrees(ctx context.Context, poolKey st
 // Calls removeExtractWorktree for each entry; errors are logged, not returned.
 func rollbackWorktrees(ctx context.Context, prepared []repoWorktree) {
 	for _, p := range prepared {
-		removeExtractWorktree(ctx, p.Repo.Path, p.Worktree)
+		removeExtractWorktree(ctx, p.Repo.Path, p.Worktree, true)
 	}
 }
 

@@ -2149,7 +2149,8 @@ func (s *ClocheServer) trackRun(runID, containerID, projectDir, workflowName str
 		}
 		s.mu.Unlock()
 		if hasWorktree && runFinal != nil {
-			removeExtractWorktree(ctx, runFinal.ProjectDir, wt)
+			// Keep the branch: it holds the extracted results.
+			removeExtractWorktree(ctx, runFinal.ProjectDir, wt, false)
 		}
 	}
 
