@@ -14,6 +14,7 @@ type Parser struct {
 	current  Token
 	peek     Token
 	location domain.WorkflowLocation
+	source   string
 }
 
 // ParseOption configures the parser.
@@ -23,6 +24,13 @@ type ParseOption func(*Parser)
 func WithLocation(loc domain.WorkflowLocation) ParseOption {
 	return func(p *Parser) {
 		p.location = loc
+	}
+}
+
+// WithSourceFile records the path of the file being parsed on each workflow.
+func WithSourceFile(path string) ParseOption {
+	return func(p *Parser) {
+		p.source = path
 	}
 }
 
@@ -104,28 +112,232 @@ func AgentCommandsForWorkflow(data []byte) map[string]string {
 // ParseAll parses a .cloche file that may contain multiple workflows.
 // Workflows default to LocationContainer but a "host { }" block overrides
 // the location to LocationHost, so any .cloche file can define host workflows.
-func ParseAll(input string) (map[string]*domain.Workflow, error) {
+func ParseAll(input string, opts ...ParseOption) (map[string]*domain.Workflow, error) {
+	f, err := ParseFile(input, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return f.Workflows, nil
+}
+
+// File is a parsed .cloche file: its workflows plus any file-level binds
+// (top-level `bind` statements, which scope over every workflow in the file).
+type File struct {
+	Workflows map[string]*domain.Workflow
+	Binds     []domain.Bind
+}
+
+// ParseFile parses a .cloche file, returning its workflows and file-level
+// binds. Like ParseAll, workflows default to LocationContainer.
+func ParseFile(input string, opts ...ParseOption) (*File, error) {
 	p := &Parser{lexer: NewLexer(input), location: domain.LocationContainer}
+	for _, opt := range opts {
+		opt(p)
+	}
 	p.advance() // load current
 	p.advance() // load peek
 
-	workflows := make(map[string]*domain.Workflow)
+	f := &File{Workflows: make(map[string]*domain.Workflow)}
 	for p.current.Type != TokenEOF {
+		if p.atBind() {
+			binds, err := p.parseBind()
+			if err != nil {
+				return nil, err
+			}
+			f.Binds = append(f.Binds, binds...)
+			continue
+		}
 		wf, err := p.parseWorkflow()
 		if err != nil {
 			return nil, err
 		}
-		if _, exists := workflows[wf.Name]; exists {
+		if _, exists := f.Workflows[wf.Name]; exists {
 			return nil, fmt.Errorf("duplicate workflow name %q", wf.Name)
 		}
-		workflows[wf.Name] = wf
+		f.Workflows[wf.Name] = wf
 	}
 
-	if len(workflows) == 0 {
+	if len(f.Workflows) == 0 {
 		return nil, fmt.Errorf("no workflows found")
 	}
 
-	return workflows, nil
+	return f, nil
+}
+
+// atBind reports whether the parser is positioned at a bind statement:
+// `bind slot = target`, `bind { ... }`, or either with `bind!`.
+func (p *Parser) atBind() bool {
+	if p.current.Type != TokenIdent || p.current.Literal != "bind" {
+		return false
+	}
+	return p.peek.Type == TokenLBrace || p.peek.Type == TokenIdent ||
+		(p.peek.Type == TokenIllegal && p.peek.Literal == "!")
+}
+
+// parseBind parses one bind statement and returns the binds it declares.
+func (p *Parser) parseBind() ([]domain.Bind, error) {
+	p.advance() // consume "bind"
+	force := false
+	if p.current.Type == TokenIllegal && p.current.Literal == "!" {
+		force = true
+		p.advance()
+	}
+
+	if p.current.Type != TokenLBrace {
+		b, err := p.parseBindEntry(force)
+		if err != nil {
+			return nil, err
+		}
+		return []domain.Bind{b}, nil
+	}
+
+	p.advance() // consume {
+	var binds []domain.Bind
+	for p.current.Type != TokenRBrace && p.current.Type != TokenEOF {
+		b, err := p.parseBindEntry(force)
+		if err != nil {
+			return nil, err
+		}
+		binds = append(binds, b)
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return binds, nil
+}
+
+// parseBindEntry parses `slot = target`, where target is `name` or `module:name`.
+func (p *Parser) parseBindEntry(force bool) (domain.Bind, error) {
+	slot, err := p.expect(TokenIdent)
+	if err != nil {
+		return domain.Bind{}, fmt.Errorf("expected slot name in bind: %w", err)
+	}
+	if _, err := p.expect(TokenEquals); err != nil {
+		return domain.Bind{}, err
+	}
+	target, err := p.expect(TokenIdent)
+	if err != nil {
+		return domain.Bind{}, fmt.Errorf("expected bind target for slot %q: %w", slot.Literal, err)
+	}
+	t := target.Literal
+	if p.current.Type == TokenColon {
+		p.advance()
+		wfTok, err := p.expect(TokenIdent)
+		if err != nil {
+			return domain.Bind{}, fmt.Errorf("expected workflow name after %q: in bind: %w", t+":", err)
+		}
+		t += ":" + wfTok.Literal
+	}
+	return domain.Bind{Slot: slot.Literal, Target: t, Force: force}, nil
+}
+
+// parseContract parses `contract { kv: a  env: B  out: c }`.
+func (p *Parser) parseContract(wf *domain.Workflow) error {
+	line, col := p.current.Line, p.current.Col
+	if wf.Contract != nil {
+		return fmt.Errorf("line %d col %d: workflow %q has more than one contract block", line, col, wf.Name)
+	}
+	p.advance() // consume "contract"
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return err
+	}
+	c := &domain.Contract{}
+	for p.current.Type != TokenRBrace && p.current.Type != TokenEOF {
+		kind, err := p.expect(TokenIdent)
+		if err != nil {
+			return fmt.Errorf("expected contract field (kv, env or out): %w", err)
+		}
+		if _, err := p.expect(TokenColon); err != nil {
+			return err
+		}
+		name, err := p.expect(TokenIdent)
+		if err != nil {
+			return fmt.Errorf("expected name after %s: in contract: %w", kind.Literal, err)
+		}
+		switch kind.Literal {
+		case "kv":
+			c.KV = append(c.KV, name.Literal)
+		case "env":
+			c.Env = append(c.Env, name.Literal)
+		case "out":
+			c.Out = append(c.Out, name.Literal)
+		default:
+			return fmt.Errorf("line %d col %d: unknown contract field %q (expected kv, env or out)",
+				kind.Line, kind.Col, kind.Literal)
+		}
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return err
+	}
+	wf.Contract = c
+	return nil
+}
+
+// parseWith parses a step's `with { }` block.
+func (p *Parser) parseWith(step *domain.Step) error {
+	p.advance() // consume "with"
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return err
+	}
+	for p.current.Type != TokenRBrace && p.current.Type != TokenEOF {
+		e, err := p.parseWithEntry()
+		if err != nil {
+			return err
+		}
+		step.With = append(step.With, e)
+	}
+	_, err := p.expect(TokenRBrace)
+	return err
+}
+
+func (p *Parser) parseWithEntry() (domain.WithEntry, error) {
+	keyTok, err := p.expect(TokenIdent)
+	if err != nil {
+		return domain.WithEntry{}, fmt.Errorf("expected key in with block: %w", err)
+	}
+	e := domain.WithEntry{Key: keyTok.Literal}
+	if e.Key == "env" && p.current.Type == TokenDot {
+		p.advance()
+		name, err := p.expect(TokenIdent)
+		if err != nil {
+			return domain.WithEntry{}, fmt.Errorf("expected env var name after \"env.\": %w", err)
+		}
+		e.Key, e.Env = name.Literal, true
+	}
+
+	switch {
+	case p.current.Type == TokenEquals:
+		p.advance()
+		if p.current.Type != TokenString {
+			return domain.WithEntry{}, fmt.Errorf("line %d col %d: with %q: expected a quoted literal, got %q",
+				p.current.Line, p.current.Col, e.Key, p.current.Literal)
+		}
+		e.Source, e.Value = domain.WithLiteral, p.current.Literal
+		p.advance()
+	case p.current.Type == TokenIdent && p.current.Literal == "from":
+		p.advance()
+		src, err := p.expect(TokenIdent)
+		if err != nil {
+			return domain.WithEntry{}, fmt.Errorf("expected source after \"from\" for %q: %w", e.Key, err)
+		}
+		e.Source, e.Value = domain.WithKV, src.Literal
+		if src.Literal == "out" && p.current.Type == TokenDot {
+			if e.Env {
+				return domain.WithEntry{}, fmt.Errorf("line %d col %d: with env.%s: outputs cannot be remapped into env vars",
+					src.Line, src.Col, e.Key)
+			}
+			p.advance()
+			outKey, err := p.expect(TokenIdent)
+			if err != nil {
+				return domain.WithEntry{}, fmt.Errorf("expected output key after \"out.\": %w", err)
+			}
+			e.Source, e.Value = domain.WithOut, outKey.Literal
+		}
+	default:
+		return domain.WithEntry{}, fmt.Errorf("line %d col %d: with %q: expected \"from\" or \"=\", got %q",
+			p.current.Line, p.current.Col, e.Key, p.current.Literal)
+	}
+	return e, nil
 }
 
 func (p *Parser) advance() {
@@ -168,15 +380,26 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 	}
 
 	wf := &domain.Workflow{
-		Name:     nameTok.Literal,
-		Location: p.location,
-		Steps:    make(map[string]*domain.Step),
-		Agents:   make(map[string]*domain.Agent),
-		Config:   make(map[string]string),
+		Name:       nameTok.Literal,
+		Location:   p.location,
+		SourceFile: p.source,
+		Steps:      make(map[string]*domain.Step),
+		Agents:     make(map[string]*domain.Agent),
+		Config:     make(map[string]string),
 	}
 
 	for p.current.Type != TokenRBrace && p.current.Type != TokenEOF {
-		if p.current.Type == TokenIdent && p.current.Literal == "agent" && p.peek.Type == TokenIdent {
+		if p.current.Type == TokenIdent && p.current.Literal == "contract" && p.peek.Type == TokenLBrace {
+			if err := p.parseContract(wf); err != nil {
+				return nil, err
+			}
+		} else if p.atBind() {
+			binds, err := p.parseBind()
+			if err != nil {
+				return nil, err
+			}
+			wf.Binds = append(wf.Binds, binds...)
+		} else if p.current.Type == TokenIdent && p.current.Literal == "agent" && p.peek.Type == TokenIdent {
 			agent, err := p.parseAgent()
 			if err != nil {
 				return nil, err
@@ -484,7 +707,17 @@ func (p *Parser) parseStep() (*domain.Step, error) {
 	}
 
 	for p.current.Type != TokenRBrace && p.current.Type != TokenEOF {
-		if err := p.parseStepField(step, ""); err != nil {
+		if p.current.Type == TokenIdent && p.current.Literal == "with" && p.peek.Type == TokenLBrace {
+			if err := p.parseWith(step); err != nil {
+				return nil, err
+			}
+		} else if p.atBind() {
+			binds, err := p.parseBind()
+			if err != nil {
+				return nil, err
+			}
+			step.Binds = append(step.Binds, binds...)
+		} else if err := p.parseStepField(step, ""); err != nil {
 			return nil, err
 		}
 	}

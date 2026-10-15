@@ -60,6 +60,53 @@ type Step struct {
 	Type    StepType
 	Results []string
 	Config  map[string]string
+
+	// With remaps inputs and outputs at a `workflow = <slot>` call site.
+	With []WithEntry
+	// Binds are step-scoped slot binds; they apply to this step's call only.
+	Binds []Bind
+}
+
+// Bind maps a slot (the workflow name used at a call site) to a concrete
+// workflow. Target is the raw right-hand side: "name" or "module:workflow".
+// Force marks a `bind!`, which wins over every bind beneath it.
+type Bind struct {
+	Slot   string
+	Target string
+	Force  bool
+}
+
+// Contract is a workflow's declared signature: the KV keys and env vars it
+// reads and the KV keys it writes when it ends in done.
+type Contract struct {
+	KV  []string
+	Env []string
+	Out []string
+}
+
+// WithSource says where a WithEntry's value comes from.
+type WithSource string
+
+const (
+	// WithLiteral is a quoted literal: `env.X = "lit"`.
+	WithLiteral WithSource = "literal"
+	// WithKV reads a caller KV key: `a from b`.
+	WithKV WithSource = "kv"
+	// WithOut reads a key the child writes: `k from out.o`.
+	WithOut WithSource = "out"
+)
+
+// WithEntry is one line of a step's `with { }` block.
+//
+//	task_id       from ticket_id   -> {Key: task_id, Source: WithKV, Value: ticket_id}
+//	env.MODEL     = "opus"         -> {Key: MODEL, Env: true, Source: WithLiteral, Value: opus}
+//	env.URL       from jira_url    -> {Key: URL, Env: true, Source: WithKV, Value: jira_url}
+//	feedback_path from out.review  -> {Key: feedback_path, Source: WithOut, Value: review}
+type WithEntry struct {
+	Key    string
+	Env    bool
+	Source WithSource
+	Value  string
 }
 
 // EffectiveTimeout returns the step's configured timeout (Config["timeout"]),
@@ -127,6 +174,10 @@ type Workflow struct {
 	Config    map[string]string // workflow-level config (e.g. "container.image")
 	Repos     []string          // repositories this workflow consumes; names refer to [[repositories]] entries in config.toml
 	Builtin   bool              // true for workflows constructed in Go and registered via internal/builtin, rather than parsed from a project's .cloche files
+
+	Contract   *Contract // declared contract { }; nil when the workflow makes no static claims
+	Binds      []Bind    // workflow-scoped binds
+	SourceFile string    // file the workflow was parsed from; "" when unknown
 }
 
 // SingleRepo returns the one repository name in repos, or "" when repos is

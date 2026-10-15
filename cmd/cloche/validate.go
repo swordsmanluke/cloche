@@ -151,7 +151,7 @@ func parseAllWorkflowFiles(clocheDir string) (map[string]*workflowFileInfo, []st
 			continue
 		}
 
-		wfs, err := dsl.ParseAll(string(data))
+		wfs, err := dsl.ParseAll(string(data), dsl.WithSourceFile(path))
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", filepath.Base(path), err))
 			continue

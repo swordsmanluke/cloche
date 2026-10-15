@@ -543,7 +543,7 @@ func excludedIntentTrackingSteps(projectDir string) map[string]bool {
 		if readErr != nil {
 			continue
 		}
-		wfs, parseErr := dsl.ParseAll(string(data))
+		wfs, parseErr := dsl.ParseAll(string(data), dsl.WithSourceFile(path))
 		if parseErr != nil {
 			continue
 		}

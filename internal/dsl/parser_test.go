@@ -1,6 +1,7 @@
 package dsl_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1127,4 +1128,155 @@ func TestParser_PollStep_Validate(t *testing.T) {
 	wf, err := dsl.Parse(input)
 	require.NoError(t, err)
 	require.NoError(t, wf.Validate())
+}
+
+func TestParseContract(t *testing.T) {
+	wf, err := dsl.ParseForContainer(`workflow code-review {
+  contract {
+    kv:  child_branch
+    kv:  task_id
+    env: REVIEW_MODEL
+    out: review_path
+  }
+  step review { run = "true" results = [success, fail] }
+  review:success -> done
+  review:fail -> abort
+}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := wf.Contract
+	if c == nil || len(c.KV) != 2 || c.KV[1] != "task_id" || len(c.Env) != 1 || c.Env[0] != "REVIEW_MODEL" || len(c.Out) != 1 || c.Out[0] != "review_path" {
+		t.Fatalf("contract = %+v", c)
+	}
+}
+
+func TestParseContractErrors(t *testing.T) {
+	if _, err := dsl.ParseForContainer(`workflow w { contract { foo: x } step a { run = "true" results = [success] } a:success -> done }`); err == nil {
+		t.Fatal("expected error for unknown contract field")
+	}
+	if _, err := dsl.ParseForContainer(`workflow w { contract { kv: a } contract { kv: b } step a { run = "true" results = [success] } a:success -> done }`); err == nil {
+		t.Fatal("expected error for duplicate contract")
+	}
+}
+
+func TestParseWith(t *testing.T) {
+	wf, err := dsl.ParseForHost(`workflow w {
+  host {}
+  step review {
+    workflow_name = "code-review"
+    with {
+      task_id          from ticket_id
+      env.REVIEW_MODEL = "opus"
+      env.JIRA_URL     from jira_url
+      feedback_path    from out.review_path
+    }
+    results = [success, fail]
+  }
+  review:success -> done
+  review:fail -> abort
+}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	step := wf.Steps["review"]
+	if step.Type != domain.StepTypeWorkflow || step.Config["workflow_name"] != "code-review" {
+		t.Fatalf("step = %+v", step)
+	}
+	want := []domain.WithEntry{
+		{Key: "task_id", Source: domain.WithKV, Value: "ticket_id"},
+		{Key: "REVIEW_MODEL", Env: true, Source: domain.WithLiteral, Value: "opus"},
+		{Key: "JIRA_URL", Env: true, Source: domain.WithKV, Value: "jira_url"},
+		{Key: "feedback_path", Source: domain.WithOut, Value: "review_path"},
+	}
+	if len(step.With) != len(want) {
+		t.Fatalf("with = %+v", step.With)
+	}
+	for i := range want {
+		if step.With[i] != want[i] {
+			t.Errorf("with[%d] = %+v, want %+v", i, step.With[i], want[i])
+		}
+	}
+}
+
+func TestParseWithErrors(t *testing.T) {
+	for _, body := range []string{
+		`a b`,
+		`a from`,
+		`env.X from out.y`,
+		`a = b`,
+	} {
+		src := `workflow w { host {} step s { workflow_name = "x" with { ` + body + ` } results = [success] } s:success -> done }`
+		if _, err := dsl.ParseForHost(src); err == nil {
+			t.Errorf("with { %s }: expected error", body)
+		}
+	}
+}
+
+func TestParseBinds(t *testing.T) {
+	f, err := dsl.ParseFile(`
+bind code-review = ruby-review
+bind! lint = standardrb-lint
+bind {
+  develop = tdd-develop
+  list-tasks = jira-tasks:list-tasks
+}
+bind! {
+  deploy = safe-deploy
+}
+
+workflow security-path {
+  host {}
+  bind code-review = sec-review
+  step review { workflow_name = "code-review" results = [success, fail] }
+  step quick {
+    workflow_name = "code-review"
+    bind code-review = quick-review
+    bind! { lint = x }
+    results = [success, fail]
+  }
+  review:success -> quick
+  review:fail -> abort
+  quick:success -> done
+  quick:fail -> abort
+}`, dsl.WithSourceFile("/p/.cloche/security.cloche"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantFile := []domain.Bind{
+		{Slot: "code-review", Target: "ruby-review"},
+		{Slot: "lint", Target: "standardrb-lint", Force: true},
+		{Slot: "develop", Target: "tdd-develop"},
+		{Slot: "list-tasks", Target: "jira-tasks:list-tasks"},
+		{Slot: "deploy", Target: "safe-deploy", Force: true},
+	}
+	if fmt.Sprint(f.Binds) != fmt.Sprint(wantFile) {
+		t.Fatalf("file binds = %+v", f.Binds)
+	}
+	wf := f.Workflows["security-path"]
+	if wf.SourceFile != "/p/.cloche/security.cloche" {
+		t.Errorf("SourceFile = %q", wf.SourceFile)
+	}
+	if len(wf.Binds) != 1 || wf.Binds[0] != (domain.Bind{Slot: "code-review", Target: "sec-review"}) {
+		t.Errorf("workflow binds = %+v", wf.Binds)
+	}
+	q := wf.Steps["quick"]
+	if len(q.Binds) != 2 || q.Binds[0].Target != "quick-review" || !q.Binds[1].Force {
+		t.Errorf("step binds = %+v", q.Binds)
+	}
+	if q.Type != domain.StepTypeWorkflow {
+		t.Errorf("step type = %v", q.Type)
+	}
+}
+
+func TestParseBindErrors(t *testing.T) {
+	for _, src := range []string{
+		"bind x\nworkflow w { host {} step a { run = \"true\" results = [success] } a:success -> done }",
+		"bind { x = }\nworkflow w { host {} step a { run = \"true\" results = [success] } a:success -> done }",
+		"bind x = y:\nworkflow w { host {} step a { run = \"true\" results = [success] } a:success -> done }",
+	} {
+		if _, err := dsl.ParseFile(src); err == nil {
+			t.Errorf("expected error for %q", src)
+		}
+	}
 }

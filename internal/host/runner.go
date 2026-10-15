@@ -807,7 +807,7 @@ func findHostWorkflow(projectDir, workflowName string) (*domain.Workflow, error)
 		if err != nil {
 			continue
 		}
-		workflows, err := dsl.ParseAll(string(data))
+		workflows, err := dsl.ParseAll(string(data), dsl.WithSourceFile(path))
 		if err != nil {
 			continue
 		}
@@ -843,7 +843,7 @@ func FindAllWorkflows(projectDir string) (map[string]*domain.Workflow, error) {
 		if err != nil {
 			continue
 		}
-		workflows, err := dsl.ParseAll(string(data))
+		workflows, err := dsl.ParseAll(string(data), dsl.WithSourceFile(path))
 		if err != nil {
 			continue
 		}

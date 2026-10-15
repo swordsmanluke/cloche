@@ -64,7 +64,7 @@ func discoverWorkflows(projectDir string) ([]workflowInfo, error) {
 		if err != nil {
 			continue
 		}
-		wfs, err := dsl.ParseAll(string(data))
+		wfs, err := dsl.ParseAll(string(data), dsl.WithSourceFile(path))
 		if err != nil {
 			continue
 		}
@@ -147,7 +147,7 @@ func loadWorkflow(projectDir, name string) (*domain.Workflow, error) {
 		if err != nil {
 			continue
 		}
-		wfs, err := dsl.ParseAll(string(data))
+		wfs, err := dsl.ParseAll(string(data), dsl.WithSourceFile(path))
 		if err != nil {
 			continue
 		}
