@@ -8,10 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/swordsmanluke/cloche/internal/builtin"
 	"github.com/swordsmanluke/cloche/internal/config"
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/dsl"
 	"github.com/swordsmanluke/cloche/internal/engine"
+	"github.com/swordsmanluke/cloche/internal/module"
 )
 
 func cmdValidate(args []string) {
@@ -101,6 +103,9 @@ func validateProject(projectDir, workflowFilter string) []string {
 		errs = append(errs, crossErrs...)
 		containerErrs := validateCrossContainerIDs(workflows)
 		errs = append(errs, containerErrs...)
+		if len(parseErrs) == 0 {
+			errs = append(errs, validateModules(projectDir, workflows).Errors...)
+		}
 	}
 
 	return errs
@@ -126,7 +131,17 @@ func validateProjectWarnings(projectDir, workflowFilter string) []string {
 		return nil // parse errors are already reported as errors
 	}
 
-	return validateWorkflowTimeouts(workflows)
+	warns := validateWorkflowTimeouts(workflows)
+	return append(warns, validateModules(projectDir, workflows).Warnings...)
+}
+
+// validateModules runs the module, bind and contract checks.
+func validateModules(projectDir string, workflows map[string]*workflowFileInfo) *module.Report {
+	project := make(map[string]*domain.Workflow, len(workflows))
+	for name, wfi := range workflows {
+		project[name] = wfi.workflow
+	}
+	return module.Check(projectDir, project, builtin.Lookup)
 }
 
 type workflowFileInfo struct {

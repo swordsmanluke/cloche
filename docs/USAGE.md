@@ -973,7 +973,7 @@ cloche doctor [--project <dir>] [--verbose] [--timeout <duration>]
 ```
 
 Runs checks in order and prints a status line for each. Exits with code 1
-if any check fails. Project config, Workflow syntax, Image source dir, Project image
+if any check fails. Project config, Workflow syntax, Modules, Image source dir, Project image
 build, and Agent binary only run when the current (or `--project`) directory
 contains a `.cloche/` subdirectory.
 
@@ -987,6 +987,7 @@ contains a `.cloche/` subdirectory.
 | Beads CLI (bd) | Checks whether `bd` is on `PATH`. Soft check (warning, not fatal) — the generated task workflow reads tasks from beads. |
 | Project config | Loads `.cloche/config.toml`, reports parse errors, warns if `active = false` or `TODO(cloche-init)` markers remain. |
 | Workflow syntax | Parses all `.cloche/*.cloche` files using the same logic as `cloche validate`. |
+| Modules | For each installed module, fails if a `requires` binary is not on `PATH`; warns (not fatal) if a declared credential is not set in the environment. Suggests installing the binaries, or setting credentials in the environment or `CLOCHE_EXTRA_ENV`. |
 | Image source dir | Warns (not fatal) when the existing project image was built from a different source directory. The next `EnsureImage` call will rebuild it automatically. |
 | Project image build | Calls `EnsureImage` to build or confirm the project Docker image. |
 | Agent binary | Starts a short-lived container from the project image, runs `cloche-agent --version`, and warns if the baked-in agent version differs from the host version. |
@@ -1329,6 +1330,8 @@ Checks performed:
 - **File references** — prompt `file()` paths resolve to `.cloche/prompts/`, script `run` paths resolve to `.cloche/scripts/`.
 - **Cross-file consistency** — `workflow_name` references in steps resolve to defined workflows.
 - **workflow_name timeout fit** (warning, all workflows only) — a `workflow_name` step's explicit `timeout` is checked against the target workflow's own step timeouts summed; if the explicit timeout is shorter, the sub-workflow could be killed before its own steps can time out.
+- **Modules, binds and contracts** (all workflows only) — each `module.toml` parses, its `exports` exist and it has a README; `requires` binaries are on `PATH` (error; `cloche doctor` checks this too); bind targets exist and a bare target is not ambiguous between a module and a project workflow; for each `workflow_name` step the bound workflow's `contract` is checked against what is available at that point (`success`/`fail` wired; `kv:` inputs seeded, supplied by `with`, or declared as `out:` upstream — an input only a script step might write is a warning, an input nothing could provide is an error; `out.<key>` remaps must name declared outs).
+- **Module warnings** — exported workflow without a contract, vendored module content that no longer matches the `modules.lock` hash, and `credentials` not set in the environment or `CLOCHE_EXTRA_ENV`.
 
 Exits 0 and prints "All configuration valid." on success. Exits 1 and prints each error with file path on failure. Warnings (e.g. the timeout fit check) print to stderr with a `WARNING:` prefix but do not affect the exit code.
 

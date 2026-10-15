@@ -14,6 +14,7 @@ import (
 	pb "github.com/swordsmanluke/cloche/api/clochepb"
 	"github.com/swordsmanluke/cloche/internal/adapters/docker"
 	"github.com/swordsmanluke/cloche/internal/config"
+	"github.com/swordsmanluke/cloche/internal/module"
 	"github.com/swordsmanluke/cloche/internal/version"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -114,6 +115,7 @@ func cmdDoctor(args []string) {
 		results = append(results, dr.checkProjectConfig())
 		results = append(results, dr.checkWorkflows())
 		results = append(results, dr.checkIntentStore())
+		results = append(results, dr.checkModules()...)
 		results = append(results, dr.checkImageSourceDir())
 
 		imageResult := dr.checkImageBuild()
@@ -681,4 +683,38 @@ func (dr *doctorRunner) checkAgentBinary() checkResult {
 		status: checkOK,
 		detail: fmt.Sprintf("agent %s responded in %v", agentVersion, elapsed.Round(time.Second)),
 	}
+}
+
+// checkModules verifies that each installed module's required binaries are
+// on PATH (a failure) and its credentials are set (a warning).
+func (dr *doctorRunner) checkModules() []checkResult {
+	reg, err := module.Load(dr.projectDir)
+	if err != nil {
+		return []checkResult{{label: "Checking modules", status: checkFail, detail: err.Error(), remediation: err.Error()}}
+	}
+	var results []checkResult
+	for _, name := range reg.Names() {
+		m := reg.Modules[name]
+		label := fmt.Sprintf("Checking module %s", name)
+		if missing := m.MissingRequires(); len(missing) > 0 {
+			results = append(results, checkResult{
+				label:       label,
+				status:      checkFail,
+				detail:      "missing binaries: " + strings.Join(missing, ", "),
+				remediation: "Install the required binaries on the host: " + strings.Join(missing, ", "),
+			})
+			continue
+		}
+		if missing := m.MissingCredentials(); len(missing) > 0 {
+			results = append(results, checkResult{
+				label:       label,
+				status:      checkWarning,
+				detail:      "credentials not set: " + strings.Join(missing, ", "),
+				remediation: "Set them in the environment or pass via CLOCHE_EXTRA_ENV",
+			})
+			continue
+		}
+		results = append(results, checkResult{label: label, status: checkOK})
+	}
+	return results
 }
