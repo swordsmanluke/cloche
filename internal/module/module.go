@@ -87,6 +87,9 @@ type Registry struct {
 	Modules map[string]*Module
 	// Root holds the binds at the top level of .cloche/project.cloche.
 	Root []domain.Bind
+	// FileBinds are the top-level binds of each project .cloche file, keyed by
+	// path (matching Workflow.SourceFile). project.cloche is in Root instead.
+	FileBinds map[string][]domain.Bind
 }
 
 // Names returns the module names in sorted order.
@@ -122,7 +125,7 @@ func (r *Registry) Export(modName, wfName string) (*domain.Workflow, error) {
 // yields an empty registry.
 func Load(projectDir string) (*Registry, error) {
 	clocheDir := filepath.Join(projectDir, ".cloche")
-	reg := &Registry{Modules: make(map[string]*Module)}
+	reg := &Registry{Modules: make(map[string]*Module), FileBinds: make(map[string][]domain.Bind)}
 
 	dirs, err := filepath.Glob(filepath.Join(clocheDir, "modules", "*", ManifestFile))
 	if err != nil {
@@ -168,6 +171,27 @@ func Load(projectDir string) (*Registry, error) {
 		return nil, err
 	}
 	reg.Root = root
+
+	files, err := filepath.Glob(filepath.Join(clocheDir, "*.cloche"))
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(files)
+	for _, path := range files {
+		if filepath.Base(path) == ProjectFile {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		// Unparseable files are reported by workflow discovery; skip here.
+		f, err := dsl.ParseFile(string(data), dsl.WithSourceFile(path), dsl.WithAllowEmpty())
+		if err != nil || len(f.Binds) == 0 {
+			continue
+		}
+		reg.FileBinds[path] = f.Binds
+	}
 	return reg, nil
 }
 

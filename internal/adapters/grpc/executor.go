@@ -11,12 +11,14 @@ import (
 	"time"
 
 	"github.com/swordsmanluke/cloche/internal/adapters/docker"
+	"github.com/swordsmanluke/cloche/internal/builtin"
 	"github.com/swordsmanluke/cloche/internal/config"
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/engine"
 	"github.com/swordsmanluke/cloche/internal/host"
 	"github.com/swordsmanluke/cloche/internal/intent"
 	"github.com/swordsmanluke/cloche/internal/logstream"
+	"github.com/swordsmanluke/cloche/internal/module"
 	"github.com/swordsmanluke/cloche/internal/ports"
 	"github.com/swordsmanluke/cloche/internal/promptrev"
 	"github.com/swordsmanluke/cloche/internal/runcontext"
@@ -47,6 +49,9 @@ type DaemonExecutor struct {
 	// allWFs is the full set of workflows (host and container) for the project,
 	// keyed by name. Used to resolve workflow_name step targets.
 	allWFs map[string]*domain.Workflow
+
+	// modules holds installed modules and bind scopes; may be nil.
+	modules *module.Registry
 
 	// store is used to set child_run_id in the KV store after extracting
 	// container results to a git branch, and to record which repos a host
@@ -148,6 +153,10 @@ type DaemonExecutorConfig struct {
 	AttemptID    string
 	Image        string
 	AllWFs       map[string]*domain.Workflow
+	// Modules is the project's module registry (installed modules and bind
+	// scopes). Nil means no modules: slots resolve to project workflows and
+	// built-ins only.
+	Modules *module.Registry
 	// ContainerSeed, when its SHA is non-empty, pins the state ProjectDir was
 	// at when this config was built. Container sub-workflow copies snapshot
 	// ProjectDir at this state instead of using the live working tree, so a
@@ -189,6 +198,7 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 		attemptID:             cfg.AttemptID,
 		image:                 cfg.Image,
 		allWFs:                cfg.AllWFs,
+		modules:               cfg.Modules,
 		containerSeed:         cfg.ContainerSeed,
 		containerSeedChildren: cfg.ContainerSeedChildren,
 		containerSeedDirs:     make(map[string]string),
@@ -408,6 +418,10 @@ func (d *DaemonExecutor) WorkflowStepTimeout(step *domain.Step) (time.Duration, 
 	return targetWF.SumStepTimeouts(engine.DefaultStepTimeout) + domain.WorkflowStepTimeoutOverhead, true
 }
 
+func (d *DaemonExecutor) resolver() *module.Resolver {
+	return &module.Resolver{Registry: d.modules, Project: d.allWFs, Builtin: builtin.Lookup}
+}
+
 // SetHostExecutor replaces the host executor with a fully-configured one.
 // Implements engine.HostExecutorConfigurer.
 func (d *DaemonExecutor) SetHostExecutor(exec engine.StepExecutor) {
@@ -449,10 +463,23 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		return domain.StepResult{}, fmt.Errorf("workflow step %q missing workflow_name config", step.Name)
 	}
 
-	targetWF, ok := d.allWFs[targetName]
-	if !ok {
-		return domain.StepResult{}, fmt.Errorf("workflow step %q: workflow %q not found in project", step.Name, targetName)
+	// Resolve the slot through the bind scopes of the call stack carried by
+	// ctx, then push this call's frame so the child run (host or container)
+	// and everything it calls resolve beneath it.
+	parentWF, _ := engine.WorkflowFromContext(ctx)
+	var frame module.Frame
+	if parentWF != nil {
+		frame = d.modules.FrameFor(parentWF, step)
+	} else {
+		frame = module.Frame{Step: step.Name}
 	}
+	stack := module.StackFromContext(ctx).Push(frame)
+	resolved, err := d.resolver().ResolveSlot(stack, targetName)
+	if err != nil {
+		return domain.StepResult{}, fmt.Errorf("workflow step %q: %w", step.Name, err)
+	}
+	targetWF := resolved.Workflow
+	ctx = module.WithStack(ctx, stack)
 
 	// Generate a run ID for the child workflow.
 	childRunID := domain.GenerateRunID(targetName, d.attemptID)
@@ -942,6 +969,13 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 		// Start agent in session mode (no workflow file argument) so it
 		// connects to the daemon via gRPC and waits for ExecuteStep commands.
 		Cmd: []string{"cloche-agent"},
+	}
+	// Hand the bind scope frames to the container run so anything resolved
+	// beneath it sees the same binds as the host call stack.
+	if stack := module.StackFromContext(ctx); len(stack) > 0 {
+		if enc, err := module.EncodeStack(stack); err == nil {
+			cfg.Env = append(cfg.Env, module.StackEnv+"="+enc)
+		}
 	}
 
 	// Inject workflow-level `container { agent_command = ... }` and

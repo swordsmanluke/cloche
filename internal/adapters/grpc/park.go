@@ -149,6 +149,7 @@ func (s *ClocheServer) daemonExecutorForResume(projectDir, taskID, attemptID, pa
 		AttemptID:             attemptID,
 		Image:                 image,
 		AllWFs:                allWFs,
+		Modules:               loadModules(projectDir),
 		ResumeMode:            true,
 		ParkedContainerID:     parkedContainerID,
 		ParkedImage:           parkedImage,

@@ -167,6 +167,10 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		}
 	}
 
+	for _, e := range cfg.Env {
+		args = append(args, "-e", e)
+	}
+
 	// No --network none: agent needs network for git push and API access
 
 	if useAgentWrapper {

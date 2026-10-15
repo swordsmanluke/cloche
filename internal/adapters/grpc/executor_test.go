@@ -1836,3 +1836,29 @@ func TestDaemonExecutor_RecordTouchedRepositories(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"backend", "frontend"}, got.Repositories)
 }
+
+// TestDaemonExecutor_WorkflowStep_StepBindRedirectsSlot verifies that a
+// step-scoped bind decides which workflow a slot dispatches to: the slot
+// "review" exists as a project workflow, but the bind points elsewhere.
+func TestDaemonExecutor_WorkflowStep_StepBindRedirectsSlot(t *testing.T) {
+	wf := buildHostWFForTest("main")
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		ProjectDir: t.TempDir(),
+		AttemptID:  "att1",
+		AllWFs: map[string]*domain.Workflow{
+			"main":   wf,
+			"review": buildHostWFForTest("review"),
+		},
+	})
+
+	step := &domain.Step{
+		Name:   "dispatch",
+		Type:   domain.StepTypeWorkflow,
+		Config: map[string]string{"workflow_name": "review"},
+		Binds:  []domain.Bind{{Slot: "review", Target: "ghost"}},
+	}
+	ctx := engine.WithWorkflow(context.Background(), wf)
+	_, err := de.Execute(ctx, step)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ghost")
+}

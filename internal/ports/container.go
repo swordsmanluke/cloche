@@ -28,6 +28,7 @@ type ContainerConfig struct {
 	AttemptID      string   // attempt ID for unique container naming
 	Cmd            []string // override container command; defaults to ["cloche-agent", WorkflowName]
 	Prompt         string   // prompt text to write into .cloche/runs/<task-id>/prompt.txt in container
+	Env            []string // extra KEY=VALUE environment for the container
 	Interactive    bool     // allocate TTY and keep stdin open (-it flags)
 }
 

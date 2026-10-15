@@ -29,6 +29,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/help"
 	"github.com/swordsmanluke/cloche/internal/host"
 	"github.com/swordsmanluke/cloche/internal/logstream"
+	"github.com/swordsmanluke/cloche/internal/module"
 	"github.com/swordsmanluke/cloche/internal/ports"
 	"github.com/swordsmanluke/cloche/internal/project"
 	"github.com/swordsmanluke/cloche/internal/protocol"
@@ -3804,11 +3805,23 @@ func loopIsSubpath(parent, child string) bool {
 	return !strings.HasPrefix(rel, "..")
 }
 
+// loadModules loads the project's module registry. A load failure is logged
+// and yields nil, so slots then resolve to project workflows and built-ins.
+func loadModules(projectDir string) *module.Registry {
+	reg, err := module.Load(projectDir)
+	if err != nil {
+		log.Printf("daemon executor: loading modules for %s: %v; slots resolve to project workflows only", projectDir, err)
+		return nil
+	}
+	return reg
+}
+
 // daemonExecutorFor creates a DaemonExecutor for the given project and attempt.
 // This routes workflow_name steps to sub-workflows and container steps to the
 // container pool, while delegating script/agent steps to the host executor.
 func (s *ClocheServer) daemonExecutorFor(projectDir, taskID, attemptID string) engine.StepExecutor {
 	allWFs, _ := host.FindAllWorkflows(projectDir)
+	modules := loadModules(projectDir)
 	image := s.defaultImage
 	if projCfg, err := config.Load(projectDir); err == nil && projCfg.Daemon.Image != "" {
 		image = projCfg.Daemon.Image
@@ -3838,6 +3851,7 @@ func (s *ClocheServer) daemonExecutorFor(projectDir, taskID, attemptID string) e
 		AttemptID:             attemptID,
 		Image:                 image,
 		AllWFs:                allWFs,
+		Modules:               modules,
 		OnContainerStart: func(containerID string) {
 			// Register the container → host run mapping so the AgentSession
 			// handler can route StepLog messages to the correct run for
