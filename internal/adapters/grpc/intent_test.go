@@ -141,3 +141,33 @@ func TestDaemonExecutor_SeedIntentKV_ConfigTomlInjectOff_SkipsSeeding(t *testing
 
 	assert.Empty(t, store.ctxKeys)
 }
+
+func TestTaskTextForIntent_Sources(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	// Neither source present: empty.
+	store := &recordingRunStore{ctxKeys: map[string]string{}}
+	assert.Equal(t, "", taskTextForIntent(ctx, store, dir, "t1", "a1", "r1"))
+
+	// prompt.txt fallback (`cloche run --prompt`).
+	runDir := filepath.Join(dir, ".cloche", "runs", "t1")
+	require.NoError(t, os.MkdirAll(runDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(runDir, "prompt.txt"), []byte("from prompt.txt"), 0644))
+	assert.Equal(t, "from prompt.txt", taskTextForIntent(ctx, store, dir, "t1", "a1", "r1"))
+
+	// Tracker-dispatched task: task_prompt_path (project-relative) wins.
+	rel := filepath.Join(".cloche", "runs", "t1-main", "task_prompt.md")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, filepath.Dir(rel)), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, rel), []byte("from tracker"), 0644))
+	store.ctxKeys["task_prompt_path"] = rel
+	assert.Equal(t, "from tracker", taskTextForIntent(ctx, store, dir, "t1", "a1", "r1"))
+
+	// Absolute path works too.
+	store.ctxKeys["task_prompt_path"] = filepath.Join(dir, rel)
+	assert.Equal(t, "from tracker", taskTextForIntent(ctx, store, dir, "t1", "a1", "r1"))
+
+	// Unreadable path falls back to prompt.txt.
+	store.ctxKeys["task_prompt_path"] = "missing.md"
+	assert.Equal(t, "from prompt.txt", taskTextForIntent(ctx, store, dir, "t1", "a1", "r1"))
+}
