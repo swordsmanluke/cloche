@@ -178,6 +178,7 @@ type Workflow struct {
 	Contract   *Contract // declared contract { }; nil when the workflow makes no static claims
 	Binds      []Bind    // workflow-scoped binds
 	SourceFile string    // file the workflow was parsed from; "" when unknown
+	Module     string    // name of the module that provides the workflow; "" for project workflows
 }
 
 // SingleRepo returns the one repository name in repos, or "" when repos is

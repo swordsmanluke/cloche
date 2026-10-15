@@ -10,11 +10,12 @@ import (
 )
 
 type Parser struct {
-	lexer    *Lexer
-	current  Token
-	peek     Token
-	location domain.WorkflowLocation
-	source   string
+	lexer      *Lexer
+	current    Token
+	peek       Token
+	location   domain.WorkflowLocation
+	source     string
+	allowEmpty bool
 }
 
 // ParseOption configures the parser.
@@ -24,6 +25,14 @@ type ParseOption func(*Parser)
 func WithLocation(loc domain.WorkflowLocation) ParseOption {
 	return func(p *Parser) {
 		p.location = loc
+	}
+}
+
+// WithAllowEmpty lets ParseFile accept a file with no workflows, such as a
+// project.cloche that holds only root-scope binds.
+func WithAllowEmpty() ParseOption {
+	return func(p *Parser) {
+		p.allowEmpty = true
 	}
 }
 
@@ -157,7 +166,7 @@ func ParseFile(input string, opts ...ParseOption) (*File, error) {
 		f.Workflows[wf.Name] = wf
 	}
 
-	if len(f.Workflows) == 0 {
+	if len(f.Workflows) == 0 && !p.allowEmpty {
 		return nil, fmt.Errorf("no workflows found")
 	}
 

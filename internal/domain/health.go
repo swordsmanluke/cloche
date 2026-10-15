@@ -49,9 +49,9 @@ func CalculateHealth(runs []Run, windowSize int) HealthResult {
 			passed++
 		case RunStateFailed, RunStateCancelled:
 			failed++
-		// Active states (see IsActiveRunState: pending, running, waiting)
-		// and parked runs count toward Total but are neither passed nor
-		// failed — they haven't reached a terminal outcome yet.
+			// Active states (see IsActiveRunState: pending, running, waiting)
+			// and parked runs count toward Total but are neither passed nor
+			// failed — they haven't reached a terminal outcome yet.
 		}
 	}
 

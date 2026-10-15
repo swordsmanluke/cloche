@@ -3,7 +3,7 @@ package dsl
 type TokenType int
 
 const (
-	TokenEOF     TokenType = iota
+	TokenEOF TokenType = iota
 	TokenIllegal
 	TokenIdent
 	TokenInt
