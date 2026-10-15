@@ -1379,10 +1379,10 @@ func TestLoop_PollRelease_FreesSlotForNewTask(t *testing.T) {
 			// Simulate parking at a poll step: release the slot, then block
 			// until told to reacquire — mirroring executePollStep's
 			// ReleaseSlot/ReacquireSlot pair around a real poll decision.
-			coord.ReleaseSlot()
+			coord.ReleaseSlot(projectDir)
 			close(parked)
 			<-resume
-			coord.ReacquireSlot("run-task-1", "poll-step")
+			coord.ReacquireSlot(projectDir, "run-task-1", "poll-step")
 		case "task-2":
 			close(task2Started)
 		}
@@ -1452,14 +1452,14 @@ func TestLoop_PollReacquire_PriorityOverNewTask(t *testing.T) {
 	mainFn := func(ctx context.Context, projectDir string, taskID string, _ string, attemptID string) (*RunResult, error) {
 		switch taskID {
 		case "task-1":
-			coord.ReleaseSlot()
+			coord.ReleaseSlot(projectDir)
 			close(parked)
 			// Wait until task-2 has taken the freed slot before asking to
 			// reacquire, so the request is genuinely queued behind an
 			// in-flight run rather than granted immediately.
 			<-task2Started
 			close(reacquireRequested)
-			coord.ReacquireSlot("run-task-1", "poll-step")
+			coord.ReacquireSlot(projectDir, "run-task-1", "poll-step")
 			record("task-1")
 		case "task-2":
 			close(task2Started)

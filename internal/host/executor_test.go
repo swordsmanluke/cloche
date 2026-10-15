@@ -2388,7 +2388,7 @@ func TestExecutor_PollStep_ReleasesSlotAndRestoresRunningState(t *testing.T) {
 
 	var released int
 	require.Eventually(t, func() bool {
-		released += coord.drainReleasedSlots()
+		released += coord.drainReleasedSlots(tmpDir)
 		return released > 0
 	}, time.Second, 5*time.Millisecond, "poll step never released its concurrency slot")
 	assert.Equal(t, 1, released)
@@ -2398,7 +2398,7 @@ func TestExecutor_PollStep_ReleasesSlotAndRestoresRunningState(t *testing.T) {
 	// reacquire its slot.
 	require.Eventually(t, func() bool {
 		coord.DrivePolls(context.Background(), nil)
-		return coord.PendingResumeCount() == 1
+		return coord.PendingResumeCount(tmpDir) == 1
 	}, time.Second, 5*time.Millisecond, "executor never requested to reacquire its slot")
 
 	// Nothing has granted the slot back yet, so the executor must still be
@@ -2409,7 +2409,7 @@ func TestExecutor_PollStep_ReleasesSlotAndRestoresRunningState(t *testing.T) {
 	case <-time.After(20 * time.Millisecond):
 	}
 
-	require.True(t, coord.grantNextResume(), "expected a queued resume request to grant")
+	require.True(t, coord.grantNextResume(tmpDir), "expected a queued resume request to grant")
 
 	select {
 	case outcome := <-doneCh:

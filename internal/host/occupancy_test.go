@@ -130,10 +130,10 @@ func TestLoop_QueuedTasks_ResumingPoll(t *testing.T) {
 
 	done1 := make(chan struct{})
 	done2 := make(chan struct{})
-	go func() { coord.ReacquireSlot("run-1", "poll-step"); close(done1) }()
-	go func() { coord.ReacquireSlot("run-2", "poll-step"); close(done2) }()
+	go func() { coord.ReacquireSlot("/proj", "run-1", "poll-step"); close(done1) }()
+	go func() { coord.ReacquireSlot("/other", "run-2", "poll-step"); close(done2) }()
 
-	require.Eventually(t, func() bool { return coord.PendingResumeCount() == 2 }, time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return coord.PendingResumeCount("/proj") == 1 && coord.PendingResumeCount("/other") == 1 }, time.Second, 10*time.Millisecond)
 
 	queued := loop.QueuedTasks(context.Background())
 	require.Len(t, queued, 1, "only the resume for this loop's own project should be reported")
@@ -141,8 +141,8 @@ func TestLoop_QueuedTasks_ResumingPoll(t *testing.T) {
 	assert.Equal(t, "resuming", queued[0].Reason)
 
 	// Drain the queue so the goroutines above don't leak past the test.
-	require.True(t, coord.grantNextResume())
-	require.True(t, coord.grantNextResume())
+	require.True(t, coord.grantNextResume("/proj"))
+	require.True(t, coord.grantNextResume("/other"))
 	<-done1
 	<-done2
 }

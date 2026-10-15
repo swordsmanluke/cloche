@@ -699,8 +699,8 @@ func (e *Executor) executePollStep(ctx context.Context, step *domain.Step) (stri
 		// waits — and reacquire one (ahead of brand-new task launches) once a
 		// decision is ready, before the session/poll record are cleaned up
 		// above and the workflow continues.
-		e.PollCoord.ReleaseSlot()
-		defer e.PollCoord.ReacquireSlot(e.HostRunID, step.Name)
+		e.PollCoord.ReleaseSlot(e.ProjectDir)
+		defer e.PollCoord.ReacquireSlot(e.ProjectDir, e.HostRunID, step.Name)
 
 		select {
 		case result := <-resultCh:

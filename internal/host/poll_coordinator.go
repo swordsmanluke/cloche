@@ -26,10 +26,39 @@ type PollCoordinator struct {
 	// before blocking so the orchestration loop can use its slot for other
 	// work, then ReacquireSlot before resuming, so it gets priority over
 	// brand-new task launches. See Loop.runPhased.
-	slotMu      sync.Mutex
+	//
+	// The coordinator is shared by every project's loop, but each loop counts
+	// its own slots, so slot state is partitioned by scope (the project
+	// directory). A shared pool would let one loop drain or grant another
+	// loop's releases, leaving phantom in-flight slots that never complete.
+	slotMu sync.Mutex
+	slots  map[string]*slotState
+}
+
+// slotState is the slot-handoff state for one scope (one project's loop).
+type slotState struct {
 	released    int              // pending ReleaseSlot() calls not yet applied to inFlight
 	resumeQueue []*resumeRequest // FIFO of pending ReacquireSlot() grants
 	wake        chan struct{}    // buffered(1); wakes the loop to reprocess slot state
+}
+
+// slotsFor returns the slot state for scope, creating it on first use.
+// Caller must hold slotMu.
+func (c *PollCoordinator) slotsFor(scope string) *slotState {
+	st, ok := c.slots[scope]
+	if !ok {
+		st = &slotState{wake: make(chan struct{}, 1)}
+		c.slots[scope] = st
+	}
+	return st
+}
+
+// WakeChan returns the channel that signals the loop for scope to reprocess
+// slot state.
+func (c *PollCoordinator) WakeChan(scope string) chan struct{} {
+	c.slotMu.Lock()
+	defer c.slotMu.Unlock()
+	return c.slotsFor(scope).wake
 }
 
 // resumeRequest tracks a single pending ReacquireSlot() call, identifying the
@@ -66,86 +95,92 @@ type pollSession struct {
 func NewPollCoordinator() *PollCoordinator {
 	return &PollCoordinator{
 		sessions: make(map[string]*pollSession),
-		wake:     make(chan struct{}, 1),
+		slots:    make(map[string]*slotState),
 	}
 }
 
 // ReleaseSlot gives up a concurrency slot without exiting the calling
 // goroutine. Called by an executor goroutine right before it parks at a poll
-// step, so the orchestration loop can immediately use the freed slot for
-// other work while this run waits. Must be paired with exactly one
+// step, so the orchestration loop for scope can immediately use the freed slot
+// for other work while this run waits. Must be paired with exactly one
 // ReacquireSlot call.
-func (c *PollCoordinator) ReleaseSlot() {
+func (c *PollCoordinator) ReleaseSlot(scope string) {
 	c.slotMu.Lock()
-	c.released++
+	st := c.slotsFor(scope)
+	st.released++
 	c.slotMu.Unlock()
-	c.wakeLoop()
+	c.wakeLoop(scope)
 }
 
-// ReacquireSlot blocks until the orchestration loop grants this run a
-// concurrency slot again. Pending reacquire requests are served ahead of
+// ReacquireSlot blocks until the orchestration loop for scope grants this run
+// a concurrency slot again. Pending reacquire requests are served ahead of
 // brand-new task launches (see Loop.runPhased), so a poll step that becomes
 // ready resumes before the loop starts unrelated work. runID and stepName
 // identify the waiting run for occupancy reporting (see PendingResumes).
-func (c *PollCoordinator) ReacquireSlot(runID, stepName string) {
+func (c *PollCoordinator) ReacquireSlot(scope, runID, stepName string) {
 	grant := make(chan struct{}, 1)
 	req := &resumeRequest{runID: runID, stepName: stepName, queuedAt: time.Now(), grant: grant}
 	c.slotMu.Lock()
-	c.resumeQueue = append(c.resumeQueue, req)
+	st := c.slotsFor(scope)
+	st.resumeQueue = append(st.resumeQueue, req)
 	c.slotMu.Unlock()
-	c.wakeLoop()
+	c.wakeLoop(scope)
 	<-grant
 }
 
-func (c *PollCoordinator) wakeLoop() {
+func (c *PollCoordinator) wakeLoop(scope string) {
 	select {
-	case c.wake <- struct{}{}:
+	case c.WakeChan(scope) <- struct{}{}:
 	default:
 	}
 }
 
-// drainReleasedSlots returns the number of ReleaseSlot calls made since the
-// last call, resetting the counter to zero. Called by the orchestration loop.
-func (c *PollCoordinator) drainReleasedSlots() int {
+// drainReleasedSlots returns the number of ReleaseSlot calls made for scope
+// since the last call, resetting the counter to zero. Called by the
+// orchestration loop.
+func (c *PollCoordinator) drainReleasedSlots(scope string) int {
 	c.slotMu.Lock()
 	defer c.slotMu.Unlock()
-	n := c.released
-	c.released = 0
+	st := c.slotsFor(scope)
+	n := st.released
+	st.released = 0
 	return n
 }
 
-// grantNextResume signals the oldest pending ReacquireSlot call to proceed.
-// Returns true if a request was granted. Called by the orchestration loop
-// before it considers launching a brand-new task.
-func (c *PollCoordinator) grantNextResume() bool {
+// grantNextResume signals the oldest pending ReacquireSlot call for scope to
+// proceed. Returns true if a request was granted. Called by the orchestration
+// loop before it considers launching a brand-new task.
+func (c *PollCoordinator) grantNextResume(scope string) bool {
 	c.slotMu.Lock()
-	if len(c.resumeQueue) == 0 {
+	st := c.slotsFor(scope)
+	if len(st.resumeQueue) == 0 {
 		c.slotMu.Unlock()
 		return false
 	}
-	req := c.resumeQueue[0]
-	c.resumeQueue = c.resumeQueue[1:]
+	req := st.resumeQueue[0]
+	st.resumeQueue = st.resumeQueue[1:]
 	c.slotMu.Unlock()
 	req.grant <- struct{}{}
 	return true
 }
 
-// PendingResumeCount reports how many parked runs are currently waiting to
-// reacquire a concurrency slot. Exposed for tests/observability.
-func (c *PollCoordinator) PendingResumeCount() int {
+// PendingResumeCount reports how many parked runs in scope are currently
+// waiting to reacquire a concurrency slot. Exposed for tests/observability.
+func (c *PollCoordinator) PendingResumeCount(scope string) int {
 	c.slotMu.Lock()
 	defer c.slotMu.Unlock()
-	return len(c.resumeQueue)
+	return len(c.slotsFor(scope).resumeQueue)
 }
 
-// PendingResumes returns the runs currently waiting to reacquire a
+// PendingResumes returns the runs in scope currently waiting to reacquire a
 // concurrency slot after finishing a poll step, oldest first. Exposed for
 // occupancy reporting (see Loop.QueuedTasks).
-func (c *PollCoordinator) PendingResumes() []ResumeInfo {
+func (c *PollCoordinator) PendingResumes(scope string) []ResumeInfo {
 	c.slotMu.Lock()
 	defer c.slotMu.Unlock()
-	out := make([]ResumeInfo, len(c.resumeQueue))
-	for i, req := range c.resumeQueue {
+	q := c.slotsFor(scope).resumeQueue
+	out := make([]ResumeInfo, len(q))
+	for i, req := range q {
 		out[i] = ResumeInfo{RunID: req.runID, StepName: req.stepName, QueuedAt: req.queuedAt}
 	}
 	return out

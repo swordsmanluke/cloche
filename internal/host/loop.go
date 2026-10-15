@@ -347,7 +347,7 @@ func (l *Loop) runPhased() {
 		// Apply slots released by runs that parked at a poll step since the
 		// last tick, freeing them up immediately for other work.
 		if l.pollCoord != nil {
-			if released := l.pollCoord.drainReleasedSlots(); released > 0 {
+			if released := l.pollCoord.drainReleasedSlots(l.config.ProjectDir); released > 0 {
 				inFlight -= released
 				if inFlight < 0 {
 					inFlight = 0
@@ -366,7 +366,7 @@ func (l *Loop) runPhased() {
 
 			// Runs that finished polling and are just waiting to resume take
 			// priority over brand-new task launches.
-			if l.pollCoord != nil && l.pollCoord.grantNextResume() {
+			if l.pollCoord != nil && l.pollCoord.grantNextResume(l.config.ProjectDir) {
 				inFlight++
 				continue
 			}
@@ -618,7 +618,7 @@ func (l *Loop) QueuedTasks(ctx context.Context) []QueuedEntry {
 	}
 
 	if l.pollCoord != nil {
-		for _, r := range l.pollCoord.PendingResumes() {
+		for _, r := range l.pollCoord.PendingResumes(l.config.ProjectDir) {
 			run, err := l.store.GetRun(ctx, r.RunID)
 			if err != nil || run.ProjectDir != l.config.ProjectDir {
 				continue
@@ -855,7 +855,7 @@ func (l *Loop) wakeCh() chan struct{} {
 	if l.pollCoord == nil {
 		return nil
 	}
-	return l.pollCoord.wake
+	return l.pollCoord.WakeChan(l.config.ProjectDir)
 }
 
 // ReadListTasksOutput reads the output directory from a list-tasks workflow run
