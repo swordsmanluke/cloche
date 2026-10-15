@@ -1,6 +1,6 @@
 repos:
     "":
-        last_commit: 5e02cc92de7bd7188f77250a3fd084dfb5c131c2
+        last_commit: 2fcfd3a031bce2d52900eff47ec092a1d9559138
         scanned_runs:
             - cloche-0vqg
             - rxth-main
@@ -486,6 +486,8 @@ repos:
             - k501-main
             - unu6-main
             - user-k1ag
+            - a56w-intent-scan
+            - user-a56w
         scanned_docs:
             .cloche/prompts/document-check-missing.md: 154c933c83042dcb0b3f14e9c451226e6eab14bcdcbc9889fa4edef52d7c1283
             .cloche/prompts/document-investigate.md: 0bb6d7225ed9fa53f36269540994d74e7beef92a717e13794a86cfffdd8652d9
@@ -508,12 +510,12 @@ repos:
             .cloche/prompts/vertical-self-review.md: 2871cd4119f17723148b2557e24d364adf4b897f3a82b4e992eb4236a9c8cdf6
             .cloche/prompts/vertical-update-docs.md: 425f8e9a27409f9879fc9f3456ee2381c46fd55f9af9b42b3c32442ce5583e81
             .cloche/prompts/vertical-write-design.md: dabb4c1a25390cae07f8f02ec07fb7990cdf868035f9929d69d63d71f5a6d43f
-            CLAUDE.md: 8d3399596d42c119fe8cc06890b8f5c91ccaefda89092aaab946ab50be561cb7
+            CLAUDE.md: 060982a4daa79e0df7d577fa1e0a1597f14a88c571d62bd4c3429ef733d72baa
             README.md: 423d6816a7a62264229d2b5630ca014e4e3da5af320a9cf45459bdfb37edd222
             docs/CHANGELOG-DETAILED.md: 6cb1c326609ebbab796fabe8605aca89c8ea1eca8610d80a58a9f8124a2e4871
             docs/INSTALL.md: 02d98ffd4057cfb5f26935f68a131d81cf232b445417029d1555a081712d68e9
             docs/SAFETY.md: aa5213f1e3d7ceb48a39a6b81aac98ed50f8c83d3b9f794d88dc77a1afc558f3
-            docs/USAGE.md: 935fa1b4d8bda60eff5d8424a1d7d60a882ccb1cf9be4a0e88080434a5c34532
+            docs/USAGE.md: f4f3c7374422ca951059a3a5c952725f25484f053b68aeffb6f4fe63747a8e7a
             docs/agent-setup-claude.md: 42a7480ae3deba818f3b38fa022a27bb09615bd4065b9e9530b212bb449d12c4
             docs/agent-setup-codex.md: 5137671f134e534a5c49bf8e6f26765c3f3916dfb9a98ed92e22a2aad5ad1cfe
             docs/built-in-agents.md: dd37264a2d03ff45978a319f69020a118aab69c5387029047645f35a0cbe4b82
@@ -538,6 +540,7 @@ repos:
             docs/init/6-swapping-the-task-tracker.md: 8dc2df1eff1ab7d883902dad5731f60d6c3463b35af2e9731f1f1fe7546b2dfa
             docs/init/README.md: f16cc2cce0950a2bccd1260416fb05a22568c58ebd290396f4a3b2dedc113584
             docs/intent.md: f18a3bffe0dfa148d154b427be48e58dc2e1bf00df0a77889b86a2a41a63682a
+            docs/modules.md: 012432d40eaaf653565fd3f43733b18adc81a3c7fab725853906430c6f2b27d9
             docs/plans/2026-02-20-cloche-implementation.md: 4316ef7a359d9b31ee3963b51dd455bd70d9d52c462ff1ffbc8c2857bd21cb9f
             docs/plans/2026-02-20-cloche-system-design.md: 854a59c2a74e7fc3455efc2eec3a31c673de04ad569a04bc5ff60ec315cb7561
             docs/plans/2026-02-20-edge-selection-design.md: a94c3d7db5e013f7bbe1a562ccb7e515f88e9fe3634620c1209c62b6791eaec5
@@ -590,14 +593,14 @@ repos:
             docs/run-isolation/architecture.md: 5f322ad76fedc1012b67f450ac1df9c328ef628ef90285f5ebd4c94a201d4b43
             docs/run-isolation/index.md: 06461a1f739a3b6fba4f5331fa668c15058808f59938b284c4e953a291ae6916
             docs/web-dashboard.md: 202b351135f9a98e14c64aa6d90d1b1eb7eaba68a7ff160c8d19a1bd872b60ad
-            docs/workflows.md: 05a89bdd245b69b0050f4a80942d90a522c2bcd4fa30985222d577bf27c05af1
-last_scan_at: 2026-10-15T16:22:09.97492502Z
+            docs/workflows.md: 0856a85536e65fb5ac2d5f6b6c1f551003ca6793297e44036331f39ce812468c
+last_scan_at: 2026-10-15T16:26:32.725003211Z
 last_scan_stats:
     repos:
         - name: ""
-          docs_new: 0
-          docs_changed: 2
-          commits: 3
-          commit_range: 30307a5..0ea7577
-          runs: 3
-          bytes: 281177
+          docs_new: 1
+          docs_changed: 3
+          commits: 2
+          commit_range: 850ee77..6473646
+          runs: 1
+          bytes: 268426
