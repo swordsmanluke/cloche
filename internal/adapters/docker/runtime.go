@@ -251,6 +251,18 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		}
 	}
 
+	// 3a. Copy extra directories (local-path modules outside the project).
+	for _, ed := range cfg.ExtraDirs {
+		dst := "/workspace/" + strings.TrimPrefix(ed.Dst, "/")
+		// The container is created but not started, so docker cp creates dst.
+		cpCmd := exec.CommandContext(ctx, "docker", "cp", ed.Src+"/.", containerID+":"+dst)
+		var cpStderr bytes.Buffer
+		cpCmd.Stderr = &cpStderr
+		if err := cpCmd.Run(); err != nil {
+			log.Printf("runtime.Start: copying %s into %s: %v: %s", ed.Src, dst, err, cpStderr.String())
+		}
+	}
+
 	// 3b. Write prompt into container (.cloche/runs/ is excluded by .clocheignore,
 	//      so prompt.txt must be injected separately).
 	if cfg.Prompt != "" && cfg.TaskID != "" {

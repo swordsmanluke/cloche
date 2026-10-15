@@ -21,6 +21,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/engine"
 	"github.com/swordsmanluke/cloche/internal/host"
 	"github.com/swordsmanluke/cloche/internal/logstream"
+	"github.com/swordsmanluke/cloche/internal/module"
 	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
@@ -1861,4 +1862,100 @@ func TestDaemonExecutor_WorkflowStep_StepBindRedirectsSlot(t *testing.T) {
 	_, err := de.Execute(ctx, step)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ghost")
+}
+
+// moduleCallFixture builds a host executor whose "main" workflow can call the
+// module workflow "check" (module "mod", rooted in a temp dir).
+func moduleCallFixture(t *testing.T, contract *domain.Contract, script string) (*DaemonExecutor, *sqlite.Store, string, string) {
+	t.Helper()
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { store.Close() })
+
+	projectDir := t.TempDir()
+	modDir := filepath.Join(projectDir, ".cloche", "modules", "mod")
+	require.NoError(t, os.MkdirAll(modDir, 0o755))
+	outFile := filepath.Join(t.TempDir(), "env.txt")
+
+	child := buildHostWFForTest("check")
+	child.Module = "mod"
+	child.Contract = contract
+	child.Steps["step1"].Config["run"] = strings.ReplaceAll(script, "$OUT", outFile)
+
+	reg := &module.Registry{Modules: map[string]*module.Module{
+		"mod": {
+			Manifest:  module.Manifest{Name: "mod", Exports: []string{"check"}},
+			Dir:       modDir,
+			Workflows: map[string]*domain.Workflow{"check": child},
+		},
+	}, Root: []domain.Bind{{Slot: "check", Target: "mod"}}}
+
+	hostExec := &host.Executor{
+		ProjectDir: projectDir, Store: store, TaskID: "t1", AttemptID: "att1", HostRunID: "r1",
+		OutputDir: t.TempDir(), WorkflowName: "main",
+	}
+	de := NewDaemonExecutor(DaemonExecutorConfig{
+		ProjectDir: projectDir, AttemptID: "att1", TaskID: "t1", Store: store, HostExec: hostExec,
+		AllWFs:  map[string]*domain.Workflow{"main": buildHostWFForTest("main")},
+		Modules: reg,
+	})
+	return de, store, modDir, outFile
+}
+
+func TestDaemonExecutor_ModuleCall_WithSeedsKVEnvAndModuleDir(t *testing.T) {
+	de, store, modDir, outFile := moduleCallFixture(t,
+		&domain.Contract{KV: []string{"task_id2"}, Env: []string{"MODEL"}, Out: []string{"review_path"}},
+		`echo "$CLOCHE_MODULE_DIR $MODEL" > $OUT`)
+	ctx := context.Background()
+	require.NoError(t, store.SetContextKey(ctx, "t1", "att1", "r1", "ticket", "T-1"))
+	require.NoError(t, store.SetContextKey(ctx, "t1", "att1", "r1", "review_path", "/tmp/r"))
+
+	step := &domain.Step{
+		Name: "review", Type: domain.StepTypeWorkflow,
+		Config: map[string]string{"workflow_name": "check"},
+		With: []domain.WithEntry{
+			{Key: "task_id2", Source: domain.WithKV, Value: "ticket"},
+			{Key: "MODEL", Env: true, Source: domain.WithLiteral, Value: "opus"},
+			{Key: "feedback_path", Source: domain.WithOut, Value: "review_path"},
+		},
+	}
+	main := buildHostWFForTest("main")
+	res, err := de.Execute(engine.WithWorkflow(ctx, main), step)
+	require.NoError(t, err)
+	assert.Equal(t, "success", res.Result)
+
+	got, err := os.ReadFile(outFile)
+	require.NoError(t, err)
+	assert.Equal(t, modDir+" opus\n", string(got))
+
+	v, ok, _ := store.GetContextKey(ctx, "t1", "att1", "r1", "task_id2")
+	assert.True(t, ok)
+	assert.Equal(t, "T-1", v)
+	v, _, _ = store.GetContextKey(ctx, "t1", "att1", "r1", "feedback_path")
+	assert.Equal(t, "/tmp/r", v)
+}
+
+func TestDaemonExecutor_ModuleCall_MissingInputFailsBeforeStart(t *testing.T) {
+	de, store, _, outFile := moduleCallFixture(t,
+		&domain.Contract{KV: []string{"child_branch"}, Env: []string{"CLOCHE_TEST_UNSET_ENV"}},
+		`echo started > $OUT`)
+	step := &domain.Step{Name: "review", Type: domain.StepTypeWorkflow, Config: map[string]string{"workflow_name": "check"}}
+	res, err := de.Execute(engine.WithWorkflow(context.Background(), buildHostWFForTest("main")), step)
+	require.NoError(t, err)
+	assert.Equal(t, "fail", res.Result)
+	assert.NoFileExists(t, outFile, "child must not start")
+
+	msg, _, _ := store.GetContextKey(context.Background(), "t1", "att1", "r1", "contract_error")
+	assert.Contains(t, msg, "contract: check requires kv:child_branch (not set)")
+	assert.Contains(t, msg, "contract: check requires env:CLOCHE_TEST_UNSET_ENV (not set)")
+}
+
+func TestDaemonExecutor_ModuleCall_MissingOutputFailsStep(t *testing.T) {
+	de, store, _, _ := moduleCallFixture(t, &domain.Contract{Out: []string{"review_path"}}, `true`)
+	step := &domain.Step{Name: "review", Type: domain.StepTypeWorkflow, Config: map[string]string{"workflow_name": "check"}}
+	res, err := de.Execute(engine.WithWorkflow(context.Background(), buildHostWFForTest("main")), step)
+	require.NoError(t, err)
+	assert.Equal(t, "fail", res.Result)
+	msg, _, _ := store.GetContextKey(context.Background(), "t1", "att1", "r1", "contract_error")
+	assert.Contains(t, msg, "out:review_path")
 }

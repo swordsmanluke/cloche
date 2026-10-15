@@ -16,6 +16,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/engine"
 	"github.com/swordsmanluke/cloche/internal/intent"
+	"github.com/swordsmanluke/cloche/internal/module"
 	"github.com/swordsmanluke/cloche/internal/ports"
 	"github.com/swordsmanluke/cloche/internal/promptrev"
 	"github.com/swordsmanluke/cloche/internal/protocol"
@@ -244,6 +245,9 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 		cmd.Env = append(cmd.Env, e.ExtraEnv...)
 	}
 
+	// Per-call env from a module `with` block and CLOCHE_MODULE_DIR.
+	cmd.Env = append(cmd.Env, module.EnvList(module.EnvFromContext(ctx))...)
+
 	// Pass previous step output if available
 	if prevOutput := e.findPrevOutput(step); prevOutput != "" {
 		cmd.Env = append(cmd.Env, "CLOCHE_PREV_OUTPUT="+prevOutput)
@@ -331,6 +335,7 @@ func (e *Executor) runSkipScript(ctx context.Context, step *domain.Step, skipCmd
 	if len(e.ExtraEnv) > 0 {
 		cmd.Env = append(cmd.Env, e.ExtraEnv...)
 	}
+	cmd.Env = append(cmd.Env, module.EnvList(module.EnvFromContext(ctx))...)
 
 	output, err := cmd.CombinedOutput()
 	markerResult, cleanOutput, found := protocol.ExtractResult(output)
@@ -441,6 +446,7 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 		agentEnv = append(agentEnv, "CLOCHE_ATTEMPT_ID="+e.AttemptID)
 	}
 	agentEnv = append(agentEnv, e.ExtraEnv...)
+	agentEnv = append(agentEnv, module.EnvList(module.EnvFromContext(ctx))...)
 	adapter.ExtraEnv = agentEnv
 
 	// Resume mode: if this is the step being resumed, use conversation resume

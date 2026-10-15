@@ -1155,7 +1155,11 @@ func resolveContent(value string, workDir string) (string, error) {
 	// Check for file("path") syntax from DSL parser
 	if strings.HasPrefix(value, `file("`) && strings.HasSuffix(value, `")`) {
 		path := value[6 : len(value)-2]
-		data, err := os.ReadFile(filepath.Join(workDir, path))
+		full := path
+		if !filepath.IsAbs(full) { // module file() refs resolve to absolute host paths
+			full = filepath.Join(workDir, path)
+		}
+		data, err := os.ReadFile(full)
 		if err != nil {
 			return "", fmt.Errorf("reading file %q: %w", path, err)
 		}

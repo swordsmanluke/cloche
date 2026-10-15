@@ -29,7 +29,17 @@ type ContainerConfig struct {
 	Cmd            []string // override container command; defaults to ["cloche-agent", WorkflowName]
 	Prompt         string   // prompt text to write into .cloche/runs/<task-id>/prompt.txt in container
 	Env            []string // extra KEY=VALUE environment for the container
-	Interactive    bool     // allocate TTY and keep stdin open (-it flags)
+	// ExtraDirs are host directories copied into the container after the
+	// project files and overrides (e.g. local-path modules outside the
+	// project root).
+	ExtraDirs   []ExtraDir
+	Interactive bool // allocate TTY and keep stdin open (-it flags)
+}
+
+// ExtraDir copies the host directory Src to Dst (relative to /workspace).
+type ExtraDir struct {
+	Src string
+	Dst string
 }
 
 type ContainerRuntime interface {

@@ -7,8 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/module"
 	"github.com/swordsmanluke/cloche/internal/protocol"
 )
 
@@ -38,6 +40,17 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 			"CLOCHE_RUN_ID="+a.RunID,
 			"CLOCHE_PROJECT_DIR="+workDir,
 		)
+	}
+
+	// Per-step env handed down by the daemon (module `with` env.X inputs and
+	// CLOCHE_MODULE_DIR) arrives as "env.NAME" config entries.
+	for k, v := range step.Config {
+		if name, ok := strings.CutPrefix(k, module.StepEnvPrefix); ok && name != "" {
+			if cmd.Env == nil {
+				cmd.Env = os.Environ()
+			}
+			cmd.Env = append(cmd.Env, name+"="+v)
+		}
 	}
 
 	if a.OnInput != nil {

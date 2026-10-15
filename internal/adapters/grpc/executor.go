@@ -443,11 +443,146 @@ func (d *DaemonExecutor) Execute(ctx context.Context, step *domain.Step) (domain
 		return domain.StepResult{}, fmt.Errorf("daemon executor: no workflow in context for step %q", step.Name)
 	}
 
+	ctx, step = d.prepareModuleStep(ctx, step, wf)
+
 	if wf.Location == domain.LocationHost {
 		return d.hostExec.Execute(ctx, step)
 	}
 
 	return d.executeContainerStep(ctx, step, wf)
+}
+
+// prepareModuleStep applies module path semantics to a leaf step: file()
+// references in a module workflow resolve against the module root, and
+// CLOCHE_MODULE_DIR is set to the module's host path (host workflows) or
+// /workspace path (container workflows). On the host the env travels in ctx;
+// in a container it is handed to the agent as "env.NAME" step config. The
+// step is cloned, never mutated. Env from a caller's `with` block is
+// forwarded to container steps the same way.
+func (d *DaemonExecutor) prepareModuleStep(ctx context.Context, step *domain.Step, wf *domain.Workflow) (context.Context, *domain.Step) {
+	callEnv := module.EnvFromContext(ctx)
+	mod := d.modules.ModuleFor(wf)
+	container := wf.Location != domain.LocationHost
+	if mod == nil && (!container || len(callEnv) == 0) {
+		return ctx, step
+	}
+
+	clone := *step
+	clone.Config = make(map[string]string, len(step.Config)+len(callEnv)+1)
+	for k, v := range step.Config {
+		if mod != nil {
+			v = mod.ResolveFileRef(v, d.projectDir, container)
+		}
+		clone.Config[k] = v
+	}
+	if container {
+		for k, v := range callEnv {
+			clone.Config[module.StepEnvPrefix+k] = v
+		}
+		if mod != nil {
+			clone.Config[module.StepEnvPrefix+module.ModuleDirEnv] = mod.ContainerDir(d.projectDir)
+		}
+	} else {
+		ctx = module.WithEnv(ctx, map[string]string{module.ModuleDirEnv: mod.Dir})
+	}
+	return ctx, &clone
+}
+
+func (d *DaemonExecutor) kvRunID() string {
+	if d.hostExec != nil {
+		return d.hostExec.HostRunID
+	}
+	return ""
+}
+
+func (d *DaemonExecutor) kvGet(ctx context.Context, key string) (string, bool) {
+	if d.store == nil || d.taskID == "" {
+		return "", false
+	}
+	v, ok, err := d.store.GetContextKey(ctx, d.taskID, d.attemptID, d.kvRunID(), key)
+	if err != nil {
+		return "", false
+	}
+	return v, ok
+}
+
+// envIsSet reports whether env var name is visible to a child run: set on the
+// call (`with env.X`), inherited from an enclosing call, or present in the
+// daemon's or the host executor's environment.
+func (d *DaemonExecutor) envIsSet(ctx context.Context, callEnv map[string]string, name string) bool {
+	if _, ok := callEnv[name]; ok {
+		return true
+	}
+	if _, ok := module.EnvFromContext(ctx)[name]; ok {
+		return true
+	}
+	if _, ok := os.LookupEnv(name); ok {
+		return true
+	}
+	if d.hostExec != nil {
+		prefix := name + "="
+		for _, ev := range d.hostExec.ExtraEnv {
+			if strings.HasPrefix(ev, prefix) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// startCall seeds the child's KV and env from the step's `with` block, then
+// checks the callee's contract inputs. A non-nil error is a contract error
+// and the child must not start. The returned env is the `with` env to hand to
+// the child run.
+func (d *DaemonExecutor) startCall(ctx context.Context, step *domain.Step, slot string, callee *domain.Workflow) (map[string]string, error) {
+	kv, env := module.SeedWith(step.With, func(key string) (string, bool) { return d.kvGet(ctx, key) })
+	if d.store != nil && d.taskID != "" {
+		for k, v := range kv {
+			if err := d.store.SetContextKey(ctx, d.taskID, d.attemptID, d.kvRunID(), k, v); err != nil {
+				return env, fmt.Errorf("with: setting kv:%s: %w", k, err)
+			}
+		}
+	}
+	err := module.CheckInputs(slot, callee.Contract,
+		func(k string) bool { _, ok := d.kvGet(ctx, k); return ok },
+		func(n string) bool { return d.envIsSet(ctx, env, n) },
+	)
+	return env, err
+}
+
+// finishCall runs after a child ends in done: it verifies the callee's out:
+// keys and copies `from out.<key>` entries into the caller's names.
+func (d *DaemonExecutor) finishCall(ctx context.Context, step *domain.Step, slot string, callee *domain.Workflow) error {
+	if d.store == nil || d.taskID == "" {
+		return nil
+	}
+	has := func(k string) bool { _, ok := d.kvGet(ctx, k); return ok }
+	if err := module.CheckOutputs(slot, callee.Contract, has); err != nil {
+		return err
+	}
+	for _, e := range step.With {
+		if e.Source != domain.WithOut || e.Env {
+			continue
+		}
+		v, ok := d.kvGet(ctx, e.Value)
+		if !ok {
+			return fmt.Errorf("contract: %s with %s from out.%s: child did not write %s", slot, e.Key, e.Value, e.Value)
+		}
+		if err := d.store.SetContextKey(ctx, d.taskID, d.attemptID, d.kvRunID(), e.Key, v); err != nil {
+			return fmt.Errorf("with: setting kv:%s: %w", e.Key, err)
+		}
+	}
+	return nil
+}
+
+// contractFailed reports a contract error against the calling step: it is
+// logged, recorded under the contract_error KV key, and the step fails.
+func (d *DaemonExecutor) contractFailed(ctx context.Context, step *domain.Step, err error) domain.StepResult {
+	log.Printf("daemon executor: step %q: %v", step.Name, err)
+	if d.store != nil && d.taskID != "" {
+		_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, d.kvRunID(), "contract_error", err.Error())
+	}
+	return domain.StepResult{Result: "fail"}
 }
 
 // executeWorkflowStep looks up the target workflow by name, then runs it as a
@@ -480,6 +615,14 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 	}
 	targetWF := resolved.Workflow
 	ctx = module.WithStack(ctx, stack)
+
+	// Seed the child's KV/env from `with` and enforce contract inputs before
+	// anything starts.
+	callEnv, contractErr := d.startCall(ctx, step, targetName, targetWF)
+	if contractErr != nil {
+		return d.contractFailed(ctx, step, contractErr), nil
+	}
+	ctx = module.WithEnv(ctx, callEnv)
 
 	// Generate a run ID for the child workflow.
 	childRunID := domain.GenerateRunID(targetName, d.attemptID)
@@ -677,6 +820,9 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 	}
 
 	if succeeded {
+		if err := d.finishCall(ctx, step, targetName, targetWF); err != nil {
+			return d.contractFailed(ctx, step, err), nil
+		}
 		return domain.StepResult{Result: "success"}, nil
 	}
 	return domain.StepResult{Result: "fail"}, nil
@@ -969,6 +1115,11 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 		// Start agent in session mode (no workflow file argument) so it
 		// connects to the daemon via gRPC and waits for ExecuteStep commands.
 		Cmd: []string{"cloche-agent"},
+	}
+	// Local-path modules outside the project are not in the copied project
+	// root; copy them in where ContainerDir expects them.
+	for _, m := range d.modules.ExternalModules(d.projectDir) {
+		cfg.ExtraDirs = append(cfg.ExtraDirs, ports.ExtraDir{Src: m.Dir, Dst: m.ContainerRel(d.projectDir)})
 	}
 	// Hand the bind scope frames to the container run so anything resolved
 	// beneath it sees the same binds as the host call stack.
