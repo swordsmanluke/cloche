@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# release-task.sh — Release a stale claimed task back to open status.
-# Uses CLOCHE_TASK_ID env var set by the caller.
+# release.sh — Release a stale claimed task back to open status.
+# Contract: kv task_id.
 set -euo pipefail
 
-TASK_ID="${CLOCHE_TASK_ID:-}"
+TASK_ID="${CLOCHE_TASK_ID:-$(cloche get task_id 2>/dev/null || true)}"
 
 if [ -z "$TASK_ID" ]; then
   echo "error: CLOCHE_TASK_ID not set" >&2

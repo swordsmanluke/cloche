@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# close-task.sh — Close the task after a successful run.
-# This step is wired on the success path (merge:success → bump-version → close-task),
-# so reaching it means the work succeeded.
+# close.sh — Close the task after a successful run.
+# Contract: kv task_id.
 set -euo pipefail
 
-TASK_ID="${CLOCHE_TASK_ID:-}"
+TASK_ID="${CLOCHE_TASK_ID:-$(cloche get task_id 2>/dev/null || true)}"
 
 if [ -z "$TASK_ID" ]; then
   echo "warning: CLOCHE_TASK_ID not set, skipping" >&2

@@ -20,8 +20,8 @@ workflow vertical {
   // ===== Phase 0: claim =====
 
   step claim {
-    run     = "bash .cloche/scripts/claim-task.sh"
-    results = [success, fail]
+    workflow_name = "claim-task"
+    results       = [success, fail]
   }
 
   // ===== Phase 0.5: design-prep =====

@@ -647,7 +647,7 @@ workflow "release-task" {
   host {}
 
   step release-task {
-    run     = "bash .cloche/scripts/release-task.sh"
+    run     = "bash .cloche/scripts/release-task.sh"   # or bind release-task to a tracker module (docs/modules.md)
     results = [success, fail]
   }
 
@@ -1338,7 +1338,7 @@ Checks performed:
 - **config.toml** — parses correctly, fields are valid.
 - **Workflow files** — syntax, result wiring completeness, terminal coverage (all paths reach `done`/`abort`), no orphan steps, config key validation.
 - **File references** — prompt `file()` paths resolve to `.cloche/prompts/`, script `run` paths resolve to `.cloche/scripts/`.
-- **Cross-file consistency** — `workflow_name` references in steps resolve to defined workflows.
+- **Cross-file consistency** — `workflow_name` references in steps resolve to defined workflows, or to a slot named by a bind (at project-root, file, workflow or step scope). `project.cloche` holds only root binds and is not parsed as a workflow file.
 - **workflow_name timeout fit** (warning, all workflows only) — a `workflow_name` step's explicit `timeout` is checked against the target workflow's own step timeouts summed; if the explicit timeout is shorter, the sub-workflow could be killed before its own steps can time out.
 - **Modules, binds and contracts** (all workflows only) — each `module.toml` parses, its `exports` exist and it has a README; `requires` binaries are on `PATH` (error; `cloche doctor` checks this too); bind targets exist and a bare target is not ambiguous between a module and a project workflow; for each `workflow_name` step the bound workflow's `contract` is checked against what is available at that point (`success`/`fail` wired; `kv:` inputs seeded, supplied by `with`, or declared as `out:` upstream — an input only a script step might write is a warning, an input nothing could provide is an error; `out.<key>` remaps must name declared outs).
 - **Module warnings** — exported workflow without a contract, vendored module content that no longer matches the `modules.lock` hash, and `credentials` not set in the environment or `CLOCHE_EXTRA_ENV`.

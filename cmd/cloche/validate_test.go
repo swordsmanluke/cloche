@@ -773,3 +773,41 @@ func TestValidateProjectWarnings_WorkflowNameNoExplicitTimeout(t *testing.T) {
 		t.Errorf("expected no warnings for a step with no explicit timeout, got: %v", warnings)
 	}
 }
+
+func TestValidateProject_BoundSlotAndProjectFile(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	mod := filepath.Join(clocheDir, "modules", "trk")
+	os.MkdirAll(mod, 0755)
+	os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(`active = true`), 0644)
+	os.WriteFile(filepath.Join(clocheDir, "project.cloche"), []byte("bind close-task = trk\n"), 0644)
+	os.WriteFile(filepath.Join(clocheDir, "host.cloche"), []byte(`workflow main {
+  host {}
+  step close {
+    workflow_name = "close-task"
+    results = [success, fail]
+  }
+  close:success -> done
+  close:fail    -> abort
+}
+`), 0644)
+	os.WriteFile(filepath.Join(mod, "module.toml"), []byte("name = \"trk\"\nexports = [\"close-task\"]\n"), 0644)
+	os.WriteFile(filepath.Join(mod, "README.md"), []byte("# trk\n"), 0644)
+	os.WriteFile(filepath.Join(mod, "t.cloche"), []byte(`workflow close-task {
+  contract {
+    kv: task_id
+  }
+  host {}
+  step c {
+    run = "true"
+    results = [success, fail]
+  }
+  c:success -> done
+  c:fail    -> abort
+}
+`), 0644)
+
+	for _, e := range validateProject(dir, "") {
+		t.Errorf("unexpected error: %s", e)
+	}
+}

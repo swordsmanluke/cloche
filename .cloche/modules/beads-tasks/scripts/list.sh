@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# ready-tasks.sh — Output truly ready tasks as JSONL for the daemon to parse.
+# list.sh — Write truly ready tasks as JSONL to a file and publish its path as
+# the tasks_path output of the list-tasks contract.
 # A task is ready when:
 #   1. bd considers it ready (open, not blocked/deferred)
 #   2. All its closed dependencies have a succeeded cloche run
 set -uo pipefail
+
+out="$PWD/.cloche/runs/list-tasks.jsonl"
+mkdir -p "$(dirname "$out")"
+: > "$out"
+cloche set tasks_path "$out"
 
 # bd ready --json outputs a JSON array of ready tasks (open + in_progress).
 # Filter to only open tasks — in_progress means already claimed by a run.
@@ -37,6 +43,6 @@ for (( i=0; i<task_count; i++ )); do
   fi
 
   if [ "$ready" = true ]; then
-    echo "$task"
+    echo "$task" >> "$out"
   fi
 done

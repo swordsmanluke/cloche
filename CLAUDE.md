@@ -52,6 +52,8 @@ my-project/
 ├── .cloche/
 │   ├── develop.cloche      # Container workflow definition
 │   ├── host.cloche          # Host orchestration workflows (contain host { } blocks)
+│   ├── project.cloche       # Project-root binds (e.g. which module fills list-tasks)
+│   ├── modules/             # Vendored modules (beads-tasks, github-tasks); see docs/modules.md
 │   ├── Dockerfile           # Container image
 │   ├── prompts/             # Prompt templates for agent steps
 │   ├── scripts/             # Host-side scripts (e.g. prepare-prompt.sh)
@@ -62,6 +64,13 @@ my-project/
 ├── src/                     # Existing project source (untouched)
 └── CLAUDE.md
 ```
+
+## Modules
+
+`.cloche/modules/<name>/` holds shareable workflow packages. `.cloche/project.cloche`
+binds the daemon's task-tracker phases (`list-tasks`, `claim-task`, `close-task`,
+`release-task`) to a module; this repo uses `beads-tasks`, and `github-tasks` implements
+the same contract. Swap trackers by editing `project.cloche` only. See `docs/modules.md`.
 
 ## Container Model
 

@@ -1,0 +1,61 @@
+workflow list-tasks {
+  contract {
+    out: tasks_path
+  }
+  host {}
+
+  step list {
+    run     = "bash \"$CLOCHE_MODULE_DIR/scripts/list.sh\""
+    results = [success, fail]
+  }
+
+  list:success -> done
+  list:fail    -> abort
+}
+
+workflow claim-task {
+  contract {
+    kv:  task_id
+    out: task_title
+    out: task_body_path
+  }
+  host {}
+
+  step claim {
+    run     = "bash \"$CLOCHE_MODULE_DIR/scripts/claim.sh\""
+    results = [success, fail]
+  }
+
+  claim:success -> done
+  claim:fail    -> abort
+}
+
+workflow close-task {
+  contract {
+    kv: task_id
+  }
+  host {}
+
+  step close {
+    run     = "bash \"$CLOCHE_MODULE_DIR/scripts/close.sh\""
+    results = [success, fail]
+  }
+
+  close:success -> done
+  close:fail    -> abort
+}
+
+workflow release-task {
+  contract {
+    kv: task_id
+  }
+  host {}
+
+  step release {
+    run     = "bash \"$CLOCHE_MODULE_DIR/scripts/release.sh\""
+    results = [success, fail]
+  }
+
+  release:success -> done
+  release:fail    -> abort
+}

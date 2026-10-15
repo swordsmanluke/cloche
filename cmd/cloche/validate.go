@@ -160,6 +160,10 @@ func parseAllWorkflowFiles(clocheDir string) (map[string]*workflowFileInfo, []st
 	var errs []string
 
 	for _, path := range entries {
+		// project.cloche holds only the root bind scope, no workflows.
+		if filepath.Base(path) == module.ProjectFile {
+			continue
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", filepath.Base(path), err))
@@ -526,11 +530,15 @@ func validateCrossFile(projectDir string, workflows map[string]*workflowFileInfo
 		workflowNames[name] = true
 	}
 
+	// Slots named by a bind resolve through it (module.Check validates the
+	// targets), so they need not be project workflows.
+	bound := boundSlots(projectDir, workflows)
+
 	for _, wfi := range workflows {
 		for _, step := range wfi.workflow.Steps {
 			if step.Type == domain.StepTypeWorkflow {
 				refName := step.Config["workflow_name"]
-				if refName != "" && !workflowNames[refName] {
+				if refName != "" && !workflowNames[refName] && !bound[refName] {
 					errs = append(errs, fmt.Sprintf(
 						"%s: workflow %q: step %q references undefined workflow %q",
 						wfi.file, wfi.workflow.Name, step.Name, refName))
@@ -543,6 +551,30 @@ func validateCrossFile(projectDir string, workflows map[string]*workflowFileInfo
 	sort.Strings(errs)
 
 	return errs
+}
+
+// boundSlots returns every slot named by a bind at project root, file,
+// workflow or step scope.
+func boundSlots(projectDir string, workflows map[string]*workflowFileInfo) map[string]bool {
+	slots := map[string]bool{}
+	add := func(bs []domain.Bind) {
+		for _, b := range bs {
+			slots[b.Slot] = true
+		}
+	}
+	if reg, err := module.Load(projectDir); err == nil {
+		add(reg.Root)
+		for _, bs := range reg.FileBinds {
+			add(bs)
+		}
+	}
+	for _, wfi := range workflows {
+		add(wfi.workflow.Binds)
+		for _, st := range wfi.workflow.Steps {
+			add(st.Binds)
+		}
+	}
+	return slots
 }
 
 // validateWorkflowTimeouts warns when a workflow_name step declares an

@@ -1,0 +1,8 @@
+// Task tracker: swap Beads for GitHub Issues by changing these four
+// right-hand sides to github-tasks.
+bind {
+  list-tasks   = beads-tasks
+  claim-task   = beads-tasks
+  close-task   = beads-tasks
+  release-task = beads-tasks
+}

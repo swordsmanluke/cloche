@@ -25,7 +25,8 @@ three workflow phases for orchestration:
 | 3 | `main` | Do the work. Receives a task ID via `CLOCHE_TASK_ID` env var. |
 
 Each phase name (and `release-task` / `close-task`) resolves through the root binds in
-`project.cloche`, so a tracker module can provide it.
+`project.cloche`, so a tracker module can provide it. See [`docs/modules.md`](modules.md)
+for modules, contracts and binds, and for the `beads-tasks` / `github-tasks` trackers.
 
 Additionally, a **`release-task`** host workflow may be defined. This is not part of the
 automatic orchestration loop — it is invoked on demand (e.g. from the web dashboard) to
