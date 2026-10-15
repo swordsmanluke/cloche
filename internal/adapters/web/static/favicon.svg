@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <style>
+    g { fill: #282828; }
+    @media (prefers-color-scheme: dark) { g { fill: #f0f0f0; } }
+  </style>
+  <g>
+    <!-- Knob on top of the cloche -->
+    <circle cx="32" cy="12" r="3"/>
+    <!-- Dome / bell-jar outline (compound path: outer curve → step in → inner curve back) -->
+    <path d="M 8 54 C 8 6, 56 6, 56 54 L 48 54 C 48 14, 16 14, 16 54 Z"/>
+    <!-- Base plate -->
+    <rect x="4" y="54" width="56" height="5" rx="1.5"/>
+  </g>
+</svg>
