@@ -680,6 +680,32 @@ Examples:
   cloche project repos list
 `,
 
+	"module": `cloche module — Install and manage workflow modules
+
+Usage:
+  cloche module add <git-url>[@ref] [--project <dir>]
+  cloche module add <path> [--project <dir>]
+  cloche module list [--project <dir>]
+  cloche module update <name> [<ref>] [--yes] [--project <dir>]
+  cloche module remove <name> [--project <dir>]
+
+A git source is resolved to a commit, vendored into .cloche/modules/<name>/
+and recorded in .cloche/modules.lock (name, source, ref, commit, content
+hash). A local path is recorded as "path:<dir>" and used in place.
+
+Nothing in a module runs at install or update time. "update" fetches the
+latest commit for the recorded ref (or <ref>), shows the full diff of the
+module's files, and asks before applying (--yes skips the prompt). "add"
+prints the Prerequisites section of the module README; cloche does not
+install prerequisites. Vendored files are not committed automatically.
+
+Examples:
+  cloche module add https://github.com/acme/cloche-jira@v1.2.0
+  cloche module add ../shared/my-review
+  cloche module list
+  cloche module update jira-tasks
+  cloche module remove jira-tasks
+`,
 	"intent": `cloche intent — View and curate standing project requirements
 
 Requirements are durable statements of intent (constraints and decisions)
@@ -1029,6 +1055,7 @@ Project Setup:
   health     Show project health summary (pass/fail counts)
   project    Show project info, config, loop state, and workflows
   intent     View and curate standing project requirements
+  module     Install and manage workflow modules
 
 Workflow Info:
   workflow   List workflows or show a workflow as an ASCII-art graph

@@ -1430,6 +1430,27 @@ the same RPC `cloche run` uses.
 | `EDITOR`, `VISUAL` | Editor used by `edit` (default: `vi`). |
 | `CLOCHE_ADDR` | Daemon gRPC address, used only by `scan`. |
 
+### `cloche module`
+
+Install and manage workflow modules. All subcommands are local file operations on `.cloche/` (no daemon needed), and nothing in a module is executed at install or update time.
+
+```
+cloche module add <git-url>[@ref] [--project <dir>]
+cloche module add <path> [--project <dir>]
+cloche module list [--project <dir>]
+cloche module update <name> [<ref>] [--yes] [--project <dir>]
+cloche module remove <name> [--project <dir>]
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `add` | Resolves a git source to a commit, vendors it into `.cloche/modules/<name>/`, and records name, source, ref, commit, and content hash in `.cloche/modules.lock`. A local path is recorded as `path:<dir>` and used in place. Prints the module README's Prerequisites section; cloche does not install prerequisites. |
+| `list` | Shows installed modules (name, source, ref, commit). |
+| `update` | Fetches the latest commit for the recorded ref (or `<ref>`), shows the full diff of the module's files, and asks before applying. `--yes`/`-y` skips the prompt. Warns if the vendored copy has local edits. |
+| `remove` | Removes the lock entry and the vendored directory (a local-path module's directory is left untouched). |
+
+Vendored files are not committed automatically — review and commit them along with `.cloche/modules.lock`.
+
 ### `cloche get`
 
 ```

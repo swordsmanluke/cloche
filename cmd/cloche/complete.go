@@ -16,8 +16,8 @@ import (
 // completionSubcommands is the canonical list of all cloche subcommands.
 var completionSubcommands = []string{
 	"activity", "complete", "console", "debug", "delete", "doctor", "extract",
-	"get", "health", "help", "init", "intent", "list", "logs", "loop", "poll",
-	"project", "resume", "run", "set", "shutdown", "status", "stop", "tasks",
+	"get", "health", "help", "init", "intent", "list", "logs", "loop", "module",
+	"poll", "project", "resume", "run", "set", "shutdown", "status", "stop", "tasks",
 	"threads", "validate", "version", "workflow",
 }
 
@@ -208,6 +208,13 @@ func staticCompletions(subcommand string, index int, words []string, cur string)
 			case "scan":
 				candidates = []string{"--full"}
 			}
+		}
+
+	case "module":
+		if index == 2 {
+			candidates = []string{"add", "list", "update", "remove"}
+		} else if len(words) > 2 && words[2] == "update" {
+			candidates = []string{"--yes", "--project"}
 		}
 
 	case "shutdown":

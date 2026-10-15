@@ -129,6 +129,13 @@ func main() {
 		}
 		cmdIntent(os.Args[2:])
 		return
+	case "module":
+		if hasHelpFlag(os.Args[2:]) {
+			printSubcommandHelp("module")
+			return
+		}
+		cmdModule(os.Args[2:])
+		return
 	case "validate":
 		if hasHelpFlag(os.Args[2:]) {
 			printSubcommandHelp("validate")
