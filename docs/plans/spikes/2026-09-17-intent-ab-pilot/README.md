@@ -252,3 +252,31 @@ signal (branches vanishing during real runs) that motivated filing it.
 - Raw corpus/audit JSON: `/tmp/intent-ab-results/arm-{a,b}-{corpus,audit}.json`
 - Judge bundle: `/tmp/intent-ab-results/judge-bundle/` (+ key file, kept separate)
 - Haiku-test-ticket infra: `.cloche/develop-haiku.cloche`, `.cloche/host-haiku.cloche` (main); results on branch `haiku-test-infra`
+
+## Decision: frozen executor for replications (2026-10-15)
+
+Resolves Recommendation item 4. **`claude-haiku-4-5-20251001` is the frozen
+executor for all replications; no further bonsai-8b-16k harness investment and
+no additional small-model tiebreaker.** The protocol's 2026-09-22 amendment
+already records this (see "Amendment" in
+`2026-09-14-intent-ab-experiment-protocol.md`); this entry is the explicit
+decision behind it.
+
+Rationale:
+
+- Three independent harnesses failed before scoring, for different reasons
+  (format-following in the hand-rolled wrapper, tool visibility in
+  opencode+Ollama), and the prior intent-retrieval spike reached the same
+  conclusion about 1-bit reasoning models as generators. A fourth attempt is
+  unlikely to change the picture, and the open question (opencode↔Ollama
+  tool-calling gap vs. bonsai misreporting its tools) is a harness question,
+  not one the experiment needs answered.
+- Haiku completed the pilot cleanly through the native `claude` adapter, with
+  no custom harness to confound the A/B comparison.
+- Changing the executor again would invalidate the frozen `seed-v2.1` task
+  corpus and the already-collected x3/x6 control runs.
+
+Consequences: results are reported as "intent tracking on a small *hosted*
+executor", not a weak-local-model result; the original weak-local-model
+question stays open as a possible follow-up if a bonsai-capable harness
+appears for unrelated reasons.
