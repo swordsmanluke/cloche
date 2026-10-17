@@ -30,7 +30,9 @@ candidate,action,existing_id,reason,statement,rationale,scope_level,domains,hint
   value; fill it only to change it.
 - A `merge`/`supersede` may only target a requirement visible to this pass:
   one with no `scope.repos`, or whose `scope.repos` includes the repository
-  being scanned (`cloche get intent_scan_repo`). If the problem list says a
+  being scanned (`cloche get intent_scan_repo`) or, on the project-root pass
+  (that value empty), a name in `cloche get intent_scan_root_repos`. If the
+  problem list says a
   target is not visible, change that row to `create` (or `drop`).
 - If a row was rejected for a hard rule (targeting a `disabled` or
   `superseded` requirement, or `merge` into a `user_edited` one), change that

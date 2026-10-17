@@ -242,6 +242,30 @@ func TestValidate_TargetMustBeVisibleToPass(t *testing.T) {
 	assert.Empty(t, scan.Validate(existing, []scan.ReconcileAction{{Action: scan.ActionDrop, ExistingID: "req-beta"}}, "alpha"))
 }
 
+// A wrapper that lists its own tree as a repo (path = ".") is mined once, by
+// the root pass, so that pass also sees the requirements scoped to that repo
+// — and still not other repos' ones, nor does a repo pass gain anything.
+func TestValidate_RootPassSeesRootRepos(t *testing.T) {
+	existing := map[string]*intent.Requirement{
+		"req-glob": {ID: "req-glob", Status: intent.StatusActive},
+		"req-mgr":  {ID: "req-mgr", Status: intent.StatusActive, Scope: intent.Scope{Repos: []string{"manager"}}},
+		"req-beta": {ID: "req-beta", Status: intent.StatusActive, Scope: intent.Scope{Repos: []string{"beta"}}},
+	}
+	merge := func(id string) scan.ReconcileAction {
+		return scan.ReconcileAction{Action: scan.ActionMerge, ExistingID: id}
+	}
+
+	assert.Empty(t, scan.Validate(existing, []scan.ReconcileAction{merge("req-glob"), merge("req-mgr")}, "", "manager"))
+
+	v := scan.Validate(existing, []scan.ReconcileAction{merge("req-beta")}, "", "manager")
+	require.Len(t, v, 1)
+	assert.Equal(t, "target_not_visible", v[0].Rule)
+	assert.Contains(t, v[0].Detail, "scoped to manager")
+
+	v = scan.Validate(existing, []scan.ReconcileAction{merge("req-mgr")}, "beta", "manager")
+	require.Len(t, v, 1, "root repos widen only the root pass")
+}
+
 func TestApply_CreatePersistsRepos(t *testing.T) {
 	store := newTestStore(t)
 	c := candidate("Alpha-only rule.")

@@ -304,6 +304,40 @@ func TestCollect_MultiRepo_IndependentCursors(t *testing.T) {
 	assert.Equal(t, state.Repos[""].LastCommit, state2.Repos[""].LastCommit)
 }
 
+// TestCollect_MultiRepo_RootRepoScannedOnce: a wrapper that lists its own
+// tree as a repository (path = ".") must not be mined twice — once as that
+// repo and again as the project root — or the root pass re-extracts the same
+// material and can't merge it into the requirements scoped to that repo.
+func TestCollect_MultiRepo_RootRepoScannedOnce(t *testing.T) {
+	dir, cfg := wrapperWithRepo(t, "anarkana")
+	runGitCmd(t, dir, "init", "-q")
+	runGitCmd(t, dir, "add", "CLAUDE.md")
+	runGitCmd(t, dir, "commit", "-q", "-m", "Wrapper doc")
+	cfg.Repositories = append([]config.RepositoryConfig{{Name: "manager", Path: "."}}, cfg.Repositories...)
+
+	c, err := scan.Collect(dir, cfg, nil, nil, nil)
+	require.NoError(t, err)
+
+	var wrapperCommits int
+	for _, cm := range c.Commits {
+		assert.NotEqual(t, "manager", cm.RepoName, "the root repo is not a source of its own")
+		if cm.RepoName == "" {
+			wrapperCommits++
+		}
+	}
+	assert.Equal(t, 1, wrapperCommits, "the wrapper's commit is mined once, by the root pass")
+
+	out := t.TempDir()
+	require.NoError(t, c.Write(out))
+	passes, err := scan.ReadPasses(out)
+	require.NoError(t, err)
+	var repos []string
+	for _, p := range passes {
+		repos = append(repos, p.Repo)
+	}
+	assert.Equal(t, []string{"anarkana", ""}, repos)
+}
+
 func TestCollect_MultiRepo_NoConfigMatchesLegacyBehavior(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("hello"), 0644))

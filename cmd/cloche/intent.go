@@ -1066,6 +1066,21 @@ func intentRepoRule(projectDir, repo string) scan.RepoRule {
 	return rule
 }
 
+// intentRootRepos returns the configured repos whose path is the project
+// root itself when repo is the project-root pass (""), nil otherwise: that
+// tree is mined once, by the root pass, which also sees their requirements
+// (see scan.Validate).
+func intentRootRepos(projectDir, repo string) []string {
+	if repo != "" {
+		return nil
+	}
+	cfg, err := config.Load(projectDir)
+	if err != nil {
+		return nil
+	}
+	return cfg.RootRepositoryNames(projectDir)
+}
+
 func intentDomainNames(projectDir string) map[string]bool {
 	dm, err := intent.NewStore(projectDir).LoadDomains()
 	if err != nil {
@@ -1243,7 +1258,7 @@ func cmdIntentCheckReconcile(args []string) {
 	for _, r := range reqs {
 		existing[r.ID] = r
 	}
-	if violations := scan.Validate(existing, actions, repo); len(violations) > 0 {
+	if violations := scan.Validate(existing, actions, repo, intentRootRepos(absProjectDir, repo)...); len(violations) > 0 {
 		lines := make([]string, 0, len(violations))
 		for _, v := range violations {
 			lines = append(lines, fmt.Sprintf("row for candidate %d (%s): %s: %s", v.Index+1, v.Action.Action, v.Rule, v.Detail))
@@ -1440,6 +1455,12 @@ func cmdIntentNextPass(args []string) {
 		fmt.Fprintf(os.Stderr, "error: setting intent_scan_repo: %v\n", err)
 		os.Exit(1)
 	}
+	// The reconcile prompt reads this to know which repo-scoped requirements
+	// the root pass may also merge into (see intentRootRepos).
+	if err := setContextKey("intent_scan_root_repos", strings.Join(intentRootRepos(resolveProjectDir(os.Getenv("CLOCHE_PROJECT_DIR")), pass.Repo), ",")); err != nil {
+		fmt.Fprintf(os.Stderr, "error: setting intent_scan_root_repos: %v\n", err)
+		os.Exit(1)
+	}
 	if err := setContextKey("intent_scan_sources_dir", filepath.Join(sourcesDir, pass.Dir)); err != nil {
 		fmt.Fprintf(os.Stderr, "error: setting intent_scan_sources_dir: %v\n", err)
 		os.Exit(1)
@@ -1499,7 +1520,7 @@ func runIntentApplyReconcile(projectDir, reconcilePath, candidatesPath, repo str
 	}
 
 	store := intent.NewStore(absProjectDir)
-	return scan.Apply(store, actions, repo)
+	return scan.Apply(store, actions, repo, intentRootRepos(absProjectDir, repo)...)
 }
 
 // candidatesFileHasCandidates reports whether the extract step's

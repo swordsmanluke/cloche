@@ -9,6 +9,7 @@ requirement is now wrong, or not actually durable intent after all?
 ```bash
 TEMP="$(cloche get temp_file_dir)"
 REPO="$(cloche get intent_scan_repo)"
+ROOT_REPOS="$(cloche get intent_scan_root_repos)"   # comma-separated; usually empty
 ```
 
 - `$TEMP/candidates.json` — the extract step's output. If its `candidates`
@@ -29,7 +30,10 @@ is reconciling (empty for the project root). A requirement's
 global. For this pass, the **visible** requirements are:
 
 - `$REPO` set: those whose `scope.repos` is empty **or** contains `$REPO`.
-- `$REPO` empty: those whose `scope.repos` is empty (global ones only).
+- `$REPO` empty: those whose `scope.repos` is empty (global ones), plus
+  those whose `scope.repos` contains a name in `$ROOT_REPOS` — configured
+  repositories whose path is the project root itself, so this pass is
+  theirs too.
 
 Candidates may only be judged against visible requirements. A candidate
 that restates a rule tracked for a *different* repository is new intent for

@@ -173,13 +173,22 @@ type RepoSource struct {
 // intent, so a project with configured repositories is scanned as root +
 // repos, never repos instead of root. A nil cfg or one with no configured
 // repositories returns just the project root, matching pre-multi-repo
-// behavior exactly.
+// behavior exactly. A configured repository whose path is the project root
+// itself (path = ".") is the same tree as the root, so it is not a source of
+// its own: the root pass mines it once and also sees its requirements (see
+// config.RootRepositoryNames). Two passes over one tree would extract the
+// same material twice, and the root pass could not merge it into the
+// requirements the repo pass had scoped to that repo.
 func repoSources(projectDir string, cfg *config.Config) []RepoSource {
 	sources := []RepoSource{{Path: projectDir}}
 	if cfg == nil || len(cfg.Repositories) == 0 {
 		return sources
 	}
+	root := filepath.Clean(projectDir)
 	for _, r := range cfg.ResolveRepositories(projectDir) {
+		if filepath.Clean(r.Path) == root {
+			continue
+		}
 		sources = append(sources, RepoSource{Name: r.Name, Path: r.Path, SubPath: r.SubPath})
 	}
 	return sources

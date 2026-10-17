@@ -1102,6 +1102,60 @@ func TestExecutor_AgentStep_PrevOutput(t *testing.T) {
 	assert.Equal(t, "the task description", string(data))
 }
 
+// A host sub-workflow (a workflow_name step the daemon executor dispatches)
+// runs on the top-level workflow's executor, whose Wires are the parent's.
+// Its steps must find their predecessors through the wiring of the workflow
+// the engine is running (in ctx), and get only the predecessor's latest
+// invocation: the intent scan's repair-reconcile step used to receive an
+// empty validator report this way.
+func TestExecutor_PrevOutput_UsesRunningWorkflowWiringAndLatestInvocation(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "output")
+	require.NoError(t, os.MkdirAll(outputDir, 0755))
+
+	mockAgent := filepath.Join(tmpDir, "mock-agent.sh")
+	require.NoError(t, os.WriteFile(mockAgent, []byte("#!/bin/sh\ncat > /dev/null\necho CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success\n"), 0755))
+
+	executor := &Executor{
+		ProjectDir: tmpDir,
+		OutputDir:  outputDir,
+		HostRunID:  "test-host-run",
+		TaskID:     "test-task-id",
+		Wires:      []domain.Wire{{From: "next-pass", Result: "pass", To: "scan-pass"}}, // the parent's
+	}
+	sub := &domain.Workflow{Name: "sub", Wiring: []domain.Wire{{From: "check", Result: "fail", To: "repair"}}}
+	ctx := engine.WithWorkflow(context.Background(), sub)
+
+	check := func(msg string) {
+		step := &domain.Step{Name: "check", Type: domain.StepTypeScript, Results: []string{"success", "fail"},
+			Config: map[string]string{"run": "echo '" + msg + "'; exit 1"}}
+		res, err := executor.Execute(ctx, step)
+		require.NoError(t, err)
+		require.Equal(t, "fail", res.Result)
+	}
+	repair := &domain.Step{Name: "repair", Type: domain.StepTypeAgent, Results: []string{"success", "fail"},
+		Config: map[string]string{"prompt": "Fix it.", "agent_command": mockAgent}}
+	promptPath := filepath.Join(tmpDir, ".cloche", "runs", "test-task-id", "prompt.txt")
+
+	check("pass 1 problem")
+	_, err := executor.Execute(ctx, repair)
+	require.NoError(t, err)
+	data, err := os.ReadFile(promptPath)
+	require.NoError(t, err)
+	assert.Equal(t, "pass 1 problem", strings.TrimSpace(string(data)))
+
+	check("pass 3 problem")
+	_, err = executor.Execute(ctx, repair)
+	require.NoError(t, err)
+	data, err = os.ReadFile(promptPath)
+	require.NoError(t, err)
+	assert.Equal(t, "pass 3 problem", strings.TrimSpace(string(data)), "only the latest check, not every invocation in check.log")
+
+	log, err := os.ReadFile(filepath.Join(outputDir, "check.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(log), "pass 1 problem", "the step log still keeps every invocation")
+}
+
 // An agent predecessor's log is a raw stream-json transcript; only its final
 // result text may reach the next agent step's prompt.
 func TestExecutor_AgentStep_PrevOutput_StreamJSONCondensed(t *testing.T) {

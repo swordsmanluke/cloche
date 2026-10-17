@@ -76,7 +76,12 @@ func (v Violation) Error() string {
 // that repo — its own or a global one — because repos must not see each
 // other's requirements: a candidate from repo A that happens to restate a
 // rule tracked for repo B is new intent for A, not a duplicate of B's.
-func Validate(existing map[string]*intent.Requirement, actions []ReconcileAction, pass string) []Violation {
+//
+// rootRepos only matters on the project-root pass: the configured repos
+// whose path is the project root itself (config.RootRepositoryNames). That
+// tree is mined once, by the root pass, so requirements scoped to those
+// repos are its own and visible to it too.
+func Validate(existing map[string]*intent.Requirement, actions []ReconcileAction, pass string, rootRepos ...string) []Violation {
 	var violations []Violation
 	for i, a := range actions {
 		switch a.Action {
@@ -115,10 +120,10 @@ func Validate(existing map[string]*intent.Requirement, actions []ReconcileAction
 				})
 				continue
 			}
-			if !req.Scope.VisibleTo(pass) {
+			if !visibleToPass(req.Scope, pass, rootRepos) {
 				violations = append(violations, Violation{
 					i, a, "target_not_visible",
-					fmt.Sprintf("%s is scoped to repo(s) %s and is not visible to %s; candidate should be created (or dropped) instead", a.ExistingID, strings.Join(req.Scope.Repos, ", "), passLabel(pass)),
+					fmt.Sprintf("%s is scoped to repo(s) %s and is not visible to %s; candidate should be created (or dropped) instead", a.ExistingID, strings.Join(req.Scope.Repos, ", "), passLabel(pass, rootRepos)),
 				})
 				continue
 			}
@@ -132,8 +137,20 @@ func Validate(existing map[string]*intent.Requirement, actions []ReconcileAction
 	return violations
 }
 
-func passLabel(pass string) string {
+// visibleToPass reports whether a requirement with scope s may be a merge
+// or supersede target on this pass (see Validate).
+func visibleToPass(s intent.Scope, pass string, rootRepos []string) bool {
+	if s.VisibleTo(pass) {
+		return true
+	}
+	return pass == "" && len(rootRepos) > 0 && s.VisibleToAny(rootRepos)
+}
+
+func passLabel(pass string, rootRepos []string) string {
 	if pass == "" {
+		if len(rootRepos) > 0 {
+			return "the project root (global requirements and those scoped to " + strings.Join(rootRepos, ", ") + " only)"
+		}
 		return "the project root (global requirements only)"
 	}
 	return "repo " + pass
@@ -154,7 +171,7 @@ type Report struct {
 // untouched); merge and drop write nothing. Apply is all-or-nothing — if
 // Validate reports any violation, no action is applied and the violations
 // are returned as an error.
-func Apply(store *intent.Store, actions []ReconcileAction, pass string) (*Report, error) {
+func Apply(store *intent.Store, actions []ReconcileAction, pass string, rootRepos ...string) (*Report, error) {
 	reqs, err := store.ListRequirements()
 	if err != nil {
 		return nil, fmt.Errorf("intent scan: loading existing requirements: %w", err)
@@ -164,7 +181,7 @@ func Apply(store *intent.Store, actions []ReconcileAction, pass string) (*Report
 		byID[r.ID] = r
 	}
 
-	if violations := Validate(byID, actions, pass); len(violations) > 0 {
+	if violations := Validate(byID, actions, pass, rootRepos...); len(violations) > 0 {
 		return nil, &ValidationError{Violations: violations}
 	}
 

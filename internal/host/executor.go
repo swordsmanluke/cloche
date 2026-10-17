@@ -249,7 +249,7 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 	cmd.Env = append(cmd.Env, module.EnvList(module.EnvFromContext(ctx))...)
 
 	// Pass previous step output if available
-	if prevOutput := e.findPrevOutput(step); prevOutput != "" {
+	if prevOutput := e.findPrevOutput(ctx, step); prevOutput != "" {
 		cmd.Env = append(cmd.Env, "CLOCHE_PREV_OUTPUT="+prevOutput)
 	}
 
@@ -273,6 +273,7 @@ func (e *Executor) executeScript(ctx context.Context, step *domain.Step) (string
 	// Append output to file, preserving history across loop iterations.
 	if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
 		appendStepLog(e.stepOutputFile(step.Name), cleanOutput)
+		writeLatestOutput(e.stepOutputFile(step.Name), cleanOutput)
 	}
 
 	if err != nil {
@@ -462,10 +463,10 @@ func (e *Executor) executeAgent(ctx context.Context, step *domain.Step) (domain.
 	var promptContent string
 	promptSource := step.Config["prompt_step"]
 	if promptSource != "" {
-		if data, err := os.ReadFile(e.stepOutputFile(promptSource)); err == nil {
+		if data, err := os.ReadFile(e.prevOutputFile(promptSource)); err == nil {
 			promptContent = prompt.CondensePrevOutput(data)
 		}
-	} else if prev := e.findPrevOutput(step); prev != "" {
+	} else if prev := e.findPrevOutput(ctx, step); prev != "" {
 		if data, err := os.ReadFile(prev); err == nil {
 			promptContent = prompt.CondensePrevOutput(data)
 		}
@@ -592,6 +593,31 @@ func (e *Executor) stepOutputFile(stepName string) string {
 	return filepath.Join(e.OutputDir, stepName+".log")
 }
 
+// prevOutputFile is the file holding what stepName produced last, for a
+// following step: the script/poll step's latest-invocation file when it has
+// one (see writeLatestOutput), else its step log. An agent step's log needs
+// no such file: CondensePrevOutput already keeps only its final result.
+func (e *Executor) prevOutputFile(stepName string) string {
+	latest := e.stepOutputFile(stepName) + latestSuffix
+	if _, err := os.Stat(latest); err == nil {
+		return latest
+	}
+	return e.stepOutputFile(stepName)
+}
+
+// latestSuffix names the file next to a step log that holds only the step's
+// most recent invocation. It does not end in ".log", so readers that collect
+// a run's *.log files leave it alone.
+const latestSuffix = ".latest"
+
+// writeLatestOutput replaces <log>.latest with one invocation's output. The
+// step log itself accumulates every invocation (a check step in a repair
+// loop, or one run per intent scan pass), and handing all of that to the
+// next step would show it stale problems next to the current ones.
+func writeLatestOutput(logPath string, data []byte) {
+	_ = os.WriteFile(logPath+latestSuffix, data, 0644)
+}
+
 // appendStepLog appends data to the step log file, preserving prior invocations.
 func appendStepLog(path string, data []byte) {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -614,20 +640,28 @@ func isCodexCommand(commands []string) bool {
 
 // findPrevOutput finds the output file from the step that wires into this one.
 // It checks prompt_step config first, then walks the wiring graph to find the
-// source step.
-func (e *Executor) findPrevOutput(step *domain.Step) string {
+// source step. The graph is that of the workflow the engine is running (from
+// ctx): a host sub-workflow (a workflow_name step dispatched by the daemon
+// executor) shares this executor, whose Wires are the top-level workflow's,
+// and its steps would otherwise never find their own predecessors — the
+// intent scan's repair steps got an empty validator report that way.
+func (e *Executor) findPrevOutput(ctx context.Context, step *domain.Step) string {
 	// Explicit prompt_step config takes priority
 	if ps := step.Config["prompt_step"]; ps != "" {
-		path := e.stepOutputFile(ps)
+		path := e.prevOutputFile(ps)
 		if _, err := os.Stat(path); err == nil {
 			return path
 		}
 	}
 
 	// Walk wiring to find the step that feeds into this one
-	for _, w := range e.Wires {
+	wires := e.Wires
+	if wf, ok := engine.WorkflowFromContext(ctx); ok && wf != nil {
+		wires = wf.Wiring
+	}
+	for _, w := range wires {
 		if w.To == step.Name {
-			path := e.stepOutputFile(w.From)
+			path := e.prevOutputFile(w.From)
 			if _, err := os.Stat(path); err == nil {
 				return path
 			}
@@ -843,6 +877,7 @@ func (e *Executor) runPollScript(ctx context.Context, step *domain.Step) (string
 	// Append output to file, preserving history across poll invocations.
 	if mkErr := os.MkdirAll(e.OutputDir, 0755); mkErr == nil {
 		appendStepLog(e.stepOutputFile(step.Name), cleanOutput)
+		writeLatestOutput(e.stepOutputFile(step.Name), cleanOutput)
 	}
 
 	if err != nil {

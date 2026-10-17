@@ -76,3 +76,22 @@ func (c *Config) RepositoryNames() []string {
 	}
 	return names
 }
+
+// RootRepositoryNames returns the [[repositories]] names, in config order,
+// whose path is projectDir itself (path = "." in a wrapper that lists its
+// own tree as a repository). Such a repo and the project root are one tree,
+// so the intent scan mines it once, as the root pass, and that pass also
+// sees the requirements scoped to these names.
+func (c *Config) RootRepositoryNames(projectDir string) []string {
+	if c == nil || len(c.Repositories) == 0 {
+		return nil
+	}
+	root := filepath.Clean(projectDir)
+	var names []string
+	for _, r := range c.ResolveRepositories(projectDir) {
+		if filepath.Clean(r.Path) == root {
+			names = append(names, r.Name)
+		}
+	}
+	return names
+}
