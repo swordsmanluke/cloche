@@ -4,8 +4,10 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -779,8 +781,20 @@ func writeTarFromProject(tw *tar.Writer, projectDir string, patterns []ignorePat
 		return fmt.Errorf("resolving project dir: %w", err)
 	}
 
-	return filepath.Walk(projectDir, func(absPath string, info os.FileInfo, err error) error {
+	return filepath.Walk(projectDir, tarWalkFunc(tw, projectDir, absProjectDir, patterns))
+}
+
+// tarWalkFunc adds one walked path to the archive. A file that disappears
+// between the directory read and its lstat/open (another process's temp file,
+// e.g. bd's .beads/issues.jsonl.tmp.* written by a concurrent claim) is
+// skipped: it is not part of the project's state, and failing the whole copy
+// for it aborted run 01s0.
+func tarWalkFunc(tw *tar.Writer, projectDir, absProjectDir string, patterns []ignorePattern) filepath.WalkFunc {
+	return func(absPath string, info os.FileInfo, err error) error {
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) && absPath != projectDir {
+				return nil
+			}
 			return err
 		}
 
@@ -825,6 +839,20 @@ func writeTarFromProject(tw *tar.Writer, projectDir string, patterns []ignorePat
 			}
 		}
 
+		// Open before writing the header, so a file that vanished is skipped
+		// without leaving a header with no content behind.
+		var f *os.File
+		if info.Mode().IsRegular() {
+			f, err = os.Open(absPath)
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+		}
+
 		header, err := tar.FileInfoHeader(info, link)
 		if err != nil {
 			return fmt.Errorf("creating tar header for %s: %w", relPath, err)
@@ -835,18 +863,12 @@ func writeTarFromProject(tw *tar.Writer, projectDir string, patterns []ignorePat
 			return err
 		}
 
-		if !info.Mode().IsRegular() {
+		if f == nil {
 			return nil
 		}
-
-		f, err := os.Open(absPath)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
 		_, err = io.Copy(tw, f)
 		return err
-	})
+	}
 }
 
 // isInsideDir reports whether path is inside (or equal to) dir.

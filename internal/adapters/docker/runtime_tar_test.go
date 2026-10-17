@@ -246,3 +246,34 @@ func TestIsInsideDir(t *testing.T) {
 		assert.Equal(t, tc.inside, got, "isInsideDir(%q, %q)", tc.path, tc.dir)
 	}
 }
+
+// A file that vanishes mid-walk (another process's temp file, e.g. bd's
+// issues.jsonl.tmp.* during a concurrent claim) is skipped, whether it is gone
+// by the lstat (Walk reports ErrNotExist) or only by the open; the copy goes on.
+func TestTarWalkFunc_VanishedFileSkipped(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "keep.txt"), []byte("kept"), 0644))
+	gone := filepath.Join(dir, "issues.jsonl.tmp.1")
+	require.NoError(t, os.WriteFile(gone, []byte("temp"), 0644))
+	info, err := os.Lstat(gone)
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(gone))
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	walk := tarWalkFunc(tw, dir, dir, nil)
+
+	assert.NoError(t, walk(gone, nil, &os.PathError{Op: "lstat", Path: gone, Err: os.ErrNotExist}), "gone by lstat")
+	assert.NoError(t, walk(gone, info, nil), "gone by open")
+	keep, err := os.Lstat(filepath.Join(dir, "keep.txt"))
+	require.NoError(t, err)
+	require.NoError(t, walk(filepath.Join(dir, "keep.txt"), keep, nil))
+	require.NoError(t, tw.Close())
+
+	files, types := collectTarEntries(t, &buf)
+	assert.Equal(t, map[string]string{"keep.txt": "kept"}, files)
+	assert.NotContains(t, types, "issues.jsonl.tmp.1", "no header for the vanished file")
+
+	// The project dir itself missing is still an error.
+	assert.Error(t, walk(dir, nil, &os.PathError{Op: "lstat", Path: dir, Err: os.ErrNotExist}))
+}
