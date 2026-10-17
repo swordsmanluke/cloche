@@ -1,0 +1,16 @@
+# Build context allowlist. Without this, docker build ships the whole repo
+# (.cloche/logs, .cloche/runs, .gitworktrees, examples/ — several GB).
+#
+# Consumers of the repo-root context:
+#   docker/cloche-base/Dockerfile — Go sources for cloche-agent and clo
+#   .cloche/Dockerfile            — credentials + setup script (also built by cloched)
+*
+!go.mod
+!go.sum
+!api/
+!cmd/
+!internal/
+!.cloche/credentials/
+!.cloche/setup-credentials.sh
+
+**/node_modules
