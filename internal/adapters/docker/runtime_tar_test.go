@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -276,4 +278,63 @@ func TestTarWalkFunc_VanishedFileSkipped(t *testing.T) {
 
 	// The project dir itself missing is still an error.
 	assert.Error(t, walk(dir, nil, &os.PathError{Op: "lstat", Path: dir, Err: os.ErrNotExist}))
+}
+
+// TestWriteTarFromProject_GitObjectsAfterRefs verifies each repository's
+// object store is archived after its refs, so a commit landing mid-copy can't
+// leave the copied refs pointing at objects the copy lacks (manager-pq7v),
+// and that ignore patterns still apply to the deferred object stores.
+func TestWriteTarFromProject_GitObjectsAfterRefs(t *testing.T) {
+	projDir := t.TempDir()
+	gitInit := func(dir string) {
+		require.NoError(t, os.MkdirAll(dir, 0755))
+		for _, args := range [][]string{
+			{"init", "-q"}, {"-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "c"},
+		} {
+			cmd := exec.Command("git", args...)
+			cmd.Dir = dir
+			require.NoError(t, cmd.Run())
+		}
+	}
+	gitInit(projDir)
+	gitInit(filepath.Join(projDir, "repos", "pickup"))
+	gitInit(filepath.Join(projDir, "repos", "other"))
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	patterns := []ignorePattern{{pattern: "repos/other", dirOnly: true, anchored: true}}
+	require.NoError(t, writeTarFromProject(tw, projDir, patterns))
+	require.NoError(t, tw.Close())
+
+	var order []string
+	tr := tar.NewReader(&buf)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		order = append(order, hdr.Name)
+	}
+	pos := func(prefix string, last bool) int {
+		at := -1
+		for i, n := range order {
+			if strings.HasPrefix(n, prefix) {
+				at = i
+				if !last {
+					return i
+				}
+			}
+		}
+		return at
+	}
+	for _, repo := range []string{"", "repos/pickup/"} {
+		lastRef := pos(repo+".git/refs", true)
+		head := pos(repo+".git/HEAD", true)
+		firstObj := pos(repo+".git/objects", false)
+		require.NotEqual(t, -1, firstObj, "%s objects missing", repo)
+		assert.Greater(t, firstObj, lastRef, "%s objects must follow its refs", repo)
+		assert.Greater(t, firstObj, head, "%s objects must follow HEAD", repo)
+	}
+	assert.Equal(t, -1, pos("repos/other", false), "an ignored repo's objects stay out")
 }

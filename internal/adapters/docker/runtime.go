@@ -785,7 +785,36 @@ func writeTarFromProject(tw *tar.Writer, projectDir string, patterns []ignorePat
 		return fmt.Errorf("resolving project dir: %w", err)
 	}
 
-	return filepath.Walk(projectDir, tarWalkFunc(tw, projectDir, absProjectDir, patterns))
+	// Each git repo's object store is copied last, after its refs, HEAD and
+	// packed-refs. Walked in lexical order, .git/objects came before
+	// .git/refs, so a commit landing on the host mid-copy (another run's
+	// merge) left the copy's refs pointing at objects it didn't have, and the
+	// container couldn't commit (manager-pq7v). Objects are append-only, so a
+	// store copied after the refs holds everything they point at.
+	walk := tarWalkFunc(tw, projectDir, absProjectDir, patterns)
+	var objectDirs []string
+	err = filepath.Walk(projectDir, func(path string, info os.FileInfo, err error) error {
+		if err == nil && info.IsDir() && isGitObjectsDir(path) {
+			objectDirs = append(objectDirs, path)
+			return filepath.SkipDir
+		}
+		return walk(path, info, err)
+	})
+	if err != nil {
+		return err
+	}
+	for _, dir := range objectDirs {
+		if err := filepath.Walk(dir, walk); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// isGitObjectsDir reports whether path is a repository's object store:
+// <repo>/.git/objects.
+func isGitObjectsDir(path string) bool {
+	return filepath.Base(path) == "objects" && filepath.Base(filepath.Dir(path)) == ".git"
 }
 
 // tarWalkFunc adds one walked path to the archive. A file that disappears
