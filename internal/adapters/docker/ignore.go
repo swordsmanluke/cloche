@@ -70,6 +70,20 @@ func parseClocheignore(projectDir string) ([]ignorePattern, error) {
 	return patterns, scanner.Err()
 }
 
+// excludePatterns turns project-relative directories into anchored,
+// directory-only ignore patterns (as "/<dir>/" in .clocheignore).
+func excludePatterns(dirs []string) []ignorePattern {
+	var out []ignorePattern
+	for _, d := range dirs {
+		d = strings.Trim(filepath.ToSlash(filepath.Clean(d)), "/")
+		if d == "" || d == "." {
+			continue
+		}
+		out = append(out, ignorePattern{pattern: d, dirOnly: true, anchored: true})
+	}
+	return out
+}
+
 // isIgnored checks whether a relative path should be excluded.
 // relPath should use forward slashes and not start with "./".
 // isDir indicates whether the path is a directory.

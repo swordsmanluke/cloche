@@ -32,8 +32,12 @@ type ContainerConfig struct {
 	// ExtraDirs are host directories copied into the container after the
 	// project files and overrides (e.g. local-path modules outside the
 	// project root).
-	ExtraDirs   []ExtraDir
-	Interactive bool // allocate TTY and keep stdin open (-it flags)
+	ExtraDirs []ExtraDir
+	// ExcludePaths are project-relative directories left out of the
+	// workspace copy, on top of .clocheignore: the [[repositories]]
+	// checkouts the workflow's container doesn't declare in `repos`.
+	ExcludePaths []string
+	Interactive  bool // allocate TTY and keep stdin open (-it flags)
 }
 
 // ExtraDir copies the host directory Src to Dst (relative to /workspace).

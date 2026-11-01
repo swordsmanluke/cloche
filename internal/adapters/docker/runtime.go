@@ -232,6 +232,10 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 			return "", fmt.Errorf("parsing .clocheignore: %w", err)
 		}
 
+		patterns = append(patterns, excludePatterns(cfg.ExcludePaths)...)
+		if len(cfg.ExcludePaths) > 0 {
+			log.Printf("runtime.Start: leaving undeclared repos out of %s: %s", containerID, strings.Join(cfg.ExcludePaths, ", "))
+		}
 		if err := copyProjectToContainer(ctx, cfg.ProjectDir, containerID, patterns); err != nil {
 			exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
 			return "", err

@@ -189,3 +189,13 @@ func TestExcludedFromCopy(t *testing.T) {
 		t.Error("no patterns should exclude nothing")
 	}
 }
+
+func TestExcludePatterns_LeaveOutWholeRepoDirs(t *testing.T) {
+	p := excludePatterns([]string{"repos/anarkana", "./repos/voxline/"})
+	assert.True(t, isIgnored(p, "repos/anarkana", true))
+	// Files under an ignored directory are never visited: the copy walk skips the whole dir (filepath.SkipDir).
+	assert.True(t, isIgnored(p, "repos/voxline", true))
+	assert.False(t, isIgnored(p, "repos/pickup", true))
+	assert.False(t, isIgnored(p, "repos/pickup/godot/Main.cs", false))
+	assert.False(t, isIgnored(p, "anarkana", true), "anchored: only the repo's own path")
+}

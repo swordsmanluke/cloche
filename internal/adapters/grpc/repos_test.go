@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -137,4 +138,32 @@ func TestReposForContainerUnknownContainerIDMeansAll(t *testing.T) {
 	}
 	assert.Nil(t, reposForContainer(allWFs, "ghost"))
 	assert.Nil(t, reposForContainer(nil, "dev"))
+}
+
+func TestUndeclaredRepoPaths_LeavesOutReposTheContainerDoesNotDeclare(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "config.toml"), []byte(`
+[[repositories]]
+name = "manager"
+path = "."
+
+[[repositories]]
+name = "pickup"
+path = "./repos/pickup"
+
+[[repositories]]
+name = "anarkana"
+path = "./repos/anarkana"
+
+[[repositories]]
+name = "voxline"
+path = "./repos/voxline"
+`), 0644))
+	room := containerWF("room", "room", "manager", "pickup")
+	develop := containerWF("develop", "_default")
+	d := &DaemonExecutor{projectDir: dir, allWFs: map[string]*domain.Workflow{"room": room, "develop": develop}}
+
+	assert.Equal(t, []string{"repos/anarkana", "repos/voxline"}, d.undeclaredRepoPaths(room))
+	assert.Nil(t, d.undeclaredRepoPaths(develop), "a workflow that declares no repos keeps the whole copy")
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -210,6 +211,39 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 		parkedContainerID:     cfg.ParkedContainerID,
 		parkedImage:           cfg.ParkedImage,
 	}
+}
+
+// undeclaredRepoPaths returns the project-relative paths of the
+// [[repositories]] checkouts wf's container doesn't need: those outside the
+// union of `repos` declarations across workflows sharing its container.id
+// (reposForContainer). Nil when that union is unrestricted (some sharing
+// workflow declares no repos) or no repositories are configured, so the copy
+// stays whole. Without this the live-tree copy took every nested repo, e.g.
+// 6 GB of other games' data into each pickup room container.
+func (d *DaemonExecutor) undeclaredRepoPaths(wf *domain.Workflow) []string {
+	if wf == nil {
+		return nil
+	}
+	names := reposForContainer(d.allWFs, wf.ContainerID())
+	if names == nil {
+		return nil
+	}
+	cfg, err := config.Load(d.projectDir)
+	if err != nil || cfg == nil || len(cfg.Repositories) == 0 {
+		return nil
+	}
+	want := make(map[string]bool, len(names))
+	for _, n := range names {
+		want[n] = true
+	}
+	var out []string
+	for _, r := range cfg.ResolveRepositories(d.projectDir) {
+		if r.SubPath != "" && !want[r.Name] && !strings.HasPrefix(r.SubPath, "..") {
+			out = append(out, r.SubPath)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // containerProjectDir returns the directory that should seed the container
@@ -1116,6 +1150,7 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 		// connects to the daemon via gRPC and waits for ExecuteStep commands.
 		Cmd: []string{"cloche-agent"},
 	}
+	cfg.ExcludePaths = d.undeclaredRepoPaths(wf)
 	// Local-path modules outside the project are not in the copied project
 	// root; copy them in where ContainerDir expects them.
 	for _, m := range d.modules.ExternalModules(d.projectDir) {
