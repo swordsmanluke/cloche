@@ -418,6 +418,10 @@ func (s *Session) sessionLogStepOutput(workDir, stepName string, ulog *logstream
 		s.stepLogOffsets = make(map[string]int64)
 	}
 	offset := s.stepLogOffsets[stepName]
+	if offset > int64(len(data)) {
+		// The step rewrote its log shorter than before: read it from the start.
+		offset = 0
+	}
 	newData := data[offset:]
 	if len(newData) == 0 {
 		return

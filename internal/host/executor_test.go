@@ -2854,3 +2854,21 @@ func TestExecutor_AgentStep_ConcurrentRunsIsolated(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(histA), "step:implement result:success")
 }
+
+// TestHostStatusHandler_RewrittenLogShorter verifies that a step log rewritten
+// shorter than the bytes already read (a retried workflow step whose
+// sub-workflow starts its log afresh) is read from the start instead of
+// panicking on a stale offset.
+func TestHostStatusHandler_RewrittenLogShorter(t *testing.T) {
+	outputDir := t.TempDir()
+	logPath := filepath.Join(outputDir, "room-run.log")
+	require.NoError(t, os.WriteFile(logPath, []byte("first run, a long log\n"), 0644))
+
+	handler := &hostStatusHandler{outputDir: outputDir, orchRunID: "run-1"}
+	step := &domain.Step{Name: "room-run", Type: domain.StepTypeWorkflow}
+	handler.OnStepComplete(nil, step, "fail", nil)
+
+	require.NoError(t, os.WriteFile(logPath, []byte("retry\n"), 0644))
+	assert.NotPanics(t, func() { handler.OnStepComplete(nil, step, "fail", nil) })
+	assert.Equal(t, int64(len("retry\n")), handler.stepLogOffsets["room-run"])
+}

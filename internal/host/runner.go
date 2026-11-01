@@ -1039,6 +1039,11 @@ func (h *hostStatusHandler) OnStepComplete(_ *domain.Run, step *domain.Step, res
 			h.stepLogOffsets = make(map[string]int64)
 		}
 		offset := h.stepLogOffsets[step.Name]
+		if offset > int64(len(data)) {
+			// The log was rewritten (e.g. a retried workflow step starts its
+			// sub-workflow's log afresh): read it from the start.
+			offset = 0
+		}
 		if newData := data[offset:]; len(newData) > 0 {
 			stepOutput = string(newData)
 			h.stepLogOffsets[step.Name] = int64(len(data))

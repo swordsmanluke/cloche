@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -437,7 +438,7 @@ func (l *Loop) runPhased() {
 				overallState := domain.RunStateFailed
 				defer func() {
 					if r := recover(); r != nil {
-						log.Printf("orchestration loop: panic in task %s goroutine: %v", tid, r)
+						log.Printf("orchestration loop: panic in task %s goroutine: %v\n%s", tid, r, debug.Stack())
 					}
 					l.completeAttempt(aid, overallState)
 					completions <- result{state: overallState, errMsg: fmt.Sprintf("task %s failed", tid)}
