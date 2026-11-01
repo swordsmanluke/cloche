@@ -124,6 +124,7 @@ type stepResult struct {
 	usage    *domain.TokenUsage
 	err      error
 	skipped  bool // true when the executor's skip script bypassed execution
+	timedOut bool // true when the step's own timeout fired
 }
 
 // collectState tracks the satisfaction state of a single Collect clause.
@@ -273,7 +274,8 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 				}
 				log.Printf("engine: %s %q killed by timeout (%s%s)", kind, s.Name, appliedTimeout.Round(time.Second), defaultTimeoutNote(s))
 			}
-			results <- stepResult{stepName: s.Name, result: sr.Result, usage: sr.Usage, err: err, skipped: sr.Skipped}
+			timedOut := appliedTimeout > 0 && stepCtx.Err() == context.DeadlineExceeded
+			results <- stepResult{stepName: s.Name, result: sr.Result, usage: sr.Usage, err: err, skipped: sr.Skipped, timedOut: timedOut}
 		}(step, trigger, ctx)
 
 		return nil
@@ -339,6 +341,13 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 							run.RecordStepComplete(sr.stepName, "error")
 							continue
 						}
+					} else if wire := errorWire(step, sr); wire != "" {
+						// The step errored rather than returning a result: walk its
+						// timeout (its own deadline fired) or fail wire, so the
+						// workflow's own failure handling sees it instead of the run
+						// failing past every wire.
+						log.Printf("engine: step %q execution error, taking its %s wire: %v", sr.stepName, wire, sr.err)
+						sr = stepResult{stepName: sr.stepName, result: wire, usage: sr.usage}
 					} else {
 						run.RecordStepComplete(sr.stepName, "error")
 						run.Complete(domain.RunStateFailed)
@@ -476,6 +485,22 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 }
 
 // isResultDeclared checks whether the given result is in the step's declared Results list.
+// errorWire is the result a step's execution error is routed through: timeout
+// when the step's own deadline fired, fail for any other error, or "" when the
+// step declares neither (the run then fails with the error).
+func errorWire(step *domain.Step, sr stepResult) string {
+	if sr.timedOut {
+		if isResultDeclared(step, "timeout") {
+			return "timeout"
+		}
+		return ""
+	}
+	if isResultDeclared(step, "fail") {
+		return "fail"
+	}
+	return ""
+}
+
 func isResultDeclared(step *domain.Step, result string) bool {
 	for _, r := range step.Results {
 		if r == result {

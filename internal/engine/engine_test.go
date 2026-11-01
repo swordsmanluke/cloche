@@ -1282,3 +1282,64 @@ func TestStepTimeout_KilledByTimeout_LogsClearAttribution(t *testing.T) {
 	assert.Contains(t, buf.String(), `workflow_name dispatch step "dispatch" killed by timeout (`)
 	assert.NotContains(t, buf.String(), "default", "explicit timeout should not be flagged as a default")
 }
+
+// errExecutor fails the named step with an executor error and succeeds the rest.
+type errExecutor struct{ failStep string }
+
+func (e *errExecutor) Execute(_ context.Context, step *domain.Step) (domain.StepResult, error) {
+	if step.Name == e.failStep {
+		return domain.StepResult{}, fmt.Errorf("container did not start")
+	}
+	return domain.StepResult{Result: "success"}, nil
+}
+
+// TestEngine_ExecutionErrorTakesFailWire verifies that a step whose executor
+// errors walks its fail wire (e.g. to a repair step) instead of failing the run.
+func TestEngine_ExecutionErrorTakesFailWire(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "exec-error",
+		Steps: map[string]*domain.Step{
+			"work":   {Name: "work", Type: domain.StepTypeScript, Results: []string{"success", "fail"}},
+			"repair": {Name: "repair", Type: domain.StepTypeScript, Results: []string{"success"}},
+		},
+		Wiring: []domain.Wire{
+			{From: "work", Result: "success", To: domain.StepDone},
+			{From: "work", Result: "fail", To: "repair"},
+			{From: "repair", Result: "success", To: domain.StepDone},
+		},
+		EntryStep: "work",
+	}
+
+	run, err := engine.New(&errExecutor{failStep: "work"}).Run(context.Background(), wf)
+
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+}
+
+// TestEngine_StepTimeoutTakesTimeoutWire verifies that a step whose own
+// deadline fires, and whose executor reports that as an error, walks its
+// declared timeout wire rather than its fail wire or failing the run.
+func TestEngine_StepTimeoutTakesTimeoutWire(t *testing.T) {
+	wf := &domain.Workflow{
+		Name: "timeout-wire",
+		Steps: map[string]*domain.Step{
+			"hang": {
+				Name:    "hang",
+				Type:    domain.StepTypeAgent,
+				Results: []string{"success", "fail", "timeout"},
+				Config:  map[string]string{"prompt": "do stuff", "timeout": "100ms"},
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: "hang", Result: "success", To: domain.StepAbort},
+			{From: "hang", Result: "fail", To: domain.StepAbort},
+			{From: "hang", Result: "timeout", To: domain.StepDone},
+		},
+		EntryStep: "hang",
+	}
+
+	run, err := engine.New(&slowExecutor{}).Run(context.Background(), wf)
+
+	require.NoError(t, err)
+	assert.Equal(t, domain.RunStateSucceeded, run.State)
+}
