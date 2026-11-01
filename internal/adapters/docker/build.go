@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -79,14 +80,27 @@ func (r *Runtime) EnsureImageWithOutput(ctx context.Context, projectDir, image s
 // Returns an empty string if no FROM directive is found.
 func parseBaseImage(dockerfileContent []byte) string {
 	var lastFrom string
-	scanner := bufio.NewScanner(bytes.NewReader(dockerfileContent))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
+	continued := false // the previous line ended in a backslash
+	heredocEnd := ""   // inside a heredoc body until this terminator
+	for _, raw := range strings.Split(string(dockerfileContent), "\n") {
+		line := strings.TrimSpace(raw)
+		if heredocEnd != "" {
+			if line == heredocEnd {
+				heredocEnd = ""
+			}
 			continue
 		}
-		upper := strings.ToUpper(line)
-		if !strings.HasPrefix(upper, "FROM ") {
+		// Only an instruction's first line can be FROM: a continuation line
+		// (shell or Python inside a RUN, e.g. "from x import y; \") is not.
+		instruction := !continued
+		continued = strings.HasSuffix(line, "\\")
+		if !instruction || line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if m := heredocRe.FindStringSubmatch(line); m != nil {
+			heredocEnd = m[1]
+		}
+		if !strings.HasPrefix(strings.ToUpper(line), "FROM ") {
 			continue
 		}
 		// Extract the image reference. Skip any --flag=value options
@@ -101,6 +115,10 @@ func parseBaseImage(dockerfileContent []byte) string {
 	}
 	return lastFrom
 }
+
+// heredocRe matches a heredoc opener (<<EOF, <<-EOF, <<'EOF', <<"EOF") and
+// captures its terminator.
+var heredocRe = regexp.MustCompile(`<<-?["']?([A-Za-z_][A-Za-z0-9_]*)["']?`)
 
 // baseImageID returns the image ID of a locally available Docker image.
 // Returns an error if the image is not available locally.
