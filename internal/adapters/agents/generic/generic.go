@@ -1,7 +1,6 @@
 package generic
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"os"
@@ -9,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/swordsmanluke/cloche/internal/adapters/agents/spill"
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/module"
 	"github.com/swordsmanluke/cloche/internal/protocol"
@@ -65,7 +65,11 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	var err error
 
 	if a.StatusWriter != nil {
-		output, err = a.executeStreaming(cmd, step.Name)
+		spillDir := a.OutputDir
+		if spillDir == "" {
+			spillDir = filepath.Join(workDir, ".cloche", "output")
+		}
+		output, err = a.executeStreaming(cmd, step.Name, filepath.Join(spillDir, "large"))
 	} else {
 		output, err = cmd.CombinedOutput()
 	}
@@ -125,7 +129,7 @@ func appendStepLog(path string, data []byte) {
 
 // executeStreaming runs the command and streams output lines through StatusWriter
 // in real-time. Returns the full accumulated output.
-func (a *Adapter) executeStreaming(cmd *exec.Cmd, stepName string) ([]byte, error) {
+func (a *Adapter) executeStreaming(cmd *exec.Cmd, stepName, spillDir string) ([]byte, error) {
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
@@ -137,13 +141,13 @@ func (a *Adapter) executeStreaming(cmd *exec.Cmd, stepName string) ([]byte, erro
 	}
 
 	var buf bytes.Buffer
-	scanner := bufio.NewScanner(pipe)
-	for scanner.Scan() {
-		line := scanner.Text()
-		buf.WriteString(line)
+	// A line over the limit goes to a file in spillDir; the output carries
+	// its path. Reading never stops, so the command can't block on the pipe.
+	_ = spill.Lines(pipe, spill.DefaultLimit, spillDir, stepName, func(line []byte) {
+		buf.Write(line)
 		buf.WriteByte('\n')
-		a.StatusWriter.Log(stepName, line)
-	}
+		a.StatusWriter.Log(stepName, string(line))
+	})
 
 	waitErr := cmd.Wait()
 	return buf.Bytes(), waitErr

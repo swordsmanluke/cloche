@@ -1,7 +1,6 @@
 package prompt
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -13,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/swordsmanluke/cloche/internal/adapters/agents/spill"
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/protocol"
 )
@@ -481,10 +481,12 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 	// captured from extractResultUsage once the step completes.
 	var interimUsage domain.TokenUsage
 
-	scanner := bufio.NewScanner(pipe)
-	scanner.Buffer(make([]byte, 0, 256*1024), 1024*1024)
-	for scanner.Scan() {
-		raw := scanner.Bytes()
+	// A line over the limit (an image Read's tool result) goes to a file in
+	// the step's output dir; the stream carries its path. Reading never stops,
+	// so the agent can't block on a full pipe.
+	spillDir, _ := a.resolveOutputDir(workDir)
+	spillDir = filepath.Join(spillDir, "large")
+	scanErr := spill.Lines(pipe, spill.DefaultLimit, spillDir, stepName, func(raw []byte) {
 		rawBuf.Write(raw)
 		rawBuf.WriteByte('\n')
 
@@ -504,7 +506,7 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 
 		text := extractStreamText(raw)
 		if text == "" {
-			continue
+			return
 		}
 		textBuf.WriteString(text)
 
@@ -520,12 +522,12 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 			lineBuf.Reset()
 			lineBuf.WriteString(s[idx+1:])
 		}
-	}
+	})
 	// Flush any remaining partial line.
 	if lineBuf.Len() > 0 {
 		a.StatusWriter.Log(stepName, lineBuf.String())
 	}
-	if scanErr := scanner.Err(); scanErr != nil {
+	if scanErr != nil {
 		a.StatusWriter.Log(stepName, fmt.Sprintf("[scan error: %v]", scanErr))
 	}
 

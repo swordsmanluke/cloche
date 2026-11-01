@@ -1210,3 +1210,43 @@ func TestParseCommands(t *testing.T) {
 		})
 	}
 }
+
+// TestPromptAdapter_Streaming_OversizedLineIsSpilledByPath verifies that a
+// stream line over the read limit (an agent's image Read) is written to a
+// file in the output dir, the log carries its path, and the step still sees
+// the result marker printed after it. Before, the reader stopped there and
+// the agent blocked on a full pipe (T16 8aji).
+func TestPromptAdapter_Streaming_OversizedLineIsSpilledByPath(t *testing.T) {
+	dir := t.TempDir()
+	var statusBuf bytes.Buffer
+	adapter := &prompt.Adapter{
+		Commands: []string{"sh"},
+		ExplicitArgs: []string{"-c", "cat > /dev/null; head -c 5000000 /dev/zero | tr '\\0' x; echo; " +
+			"echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success"},
+		RunID:        "test-run",
+		TaskID:       "test-task",
+		StatusWriter: protocol.NewStatusWriter(&statusBuf),
+	}
+	step := &domain.Step{
+		Name:    "dress",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "dress the rooms"},
+	}
+
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result)
+
+	spilled, err := filepath.Glob(filepath.Join(dir, ".cloche", "output", "large", "dress-*.out"))
+	require.NoError(t, err)
+	require.Len(t, spilled, 1)
+	info, err := os.Stat(spilled[0])
+	require.NoError(t, err)
+	assert.Equal(t, int64(5000000), info.Size())
+
+	logData, err := os.ReadFile(filepath.Join(dir, ".cloche", "output", "dress.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(logData), spilled[0], "the step log points at the spilled line")
+	assert.Less(t, len(logData), 100000, "the line itself stays out of the log")
+}
