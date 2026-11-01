@@ -130,15 +130,21 @@ func isBaseImageStale(ctx context.Context, image string, dockerfileContent []byt
 		return false, ""
 	}
 
-	storedDigest, err := imageLabel(ctx, image, baseImageDigestLabel)
-	if err != nil {
-		// Label not present (old build) — can't determine staleness.
-		return false, ""
-	}
-
 	currentID, err := baseImageID(ctx, baseRef)
 	if err != nil {
 		// Base image not available locally — can't compare.
+		return false, ""
+	}
+
+	storedDigest, err := imageLabel(ctx, image, baseImageDigestLabel)
+	if err != nil {
+		if imageExists(ctx, image) {
+			// Built without the label (an older build, or the base lookup
+			// failed then): what it was built from is unknown, so rebuild
+			// once and record it. Treating it as fresh kept a project image
+			// on an old cloche-agent indefinitely.
+			return true, fmt.Sprintf("no %s label recorded for base %s", baseImageDigestLabel, baseRef)
+		}
 		return false, ""
 	}
 
@@ -152,6 +158,11 @@ func isBaseImageStale(ctx context.Context, image string, dockerfileContent []byt
 func hashBytes(data []byte) string {
 	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:])
+}
+
+// imageExists reports whether the image can be inspected locally.
+func imageExists(ctx context.Context, image string) bool {
+	return exec.CommandContext(ctx, "docker", "image", "inspect", image).Run() == nil
 }
 
 // imageLabel retrieves a label value from a Docker image.

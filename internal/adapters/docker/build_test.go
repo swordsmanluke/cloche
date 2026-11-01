@@ -343,3 +343,21 @@ func TestEnsureImage_RebuildsWhenDockerfileChanges(t *testing.T) {
 	assert.Equal(t, hashBytes(v2), label2)
 	assert.NotEqual(t, label1, label2, "label should change after rebuild")
 }
+
+func TestIsBaseImageStale_ExistingImageWithoutLabelIsStale(t *testing.T) {
+	// An image built without the base digest label can't show what it was
+	// built from: it must be rebuilt once rather than trusted forever.
+	if err := exec.Command("docker", "info").Run(); err != nil {
+		t.Skip("Docker not available")
+	}
+	if err := exec.Command("docker", "image", "inspect", "cloche-base:latest").Run(); err != nil {
+		t.Skip("cloche-base:latest not available")
+	}
+	const img = "cloche-test-nolabel:latest"
+	require.NoError(t, exec.Command("docker", "tag", "cloche-base:latest", img).Run())
+	t.Cleanup(func() { _ = exec.Command("docker", "rmi", img).Run() })
+
+	stale, reason := isBaseImageStale(context.Background(), img, []byte("FROM cloche-base:latest\n"))
+	assert.True(t, stale)
+	assert.Contains(t, reason, "no cloche.baseimage.digest label")
+}
