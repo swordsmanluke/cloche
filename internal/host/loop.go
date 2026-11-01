@@ -515,6 +515,13 @@ func (l *Loop) runPhased() {
 				// Work was done — try to fill slots immediately.
 				continue
 			}
+			if r.state == domain.RunStateCancelled {
+				// Stopped on request (cloche stop): a deliberate act, not an
+				// unrecovered error, so neither stop_on_error nor the
+				// consecutive-failure count applies to it.
+				log.Printf("orchestration loop: %s: a task was stopped on request (%s); loop continues", l.config.ProjectDir, r.errMsg)
+				continue
+			}
 			// Run failed or aborted.
 			if l.config.StopOnError {
 				log.Printf("orchestration loop: stopping for %s (stop_on_error): %s", l.config.ProjectDir, r.errMsg)

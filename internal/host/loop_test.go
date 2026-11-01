@@ -1719,3 +1719,33 @@ func TestPhaseLoop_Once_NoTasks_Stops(t *testing.T) {
 		"once-mode loop should stop itself when nothing is assignable")
 	assert.Equal(t, int32(0), mainCalls.Load())
 }
+
+// TestLoop_StopOnError_CancelledRunKeepsLoopRunning verifies that a run
+// stopped on request (cloche stop) doesn't halt a stop_on_error loop: it is a
+// deliberate act, not an unrecovered error.
+func TestLoop_StopOnError_CancelledRunKeepsLoopRunning(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	var called atomic.Int32
+
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+		n := called.Add(1)
+		time.Sleep(20 * time.Millisecond)
+		if n == 1 {
+			return &RunResult{State: domain.RunStateCancelled}, nil
+		}
+		return &RunResult{State: domain.RunStateSucceeded}, nil
+	}
+
+	loop := NewLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		StopOnError:   true,
+	}, store, runFn)
+
+	loop.Start()
+	defer loop.Stop()
+	time.Sleep(300 * time.Millisecond)
+
+	assert.True(t, loop.Running(), "a cancelled run must not stop the loop")
+	assert.Greater(t, called.Load(), int32(1), "the loop goes on to launch more work")
+}
