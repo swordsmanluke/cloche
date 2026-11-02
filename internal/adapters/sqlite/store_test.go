@@ -2014,3 +2014,57 @@ func TestStore_MigratesHumanStepPollsTable(t *testing.T) {
 	assert.Equal(t, 3, rec.PollCount)
 	assert.Equal(t, "review", rec.StepName)
 }
+
+func TestSaveAttempt_CollidingIDDoesNotStealAttemptFromAnotherTask(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+	ctx := context.Background()
+
+	for _, id := range []string{"task-a", "task-b"} {
+		require.NoError(t, store.SaveTask(ctx, &domain.Task{ID: id, ProjectDir: "/p", CreatedAt: time.Now()}))
+	}
+	original := &domain.Attempt{ID: "same", TaskID: "task-a", StartedAt: time.Now(), Result: domain.AttemptResultSucceeded}
+	require.NoError(t, store.SaveAttempt(ctx, original))
+
+	colliding := &domain.Attempt{ID: "same", TaskID: "task-b", StartedAt: time.Now(), Result: domain.AttemptResultRunning}
+	require.Error(t, store.SaveAttempt(ctx, colliding))
+
+	got, err := store.GetAttempt(ctx, "same")
+	require.NoError(t, err)
+	assert.Equal(t, "task-a", got.TaskID)
+	assert.Equal(t, domain.AttemptResultSucceeded, got.Result)
+}
+
+func TestSaveAttempt_UpdatesExistingAttemptOnSameTask(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+	ctx := context.Background()
+
+	require.NoError(t, store.SaveTask(ctx, &domain.Task{ID: "task-a", ProjectDir: "/p", CreatedAt: time.Now()}))
+	attempt := domain.NewAttempt("task-a")
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	attempt.Complete(domain.AttemptResultFailed)
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	got, err := store.GetAttempt(ctx, attempt.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.AttemptResultFailed, got.Result)
+	assert.False(t, got.EndedAt.IsZero())
+}
+
+func TestSaveAttempt_MissingTaskRowStillSaves(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+	ctx := context.Background()
+
+	attempt := domain.NewAttempt("no-such-task")
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	got, err := store.GetAttempt(ctx, attempt.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "no-such-task", got.TaskID)
+}

@@ -1293,15 +1293,35 @@ func scanAttemptsByTask(rows *sql.Rows) (map[string][]*domain.Attempt, error) {
 	return byTask, rows.Err()
 }
 
+// SaveAttempt inserts an attempt or updates the existing row with the same ID.
+// An attempt never moves between tasks: saving an ID that already belongs to a
+// different task returns an error and leaves that task's history untouched.
 func (s *Store) SaveAttempt(ctx context.Context, attempt *domain.Attempt) error {
-	_, err := s.write.ExecContext(ctx,
-		`INSERT OR REPLACE INTO attempts (id, task_id, started_at, ended_at, result, project_dir, previous_attempt_id)
-		 VALUES (?, ?, ?, ?, ?, (SELECT project_dir FROM tasks WHERE id = ?), ?)`,
+	res, err := s.write.ExecContext(ctx,
+		`INSERT INTO attempts (id, task_id, started_at, ended_at, result, project_dir, previous_attempt_id)
+		 VALUES (?, ?, ?, ?, ?, COALESCE((SELECT project_dir FROM tasks WHERE id = ?), ''), ?)
+		 ON CONFLICT(id) DO UPDATE SET
+			started_at = excluded.started_at,
+			ended_at = excluded.ended_at,
+			result = excluded.result,
+			project_dir = excluded.project_dir,
+			previous_attempt_id = excluded.previous_attempt_id
+		 WHERE attempts.task_id = excluded.task_id`,
 		attempt.ID, attempt.TaskID, formatTime(attempt.StartedAt),
 		nullIfEmptyTime(attempt.EndedAt), string(attempt.Result), attempt.TaskID,
 		attempt.PreviousAttemptID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("attempt ID %s already belongs to another task (saving for %s)", attempt.ID, attempt.TaskID)
+	}
+	return nil
 }
 
 func (s *Store) GetAttempt(ctx context.Context, id string) (*domain.Attempt, error) {

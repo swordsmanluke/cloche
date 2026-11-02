@@ -77,9 +77,16 @@ func AttemptResultFromRunState(state RunState) AttemptResult {
 // attemptIDAlphabet is the set of characters used for attempt IDs.
 const attemptIDAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
-// GenerateAttemptID produces a random 4-character alphanumeric ID.
+// attemptIDLength is the length of generated attempt IDs. Attempt IDs are
+// primary keys that are never reused, so the space has to stay sparse across
+// the database's whole history: at 4 characters a few thousand attempts were
+// already enough to collide. Existing shorter IDs remain valid.
+const attemptIDLength = 6
+
+// GenerateAttemptID produces a random alphanumeric ID of attemptIDLength
+// characters.
 func GenerateAttemptID() string {
-	b := make([]byte, 4)
+	b := make([]byte, attemptIDLength)
 	if _, err := rand.Read(b); err != nil {
 		panic(fmt.Sprintf("crypto/rand failed: %v", err))
 	}
