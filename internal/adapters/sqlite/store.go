@@ -272,6 +272,17 @@ func migrate(db *sql.DB) error {
 	// Idempotent — ignored if column already exists.
 	db.Exec(`ALTER TABLE attempts ADD COLUMN previous_attempt_id TEXT NOT NULL DEFAULT ''`)
 
+	// Single-row counter behind NextAttemptID.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS attempt_id_sequence (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		next_seq INTEGER NOT NULL
+	)`); err != nil {
+		return fmt.Errorf("attempt_id_sequence migration: %w", err)
+	}
+	if _, err := db.Exec(`INSERT OR IGNORE INTO attempt_id_sequence (id, next_seq) VALUES (1, 1)`); err != nil {
+		return fmt.Errorf("attempt_id_sequence seed: %w", err)
+	}
+
 	_, errAL := db.Exec(`CREATE TABLE IF NOT EXISTS attempt_logs (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		attempt_id TEXT NOT NULL,
@@ -1291,6 +1302,44 @@ func scanAttemptsByTask(rows *sql.Rows) (map[string][]*domain.Attempt, error) {
 		byTask[attempt.TaskID] = append(byTask[attempt.TaskID], attempt)
 	}
 	return byTask, rows.Err()
+}
+
+// NextAttemptID advances the persistent counter and returns its attempt ID. IDs
+// generated randomly before the counter existed occupy the same space, so values
+// already recorded on an attempt or run are skipped. Each value is visited once,
+// so a skip never has to be retried.
+func (s *Store) NextAttemptID(ctx context.Context) (string, error) {
+	tx, err := s.write.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+
+	var seq uint64
+	if err := tx.QueryRowContext(ctx, `SELECT next_seq FROM attempt_id_sequence WHERE id = 1`).Scan(&seq); err != nil {
+		return "", err
+	}
+	for ; seq < domain.AttemptIDSpace; seq++ {
+		id := domain.AttemptIDFromSequence(seq)
+		var used bool
+		if err := tx.QueryRowContext(ctx,
+			`SELECT EXISTS(SELECT 1 FROM attempts WHERE id = ?) OR EXISTS(SELECT 1 FROM runs WHERE attempt_id = ?)`,
+			id, id,
+		).Scan(&used); err != nil {
+			return "", err
+		}
+		if used {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE attempt_id_sequence SET next_seq = ? WHERE id = 1`, seq+1); err != nil {
+			return "", err
+		}
+		if err := tx.Commit(); err != nil {
+			return "", err
+		}
+		return id, nil
+	}
+	return "", fmt.Errorf("attempt ID space exhausted (%d IDs)", domain.AttemptIDSpace)
 }
 
 // SaveAttempt inserts an attempt or updates the existing row with the same ID.

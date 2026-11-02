@@ -69,7 +69,11 @@ func (f *fakeRunStore) ListContextKeys(context.Context, string, string, string) 
 	return nil, nil
 }
 func (f *fakeRunStore) DeleteContextKeys(context.Context, string, string) error { return nil }
-func (f *fakeRunStore) SaveAttempt(context.Context, *domain.Attempt) error      { return nil }
+func (f *fakeRunStore) NextAttemptID(context.Context) (string, error) {
+	return domain.GenerateAttemptID(), nil
+}
+
+func (f *fakeRunStore) SaveAttempt(context.Context, *domain.Attempt) error { return nil }
 func (f *fakeRunStore) GetAttempt(context.Context, string) (*domain.Attempt, error) {
 	return nil, nil
 }

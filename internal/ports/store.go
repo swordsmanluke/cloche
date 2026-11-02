@@ -53,6 +53,8 @@ type RunStore interface {
 	SetContextKey(ctx context.Context, taskID, attemptID, runID, key, value string) error
 	ListContextKeys(ctx context.Context, taskID, attemptID, runID string) ([]string, error)
 	DeleteContextKeys(ctx context.Context, taskID, attemptID string) error
+	// NextAttemptID allocates an attempt ID that has never been issued.
+	NextAttemptID(ctx context.Context) (string, error)
 	SaveAttempt(ctx context.Context, attempt *domain.Attempt) error
 	GetAttempt(ctx context.Context, id string) (*domain.Attempt, error)
 	ListAttempts(ctx context.Context, taskID string) ([]*domain.Attempt, error)

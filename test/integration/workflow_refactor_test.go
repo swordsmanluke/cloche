@@ -268,6 +268,10 @@ func (s *fakeRunStore) ListContextKeys(_ context.Context, _, _, _ string) ([]str
 }
 func (s *fakeRunStore) DeleteContextKeys(_ context.Context, _, _ string) error { return nil }
 func (s *fakeRunStore) SaveAttempt(_ context.Context, _ *domain.Attempt) error { return nil }
+func (s *fakeRunStore) NextAttemptID(context.Context) (string, error) {
+	return domain.GenerateAttemptID(), nil
+}
+
 func (s *fakeRunStore) GetAttempt(_ context.Context, _ string) (*domain.Attempt, error) {
 	return nil, fmt.Errorf("not found")
 }

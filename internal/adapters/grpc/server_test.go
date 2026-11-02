@@ -5220,6 +5220,10 @@ func (f *fakeRunStore) DeleteContextKeys(_ context.Context, _, _ string) error {
 func (f *fakeRunStore) QueryUsage(_ context.Context, _ ports.UsageQuery) ([]domain.UsageSummary, error) {
 	return nil, nil
 }
+func (f *fakeRunStore) NextAttemptID(context.Context) (string, error) {
+	return domain.GenerateAttemptID(), nil
+}
+
 func (f *fakeRunStore) SaveAttempt(_ context.Context, _ *domain.Attempt) error { return nil }
 func (f *fakeRunStore) GetAttempt(_ context.Context, _ string) (*domain.Attempt, error) {
 	return nil, fmt.Errorf("not found")

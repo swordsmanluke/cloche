@@ -153,6 +153,10 @@ func (f *fakeStore) ListContextKeys(_ context.Context, taskID, attemptID, runID 
 func (f *fakeStore) DeleteContextKeys(_ context.Context, taskID, attemptID string) error {
 	return nil
 }
+func (f *fakeStore) NextAttemptID(context.Context) (string, error) {
+	return domain.GenerateAttemptID(), nil
+}
+
 func (f *fakeStore) SaveAttempt(_ context.Context, a *domain.Attempt) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

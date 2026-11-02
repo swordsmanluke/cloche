@@ -2068,3 +2068,90 @@ func TestSaveAttempt_MissingTaskRowStillSaves(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "no-such-task", got.TaskID)
 }
+
+func TestNextAttemptID_IssuesDistinctIDsConcurrently(t *testing.T) {
+	store, err := sqlite.NewStore(filepath.Join(t.TempDir(), "test.db"))
+	require.NoError(t, err)
+	defer store.Close()
+	ctx := context.Background()
+
+	const n = 200
+	ids := make(chan string, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			id, err := store.NextAttemptID(ctx)
+			assert.NoError(t, err)
+			ids <- id
+		}()
+	}
+	wg.Wait()
+	close(ids)
+
+	seen := map[string]bool{}
+	for id := range ids {
+		assert.Len(t, id, 4)
+		assert.False(t, seen[id], "reissued %s", id)
+		seen[id] = true
+	}
+	assert.Len(t, seen, n)
+}
+
+func TestNextAttemptID_CounterSurvivesReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.db")
+	ctx := context.Background()
+
+	store, err := sqlite.NewStore(path)
+	require.NoError(t, err)
+	first, err := store.NextAttemptID(ctx)
+	require.NoError(t, err)
+	require.NoError(t, store.Close())
+
+	store, err = sqlite.NewStore(path)
+	require.NoError(t, err)
+	defer store.Close()
+	second, err := store.NextAttemptID(ctx)
+	require.NoError(t, err)
+
+	assert.Equal(t, domain.AttemptIDFromSequence(1), first)
+	assert.Equal(t, domain.AttemptIDFromSequence(2), second)
+}
+
+func TestNextAttemptID_SkipsIDsAlreadyOnAttemptsOrRuns(t *testing.T) {
+	store, err := sqlite.NewStore(filepath.Join(t.TempDir(), "test.db"))
+	require.NoError(t, err)
+	defer store.Close()
+	ctx := context.Background()
+
+	// Legacy randomly generated IDs that happen to sit on the counter's path.
+	require.NoError(t, store.SaveTask(ctx, &domain.Task{ID: "t", ProjectDir: "/p", CreatedAt: time.Now()}))
+	require.NoError(t, store.SaveAttempt(ctx, &domain.Attempt{
+		ID: domain.AttemptIDFromSequence(1), TaskID: "t", StartedAt: time.Now(), Result: domain.AttemptResultFailed,
+	}))
+	run := domain.NewRun("legacy-run", "develop")
+	run.ProjectDir = "/p"
+	run.AttemptID = domain.AttemptIDFromSequence(2) // run whose attempt row is gone
+	require.NoError(t, store.CreateRun(ctx, run))
+
+	id, err := store.NextAttemptID(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, domain.AttemptIDFromSequence(3), id)
+}
+
+func TestNextAttemptID_ErrorsWhenSpaceExhausted(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.db")
+	store, err := sqlite.NewStore(path)
+	require.NoError(t, err)
+	defer store.Close()
+
+	raw, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+	defer raw.Close()
+	_, err = raw.Exec(`UPDATE attempt_id_sequence SET next_seq = ?`, domain.AttemptIDSpace)
+	require.NoError(t, err)
+
+	_, err = store.NextAttemptID(context.Background())
+	assert.ErrorContains(t, err, "exhausted")
+}

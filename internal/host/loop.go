@@ -406,7 +406,7 @@ func (l *Loop) runPhased() {
 			// Claim phase: runs before the attempt record exists, so a lost
 			// claim leaves no trace. The attempt ID is allocated up front
 			// because the phase's KV is namespaced by it.
-			attempt := domain.NewAttempt(taskID)
+			attempt := l.newAttempt(taskID)
 			if l.claimFn != nil && taskID != "" {
 				claim, err := l.claimFn(context.Background(), l.config.ProjectDir, taskID, attempt.ID)
 				if err != nil {
@@ -761,11 +761,20 @@ func (l *Loop) pickTaskFromPhase() (string, string, bool) {
 }
 
 // createAttemptForTask ensures a Task record exists in the store and creates a
-// new running Attempt for it. Always returns a non-empty attempt ID — a fresh
-// random ID is generated when the store save fails, ensuring each concurrent
-// run gets a unique container pool key and KV namespace.
+// new running Attempt for it. Always returns a non-empty attempt ID, even when
+// the store save fails, ensuring each concurrent run gets a unique container
+// pool key and KV namespace.
 func (l *Loop) createAttemptForTask(taskID, taskTitle, projectDir string) string {
-	return l.saveAttemptForTask(domain.NewAttempt(taskID), taskTitle, projectDir)
+	return l.saveAttemptForTask(l.newAttempt(taskID), taskTitle, projectDir)
+}
+
+// newAttempt builds a running attempt with an ID from the store's counter.
+// Task-less runs use it too: their attempts aren't saved, but their run records
+// carry the ID.
+func (l *Loop) newAttempt(taskID string) *domain.Attempt {
+	attempt := domain.NewAttempt(taskID)
+	attempt.ID = ports.AllocateAttemptID(context.Background(), l.store)
+	return attempt
 }
 
 // saveAttemptForTask persists a freshly created attempt (see

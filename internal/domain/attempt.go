@@ -28,6 +28,7 @@ type Attempt struct {
 }
 
 // NewAttempt creates a new running attempt for the given task with a random ID.
+// Callers persisting the attempt replace it with ports.AllocateAttemptID.
 func NewAttempt(taskID string) *Attempt {
 	return &Attempt{
 		ID:        GenerateAttemptID(),
@@ -77,14 +78,35 @@ func AttemptResultFromRunState(state RunState) AttemptResult {
 // attemptIDAlphabet is the set of characters used for attempt IDs.
 const attemptIDAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
-// attemptIDLength is the length of generated attempt IDs. Attempt IDs are
-// primary keys that are never reused, so the space has to stay sparse across
-// the database's whole history: at 4 characters a few thousand attempts were
-// already enough to collide. Existing shorter IDs remain valid.
-const attemptIDLength = 6
+// attemptIDLength is the length of an attempt ID. IDs get typed at the CLI, so
+// they stay short.
+const attemptIDLength = 4
 
-// GenerateAttemptID produces a random alphanumeric ID of attemptIDLength
-// characters.
+// AttemptIDSpace is the number of distinct attempt IDs: 36^attemptIDLength.
+const AttemptIDSpace uint64 = 36 * 36 * 36 * 36
+
+// attemptIDMultiplier scatters consecutive sequence numbers across the ID
+// space so neighbouring attempts don't get look-alike IDs. It is coprime with
+// AttemptIDSpace (divisible by neither 2 nor 3), which makes multiplying by it
+// modulo the space one-to-one. Changing it would reissue IDs already handed out.
+const attemptIDMultiplier uint64 = 1038073
+
+// AttemptIDFromSequence returns the attempt ID for a sequence number. Sequence
+// numbers below AttemptIDSpace always map to different IDs, so attempts numbered
+// from a persistent counter cannot collide.
+func AttemptIDFromSequence(seq uint64) string {
+	v := seq % AttemptIDSpace * attemptIDMultiplier % AttemptIDSpace
+	b := make([]byte, attemptIDLength)
+	for i := len(b) - 1; i >= 0; i-- {
+		b[i] = attemptIDAlphabet[v%uint64(len(attemptIDAlphabet))]
+		v /= uint64(len(attemptIDAlphabet))
+	}
+	return string(b)
+}
+
+// GenerateAttemptID produces a random ID in the attempt ID format. Random IDs of
+// this length collide within a few thousand draws, so use it only for short-lived
+// names. Attempts get their IDs from ports.AllocateAttemptID.
 func GenerateAttemptID() string {
 	b := make([]byte, attemptIDLength)
 	if _, err := rand.Read(b); err != nil {

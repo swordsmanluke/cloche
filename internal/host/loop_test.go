@@ -1749,3 +1749,22 @@ func TestLoop_StopOnError_CancelledRunKeepsLoopRunning(t *testing.T) {
 	assert.True(t, loop.Running(), "a cancelled run must not stop the loop")
 	assert.Greater(t, called.Load(), int32(1), "the loop goes on to launch more work")
 }
+
+type countingAttemptIDStore struct {
+	*fakeStore
+	id string
+}
+
+func (s countingAttemptIDStore) NextAttemptID(context.Context) (string, error) { return s.id, nil }
+
+func TestCreateAttemptForTask_UsesStoreAllocatedID(t *testing.T) {
+	store := countingAttemptIDStore{fakeStore: &fakeStore{runs: map[string]*domain.Run{}}, id: "zz01"}
+	loop := NewPhaseLoop(LoopConfig{ProjectDir: "/tmp/test"}, store,
+		func(_ context.Context, _ string) ([]Task, error) { return nil, nil },
+		func(_ context.Context, _ string, _ string, _ string, _ string) (*RunResult, error) {
+			return &RunResult{State: domain.RunStateSucceeded}, nil
+		},
+	)
+
+	assert.Equal(t, "zz01", loop.createAttemptForTask("task-A", "Task A", "/tmp/test"))
+}

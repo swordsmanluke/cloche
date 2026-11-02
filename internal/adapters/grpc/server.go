@@ -1033,7 +1033,7 @@ func attemptIDFromContext(ctx context.Context) string {
 // When issueID is non-empty, the task has external source. When empty, a
 // user-initiated task is created with a generated ID.
 func (s *ClocheServer) ensureTaskAndAttempt(ctx context.Context, issueID, title, projectDir string) string {
-	attemptID := domain.GenerateAttemptID()
+	attemptID := ports.AllocateAttemptID(ctx, s.store)
 
 	if s.taskStore == nil {
 		return attemptID
@@ -1229,7 +1229,7 @@ func (s *ClocheServer) resumeRun(ctx context.Context, runID, stepName string, mo
 // previous attempt. If the attempt store is not configured, the attempt object
 // is returned without being persisted (non-fatal).
 func (s *ClocheServer) createResumeAttempt(ctx context.Context, oldRun *domain.Run) *domain.Attempt {
-	newAttemptID := domain.GenerateAttemptID()
+	newAttemptID := ports.AllocateAttemptID(ctx, s.store)
 	attempt := &domain.Attempt{
 		ID:                newAttemptID,
 		TaskID:            oldRun.TaskID,

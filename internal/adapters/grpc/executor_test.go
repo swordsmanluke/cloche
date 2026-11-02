@@ -777,6 +777,10 @@ func (f *fakeRunStore) ListContextKeys(_ context.Context, _, _, _ string) ([]str
 	return nil, nil
 }
 func (f *fakeRunStore) DeleteContextKeys(_ context.Context, _, _ string) error { return nil }
+func (f *fakeRunStore) NextAttemptID(context.Context) (string, error) {
+	return domain.GenerateAttemptID(), nil
+}
+
 func (f *fakeRunStore) SaveAttempt(_ context.Context, _ *domain.Attempt) error { return nil }
 func (f *fakeRunStore) GetAttempt(_ context.Context, _ string) (*domain.Attempt, error) {
 	return nil, fmt.Errorf("not found")
@@ -1958,4 +1962,18 @@ func TestDaemonExecutor_ModuleCall_MissingOutputFailsStep(t *testing.T) {
 	assert.Equal(t, "fail", res.Result)
 	msg, _, _ := store.GetContextKey(context.Background(), "t1", "att1", "r1", "contract_error")
 	assert.Contains(t, msg, "out:review_path")
+}
+
+type fixedAttemptIDStore struct {
+	*fakeRunStore
+}
+
+func (fixedAttemptIDStore) NextAttemptID(context.Context) (string, error) { return "zz01", nil }
+
+func TestAttemptCreation_UsesStoreAllocatedID(t *testing.T) {
+	srv := &ClocheServer{store: fixedAttemptIDStore{&fakeRunStore{}}}
+	ctx := context.Background()
+
+	assert.Equal(t, "zz01", srv.ensureTaskAndAttempt(ctx, "", "title", "/p"))
+	assert.Equal(t, "zz01", srv.createResumeAttempt(ctx, &domain.Run{TaskID: "t", AttemptID: "old1"}).ID)
 }
