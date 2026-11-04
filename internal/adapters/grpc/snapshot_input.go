@@ -153,6 +153,21 @@ func childRepoSeeds(projectDir string) ([]ChildRepoSeed, error) {
 	return seeds, nil
 }
 
+// listsRootRepo reports whether children includes the project root itself. Such
+// a project seeds its containers from the live tree, whichever repos a run
+// selects: a snapshot holds only committed files, and these projects rely on
+// gitignored ones (staged task prompts in .cloche/overrides/, build caches).
+// This must not depend on the selection, or leaving the root out of a run would
+// silently switch where its container's files come from.
+func listsRootRepo(children []ChildRepoSeed) bool {
+	for _, c := range children {
+		if c.Path == "." {
+			return true
+		}
+	}
+	return false
+}
+
 // filterChildSeeds returns the subset of children whose Name is in names.
 // A nil names slice means "no restriction" and returns children unchanged.
 // Names with no matching child are ignored: childRepoSeeds already skips

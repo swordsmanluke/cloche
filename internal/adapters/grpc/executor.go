@@ -222,7 +222,7 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 // snapshot creation fails (logged, not fatal — mirrors the same fallback
 // used for top-level container runs in launchAndTrack).
 func (d *DaemonExecutor) containerProjectDir(ctx context.Context, wf *domain.Workflow) string {
-	if d.containerSeed.SHA == "" {
+	if d.containerSeed.SHA == "" || listsRootRepo(d.containerSeedChildren) {
 		return d.projectDir
 	}
 	var names []string

@@ -1800,6 +1800,38 @@ func TestDaemonExecutor_ContainerProjectDir_ScopesReposPerAttempt(t *testing.T) 
 	assert.NoDirExists(t, dirOnly, "Close should clean up its snapshots")
 }
 
+// A project listing its root repo seeds from the live tree whichever repos the
+// attempt selected, because its containers need gitignored files that a
+// snapshot doesn't hold.
+func TestDaemonExecutor_ContainerProjectDir_RootListedUsesLiveTree(t *testing.T) {
+	repo, headSHA := initSnapshotTestRepo(t)
+	initNestedRepo(t, repo, filepath.Join("repos", "a"))
+	writeRepoConfig(t, repo, "[[repositories]]\nname = \"root\"\npath = \".\"\n\n[[repositories]]\nname = \"a\"\npath = \"./repos/a\"\n")
+
+	children, err := childRepoSeeds(repo)
+	require.NoError(t, err)
+	wf := &domain.Workflow{Name: "develop", Location: domain.LocationContainer}
+	store := newAttemptStore(
+		&domain.Attempt{ID: "subset", Repos: []string{"a"}},
+		&domain.Attempt{ID: "with-root", Repos: []string{"root", "a"}},
+		&domain.Attempt{ID: "no-list"},
+	)
+	for _, attemptID := range []string{"subset", "with-root", "no-list"} {
+		t.Run(attemptID, func(t *testing.T) {
+			de := NewDaemonExecutor(DaemonExecutorConfig{
+				ProjectDir:            repo,
+				Store:                 store,
+				AttemptID:             attemptID,
+				ContainerSeed:         RepoSeed{SHA: headSHA},
+				ContainerSeedChildren: children,
+				AllWFs:                map[string]*domain.Workflow{"develop": wf},
+			})
+			defer de.Close(true)
+			assert.Equal(t, repo, de.containerProjectDir(context.Background(), wf))
+		})
+	}
+}
+
 // TestDaemonExecutor_RecordTouchedRepositories verifies rule (c) of
 // domain.ResolveRunRepositories: a repo a host run's container sub-workflow
 // successfully extracted results for must be recorded on the host run, even

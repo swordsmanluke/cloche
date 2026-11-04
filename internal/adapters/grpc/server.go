@@ -1864,12 +1864,15 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 		log.Printf("run %s: %v", runID, selErr)
 		return
 	}
+	liveOnly := listsRootRepo(children)
 	children = filterChildSeeds(children, sel.CopyNames())
 	var containerEnv []string
 	if names := sel.CopyNames(); names != nil {
 		containerEnv = append(containerEnv, domain.ReposEnvVar+"="+strings.Join(names, ","))
 	}
-	if baseSHA != "" {
+	if liveOnly {
+		log.Printf("run %s: %s lists its root repo, seeding container from live tree", runID, req.ProjectDir)
+	} else if baseSHA != "" {
 		snapDir, cleanup, snapErr := materializeCleanSnapshot(ctx, req.ProjectDir,
 			RepoSeed{SHA: baseSHA, Branch: gitBranch(req.ProjectDir)}, children)
 		if snapErr != nil {
