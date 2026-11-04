@@ -1,5 +1,30 @@
 # Cloche Changelog
 
+## v3.26.1 — 2026-11-04
+
+### Breaking changes
+
+- The workflow-level `repos` field is now ignored (`cloche validate` and the daemon warn); repos are chosen per task instead. Migration: remove `repos = [...]` from `.cloche/*.cloche` workflows and supply the list via a `repos` field on list-tasks JSONL, or `cloche run --repos a,b` for runs with no task. Until then these workflows copy every configured repo, and repo-scoped intent requirements apply only to runs that have a list.
+
+### Features
+
+- Tasks choose the repos in their containers: only the selected repos plus their transitive `depends_on` are copied in and extracted, an unknown repo name fails before any container starts, and agents see the list as `CLOCHE_REPOS` / `{{ $repos }}`.
+- A root repo (`path = "."`) is copied whole only when selected, or when a run has no list; otherwise containers get `.cloche/`, `.clocheignore`, `.claude/`, `CLAUDE.md` and `AGENTS.md`.
+- Modules: shareable workflow packages in `.cloche/modules/<name>/` (`module.toml`, `exports`, `requires`, `credentials`), with `bind` statements (file-level and scoped) that choose which workflow fills a slot. `.cloche/project.cloche` binds the task-tracker phases (`list-tasks`, `claim-task`, `close-task`, `release-task`); `beads-tasks` and `github-tasks` ship as vendored modules. ([design](docs/plans/2026-10-13-modules-design.md))
+- Added `cloche module` for managing modules; `cloche validate` and `cloche doctor` check a module's required host binaries and credentials.
+- Each step's input is recorded (rendered prompt for agent steps; command, `CLOCHE_*` variables and key names for script steps; interval and condition for poll steps) and shown via `cloche status <id> --input` and an "in" affordance in the console.
+- Added the Cloche guide, a seven-page walkthrough under `docs/guide/`.
+
+### Notable fixes
+
+- Attempt IDs are allocated from a counter and are 4 characters again, ending collisions that left tasks orphaned as pending.
+- A run stopped on request no longer halts a `stop_on_error` loop.
+- A step's execution error now follows its `timeout` or `fail` wire instead of aborting the run.
+- Oversized agent output lines are spilled to a file and the path is passed on.
+- Docker: base image is parsed from `FROM` lines only, project images with no base digest label are rebuilt, files that vanish while copying into a container are skipped, and each repo's git objects are copied after its refs. A new `.dockerignore` allowlist shrinks the image build context from about 4.7 GB.
+- Intent scans of a project that lists its own root as a repo (`path = "."`) no longer abort on the root pass, and repair steps in host sub-workflows now see the validator report.
+- The host step-log viewer resets its offset when a log is rewritten shorter.
+
 ## v3.25.3 — 2026-10-07
 
 ### Breaking changes

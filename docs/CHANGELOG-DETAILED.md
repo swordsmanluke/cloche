@@ -1,5 +1,64 @@
 # Cloche Detailed Changelog
 
+## v3.26.1 — 2026-11-04
+
+### Breaking
+
+- `9fd1580` Tasks choose the repos in their containers via a `repos` field on list-tasks JSONL or `cloche run --repos`; the list is stored on the attempt and inherited by resumed attempts. The workflow `repos` field is now ignored with a warning. Migration: remove `repos` from workflows and supply it per task or run.
+
+### Features
+
+- `fb8dc19` Record each step's input (new `step_inputs` table, `StepInput` message on the agent stream, `GetStepInputs` RPC) and show it in the console and `cloche status --input`.
+- `e1f619d` Leave a container's undeclared repos out of its workspace copy (union of repos declared by workflows sharing the container id). Superseded by `9fd1580` in this release.
+- `5052456` Add the Cloche guide under `docs/guide/`.
+- `d3fdb5c` Allocate attempt IDs from a counter, back at 4 characters.
+- `263be82` Parse module manifests and extend the DSL with module support (`internal/module`, parser and token changes).
+- `97b1b76` Parse file-level `bind` statements and record each workflow's source file; `validate`, `workflow` and `intent` commands updated.
+- `6473646` Move this project's task scripts into vendored `beads-tasks` and `github-tasks` modules, bound via `project.cloche`.
+- `0ea7577` Bind the task-tracker phases (`list-tasks`, `claim-task`, `close-task`, `release-task`) to modules in the host runner and loop.
+- `fd03f09` Resolve module bindings at runtime for container workflows.
+- `30307a5` Make module runtime paths available to generic and prompt agent steps.
+- `8350886` `cloche validate` and `cloche doctor` check a module's required binaries and credentials.
+- `dae21f8` Add `cloche module` subcommand (add and manage modules) with completion and help.
+
+### Fixes
+
+- `1af630d` Leaving the root out of a run no longer switches its files' source.
+- `757aa90` Stop attempt ID collisions orphaning tasks as pending.
+- `cffe755` Docker: copy each repo's git objects after its refs.
+- `1e6b33f` A run stopped on request no longer halts a `stop_on_error` loop.
+- `5a34978` Docker: parse the base image from `FROM` instructions only.
+- `f7775e9` Docker: rebuild a project image that has no base digest label.
+- `556c37b` Spill an oversized agent output line to a file and pass its path.
+- `9915f80` Route a step's execution error through its timeout or fail wire.
+- `5698a6c` Host: reset a step log offset when the log is rewritten shorter.
+- `ec5e527` Docker: skip files that vanish while copying the project into a container.
+- `22bec49` Add a `.dockerignore` allowlist, shrinking the image build context from about 4.7 GB.
+- `81957e9` Intent: scan a root-path repo once; repair steps in host sub-workflows see the validator report.
+- `d6b6171` Worktree removal fix in the gRPC executor/server, with a test (uncertain — please review).
+- `3b167a5` Poll coordinator slot accounting change in the host loop and executor (uncertain — please review).
+
+### UI/UX
+
+- `23336a1` Web UI: use the cloche logo as the favicon.
+
+### Internal
+
+- `861e5cd` Modules design doc: structural contracts, scoped binds, vendored git modules.
+- `b4d49cc` Add an intent test in the gRPC adapter.
+- `a38d180` Add notes to the intent A/B pilot spike README.
+- `e7f674f` Auto-generated develop squash commit with no file changes (uncertain — please review).
+- `8e63296` Auto-generated develop squash commit with no file changes (uncertain — please review).
+- `5c26c41` Intent scan state update.
+- `850ee77` Intent scan state update.
+- `9ca0a46` Intent scan state update.
+- `bf23044` Intent scan state and `domains.yaml` update.
+- `ac63457` Intent scan state update.
+- `1cdf6b1` Intent scan state update.
+- `ef38488` Intent scan state update.
+- `b9bfa4d` Intent scan state update.
+- `b3e6cc0` Intent scan state and `domains.yaml` update.
+
 ## v3.25.3 — 2026-10-07
 
 ### Breaking
