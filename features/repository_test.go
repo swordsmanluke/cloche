@@ -136,8 +136,7 @@ func initRepositoryScenarios(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the DSL parser processes the file$`, s.theDSLParserProcessesTheFile)
 	ctx.Step(`^no parse error is returned$`, s.noParsedError)
 	ctx.Step(`^step "([^"]*)" in workflow "([^"]*)" has repository "([^"]*)"$`, s.stepHasRepository)
-	ctx.Step(`^workflow "([^"]*)" declares repos \[([^\]]*)\]$`, s.workflowDeclaredRepos)
-	ctx.Step(`^workflow "([^"]*)" declares (\d+) repos$`, s.workflowRepoCount)
+	ctx.Step(`^workflow "([^"]*)" warns that its repos field is ignored$`, s.workflowRepoFieldIgnored)
 
 	// Config.toml parsing
 	ctx.Step(`^a config\.toml containing:$`, s.aConfigTOMLContaining)
@@ -345,45 +344,16 @@ func (s *repositoryCtx) stepHasRepository(stepName, workflowName, repoName strin
 	return nil
 }
 
-func (s *repositoryCtx) workflowDeclaredRepos(workflowName, reposList string) error {
+func (s *repositoryCtx) workflowRepoFieldIgnored(workflowName string) error {
 	wf, ok := s.parsedWorkflows[workflowName]
 	if !ok {
 		return fmt.Errorf("workflow %q not found", workflowName)
 	}
-	expected := parseQuotedStringList(reposList)
-	if len(wf.Repos) != len(expected) {
-		return fmt.Errorf("workflow %q: expected repos %v, got %v", workflowName, expected, wf.Repos)
-	}
-	for i, e := range expected {
-		if wf.Repos[i] != e {
-			return fmt.Errorf("workflow %q repos[%d]: expected %q, got %q", workflowName, i, e, wf.Repos[i])
-		}
+	warnings := wf.DeprecationWarnings()
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "`repos` is no longer supported") {
+		return fmt.Errorf("workflow %q: expected a repos deprecation warning, got %v", workflowName, warnings)
 	}
 	return nil
-}
-
-func (s *repositoryCtx) workflowRepoCount(workflowName string, count int) error {
-	wf, ok := s.parsedWorkflows[workflowName]
-	if !ok {
-		return fmt.Errorf("workflow %q not found", workflowName)
-	}
-	if len(wf.Repos) != count {
-		return fmt.Errorf("workflow %q: expected %d repos, got %d", workflowName, count, len(wf.Repos))
-	}
-	return nil
-}
-
-// parseQuotedStringList parses `"a"` or `"a", "b"` into []string.
-func parseQuotedStringList(s string) []string {
-	var result []string
-	for _, part := range strings.Split(s, ",") {
-		part = strings.TrimSpace(part)
-		part = strings.Trim(part, `"`)
-		if part != "" {
-			result = append(result, part)
-		}
-	}
-	return result
 }
 
 // ─── Config.toml implementations (L1) ────────────────────────────────────────

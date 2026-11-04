@@ -1,149 +1,58 @@
 package grpc
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/swordsmanluke/cloche/internal/config"
+	"github.com/swordsmanluke/cloche/internal/adapters/docker"
 	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
-func TestResolveReposLegacyNoConfig(t *testing.T) {
-	wf := &domain.Workflow{Name: "develop"}
-	got, err := resolveRepos(wf, nil, "/proj")
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	assert.Equal(t, "", got[0].Name)
-	assert.Equal(t, "/proj", got[0].Path)
-	assert.Equal(t, "", got[0].SubPath)
+// attemptStore is a run store that serves attempts, so tests can give a run a
+// repo selection.
+type attemptStore struct {
+	*fakeRunStore
+	attempts map[string]*domain.Attempt
+	keys     map[string]string
 }
 
-func TestResolveReposLegacyEmptyConfigRepositories(t *testing.T) {
-	wf := &domain.Workflow{Name: "develop"}
-	cfg := &config.Config{}
-	got, err := resolveRepos(wf, cfg, "/proj")
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	assert.Equal(t, "/proj", got[0].Path)
-}
-
-func TestResolveReposDefaultsToAllConfigured(t *testing.T) {
-	wf := &domain.Workflow{Name: "develop"} // no Repos = default to all
-	cfg := &config.Config{Repositories: []config.RepositoryConfig{
-		{Name: "a", Path: "./repos/a"},
-		{Name: "b", Path: "./repos/b"},
-	}}
-	got, err := resolveRepos(wf, cfg, "/proj")
-	require.NoError(t, err)
-	require.Len(t, got, 2)
-
-	assert.Equal(t, "a", got[0].Name)
-	assert.Equal(t, filepath.Join("/proj", "repos/a"), got[0].Path)
-	assert.Equal(t, "repos/a", got[0].SubPath)
-
-	assert.Equal(t, "b", got[1].Name)
-	assert.Equal(t, filepath.Join("/proj", "repos/b"), got[1].Path)
-	assert.Equal(t, "repos/b", got[1].SubPath)
-}
-
-func TestResolveReposDeclaredSubset(t *testing.T) {
-	wf := &domain.Workflow{Name: "develop", Repos: []string{"b"}}
-	cfg := &config.Config{Repositories: []config.RepositoryConfig{
-		{Name: "a", Path: "./repos/a"},
-		{Name: "b", Path: "./repos/b"},
-	}}
-	got, err := resolveRepos(wf, cfg, "/proj")
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	assert.Equal(t, "b", got[0].Name)
-}
-
-func TestResolveReposUnknownRepoNameErrors(t *testing.T) {
-	wf := &domain.Workflow{Name: "develop", Repos: []string{"ghost"}}
-	cfg := &config.Config{Repositories: []config.RepositoryConfig{
-		{Name: "a", Path: "./repos/a"},
-	}}
-	_, err := resolveRepos(wf, cfg, "/proj")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ghost")
-}
-
-func TestResolveReposAbsolutePathRespected(t *testing.T) {
-	wf := &domain.Workflow{Name: "develop"}
-	cfg := &config.Config{Repositories: []config.RepositoryConfig{
-		{Name: "abs", Path: "/somewhere/else"},
-	}}
-	got, err := resolveRepos(wf, cfg, "/proj")
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	assert.Equal(t, "/somewhere/else", got[0].Path)
-	assert.Equal(t, "/somewhere/else", got[0].SubPath)
-}
-
-// resolveRepos must not mutate cfg.Repositories when narrowing to a
-// workflow's declared subset: reslicing the config slice would overwrite its
-// backing array and corrupt the config for later readers (e.g. a second
-// workflow resolving against the same loaded config).
-func TestResolveReposDoesNotMutateConfig(t *testing.T) {
-	cfg := &config.Config{Repositories: []config.RepositoryConfig{
-		{Name: "a", Path: "./repos/a"},
-		{Name: "b", Path: "./repos/b"},
-	}}
-	wf := &domain.Workflow{Name: "develop", Repos: []string{"b"}}
-	_, err := resolveRepos(wf, cfg, "/proj")
-	require.NoError(t, err)
-
-	require.Len(t, cfg.Repositories, 2)
-	assert.Equal(t, "a", cfg.Repositories[0].Name)
-	assert.Equal(t, "b", cfg.Repositories[1].Name)
-}
-
-func containerWF(name, containerID string, repos ...string) *domain.Workflow {
-	return &domain.Workflow{
-		Name:     name,
-		Location: domain.LocationContainer,
-		Config:   map[string]string{"container.id": containerID},
-		Repos:    repos,
+func newAttemptStore(attempts ...*domain.Attempt) *attemptStore {
+	s := &attemptStore{fakeRunStore: &fakeRunStore{}, attempts: map[string]*domain.Attempt{}, keys: map[string]string{}}
+	for _, a := range attempts {
+		s.attempts[a.ID] = a
 	}
+	return s
 }
 
-func TestReposForContainerUnionAcrossSharedContainer(t *testing.T) {
-	allWFs := map[string]*domain.Workflow{
-		"implement": containerWF("implement", "dev", "backend"),
-		"test":      containerWF("test", "dev", "backend", "frontend"),
-		"docs":      containerWF("docs", "other", "docs"),
-		"host-main": {Name: "host-main", Location: domain.LocationHost},
+func (s *attemptStore) GetAttempt(_ context.Context, id string) (*domain.Attempt, error) {
+	if a, ok := s.attempts[id]; ok {
+		return a, nil
 	}
-	assert.Equal(t, []string{"backend", "frontend"}, reposForContainer(allWFs, "dev"))
-	assert.Equal(t, []string{"docs"}, reposForContainer(allWFs, "other"))
+	return s.fakeRunStore.GetAttempt(context.Background(), id)
 }
 
-func TestReposForContainerUndeclaredWorkflowMeansAll(t *testing.T) {
-	// One sharing workflow declares no repos → it may need any of them, so
-	// the container copy must include everything (nil = no restriction).
-	allWFs := map[string]*domain.Workflow{
-		"implement": containerWF("implement", "dev", "backend"),
-		"legacy":    containerWF("legacy", "dev"),
-	}
-	assert.Nil(t, reposForContainer(allWFs, "dev"))
+func (s *attemptStore) SetContextKey(_ context.Context, _, _, _, key, value string) error {
+	s.keys[key] = value
+	return nil
 }
 
-func TestReposForContainerUnknownContainerIDMeansAll(t *testing.T) {
-	allWFs := map[string]*domain.Workflow{
-		"implement": containerWF("implement", "dev", "backend"),
-	}
-	assert.Nil(t, reposForContainer(allWFs, "ghost"))
-	assert.Nil(t, reposForContainer(nil, "dev"))
+func (s *attemptStore) SaveAttempt(_ context.Context, a *domain.Attempt) error {
+	s.attempts[a.ID] = a
+	return nil
 }
 
-func TestUndeclaredRepoPaths_LeavesOutReposTheContainerDoesNotDeclare(t *testing.T) {
-	dir := t.TempDir()
+func writeRepoConfig(t *testing.T, dir, toml string) {
+	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "config.toml"), []byte(`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "config.toml"), []byte(toml), 0644))
+}
+
+const twoRepoConfig = `
 [[repositories]]
 name = "manager"
 path = "."
@@ -153,17 +62,77 @@ name = "pickup"
 path = "./repos/pickup"
 
 [[repositories]]
-name = "anarkana"
-path = "./repos/anarkana"
-
-[[repositories]]
 name = "voxline"
 path = "./repos/voxline"
-`), 0644))
-	room := containerWF("room", "room", "manager", "pickup")
-	develop := containerWF("develop", "_default")
-	d := &DaemonExecutor{projectDir: dir, allWFs: map[string]*domain.Workflow{"room": room, "develop": develop}}
+`
 
-	assert.Equal(t, []string{"repos/anarkana", "repos/voxline"}, d.undeclaredRepoPaths(room))
-	assert.Nil(t, d.undeclaredRepoPaths(develop), "a workflow that declares no repos keeps the whole copy")
+func TestAttemptRepoSelection_UsesTheAttemptsRepos(t *testing.T) {
+	dir := t.TempDir()
+	writeRepoConfig(t, dir, twoRepoConfig)
+	d := &DaemonExecutor{
+		projectDir: dir,
+		attemptID:  "at01",
+		store:      newAttemptStore(&domain.Attempt{ID: "at01", Repos: []string{"pickup"}}),
+	}
+
+	sel, err := d.attemptRepoSelection(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"pickup"}, sel.CopyNames())
+	assert.Equal(t, []string{"repos/voxline"}, sel.ExcludePaths())
+	assert.Contains(t, sel.CopyOnly(), ".cloche")
+}
+
+func TestAttemptRepoSelection_NoListMeansEveryRepo(t *testing.T) {
+	dir := t.TempDir()
+	writeRepoConfig(t, dir, twoRepoConfig)
+	d := &DaemonExecutor{
+		projectDir: dir,
+		attemptID:  "at01",
+		store:      newAttemptStore(&domain.Attempt{ID: "at01"}),
+	}
+
+	sel, err := d.attemptRepoSelection(context.Background())
+	require.NoError(t, err)
+
+	assert.Nil(t, sel.CopyNames())
+	assert.Empty(t, sel.ExcludePaths())
+	assert.Nil(t, sel.CopyOnly())
+}
+
+func TestAttemptRepoSelection_NoConfigIsASingleTreeProject(t *testing.T) {
+	d := &DaemonExecutor{projectDir: t.TempDir()}
+
+	sel, err := d.attemptRepoSelection(context.Background())
+	require.NoError(t, err)
+
+	assert.Nil(t, sel.CopyOnly())
+	require.Len(t, sel.Extract, 1)
+}
+
+func TestExecuteWorkflowStep_UnknownRepoFailsTheStepBeforeAnyContainerWork(t *testing.T) {
+	dir := t.TempDir()
+	writeRepoConfig(t, dir, twoRepoConfig)
+	wf := &domain.Workflow{Name: "develop", Location: domain.LocationContainer}
+	store := newAttemptStore(&domain.Attempt{ID: "at01", Repos: []string{"pikcup"}})
+	pool := docker.NewContainerPool(&errContainerRuntime{err: fmt.Errorf("no container should start")})
+	d := NewDaemonExecutor(DaemonExecutorConfig{
+		ProjectDir: dir,
+		Store:      store,
+		AttemptID:  "at01",
+		TaskID:     "t1",
+		Pool:       pool,
+		AllWFs:     map[string]*domain.Workflow{"develop": wf},
+	})
+	defer d.Close(true)
+
+	result, err := d.executeWorkflowStep(context.Background(), &domain.Step{
+		Name:   "develop",
+		Config: map[string]string{"workflow_name": "develop"},
+	})
+
+	require.NoError(t, err, "a bad list fails through the workflow's fail wiring")
+	assert.Equal(t, "fail", result.Result)
+	assert.Empty(t, d.worktrees, "no extract worktrees for a run that can't start")
+	assert.Contains(t, store.keys[domain.RepoErrorKey], `unknown repo "pikcup"`)
 }

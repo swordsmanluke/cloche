@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -213,47 +212,12 @@ func NewDaemonExecutor(cfg DaemonExecutorConfig) *DaemonExecutor {
 	}
 }
 
-// undeclaredRepoPaths returns the project-relative paths of the
-// [[repositories]] checkouts wf's container doesn't need: those outside the
-// union of `repos` declarations across workflows sharing its container.id
-// (reposForContainer). Nil when that union is unrestricted (some sharing
-// workflow declares no repos) or no repositories are configured, so the copy
-// stays whole. Without this the live-tree copy took every nested repo, e.g.
-// 6 GB of other games' data into each pickup room container.
-func (d *DaemonExecutor) undeclaredRepoPaths(wf *domain.Workflow) []string {
-	if wf == nil {
-		return nil
-	}
-	names := reposForContainer(d.allWFs, wf.ContainerID())
-	if names == nil {
-		return nil
-	}
-	cfg, err := config.Load(d.projectDir)
-	if err != nil || cfg == nil || len(cfg.Repositories) == 0 {
-		return nil
-	}
-	want := make(map[string]bool, len(names))
-	for _, n := range names {
-		want[n] = true
-	}
-	var out []string
-	for _, r := range cfg.ResolveRepositories(d.projectDir) {
-		if r.SubPath != "" && !want[r.Name] && !strings.HasPrefix(r.SubPath, "..") {
-			out = append(out, r.SubPath)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
 // containerProjectDir returns the directory that should seed the container
 // copy for wf. When containerSeed is set, it lazily materializes (and
 // memoizes) a clean git snapshot at that state and returns it instead of the
 // live projectDir — see the ContainerSeed doc comment for why. The snapshot
-// includes only the nested [[repositories]] checkouts wf's container needs
-// (the union of `repos` declarations across workflows sharing its
-// container.id — see reposForContainer); snapshots are memoized per repo-set,
-// so workflows needing different subsets don't pay for each other's repos.
+// includes only the nested [[repositories]] checkouts the attempt selected;
+// snapshots are memoized per repo-set.
 // Falls back to the live projectDir when no seed was configured, or when
 // snapshot creation fails (logged, not fatal — mirrors the same fallback
 // used for top-level container runs in launchAndTrack).
@@ -262,8 +226,8 @@ func (d *DaemonExecutor) containerProjectDir(ctx context.Context, wf *domain.Wor
 		return d.projectDir
 	}
 	var names []string
-	if wf != nil {
-		names = reposForContainer(d.allWFs, wf.ContainerID())
+	if sel, err := d.attemptRepoSelection(ctx); err == nil {
+		names = sel.CopyNames()
 	}
 	key := "*" // nil names → all repos
 	if names != nil {
@@ -683,6 +647,16 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 			}
 		}()
 
+		// A bad repo list fails the step before anything starts, through the
+		// workflow's own fail wiring, so the user can correct the task.
+		if _, err := d.attemptRepoSelection(ctx); err != nil {
+			log.Printf("daemon executor: step %q: %v", step.Name, err)
+			if d.store != nil && d.taskID != "" {
+				_ = d.store.SetContextKey(ctx, d.taskID, d.attemptID, d.kvRunID(), domain.RepoErrorKey, err.Error())
+			}
+			return domain.StepResult{Result: "fail"}, nil
+		}
+
 		// Pre-create the extraction worktree+branch for this pool key on the
 		// first sub-workflow that uses it. Subsequent sub-workflows reusing
 		// the same container share these same worktrees — each extraction adds
@@ -923,15 +897,11 @@ func (d *DaemonExecutor) recordTouchedRepositories(ctx context.Context, hostRunI
 // child_repos list and, for compatibility with single-repo / legacy scripts,
 // the bare child_branch key when exactly one worktree was prepared.
 func (d *DaemonExecutor) prepareExtractWorktrees(ctx context.Context, poolKey string, wf *domain.Workflow) error {
-	cfg, err := config.Load(d.projectDir)
-	if err != nil {
-		log.Printf("daemon executor: config.Load(%s): %v — treating as no [[repositories]] declared", d.projectDir, err)
-		cfg = nil
-	}
-	repos, err := resolveRepos(wf, cfg, d.projectDir)
+	sel, err := d.attemptRepoSelection(ctx)
 	if err != nil {
 		return err
 	}
+	repos := sel.Extract
 
 	branchSuffix := d.attemptID + "-" + wf.ContainerID()
 	branchName := "cloche/" + branchSuffix
@@ -1036,12 +1006,13 @@ func (d *DaemonExecutor) seedIntentKV(ctx context.Context, step *domain.Step, wf
 	// query is just "<step> <workflow>" and selection is the same for every
 	// task (cloche-hbcv).
 	taskDescription := taskTextForIntent(ctx, d.store, d.projectDir, d.taskID, d.attemptID, hostRunID)
+	selectedRepos := attemptRepos(ctx, d.store, d.attemptID)
 	query := intent.Query{
 		TaskDescription: taskDescription,
 		StepPromptName:  step.Name,
 		WorkflowName:    wf.Name,
-		Repos:           wf.Repos,
-		RepoNames:       wf.Repos,
+		Repos:           selectedRepos,
+		RepoNames:       selectedRepos,
 	}
 	opts := intent.Options{TokenBudget: daemonCfg.Intent.TokenBudget}
 
@@ -1150,7 +1121,15 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 		// connects to the daemon via gRPC and waits for ExecuteStep commands.
 		Cmd: []string{"cloche-agent"},
 	}
-	cfg.ExcludePaths = d.undeclaredRepoPaths(wf)
+	sel, selErr := d.attemptRepoSelection(ctx)
+	if selErr != nil {
+		return domain.StepResult{}, fmt.Errorf("container step %q: %w", step.Name, selErr)
+	}
+	cfg.ExcludePaths = sel.ExcludePaths()
+	cfg.CopyOnly = sel.CopyOnly()
+	if names := sel.CopyNames(); names != nil {
+		cfg.Env = append(cfg.Env, domain.ReposEnvVar+"="+strings.Join(names, ","))
+	}
 	// Local-path modules outside the project are not in the copied project
 	// root; copy them in where ContainerDir expects them.
 	for _, m := range d.modules.ExternalModules(d.projectDir) {

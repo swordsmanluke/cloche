@@ -9,7 +9,6 @@ import (
 
 	"github.com/swordsmanluke/cloche/internal/config"
 	"github.com/swordsmanluke/cloche/internal/domain"
-	"github.com/swordsmanluke/cloche/internal/host"
 )
 
 // backfillRunRepositories populates runs.repositories for rows created
@@ -78,21 +77,6 @@ func backfillRunRepositories(db *sql.DB) error {
 		return err
 	}
 
-	wfReposCache := map[string]map[string][]string{} // projectDir -> workflowName -> repos
-	wfReposFor := func(projectDir, workflowName string) []string {
-		byName, ok := wfReposCache[projectDir]
-		if !ok {
-			byName = map[string][]string{}
-			if all, err := host.FindAllWorkflows(projectDir); err == nil {
-				for name, wf := range all {
-					byName[name] = wf.Repos
-				}
-			}
-			wfReposCache[projectDir] = byName
-		}
-		return byName[workflowName]
-	}
-
 	for _, r := range runs {
 		effectiveProjectDir := r.projectDir
 		projectRepo := ""
@@ -101,7 +85,7 @@ func backfillRunRepositories(db *sql.DB) error {
 			projectRepo = pr.repo
 		}
 
-		repos := domain.ResolveRunRepositories(r.repository, projectRepo, nil, wfReposFor(effectiveProjectDir, r.workflowName))
+		repos := domain.ResolveRunRepositories(r.repository, projectRepo, nil, nil)
 		reposStr := strings.Join(repos, ",")
 
 		if effectiveProjectDir != r.projectDir {

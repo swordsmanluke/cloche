@@ -332,14 +332,14 @@ stages:
 1. **Status** — only `active` requirements are visible; `disabled` and `superseded`
    ones never are.
 1. **Repo gate** — a requirement with `scope.repos` set is eligible only when the
-   workflow's declared `repos = [...]` names one of them; a step that declares no
-   repos receives global requirements only. This is a hard filter ahead of both
+   attempt's selected repos (a task's `repos` field or `cloche run --repos`) name one of
+   them; a run with no list receives global requirements only. This is a hard filter ahead of both
    stages below — another repo's requirement can't surface on the strength of a
    similarity score.
 2. **Deterministic scope match** — `level: project` requirements are always included.
    `level: domain` requirements are included when a requirement's domain matches the
-   step's domain context: domains whose `paths` overlap the workflow's declared
-   `repos`, or an explicit `domains = [...]` step/workflow config key.
+   step's domain context: domains whose `paths` overlap the attempt's selected
+   repos, or an explicit `domains = [...]` step/workflow config key.
 3. **Semantic retrieval** — the task description and step prompt are embedded and
    scored by cosine similarity against every active requirement's embedding
    (statement + rationale + hints). Requirements above a per-model similarity floor

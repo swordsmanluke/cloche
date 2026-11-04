@@ -1751,68 +1751,60 @@ func TestDaemonExecutor_ExecuteContainerStep_UsesSnapshotProjectDir(t *testing.T
 		"the container should be seeded from the pre-run snapshot, not the live checked-out tree")
 }
 
-// TestDaemonExecutor_ContainerProjectDir_ScopesReposPerWorkflow verifies that
-// a workflow's `repos = [...]` declaration restricts which nested
-// [[repositories]] checkouts are materialized into its container seed
-// snapshot, and that workflows needing different repo subsets get distinct
-// snapshots (memoized per repo-set, not globally).
-func TestDaemonExecutor_ContainerProjectDir_ScopesReposPerWorkflow(t *testing.T) {
+// TestDaemonExecutor_ContainerProjectDir_ScopesReposPerAttempt verifies that an
+// attempt's selected repos restrict which nested [[repositories]] checkouts are
+// materialized into its container seed snapshot, and that an attempt with no
+// list gets them all.
+func TestDaemonExecutor_ContainerProjectDir_ScopesReposPerAttempt(t *testing.T) {
 	repo, headSHA := initSnapshotTestRepo(t)
 	initNestedRepo(t, repo, filepath.Join("repos", "a"))
 	initNestedRepo(t, repo, filepath.Join("repos", "b"))
+	writeRepoConfig(t, repo, "[[repositories]]\nname = \"a\"\npath = \"./repos/a\"\n\n[[repositories]]\nname = \"b\"\npath = \"./repos/b\"\n")
 
 	children := []ChildRepoSeed{
 		{Name: "a", Path: filepath.Join("repos", "a"), Seed: captureRepoSeed(filepath.Join(repo, "repos", "a"))},
 		{Name: "b", Path: filepath.Join("repos", "b"), Seed: captureRepoSeed(filepath.Join(repo, "repos", "b"))},
 	}
+	wf := &domain.Workflow{Name: "develop", Location: domain.LocationContainer}
+	store := newAttemptStore(
+		&domain.Attempt{ID: "only", Repos: []string{"a"}},
+		&domain.Attempt{ID: "all"},
+	)
+	newExec := func(attemptID string) *DaemonExecutor {
+		return NewDaemonExecutor(DaemonExecutorConfig{
+			ProjectDir:            repo,
+			Store:                 store,
+			AttemptID:             attemptID,
+			ContainerSeed:         RepoSeed{SHA: headSHA},
+			ContainerSeedChildren: children,
+			AllWFs:                map[string]*domain.Workflow{"develop": wf},
+		})
+	}
 
-	wfA := &domain.Workflow{Name: "wa", Location: domain.LocationContainer,
-		Config: map[string]string{"container.id": "ca"}, Repos: []string{"a"}}
-	wfB := &domain.Workflow{Name: "wb", Location: domain.LocationContainer,
-		Config: map[string]string{"container.id": "cb"}, Repos: []string{"b"}}
-	wfAll := &domain.Workflow{Name: "wall", Location: domain.LocationContainer,
-		Config: map[string]string{"container.id": "call"}} // no repos → everything
+	only := newExec("only")
+	defer only.Close(true)
+	dirOnly := only.containerProjectDir(context.Background(), wf)
+	require.NotEqual(t, repo, dirOnly, "should snapshot, not fall back to live tree")
+	assert.DirExists(t, filepath.Join(dirOnly, "repos", "a"))
+	assert.NoDirExists(t, filepath.Join(dirOnly, "repos", "b"),
+		"the attempt selected a; b must not be materialized into its snapshot")
+	assert.Equal(t, dirOnly, only.containerProjectDir(context.Background(), wf), "memoized per repo-set")
 
-	de := NewDaemonExecutor(DaemonExecutorConfig{
-		ProjectDir:            repo,
-		ContainerSeed:         RepoSeed{SHA: headSHA},
-		ContainerSeedChildren: children,
-		AllWFs:                map[string]*domain.Workflow{"wa": wfA, "wb": wfB, "wall": wfAll},
-	})
-	defer de.Close(true)
-
-	dirA := de.containerProjectDir(context.Background(), wfA)
-	require.NotEqual(t, repo, dirA, "should snapshot, not fall back to live tree")
-	assert.DirExists(t, filepath.Join(dirA, "repos", "a"))
-	assert.NoDirExists(t, filepath.Join(dirA, "repos", "b"),
-		"wa declares repos=[a]; b must not be materialized into its snapshot")
-
-	dirB := de.containerProjectDir(context.Background(), wfB)
-	require.NotEqual(t, repo, dirB)
-	assert.NotEqual(t, dirA, dirB, "different repo-sets must get distinct snapshots")
-	assert.DirExists(t, filepath.Join(dirB, "repos", "b"))
-	assert.NoDirExists(t, filepath.Join(dirB, "repos", "a"))
-
-	dirAll := de.containerProjectDir(context.Background(), wfAll)
-	require.NotEqual(t, repo, dirAll)
+	all := newExec("all")
+	defer all.Close(true)
+	dirAll := all.containerProjectDir(context.Background(), wf)
 	assert.DirExists(t, filepath.Join(dirAll, "repos", "a"))
 	assert.DirExists(t, filepath.Join(dirAll, "repos", "b"))
 
-	// Memoization: same workflow → same snapshot dir.
-	assert.Equal(t, dirA, de.containerProjectDir(context.Background(), wfA))
-
-	de.Close(true)
-	assert.NoDirExists(t, dirA, "Close should clean up all per-repo-set snapshots")
-	assert.NoDirExists(t, dirB)
-	assert.NoDirExists(t, dirAll)
+	only.Close(true)
+	assert.NoDirExists(t, dirOnly, "Close should clean up its snapshots")
 }
 
 // TestDaemonExecutor_RecordTouchedRepositories verifies rule (c) of
 // domain.ResolveRunRepositories: a repo a host run's container sub-workflow
 // successfully extracted results for must be recorded on the host run, even
-// when the sub-workflow declares no repos of its own — the wrapped_cloche
-// bug report's motivating case for host workflows that fan out across
-// multiple repos without declaring `repos = [...]` themselves.
+// when the attempt selected no repos — the wrapped_cloche bug report's
+// motivating case for host workflows that fan out across multiple repos.
 func TestDaemonExecutor_RecordTouchedRepositories(t *testing.T) {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
@@ -1974,6 +1966,34 @@ func TestAttemptCreation_UsesStoreAllocatedID(t *testing.T) {
 	srv := &ClocheServer{store: fixedAttemptIDStore{&fakeRunStore{}}}
 	ctx := context.Background()
 
-	assert.Equal(t, "zz01", srv.ensureTaskAndAttempt(ctx, "", "title", "/p"))
+	assert.Equal(t, "zz01", srv.ensureTaskAndAttempt(ctx, "", "title", "/p", nil))
 	assert.Equal(t, "zz01", srv.createResumeAttempt(ctx, &domain.Run{TaskID: "t", AttemptID: "old1"}).ID)
+}
+
+func TestEnsureTaskAndAttempt_RecordsRepos(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+	srv := &ClocheServer{store: store, taskStore: store}
+	ctx := context.Background()
+
+	id := srv.ensureTaskAndAttempt(ctx, "t1", "title", "/p", []string{"pickup"})
+
+	got, err := store.GetAttempt(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"pickup"}, got.Repos)
+}
+
+func TestCreateResumeAttempt_InheritsRepos(t *testing.T) {
+	store := newAttemptStore(&domain.Attempt{ID: "old1", TaskID: "t1", Repos: []string{"pickup", "anarkana"}})
+	srv := &ClocheServer{store: store}
+
+	attempt := srv.createResumeAttempt(context.Background(), &domain.Run{TaskID: "t1", AttemptID: "old1"})
+
+	assert.Equal(t, []string{"pickup", "anarkana"}, attempt.Repos)
+	assert.Equal(t, []string{"pickup", "anarkana"}, store.attempts[attempt.ID].Repos)
+}
+
+func (s *recordingRunStore) GetAttempt(_ context.Context, id string) (*domain.Attempt, error) {
+	return nil, fmt.Errorf("attempt %q not found", id)
 }

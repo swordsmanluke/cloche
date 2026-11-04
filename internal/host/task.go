@@ -25,6 +25,9 @@ type Task struct {
 	Title       string            `json:"title"`
 	Description string            `json:"description"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
+	// Repos names the [[repositories]] this task needs in its containers.
+	// Empty means every configured repo.
+	Repos []string `json:"repos,omitempty"`
 }
 
 // IsOpen returns true if the task status is "open" or empty (for backward compatibility).

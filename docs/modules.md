@@ -98,7 +98,7 @@ The daemon's orchestration loop resolves these phases through `project.cloche`:
 
 | Workflow | `kv:` | `out:` | Notes |
 |---|---|---|---|
-| `list-tasks` | — | `tasks_path` | File of task JSONL. |
+| `list-tasks` | — | `tasks_path` | File of task JSONL. A task's optional `repos` field names the repositories its containers need. `beads-tasks` and `github-tasks` don't set it; a project that wants it wraps or replaces `list-tasks`. |
 | `claim-task` | `task_id` | `task_title`, `task_body_path` | Runs before `main`. Lost claim: end in `fail` with `claim_status = unavailable`; the daemon skips the task for the dedup window. |
 | `close-task` | `task_id` | — | Also the dashboard's "Close in tracker". |
 | `release-task` | `task_id` | — | Also the dashboard's release action. |

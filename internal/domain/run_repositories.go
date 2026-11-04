@@ -9,7 +9,7 @@ package domain
 //
 // Rules, in order:
 //
-//	(a) explicit — the run's own Repository field, when the workflow declared
+//	(a) explicit — the run's own Repository field, when its attempt selected
 //	    exactly one repo at dispatch time (see SingleRepo).
 //	(b) projectRepo — the repository whose configured path equals the run's
 //	    project_dir, i.e. the run's project_dir was itself a sub-repo path
@@ -17,10 +17,10 @@ package domain
 //	(c) touched — repositories independently observed to have been touched
 //	    by the run: extraction/merge records for container sub-workflows, or
 //	    the step "repository" pin for host workflow steps.
-//	(d) wfRepos — every repository the workflow declares, used in full only
-//	    when it declares more than one (a single declared repo is already
+//	(d) selected — every repository the attempt selected, used in full only
+//	    when it selected more than one (a single selected repo is already
 //	    captured by rule a).
-func ResolveRunRepositories(explicit, projectRepo string, touched, wfRepos []string) []string {
+func ResolveRunRepositories(explicit, projectRepo string, touched, selected []string) []string {
 	seen := make(map[string]bool)
 	var out []string
 	add := func(name string) {
@@ -36,8 +36,8 @@ func ResolveRunRepositories(explicit, projectRepo string, touched, wfRepos []str
 	for _, t := range touched {
 		add(t)
 	}
-	if len(wfRepos) > 1 {
-		for _, r := range wfRepos {
+	if len(selected) > 1 {
+		for _, r := range selected {
 			add(r)
 		}
 	}

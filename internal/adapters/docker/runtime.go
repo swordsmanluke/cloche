@@ -234,7 +234,16 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 
 		patterns = append(patterns, excludePatterns(cfg.ExcludePaths)...)
 		if len(cfg.ExcludePaths) > 0 {
-			log.Printf("runtime.Start: leaving undeclared repos out of %s: %s", containerID, strings.Join(cfg.ExcludePaths, ", "))
+			log.Printf("runtime.Start: leaving unselected repos out of %s: %s", containerID, strings.Join(cfg.ExcludePaths, ", "))
+		}
+		if len(cfg.CopyOnly) > 0 {
+			only, err := copyOnlyPatterns(cfg.ProjectDir, cfg.CopyOnly)
+			if err != nil {
+				exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
+				return "", fmt.Errorf("limiting project copy: %w", err)
+			}
+			patterns = append(patterns, only...)
+			log.Printf("runtime.Start: limiting copy into %s to: %s", containerID, strings.Join(cfg.CopyOnly, ", "))
 		}
 		if err := copyProjectToContainer(ctx, cfg.ProjectDir, containerID, patterns); err != nil {
 			exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()

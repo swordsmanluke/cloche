@@ -3,6 +3,7 @@ package docker
 import (
 	"bufio"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -82,6 +83,48 @@ func excludePatterns(dirs []string) []ignorePattern {
 		out = append(out, ignorePattern{pattern: d, dirOnly: true, anchored: true})
 	}
 	return out
+}
+
+// copyOnlyPatterns returns ignore patterns that leave out everything in
+// projectDir except the keep paths (project-relative, forward slashes). It
+// descends only into the directories leading to a kept path, so the rest of
+// the tree is never walked. Missing keep paths are fine.
+func copyOnlyPatterns(projectDir string, keep []string) ([]ignorePattern, error) {
+	keepSet := make(map[string]bool, len(keep))
+	ancestors := make(map[string]bool)
+	for _, k := range keep {
+		k = strings.Trim(filepath.ToSlash(filepath.Clean(k)), "/")
+		keepSet[k] = true
+		for dir := path.Dir(k); dir != "."; dir = path.Dir(dir) {
+			ancestors[dir] = true
+		}
+	}
+
+	var out []ignorePattern
+	var visit func(rel string) error
+	visit = func(rel string) error {
+		entries, err := os.ReadDir(filepath.Join(projectDir, filepath.FromSlash(rel)))
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			child := path.Join(rel, e.Name())
+			switch {
+			case keepSet[child]:
+			case ancestors[child] && e.IsDir():
+				if err := visit(child); err != nil {
+					return err
+				}
+			default:
+				out = append(out, ignorePattern{pattern: child, anchored: true})
+			}
+		}
+		return nil
+	}
+	if err := visit(""); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // isIgnored checks whether a relative path should be excluded.

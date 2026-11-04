@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"io"
 	"os"
 	"path/filepath"
@@ -5832,4 +5834,30 @@ func TestServer_RunWorkflow_FoldsSubRepoProjectDir(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, parentDir, run.ProjectDir, "run must be recorded against the parent project, not the sub-repo path")
 	assert.Equal(t, []string{"cloche"}, run.Repositories, "folded run is attributed to the matched sub-repo")
+}
+
+func TestServer_RunWorkflow_UnknownRepoFailsBeforeAnyRunExists(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "config.toml"),
+		[]byte("[[repositories]]\nname = \"pickup\"\npath = \"./repos/pickup\"\n"), 0644))
+	srv := server.NewClocheServerWithCaptures(store, store, local.NewRuntime("sh"), "")
+
+	_, err = srv.RunWorkflow(context.Background(), &pb.RunWorkflowRequest{
+		WorkflowName: "test",
+		ProjectDir:   dir,
+		Repos:        []string{"pikcup"},
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+	assert.Contains(t, err.Error(), `unknown repo "pikcup"`)
+	assert.Contains(t, err.Error(), "pickup")
+	runs, listErr := store.ListRuns(context.Background(), time.Time{})
+	require.NoError(t, listErr)
+	assert.Empty(t, runs)
 }

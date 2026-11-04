@@ -88,6 +88,10 @@ type RepositoryConfig struct {
 	Name string `toml:"name"`
 	Path string `toml:"path"`
 	URL  string `toml:"url"`
+	// DependsOn names repos this one needs to build or run. A run selecting
+	// this repo also gets them in its container; they get no result branch
+	// unless also selected.
+	DependsOn []string `toml:"depends_on"`
 }
 
 // IntentConfig controls the intent-continuity feature (see

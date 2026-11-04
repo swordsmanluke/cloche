@@ -32,7 +32,10 @@ type RunWorkflowRequest struct {
 	IssueId       string                 `protobuf:"bytes,7,opt,name=issue_id,json=issueId,proto3" json:"issue_id,omitempty"`
 	// env vars passed to a host workflow's steps (e.g. CLOCHE_INTENT_FULL for
 	// `cloche intent scan --full`); ignored for container workflow runs.
-	Env           map[string]string `protobuf:"bytes,8,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Env map[string]string `protobuf:"bytes,8,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// the [[repositories]] names this run needs in its containers; empty means
+	// every configured repo. Ignored when the run inherits a parent's attempt.
+	Repos         []string `protobuf:"bytes,9,rep,name=repos,proto3" json:"repos,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -119,6 +122,13 @@ func (x *RunWorkflowRequest) GetIssueId() string {
 func (x *RunWorkflowRequest) GetEnv() map[string]string {
 	if x != nil {
 		return x.Env
+	}
+	return nil
+}
+
+func (x *RunWorkflowRequest) GetRepos() []string {
+	if x != nil {
+		return x.Repos
 	}
 	return nil
 }
@@ -6408,7 +6418,7 @@ var File_cloche_proto protoreflect.FileDescriptor
 
 const file_cloche_proto_rawDesc = "" +
 	"\n" +
-	"\fcloche.proto\x12\tcloche.v1\"\xd2\x02\n" +
+	"\fcloche.proto\x12\tcloche.v1\"\xe8\x02\n" +
 	"\x12RunWorkflowRequest\x12#\n" +
 	"\rworkflow_name\x18\x01 \x01(\tR\fworkflowName\x12\x1f\n" +
 	"\vproject_dir\x18\x02 \x01(\tR\n" +
@@ -6418,7 +6428,8 @@ const file_cloche_proto_rawDesc = "" +
 	"\x0ekeep_container\x18\x05 \x01(\bR\rkeepContainer\x12\x14\n" +
 	"\x05title\x18\x06 \x01(\tR\x05title\x12\x19\n" +
 	"\bissue_id\x18\a \x01(\tR\aissueId\x128\n" +
-	"\x03env\x18\b \x03(\v2&.cloche.v1.RunWorkflowRequest.EnvEntryR\x03env\x1a6\n" +
+	"\x03env\x18\b \x03(\v2&.cloche.v1.RunWorkflowRequest.EnvEntryR\x03env\x12\x14\n" +
+	"\x05repos\x18\t \x03(\tR\x05repos\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"d\n" +

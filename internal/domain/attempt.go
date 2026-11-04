@@ -16,6 +16,14 @@ const (
 	AttemptResultCancelled AttemptResult = "cancelled"
 )
 
+// ReposEnvVar carries the repos present in a container to the agent inside it,
+// comma-separated. It is set only when the run selected specific repos.
+const ReposEnvVar = "CLOCHE_REPOS"
+
+// RepoErrorKey is the KV key holding why a run's repo list couldn't be resolved,
+// which the host run reports as its error.
+const RepoErrorKey = "repo_error"
+
 // Attempt represents one try at completing a task. Each attempt has a short
 // generated ID (4 alphanumeric characters) that is unique within its parent task.
 type Attempt struct {
@@ -25,6 +33,9 @@ type Attempt struct {
 	EndedAt           time.Time
 	Result            AttemptResult
 	PreviousAttemptID string // lineage: ID of the attempt this one was resumed from
+	// Repos names the [[repositories]] this attempt's containers need. Empty
+	// means every configured repo. Fixed when the attempt is created.
+	Repos []string
 }
 
 // NewAttempt creates a new running attempt for the given task with a random ID.

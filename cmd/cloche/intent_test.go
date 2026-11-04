@@ -965,8 +965,6 @@ path = "internal/version"
 	}
 
 	wfSrc := `workflow develop {
-  repos = ["main"]
-
   step implement {
     prompt = file("prompts/implement.md")
     domains = ["versioning"]
@@ -1290,5 +1288,28 @@ func TestIntentAdd_RepoScope(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "Repos:       alpha") {
 		t.Errorf("expected repos line in show output, got: %s", buf.String())
+	}
+}
+
+func TestIntentPreview_ReposFlagSelectsRepoScopedRequirements(t *testing.T) {
+	dir := t.TempDir()
+	writeProjectFixture(t, dir)
+	store := intent.NewStore(dir)
+	mustCreate(t, store, intent.StatusActive, intent.Scope{Level: intent.ScopeLevelProject, Repos: []string{"main"}}, "Main repo statement.")
+
+	var with bytes.Buffer
+	if err := intentPreviewCommand([]string{"--project", dir, "--repos", "main"}, &with); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(with.String(), "Main repo statement.") {
+		t.Errorf("expected the repo-scoped requirement with --repos, got: %s", with.String())
+	}
+
+	var without bytes.Buffer
+	if err := intentPreviewCommand([]string{"--project", dir}, &without); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(without.String(), "Main repo statement.") {
+		t.Errorf("did not expect the repo-scoped requirement without --repos, got: %s", without.String())
 	}
 }

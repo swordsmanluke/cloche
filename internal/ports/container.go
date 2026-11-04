@@ -35,8 +35,12 @@ type ContainerConfig struct {
 	ExtraDirs []ExtraDir
 	// ExcludePaths are project-relative directories left out of the
 	// workspace copy, on top of .clocheignore: the [[repositories]]
-	// checkouts the workflow's container doesn't declare in `repos`.
+	// checkouts the run didn't select.
 	ExcludePaths []string
+	// CopyOnly, when set, limits the workspace copy to these project-relative
+	// paths: the run's repos and the project's cloche files, for a run that
+	// doesn't include the root repo. .clocheignore still applies within them.
+	CopyOnly []string
 	Interactive  bool // allocate TTY and keep stdin open (-it flags)
 }
 

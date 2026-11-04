@@ -1,11 +1,11 @@
 package grpc
 
 import (
-	"fmt"
-	"sort"
+	"context"
+	"log"
 
 	"github.com/swordsmanluke/cloche/internal/config"
-	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
 // resolvedRepo describes one repository the daemon should extract changes into
@@ -13,62 +13,26 @@ import (
 // repo-resolution type also used by the intent-scan collector.
 type resolvedRepo = config.ResolvedRepo
 
-// resolveRepos returns the repos a workflow should produce extract branches
-// for. If the workflow declares `repos = [...]`, those names are looked up in
-// cfg.Repositories. Otherwise every [[repositories]] entry is used. When no
-// repositories are configured at all, returns a single legacy entry pointing
-// at projectDir so existing single-tree projects keep working.
-func resolveRepos(wf *domain.Workflow, cfg *config.Config, projectDir string) ([]resolvedRepo, error) {
-	all := cfg.ResolveRepositories(projectDir)
-	if cfg == nil || len(cfg.Repositories) == 0 || wf == nil || len(wf.Repos) == 0 {
-		return all, nil
+// attemptRepoSelection resolves the repos the current attempt's containers hold
+// and extract to. An attempt that selected none gets every configured repo.
+func (d *DaemonExecutor) attemptRepoSelection(ctx context.Context) (*config.RepoSelection, error) {
+	cfg, err := config.Load(d.projectDir)
+	if err != nil {
+		log.Printf("daemon executor: config.Load(%s): %v — treating as no [[repositories]] declared", d.projectDir, err)
+		cfg = nil
 	}
-
-	byName := make(map[string]resolvedRepo, len(all))
-	for _, r := range all {
-		byName[r.Name] = r
-	}
-
-	out := make([]resolvedRepo, 0, len(wf.Repos))
-	for _, name := range wf.Repos {
-		r, ok := byName[name]
-		if !ok {
-			return nil, fmt.Errorf("workflow %q: declared repo %q not in [[repositories]] config", wf.Name, name)
-		}
-		out = append(out, r)
-	}
-	return out, nil
+	return cfg.SelectRepositories(d.projectDir, attemptRepos(ctx, d.store, d.attemptID))
 }
 
-// reposForContainer returns the repository names a container's workspace copy
-// must include: the union of `repos = [...]` declarations across every
-// container workflow sharing containerID. Workflows with the same container.id
-// reuse one container (and thus one workspace copy) within an attempt, so the
-// copy has to satisfy all of them. Returns nil — meaning "no restriction,
-// include everything" — when any sharing workflow declares no repos (it may
-// depend on any of them) or when no matching workflow is found.
-func reposForContainer(allWFs map[string]*domain.Workflow, containerID string) []string {
-	seen := make(map[string]bool)
-	var names []string
-	found := false
-	for _, wf := range allWFs {
-		if wf == nil || wf.Location != domain.LocationContainer || wf.ContainerID() != containerID {
-			continue
-		}
-		found = true
-		if len(wf.Repos) == 0 {
-			return nil
-		}
-		for _, n := range wf.Repos {
-			if !seen[n] {
-				seen[n] = true
-				names = append(names, n)
-			}
-		}
-	}
-	if !found {
+// attemptRepos returns the repos attemptID selected, or nil when it selected
+// none or has no record.
+func attemptRepos(ctx context.Context, store ports.RunStore, attemptID string) []string {
+	if store == nil || attemptID == "" {
 		return nil
 	}
-	sort.Strings(names)
-	return names
+	attempt, err := store.GetAttempt(ctx, attemptID)
+	if err != nil || attempt == nil {
+		return nil
+	}
+	return attempt.Repos
 }

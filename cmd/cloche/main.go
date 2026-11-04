@@ -223,6 +223,7 @@ func main() {
 
 func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	var workflowSpec, prompt, title, issueID string
+	var repos []string
 	var keepContainer bool
 
 	for i := 0; i < len(args); i++ {
@@ -242,6 +243,11 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 				i++
 				issueID = args[i]
 			}
+		case "--repos":
+			if i+1 < len(args) {
+				i++
+				repos = splitRepoList(args[i])
+			}
 		case "--keep-container":
 			keepContainer = true
 		default:
@@ -252,7 +258,7 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 	}
 
 	if workflowSpec == "" {
-		fmt.Fprintf(os.Stderr, "usage: cloche run <workflow>[:<step>] [--prompt \"...\"] [--title \"...\"] [--issue ID]\n")
+		fmt.Fprintf(os.Stderr, "usage: cloche run <workflow>[:<step>] [--prompt \"...\"] [--title \"...\"] [--issue ID] [--repos a,b]\n")
 		os.Exit(1)
 	}
 
@@ -282,6 +288,7 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 		Prompt:        prompt,
 		KeepContainer: keepContainer,
 		Title:         title,
+		Repos:         repos,
 		IssueId:       issueID,
 	})
 	if err != nil {
@@ -1810,4 +1817,15 @@ func cmdVersion() {
 	if agentVersion != "<unavailable>" && agentVersion != cliVersion {
 		fmt.Fprintf(os.Stderr, "warning: CLI version (%s) differs from agent version (%s)\n", cliVersion, agentVersion)
 	}
+}
+
+// splitRepoList parses a comma-separated --repos value, dropping blanks.
+func splitRepoList(value string) []string {
+	var repos []string
+	for _, r := range strings.Split(value, ",") {
+		if r = strings.TrimSpace(r); r != "" {
+			repos = append(repos, r)
+		}
+	}
+	return repos
 }

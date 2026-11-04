@@ -741,6 +741,18 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 		return s.resumeRun(ctx, runID, "", rebuildMode)
 	}
 
+	// A bad repo list fails the request outright, before any run exists, so the
+	// user can correct it.
+	if len(req.Repos) > 0 {
+		cfg, err := config.Load(req.ProjectDir)
+		if err != nil {
+			return nil, status.Errorf(codes.FailedPrecondition, "loading config: %v", err)
+		}
+		if _, err := cfg.SelectRepositories(req.ProjectDir, req.Repos); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
 	// Parse optional step from workflow_name ("workflow:step" format).
 	workflowName, startStep, _ := strings.Cut(req.WorkflowName, ":")
 
@@ -767,7 +779,7 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	// a new Task/Attempt record for standalone container runs.
 	attemptID := attemptIDFromContext(ctx)
 	if attemptID == "" {
-		attemptID = s.ensureTaskAndAttempt(ctx, req.IssueId, req.Title, req.ProjectDir)
+		attemptID = s.ensureTaskAndAttempt(ctx, req.IssueId, req.Title, req.ProjectDir, req.Repos)
 	}
 
 	runID := domain.GenerateRunID(workflowName, attemptID)
@@ -778,15 +790,14 @@ func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 	run.TaskID = req.IssueId
 	run.AttemptID = attemptID
 	run.UserInitiated = true
-	var wfRepos []string
 	if wfLookupErr == nil {
 		if wf, ok := allWFs[workflowName]; ok {
 			run.IsBuiltin = wf.Builtin
-			run.Repository = domain.SingleRepo(wf.Repos)
-			wfRepos = wf.Repos
 		}
 	}
-	run.Repositories = domain.ResolveRunRepositories(run.Repository, subRepoName, nil, wfRepos)
+	selectedRepos := attemptRepos(ctx, s.store, attemptID)
+	run.Repository = domain.SingleRepo(selectedRepos)
+	run.Repositories = domain.ResolveRunRepositories(run.Repository, subRepoName, nil, selectedRepos)
 	if run.TaskID == "" {
 		// User-initiated run: task ID was synthesized during ensureTaskAndAttempt.
 		// Derive it from the attempt prefix for backward compat with log paths.
@@ -860,7 +871,7 @@ func (s *ClocheServer) runHostWorkflow(ctx context.Context, req *pb.RunWorkflowR
 
 	// If no parent attempt, create Task and Attempt records for this host run.
 	if attemptID == "" {
-		attemptID = s.ensureTaskAndAttempt(ctx, req.IssueId, req.Title, req.ProjectDir)
+		attemptID = s.ensureTaskAndAttempt(ctx, req.IssueId, req.Title, req.ProjectDir, req.Repos)
 	}
 
 	taskID := req.IssueId
@@ -1032,7 +1043,7 @@ func attemptIDFromContext(ctx context.Context) string {
 //
 // When issueID is non-empty, the task has external source. When empty, a
 // user-initiated task is created with a generated ID.
-func (s *ClocheServer) ensureTaskAndAttempt(ctx context.Context, issueID, title, projectDir string) string {
+func (s *ClocheServer) ensureTaskAndAttempt(ctx context.Context, issueID, title, projectDir string, repos []string) string {
 	attemptID := ports.AllocateAttemptID(ctx, s.store)
 
 	if s.taskStore == nil {
@@ -1068,6 +1079,7 @@ func (s *ClocheServer) ensureTaskAndAttempt(ctx context.Context, issueID, title,
 		TaskID:    taskID,
 		StartedAt: time.Now(),
 		Result:    domain.AttemptResultRunning,
+		Repos:     repos,
 	}
 	if err := s.store.SaveAttempt(ctx, attempt); err != nil {
 		log.Printf("server: failed to save attempt %s for task %s: %v", attemptID, taskID, err)
@@ -1236,6 +1248,7 @@ func (s *ClocheServer) createResumeAttempt(ctx context.Context, oldRun *domain.R
 		PreviousAttemptID: oldRun.AttemptID,
 		StartedAt:         time.Now(),
 		Result:            domain.AttemptResultRunning,
+		Repos:             attemptRepos(ctx, s.store, oldRun.AttemptID),
 	}
 	if oldRun.TaskID != "" {
 		if err := s.store.SaveAttempt(ctx, attempt); err != nil {
@@ -1832,13 +1845,29 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 		log.Printf("run %s: %v; seeding container from live tree", runID, childErr)
 		baseSHA = ""
 	}
-	// A top-level container run executes exactly one workflow, so restrict the
-	// snapshot to the repos it declares (`repos = [...]`). No declaration means
-	// no restriction — all configured repos are included.
-	if allWFs, wfErr := host.FindAllWorkflows(req.ProjectDir); wfErr == nil {
-		if wf := allWFs[workflowName]; wf != nil && len(wf.Repos) > 0 {
-			children = filterChildSeeds(children, wf.Repos)
+	// Narrow the copy to the repos the attempt selected. The request's list was
+	// validated up front; an attempt inherited from a parent run may still fail
+	// here if the config changed underneath it.
+	var repoCfg *config.Config
+	if loaded, cfgErr := config.Load(req.ProjectDir); cfgErr == nil {
+		repoCfg = loaded
+	}
+	sel, selErr := repoCfg.SelectRepositories(req.ProjectDir, attemptRepos(ctx, s.store, attemptID))
+	if selErr != nil {
+		if run, _ := s.store.GetRun(ctx, runID); run != nil {
+			run.Fail(selErr.Error())
+			_ = s.store.UpdateRun(ctx, run)
 		}
+		if s.logBroadcast != nil {
+			s.logBroadcast.Finish(runID)
+		}
+		log.Printf("run %s: %v", runID, selErr)
+		return
+	}
+	children = filterChildSeeds(children, sel.CopyNames())
+	var containerEnv []string
+	if names := sel.CopyNames(); names != nil {
+		containerEnv = append(containerEnv, domain.ReposEnvVar+"="+strings.Join(names, ","))
 	}
 	if baseSHA != "" {
 		snapDir, cleanup, snapErr := materializeCleanSnapshot(ctx, req.ProjectDir,
@@ -1866,6 +1895,9 @@ func (s *ClocheServer) launchAndTrack(runID, image string, keepContainer bool, s
 		NetworkAllow:   []string{"*"},
 		Cmd:            cmd,
 		Prompt:         req.Prompt,
+		Env:            containerEnv,
+		ExcludePaths:   sel.ExcludePaths(),
+		CopyOnly:       sel.CopyOnly(),
 	})
 	if err != nil {
 		run, _ := s.store.GetRun(ctx, runID)

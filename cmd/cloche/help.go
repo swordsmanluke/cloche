@@ -171,7 +171,7 @@ Starts a new workflow run. Without --issue, a User-Initiated task is created
 automatically and a task ID is printed alongside the run ID.
 
 Usage:
-  cloche run <workflow>[:<step>] [--prompt "..."] [--title "..."] [--issue ID] [--keep-container]
+  cloche run <workflow>[:<step>] [--prompt "..."] [--title "..."] [--issue ID] [--repos a,b] [--keep-container]
 
 Arguments:
   <workflow>           Name of the workflow to run: either a
@@ -723,7 +723,7 @@ Usage:
   cloche intent disable <id> [--project <dir>]
   cloche intent enable <id> [--project <dir>]
   cloche intent add "<statement>" [--domain <name>]... [--project <dir>]
-  cloche intent preview [--workflow <name>] [--step <name>] [--prompt "..."] [--project <dir>]
+  cloche intent preview [--workflow <name>] [--step <name>] [--prompt "..."] [--repos a,b] [--project <dir>]
   cloche intent scan [--full]
 
 Subcommands:

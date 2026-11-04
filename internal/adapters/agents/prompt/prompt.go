@@ -1035,6 +1035,7 @@ func (a *Adapter) assemblePrompt(ctx context.Context, step *domain.Step, workDir
 				"prev_output":      a.PrevOutput,
 				"task_description": userPrompt,
 				"result_nonce":     nonce,
+				"repos":            os.Getenv(domain.ReposEnvVar),
 			},
 			KV:      a.KV,
 			WorkDir: workDir,
@@ -1099,12 +1100,25 @@ func (a *Adapter) assemblePrompt(ctx context.Context, step *domain.Step, workDir
 	// protocol existed, would otherwise fail every run with no instruction
 	// telling the agent why. Append a generic reminder whenever nothing in
 	// the assembled prompt already mentions the marker.
+	if repos := os.Getenv(domain.ReposEnvVar); repos != "" {
+		parts = append(parts, repoScopeNotice(repos))
+	}
+
 	joined := strings.Join(parts, "\n\n")
 	if !strings.Contains(joined, protocol.ResultPrefix) {
 		joined += "\n\n" + markerProtocolReminder(nonce)
 	}
 
 	return joined, nil
+}
+
+// repoScopeNotice tells an agent which repos its container holds, and what to do
+// when the task turns out to need another one.
+func repoScopeNotice(repos string) string {
+	return "## Repositories in this container\n\n" +
+		"This run has only these repositories: " + strings.ReplaceAll(repos, ",", ", ") + ". " +
+		"The project's other repositories are not in this container. If the task needs one of them, " +
+		"don't work around its absence: report failure and name the repository you need, so the task can be corrected."
 }
 
 // markerProtocolReminder is appended to the assembled prompt when nothing in

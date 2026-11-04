@@ -537,9 +537,8 @@ func (p *Parser) parseWorkflow() (*domain.Workflow, error) {
 }
 
 // parseWorkflowField handles top-level `key = value` assignments inside a
-// workflow block: `repos = ["a", "b"]` names the repositories the workflow
-// consumes (repo names must match [[repositories]] entries in the
-// project's config.toml), `token-limit = N` overrides the per-step
+// workflow block: `repos = [...]` is accepted and ignored apart from a
+// deprecation warning, `token-limit = N` overrides the per-step
 // token-limit result's default budget, and `intent_tracking = false` opts
 // every step in the workflow out of $intent injection and collect-sources
 // mining.
@@ -554,11 +553,10 @@ func (p *Parser) parseWorkflowField(wf *domain.Workflow) error {
 
 	switch keyTok.Literal {
 	case "repos":
-		repos, err := p.parseStringList()
-		if err != nil {
+		if _, err := p.parseStringList(); err != nil {
 			return err
 		}
-		wf.Repos = repos
+		wf.DeclaresRepos = true
 		return nil
 	case "token-limit":
 		negative := false

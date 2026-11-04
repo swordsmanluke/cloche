@@ -130,21 +130,13 @@ Repositories are declared in `config.toml` via `[[repositories]]` entries (see
 [`[[repositories]]`](#repositories-1) in the configuration reference below). There is
 no `repository` block in the `.cloche` DSL.
 
-**Workflow-level `repos` field** — workflows may declare which repositories they use:
-
-```
-workflow "develop-backend" {
-  repos = ["backend"]
-  ...
-}
-```
-
-`repos` is a list of repository names declared in `config.toml`. It is visible in
-`cloche project`, and the runtime enforces it: only the declared repositories are
-copied into the workflow's container and extracted into result branches. Workflows
-sharing a `container.id` share one container copy containing the union of their
-`repos` declarations (if any of them declares no `repos`, all repositories are
-included). Omitting `repos` includes every configured repository.
+**Choosing repositories for a run** — a task lists what it needs in the `repos` field of
+its `list-tasks` JSONL line, and a run with no task uses `cloche run --repos a,b`. Only
+those repositories, plus their `depends_on`, are copied into the run's containers, and
+only the ones listed get result branches. No list means every configured repository; an
+unknown name fails before a container starts. A root repository (`path = "."`) is copied
+whole only when listed; otherwise a container gets `.cloche/` and the root's agent
+instructions. See `docs/workflows.md` for the details.
 
 ### Agent Declarations
 
@@ -2025,8 +2017,9 @@ path = "./repos/frontend"
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `name` | _(required)_ | Identifier used to reference this repository from workflow `repos` fields. |
+| `name` | _(required)_ | Identifier used to select this repository: a task's `repos` field or `cloche run --repos`. |
 | `path` | _(required)_ | Path relative to the project root. |
+| `depends_on` | `[]` | Repositories this one needs. A run selecting it also gets them, transitively, in its containers, without result branches unless they're also selected. Unknown names and cycles are errors. |
 | `url` | _(unset)_ | Remote URL (informational; not used by the runtime). |
 
 Repositories appear in `cloche project` output and in `cloche project repos list`.

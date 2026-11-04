@@ -57,7 +57,7 @@ Feature: Repository configuration and DSL
       """
     When the DSL parser processes the file
     Then no parse error is returned
-    And workflow "develop-backend" declares repos ["backend"]
+    And workflow "develop-backend" warns that its repos field is ignored
 
   Scenario: Parse a workflow with multiple repo dependencies
     Given a .cloche file containing:
@@ -74,7 +74,7 @@ Feature: Repository configuration and DSL
       """
     When the DSL parser processes the file
     Then no parse error is returned
-    And workflow "integration-testing" declares repos ["candy", "cloche"]
+    And workflow "integration-testing" warns that its repos field is ignored
 
   Scenario: Parse a step with a repository field
     Given a .cloche file containing:

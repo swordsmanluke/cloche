@@ -561,7 +561,7 @@ func excludedIntentTrackingSteps(projectDir string) map[string]bool {
 
 // intentPreviewCommand implements:
 //
-//	cloche intent preview [--workflow W] [--step S] [--prompt "..."] [--project DIR]
+//	cloche intent preview [--workflow W] [--step S] [--prompt "..."] [--repos a,b] [--project DIR]
 //
 // It renders the exact block intent.Select + intent.FormatBlock would
 // produce for the given inputs — the same two calls the daemon-side prompt
@@ -569,6 +569,7 @@ func excludedIntentTrackingSteps(projectDir string) map[string]bool {
 // reimplementation of selection.
 func intentPreviewCommand(args []string, w io.Writer) error {
 	var projectDir, workflowName, stepName, prompt string
+	var repos []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--workflow":
@@ -591,6 +592,11 @@ func intentPreviewCommand(args []string, w io.Writer) error {
 				i++
 				projectDir = args[i]
 			}
+		case "--repos":
+			if i+1 < len(args) {
+				i++
+				repos = splitRepoList(args[i])
+			}
 		}
 	}
 	projectDir = resolveProjectDir(projectDir)
@@ -611,13 +617,13 @@ func intentPreviewCommand(args []string, w io.Writer) error {
 	}
 
 	query := intent.Query{TaskDescription: prompt, WorkflowName: workflowName}
+	query.Repos = resolveRepoPaths(cfg, repos)
+	query.RepoNames = repos
 	var wf *domain.Workflow
 	var step *domain.Step
 	if workflowName != "" {
 		if loaded, loadErr := loadWorkflow(projectDir, workflowName); loadErr == nil {
 			wf = loaded
-			query.Repos = resolveRepoPaths(cfg, wf.Repos)
-			query.RepoNames = wf.Repos
 			if d, ok := wf.Config["domains"]; ok {
 				query.Domains = splitCommaList(d)
 			}

@@ -2155,3 +2155,44 @@ func TestNextAttemptID_ErrorsWhenSpaceExhausted(t *testing.T) {
 	_, err = store.NextAttemptID(context.Background())
 	assert.ErrorContains(t, err, "exhausted")
 }
+
+func TestSaveAttempt_ReposRoundTripAndAreFixedAfterInsert(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+	ctx := context.Background()
+
+	require.NoError(t, store.SaveTask(ctx, &domain.Task{ID: "t", ProjectDir: "/p", CreatedAt: time.Now()}))
+	attempt := domain.NewAttempt("t")
+	attempt.Repos = []string{"pickup", "anarkana"}
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	got, err := store.GetAttempt(ctx, attempt.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"pickup", "anarkana"}, got.Repos)
+
+	// Completing from a copy that didn't load Repos must not clear them.
+	partial := *attempt
+	partial.Repos = nil
+	partial.Complete(domain.AttemptResultSucceeded)
+	require.NoError(t, store.SaveAttempt(ctx, &partial))
+
+	got, err = store.GetAttempt(ctx, attempt.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.AttemptResultSucceeded, got.Result)
+	assert.Equal(t, []string{"pickup", "anarkana"}, got.Repos)
+}
+
+func TestSaveAttempt_NoReposReadsBackEmpty(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+	ctx := context.Background()
+
+	attempt := domain.NewAttempt("t")
+	require.NoError(t, store.SaveAttempt(ctx, attempt))
+
+	got, err := store.GetAttempt(ctx, attempt.ID)
+	require.NoError(t, err)
+	assert.Empty(t, got.Repos)
+}

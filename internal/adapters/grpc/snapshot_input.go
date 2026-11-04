@@ -156,8 +156,8 @@ func childRepoSeeds(projectDir string) ([]ChildRepoSeed, error) {
 // filterChildSeeds returns the subset of children whose Name is in names.
 // A nil names slice means "no restriction" and returns children unchanged.
 // Names with no matching child are ignored: childRepoSeeds already skips
-// declared repos that aren't cloned on disk yet, and unknown names are
-// rejected at extraction time by resolveRepos.
+// configured repos that aren't cloned on disk yet, and unknown names are
+// rejected earlier by config.SelectRepositories.
 func filterChildSeeds(children []ChildRepoSeed, names []string) []ChildRepoSeed {
 	if names == nil {
 		return children

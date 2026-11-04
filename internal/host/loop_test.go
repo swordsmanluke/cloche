@@ -1768,3 +1768,63 @@ func TestCreateAttemptForTask_UsesStoreAllocatedID(t *testing.T) {
 
 	assert.Equal(t, "zz01", loop.createAttemptForTask("task-A", "Task A", "/tmp/test"))
 }
+
+func TestPickTaskFromPhase_CarriesTaskRepos(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	loop := NewPhaseLoop(LoopConfig{ProjectDir: "/tmp/test"}, store,
+		func(_ context.Context, _ string) ([]Task, error) {
+			return []Task{{ID: "t1", Title: "T", Status: "open", Repos: []string{"pickup"}}}, nil
+		},
+		func(_ context.Context, _ string, _ string, _ string, _ string) (*RunResult, error) {
+			return &RunResult{State: domain.RunStateSucceeded}, nil
+		},
+	)
+
+	id, _, repos, ok := loop.pickTaskFromPhase()
+
+	assert.True(t, ok)
+	assert.Equal(t, "t1", id)
+	assert.Equal(t, []string{"pickup"}, repos)
+}
+
+func TestParseTasksJSONL_ReadsRepos(t *testing.T) {
+	tasks, err := ParseTasksJSONL(`{"id":"a","status":"open","repos":["pickup","anarkana"]}` + "\n" + `{"id":"b","status":"open"}`)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"pickup", "anarkana"}, tasks[0].Repos)
+	assert.Empty(t, tasks[1].Repos)
+}
+
+func TestRunnerAttemptRepos_AttributesRunToSelectedRepos(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	assert.NoError(t, store.SaveAttempt(context.Background(), &domain.Attempt{ID: "at01", Repos: []string{"pickup"}}))
+	r := &Runner{Store: store}
+
+	assert.Equal(t, []string{"pickup"}, r.attemptRepos(context.Background(), "at01"))
+	assert.Nil(t, r.attemptRepos(context.Background(), "none"))
+	assert.Nil(t, r.attemptRepos(context.Background(), ""))
+}
+
+type repoErrorStore struct {
+	*fakeStore
+	reason string
+}
+
+func (s repoErrorStore) GetContextKey(_ context.Context, _, _, _, key string) (string, bool, error) {
+	if key == domain.RepoErrorKey && s.reason != "" {
+		return s.reason, true, nil
+	}
+	return "", false, nil
+}
+
+func TestDescribeFailure_NamesTheRepoProblem(t *testing.T) {
+	run := domain.NewRun("r1", "main")
+	run.RecordStepComplete("inner", "fail")
+	ctx := context.Background()
+
+	with := &Runner{Store: repoErrorStore{fakeStore: &fakeStore{}, reason: `unknown repo "pikcup"`}}
+	assert.Contains(t, with.describeFailure(ctx, run, "r1"), `unknown repo "pikcup"`)
+
+	without := &Runner{Store: repoErrorStore{fakeStore: &fakeStore{}}}
+	assert.NotContains(t, without.describeFailure(ctx, run, "r1"), "unknown repo")
+}

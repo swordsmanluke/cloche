@@ -172,8 +172,10 @@ type Workflow struct {
 	Collects  []Collect
 	EntryStep string
 	Config    map[string]string // workflow-level config (e.g. "container.image")
-	Repos     []string          // repositories this workflow consumes; names refer to [[repositories]] entries in config.toml
-	Builtin   bool              // true for workflows constructed in Go and registered via internal/builtin, rather than parsed from a project's .cloche files
+	// DeclaresRepos records a `repos = [...]` field in the source. The field
+	// no longer has any effect; see DeprecationWarnings.
+	DeclaresRepos bool
+	Builtin       bool // true for workflows constructed in Go and registered via internal/builtin, rather than parsed from a project's .cloche files
 
 	Contract   *Contract // declared contract { }; nil when the workflow makes no static claims
 	Binds      []Bind    // workflow-scoped binds
@@ -182,9 +184,8 @@ type Workflow struct {
 }
 
 // SingleRepo returns the one repository name in repos, or "" when repos is
-// empty or declares more than one — used to backfill Run.Repository at
-// dispatch time, since a run can only be unambiguously attributed to a
-// single repo's sub-tab.
+// empty or names more than one — used to set Run.Repository at dispatch time,
+// since a run can only be unambiguously attributed to a single repo's sub-tab.
 func SingleRepo(repos []string) string {
 	if len(repos) == 1 {
 		return repos[0]
@@ -364,6 +365,16 @@ var knownStepConfigKeys = map[string]bool{
 	// intent_tracking = false opts a step out of $intent requirement
 	// injection and collect-sources mining
 	"intent_tracking": true,
+}
+
+// DeprecationWarnings returns non-fatal warnings about syntax that is accepted
+// but no longer has any effect.
+func (w *Workflow) DeprecationWarnings() []string {
+	if !w.DeclaresRepos {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"workflow %q: `repos` is no longer supported and is ignored; a task's `repos` field or `cloche run --repos` chooses a run's repos", w.Name)}
 }
 
 // ValidateConfig checks step config keys against known keys and returns

@@ -71,6 +71,11 @@ func validateProject(projectDir, workflowFilter string) []string {
 	// 1. Validate config.toml
 	configErrs := validateConfig(projectDir)
 	errs = append(errs, configErrs...)
+	if cfg, err := config.Load(projectDir); err == nil {
+		if err := cfg.ValidateRepositoryDeps(); err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
 
 	// 2. Parse and validate workflow files
 	workflows, parseErrs := parseAllWorkflowFiles(clocheDir)
@@ -132,6 +137,9 @@ func validateProjectWarnings(projectDir, workflowFilter string) []string {
 	}
 
 	warns := validateWorkflowTimeouts(workflows)
+	for _, wfi := range workflows {
+		warns = append(warns, wfi.workflow.DeprecationWarnings()...)
+	}
 	return append(warns, validateModules(projectDir, workflows).Warnings...)
 }
 

@@ -141,10 +141,11 @@ func (e *Engine) Run(ctx context.Context, wf *domain.Workflow) (*domain.Run, err
 	for _, w := range wf.ValidateConfig() {
 		log.Printf("WARNING: %s", w)
 	}
+	for _, w := range wf.DeprecationWarnings() {
+		log.Printf("WARNING: %s", w)
+	}
 
 	run := domain.NewRun(generateRunID(), wf.Name)
-	run.Repository = domain.SingleRepo(wf.Repos)
-	run.Repositories = domain.ResolveRunRepositories(run.Repository, "", nil, wf.Repos)
 	run.Start()
 
 	// Check context cancellation before starting.

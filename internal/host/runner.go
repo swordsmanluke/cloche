@@ -103,9 +103,24 @@ func (r *Runner) RunWorkflowDef(ctx context.Context, projectDir string, wf *doma
 	return r.runWorkflow(ctx, projectDir, wf, runID)
 }
 
+// attemptRepos returns the repos attemptID selected, or nil when it selected
+// none or has no record.
+func (r *Runner) attemptRepos(ctx context.Context, attemptID string) []string {
+	if r.Store == nil || attemptID == "" {
+		return nil
+	}
+	attempt, err := r.Store.GetAttempt(ctx, attemptID)
+	if err != nil || attempt == nil {
+		return nil
+	}
+	return attempt.Repos
+}
+
 // runWorkflow is the shared implementation behind runNamedWorkflow and
 // RunWorkflowDef.
 func (r *Runner) runWorkflow(ctx context.Context, projectDir string, wf *domain.Workflow, orchRunID string) (*RunResult, error) {
+
+	attemptRepos := r.attemptRepos(ctx, r.AttemptID)
 
 	// Create output directory for step outputs.
 	// v2 runs use .cloche/logs/<taskID>/<attemptID>/; ephemeral runs
@@ -146,8 +161,8 @@ func (r *Runner) runWorkflow(ctx context.Context, projectDir string, wf *domain.
 		hostRun.ParentRunID = r.ParentRunID
 		hostRun.IsBuiltin = wf.Builtin
 		hostRun.UserInitiated = r.UserInitiated
-		hostRun.Repository = domain.SingleRepo(wf.Repos)
-		hostRun.Repositories = domain.ResolveRunRepositories(hostRun.Repository, r.SubRepo, nil, wf.Repos)
+		hostRun.Repository = domain.SingleRepo(attemptRepos)
+		hostRun.Repositories = domain.ResolveRunRepositories(hostRun.Repository, r.SubRepo, nil, attemptRepos)
 		if err := r.Store.CreateRun(ctx, hostRun); err != nil {
 			return nil, fmt.Errorf("creating host run record: %w", err)
 		}
@@ -169,7 +184,7 @@ func (r *Runner) runWorkflow(ctx context.Context, projectDir string, wf *domain.
 		TaskID:            firstNonEmpty(r.TaskID, r.KVTaskID),
 		AttemptID:         firstNonEmpty(r.AttemptID, r.KVAttemptID),
 		WorkflowName:      wf.Name,
-		Repos:             wf.Repos,
+		Repos:             attemptRepos,
 		IntentTrackingOff: wf.Config["intent_tracking"] == "false",
 		ExtraEnv:          r.ExtraEnv,
 	}
@@ -259,7 +274,7 @@ func (r *Runner) runWorkflow(ctx context.Context, projectDir string, wf *domain.
 				if runErr != nil {
 					hostRun.Fail(runErr.Error())
 				} else if result.State == domain.RunStateFailed {
-					hostRun.Fail(describeStepFailure(run))
+					hostRun.Fail(r.describeFailure(ctx, run, orchRunID))
 				} else {
 					hostRun.Complete(result.State)
 				}
@@ -361,7 +376,7 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 		HostRunID:         run.ID,
 		TaskID:            r.TaskID,
 		WorkflowName:      wf.Name,
-		Repos:             wf.Repos,
+		Repos:             r.attemptRepos(ctx, run.AttemptID),
 		IntentTrackingOff: wf.Config["intent_tracking"] == "false",
 		ExtraEnv:          extraEnv,
 	}
@@ -448,7 +463,7 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 				if runErr != nil {
 					hostRun.Fail(runErr.Error())
 				} else if result.State == domain.RunStateFailed {
-					hostRun.Fail(describeStepFailure(engRun))
+					hostRun.Fail(r.describeFailure(ctx, engRun, run.ID))
 				} else {
 					hostRun.Complete(result.State)
 				}
@@ -560,7 +575,7 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 		TaskID:            r.TaskID,
 		AttemptID:         r.AttemptID,
 		WorkflowName:      wf.Name,
-		Repos:             wf.Repos,
+		Repos:             r.attemptRepos(ctx, r.AttemptID),
 		IntentTrackingOff: wf.Config["intent_tracking"] == "false",
 		ExtraEnv:          extraEnv,
 		ResumeStep:        resumeFrom,
@@ -642,7 +657,7 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 				if runErr != nil {
 					hostRunFinal.Fail(runErr.Error())
 				} else if result.State == domain.RunStateFailed {
-					hostRunFinal.Fail(describeStepFailure(engRun))
+					hostRunFinal.Fail(r.describeFailure(ctx, engRun, newRunID))
 				} else {
 					hostRunFinal.Complete(result.State)
 				}
@@ -820,6 +835,19 @@ func cleanupRunContext(ctx context.Context, store ports.RunStore, projectDir, ta
 	}
 	runDir := filepath.Join(projectDir, ".cloche", "runs", taskID)
 	_ = os.RemoveAll(runDir)
+}
+
+// describeFailure is describeStepFailure plus why the run's repo list couldn't
+// be resolved, when that's what failed the step.
+func (r *Runner) describeFailure(ctx context.Context, run *domain.Run, runID string) string {
+	msg := describeStepFailure(run)
+	if r.Store == nil {
+		return msg
+	}
+	if reason, ok, err := r.Store.GetContextKey(ctx, r.TaskID, r.AttemptID, runID, domain.RepoErrorKey); err == nil && ok && reason != "" {
+		return msg + ": " + reason
+	}
+	return msg
 }
 
 // describeStepFailure builds a human-readable error message for a host

@@ -398,7 +398,7 @@ func (l *Loop) runPhased() {
 			}
 
 			// Phase 1: list-tasks — discover available work.
-			taskID, taskTitle, ok := l.pickTaskFromPhase()
+			taskID, taskTitle, taskRepos, ok := l.pickTaskFromPhase()
 			if !ok {
 				break // no assignable tasks
 			}
@@ -407,6 +407,7 @@ func (l *Loop) runPhased() {
 			// claim leaves no trace. The attempt ID is allocated up front
 			// because the phase's KV is namespaced by it.
 			attempt := l.newAttempt(taskID)
+			attempt.Repos = taskRepos
 			if l.claimFn != nil && taskID != "" {
 				claim, err := l.claimFn(context.Background(), l.config.ProjectDir, taskID, attempt.ID)
 				if err != nil {
@@ -715,14 +716,14 @@ func (l *Loop) Occupancy(ctx context.Context) Occupancy {
 
 // pickTaskFromPhase runs the list-tasks function and picks the first open,
 // non-deduped task. Returns the task ID, title, and whether a task was found.
-func (l *Loop) pickTaskFromPhase() (string, string, bool) {
+func (l *Loop) pickTaskFromPhase() (string, string, []string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	tasks, err := l.listTasks(ctx, l.config.ProjectDir)
 	if err != nil {
 		log.Printf("orchestration loop: list-tasks failed for %s: %v", l.config.ProjectDir, err)
-		return "", "", false
+		return "", "", nil, false
 	}
 
 	// Cache the latest tasks for snapshot queries.
@@ -744,7 +745,7 @@ func (l *Loop) pickTaskFromPhase() (string, string, bool) {
 	for _, task := range tasks {
 		if task.ID == "" {
 			// Untracked sentinel task: always available, skip dedup and tracking.
-			return "", task.Title, true
+			return "", task.Title, nil, true
 		}
 		if !task.IsOpen() {
 			continue
@@ -754,10 +755,10 @@ func (l *Loop) pickTaskFromPhase() (string, string, bool) {
 		}
 		l.dedup[task.ID] = now
 		log.Printf("orchestration loop: assigned task %s for %s", task.ID, l.config.ProjectDir)
-		return task.ID, task.Title, true
+		return task.ID, task.Title, task.Repos, true
 	}
 
-	return "", "", false
+	return "", "", nil, false
 }
 
 // createAttemptForTask ensures a Task record exists in the store and creates a

@@ -811,3 +811,47 @@ func TestValidateProject_BoundSlotAndProjectFile(t *testing.T) {
 		t.Errorf("unexpected error: %s", e)
 	}
 }
+
+func TestValidateProject_RepoDependencyCycleIsAnError(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	if err := os.MkdirAll(clocheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := "[[repositories]]\nname = \"a\"\npath = \"./a\"\ndepends_on = [\"b\"]\n\n[[repositories]]\nname = \"b\"\npath = \"./b\"\ndepends_on = [\"a\"]\n"
+	if err := os.WriteFile(filepath.Join(clocheDir, "config.toml"), []byte(cfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	errs := validateProject(dir, "")
+
+	if !strings.Contains(strings.Join(errs, "\n"), "cycle") {
+		t.Errorf("expected a cycle error, got %v", errs)
+	}
+}
+
+func TestValidateProjectWarnings_WorkflowReposFieldWarnsButIsNotAnError(t *testing.T) {
+	dir := t.TempDir()
+	clocheDir := filepath.Join(dir, ".cloche")
+	if err := os.MkdirAll(clocheDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	wf := "workflow develop {\n  repos = [\"a\"]\n  step build {\n    run = \"true\"\n    results = [success, fail]\n  }\n  build:success -> done\n  build:fail -> abort\n}\n"
+	if err := os.WriteFile(filepath.Join(clocheDir, "develop.cloche"), []byte(wf), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(strings.Join(validateProjectWarnings(dir, ""), "\n"), "`repos` is no longer supported") {
+		t.Errorf("expected a deprecation warning, got %v", validateProjectWarnings(dir, ""))
+	}
+	if errs := strings.Join(validateProject(dir, ""), "\n"); strings.Contains(errs, "repos") {
+		t.Errorf("the repos field must not be a validation error, got: %s", errs)
+	}
+}
+
+func TestSplitRepoList(t *testing.T) {
+	got := splitRepoList(" pickup, ,anarkana,")
+	if len(got) != 2 || got[0] != "pickup" || got[1] != "anarkana" {
+		t.Errorf("got %v", got)
+	}
+}

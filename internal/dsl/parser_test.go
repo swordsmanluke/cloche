@@ -1280,3 +1280,33 @@ func TestParseBindErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestParseWorkflow_ReposFieldIsIgnoredWithAWarning(t *testing.T) {
+	wf, err := dsl.Parse(`workflow develop {
+  repos = ["a", "b"]
+  step build {
+    run = "true"
+    results = [success, fail]
+  }
+  build:success -> done
+  build:fail -> abort
+}`)
+	require.NoError(t, err)
+
+	require.Len(t, wf.DeprecationWarnings(), 1)
+	assert.Contains(t, wf.DeprecationWarnings()[0], "`repos` is no longer supported")
+}
+
+func TestParseWorkflow_NoReposFieldNoWarning(t *testing.T) {
+	wf, err := dsl.Parse(`workflow develop {
+  step build {
+    run = "true"
+    results = [success, fail]
+  }
+  build:success -> done
+  build:fail -> abort
+}`)
+	require.NoError(t, err)
+
+	assert.Empty(t, wf.DeprecationWarnings())
+}

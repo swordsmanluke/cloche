@@ -52,6 +52,7 @@ object with the following fields:
 | `title` | no | Short summary |
 | `description` | no | Full description |
 | `metadata` | no | Arbitrary key-value pairs |
+| `repos` | no | `[[repositories]]` names this task needs in its containers; omit for all (see [Repository Declarations](#repository-declarations)) |
 
 The daemon picks the first task with status `open` (or empty, for backward
 compatibility) and runs `main` with that task ID. Tasks are deduplicated within a
@@ -332,29 +333,36 @@ a deprecation warning per step. Prefer `{{ $task_description }}` and `{{ $prev_o
 Repositories are configured in `.cloche/config.toml` as `[[repositories]]` entries, not
 in `.cloche` workflow files. There is no `repository` DSL block.
 
-Workflows can declare which repositories they use via the `repos` field:
+A task chooses the repositories it needs. Workflows don't declare them, so one
+workflow can serve every repository in a project.
 
-```
-workflow "develop-backend" {
-  repos = ["backend"]
-  ...
-}
-```
+- **`list-tasks`** — a task's optional `repos` field (see the table above).
+- **`cloche run --repos a,b`** — for runs with no task. The list applies to every
+  container the run dispatches.
 
-`repos` is a list of repository names matching entries in `config.toml`. The runtime
-uses it in two ways:
+A run's list is fixed when its attempt is created, and a resumed attempt inherits it. It
+decides three things:
 
-- **Container seeding** — only the declared repositories are materialized into the
-  container's workspace copy, so workflows that need one repo of many don't pay to
-  copy the rest. Workflows sharing a `container.id` share one container (and one
-  copy), so the copy contains the *union* of their `repos` declarations; if any
-  sharing workflow declares no `repos`, all configured repositories are included.
-- **Extraction** — result branches and worktrees are created only for the declared
-  repositories.
+- **Container copy** — only the listed repositories, plus their `depends_on`, are copied
+  in. All containers in an attempt use the same list.
+- **Extraction** — result branches and worktrees are created only for the listed
+  repositories, not for those that came in through `depends_on`.
+- **The project root** — a root repository (`path = "."`) is an ordinary repository: it
+  is copied whole and extracted only when it's listed. Otherwise only `.cloche/`,
+  `.clocheignore`, `CLAUDE.md`, `AGENTS.md` and `.claude/` come from the root, with
+  `.clocheignore` still applying. A project that doesn't configure its root as a
+  repository never gets all of it, with or without a list.
 
-A workflow with no `repos` field gets every configured repository (the
-backward-compatible default). Declaring a name not present in `config.toml` is an
-error.
+A run with no list gets every configured repository. A name not in `config.toml` fails
+before any container starts: `cloche run` rejects the request, and a task's run fails the
+step that dispatches the container, through that step's `fail` wiring.
+
+A container whose list narrows the copy has `CLOCHE_REPOS` set to the repositories it
+holds, available in prompts as `{{ $repos }}`. Agent steps are told to report failure and
+name the repository they need rather than work around a missing one.
+
+The `repos` workflow field is no longer supported: it's accepted, ignored, and reported
+as a warning by `cloche validate` and in the daemon log.
 
 ## Key Properties
 

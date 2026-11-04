@@ -40,7 +40,7 @@ type Executor struct {
 	TaskID            string           // optional task ID assigned by the daemon loop
 	AttemptID         string           // optional attempt ID for v2 tracking (propagated to child runs)
 	WorkflowName      string           // workflow name for run context seeding
-	Repos             []string         // workflow's declared repos (domain.Workflow.Repos), used for intent domain scoping
+	Repos             []string         // the attempt's selected repos (domain.Attempt.Repos), used for intent domain scoping
 	IntentTrackingOff bool             // workflow-level `intent_tracking = false`; opts every step in the workflow out of injection and collect-sources mining
 	ExtraEnv          []string         // additional KEY=VALUE env vars for all steps
 	ResumeStep        string           // step being resumed (for prompt conversation resume)

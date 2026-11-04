@@ -272,6 +272,10 @@ func migrate(db *sql.DB) error {
 	// Idempotent — ignored if column already exists.
 	db.Exec(`ALTER TABLE attempts ADD COLUMN previous_attempt_id TEXT NOT NULL DEFAULT ''`)
 
+	// Repos an attempt's containers need, comma-separated; empty means all.
+	// Idempotent — ignored if column already exists.
+	db.Exec(`ALTER TABLE attempts ADD COLUMN repos TEXT NOT NULL DEFAULT ''`)
+
 	// Single-row counter behind NextAttemptID.
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS attempt_id_sequence (
 		id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -1345,10 +1349,12 @@ func (s *Store) NextAttemptID(ctx context.Context) (string, error) {
 // SaveAttempt inserts an attempt or updates the existing row with the same ID.
 // An attempt never moves between tasks: saving an ID that already belongs to a
 // different task returns an error and leaves that task's history untouched.
+// Repos is set on insert only: it is fixed for the attempt's life, and not every
+// read that later re-saves an attempt loads it.
 func (s *Store) SaveAttempt(ctx context.Context, attempt *domain.Attempt) error {
 	res, err := s.write.ExecContext(ctx,
-		`INSERT INTO attempts (id, task_id, started_at, ended_at, result, project_dir, previous_attempt_id)
-		 VALUES (?, ?, ?, ?, ?, COALESCE((SELECT project_dir FROM tasks WHERE id = ?), ''), ?)
+		`INSERT INTO attempts (id, task_id, started_at, ended_at, result, project_dir, previous_attempt_id, repos)
+		 VALUES (?, ?, ?, ?, ?, COALESCE((SELECT project_dir FROM tasks WHERE id = ?), ''), ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET
 			started_at = excluded.started_at,
 			ended_at = excluded.ended_at,
@@ -1358,7 +1364,7 @@ func (s *Store) SaveAttempt(ctx context.Context, attempt *domain.Attempt) error 
 		 WHERE attempts.task_id = excluded.task_id`,
 		attempt.ID, attempt.TaskID, formatTime(attempt.StartedAt),
 		nullIfEmptyTime(attempt.EndedAt), string(attempt.Result), attempt.TaskID,
-		attempt.PreviousAttemptID,
+		attempt.PreviousAttemptID, strings.Join(attempt.Repos, ","),
 	)
 	if err != nil {
 		return err
@@ -1375,11 +1381,11 @@ func (s *Store) SaveAttempt(ctx context.Context, attempt *domain.Attempt) error 
 
 func (s *Store) GetAttempt(ctx context.Context, id string) (*domain.Attempt, error) {
 	row := s.read.QueryRowContext(ctx,
-		`SELECT id, task_id, started_at, COALESCE(ended_at,''), result, COALESCE(previous_attempt_id,'') FROM attempts WHERE id = ?`, id)
+		`SELECT id, task_id, started_at, COALESCE(ended_at,''), result, COALESCE(previous_attempt_id,''), repos FROM attempts WHERE id = ?`, id)
 
 	attempt := &domain.Attempt{}
-	var startedAt, endedAt string
-	err := row.Scan(&attempt.ID, &attempt.TaskID, &startedAt, &endedAt, &attempt.Result, &attempt.PreviousAttemptID)
+	var startedAt, endedAt, repos string
+	err := row.Scan(&attempt.ID, &attempt.TaskID, &startedAt, &endedAt, &attempt.Result, &attempt.PreviousAttemptID, &repos)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("attempt %q not found", id)
 	}
@@ -1388,6 +1394,9 @@ func (s *Store) GetAttempt(ctx context.Context, id string) (*domain.Attempt, err
 	}
 	attempt.StartedAt = parseTime(startedAt)
 	attempt.EndedAt = parseTime(endedAt)
+	if repos != "" {
+		attempt.Repos = strings.Split(repos, ",")
+	}
 	return attempt, nil
 }
 
