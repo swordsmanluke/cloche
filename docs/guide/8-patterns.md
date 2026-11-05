@@ -14,7 +14,7 @@ cloche set test_summary "3 failed"
 Tests reported: {{ $test_summary }}
 ```
 
-Values cap at 1 KB. For anything bigger, write a file and pass its path.
+Values cap at 1 KB. For anything bigger, write a file to `temp_file_dir` and pass its path. See [Passing data](5-passing-data.md).
 
 ## Fix and retry
 

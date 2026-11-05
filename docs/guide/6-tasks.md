@@ -35,7 +35,7 @@ See: [List Tasks JSONL](http://cloche.perfectlunacy.com/concepts/#phases) for th
 
 ## `main`: do the work
 
-You wrote this on the [last page](4-the-dsl.md). Cloche triggers it once per task and sets `CLOCHE_TASK_ID`. 
+You wrote this in [The DSL](4-the-dsl.md). Cloche triggers it once per task and sets `CLOCHE_TASK_ID`. 
 Make sure you claim tasks within your `main` loop, so that list-tasks doesn't keep feeding them into the engine!
 
 ## Start the loop
@@ -68,4 +68,4 @@ loop itself. If you need to stop a running task, use `cloche stop <task id>` - o
 That's all of the basics! Steps, Workflows and the task loop. You can now build a working Cloche project by hand.
 
 ---
-**Next: [Let agents build them](6-let-agents-build-them.md) →**
+**Next: [Let agents build them](7-let-agents-build-them.md) →**

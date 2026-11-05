@@ -20,4 +20,4 @@ You don't have to write the DSL. Describe the process. Your agent writes it. You
 `cloche workflow <name>` draws what the agent wrote. If the arrows are right, the workflow is right.
 
 ---
-**Next: [Patterns](7-patterns.md) →**
+**Next: [Patterns](8-patterns.md) →**
