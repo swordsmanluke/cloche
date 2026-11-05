@@ -1,8 +1,14 @@
 # The DSL
 
-A workflow file names its steps, then wires their results. Here is a full one.
+A workflow file names its steps, then wires their results. Here is a basic one to get you started.
 
 ![implement goes to test. test goes to done, or loops through fix. Failures go to abort.](img/workflow.svg)
+
+
+## The Containerized Dev Workflow
+
+Here's our basic dev workflow - an LLM prompt to write some code, a script to test, and - if the tests fail - a loop that runs a 'fix' prompt 
+to repair the test failure and tries the tests again.
 
 ```
 workflow develop {
@@ -28,19 +34,24 @@ workflow develop {
 
   implement:success -> test
   implement:fail    -> abort
+
   test:success      -> done
   test:fail         -> fix
+
   fix:success       -> test
   fix:fail          -> abort
   fix:give-up       -> abort
 }
 ```
 
-Every line of wiring is an arrow in the diagram. `max_attempts` caps the loop: on the third try, `fix` reports `give-up`.
+Every line of wiring is an arrow in the diagram. `max_attempts` caps the loop: on the third try, which then reports `give-up`.
 
-## Add a `main`
+## Add a `main` Workflow
 
-`main` is the workflow Cloche runs for each task. It runs on the host and hands the work to the container.
+`main` is a special Workflow that cloche runs automatically for each task it's given. Aside from how cloche invokes it, `main` is just 
+a host-side Workflow like any other. More on how cloche works with `main` in the next section. 
+
+This one here simply hands off control immediately to our containerized "develop" workflow.
 
 ```
 workflow main {
