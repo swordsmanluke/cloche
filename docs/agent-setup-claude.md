@@ -53,6 +53,39 @@ RUN npm install -g @anthropic-ai/claude-code
 USER agent
 ```
 
+## Plugins for One Project
+
+Host plugins never reach autonomous containers (see above), so a project that wants a
+plugin in its containers installs it in its own image and enables it with a merge
+override. For example, to give one project's containers the `ponytail` plugin:
+
+```dockerfile
+# .cloche/Dockerfile, after Claude Code is installed
+USER agent
+RUN claude plugin marketplace add DietrichGebert/ponytail \
+ && claude plugin install ponytail@ponytail
+```
+
+```json
+// .cloche/overrides/.claude/settings.merge.json
+{ "enabledPlugins": { "ponytail@ponytail": true } }
+```
+
+The install puts the plugin's files in the image. Enabling it has to happen at project
+scope: cloche replaces the image's `~/.claude/settings.json` at container start and
+removes `enabledPlugins` from it. Because the override is a `.merge.json` file, its keys
+are merged into the project's own `.claude/settings.json` rather than replacing it, so
+the project's permissions and hooks still apply in the container. The merged file is
+left out of the run's result branch.
+
+Notes:
+
+- The plugin version is fixed when the image is built. Rebuild to pick up updates.
+- Plugin options (`userConfig`) are read from user settings only, not project settings.
+  Set any you need at install time with `claude plugin install … --config KEY=VALUE`.
+- `marketplace add` with a GitHub `owner/repo` clones over SSH when the build has SSH
+  access. Use the HTTPS URL if it doesn't.
+
 ## Workflow Configuration
 
 Claude is the default agent, so no explicit configuration is needed. These are

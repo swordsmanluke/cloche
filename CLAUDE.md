@@ -57,7 +57,7 @@ my-project/
 │   ├── Dockerfile           # Container image
 │   ├── prompts/             # Prompt templates for agent steps
 │   ├── scripts/             # Host-side scripts (e.g. prepare-prompt.sh)
-│   ├── overrides/           # Files copied on top of /workspace/ in container
+│   ├── overrides/           # Files copied (*.merge.json/yaml/toml merged) on top of /workspace/ in container
 │   ├── intent/               # Standing project requirements (optional; see docs/intent.md)
 │   └── runs/                # Runtime state (gitignored)
 │       └── <run-id>/

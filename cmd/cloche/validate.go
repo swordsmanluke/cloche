@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/swordsmanluke/cloche/internal/adapters/docker"
 	"github.com/swordsmanluke/cloche/internal/builtin"
 	"github.com/swordsmanluke/cloche/internal/config"
 	"github.com/swordsmanluke/cloche/internal/domain"
@@ -75,6 +76,11 @@ func validateProject(projectDir, workflowFilter string) []string {
 		if err := cfg.ValidateRepositoryDeps(); err != nil {
 			errs = append(errs, err.Error())
 		}
+	}
+
+	// 1b. Overrides: every *.merge.<ext> file and its target must parse.
+	for _, err := range docker.ValidateOverrides(projectDir) {
+		errs = append(errs, err.Error())
 	}
 
 	// 2. Parse and validate workflow files

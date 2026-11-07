@@ -1,7 +1,7 @@
 # Overrides: Merging Config Files, and Keeping Overrides Out of Result Branches
 
 **Date:** 2026-11-07
-**Status:** Accepted (CLOCHE-A98).
+**Status:** Implemented (Part 1 in v3.26.2, Part 2 in v3.27.0). Accepted as CLOCHE-A98.
 **Decision record:** Saga feature `cloche/override-merge`, batch CLOCHE-B21.
 Answer ids (`CLOCHE-Ann`) are cited inline.
 

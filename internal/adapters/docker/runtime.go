@@ -251,24 +251,37 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		}
 		log.Printf("runtime.Start: project copy done for %s (%.1fs)", containerID, time.Since(t).Seconds())
 
-		// Apply override files from .cloche/overrides/ on top of workspace
-		overridesDir := filepath.Join(cfg.ProjectDir, ".cloche", "overrides")
-		if _, err := os.Stat(overridesDir); err == nil {
+		// Apply .cloche/overrides/ on top of the workspace: plain files are
+		// copied, *.merge.<ext> files are merged into their targets. Staged
+		// on the host first so a bad merge file fails the run before
+		// anything reaches the container.
+		stageDir, err := os.MkdirTemp("", "cloche-overrides")
+		if err != nil {
+			exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
+			return "", fmt.Errorf("staging overrides: %w", err)
+		}
+		defer os.RemoveAll(stageDir)
+		if err := stageOverrides(cfg.ProjectDir, patterns, stageDir); err != nil {
+			exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
+			return "", fmt.Errorf("applying .cloche/overrides: %w", err)
+		}
+		if entries, _ := os.ReadDir(stageDir); len(entries) > 0 {
 			log.Printf("runtime.Start: applying overrides for %s", containerID)
-			overrideCmd := exec.CommandContext(ctx, "docker", "cp", overridesDir+"/.", containerID+":/workspace/")
+			overrideCmd := exec.CommandContext(ctx, "docker", "cp", stageDir+"/.", containerID+":/workspace/")
 			var cpStderr bytes.Buffer
 			overrideCmd.Stderr = &cpStderr
 			if err := overrideCmd.Run(); err != nil {
-				// Non-fatal: log but don't fail the run
-				fmt.Fprintf(os.Stderr, "warning: copying overrides: %s\n", cpStderr.String())
+				exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
+				return "", fmt.Errorf("copying overrides: %s: %w", strings.TrimSpace(cpStderr.String()), err)
 			}
 			log.Printf("runtime.Start: overrides done for %s", containerID)
 		}
 
-		// Record what the overrides wrote so extraction can keep it out of
-		// the result branch. Written even when there are no overrides: a
-		// missing manifest then reliably means "pre-manifest container".
-		manifest, err := buildOverridesManifest(overridesDir)
+		// Record what the overrides wrote (merged content included) so
+		// extraction can keep it out of the result branch. Written even when
+		// there are no overrides: a missing manifest then reliably means
+		// "pre-manifest container".
+		manifest, err := buildOverridesManifest(stageDir)
 		if err == nil {
 			err = writeOverridesManifest(ctx, containerID, manifest)
 		}
