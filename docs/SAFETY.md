@@ -153,7 +153,9 @@ the `.cloche/overrides/` mechanism, which copies files at container start time.
 
 **Audit override files.** Everything in `.cloche/overrides/` is applied on top of
 `/workspace/` in the container. Do not place credentials or sensitive configuration in
-this directory — it is checked into version control.
+this directory — it is checked into version control. Override files are left out of
+result branches unless the agent edits them, so an override never merges back into the
+project by itself.
 
 ## Credential Handling
 

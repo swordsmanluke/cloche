@@ -67,6 +67,7 @@ func overrideDockerCp(t *testing.T, fixtureDir string) {
 		return cmd.Run()
 	}
 	t.Cleanup(func() { dockerCp = orig })
+	stubOverridesManifest(t, nil)
 }
 
 // overrideDockerExec overrides the dockerExec hook for the test duration,
@@ -446,6 +447,7 @@ func TestExtractResultsContainerSubPath(t *testing.T) {
 		return nil
 	}
 	t.Cleanup(func() { dockerCp = origCp })
+	stubOverridesManifest(t, nil)
 
 	// dockerExec for git log should be invoked with -C /workspace/repos/cloche.
 	var execArgs []string
@@ -511,6 +513,7 @@ func TestExtractResultsLegacyNoSubPath(t *testing.T) {
 		return nil
 	}
 	t.Cleanup(func() { dockerCp = origCp })
+	stubOverridesManifest(t, nil)
 
 	var execPath string
 	origExec := dockerExec

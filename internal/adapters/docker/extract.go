@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -261,6 +262,10 @@ func extractGit(ctx context.Context, opts ExtractOptions) (ExtractResult, error)
 		return ExtractResult{}, fmt.Errorf("git add: %s: %w", out, err)
 	}
 
+	if err := restoreUntouchedOverrides(ctx, opts, gitEnv); err != nil {
+		return ExtractResult{}, err
+	}
+
 	if err := guardStagedDeletions(ctx, opts, gitEnv); err != nil {
 		return ExtractResult{}, err
 	}
@@ -416,6 +421,86 @@ func containerRecordedDeletions(ctx context.Context, containerID, baseSHA, conta
 		set[p] = true
 	}
 	return set
+}
+
+// restoreUntouchedOverrides undoes, in the staged worktree, every file that
+// .cloche/overrides/ wrote into the container and the agent left as written.
+// Overrides shape the container's environment; they are not part of the
+// run's result. A file that existed at BaseSHA is restored from it; one the
+// override created is removed. Files the agent edited afterwards are kept.
+// A container without a manifest (started by an older cloche) is extracted
+// as before, overrides included.
+func restoreUntouchedOverrides(ctx context.Context, opts ExtractOptions, gitEnv []string) error {
+	m, found, err := readOverridesManifest(ctx, opts.ContainerID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		log.Printf("extract: run %s: container has no overrides manifest; override files are extracted as-is", opts.RunID)
+		return nil
+	}
+	paths, err := untouchedOverrides(m, opts.WorktreeDir, opts.ContainerSubPath)
+	if err != nil {
+		return fmt.Errorf("checking override files: %w", err)
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+	sort.Strings(paths)
+
+	literalEnv := append(append([]string{}, gitEnv...), "GIT_LITERAL_PATHSPECS=1")
+	atBase, err := pathsAtCommit(ctx, opts.WorktreeDir, literalEnv, opts.BaseSHA, paths)
+	if err != nil {
+		return fmt.Errorf("listing override files at base: %w", err)
+	}
+	var restore, remove []string
+	for _, p := range paths {
+		if atBase[p] {
+			restore = append(restore, p)
+		} else {
+			remove = append(remove, p)
+		}
+	}
+	if len(restore) > 0 {
+		if err := restoreFromBase(ctx, opts.WorktreeDir, literalEnv, opts.BaseSHA, restore); err != nil {
+			return fmt.Errorf("restoring %d override file(s): %w", len(restore), err)
+		}
+	}
+	if len(remove) > 0 {
+		cmd := exec.CommandContext(ctx, "git", "rm", "--cached", "-q", "-f", "--ignore-unmatch",
+			"--pathspec-from-file=-", "--pathspec-file-nul")
+		cmd.Dir = opts.WorktreeDir
+		cmd.Env = literalEnv
+		cmd.Stdin = strings.NewReader(strings.Join(remove, "\x00"))
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("unstaging override files: %s: %w", out, err)
+		}
+		for _, p := range remove {
+			if err := os.Remove(filepath.Join(opts.WorktreeDir, filepath.FromSlash(p))); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("removing override file %s: %w", p, err)
+			}
+		}
+	}
+	log.Printf("extract: run %s: left %d override file(s) out of the result (%d restored, %d removed: %s)",
+		opts.RunID, len(paths), len(restore), len(remove), samplePaths(paths, 3))
+	return nil
+}
+
+// pathsAtCommit reports which of paths are files in commit sha.
+func pathsAtCommit(ctx context.Context, worktreeDir string, gitEnv []string, sha string, paths []string) (map[string]bool, error) {
+	args := append([]string{"ls-tree", "-r", "-z", "--name-only", sha, "--"}, paths...)
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = worktreeDir
+	cmd.Env = gitEnv
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[string]bool)
+	for _, p := range splitNUL(out) {
+		set[p] = true
+	}
+	return set, nil
 }
 
 // restoreFromBase checks the given paths out of baseSHA into the worktree,

@@ -264,6 +264,18 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 			}
 			log.Printf("runtime.Start: overrides done for %s", containerID)
 		}
+
+		// Record what the overrides wrote so extraction can keep it out of
+		// the result branch. Written even when there are no overrides: a
+		// missing manifest then reliably means "pre-manifest container".
+		manifest, err := buildOverridesManifest(overridesDir)
+		if err == nil {
+			err = writeOverridesManifest(ctx, containerID, manifest)
+		}
+		if err != nil {
+			exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run()
+			return "", fmt.Errorf("writing overrides manifest: %w", err)
+		}
 	}
 
 	// 3a. Copy extra directories (local-path modules outside the project).
