@@ -1,5 +1,21 @@
 # Cloche Detailed Changelog
 
+## v3.27.0 — 2026-11-09
+
+### Features
+
+- `a24476b` Added `*.merge.<ext>` config overrides (JSON, YAML, TOML) merged into the project file via JSON Merge Patch, with staging on the host, fatal errors on parse/conflict/unsupported extension, `cloche validate` support, and fatal handling of failed overrides copies.
+
+### Fixes
+
+- `39e5524` Override files copied into the container are tracked in a manifest and no longer appear in result branches.
+
+### Internal
+
+- `c3bf0fe` Added the override merge and override leak fix design doc under `docs/plans/`.
+- `bbe95dc` Added a "Passing data" page to the guide and renumbered the following guide pages.
+- `5a55e16` Rewrote the guide's introduction ("What Cloche is") and expanded the steps, workflows, DSL and tasks pages.
+
 ## v3.26.1 — 2026-11-04
 
 ### Breaking

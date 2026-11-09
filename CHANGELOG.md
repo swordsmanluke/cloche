@@ -1,5 +1,15 @@
 # Cloche Changelog
 
+## v3.27.0 — 2026-11-09
+
+### Features
+
+- Files in `.cloche/overrides/` named `*.merge.<ext>` (`.json`, `.yaml`, `.toml`) are merged into the matching project file (JSON Merge Patch, RFC 7386) instead of replacing it; parse errors and conflicts fail the run at container start, and `cloche validate` runs the same checks. A failed overrides copy is now also fatal. ([design](docs/plans/2026-11-07-override-merge-design.md))
+
+### Notable fixes
+
+- Override files no longer leak into result branches; they are recorded in a manifest and excluded at extraction.
+
 ## v3.26.1 — 2026-11-04
 
 ### Breaking changes
