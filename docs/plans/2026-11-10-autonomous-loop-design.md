@@ -95,6 +95,11 @@ How cloche measures that share, in order of preference:
    allowance. Models use up allowance at different rates, so the multiplier is per
    model. The estimate is refined over time: whenever a real reading is available
    (even one typed in from `/usage`), the daemon corrects the allowance size.
+   Usage records hold the agent's name but not the model today
+   (`domain.TokenUsage`), so the model has to be recorded per step first.
+
+The cap applies per agent provider. A Claude allowance and a Codex allowance are
+separate, so each gets its own figure; the first version covers Claude only.
 
 ### Configuration
 
@@ -166,6 +171,9 @@ workflow can wire a re-ask.
 The judge is a host agent step (like `changelog`'s `draft`), because it needs the
 Saga server and the intent files, and no workspace.
 
+The ask, poll and judge steps ship as a module (`saga-judge`), so any project's
+workflow can use them without copying scripts.
+
 ### Permission requests
 
 Permission requests are in scope (CLOCHE-A110). Deciding them is what a judge is
@@ -194,6 +202,10 @@ it; they are already listed as open on Saga's landing page.
   apart from answers an agent recorded on the human's behalf.
 - **A held mark.** "The judge looked and declined" is different from "nobody has
   looked". The mark stops a second judge re-reading the question.
+- **Answer only if still open.** The newest answer is the ruling in force. If the
+  human answers while the judge is still working, the judge's later answer would
+  override the human's. So a judge's answer must be refused when the question
+  already has a ruling.
 - **The digest.** A query for judge rulings since a given time. The digest itself
   can be a cloche workflow that formats the result.
 
@@ -205,19 +217,20 @@ A step in `develop.cloche`, after `test` passes and before `update-docs`:
 step review {
   prompt       = file(".cloche/prompts/review.md")
   max_attempts = 2
-  results      = [success, fail]
+  results      = [success, fail, give-up]
 }
 
 test:success   -> review
 review:success -> update-docs
 review:fail    -> fix          # fix:success -> test, as today
+review:give-up -> update-docs  # out of attempts: go on, findings stay in the run
 ```
 
 The review prompt gets the diff against the base commit and the task, and is told
 to find a failing case: write a test that fails, or name the input that breaks it.
 It reports `fail` only with evidence, and writes its findings where `fix` reads
-them. `max_attempts` caps the loop; on the last attempt it passes with its findings
-recorded in the run.
+them. `max_attempts` caps the loop: once it's used up the step reports `give-up`,
+and the change goes on with the findings recorded in the run.
 
 This needs no change to cloche. Which agent or model reviews, and what context it
 gets, is a per-step choice the workflow DSL already allows (CLOCHE-A113). The step
@@ -360,7 +373,7 @@ signal reaches cloche, and where its key comes from.
 
 | Case | How it arrives | Key |
 |---|---|---|
-| Failed and aborted cloche runs | The daemon signals itself when a run ends in failure after the repairman has given up | task id plus failed step |
+| Failed and aborted cloche runs | The daemon signals itself when a task reaches the repeat-failure threshold (the point where "Needs you" flags it today). One failure isn't a signal: the task is still open and the loop retries it. The new task is "find out why this task keeps failing" | task id plus failed step |
 | Regular check of `main` | A timer workflow runs the full suite on `main`'s HEAD in a container and calls `cloche signal` on red | fixed: `main-red` |
 | Daemon errors in cloche's own logs | The daemon signals itself from its error path | error site (file and function) |
 | manager: app errors | An adapter in manager reads its logs and calls `cloche signal` | error class plus top stack frame |
@@ -407,14 +420,21 @@ not on the host, with tighter limits than a workflow run:
 
 - **Its own image.** A Dockerfile for DRAs, separate from the project's
   build image. It holds `cloche`, the tracker's CLI and `saga`, and no build tools.
-- **Network.** The allowlist is the model API plus three local services: the
-  daemon, the tracker and Saga. Today none of the three is reachable from inside a
-  container, so this part needs new plumbing: the daemon and Saga exposed to the
-  container network, and the tracker either reached through the daemon or mounted.
+- **Network.** The allowlist is the model API plus the daemon and Saga on the
+  host. Containers already reach the daemon's gRPC port (that's how `clo` and
+  `cloche-agent` work), but only for a run's own key-value store and step
+  results. A DRA needs more: listing tasks and runs, reading run output, creating
+  tasks. Those calls need to be limited to what a DRA may do, so a DRA can't, for
+  example, shut the daemon down or delete runs. Saga's port has to be added to the
+  allowlist. How a DRA reaches the tracker is open.
 - **Workspace.** The project is mounted read-only, apart from the agent's own
   `notes.md`.
 
 ### How it lives
+
+A wake-up is an ordinary container workflow run with one prompt step. The prompt
+adapter can already resume a named session. What's new is keeping the session's
+files between runs (a volume per DRA), the DRA image, and the wake-up triggers.
 
 - **The session is disposable; the notes are the memory.** A DRA has a
   named Claude Code session, started with `--session-id` and continued with
@@ -433,8 +453,9 @@ not on the host, with tighter limits than a workflow run:
   of that domain. A signal names its domain, or the step that writes the task
   picks one from the charters. A task that fits two domains, such as an engine
   change made for performance, gets one label; the other DRA isn't woken.
-- **It manages; runs do the work.** (CLOCHE-A119) It creates and orders tasks,
-  asks and reads Saga, reads run output, and writes its notes. It never changes
+- **It manages; runs do the work.** (CLOCHE-A119) Within its domain it creates,
+  orders, comments on and closes tasks, asks and reads Saga, reads run output,
+  and writes its notes. It doesn't stop or delete runs, and it never changes
   code. Code changes go through tasks and runs, so they keep the container, the
   tests and the review step.
 - **Wake-ups are budgeted.** Each wake-up is recorded as a run with token usage,
@@ -456,8 +477,22 @@ not on the host, with tighter limits than a workflow run:
 
 ## Still open
 
+With Lucas in Saga, batch CLOCHE-B26:
+
+- **CLOCHE-Q121:** whether the daily percentage counts cloche's usage only or the
+  whole account's.
+- **CLOCHE-Q122:** whether to cap the short usage window too.
+- **CLOCHE-Q123:** whether an emergency task may launch past the cap. The doc
+  says no until ruled.
+- **CLOCHE-Q124:** where the judge digest appears.
+- **CLOCHE-Q125:** how signals and DRAs reach the tracker. The doc proposes new
+  module phases.
+- **CLOCHE-Q126:** how small the first version of signals is. Part 4 describes
+  the full version.
+- **CLOCHE-Q127:** where a DRA's notes live.
+
+Not for Saga:
+
 - **Time triggers** (CLOCHE-A114): deferred until the feedback sources are better
   understood. A `poll`-step timer is used meanwhile.
 - **Reading the usage allowance:** unknown until the Part 1 spike.
-- **How the daemon creates a task:** `create-task` module phase is proposed, not
-  ruled.
