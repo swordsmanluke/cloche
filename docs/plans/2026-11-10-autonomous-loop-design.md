@@ -1,9 +1,9 @@
 # Autonomous Loop: Budget Caps, Judges, Review, Feedback Intake and DRAs
 
 **Date:** 2026-11-10
-**Status:** Draft. Rulings from Saga batch CLOCHE-B23 are folded in and cited by
-answer id (`CLOCHE-Ann`), with CLOCHE-A122 and CLOCHE-A123 from the two follow-up
-batches. What remains is listed under "Still open" at the end.
+**Status:** Draft, ready for tickets. Rulings from Saga batches CLOCHE-B23 to
+CLOCHE-B26 are folded in and cited by answer id (`CLOCHE-Ann`). What remains is
+listed under "Still open" at the end.
 **Decision record:** Saga feature `cloche/autonomous-loop`.
 **Prompted by:** Spawn's write-up of running a company on a fleet of agents (`spawn.md`,
 not checked in).
@@ -75,8 +75,11 @@ Budget caps come first because every later part increases spend.
 
 ### The unit: a share of the usage allowance per day
 
-The cap is a percentage of the subscription's usage allowance that cloche may use
-per day (CLOCHE-A106): the same thing Claude Code's `/usage` measures. With a
+The cap is a percentage of the subscription's usage allowance that may be used
+per day (CLOCHE-A106): the same thing Claude Code's `/usage` measures. It counts
+everything on the account, including interactive sessions, not only cloche's runs
+(CLOCHE-A124). A heavy day of interactive work stops cloche. There is one cap, per
+day; the subscription's shorter usage window isn't capped for now (CLOCHE-A125). With a
 weekly allowance:
 
 | Cap per day | What it means |
@@ -98,6 +101,11 @@ How cloche measures that share, in order of preference:
    Usage records hold the agent's name but not the model today
    (`domain.TokenUsage`), so the model has to be recorded per step first.
 
+The estimate has a limit that matters now that the cap counts the whole account:
+cloche only sees its own runs' tokens. If the allowance can't be read, usage from
+interactive sessions is invisible to it, and the cap would in effect count cloche
+alone. The spike decides which of the two this part can deliver.
+
 The cap applies per agent provider. A Claude allowance and a Codex allowance are
 separate, so each gets its own figure; the first version covers Claude only.
 
@@ -110,6 +118,7 @@ One cap for the whole daemon, not per project (CLOCHE-A108):
 [budget]
 usage_percent_per_day = 10
 grace = "30m"          # how long runs in flight may continue once the cap is hit
+emergency_overflow = false   # true: emergency tasks may still launch past the cap
 
 # only used when the allowance can't be read:
 weekly_allowance_tokens = 500_000_000      # starting estimate, refined over time
@@ -134,6 +143,11 @@ The numbers above are placeholders, not measured values.
 - **It shows up.** `cloche status` gets a `Budget:` line, and "Needs you" gets a
   `budget` kind that names the cap and when the day's window clears.
 - **Launching resumes on its own** when the day's usage is back under the cap.
+
+**Emergency tasks** (Part 4) follow one flag (CLOCHE-A126). With
+`emergency_overflow = false` the cap stops them like everything else. With `true`
+they launch past it. There is no separate emergency reserve: a user who wants
+room for emergencies sets the cap lower.
 
 A spike alert is a second, lower threshold: if the last 15 minutes ran at more than
 N times the previous day's average rate, flag it in "Needs you" without pausing.
@@ -191,9 +205,10 @@ next judge reads the correction. Nothing new is needed for this.
 
 ### Checking the judge: a daily digest
 
-(CLOCHE-A112) Once a day, a summary of what the judges decided automatically: each
-question, the ruling, and the source cited. Questions held for a human aren't in
-it; they are already listed as open on Saga's landing page.
+(CLOCHE-A112) A summary of what the judges decided automatically in the last 24
+hours: each question, the ruling, and the source cited. It is a section on Saga's
+landing page (CLOCHE-A127), next to the open questions, which is where questions
+held for a human already show.
 
 ### Changes to Saga
 
@@ -206,8 +221,8 @@ it; they are already listed as open on Saga's landing page.
   human answers while the judge is still working, the judge's later answer would
   override the human's. So a judge's answer must be refused when the question
   already has a ruling.
-- **The digest.** A query for judge rulings since a given time. The digest itself
-  can be a cloche workflow that formats the result.
+- **The digest.** A landing-page section listing judge rulings from the last 24
+  hours.
 
 ## Part 3: Review loop
 
@@ -242,20 +257,19 @@ Signals from failed runs, from a regular check of `main`, and from a deployed ap
 are the same thing: a source produces an event, something decides whether it
 matters, and the ones that matter become tasks with the evidence attached.
 
-Cloche **accepts** signals through an API; it doesn't go and fetch them
-(CLOCHE-A121). Receiving sits outside the task loop. Whoever owns a source writes
-a small adapter that turns its events into cloche's signal format. Two alternatives
-were considered and fall out of this one instead of being built:
+Cloche **accepts** signals through an HTTP API; it doesn't go and fetch them
+(CLOCHE-A121). Whoever owns a source writes a small adapter that turns its events
+into cloche's signal format and posts them. Each signal is handed to a workflow,
+`handle-notification`, and from there on it is ordinary workflow work
+(CLOCHE-A128).
+
+Two alternatives were considered and fall out of this one instead of being built:
 
 - **A pull loop owned by cloche.** A source that has to be polled is a workflow on
   a timer (see "Pull adapters and timing") whose script checks the source and
-  sends a signal.
+  posts a signal.
 - **No mechanism: sources create P0 tasks directly.** This keeps working, since
-  the loop takes the highest-priority task anyway. But the daemon only finds out
-  at the next `list-tasks`, so it can't de-duplicate or react.
-
-The name is "signal", not "notify": cloche's notifier port and the help-channel
-design use "notify" for messages going out to the user.
+  the loop takes the highest-priority task anyway. But nothing de-duplicates.
 
 ### The signal format
 
@@ -276,49 +290,56 @@ error class plus top stack frame, a metric name).
 
 ### Sending one
 
-From a script on the same machine:
-
-```
-cloche signal --source ci-main --key "main-red" --severity urgent \
-  --title "main is red: 3 tests fail in internal/host" --evidence-file out.txt
-```
-
-From anything else on the network, the same fields as JSON:
+There is one way in, an HTTP endpoint (CLOCHE-A129). There is no CLI command: a
+script uses `curl`, and one interface is less to keep in step.
 
 ```
 POST /api/projects/{name}/signals
 Authorization: Bearer <token>
+Content-Type: application/json
+
+{"source": "ci-main", "key": "main-red", "severity": "urgent",
+ "title": "main is red: 3 tests fail in internal/host", "evidence": "..."}
 ```
 
 The endpoint is on the dashboard's HTTP listener. It needs a per-project token,
-because a signal can create work that spends budget.
+because a signal can create work that spends budget. The dashboard has no
+authentication today, so the token check is new.
 
-### What the daemon does with a signal
+### What happens to a signal
 
-The daemon stores every signal, then does one of four things. It tries the
-deterministic ones first and uses an agent only for what's left.
+1. **The daemon stores it** and answers the request.
+2. **The daemon runs `handle-notification`**, a host workflow, with the signal
+   object as its input. If the same source and key arrive again while a handler
+   for them is still running, the daemon adds them to that one instead of
+   starting another, so a burst of 500 identical errors is one handler run.
+3. **The workflow decides.** From here it is a standard workflow, and a project
+   can edit it like any other. Cloche ships a default that does the least useful
+   thing:
+   - an open task already carries this source and key: add the occurrence to it
+   - otherwise: create a task from the title and evidence as they are, with a
+     priority from the severity, and the `domain` label if one was given
 
-1. **Attach.** The source and key match an open task: add the occurrence to that
-   task and stop. One recurring error makes one task, not fifty.
-2. **Drop.** The key is muted, or the signal is below its source's threshold (for
-   example, fewer than 3 occurrences in an hour for `low`): keep the record and
-   stop.
-3. **Act directly.** Some signals change what the daemon itself does: an `urgent`
-   signal may launch over the concurrency limit (see "Emergency launches"), and a
-   signal with a `domain`
-   wakes that domain's DRA.
-4. **Create a task.** A small-model step reads the signal and writes the task: a
-   title, a body with the evidence, a priority from the severity. It may instead
-   say "noise", which mutes the key.
+The default has no thresholds, no muting and no model step. The adapter decides
+what is worth sending. A project that wants a model to rewrite the task or filter
+noise adds a prompt step to its own `handle-notification`.
 
 Work that needs code changed always ends as a task in the tracker. There is one
 queue of work, and all of it goes through the budget, the tests and the review
 step.
 
-To create the task, the daemon needs a way into the tracker. The proposal is a
-`create-task` phase in the module contract, next to `list-tasks`, `claim-task`,
-`close-task` and `release-task`, so the signal API works with whichever tracker
-`project.cloche` binds. This detail hasn't been ruled on.
+### New module phases for the tracker
+
+(CLOCHE-A128) The module contract has four phases today: `list-tasks`,
+`claim-task`, `close-task` and `release-task`. None creates or changes a task.
+Two are added, and `beads-tasks` and `github-tasks` implement both:
+
+- `create-task`: title, body, priority, labels, and an optional source and key
+- `update-task`: add a comment, change priority or labels; and find the open task
+  for a source and key
+
+`handle-notification` calls them, so signals work with whichever tracker
+`project.cloche` binds. DRAs use the same phases (Part 5).
 
 ### A red `main`: fix forward
 
@@ -353,12 +374,13 @@ emergency   = 1   # how many urgent tasks may launch above that
   the total is back under 5.
 - `emergency = 0` turns it off: urgent tasks go to the front of the queue and
   wait for a slot.
-- A budget cap still stops emergency launches.
+- Whether a budget cap stops emergency launches is the `emergency_overflow` flag
+  (Part 1).
 
 ### Pull adapters and timing
 
 A source the daemon can't hear from has to be pulled: a workflow runs on a timer,
-its script asks the source what's new, and it sends signals.
+its script asks the source what's new, and it posts signals.
 
 Cloche has no time-based trigger, and none is decided yet (CLOCHE-A114): more
 needs to be known about the feedback sources first. Until then a timer is built
@@ -374,9 +396,9 @@ signal reaches cloche, and where its key comes from.
 | Case | How it arrives | Key |
 |---|---|---|
 | Failed and aborted cloche runs | The daemon signals itself when a task reaches the repeat-failure threshold (the point where "Needs you" flags it today). One failure isn't a signal: the task is still open and the loop retries it. The new task is "find out why this task keeps failing" | task id plus failed step |
-| Regular check of `main` | A timer workflow runs the full suite on `main`'s HEAD in a container and calls `cloche signal` on red | fixed: `main-red` |
+| Regular check of `main` | A timer workflow runs the full suite on `main`'s HEAD in a container and posts a signal on red | fixed: `main-red` |
 | Daemon errors in cloche's own logs | The daemon signals itself from its error path | error site (file and function) |
-| manager: app errors | An adapter in manager reads its logs and calls `cloche signal` | error class plus top stack frame |
+| manager: app errors | An adapter in manager reads its logs and posts signals | error class plus top stack frame |
 | anarkana: remote metrics | The remote system can't post to a developer's machine, so a pull adapter fetches the metrics on a timer | metric name plus threshold crossed |
 | DataDog error logs | Pull adapter: query DataDog's API for monitors in alert | DataDog monitor id plus group |
 | Sentry alerts | Pull adapter: query Sentry's API for new and regressed issues | Sentry issue id |
@@ -384,7 +406,7 @@ signal reaches cloche, and where its key comes from.
 DataDog and Sentry can also push webhooks, in their own formats and from the
 internet. A daemon on a developer's machine isn't reachable from there, so pull is
 the default. Where the daemon is reachable, a small relay that reshapes the
-webhook into the signal format and posts it to the HTTP endpoint does the same job.
+webhook into the signal format and posts it does the same job.
 Cloche itself only ever accepts its own format.
 
 ## Part 5: DRAs (Domain Responsible Agents)
@@ -412,6 +434,11 @@ each time they hand off a portion of responsibility.
   notes.md     # its memory: commitments, what it tried, what it's waiting on
 ```
 
+The notes live here, with the rest of the project's cloche data (CLOCHE-A130).
+Cloche doesn't commit them. Whether they are kept in git or ignored is the
+project owner's choice. The daemon copies `notes.md` into the container at a
+wake-up and back out when it ends.
+
 ### Runs in a locked-down container
 
 (CLOCHE-A118) A long-lived agent is the riskiest kind: over a long life it is the
@@ -426,7 +453,7 @@ not on the host, with tighter limits than a workflow run:
   results. A DRA needs more: listing tasks and runs, reading run output, creating
   tasks. Those calls need to be limited to what a DRA may do, so a DRA can't, for
   example, shut the daemon down or delete runs. Saga's port has to be added to the
-  allowlist. How a DRA reaches the tracker is open.
+  allowlist.
 - **Workspace.** The project is mounted read-only, apart from the agent's own
   `notes.md`.
 
@@ -458,6 +485,10 @@ files between runs (a volume per DRA), the DRA image, and the wake-up triggers.
   and writes its notes. It doesn't stop or delete runs, and it never changes
   code. Code changes go through tasks and runs, so they keep the container, the
   tests and the review step.
+- **It reaches the tracker through the daemon.** (CLOCHE-A128) A DRA creates and
+  changes tasks with a cloche CLI command that goes through the `create-task` and
+  `update-task` phases, or by starting a host-side workflow that does it. The
+  tracker's own data is never mounted into its container.
 - **Wake-ups are budgeted.** Each wake-up is recorded as a run with token usage,
   and Part 1 applies.
 
@@ -469,30 +500,18 @@ files between runs (a volume per DRA), the DRA image, and the wake-up triggers.
    Then the cap, the grace period and the status line.
 2. **Judge.** One workflow, a prompt, the digest, and the Saga changes.
 3. **Review loop.** Workflow files only.
-4. **Feedback intake.** `cloche signal` and its HTTP endpoint, the daemon's
-   handling of a signal, task creation, then the check of `main` and the
-   failed-run source.
+4. **Feedback intake.** The `create-task` and `update-task` phases, the HTTP
+   endpoint and its token, the default `handle-notification` workflow, the
+   `emergency` limit, then the check of `main` and the failed-run source.
 5. **DRAs.** Last, because one with no signals, no judge and no budget
    has nothing to manage and nothing limiting it.
 
 ## Still open
 
-With Lucas in Saga, batch CLOCHE-B26:
-
-- **CLOCHE-Q121:** whether the daily percentage counts cloche's usage only or the
-  whole account's.
-- **CLOCHE-Q122:** whether to cap the short usage window too.
-- **CLOCHE-Q123:** whether an emergency task may launch past the cap. The doc
-  says no until ruled.
-- **CLOCHE-Q124:** where the judge digest appears.
-- **CLOCHE-Q125:** how signals and DRAs reach the tracker. The doc proposes new
-  module phases.
-- **CLOCHE-Q126:** how small the first version of signals is. Part 4 describes
-  the full version.
-- **CLOCHE-Q127:** where a DRA's notes live.
-
-Not for Saga:
+Nothing is waiting on a Saga ruling. Two things are undecided by design:
 
 - **Time triggers** (CLOCHE-A114): deferred until the feedback sources are better
   understood. A `poll`-step timer is used meanwhile.
-- **Reading the usage allowance:** unknown until the Part 1 spike.
+- **Reading the usage allowance:** unknown until the Part 1 spike. The cap counts
+  the whole account (CLOCHE-A124), which the token estimate can't see, so the
+  spike's answer decides what Part 1 can deliver.
