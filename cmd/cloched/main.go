@@ -31,6 +31,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/help"
 	"github.com/swordsmanluke/cloche/internal/logstream"
 	"github.com/swordsmanluke/cloche/internal/ports"
+	clochesignal "github.com/swordsmanluke/cloche/internal/signal"
 	"github.com/swordsmanluke/cloche/internal/version"
 	"google.golang.org/grpc"
 )
@@ -209,7 +210,13 @@ func main() {
 		// build each container's CLOCHE_MCP_URL.
 		os.Setenv("CLOCHE_HTTP", httpAddr)
 
+		signalDispatcher := &clochesignal.Dispatcher{
+			Store:       store,
+			Handler:     srv.HandleSignal,
+			BaseContext: webCtx,
+		}
 		webOpts := []web.HandlerOption{
+			web.WithSignalIntake(clochesignal.NewTokenStore(config.SignalTokenDir()), signalDispatcher),
 			web.WithContainerLogger(runtime),
 			web.WithLogStore(store),
 			web.WithLogBroadcaster(broadcaster),

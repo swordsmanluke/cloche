@@ -30,6 +30,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/ports"
 	"github.com/swordsmanluke/cloche/internal/project"
 	"github.com/swordsmanluke/cloche/internal/promptrev"
+	"github.com/swordsmanluke/cloche/internal/signal"
 	"github.com/swordsmanluke/cloche/internal/version"
 )
 
@@ -141,6 +142,14 @@ func WithGetThreadFunc(fn GetThreadFunc) HandlerOption {
 // unavailable.
 func WithReplyThreadFunc(fn ReplyThreadFunc) HandlerOption {
 	return func(h *Handler) { h.replyThreadFn = fn }
+}
+
+// WithSignalIntake enables POST /api/projects/{name}/signals. tokens holds the
+// per-project bearer tokens the endpoint requires; d stores each signal and
+// runs the handle-notification workflow for it. Without it the endpoint
+// answers 404.
+func WithSignalIntake(tokens *signal.TokenStore, d *signal.Dispatcher) HandlerOption {
+	return func(h *Handler) { h.signalTokens, h.signalDispatcher = tokens, d }
 }
 
 //go:embed templates/*.html static/*
@@ -292,6 +301,8 @@ type Handler struct {
 	scanFn            func(ctx context.Context, projectDir string) (string, error)
 	getThreadFn       GetThreadFunc           // resolves a help thread for the parked-run pane
 	replyThreadFn     ReplyThreadFunc         // posts a reply to a help thread; same path as `cloche threads reply`
+	signalTokens      *signal.TokenStore      // per-project bearer tokens for POST .../signals; see WithSignalIntake
+	signalDispatcher  *signal.Dispatcher      // stores signals and runs handle-notification
 	mcpSecret         []byte                  // enables /mcp when non-empty; see WithHelpMCP
 	askHelpFn         AskHelpFunc             // handles ask_user tool calls on /mcp
 	history           *promptrev.HistoryCache // per-file git history cache for the ledger view
@@ -376,6 +387,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/run-once", h.handleAPIRunOnce)
 	h.mux.HandleFunc("GET /api/projects/{name}/attention", h.handleAPIProjectAttention)
 	h.mux.HandleFunc("POST /api/projects/{name}/attention/mute", h.handleAPIMuteAttention)
+	h.mux.HandleFunc("POST /api/projects/{name}/signals", h.handleAPISignals)
 	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
 	h.mux.HandleFunc("GET /api/projects/{name}/loop/status", h.handleAPILoopStatus)
 	h.mux.HandleFunc("POST /api/projects/{name}/loop/stop", h.handleAPILoopStop)

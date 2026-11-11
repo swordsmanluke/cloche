@@ -17,7 +17,7 @@ import (
 var completionSubcommands = []string{
 	"activity", "complete", "console", "debug", "delete", "doctor", "extract",
 	"get", "health", "help", "init", "intent", "list", "logs", "loop", "module",
-	"poll", "project", "resume", "run", "set", "shutdown", "status", "stop", "tasks",
+	"poll", "project", "resume", "run", "set", "shutdown", "signals", "status", "stop", "tasks",
 	"threads", "validate", "version", "workflow",
 }
 
@@ -190,6 +190,13 @@ func staticCompletions(subcommand string, index int, words []string, cur string)
 	case "workflow":
 		// Try reading from local .cloche/
 		candidates = localWorkflowNames()
+
+	case "signals":
+		if index == 2 {
+			candidates = []string{"token"}
+		} else {
+			candidates = []string{"--rotate", "--project"}
+		}
 
 	case "intent":
 		if index == 2 {

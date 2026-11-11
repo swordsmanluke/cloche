@@ -185,6 +185,26 @@ CLOCHE_EXTRA_ENV=DATABASE_URL=postgres://... cloche run develop
 ENV DATABASE_URL=postgres://...
 ```
 
+## Signal Intake Token
+
+The dashboard's HTTP listener has no authentication, with one exception: `POST
+/api/projects/{name}/signals` requires a per-project bearer token. A signal can create a
+tracker task, and a task spends budget, so anyone who can post one can direct your spend
+(and, through the task text, steer the agent that works on it; see Prompt Hygiene).
+
+- The token is generated on first use and stored in `~/.config/cloche/signal-tokens/`
+  with mode `0600`. Treat it like a password: keep it in your sources' secret stores, not
+  in repos, Dockerfiles or `.cloche/overrides/`.
+- `cloche signals token` shows it; `cloche signals token --rotate` replaces it
+  immediately. Rotate if it leaks, or when someone who had it leaves.
+- Comparison is constant-time. An unknown project and a wrong token get the same `401`,
+  so project names can't be probed.
+- The token travels in a header over plain HTTP unless you terminate TLS in front of the
+  dashboard. Don't expose the listener to untrusted networks without that.
+- Signal text (`title`, `evidence`) is untrusted input that becomes a task body. The
+  default workflow copies it unchanged; apply the Prompt Hygiene advice before feeding it
+  to an agent.
+
 ## Prompt Hygiene
 
 The content of prompts is the primary vector for injection attacks. Untrusted content
@@ -225,4 +245,5 @@ contribution.
 | Sensitive files in container | Rely on copy-based isolation; avoid bind mounts; audit overrides |
 | Credentials leaking | Pass via env vars at runtime, not in images or overrides |
 | Prompt injection | Sanitize untrusted inputs in script steps; keep prompt templates explicit |
+| Signal endpoint abuse | Per-project bearer token (`cloche signals token --rotate`); keep the listener off untrusted networks |
 | Malicious agent output | Review branches before merging; check for unexpected changes |

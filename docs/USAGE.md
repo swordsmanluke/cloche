@@ -648,6 +648,76 @@ workflow "release-task" {
 }
 ```
 
+### `handle-notification` — Receiving Feedback Signals
+
+Feedback signals (a red `main`, an error in a deployed app, a failing monitor) enter
+cloche through one HTTP endpoint. Cloche accepts signals; it never fetches them. Whoever
+owns a source writes a small adapter that turns its events into the format below and
+posts them with `curl`. There is no CLI command for sending.
+
+```
+POST /api/projects/{name}/signals
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `source` | yes | Who is reporting: `ci-main`, `sentry`. Letters, digits, `.`, `_`, `-`; up to 128 chars. |
+| `key` | yes | Your uniqueness key. Two signals with the same `source` and `key` are the same problem; cloche only compares them. Up to 512 bytes. |
+| `severity` | yes | `low`, `high` or `urgent`. |
+| `title` | yes | One line, up to 300 bytes. |
+| `evidence` | no | Text: log lines, failing tests, metric values. Up to 64 KiB. |
+| `domain` | no | A domain name (same charset as `source`, up to 64 chars). |
+
+Unknown fields, unknown severities and missing required fields get `400` with a message
+naming the problem. A missing or wrong token (or an unknown project) gets `401`. A
+request body over 128 KiB gets `413`. Success is `202` with `{"id": <n>, "coalesced": <bool>}`.
+
+```bash
+curl -X POST "http://localhost:8080/api/projects/my-project/signals" \
+  -H "Authorization: Bearer $(cloche signals token)" \
+  -H "Content-Type: application/json" \
+  -d '{"source": "ci-main", "key": "main-red", "severity": "urgent",
+       "title": "main is red: 3 tests fail in internal/host",
+       "evidence": "--- FAIL: TestRunner ..."}'
+```
+
+**The token.** Each project has its own bearer token, generated on first use and stored
+under `~/.config/cloche/signal-tokens/` (mode `0600`). `cloche signals token` prints it;
+`cloche signals token --rotate` replaces it, and the old one stops working at once (no
+daemon restart). A project with no token yet rejects every request. See
+[SAFETY.md](SAFETY.md#signal-intake-token).
+
+**What happens to a signal.** The daemon stores it, answers the request, then runs the
+host workflow `handle-notification` with the signal as input. If the same `source` and
+`key` arrive while a handler for them is still running, the signal is added to that run
+(`"coalesced": true`) instead of starting another, so a burst of 500 identical errors is
+one handler run. Every signal is stored either way. A signal arriving after the handler
+finishes starts a new run.
+
+The workflow reads the signal from KV keys: `signal_source`, `signal_key`,
+`signal_severity`, `signal_priority` (`urgent`→0, `high`→1, `low`→3), `signal_title`,
+`signal_evidence`, `signal_domain`, `signal_json` (the whole object), and `signal_count`
+(1, rising as identical signals join the run).
+
+**The default workflow** ships built in and does the least useful thing: no thresholds,
+no muting, no model step.
+
+1. `lookup`: ask `update-task` for an open task carrying this source and key.
+2. Found: `comment` adds the occurrence to that task.
+3. Not found: `create` calls `create-task` with the title and evidence unchanged,
+   priority from the severity, the `domain` (if any) as a label, and the source and key
+   recorded so the next occurrence finds the task.
+
+Both go through whichever tracker module `project.cloche` binds (`beads-tasks`,
+`github-tasks`). To change the behaviour, define your own host workflow named
+`handle-notification` in `.cloche/`; it overrides the built-in. For example, add a
+prompt step to filter noise or rewrite the task.
+
+Work that needs code changes always ends as a tracker task, so it goes through the
+budget, tests and review. A signal never stops or pauses a run.
+
 ### `close-task` / `cancel-task` — Closing or Cancelling from the Dashboard
 
 Either workflow name handles the dashboard's "Close in tracker" needs-you action —
@@ -1610,6 +1680,17 @@ Run the project's bound `create-task` / `update-task` tracker phase on demand (s
 [modules.md](modules.md)). `create` prints the new task id. `find` prints the id of the
 open task recorded for that signal source and key, or exits `1` if there is none, so a
 repeat signal can `update` it instead of creating a duplicate.
+
+### `cloche signals`
+
+```
+cloche signals token [--rotate] [--project <dir>]
+```
+
+Show (or with `--rotate`, replace) the bearer token for a project's signal-intake endpoint
+(see [`handle-notification`](#handle-notification--receiving-feedback-signals)). Reads and
+writes `~/.config/cloche/signal-tokens/` directly; the daemon need not be running. There
+is no command for sending a signal: use `curl`.
 
 ### `cloche loop`
 

@@ -318,6 +318,13 @@ func EnsureStateDir() (string, error) {
 	return dir, nil
 }
 
+// SignalTokenDir returns the directory holding the per-project bearer tokens
+// for the signals endpoint: ~/.config/cloche/signal-tokens. Created 0700 on
+// first write; the daemon and `cloche signals token` share it.
+func SignalTokenDir() string {
+	return filepath.Join(StateDir(), "signal-tokens")
+}
+
 // DefaultDBPath returns the default database path: ~/.config/cloche/cloche.db
 func DefaultDBPath() string {
 	return filepath.Join(StateDir(), "cloche.db")

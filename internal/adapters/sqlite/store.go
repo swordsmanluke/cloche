@@ -371,6 +371,24 @@ func migrate(db *sql.DB) error {
 		return err
 	}
 
+	// Feedback signals received on the intake endpoint (see internal/signal).
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS signals (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		project_dir TEXT NOT NULL,
+		source      TEXT NOT NULL,
+		key         TEXT NOT NULL,
+		severity    TEXT NOT NULL,
+		title       TEXT NOT NULL,
+		evidence    TEXT NOT NULL DEFAULT '',
+		domain      TEXT NOT NULL DEFAULT '',
+		received_at TEXT NOT NULL
+	)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_signals_project_source_key ON signals (project_dir, source, key)`); err != nil {
+		return err
+	}
+
 	// v7: Per-project repository table. No `default` column — the sole row is
 	// the implicit default when auto-seeded on first access.
 	_, errRepo := db.Exec(`CREATE TABLE IF NOT EXISTS repositories (

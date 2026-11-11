@@ -126,6 +126,13 @@ func main() {
 		}
 		cmdProject(os.Args[2:])
 		return
+	case "signals":
+		if hasHelpFlag(os.Args[2:]) {
+			printSubcommandHelp("signals")
+			return
+		}
+		cmdSignals(os.Args[2:])
+		return
 	case "intent":
 		if hasHelpFlag(os.Args[2:]) {
 			printSubcommandHelp("intent")

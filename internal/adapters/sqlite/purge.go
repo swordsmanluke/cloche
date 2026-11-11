@@ -39,6 +39,7 @@ func (s *Store) PurgeProject(ctx context.Context, projectDir string) (int64, err
 		{"activity_log", `DELETE FROM activity_log WHERE project_dir = ?`},
 		{"evolution_log", `DELETE FROM evolution_log WHERE project_dir = ?`},
 		{"repositories", `DELETE FROM repositories WHERE project_dir = ?`},
+		{"signals", `DELETE FROM signals WHERE project_dir = ?`},
 		{"tasks", `DELETE FROM tasks WHERE project_dir = ?`},
 	}
 	for _, st := range stmts {

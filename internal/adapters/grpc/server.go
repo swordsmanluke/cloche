@@ -34,6 +34,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/ports"
 	"github.com/swordsmanluke/cloche/internal/project"
 	"github.com/swordsmanluke/cloche/internal/protocol"
+	"github.com/swordsmanluke/cloche/internal/signal"
 	"github.com/swordsmanluke/cloche/internal/version"
 	rpcgrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -4444,6 +4445,18 @@ func (s *ClocheServer) RunTrackerPhase(ctx context.Context, projectDir, slot str
 	}
 	s.useModuleExecutor(runner, projectDir, slot)
 	return host.RunTrackerPhase(ctx, runner, projectDir, slot, inputs)
+}
+
+// HandleSignal runs the handle-notification host workflow for sig. It is the
+// signal.HandlerFunc the daemon's dispatcher is built with.
+func (s *ClocheServer) HandleSignal(ctx context.Context, projectDir string, sig signal.Signal, run *signal.InFlight) error {
+	runner := &host.Runner{
+		Store:        s.store,
+		Captures:     s.captures,
+		LogBroadcast: s.logBroadcast,
+	}
+	s.useModuleExecutor(runner, projectDir, signal.WorkflowName)
+	return host.RunSignalHandler(ctx, runner, projectDir, sig, run)
 }
 
 // CloseTask runs the project's close/cancel task contract — a standalone

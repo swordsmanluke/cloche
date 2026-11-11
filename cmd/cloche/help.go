@@ -487,6 +487,30 @@ Examples:
   cloche extract TASK-42
 `,
 
+	"signals": `cloche signals — Show or rotate a project's signal-intake token
+
+Feedback signals enter cloche only through an HTTP endpoint on the dashboard
+listener, guarded by a per-project bearer token. There is no command for
+sending a signal; use curl.
+
+Usage:
+  cloche signals token [--rotate] [--project <dir>]
+
+  token            Print the project's token, generating one on first use.
+  --rotate         Replace the token with a fresh one and print it. The old
+                   token stops working immediately; no daemon restart needed.
+  --project <dir>  Project directory (default: current directory).
+
+Examples:
+  curl -X POST "http://localhost:8080/api/projects/my-project/signals" \
+    -H "Authorization: Bearer $(cloche signals token)" \
+    -H "Content-Type: application/json" \
+    -d '{"source":"ci-main","key":"main-red","severity":"urgent",
+         "title":"main is red: 3 tests fail in internal/host"}'
+
+The token grants the ability to create tracker tasks (and so spend budget).
+Treat it like a password; see docs/SAFETY.md.
+`,
 	"tasks": `cloche tasks — Show task pipeline and assignment state
 
 Queries the daemon's HTTP API for the current task list, showing which
@@ -1065,6 +1089,7 @@ Project Setup:
   health     Show project health summary (pass/fail counts)
   project    Show project info, config, loop state, and workflows
   intent     View and curate standing project requirements
+  signals    Show or rotate the token for the signal-intake endpoint
   module     Install and manage workflow modules
 
 Workflow Info:

@@ -7,6 +7,7 @@ package builtin
 import (
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/intent/scan"
+	"github.com/swordsmanluke/cloche/internal/signal"
 )
 
 // factories returns a fresh *domain.Workflow per call so callers can't
@@ -14,6 +15,7 @@ import (
 var factories = map[string]func() *domain.Workflow{
 	"intent-scan":         scan.BuiltinWorkflow,
 	scan.RepoWorkflowName: scan.BuiltinRepoWorkflow,
+	signal.WorkflowName:   signal.BuiltinWorkflow,
 }
 
 // Lookup returns the built-in workflow with the given name, if any.
