@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1249,4 +1250,112 @@ func TestPromptAdapter_Streaming_OversizedLineIsSpilledByPath(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(logData), spilled[0], "the step log points at the spilled line")
 	assert.Less(t, len(logData), 100000, "the line itself stays out of the log")
+}
+
+// TestPromptAdapter_MarkerFollowedByMoreOutput is the regression test for a
+// run where the agent printed its marker, then a background-task
+// notification made it print more text, so the marker was no longer the
+// final line. The last marker carrying the step's nonce counts wherever it
+// sits in the output; a stray bare marker after it must still be ignored.
+func TestPromptAdapter_MarkerFollowedByMoreOutput(t *testing.T) {
+	assistant := func(text string) string {
+		b, _ := json.Marshal(map[string]any{
+			"type": "assistant",
+			"message": map[string]any{"content": []map[string]any{
+				{"type": "text", "text": text},
+			}},
+		})
+		return string(b)
+	}
+	result := func(text string) string {
+		b, _ := json.Marshal(map[string]any{"type": "result", "subtype": "success", "result": text})
+		return string(b)
+	}
+
+	cases := []struct {
+		name   string
+		stream bool
+		script func(dir string) string
+	}{
+		{"plain text", false, func(string) string {
+			return `cat > /dev/null; echo "work done"; echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:success; echo "A background task finished."; echo "Noted, nothing more to do."; echo "CLOCHE_RESULT:fail"`
+		}},
+		{"stream-json", false, func(dir string) string {
+			f := filepath.Join(dir, "events.txt")
+			os.WriteFile(f, []byte(assistant("done\nCLOCHE_RESULT:NONCE:success")+"\n"+
+				assistant("A background task finished.")+"\n"+result("A background task finished.")+"\n"), 0644)
+			return `cat > /dev/null; sed "s/NONCE/$CLOCHE_RESULT_NONCE/" ` + f
+		}},
+		{"stream-json streaming path", true, func(dir string) string {
+			f := filepath.Join(dir, "events.txt")
+			os.WriteFile(f, []byte(assistant("done\nCLOCHE_RESULT:NONCE:success")+"\n"+
+				assistant("A background task finished.")+"\n"+result("A background task finished.")+"\n"), 0644)
+			return `cat > /dev/null; sed "s/NONCE/$CLOCHE_RESULT_NONCE/" ` + f
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			adapter := &prompt.Adapter{
+				Commands:     []string{"sh"},
+				ExplicitArgs: []string{"-c", tc.script(dir)},
+			}
+			if tc.stream {
+				adapter.StatusWriter = protocol.NewStatusWriter(io.Discard)
+			}
+			step := &domain.Step{
+				Name:    "implement",
+				Type:    domain.StepTypeAgent,
+				Results: []string{"success", "fail"},
+				Config:  map[string]string{"prompt": "Do something."},
+			}
+			sr, err := adapter.Execute(context.Background(), step, dir)
+			require.NoError(t, err)
+			assert.Equal(t, "success", sr.Result)
+		})
+	}
+}
+
+// Review finding: text events (opencode) are concatenated with no separator,
+// so a marker ending one text part and prose starting the next glue together
+// ("success" + "Noted") and the result name becomes "successNoted".
+func TestPromptAdapter_MarkerFollowedByLaterTextEvent_Opencode(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "events.txt")
+	ev := func(text string) string {
+		b, _ := json.Marshal(map[string]any{"type": "text", "part": map[string]any{"text": text}})
+		return string(b)
+	}
+	os.WriteFile(f, []byte(ev("done\nCLOCHE_RESULT:NONCE:success")+"\n"+ev("Noted, background task finished.")+"\n"), 0644)
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", `cat > /dev/null; sed "s/NONCE/$CLOCHE_RESULT_NONCE/" ` + f},
+	}
+	step := &domain.Step{Name: "implement", Type: domain.StepTypeAgent, Results: []string{"success", "fail"},
+		Config: map[string]string{"prompt": "Do something."}}
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result)
+}
+
+// Review finding: opencode streams small deltas; markerBoundary inserts "\n"
+// whenever the pending line contains "CLOCHE_RESULT:", so a marker split across
+// deltas ("CLOCHE_RESULT:" + "<nonce>:success") is broken apart.
+func TestPromptAdapter_MarkerSplitAcrossOpencodeDeltas(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "events.txt")
+	ev := func(text string) string {
+		b, _ := json.Marshal(map[string]any{"type": "text", "part": map[string]any{"text": text}})
+		return string(b)
+	}
+	os.WriteFile(f, []byte(ev("done\n")+"\n"+ev("CLOCHE_RESULT:")+"\n"+ev("NONCE")+"\n"+ev(":success")+"\n"), 0644)
+	adapter := &prompt.Adapter{
+		Commands:     []string{"sh"},
+		ExplicitArgs: []string{"-c", `cat > /dev/null; sed "s/NONCE/$CLOCHE_RESULT_NONCE/" ` + f},
+	}
+	step := &domain.Step{Name: "implement", Type: domain.StepTypeAgent, Results: []string{"success", "fail"},
+		Config: map[string]string{"prompt": "Do something."}}
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "success", sr.Result)
 }

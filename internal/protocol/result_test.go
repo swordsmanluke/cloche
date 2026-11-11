@@ -152,3 +152,11 @@ func TestExtractResult_ExcisesNoncedMarkerWhole(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, "Wrote 4 candidates\n", string(clean))
 }
+
+func TestExtractNoncedResult_MarkerFollowedByMoreOutput(t *testing.T) {
+	out := []byte("work done\nCLOCHE_RESULT:n0nce1:success\nA background task finished.\nNothing more to do.\nCLOCHE_RESULT:fail\n")
+	got, clean, found := protocol.ExtractNoncedResult(out, "n0nce1")
+	assert.True(t, found)
+	assert.Equal(t, "success", got)
+	assert.Contains(t, string(clean), "A background task finished.")
+}

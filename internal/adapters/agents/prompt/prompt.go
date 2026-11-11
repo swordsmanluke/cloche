@@ -440,7 +440,7 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 			// "result" field) where a raw line-based scan would never see it.
 			// Fall back to raw output for non-JSON commands (scripts,
 			// non-claude agents).
-			classifyBuf := extractStreamOutputText(stdoutBytes)
+			classifyBuf := extractStreamOutputText(stdoutBytes, nonce)
 			if len(bytes.TrimSpace(classifyBuf)) == 0 {
 				classifyBuf = stdoutBytes
 			}
@@ -507,6 +507,10 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 		text := extractStreamText(raw)
 		if text == "" {
 			return
+		}
+		if sep := markerBoundary(textBuf.Bytes(), nonce); sep != "" {
+			textBuf.WriteString(sep)
+			lineBuf.WriteString(sep)
 		}
 		textBuf.WriteString(text)
 
@@ -611,7 +615,7 @@ func (a *Adapter) maybeRecoverMissingMarker(ctx context.Context, command, workDi
 	if bytes.Contains(rawStdout, []byte(`"error_during_execution"`)) {
 		return result, rawStdout, usage, fallbackErr
 	}
-	classifyBuf := extractStreamOutputText(rawStdout)
+	classifyBuf := extractStreamOutputText(rawStdout, nonce)
 	if len(bytes.TrimSpace(classifyBuf)) == 0 {
 		classifyBuf = rawStdout
 	}
@@ -674,7 +678,7 @@ func (a *Adapter) runRecoveryTurn(ctx context.Context, command, workDir, stepNam
 	runErr := cmd.Run()
 	rawOutput = stdoutBuf.Bytes()
 
-	classifyBuf := extractStreamOutputText(rawOutput)
+	classifyBuf := extractStreamOutputText(rawOutput, nonce)
 	if len(bytes.TrimSpace(classifyBuf)) == 0 {
 		classifyBuf = rawOutput
 	}
@@ -723,16 +727,39 @@ func runUsageCommand(ctx context.Context, cmd string, workDir string) *domain.To
 	}
 }
 
+// markerBoundary returns "\n" when the accumulated text ends in an
+// unterminated line holding a complete CLOCHE_RESULT marker, so the next text event
+// (opencode deltas are concatenated verbatim) cannot glue prose onto the
+// marker's result name. Otherwise it returns "".
+func markerBoundary(acc []byte, nonce string) string {
+	if len(acc) == 0 || acc[len(acc)-1] == '\n' {
+		return ""
+	}
+	last := acc[bytes.LastIndexByte(acc, '\n')+1:]
+	// Only a complete nonced marker (prefix, this step's nonce, ":" and at
+	// least one name character) counts; a marker still being assembled from
+	// split deltas must be left intact.
+	pfx := []byte(protocol.ResultPrefix + nonce + ":")
+	if i := bytes.LastIndex(last, pfx); i >= 0 && len(last) > i+len(pfx) {
+		return "\n"
+	}
+	return ""
+}
+
 // extractStreamOutputText applies extractStreamText to every line of a
 // complete (non-streaming) output buffer and concatenates the results. Used
 // by the buffered execution path (tryCommand, no StatusWriter) so it
 // classifies the same extracted text the streaming path does, rather than
 // scanning raw stream-json lines where a CLOCHE_RESULT marker embedded inside
 // a JSON string (e.g. the "result" event's "result" field) would never match.
-func extractStreamOutputText(output []byte) []byte {
+func extractStreamOutputText(output []byte, nonce string) []byte {
 	var buf bytes.Buffer
 	for _, line := range bytes.Split(output, []byte("\n")) {
-		buf.WriteString(extractStreamText(line))
+		text := extractStreamText(line)
+		if text != "" {
+			buf.WriteString(markerBoundary(buf.Bytes(), nonce))
+		}
+		buf.WriteString(text)
 	}
 	return buf.Bytes()
 }
