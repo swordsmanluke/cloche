@@ -3,7 +3,8 @@
 #
 # Consumers of the repo-root context:
 #   docker/cloche-base/Dockerfile — Go sources for cloche-agent and clo
-#   docker/cloche-dra/Dockerfile  — saga.bin, copied in temporarily by make docker-dra
+#   docker/cloche-dra/Dockerfile  — Go sources for cloche (embeds docs/init) + saga.bin,
+#                                   copied in temporarily by make docker-dra
 #   .cloche/Dockerfile            — credentials + setup script (also built by cloched)
 *
 !go.mod
@@ -11,6 +12,7 @@
 !api/
 !cmd/
 !internal/
+!docs/init/
 !.cloche/credentials/
 !.cloche/setup-credentials.sh
 !docker/cloche-dra/saga.bin
