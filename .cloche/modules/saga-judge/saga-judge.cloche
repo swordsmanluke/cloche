@@ -1,0 +1,99 @@
+workflow ask {
+  contract {
+    kv:  saga_batch_file
+    out: saga_batch_id
+  }
+  host {}
+
+  step ask {
+    run     = "bash \"$CLOCHE_MODULE_DIR/scripts/ask.sh\""
+    results = [success, fail]
+  }
+
+  ask:success -> done
+  ask:fail    -> abort
+}
+
+workflow await-answer {
+  contract {
+    kv:  saga_batch_id
+    out: saga_outcome
+  }
+  host {}
+
+  step await {
+    poll     = "bash \"$CLOCHE_MODULE_DIR/scripts/poll.sh\""
+    interval = "1m"
+    results  = [answered, reframe, timeout]
+  }
+
+  await:answered -> done
+  await:reframe  -> abort
+  await:timeout  -> abort   // saga_outcome stays unset
+}
+
+workflow judge {
+  contract {
+    kv: saga_batch_id
+  }
+  host {}
+
+  step prepare {
+    run     = "bash \"$CLOCHE_MODULE_DIR/scripts/judge-prepare.sh\""
+    results = [success, fail]
+  }
+
+  step judge {
+    prompt  = file("prompts/judge.md")
+    timeout = "15m"
+    results = [success, fail]
+  }
+
+  // A judge that fails or declines leaves every question open for the human, so
+  // it never aborts the caller: both outcomes end in done. The step result still
+  // shows in the run's history.
+  prepare:success -> judge
+  prepare:fail    -> done
+  judge:success   -> done
+  judge:fail      -> done
+}
+
+// Example: ask in Saga, then wait for the answer while the judge works in parallel.
+// Needs kv saga_batch_file. await-answer ends in success when every question has a
+// ruling (whoever gave it) and fail on a timeout or when the judge sent a question
+// back (saga_outcome = reframe), so the caller can re-ask.
+workflow example-ask-with-judge {
+  contract {
+    kv: saga_batch_file
+  }
+  host {}
+
+  bind {
+    ask          = saga-judge
+    await-answer = saga-judge
+    judge        = saga-judge
+  }
+
+  step ask {
+    workflow_name = "ask"
+    results       = [success, fail]
+  }
+
+  step await-answer {
+    workflow_name = "await-answer"
+    results       = [success, fail]
+  }
+
+  step judge {
+    workflow_name = "judge"
+    results       = [success, fail]
+  }
+
+  ask:success -> await-answer
+  ask:success -> judge
+  ask:fail    -> abort
+
+  await-answer:fail -> abort
+  collect all(await-answer:success, judge:success) -> done
+  judge:fail -> done
+}

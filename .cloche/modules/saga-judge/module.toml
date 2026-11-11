@@ -1,0 +1,5 @@
+name        = "saga-judge"
+description = "Ask in Saga, wait for the answer, and let a judge agent settle questions already ruled on"
+exports     = ["ask", "await-answer", "judge"]
+requires    = ["saga", "jq"]
+credentials = []

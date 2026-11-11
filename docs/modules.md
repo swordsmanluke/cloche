@@ -129,6 +129,22 @@ Transition fallbacks (removed in a future minor release): without `tasks_path` t
 daemon parses `list-tasks` stdout; without a resolvable `claim-task` phase, `main` claims
 the task itself.
 
+## Asking in Saga: `saga-judge`
+
+`.cloche/modules/saga-judge` lets a workflow ask in Saga and wait, with a judge agent
+settling questions that an existing ruling or intent entry already decides. Design:
+[`docs/plans/2026-11-10-autonomous-loop-design.md`](plans/2026-11-10-autonomous-loop-design.md), Part 2.
+
+| Workflow | `kv:` | `out:` | Notes |
+|---|---|---|---|
+| `ask` | `saga_batch_file` | `saga_batch_id` | `saga ask` from a batch file. |
+| `await-answer` | `saga_batch_id` | `saga_outcome` | Poll step over `saga poll --no-wait`: `answered`, `reframe` (a question was deprecated by the judge; workflow ends `fail`) or `timeout`. |
+| `judge` | `saga_batch_id` | — | Host agent step: decide (citing a ruling or intent id), send back (`--deprecates`) or hold. Holds unless certain; never answers from its own reasoning. Always ends `success`. |
+
+The module's `example-ask-with-judge` wires `ask -> await-answer` and `ask -> judge` in
+parallel. It needs a Saga with the judge author kind, the held mark and refuse-if-answered.
+See the module README.
+
 ## CLI
 
 ```

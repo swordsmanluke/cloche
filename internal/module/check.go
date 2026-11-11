@@ -251,6 +251,13 @@ func wired(wf *domain.Workflow, step, result string) bool {
 			return true
 		}
 	}
+	for _, c := range wf.Collects {
+		for _, cond := range c.Conditions {
+			if cond.Step == step && cond.Result == result {
+				return true
+			}
+		}
+	}
 	return false
 }
 
