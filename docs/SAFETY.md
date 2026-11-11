@@ -189,35 +189,12 @@ CLOCHE_EXTRA_ENV=DATABASE_URL=postgres://... cloche run develop
 ENV DATABASE_URL=postgres://...
 ```
 
-## Dashboard Token
-
-The dashboard listener is often bound to `0.0.0.0`, so one daemon-wide token guards it
-(a single middleware on the mux, so a new route is guarded by default):
-
-- **Every route that changes something** (stop, delete, resume, thread replies, loop
-  control, purge, intent edits, and so on) needs the token from **any** address,
-  loopback included.
-- **Read-only routes** need it only when the connection does not come from this machine.
-  "This machine" is decided from the connection's remote address (loopback), never from
-  `X-Forwarded-For` or similar headers. A reverse proxy running on the same host makes
-  every client look like loopback, so if you put one in front, have it enforce its own
-  authentication.
-- Browsers are sent to `/login` once; the token is kept in an `HttpOnly`,
-  `SameSite=Strict` cookie. Scripts send `Authorization: Bearer <token>`.
-- Mutating requests also pass an `Origin` check, so another site can't post from your
-  browser.
-- The token is generated on first use in `~/.config/cloche/dashboard-token` (mode
-  `0600`). `cloche dashboard token` shows it; `cloche dashboard token --rotate` replaces
-  it and logs every browser out. Comparison is constant-time.
-- Exempt because they carry their own credential: the per-project signal token on
-  `.../signals` and `.../tasks/create|update` (below), and the per-run token on `/mcp`
-  (the only route run containers call over HTTP).
-- Like the signal token, it travels in a header over plain HTTP unless you terminate TLS
-  in front. Don't expose the listener to untrusted networks without TLS.
-
-Scripts that post to the dashboard (other than signals) must now send the token.
-
 ## Signal Intake Token
+
+The dashboard's HTTP listener has no authentication of its own: anyone who can reach
+the port can stop, delete and start runs. Bind it to loopback (`http = "127.0.0.1:8080"`)
+unless you trust the network. The exceptions carry their own credential: signals and
+`tasks/create|update` (below), `/mcp` (per run) and the DRA API (per wake-up).
 
 `POST /api/projects/{name}/signals` requires a per-project bearer token. A signal can create a
 tracker task, and a task spends budget, so anyone who can post one can direct your spend
@@ -292,6 +269,5 @@ runs under tighter limits than a workflow run (see `docs/dras.md`):
 | Sensitive files in container | Rely on copy-based isolation; avoid bind mounts; audit overrides |
 | Credentials leaking | Pass via env vars at runtime, not in images or overrides |
 | Prompt injection | Sanitize untrusted inputs in script steps; keep prompt templates explicit |
-| Unauthenticated dashboard actions | Daemon-wide dashboard token on every mutating route, and on reads from other machines (`cloche dashboard token --rotate`) |
 | Signal endpoint abuse | Per-project bearer token (`cloche signals token --rotate`); keep the listener off untrusted networks |
 | Malicious agent output | Review branches before merging; check for unexpected changes |

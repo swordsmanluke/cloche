@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
-	"github.com/swordsmanluke/cloche/internal/dashauth"
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/draauth"
 	"github.com/swordsmanluke/cloche/internal/signal"
@@ -72,10 +71,7 @@ func setupDRA(t *testing.T) *draEnv {
 	store, err := sqlite.NewStore(":memory:")
 	require.NoError(t, err)
 	t.Cleanup(func() { store.Close() })
-	da := dashauth.NewStore(filepath.Join(t.TempDir(), "dashboard-token"))
-	_, err = da.Get()
-	require.NoError(t, err)
-	h, err := NewHandler(store, store, WithDashboardAuth(da), WithDRAAccess(draSecret),
+	h, err := NewHandler(store, store, WithDRAAccess(draSecret),
 		WithHelpMCP(draSecret, func(context.Context, string, string, string, string, []string, string) (string, string, bool, error) {
 			return "", "", false, nil
 		}),
@@ -239,38 +235,16 @@ func TestDRA_BadCredentialsRefused(t *testing.T) {
 	}
 }
 
-// Everything outside the DRA API is refused to a DRA: its credential is not
-// the dashboard token, a signal token or a run's MCP token.
-func TestDRA_EverythingElseRefused(t *testing.T) {
+// A DRA credential does not pass for another route's credential: the
+// project signal token or a run's MCP token. The rest of the dashboard has no
+// auth at all for now (cloche runs locally; auth is a later story), so those
+// routes do not refuse a DRA.
+func TestDRA_CredentialIsNotAnotherRoutesCredential(t *testing.T) {
 	e := setupDRA(t)
-	var checked int
-	for _, pat := range e.h.patterns {
-		if tokenExemptPatterns[pat] {
-			continue
-		}
-		method, p, _ := strings.Cut(pat, " ")
-		if strings.HasPrefix(p, "/api/dra/") {
-			continue
-		}
-		// Reads from a non-loopback address and every mutating route.
-		rec := e.call(method, concretePath(p), e.token, "")
-		assert.Equal(t, http.StatusUnauthorized, rec.Code, "%s with a DRA credential", pat)
-		checked++
-	}
-	assert.Greater(t, checked, 30)
-
-	// The named refusals, spelled out: stop, delete, resume-ish, loop, purge, signals.
 	for _, c := range [][2]string{
-		{"POST", "/api/runs/run-a/stop"},
-		{"DELETE", "/api/runs/run-a/container"},
-		{"DELETE", "/api/containers"},
-		{"POST", "/api/projects/" + draProject + "/loop/stop"},
-		{"POST", "/api/projects/" + draProject + "/trigger"},
-		{"DELETE", "/api/projects/" + draProject},
-		{"POST", "/api/projects/" + draProject + "/tasks/create"},
-		{"POST", "/api/projects/" + draProject + "/tasks/update"},
-		{"POST", "/api/projects/" + draProject + "/signals"},
-		{"POST", "/api/projects/" + draProject + "/tasks/mine-1/close"},
+		{"POST", "/api/projects/" + url.PathEscape(draProject) + "/tasks/create"},
+		{"POST", "/api/projects/" + url.PathEscape(draProject) + "/tasks/update"},
+		{"POST", "/api/projects/" + url.PathEscape(draProject) + "/signals"},
 		{"POST", "/api/projects/other/tasks/create"},
 		{"POST", "/mcp?run_id=wake-1"},
 	} {

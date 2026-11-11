@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/swordsmanluke/cloche/internal/dashauth"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -225,13 +224,7 @@ func main() {
 			BaseContext: webCtx,
 		}
 		srv.SetSignalSubmitter(signalDispatcher)
-		dashStore := dashauth.NewStore(config.DashboardTokenPath())
-		if _, err := dashStore.Get(); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to prepare dashboard token: %v\n", err)
-			os.Exit(1)
-		}
 		webOpts := []web.HandlerOption{
-			web.WithDashboardAuth(dashStore),
 			web.WithSignalIntake(clochesignal.NewTokenStore(config.SignalTokenDir()), signalDispatcher),
 			web.WithContainerLogger(runtime),
 			web.WithLogStore(store),

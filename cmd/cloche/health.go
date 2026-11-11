@@ -65,7 +65,7 @@ func cmdHealth(args []string) {
 	if projectDir != "" {
 		reqURL += "?project=" + url.QueryEscape(projectDir)
 	}
-	resp, err := dashboardGet(reqURL)
+	resp, err := http.Get(reqURL) //nolint:noctx
 	if err != nil {
 		// The dial failure looks identical whether the whole daemon is down
 		// or just its web dashboard (e.g. stuck retrying a bind failure).

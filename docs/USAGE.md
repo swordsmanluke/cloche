@@ -689,13 +689,6 @@ under `~/.config/cloche/signal-tokens/` (mode `0600`). `cloche signals token` pr
 daemon restart). A project with no token yet rejects every request. See
 [SAFETY.md](SAFETY.md#signal-intake-token).
 
-The dashboard itself is guarded by a separate daemon-wide token: every mutating route
-needs it, and read-only routes need it from other machines. `cloche dashboard token`
-prints it (`--rotate` replaces it); browsers log in once at `/login`; scripts send it as
-`Authorization: Bearer`. Set `CLOCHE_DASHBOARD_TOKEN` for `cloche health`/`tasks` against
-a daemon on another machine. Signals and `tasks/create|update` keep using the project
-token above. See [SAFETY.md](SAFETY.md#dashboard-token).
-
 **What happens to a signal.** The daemon stores it, answers the request, then runs the
 host workflow `handle-notification` with the signal as input. If the same `source` and
 `key` arrive while a handler for them is still running, the signal is added to that run
@@ -1757,16 +1750,6 @@ Show (or with `--rotate`, replace) the bearer token for a project's signal-intak
 (see [`handle-notification`](#handle-notification--receiving-feedback-signals)). Reads and
 writes `~/.config/cloche/signal-tokens/` directly; the daemon need not be running. There
 is no command for sending a signal: use `curl`.
-
-### `cloche dashboard`
-
-```
-cloche dashboard token [--rotate]
-```
-
-Show (or with `--rotate`, replace) the daemon-wide token that guards the dashboard's HTTP
-listener. Reads and writes `~/.config/cloche/dashboard-token` directly; the daemon need
-not be running. See [SAFETY.md](SAFETY.md#dashboard-token).
 
 ### `cloche loop`
 

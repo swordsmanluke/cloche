@@ -105,8 +105,10 @@ on the dashboard listener), with a credential the daemon mints for each wake-up
 (`CLOCHE_DRA_TOKEN`, with `CLOCHE_DRA_URL` and `CLOCHE_DRA_NAME`). The credential
 names the wake-up's run, the project and the DRA, and stops working the moment
 that run leaves an active state (finished, failed, cancelled or parked). It is
-not the dashboard token, a project signal token or the run's `/mcp` token, and
-none of those accept it. Rulings: CLOCHE-A118, A119, A128.
+not a project signal token or the run's `/mcp` token, and neither accepts it.
+The rest of the dashboard listener and the daemon's gRPC port have no
+authentication yet, so today these limits hold only for a DRA that uses the CLI
+it is given; enforcing them against a DRA that goes around it is future auth work. Rulings: CLOCHE-A118, A119, A128.
 
 A wake-up workflow names its DRA with `container { dra = "<name>" }`; the
 container runtime then injects the three variables above. Containers that do not

@@ -6,7 +6,6 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"github.com/swordsmanluke/cloche/internal/dashauth"
 	"html/template"
 	"io/fs"
 	"net/http"
@@ -151,15 +150,6 @@ func WithReplyThreadFunc(fn ReplyThreadFunc) HandlerOption {
 // answers 404.
 func WithSignalIntake(tokens *signal.TokenStore, d *signal.Dispatcher) HandlerOption {
 	return func(h *Handler) { h.signalTokens, h.signalDispatcher = tokens, d }
-}
-
-// WithDashboardAuth turns on the daemon-wide dashboard token (see auth.go):
-// every mutating route needs it, and read-only routes need it from
-// non-loopback addresses. cloched always sets it. A Handler built without it
-// does no dashboard auth at all (the per-project signal and per-run MCP
-// tokens still apply), which is only meant for tests.
-func WithDashboardAuth(s *dashauth.Store) HandlerOption {
-	return func(h *Handler) { h.dashAuth = s }
 }
 
 //go:embed templates/*.html static/*
@@ -319,8 +309,7 @@ type Handler struct {
 	history           *promptrev.HistoryCache // per-file git history cache for the ledger view
 	pages             map[string]*template.Template
 	mux               *http.ServeMux
-	patterns          []string        // every registered mux pattern, for tests
-	dashAuth          *dashauth.Store // daemon-wide dashboard token; see WithDashboardAuth
+	patterns          []string // every registered mux pattern, for tests
 }
 
 // NewHandler creates a web dashboard handler.
@@ -363,8 +352,6 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 		return nil, fmt.Errorf("static sub-fs: %w", err)
 	}
 
-	h.route("GET /login", h.handleLoginPage)
-	h.route("POST /login", h.handleLogin)
 	h.route("GET /{$}", h.handleLegacyRoot)
 	h.route("GET /projects/{name}/runs", h.handleLegacyProjectRedirect)
 	h.route("GET /runs", h.handleLegacyRunsRedirect)
@@ -429,11 +416,11 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.authMiddleware(h.mux).ServeHTTP(w, r)
+	h.mux.ServeHTTP(w, r)
 }
 
-// route registers a handler on the mux and records the pattern so tests (and
-// the auth middleware's exemption list) can see every registered route.
+// route registers a handler on the mux and records the pattern so tests can
+// see every registered route.
 func (h *Handler) route(pattern string, fn http.HandlerFunc) {
 	h.routeHandler(pattern, fn)
 }

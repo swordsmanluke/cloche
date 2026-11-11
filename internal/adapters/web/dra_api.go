@@ -18,8 +18,8 @@ import (
 // run, project and domain. With it a DRA may list its project's tasks and
 // runs, read a run's status and output, create a task (always labelled with
 // the DRA's domain), and update or close a task that carries that label.
-// Nothing else is reachable: every other route needs the dashboard token, the
-// project's signal token or the run's /mcp token, none of which a DRA holds.
+// The rest of the dashboard has no auth yet (a later story), so this limits a
+// DRA that uses the CLI it is given, not one that calls other routes directly.
 //
 // The project is always taken from the credential, never from the request, so
 // a DRA cannot name another project.

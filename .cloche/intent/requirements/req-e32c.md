@@ -5,7 +5,6 @@ scope:
     level: domain
     domains:
         - dras
-        - dashboard-auth
 hints:
     - how does a dra authenticate to the daemon
     - token for container to create tasks

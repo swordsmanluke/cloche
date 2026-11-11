@@ -327,13 +327,6 @@ func SignalTokenDir() string {
 	return filepath.Join(StateDir(), "signal-tokens")
 }
 
-// DashboardTokenPath returns the file holding the daemon-wide dashboard
-// token: ~/.config/cloche/dashboard-token (0600). The daemon and
-// `cloche dashboard token` share it.
-func DashboardTokenPath() string {
-	return filepath.Join(StateDir(), "dashboard-token")
-}
-
 // DefaultDBPath returns the default database path: ~/.config/cloche/cloche.db
 func DefaultDBPath() string {
 	return filepath.Join(StateDir(), "cloche.db")
