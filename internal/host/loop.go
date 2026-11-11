@@ -132,15 +132,16 @@ type Loop struct {
 	mainFn              MainFunc
 	claimFn             ClaimFunc // optional; claim-task phase run before main
 	store               ports.RunStore
-	taskStore           ports.TaskStore         // optional; ensures Task records exist when set
-	activityLog         *activitylog.Logger     // optional; records attempt lifecycle events
-	assigner            TaskAssigner            // optional; feeds listTasks in NewLoop-created loops
-	pollCoord           *PollCoordinator        // optional; drives poll step polling on each tick
-	pollStore           ports.PollStore         // optional; persists poll step poll state
-	helpArchiver        HelpArchiver            // optional; archives a task's help threads on success
-	postTaskScanner     PostTaskScanner         // optional; enqueues an intent-scan after a task succeeds
-	onAttemptComplete   func(projectDir string) // optional; notified whenever an attempt reaches a terminal state
-	launchGate          func() bool             // optional; true holds back new launches (budget cap)
+	taskStore           ports.TaskStore                 // optional; ensures Task records exist when set
+	activityLog         *activitylog.Logger             // optional; records attempt lifecycle events
+	assigner            TaskAssigner                    // optional; feeds listTasks in NewLoop-created loops
+	pollCoord           *PollCoordinator                // optional; drives poll step polling on each tick
+	pollStore           ports.PollStore                 // optional; persists poll step poll state
+	helpArchiver        HelpArchiver                    // optional; archives a task's help threads on success
+	postTaskScanner     PostTaskScanner                 // optional; enqueues an intent-scan after a task succeeds
+	onAttemptComplete   func(projectDir string)         // optional; notified whenever an attempt reaches a terminal state
+	onAttemptFailed     func(projectDir, taskID string) // optional; notified when a task's attempt fails
+	launchGate          func() bool                     // optional; true holds back new launches (budget cap)
 	gateLogged          atomic.Bool
 	emergencyOverflow   atomic.Bool // urgent tasks launch even while the launch gate holds
 	stopCh              chan struct{}
@@ -344,6 +345,13 @@ func (l *Loop) SetPostTaskScanner(scanner PostTaskScanner) {
 // next timer tick after a run finishes.
 func (l *Loop) SetOnAttemptComplete(fn func(projectDir string)) {
 	l.onAttemptComplete = fn
+}
+
+// SetOnAttemptFailed configures a callback invoked with the project directory
+// and task ID whenever a task's attempt ends failed — used by the daemon to
+// post a repeated-failure signal once the failure threshold is reached.
+func (l *Loop) SetOnAttemptFailed(fn func(projectDir, taskID string)) {
+	l.onAttemptFailed = fn
 }
 
 // PostTaskScannerConfigured reports whether a PostTaskScanner is wired for
@@ -980,6 +988,10 @@ func (l *Loop) completeAttempt(attemptID string, state domain.RunState) {
 		if err := l.postTaskScanner.EnqueueScan(ctx, l.config.ProjectDir, attempt.TaskID); err != nil {
 			log.Printf("orchestration loop: failed to enqueue intent-scan for task %s: %v", attempt.TaskID, err)
 		}
+	}
+
+	if result == domain.AttemptResultFailed && l.onAttemptFailed != nil && attempt.TaskID != "" {
+		l.onAttemptFailed(l.config.ProjectDir, attempt.TaskID)
 	}
 
 	if l.onAttemptComplete != nil {

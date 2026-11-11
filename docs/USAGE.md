@@ -718,6 +718,37 @@ prompt step to filter noise or rewrite the task.
 Work that needs code changes always ends as a tracker task, so it goes through the
 budget, tests and review. A signal never stops or pauses a run.
 
+#### Signal sources shipped with cloche
+
+**Repeated failure (daemon).** When a task's failed attempt makes it reach the
+repeat-failure threshold (`[attention] repeat_failure_threshold`, default 3 — the point
+"Needs you" flags it), the daemon posts a signal to itself: source `cloche`, severity
+`high`, key `<task id>:<failed step>`, title "Find out why task T keeps failing at step S".
+`handle-notification` then creates that task (or comments on the open one with the same
+key). A single failed run is not a signal, and only the attempt that reaches the threshold
+signals, so further failures don't repeat it. The failed step is the deepest failing step of
+the latest attempt (a child workflow's step if one failed, else the host step).
+
+**`check-main` (timer workflow).** A host workflow in `.cloche/host.cloche` that runs the
+full suite against `main`'s HEAD in a container (`check-main-suite`) on a timer, and on red
+posts an urgent signal: source `ci-main`, key `main-red`, with the failing tests and the
+commit range since the last green check. Start it once with `cloche run check-main`; it
+loops. It is not auto-dispatched by `cloche loop`, and nothing pauses on red.
+
+- *Timer.* Cloche has no time trigger yet (CLOCHE-A114), so the `wait` poll step compares
+  the clock with a target timestamp that the `schedule` step sets after each round.
+  `CLOCHE_CHECK_MAIN_INTERVAL` (seconds, default `21600`) is the period; it is approximate.
+- *Skips.* If `main`'s HEAD hasn't moved since the last check, the round is skipped. So is
+  a round where the project root isn't a clean checkout of `main` (the container copies the
+  project root, so it would not be testing `main`'s HEAD).
+- *Posting.* The report step uses the project's signal token (`cloche signals token`) and
+  `CLOCHE_HTTP` (default `localhost:8080`); override with `CLOCHE_SIGNAL_URL` and
+  `CLOCHE_SIGNAL_PROJECT` (project name, default the project directory's basename). It needs
+  `python3` and `curl`. A red HEAD is recorded as checked only once the post succeeds, so a
+  failed post is retried.
+- *State* lives in `.cloche/runs/_check-main/` (`next_at`, `last_checked_sha`,
+  `last_green_sha`).
+
 ### `close-task` / `cancel-task` — Closing or Cancelling from the Dashboard
 
 Either workflow name handles the dashboard's "Close in tracker" needs-you action —

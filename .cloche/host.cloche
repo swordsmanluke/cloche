@@ -118,3 +118,63 @@ workflow release {
   publish:skipped -> done
   publish:fail    -> abort
 }
+
+// check-main — run the full suite against main's HEAD on a timer and post an
+// urgent ci-main/main-red signal when it is red. Start it once with
+// `cloche run check-main`; it loops. The timer is the `wait` poll step comparing
+// the clock with a target timestamp (no time trigger exists, CLOCHE-A114).
+// CLOCHE_CHECK_MAIN_INTERVAL (seconds, default 21600) sets the period. Nothing
+// pauses on red; it never auto-dispatches (see req-2e1d: only list-tasks, main
+// and release-task do).
+workflow check-main {
+  host {
+    agent_command = "claude"
+  }
+
+  step wait {
+    poll     = "bash .cloche/scripts/check-main-wait.sh"
+    interval = "1m"
+    timeout  = "24h"
+    results  = [due, timeout]
+  }
+
+  step changed {
+    run     = "bash .cloche/scripts/check-main-changed.sh"
+    results = [changed, unchanged, skip, fail]
+  }
+
+  step suite {
+    workflow_name = "check-main-suite"
+    results       = [success, fail]
+  }
+
+  step record-green {
+    run     = "bash .cloche/scripts/check-main-record-green.sh"
+    results = [success, fail]
+  }
+
+  step report-red {
+    run     = "bash .cloche/scripts/check-main-report-red.sh"
+    results = [success, fail]
+  }
+
+  step schedule {
+    run     = "bash .cloche/scripts/check-main-schedule.sh"
+    results = [success, fail]
+  }
+
+  wait:due           -> changed
+  wait:timeout       -> changed
+  changed:changed    -> suite
+  changed:unchanged  -> schedule
+  changed:skip       -> schedule
+  changed:fail       -> abort
+  suite:success      -> record-green
+  suite:fail         -> report-red
+  record-green:success -> schedule
+  record-green:fail    -> abort
+  report-red:success -> schedule
+  report-red:fail    -> schedule
+  schedule:success   -> wait
+  schedule:fail      -> abort
+}

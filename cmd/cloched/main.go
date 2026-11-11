@@ -215,6 +215,7 @@ func main() {
 			Handler:     srv.HandleSignal,
 			BaseContext: webCtx,
 		}
+		srv.SetSignalSubmitter(signalDispatcher)
 		webOpts := []web.HandlerOption{
 			web.WithSignalIntake(clochesignal.NewTokenStore(config.SignalTokenDir()), signalDispatcher),
 			web.WithContainerLogger(runtime),

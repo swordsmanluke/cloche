@@ -141,6 +141,43 @@ func TestLoop_OnAttemptComplete_FiresOnTerminalState(t *testing.T) {
 	assert.Equal(t, "/tmp/attention-test-project", dir)
 }
 
+func TestLoop_OnAttemptFailed_FiresOnlyForFailures(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}, attempts: map[string]*domain.Attempt{}}
+	assigner := &fakeTaskAssigner{tasks: []Task{{ID: "task-1"}}}
+
+	state := domain.RunStateFailed
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+		return &RunResult{State: state}, nil
+	}
+	loop := NewLoop(LoopConfig{ProjectDir: "/tmp/p", MaxConcurrent: 1}, store, runFn)
+	loop.SetTaskAssigner(assigner)
+
+	var failedTask atomic.Value
+	var n atomic.Int32
+	loop.SetOnAttemptFailed(func(projectDir, taskID string) {
+		failedTask.Store(taskID)
+		n.Add(1)
+	})
+	loop.Start()
+	require.Eventually(t, func() bool { return n.Load() > 0 }, time.Second, time.Millisecond)
+	loop.Stop()
+	assert.Equal(t, "task-1", failedTask.Load())
+
+	// A successful attempt does not fire it.
+	store2 := &fakeStore{runs: map[string]*domain.Run{}, attempts: map[string]*domain.Attempt{}}
+	state = domain.RunStateSucceeded
+	var m atomic.Int32
+	var done atomic.Int32
+	loop2 := NewLoop(LoopConfig{ProjectDir: "/tmp/p", MaxConcurrent: 1}, store2, runFn)
+	loop2.SetTaskAssigner(&fakeTaskAssigner{tasks: []Task{{ID: "task-2"}}})
+	loop2.SetOnAttemptFailed(func(string, string) { m.Add(1) })
+	loop2.SetOnAttemptComplete(func(string) { done.Add(1) })
+	loop2.Start()
+	require.Eventually(t, func() bool { return done.Load() > 0 }, time.Second, time.Millisecond)
+	loop2.Stop()
+	assert.Zero(t, m.Load())
+}
+
 func TestLoop_RampsUpOnSuccess(t *testing.T) {
 	store := &fakeStore{runs: map[string]*domain.Run{}}
 	var called atomic.Int32

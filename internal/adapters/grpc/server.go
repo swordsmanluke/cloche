@@ -44,6 +44,9 @@ import (
 
 type ClocheServer struct {
 	pb.UnimplementedClocheServiceServer
+	// signals receives the daemon's own signals (repeated task failures).
+	// Set via SetSignalSubmitter; nil disables self-signalling.
+	signals SignalSubmitter
 	store         ports.RunStore
 	captures      ports.CaptureStore
 	logStore      ports.LogStore
@@ -4051,6 +4054,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 		log.Printf("orchestration loop: %s/.cloche/config.toml has unknown key(s) %s — ignored; check the table they are under", projectDir, strings.Join(unknown, ", "))
 	}
 	loop.SetOnAttemptComplete(s.TriggerAttentionRefresh)
+	loop.SetOnAttemptFailed(s.signalRepeatFailure)
 	return loop
 }
 
@@ -5751,4 +5755,63 @@ func (s *ClocheServer) DaemonState() DaemonStateSnapshot {
 		ActiveLoops:       loops,
 		ContainerSessions: sessions,
 	}
+}
+
+// SignalSubmitter accepts a signal for a project (signal.Dispatcher).
+type SignalSubmitter interface {
+	Submit(ctx context.Context, projectDir string, sig signal.Signal) (signal.Result, error)
+}
+
+// SetSignalSubmitter wires the dispatcher the daemon posts its own signals to.
+func (s *ClocheServer) SetSignalSubmitter(sub SignalSubmitter) { s.signals = sub }
+
+// signalRepeatFailure posts a signal when taskID's latest failed attempt makes
+// it reach the repeat-failure threshold (the point "Needs you" flags it). Only
+// the attempt that hits the threshold exactly signals, so later failures don't
+// repeat it; a single failed run is never a signal. The key is the task id plus
+// the failed step, so the handler files one "find out why" task per pair.
+func (s *ClocheServer) signalRepeatFailure(projectDir, taskID string) {
+	if s.signals == nil || taskID == "" {
+		return
+	}
+	ctx := context.Background()
+	threshold := attention.DefaultConfig().RepeatFailureThreshold
+	if cfg, err := config.Load(projectDir); err == nil && cfg.Attention.RepeatFailureThreshold > 0 {
+		threshold = cfg.Attention.RepeatFailureThreshold
+	}
+	runs, err := s.store.ListRunsByProject(ctx, projectDir, time.Time{})
+	if err != nil {
+		log.Printf("repeat-failure signal: listing runs for %s: %v", projectDir, err)
+		return
+	}
+	sig, ok := repeatFailureSignal(taskID, attention.TaskFailureStreak(runs, taskID), threshold)
+	if !ok {
+		return
+	}
+	if _, err := s.signals.Submit(ctx, projectDir, sig); err != nil {
+		log.Printf("repeat-failure signal: task %s: %v", taskID, err)
+	}
+}
+
+// repeatFailureSignal builds the signal for a streak, or false when the streak
+// hasn't just reached threshold.
+func repeatFailureSignal(taskID string, st attention.FailureStreak, threshold int) (signal.Signal, bool) {
+	if st.Count != threshold {
+		return signal.Signal{}, false
+	}
+	step := st.FailedStep
+	if step == "" {
+		step = "unknown"
+	}
+	evidence := fmt.Sprintf("Task %s has failed %d consecutive attempts; the latest failed at step %q (run %s).", taskID, st.Count, step, st.LatestRunID)
+	if st.Error != "" {
+		evidence += "\nError: " + st.Error
+	}
+	return signal.Signal{
+		Source:   "cloche",
+		Key:      taskID + ":" + step,
+		Severity: signal.SeverityHigh,
+		Title:    fmt.Sprintf("Find out why task %s keeps failing at step %s", taskID, step),
+		Evidence: evidence,
+	}, true
 }

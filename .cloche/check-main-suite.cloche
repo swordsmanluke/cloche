@@ -1,0 +1,11 @@
+// The full test suite against the project as copied into the container (main's
+// HEAD, as check-main only dispatches it from a clean checkout of main).
+workflow check-main-suite {
+  step test {
+    run     = "go test ./... 2>&1"
+    results = [success, fail]
+  }
+
+  test:success -> done
+  test:fail    -> abort
+}
