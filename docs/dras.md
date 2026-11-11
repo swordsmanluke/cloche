@@ -2,7 +2,8 @@
 
 A DRA owns responsibility for one domain of a project (authentication, the
 engine, performance...). Design: `docs/plans/2026-11-10-autonomous-loop-design.md`,
-Part 5. This page covers the definition on disk; sessions and wake-ups come later.
+Part 5. This page covers the definition on disk, the container, the daemon credential and
+wake-ups.
 
 ## Layout
 
@@ -22,8 +23,11 @@ ignored (e.g. `.cloche/dras/*/notes.md` in `.gitignore`) is the project's choice
 
 ## Commands
 
-- `cloche dra list [--project <dir>]` prints each DRA's name, whether a session
-  exists (`-` until sessions are implemented) and the charter's first heading.
+- `cloche dra list [--project <dir>]` prints each DRA's name, its session id (`-`
+  until the first wake-up), its last wake-up (run id, result, how the session was
+  obtained, time) and the charter's first heading.
+- `cloche dra wake <name> --message <text> [--project <dir>]` starts a wake-up by
+  hand (see below).
 - `cloche validate` reports a DRA with no `charter.md` or an invalid name.
 
 ## The locked-down container
@@ -132,3 +136,44 @@ promotes the task.
 `clo` and `cloche-agent` work), so refusing `stop`/`delete`/`shutdown` over gRPC
 needs gRPC authentication or the network allowlist in the DRA-container work.
 This change covers the HTTP API and the CLI.
+
+## Wake-ups
+
+A wake-up is an ordinary recorded run (`dra-wake-<name>`, with token usage like any
+other) that the daemon builds in Go: a host workflow dispatching container workflows
+in the DRA image, each with one prompt step. The message saying what happened is
+written to `.cloche/runs/<run-id>/wake-message.md`, which the container sees; it is a
+file so a message containing `{{` is never read as a prompt template. Design:
+`docs/plans/2026-11-10-autonomous-loop-design.md`, Part 5; rulings CLOCHE-A117, A130.
+
+```
+resume --success--> done        (only when a session id is stored)
+resume --fail-----> fresh
+fresh  --success--> done
+```
+
+- **Session.** Each DRA has a named Claude Code session. The first wake-up runs
+  `fresh`, which starts it with `--session-id <uuid>`; later ones run `resume`
+  (`--resume <uuid>`). The daemon stores the id and the last wake-up in
+  `.cloche/runs/dra-sessions.json` (runtime state, gitignored with the rest of
+  `runs/`); `cloche dra list` reads it.
+- **Session files** live in a Docker volume per DRA and project
+  (`cloche-dra-<project hash>-<name>`), mounted at `/home/agent/.claude`, so they
+  survive between runs.
+- **Lost session.** If `resume` fails (the session is gone, or the volume was
+  lost) the run falls back to `fresh`: a new session, rebuilt from `charter.md` and
+  `notes.md`, whose id replaces the stored one. A `resume` that fails because the
+  agent itself reported failure also falls back; that costs one extra session, not
+  correctness, since the notes are the memory.
+- **Notes.** Both prompts tell the agent to read `notes.md` first and update it
+  before stopping. The project is copied in from the live tree (a snapshot of `HEAD`
+  would lack an untracked `notes.md`), and `notes.md` is copied back to
+  `.cloche/dras/<name>/notes.md` when the container is cleaned up, whether the run
+  succeeded or failed. A DRA never changes code, so nothing else is extracted.
+- **One at a time.** A second wake-up of a DRA that already has one running is
+  **refused**, not queued: the message names the running run. A queue would replay a
+  stale message after the DRA has already looked at the current state.
+- **Budget.** The launch gate applies: automatic wake-ups (`WakeDRA` with
+  `manual = false`, for the triggers that come later) are not started while the daily
+  cap is exceeded. `cloche dra wake` is hand-started, so it still runs, with the
+  usual warning.

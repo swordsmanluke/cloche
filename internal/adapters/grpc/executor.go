@@ -14,6 +14,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/builtin"
 	"github.com/swordsmanluke/cloche/internal/config"
 	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/dra"
 	"github.com/swordsmanluke/cloche/internal/engine"
 	"github.com/swordsmanluke/cloche/internal/host"
 	"github.com/swordsmanluke/cloche/internal/intent"
@@ -661,7 +662,8 @@ func (d *DaemonExecutor) executeWorkflowStep(ctx context.Context, step *domain.S
 		// first sub-workflow that uses it. Subsequent sub-workflows reusing
 		// the same container share these same worktrees — each extraction adds
 		// a commit to the shared branch (one per repo).
-		if _, exists := d.worktrees[poolKey]; !exists {
+		// A DRA never changes code, so a DRA container has nothing to extract.
+		if _, exists := d.worktrees[poolKey]; !exists && targetWF.Config["container.profile"] != "dra" {
 			if err := d.prepareExtractWorktrees(ctx, poolKey, targetWF); err != nil {
 				log.Printf("daemon executor: prepare extract worktrees: %v", err)
 			}
@@ -1127,6 +1129,11 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 	// A DRA wake-up workflow names its DRA via `container { dra = "<name>" }`;
 	// the runtime then mints the per-run DRA credential for the container.
 	cfg.DRA = wf.Config["container.dra"]
+	if cfg.DRA != "" {
+		// The DRA's Claude Code session files outlive the run, so a later
+		// wake-up can resume the named session.
+		cfg.Volumes = append(cfg.Volumes, dra.VolumeName(d.projectDir, cfg.DRA)+":"+dra.SessionHome)
+	}
 	sel, selErr := d.attemptRepoSelection(ctx)
 	if selErr != nil {
 		return domain.StepResult{}, fmt.Errorf("container step %q: %w", step.Name, selErr)

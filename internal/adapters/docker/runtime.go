@@ -201,6 +201,10 @@ func (r *Runtime) start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		}
 	}
 
+	for _, v := range cfg.Volumes {
+		args = append(args, "-v", v)
+	}
+
 	// Support extra volume mounts via CLOCHE_EXTRA_MOUNTS (comma-separated host:container pairs).
 	// Locked containers never get these: they are how credentials reach runs.
 	if mounts := os.Getenv("CLOCHE_EXTRA_MOUNTS"); mounts != "" && cfg.Locked == nil {

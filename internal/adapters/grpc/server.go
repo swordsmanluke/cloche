@@ -25,6 +25,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/builtin"
 	"github.com/swordsmanluke/cloche/internal/config"
 	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/dra"
 	"github.com/swordsmanluke/cloche/internal/dsl"
 	"github.com/swordsmanluke/cloche/internal/engine"
 	"github.com/swordsmanluke/cloche/internal/help"
@@ -76,6 +77,7 @@ type ClocheServer struct {
 	runIDs          map[string]string              // run_id -> container_id
 	containerRun    map[string]string              // container_id -> run_id
 	hostCancels     map[string]context.CancelFunc  // run_id -> cancel fn (for host runs)
+	wakeActive      map[string]string              // project+DRA -> run id of its running wake-up (see WakeDRA)
 	attemptCancels  map[string]context.CancelFunc  // attempt_id -> cancel fn (loop-dispatched main runs)
 	loops           map[string]*host.Loop          // project_dir -> orchestration loop
 	activityLoggers map[string]*activitylog.Logger // project_dir -> activity logger
@@ -778,6 +780,10 @@ func (s *ClocheServer) runWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 
 	// Parse optional step from workflow_name ("workflow:step" format).
 	workflowName, startStep, _ := strings.Cut(req.WorkflowName, ":")
+
+	if workflowName == dra.WakeRequest {
+		return s.runDRAWake(ctx, req)
+	}
 
 	// Resolve the workflow (project-defined, or a built-in if not overridden)
 	// once: used both for host-workflow routing and to tag the run below.

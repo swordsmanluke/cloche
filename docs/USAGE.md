@@ -1574,19 +1574,23 @@ the same RPC `cloche run` uses.
 
 ### `cloche dra`
 
-List the project's Domain Responsible Agents. A DRA is defined by a directory
+List and wake the project's Domain Responsible Agents. A DRA is defined by a directory
 `.cloche/dras/<name>/` holding `charter.md` (required) and `notes.md`; Cloche never
 commits `notes.md`. See [`docs/dras.md`](dras.md).
 
 ```
 cloche dra list [--project <dir>]
+cloche dra wake <name> --message <text> [--project <dir>]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--project <dir>` | current directory | Project directory. |
+| `--message <text>` | (required for `wake`) | What happened; the DRA reads it when it wakes. |
 
-`list` prints each DRA's name, its session state (`-` until sessions exist) and the first heading of its charter.
+`list` prints each DRA's name, its session id (`-` until its first wake-up), its last wake-up (run id, result, how the session was obtained, time) and the first heading of its charter.
+
+`wake` starts a wake-up by hand: a container run in the DRA image that resumes the DRA's named Claude Code session, or starts a new one if there is none or resuming fails. It is refused while that DRA already has a wake-up running, and is never blocked by the daily budget cap (only warned). See [`docs/dras.md`](dras.md#wake-ups).
 
 ### `cloche module`
 

@@ -510,7 +510,7 @@ For a daemon on another machine, export CLOCHE_DASHBOARD_TOKEN so cloche
 commands that call the dashboard (health, tasks) send it.
 See docs/SAFETY.md.
 `,
-	"dra": `cloche dra — List the project's Domain Responsible Agents
+	"dra": `cloche dra — List and wake the project's Domain Responsible Agents
 
 A DRA is defined by a directory .cloche/dras/<name>/ holding charter.md
 (required) and notes.md. The name is the domain and uses lowercase letters,
@@ -518,13 +518,22 @@ digits and '-'. Cloche never commits notes.md. See docs/dras.md.
 
 Usage:
   cloche dra list [--project <dir>]
+  cloche dra wake <name> --message <text> [--project <dir>]
 
-  list             Print each DRA's name, session state ('-' until sessions
-                   exist) and the first heading of its charter.
+  list             Print each DRA's name, session id ('-' until its first
+                   wake-up), its last wake-up (run id, result, how the
+                   session was obtained, time) and the first heading of its
+                   charter.
+  wake             Start a wake-up by hand: a container run in the DRA image
+                   that resumes the DRA's named Claude Code session (or starts
+                   a new one) with --message saying what happened. Refused
+                   while the DRA already has a wake-up running; never blocked
+                   by the daily budget cap, only warned.
   --project <dir>  Project directory (default: current directory).
 
 Examples:
   cloche dra list
+  cloche dra wake performance --message "bench regression on main"
   cloche dra list --project ~/src/my-project
 `,
 	"signals": `cloche signals — Show or rotate a project's signal-intake token
@@ -1131,7 +1140,7 @@ Project Setup:
   intent     View and curate standing project requirements
   dashboard  Show or rotate the dashboard HTTP token
   signals    Show or rotate the token for the signal-intake endpoint
-  dra        List the project's Domain Responsible Agents
+  dra        List and wake the project's Domain Responsible Agents
   module     Install and manage workflow modules
 
 Workflow Info:

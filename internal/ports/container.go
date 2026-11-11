@@ -49,6 +49,10 @@ type ContainerConfig struct {
 	// then gives the container a credential for the daemon's DRA API (see
 	// internal/draauth), tied to this run, the project and the DRA's name.
 	DRA string
+	// Volumes are extra "source:/container/path" mounts the daemon itself
+	// chose (e.g. a DRA's named session volume). Unlike CLOCHE_EXTRA_MOUNTS
+	// they apply to locked containers too.
+	Volumes []string
 }
 
 // LockedConfig is the locked-down container profile (autonomous-loop design,
