@@ -3,7 +3,8 @@
 # the tasks_path output of the list-tasks contract.
 # A task is ready when:
 #   1. bd considers it ready (open, not blocked/deferred)
-#   2. All its closed dependencies have a succeeded cloche run
+#   2. It carries the "ready" label (so tickets can exist without being run)
+#   3. All its closed dependencies have a succeeded cloche run
 set -uo pipefail
 
 out="$PWD/.cloche/runs/list-tasks.jsonl"
@@ -14,7 +15,8 @@ cloche set tasks_path "$out"
 # bd ready --json outputs a JSON array of ready tasks (open + in_progress).
 # Filter to only open tasks — in_progress means already claimed by a run.
 # Epics are containers for child tasks, not dispatchable work.
-json=$(bd ready --json 2>/dev/null | jq '[.[] | select(.status == "open" and .issue_type != "epic")]') || json="[]"
+# Only tasks labelled "ready" are handed out.
+json=$(bd ready --json 2>/dev/null | jq '[.[] | select(.status == "open" and .issue_type != "epic" and ((.labels // []) | index("ready")))]') || json="[]"
 
 if [ "$json" = "[]" ] || [ -z "$json" ]; then
   exit 0

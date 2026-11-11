@@ -30,7 +30,8 @@ if [ -n "$key" ] && [ -z "$source_" ]; then
 fi
 if [ -n "$source_" ]; then
   sig="signal:${source_}:$(printf %s "$key" | sha1sum | cut -c1-16)"
-  labels="${labels:+$labels,}$sig"
+  # "ready" lets list-tasks hand the task out: a signal's task is meant to run.
+  labels="${labels:+$labels,}$sig,ready"
   body="${body}${body:+
 
 }Signal: ${source_} / ${key}"
