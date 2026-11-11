@@ -495,7 +495,7 @@ workflow "develop" {
 }
 ```
 
-Recognized keys: `id`, `image`, `agent_command`, `agent_args`, `network_allow`, `memory`. Unknown keys are silently ignored.
+Recognized keys: `id`, `image`, `agent_command`, `agent_args`, `network_allow`, `memory`, `profile`, `notes`. Unknown keys are silently ignored. `profile = "dra"` selects the locked-down DRA container (`notes` names its one writable file); see `docs/dras.md`.
 
 **`host {}`** — Declares a workflow as a host workflow. Can appear in any `.cloche` file.
 Sets agent defaults for agent steps running on the host machine. An empty `host {}` block

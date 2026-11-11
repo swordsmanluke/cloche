@@ -35,6 +35,11 @@ func generateRequestID() string {
 type ContainerSession struct {
 	ContainerID string
 
+	// locked/hostProjectDir are set for locked-down (DRA) containers so the
+	// writable paths can be copied back to the host when the attempt ends.
+	locked         *ports.LockedConfig
+	hostProjectDir string
+
 	mu      sync.Mutex
 	send    func(*pb.DaemonMessage) error
 	pending map[string]chan *pb.StepResult
@@ -297,7 +302,9 @@ func (p *ContainerPool) SessionFor(ctx context.Context, attemptID string, cfg po
 	// may not contain an uncommitted Dockerfile). A failed build aborts the
 	// attempt here rather than falling through to Start, whose "image not
 	// found" error would otherwise mask the real build failure.
-	if ensurer, ok := p.runtime.(ports.ImageEnsurer); ok {
+	// A locked profile's image (cloche-dra) is built by `make install`, not
+	// from the project Dockerfile; ensuring it would overwrite it.
+	if ensurer, ok := p.runtime.(ports.ImageEnsurer); ok && cfg.Locked == nil {
 		buildDir := cfg.HostProjectDir
 		if buildDir == "" {
 			buildDir = cfg.ProjectDir
@@ -322,7 +329,10 @@ func (p *ContainerPool) SessionFor(ctx context.Context, attemptID string, cfg po
 		return nil, fmt.Errorf("starting container for attempt %s: %w", attemptID, err)
 	}
 
-	sess := &ContainerSession{ContainerID: containerID}
+	sess := &ContainerSession{ContainerID: containerID, locked: cfg.Locked, hostProjectDir: cfg.HostProjectDir}
+	if sess.hostProjectDir == "" {
+		sess.hostProjectDir = cfg.ProjectDir
+	}
 
 	p.mu.Lock()
 	entry.sessions = append(entry.sessions, sess)
@@ -715,6 +725,14 @@ func (p *ContainerPool) CleanupAttempt(ctx context.Context, attemptID string, ke
 		// Always stop on terminal states.
 		if err := p.runtime.Stop(ctx, sess.ContainerID); err != nil {
 			log.Printf("pool: stopping container %s: %v", sess.ContainerID, err)
+		}
+		// A DRA's notes.md is its memory: copy it back out before the
+		// container can be removed.
+		if sess.locked != nil {
+			if err := copyWritableOut(ctx, p.runtime, sess); err != nil {
+				log.Printf("pool: copying writable paths out of %s: %v", sess.ContainerID, err)
+				errs = append(errs, err)
+			}
 		}
 		// Only remove on success; keep stopped containers for debugging on failure.
 		if succeeded {

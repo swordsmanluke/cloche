@@ -1121,6 +1121,9 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 		// connects to the daemon via gRPC and waits for ExecuteStep commands.
 		Cmd: []string{"cloche-agent"},
 	}
+	if err := docker.ApplyProfile(&cfg, wf.Name, wf.Config); err != nil {
+		return domain.StepResult{}, fmt.Errorf("container step %q: %w", step.Name, err)
+	}
 	sel, selErr := d.attemptRepoSelection(ctx)
 	if selErr != nil {
 		return domain.StepResult{}, fmt.Errorf("container step %q: %w", step.Name, selErr)

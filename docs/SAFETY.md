@@ -108,6 +108,10 @@ Everything else — documentation sites, third-party APIs, general internet — 
 excluded unless the task specifically requires it. The agent may be less capable without
 web access, but the security tradeoff is worth it for tasks involving sensitive code.
 
+> **Exception:** the locked-down DRA profile (`container { profile = "dra" }`) *does*
+> enforce its allowlist, through an egress sidecar on a Docker `--internal` network.
+> See [Locked-down DRA containers](#locked-down-dra-containers) below and `docs/dras.md`.
+
 ### Docker Network Isolation
 
 Since `network_allow` is not yet enforced, Docker-level network restrictions are
@@ -263,12 +267,28 @@ This review step is your final safeguard. Automated agents are powerful but not
 infallible — treat their output with the same scrutiny you would give any external
 contribution.
 
+## Locked-down DRA containers
+
+A DRA (Domain Responsible Agent) is a long-lived agent, the riskiest kind, so its wake-up
+runs under tighter limits than a workflow run (see `docs/dras.md`):
+
+- **Its own image** (`cloche-dra`): `cloche-agent`, `cloche`, `clo`, `saga` and the model
+  CLI. No compilers, `make`, `git`, tracker CLI, push credentials or tracker data.
+- **Read-only project.** Everything under `/workspace` is root-owned and not writable by
+  the agent user, except the DRA's own `notes.md` (copied in at start, back out at end).
+- **Enforced network allowlist.** The container joins a Docker `--internal` network with
+  no route out. An egress sidecar relays only the model API (HTTPS CONNECT) and the
+  daemon and Saga ports on the host (TCP forwards). No `--privileged`, no extra
+  capabilities, `no-new-privileges`.
+- `CLOCHE_EXTRA_MOUNTS` and `CLOCHE_EXTRA_ENV` are not applied to these containers.
+
 ## Summary
 
 | Risk | Mitigation |
 |------|-----------|
 | Host-side agent has full access | Use container workflows for agent steps; keep host workflows to scripts and dispatch |
 | Unrestricted network in container | Declare `network_allow`; enforce with Docker-level network controls until runtime enforcement lands |
+| Long-lived DRA agent | `container { profile = "dra" }`: own image, read-only project, enforced network allowlist |
 | Sensitive files in container | Rely on copy-based isolation; avoid bind mounts; audit overrides |
 | Credentials leaking | Pass via env vars at runtime, not in images or overrides |
 | Prompt injection | Sanitize untrusted inputs in script steps; keep prompt templates explicit |

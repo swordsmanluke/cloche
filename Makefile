@@ -1,4 +1,4 @@
-.PHONY: build test lint clean proto docker-base docker-build install
+.PHONY: build test lint clean proto docker-base docker-build docker-dra install
 
 PREFIX ?= $(HOME)/.local
 VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo "dev")
@@ -37,6 +37,18 @@ docker-build: docker-base
 	@# create an empty placeholder so the COPY always has a source.
 	@mkdir -p .cloche/credentials
 	docker build -t cloche-agent:latest -f .cloche/Dockerfile .
+	@$(MAKE) --no-print-directory docker-dra
+
+# Locked-down image for DRAs (docs/dras.md). Needs SAGA_URL, a tarball URL for
+# a static saga binary; without it the DRA image is skipped, not faked.
+SAGA_URL ?=
+docker-dra:
+	@if [ -z "$(SAGA_URL)" ]; then \
+		echo "==> Skipping cloche-dra image (set SAGA_URL=<saga tarball URL> to build it)"; \
+	else \
+		docker build -f docker/cloche-dra/Dockerfile --build-arg SAGA_URL=$(SAGA_URL) \
+			-t cloche-dra:latest -t cloche-dra:$(VERSION) . ; \
+	fi
 
 install-sh: build docker-build
 	@# Install binaries

@@ -42,6 +42,25 @@ type ContainerConfig struct {
 	// doesn't include the root repo. .clocheignore still applies within them.
 	CopyOnly    []string
 	Interactive bool // allocate TTY and keep stdin open (-it flags)
+	// Locked, when set, runs the container in the locked-down profile used
+	// by DRAs: read-only project, narrow enforced network.
+	Locked *LockedConfig
+}
+
+// LockedConfig is the locked-down container profile (autonomous-loop design,
+// Part 5; CLOCHE-A118).
+type LockedConfig struct {
+	// WritablePaths are the only project-relative paths the agent user can
+	// write (a DRA's own notes.md). Everything else under /workspace is
+	// root-owned and not writable. Created empty if absent.
+	WritablePaths []string
+	// AllowHosts are "host[:port]" (port defaults to 443) destinations
+	// reachable through the egress proxy, e.g. the model API.
+	AllowHosts []string
+	// ForwardAddrs are "host:port" TCP endpoints on the Docker host
+	// (the daemon's gRPC port, Saga's port) relayed through the egress
+	// sidecar on the same port number.
+	ForwardAddrs []string
 }
 
 // ExtraDir copies the host directory Src to Dst (relative to /workspace).

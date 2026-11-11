@@ -20,6 +20,14 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	if len(os.Args) >= 2 && os.Args[1] == "egress" {
+		if err := runEgress(ctx, os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "egress: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	go func() {

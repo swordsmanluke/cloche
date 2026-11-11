@@ -59,6 +59,24 @@ func mcpEnvArgs(mcpSecret []byte, httpAddr, runID string) []string {
 }
 
 func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string, error) {
+	id, err := r.start(ctx, cfg)
+	if err != nil && cfg.Locked != nil {
+		// Don't leak the egress sidecar/network of a container that never started.
+		network, _ := egressNames(containerNameFor(cfg))
+		teardownEgress(context.Background(), network)
+	}
+	return id, err
+}
+
+// containerNameFor is the docker name Start gives a container.
+func containerNameFor(cfg ports.ContainerConfig) string {
+	if cfg.TaskID != "" && cfg.AttemptID != "" {
+		return cfg.AttemptID + "-" + cfg.WorkflowName
+	}
+	return cfg.RunID
+}
+
+func (r *Runtime) start(ctx context.Context, cfg ports.ContainerConfig) (string, error) {
 	startTime := time.Now()
 	log.Printf("runtime.Start: creating container (image=%s workflow=%s attempt=%s)", cfg.Image, cfg.WorkflowName, cfg.AttemptID)
 
@@ -78,10 +96,15 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	args := []string{
 		"create",
 		"--workdir", "/workspace",
-		"--add-host=host.docker.internal:host-gateway",
-		"--dns", "8.8.8.8",
-		"--dns", "8.8.4.4",
 		"--log-driver", "json-file",
+	}
+	// Locked containers get their network from the egress sidecar below
+	// (no host-gateway, no public DNS).
+	if cfg.Locked == nil {
+		args = append(args,
+			"--add-host=host.docker.internal:host-gateway",
+			"--dns", "8.8.8.8",
+			"--dns", "8.8.4.4")
 	}
 
 	if cfg.Interactive {
@@ -151,8 +174,9 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		}
 	}
 
-	// Support extra volume mounts via CLOCHE_EXTRA_MOUNTS (comma-separated host:container pairs)
-	if mounts := os.Getenv("CLOCHE_EXTRA_MOUNTS"); mounts != "" {
+	// Support extra volume mounts via CLOCHE_EXTRA_MOUNTS (comma-separated host:container pairs).
+	// Locked containers never get these: they are how credentials reach runs.
+	if mounts := os.Getenv("CLOCHE_EXTRA_MOUNTS"); mounts != "" && cfg.Locked == nil {
 		for _, m := range strings.Split(mounts, ",") {
 			if strings.Contains(m, ":") {
 				args = append(args, "-v", m)
@@ -161,7 +185,7 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	}
 
 	// Support extra env vars via CLOCHE_EXTRA_ENV (comma-separated KEY=VALUE pairs)
-	if extraEnv := os.Getenv("CLOCHE_EXTRA_ENV"); extraEnv != "" {
+	if extraEnv := os.Getenv("CLOCHE_EXTRA_ENV"); extraEnv != "" && cfg.Locked == nil {
 		for _, e := range strings.Split(extraEnv, ",") {
 			if strings.Contains(e, "=") {
 				args = append(args, "-e", e)
@@ -173,9 +197,22 @@ func (r *Runtime) Start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		args = append(args, "-e", e)
 	}
 
-	// No --network none: agent needs network for git push and API access
+	if cfg.Locked != nil {
+		if containerName == "" {
+			return "", fmt.Errorf("locked container needs a run or attempt id for its name")
+		}
+		network, ip, err := startEgress(ctx, containerName, cfg.Image, cfg.Locked)
+		if err != nil {
+			return "", fmt.Errorf("starting egress sidecar: %w", err)
+		}
+		args = append(args, lockedNetworkArgs(network, ip)...)
+	}
+	// Normal runs have open network: the agent needs it for git push and API access.
 
-	if useAgentWrapper {
+	if cfg.Locked != nil {
+		args = append(args, "--user", "root", cfg.Image, "sh", "-c",
+			lockedWrapperCmd(containerCmd, cfg.Locked.WritablePaths))
+	} else if useAgentWrapper {
 		// Start as root to fix ownership of docker-cp'd files and
 		// root-created mount-point directories, then drop to the agent user
 		// via gosu (direct setuid+exec, no intermediate shell — avoids
@@ -512,6 +549,7 @@ func (r *Runtime) Logs(ctx context.Context, containerID string) (string, error) 
 }
 
 func (r *Runtime) Remove(ctx context.Context, containerID string) error {
+	teardownEgressFor(ctx, containerID)
 	cmd := exec.CommandContext(ctx, "docker", "rm", "-f", containerID)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

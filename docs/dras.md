@@ -25,3 +25,71 @@ ignored (e.g. `.cloche/dras/*/notes.md` in `.gitignore`) is the project's choice
 - `cloche dra list [--project <dir>]` prints each DRA's name, whether a session
   exists (`-` until sessions are implemented) and the charter's first heading.
 - `cloche validate` reports a DRA with no `charter.md` or an invalid name.
+
+## The locked-down container
+
+A DRA (Domain Responsible Agent) manages work for a domain. It never changes code or
+stops or deletes runs, and it runs in a container with tighter limits than a workflow
+run (design: `docs/plans/2026-11-10-autonomous-loop-design.md`, Part 5; ruling
+CLOCHE-A118). This page covers the container; wake-ups and charters are documented
+with the DRA feature itself.
+
+### Selecting the profile
+
+A workflow (or a single step) selects the locked-down profile in its `container {}`
+block:
+
+```
+workflow "dra-wakeup" {
+  container {
+    profile = "dra"
+    # optional:
+    # image = "cloche-dra:latest"                    # default for this profile
+    # notes = ".cloche/dras/performance/notes.md"    # default .cloche/dras/<workflow>/notes.md
+  }
+  ...
+}
+```
+
+Unknown profile names fail the step; they never fall back to an unrestricted container.
+
+### The image
+
+`docker/cloche-dra/Dockerfile` builds `cloche-dra:latest`. `make install` builds it next
+to the agent image when `SAGA_URL` (a tarball URL for a static `saga` binary) is set;
+`make docker-dra SAGA_URL=...` builds it alone.
+
+It contains `cloche-agent`, `cloche`, `clo`, `saga` and the model CLI. It has no `go`,
+`gcc`, `make`, `git`, no tracker CLI (`bd`, `gh`), no git push credentials and no
+tracker data. A DRA reaches the tracker only through the daemon.
+
+### Read-only project
+
+The project is copied in as usual, then made root-owned and non-writable for the agent
+user. The one writable project path is the DRA's `notes.md`: created if missing, and
+copied back to the same path in the host project when the attempt ends. The file can be
+edited in place but not replaced, and nothing else in its directory is writable. (The
+run's own `.cloche/runs` and `.cloche/output` state stays writable, as for any run.)
+
+### Network
+
+The container joins a per-run Docker `--internal` network with no route to anywhere. An
+egress sidecar (`cloche-agent egress`, from the same image) is the only other member and
+the only way out:
+
+| Destination | How |
+|---|---|
+| Model API (`api.anthropic.com:443`) | HTTPS CONNECT proxy (`HTTPS_PROXY`), allowlist enforced |
+| Daemon gRPC port | TCP forward, `host.docker.internal` resolves to the sidecar |
+| Saga port | TCP forward; set `CLOCHE_SAGA_ADDR=host:port` in the daemon's environment |
+
+Anything else gets `403 egress denied` from the proxy, or no route. The container runs
+unprivileged (no `--privileged`, no `NET_ADMIN`) with `no-new-privileges`. The daemon
+gRPC port is the same one runs use; narrowing what a DRA may call on it is separate work.
+
+### Tests
+
+`internal/adapters/egress` tests the allowlist (a CONNECT to a host outside it is
+refused and never dialed). `internal/adapters/docker` tests the Dockerfile has no build
+tools, and, when Docker and the image are available, that the built image lacks
+`go`/`gcc`/`make` and that writes to the project fail while `notes.md` is writable.

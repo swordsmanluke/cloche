@@ -1,0 +1,148 @@
+package docker
+
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/swordsmanluke/cloche/internal/ports"
+)
+
+func TestApplyProfile_DRA(t *testing.T) {
+	cfg := ports.ContainerConfig{Image: "proj:latest"}
+	require.NoError(t, ApplyProfile(&cfg, "dra-perf", map[string]string{"container.profile": "dra"}))
+	assert.Equal(t, DRAImage, cfg.Image)
+	require.NotNil(t, cfg.Locked)
+	assert.Equal(t, []string{".cloche/dras/dra-perf/notes.md"}, cfg.Locked.WritablePaths)
+	assert.Contains(t, cfg.Locked.AllowHosts, "api.anthropic.com")
+}
+
+func TestApplyProfile_ExplicitImageAndNotes(t *testing.T) {
+	cfg := ports.ContainerConfig{Image: "proj:latest"}
+	require.NoError(t, ApplyProfile(&cfg, "w", map[string]string{
+		"container.profile": "dra", "container.image": "my-dra:1", "container.notes": ".cloche/dras/x/notes.md",
+	}))
+	assert.Equal(t, "proj:latest", cfg.Image, "explicit image is chosen by the caller's resolution, not overridden")
+	assert.Equal(t, []string{".cloche/dras/x/notes.md"}, cfg.Locked.WritablePaths)
+}
+
+func TestApplyProfile_NoProfileIsNoop(t *testing.T) {
+	cfg := ports.ContainerConfig{Image: "proj:latest"}
+	require.NoError(t, ApplyProfile(&cfg, "w", map[string]string{}))
+	assert.Nil(t, cfg.Locked)
+}
+
+func TestApplyProfile_Rejects(t *testing.T) {
+	for _, notes := range []string{"../x", "/etc/passwd", "a/../../b", ".", "a'b"} {
+		cfg := ports.ContainerConfig{}
+		err := ApplyProfile(&cfg, "w", map[string]string{"container.profile": "dra", "container.notes": notes})
+		assert.Error(t, err, notes)
+		assert.Nil(t, cfg.Locked)
+	}
+	err := ApplyProfile(&ports.ContainerConfig{}, "w", map[string]string{"container.profile": "typo"})
+	assert.ErrorContains(t, err, "unknown container profile")
+}
+
+func TestDRAProfile_Forwards(t *testing.T) {
+	t.Setenv("CLOCHE_ADDR", "127.0.0.1:50051")
+	t.Setenv("CLOCHE_SAGA_ADDR", "127.0.0.1:7777")
+	lc := DRAProfile(".cloche/dras/a/notes.md")
+	assert.Equal(t, []string{"host.docker.internal:50051", "host.docker.internal:7777"}, lc.ForwardAddrs)
+	t.Setenv("CLOCHE_SAGA_ADDR", "")
+	assert.Len(t, DRAProfile("n").ForwardAddrs, 1)
+}
+
+func TestLockedWrapperCmd(t *testing.T) {
+	cmd := lockedWrapperCmd([]string{"cloche-agent"}, []string{".cloche/dras/a/notes.md"})
+	assert.Contains(t, cmd, "chown root:root")
+	assert.Contains(t, cmd, "chmod go-w,u-w")
+	assert.Contains(t, cmd, "chown agent:agent '/workspace/.cloche/dras/a/notes.md'")
+	assert.NotContains(t, cmd, "chown -R agent:agent /workspace ")
+	assert.True(t, strings.HasSuffix(cmd, "exec gosu agent cloche-agent"))
+}
+
+func TestEgressCmd(t *testing.T) {
+	argv, err := egressCmd(&ports.LockedConfig{
+		AllowHosts:   []string{"api.anthropic.com"},
+		ForwardAddrs: []string{"host.docker.internal:50051"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"cloche-agent", "egress", "--listen", ":3128",
+		"--allow", "api.anthropic.com:443", "--forward", ":50051=host.docker.internal:50051"}, argv)
+	_, err = egressCmd(&ports.LockedConfig{AllowHosts: []string{"*"}})
+	assert.Error(t, err, "a wildcard-everything allowlist is refused")
+}
+
+func TestLockedNetworkArgs_NoPrivilegesNoDefaultRoute(t *testing.T) {
+	args := strings.Join(lockedNetworkArgs("net1", "10.0.0.2"), " ")
+	assert.Contains(t, args, "--network net1")
+	assert.Contains(t, args, "host.docker.internal:10.0.0.2")
+	assert.Contains(t, args, "HTTPS_PROXY=http://10.0.0.2:3128")
+	assert.Contains(t, args, "no-new-privileges")
+	assert.NotContains(t, args, "--privileged")
+	assert.NotContains(t, args, "cap-add")
+}
+
+// The DRA image must not ship build tools, a tracker CLI or git (CLOCHE-A128).
+func TestDRADockerfile_NoBuildTools(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "docker", "cloche-dra", "Dockerfile"))
+	require.NoError(t, err)
+	// Only the final stage ships; the stages before the last FROM are builders.
+	text := string(data)
+	final := text[strings.LastIndex(text, "\nFROM "):]
+	for _, banned := range []string{" golang", "gcc", "build-essential", " make", " git ", "/usr/local/go", " gh ", " bd ", "openssh", "id_ed25519", "gh_token"} {
+		assert.NotContains(t, final, banned, "final DRA image stage must not include %q", banned)
+	}
+	for _, want := range []string{"cloche-agent", "/cloche ", "saga", "claude-code"} {
+		assert.Contains(t, final, want)
+	}
+}
+
+func draImageOrSkip(t *testing.T) {
+	t.Helper()
+	skipDockerIfUnavailable(t)
+	if err := exec.Command("docker", "image", "inspect", DRAImage).Run(); err != nil {
+		t.Skip(DRAImage + " not built; run `make docker-dra`")
+	}
+}
+
+func TestDRAImage_HasNoBuildTools(t *testing.T) {
+	draImageOrSkip(t)
+	for _, tool := range []string{"go", "gcc", "cc", "make", "git", "bd", "gh"} {
+		out, err := exec.Command("docker", "run", "--rm", "--entrypoint", "sh", DRAImage, "-c", "command -v "+tool).CombinedOutput()
+		assert.Error(t, err, "%s must not be in the DRA image (found: %s)", tool, out)
+	}
+	for _, tool := range []string{"cloche-agent", "cloche", "clo", "saga", "claude"} {
+		out, err := exec.Command("docker", "run", "--rm", "--entrypoint", "sh", DRAImage, "-c", "command -v "+tool).CombinedOutput()
+		assert.NoError(t, err, "%s must be in the DRA image: %s", tool, out)
+	}
+}
+
+func TestLockedContainer_ProjectWriteFails(t *testing.T) {
+	draImageOrSkip(t)
+	proj := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(proj, "CLAUDE.md"), []byte("x"), 0o644))
+	rt, err := NewRuntime()
+	require.NoError(t, err)
+	ctx := context.Background()
+	run := func(id string, cmd ...string) int {
+		cid, err := rt.Start(ctx, ports.ContainerConfig{
+			Image: DRAImage, RunID: id, ProjectDir: proj, Cmd: cmd,
+			Locked: &ports.LockedConfig{WritablePaths: []string{"notes.md"}},
+		})
+		require.NoError(t, err)
+		defer rt.Remove(ctx, cid)
+		code, err := rt.Wait(ctx, cid)
+		require.NoError(t, err)
+		return code
+	}
+	assert.NotEqual(t, 0, run("lock-w1", "touch", "/workspace/CLAUDE.md"), "project file write must fail")
+	assert.NotEqual(t, 0, run("lock-w2", "touch", "/workspace/new-file"), "new project file must fail")
+	assert.Equal(t, 0, run("lock-w3", "touch", "/workspace/notes.md"), "notes.md is writable")
+}
