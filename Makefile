@@ -39,15 +39,19 @@ docker-build: docker-base
 	docker build -t cloche-agent:latest -f .cloche/Dockerfile .
 	@$(MAKE) --no-print-directory docker-dra
 
-# Locked-down image for DRAs (docs/dras.md). Needs SAGA_URL, a tarball URL for
-# a static saga binary; without it the DRA image is skipped, not faked.
-SAGA_URL ?=
+# Locked-down image for DRAs (docs/dras.md). saga is taken from the host: it
+# must be a binary that runs on debian:12-slim (the Dockerfile checks). Without
+# it the DRA image is skipped, not faked.
+SAGA_BIN ?= $(shell command -v saga)
+DRA_SAGA_COPY := docker/cloche-dra/saga.bin
 docker-dra:
-	@if [ -z "$(SAGA_URL)" ]; then \
-		echo "==> Skipping cloche-dra image (set SAGA_URL=<saga tarball URL> to build it)"; \
+	@if [ -z "$(SAGA_BIN)" ]; then \
+		echo "==> Skipping cloche-dra image (saga not found; put it on PATH or set SAGA_BIN=/path/to/saga)"; \
 	else \
-		docker build -f docker/cloche-dra/Dockerfile --build-arg SAGA_URL=$(SAGA_URL) \
+		cp "$(SAGA_BIN)" $(DRA_SAGA_COPY) && \
+		docker build -f docker/cloche-dra/Dockerfile \
 			-t cloche-dra:latest -t cloche-dra:$(VERSION) . ; \
+		rc=$$?; rm -f $(DRA_SAGA_COPY); exit $$rc; \
 	fi
 
 install-sh: build docker-build

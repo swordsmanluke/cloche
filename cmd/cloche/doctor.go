@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -114,6 +115,9 @@ func cmdDoctor(args []string) {
 	if info, err := os.Stat(clocheDir); err == nil && info.IsDir() {
 		results = append(results, dr.checkProjectConfig())
 		results = append(results, dr.checkWorkflows())
+		if r, ok := dr.checkDRAImage(); ok {
+			results = append(results, r)
+		}
 		results = append(results, dr.checkIntentStore())
 		results = append(results, dr.checkModules()...)
 		results = append(results, dr.checkImageSourceDir())
@@ -232,6 +236,41 @@ func (dr *doctorRunner) checkBaseImage() checkResult {
 		remediation: "Build the base image with: make docker-base\n" +
 			"Or pull it from your registry if distributed separately.",
 	}
+}
+
+var draProfileRe = regexp.MustCompile(`(?m)(?:^|[{;])\s*profile\s*=\s*"dra"`)
+
+// projectUsesDRAProfile reports whether any .cloche/*.cloche workflow file
+// declares `container { profile = "dra" }`.
+func projectUsesDRAProfile(projectDir string) bool {
+	files, _ := filepath.Glob(filepath.Join(projectDir, ".cloche", "*.cloche"))
+	more, _ := filepath.Glob(filepath.Join(projectDir, ".cloche", "*", "*.cloche"))
+	for _, f := range append(files, more...) {
+		if data, err := os.ReadFile(f); err == nil && draProfileRe.Match(data) {
+			return true
+		}
+	}
+	return false
+}
+
+// checkDRAImage verifies cloche-dra:latest exists when a workflow uses the
+// "dra" container profile. The second result is false when the check does not apply.
+func (dr *doctorRunner) checkDRAImage() (checkResult, bool) {
+	if !projectUsesDRAProfile(dr.projectDir) {
+		return checkResult{}, false
+	}
+	label := "Checking DRA image"
+	cmd := exec.Command("docker", "image", "inspect", docker.DRAImage)
+	if err := cmd.Run(); err != nil {
+		return checkResult{
+			label:  label,
+			status: checkFail,
+			detail: docker.DRAImage + " not found",
+			remediation: "A workflow uses container profile \"dra\" but " + docker.DRAImage + " is missing.\n" +
+				"Build it with: make docker-dra",
+		}, true
+	}
+	return checkResult{label: label, status: checkOK, detail: docker.DRAImage}, true
 }
 
 // checkDaemon verifies the daemon is reachable by calling GetVersion over gRPC.

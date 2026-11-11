@@ -62,8 +62,11 @@ Unknown profile names fail the step; they never fall back to an unrestricted con
 ### The image
 
 `docker/cloche-dra/Dockerfile` builds `cloche-dra:latest`. `make install` builds it next
-to the agent image when `SAGA_URL` (a tarball URL for a static `saga` binary) is set;
-`make docker-dra SAGA_URL=...` builds it alone.
+to the agent image. `saga` is taken from the host: the build uses `command -v saga`
+(override with `SAGA_BIN=/path/to/saga`), copies it into the build context for the
+build and removes the copy afterwards. If no `saga` is found the image is skipped, not
+faked, and DRA runs fail until it is built. The Dockerfile runs `saga --help`, so a
+binary that cannot run on debian:12-slim fails the build. `make docker-dra` builds it alone.
 
 It contains `cloche-agent`, `cloche`, `clo`, `saga` and the model CLI. It has no `go`,
 `gcc`, `make`, `git`, no tracker CLI (`bd`, `gh`), no git push credentials and no

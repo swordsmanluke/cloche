@@ -1085,7 +1085,7 @@ cloche doctor [--project <dir>] [--verbose] [--timeout <duration>]
 ```
 
 Runs checks in order and prints a status line for each. Exits with code 1
-if any check fails. Project config, Workflow syntax, Modules, Image source dir, Project image
+if any check fails. Project config, Workflow syntax, DRA image, Modules, Image source dir, Project image
 build, and Agent binary only run when the current (or `--project`) directory
 contains a `.cloche/` subdirectory.
 
@@ -1099,6 +1099,7 @@ contains a `.cloche/` subdirectory.
 | Beads CLI (bd) | Checks whether `bd` is on `PATH`. Soft check (warning, not fatal) — the generated task workflow reads tasks from beads. |
 | Project config | Loads `.cloche/config.toml`, reports parse errors, warns if `active = false` or `TODO(cloche-init)` markers remain. |
 | Workflow syntax | Parses all `.cloche/*.cloche` files using the same logic as `cloche validate`. |
+| DRA image | Only shown when a workflow under `.cloche/` declares `container { profile = "dra" }`. Fails if `cloche-dra:latest` is missing; build it with `make docker-dra`. |
 | Modules | For each installed module, fails if a `requires` binary is not on `PATH`; warns (not fatal) if a declared credential is not set in the environment. Suggests installing the binaries, or setting credentials in the environment or `CLOCHE_EXTRA_ENV`. |
 | Image source dir | Warns (not fatal) when the existing project image was built from a different source directory. The next `EnsureImage` call will rebuild it automatically. |
 | Project image build | Calls `EnsureImage` to build or confirm the project Docker image. |

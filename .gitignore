@@ -61,3 +61,6 @@ examples/*/.cloche/
 # JS test tooling for internal/adapters/web (console dashboard JS unit/smoke
 # tests) — not part of the Go build.
 node_modules/
+
+# Host saga binary copied in temporarily by `make docker-dra`.
+docker/cloche-dra/saga.bin

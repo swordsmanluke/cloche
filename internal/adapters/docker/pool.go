@@ -326,6 +326,9 @@ func (p *ContainerPool) SessionFor(ctx context.Context, attemptID string, cfg po
 		p.mu.Lock()
 		delete(p.attempts, attemptID)
 		p.mu.Unlock()
+		if cfg.Locked != nil && cfg.Image == DRAImage && strings.Contains(strings.ToLower(err.Error()), "no such image") {
+			return nil, fmt.Errorf("starting container for attempt %s: image %s is missing; build it with `make docker-dra`: %w", attemptID, DRAImage, err)
+		}
 		return nil, fmt.Errorf("starting container for attempt %s: %w", attemptID, err)
 	}
 
