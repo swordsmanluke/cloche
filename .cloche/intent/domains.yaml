@@ -122,3 +122,7 @@ domains:
       description: External signal intake — received signals, dispatch to the handle-notification host workflow, and the default tracker-updating handler.
       paths:
         - internal/signal/**
+    - name: dashboard-auth
+      description: Dashboard token authentication middleware — daemon-wide token, loopback/remote-address checks, route protection.
+      paths:
+        - internal/dashauth/**
