@@ -1,5 +1,5 @@
 name        = "github-tasks"
 description = "Task tracker backed by GitHub Issues (gh)"
-exports     = ["list-tasks", "claim-task", "close-task", "release-task"]
+exports     = ["list-tasks", "claim-task", "close-task", "release-task", "create-task", "update-task"]
 requires    = ["gh", "jq"]
 credentials = ["GH_TOKEN"]

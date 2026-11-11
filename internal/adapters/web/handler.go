@@ -188,6 +188,13 @@ type TaskProvider interface {
 	RunOnce(ctx context.Context, projectDir, taskID, workflowName, prompt string) (string, error)
 }
 
+// TrackerPhaseRunner runs the on-demand create-task / update-task tracker
+// phases. A TaskProvider that also implements it enables the
+// POST .../tasks/create and .../tasks/update endpoints.
+type TrackerPhaseRunner interface {
+	RunTrackerPhase(ctx context.Context, projectDir, slot string, inputs map[string]string) (map[string]string, error)
+}
+
 // AttentionProvider reads the cached "Needs you" attention set for a
 // project (see internal/attention.Cache) — always returns instantly; a
 // project never refreshed reports a zero Snapshot rather than blocking to
@@ -362,6 +369,8 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.mux.HandleFunc("GET /api/projects/{name}/tasks/{taskId}/attempts", h.handleAPITaskAttempts)
 	h.mux.HandleFunc("GET /api/projects/{name}/ledger", h.handleAPILedger)
 	h.mux.HandleFunc("GET /api/activity", h.handleAPIActivity)
+	h.mux.HandleFunc("POST /api/projects/{name}/tasks/create", h.handleAPITrackerPhase("create-task"))
+	h.mux.HandleFunc("POST /api/projects/{name}/tasks/update", h.handleAPITrackerPhase("update-task"))
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/close", h.handleAPICloseTask)
 	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/run-once", h.handleAPIRunOnce)

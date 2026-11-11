@@ -230,3 +230,65 @@ func TestPhaseLoop_ClaimPhase(t *testing.T) {
 		})
 	}
 }
+
+const createWF = `workflow create-task {
+  host {}
+  contract {
+    kv:  title
+    out: new_task_id
+  }
+  step create {
+    run = "true"
+    results = [success, fail]
+  }
+  create:success -> done
+  create:fail -> abort
+}
+`
+
+// outputStore stands in for the workflow's `cloche set` calls by answering
+// reads of fixed output keys from the run scope.
+type outputStore struct {
+	kvStore
+	outputs map[string]string
+}
+
+func (s outputStore) GetContextKey(ctx context.Context, taskID, attemptID, runID, key string) (string, bool, error) {
+	if v, ok := s.outputs[key]; ok && runID != "" {
+		return v, true, nil
+	}
+	return s.kvStore.GetContextKey(ctx, taskID, attemptID, runID, key)
+}
+
+func trackerProject(t *testing.T) string {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, ".cloche", "host.cloche"), createWF)
+	return dir
+}
+
+func TestRunTrackerPhase_ReturnsOutputs(t *testing.T) {
+	store := outputStore{newSQLiteStore(t), map[string]string{"new_task_id": "cloche-42"}}
+	out, err := RunTrackerPhase(context.Background(), &Runner{Store: store}, trackerProject(t), SlotCreateTask,
+		map[string]string{"title": "Fix it", "body": ""})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"new_task_id": "cloche-42"}, out)
+}
+
+func TestRunTrackerPhase_MissingInputIsContractError(t *testing.T) {
+	_, err := RunTrackerPhase(context.Background(), &Runner{Store: newSQLiteStore(t)}, trackerProject(t), SlotCreateTask,
+		map[string]string{"body": "no title"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "kv:title")
+}
+
+func TestRunTrackerPhase_MissingOutputIsContractError(t *testing.T) {
+	_, err := RunTrackerPhase(context.Background(), &Runner{Store: newSQLiteStore(t)}, trackerProject(t), SlotCreateTask,
+		map[string]string{"title": "t"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "out:new_task_id")
+}
+
+func TestRunTrackerPhase_NoPhaseResolves(t *testing.T) {
+	_, err := RunTrackerPhase(context.Background(), &Runner{Store: newSQLiteStore(t)}, t.TempDir(), SlotUpdateTask, nil)
+	require.Error(t, err)
+}

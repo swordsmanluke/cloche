@@ -99,6 +99,10 @@ func main() {
 			printSubcommandHelp("tasks")
 			return
 		}
+		if isTrackerSubcommand(os.Args[2:]) {
+			cmdTasksTracker(os.Args[2:])
+			return
+		}
 		cmdTasks(os.Args[2:])
 		return
 	case "activity":

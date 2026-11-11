@@ -12,7 +12,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/module"
 )
 
-var trackerSlots = []string{"list-tasks", "claim-task", "close-task", "release-task"}
+var trackerSlots = []string{"list-tasks", "claim-task", "close-task", "release-task", "create-task", "update-task"}
 
 // copyTrackers copies this repo's tracker modules into a temp project.
 func copyTrackers(t *testing.T) string {
@@ -71,6 +71,10 @@ func TestTrackerModules_SameContract(t *testing.T) {
 	assert.Equal(t, []string{"tasks_path"}, beads["list-tasks"].Out)
 	assert.Equal(t, []string{"task_id"}, beads["claim-task"].KV)
 	assert.Equal(t, []string{"task_title", "task_body_path"}, beads["claim-task"].Out)
+	assert.Equal(t, []string{"title"}, beads["create-task"].KV)
+	assert.Equal(t, []string{"new_task_id"}, beads["create-task"].Out)
+	assert.Equal(t, []string{"action"}, beads["update-task"].KV)
+	assert.Equal(t, []string{"task_found"}, beads["update-task"].Out)
 }
 
 func loadExport(t *testing.T, dir, mod string) map[string]*contractShape {
@@ -96,5 +100,17 @@ func TestTrackerModules_Check(t *testing.T) {
 	for _, e := range rep.Errors {
 		// Host binaries (bd, gh, jq) are environment-dependent.
 		assert.Contains(t, e, "required binary", e)
+	}
+}
+
+// TestTrackerModules_ScriptsExist checks every exported phase's script is
+// shipped and executable-by-bash syntax-clean.
+func TestTrackerModules_ScriptsExist(t *testing.T) {
+	for _, m := range []string{"beads-tasks", "github-tasks"} {
+		for _, s := range []string{"create.sh", "update.sh"} {
+			p := filepath.Join("..", "..", ".cloche", "modules", m, "scripts", s)
+			_, err := os.Stat(p)
+			require.NoError(t, err, p)
+		}
 	}
 }

@@ -19,6 +19,8 @@ const (
 	SlotClaimTask   = "claim-task"
 	SlotCloseTask   = "close-task"
 	SlotReleaseTask = "release-task"
+	SlotCreateTask  = "create-task"
+	SlotUpdateTask  = "update-task"
 )
 
 // ClaimStatusUnavailable is the claim_status value a claim-task workflow
@@ -134,4 +136,67 @@ func runClaimWorkflow(ctx context.Context, runner *Runner, projectDir string, wf
 	res.Title, _ = get("task_title")
 	res.BodyPath, _ = get("task_body_path")
 	return res, nil
+}
+
+// RunTrackerPhase runs an on-demand tracker phase (create-task or
+// update-task) resolved through the project binds. inputs are seeded as KV
+// keys in a throwaway namespace so the phase's scripts read them with
+// `cloche get`; the contract's inputs are checked first, and its outputs are
+// returned after a successful run. Empty input values are not seeded.
+func RunTrackerPhase(ctx context.Context, runner *Runner, projectDir, slot string, inputs map[string]string) (map[string]string, error) {
+	store := runner.Store
+	if store == nil {
+		return nil, fmt.Errorf("%s: no run store", slot)
+	}
+	wf, err := ResolvePhase(projectDir, slot)
+	if err != nil {
+		return nil, fmt.Errorf("resolving %s: %w", slot, err)
+	}
+
+	kvTask, kvAttempt := slot, domain.GenerateAttemptID()
+	defer func() { _ = store.DeleteContextKeys(context.Background(), kvTask, kvAttempt) }()
+	for k, v := range inputs {
+		if v == "" {
+			continue
+		}
+		if err := store.SetContextKey(ctx, kvTask, kvAttempt, "", k, v); err != nil {
+			return nil, fmt.Errorf("%s: seeding %s: %w", slot, k, err)
+		}
+	}
+	hasKV := func(k string) bool {
+		_, ok, _ := store.GetContextKey(ctx, kvTask, kvAttempt, "", k)
+		return ok
+	}
+	hasEnv := func(n string) bool { _, ok := os.LookupEnv(n); return ok }
+	if err := module.CheckInputs(slot, wf.Contract, hasKV, hasEnv); err != nil {
+		return nil, err
+	}
+
+	r := *runner
+	r.SkipRunRecord = true
+	r.KVTaskID, r.KVAttemptID, r.KeepContext = kvTask, kvAttempt, true
+	result, err := r.RunWorkflowDef(ctx, projectDir, wf, domain.GenerateRunID(slot, kvAttempt))
+	if result != nil && result.tmpOutputDir != "" {
+		defer os.RemoveAll(result.tmpOutputDir)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", slot, err)
+	}
+	if result.State != domain.RunStateSucceeded {
+		return nil, fmt.Errorf("%s workflow finished with state %s", slot, result.State)
+	}
+	get := func(k string) (string, bool) {
+		v, ok, _ := store.GetContextKey(ctx, kvTask, kvAttempt, result.RunID, k)
+		return v, ok
+	}
+	if err := module.CheckOutputs(slot, wf.Contract, func(k string) bool { _, ok := get(k); return ok }); err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for _, k := range []string{"new_task_id", "found_task_id", "task_found"} {
+		if v, ok := get(k); ok {
+			out[k] = v
+		}
+	}
+	return out, nil
 }

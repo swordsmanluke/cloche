@@ -1,4 +1,4 @@
 name        = "beads-tasks"
 description = "Task tracker backed by Beads (bd)"
-exports     = ["list-tasks", "claim-task", "close-task", "release-task"]
+exports     = ["list-tasks", "claim-task", "close-task", "release-task", "create-task", "update-task"]
 requires    = ["bd", "jq"]

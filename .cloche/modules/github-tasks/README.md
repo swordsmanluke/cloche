@@ -12,8 +12,10 @@ Implements the same contract as `beads-tasks`; swap between them in
 | `claim-task` | `task_id` | `task_title`, `task_body_path` | Adds the claim label. A closed issue sets `claim_status = unavailable` and fails. |
 | `close-task` | `task_id` | — | Removes the claim label and closes the issue. |
 | `release-task` | `task_id` | — | Removes the claim label. |
+| `create-task` | `title` | `new_task_id` | `gh issue create`; `task_id` is the issue number. Optional inputs: `body`, `priority` (a `priority:N` label), `labels`, `signal_source`, `signal_key` (stored as a `signal:<source>:<hash>` label). Labels are created on first use. |
+| `update-task` | `action` | `task_found` | `action=update` (on `target_task_id`): comment, `priority` (replaces the `priority:N` label), `add_labels`/`remove_labels` on `task_id`. `action=find`: the open issue labelled for `signal_source`+`signal_key`; sets `task_found` and `found_task_id`. |
 
-All four are host workflows. Issue dependencies are not modelled: every open, unclaimed
+All six are host workflows. Issue dependencies are not modelled: every open, unclaimed
 issue is ready.
 
 ## Inputs and configuration

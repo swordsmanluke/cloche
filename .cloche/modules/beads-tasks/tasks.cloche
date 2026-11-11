@@ -59,3 +59,35 @@ workflow release-task {
   release:success -> done
   release:fail    -> abort
 }
+
+workflow create-task {
+  contract {
+    kv:  title
+    out: new_task_id
+  }
+  host {}
+
+  step create {
+    run     = "bash \"$CLOCHE_MODULE_DIR/scripts/create.sh\""
+    results = [success, fail]
+  }
+
+  create:success -> done
+  create:fail    -> abort
+}
+
+workflow update-task {
+  contract {
+    kv:  action
+    out: task_found
+  }
+  host {}
+
+  step update {
+    run     = "bash \"$CLOCHE_MODULE_DIR/scripts/update.sh\""
+    results = [success, fail]
+  }
+
+  update:success -> done
+  update:fail    -> abort
+}

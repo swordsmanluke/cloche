@@ -11,8 +11,10 @@ standard task-management contract; see `docs/modules.md`.
 | `claim-task` | `task_id` | `task_title`, `task_body_path` | Sets the task `in_progress`. A closed task sets `claim_status = unavailable` and fails. |
 | `close-task` | `task_id` | — | `bd close`. |
 | `release-task` | `task_id` | — | Sets the task back to `open`. |
+| `create-task` | `title` | `new_task_id` | `bd create`. Optional inputs: `body`, `priority`, `labels`, `signal_source`, `signal_key` (stored as a `signal:<source>:<hash>` label). |
+| `update-task` | `action` | `task_found` | `action=update` (on `target_task_id`): comment (`bd comments add`), `priority`, `add_labels`/`remove_labels` on `task_id`. `action=find`: the open task labelled for `signal_source`+`signal_key`; sets `task_found` and `found_task_id`. |
 
-All four are host workflows.
+All six are host workflows.
 
 ## Inputs and configuration
 

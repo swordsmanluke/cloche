@@ -4431,6 +4431,21 @@ func (s *ClocheServer) ReleaseTask(ctx context.Context, projectDir string, taskI
 	return nil
 }
 
+// RunTrackerPhase runs the create-task or update-task tracker phase with the
+// given inputs and returns its outputs (new_task_id, found_task_id, task_found).
+func (s *ClocheServer) RunTrackerPhase(ctx context.Context, projectDir, slot string, inputs map[string]string) (map[string]string, error) {
+	if slot != host.SlotCreateTask && slot != host.SlotUpdateTask {
+		return nil, fmt.Errorf("unsupported tracker phase %q", slot)
+	}
+	runner := &host.Runner{
+		Store:        s.store,
+		Captures:     s.captures,
+		LogBroadcast: s.logBroadcast,
+	}
+	s.useModuleExecutor(runner, projectDir, slot)
+	return host.RunTrackerPhase(ctx, runner, projectDir, slot, inputs)
+}
+
 // CloseTask runs the project's close/cancel task contract — a standalone
 // "close-task" or "cancel-task" host workflow, mirroring release-task — for
 // a specific task, so it can be marked done/cancelled in the tracker from

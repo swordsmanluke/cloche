@@ -20,7 +20,7 @@ workflow fills it. Design: [`docs/plans/2026-10-13-modules-design.md`](plans/202
 ```toml
 name        = "github-tasks"
 description = "Task tracker backed by GitHub Issues (gh)"
-exports     = ["list-tasks", "claim-task", "close-task", "release-task"]  # callable from outside
+exports     = ["list-tasks", "claim-task", "close-task", "release-task", "create-task", "update-task"]  # callable from outside
 requires    = ["gh", "jq"]          # host binaries; `cloche validate` and `cloche doctor` check them
 credentials = ["GH_TOKEN"]          # secrets expected in the credentials mechanism (warning if unset)
 uses        = []                    # slots the module calls but does not provide
@@ -102,6 +102,12 @@ The daemon's orchestration loop resolves these phases through `project.cloche`:
 | `claim-task` | `task_id` | `task_title`, `task_body_path` | Runs before `main`. Lost claim: end in `fail` with `claim_status = unavailable`; the daemon skips the task for the dedup window. |
 | `close-task` | `task_id` | — | Also the dashboard's "Close in tracker". |
 | `release-task` | `task_id` | — | Also the dashboard's release action. |
+| `create-task` | `title` | `new_task_id` | Optional `kv:` inputs: `body`, `priority` (0–4, 0 most urgent), `labels` (comma-separated), `signal_source`, `signal_key`. A source+key is stored on the task (a `signal:<source>:<hash>` label) so `update-task` can find it again. Writes the new task's id as `new_task_id`. |
+| `update-task` | `action` | `task_found` | `action = update`: needs `target_task_id`; optional `comment`, `priority`, `add_labels`, `remove_labels`. `action = find`: needs `signal_source` and `signal_key`; writes `task_found` (`true`/`false`) and, when found, the open task's `found_task_id`, so a repeat signal attaches instead of creating. |
+
+`create-task` and `update-task` are for callers outside the loop (signal handling, DRAs).
+(These key names avoid `task_id`, which the host executor seeds with the phase's own name.) They are run on demand through the daemon: `cloche tasks create`, `cloche tasks update`
+and `cloche tasks find` (HTTP API `POST /api/projects/{name}/tasks/create|update`).
 
 `main` stays project-owned and reads `task_title` / `task_body_path`. This repo ships two
 implementations, `.cloche/modules/beads-tasks` and `.cloche/modules/github-tasks`.
@@ -113,6 +119,8 @@ bind {
   claim-task   = github-tasks
   close-task   = github-tasks
   release-task = github-tasks
+  create-task  = github-tasks
+  update-task  = github-tasks
 }
 ```
 

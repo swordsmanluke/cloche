@@ -1596,6 +1596,21 @@ state. Requires `CLOCHE_HTTP` (talks to the daemon's web API).
 |------|---------|-------------|
 | `--project <dir>` | current working directory | Project directory to query tasks for. The daemon maps the directory to its registered project, so this works from any checkout. |
 
+#### `cloche tasks create | update | find`
+
+```
+cloche tasks create --title <t> [--body <b> | --body-file <f>] [--priority <0-4>]
+                    [--label <l>]... [--source <s> --key <k>] [--project <dir>]
+cloche tasks update <task-id> [--comment <c>] [--priority <0-4>]
+                    [--add-label <l>]... [--remove-label <l>]... [--project <dir>]
+cloche tasks find --source <s> --key <k> [--project <dir>]
+```
+
+Run the project's bound `create-task` / `update-task` tracker phase on demand (see
+[modules.md](modules.md)). `create` prints the new task id. `find` prints the id of the
+open task recorded for that signal source and key, or exits `1` if there is none, so a
+repeat signal can `update` it instead of creating a duplicate.
+
 ### `cloche loop`
 
 Start or stop the daemon's orchestration loop. The loop automatically picks up

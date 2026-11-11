@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -3050,4 +3051,54 @@ func TestAPIPurgeProject_NotConfiguredAndSystemProject(t *testing.T) {
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/projects/"+SystemProjectSlug, nil))
 	assert.Equal(t, http.StatusBadRequest, w.Code, "the system pseudo-project must not be purgeable")
+}
+
+// trackerTaskProvider adds RunTrackerPhase to mockTaskProvider.
+type trackerTaskProvider struct {
+	mockTaskProvider
+	slot   string
+	inputs map[string]string
+	out    map[string]string
+	err    error
+}
+
+func (m *trackerTaskProvider) RunTrackerPhase(_ context.Context, _ string, slot string, inputs map[string]string) (map[string]string, error) {
+	m.slot, m.inputs = slot, inputs
+	return m.out, m.err
+}
+
+func TestAPITrackerPhase(t *testing.T) {
+	h, store := setupHandler(t)
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(context.Background(), run))
+
+	tp := &trackerTaskProvider{out: map[string]string{"new_task_id": "t-1"}}
+	h.taskProvider = tp
+
+	for path, slot := range map[string]string{"create": "create-task", "update": "update-task"} {
+		body := strings.NewReader(`{"inputs":{"title":"x"}}`)
+		req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/"+path, body)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Equal(t, slot, tp.slot)
+		assert.Equal(t, map[string]string{"title": "x"}, tp.inputs)
+		var resp apiTrackerPhaseResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		assert.Equal(t, "t-1", resp.Outputs["new_task_id"])
+	}
+
+	tp.err = errors.New("boom")
+	req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/create", strings.NewReader(`{"inputs":{}}`))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+	// A provider without tracker support is a clear error, not a panic.
+	h.taskProvider = &mockTaskProvider{}
+	req = httptest.NewRequest("POST", "/api/projects/myapp/tasks/create", strings.NewReader(`{}`))
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

@@ -494,6 +494,16 @@ tasks are open, assigned, or completed.
 
 Usage:
   cloche tasks [--project <dir>]
+  cloche tasks create --title <t> [--body <b> | --body-file <f>] [--priority <0-4>]
+                      [--label <l>]... [--source <s> --key <k>] [--project <dir>]
+  cloche tasks update <task-id> [--comment <c>] [--priority <0-4>]
+                      [--add-label <l>]... [--remove-label <l>]... [--project <dir>]
+  cloche tasks find --source <s> --key <k> [--project <dir>]
+
+create, update and find run the project's bound create-task / update-task tracker
+phase (see docs/modules.md). create prints the new task id. find prints the id of
+the open task recorded for that signal source and key, or exits 1 if there is none,
+so a repeat signal can attach to it with update instead of creating a duplicate.
 
 Flags:
   --project <dir>    Project directory to query (default: current working
