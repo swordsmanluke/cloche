@@ -118,3 +118,7 @@ domains:
         - internal/budget/**
         - docs/plans/2026-11-10-autonomous-loop-design.md
         - docs/plans/spikes/2026-11-usage-allowance.md
+    - name: signals
+      description: External signal intake — received signals, dispatch to the handle-notification host workflow, and the default tracker-updating handler.
+      paths:
+        - internal/signal/**
