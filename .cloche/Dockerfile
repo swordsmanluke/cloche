@@ -5,7 +5,7 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 
 # Install Node, gh, and openssh-client.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl openssh-client gnupg \
+    && apt-get install -y --no-install-recommends curl openssh-client gnupg jq \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
        -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
