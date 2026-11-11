@@ -35,6 +35,7 @@ domains:
         - cmd/cloche-agent/**
         - docs/run-isolation/**
         - docker/**
+        - internal/adapters/egress/**
     - name: agent-adapters
       description: Coding-agent adapters (Claude Code, opencode, generic) and their argument/result-protocol conventions.
       paths:
