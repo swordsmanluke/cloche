@@ -81,8 +81,13 @@ func lockedWrapperCmd(containerCmd []string, writable []string) string {
 		// The parent directory stays root-owned: the file can be edited in
 		// place but not replaced, and siblings stay untouchable.
 	}
-	b.WriteString(" && chown -R agent:agent /home/agent/.claude 2>/dev/null")
-	b.WriteString("; exec gosu agent " + strings.Join(containerCmd, " "))
+	// The .claude dir may not exist; that is the only step allowed to fail.
+	b.WriteString(" && { chown -R agent:agent /home/agent/.claude 2>/dev/null || true; }")
+	// Fail closed: the agent is only exec'd when every lock step succeeded.
+	// Otherwise exit non-zero with a message (surfaced via the container logs
+	// in the run's error) instead of starting an unlocked agent.
+	b.WriteString(" && exec gosu agent " + strings.Join(containerCmd, " "))
+	b.WriteString(" || { echo 'cloche: locked container lock-down could not be applied; refusing to start the agent' >&2; exit 1; }")
 	return b.String()
 }
 

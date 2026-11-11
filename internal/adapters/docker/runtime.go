@@ -451,8 +451,17 @@ func (r *Runtime) start(ctx context.Context, cfg ports.ContainerConfig) (string,
 		// some hosts. Catching this here surfaces a concrete error instead of
 		// letting SessionFor hang for the full step timeout.
 		log.Printf("runtime.Start: verifying container %s reached running state", containerID)
-		if err := r.waitForRunning(ctx, containerID); err != nil {
+		if err := r.waitForRunning(ctx, containerID, cfg.Locked != nil); err != nil {
+			// Capture logs before removal: a container that failed fast (e.g.
+			// the locked wrapper's lock-down failure) explains why only there.
+			logs, _ := r.Logs(context.Background(), containerID)
 			exec.CommandContext(context.Background(), "docker", "rm", "-f", containerID).Run()
+			if logs = strings.TrimSpace(logs); logs != "" {
+				if len(logs) > 2048 {
+					logs = logs[len(logs)-2048:]
+				}
+				return "", fmt.Errorf("container %s: %w: container output: %s", containerID, err, logs)
+			}
 			return "", fmt.Errorf("container %s: %w", containerID, err)
 		}
 	}
@@ -473,7 +482,12 @@ func startedSuccessfully(status *ports.ContainerStatus) bool {
 // returning an error if it does not transition within a short window. This
 // catches the "container stuck in Created" failure mode where docker start
 // returns success but the container never actually runs.
-func (r *Runtime) waitForRunning(ctx context.Context, containerID string) error {
+//
+// With settle=true (locked containers) a Running observation is not enough:
+// the lock-down wrapper runs before the agent and can fail after the container
+// has already started, so the whole window is observed and a non-zero exit
+// anywhere in it is reported as a failure.
+func (r *Runtime) waitForRunning(ctx context.Context, containerID string, settle bool) error {
 	const attempts = 5
 	const interval = 300 * time.Millisecond
 
@@ -491,6 +505,15 @@ func (r *Runtime) waitForRunning(ctx context.Context, containerID string) error 
 				return fmt.Errorf("waiting for running state: %w", ctx.Err())
 			}
 			continue // transient inspect error; retry
+		}
+		if settle {
+			if !status.Running && !status.FinishedAt.IsZero() && status.ExitCode != 0 {
+				return fmt.Errorf("exited with code %d during startup (lock-down could not be applied)", status.ExitCode)
+			}
+			if i == attempts-1 && startedSuccessfully(status) {
+				return nil
+			}
+			continue
 		}
 		if startedSuccessfully(status) {
 			return nil

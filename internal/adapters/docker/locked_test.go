@@ -64,7 +64,46 @@ func TestLockedWrapperCmd(t *testing.T) {
 	assert.Contains(t, cmd, "chmod go-w,u-w")
 	assert.Contains(t, cmd, "chown agent:agent '/workspace/.cloche/dras/a/notes.md'")
 	assert.NotContains(t, cmd, "chown -R agent:agent /workspace ")
-	assert.True(t, strings.HasSuffix(cmd, "exec gosu agent cloche-agent"))
+	assert.NotContains(t, cmd, "; exec")
+	assert.Contains(t, cmd, " && exec gosu agent cloche-agent")
+	assert.Contains(t, cmd, "|| true; }")
+	assert.Contains(t, cmd, "lock-down could not be applied")
+	// Only the .claude chown may be allowed to fail.
+	assert.Equal(t, 1, strings.Count(cmd, "|| true"))
+}
+
+// A failing lock step must stop the script before gosu runs.
+func TestLockedWrapperCmd_FailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "gosu.log")
+	stub := func(name, body string) {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"+body+"\n"), 0o755))
+	}
+	stub("find", "exit 0")
+	stub("mkdir", "exit 0")
+	stub("touch", "exit 0")
+	stub("chmod", "exit 0")
+	stub("gosu", "echo called >> "+log)
+
+	run := func(chownBody string) (string, error) {
+		stub("chown", chownBody)
+		cmd := exec.Command("/bin/sh", "-c", lockedWrapperCmd([]string{"cloche-agent"}, []string{"n.md"}))
+		cmd.Env = []string{"PATH=" + dir}
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+
+	out, err := run("exit 1")
+	require.Error(t, err)
+	assert.Contains(t, out, "lock-down could not be applied")
+	_, statErr := os.Stat(log)
+	assert.True(t, os.IsNotExist(statErr), "gosu must not run when a lock step fails")
+
+	// Only the /home/agent/.claude chown may fail.
+	_, err = run(`case "$*" in *home/agent/.claude*) exit 1;; esac`)
+	require.NoError(t, err)
+	_, statErr = os.Stat(log)
+	assert.NoError(t, statErr, "gosu runs when only the .claude chown fails")
 }
 
 func TestEgressCmd(t *testing.T) {

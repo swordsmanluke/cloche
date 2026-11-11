@@ -258,6 +258,10 @@ runs under tighter limits than a workflow run (see `docs/dras.md`):
   daemon and Saga ports on the host (TCP forwards). No `--privileged`, no extra
   capabilities, `no-new-privileges`.
 - `CLOCHE_EXTRA_MOUNTS` and `CLOCHE_EXTRA_ENV` are not applied to these containers.
+- **Fails closed.** If any root-side lock-down step fails, the container exits non-zero
+  without starting the agent, and the run fails with an error saying the lock-down could
+  not be applied (with the container's output). Only the chown of `/home/agent/.claude`
+  may fail silently.
 
 ## Summary
 
