@@ -20,6 +20,7 @@ type DaemonConfig struct {
 
 type OrchestrationConfig struct {
 	Concurrency            int     `toml:"concurrency"`
+	Emergency              int     `toml:"emergency"` // urgent tasks that may launch above concurrency (default 0 = off)
 	StaggerSeconds         float64 `toml:"stagger_seconds"`
 	DedupSeconds           float64 `toml:"dedup_seconds"`            // dedup window for task assignment (default: 300)
 	StopOnError            bool    `toml:"stop_on_error"`            // halt orchestration loop on unrecovered error
@@ -147,7 +148,8 @@ type AttentionConfig struct {
 // usage allowance that may be used per day; 0 (the default) disables the
 // budget. Grace is a duration string: how long runs in flight may continue
 // once the cap is hit before they are parked. EmergencyOverflow is read by
-// the emergency-launch work; the budget gate itself ignores it.
+// the orchestration loop (urgent tasks launch past the cap); the budget gate
+// itself ignores it.
 //
 // The allowance is read from Claude Code's /usage figure (see
 // docs/plans/spikes/2026-11-usage-allowance.md), so no token-estimate
@@ -376,6 +378,7 @@ http = "localhost:8080"
 # usage_percent_per_day = 10
 # grace = "30m"
 # emergency_overflow = false   # true: emergency tasks may launch past the cap
+#                              # (needs [orchestration] emergency > 0 in the project)
 
 # Help channel: agent questions always flow via "cloche threads"; configuring
 # a channel below also delivers them to it (e.g. Slack via Socket Mode).

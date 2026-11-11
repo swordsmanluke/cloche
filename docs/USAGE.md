@@ -1979,6 +1979,7 @@ my-project/
 | Key | Default | Description |
 |-----|---------|-------------|
 | `concurrency` | `1` | Maximum concurrent container runs. Runs parked at a `poll` step release their slot for the duration of the poll and reacquire one (ahead of new task launches) once it resolves — see [Poll Step](workflows.md#poll-step) — so they don't count against this limit while waiting. |
+| `emergency` | `0` | How many urgent tasks may launch above `concurrency` (`0` = off). A task is urgent when its list-tasks entry has priority `0` or an `urgent` label (`create-task` adds the label for priority 0). An urgent task launches at once while fewer than `concurrency + emergency` tasks are in flight; emergency tasks count against `concurrency`, so no ordinary task starts until the total is back under `concurrency`. With `0`, urgent tasks only go to the front of the queue. Whether the daily budget cap stops emergency launches is `[budget] emergency_overflow`. `cloche status` shows use in the Slots line: `Slots: 6/5 busy · 1/1 emergency · 0 queued`. |
 | `stagger_seconds` | `1.0` | Delay (seconds) between consecutive run launches. |
 | `dedup_seconds` | `0` | Window (seconds) to suppress re-assigning the same task ID. |
 | `stop_on_error` | `false` | Halt the orchestration loop on the first unrecovered error. |
@@ -2018,7 +2019,7 @@ emergency_overflow = false
 |-----|---------|-------------|
 | `usage_percent_per_day` | `0` (no cap) | Share of the subscription's **weekly** usage allowance that may be used per day, in percent. `20` is used up in 5 days, `14` (1/7) runs out just as the allowance resets, `10` leaves headroom. Resolution is about 1%, so caps below 1 aren't meaningful. |
 | `grace` | `"30m"` | Duration string. How long runs already in flight may continue once the cap is hit, before they are parked. |
-| `emergency_overflow` | `false` | `true` lets emergency tasks launch past the cap; `false` stops them like everything else. **Defined and documented here only**: the budget gate does not read it. The emergency-launch work (a separate change) does. |
+| `emergency_overflow` | `false` | `true` lets emergency tasks launch past the cap; `false` stops them like everything else. Only applies when `[orchestration] emergency` is above 0, and only to emergency slots: urgent tasks launch past the cap while a slot is free; nothing else does. |
 
 **How usage is measured.** The daemon reads the "Current week" percentages
 printed by `claude -p "/usage"` (a few seconds, no model call, no tokens; see

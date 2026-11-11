@@ -98,11 +98,11 @@ The daemon's orchestration loop resolves these phases through `project.cloche`:
 
 | Workflow | `kv:` | `out:` | Notes |
 |---|---|---|---|
-| `list-tasks` | — | `tasks_path` | File of task JSONL. A task's optional `repos` field names the repositories its containers need. `beads-tasks` and `github-tasks` don't set it; a project that wants it wraps or replaces `list-tasks`. |
+| `list-tasks` | — | `tasks_path` | File of task JSONL. A task's optional `repos` field names the repositories its containers need; optional `priority` (0 = most urgent) and `labels` let the daemon spot urgent tasks (priority `0` or an `urgent` label) for `[orchestration] emergency` slots. `beads-tasks` and `github-tasks` don't set it; a project that wants it wraps or replaces `list-tasks`. |
 | `claim-task` | `task_id` | `task_title`, `task_body_path` | Runs before `main`. Lost claim: end in `fail` with `claim_status = unavailable`; the daemon skips the task for the dedup window. |
 | `close-task` | `task_id` | — | Also the dashboard's "Close in tracker". |
 | `release-task` | `task_id` | — | Also the dashboard's release action. |
-| `create-task` | `title` | `new_task_id` | Optional `kv:` inputs: `body`, `priority` (0–4, 0 most urgent), `labels` (comma-separated), `signal_source`, `signal_key`. A source+key is stored on the task (a `signal:<source>:<hash>` label) so `update-task` can find it again. Writes the new task's id as `new_task_id`. |
+| `create-task` | `title` | `new_task_id` | Optional `kv:` inputs: `body`, `priority` (0–4, 0 most urgent), `labels` (comma-separated; priority `0` adds the `urgent` label), `signal_source`, `signal_key`. A source+key is stored on the task (a `signal:<source>:<hash>` label) so `update-task` can find it again. Writes the new task's id as `new_task_id`. |
 | `update-task` | `action` | `task_found` | `action = update`: needs `target_task_id`; optional `comment`, `priority`, `add_labels`, `remove_labels`. `action = find`: needs `signal_source` and `signal_key`; writes `task_found` (`true`/`false`) and, when found, the open task's `found_task_id`, so a repeat signal attaches instead of creating. |
 
 `create-task` and `update-task` are for callers outside the loop (signal handling, DRAs).

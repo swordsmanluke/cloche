@@ -668,7 +668,8 @@ func cmdStatusProject(ctx context.Context, client pb.ClocheServiceClient, w io.W
 		if maxConc == 0 {
 			maxConc = int(info.Concurrency)
 		}
-		fmt.Fprintf(w, "Slots: %d/%d busy · %d queued\n", len(occ.Slots), maxConc, len(occ.Queued))
+		cfg, _ := config.Load(projectDir)
+		fmt.Fprintln(w, slotsLine(len(occ.Slots), maxConc, cfg.Orchestration.Emergency, len(occ.Queued)))
 	}
 
 	fmt.Fprintf(w, "Resumable runs: %d\n", info.GetResumableRunsCount())
@@ -1860,4 +1861,18 @@ func splitRepoList(value string) []string {
 		}
 	}
 	return repos
+}
+
+// slotsLine renders the status Slots line. With emergency slots configured it
+// adds how many are in use: tasks in flight beyond the ordinary concurrency
+// limit are emergency tasks.
+func slotsLine(busy, max, emergency, queued int) string {
+	if emergency <= 0 {
+		return fmt.Sprintf("Slots: %d/%d busy · %d queued", busy, max, queued)
+	}
+	used := busy - max
+	if used < 0 {
+		used = 0
+	}
+	return fmt.Sprintf("Slots: %d/%d busy · %d/%d emergency · %d queued", busy, max, used, emergency, queued)
 }

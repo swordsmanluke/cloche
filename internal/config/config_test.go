@@ -463,3 +463,7 @@ func TestBudgetDefaults(t *testing.T) {
 	assert.Equal(t, "30m", cfg.Budget.Grace)
 	assert.False(t, cfg.Budget.EmergencyOverflow)
 }
+
+func TestEmergencyDefaultsOff(t *testing.T) {
+	assert.Equal(t, 0, defaults().Orchestration.Emergency)
+}

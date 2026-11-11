@@ -28,6 +28,28 @@ type Task struct {
 	// Repos names the [[repositories]] this task needs in its containers.
 	// Empty means every configured repo.
 	Repos []string `json:"repos,omitempty"`
+	// Priority is the tracker priority (0 = most urgent); nil when the
+	// list-tasks output carries none. Labels are the tracker labels.
+	Priority *int     `json:"priority,omitempty"`
+	Labels   []string `json:"labels,omitempty"`
+}
+
+// UrgentLabel is the label create-task sets on a task made from an urgent
+// signal. Together with priority 0 it marks the task as an emergency task.
+const UrgentLabel = "urgent"
+
+// IsUrgent reports whether the task came from an urgent signal: it carries
+// the "urgent" label, or has priority 0.
+func (t Task) IsUrgent() bool {
+	if t.Priority != nil && *t.Priority == 0 {
+		return true
+	}
+	for _, l := range t.Labels {
+		if l == UrgentLabel {
+			return true
+		}
+	}
+	return false
 }
 
 // IsOpen returns true if the task status is "open" or empty (for backward compatibility).

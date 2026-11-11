@@ -34,6 +34,7 @@ const (
 type LoopConfig struct {
 	ProjectDir             string
 	MaxConcurrent          int
+	Emergency              int           // urgent tasks that may launch above MaxConcurrent (0 = off)
 	StaggerDelay           time.Duration // delay between launching consecutive runs
 	DedupTimeout           time.Duration // how long to suppress reassignment of the same task ID
 	StopOnError            bool          // halt loop on unrecovered error (allow in-flight work to finish)
@@ -141,6 +142,7 @@ type Loop struct {
 	onAttemptComplete   func(projectDir string) // optional; notified whenever an attempt reaches a terminal state
 	launchGate          func() bool             // optional; true holds back new launches (budget cap)
 	gateLogged          atomic.Bool
+	emergencyOverflow   atomic.Bool // urgent tasks launch even while the launch gate holds
 	stopCh              chan struct{}
 	mu                  sync.Mutex
 	running             bool
@@ -236,6 +238,38 @@ func (l *Loop) SetLaunchGate(gate func() bool) {
 	l.tasksMu.Lock()
 	defer l.tasksMu.Unlock()
 	l.launchGate = gate
+}
+
+// SetEmergencyOverflow lets urgent tasks launch while the launch gate holds
+// (budget emergency_overflow = true).
+func (l *Loop) SetEmergencyOverflow(v bool) {
+	l.emergencyOverflow.Store(v)
+}
+
+// launchMode says which tasks the slot arithmetic currently allows to launch.
+type launchMode int
+
+const (
+	launchNone    launchMode = iota // no slot free
+	launchUrgent                    // only an urgent task, in an emergency slot
+	launchAnyOpen                   // any task
+)
+
+// slotLaunchMode is the slot arithmetic. inFlight tasks hold slots out of
+// max ordinary plus emergency extra ones. Emergency tasks count against max,
+// so an ordinary task starts only while inFlight < max; an urgent task may
+// also start while inFlight < max+emergency.
+func slotLaunchMode(inFlight, max, emergency int) launchMode {
+	if emergency < 0 {
+		emergency = 0
+	}
+	switch {
+	case inFlight < max:
+		return launchAnyOpen
+	case inFlight < max+emergency:
+		return launchUrgent
+	}
+	return launchNone
 }
 
 func (l *Loop) launchBlocked() bool {
@@ -401,7 +435,7 @@ func (l *Loop) runPhased() {
 		// Fill up to max concurrent slots.
 		launched := 0
 		gated := false
-		for inFlight < l.config.MaxConcurrent {
+		for slotLaunchMode(inFlight, l.config.MaxConcurrent, l.config.Emergency) != launchNone {
 			select {
 			case <-l.stopCh:
 				return
@@ -410,14 +444,20 @@ func (l *Loop) runPhased() {
 
 			// Runs that finished polling and are just waiting to resume take
 			// priority over brand-new task launches.
-			if l.pollCoord != nil && l.pollCoord.grantNextResume(l.config.ProjectDir) {
+			if inFlight < l.config.MaxConcurrent && l.pollCoord != nil && l.pollCoord.grantNextResume(l.config.ProjectDir) {
 				inFlight++
 				continue
 			}
 
 			// Check how many host runs are active for this project.
+			// The store count can exceed inFlight (e.g. resumed runs), so the
+			// mode is the stricter of the two.
 			active := l.countActiveHostRuns()
-			if active >= l.config.MaxConcurrent {
+			mode := slotLaunchMode(inFlight, l.config.MaxConcurrent, l.config.Emergency)
+			if m := slotLaunchMode(active, l.config.MaxConcurrent, l.config.Emergency); m < mode {
+				mode = m
+			}
+			if mode == launchNone {
 				break
 			}
 
@@ -431,14 +471,22 @@ func (l *Loop) runPhased() {
 			// Budget gate: over the daily cap, launch nothing new. The loop
 			// keeps ticking, so launching resumes on its own once usage is
 			// back under the cap.
+			// emergency_overflow lets urgent tasks through the gate.
+			urgentOnly := mode == launchUrgent
 			if l.launchBlocked() {
-				gated = true
-				break
+				if !l.emergencyOverflow.Load() || l.config.Emergency <= 0 {
+					gated = true
+					break
+				}
+				urgentOnly = true
 			}
 
 			// Phase 1: list-tasks — discover available work.
-			taskID, taskTitle, taskRepos, ok := l.pickTaskFromPhase()
+			taskID, taskTitle, taskRepos, ok := l.pickTaskFromPhase(urgentOnly)
 			if !ok {
+				if urgentOnly && mode == launchAnyOpen {
+					gated = true // held by the gate; recheck soon
+				}
 				break // no assignable tasks
 			}
 
@@ -762,7 +810,9 @@ func (l *Loop) Occupancy(ctx context.Context) Occupancy {
 
 // pickTaskFromPhase runs the list-tasks function and picks the first open,
 // non-deduped task. Returns the task ID, title, and whether a task was found.
-func (l *Loop) pickTaskFromPhase() (string, string, []string, bool) {
+// With urgentOnly set only urgent tasks are eligible; urgent tasks are always
+// picked ahead of ordinary ones.
+func (l *Loop) pickTaskFromPhase(urgentOnly bool) (string, string, []string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -788,10 +838,28 @@ func (l *Loop) pickTaskFromPhase() (string, string, []string, bool) {
 		}
 	}
 
+	ordered := make([]Task, 0, len(tasks))
 	for _, task := range tasks {
+		if task.IsUrgent() {
+			ordered = append(ordered, task)
+		}
+	}
+	for _, task := range tasks {
+		if !task.IsUrgent() {
+			ordered = append(ordered, task)
+		}
+	}
+
+	for _, task := range ordered {
 		if task.ID == "" {
 			// Untracked sentinel task: always available, skip dedup and tracking.
+			if urgentOnly {
+				continue
+			}
 			return "", task.Title, nil, true
+		}
+		if urgentOnly && !task.IsUrgent() {
+			continue
 		}
 		if !task.IsOpen() {
 			continue

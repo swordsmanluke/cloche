@@ -19,6 +19,12 @@ labels="$(opt labels)"
 source_="$(opt signal_source)"
 key="$(opt signal_key)"
 
+# Priority 0 marks an urgent task: the "urgent" label lets the daemon launch it
+# in an emergency slot (see [orchestration] emergency).
+if [ "$priority" = "0" ]; then
+  labels="${labels:+$labels,}urgent"
+fi
+
 if [ -n "$key" ] && [ -z "$source_" ]; then
   echo "error: signal_key requires signal_source" >&2
   exit 1

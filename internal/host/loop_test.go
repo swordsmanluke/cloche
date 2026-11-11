@@ -1780,7 +1780,7 @@ func TestPickTaskFromPhase_CarriesTaskRepos(t *testing.T) {
 		},
 	)
 
-	id, _, repos, ok := loop.pickTaskFromPhase()
+	id, _, repos, ok := loop.pickTaskFromPhase(false)
 
 	assert.True(t, ok)
 	assert.Equal(t, "t1", id)
@@ -1862,4 +1862,67 @@ func TestPhaseLoop_LaunchGateHoldsAndResumes(t *testing.T) {
 	blocked.Store(false)
 	assert.Eventually(t, func() bool { return mainCalls.Load() > 0 }, 3*time.Second, 10*time.Millisecond,
 		"launching resumes on its own once the gate opens")
+}
+
+func TestSlotLaunchMode(t *testing.T) {
+	cases := []struct {
+		name                     string
+		inFlight, max, emergency int
+		want                     launchMode
+	}{
+		{"free ordinary slot", 4, 5, 1, launchAnyOpen},
+		{"full, emergency free", 5, 5, 1, launchUrgent},
+		{"emergency in flight blocks ordinary", 5, 5, 1, launchUrgent},
+		{"all full", 6, 5, 1, launchNone},
+		{"emergency off", 5, 5, 0, launchNone},
+		{"negative emergency is off", 5, 5, -2, launchNone},
+		{"empty", 0, 1, 0, launchAnyOpen},
+		{"two emergency slots", 6, 5, 2, launchUrgent},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, slotLaunchMode(c.inFlight, c.max, c.emergency), c.name)
+	}
+}
+
+func TestTaskIsUrgent(t *testing.T) {
+	zero, two := 0, 2
+	assert.True(t, Task{Priority: &zero}.IsUrgent())
+	assert.False(t, Task{Priority: &two}.IsUrgent())
+	assert.True(t, Task{Labels: []string{"x", "urgent"}}.IsUrgent())
+	assert.False(t, Task{}.IsUrgent())
+	tasks, err := ParseTasksJSONL(`{"id":"a","priority":0}` + "\n" + `{"id":"b","labels":["urgent"]}` + "\n" + `{"id":"c"}`)
+	assert.NoError(t, err)
+	assert.True(t, tasks[0].IsUrgent())
+	assert.True(t, tasks[1].IsUrgent())
+	assert.False(t, tasks[2].IsUrgent())
+}
+
+func TestPickTaskFromPhase_UrgentFirstAndUrgentOnly(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	newLoop := func() *Loop {
+		return NewPhaseLoop(LoopConfig{ProjectDir: "/tmp/test"}, store,
+			func(_ context.Context, _ string) ([]Task, error) {
+				return []Task{
+					{ID: "a", Status: "open"},
+					{ID: "b", Status: "open", Labels: []string{"urgent"}},
+				}, nil
+			},
+			func(_ context.Context, _ string, _ string, _ string, _ string) (*RunResult, error) {
+				return &RunResult{State: domain.RunStateSucceeded}, nil
+			})
+	}
+	id, _, _, ok := newLoop().pickTaskFromPhase(false)
+	assert.True(t, ok)
+	assert.Equal(t, "b", id)
+
+	id, _, _, ok = newLoop().pickTaskFromPhase(true)
+	assert.True(t, ok)
+	assert.Equal(t, "b", id)
+
+	l := NewPhaseLoop(LoopConfig{ProjectDir: "/tmp/test"}, store,
+		func(_ context.Context, _ string) ([]Task, error) {
+			return []Task{{ID: "a", Status: "open"}}, nil
+		}, nil)
+	_, _, _, ok = l.pickTaskFromPhase(true)
+	assert.False(t, ok)
 }

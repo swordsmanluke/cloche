@@ -3817,6 +3817,7 @@ func (s *ClocheServer) EnableLoop(ctx context.Context, req *pb.EnableLoopRequest
 	loopCfg := host.LoopConfig{
 		ProjectDir:             projectDir,
 		MaxConcurrent:          maxConc,
+		Emergency:              projCfg.Orchestration.Emergency,
 		StaggerDelay:           stagger,
 		DedupTimeout:           dedupTimeout,
 		StopOnError:            projCfg.Orchestration.StopOnError,
@@ -4011,6 +4012,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 
 	loop := host.NewPhaseLoop(loopCfg, s.store, listTasksFn, mainFn)
 	loop.SetLaunchGate(s.budgetBlocked)
+	loop.SetEmergencyOverflow(s.budget != nil && s.budget.Config().EmergencyOverflow)
 	// claim-task phase: runs before main for each picked task. Skipped when
 	// no claim-task resolves (main then claims for itself).
 	if host.PhaseResolves(projectDir, host.SlotClaimTask) {

@@ -971,3 +971,15 @@ func TestCmdStatusOverview_NoBudgetLineWhenDisabled(t *testing.T) {
 		t.Errorf("no cap configured: expected no Budget: line, got:\n%s", buf.String())
 	}
 }
+
+func TestSlotsLine(t *testing.T) {
+	if got := slotsLine(4, 5, 0, 1); got != "Slots: 4/5 busy · 1 queued" {
+		t.Errorf("got %q", got)
+	}
+	if got := slotsLine(4, 5, 1, 0); got != "Slots: 4/5 busy · 0/1 emergency · 0 queued" {
+		t.Errorf("got %q", got)
+	}
+	if got := slotsLine(6, 5, 1, 2); got != "Slots: 6/5 busy · 1/1 emergency · 2 queued" {
+		t.Errorf("got %q", got)
+	}
+}

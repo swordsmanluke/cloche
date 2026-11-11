@@ -18,5 +18,5 @@ json=$(gh issue list --state open --limit 100 --json number,title,body,labels 2>
 echo "$json" | jq -c --arg label "$label" '
   .[]
   | select(([.labels[].name] | index($label)) == null)
-  | {id: (.number | tostring), status: "open", title: .title, description: (.body // "")}
+  | {id: (.number | tostring), status: "open", title: .title, description: (.body // ""), labels: [.labels[].name]}
 ' >> "$out"
