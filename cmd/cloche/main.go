@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -125,6 +124,13 @@ func main() {
 			return
 		}
 		cmdProject(os.Args[2:])
+		return
+	case "dashboard":
+		if hasHelpFlag(os.Args[2:]) {
+			printSubcommandHelp("dashboard")
+			return
+		}
+		cmdDashboard(os.Args[2:])
 		return
 	case "signals":
 		if hasHelpFlag(os.Args[2:]) {
@@ -1509,7 +1515,7 @@ func cmdTasks(args []string) {
 	}
 
 	tasksURL := fmt.Sprintf("http://%s/api/projects/%s/tasks", httpAddr, url.PathEscape(projectDir))
-	resp, err := http.Get(tasksURL)
+	resp, err := dashboardGet(tasksURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error connecting to daemon web API: %v\n", err)
 		fmt.Fprintf(os.Stderr, "hint: set CLOCHE_HTTP (or [daemon] http in ~/.config/cloche/config) and restart the daemon\n")

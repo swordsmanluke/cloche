@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/swordsmanluke/cloche/internal/intent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/intent"
 )
 
 func TestParseMarshalRequirement_RoundTrip(t *testing.T) {
@@ -81,7 +81,7 @@ func TestParseRequirement_MalformedFrontmatter(t *testing.T) {
 	cases := map[string]string{
 		"missing opening delimiter": "id: req-a3f8\nstatus: active\n---\n\nBody text.\n",
 		"missing closing delimiter": "---\nid: req-a3f8\nstatus: active\n\nBody text.\n",
-		"invalid yaml": "---\nid: req-a3f8\nstatus: [this is not valid: yaml\n---\n\nBody text.\n",
+		"invalid yaml":              "---\nid: req-a3f8\nstatus: [this is not valid: yaml\n---\n\nBody text.\n",
 	}
 
 	for name, data := range cases {

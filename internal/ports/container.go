@@ -40,8 +40,8 @@ type ContainerConfig struct {
 	// CopyOnly, when set, limits the workspace copy to these project-relative
 	// paths: the run's repos and the project's cloche files, for a run that
 	// doesn't include the root repo. .clocheignore still applies within them.
-	CopyOnly []string
-	Interactive  bool // allocate TTY and keep stdin open (-it flags)
+	CopyOnly    []string
+	Interactive bool // allocate TTY and keep stdin open (-it flags)
 }
 
 // ExtraDir copies the host directory Src to Dst (relative to /workspace).

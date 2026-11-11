@@ -487,6 +487,29 @@ Examples:
   cloche extract TASK-42
 `,
 
+	"dashboard": `cloche dashboard — Show or rotate the dashboard token
+
+The dashboard's HTTP listener is guarded by one daemon-wide token (0600 in
+~/.config/cloche/dashboard-token, generated on first use). Every route that
+changes something needs it, from any address; read-only routes need it only
+from other machines. Browsers log in once on /login; scripts send it as a
+bearer token.
+
+Usage:
+  cloche dashboard token [--rotate]
+
+  token       Print the token, generating one on first use.
+  --rotate    Replace the token and print the new one. The old token stops
+              working immediately; browsers must log in again.
+
+Examples:
+  curl -X POST "http://localhost:8080/api/runs/abc123/stop" \
+    -H "Authorization: Bearer $(cloche dashboard token)"
+
+For a daemon on another machine, export CLOCHE_DASHBOARD_TOKEN so cloche
+commands that call the dashboard (health, tasks) send it.
+See docs/SAFETY.md.
+`,
 	"signals": `cloche signals — Show or rotate a project's signal-intake token
 
 Feedback signals enter cloche only through an HTTP endpoint on the dashboard
@@ -1089,6 +1112,7 @@ Project Setup:
   health     Show project health summary (pass/fail counts)
   project    Show project info, config, loop state, and workflows
   intent     View and curate standing project requirements
+  dashboard  Show or rotate the dashboard HTTP token
   signals    Show or rotate the token for the signal-intake endpoint
   module     Install and manage workflow modules
 

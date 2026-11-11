@@ -172,18 +172,18 @@ func formatToolCall(name string, input json.RawMessage) string {
 
 	// Pick the most informative parameter for each known tool.
 	type paramSpec struct {
-		key      string
-		maxLen   int
+		key    string
+		maxLen int
 	}
 	toolParams := map[string]paramSpec{
-		"Bash":    {"command", 80},
-		"Read":    {"file_path", 0},
-		"Edit":    {"file_path", 0},
-		"Write":   {"file_path", 0},
-		"Glob":    {"pattern", 0},
-		"Grep":    {"pattern", 80},
-		"Agent":   {"description", 80},
-		"WebFetch": {"url", 0},
+		"Bash":      {"command", 80},
+		"Read":      {"file_path", 0},
+		"Edit":      {"file_path", 0},
+		"Write":     {"file_path", 0},
+		"Glob":      {"pattern", 0},
+		"Grep":      {"pattern", 80},
+		"Agent":     {"description", 80},
+		"WebFetch":  {"url", 0},
 		"WebSearch": {"query", 80},
 	}
 

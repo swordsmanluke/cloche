@@ -65,7 +65,7 @@ func cmdHealth(args []string) {
 	if projectDir != "" {
 		reqURL += "?project=" + url.QueryEscape(projectDir)
 	}
-	resp, err := http.Get(reqURL)
+	resp, err := dashboardGet(reqURL)
 	if err != nil {
 		// The dial failure looks identical whether the whole daemon is down
 		// or just its web dashboard (e.g. stuck retrying a bind failure).
@@ -138,4 +138,3 @@ func reportWebUnreachable(httpErr error) {
 
 	fmt.Fprintf(os.Stderr, "error: %v\n", httpErr)
 }
-

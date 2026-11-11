@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"github.com/swordsmanluke/cloche/internal/dashauth"
 	"html/template"
 	"io/fs"
 	"net/http"
@@ -150,6 +151,15 @@ func WithReplyThreadFunc(fn ReplyThreadFunc) HandlerOption {
 // answers 404.
 func WithSignalIntake(tokens *signal.TokenStore, d *signal.Dispatcher) HandlerOption {
 	return func(h *Handler) { h.signalTokens, h.signalDispatcher = tokens, d }
+}
+
+// WithDashboardAuth turns on the daemon-wide dashboard token (see auth.go):
+// every mutating route needs it, and read-only routes need it from
+// non-loopback addresses. cloched always sets it. A Handler built without it
+// does no dashboard auth at all (the per-project signal and per-run MCP
+// tokens still apply), which is only meant for tests.
+func WithDashboardAuth(s *dashauth.Store) HandlerOption {
+	return func(h *Handler) { h.dashAuth = s }
 }
 
 //go:embed templates/*.html static/*
@@ -308,6 +318,8 @@ type Handler struct {
 	history           *promptrev.HistoryCache // per-file git history cache for the ledger view
 	pages             map[string]*template.Template
 	mux               *http.ServeMux
+	patterns          []string        // every registered mux pattern, for tests
+	dashAuth          *dashauth.Store // daemon-wide dashboard token; see WithDashboardAuth
 }
 
 // NewHandler creates a web dashboard handler.
@@ -350,70 +362,83 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 		return nil, fmt.Errorf("static sub-fs: %w", err)
 	}
 
-	h.mux.HandleFunc("GET /{$}", h.handleLegacyRoot)
-	h.mux.HandleFunc("GET /projects/{name}/runs", h.handleLegacyProjectRedirect)
-	h.mux.HandleFunc("GET /runs", h.handleLegacyRunsRedirect)
-	h.mux.HandleFunc("GET /runs/{id}", h.handleLegacyRunRedirect)
-	h.mux.HandleFunc("GET /projects/{name}", h.handleLegacyProjectRedirect)
-	h.mux.HandleFunc("GET /{name}", h.handleConsoleShell)
-	h.mux.HandleFunc("GET /{name}/{taskID...}", h.handleConsoleShell)
-	h.mux.HandleFunc("GET /api/projects", h.handleAPIProjects)
-	h.mux.HandleFunc("GET /api/runs/{id}", h.handleAPIRunDetail)
-	h.mux.HandleFunc("GET /api/runs/{id}/thread", h.handleAPIRunThread)
-	h.mux.HandleFunc("POST /api/runs/{id}/thread/reply", h.handleAPIRunThreadReply)
-	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
-	h.mux.HandleFunc("GET /api/runs/{id}/steps/{step}/input", h.handleAPIStepInput)
-	h.mux.HandleFunc("POST /api/runs/{id}/stop", h.handleAPIStopRun)
-	h.mux.HandleFunc("DELETE /api/runs/{id}/container", h.handleAPIDeleteContainer)
-	h.mux.HandleFunc("GET /api/runs/{id}/branch", h.handleAPIRunBranch)
-	h.mux.HandleFunc("GET /api/runs/{id}/diff", h.handleAPIRunDiff)
-	h.mux.HandleFunc("GET /api/runs/{id}/console", h.handleAPIRunConsole)
-	h.mux.HandleFunc("GET /api/projects/{name}/containers", h.handleAPIProjectContainers)
-	h.mux.HandleFunc("DELETE /api/projects/{name}/containers", h.handleAPIDeleteProjectContainers)
-	h.mux.HandleFunc("DELETE /api/containers", h.handleAPIDeleteAllContainers)
-	h.mux.HandleFunc("GET /api/projects/{name}/usage", h.handleAPIProjectUsage)
-	h.mux.HandleFunc("GET /api/projects/{name}/info/prompt-diff", h.handleAPIPromptDiff)
-	h.mux.HandleFunc("GET /api/projects/{name}/workflows", h.handleAPIWorkflows)
-	h.mux.HandleFunc("GET /api/projects/{name}/workflows/{workflow}/steps/{step}/content", h.handleAPIStepContent)
-	h.mux.HandleFunc("GET /api/projects/{name}/tasks", h.handleAPITasks)
-	h.mux.HandleFunc("GET /api/projects/{name}/tasks/stack", h.handleAPITaskStack)
-	h.mux.HandleFunc("GET /api/projects/{name}/tasks/{taskId}/attempts", h.handleAPITaskAttempts)
-	h.mux.HandleFunc("GET /api/projects/{name}/ledger", h.handleAPILedger)
-	h.mux.HandleFunc("GET /api/activity", h.handleAPIActivity)
-	h.mux.HandleFunc("POST /api/projects/{name}/tasks/create", h.handleAPITrackerPhase("create-task"))
-	h.mux.HandleFunc("POST /api/projects/{name}/tasks/update", h.handleAPITrackerPhase("update-task"))
-	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
-	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/close", h.handleAPICloseTask)
-	h.mux.HandleFunc("POST /api/projects/{name}/tasks/{taskId}/run-once", h.handleAPIRunOnce)
-	h.mux.HandleFunc("GET /api/projects/{name}/attention", h.handleAPIProjectAttention)
-	h.mux.HandleFunc("POST /api/projects/{name}/attention/mute", h.handleAPIMuteAttention)
-	h.mux.HandleFunc("POST /api/projects/{name}/signals", h.handleAPISignals)
-	h.mux.HandleFunc("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
-	h.mux.HandleFunc("GET /api/projects/{name}/loop/status", h.handleAPILoopStatus)
-	h.mux.HandleFunc("POST /api/projects/{name}/loop/stop", h.handleAPILoopStop)
-	h.mux.HandleFunc("DELETE /api/projects/{name}", h.handleAPIPurgeProject)
-	h.mux.HandleFunc("GET /api/projects/{name}/loop/occupancy", h.handleAPILoopOccupancy)
-	h.mux.HandleFunc("GET /api/projects/occupancy", h.handleAPIProjectsOccupancy)
-	h.mux.HandleFunc("GET /api/projects/{name}/intent/requirements", h.handleAPIIntentRequirementsList)
-	h.mux.HandleFunc("PATCH /api/projects/{name}/intent/requirements", h.handleAPIIntentRequirementsPatch)
-	h.mux.HandleFunc("GET /api/projects/{name}/intent/domains", h.handleAPIIntentDomainsGet)
-	h.mux.HandleFunc("PUT /api/projects/{name}/intent/domains", h.handleAPIIntentDomainsPut)
-	h.mux.HandleFunc("POST /api/projects/{name}/intent/scan", h.handleAPIIntentScan)
-	h.mux.HandleFunc("GET /api/projects/{name}/intent/doc", h.handleAPIIntentDoc)
-	h.mux.HandleFunc("GET /api/runs/{id}/logs", h.handleAPILogs)
-	h.mux.HandleFunc("GET /api/runs/{id}/stream", h.handleAPIStream)
-	h.mux.HandleFunc("GET /api/attempts/{id}/stream", h.handleAPIAttemptStream)
-	h.mux.HandleFunc("GET /api/attempts/{id}/logs", h.handleAPIAttemptLogs)
-	h.mux.HandleFunc("GET /tasks/{taskID}", h.handleLegacyTaskRedirect)
-	h.mux.HandleFunc("GET /failed-tasks", h.handleLegacyFailedTasksRedirect)
-	h.mux.HandleFunc("POST /mcp", h.handleMCP)
-	h.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
+	h.route("GET /login", h.handleLoginPage)
+	h.route("POST /login", h.handleLogin)
+	h.route("GET /{$}", h.handleLegacyRoot)
+	h.route("GET /projects/{name}/runs", h.handleLegacyProjectRedirect)
+	h.route("GET /runs", h.handleLegacyRunsRedirect)
+	h.route("GET /runs/{id}", h.handleLegacyRunRedirect)
+	h.route("GET /projects/{name}", h.handleLegacyProjectRedirect)
+	h.route("GET /{name}", h.handleConsoleShell)
+	h.route("GET /{name}/{taskID...}", h.handleConsoleShell)
+	h.route("GET /api/projects", h.handleAPIProjects)
+	h.route("GET /api/runs/{id}", h.handleAPIRunDetail)
+	h.route("GET /api/runs/{id}/thread", h.handleAPIRunThread)
+	h.route("POST /api/runs/{id}/thread/reply", h.handleAPIRunThreadReply)
+	h.route("GET /api/runs/{id}/steps/{step}/output", h.handleAPIStepOutput)
+	h.route("GET /api/runs/{id}/steps/{step}/input", h.handleAPIStepInput)
+	h.route("POST /api/runs/{id}/stop", h.handleAPIStopRun)
+	h.route("DELETE /api/runs/{id}/container", h.handleAPIDeleteContainer)
+	h.route("GET /api/runs/{id}/branch", h.handleAPIRunBranch)
+	h.route("GET /api/runs/{id}/diff", h.handleAPIRunDiff)
+	h.route("GET /api/runs/{id}/console", h.handleAPIRunConsole)
+	h.route("GET /api/projects/{name}/containers", h.handleAPIProjectContainers)
+	h.route("DELETE /api/projects/{name}/containers", h.handleAPIDeleteProjectContainers)
+	h.route("DELETE /api/containers", h.handleAPIDeleteAllContainers)
+	h.route("GET /api/projects/{name}/usage", h.handleAPIProjectUsage)
+	h.route("GET /api/projects/{name}/info/prompt-diff", h.handleAPIPromptDiff)
+	h.route("GET /api/projects/{name}/workflows", h.handleAPIWorkflows)
+	h.route("GET /api/projects/{name}/workflows/{workflow}/steps/{step}/content", h.handleAPIStepContent)
+	h.route("GET /api/projects/{name}/tasks", h.handleAPITasks)
+	h.route("GET /api/projects/{name}/tasks/stack", h.handleAPITaskStack)
+	h.route("GET /api/projects/{name}/tasks/{taskId}/attempts", h.handleAPITaskAttempts)
+	h.route("GET /api/projects/{name}/ledger", h.handleAPILedger)
+	h.route("GET /api/activity", h.handleAPIActivity)
+	h.route("POST /api/projects/{name}/tasks/create", h.handleAPITrackerPhase("create-task"))
+	h.route("POST /api/projects/{name}/tasks/update", h.handleAPITrackerPhase("update-task"))
+	h.route("POST /api/projects/{name}/tasks/{taskId}/release", h.handleAPIReleaseTask)
+	h.route("POST /api/projects/{name}/tasks/{taskId}/close", h.handleAPICloseTask)
+	h.route("POST /api/projects/{name}/tasks/{taskId}/run-once", h.handleAPIRunOnce)
+	h.route("GET /api/projects/{name}/attention", h.handleAPIProjectAttention)
+	h.route("POST /api/projects/{name}/attention/mute", h.handleAPIMuteAttention)
+	h.route("POST /api/projects/{name}/signals", h.handleAPISignals)
+	h.route("POST /api/projects/{name}/trigger", h.handleAPITriggerOrchestrator)
+	h.route("GET /api/projects/{name}/loop/status", h.handleAPILoopStatus)
+	h.route("POST /api/projects/{name}/loop/stop", h.handleAPILoopStop)
+	h.route("DELETE /api/projects/{name}", h.handleAPIPurgeProject)
+	h.route("GET /api/projects/{name}/loop/occupancy", h.handleAPILoopOccupancy)
+	h.route("GET /api/projects/occupancy", h.handleAPIProjectsOccupancy)
+	h.route("GET /api/projects/{name}/intent/requirements", h.handleAPIIntentRequirementsList)
+	h.route("PATCH /api/projects/{name}/intent/requirements", h.handleAPIIntentRequirementsPatch)
+	h.route("GET /api/projects/{name}/intent/domains", h.handleAPIIntentDomainsGet)
+	h.route("PUT /api/projects/{name}/intent/domains", h.handleAPIIntentDomainsPut)
+	h.route("POST /api/projects/{name}/intent/scan", h.handleAPIIntentScan)
+	h.route("GET /api/projects/{name}/intent/doc", h.handleAPIIntentDoc)
+	h.route("GET /api/runs/{id}/logs", h.handleAPILogs)
+	h.route("GET /api/runs/{id}/stream", h.handleAPIStream)
+	h.route("GET /api/attempts/{id}/stream", h.handleAPIAttemptStream)
+	h.route("GET /api/attempts/{id}/logs", h.handleAPIAttemptLogs)
+	h.route("GET /tasks/{taskID}", h.handleLegacyTaskRedirect)
+	h.route("GET /failed-tasks", h.handleLegacyFailedTasksRedirect)
+	h.route("POST /mcp", h.handleMCP)
+	h.routeHandler("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
 
 	return h, nil
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.mux.ServeHTTP(w, r)
+	h.authMiddleware(h.mux).ServeHTTP(w, r)
+}
+
+// route registers a handler on the mux and records the pattern so tests (and
+// the auth middleware's exemption list) can see every registered route.
+func (h *Handler) route(pattern string, fn http.HandlerFunc) {
+	h.routeHandler(pattern, fn)
+}
+
+func (h *Handler) routeHandler(pattern string, hd http.Handler) {
+	h.patterns = append(h.patterns, pattern)
+	h.mux.Handle(pattern, hd)
 }
 
 // --- HTML handlers ---

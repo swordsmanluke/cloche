@@ -5,10 +5,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/swordsmanluke/cloche/internal/domain"
-	"github.com/swordsmanluke/cloche/internal/engine"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/engine"
 )
 
 // buildTokenLimitWorkflow constructs a single-step workflow for token-limit tests.
@@ -73,8 +73,8 @@ func buildTwoStepWorkflow(wfTokenLimit string) *domain.Workflow {
 
 // usageExec is a step executor that returns fixed token usage per call.
 type usageExec struct {
-	mu          sync.Mutex
-	callCount   int
+	mu           sync.Mutex
+	callCount    int
 	outputTokens int64
 	inputTokens  int64
 }

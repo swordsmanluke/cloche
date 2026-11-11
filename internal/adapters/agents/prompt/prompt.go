@@ -28,17 +28,17 @@ type Adapter struct {
 	Commands           []string // ordered fallback chain of agent commands
 	ExplicitArgs       []string // if non-nil, overrides default args for all commands
 	RunID              string
-	TaskID             string                 // task ID for runtime state paths (.cloche/runs/<task-id>/)
-	AttemptID          string                 // attempt ID; with TaskID, lets the adapter derive the per-attempt output dir
-	StatusWriter       *protocol.StatusWriter // optional: streams live output lines
-	ResumeConversation bool                   // when true, resume previous conversation instead of starting new one
-	UsageCommand       string                 // optional: shell command to run after step to capture token usage JSON
-	PrevOutput         string                 // content of the immediate predecessor step's output log
-	ExtraEnv           []string               // additional KEY=VALUE env vars injected into the agent process
-	KV                 KVReader               // optional: KV store for {{ $var }} lookups; nil disables non-builtin vars
+	TaskID             string                        // task ID for runtime state paths (.cloche/runs/<task-id>/)
+	AttemptID          string                        // attempt ID; with TaskID, lets the adapter derive the per-attempt output dir
+	StatusWriter       *protocol.StatusWriter        // optional: streams live output lines
+	ResumeConversation bool                          // when true, resume previous conversation instead of starting new one
+	UsageCommand       string                        // optional: shell command to run after step to capture token usage JSON
+	PrevOutput         string                        // content of the immediate predecessor step's output log
+	ExtraEnv           []string                      // additional KEY=VALUE env vars injected into the agent process
+	KV                 KVReader                      // optional: KV store for {{ $var }} lookups; nil disables non-builtin vars
 	OnInput            func(stepName, prompt string) // optional: receives the fully assembled prompt just before the agent is launched (see domain.StepInput)
-	KVWriter           KVWriter               // optional: persists Claude's session_id so a later park+resume can `claude --resume`
-	OutputDir          string                 // directory for step output logs and history. Empty = derive <workDir>/.cloche/logs/<TaskID>/<AttemptID> when both IDs are set (the per-attempt layout every host-side reader uses), else <workDir>/.cloche/output. In-container callers MUST pin this to the workspace's .cloche/output: that path is the container's public surface (daemon extraction, feedback flag, session streaming), and the container adapter has task/attempt IDs set too, so the derived default would move logs where nothing looks.
+	KVWriter           KVWriter                      // optional: persists Claude's session_id so a later park+resume can `claude --resume`
+	OutputDir          string                        // directory for step output logs and history. Empty = derive <workDir>/.cloche/logs/<TaskID>/<AttemptID> when both IDs are set (the per-attempt layout every host-side reader uses), else <workDir>/.cloche/output. In-container callers MUST pin this to the workspace's .cloche/output: that path is the container's public surface (daemon extraction, feedback flag, session streaming), and the container adapter has task/attempt IDs set too, so the derived default would move logs where nothing looks.
 }
 
 func New() *Adapter {

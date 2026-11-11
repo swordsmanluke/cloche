@@ -46,7 +46,7 @@ type ClocheServer struct {
 	pb.UnimplementedClocheServiceServer
 	// signals receives the daemon's own signals (repeated task failures).
 	// Set via SetSignalSubmitter; nil disables self-signalling.
-	signals SignalSubmitter
+	signals       SignalSubmitter
 	store         ports.RunStore
 	captures      ports.CaptureStore
 	logStore      ports.LogStore

@@ -177,7 +177,7 @@ func TestTask_IsOpen(t *testing.T) {
 		open   bool
 	}{
 		{"open", true},
-		{"", true},  // backward compatible: empty status is open
+		{"", true}, // backward compatible: empty status is open
 		{"closed", false},
 		{"in-progress", false},
 	}

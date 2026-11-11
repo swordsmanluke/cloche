@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
 func TestBuildPreloadedResults_LinearWorkflow(t *testing.T) {
@@ -221,8 +221,8 @@ func TestResumeRunAsNewAttempt_CreatesNewRun(t *testing.T) {
 	newRunID := domain.GenerateRunID("main", newAttemptID)
 
 	runner := &Runner{
-		Store:    store,
-		TaskID:   taskID,
+		Store:     store,
+		TaskID:    taskID,
 		AttemptID: newAttemptID,
 	}
 
