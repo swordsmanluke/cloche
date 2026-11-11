@@ -26,12 +26,12 @@ case "$action" in
       echo "error: nothing to update (set comment, priority, add_labels or remove_labels)" >&2
       exit 1
     fi
-    [ -n "$comment" ] && bd comments add "$task_id" "$comment" >/dev/null
-    [ -n "$priority" ] && bd update "$task_id" -p "$priority" >/dev/null
+    [ -n "$comment" ] && bd comments add -- "$task_id" "$comment" >/dev/null
+    [ -n "$priority" ] && bd update -p "$priority" -- "$task_id" >/dev/null
     IFS=',' read -ra l <<< "$add"
-    for x in "${l[@]}"; do [ -n "$x" ] && bd label add "$task_id" "$x" >/dev/null; done
+    for x in "${l[@]}"; do [ -n "$x" ] && bd label add -- "$task_id" "$x" >/dev/null; done
     IFS=',' read -ra l <<< "$remove"
-    for x in "${l[@]}"; do [ -n "$x" ] && bd label remove "$task_id" "$x" >/dev/null; done
+    for x in "${l[@]}"; do [ -n "$x" ] && bd label remove -- "$task_id" "$x" >/dev/null; done
     cloche set task_found true
     echo "Updated task $task_id"
     ;;

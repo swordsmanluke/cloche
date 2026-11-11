@@ -41,3 +41,39 @@ func (s *Store) ListSignals(ctx context.Context, projectDir string) ([]signal.Re
 	}
 	return out, rows.Err()
 }
+
+// PruneSignalsOlderThan deletes signals received before cutoff and returns how
+// many rows were removed. Timestamps are compared as parsed times, not strings.
+func (s *Store) PruneSignalsOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
+	rows, err := s.read.QueryContext(ctx, `SELECT id, received_at FROM signals`)
+	if err != nil {
+		return 0, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		var at string
+		if err := rows.Scan(&id, &at); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if t := parseTime(at); !t.IsZero() && t.Before(cutoff) {
+			ids = append(ids, id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	rows.Close()
+	var n int64
+	for _, id := range ids {
+		res, err := s.write.ExecContext(ctx, `DELETE FROM signals WHERE id = ?`, id)
+		if err != nil {
+			return n, err
+		}
+		c, _ := res.RowsAffected()
+		n += c
+	}
+	return n, nil
+}

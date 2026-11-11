@@ -3122,3 +3122,25 @@ func TestAPITrackerPhase(t *testing.T) {
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
+
+func TestAPITrackerPhase_RejectsBadSignalSource(t *testing.T) {
+	h, store := setupHandler(t)
+	run := domain.NewRun("run-1", "develop")
+	run.ProjectDir = "/home/user/projects/myapp"
+	require.NoError(t, store.CreateRun(context.Background(), run))
+	tp := &trackerTaskProvider{out: map[string]string{}}
+	h.taskProvider = tp
+	h.signalTokens = signal.NewTokenStore(t.TempDir())
+	token, err := h.signalTokens.Get(run.ProjectDir)
+	require.NoError(t, err)
+
+	for _, src := range []string{"a,b", "-x", "has space"} {
+		body, _ := json.Marshal(map[string]any{"inputs": map[string]string{"title": "x", "signal_source": src, "signal_key": "k"}})
+		req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/create", strings.NewReader(string(body)))
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		require.Equal(t, http.StatusBadRequest, w.Code, src)
+		require.Empty(t, tp.slot, "the phase must not run for source %q", src)
+	}
+}

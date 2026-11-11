@@ -37,7 +37,7 @@ if [ -n "$source_" ]; then
 }Signal: ${source_} / ${key}"
 fi
 
-args=(create "$title" --silent)
+args=(create --title "$title" --silent)
 [ -n "$body" ] && args+=(-d "$body")
 [ -n "$priority" ] && args+=(-p "$priority")
 [ -n "$labels" ] && args+=(-l "$labels")

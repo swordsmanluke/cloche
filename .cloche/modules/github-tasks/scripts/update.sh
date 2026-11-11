@@ -27,22 +27,22 @@ case "$action" in
       echo "error: nothing to update (set comment, priority, add_labels or remove_labels)" >&2
       exit 1
     fi
-    [ -n "$comment" ] && gh issue comment "$task_id" --body "$comment" >/dev/null
+    [ -n "$comment" ] && gh issue comment --body "$comment" -- "$task_id" >/dev/null
     if [ -n "$priority" ]; then
       for p in 0 1 2 3 4; do
-        [ "$p" != "$priority" ] && gh issue edit "$task_id" --remove-label "priority:$p" >/dev/null 2>&1 || true
+        [ "$p" != "$priority" ] && gh issue edit --remove-label "priority:$p" -- "$task_id" >/dev/null 2>&1 || true
       done
       gh label create "priority:$priority" --color C5DEF5 >/dev/null 2>&1 || true
-      gh issue edit "$task_id" --add-label "priority:$priority" >/dev/null
+      gh issue edit --add-label "priority:$priority" -- "$task_id" >/dev/null
     fi
     IFS=',' read -ra l <<< "$add"
     for x in "${l[@]}"; do
       [ -z "$x" ] && continue
       gh label create "$x" --color C5DEF5 >/dev/null 2>&1 || true
-      gh issue edit "$task_id" --add-label "$x" >/dev/null
+      gh issue edit --add-label "$x" -- "$task_id" >/dev/null
     done
     IFS=',' read -ra l <<< "$remove"
-    for x in "${l[@]}"; do [ -n "$x" ] && gh issue edit "$task_id" --remove-label "$x" >/dev/null; done
+    for x in "${l[@]}"; do [ -n "$x" ] && gh issue edit --remove-label "$x" -- "$task_id" >/dev/null; done
     cloche set task_found true
     echo "Updated issue $task_id"
     ;;

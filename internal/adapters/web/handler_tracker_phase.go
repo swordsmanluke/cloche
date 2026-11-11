@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/swordsmanluke/cloche/internal/signal"
 )
 
 // apiTrackerPhaseRequest is the body for POST .../tasks/create and
@@ -41,6 +43,12 @@ func (h *Handler) handleAPITrackerPhase(slot string) http.HandlerFunc {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeErr(http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
 			return
+		}
+		if src := req.Inputs["signal_source"]; src != "" {
+			if err := signal.ValidateSource(src); err != nil {
+				writeErr(http.StatusBadRequest, fmt.Sprintf("invalid signal_source: %v", err))
+				return
+			}
 		}
 		out, err := runner.RunTrackerPhase(r.Context(), dir, slot, req.Inputs)
 		if err != nil {

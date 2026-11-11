@@ -82,6 +82,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, "startup: marked %d stale run(s) as failed\n", n)
 	}
 
+	// Signals only need to live long enough to dedupe and audit; drop old rows
+	// (each can hold up to 64 KB of evidence).
+	if n, err := store.PruneSignalsOlderThan(context.Background(), time.Now().Add(-30*24*time.Hour)); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to prune old signals: %v\n", err)
+	} else if n > 0 {
+		fmt.Fprintf(os.Stderr, "startup: pruned %d signal(s) older than 30 days\n", n)
+	}
+
 	// Sweep stale attempts whose goroutines were killed before completeAttempt could run.
 	if n, err := store.FailStaleAttempts(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to sweep stale attempts: %v\n", err)

@@ -108,7 +108,7 @@ The daemon's orchestration loop resolves these phases through `project.cloche`:
 `create-task` and `update-task` are for callers outside the loop (signal handling, DRAs).
 (These key names avoid `task_id`, which the host executor seeds with the phase's own name.) They are run on demand through the daemon: `cloche tasks create`, `cloche tasks update`
 and `cloche tasks find` (HTTP API `POST /api/projects/{name}/tasks/create|update`, which needs the project's
-signal token as a bearer token; the CLI reads it from `~/.config/cloche/signal-tokens/`).
+signal token as a bearer token; the CLI reads it from `~/.config/cloche/signal-tokens/`). A `signal_source` input that isn't 1–128 characters of letters, digits, `.`, `_` or `-` is rejected with `400`.
 
 `main` stays project-owned and reads `task_title` / `task_body_path`. This repo ships two
 implementations, `.cloche/modules/beads-tasks` and `.cloche/modules/github-tasks`.

@@ -46,13 +46,21 @@ type Signal struct {
 	Domain   string `json:"domain,omitempty"`
 }
 
-// Validate checks every field and returns a message naming the first problem.
-func (s *Signal) Validate() error {
-	if s.Source == "" {
+// ValidateSource checks a signal source name.
+func ValidateSource(source string) error {
+	if source == "" {
 		return fmt.Errorf("source is required")
 	}
-	if len(s.Source) > MaxSourceLen || !sourceRe.MatchString(s.Source) {
+	if len(source) > MaxSourceLen || !sourceRe.MatchString(source) {
 		return fmt.Errorf("source must be 1-%d characters of letters, digits, '.', '_' or '-'", MaxSourceLen)
+	}
+	return nil
+}
+
+// Validate checks every field and returns a message naming the first problem.
+func (s *Signal) Validate() error {
+	if err := ValidateSource(s.Source); err != nil {
+		return err
 	}
 	if strings.TrimSpace(s.Key) == "" {
 		return fmt.Errorf("key is required")

@@ -696,6 +696,8 @@ host workflow `handle-notification` with the signal as input. If the same `sourc
 one handler run. Every signal is stored either way. A signal arriving after the handler
 finishes starts a new run.
 
+Stored signals are kept for 30 days: the daemon deletes older ones when it starts.
+
 Handler runs are limited: at most 8 at once, and 30 started per hour for one project and
 source. Past either limit the request gets `429` and the signal is stored but not
 handled; signals that join a running handler don't count. Each handler run is recorded,
