@@ -42,6 +42,7 @@ type Runner struct {
 	KVTaskID      string
 	KVAttemptID   string
 	SkipRunRecord bool // when true, don't persist a run record to the store
+	KeepContext   bool // when true, don't delete the attempt's KV on success (claim-task: its outputs are read after the run)
 	UserInitiated bool // true when dispatched by an explicit user request rather than an automated trigger (see domain.Run.UserInitiated)
 	// SubRepo is the [[repositories]] name matched when projectDir was
 	// itself resolved from a sub-repo path (see
@@ -297,7 +298,7 @@ func (r *Runner) runWorkflow(ctx context.Context, projectDir string, wf *domain.
 
 	// Clean up ephemeral runtime state on success.
 	// On failure, keep it so resume can restore ExtraEnv and context.
-	if r.TaskID != "" && result.State == domain.RunStateSucceeded {
+	if r.TaskID != "" && !r.KeepContext && result.State == domain.RunStateSucceeded {
 		cleanupRunContext(context.Background(), r.Store, projectDir, r.TaskID, r.AttemptID)
 	}
 

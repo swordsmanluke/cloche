@@ -151,6 +151,13 @@ func (f *fakeStore) ListContextKeys(_ context.Context, taskID, attemptID, runID 
 	return nil, nil
 }
 func (f *fakeStore) DeleteContextKeys(_ context.Context, taskID, attemptID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for k := range f.kvData {
+		if strings.HasPrefix(k, taskID+"/"+attemptID+"/") {
+			delete(f.kvData, k)
+		}
+	}
 	return nil
 }
 func (f *fakeStore) NextAttemptID(context.Context) (string, error) {

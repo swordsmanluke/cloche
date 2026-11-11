@@ -102,7 +102,7 @@ func runClaimWorkflow(ctx context.Context, runner *Runner, projectDir string, wf
 	}
 
 	r := *runner
-	r.TaskID, r.AttemptID = taskID, attemptID
+	r.TaskID, r.AttemptID, r.KeepContext = taskID, attemptID, true
 	result, err := r.RunWorkflowDef(ctx, projectDir, wf, domain.GenerateRunID(SlotClaimTask, attemptID))
 	if err != nil {
 		return nil, fmt.Errorf("claim-task: %w", err)
