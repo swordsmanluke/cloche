@@ -93,3 +93,42 @@ gRPC port is the same one runs use; narrowing what a DRA may call on it is separ
 refused and never dialed). `internal/adapters/docker` tests the Dockerfile has no build
 tools, and, when Docker and the image are available, that the built image lacks
 `go`/`gcc`/`make` and that writes to the project fail while `notes.md` is writable.
+
+## Daemon access (the wake-up credential)
+
+A DRA container reaches the daemon only through its **DRA API** (`/api/dra/...`
+on the dashboard listener), with a credential the daemon mints for each wake-up
+(`CLOCHE_DRA_TOKEN`, with `CLOCHE_DRA_URL` and `CLOCHE_DRA_NAME`). The credential
+names the wake-up's run, the project and the DRA, and stops working the moment
+that run leaves an active state (finished, failed, cancelled or parked). It is
+not the dashboard token, a project signal token or the run's `/mcp` token, and
+none of those accept it. Rulings: CLOCHE-A118, A119, A128.
+
+A wake-up workflow names its DRA with `container { dra = "<name>" }`; the
+container runtime then injects the three variables above. Containers that do not
+set `dra` get none of them.
+
+A DRA may: list its project's tasks and runs, read a run's status and step
+output (runs of its own project only), create a task, and update or close a task.
+
+- A created task **always carries the DRA's domain label** (the DRA's name).
+- Update and close are **refused for a task that lacks that label** (the daemon
+  reads the task's labels through the tracker's `update-task` phase, `action = get`).
+  `find` never reveals another domain's task. A DRA cannot remove its own
+  domain label.
+- Everything else is refused: stop, delete, resume, shutdown, loop control,
+  project purge, signal tokens, another project.
+
+Inside the container `cloche tasks [create|update|find|close]`, `cloche list`,
+`cloche status <run>` and `cloche logs <run> --step <s>` use the credential;
+other commands are refused.
+
+**Open question (needs a ruling; not guessed):** does a DRA-created task get the
+`ready` label by itself? `ready` hands a task to the loop, which spends budget.
+Until decided, a DRA **cannot** set `ready` (on create or update); a person
+promotes the task.
+
+**Known gap:** the daemon's gRPC port is unauthenticated today (that is how
+`clo` and `cloche-agent` work), so refusing `stop`/`delete`/`shutdown` over gRPC
+needs gRPC authentication or the network allowlist in the DRA-container work.
+This change covers the HTTP API and the CLI.

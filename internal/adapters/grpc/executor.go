@@ -1124,6 +1124,9 @@ func (d *DaemonExecutor) executeContainerStep(ctx context.Context, step *domain.
 	if err := docker.ApplyProfile(&cfg, wf.Name, wf.Config); err != nil {
 		return domain.StepResult{}, fmt.Errorf("container step %q: %w", step.Name, err)
 	}
+	// A DRA wake-up workflow names its DRA via `container { dra = "<name>" }`;
+	// the runtime then mints the per-run DRA credential for the container.
+	cfg.DRA = wf.Config["container.dra"]
 	sel, selErr := d.attemptRepoSelection(ctx)
 	if selErr != nil {
 		return domain.StepResult{}, fmt.Errorf("container step %q: %w", step.Name, selErr)

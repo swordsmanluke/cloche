@@ -193,7 +193,7 @@ func RunTrackerPhase(ctx context.Context, runner *Runner, projectDir, slot strin
 		return nil, err
 	}
 	out := map[string]string{}
-	for _, k := range []string{"new_task_id", "found_task_id", "task_found"} {
+	for _, k := range []string{"new_task_id", "found_task_id", "task_found", "task_labels", "task_status"} {
 		if v, ok := get(k); ok {
 			out[k] = v
 		}

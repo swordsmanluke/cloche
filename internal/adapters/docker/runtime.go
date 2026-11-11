@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/swordsmanluke/cloche/internal/config"
+	"github.com/swordsmanluke/cloche/internal/draauth"
 	"github.com/swordsmanluke/cloche/internal/mcpauth"
 	"github.com/swordsmanluke/cloche/internal/ports"
 )
@@ -55,6 +56,31 @@ func mcpEnvArgs(mcpSecret []byte, httpAddr, runID string) []string {
 	return []string{
 		"-e", "CLOCHE_MCP_URL=" + mcpURL,
 		"-e", "CLOCHE_MCP_TOKEN=" + mcpauth.Token(mcpSecret, runID),
+	}
+}
+
+// draEnvArgs returns the docker create flags giving a DRA wake-up container
+// its credential for the daemon's DRA API: CLOCHE_DRA_URL (the API base),
+// CLOCHE_DRA_TOKEN (valid only while the run is active) and CLOCHE_DRA_NAME.
+// It returns nil for any other container.
+func draEnvArgs(secret []byte, httpAddr string, cfg ports.ContainerConfig) []string {
+	if cfg.DRA == "" || cfg.RunID == "" || len(secret) == 0 || httpAddr == "" {
+		return nil
+	}
+	project := cfg.HostProjectDir
+	if project == "" {
+		project = cfg.ProjectDir
+	}
+	tok := draauth.Token(secret, draauth.Claims{RunID: cfg.RunID, Project: project, DRA: cfg.DRA})
+	if tok == "" {
+		return nil
+	}
+	addr := strings.Replace(httpAddr, "127.0.0.1:", "host.docker.internal:", 1)
+	addr = strings.Replace(addr, "0.0.0.0:", "host.docker.internal:", 1)
+	return []string{
+		"-e", "CLOCHE_DRA_URL=http://" + addr,
+		"-e", "CLOCHE_DRA_TOKEN=" + tok,
+		"-e", "CLOCHE_DRA_NAME=" + cfg.DRA,
 	}
 }
 
@@ -152,6 +178,7 @@ func (r *Runtime) start(ctx context.Context, cfg ports.ContainerConfig) (string,
 	// adapter can wire --mcp-config. Only available when both the web
 	// dashboard (CLOCHE_HTTP) and the help channel (r.mcpSecret) are enabled.
 	args = append(args, mcpEnvArgs(r.mcpSecret, os.Getenv("CLOCHE_HTTP"), cfg.RunID)...)
+	args = append(args, draEnvArgs(r.mcpSecret, os.Getenv("CLOCHE_HTTP"), cfg)...)
 
 	// Claude auth files are copied (not mounted) after docker create so each
 	// container gets its own copy — avoids concurrent write conflicts.

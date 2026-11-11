@@ -314,6 +314,7 @@ type Handler struct {
 	signalTokens      *signal.TokenStore      // per-project bearer tokens for POST .../signals; see WithSignalIntake
 	signalDispatcher  *signal.Dispatcher      // stores signals and runs handle-notification
 	mcpSecret         []byte                  // enables /mcp when non-empty; see WithHelpMCP
+	draSecret         []byte                  // enables /api/dra/... when non-empty; see WithDRAAccess
 	askHelpFn         AskHelpFunc             // handles ask_user tool calls on /mcp
 	history           *promptrev.HistoryCache // per-file git history cache for the ledger view
 	pages             map[string]*template.Template
@@ -421,6 +422,7 @@ func NewHandler(store ports.RunStore, captures ports.CaptureStore, opts ...Handl
 	h.route("GET /tasks/{taskID}", h.handleLegacyTaskRedirect)
 	h.route("GET /failed-tasks", h.handleLegacyFailedTasksRedirect)
 	h.route("POST /mcp", h.handleMCP)
+	h.registerDRARoutes()
 	h.routeHandler("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
 
 	return h, nil

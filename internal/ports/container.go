@@ -45,6 +45,10 @@ type ContainerConfig struct {
 	// Locked, when set, runs the container in the locked-down profile used
 	// by DRAs: read-only project, narrow enforced network.
 	Locked *LockedConfig
+	// DRA, when set, names the DRA this container is a wake-up of. The runtime
+	// then gives the container a credential for the daemon's DRA API (see
+	// internal/draauth), tied to this run, the project and the DRA's name.
+	DRA string
 }
 
 // LockedConfig is the locked-down container profile (autonomous-loop design,

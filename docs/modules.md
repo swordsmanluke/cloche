@@ -103,7 +103,7 @@ The daemon's orchestration loop resolves these phases through `project.cloche`:
 | `close-task` | `task_id` | — | Also the dashboard's "Close in tracker". |
 | `release-task` | `task_id` | — | Also the dashboard's release action. |
 | `create-task` | `title` | `new_task_id` | Optional `kv:` inputs: `body`, `priority` (0–4, 0 most urgent), `labels` (comma-separated; priority `0` adds the `urgent` label), `signal_source`, `signal_key`. A source+key is stored on the task (a `signal:<source>:<hash>` label) so `update-task` can find it again. Writes the new task's id as `new_task_id`. |
-| `update-task` | `action` | `task_found` | `action = update`: needs `target_task_id`; optional `comment`, `priority`, `add_labels`, `remove_labels`. `action = find`: needs `signal_source` and `signal_key`; writes `task_found` (`true`/`false`) and, when found, the open task's `found_task_id`, so a repeat signal attaches instead of creating. |
+| `update-task` | `action` | `task_found` | `action = update`: needs `target_task_id`; optional `comment`, `priority`, `add_labels`, `remove_labels`. `action = find`: needs `signal_source` and `signal_key`; writes `task_found` (`true`/`false`) and, when found, the open task's `found_task_id`, so a repeat signal attaches instead of creating. `action = get`: needs `target_task_id`; read-only; writes `task_found` and, when found, `task_labels` (comma-separated) and `task_status` (the daemon uses it to check a DRA's domain label). |
 
 `create-task` and `update-task` are for callers outside the loop (signal handling, DRAs).
 (These key names avoid `task_id`, which the host executor seeds with the phase's own name.) They are run on demand through the daemon: `cloche tasks create`, `cloche tasks update`

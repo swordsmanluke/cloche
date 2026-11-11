@@ -307,6 +307,7 @@ func main() {
 		}
 		if mcpSecret != nil {
 			webOpts = append(webOpts, web.WithHelpMCP(mcpSecret, srv.AskHelpForRun))
+			webOpts = append(webOpts, web.WithDRAAccess(mcpSecret))
 		}
 		webHandler, err := web.NewHandler(store, store, webOpts...)
 		if err != nil {

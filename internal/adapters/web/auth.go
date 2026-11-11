@@ -27,6 +27,13 @@ var tokenExemptPatterns = map[string]bool{
 
 // ownCredentialPatterns skip the Origin check as well: they are authenticated
 // by a bearer token a cross-site page cannot attach, never by the cookie.
+func init() {
+	// The DRA API routes carry their own credential (see dra_api.go).
+	for _, p := range draRoutePatterns {
+		tokenExemptPatterns[p] = true
+	}
+}
+
 func ownCredential(pattern string) bool {
 	return tokenExemptPatterns[pattern] && !strings.HasSuffix(pattern, "/login")
 }

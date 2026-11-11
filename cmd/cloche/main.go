@@ -60,6 +60,17 @@ func main() {
 		return
 	}
 
+	// Inside a DRA wake-up container only the DRA API is reachable.
+	if c := draModeClient(); c != nil {
+		if handled, err := runDRACommand(c, os.Args[1:]); handled {
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		}
+	}
+
 	// Commands that don't need a daemon connection
 	switch os.Args[1] {
 	case "version":

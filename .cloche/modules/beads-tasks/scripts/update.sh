@@ -6,6 +6,9 @@
 #   action=find    needs signal_source and signal_key; sets task_found=true
 #                  and found_task_id when an open task carries them, else
 #                  task_found=false (still success).
+#   action=get     needs target_task_id; sets task_found=true plus task_labels
+#                  (comma-separated) and task_status when the task exists, else
+#                  task_found=false (still success). Read-only.
 set -euo pipefail
 
 opt() { cloche get "$1" 2>/dev/null || true; }
@@ -54,8 +57,23 @@ case "$action" in
       echo "No open task for $source_ / $key"
     fi
     ;;
+  get)
+    task_id="$(opt target_task_id)"
+    if [ -z "$task_id" ]; then
+      echo "error: target_task_id not set" >&2
+      exit 1
+    fi
+    json=$(bd show --json -- "$task_id" 2>/dev/null | jq -c 'if type == "array" then .[0] else . end // empty') || json=""
+    if [ -n "$json" ]; then
+      cloche set task_labels "$(printf %s "$json" | jq -r '(.labels // []) | join(",")')"
+      cloche set task_status "$(printf %s "$json" | jq -r '.status // ""')"
+      cloche set task_found true
+    else
+      cloche set task_found false
+    fi
+    ;;
   *)
-    echo "error: action must be update or find, got \"$action\"" >&2
+    echo "error: action must be update, find or get, got \"$action\"" >&2
     exit 1
     ;;
 esac
