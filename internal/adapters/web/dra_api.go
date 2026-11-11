@@ -45,19 +45,6 @@ func WithDRAAccess(secret []byte) HandlerOption {
 	return func(h *Handler) { h.draSecret = secret }
 }
 
-// WithDRAActionHook registers fn to be told, after the DRA API creates,
-// updates or closes a task for a DRA, which task it was. The daemon uses it
-// so the events the DRA's own actions cause do not wake it again.
-func WithDRAActionHook(fn func(project, dra, taskID string)) HandlerOption {
-	return func(h *Handler) { h.draAction = fn }
-}
-
-func (h *Handler) draActed(c draauth.Claims, taskID string) {
-	if h.draAction != nil && taskID != "" {
-		h.draAction(c.Project, c.DRA, taskID)
-	}
-}
-
 func (h *Handler) registerDRARoutes() {
 	handlers := map[string]http.HandlerFunc{
 		"GET /api/dra/tasks":                         h.draTasks,
@@ -249,7 +236,6 @@ func (h *Handler) draCreateTask(w http.ResponseWriter, r *http.Request) {
 		draError(w, http.StatusInternalServerError, fmt.Sprintf("create-task failed: %v", err))
 		return
 	}
-	h.draActed(c, out["new_task_id"])
 	writeJSONStatus(w, http.StatusOK, apiTrackerPhaseResponse{Outputs: out})
 }
 
@@ -321,7 +307,6 @@ func (h *Handler) draUpdateTask(w http.ResponseWriter, r *http.Request) {
 		draError(w, http.StatusInternalServerError, fmt.Sprintf("update-task failed: %v", err))
 		return
 	}
-	h.draActed(c, id)
 	writeJSONStatus(w, http.StatusOK, apiTrackerPhaseResponse{Outputs: out})
 }
 
@@ -359,7 +344,6 @@ func (h *Handler) draCloseTask(w http.ResponseWriter, r *http.Request) {
 	if !h.draCheckOwner(w, r, runner, c, body.TaskID) {
 		return
 	}
-	h.draActed(c, body.TaskID) // before closing: the close itself must not wake the DRA
 	if err := h.taskProvider.CloseTask(r.Context(), c.Project, body.TaskID); err != nil {
 		draError(w, http.StatusInternalServerError, fmt.Sprintf("failed to close task: %v", err))
 		return

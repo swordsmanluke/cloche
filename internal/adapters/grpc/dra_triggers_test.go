@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -199,19 +198,15 @@ func TestDRATrigger_BatchedWhileBudgetClosed(t *testing.T) {
 	assert.Contains(t, msgs[0], "t-2")
 }
 
-// A DRA's own actions on a task must not wake it again.
+// A DRA's own signal does not wake it, but the result of a task it created
+// does: nobody else would tell it the work failed.
 func TestDRATrigger_NoSelfWake(t *testing.T) {
 	srv, root := wakeServer(t)
-	srv.MarkDRAOwnAction(root, "auth", "t-own")
-	srv.onTaskResult(host.TaskResult{ProjectDir: root, TaskID: "t-own", Labels: []string{"auth"}, State: domain.RunStateFailed})
-	srv.onTaskResult(host.TaskResult{ProjectDir: root, TaskID: "t-own", Labels: []string{"auth"}, State: domain.RunStateSucceeded})
 	srv.notifySignalDRA(root, signal.Signal{Source: "dra:auth", Key: "k", Title: "mine", Domain: "auth"}, nil)
 	settle(t, srv)
 	assert.Empty(t, wakeMessages(t, root))
 
-	// Someone else's task in the same domain still wakes it.
-	srv.onTaskResult(host.TaskResult{ProjectDir: root, TaskID: "t-other", Labels: []string{"auth"}, State: domain.RunStateFailed})
+	srv.onTaskResult(host.TaskResult{ProjectDir: root, TaskID: "t-own", Labels: []string{"auth"}, State: domain.RunStateFailed})
 	settle(t, srv)
 	require.Len(t, wakeMessages(t, root), 1)
-	assert.False(t, strings.Contains(wakeMessages(t, root)[0], "t-own"))
 }

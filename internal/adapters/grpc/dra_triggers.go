@@ -57,13 +57,6 @@ func (s *ClocheServer) draInbox(projectDir string) *dra.Inbox {
 	return t.inbox
 }
 
-// MarkDRAOwnAction records that DRA name itself acted on a task, so the
-// events that action causes do not wake it again.
-func (s *ClocheServer) MarkDRAOwnAction(projectDir, name, taskID string) {
-	projectDir = normalizeProjectDir(projectDir)
-	s.draInbox(projectDir).MarkOwn(projectDir, name, taskID)
-}
-
 // notifyDRA queues ev for DRA name and tries to deliver. It returns whether
 // the event was queued (false for a duplicate ruling/heartbeat).
 func (s *ClocheServer) notifyDRA(projectDir, name string, ev dra.Event) bool {
@@ -148,9 +141,6 @@ func (s *ClocheServer) onTaskResult(r host.TaskResult) {
 	}
 	if len(ignored) > 0 {
 		log.Printf("dra triggers: task %s carries several DRA labels; using %q, ignoring %s", r.TaskID, owner, strings.Join(ignored, ", "))
-	}
-	if s.draInbox(projectDir).IsOwn(projectDir, owner, r.TaskID) {
-		return // the DRA's own action: no wake-up loop
 	}
 	text := "task " + verb
 	if r.Title != "" {

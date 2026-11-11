@@ -82,21 +82,6 @@ func TestInbox_RepeatedRulingAndHeartbeatNotDoubled(t *testing.T) {
 	}
 }
 
-func TestInbox_OwnActionExpires(t *testing.T) {
-	root := t.TempDir()
-	now := time.Now()
-	in := NewInbox()
-	in.SetClock(func() time.Time { return now })
-	in.MarkOwn(root, "auth", "t1")
-	if !in.IsOwn(root, "auth", "t1") || in.IsOwn(root, "auth", "t2") || in.IsOwn(root, "engine", "t1") {
-		t.Fatal("own marks are per DRA and task")
-	}
-	now = now.Add(OwnActionWindow + time.Second)
-	if in.IsOwn(root, "auth", "t1") {
-		t.Fatal("mark expires")
-	}
-}
-
 func TestInbox_PersistsAcrossRestart(t *testing.T) {
 	root := t.TempDir()
 	in := NewInbox()

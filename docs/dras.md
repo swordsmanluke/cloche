@@ -232,7 +232,6 @@ daemon delivers the whole inbox as **one** wake-up message, in order:
 
 ### No self-wake
 
-When the DRA creates, updates or closes a task through its API the daemon remembers
-the task for 10 minutes. Result events for that task, and signals whose source is
-`dra:<name>`, are swallowed instead of waking the DRA that caused them. Tasks other
-people or runs change in the same domain still wake it.
+Signals whose source is `dra:<name>` do not wake the DRA that sent them. Task results
+always wake the owner, including results of tasks the DRA itself created: a run
+ending is never caused directly by the DRA's own API call, so there is no loop to break.

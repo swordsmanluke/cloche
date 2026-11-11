@@ -47,10 +47,6 @@ const (
 // DefaultHeartbeat is how often a DRA is woken when nothing else happens.
 const DefaultHeartbeat = 4 * time.Hour
 
-// OwnActionWindow is how long after a DRA creates, updates or closes a task
-// that task's events are treated as caused by the DRA itself and swallowed.
-const OwnActionWindow = 10 * time.Minute
-
 // Event is one thing that happened that a DRA should hear about.
 type Event struct {
 	Kind string    `json:"kind"`
@@ -139,14 +135,13 @@ func (e Event) line() string {
 // not drop events.
 type Inbox struct {
 	mu      sync.Mutex
-	pending map[string][]Event   // key(project, dra) -> events, oldest first
-	own     map[string]time.Time // key(project, dra, task) -> when the DRA acted on it
+	pending map[string][]Event // key(project, dra) -> events, oldest first
 	now     func() time.Time
 }
 
 // NewInbox returns an empty inbox.
 func NewInbox() *Inbox {
-	return &Inbox{pending: map[string][]Event{}, own: map[string]time.Time{}, now: time.Now}
+	return &Inbox{pending: map[string][]Event{}, now: time.Now}
 }
 
 // SetClock overrides the clock (tests).
@@ -213,34 +208,6 @@ func (in *Inbox) Pending(projectDir, name string) int {
 	in.mu.Lock()
 	defer in.mu.Unlock()
 	return len(in.pending[inboxKey(projectDir, name)])
-}
-
-// MarkOwn records that the DRA itself just acted on a task (created,
-// updated or closed it), so the events that action causes do not wake it
-// again.
-func (in *Inbox) MarkOwn(projectDir, name, taskID string) {
-	if taskID == "" {
-		return
-	}
-	in.mu.Lock()
-	defer in.mu.Unlock()
-	in.own[inboxKey(projectDir, name)+"\x00"+taskID] = in.now()
-}
-
-// IsOwn reports whether the DRA acted on the task within OwnActionWindow.
-func (in *Inbox) IsOwn(projectDir, name, taskID string) bool {
-	in.mu.Lock()
-	defer in.mu.Unlock()
-	k := inboxKey(projectDir, name) + "\x00" + taskID
-	at, ok := in.own[k]
-	if !ok {
-		return false
-	}
-	if in.now().Sub(at) > OwnActionWindow {
-		delete(in.own, k)
-		return false
-	}
-	return true
 }
 
 // Load restores the persisted events of a project.
