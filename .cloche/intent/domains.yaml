@@ -133,3 +133,4 @@ domains:
         - internal/dra/**
         - docs/dras.md
         - .cloche/dras/**
+        - internal/draauth/**
