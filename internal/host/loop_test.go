@@ -1828,3 +1828,38 @@ func TestDescribeFailure_NamesTheRepoProblem(t *testing.T) {
 	without := &Runner{Store: repoErrorStore{fakeStore: &fakeStore{}}}
 	assert.NotContains(t, without.describeFailure(ctx, run, "r1"), "unknown repo")
 }
+
+func TestPhaseLoop_LaunchGateHoldsAndResumes(t *testing.T) {
+	old := gateRecheckInterval
+	gateRecheckInterval = 20 * time.Millisecond
+	defer func() { gateRecheckInterval = old }()
+
+	store := &fakeStore{runs: map[string]*domain.Run{}}
+	var mainCalls atomic.Int32
+	listTasksFn := func(ctx context.Context, projectDir string) ([]Task, error) {
+		return []Task{{ID: "task-1", Status: "open"}}, nil
+	}
+	mainFn := func(ctx context.Context, projectDir, taskID, _ string, attemptID string) (*RunResult, error) {
+		mainCalls.Add(1)
+		return &RunResult{RunID: "run-1", State: domain.RunStateSucceeded}, nil
+	}
+	loop := NewPhaseLoop(LoopConfig{
+		ProjectDir:    "/tmp/test-project",
+		MaxConcurrent: 1,
+		DedupTimeout:  2 * time.Second,
+	}, store, listTasksFn, mainFn)
+
+	var blocked atomic.Bool
+	blocked.Store(true)
+	loop.SetLaunchGate(blocked.Load)
+
+	loop.Start()
+	defer loop.Stop()
+
+	time.Sleep(200 * time.Millisecond)
+	assert.Equal(t, int32(0), mainCalls.Load(), "gate closed: nothing may launch")
+
+	blocked.Store(false)
+	assert.Eventually(t, func() bool { return mainCalls.Load() > 0 }, 3*time.Second, 10*time.Millisecond,
+		"launching resumes on its own once the gate opens")
+}

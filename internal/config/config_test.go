@@ -438,3 +438,28 @@ func TestUndecodedKeys(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, cfg.Intent.ScanAfterTasks, "misplaced key must not have taken effect")
 }
+
+func TestLoadGlobalBudget(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config")
+	os.WriteFile(configPath, []byte(`
+[budget]
+usage_percent_per_day = 12.5
+grace = "45m"
+emergency_overflow = true
+`), 0644)
+
+	cfg, err := LoadGlobalFrom(configPath)
+	require.NoError(t, err)
+	assert.Equal(t, 12.5, cfg.Budget.UsagePercentPerDay)
+	assert.Equal(t, "45m", cfg.Budget.Grace)
+	assert.True(t, cfg.Budget.EmergencyOverflow)
+}
+
+func TestBudgetDefaults(t *testing.T) {
+	cfg, err := Load(t.TempDir())
+	require.NoError(t, err)
+	assert.Equal(t, 0.0, cfg.Budget.UsagePercentPerDay, "no cap unless configured")
+	assert.Equal(t, "30m", cfg.Budget.Grace)
+	assert.False(t, cfg.Budget.EmergencyOverflow)
+}

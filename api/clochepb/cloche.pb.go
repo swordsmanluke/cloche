@@ -134,10 +134,13 @@ func (x *RunWorkflowRequest) GetRepos() []string {
 }
 
 type RunWorkflowResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
-	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	AttemptId     string                 `protobuf:"bytes,3,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	RunId     string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	TaskId    string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	AttemptId string                 `protobuf:"bytes,3,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	// budget_warning is set when the run was started by hand while the daily
+	// usage cap is exceeded (a hand-started run is never blocked, only warned).
+	BudgetWarning string `protobuf:"bytes,4,opt,name=budget_warning,json=budgetWarning,proto3" json:"budget_warning,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -189,6 +192,13 @@ func (x *RunWorkflowResponse) GetTaskId() string {
 func (x *RunWorkflowResponse) GetAttemptId() string {
 	if x != nil {
 		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *RunWorkflowResponse) GetBudgetWarning() string {
+	if x != nil {
+		return x.BudgetWarning
 	}
 	return ""
 }
@@ -6414,6 +6424,150 @@ func (*ReplyThreadResponse) Descriptor() ([]byte, []int) {
 	return file_cloche_proto_rawDescGZIP(), []int{95}
 }
 
+type GetBudgetRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBudgetRequest) Reset() {
+	*x = GetBudgetRequest{}
+	mi := &file_cloche_proto_msgTypes[96]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBudgetRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBudgetRequest) ProtoMessage() {}
+
+func (x *GetBudgetRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[96]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBudgetRequest.ProtoReflect.Descriptor instead.
+func (*GetBudgetRequest) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{96}
+}
+
+type GetBudgetResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Enabled       bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`                               // false when no [budget] cap is configured
+	CapPercent    float64                `protobuf:"fixed64,2,opt,name=cap_percent,json=capPercent,proto3" json:"cap_percent,omitempty"`      // usage_percent_per_day
+	UsedPercent   float64                `protobuf:"fixed64,3,opt,name=used_percent,json=usedPercent,proto3" json:"used_percent,omitempty"`   // share of the weekly allowance used today
+	Over          bool                   `protobuf:"varint,4,opt,name=over,proto3" json:"over,omitempty"`                                     // cap reached: launches are paused
+	ClearsAt      string                 `protobuf:"bytes,5,opt,name=clears_at,json=clearsAt,proto3" json:"clears_at,omitempty"`              // RFC3339: when the day's window clears
+	GraceEndsAt   string                 `protobuf:"bytes,6,opt,name=grace_ends_at,json=graceEndsAt,proto3" json:"grace_ends_at,omitempty"`   // RFC3339: when in-flight runs are parked (empty unless over)
+	GraceExpired  bool                   `protobuf:"varint,7,opt,name=grace_expired,json=graceExpired,proto3" json:"grace_expired,omitempty"` // in-flight runs have been parked
+	Description   string                 `protobuf:"bytes,8,opt,name=description,proto3" json:"description,omitempty"`                        // the one-line "Budget:" text
+	ReadError     string                 `protobuf:"bytes,9,opt,name=read_error,json=readError,proto3" json:"read_error,omitempty"`           // last failure reading usage, if any
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBudgetResponse) Reset() {
+	*x = GetBudgetResponse{}
+	mi := &file_cloche_proto_msgTypes[97]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBudgetResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBudgetResponse) ProtoMessage() {}
+
+func (x *GetBudgetResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cloche_proto_msgTypes[97]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBudgetResponse.ProtoReflect.Descriptor instead.
+func (*GetBudgetResponse) Descriptor() ([]byte, []int) {
+	return file_cloche_proto_rawDescGZIP(), []int{97}
+}
+
+func (x *GetBudgetResponse) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *GetBudgetResponse) GetCapPercent() float64 {
+	if x != nil {
+		return x.CapPercent
+	}
+	return 0
+}
+
+func (x *GetBudgetResponse) GetUsedPercent() float64 {
+	if x != nil {
+		return x.UsedPercent
+	}
+	return 0
+}
+
+func (x *GetBudgetResponse) GetOver() bool {
+	if x != nil {
+		return x.Over
+	}
+	return false
+}
+
+func (x *GetBudgetResponse) GetClearsAt() string {
+	if x != nil {
+		return x.ClearsAt
+	}
+	return ""
+}
+
+func (x *GetBudgetResponse) GetGraceEndsAt() string {
+	if x != nil {
+		return x.GraceEndsAt
+	}
+	return ""
+}
+
+func (x *GetBudgetResponse) GetGraceExpired() bool {
+	if x != nil {
+		return x.GraceExpired
+	}
+	return false
+}
+
+func (x *GetBudgetResponse) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *GetBudgetResponse) GetReadError() string {
+	if x != nil {
+		return x.ReadError
+	}
+	return ""
+}
+
 var File_cloche_proto protoreflect.FileDescriptor
 
 const file_cloche_proto_rawDesc = "" +
@@ -6432,12 +6586,13 @@ const file_cloche_proto_rawDesc = "" +
 	"\x05repos\x18\t \x03(\tR\x05repos\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"d\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8b\x01\n" +
 	"\x13RunWorkflowResponse\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
-	"attempt_id\x18\x03 \x01(\tR\tattemptId\"9\n" +
+	"attempt_id\x18\x03 \x01(\tR\tattemptId\x12%\n" +
+	"\x0ebudget_warning\x18\x04 \x01(\tR\rbudgetWarning\"9\n" +
 	"\x10GetStatusRequest\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\"\xbe\x05\n" +
@@ -6941,7 +7096,20 @@ const file_cloche_proto_rawDesc = "" +
 	"\x12ReplyThreadRequest\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x12\n" +
 	"\x04body\x18\x02 \x01(\tR\x04body\"\x15\n" +
-	"\x13ReplyThreadResponse2\xf0\x13\n" +
+	"\x13ReplyThreadResponse\"\x12\n" +
+	"\x10GetBudgetRequest\"\xac\x02\n" +
+	"\x11GetBudgetResponse\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x1f\n" +
+	"\vcap_percent\x18\x02 \x01(\x01R\n" +
+	"capPercent\x12!\n" +
+	"\fused_percent\x18\x03 \x01(\x01R\vusedPercent\x12\x12\n" +
+	"\x04over\x18\x04 \x01(\bR\x04over\x12\x1b\n" +
+	"\tclears_at\x18\x05 \x01(\tR\bclearsAt\x12\"\n" +
+	"\rgrace_ends_at\x18\x06 \x01(\tR\vgraceEndsAt\x12#\n" +
+	"\rgrace_expired\x18\a \x01(\bR\fgraceExpired\x12 \n" +
+	"\vdescription\x18\b \x01(\tR\vdescription\x12\x1d\n" +
+	"\n" +
+	"read_error\x18\t \x01(\tR\treadError2\xb8\x14\n" +
 	"\rClocheService\x12L\n" +
 	"\vRunWorkflow\x12\x1d.cloche.v1.RunWorkflowRequest\x1a\x1e.cloche.v1.RunWorkflowResponse\x12F\n" +
 	"\tGetStatus\x12\x1b.cloche.v1.GetStatusRequest\x1a\x1c.cloche.v1.GetStatusResponse\x12A\n" +
@@ -6962,7 +7130,8 @@ const file_cloche_proto_rawDesc = "" +
 	"\vDisableLoop\x12\x1d.cloche.v1.DisableLoopRequest\x1a\x1e.cloche.v1.DisableLoopResponse\x12I\n" +
 	"\n" +
 	"ResumeLoop\x12\x1c.cloche.v1.ResumeLoopRequest\x1a\x1d.cloche.v1.ResumeLoopResponse\x12L\n" +
-	"\vQuiesceRuns\x12\x1d.cloche.v1.QuiesceRunsRequest\x1a\x1e.cloche.v1.QuiesceRunsResponse\x12U\n" +
+	"\vQuiesceRuns\x12\x1d.cloche.v1.QuiesceRunsRequest\x1a\x1e.cloche.v1.QuiesceRunsResponse\x12F\n" +
+	"\tGetBudget\x12\x1b.cloche.v1.GetBudgetRequest\x1a\x1c.cloche.v1.GetBudgetResponse\x12U\n" +
 	"\x0eGetProjectInfo\x12 .cloche.v1.GetProjectInfoRequest\x1a!.cloche.v1.GetProjectInfoResponse\x12O\n" +
 	"\fPurgeProject\x12\x1e.cloche.v1.PurgeProjectRequest\x1a\x1f.cloche.v1.PurgeProjectResponse\x12O\n" +
 	"\fGetAttention\x12\x1e.cloche.v1.GetAttentionRequest\x1a\x1f.cloche.v1.GetAttentionResponse\x12[\n" +
@@ -6995,7 +7164,7 @@ func file_cloche_proto_rawDescGZIP() []byte {
 	return file_cloche_proto_rawDescData
 }
 
-var file_cloche_proto_msgTypes = make([]protoimpl.MessageInfo, 99)
+var file_cloche_proto_msgTypes = make([]protoimpl.MessageInfo, 101)
 var file_cloche_proto_goTypes = []any{
 	(*RunWorkflowRequest)(nil),        // 0: cloche.v1.RunWorkflowRequest
 	(*RunWorkflowResponse)(nil),       // 1: cloche.v1.RunWorkflowResponse
@@ -7093,118 +7262,122 @@ var file_cloche_proto_goTypes = []any{
 	(*GetThreadResponse)(nil),         // 93: cloche.v1.GetThreadResponse
 	(*ReplyThreadRequest)(nil),        // 94: cloche.v1.ReplyThreadRequest
 	(*ReplyThreadResponse)(nil),       // 95: cloche.v1.ReplyThreadResponse
-	nil,                               // 96: cloche.v1.RunWorkflowRequest.EnvEntry
-	nil,                               // 97: cloche.v1.ExecuteStep.ConfigEntry
-	nil,                               // 98: cloche.v1.HostWorkflowRequest.EnvEntry
+	(*GetBudgetRequest)(nil),          // 96: cloche.v1.GetBudgetRequest
+	(*GetBudgetResponse)(nil),         // 97: cloche.v1.GetBudgetResponse
+	nil,                               // 98: cloche.v1.RunWorkflowRequest.EnvEntry
+	nil,                               // 99: cloche.v1.ExecuteStep.ConfigEntry
+	nil,                               // 100: cloche.v1.HostWorkflowRequest.EnvEntry
 }
 var file_cloche_proto_depIdxs = []int32{
-	96, // 0: cloche.v1.RunWorkflowRequest.env:type_name -> cloche.v1.RunWorkflowRequest.EnvEntry
-	4,  // 1: cloche.v1.GetStatusResponse.step_executions:type_name -> cloche.v1.StepExecutionStatus
-	17, // 2: cloche.v1.ListRunsResponse.runs:type_name -> cloche.v1.RunSummary
-	17, // 3: cloche.v1.GetProjectInfoResponse.active_runs:type_name -> cloche.v1.RunSummary
-	27, // 4: cloche.v1.GetProjectInfoResponse.repositories:type_name -> cloche.v1.Repository
-	32, // 5: cloche.v1.GetAttentionResponse.items:type_name -> cloche.v1.AttentionItem
-	35, // 6: cloche.v1.GetLoopOccupancyResponse.slots:type_name -> cloche.v1.OccupancySlot
-	36, // 7: cloche.v1.GetLoopOccupancyResponse.queued:type_name -> cloche.v1.QueuedItem
-	37, // 8: cloche.v1.GetLoopOccupancyResponse.polls:type_name -> cloche.v1.PollItem
-	40, // 9: cloche.v1.ListLoopOccupancyResponse.projects:type_name -> cloche.v1.ProjectOccupancySummary
-	45, // 10: cloche.v1.ListTasksResponse.tasks:type_name -> cloche.v1.TaskSummary
-	48, // 11: cloche.v1.GetTaskResponse.attempts:type_name -> cloche.v1.AttemptSummary
-	56, // 12: cloche.v1.GetUsageResponse.summaries:type_name -> cloche.v1.UsageSummary
-	59, // 13: cloche.v1.ConsoleInput.start:type_name -> cloche.v1.ConsoleStart
-	61, // 14: cloche.v1.ConsoleInput.resize:type_name -> cloche.v1.TerminalSize
-	60, // 15: cloche.v1.ConsoleOutput.started:type_name -> cloche.v1.ConsoleStarted
-	62, // 16: cloche.v1.ConsoleOutput.exited:type_name -> cloche.v1.ConsoleExited
-	71, // 17: cloche.v1.AgentMessage.ready:type_name -> cloche.v1.AgentReady
-	73, // 18: cloche.v1.AgentMessage.step_result:type_name -> cloche.v1.StepResult
-	74, // 19: cloche.v1.AgentMessage.step_log:type_name -> cloche.v1.StepLog
-	75, // 20: cloche.v1.AgentMessage.step_started:type_name -> cloche.v1.StepStarted
-	80, // 21: cloche.v1.AgentMessage.host_request:type_name -> cloche.v1.HostWorkflowRequest
-	76, // 22: cloche.v1.AgentMessage.step_input:type_name -> cloche.v1.StepInput
-	72, // 23: cloche.v1.DaemonMessage.execute_step:type_name -> cloche.v1.ExecuteStep
-	82, // 24: cloche.v1.DaemonMessage.step_cancelled:type_name -> cloche.v1.StepCancelled
-	81, // 25: cloche.v1.DaemonMessage.host_result:type_name -> cloche.v1.HostWorkflowResult
-	84, // 26: cloche.v1.DaemonMessage.shutdown:type_name -> cloche.v1.Shutdown
-	83, // 27: cloche.v1.DaemonMessage.park_step:type_name -> cloche.v1.ParkStep
-	97, // 28: cloche.v1.ExecuteStep.config:type_name -> cloche.v1.ExecuteStep.ConfigEntry
-	85, // 29: cloche.v1.StepResult.token_usage:type_name -> cloche.v1.TokenUsage
-	85, // 30: cloche.v1.StepLog.usage:type_name -> cloche.v1.TokenUsage
-	78, // 31: cloche.v1.GetStepInputsResponse.inputs:type_name -> cloche.v1.StepInputEntry
-	98, // 32: cloche.v1.HostWorkflowRequest.env:type_name -> cloche.v1.HostWorkflowRequest.EnvEntry
-	89, // 33: cloche.v1.ListThreadsResponse.threads:type_name -> cloche.v1.HelpThreadSummary
-	89, // 34: cloche.v1.GetThreadResponse.thread:type_name -> cloche.v1.HelpThreadSummary
-	92, // 35: cloche.v1.GetThreadResponse.messages:type_name -> cloche.v1.HelpMessageEntry
-	0,  // 36: cloche.v1.ClocheService.RunWorkflow:input_type -> cloche.v1.RunWorkflowRequest
-	2,  // 37: cloche.v1.ClocheService.GetStatus:input_type -> cloche.v1.GetStatusRequest
-	5,  // 38: cloche.v1.ClocheService.StreamLogs:input_type -> cloche.v1.StreamLogsRequest
-	7,  // 39: cloche.v1.ClocheService.StopRun:input_type -> cloche.v1.StopRunRequest
-	15, // 40: cloche.v1.ClocheService.ListRuns:input_type -> cloche.v1.ListRunsRequest
-	44, // 41: cloche.v1.ClocheService.ListTasks:input_type -> cloche.v1.ListTasksRequest
-	47, // 42: cloche.v1.ClocheService.GetTask:input_type -> cloche.v1.GetTaskRequest
-	50, // 43: cloche.v1.ClocheService.GetAttempt:input_type -> cloche.v1.GetAttemptRequest
-	9,  // 44: cloche.v1.ClocheService.Shutdown:input_type -> cloche.v1.ShutdownRequest
-	11, // 45: cloche.v1.ClocheService.DeleteContainer:input_type -> cloche.v1.DeleteContainerRequest
-	13, // 46: cloche.v1.ClocheService.ExtractRun:input_type -> cloche.v1.ExtractRunRequest
-	18, // 47: cloche.v1.ClocheService.EnableLoop:input_type -> cloche.v1.EnableLoopRequest
-	20, // 48: cloche.v1.ClocheService.DisableLoop:input_type -> cloche.v1.DisableLoopRequest
-	22, // 49: cloche.v1.ClocheService.ResumeLoop:input_type -> cloche.v1.ResumeLoopRequest
-	24, // 50: cloche.v1.ClocheService.QuiesceRuns:input_type -> cloche.v1.QuiesceRunsRequest
-	26, // 51: cloche.v1.ClocheService.GetProjectInfo:input_type -> cloche.v1.GetProjectInfoRequest
-	29, // 52: cloche.v1.ClocheService.PurgeProject:input_type -> cloche.v1.PurgeProjectRequest
-	31, // 53: cloche.v1.ClocheService.GetAttention:input_type -> cloche.v1.GetAttentionRequest
-	34, // 54: cloche.v1.ClocheService.GetLoopOccupancy:input_type -> cloche.v1.GetLoopOccupancyRequest
-	39, // 55: cloche.v1.ClocheService.ListLoopOccupancy:input_type -> cloche.v1.ListLoopOccupancyRequest
-	42, // 56: cloche.v1.ClocheService.GetVersion:input_type -> cloche.v1.GetVersionRequest
-	52, // 57: cloche.v1.ClocheService.Complete:input_type -> cloche.v1.CompleteRequest
-	54, // 58: cloche.v1.ClocheService.GetUsage:input_type -> cloche.v1.GetUsageRequest
-	57, // 59: cloche.v1.ClocheService.Console:input_type -> cloche.v1.ConsoleInput
-	63, // 60: cloche.v1.ClocheService.GetContextKey:input_type -> cloche.v1.GetContextKeyRequest
-	65, // 61: cloche.v1.ClocheService.SetContextKey:input_type -> cloche.v1.SetContextKeyRequest
-	67, // 62: cloche.v1.ClocheService.ListContextKeys:input_type -> cloche.v1.ListContextKeysRequest
-	77, // 63: cloche.v1.ClocheService.GetStepInputs:input_type -> cloche.v1.GetStepInputsRequest
-	69, // 64: cloche.v1.ClocheService.AgentSession:input_type -> cloche.v1.AgentMessage
-	86, // 65: cloche.v1.ClocheService.AskHelp:input_type -> cloche.v1.AskHelpRequest
-	88, // 66: cloche.v1.ClocheService.ListThreads:input_type -> cloche.v1.ListThreadsRequest
-	91, // 67: cloche.v1.ClocheService.GetThread:input_type -> cloche.v1.GetThreadRequest
-	94, // 68: cloche.v1.ClocheService.ReplyThread:input_type -> cloche.v1.ReplyThreadRequest
-	1,  // 69: cloche.v1.ClocheService.RunWorkflow:output_type -> cloche.v1.RunWorkflowResponse
-	3,  // 70: cloche.v1.ClocheService.GetStatus:output_type -> cloche.v1.GetStatusResponse
-	6,  // 71: cloche.v1.ClocheService.StreamLogs:output_type -> cloche.v1.LogEntry
-	8,  // 72: cloche.v1.ClocheService.StopRun:output_type -> cloche.v1.StopRunResponse
-	16, // 73: cloche.v1.ClocheService.ListRuns:output_type -> cloche.v1.ListRunsResponse
-	46, // 74: cloche.v1.ClocheService.ListTasks:output_type -> cloche.v1.ListTasksResponse
-	49, // 75: cloche.v1.ClocheService.GetTask:output_type -> cloche.v1.GetTaskResponse
-	51, // 76: cloche.v1.ClocheService.GetAttempt:output_type -> cloche.v1.GetAttemptResponse
-	10, // 77: cloche.v1.ClocheService.Shutdown:output_type -> cloche.v1.ShutdownResponse
-	12, // 78: cloche.v1.ClocheService.DeleteContainer:output_type -> cloche.v1.DeleteContainerResponse
-	14, // 79: cloche.v1.ClocheService.ExtractRun:output_type -> cloche.v1.ExtractRunResponse
-	19, // 80: cloche.v1.ClocheService.EnableLoop:output_type -> cloche.v1.EnableLoopResponse
-	21, // 81: cloche.v1.ClocheService.DisableLoop:output_type -> cloche.v1.DisableLoopResponse
-	23, // 82: cloche.v1.ClocheService.ResumeLoop:output_type -> cloche.v1.ResumeLoopResponse
-	25, // 83: cloche.v1.ClocheService.QuiesceRuns:output_type -> cloche.v1.QuiesceRunsResponse
-	28, // 84: cloche.v1.ClocheService.GetProjectInfo:output_type -> cloche.v1.GetProjectInfoResponse
-	30, // 85: cloche.v1.ClocheService.PurgeProject:output_type -> cloche.v1.PurgeProjectResponse
-	33, // 86: cloche.v1.ClocheService.GetAttention:output_type -> cloche.v1.GetAttentionResponse
-	38, // 87: cloche.v1.ClocheService.GetLoopOccupancy:output_type -> cloche.v1.GetLoopOccupancyResponse
-	41, // 88: cloche.v1.ClocheService.ListLoopOccupancy:output_type -> cloche.v1.ListLoopOccupancyResponse
-	43, // 89: cloche.v1.ClocheService.GetVersion:output_type -> cloche.v1.GetVersionResponse
-	53, // 90: cloche.v1.ClocheService.Complete:output_type -> cloche.v1.CompleteResponse
-	55, // 91: cloche.v1.ClocheService.GetUsage:output_type -> cloche.v1.GetUsageResponse
-	58, // 92: cloche.v1.ClocheService.Console:output_type -> cloche.v1.ConsoleOutput
-	64, // 93: cloche.v1.ClocheService.GetContextKey:output_type -> cloche.v1.GetContextKeyResponse
-	66, // 94: cloche.v1.ClocheService.SetContextKey:output_type -> cloche.v1.SetContextKeyResponse
-	68, // 95: cloche.v1.ClocheService.ListContextKeys:output_type -> cloche.v1.ListContextKeysResponse
-	79, // 96: cloche.v1.ClocheService.GetStepInputs:output_type -> cloche.v1.GetStepInputsResponse
-	70, // 97: cloche.v1.ClocheService.AgentSession:output_type -> cloche.v1.DaemonMessage
-	87, // 98: cloche.v1.ClocheService.AskHelp:output_type -> cloche.v1.AskHelpResponse
-	90, // 99: cloche.v1.ClocheService.ListThreads:output_type -> cloche.v1.ListThreadsResponse
-	93, // 100: cloche.v1.ClocheService.GetThread:output_type -> cloche.v1.GetThreadResponse
-	95, // 101: cloche.v1.ClocheService.ReplyThread:output_type -> cloche.v1.ReplyThreadResponse
-	69, // [69:102] is the sub-list for method output_type
-	36, // [36:69] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	98,  // 0: cloche.v1.RunWorkflowRequest.env:type_name -> cloche.v1.RunWorkflowRequest.EnvEntry
+	4,   // 1: cloche.v1.GetStatusResponse.step_executions:type_name -> cloche.v1.StepExecutionStatus
+	17,  // 2: cloche.v1.ListRunsResponse.runs:type_name -> cloche.v1.RunSummary
+	17,  // 3: cloche.v1.GetProjectInfoResponse.active_runs:type_name -> cloche.v1.RunSummary
+	27,  // 4: cloche.v1.GetProjectInfoResponse.repositories:type_name -> cloche.v1.Repository
+	32,  // 5: cloche.v1.GetAttentionResponse.items:type_name -> cloche.v1.AttentionItem
+	35,  // 6: cloche.v1.GetLoopOccupancyResponse.slots:type_name -> cloche.v1.OccupancySlot
+	36,  // 7: cloche.v1.GetLoopOccupancyResponse.queued:type_name -> cloche.v1.QueuedItem
+	37,  // 8: cloche.v1.GetLoopOccupancyResponse.polls:type_name -> cloche.v1.PollItem
+	40,  // 9: cloche.v1.ListLoopOccupancyResponse.projects:type_name -> cloche.v1.ProjectOccupancySummary
+	45,  // 10: cloche.v1.ListTasksResponse.tasks:type_name -> cloche.v1.TaskSummary
+	48,  // 11: cloche.v1.GetTaskResponse.attempts:type_name -> cloche.v1.AttemptSummary
+	56,  // 12: cloche.v1.GetUsageResponse.summaries:type_name -> cloche.v1.UsageSummary
+	59,  // 13: cloche.v1.ConsoleInput.start:type_name -> cloche.v1.ConsoleStart
+	61,  // 14: cloche.v1.ConsoleInput.resize:type_name -> cloche.v1.TerminalSize
+	60,  // 15: cloche.v1.ConsoleOutput.started:type_name -> cloche.v1.ConsoleStarted
+	62,  // 16: cloche.v1.ConsoleOutput.exited:type_name -> cloche.v1.ConsoleExited
+	71,  // 17: cloche.v1.AgentMessage.ready:type_name -> cloche.v1.AgentReady
+	73,  // 18: cloche.v1.AgentMessage.step_result:type_name -> cloche.v1.StepResult
+	74,  // 19: cloche.v1.AgentMessage.step_log:type_name -> cloche.v1.StepLog
+	75,  // 20: cloche.v1.AgentMessage.step_started:type_name -> cloche.v1.StepStarted
+	80,  // 21: cloche.v1.AgentMessage.host_request:type_name -> cloche.v1.HostWorkflowRequest
+	76,  // 22: cloche.v1.AgentMessage.step_input:type_name -> cloche.v1.StepInput
+	72,  // 23: cloche.v1.DaemonMessage.execute_step:type_name -> cloche.v1.ExecuteStep
+	82,  // 24: cloche.v1.DaemonMessage.step_cancelled:type_name -> cloche.v1.StepCancelled
+	81,  // 25: cloche.v1.DaemonMessage.host_result:type_name -> cloche.v1.HostWorkflowResult
+	84,  // 26: cloche.v1.DaemonMessage.shutdown:type_name -> cloche.v1.Shutdown
+	83,  // 27: cloche.v1.DaemonMessage.park_step:type_name -> cloche.v1.ParkStep
+	99,  // 28: cloche.v1.ExecuteStep.config:type_name -> cloche.v1.ExecuteStep.ConfigEntry
+	85,  // 29: cloche.v1.StepResult.token_usage:type_name -> cloche.v1.TokenUsage
+	85,  // 30: cloche.v1.StepLog.usage:type_name -> cloche.v1.TokenUsage
+	78,  // 31: cloche.v1.GetStepInputsResponse.inputs:type_name -> cloche.v1.StepInputEntry
+	100, // 32: cloche.v1.HostWorkflowRequest.env:type_name -> cloche.v1.HostWorkflowRequest.EnvEntry
+	89,  // 33: cloche.v1.ListThreadsResponse.threads:type_name -> cloche.v1.HelpThreadSummary
+	89,  // 34: cloche.v1.GetThreadResponse.thread:type_name -> cloche.v1.HelpThreadSummary
+	92,  // 35: cloche.v1.GetThreadResponse.messages:type_name -> cloche.v1.HelpMessageEntry
+	0,   // 36: cloche.v1.ClocheService.RunWorkflow:input_type -> cloche.v1.RunWorkflowRequest
+	2,   // 37: cloche.v1.ClocheService.GetStatus:input_type -> cloche.v1.GetStatusRequest
+	5,   // 38: cloche.v1.ClocheService.StreamLogs:input_type -> cloche.v1.StreamLogsRequest
+	7,   // 39: cloche.v1.ClocheService.StopRun:input_type -> cloche.v1.StopRunRequest
+	15,  // 40: cloche.v1.ClocheService.ListRuns:input_type -> cloche.v1.ListRunsRequest
+	44,  // 41: cloche.v1.ClocheService.ListTasks:input_type -> cloche.v1.ListTasksRequest
+	47,  // 42: cloche.v1.ClocheService.GetTask:input_type -> cloche.v1.GetTaskRequest
+	50,  // 43: cloche.v1.ClocheService.GetAttempt:input_type -> cloche.v1.GetAttemptRequest
+	9,   // 44: cloche.v1.ClocheService.Shutdown:input_type -> cloche.v1.ShutdownRequest
+	11,  // 45: cloche.v1.ClocheService.DeleteContainer:input_type -> cloche.v1.DeleteContainerRequest
+	13,  // 46: cloche.v1.ClocheService.ExtractRun:input_type -> cloche.v1.ExtractRunRequest
+	18,  // 47: cloche.v1.ClocheService.EnableLoop:input_type -> cloche.v1.EnableLoopRequest
+	20,  // 48: cloche.v1.ClocheService.DisableLoop:input_type -> cloche.v1.DisableLoopRequest
+	22,  // 49: cloche.v1.ClocheService.ResumeLoop:input_type -> cloche.v1.ResumeLoopRequest
+	24,  // 50: cloche.v1.ClocheService.QuiesceRuns:input_type -> cloche.v1.QuiesceRunsRequest
+	96,  // 51: cloche.v1.ClocheService.GetBudget:input_type -> cloche.v1.GetBudgetRequest
+	26,  // 52: cloche.v1.ClocheService.GetProjectInfo:input_type -> cloche.v1.GetProjectInfoRequest
+	29,  // 53: cloche.v1.ClocheService.PurgeProject:input_type -> cloche.v1.PurgeProjectRequest
+	31,  // 54: cloche.v1.ClocheService.GetAttention:input_type -> cloche.v1.GetAttentionRequest
+	34,  // 55: cloche.v1.ClocheService.GetLoopOccupancy:input_type -> cloche.v1.GetLoopOccupancyRequest
+	39,  // 56: cloche.v1.ClocheService.ListLoopOccupancy:input_type -> cloche.v1.ListLoopOccupancyRequest
+	42,  // 57: cloche.v1.ClocheService.GetVersion:input_type -> cloche.v1.GetVersionRequest
+	52,  // 58: cloche.v1.ClocheService.Complete:input_type -> cloche.v1.CompleteRequest
+	54,  // 59: cloche.v1.ClocheService.GetUsage:input_type -> cloche.v1.GetUsageRequest
+	57,  // 60: cloche.v1.ClocheService.Console:input_type -> cloche.v1.ConsoleInput
+	63,  // 61: cloche.v1.ClocheService.GetContextKey:input_type -> cloche.v1.GetContextKeyRequest
+	65,  // 62: cloche.v1.ClocheService.SetContextKey:input_type -> cloche.v1.SetContextKeyRequest
+	67,  // 63: cloche.v1.ClocheService.ListContextKeys:input_type -> cloche.v1.ListContextKeysRequest
+	77,  // 64: cloche.v1.ClocheService.GetStepInputs:input_type -> cloche.v1.GetStepInputsRequest
+	69,  // 65: cloche.v1.ClocheService.AgentSession:input_type -> cloche.v1.AgentMessage
+	86,  // 66: cloche.v1.ClocheService.AskHelp:input_type -> cloche.v1.AskHelpRequest
+	88,  // 67: cloche.v1.ClocheService.ListThreads:input_type -> cloche.v1.ListThreadsRequest
+	91,  // 68: cloche.v1.ClocheService.GetThread:input_type -> cloche.v1.GetThreadRequest
+	94,  // 69: cloche.v1.ClocheService.ReplyThread:input_type -> cloche.v1.ReplyThreadRequest
+	1,   // 70: cloche.v1.ClocheService.RunWorkflow:output_type -> cloche.v1.RunWorkflowResponse
+	3,   // 71: cloche.v1.ClocheService.GetStatus:output_type -> cloche.v1.GetStatusResponse
+	6,   // 72: cloche.v1.ClocheService.StreamLogs:output_type -> cloche.v1.LogEntry
+	8,   // 73: cloche.v1.ClocheService.StopRun:output_type -> cloche.v1.StopRunResponse
+	16,  // 74: cloche.v1.ClocheService.ListRuns:output_type -> cloche.v1.ListRunsResponse
+	46,  // 75: cloche.v1.ClocheService.ListTasks:output_type -> cloche.v1.ListTasksResponse
+	49,  // 76: cloche.v1.ClocheService.GetTask:output_type -> cloche.v1.GetTaskResponse
+	51,  // 77: cloche.v1.ClocheService.GetAttempt:output_type -> cloche.v1.GetAttemptResponse
+	10,  // 78: cloche.v1.ClocheService.Shutdown:output_type -> cloche.v1.ShutdownResponse
+	12,  // 79: cloche.v1.ClocheService.DeleteContainer:output_type -> cloche.v1.DeleteContainerResponse
+	14,  // 80: cloche.v1.ClocheService.ExtractRun:output_type -> cloche.v1.ExtractRunResponse
+	19,  // 81: cloche.v1.ClocheService.EnableLoop:output_type -> cloche.v1.EnableLoopResponse
+	21,  // 82: cloche.v1.ClocheService.DisableLoop:output_type -> cloche.v1.DisableLoopResponse
+	23,  // 83: cloche.v1.ClocheService.ResumeLoop:output_type -> cloche.v1.ResumeLoopResponse
+	25,  // 84: cloche.v1.ClocheService.QuiesceRuns:output_type -> cloche.v1.QuiesceRunsResponse
+	97,  // 85: cloche.v1.ClocheService.GetBudget:output_type -> cloche.v1.GetBudgetResponse
+	28,  // 86: cloche.v1.ClocheService.GetProjectInfo:output_type -> cloche.v1.GetProjectInfoResponse
+	30,  // 87: cloche.v1.ClocheService.PurgeProject:output_type -> cloche.v1.PurgeProjectResponse
+	33,  // 88: cloche.v1.ClocheService.GetAttention:output_type -> cloche.v1.GetAttentionResponse
+	38,  // 89: cloche.v1.ClocheService.GetLoopOccupancy:output_type -> cloche.v1.GetLoopOccupancyResponse
+	41,  // 90: cloche.v1.ClocheService.ListLoopOccupancy:output_type -> cloche.v1.ListLoopOccupancyResponse
+	43,  // 91: cloche.v1.ClocheService.GetVersion:output_type -> cloche.v1.GetVersionResponse
+	53,  // 92: cloche.v1.ClocheService.Complete:output_type -> cloche.v1.CompleteResponse
+	55,  // 93: cloche.v1.ClocheService.GetUsage:output_type -> cloche.v1.GetUsageResponse
+	58,  // 94: cloche.v1.ClocheService.Console:output_type -> cloche.v1.ConsoleOutput
+	64,  // 95: cloche.v1.ClocheService.GetContextKey:output_type -> cloche.v1.GetContextKeyResponse
+	66,  // 96: cloche.v1.ClocheService.SetContextKey:output_type -> cloche.v1.SetContextKeyResponse
+	68,  // 97: cloche.v1.ClocheService.ListContextKeys:output_type -> cloche.v1.ListContextKeysResponse
+	79,  // 98: cloche.v1.ClocheService.GetStepInputs:output_type -> cloche.v1.GetStepInputsResponse
+	70,  // 99: cloche.v1.ClocheService.AgentSession:output_type -> cloche.v1.DaemonMessage
+	87,  // 100: cloche.v1.ClocheService.AskHelp:output_type -> cloche.v1.AskHelpResponse
+	90,  // 101: cloche.v1.ClocheService.ListThreads:output_type -> cloche.v1.ListThreadsResponse
+	93,  // 102: cloche.v1.ClocheService.GetThread:output_type -> cloche.v1.GetThreadResponse
+	95,  // 103: cloche.v1.ClocheService.ReplyThread:output_type -> cloche.v1.ReplyThreadResponse
+	70,  // [70:104] is the sub-list for method output_type
+	36,  // [36:70] is the sub-list for method input_type
+	36,  // [36:36] is the sub-list for extension type_name
+	36,  // [36:36] is the sub-list for extension extendee
+	0,   // [0:36] is the sub-list for field type_name
 }
 
 func init() { file_cloche_proto_init() }
@@ -7243,7 +7416,7 @@ func file_cloche_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cloche_proto_rawDesc), len(file_cloche_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   99,
+			NumMessages:   101,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

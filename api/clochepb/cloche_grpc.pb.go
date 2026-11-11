@@ -34,6 +34,7 @@ const (
 	ClocheService_DisableLoop_FullMethodName       = "/cloche.v1.ClocheService/DisableLoop"
 	ClocheService_ResumeLoop_FullMethodName        = "/cloche.v1.ClocheService/ResumeLoop"
 	ClocheService_QuiesceRuns_FullMethodName       = "/cloche.v1.ClocheService/QuiesceRuns"
+	ClocheService_GetBudget_FullMethodName         = "/cloche.v1.ClocheService/GetBudget"
 	ClocheService_GetProjectInfo_FullMethodName    = "/cloche.v1.ClocheService/GetProjectInfo"
 	ClocheService_PurgeProject_FullMethodName      = "/cloche.v1.ClocheService/PurgeProject"
 	ClocheService_GetAttention_FullMethodName      = "/cloche.v1.ClocheService/GetAttention"
@@ -77,6 +78,8 @@ type ClocheServiceClient interface {
 	// daemon restart. Intended for use before rebuilding or restarting the daemon.
 	// L1: stub (always succeeds, no state change). L2: updates run states in store.
 	QuiesceRuns(ctx context.Context, in *QuiesceRunsRequest, opts ...grpc.CallOption) (*QuiesceRunsResponse, error)
+	// GetBudget reports the daemon-wide daily usage cap and today's usage.
+	GetBudget(ctx context.Context, in *GetBudgetRequest, opts ...grpc.CallOption) (*GetBudgetResponse, error)
 	GetProjectInfo(ctx context.Context, in *GetProjectInfoRequest, opts ...grpc.CallOption) (*GetProjectInfoResponse, error)
 	// PurgeProject deletes every record the daemon holds for a project (runs,
 	// tasks, attempts, logs metadata, KV, help threads, activity) so it no
@@ -306,6 +309,16 @@ func (c *clocheServiceClient) QuiesceRuns(ctx context.Context, in *QuiesceRunsRe
 	return out, nil
 }
 
+func (c *clocheServiceClient) GetBudget(ctx context.Context, in *GetBudgetRequest, opts ...grpc.CallOption) (*GetBudgetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetBudgetResponse)
+	err := c.cc.Invoke(ctx, ClocheService_GetBudget_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *clocheServiceClient) GetProjectInfo(ctx context.Context, in *GetProjectInfoRequest, opts ...grpc.CallOption) (*GetProjectInfoResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetProjectInfoResponse)
@@ -515,6 +528,8 @@ type ClocheServiceServer interface {
 	// daemon restart. Intended for use before rebuilding or restarting the daemon.
 	// L1: stub (always succeeds, no state change). L2: updates run states in store.
 	QuiesceRuns(context.Context, *QuiesceRunsRequest) (*QuiesceRunsResponse, error)
+	// GetBudget reports the daemon-wide daily usage cap and today's usage.
+	GetBudget(context.Context, *GetBudgetRequest) (*GetBudgetResponse, error)
 	GetProjectInfo(context.Context, *GetProjectInfoRequest) (*GetProjectInfoResponse, error)
 	// PurgeProject deletes every record the daemon holds for a project (runs,
 	// tasks, attempts, logs metadata, KV, help threads, activity) so it no
@@ -629,6 +644,9 @@ func (UnimplementedClocheServiceServer) ResumeLoop(context.Context, *ResumeLoopR
 }
 func (UnimplementedClocheServiceServer) QuiesceRuns(context.Context, *QuiesceRunsRequest) (*QuiesceRunsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method QuiesceRuns not implemented")
+}
+func (UnimplementedClocheServiceServer) GetBudget(context.Context, *GetBudgetRequest) (*GetBudgetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetBudget not implemented")
 }
 func (UnimplementedClocheServiceServer) GetProjectInfo(context.Context, *GetProjectInfoRequest) (*GetProjectInfoResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetProjectInfo not implemented")
@@ -964,6 +982,24 @@ func _ClocheService_QuiesceRuns_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ClocheServiceServer).QuiesceRuns(ctx, req.(*QuiesceRunsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClocheService_GetBudget_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBudgetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClocheServiceServer).GetBudget(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClocheService_GetBudget_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClocheServiceServer).GetBudget(ctx, req.(*GetBudgetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1332,6 +1368,10 @@ var ClocheService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "QuiesceRuns",
 			Handler:    _ClocheService_QuiesceRuns_Handler,
+		},
+		{
+			MethodName: "GetBudget",
+			Handler:    _ClocheService_GetBudget_Handler,
 		},
 		{
 			MethodName: "GetProjectInfo",

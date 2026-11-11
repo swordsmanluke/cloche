@@ -28,6 +28,14 @@ type statusMockClient struct {
 	statusRespByID  map[string]*pb.GetStatusResponse
 	attentionResp   *pb.GetAttentionResponse
 	occupancyResp   *pb.GetLoopOccupancyResponse
+	budgetResp      *pb.GetBudgetResponse
+}
+
+func (m *statusMockClient) GetBudget(_ context.Context, _ *pb.GetBudgetRequest, _ ...grpc.CallOption) (*pb.GetBudgetResponse, error) {
+	if m.budgetResp != nil {
+		return m.budgetResp, nil
+	}
+	return &pb.GetBudgetResponse{}, nil
 }
 
 func (m *statusMockClient) GetLoopOccupancy(_ context.Context, _ *pb.GetLoopOccupancyRequest, _ ...grpc.CallOption) (*pb.GetLoopOccupancyResponse, error) {
@@ -922,5 +930,44 @@ func TestStatusHelpText(t *testing.T) {
 	}
 	if !strings.Contains(text, "daemon status") {
 		t.Error("status help should mention daemon status overview")
+	}
+}
+
+func TestCmdStatusOverview_BudgetLineAndNeedsYou(t *testing.T) {
+	desc := "OVER CAP — 11.0% of 10% daily cap used; launches paused, in-flight runs parked; clears at 00:00 (in 8h0m)"
+	client := &statusMockClient{
+		versionResp:     &pb.GetVersionResponse{Version: "2.0.0"},
+		projectInfoResp: &pb.GetProjectInfoResponse{Name: "myproject", Concurrency: 1},
+		listRunsResp:    &pb.ListRunsResponse{},
+		listTasksResp:   &pb.ListTasksResponse{},
+		budgetResp:      &pb.GetBudgetResponse{Enabled: true, Over: true, Description: desc},
+		attentionResp: &pb.GetAttentionResponse{Items: []*pb.AttentionItem{
+			{Kind: "budget", Reason: desc, Since: time.Now().Add(-time.Hour).Format(time.RFC3339)},
+		}},
+	}
+
+	var buf bytes.Buffer
+	cmdStatusProject(context.Background(), client, &buf, "/fake/project")
+	out := buf.String()
+
+	if !strings.Contains(out, "Budget: "+desc) {
+		t.Errorf("expected Budget: line, got:\n%s", out)
+	}
+	if !strings.Contains(out, "[budget] "+desc) {
+		t.Errorf("expected budget Needs you item, got:\n%s", out)
+	}
+}
+
+func TestCmdStatusOverview_NoBudgetLineWhenDisabled(t *testing.T) {
+	client := &statusMockClient{
+		versionResp:     &pb.GetVersionResponse{Version: "2.0.0"},
+		projectInfoResp: &pb.GetProjectInfoResponse{Name: "myproject", Concurrency: 1},
+		listRunsResp:    &pb.ListRunsResponse{},
+		listTasksResp:   &pb.ListTasksResponse{},
+	}
+	var buf bytes.Buffer
+	cmdStatusProject(context.Background(), client, &buf, "/fake/project")
+	if strings.Contains(buf.String(), "Budget:") {
+		t.Errorf("no cap configured: expected no Budget: line, got:\n%s", buf.String())
 	}
 }

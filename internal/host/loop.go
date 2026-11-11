@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/swordsmanluke/cloche/internal/activitylog"
@@ -138,6 +139,8 @@ type Loop struct {
 	helpArchiver        HelpArchiver            // optional; archives a task's help threads on success
 	postTaskScanner     PostTaskScanner         // optional; enqueues an intent-scan after a task succeeds
 	onAttemptComplete   func(projectDir string) // optional; notified whenever an attempt reaches a terminal state
+	launchGate          func() bool             // optional; true holds back new launches (budget cap)
+	gateLogged          atomic.Bool
 	stopCh              chan struct{}
 	mu                  sync.Mutex
 	running             bool
@@ -220,6 +223,33 @@ func (l *Loop) SetTaskAssigner(a TaskAssigner) {
 // before main. Must be called before Start.
 func (l *Loop) SetClaimFunc(fn ClaimFunc) {
 	l.claimFn = fn
+}
+
+// gateRecheckInterval is how often a loop held back by the launch gate
+// re-checks it. A variable so tests can shorten it.
+var gateRecheckInterval = 10 * time.Second
+
+// SetLaunchGate installs a gate consulted before each new task launch; while
+// it reports true the loop launches nothing (the daily budget cap). A nil gate
+// never blocks.
+func (l *Loop) SetLaunchGate(gate func() bool) {
+	l.tasksMu.Lock()
+	defer l.tasksMu.Unlock()
+	l.launchGate = gate
+}
+
+func (l *Loop) launchBlocked() bool {
+	l.tasksMu.Lock()
+	gate := l.launchGate
+	l.tasksMu.Unlock()
+	if gate == nil || !gate() {
+		l.gateLogged.Store(false)
+		return false
+	}
+	if !l.gateLogged.Swap(true) {
+		log.Printf("orchestration loop: %s: daily budget cap reached; not launching new tasks", l.config.ProjectDir)
+	}
+	return true
 }
 
 // SetTaskStore configures a TaskStore so the loop can ensure Task records exist
@@ -370,6 +400,7 @@ func (l *Loop) runPhased() {
 
 		// Fill up to max concurrent slots.
 		launched := 0
+		gated := false
 		for inFlight < l.config.MaxConcurrent {
 			select {
 			case <-l.stopCh:
@@ -395,6 +426,14 @@ func (l *Loop) runPhased() {
 				if !l.sleep(l.config.StaggerDelay) {
 					return
 				}
+			}
+
+			// Budget gate: over the daily cap, launch nothing new. The loop
+			// keeps ticking, so launching resumes on its own once usage is
+			// back under the cap.
+			if l.launchBlocked() {
+				gated = true
+				break
 			}
 
 			// Phase 1: list-tasks — discover available work.
@@ -487,6 +526,13 @@ func (l *Loop) runPhased() {
 			}
 		}
 
+		// While the budget gate holds launches back, re-check it more often so
+		// launching resumes soon after usage is back under the cap.
+		wake := capacityPollInterval
+		if gated {
+			wake = gateRecheckInterval
+		}
+
 		if inFlight == 0 {
 			// Once mode: nothing assignable on the first pass — stop rather
 			// than idle-wait for work to appear.
@@ -496,7 +542,7 @@ func (l *Loop) runPhased() {
 				return
 			}
 			// Nothing in flight and couldn't launch anything — wait before checking again.
-			if !l.sleep(capacityPollInterval) {
+			if !l.sleep(wake) {
 				return
 			}
 			// Drive poll steps after waking from idle sleep.
@@ -540,7 +586,7 @@ func (l *Loop) runPhased() {
 			}
 			// Drive poll steps after waking from backoff sleep.
 			l.drivePollSteps()
-		case <-time.After(capacityPollInterval):
+		case <-time.After(wake):
 			// Periodic wake to drive poll steps even when runs are in flight.
 			l.drivePollSteps()
 		case <-l.stopCh:

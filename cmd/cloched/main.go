@@ -26,6 +26,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
 	"github.com/swordsmanluke/cloche/internal/adapters/web"
 	"github.com/swordsmanluke/cloche/internal/attention"
+	"github.com/swordsmanluke/cloche/internal/budget"
 	"github.com/swordsmanluke/cloche/internal/config"
 	"github.com/swordsmanluke/cloche/internal/help"
 	"github.com/swordsmanluke/cloche/internal/logstream"
@@ -128,6 +129,21 @@ func main() {
 		}
 	})
 	srv.SetHelpRouter(helpRouter)
+
+	// Daily budget cap (global [budget] config). Disabled unless
+	// usage_percent_per_day is set.
+	budgetCtx, budgetCancel := context.WithCancel(context.Background())
+	defer budgetCancel()
+	if bc := globalCfg.Budget; bc.UsagePercentPerDay > 0 {
+		monitor := budget.NewMonitor(budget.Config{
+			UsagePercentPerDay: bc.UsagePercentPerDay,
+			Grace:              parseDurationOr(bc.Grace, budget.DefaultGrace),
+			EmergencyOverflow:  bc.EmergencyOverflow,
+		}, &budget.ClaudeReader{}, filepath.Join(config.StateDir(), "budget.json"))
+		srv.SetBudget(monitor)
+		go monitor.Run(budgetCtx, budget.DefaultInterval)
+		fmt.Fprintf(os.Stderr, "startup: daily budget cap %.1f%% of the weekly allowance (grace %s)\n", bc.UsagePercentPerDay, monitor.Config().Grace)
+	}
 
 	// Start the background attention cache (see internal/attention.Cache):
 	// answers /api/projects, GET .../attention, the occupancy summary, and

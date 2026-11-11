@@ -295,6 +295,9 @@ func cmdRun(ctx context.Context, client pb.ClocheServiceClient, args []string) {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+	if resp.BudgetWarning != "" {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", resp.BudgetWarning)
+	}
 	fmt.Printf("Started run: %s\n", resp.RunId)
 	if resp.TaskId != "" {
 		fmt.Printf("Task:        %s\n", resp.TaskId)
@@ -658,6 +661,7 @@ func cmdStatusProject(ctx context.Context, client pb.ClocheServiceClient, w io.W
 	}
 
 	fmt.Fprintf(w, "Resumable runs: %d\n", info.GetResumableRunsCount())
+	printBudget(ctx, client, w)
 
 	// Fetch runs for the past hour to compute success rate.
 	listResp, err := client.ListRuns(ctx, &pb.ListRunsRequest{ProjectDir: projectDir})
@@ -700,6 +704,7 @@ func cmdStatusGlobal(ctx context.Context, client pb.ClocheServiceClient, w io.Wr
 	}
 
 	fmt.Fprintf(w, "Runs (past hour): %d / %d succeeded\n", succeeded, len(listResp.Runs))
+	printBudget(ctx, client, w)
 
 	// Active tasks with nested runs.
 	printActiveTasks(ctx, client, w, "")
@@ -709,6 +714,17 @@ func cmdStatusGlobal(ctx context.Context, client pb.ClocheServiceClient, w io.Wr
 
 	// Burn rate section: show per-agent token usage for the last hour.
 	printBurnRate(ctx, client, w, "")
+}
+
+// printBudget prints the "Budget:" line: today's usage against the daemon's
+// daily cap. Prints nothing when no cap is configured (or the daemon predates
+// the budget).
+func printBudget(ctx context.Context, client pb.ClocheServiceClient, w io.Writer) {
+	resp, err := client.GetBudget(ctx, &pb.GetBudgetRequest{})
+	if err != nil || !resp.Enabled || resp.Description == "" {
+		return
+	}
+	fmt.Fprintf(w, "Budget: %s\n", resp.Description)
 }
 
 // printNeedsYou displays the "Needs you" attention set: items requiring
@@ -734,7 +750,12 @@ func printNeedsYou(ctx context.Context, client pb.ClocheServiceClient, w io.Writ
 		if age != "" {
 			age = fmt.Sprintf(" (%s ago)", age)
 		}
-		fmt.Fprintf(w, "  [%s] %s: %s%s\n", item.Kind, colorID(id), item.Reason, age)
+		if id == "" {
+			// Daemon-wide items (e.g. kind "budget") belong to no task or run.
+			fmt.Fprintf(w, "  [%s] %s%s\n", item.Kind, item.Reason, age)
+		} else {
+			fmt.Fprintf(w, "  [%s] %s: %s%s\n", item.Kind, colorID(id), item.Reason, age)
+		}
 		if len(item.Actions) > 0 {
 			fmt.Fprintf(w, "    Actions: %s\n", strings.Join(item.Actions, ", "))
 		}

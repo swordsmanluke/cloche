@@ -1141,9 +1141,28 @@ that require human action, derived by `internal/attention`:
 | `repeat-failure` | A task still open in the tracker has hit the consecutive-failure threshold. | `retry`, `close` |
 | `long-poll` | A poll step has been waiting longer than the configured threshold. | `logs`, `cancel` |
 | `builtin-failures` | A user-initiated built-in workflow (e.g. `intent-scan`) has failed repeatedly within the failure window. | `retry`, `logs` |
+| `budget` | The daemon's daily usage cap is reached (see [`[budget]`](#budget)). Daemon-wide, so it belongs to no project, task or run; the reason names the cap, today's usage, and when the day's window clears. It disappears on its own once launching resumes. | _(none; `cloche resume` continues parked runs)_ |
 
 Each line shows the kind, the task or run ID, the reason, and how long it's been
 waiting. Thresholds are configured via `[attention]` in `config.toml` (see below).
+
+#### `Budget:` line
+
+When a daily cap is configured (see [`[budget]`](#budget)), overview mode prints a
+`Budget:` line (project and global views) just under the run statistics:
+
+```
+Budget: 4.0% of 10% daily cap used today
+Budget: OVER CAP — 10.3% of 10% daily cap used; launches paused, in-flight runs parked at 14:35; clears at 00:00 (in 9h30m)
+Budget: OVER CAP — 11.0% of 10% daily cap used; launches paused, in-flight runs parked; clears at 00:00 (in 8h12m)
+```
+
+"Used today" is the share of the weekly usage allowance consumed since the first
+reading of the local day (the figure behind Claude Code's `/usage`, covering the whole
+account, not only cloche's runs). The line is omitted when no cap is set. If the usage
+figure can't be read, the line says so and launching is **not** blocked.
+
+While over the cap, "Needs you" also carries a `budget` item with the same text.
 
 ### `cloche list`
 
@@ -1884,6 +1903,55 @@ mode = "mcp"   # "prompt" (default) or "mcp"
 ```
 
 See [`docs/plans/2026-05-28-mcp-mode.md`](plans/2026-05-28-mcp-mode.md) for the full design, including the MCP tool surface (`init`, `next`, `submit-result`), session lifecycle, and token reporting.
+
+### `[budget]`
+
+The daemon-wide daily usage cap. It lives in the **global** daemon config
+(`~/.config/cloche/config`), not in a project's `config.toml`: one cap for the whole
+daemon, not per project. Disabled unless `usage_percent_per_day` is set.
+
+```toml
+# ~/.config/cloche/config
+[budget]
+usage_percent_per_day = 10
+grace = "30m"
+emergency_overflow = false
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `usage_percent_per_day` | `0` (no cap) | Share of the subscription's **weekly** usage allowance that may be used per day, in percent. `20` is used up in 5 days, `14` (1/7) runs out just as the allowance resets, `10` leaves headroom. Resolution is about 1%, so caps below 1 aren't meaningful. |
+| `grace` | `"30m"` | Duration string. How long runs already in flight may continue once the cap is hit, before they are parked. |
+| `emergency_overflow` | `false` | `true` lets emergency tasks launch past the cap; `false` stops them like everything else. **Defined and documented here only**: the budget gate does not read it. The emergency-launch work (a separate change) does. |
+
+**How usage is measured.** The daemon reads the "Current week (all models)" percentage
+printed by `claude -p "/usage"` (about a second, no model call, no tokens; see
+`docs/plans/spikes/2026-11-usage-allowance.md`) every two minutes, and again before a
+launch decision if the last reading is older than 30 seconds. "Used today" is that
+percentage minus the reading at the start of the local day (persisted in
+`~/.config/cloche/budget.json`, so a daemon restart keeps it). When the weekly window
+resets mid-day the baseline restarts at zero. Because the figure comes from the
+account, interactive Claude Code sessions count too. Because the allowance is readable,
+there are no token-estimate settings (weekly allowance size, per-model weights). This
+covers the Claude allowance only.
+
+**When the cap is hit:**
+
+- **No new runs launch**: loop tasks (and any other daemon-launched work) wait.
+  Launching **resumes on its own** when usage is back under the cap, which happens when
+  the local day rolls over (the baseline resets) or the weekly window resets.
+- **`cloche run` by hand still works**, with a `warning:` on stderr.
+- **Runs in flight get `grace` to finish.** After that they are parked, with the same
+  state change as `cloche loop stop --hard` (state `parked`): the loop attempt's engine
+  is cancelled and its containers stopped, and the step that was interrupted is
+  recorded. Continue a parked run with `cloche resume <run-or-task-id>`; it restarts
+  from the interrupted step as a new attempt, and the parked run is marked cancelled.
+  If usage drops back under the cap before `grace` ends, nothing is parked.
+- **It shows up**: a `Budget:` line and a `budget` "Needs you" item in `cloche status`.
+
+If the usage can't be read (e.g. the output format changed), the failure is logged and
+shown in the `Budget:` line, and nothing is blocked. The per-window (5-hour) cap and
+per-project caps are not implemented.
 
 ### `[agents.codex]`
 

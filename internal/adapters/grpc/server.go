@@ -21,6 +21,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/adapters/docker"
 	"github.com/swordsmanluke/cloche/internal/adapters/web"
 	"github.com/swordsmanluke/cloche/internal/attention"
+	"github.com/swordsmanluke/cloche/internal/budget"
 	"github.com/swordsmanluke/cloche/internal/builtin"
 	"github.com/swordsmanluke/cloche/internal/config"
 	"github.com/swordsmanluke/cloche/internal/domain"
@@ -61,6 +62,9 @@ type ClocheServer struct {
 	// degrades to a zero Snapshot in that case rather than panicking.
 	attentionCache *attention.Cache
 
+	budget       *budget.Monitor // optional; daemon-wide daily usage cap
+	budgetParked map[string]bool // attempt_id -> parked by the budget cap (guarded by mu)
+
 	webStatusMu sync.RWMutex
 	webStatus   WebStatus // reported by GetVersion so `cloche status`/`cloche health` surface a down web dashboard
 
@@ -96,6 +100,7 @@ func NewClocheServer(store ports.RunStore, container ports.ContainerRuntime) *Cl
 		containerRun:      make(map[string]string),
 		hostCancels:       make(map[string]context.CancelFunc),
 		attemptCancels:    make(map[string]context.CancelFunc),
+		budgetParked:      make(map[string]bool),
 		loops:             make(map[string]*host.Loop),
 		activityLoggers:   make(map[string]*activitylog.Logger),
 		projects:          make(map[string]*domain.Project),
@@ -116,6 +121,7 @@ func NewClocheServerWithCaptures(store ports.RunStore, captures ports.CaptureSto
 		containerRun:      make(map[string]string),
 		hostCancels:       make(map[string]context.CancelFunc),
 		attemptCancels:    make(map[string]context.CancelFunc),
+		budgetParked:      make(map[string]bool),
 		loops:             make(map[string]*host.Loop),
 		activityLoggers:   make(map[string]*activitylog.Logger),
 		projects:          make(map[string]*domain.Project),
@@ -700,7 +706,20 @@ func (s *ClocheServer) handleHostWorkflowRequest(ctx context.Context, containerR
 	sendResult(outcome, childRunID)
 }
 
+// RunWorkflow starts (or resumes) a run on request. A run started by hand is
+// never blocked by the daily budget cap; the response carries a warning when
+// the cap is exceeded.
 func (s *ClocheServer) RunWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
+	resp, err := s.runWorkflow(ctx, req)
+	if err == nil && resp != nil {
+		if w := s.budgetWarning(); w != "" {
+			resp.BudgetWarning = w
+		}
+	}
+	return resp, err
+}
+
+func (s *ClocheServer) runWorkflow(ctx context.Context, req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
 	req.ProjectDir = normalizeProjectDir(req.ProjectDir)
 	subRepoName := ""
 	if parentDir, repoName := s.foldSubRepoProjectDir(ctx, req.ProjectDir); repoName != "" {
@@ -1214,8 +1233,9 @@ func (s *ClocheServer) resumeRun(ctx context.Context, runID, stepName string, mo
 		return nil, fmt.Errorf("run %q not found: %w", runID, err)
 	}
 
-	if run.State != domain.RunStateFailed {
-		return nil, fmt.Errorf("run %q is in state %q, only failed runs can be resumed", runID, run.State)
+	budgetParked := isBudgetParked(run)
+	if run.State != domain.RunStateFailed && !budgetParked {
+		return nil, fmt.Errorf("run %q is in state %q, only failed or budget-parked runs can be resumed", runID, run.State)
 	}
 
 	// Load step executions — GetRun only loads the run record, not its steps.
@@ -1224,6 +1244,9 @@ func (s *ClocheServer) resumeRun(ctx context.Context, runID, stepName string, mo
 	}
 
 	// Determine the resume step: use provided step name, or find first failed step
+	if stepName == "" && budgetParked {
+		stepName = s.budgetResumeStep(ctx, run)
+	}
 	if stepName == "" {
 		stepName = run.FindFirstFailedStep()
 		if stepName == "" {
@@ -1231,10 +1254,18 @@ func (s *ClocheServer) resumeRun(ctx context.Context, runID, stepName string, mo
 		}
 	}
 
+	var resp *pb.RunWorkflowResponse
 	if run.IsHost {
-		return s.resumeHostRun(ctx, run, stepName)
+		resp, err = s.resumeHostRun(ctx, run, stepName)
+	} else {
+		resp, err = s.resumeContainerRun(ctx, run, stepName, mode)
 	}
-	return s.resumeContainerRun(ctx, run, stepName, mode)
+	if err == nil && budgetParked {
+		// The resumed run supersedes the parked one; stop it counting as resumable.
+		run.Complete(domain.RunStateCancelled)
+		_ = s.store.UpdateRun(ctx, run)
+	}
+	return resp, err
 }
 
 // createResumeAttempt creates a new Attempt that records lineage back to the
@@ -3964,10 +3995,21 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 			TaskTitle:    taskTitle,
 			AttemptID:    attemptID,
 		}
-		return runner.RunNamed(ctx, projDir, "main")
+		result, err := runner.RunNamed(ctx, projDir, "main")
+		if s.wasBudgetParked(attemptID) {
+			// Parked by the daily cap, not failed: report a deliberate stop so
+			// the loop's failure counters don't treat it as an error.
+			if result == nil {
+				result = &host.RunResult{}
+			}
+			result.State = domain.RunStateCancelled
+			return result, nil
+		}
+		return result, err
 	}
 
 	loop := host.NewPhaseLoop(loopCfg, s.store, listTasksFn, mainFn)
+	loop.SetLaunchGate(s.budgetBlocked)
 	// claim-task phase: runs before main for each picked task. Skipped when
 	// no claim-task resolves (main then claims for itself).
 	if host.PhaseResolves(projectDir, host.SlotClaimTask) {
@@ -4267,6 +4309,13 @@ func (s *ClocheServer) GetAttention(ctx context.Context, req *pb.GetAttentionReq
 	}
 
 	resp := &pb.GetAttentionResponse{}
+	if it, ok := s.budgetAttentionItem(); ok {
+		resp.Items = append(resp.Items, &pb.AttentionItem{
+			Kind:   string(it.Kind),
+			Reason: it.Reason,
+			Since:  it.Since.Format(time.RFC3339),
+		})
+	}
 	for _, dir := range projectDirs {
 		for _, it := range s.AttentionSnapshot(dir).Items {
 			resp.Items = append(resp.Items, &pb.AttentionItem{

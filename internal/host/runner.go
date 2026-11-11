@@ -271,7 +271,7 @@ func (r *Runner) runWorkflow(ctx context.Context, projectDir string, wf *domain.
 		cleanupCtx := context.Background()
 		hostRun, _ := r.Store.GetRun(cleanupCtx, orchRunID)
 		if hostRun != nil {
-			if hostRun.State != domain.RunStateCancelled {
+			if hostRun.State != domain.RunStateCancelled && hostRun.State != domain.RunStateParked {
 				if runErr != nil {
 					hostRun.Fail(runErr.Error())
 				} else if result.State == domain.RunStateFailed {
@@ -460,7 +460,7 @@ func (r *Runner) ResumeRun(ctx context.Context, run *domain.Run, resumeFrom stri
 		cleanupCtx := context.Background()
 		hostRun, _ := r.Store.GetRun(cleanupCtx, run.ID)
 		if hostRun != nil {
-			if hostRun.State != domain.RunStateCancelled {
+			if hostRun.State != domain.RunStateCancelled && hostRun.State != domain.RunStateParked {
 				if runErr != nil {
 					hostRun.Fail(runErr.Error())
 				} else if result.State == domain.RunStateFailed {
@@ -654,7 +654,7 @@ func (r *Runner) ResumeRunAsNewAttempt(ctx context.Context, oldRun *domain.Run, 
 		cleanupCtx := context.Background()
 		hostRunFinal, _ := r.Store.GetRun(cleanupCtx, newRunID)
 		if hostRunFinal != nil {
-			if hostRunFinal.State != domain.RunStateCancelled {
+			if hostRunFinal.State != domain.RunStateCancelled && hostRunFinal.State != domain.RunStateParked {
 				if runErr != nil {
 					hostRunFinal.Fail(runErr.Error())
 				} else if result.State == domain.RunStateFailed {

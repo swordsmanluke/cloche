@@ -35,6 +35,10 @@ const (
 	// built-in workflow (e.g. intent-scan) within a window, grouped into a
 	// single item per workflow.
 	KindBuiltinFailures Kind = "builtin-failures"
+	// KindBudget marks the daemon-wide daily usage cap being exceeded. It is
+	// daemon-wide rather than per project, so it is added by the GetAttention
+	// RPC from the budget monitor, not derived by Compute.
+	KindBudget Kind = "budget"
 )
 
 // Item is one entry in the "Needs you" set.

@@ -141,6 +141,23 @@ type AttentionConfig struct {
 	MaxParallelRefresh     int    `toml:"max_parallel_refresh"`
 }
 
+// BudgetConfig is the daemon-wide daily usage cap (one cap for the daemon,
+// not per project), read only from the global daemon config. See
+// docs/USAGE.md "[budget]". UsagePercentPerDay is the share of the weekly
+// usage allowance that may be used per day; 0 (the default) disables the
+// budget. Grace is a duration string: how long runs in flight may continue
+// once the cap is hit before they are parked. EmergencyOverflow is read by
+// the emergency-launch work; the budget gate itself ignores it.
+//
+// The allowance is read from Claude Code's /usage figure (see
+// docs/plans/spikes/2026-11-usage-allowance.md), so no token-estimate
+// settings (weekly allowance size, per-model weights) exist.
+type BudgetConfig struct {
+	UsagePercentPerDay float64 `toml:"usage_percent_per_day"`
+	Grace              string  `toml:"grace"`
+	EmergencyOverflow  bool    `toml:"emergency_overflow"`
+}
+
 type Config struct {
 	Active        bool                `toml:"active"`
 	Daemon        DaemonConfig        `toml:"daemon"`
@@ -151,6 +168,7 @@ type Config struct {
 	Help          HelpConfig          `toml:"help"`
 	Intent        IntentConfig        `toml:"intent"`
 	Attention     AttentionConfig     `toml:"attention"`
+	Budget        BudgetConfig        `toml:"budget"`
 	Repositories  []RepositoryConfig  `toml:"repositories"`
 }
 
@@ -170,6 +188,9 @@ func defaults() Config {
 		},
 		Intent: IntentConfig{
 			ScanAfterTasks: true,
+		},
+		Budget: BudgetConfig{
+			Grace: "30m",
 		},
 		Attention: AttentionConfig{
 			RepeatFailureThreshold: 3,
@@ -340,6 +361,14 @@ http = "localhost:8080"
 # name = "cloche-bot"
 # email = "cloche-bot@users.noreply.github.com"
 # ssh_key = "~/.ssh/cloche_bot"  # used by workflow scripts that push
+
+# Daily usage cap for the whole daemon: the share of the weekly usage allowance
+# (the figure behind Claude Code's /usage) that may be used per day. Over the
+# cap, no new runs launch; runs in flight are parked after "grace".
+# [budget]
+# usage_percent_per_day = 10
+# grace = "30m"
+# emergency_overflow = false   # true: emergency tasks may launch past the cap
 
 # Help channel: agent questions always flow via "cloche threads"; configuring
 # a channel below also delivers them to it (e.g. Slack via Socket Mode).

@@ -28,6 +28,9 @@ service ClocheService {
   // L1: stub (always succeeds, no state change). L2: updates run states in store.
   rpc QuiesceRuns(QuiesceRunsRequest) returns (QuiesceRunsResponse);
 
+  // GetBudget reports the daemon-wide daily usage cap and today's usage.
+  rpc GetBudget(GetBudgetRequest) returns (GetBudgetResponse);
+
   rpc GetProjectInfo(GetProjectInfoRequest) returns (GetProjectInfoResponse);
 
   // PurgeProject deletes every record the daemon holds for a project (runs,
@@ -133,6 +136,9 @@ message RunWorkflowResponse {
   string run_id = 1;
   string task_id = 2;
   string attempt_id = 3;
+  // budget_warning is set when the run was started by hand while the daily
+  // usage cap is exceeded (a hand-started run is never blocked, only warned).
+  string budget_warning = 4;
 }
 
 message GetStatusRequest {
@@ -841,3 +847,17 @@ message ReplyThreadRequest {
 }
 
 message ReplyThreadResponse {}
+
+message GetBudgetRequest {}
+
+message GetBudgetResponse {
+  bool enabled = 1;             // false when no [budget] cap is configured
+  double cap_percent = 2;       // usage_percent_per_day
+  double used_percent = 3;      // share of the weekly allowance used today
+  bool over = 4;                // cap reached: launches are paused
+  string clears_at = 5;         // RFC3339: when the day's window clears
+  string grace_ends_at = 6;     // RFC3339: when in-flight runs are parked (empty unless over)
+  bool grace_expired = 7;       // in-flight runs have been parked
+  string description = 8;       // the one-line "Budget:" text
+  string read_error = 9;        // last failure reading usage, if any
+}
