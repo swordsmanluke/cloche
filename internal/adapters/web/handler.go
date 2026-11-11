@@ -299,14 +299,15 @@ type Handler struct {
 	purgeProjectFn    func(ctx context.Context, projectDir string) (int64, error)
 	stopRunFn         func(ctx context.Context, taskID string) error
 	scanFn            func(ctx context.Context, projectDir string) (string, error)
-	getThreadFn       GetThreadFunc           // resolves a help thread for the parked-run pane
-	replyThreadFn     ReplyThreadFunc         // posts a reply to a help thread; same path as `cloche threads reply`
-	signalTokens      *signal.TokenStore      // per-project bearer tokens for POST .../signals; see WithSignalIntake
-	signalDispatcher  *signal.Dispatcher      // stores signals and runs handle-notification
-	mcpSecret         []byte                  // enables /mcp when non-empty; see WithHelpMCP
-	draSecret         []byte                  // enables /api/dra/... when non-empty; see WithDRAAccess
-	askHelpFn         AskHelpFunc             // handles ask_user tool calls on /mcp
-	history           *promptrev.HistoryCache // per-file git history cache for the ledger view
+	getThreadFn       GetThreadFunc                     // resolves a help thread for the parked-run pane
+	replyThreadFn     ReplyThreadFunc                   // posts a reply to a help thread; same path as `cloche threads reply`
+	signalTokens      *signal.TokenStore                // per-project bearer tokens for POST .../signals; see WithSignalIntake
+	signalDispatcher  *signal.Dispatcher                // stores signals and runs handle-notification
+	mcpSecret         []byte                            // enables /mcp when non-empty; see WithHelpMCP
+	draAction         func(project, dra, taskID string) // see WithDRAActionHook
+	draSecret         []byte                            // enables /api/dra/... when non-empty; see WithDRAAccess
+	askHelpFn         AskHelpFunc                       // handles ask_user tool calls on /mcp
+	history           *promptrev.HistoryCache           // per-file git history cache for the ledger view
 	pages             map[string]*template.Template
 	mux               *http.ServeMux
 	patterns          []string // every registered mux pattern, for tests

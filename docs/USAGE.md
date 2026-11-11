@@ -1574,16 +1574,21 @@ commits `notes.md`. See [`docs/dras.md`](dras.md).
 ```
 cloche dra list [--project <dir>]
 cloche dra wake <name> --message <text> [--project <dir>]
+cloche dra ruling <name> --question <id> --message <text> [--project <dir>]
+cloche dra heartbeat <name> [--project <dir>]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--project <dir>` | current directory | Project directory. |
-| `--message <text>` | (required for `wake`) | What happened; the DRA reads it when it wakes. |
+| `--message <text>` | (required for `wake`, `ruling`) | What happened; the DRA reads it when it wakes. |
+| `--question <id>` | (required for `ruling`) | The Saga question the ruling answers. |
 
 `list` prints each DRA's name, its session id (`-` until its first wake-up), its last wake-up (run id, result, how the session was obtained, time) and the first heading of its charter.
 
 `wake` starts a wake-up by hand: a container run in the DRA image that resumes the DRA's named Claude Code session, or starts a new one if there is none or resuming fails. It is refused while that DRA already has a wake-up running, and is never blocked by the daily budget cap (only warned). See [`docs/dras.md`](dras.md#wake-ups).
+
+`ruling` and `heartbeat` queue an event for the DRA instead of waking it directly; the daemon delivers queued events together in one wake-up (a heartbeat wakes the DRA only if its interval, default 4h, has passed). See [`docs/dras.md`](dras.md#triggers).
 
 ### `cloche module`
 

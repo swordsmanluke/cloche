@@ -28,6 +28,8 @@ ignored (e.g. `.cloche/dras/*/notes.md` in `.gitignore`) is the project's choice
   obtained, time) and the charter's first heading.
 - `cloche dra wake <name> --message <text> [--project <dir>]` starts a wake-up by
   hand (see below).
+- `cloche dra ruling <name> --question <id> --message <text>` and
+  `cloche dra heartbeat <name>` send the triggers described under "Triggers".
 - `cloche validate` reports a DRA with no `charter.md` or an invalid name.
 
 ## The locked-down container
@@ -176,6 +178,54 @@ fresh  --success--> done
   **refused**, not queued: the message names the running run. A queue would replay a
   stale message after the DRA has already looked at the current state.
 - **Budget.** The launch gate applies: automatic wake-ups (`WakeDRA` with
-  `manual = false`, for the triggers that come later) are not started while the daily
+  `manual = false`, used by every trigger below) are not started while the daily
   cap is exceeded. `cloche dra wake` is hand-started, so it still runs, with the
   usual warning.
+
+## Triggers
+
+A DRA is woken by events, never kept running. Design:
+`docs/plans/2026-11-10-autonomous-loop-design.md`, Part 5; ruling CLOCHE-A123.
+
+**Domains are labels.** A task whose labels include a DRA's name belongs to that
+DRA. A task has one owner: with two matching labels the first (in label order) is
+used and the daemon logs the ones it ignored.
+
+| Trigger | Fires when |
+|---|---|
+| Task result | a task in the DRA's domain finishes, fails or parks (a task stopped on request is not a result) |
+| Signal | a signal arrives with `domain` naming the DRA. The default `handle-notification` also puts the domain on the task as a label. The wake-up is sent after the handler ran, so the task it created already exists. Occurrences that join a running handler (same source and key) are not separate events |
+| Ruling | `cloche dra ruling <name> --question <id> --message <text>`: a ruling arrived on a Saga question the DRA asked. The same question reported twice while pending is queued once |
+| Heartbeat | `cloche dra heartbeat <name>`: wakes the DRA if it has not been woken, for any reason, for the heartbeat interval |
+
+### Heartbeat
+
+Time triggers are not part of the DSL yet (CLOCHE-A114), so the heartbeat uses the
+existing poll-step timer: a host workflow with a `poll` step whose script runs
+`cloche dra heartbeat <name>` and reports `waiting`. Calling it more often than the
+interval is harmless; the daemon decides whether a wake-up is due. Set the interval
+per project in `.cloche/config.toml` (default 4 hours; `"off"` disables):
+
+```toml
+[dras]
+heartbeat = "4h"
+```
+
+### Batching
+
+An event never starts a run by itself. It joins the DRA's inbox
+(`.cloche/runs/dra-events.json`, runtime state, so a daemon restart keeps it) and the
+daemon delivers the whole inbox as **one** wake-up message, in order:
+
+- while the DRA is awake the events wait; when its wake-up ends they go out together,
+- while the budget gate is closed they wait; the daemon retries every 30 seconds and
+  they go out together once it opens,
+- nothing is dropped and no event starts a second run. If a wake-up itself fails its
+  events are not replayed (a failing DRA would loop); the next heartbeat covers it.
+
+### No self-wake
+
+When the DRA creates, updates or closes a task through its API the daemon remembers
+the task for 10 minutes. Result events for that task, and signals whose source is
+`dra:<name>`, are swallowed instead of waking the DRA that caused them. Tasks other
+people or runs change in the same domain still wake it.

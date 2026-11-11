@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -160,6 +162,29 @@ type BudgetConfig struct {
 	EmergencyOverflow  bool    `toml:"emergency_overflow"`
 }
 
+// DRAConfig configures DRA wake-up triggers (see docs/dras.md). Heartbeat is
+// a duration string: how long a DRA may go without any wake-up before a
+// heartbeat wakes it (default 4h; "0" or "off" disables). Set per project.
+type DRAConfig struct {
+	Heartbeat string `toml:"heartbeat"`
+}
+
+// HeartbeatInterval parses Heartbeat; an unparsable value gives the default.
+func (c DRAConfig) HeartbeatInterval() time.Duration {
+	h := strings.TrimSpace(c.Heartbeat)
+	if h == "" {
+		return 4 * time.Hour
+	}
+	if h == "off" || h == "0" {
+		return 0
+	}
+	d, err := time.ParseDuration(h)
+	if err != nil || d < 0 {
+		return 4 * time.Hour
+	}
+	return d
+}
+
 type Config struct {
 	Active        bool                `toml:"active"`
 	Daemon        DaemonConfig        `toml:"daemon"`
@@ -171,6 +196,7 @@ type Config struct {
 	Intent        IntentConfig        `toml:"intent"`
 	Attention     AttentionConfig     `toml:"attention"`
 	Budget        BudgetConfig        `toml:"budget"`
+	DRAs          DRAConfig           `toml:"dras"`
 	Repositories  []RepositoryConfig  `toml:"repositories"`
 }
 

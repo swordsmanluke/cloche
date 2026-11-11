@@ -1963,3 +1963,23 @@ func TestPickTaskFromPhase_UrgentFirstAndUrgentOnly(t *testing.T) {
 	_, _, _, ok = l.pickTaskFromPhase(true)
 	assert.False(t, ok)
 }
+
+func TestLoop_OnTaskResult_CarriesLabelsAndState(t *testing.T) {
+	store := &fakeStore{runs: map[string]*domain.Run{}, attempts: map[string]*domain.Attempt{}}
+	assigner := &fakeTaskAssigner{tasks: []Task{{ID: "task-1", Labels: []string{"bug", "auth"}}}}
+	runFn := func(ctx context.Context, projectDir string, taskID string, attemptID string) (*RunResult, error) {
+		return &RunResult{State: domain.RunStateParked}, nil
+	}
+	loop := NewLoop(LoopConfig{ProjectDir: "/tmp/p", MaxConcurrent: 1}, store, runFn)
+	loop.SetTaskAssigner(assigner)
+	var got atomic.Value
+	loop.SetOnTaskResult(func(r TaskResult) { got.Store(r) })
+	loop.Start()
+	require.Eventually(t, func() bool { return got.Load() != nil }, time.Second, time.Millisecond)
+	loop.Stop()
+	r := got.Load().(TaskResult)
+	assert.Equal(t, "task-1", r.TaskID)
+	assert.Equal(t, "/tmp/p", r.ProjectDir)
+	assert.Equal(t, []string{"bug", "auth"}, r.Labels)
+	assert.Equal(t, domain.RunStateParked, r.State)
+}

@@ -132,6 +132,8 @@ func (s *ClocheServer) WakeDRA(ctx context.Context, projectDir, name, message st
 			s.mu.Unlock()
 			cancel()
 			release()
+			// Events that arrived while it ran go out now, together.
+			s.draWakeEnded(projectDir, name)
 		}()
 		result, runErr := runner.RunWorkflowDef(runCtx, projectDir, hostWF, runID)
 		state := domain.RunStateFailed

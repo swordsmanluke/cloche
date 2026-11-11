@@ -141,6 +141,8 @@ type Loop struct {
 	postTaskScanner     PostTaskScanner                 // optional; enqueues an intent-scan after a task succeeds
 	onAttemptComplete   func(projectDir string)         // optional; notified whenever an attempt reaches a terminal state
 	onAttemptFailed     func(projectDir, taskID string) // optional; notified when a task's attempt fails
+	onTaskResult        func(TaskResult)                // optional; notified when a task finishes, fails or parks
+	taskLabels          sync.Map                        // task id -> []string labels seen at assignment
 	launchGate          func() bool                     // optional; true holds back new launches (budget cap)
 	gateLogged          atomic.Bool
 	emergencyOverflow   atomic.Bool // urgent tasks launch even while the launch gate holds
@@ -347,6 +349,24 @@ func (l *Loop) SetOnAttemptComplete(fn func(projectDir string)) {
 	l.onAttemptComplete = fn
 }
 
+// KVTaskLabels is the attempt-scoped KV key holding the task's labels
+// (newline-separated) as seen at assignment.
+const KVTaskLabels = "_task.labels"
+
+// TaskResult describes how a task's attempt ended, for DRA wake-up triggers.
+type TaskResult struct {
+	ProjectDir string
+	TaskID     string
+	Title      string
+	Labels     []string
+	State      domain.RunState
+}
+
+// SetOnTaskResult configures a callback invoked when a tracked task's attempt
+// reaches a terminal or parked state, with the labels it carried when it was
+// assigned.
+func (l *Loop) SetOnTaskResult(fn func(TaskResult)) { l.onTaskResult = fn }
+
 // SetOnAttemptFailed configures a callback invoked with the project directory
 // and task ID whenever a task's attempt ends failed — used by the daemon to
 // post a repeated-failure signal once the failure threshold is reached.
@@ -520,6 +540,13 @@ func (l *Loop) runPhased() {
 
 			// Create an Attempt record for this loop iteration.
 			attemptID := l.saveAttemptForTask(attempt, taskTitle, l.config.ProjectDir)
+			if v, ok := l.taskLabels.Load(taskID); ok && attemptID != "" {
+				if labels, _ := v.([]string); len(labels) > 0 {
+					// Recorded so paths that only know the run (parking) can
+					// still resolve the task's owning DRA.
+					_ = l.store.SetContextKey(context.Background(), taskID, attemptID, "", KVTaskLabels, strings.Join(labels, "\n"))
+				}
+			}
 
 			// Launch main in a goroutine.
 			inFlight++
@@ -876,6 +903,7 @@ func (l *Loop) pickTaskFromPhase(urgentOnly bool) (string, string, []string, boo
 			continue
 		}
 		l.dedup[task.ID] = now
+		l.taskLabels.Store(task.ID, append([]string(nil), task.Labels...))
 		log.Printf("orchestration loop: assigned task %s for %s", task.ID, l.config.ProjectDir)
 		return task.ID, task.Title, task.Repos, true
 	}
@@ -992,6 +1020,14 @@ func (l *Loop) completeAttempt(attemptID string, state domain.RunState) {
 
 	if result == domain.AttemptResultFailed && l.onAttemptFailed != nil && attempt.TaskID != "" {
 		l.onAttemptFailed(l.config.ProjectDir, attempt.TaskID)
+	}
+
+	if l.onTaskResult != nil && attempt.TaskID != "" {
+		var labels []string
+		if v, ok := l.taskLabels.Load(attempt.TaskID); ok {
+			labels, _ = v.([]string)
+		}
+		l.onTaskResult(TaskResult{ProjectDir: l.config.ProjectDir, TaskID: attempt.TaskID, Labels: labels, State: state})
 	}
 
 	if l.onAttemptComplete != nil {

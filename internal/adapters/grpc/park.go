@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"log"
+	"strings"
 
 	"github.com/swordsmanluke/cloche/internal/activitylog"
 	"github.com/swordsmanluke/cloche/internal/config"
@@ -41,6 +42,7 @@ func (s *ClocheServer) ParkRunForHelp(ctx context.Context, runID, threadID, titl
 		log.Printf("park: failed to mark run %s parked: %v", runID, err)
 	}
 	s.TriggerAttentionRefresh(run.ProjectDir)
+	s.notifyTaskParked(ctx, run)
 
 	s.publishHelpEvent(run.ProjectDir, runID, run.TaskID, run.AttemptID, "",
 		activitylog.KindHelpParked, title, "help_parked: "+title)
@@ -191,4 +193,23 @@ func (s *ClocheServer) triggerResumeIfParked(ctx context.Context, threadID, body
 		return
 	}
 	s.resumeParkedRun(context.Background(), run, thread.ID, body)
+}
+
+// notifyTaskParked fires the "task parks" DRA trigger. The loop only reports
+// attempts that end, so parking reports itself, using the labels the loop
+// recorded in the attempt's KV at assignment.
+func (s *ClocheServer) notifyTaskParked(ctx context.Context, run *domain.Run) {
+	if run.TaskID == "" {
+		return
+	}
+	v, ok, _ := s.store.GetContextKey(ctx, run.TaskID, run.AttemptID, "", host.KVTaskLabels)
+	if !ok || v == "" {
+		return
+	}
+	s.onTaskResult(host.TaskResult{
+		ProjectDir: run.ProjectDir,
+		TaskID:     run.TaskID,
+		Labels:     strings.Split(v, "\n"),
+		State:      domain.RunStateParked,
+	})
 }

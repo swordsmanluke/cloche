@@ -253,3 +253,23 @@ func TestDRA_CredentialIsNotAnotherRoutesCredential(t *testing.T) {
 	assert.Empty(t, e.tracker.calls)
 	assert.Empty(t, e.tracker.closedTask)
 }
+
+// The daemon is told about each task a DRA creates, updates or closes, so
+// the events those actions cause do not wake it again.
+func TestDRA_OwnActionsAreReported(t *testing.T) {
+	e := setupDRA(t)
+	type act struct{ project, dra, task string }
+	var got []act
+	WithDRAActionHook(func(p, d, id string) { got = append(got, act{p, d, id}) })(e.h)
+
+	rec := e.post("/api/dra/tasks/create", `{"inputs":{"title":"x"}}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	newID := outputs(t, rec)["new_task_id"]
+	rec = e.post("/api/dra/tasks/close", `{"task_id":"mine-1"}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	// A refused action is not the DRA's action.
+	rec = e.post("/api/dra/tasks/close", `{"task_id":"other-1"}`)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+
+	assert.Equal(t, []act{{draProject, "auth", newID}, {draProject, "auth", "mine-1"}}, got)
+}

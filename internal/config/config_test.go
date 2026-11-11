@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -466,4 +467,16 @@ func TestBudgetDefaults(t *testing.T) {
 
 func TestEmergencyDefaultsOff(t *testing.T) {
 	assert.Equal(t, 0, defaults().Orchestration.Emergency)
+}
+
+func TestDRAHeartbeatInterval(t *testing.T) {
+	for in, want := range map[string]time.Duration{"": 4 * time.Hour, "30m": 30 * time.Minute, "off": 0, "0": 0, "junk": 4 * time.Hour} {
+		if got := (DRAConfig{Heartbeat: in}).HeartbeatInterval(); got != want {
+			t.Errorf("%q: got %v, want %v", in, got, want)
+		}
+	}
+	cfg, err := Load(t.TempDir())
+	if err != nil || cfg.DRAs.HeartbeatInterval() != 4*time.Hour {
+		t.Errorf("default: %v %v", cfg, err)
+	}
 }

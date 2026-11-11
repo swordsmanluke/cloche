@@ -77,6 +77,7 @@ type ClocheServer struct {
 	runIDs          map[string]string              // run_id -> container_id
 	containerRun    map[string]string              // container_id -> run_id
 	hostCancels     map[string]context.CancelFunc  // run_id -> cancel fn (for host runs)
+	draTrig         draTriggers                    // DRA wake-up triggers (dra_triggers.go)
 	wakeActive      map[string]string              // project+DRA -> run id of its running wake-up (see WakeDRA)
 	attemptCancels  map[string]context.CancelFunc  // attempt_id -> cancel fn (loop-dispatched main runs)
 	loops           map[string]*host.Loop          // project_dir -> orchestration loop
@@ -783,6 +784,9 @@ func (s *ClocheServer) runWorkflow(ctx context.Context, req *pb.RunWorkflowReque
 
 	if workflowName == dra.WakeRequest {
 		return s.runDRAWake(ctx, req)
+	}
+	if workflowName == dra.NotifyRequest {
+		return s.runDRANotify(req)
 	}
 
 	// Resolve the workflow (project-defined, or a built-in if not overridden)
@@ -4061,6 +4065,7 @@ func (s *ClocheServer) createPhaseLoop(loopCfg host.LoopConfig, projectDir strin
 	}
 	loop.SetOnAttemptComplete(s.TriggerAttentionRefresh)
 	loop.SetOnAttemptFailed(s.signalRepeatFailure)
+	loop.SetOnTaskResult(s.onTaskResult)
 	return loop
 }
 
@@ -4468,7 +4473,9 @@ func (s *ClocheServer) HandleSignal(ctx context.Context, projectDir string, sig 
 		LogBroadcast: s.logBroadcast,
 	}
 	s.useModuleExecutor(runner, projectDir, signal.WorkflowName)
-	return host.RunSignalHandler(ctx, runner, projectDir, sig, run)
+	err := host.RunSignalHandler(ctx, runner, projectDir, sig, run)
+	s.notifySignalDRA(projectDir, sig, err)
+	return err
 }
 
 // CloseTask runs the project's close/cancel task contract — a standalone
