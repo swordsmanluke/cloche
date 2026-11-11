@@ -696,6 +696,11 @@ host workflow `handle-notification` with the signal as input. If the same `sourc
 one handler run. Every signal is stored either way. A signal arriving after the handler
 finishes starts a new run.
 
+Handler runs are limited: at most 8 at once, and 30 started per hour for one project and
+source. Past either limit the request gets `429` and the signal is stored but not
+handled; signals that join a running handler don't count. Each handler run is recorded,
+so a failed one shows in `cloche list` as a failed `handle-notification` run.
+
 The workflow reads the signal from KV keys: `signal_source`, `signal_key`,
 `signal_severity`, `signal_priority` (`urgent`→0, `high`→1, `low`→3), `signal_title`,
 `signal_evidence`, `signal_domain`, `signal_json` (the whole object), and `signal_count`

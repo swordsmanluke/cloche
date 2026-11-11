@@ -86,9 +86,10 @@ func TestParseTrackerArgs_Find(t *testing.T) {
 }
 
 func TestPostTrackerPhase(t *testing.T) {
-	var gotPath, gotBody string
+	var gotPath, gotBody, gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.EscapedPath()
+		gotAuth = r.Header.Get("Authorization")
 		b := make([]byte, 512)
 		n, _ := r.Body.Read(b)
 		gotBody = string(b[:n])
@@ -102,13 +103,14 @@ func TestPostTrackerPhase(t *testing.T) {
 	defer srv.Close()
 	addr := strings.TrimPrefix(srv.URL, "http://")
 
-	out, err := postTrackerPhase(addr, &trackerRequest{Path: "create", ProjectDir: "/home/p", Inputs: map[string]string{"title": "x"}})
+	out, err := postTrackerPhase(addr, &trackerRequest{Path: "create", ProjectDir: "/home/p", Inputs: map[string]string{"title": "x"}}, "tok")
 	require.NoError(t, err)
+	assert.Equal(t, "Bearer tok", gotAuth)
 	assert.Equal(t, "t-9", out["new_task_id"])
 	assert.Equal(t, "/api/projects/%2Fhome%2Fp/tasks/create", gotPath)
 	assert.Contains(t, gotBody, `"title":"x"`)
 
-	_, err = postTrackerPhase(addr, &trackerRequest{Path: "create", ProjectDir: "/p", Inputs: map[string]string{"title": "boom"}})
+	_, err = postTrackerPhase(addr, &trackerRequest{Path: "create", ProjectDir: "/p", Inputs: map[string]string{"title": "boom"}}, "tok")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "create-task failed")
 }

@@ -7,7 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
 	"github.com/swordsmanluke/cloche/internal/attention"
+	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/signal"
 )
 
@@ -51,4 +53,27 @@ func TestSignalRepeatFailure_NoSubmitterIsNoop(t *testing.T) {
 	f := &fakeSubmitter{}
 	s.SetSignalSubmitter(f)
 	assert.Empty(t, f.got)
+}
+
+// Three failed attempts file a "find out why" task, but not when the failing
+// task is itself one: the chain would never end.
+func TestSignalRepeatFailure_DoesNotChain(t *testing.T) {
+	for title, want := range map[string]int{"Add a flag": 1, repeatFailureTitlePrefix + "T-0 keeps failing at step test": 0} {
+		store, err := sqlite.NewStore(":memory:")
+		require.NoError(t, err)
+		defer store.Close()
+		ctx := context.Background()
+		for _, id := range []string{"a", "b", "c"} {
+			run := domain.NewRun("main:"+id, "main")
+			run.ProjectDir, run.IsHost, run.TaskID, run.AttemptID, run.TaskTitle = "/p", true, "T-1", id, title
+			require.NoError(t, store.CreateRun(ctx, run))
+			run.Fail("boom")
+			require.NoError(t, store.UpdateRun(ctx, run))
+		}
+		s := NewClocheServer(store, nil)
+		f := &fakeSubmitter{}
+		s.SetSignalSubmitter(f)
+		s.signalRepeatFailure("/p", "T-1")
+		assert.Len(t, f.got, want, title)
+	}
 }

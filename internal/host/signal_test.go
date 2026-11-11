@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/signal"
 )
 
@@ -112,4 +113,24 @@ func TestSignalKV(t *testing.T) {
 	assert.Equal(t, "1", kv["signal_priority"])
 	assert.Equal(t, "1", kv["signal_count"])
 	assert.Contains(t, kv["signal_json"], `"key":"k"`)
+}
+
+// A handler that fails leaves a failed run behind, so the lost signal shows in
+// `cloche list` rather than only in the daemon log.
+func TestRunSignalHandler_FailureIsRecorded(t *testing.T) {
+	bin := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "cloche"), []byte("#!/bin/sh\nexit 1\n"), 0o755))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	store, dir := newSQLiteStore(t), t.TempDir()
+	sig := signal.Signal{Source: "ci", Key: "k", Severity: signal.SeverityLow, Title: "t"}
+	require.Error(t, RunSignalHandler(context.Background(), &Runner{Store: store}, dir, sig, nil))
+
+	var runs []*domain.Run
+	for _, r := range store.fakeStore.runs {
+		runs = append(runs, r)
+	}
+	require.Len(t, runs, 1)
+	assert.Equal(t, signal.WorkflowName, runs[0].WorkflowName)
+	assert.Equal(t, domain.RunStateFailed, runs[0].State)
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/host"
 	"github.com/swordsmanluke/cloche/internal/ports"
+	"github.com/swordsmanluke/cloche/internal/signal"
 )
 
 // mockContainerManager implements ContainerManager for testing.
@@ -3076,10 +3077,26 @@ func TestAPITrackerPhase(t *testing.T) {
 
 	tp := &trackerTaskProvider{out: map[string]string{"new_task_id": "t-1"}}
 	h.taskProvider = tp
+	h.signalTokens = signal.NewTokenStore(t.TempDir())
+	token, err := h.signalTokens.Get(run.ProjectDir)
+	require.NoError(t, err)
+
+	// Without the project's token nothing reaches the tracker.
+	for _, auth := range []string{"", "Bearer nope"} {
+		req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/create", strings.NewReader(`{"inputs":{"title":"x","priority":"0"}}`))
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		require.Equal(t, http.StatusUnauthorized, w.Code)
+		require.Empty(t, tp.slot, "the phase must not run without a valid token")
+	}
 
 	for path, slot := range map[string]string{"create": "create-task", "update": "update-task"} {
 		body := strings.NewReader(`{"inputs":{"title":"x"}}`)
 		req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/"+path, body)
+		req.Header.Set("Authorization", "Bearer "+token)
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, req)
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
@@ -3092,6 +3109,7 @@ func TestAPITrackerPhase(t *testing.T) {
 
 	tp.err = errors.New("boom")
 	req := httptest.NewRequest("POST", "/api/projects/myapp/tasks/create", strings.NewReader(`{"inputs":{}}`))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -3099,6 +3117,7 @@ func TestAPITrackerPhase(t *testing.T) {
 	// A provider without tracker support is a clear error, not a panic.
 	h.taskProvider = &mockTaskProvider{}
 	req = httptest.NewRequest("POST", "/api/projects/myapp/tasks/create", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)

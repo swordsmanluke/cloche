@@ -18,10 +18,12 @@ type apiTrackerPhaseResponse struct {
 }
 
 // handleAPITrackerPhase returns a handler that runs the create-task or
-// update-task tracker phase through the project's bound tracker module.
+// update-task tracker phase through the project's bound tracker module. It
+// needs the project's signal token, like POST .../signals: a created task is
+// work the loop will run and merge.
 func (h *Handler) handleAPITrackerPhase(slot string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		dir, _, ok := h.resolveProjectDir(w, r)
+		dir, ok := h.signalAuth(w, r)
 		if !ok {
 			return
 		}

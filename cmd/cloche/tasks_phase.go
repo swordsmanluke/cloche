@@ -8,7 +8,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/swordsmanluke/cloche/internal/config"
+	"github.com/swordsmanluke/cloche/internal/signal"
 )
 
 // trackerRequest is a parsed `cloche tasks create|update|find` invocation:
@@ -170,7 +174,15 @@ func cmdTasksTracker(args []string) {
 	if req.ProjectDir == "" {
 		req.ProjectDir, _ = os.Getwd()
 	}
-	out, err := postTrackerPhase(httpAddr, req)
+	if abs, err := filepath.Abs(req.ProjectDir); err == nil {
+		req.ProjectDir = abs
+	}
+	token, err := signal.NewTokenStore(config.SignalTokenDir()).Get(req.ProjectDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: reading the project's signal token: %v\n", err)
+		os.Exit(1)
+	}
+	out, err := postTrackerPhase(httpAddr, req, token)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -189,11 +201,18 @@ func cmdTasksTracker(args []string) {
 	}
 }
 
-// postTrackerPhase POSTs req to the daemon and returns the phase's outputs.
-func postTrackerPhase(httpAddr string, req *trackerRequest) (map[string]string, error) {
+// postTrackerPhase POSTs req to the daemon with the project's signal token and
+// returns the phase's outputs.
+func postTrackerPhase(httpAddr string, req *trackerRequest, token string) (map[string]string, error) {
 	body, _ := json.Marshal(map[string]any{"inputs": req.Inputs})
 	endpoint := fmt.Sprintf("http://%s/api/projects/%s/tasks/%s", httpAddr, url.PathEscape(req.ProjectDir), req.Path)
-	resp, err := http.Post(endpoint, "application/json", bytes.NewReader(body)) //nolint:noctx
+	hreq, err := http.NewRequest("POST", endpoint, bytes.NewReader(body)) //nolint:noctx
+	if err != nil {
+		return nil, err
+	}
+	hreq.Header.Set("Content-Type", "application/json")
+	hreq.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(hreq)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to daemon web API: %w\nhint: set CLOCHE_HTTP (or [daemon] http in ~/.config/cloche/config) and restart the daemon", err)
 	}

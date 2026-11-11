@@ -5788,10 +5788,19 @@ func (s *ClocheServer) signalRepeatFailure(projectDir, taskID string) {
 	if !ok {
 		return
 	}
+	// A failing "find out why" task must not file another one about itself.
+	// shortcut: matched by title, so a project handler that retitles tasks loses this; match the signal:cloche: label once runs carry labels.
+	for _, r := range runs {
+		if r.TaskID == taskID && strings.HasPrefix(r.TaskTitle, repeatFailureTitlePrefix) {
+			return
+		}
+	}
 	if _, err := s.signals.Submit(ctx, projectDir, sig); err != nil {
 		log.Printf("repeat-failure signal: task %s: %v", taskID, err)
 	}
 }
+
+const repeatFailureTitlePrefix = "Find out why task "
 
 // repeatFailureSignal builds the signal for a streak, or false when the streak
 // hasn't just reached threshold.
@@ -5811,7 +5820,7 @@ func repeatFailureSignal(taskID string, st attention.FailureStreak, threshold in
 		Source:   "cloche",
 		Key:      taskID + ":" + step,
 		Severity: signal.SeverityHigh,
-		Title:    fmt.Sprintf("Find out why task %s keeps failing at step %s", taskID, step),
+		Title:    fmt.Sprintf(repeatFailureTitlePrefix+"%s keeps failing at step %s", taskID, step),
 		Evidence: evidence,
 	}, true
 }

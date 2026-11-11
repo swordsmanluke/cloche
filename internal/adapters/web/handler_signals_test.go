@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -239,4 +240,19 @@ func TestSignals_DisabledWithoutIntake(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// A source that sends a new key per event is refused once enough handlers run.
+func TestSignals_HandlerLimitAnswers429(t *testing.T) {
+	e := setupSignals(t)
+	post := func(i int) int {
+		body := fmt.Sprintf(`{"source":"noisy","key":"k-%d","severity":"low","title":"t"}`, i)
+		return e.post(t, e.slug, "Bearer "+e.token, body).Code
+	}
+	for i := 0; i < 8; i++ {
+		require.Equal(t, http.StatusAccepted, post(i))
+	}
+	assert.Equal(t, http.StatusTooManyRequests, post(8), "a ninth handler must not start")
+	// A repeat of a running key still joins its handler.
+	assert.Equal(t, http.StatusAccepted, post(0))
 }

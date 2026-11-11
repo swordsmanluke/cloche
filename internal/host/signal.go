@@ -61,8 +61,9 @@ func RunSignalHandler(ctx context.Context, runner *Runner, projectDir string, si
 		})
 	}
 
+	// The run is recorded: a failed handler is a lost signal, and the record
+	// is the only place it shows.
 	r := *runner
-	r.SkipRunRecord = true
 	r.KVTaskID, r.KVAttemptID = kvTask, kvAttempt
 	result, err := r.RunWorkflowDef(ctx, projectDir, wf, domain.GenerateRunID(signal.WorkflowName, kvAttempt))
 	if result != nil && result.tmpOutputDir != "" {

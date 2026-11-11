@@ -2,9 +2,49 @@ package signal
 
 import (
 	"context"
+	"errors"
 	"log"
 	"sync"
+	"time"
 )
+
+// Limits on handlers, so one noisy source can't fill the tracker or spend the
+// allowance. Signals that join a running handler don't count.
+const (
+	maxInFlight       = 8  // handlers running at once, all projects
+	maxStartsPerHour  = 30 // handlers started per project and source
+	startWindowLength = time.Hour
+)
+
+// ErrLimited is returned by Submit when a limit refuses a new handler. The
+// signal is stored but not handled.
+var ErrLimited = errors.New("too many signals: handler limit reached, try again later")
+
+type startWindow struct {
+	begin time.Time
+	n     int
+}
+
+// admit reports whether a new handler may start for the source. d.mu is held.
+func (d *Dispatcher) admit(projectDir, source string) bool {
+	if len(d.inflight) >= maxInFlight {
+		return false
+	}
+	if d.starts == nil {
+		d.starts = map[string]*startWindow{}
+	}
+	k := projectDir + "\x00" + source
+	w := d.starts[k]
+	if now := time.Now(); w == nil || now.Sub(w.begin) >= startWindowLength {
+		w = &startWindow{begin: now}
+		d.starts[k] = w
+	}
+	if w.n >= maxStartsPerHour {
+		return false
+	}
+	w.n++
+	return true
+}
 
 // WorkflowName is the host workflow every signal is handed to.
 const WorkflowName = "handle-notification"
@@ -80,6 +120,7 @@ type Dispatcher struct {
 
 	mu       sync.Mutex
 	inflight map[string]*InFlight
+	starts   map[string]*startWindow // handler starts per project and source
 	wg       sync.WaitGroup
 }
 
@@ -111,6 +152,10 @@ func (d *Dispatcher) Submit(ctx context.Context, projectDir string, sig Signal) 
 		}
 		cur, ok := d.inflight[k]
 		if !ok {
+			if !d.admit(projectDir, sig.Source) {
+				d.mu.Unlock()
+				return Result{ID: id}, ErrLimited
+			}
 			f = &InFlight{count: 1, latest: sig}
 			d.inflight[k] = f
 			d.mu.Unlock()
