@@ -12,6 +12,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/builtin"
 	"github.com/swordsmanluke/cloche/internal/config"
 	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/dra"
 	"github.com/swordsmanluke/cloche/internal/dsl"
 	"github.com/swordsmanluke/cloche/internal/engine"
 	"github.com/swordsmanluke/cloche/internal/module"
@@ -82,6 +83,9 @@ func validateProject(projectDir, workflowFilter string) []string {
 	for _, err := range docker.ValidateOverrides(projectDir) {
 		errs = append(errs, err.Error())
 	}
+
+	// 1c. DRAs: each needs a charter and a label-style name.
+	errs = append(errs, dra.Validate(projectDir)...)
 
 	// 2. Parse and validate workflow files
 	workflows, parseErrs := parseAllWorkflowFiles(clocheDir)

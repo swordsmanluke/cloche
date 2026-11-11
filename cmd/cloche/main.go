@@ -139,6 +139,13 @@ func main() {
 		}
 		cmdSignals(os.Args[2:])
 		return
+	case "dra":
+		if hasHelpFlag(os.Args[2:]) {
+			printSubcommandHelp("dra")
+			return
+		}
+		cmdDRA(os.Args[2:])
+		return
 	case "intent":
 		if hasHelpFlag(os.Args[2:]) {
 			printSubcommandHelp("intent")

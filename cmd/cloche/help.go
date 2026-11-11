@@ -510,6 +510,23 @@ For a daemon on another machine, export CLOCHE_DASHBOARD_TOKEN so cloche
 commands that call the dashboard (health, tasks) send it.
 See docs/SAFETY.md.
 `,
+	"dra": `cloche dra — List the project's Domain Responsible Agents
+
+A DRA is defined by a directory .cloche/dras/<name>/ holding charter.md
+(required) and notes.md. The name is the domain and uses lowercase letters,
+digits and '-'. Cloche never commits notes.md. See docs/dras.md.
+
+Usage:
+  cloche dra list [--project <dir>]
+
+  list             Print each DRA's name, session state ('-' until sessions
+                   exist) and the first heading of its charter.
+  --project <dir>  Project directory (default: current directory).
+
+Examples:
+  cloche dra list
+  cloche dra list --project ~/src/my-project
+`,
 	"signals": `cloche signals — Show or rotate a project's signal-intake token
 
 Feedback signals enter cloche only through an HTTP endpoint on the dashboard
@@ -1114,6 +1131,7 @@ Project Setup:
   intent     View and curate standing project requirements
   dashboard  Show or rotate the dashboard HTTP token
   signals    Show or rotate the token for the signal-intake endpoint
+  dra        List the project's Domain Responsible Agents
   module     Install and manage workflow modules
 
 Workflow Info:

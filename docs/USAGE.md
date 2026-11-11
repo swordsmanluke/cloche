@@ -1470,6 +1470,7 @@ Checks performed:
 - **workflow_name timeout fit** (warning, all workflows only) — a `workflow_name` step's explicit `timeout` is checked against the target workflow's own step timeouts summed; if the explicit timeout is shorter, the sub-workflow could be killed before its own steps can time out.
 - **Modules, binds and contracts** (all workflows only) — each `module.toml` parses, its `exports` exist and it has a README; `requires` binaries are on `PATH` (error; `cloche doctor` checks this too); bind targets exist and a bare target is not ambiguous between a module and a project workflow; for each `workflow_name` step the bound workflow's `contract` is checked against what is available at that point (`success`/`fail` wired; `kv:` inputs seeded, supplied by `with`, or declared as `out:` upstream — an input only a script step might write is a warning, an input nothing could provide is an error; `out.<key>` remaps must name declared outs).
 - **Module warnings** — exported workflow without a contract, vendored module content that no longer matches the `modules.lock` hash, and `credentials` not set in the environment or `CLOCHE_EXTRA_ENV`.
+- **DRAs** — each `.cloche/dras/<name>/` has a `charter.md` and a valid name (lowercase letters, digits, `-`). See [`docs/dras.md`](dras.md).
 
 Exits 0 and prints "All configuration valid." on success. Exits 1 and prints each error with file path on failure. Warnings (e.g. the timeout fit check) print to stderr with a `WARNING:` prefix but do not affect the exit code.
 
@@ -1570,6 +1571,22 @@ the same RPC `cloche run` uses.
 |---------|-------------|
 | `EDITOR`, `VISUAL` | Editor used by `edit` (default: `vi`). |
 | `CLOCHE_ADDR` | Daemon gRPC address, used only by `scan`. |
+
+### `cloche dra`
+
+List the project's Domain Responsible Agents. A DRA is defined by a directory
+`.cloche/dras/<name>/` holding `charter.md` (required) and `notes.md`; Cloche never
+commits `notes.md`. See [`docs/dras.md`](dras.md).
+
+```
+cloche dra list [--project <dir>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--project <dir>` | current directory | Project directory. |
+
+`list` prints each DRA's name, its session state (`-` until sessions exist) and the first heading of its charter.
 
 ### `cloche module`
 
