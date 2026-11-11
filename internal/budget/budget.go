@@ -32,10 +32,6 @@ const DefaultGrace = 30 * time.Minute
 // DefaultInterval is how often the Monitor re-reads usage in the background.
 const DefaultInterval = 2 * time.Minute
 
-// staleAfter bounds how old a reading may be when a launch decision asks for
-// the gate; older readings are refreshed first.
-const staleAfter = 30 * time.Second
-
 // Config is the resolved [budget] configuration.
 type Config struct {
 	// UsagePercentPerDay is the cap: the share of the weekly allowance that
@@ -64,9 +60,12 @@ type Reader interface {
 	Read(ctx context.Context) (Reading, error)
 }
 
+// weeklyAnyRe matches every weekly window, e.g. "Current week (Fable): 41% used".
+var weeklyAnyRe = regexp.MustCompile(`Current week \([^)]*\):\s*(\d+(?:\.\d+)?)%\s*used`)
+
 var weeklyAllRe = regexp.MustCompile(`Current week \(all models\):\s*(\d+(?:\.\d+)?)%\s*used(?:\s*·\s*resets\s*([^\n]+))?`)
 
-// ParseUsage extracts the "Current week (all models)" reading from the text
+// ParseUsage extracts the weekly reading from the text
 // printed by `claude -p "/usage"`. The format is free-form text, so this is
 // deliberately strict about the percentage (an error, never a guess) and
 // lenient about the reset time (zero when unparseable).
@@ -78,6 +77,13 @@ func ParseUsage(text string, now time.Time) (Reading, error) {
 	pct, err := strconv.ParseFloat(m[1], 64)
 	if err != nil {
 		return Reading{}, fmt.Errorf("parsing usage percentage %q: %w", m[1], err)
+	}
+	// A per-model weekly window can run out before the all-models one, so
+	// the reading is the fullest window.
+	for _, w := range weeklyAnyRe.FindAllStringSubmatch(text, -1) {
+		if p, err := strconv.ParseFloat(w[1], 64); err == nil && p > pct {
+			pct = p
+		}
 	}
 	r := Reading{WeeklyPercent: pct}
 	if len(m) > 2 {
@@ -333,19 +339,11 @@ func (m *Monitor) Status() Status {
 	return st
 }
 
-// Blocked reports whether new launches must be held back. It refreshes a stale
-// reading first, so a launch decision never rests on an old figure.
-func (m *Monitor) Blocked(ctx context.Context) bool {
-	if !m.cfg.Enabled() {
-		return false
-	}
-	m.mu.Lock()
-	stale := m.st.CheckedAt.IsZero() || m.now().Sub(m.st.CheckedAt) > staleAfter
-	m.mu.Unlock()
-	if stale {
-		m.Check(ctx)
-	}
-	return m.Status().Over
+// Blocked reports whether new launches must be held back, from the last
+// reading Run took. It never reads usage itself: a read takes seconds, and
+// callers (the loops, `cloche status`) must not wait on it.
+func (m *Monitor) Blocked() bool {
+	return m.cfg.Enabled() && m.Status().Over
 }
 
 // Run re-reads usage every interval until ctx is cancelled.

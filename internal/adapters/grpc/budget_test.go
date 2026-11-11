@@ -2,6 +2,9 @@ package grpc_test
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,10 +19,13 @@ import (
 	"github.com/swordsmanluke/cloche/internal/domain"
 )
 
-type budgetReader struct{ pct float64 }
+type budgetReader struct {
+	pct float64
+	err error
+}
 
 func (b *budgetReader) Read(context.Context) (budget.Reading, error) {
-	return budget.Reading{WeeklyPercent: b.pct}, nil
+	return budget.Reading{WeeklyPercent: b.pct}, b.err
 }
 
 // overCapMonitor returns a monitor already over a 5% cap.
@@ -124,6 +130,17 @@ func TestParkRunsForBudget_ParksInFlightRunsAndRecordsStep(t *testing.T) {
 	run := budgetParkedRun(t, ctx, store, srv)
 	assert.Equal(t, domain.RunStateParked, run.State)
 
+	// A run waiting on a poll step spends nothing and is left alone.
+	waiting := domain.NewRun("waiting-run", "main")
+	waiting.ProjectDir = "/proj"
+	require.NoError(t, store.CreateRun(ctx, waiting))
+	waiting.State = domain.RunStateWaiting
+	require.NoError(t, store.UpdateRun(ctx, waiting))
+	defer func() {
+		got, _ := store.GetRun(ctx, "waiting-run")
+		assert.Equal(t, domain.RunStateWaiting, got.State)
+	}()
+
 	// A finished run is left alone.
 	done := domain.NewRun("done-run", "main")
 	done.ProjectDir = "/proj"
@@ -206,4 +223,98 @@ func TestResume_PlainParkedRunStillRejected(t *testing.T) {
 	md := metadata.Pairs("x-cloche-resume-run-id", run.ID)
 	_, err = srv.RunWorkflow(metadata.NewIncomingContext(ctx, md), &pb.RunWorkflowRequest{})
 	assert.Error(t, err)
+}
+
+// Usage that can't be read leaves the cap unenforced; "Needs you" must say so.
+func TestBudgetAttention_ReadFailure(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+	ctx := context.Background()
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+	m := budget.NewMonitor(budget.Config{UsagePercentPerDay: 5}, &budgetReader{err: errors.New("claude: not found")}, "")
+	srv.SetBudget(m)
+	m.Check(ctx)
+
+	att, err := srv.GetAttention(ctx, &pb.GetAttentionRequest{All: true})
+	require.NoError(t, err)
+	require.Len(t, att.Items, 1)
+	assert.Equal(t, "budget", att.Items[0].Kind)
+	assert.Contains(t, att.Items[0].Reason, "not enforced")
+	assert.Contains(t, att.Items[0].Reason, "claude: not found")
+}
+
+// Runs parked by the cap stay in "Needs you" after the cap clears, by ID,
+// until they are resumed.
+func TestBudgetAttention_ParkedRunsOutliveTheCap(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+	ctx := context.Background()
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+	srv.SetTaskStore(store)
+	m, r := overCapMonitor(t, time.Hour)
+	srv.SetBudget(m)
+	run := budgetParkedRun(t, ctx, store, srv)
+
+	r.pct = 11
+	require.False(t, m.Check(ctx).Over)
+	att, err := srv.GetAttention(ctx, &pb.GetAttentionRequest{All: true})
+	require.NoError(t, err)
+	require.Len(t, att.Items, 1)
+	assert.Contains(t, att.Items[0].Reason, run.ID)
+	assert.Contains(t, att.Items[0].Reason, "cloche resume")
+	assert.Empty(t, att.Items[0].Since)
+
+	md := metadata.Pairs("x-cloche-resume-run-id", run.ID)
+	_, err = srv.RunWorkflow(metadata.NewIncomingContext(ctx, md), &pb.RunWorkflowRequest{})
+	require.NoError(t, err)
+	att, err = srv.GetAttention(ctx, &pb.GetAttentionRequest{All: true})
+	require.NoError(t, err)
+	assert.Empty(t, att.Items)
+}
+
+// Parks a host run that is really executing a step, then resumes it: the run
+// must end parked (not failed), and the resumed run must finish the work.
+func TestBudgetPark_LiveHostRunParksAndResumes(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+	ctx := context.Background()
+	srv := server.NewClocheServerWithCaptures(store, store, nil, "")
+	srv.SetTaskStore(store)
+
+	dir := t.TempDir()
+	started, release := filepath.Join(dir, "started"), filepath.Join(dir, "release")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "host.cloche"), []byte(`workflow slow {
+  host {}
+  step work {
+    run     = "touch `+started+`; test -f `+release+` || sleep 60"
+    results = [success, fail]
+  }
+  work:success -> done
+  work:fail    -> abort
+}
+`), 0644))
+
+	resp, err := srv.RunWorkflow(ctx, &pb.RunWorkflowRequest{ProjectDir: dir, WorkflowName: "slow"})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool { _, err := os.Stat(started); return err == nil }, 10*time.Second, 20*time.Millisecond)
+
+	require.Equal(t, 1, srv.ParkRunsForBudget(ctx))
+	// Give the cancelled step time to unwind; it must not turn the park into a failure.
+	time.Sleep(500 * time.Millisecond)
+	parked, err := store.GetRun(ctx, resp.RunId)
+	require.NoError(t, err)
+	require.Equal(t, domain.RunStateParked, parked.State)
+
+	require.NoError(t, os.WriteFile(release, nil, 0644))
+	md := metadata.Pairs("x-cloche-resume-run-id", resp.RunId)
+	resumed, err := srv.RunWorkflow(metadata.NewIncomingContext(ctx, md), &pb.RunWorkflowRequest{})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		g, err := store.GetRun(ctx, resumed.RunId)
+		return err == nil && g.State == domain.RunStateSucceeded
+	}, 10*time.Second, 20*time.Millisecond, "the resumed run finishes the parked step")
 }

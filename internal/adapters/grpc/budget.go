@@ -2,7 +2,9 @@ package grpc
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	pb "github.com/swordsmanluke/cloche/api/clochepb"
@@ -32,7 +34,7 @@ func (s *ClocheServer) SetBudget(m *budget.Monitor) {
 
 // budgetBlocked reports whether new launches are held back by the cap.
 func (s *ClocheServer) budgetBlocked() bool {
-	return s.budget != nil && s.budget.Blocked(context.Background())
+	return s.budget != nil && s.budget.Blocked()
 }
 
 // GetBudget implements the GetBudget RPC.
@@ -40,7 +42,6 @@ func (s *ClocheServer) GetBudget(ctx context.Context, _ *pb.GetBudgetRequest) (*
 	if s.budget == nil {
 		return &pb.GetBudgetResponse{}, nil
 	}
-	s.budget.Blocked(ctx) // refresh a stale reading
 	st := s.budget.Status()
 	resp := &pb.GetBudgetResponse{
 		Enabled:      st.Enabled,
@@ -70,36 +71,65 @@ func (s *ClocheServer) budgetWarning() string {
 	return "daily budget cap reached: " + st.Describe(time.Now()) + " (starting anyway because this run was started by hand)"
 }
 
-// budgetAttentionItem returns the daemon-wide "Needs you" item for an
-// exceeded cap, naming the cap and when the day's window clears.
-func (s *ClocheServer) budgetAttentionItem() (attention.Item, bool) {
+// budgetAttentionItem returns the daemon-wide "Needs you" item for the budget:
+// the cap being exceeded (naming the cap and when the day's window clears),
+// usage being unreadable (the cap is then not enforced), and runs the cap
+// parked that still wait for `cloche resume`, which outlive the over-cap state.
+func (s *ClocheServer) budgetAttentionItem(ctx context.Context) (attention.Item, bool) {
 	if s.budget == nil {
 		return attention.Item{}, false
 	}
 	st := s.budget.Status()
-	if !st.Enabled || !st.Over {
+	if !st.Enabled {
 		return attention.Item{}, false
 	}
-	reason := budgetReason(st)
+	var parts []string
+	since := st.OverSince
+	switch {
+	case st.Over:
+		parts = append(parts, st.Describe(time.Now()))
+	case st.ReadErr != "":
+		parts = append(parts, "cannot read usage, so the daily cap is not enforced: "+st.ReadErr)
+		since = st.CheckedAt
+	}
+	if ids := s.budgetParkedRunIDs(ctx); len(ids) > 0 {
+		parts = append(parts, fmt.Sprintf("%d run(s) parked by the cap, continue each with `cloche resume <id>`: %s", len(ids), strings.Join(ids, ", ")))
+	}
+	if len(parts) == 0 {
+		return attention.Item{}, false
+	}
 	return attention.Item{
 		Kind:   attention.KindBudget,
-		Reason: reason,
-		Since:  st.OverSince,
+		Reason: strings.Join(parts, "; "),
+		Since:  since,
 		Key:    "budget",
 	}, true
 }
 
-func budgetReason(st budget.Status) string {
-	return st.Describe(time.Now())
+// budgetParkedRunIDs lists the top-level runs still parked by the cap. Child
+// runs are left out: resuming the parent continues them.
+func (s *ClocheServer) budgetParkedRunIDs(ctx context.Context) []string {
+	runs, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{State: domain.RunStateParked})
+	if err != nil {
+		return nil
+	}
+	var ids []string
+	for _, r := range runs {
+		if isBudgetParked(r) && r.ParentRunID == "" {
+			ids = append(ids, r.ID)
+		}
+	}
+	return ids
 }
 
-// ParkRunsForBudget parks every run still in flight, across all projects, with
+// ParkRunsForBudget parks every run still in flight (runs waiting on a poll
+// step spend nothing and are left alone), across all projects, with
 // the same state change `cloche loop stop --hard` makes (state "parked"), and
 // stops the work behind them: the loop attempt's engine is cancelled and
 // container runs are stopped. A parked run is resumed with `cloche resume`.
 func (s *ClocheServer) ParkRunsForBudget(ctx context.Context) int {
 	var parked int
-	for _, state := range []domain.RunState{domain.RunStatePending, domain.RunStateRunning, domain.RunStateWaiting} {
+	for _, state := range []domain.RunState{domain.RunStatePending, domain.RunStateRunning} {
 		runs, err := s.store.ListRunsFiltered(ctx, domain.RunListFilter{State: state})
 		if err != nil {
 			log.Printf("budget: listing %s runs to park: %v", state, err)

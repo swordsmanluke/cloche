@@ -1141,7 +1141,7 @@ that require human action, derived by `internal/attention`:
 | `repeat-failure` | A task still open in the tracker has hit the consecutive-failure threshold. | `retry`, `close` |
 | `long-poll` | A poll step has been waiting longer than the configured threshold. | `logs`, `cancel` |
 | `builtin-failures` | A user-initiated built-in workflow (e.g. `intent-scan`) has failed repeatedly within the failure window. | `retry`, `logs` |
-| `budget` | The daemon's daily usage cap is reached (see [`[budget]`](#budget)). Daemon-wide, so it belongs to no project, task or run; the reason names the cap, today's usage, and when the day's window clears. It disappears on its own once launching resumes. | _(none; `cloche resume` continues parked runs)_ |
+| `budget` | The daemon's daily usage cap is reached (see [`[budget]`](#budget)). Daemon-wide, so it belongs to no project, task or run; the reason names the cap, today's usage, and when the day's window clears. Also raised when usage can't be read (the cap is then not enforced) and while runs parked by the cap wait to be resumed. | _(none; `cloche resume` continues parked runs)_ |
 
 Each line shows the kind, the task or run ID, the reason, and how long it's been
 waiting. Thresholds are configured via `[attention]` in `config.toml` (see below).
@@ -1162,7 +1162,7 @@ reading of the local day (the figure behind Claude Code's `/usage`, covering the
 account, not only cloche's runs). The line is omitted when no cap is set. If the usage
 figure can't be read, the line says so and launching is **not** blocked.
 
-While over the cap, "Needs you" also carries a `budget` item with the same text.
+While over the cap, "Needs you" also carries a `budget` item with the same text; it lists any runs the cap parked until they are resumed.
 
 ### `cloche list`
 
@@ -1924,10 +1924,12 @@ emergency_overflow = false
 | `grace` | `"30m"` | Duration string. How long runs already in flight may continue once the cap is hit, before they are parked. |
 | `emergency_overflow` | `false` | `true` lets emergency tasks launch past the cap; `false` stops them like everything else. **Defined and documented here only**: the budget gate does not read it. The emergency-launch work (a separate change) does. |
 
-**How usage is measured.** The daemon reads the "Current week (all models)" percentage
-printed by `claude -p "/usage"` (about a second, no model call, no tokens; see
-`docs/plans/spikes/2026-11-usage-allowance.md`) every two minutes, and again before a
-launch decision if the last reading is older than 30 seconds. "Used today" is that
+**How usage is measured.** The daemon reads the "Current week" percentages
+printed by `claude -p "/usage"` (a few seconds, no model call, no tokens; see
+`docs/plans/spikes/2026-11-usage-allowance.md`) every two minutes, and takes the
+fullest window (a per-model window can run out before the all-models one). Launch
+decisions and `cloche status` use the last reading, so the gate can lag by up to two
+minutes. "Used today" is that
 percentage minus the reading at the start of the local day (persisted in
 `~/.config/cloche/budget.json`, so a daemon restart keeps it). When the weekly window
 resets mid-day the baseline restarts at zero. Because the figure comes from the
@@ -1941,16 +1943,19 @@ covers the Claude allowance only.
   Launching **resumes on its own** when usage is back under the cap, which happens when
   the local day rolls over (the baseline resets) or the weekly window resets.
 - **`cloche run` by hand still works**, with a `warning:` on stderr.
-- **Runs in flight get `grace` to finish.** After that they are parked, with the same
+- **Runs in flight get `grace` to finish.** After that they are parked (runs waiting
+  on a poll step spend nothing and are left alone), with the same
   state change as `cloche loop stop --hard` (state `parked`): the loop attempt's engine
   is cancelled and its containers stopped, and the step that was interrupted is
   recorded. Continue a parked run with `cloche resume <run-or-task-id>`; it restarts
   from the interrupted step as a new attempt, and the parked run is marked cancelled.
   If usage drops back under the cap before `grace` ends, nothing is parked.
 - **It shows up**: a `Budget:` line and a `budget` "Needs you" item in `cloche status`.
+  The item stays, naming the parked runs, until each is resumed.
 
-If the usage can't be read (e.g. the output format changed), the failure is logged and
-shown in the `Budget:` line, and nothing is blocked. The per-window (5-hour) cap and
+If the usage can't be read (e.g. the output format changed), nothing is blocked: the
+cap is not enforced. The failure is logged, shown in the `Budget:` line, and raised as
+a `budget` "Needs you" item. The per-window (5-hour) cap and
 per-project caps are not implemented.
 
 ### `[agents.codex]`

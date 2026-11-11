@@ -4074,6 +4074,10 @@ func (t *intentScanTrigger) EnqueueScan(ctx context.Context, projectDir, taskID 
 		log.Printf("intent-scan trigger: skipping for %s after task %s, intent.scan_after_tasks = false", projectDir, taskID)
 		return nil
 	}
+	if t.server.budgetBlocked() {
+		log.Printf("intent-scan trigger: skipping for %s, daily budget cap reached", projectDir)
+		return nil
+	}
 	if t.scanQueuedOrRunning(ctx, projectDir) {
 		log.Printf("intent-scan trigger: skipping for %s, a scan is already queued or running", projectDir)
 		return nil
@@ -4309,12 +4313,12 @@ func (s *ClocheServer) GetAttention(ctx context.Context, req *pb.GetAttentionReq
 	}
 
 	resp := &pb.GetAttentionResponse{}
-	if it, ok := s.budgetAttentionItem(); ok {
-		resp.Items = append(resp.Items, &pb.AttentionItem{
-			Kind:   string(it.Kind),
-			Reason: it.Reason,
-			Since:  it.Since.Format(time.RFC3339),
-		})
+	if it, ok := s.budgetAttentionItem(ctx); ok {
+		item := &pb.AttentionItem{Kind: string(it.Kind), Reason: it.Reason}
+		if !it.Since.IsZero() {
+			item.Since = it.Since.Format(time.RFC3339)
+		}
+		resp.Items = append(resp.Items, item)
 	}
 	for _, dir := range projectDirs {
 		for _, it := range s.AttentionSnapshot(dir).Items {

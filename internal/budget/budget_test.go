@@ -37,8 +37,8 @@ func TestParseUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.WeeklyPercent != 32 {
-		t.Errorf("percent = %v, want 32", r.WeeklyPercent)
+	if r.WeeklyPercent != 40 {
+		t.Errorf("percent = %v, want 40 (the fullest weekly window)", r.WeeklyPercent)
 	}
 	want := time.Date(2026, 11, 11, 0, 59, 0, 0, time.UTC)
 	if !r.ResetsAt.Equal(want) {
@@ -58,12 +58,12 @@ func TestGateClosesOverCapAndReopensUnderIt(t *testing.T) {
 		t.Fatal("first reading of the day is the baseline; must not be over")
 	}
 	r.pct = 35 // 5 used today
-	if m.Check(ctx).Over || m.Blocked(ctx) {
+	if m.Check(ctx).Over || m.Blocked() {
 		t.Fatal("5% of a 10% cap must not block")
 	}
 	r.pct = 41 // 11 used today
 	st := m.Check(ctx)
-	if !st.Over || !m.Blocked(ctx) {
+	if !st.Over || !m.Blocked() {
 		t.Fatalf("11%% of a 10%% cap must block: %+v", st)
 	}
 	if st.UsedPercent != 11 {
@@ -74,7 +74,7 @@ func TestGateClosesOverCapAndReopensUnderIt(t *testing.T) {
 	if st := m.Check(ctx); st.Over || st.UsedPercent != 3 {
 		t.Errorf("after weekly reset want under cap with 3%% used, got %+v", st)
 	}
-	if m.Blocked(ctx) {
+	if m.Blocked() {
 		t.Error("launching must resume on its own once back under the cap")
 	}
 }
@@ -113,7 +113,8 @@ func TestBaselineSurvivesRestart(t *testing.T) {
 func TestReadErrorKeepsGateOpen(t *testing.T) {
 	r := &fakeReader{err: errors.New("boom")}
 	m, _ := newTest(t, 10, time.Hour, r)
-	if m.Blocked(context.Background()) {
+	m.Check(context.Background())
+	if m.Blocked() {
 		t.Error("unreadable usage must not block launches")
 	}
 	if m.Status().ReadErr == "" {
@@ -123,7 +124,7 @@ func TestReadErrorKeepsGateOpen(t *testing.T) {
 
 func TestDisabledNeverBlocks(t *testing.T) {
 	m, _ := newTest(t, 0, time.Hour, &fakeReader{pct: 99})
-	if m.Blocked(context.Background()) || m.Status().Enabled {
+	if m.Blocked() || m.Status().Enabled {
 		t.Error("cap 0 disables the budget")
 	}
 }

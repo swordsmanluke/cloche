@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	pb "github.com/swordsmanluke/cloche/api/clochepb"
 	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
+	"github.com/swordsmanluke/cloche/internal/budget"
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/host"
 )
@@ -169,4 +170,30 @@ func TestPurgeProject_RefusesActiveRunThenPurges(t *testing.T) {
 
 	_, err = srv.PurgeProject(ctx, &pb.PurgeProjectRequest{ProjectDir: projectDir})
 	assert.Error(t, err, "an unknown project must not purge silently")
+}
+
+type stepReader struct{ pct float64 }
+
+func (r *stepReader) Read(context.Context) (budget.Reading, error) {
+	return budget.Reading{WeeklyPercent: r.pct}, nil
+}
+
+// Over the daily cap, the post-task scan is not started.
+func TestIntentScanTrigger_SkippedOverBudgetCap(t *testing.T) {
+	store, err := sqlite.NewStore(":memory:")
+	require.NoError(t, err)
+	defer store.Close()
+	ctx := context.Background()
+
+	srv := NewClocheServer(store, nil)
+	r := &stepReader{pct: 10}
+	m := budget.NewMonitor(budget.Config{UsagePercentPerDay: 5}, r, "")
+	m.Check(ctx)
+	r.pct = 20
+	require.True(t, m.Check(ctx).Over)
+	srv.SetBudget(m)
+
+	projectDir := t.TempDir()
+	require.NoError(t, (&intentScanTrigger{server: srv}).EnqueueScan(ctx, projectDir, "task-1"))
+	assert.Empty(t, srv.hostCancels, "no scan may start over the cap")
 }
