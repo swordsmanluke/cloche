@@ -112,3 +112,9 @@ domains:
       description: SQLite-backed persistence for runs, KV store, help threads, and activity log; the RunStore/CaptureStore adapter implementation.
       paths:
         - internal/adapters/sqlite/**
+    - name: usage-budget
+      description: Daemon-wide daily usage cap that reads subscription weekly usage and gates new run launches, with grace period for in-flight runs.
+      paths:
+        - internal/budget/**
+        - docs/plans/2026-11-10-autonomous-loop-design.md
+        - docs/plans/spikes/2026-11-usage-allowance.md
