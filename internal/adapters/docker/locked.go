@@ -181,19 +181,41 @@ func startEgress(ctx context.Context, containerName, image string, lc *ports.Loc
 }
 
 // teardownEgress removes the sidecar and internal network for a network name.
+// Safe to call more than once.
 func teardownEgress(ctx context.Context, network string) {
-	exec.CommandContext(ctx, "docker", "rm", "-f", network+"-egress").Run()
+	removeSidecar(ctx, network)
 	exec.CommandContext(ctx, "docker", "network", "rm", network).Run()
+}
+
+// removeSidecar force-removes only the egress sidecar of a network. The
+// network stays: it cannot be removed while a (kept) main container is
+// attached, so Remove deletes it later.
+func removeSidecar(ctx context.Context, network string) {
+	exec.CommandContext(ctx, "docker", "rm", "-f", network+"-egress").Run()
+}
+
+// teardownSidecarFor removes the egress sidecar of a stopped locked container,
+// if it had one. The container is kept, but a stopped container needs no proxy.
+func teardownSidecarFor(ctx context.Context, containerID string) {
+	if network := egressNetworkOf(ctx, containerID); network != "" {
+		removeSidecar(ctx, network)
+	}
+}
+
+func egressNetworkOf(ctx context.Context, containerID string) string {
+	out, err := dockerRun(ctx, "inspect", "-f",
+		fmt.Sprintf(`{{index .Config.Labels %q}}`, labelEgressNet), containerID)
+	if err != nil || out == "<no value>" {
+		return ""
+	}
+	return out
 }
 
 // teardownEgressFor removes the egress resources of a container, if it had any.
 func teardownEgressFor(ctx context.Context, containerID string) {
-	out, err := dockerRun(ctx, "inspect", "-f",
-		fmt.Sprintf(`{{index .Config.Labels %q}}`, labelEgressNet), containerID)
-	if err != nil || out == "" || out == "<no value>" {
-		return
+	if network := egressNetworkOf(ctx, containerID); network != "" {
+		teardownEgress(ctx, network)
 	}
-	teardownEgress(ctx, out)
 }
 
 // DRAImage is the image `make install` builds from docker/cloche-dra.

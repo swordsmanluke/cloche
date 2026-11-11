@@ -96,6 +96,10 @@ Anything else gets `403 egress denied` from the proxy, or no route. The containe
 unprivileged (no `--privileged`, no `NET_ADMIN`) with `no-new-privileges`. The daemon
 gRPC port is the same one runs use; narrowing what a DRA may call on it is separate work.
 
+When the run ends the sidecar is stopped and removed, even if the main container is kept
+(failed runs, `--keep-container`); a stopped container needs no proxy. The network is removed
+with the main container.
+
 ### Tests
 
 `internal/adapters/egress` tests the allowlist (a CONNECT to a host outside it is

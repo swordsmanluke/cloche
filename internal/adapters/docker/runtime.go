@@ -535,12 +535,22 @@ func (r *Runtime) waitForRunning(ctx context.Context, containerID string, settle
 	return fmt.Errorf("stuck in %q state after start (not running)", state)
 }
 
+// TeardownSidecar removes the egress sidecar of a locked container, if any.
+// Safe to call more than once.
+func (r *Runtime) TeardownSidecar(ctx context.Context, containerID string) {
+	teardownSidecarFor(ctx, containerID)
+}
+
 func (r *Runtime) Stop(ctx context.Context, containerID string) error {
 	cmd := exec.CommandContext(ctx, "docker", "stop", containerID)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
+	err := cmd.Run()
+	// Every run end stops the main container; a locked one no longer needs
+	// its egress proxy even if the container is kept for debugging.
+	teardownSidecarFor(context.WithoutCancel(ctx), containerID)
+	if err != nil {
 		return fmt.Errorf("stopping container: %s: %w", stderr.String(), err)
 	}
 	return nil

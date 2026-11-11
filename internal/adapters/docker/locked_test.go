@@ -185,3 +185,36 @@ func TestLockedContainer_ProjectWriteFails(t *testing.T) {
 	assert.NotEqual(t, 0, run("lock-w2", "touch", "/workspace/new-file"), "new project file must fail")
 	assert.Equal(t, 0, run("lock-w3", "touch", "/workspace/notes.md"), "notes.md is writable")
 }
+
+// fakeDockerLog installs a fake docker that logs argv and reports an egress
+// network label for inspect.
+func fakeDockerLog(t *testing.T) string {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls.log")
+	script := "#!/bin/sh\necho \"$*\" >> " + log + "\ncase \"$1\" in inspect) echo cloche-dra-x;; esac\nexit 0\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0o755))
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return log
+}
+
+// Stopping a locked container (the end of a failed or kept run) removes the
+// sidecar but not the main container or the network.
+func TestStop_RemovesSidecarKeepsContainerAndNetwork(t *testing.T) {
+	log := fakeDockerLog(t)
+	require.NoError(t, (&Runtime{}).Stop(context.Background(), "main1"))
+	data, _ := os.ReadFile(log)
+	calls := string(data)
+	assert.Contains(t, calls, "stop main1")
+	assert.Contains(t, calls, "rm -f cloche-dra-x-egress")
+	assert.NotContains(t, calls, "rm -f main1")
+	assert.NotContains(t, calls, "network rm")
+}
+
+// Remove still removes the network, and tolerates the sidecar being gone.
+func TestRemove_RemovesNetworkAfterSidecarGone(t *testing.T) {
+	log := fakeDockerLog(t)
+	require.NoError(t, (&Runtime{}).Remove(context.Background(), "main1"))
+	data, _ := os.ReadFile(log)
+	assert.Contains(t, string(data), "network rm cloche-dra-x")
+	assert.Contains(t, string(data), "rm -f main1")
+}

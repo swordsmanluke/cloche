@@ -699,6 +699,12 @@ func (p *ContainerPool) Snapshot() []SessionSnapshot {
 	return out
 }
 
+// sidecarTearer is an optional runtime capability for removing a locked
+// container's egress sidecar without touching the container itself.
+type sidecarTearer interface {
+	TeardownSidecar(ctx context.Context, containerID string)
+}
+
 // CleanupAttempt stops and optionally removes all containers for attemptID.
 // Containers are always stopped on terminal states. They are only removed
 // when succeeded is true (the workflow reached done). On failure or abort
@@ -723,6 +729,11 @@ func (p *ContainerPool) CleanupAttempt(ctx context.Context, attemptID string, ke
 	for _, sess := range sessions {
 		if keepContainer {
 			log.Printf("pool: keeping container %s for attempt %s (--keep-container)", sess.ContainerID, attemptID)
+			// The run is over: a locked container's egress proxy must not
+			// outlive it even though the main container is kept.
+			if t, ok := p.runtime.(sidecarTearer); ok {
+				t.TeardownSidecar(context.WithoutCancel(ctx), sess.ContainerID)
+			}
 			continue
 		}
 		// Always stop on terminal states.
