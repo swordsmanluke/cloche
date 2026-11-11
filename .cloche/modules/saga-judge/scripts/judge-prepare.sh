@@ -16,7 +16,7 @@ dir="${SAGA_JUDGE_TMP:-$(kv_get temp_file_dir)}"
 dir="${dir:-.}"
 mkdir -p "$dir"
 out="$dir/judge-questions.json"
-"$SAGA_BIN" poll --no-wait "$batch" \
-  | jq '[.questions[] | select(.status == "open")]' > "$out"
+saga_poll_json "$batch" || exit 1
+printf '%s' "$POLL_JSON" | jq '[.questions[] | select(.status.state == "open")]' > "$out"
 kv_set judge_questions_path "$out"
 echo "$(jq length "$out") open question(s) in $batch"

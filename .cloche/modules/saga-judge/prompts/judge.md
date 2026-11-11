@@ -21,15 +21,16 @@ ids like `req-a3f8`).
 2. Choose exactly one outcome:
 
    - **Decide.** A Saga ruling in force, or an intent entry, settles the question.
-     Run `saga answer` with the ruling's content and cite its id (for example
-     `CLOCHE-A109` or `req-a3f8`) in the answer text. Never decide without an id
+     Run `saga answer <question-id> --judge ...` with the ruling's content and cite
+     its id (for example `CLOCHE-A109` or `req-a3f8`). Never decide without an id
      to cite.
    - **Send back.** The question rests on a false premise, or was already answered
-     under another question. Run `saga answer --deprecates` on the question, saying
-     why and naming the ruling that shows it.
+     under another question. Run
+     `saga answer <question-id> --judge --deprecates <question-id>`, saying why and
+     naming the ruling that shows it.
    - **Hold.** It needs judgment nobody has given, the evidence is ambiguous, or you
-     are not certain. Mark the question held and leave it open for the human. Do not
-     answer it.
+     are not certain. Run `saga hold <question-id> --reason "<what is missing>"` and
+     leave it open for the human. Do not answer it.
 
 3. Permission requests ("May X change these files?") are in scope. Look at earlier
    rulings on the same kind of request and at what the change is. If you are not
@@ -39,11 +40,19 @@ ids like `req-a3f8`).
 
 - When in doubt, hold. A held question costs the human a minute; a wrong ruling
   costs more.
-- If `saga answer` is refused because the question already has a ruling, a human
-  answered first. Leave it alone; do not retry.
+- Exit code 3 from `saga answer` or `saga hold` means the question already has a
+  ruling: a human answered first. That is not a failure. Leave it alone; do not retry.
 - Never answer a question whose answer you could only get from your own reasoning.
 - Do not modify files, and do not touch questions outside this batch.
 
 When every question has been decided, sent back or held, finish with a one-line
-summary per question (`<id>: decided by <ruling-id> | sent back | held`), then
-print `CLOCHE_RESULT:success`. If saga is unreachable, print `CLOCHE_RESULT:fail`.
+summary per question (`<id>: decided by <ruling-id> | sent back | held`).
+
+## Reporting your result (required)
+
+Print exactly one of these markers as the final line of your output:
+
+- `CLOCHE_RESULT:{{ $result_nonce }}:success` — every question was decided, sent back or held
+- `CLOCHE_RESULT:{{ $result_nonce }}:fail` — saga is unreachable or fails for another reason (exit 3 is not one)
+
+An agent that exits without printing a marker is treated as failed.

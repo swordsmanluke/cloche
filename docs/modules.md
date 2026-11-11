@@ -137,9 +137,9 @@ settling questions that an existing ruling or intent entry already decides. Desi
 
 | Workflow | `kv:` | `out:` | Notes |
 |---|---|---|---|
-| `ask` | `saga_batch_file` | `saga_batch_id` | `saga ask` from a batch file. |
-| `await-answer` | `saga_batch_id` | `saga_outcome` | Poll step over `saga poll --no-wait`: `answered`, `reframe` (a question was deprecated by the judge; workflow ends `fail`) or `timeout`. |
-| `judge` | `saga_batch_id` | — | Host agent step: decide (citing a ruling or intent id), send back (`--deprecates`) or hold. Holds unless certain; never answers from its own reasoning. Always ends `success`. |
+| `ask` | `saga_batch_file` | `saga_batch_id` | `saga ask -p <project> -f <feature> --file <file> --json` from a batch file; needs `SAGA_PROJECT` / `SAGA_FEATURE` (or kv `saga_project` / `saga_feature`). |
+| `await-answer` | `saga_batch_id` | `saga_outcome` | Poll step over `saga poll <batch> --no-wait --json` (exit 2 = still open): `answered`, `reframe` (a question was deprecated by the judge; workflow ends `fail`) or `timeout`. |
+| `judge` | `saga_batch_id` | — | Host agent step: decide (citing a ruling or intent id), send back (`saga answer --judge --deprecates`) or hold (`saga hold --reason`); exit 3 (already ruled) is fine. Holds unless certain; never answers from its own reasoning. Always ends `success`. |
 
 The module's `example-ask-with-judge` wires `ask -> await-answer` and `ask -> judge` in
 parallel. It needs a Saga with the judge author kind, the held mark and refuse-if-answered.
