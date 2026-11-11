@@ -1,6 +1,6 @@
 repos:
     "":
-        last_commit: 20dd39e5b19ee2b0d082521306a9c4b163d75a1d
+        last_commit: 8b039917430f283682d6ca58f16dd6fead4c3d6c
         scanned_runs:
             - cloche-0vqg
             - rxth-main
@@ -581,6 +581,8 @@ repos:
             - user-pmcw
             - user-x4bm
             - x4bm-intent-scan
+            - kdaz-intent-scan
+            - user-kdaz
         scanned_docs:
             .cloche/prompts/document-check-missing.md: 154c933c83042dcb0b3f14e9c451226e6eab14bcdcbc9889fa4edef52d7c1283
             .cloche/prompts/document-investigate.md: 0bb6d7225ed9fa53f36269540994d74e7beef92a717e13794a86cfffdd8652d9
@@ -701,13 +703,13 @@ repos:
             docs/run-isolation/index.md: 06461a1f739a3b6fba4f5331fa668c15058808f59938b284c4e953a291ae6916
             docs/web-dashboard.md: 202b351135f9a98e14c64aa6d90d1b1eb7eaba68a7ff160c8d19a1bd872b60ad
             docs/workflows.md: 3d3cd7a89aef36d95812dc7ddd92955d7317636a90c823a35b45b1285a14fa3e
-last_scan_at: 2026-11-11T21:10:35.58088015Z
+last_scan_at: 2026-11-11T21:15:43.000095125Z
 last_scan_stats:
     repos:
         - name: ""
           docs_new: 0
-          docs_changed: 2
-          commits: 3
-          commit_range: 5f24920..15ac5e5
+          docs_changed: 0
+          commits: 1
+          commit_range: bf36e65
           runs: 1
-          bytes: 225524
+          bytes: 69105
