@@ -1,6 +1,7 @@
 ---
 id: req-e77d
-status: active
+status: superseded
+superseded_by: req-1251
 scope:
     level: project
 hints:
@@ -15,7 +16,7 @@ provenance:
     extracted_at: 2026-11-11T18:06:36.451418704Z
     extracted_by: intent-scan
 created: 2026-11-11T18:06:36.665756022Z
-updated: 2026-11-11T18:06:36.665756022Z
+updated: 2026-11-11T19:53:14.541190879Z
 ---
 
 Every mutating dashboard HTTP route requires the daemon-wide token (cookie or bearer, constant-time compare), from any address including loopback; read-only routes require it only when the connection's remote address is not this machine.
