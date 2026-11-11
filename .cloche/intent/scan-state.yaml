@@ -1,6 +1,6 @@
 repos:
     "":
-        last_commit: ddec9e91e244de6cf781556bf64d4db26babc3fd
+        last_commit: ec8d6f18832e88ae06d624ac87b1b2889c32eb43
         scanned_runs:
             - cloche-0vqg
             - rxth-main
@@ -505,13 +505,19 @@ repos:
             - wi9n-changelog
             - 5nhs-intent-scan
             - user-5nhs
+            - 8wel-claim-task
+            - 8wel-main
+            - hedb-intent-scan
+            - u5dy-claim-task
+            - u5dy-main
+            - user-hedb
         scanned_docs:
             .cloche/prompts/document-check-missing.md: 154c933c83042dcb0b3f14e9c451226e6eab14bcdcbc9889fa4edef52d7c1283
             .cloche/prompts/document-investigate.md: 0bb6d7225ed9fa53f36269540994d74e7beef92a717e13794a86cfffdd8652d9
             .cloche/prompts/document-write-docs.md: d8a98072f24e36c32954abf0ad2dba8c82a67b390286a1852b50ff7520ed226f
             .cloche/prompts/draft-changelog.md: 53c0d8f8165fa34139baeb93addf6a7330374be6642c2300d85665251160b607
             .cloche/prompts/fix-merge-conflict.md: 05e0700a9e566ca33bef7637f9e8e012ac73c0d71aa0cdeec6883fd1b14c93cf
-            .cloche/prompts/fix.md: bb5760bc3d1449c56db5d4104e8f10d7cab3599dfce32fc5fb4f83bd032f189c
+            .cloche/prompts/fix.md: f951b5decf9ff4afb203bbb3dd12ef61c8caadc00d0f106270ed7fe00d111cf8
             .cloche/prompts/implement.md: 12f63bb1cc8c5f4f82744dfdc619262f9015d4f765dde93091e3bf949fb9799f
             .cloche/prompts/intent-scan-discover-domains.md: e2783dd4afc4566cd9467bba9ab5c3b04b1305f6bd72d785254e4906bb13e9ce
             .cloche/prompts/intent-scan-extract.md: 7b43b25546ca281a13426e6eebdf4ac44511861be41e2ce01b515cf922bf42bd
@@ -532,7 +538,7 @@ repos:
             docs/CHANGELOG-DETAILED.md: 8f435be8b6934e43332012d66cd6c6bcc5a8ab984792c2f5ae5a06525442e11c
             docs/INSTALL.md: 02d98ffd4057cfb5f26935f68a131d81cf232b445417029d1555a081712d68e9
             docs/SAFETY.md: dd4904ef1c1b4a60897275280f4805cdcae01c27e2b84f2a1aac75e3f55d9e5d
-            docs/USAGE.md: 4c9fe89977923c927dd25c25183fae2f786e343e4bd78ceae0aa6605b23c3056
+            docs/USAGE.md: 8fb2c1249a73346453d3c635724a908b4e3765873abcc3b80f971df3edd32413
             docs/agent-setup-claude.md: af078eda397131af618a30112dc0ab70871acbb588703c372b50c6645f20dede
             docs/agent-setup-codex.md: 5137671f134e534a5c49bf8e6f26765c3f3916dfb9a98ed92e22a2aad5ad1cfe
             docs/built-in-agents.md: dd37264a2d03ff45978a319f69020a118aab69c5387029047645f35a0cbe4b82
@@ -623,13 +629,13 @@ repos:
             docs/run-isolation/index.md: 06461a1f739a3b6fba4f5331fa668c15058808f59938b284c4e953a291ae6916
             docs/web-dashboard.md: 202b351135f9a98e14c64aa6d90d1b1eb7eaba68a7ff160c8d19a1bd872b60ad
             docs/workflows.md: 4194353158df7723e0457620bd878c54017900276c7c82580db94fb5143fcce5
-last_scan_at: 2026-11-11T00:33:10.475211838Z
+last_scan_at: 2026-11-11T01:35:59.862844002Z
 last_scan_stats:
     repos:
         - name: ""
           docs_new: 0
-          docs_changed: 1
-          commits: 2
-          commit_range: 729fdd8..a57e496
-          runs: 1
-          bytes: 298617
+          docs_changed: 2
+          commits: 3
+          commit_range: 3380b92..6807d37
+          runs: 3
+          bytes: 213076
