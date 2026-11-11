@@ -126,3 +126,9 @@ domains:
       description: Dashboard token authentication middleware — daemon-wide token, loopback/remote-address checks, route protection.
       paths:
         - internal/dashauth/**
+    - name: dras
+      description: 'Designated Responsible Agents (DRAs): charters, notes, and their runtime support.'
+      paths:
+        - internal/dra/**
+        - docs/dras.md
+        - .cloche/dras/**
