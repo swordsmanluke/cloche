@@ -66,6 +66,10 @@ func DRAProfile(notesPath string) *ports.LockedConfig {
 	return lc
 }
 
+// lockdownFailedExitCode is the wrapper's own exit code, so a lock-down failure
+// can be told apart from the agent command itself exiting non-zero.
+const lockdownFailedExitCode = 97
+
 // lockedWrapperCmd is the root-side setup + privilege drop for a locked
 // container. Project files become root-owned and non-writable; the agent user
 // owns only the writable paths and the run's own state dirs.
@@ -87,7 +91,7 @@ func lockedWrapperCmd(containerCmd []string, writable []string) string {
 	// Otherwise exit non-zero with a message (surfaced via the container logs
 	// in the run's error) instead of starting an unlocked agent.
 	b.WriteString(" && exec gosu agent " + strings.Join(containerCmd, " "))
-	b.WriteString(" || { echo 'cloche: locked container lock-down could not be applied; refusing to start the agent' >&2; exit 1; }")
+	fmt.Fprintf(&b, " || { echo 'cloche: locked container lock-down could not be applied; refusing to start the agent' >&2; exit %d; }", lockdownFailedExitCode)
 	return b.String()
 }
 

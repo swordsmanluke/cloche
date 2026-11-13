@@ -485,8 +485,8 @@ func startedSuccessfully(status *ports.ContainerStatus) bool {
 //
 // With settle=true (locked containers) a Running observation is not enough:
 // the lock-down wrapper runs before the agent and can fail after the container
-// has already started, so the whole window is observed and a non-zero exit
-// anywhere in it is reported as a failure.
+// has already started, so the whole window is observed and the wrapper's
+// lockdownFailedExitCode anywhere in it is reported as a failure.
 func (r *Runtime) waitForRunning(ctx context.Context, containerID string, settle bool) error {
 	const attempts = 5
 	const interval = 300 * time.Millisecond
@@ -507,10 +507,14 @@ func (r *Runtime) waitForRunning(ctx context.Context, containerID string, settle
 			continue // transient inspect error; retry
 		}
 		if settle {
-			if !status.Running && !status.FinishedAt.IsZero() && status.ExitCode != 0 {
+			exited := !status.Running && !status.FinishedAt.IsZero()
+			if exited && status.ExitCode == lockdownFailedExitCode {
 				return fmt.Errorf("exited with code %d during startup (lock-down could not be applied)", status.ExitCode)
 			}
-			if i == attempts-1 && startedSuccessfully(status) {
+			// Any other exit means the wrapper got as far as exec'ing the
+			// agent command: the container started, and its exit code is
+			// Wait's to report.
+			if exited || (i == attempts-1 && status.Running) {
 				return nil
 			}
 			continue

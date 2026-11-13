@@ -94,7 +94,9 @@ func TestLockedWrapperCmd_FailsClosed(t *testing.T) {
 	}
 
 	out, err := run("exit 1")
-	require.Error(t, err)
+	var exitErr *exec.ExitError
+	require.ErrorAs(t, err, &exitErr)
+	assert.Equal(t, lockdownFailedExitCode, exitErr.ExitCode())
 	assert.Contains(t, out, "lock-down could not be applied")
 	_, statErr := os.Stat(log)
 	assert.True(t, os.IsNotExist(statErr), "gosu must not run when a lock step fails")
