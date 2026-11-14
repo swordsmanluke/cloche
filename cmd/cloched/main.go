@@ -231,6 +231,7 @@ func main() {
 			web.WithLogStore(store),
 			web.WithLogBroadcaster(broadcaster),
 			web.WithTaskProvider(srv),
+			web.WithJudgeLauncher(srv.JudgeLauncher(webCtx)),
 			web.WithTaskStore(store),
 			web.WithAttentionProvider(srv),
 			web.WithAttentionMuter(srv),

@@ -15,6 +15,7 @@ import (
 	"github.com/swordsmanluke/cloche/internal/dra"
 	"github.com/swordsmanluke/cloche/internal/dsl"
 	"github.com/swordsmanluke/cloche/internal/engine"
+	"github.com/swordsmanluke/cloche/internal/host"
 	"github.com/swordsmanluke/cloche/internal/module"
 )
 
@@ -150,7 +151,21 @@ func validateProjectWarnings(projectDir, workflowFilter string) []string {
 	for _, wfi := range workflows {
 		warns = append(warns, wfi.workflow.DeprecationWarnings()...)
 	}
-	return append(warns, validateModules(projectDir, workflows).Warnings...)
+	warns = append(warns, validateModules(projectDir, workflows).Warnings...)
+	return append(warns, validateQAJudgeWarnings(projectDir)...)
+}
+
+// validateQAJudgeWarnings warns when the module bound to qa ships no judge.md:
+// the built-in judge has nothing to follow for that module, so it is skipped.
+func validateQAJudgeWarnings(projectDir string) []string {
+	m, err := host.QAModule(projectDir)
+	if err != nil || m == nil {
+		return nil // unbound or unresolvable: reported elsewhere, or not using qa
+	}
+	if _, err := os.Stat(filepath.Join(m.Dir, "judge.md")); err == nil {
+		return nil
+	}
+	return []string{fmt.Sprintf("module %q is bound to qa but has no judge.md; the built-in judge will not run for its questions", m.Name)}
 }
 
 // validateModules runs the module, bind and contract checks.

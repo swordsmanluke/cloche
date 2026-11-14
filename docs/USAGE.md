@@ -1644,7 +1644,7 @@ cloche questions guide [--judge] [--project <dir>]
 
 | Subcommand | Description |
 |------------|-------------|
-| `ask` | Posts every question in the file and prints one new id per line. A malformed file is rejected (nothing is created) with an error naming the problem. `--no-judge` is accepted and currently has no effect. |
+| `ask` | Posts every question in the file and prints one new id per line. A malformed file is rejected (nothing is created) with an error naming the problem. After a successful ask the daemon asks the judge launcher once, with the new ids; `--no-judge` (or `[questions] judge = false`) skips that. A judge that cannot launch never fails the ask. The judge is the built-in `judge` host workflow (a project workflow of that name replaces it); it runs in the background as a recorded run, is held back while the budget gate is closed, and never changes the ask's outcome. See [modules.md](modules.md#the-judge). |
 | `await` | One non-blocking check. Prints `CLOCHE_RESULT:answered` when no question is open and nothing otherwise, so it works unchanged as a `poll =` command. |
 | `read` | Prints the answer. Exits 1 when the question has none. A human answer wins over a judge answer. |
 | `guide` | Prints the bound module's `asking.md`; `--judge` prints its `judge.md`. |
@@ -2261,6 +2261,14 @@ Controls DRA wake-up triggers. See [`docs/dras.md`](dras.md).
 | Key | Default | Description |
 |-----|---------|-------------|
 | `heartbeat` | `"4h"` | Duration string: how long a DRA may go without any wake-up before a heartbeat wakes it. `"0"` or `"off"` disables. An unparsable value falls back to the default. |
+
+### `[questions]`
+
+In a project's `.cloche/config.toml`.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `judge` | `true` | Start the judge after `cloche questions ask`. `false` opts the project out, same as passing `--no-judge` every time. |
 
 ### `[intent]`
 

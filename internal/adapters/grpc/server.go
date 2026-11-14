@@ -4488,6 +4488,25 @@ func (s *ClocheServer) HandleSignal(ctx context.Context, projectDir string, sig 
 	return err
 }
 
+// JudgeLauncher returns the launcher `cloche questions ask` uses to start the
+// built-in judge: a recorded run of the "judge" host workflow, held back while
+// the budget gate is closed.
+func (s *ClocheServer) JudgeLauncher(ctx context.Context) *host.JudgeLauncher {
+	return &host.JudgeLauncher{
+		BaseContext: ctx,
+		Blocked:     s.budgetBlocked,
+		NewRunner: func(projectDir string) *host.Runner {
+			runner := &host.Runner{
+				Store:        s.store,
+				Captures:     s.captures,
+				LogBroadcast: s.logBroadcast,
+			}
+			s.useModuleExecutor(runner, projectDir, signal.JudgeWorkflowName)
+			return runner
+		},
+	}
+}
+
 // CloseTask runs the project's close/cancel task contract — a standalone
 // "close-task" or "cancel-task" host workflow, mirroring release-task — for
 // a specific task, so it can be marked done/cancelled in the tracker from

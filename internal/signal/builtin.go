@@ -1,6 +1,11 @@
 package signal
 
-import "github.com/swordsmanluke/cloche/internal/domain"
+import (
+	_ "embed"
+	"strings"
+
+	"github.com/swordsmanluke/cloche/internal/domain"
+)
 
 // The default handle-notification workflow does the least useful thing: no
 // thresholds, no muting, no model step. A project replaces it by defining its
@@ -99,6 +104,73 @@ func BuiltinWorkflow() *domain.Workflow {
 			{From: "comment", Result: "fail", To: domain.StepAbort},
 			{From: "create", Result: "success", To: domain.StepDone},
 			{From: "create", Result: "fail", To: domain.StepAbort},
+		},
+	}
+}
+
+// JudgeWorkflowName is the host workflow `cloche questions ask` starts for
+// freshly asked questions. A project replaces the built-in by defining a host
+// workflow of the same name, exactly as with handle-notification.
+const JudgeWorkflowName = "judge"
+
+//go:embed judge_rules.md
+var judgeRules string
+
+//go:embed judge_reporting.md
+var judgeReporting string
+
+// JudgePrompt is the judge's prompt: the generic rules, then the bound qa
+// module's judge.md (how to read and answer its questions), then the ids to
+// judge and the result-marker instructions.
+func JudgePrompt(moduleGuide string, questionIDs []string) string {
+	var b strings.Builder
+	b.WriteString(strings.TrimSpace(judgeRules))
+	if g := strings.TrimSpace(moduleGuide); g != "" {
+		b.WriteString("\n\n## This project's qa module\n\n")
+		b.WriteString(g)
+	}
+	if len(questionIDs) > 0 {
+		b.WriteString("\n\n## Questions to judge\n\n")
+		for _, id := range questionIDs {
+			b.WriteString("- " + id + "\n")
+		}
+	}
+	b.WriteString("\n\n")
+	b.WriteString(strings.TrimSpace(judgeReporting))
+	b.WriteString("\n")
+	return b.String()
+}
+
+// JudgeStep is the name of the judge workflow's agent step.
+const JudgeStep = "judge"
+
+// BuiltinJudgeWorkflow returns the default judge workflow: one agent step. Its
+// prompt is the rules alone; the launcher fills in the module's judge.md and
+// the question ids (see host.RunJudge) before running it.
+func BuiltinJudgeWorkflow() *domain.Workflow {
+	return &domain.Workflow{
+		Name:     JudgeWorkflowName,
+		Location: domain.LocationHost,
+		Builtin:  true,
+		Config: map[string]string{
+			"_location_block":    "host",
+			"host.agent_command": "claude",
+		},
+		EntryStep: JudgeStep,
+		Steps: map[string]*domain.Step{
+			JudgeStep: {
+				Name: JudgeStep,
+				Type: domain.StepTypeAgent,
+				Config: map[string]string{
+					"prompt":  JudgePrompt("", nil),
+					"timeout": "15m",
+				},
+				Results: []string{"success", "fail"},
+			},
+		},
+		Wiring: []domain.Wire{
+			{From: JudgeStep, Result: "success", To: domain.StepDone},
+			{From: JudgeStep, Result: "fail", To: domain.StepAbort},
 		},
 	}
 }

@@ -423,11 +423,11 @@ workflow run {
 		t.Fatal(err)
 	}
 
-	// Should find 6 workflows: 1 container + 2 project-defined host + the
+	// Should find 7 workflows: 1 container + 2 project-defined host + the
 	// intent-scan built-in and its intent-scan-repo sub-workflow plus the
-	// default handle-notification (none overridden by this project).
-	if len(infos) != 6 {
-		t.Fatalf("expected 6 workflows, got %d", len(infos))
+	// default handle-notification and judge (none overridden by this project).
+	if len(infos) != 7 {
+		t.Fatalf("expected 7 workflows, got %d", len(infos))
 	}
 
 	var containerCount, hostCount int
@@ -445,8 +445,8 @@ workflow run {
 	if containerCount != 1 {
 		t.Errorf("expected 1 container workflow, got %d", containerCount)
 	}
-	if hostCount != 5 {
-		t.Errorf("expected 5 host workflows, got %d", hostCount)
+	if hostCount != 6 {
+		t.Errorf("expected 6 host workflows, got %d", hostCount)
 	}
 	for _, name := range []string{"build", "plan", "run", "intent-scan"} {
 		if !names[name] {
@@ -520,9 +520,9 @@ func TestDiscoverWorkflows_NoClocheDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	// No project workflows, but the built-ins (intent-scan, its
-	// intent-scan-repo sub-workflow and handle-notification) are always present.
-	if len(infos) != 3 {
-		t.Errorf("expected 3 workflows (built-in intent-scan, intent-scan-repo, handle-notification), got %d", len(infos))
+	// intent-scan-repo sub-workflow and handle-notification and judge) are always present.
+	if len(infos) != 4 {
+		t.Errorf("expected 4 workflows (built-in intent-scan, intent-scan-repo, handle-notification, judge), got %d", len(infos))
 	}
 	names := map[string]bool{}
 	for _, info := range infos {

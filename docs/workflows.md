@@ -73,8 +73,9 @@ Some workflows are constructed in Go and compiled into the `cloched`/`cloche` bi
 rather than parsed from a project's `.cloche` files, so they work in any project with no
 setup. The registry (`internal/builtin`) holds `intent-scan` (see
 [`docs/intent.md`](intent.md)), its per-repository sub-workflow `intent-scan-repo` (not
-meant to be run on its own), and `handle-notification` (the default handler for
-[feedback signals](USAGE.md#handle-notification--receiving-feedback-signals)).
+meant to be run on its own), `handle-notification` (the default handler for
+[feedback signals](USAGE.md#handle-notification--receiving-feedback-signals)), and `judge`
+(started by `cloche questions ask`; see [modules.md](modules.md#the-judge)).
 The daemon labels automatically dispatched runs of a built-in with a fixed task title,
 e.g. "Incremental intent scan (post-task)" for the post-task `intent-scan`.
 

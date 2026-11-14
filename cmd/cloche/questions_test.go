@@ -19,6 +19,7 @@ func qaProject(t *testing.T) string { return t.TempDir() }
 type fakeQuestionsClient struct {
 	Questions []*fakeQuestion
 	unbound   bool
+	noJudge   bool
 }
 
 type fakeQuestion struct{ ID, HumanAnswer, JudgeAnswer string }
@@ -30,7 +31,8 @@ func (q *fakeQuestion) answer() (string, bool) {
 	return q.JudgeAnswer, q.JudgeAnswer != ""
 }
 
-func (f *fakeQuestionsClient) Ask(qf *QuestionFile) ([]string, error) {
+func (f *fakeQuestionsClient) Ask(qf *QuestionFile, noJudge bool) ([]string, error) {
+	f.noJudge = noJudge
 	if f.unbound {
 		return nil, errors.New("no qa backend is bound; add `bind qa = <module>`")
 	}
@@ -172,11 +174,18 @@ func TestQuestionsAskMalformedCreatesNothing(t *testing.T) {
 	}
 }
 
-func TestQuestionsNoJudgeAccepted(t *testing.T) {
-	withFake(t)
+func TestQuestionsNoJudgeIsSentToDaemon(t *testing.T) {
+	f := withFake(t)
 	out, err := run(t, "ask", "--file", writeQ(t, twoQuestions), "--no-judge", "--project", qaProject(t))
 	if err != nil || out != "Q1\nQ2\n" {
 		t.Fatalf("%q %v", out, err)
+	}
+	if !f.noJudge {
+		t.Fatal("--no-judge was not passed to the daemon")
+	}
+	f.noJudge = false
+	if _, err := run(t, "ask", "--file", writeQ(t, twoQuestions), "--project", qaProject(t)); err != nil || f.noJudge {
+		t.Fatalf("plain ask must not set no_judge: %v", err)
 	}
 }
 
@@ -213,7 +222,7 @@ func TestDaemonQuestionsClient(t *testing.T) {
 	defer srv.Close()
 	c := &daemonQuestionsClient{base: srv.URL + "/api/projects/p/questions", token: "tok"}
 
-	if _, err := c.Ask(&QuestionFile{Title: "T"}); err == nil || !strings.Contains(err.Error(), "bind qa") {
+	if _, err := c.Ask(&QuestionFile{Title: "T"}, false); err == nil || !strings.Contains(err.Error(), "bind qa") {
 		t.Fatalf("ask error = %v", err)
 	}
 	if gotAuth != "Bearer tok" {

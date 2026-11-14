@@ -776,7 +776,9 @@ Usage:
 
 Subcommands:
   ask     Post every question in the file; prints one new id per line.
-          --no-judge is accepted and currently has no effect.
+          After a successful ask the daemon starts one judge run for the new
+          ids; --no-judge (or [questions] judge = false in .cloche/config.toml)
+          skips it. A judge that cannot start never fails the ask.
   await   One non-blocking check. Prints CLOCHE_RESULT:answered when no
           question is open, nothing otherwise, so it works as a poll command.
   read    Print the answer to a question; exit 1 when it has none.

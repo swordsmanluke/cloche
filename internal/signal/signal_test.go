@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -115,4 +116,16 @@ func TestInFlight_ClosedRejectsJoin(t *testing.T) {
 	f := &InFlight{count: 1}
 	f.close()
 	assert.False(t, f.add(Signal{}))
+}
+
+func TestJudgePrompt_RulesThenGuideThenIDsThenReporting(t *testing.T) {
+	p := JudgePrompt("GUIDE-TEXT", []string{"Q1", "Q2"})
+	order := []string{"Cite your sources", "GUIDE-TEXT", "- Q1", "- Q2", "CLOCHE_RESULT:{{ $result_nonce }}:success"}
+	last := -1
+	for _, s := range order {
+		i := strings.Index(p, s)
+		require.Greater(t, i, last, "%q out of order in:\n%s", s, p)
+		last = i
+	}
+	assert.True(t, strings.HasSuffix(strings.TrimSpace(p), "aborts the run."), "reporting section must end the prompt")
 }

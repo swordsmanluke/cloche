@@ -198,6 +198,14 @@ type Config struct {
 	Budget        BudgetConfig        `toml:"budget"`
 	DRAs          DRAConfig           `toml:"dras"`
 	Repositories  []RepositoryConfig  `toml:"repositories"`
+	Questions     QuestionsConfig     `toml:"questions"`
+}
+
+// QuestionsConfig is the [questions] table in a project's config.toml.
+type QuestionsConfig struct {
+	// Judge starts the built-in judge after `cloche questions ask` (default
+	// true). Set `judge = false` to opt the project out.
+	Judge bool `toml:"judge"`
 }
 
 func defaults() Config {
@@ -220,6 +228,7 @@ func defaults() Config {
 		Budget: BudgetConfig{
 			Grace: "30m",
 		},
+		Questions: QuestionsConfig{Judge: true},
 		Attention: AttentionConfig{
 			RepeatFailureThreshold: 3,
 			LongPollThreshold:      "2h",

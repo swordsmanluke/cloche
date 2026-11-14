@@ -79,8 +79,9 @@ func parseQuestionFile(data []byte) (*QuestionFile, error) {
 // questionsClient is what the CLI needs from the daemon: the routes
 // POST /api/projects/{name}/questions/ask|await|read and GET .../guide.
 type questionsClient interface {
-	// Ask posts the question file and returns the new ids in order.
-	Ask(qf *QuestionFile) ([]string, error)
+	// Ask posts the question file and returns the new ids in order. noJudge
+	// asks the daemon not to start the judge for these questions.
+	Ask(qf *QuestionFile, noJudge bool) ([]string, error)
 	// Open returns the subset of ids that have no answer.
 	Open(ids []string) ([]string, error)
 	// Read returns the answer for id; ok is false when there is none.
@@ -153,8 +154,12 @@ func (c *daemonQuestionsClient) do(method, path string, body any) ([]byte, error
 	return nil, errors.New(msg)
 }
 
-func (c *daemonQuestionsClient) Ask(qf *QuestionFile) ([]string, error) {
-	data, err := c.do("POST", "/ask", map[string]any{"file": qf})
+func (c *daemonQuestionsClient) Ask(qf *QuestionFile, noJudge bool) ([]string, error) {
+	body := map[string]any{"file": qf}
+	if noJudge {
+		body["no_judge"] = true
+	}
+	data, err := c.do("POST", "/ask", body)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +294,6 @@ func questionsCommand(args []string, w io.Writer) error {
 			return err
 		}
 	}
-	_ = noJudge // TODO(L3): gate the judge run; accepted and ignored for now.
 	dir := resolveProjectDir(project)
 
 	switch sub {
@@ -309,7 +313,7 @@ func questionsCommand(args []string, w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		ids, err := c.Ask(qf)
+		ids, err := c.Ask(qf, noJudge)
 		if err != nil {
 			return err
 		}

@@ -480,3 +480,16 @@ func TestDRAHeartbeatInterval(t *testing.T) {
 		t.Errorf("default: %v %v", cfg, err)
 	}
 }
+
+func TestQuestionsJudgeConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	assert.True(t, cfg.Questions.Judge, "judge defaults to true")
+
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".cloche"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".cloche", "config.toml"), []byte("[questions]\njudge = false\n"), 0o644))
+	cfg, err = Load(dir)
+	require.NoError(t, err)
+	assert.False(t, cfg.Questions.Judge)
+}

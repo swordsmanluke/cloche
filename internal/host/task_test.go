@@ -217,9 +217,9 @@ workflow main {
 	all, err := FindAllWorkflows(tmpDir)
 	require.NoError(t, err)
 	// 2 project-defined workflows plus the intent-scan built-in and its
-	// intent-scan-repo sub-workflow and the default handle-notification (not
+	// intent-scan-repo sub-workflow and the default handle-notification and judge (not
 	// overridden by this project).
-	assert.Len(t, all, 5)
+	assert.Len(t, all, 6)
 	assert.Contains(t, all, "develop")
 	assert.Contains(t, all, "main")
 	assert.Contains(t, all, "intent-scan")
@@ -275,9 +275,9 @@ func TestFindAllWorkflows_IncludesContainerAndHost(t *testing.T) {
 	all, err := FindAllWorkflows(tmpDir)
 	require.NoError(t, err)
 	// 2 project-defined workflows plus the intent-scan built-in and its
-	// intent-scan-repo sub-workflow and the default handle-notification (not
+	// intent-scan-repo sub-workflow and the default handle-notification and judge (not
 	// overridden by this project).
-	assert.Len(t, all, 5)
+	assert.Len(t, all, 6)
 	assert.Contains(t, all, "develop")
 	assert.Contains(t, all, "main")
 	assert.Contains(t, all, "intent-scan")
@@ -310,9 +310,9 @@ workflow main {
 	hostWFs, err := FindHostWorkflows(tmpDir)
 	require.NoError(t, err)
 	// "main" (project-defined) plus the intent-scan built-in and its
-	// intent-scan-repo sub-workflow and handle-notification; "develop" is a
+	// intent-scan-repo sub-workflow and handle-notification and judge; "develop" is a
 	// container workflow and must be excluded.
-	assert.Len(t, hostWFs, 4)
+	assert.Len(t, hostWFs, 5)
 	assert.Contains(t, hostWFs, "main")
 	assert.Contains(t, hostWFs, "intent-scan")
 	assert.NotContains(t, hostWFs, "develop")

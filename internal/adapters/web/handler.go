@@ -288,6 +288,7 @@ type Handler struct {
 	container         ContainerLogger
 	logBroadcast      *logstream.Broadcaster
 	taskProvider      TaskProvider
+	judgeLauncher     JudgeLauncher
 	taskStore         ports.TaskStore
 	activityStore     ports.ActivityStore
 	attentionProvider AttentionProvider

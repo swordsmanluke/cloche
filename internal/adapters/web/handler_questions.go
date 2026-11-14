@@ -1,13 +1,16 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
 
+	"github.com/swordsmanluke/cloche/internal/config"
 	"github.com/swordsmanluke/cloche/internal/host"
 )
 
@@ -76,7 +79,8 @@ func (h *Handler) handleAPIQuestionsAsk(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) questionsAsk(w http.ResponseWriter, r *http.Request, auth projectAuth) {
 	var req struct {
-		File json.RawMessage `json:"file"`
+		File    json.RawMessage `json:"file"`
+		NoJudge bool            `json:"no_judge"`
 	}
 	var tmp string
 	defer func() {
@@ -105,7 +109,34 @@ func (h *Handler) questionsAsk(w http.ResponseWriter, r *http.Request, auth proj
 	if !ok {
 		return
 	}
-	writeJSONStatus(w, http.StatusOK, map[string][]string{"ids": splitIDs(out["question_ids"])})
+	ids := splitIDs(out["question_ids"])
+	if dir, found := h.lookupProjectDir(r); found {
+		h.maybeLaunchJudge(r.Context(), dir, ids, req.NoJudge)
+	}
+	writeJSONStatus(w, http.StatusOK, map[string][]string{"ids": ids})
+}
+
+// maybeLaunchJudge asks the JudgeLauncher to judge ids once, unless the ask
+// opted out (--no-judge) or the project set [questions] judge = false. A
+// launcher error is logged and never fails the ask.
+func (h *Handler) maybeLaunchJudge(ctx context.Context, dir string, ids []string, noJudge bool) {
+	if noJudge || len(ids) == 0 {
+		return
+	}
+	cfg, err := config.Load(dir)
+	if err != nil {
+		// Unreadable config: fall back to the default (judge on) but say so.
+		log.Printf("questions ask: loading config for %s: %v", dir, err)
+	} else if !cfg.Questions.Judge {
+		return
+	}
+	l := h.judgeLauncher
+	if l == nil {
+		return
+	}
+	if err := l.LaunchJudge(ctx, dir, ids); err != nil {
+		log.Printf("questions ask: judge not launched for %s: %v", dir, err)
+	}
 }
 
 // handleAPIQuestionsAwait implements POST .../questions/await (non-blocking).

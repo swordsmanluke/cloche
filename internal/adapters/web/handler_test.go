@@ -846,8 +846,8 @@ func TestAPIWorkflows_IncludesHostWorkflows(t *testing.T) {
 
 	// Should have both container and host workflows, plus the intent-scan
 	// built-in and its intent-scan-repo sub-workflow (not overridden by this
-	// project) and the default handle-notification.
-	assert.Len(t, workflows, 5)
+	// project), the default handle-notification and the default judge.
+	assert.Len(t, workflows, 6)
 
 	var locations = map[string]string{}
 	for _, wf := range workflows {
@@ -1352,9 +1352,9 @@ func TestWorkflowAPI_ComplexGraph(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &workflows))
 	// The project-defined "pipeline" plus the intent-scan built-in and its
-	// intent-scan-repo sub-workflow and the default handle-notification
-	// (not overridden by this project).
-	require.Len(t, workflows, 4)
+	// intent-scan-repo sub-workflow and the default handle-notification and
+	// judge (not overridden by this project).
+	require.Len(t, workflows, 5)
 
 	var pipeline struct {
 		Name      string `json:"name"`

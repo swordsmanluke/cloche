@@ -172,8 +172,26 @@ run them as host workflows with the bind's env settings.
 | `read-answer` | `question_id` | `answer_path` | Path to a file holding the answer text. **Ends `fail` when there is no answer.** When a human and a judge both answered, it returns the human's. |
 
 The module may also ship `asking.md` (how to ask well) and `judge.md` (how a judge should
-answer) at its root; `cloche questions guide [--judge]` serves them. With no module bound
+answer) at its root; `cloche questions guide [--judge]` serves them. `cloche validate` warns when
+a module bound to `qa` has no `judge.md`, since the judge has nothing to follow for it. With no module bound
 to `qa`, `ask` fails with "no qa backend is bound ... add `bind qa = <module>`".
+
+### The judge
+
+After a successful `cloche questions ask`, the daemon starts one run of the built-in host workflow
+`judge` for the new ids. Its prompt is cloche's generic rules, then the bound module's `judge.md`,
+then the ids to judge. The rules: cite sources; never replace a human answer; leave a question
+unanswered when unsure; state a false premise as the answer; leave permission requests unanswered
+unless a prior ruling you can cite covers them. `judge.md` is where a module says how to read and
+record answers in its tracker, so it should say that; cloche adds no answering command of its own.
+
+The run is recorded like any other (run history, token usage). It does not start when the daily
+budget gate is closed or the module has no `judge.md`. A judge that fails changes nothing: the
+questions stay unanswered and the ask still exits 0.
+
+A project replaces the built-in by defining a host workflow named `judge` (same mechanism as
+`handle-notification`). It gets the ids as KV `question_ids` (one per line) and the module's
+`judge.md` as `judge_guide`, read with `cloche get`.
 
 ### Conformance
 
