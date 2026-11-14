@@ -111,6 +111,43 @@ func (rs *Resolver) ResolveBind(b domain.Bind, module string) (*domain.Workflow,
 	return rs.resolveTarget(b, Scope{Module: module})
 }
 
+// checkGroupBind validates a group bind: its target must be an installed
+// module exporting every slot in the group.
+func checkGroupBind(reg *Registry, b domain.Bind) error {
+	_, ok := reg.Modules[b.Target]
+	if !ok {
+		return fmt.Errorf("target %q must be an installed module", b.Target)
+	}
+	var missing []string
+	for _, s := range domain.BindGroups[b.Group] {
+		if _, err := reg.Export(b.Target, s); err != nil {
+			missing = append(missing, s)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("module %q does not export %s", b.Target, strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+// warnCredentialEnv warns when a bind sets a variable its target module lists
+// as a credential.
+func warnCredentialEnv(reg *Registry, where string, b domain.Bind, rep *Report) {
+	modName, _, ok := splitTarget(b.Target)
+	if !ok {
+		modName = b.Target
+	}
+	m := reg.Modules[modName]
+	if m == nil {
+		return
+	}
+	for _, k := range sortedKeys(b.Env) {
+		if contains(m.Credentials, k) {
+			rep.warnf("%s: bind %s = %s sets %s, which module %q lists as a credential; keep secrets out of .cloche files", where, b.Slot, b.Target, k, modName)
+		}
+	}
+}
+
 // Check validates the modules, binds and contracts of a project. project
 // holds the project's workflows keyed by name; builtin may be nil.
 func Check(projectDir string, project map[string]*domain.Workflow, builtin func(string) (*domain.Workflow, bool)) *Report {
@@ -178,9 +215,16 @@ func checkModules(projectDir string, reg *Registry, rep *Report) {
 func checkBinds(reg *Registry, rs *Resolver, rep *Report) {
 	check := func(where, module string, binds []domain.Bind) {
 		for _, b := range binds {
-			if _, err := rs.ResolveBind(b, module); err != nil {
+			if b.Group != "" {
+				if strings.Contains(b.Target, ":") {
+					rep.errorf("%s: bind %s = %s: group bind target must be a module, not a workflow", where, b.Slot, b.Target)
+				} else if err := checkGroupBind(reg, b); err != nil {
+					rep.errorf("%s: bind %s = %s: %v", where, b.Slot, b.Target, err)
+				}
+			} else if _, err := rs.ResolveBind(b, module); err != nil {
 				rep.errorf("%s: bind %s = %s: %v", where, b.Slot, b.Target, err)
 			}
+			warnCredentialEnv(reg, where, b, rep)
 		}
 	}
 	check(ProjectFile, "", reg.Root)
@@ -196,6 +240,9 @@ func checkBinds(reg *Registry, rs *Resolver, rep *Report) {
 	each := func(wfs map[string]*domain.Workflow, module string) {
 		for _, name := range sortedKeys(wfs) {
 			wf := wfs[name]
+			if _, reserved := domain.BindGroups[name]; reserved {
+				rep.errorf("workflow %q: %q is a reserved group name (bind %s = <module> binds a group of slots)", name, name, name)
+			}
 			check(fmt.Sprintf("workflow %q", name), module, wf.Binds)
 			for _, sn := range sortedKeys(wf.Steps) {
 				check(fmt.Sprintf("workflow %q step %q", name, sn), module, wf.Steps[sn].Binds)

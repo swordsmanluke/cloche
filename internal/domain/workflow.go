@@ -74,6 +74,28 @@ type Bind struct {
 	Slot   string
 	Target string
 	Force  bool
+	// Group is set when Slot names a built-in slot group (`bind qa = saga`):
+	// the bind then covers every slot in the group, resolved against the
+	// target module's same-named export. Slot holds the group name.
+	Group string
+	// Env holds literal settings from a `{ env.X = "lit" }` block.
+	Env map[string]string
+}
+
+// BindGroups maps each reserved group name to the slots it binds.
+var BindGroups = map[string][]string{
+	"qa":    {"ask", "await-answer", "read-answer"},
+	"tasks": {"list-tasks", "claim-task", "close-task", "release-task", "create-task", "update-task"},
+}
+
+// InGroup reports whether slot belongs to the group the bind names.
+func (b Bind) InGroup(slot string) bool {
+	for _, s := range BindGroups[b.Group] {
+		if s == slot {
+			return true
+		}
+	}
+	return false
 }
 
 // Contract is a workflow's declared signature: the KV keys and env vars it

@@ -237,7 +237,39 @@ func (p *Parser) parseBindEntry(force bool) (domain.Bind, error) {
 		}
 		t += ":" + wfTok.Literal
 	}
-	return domain.Bind{Slot: slot.Literal, Target: t, Force: force}, nil
+	b := domain.Bind{Slot: slot.Literal, Target: t, Force: force}
+	if _, ok := domain.BindGroups[b.Slot]; ok {
+		b.Group = b.Slot
+	}
+	if p.current.Type == TokenLBrace {
+		env, err := p.parseBindSettings(slot.Literal)
+		if err != nil {
+			return domain.Bind{}, err
+		}
+		b.Env = env
+	}
+	return b, nil
+}
+
+// parseBindSettings parses `{ env.X = "literal" ... }` after a bind target.
+// Only literals are allowed; there is no caller KV to read from at bind time.
+func (p *Parser) parseBindSettings(slot string) (map[string]string, error) {
+	p.advance() // consume {
+	env := map[string]string{}
+	for p.current.Type != TokenRBrace && p.current.Type != TokenEOF {
+		e, err := p.parseWithEntry()
+		if err != nil {
+			return nil, fmt.Errorf("bind %q settings: %w", slot, err)
+		}
+		if !e.Env || e.Source != domain.WithLiteral {
+			return nil, fmt.Errorf("bind %q settings: only `env.NAME = \"literal\"` entries are allowed (got %q)", slot, e.Key)
+		}
+		env[e.Key] = e.Value
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return env, nil
 }
 
 // parseContract parses `contract { kv: a  env: B  out: c }`.
