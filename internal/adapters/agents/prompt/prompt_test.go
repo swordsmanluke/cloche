@@ -1359,3 +1359,26 @@ func TestPromptAdapter_MarkerSplitAcrossOpencodeDeltas(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "success", sr.Result)
 }
+
+// TestPromptAdapter_RecoveryUndeclaredResultTakesFail verifies that a recovery
+// answer naming a result the step doesn't declare ("done") is treated as a
+// missing marker: the step resolves to "fail" (so its fail wire runs) with no
+// error, rather than surfacing an undeclared result that aborts the run.
+func TestPromptAdapter_RecoveryUndeclaredResultTakesFail(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "agent.sh")
+	require.NoError(t, os.WriteFile(script, []byte(
+		recoveryProbeScript("echo CLOCHE_RESULT:$CLOCHE_RESULT_NONCE:done\nexit 0"),
+	), 0755))
+
+	adapter := &prompt.Adapter{Commands: []string{script}}
+	step := &domain.Step{
+		Name:    "implement",
+		Type:    domain.StepTypeAgent,
+		Results: []string{"success", "fail"},
+		Config:  map[string]string{"prompt": "Do something."},
+	}
+	sr, err := adapter.Execute(context.Background(), step, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "fail", sr.Result)
+}

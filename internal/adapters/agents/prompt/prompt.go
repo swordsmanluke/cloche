@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -225,7 +226,7 @@ func (a *Adapter) Execute(ctx context.Context, step *domain.Step, workDir string
 	ran := false
 
 	for _, command := range a.Commands {
-		result, stdout, usage, fallbackErr := a.tryCommand(ctx, command, fullPrompt, workDir, step.Name, resumeSessionID, nonce)
+		result, stdout, usage, fallbackErr := a.tryCommand(ctx, command, fullPrompt, workDir, step.Name, resumeSessionID, nonce, step.Results)
 		lastResult = result
 		lastStdout = stdout
 		lastUsage = usage
@@ -394,7 +395,7 @@ func extractSessionID(line []byte) string {
 // Definitive (non-fallback) conditions:
 //   - Command exited 0 and produced a CLOCHE_RESULT marker
 //   - Command exited non-zero but produced a CLOCHE_RESULT marker
-func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string, workDir string, stepName string, resumeSessionID string, nonce string) (result string, stdout []byte, usage *domain.TokenUsage, fallbackErr error) {
+func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string, workDir string, stepName string, resumeSessionID string, nonce string, declaredResults []string) (result string, stdout []byte, usage *domain.TokenUsage, fallbackErr error) {
 	args := a.argsFor(command)
 	// Resume mode: continue the exact prior session when one was captured
 	// (see buildResumePrompt); otherwise fall back to -c (resume whatever
@@ -452,7 +453,7 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 		}
 		a.captureSessionID(ctx, command, stdoutBytes)
 
-		result, stdout, usage, fallbackErr = a.maybeRecoverMissingMarker(ctx, command, workDir, stepName, nonce, stdoutBytes, runErr, result, usage, fallbackErr)
+		result, stdout, usage, fallbackErr = a.maybeRecoverMissingMarker(ctx, command, workDir, stepName, nonce, declaredResults, stdoutBytes, runErr, result, usage, fallbackErr)
 		return
 	}
 
@@ -552,7 +553,7 @@ func (a *Adapter) tryCommand(ctx context.Context, command string, prompt string,
 		}
 		result, _, fallbackErr = a.classifyResult(command, classifyBuf, waitErr, nonce)
 	}
-	result, stdout, usage, fallbackErr = a.maybeRecoverMissingMarker(ctx, command, workDir, stepName, nonce, rawStdout, waitErr, result, usage, fallbackErr)
+	result, stdout, usage, fallbackErr = a.maybeRecoverMissingMarker(ctx, command, workDir, stepName, nonce, declaredResults, rawStdout, waitErr, result, usage, fallbackErr)
 	return result, stdout, usage, fallbackErr
 }
 
@@ -605,7 +606,7 @@ func (a *Adapter) classifyResult(command string, stdoutBytes []byte, runErr erro
 // and folds its output into rawStdout for logging/history. When not
 // eligible, or the recovery turn still has no marker, returns the inputs
 // unchanged so the caller keeps the existing conservative fail (cloche-anu5).
-func (a *Adapter) maybeRecoverMissingMarker(ctx context.Context, command, workDir, stepName, nonce string, rawStdout []byte, runErr error, result string, usage *domain.TokenUsage, fallbackErr error) (string, []byte, *domain.TokenUsage, error) {
+func (a *Adapter) maybeRecoverMissingMarker(ctx context.Context, command, workDir, stepName, nonce string, declaredResults []string, rawStdout []byte, runErr error, result string, usage *domain.TokenUsage, fallbackErr error) (string, []byte, *domain.TokenUsage, error) {
 	if fallbackErr == nil || runErr != nil {
 		// Not eligible: either already definitive, or the command didn't
 		// exit 0 (a nonzero exit without a marker is left to the existing
@@ -627,7 +628,7 @@ func (a *Adapter) maybeRecoverMissingMarker(ctx context.Context, command, workDi
 	}
 
 	sessionID := findSessionID(rawStdout)
-	recResult, recRaw, recUsage, found := a.runRecoveryTurn(ctx, command, workDir, stepName, nonce, sessionID, fakeDeclaredResults())
+	recResult, recRaw, recUsage, found := a.runRecoveryTurn(ctx, command, workDir, stepName, nonce, sessionID, declaredResults)
 	combined := append(append([]byte{}, rawStdout...), recRaw...)
 	if !found {
 		return result, combined, usage, fallbackErr
@@ -636,13 +637,6 @@ func (a *Adapter) maybeRecoverMissingMarker(ctx context.Context, command, workDi
 		usage = recUsage
 	}
 	return recResult, combined, usage, nil
-}
-
-// fakeDeclaredResults is a MOCK standing in for the step's declared result
-// names until the real step-config plumbing reaches maybeRecoverMissingMarker.
-// TODO(wrapped_cloche-zkd): replace with step.Results threaded from Execute.
-func fakeDeclaredResults() []string {
-	return []string{"success", "fail"}
 }
 
 // recoveryPrompt is the minimal follow-up prompt issued by runRecoveryTurn.
@@ -712,6 +706,16 @@ func (a *Adapter) runRecoveryTurn(ctx context.Context, command, workDir, stepNam
 	if !ok {
 		if a.StatusWriter != nil {
 			a.StatusWriter.Log(stepName, "recovery turn still produced no CLOCHE_RESULT marker")
+		}
+		return "", rawOutput, usage, false
+	}
+	if len(results) > 0 && !slices.Contains(results, markerResult) {
+		// The agent answered with a name the step doesn't declare (e.g.
+		// "done"). Returning it would make the engine abort the run with
+		// "undeclared result"; treat it like a missing marker instead so the
+		// caller's conservative fail result applies and the fail wire runs.
+		if a.StatusWriter != nil {
+			a.StatusWriter.Log(stepName, fmt.Sprintf("recovery turn answered undeclared result %q (declared: %s); treating as missing marker", markerResult, strings.Join(results, ", ")))
 		}
 		return "", rawOutput, usage, false
 	}
