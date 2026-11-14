@@ -385,7 +385,7 @@ told.
 ### Opting out
 
 ```
-workflow "develop" {
+workflow develop {
   intent_tracking = false
   ...
 }

@@ -32,6 +32,10 @@ For `claude`, this means:
 
 Claude Code is the default agent. If no `agent_command` is configured, `claude` is used.
 
+When `CLOCHE_MCP_URL` and `CLOCHE_MCP_TOKEN` are set in the step's environment, `claude`
+steps get extra MCP arguments that wire the `ask_user` help-channel tool. Other agents
+are unaffected, and a missing endpoint just means the step runs without the tool.
+
 ### Default invocation
 
 ```
@@ -78,7 +82,7 @@ maps directly to `agent_args`, so the same overridable/required rules apply.
 **Example: per-model agents for different tasks**
 
 ```
-workflow "develop" {
+workflow develop {
   agent haiku_claude {
     command = "claude"
     args    = "-p --dangerously-skip-permissions --model claude-haiku-4-5"
@@ -120,8 +124,8 @@ order.
 
 ## `opencode`
 
-`opencode` is a known agent. Set `agent_command = "opencode"` (or pass `--agent-command
-opencode` at the CLI) to use it.
+`opencode` is a known agent. Set `agent_command = "opencode"` in a step, an `agent` block, or a
+`container {}` / `host {}` block (or set the `CLOCHE_AGENT_COMMAND` environment variable) to use it.
 
 ### Default invocation
 

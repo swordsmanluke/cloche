@@ -316,8 +316,8 @@ with its `HH:MM:SS` time and separated by ` · `, with failed entries coloured r
 events with the same signature (project,
 kind, workflow, step, outcome) on the same day collapse into one line with an ordinal
 count, e.g. `intent-scan failed · 8th today`, reusing the day-scoped grouping approach
-from the built-in-failure-summary grouping (see `buildBuiltinFailureSummaries` in
-`internal/adapters/web/handler.go`).
+from the built-in-failure-summary grouping (see `computeBuiltinFailures` in
+`internal/attention/attention.go`).
 
 Clicking the ticker (or pressing `a`) expands it into a scrollable activity stream
 overlay, with filters for **This project** / **All projects** and **Failures only**. The
@@ -371,6 +371,10 @@ summarizing outcomes across every attempt, from `GET /api/projects/{slug}/ledger
 - **Requirements** — standing requirements (from `.cloche/intent/`) cross-referenced
   with the tasks whose steps ran with them injected, and the reverse index (task →
   requirement IDs).
+
+The prompt-file resolution and git-revision lookups live in `internal/promptrev`
+(`ResolveFile` parses the `file("...")` reference; `GitRevision`/`GitRevisionAt` return the
+commit that last touched the file, or empty when unknown).
 
 Attribution of an attempt to a prompt revision is recorded at step-dispatch time
 (`host.Executor.recordPromptRevisionKV` and its `grpc.DaemonExecutor` counterpart for

@@ -54,7 +54,7 @@ Set `agent_command` to `codex` at the workflow or step level:
 **Workflow level** (applies to all steps):
 
 ```
-workflow "develop" {
+workflow develop {
   container {
     agent_command = "codex"
   }

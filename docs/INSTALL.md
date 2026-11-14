@@ -97,7 +97,7 @@ brew tap swordsmanluke/tap
 brew install cloche
 ```
 
-This will install all three binaries. You will still need the Docker image —
+This will install the `cloche`, `cloched`, and `cloche-agent` binaries. You will still need the Docker image —
 the formula will print post-install instructions for building or pulling it.
 
 ## Verifying the Installation

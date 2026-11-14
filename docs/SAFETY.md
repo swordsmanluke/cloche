@@ -38,7 +38,7 @@ all environment variables.
 dispatches work to an isolated container. Use it:
 
 ```
-workflow "main" {
+workflow main {
   step prepare-prompt {
     run = ".cloche/scripts/prepare-prompt.sh"
     results = [success, fail]
@@ -76,7 +76,7 @@ accepts a `network_allow` list in the `container {}` block to declare intended e
 restrictions:
 
 ```
-workflow "develop" {
+workflow develop {
   container {
     image         = "my-project:latest"
     network_allow = ["api.anthropic.com", "github.com"]

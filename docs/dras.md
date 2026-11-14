@@ -46,7 +46,7 @@ A workflow (or a single step) selects the locked-down profile in its `container 
 block:
 
 ```
-workflow "dra-wakeup" {
+workflow dra-wakeup {
   container {
     profile = "dra"
     # optional:
@@ -115,6 +115,12 @@ on the dashboard listener), with a credential the daemon mints for each wake-up
 names the wake-up's run, the project and the DRA, and stops working the moment
 that run leaves an active state (finished, failed, cancelled or parked). It is
 not a project signal token or the run's `/mcp` token, and neither accepts it.
+
+The credential is `base64url(claims JSON) + "." + hex(HMAC-SHA256(secret, "cloche-dra-v1\0" + payload))`
+(`internal/draauth`), signed with the daemon-lifetime secret, so the daemon keeps no
+token store: it recomputes the signature on each request and then checks that the run
+is still active. The `cloche-dra-v1` prefix keeps a DRA credential from ever being
+valid as the run's `/mcp` token, which signs the bare run ID under the same secret.
 The rest of the dashboard listener and the daemon's gRPC port have no
 authentication yet, so today these limits hold only for a DRA that uses the CLI
 it is given; enforcing them against a DRA that goes around it is future auth work. Rulings: CLOCHE-A118, A119, A128.
