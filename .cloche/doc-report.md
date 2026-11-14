@@ -1,62 +1,51 @@
 # Documentation Audit Report
 
-## docs/INSTALL.md
-
-- **Lines 17, 59 (`git clone` URLs) vs lines 47–50 (`go install` paths)**: The `git clone` URLs use `github.com/swordsmanluke/cloche` (matching the actual git remote), while all `go install` paths use `github.com/cloche-dev/cloche` (matching `go.mod` module path). These are inconsistent — either the repo needs to live under `cloche-dev` for `go install` to work, or `go.mod` and the install instructions need to switch to `swordsmanluke`. Currently `go install github.com/cloche-dev/cloche/...@latest` would fail because no such package exists on that path.
-
 ## docs/USAGE.md
-
-- **Lines ~126–163 ("Repository Declarations" — `.cloche` file blocks)**: Documents top-level `repository "name" { path = "..." url = "..." }` blocks as valid DSL syntax that "are parsed independently from workflows." This feature does not exist. `internal/dsl/parser.go` `ParseAll` (lines 78–100) loops calling `parseWorkflow()`, which immediately calls `expectIdent("workflow")` (line 128). A file-level `repository` token produces a parse error. There is no `ParseRepositoriesFrom` function and no `parseRepository` method anywhere in the codebase. Any `.cloche` file containing such a block would fail to parse.
-
-- **Line ~1740 (`make build` comment)**: Says `# Build cloche, cloched, cloche-agent to bin/` — omits `clo`. The Makefile `build` target (lines 6–10) builds all four binaries: `cloche`, `cloched`, `cloche-agent`, and `clo`. The comment should read "Build cloche, cloched, cloche-agent, clo to bin/".
+- **Line ~1121-1131**: `cloche run` synopsis/flag table omit `--repos a,b` (source: cmd/cloche/main.go:275, cmd/cloche/help.go:174). Only mentioned in passing at ~134.
+- **Line ~1003-1007**: `cloche init` synopsis omits `--no-commit` (listed in table at ~1022) (source: cmd/cloche/init.go:1119).
+- **Line ~1286-1292**: `cloche list` flag table omits `--issue, -i <filter>` (source: cmd/cloche/main.go:1017).
+- **Line ~1544, ~1561**: `cloche intent preview` omits `--repos <list>` and the `-p` short form of `--prompt` (source: cmd/cloche/intent.go:585,595).
+- **Line ~1914-1922**: `cloche threads list` omits `--no-color` (source: cmd/cloche/threads.go:55).
+- **Line ~2040**: `active` default documented as `true`; config loader default is `false` (unset). `true` is only what `cloche init` writes (source: internal/config/config.go:203-229, cmd/cloche/init.go:165).
+- **Line ~2017**: Layout lists `.cloche/activity.log`; activity is stored in the SQLite `activity` table (source: internal/adapters/sqlite/store.go:322, cmd/cloche/activity.go:77).
+- **Line ~2304**: Client `CLOCHE_HTTP` default stated as `localhost:8080`; `cloche health` has no default and errors if unset, only `cloche tasks` falls back (source: cmd/cloche/health.go:35-51, cmd/cloche/main.go:1507).
+- **Line ~103** (omission): `container {}` key list lacks `profile`, `dra`, `notes` (source: internal/dra/wake.go:114-117, internal/adapters/docker/locked.go:235).
 
 ## docs/workflows.md
+- **Lines ~173, 213, 415, 465, 492, 509, 529, 563, 571, 603, 615, 860**: Examples use `workflow "name" {`; parser requires a bare identifier and rejects quoted names (source: internal/dsl/parser.go:493, internal/dsl/lexer.go:68-69).
+- **Lines ~7-14 vs ~716**: Locations section says `poll` is host-only; Poll section says it works in both, and no restriction exists (source: internal/domain/workflow.go `ValidateLocation`, internal/dsl/parser.go:871-890).
+- **Line ~382**: Says the parser checks wiring/orphans; that is `Workflow.Validate()` (source: internal/domain/workflow.go, internal/dsl/parser.go:581-645).
+- **Line ~731**: Poll `results` implicit `timeout` only; every step also gets implicit `token-limit` (source: internal/dsl/parser.go:613-645).
+- **Line ~982**: `prev_step_exit` described as exit code; it holds the previous step's result name (source: internal/host/executor.go:143, internal/engine/engine.go:421).
+- **Line ~966**: Context keys said to be seeded for every run; only seeded when TaskID != "" and Store != nil (source: internal/host/executor.go:109-114).
+- **Line ~1000**: `child_repos` described as repos the sub-workflow declared; it is the repos prepared/extracted for the run (source: internal/adapters/grpc/executor.go:899-950).
 
-Verified against source. No concrete inaccuracies found.
-
-## docs/SAFETY.md
-
-Verified against source. No concrete inaccuracies found.
+## docs/guide/
+- **2-steps.md (~line 62)**: Agent example `step code` lacks opening `{`; won't parse (source: internal/dsl/parser.go:818).
+- **2-steps.md (~line 34)**: Says all steps print `CLOCHE_RESULT:<step>:<result>` with nonce; nonce form is required only for agent steps, others use bare form (source: internal/host/executor.go:268-270,342; internal/adapters/agents/prompt/prompt.go:570-586). Also contradicts 8-patterns.md.
+- **2-steps.md (~line 22)**: Says `success`/`fail` are implicit and exit 0 maps to success; only `timeout` and `token-limit` are implicit, and agent steps with no marker are `fail` (source: internal/dsl/parser.go:581-645).
+- Other guide pages (README, 1, 3, 4, 5, 6, 7, 8): no verifiable errors.
 
 ## docs/web-dashboard.md
+- **Line ~32-33**: Says `cloche health` requires `CLOCHE_HTTP`; it also falls back to `[daemon] http` in config (source: cmd/cloche/health.go:32-58).
+- **Lines ~92-96**: `POST /trigger`, `POST /loop/stop`, `GET /loop/occupancy`, `GET /usage` shown as bare paths; real routes are project-scoped, e.g. `/api/projects/{name}/trigger` (source: internal/adapters/web/handler.go:376,393-398). Shorthand, minor.
 
-Verified against source. No concrete inaccuracies found.
+## docs/intent.md
+- **Line ~313-314**: Says `--full` re-mines only the one repo, not `[[repositories]]`; source mines project root plus all configured repos, and the doc contradicts itself at ~232-247 (source: cmd/cloche/intent.go:834-841,962-969; internal/intent/scan/collect.go:170-222).
+- **Line ~448**: `cloche intent preview` synopsis omits `--repos <a,b>` (source: cmd/cloche/intent.go:595).
+- **Line ~137**: "configured globs" implies a config key; none exists, only defaults (source: internal/config/config.go:115-121, internal/intent/scan/collect.go:26).
 
-## docs/agent-setup-claude.md
+## docs/modules.md
+- **Line ~183**: Lists `cloche module update <name>` only; real usage is `update <name> [<ref>] [--yes|-y]`, and all subcommands accept `--project/-p` (source: cmd/cloche/module.go:50-80,147-152).
 
-Verified against source. No concrete inaccuracies found.
+## docs/INSTALL.md
+- **Line ~22-23** (minor): Says `make install` builds `cloche-agent:latest`; it also builds `cloche-base:latest` and, if `saga` is on PATH, `cloche-dra:latest` (source: Makefile `docker-build`, `docker-dra`).
 
-## docs/agent-setup-codex.md
+## docs/SAFETY.md, docs/agent-setup-claude.md, docs/agent-setup-codex.md, docs/built-in-agents.md, docs/dras.md
+- Fully accurate against source for everything checked.
 
-Verified against source. No concrete inaccuracies found.
-
-## docs/built-in-agents.md
-
-- **Line ~12 (`opencode` required args column)**: Lists required args as `_(none)_`. This is wrong. `internal/adapters/agents/prompt/prompt.go` lines 66–75 inject `--format json` whenever `ExplicitArgs` is set and `--format` is not already present — exactly the same required-arg pattern used for `claude`'s `--output-format stream-json`. The table should list `--format json` as a required arg for `opencode`.
+## Not audited
+- docs/CHANGELOG-DETAILED.md and subdirectories docs/design, docs/plans, docs/init, docs/run-isolation.
 
 ## Summary
-
-- **3 errors found across 3 files**: INSTALL.md (1), USAGE.md (2), built-in-agents.md (1).
-- Most critical: USAGE.md documents a `repository` DSL block that does not exist — any user following this doc would write invalid `.cloche` files that fail to parse.
-- INSTALL.md `go install` paths reference `github.com/cloche-dev/cloche` which doesn't match the actual git remote (`swordsmanluke`), making `go install` non-functional.
-- built-in-agents.md incorrectly marks `opencode`'s `--format json` injection as non-existent, which could confuse users overriding `agent_args`.
-
-## Undocumented Subsystems (Carried Forward)
-
-### Undocumented Commands
-
-No genuinely undocumented commands found. All subcommands registered in `cmd/cloche/main.go` (`run`, `resume`, `status`, `list`, `logs`, `poll`, `stop`, `delete`, `loop`, `shutdown`, `console`, `extract`, `version`, `init`, `health`, `get`, `set`, `tasks`, `activity`, `workflow`, `project`, `validate`, `doctor`, `debug`, `complete`) have at least a one-line description in `docs/USAGE.md`.
-
-Note: `completionSubcommands` in `cmd/cloche/complete.go` omits `activity`, `console`, `doctor`, `extract`, and `version` from the tab-completion list — these commands won't be suggested by shell completion — but they are documented.
-
-### Undocumented Subsystems
-
-- `internal/adapters/local/` — Local subprocess runtime (enabled via `CLOCHE_RUNTIME=local`): the only documentation is a single parenthetical in the env var table ("subprocess, for dev only"). No design doc, no setup instructions, no description of behavior or limitations. `Attach` is unimplemented, `Logs` returns empty, and `Remove` is a no-op — constraints invisible to anyone trying to use this mode.
-
-- `internal/logstream/` — Log streaming and broadcasting subsystem: provides the broadcaster pattern that fans gRPC `StepLog` events out to multiple subscribers and the log-line parser that formats tool-call blocks from agent output. No design or reference documentation exists. It underlies `cloche logs --follow` and live streaming in the web dashboard, but its architecture, broadcaster lifetime model, and parse format are undocumented.
-
-### Undocumented DSL Features
-
-- `usage_command` — Valid step config key. Documented in `docs/USAGE.md` (step configuration table) but absent from `docs/workflows.md`, which is the DSL reference.
-
-- `prompt_step` — Valid step config key for `workflow_name` steps. Documented in `docs/USAGE.md` but absent from `docs/workflows.md`. The host-workflow design plan (`docs/plans/2026-03-06-host-workflow-design.md:63`) mentions it but the canonical DSL reference does not.
+- 26 errors/mismatches found across 7 files (USAGE.md 9, workflows.md 7, guide 3, web-dashboard.md 2, intent.md 3, modules.md 1, INSTALL.md 1; several are omissions or minor shorthand).
