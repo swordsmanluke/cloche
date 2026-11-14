@@ -58,7 +58,7 @@ func (s *ClocheServer) draInbox(projectDir string) *dra.Inbox {
 }
 
 // notifyDRA queues ev for DRA name and tries to deliver. It returns whether
-// the event was queued (false for a duplicate ruling/heartbeat).
+// the event was queued (false for a duplicate heartbeat).
 func (s *ClocheServer) notifyDRA(projectDir, name string, ev dra.Event) bool {
 	projectDir = normalizeProjectDir(projectDir)
 	queued := s.draInbox(projectDir).Add(projectDir, name, ev)
@@ -170,15 +170,6 @@ func (s *ClocheServer) notifySignalDRA(projectDir string, sig signal.Signal, han
 	s.notifyDRA(projectDir, owner, dra.Event{Kind: dra.KindSignal, Subject: sig.Source + "/" + sig.Key, Text: text})
 }
 
-// NotifyDRARuling tells the DRA a ruling arrived on a Saga question it asked.
-func (s *ClocheServer) NotifyDRARuling(projectDir, name, question, ruling string) error {
-	if _, err := dra.Find(normalizeProjectDir(projectDir), name); err != nil {
-		return err
-	}
-	s.notifyDRA(projectDir, name, dra.Event{Kind: dra.KindRuling, Subject: question, Text: ruling})
-	return nil
-}
-
 // NotifyDRAHeartbeat wakes the DRA if it has not been woken for the
 // project's heartbeat interval. Called by a poll-step timer via
 // `cloche dra heartbeat`; calling it more often than the interval is
@@ -204,14 +195,6 @@ func (s *ClocheServer) NotifyDRAHeartbeat(projectDir, name string) (bool, error)
 func (s *ClocheServer) runDRANotify(req *pb.RunWorkflowRequest) (*pb.RunWorkflowResponse, error) {
 	name := req.Env[dra.WakeEnvDRA]
 	switch req.Env[dra.NotifyEnvKind] {
-	case dra.KindRuling:
-		if req.Env[dra.WakeEnvMessage] == "" {
-			return nil, fmt.Errorf("a ruling needs text")
-		}
-		if err := s.NotifyDRARuling(req.ProjectDir, name, req.Env[dra.NotifyEnvSubject], req.Env[dra.WakeEnvMessage]); err != nil {
-			return nil, err
-		}
-		return &pb.RunWorkflowResponse{}, nil
 	case dra.KindHeartbeat:
 		if _, err := s.NotifyDRAHeartbeat(req.ProjectDir, name); err != nil {
 			return nil, err

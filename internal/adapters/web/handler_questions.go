@@ -26,11 +26,16 @@ func splitIDs(s string) []string {
 	return strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' || r == '\t' || r == '\r' })
 }
 
-// questionsRoute authenticates with the project's signal token, decodes the
+// projectAuth authenticates a request and names its project directory; it has
+// already written the response when it fails.
+type projectAuth func(w http.ResponseWriter, r *http.Request) (string, bool)
+
+// questionsRoute authenticates with auth (the project's signal token, or a
+// DRA credential), decodes the
 // JSON body into req and runs the qa slot; it returns the slot's outputs.
 // On failure it has already written the response.
-func (h *Handler) questionsRoute(w http.ResponseWriter, r *http.Request, slot string, req any, inputs func() (map[string]string, error)) (map[string]string, bool) {
-	dir, ok := h.signalAuth(w, r)
+func (h *Handler) questionsRoute(w http.ResponseWriter, r *http.Request, auth projectAuth, slot string, req any, inputs func() (map[string]string, error)) (map[string]string, bool) {
+	dir, ok := auth(w, r)
 	if !ok {
 		return nil, false
 	}
@@ -66,6 +71,10 @@ func (h *Handler) questionsRoute(w http.ResponseWriter, r *http.Request, slot st
 // {"file": <question file as JSON>}. The daemon writes it to a temp file and
 // hands the path to the module's ask slot as kv questions_file.
 func (h *Handler) handleAPIQuestionsAsk(w http.ResponseWriter, r *http.Request) {
+	h.questionsAsk(w, r, h.signalAuth)
+}
+
+func (h *Handler) questionsAsk(w http.ResponseWriter, r *http.Request, auth projectAuth) {
 	var req struct {
 		File json.RawMessage `json:"file"`
 	}
@@ -75,7 +84,7 @@ func (h *Handler) handleAPIQuestionsAsk(w http.ResponseWriter, r *http.Request) 
 			os.Remove(tmp)
 		}
 	}()
-	out, ok := h.questionsRoute(w, r, host.SlotAsk, &req, func() (map[string]string, error) {
+	out, ok := h.questionsRoute(w, r, auth, host.SlotAsk, &req, func() (map[string]string, error) {
 		if len(req.File) == 0 {
 			return nil, errors.New("missing file")
 		}
@@ -102,10 +111,14 @@ func (h *Handler) handleAPIQuestionsAsk(w http.ResponseWriter, r *http.Request) 
 // handleAPIQuestionsAwait implements POST .../questions/await (non-blocking).
 // Body: {"ids": [...]}. Response: {"open": [...]}.
 func (h *Handler) handleAPIQuestionsAwait(w http.ResponseWriter, r *http.Request) {
+	h.questionsAwait(w, r, h.signalAuth)
+}
+
+func (h *Handler) questionsAwait(w http.ResponseWriter, r *http.Request, auth projectAuth) {
 	var req struct {
 		IDs []string `json:"ids"`
 	}
-	out, ok := h.questionsRoute(w, r, host.SlotAwaitAnswer, &req, func() (map[string]string, error) {
+	out, ok := h.questionsRoute(w, r, auth, host.SlotAwaitAnswer, &req, func() (map[string]string, error) {
 		if len(req.IDs) == 0 {
 			return nil, errors.New("missing ids")
 		}
@@ -120,10 +133,14 @@ func (h *Handler) handleAPIQuestionsAwait(w http.ResponseWriter, r *http.Request
 // handleAPIQuestionsRead implements POST .../questions/read. Body:
 // {"id": "..."}. Response: {"answer": "<text>"}; 404 when there is no answer.
 func (h *Handler) handleAPIQuestionsRead(w http.ResponseWriter, r *http.Request) {
+	h.questionsRead(w, r, h.signalAuth)
+}
+
+func (h *Handler) questionsRead(w http.ResponseWriter, r *http.Request, auth projectAuth) {
 	var req struct {
 		ID string `json:"id"`
 	}
-	out, ok := h.questionsRoute(w, r, host.SlotReadAnswer, &req, func() (map[string]string, error) {
+	out, ok := h.questionsRoute(w, r, auth, host.SlotReadAnswer, &req, func() (map[string]string, error) {
 		if strings.TrimSpace(req.ID) == "" {
 			return nil, errors.New("missing id")
 		}

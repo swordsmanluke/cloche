@@ -17,9 +17,9 @@ import (
 	"github.com/swordsmanluke/cloche/internal/dra"
 )
 
-const draUsage = "usage: cloche dra list [--project <dir>]\n       cloche dra wake <name> --message <text> [--project <dir>]\n       cloche dra ruling <name> --question <id> --message <text> [--project <dir>]\n       cloche dra heartbeat <name> [--project <dir>]"
+const draUsage = "usage: cloche dra list [--project <dir>]\n       cloche dra wake <name> --message <text> [--project <dir>]\n       cloche dra heartbeat <name> [--project <dir>]\n       cloche dra wait <poll> --note <text> [...] | wait --cancel <id> | waits"
 
-// notifyDRAFn sends a trigger (a ruling or a heartbeat) to the daemon. A
+// notifyDRAFn sends a trigger (a heartbeat) to the daemon. A
 // variable so tests need no daemon.
 var notifyDRAFn = notifyDRAViaDaemon
 
@@ -44,26 +44,18 @@ func notifyDRAViaDaemon(project, name, kind, subject, message string) error {
 	return err
 }
 
-// draNotifyCommand runs "ruling" and "heartbeat": triggers that queue an
-// event for a DRA rather than waking it directly.
+// draNotifyCommand runs "heartbeat": a trigger that queues an event for a DRA
+// rather than waking it directly.
 func draNotifyCommand(kind string, rest []string, w io.Writer) error {
-	var project, name, question, message string
+	var project, name string
 	for i := 0; i < len(rest); i++ {
 		switch rest[i] {
-		case "--project", "-p", "--question", "-q", "--message", "-m":
+		case "--project", "-p":
 			if i+1 >= len(rest) {
 				return fmt.Errorf("%s needs a value", rest[i])
 			}
-			flag := rest[i]
 			i++
-			switch flag {
-			case "--project", "-p":
-				project = rest[i]
-			case "--question", "-q":
-				question = rest[i]
-			default:
-				message = rest[i]
-			}
+			project = rest[i]
 		default:
 			if name == "" && !strings.HasPrefix(rest[i], "-") {
 				name = rest[i]
@@ -72,17 +64,13 @@ func draNotifyCommand(kind string, rest []string, w io.Writer) error {
 			return fmt.Errorf("unknown argument %q\n%s", rest[i], draUsage)
 		}
 	}
-	if name == "" || (kind == dra.KindRuling && (question == "" || strings.TrimSpace(message) == "")) {
+	if name == "" {
 		return fmt.Errorf("%s", draUsage)
 	}
-	if err := notifyDRAFn(resolveProjectDir(project), name, kind, question, message); err != nil {
+	if err := notifyDRAFn(resolveProjectDir(project), name, kind, "", ""); err != nil {
 		return err
 	}
-	if kind == dra.KindRuling {
-		fmt.Fprintf(w, "Queued ruling on %s for DRA %s\n", question, name)
-	} else {
-		fmt.Fprintf(w, "Heartbeat sent to DRA %s (woken only if its interval has passed)\n", name)
-	}
+	fmt.Fprintf(w, "Heartbeat sent to DRA %s (woken only if its interval has passed)\n", name)
 	return nil
 }
 
@@ -123,12 +111,15 @@ func cmdDRA(args []string) {
 }
 
 func draCommand(args []string, w io.Writer) error {
-	if len(args) > 0 && (args[0] == "ruling" || args[0] == "heartbeat") {
-		kind := dra.KindRuling
-		if args[0] == "heartbeat" {
-			kind = dra.KindHeartbeat
+	if len(args) > 0 {
+		switch args[0] {
+		case "heartbeat":
+			return draNotifyCommand(dra.KindHeartbeat, args[1:], w)
+		case "wait":
+			return draWaitCommand(args[1:], w)
+		case "waits":
+			return draWaitsCommand(args[1:], w)
 		}
-		return draNotifyCommand(kind, args[1:], w)
 	}
 	if len(args) == 0 || (args[0] != "list" && args[0] != "wake") {
 		return fmt.Errorf("%s", draUsage)

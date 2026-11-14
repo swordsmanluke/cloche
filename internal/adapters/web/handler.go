@@ -304,6 +304,7 @@ type Handler struct {
 	signalTokens      *signal.TokenStore      // per-project bearer tokens for POST .../signals; see WithSignalIntake
 	signalDispatcher  *signal.Dispatcher      // stores signals and runs handle-notification
 	mcpSecret         []byte                  // enables /mcp when non-empty; see WithHelpMCP
+	draWaits          DRAWaitService          // DRA wait routes; see WithDRAWaits
 	draSecret         []byte                  // enables /api/dra/... when non-empty; see WithDRAAccess
 	askHelpFn         AskHelpFunc             // handles ask_user tool calls on /mcp
 	mcpKeepalive      time.Duration           // SSE keepalive interval for blocking /mcp tool calls; 0 = default

@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	pb "github.com/swordsmanluke/cloche/api/clochepb"
 	"github.com/swordsmanluke/cloche/internal/budget"
 	"github.com/swordsmanluke/cloche/internal/domain"
 	"github.com/swordsmanluke/cloche/internal/dra"
@@ -104,18 +105,6 @@ func TestDRATrigger_Signal(t *testing.T) {
 	assert.Empty(t, wakeMessages(t, root2))
 }
 
-func TestDRATrigger_Ruling(t *testing.T) {
-	srv, root := wakeServer(t)
-	require.NoError(t, srv.NotifyDRARuling(root, "auth", "CLOCHE-Q7", "Use bearer tokens."))
-	settle(t, srv)
-	msgs := wakeMessages(t, root)
-	require.Len(t, msgs, 1)
-	assert.Contains(t, msgs[0], "ruling")
-	assert.Contains(t, msgs[0], "CLOCHE-Q7")
-	assert.Contains(t, msgs[0], "Use bearer tokens.")
-	assert.Error(t, srv.NotifyDRARuling(root, "nope", "Q", "x"))
-}
-
 func TestDRATrigger_Heartbeat(t *testing.T) {
 	srv, root := wakeServer(t)
 	queued, err := srv.NotifyDRAHeartbeat(root, "auth")
@@ -149,7 +138,7 @@ func TestDRATrigger_BatchedWhileAwake(t *testing.T) {
 
 	srv.onTaskResult(host.TaskResult{ProjectDir: root, TaskID: "t-1", Labels: []string{"auth"}, State: domain.RunStateFailed})
 	srv.onTaskResult(host.TaskResult{ProjectDir: root, TaskID: "t-2", Labels: []string{"auth"}, State: domain.RunStateParked})
-	require.NoError(t, srv.NotifyDRARuling(root, "auth", "Q1", "ruled"))
+	srv.notifyDRA(root, "auth", dra.Event{Kind: dra.KindWait, Subject: "w-1", Text: "done"})
 	assert.Empty(t, wakeMessages(t, root), "nothing starts a second run")
 	assert.Equal(t, 3, srv.draInbox(normalizeProjectDir(root)).Pending(normalizeProjectDir(root), "auth"), "nothing is dropped")
 
@@ -160,7 +149,7 @@ func TestDRATrigger_BatchedWhileAwake(t *testing.T) {
 	settle(t, srv)
 	msgs := wakeMessages(t, root)
 	require.Len(t, msgs, 1, "one wake-up carries all of them")
-	for _, want := range []string{"t-1", "t-2", "Q1", "3 events"} {
+	for _, want := range []string{"t-1", "t-2", "w-1", "3 events"} {
 		assert.Contains(t, msgs[0], want)
 	}
 }
@@ -209,4 +198,51 @@ func TestDRATrigger_NoSelfWake(t *testing.T) {
 	srv.onTaskResult(host.TaskResult{ProjectDir: root, TaskID: "t-own", Labels: []string{"auth"}, State: domain.RunStateFailed})
 	settle(t, srv)
 	require.Len(t, wakeMessages(t, root), 1)
+}
+
+// A wait that ends joins the inbox like any other trigger, so it is batched
+// with events that arrive while the DRA is awake.
+func TestDRATrigger_WaitEventBatchedWithOthers(t *testing.T) {
+	srv, root := wakeServer(t)
+	ctx := context.Background()
+	_, err := srv.RegisterDRAWait(ctx, root, "nope", dra.WaitRequest{Poll: "questions", Args: map[string]string{"ids": "Q1"}, Note: "x"})
+	require.Error(t, err, "a wait for an undefined DRA is refused")
+	_, err = srv.RegisterDRAWait(ctx, root, "auth", dra.WaitRequest{Poll: "no-such-poll", Note: "x"})
+	require.ErrorContains(t, err, "unknown poll no-such-poll")
+
+	id, err := srv.RegisterDRAWait(ctx, root, "auth", dra.WaitRequest{Poll: "questions", Args: map[string]string{"ids": "Q7"}, Note: "ruling on Q7", Timeout: time.Millisecond})
+	require.NoError(t, err)
+	waits, err := srv.ListDRAWaits(ctx, root, "auth")
+	require.NoError(t, err)
+	require.Len(t, waits, 1)
+	assert.Equal(t, id, waits[0].ID)
+
+	key := wakeKey(normalizeProjectDir(root), "auth")
+	srv.wakeActive = map[string]string{key: "run-1"}
+	srv.onTaskResult(host.TaskResult{ProjectDir: root, TaskID: "t-1", Labels: []string{"auth"}, State: domain.RunStateFailed})
+	time.Sleep(5 * time.Millisecond)
+	srv.waitRegistry().Tick(ctx)
+	assert.Empty(t, wakeMessages(t, root), "the DRA is awake: nothing starts")
+
+	srv.mu.Lock()
+	delete(srv.wakeActive, key)
+	srv.mu.Unlock()
+	srv.draWakeEnded(normalizeProjectDir(root), "auth")
+	settle(t, srv)
+	msgs := wakeMessages(t, root)
+	require.Len(t, msgs, 1)
+	assert.Contains(t, msgs[0], "2 events, delivered together")
+	assert.Contains(t, msgs[0], "wait: "+id)
+	assert.Contains(t, msgs[0], "ruling on Q7")
+	assert.Contains(t, msgs[0], "timeout")
+	assert.Contains(t, msgs[0], "task-failed")
+
+	require.ErrorContains(t, srv.CancelDRAWait(ctx, root, "auth", id), "no pending wait", "an ended wait cannot be cancelled")
+}
+
+func TestDRATrigger_RulingNotificationRefused(t *testing.T) {
+	srv, root := wakeServer(t)
+	_, err := srv.runDRANotify(&pb.RunWorkflowRequest{ProjectDir: root, WorkflowName: dra.NotifyRequest,
+		Env: map[string]string{dra.WakeEnvDRA: "auth", dra.NotifyEnvKind: "ruling", dra.WakeEnvMessage: "yes"}})
+	require.ErrorContains(t, err, `unknown DRA notification kind "ruling"`)
 }

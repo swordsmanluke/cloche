@@ -1590,21 +1590,25 @@ commits `notes.md`. See [`docs/dras.md`](dras.md).
 ```
 cloche dra list [--project <dir>]
 cloche dra wake <name> --message <text> [--project <dir>]
-cloche dra ruling <name> --question <id> --message <text> [--project <dir>]
 cloche dra heartbeat <name> [--project <dir>]
+cloche dra wait <poll> [--arg k=v ...] [--interval <dur>] [--timeout <dur>] --note <text>
+cloche dra wait questions --ids Q14,Q15 [--interval <dur>] [--timeout <dur>] --note <text>
+cloche dra wait --cancel <id>
+cloche dra waits
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--project <dir>`, `-p` | current directory | Project directory. |
-| `--message <text>`, `-m` | (required for `wake`, `ruling`) | What happened; the DRA reads it when it wakes. |
-| `--question <id>`, `-q` | (required for `ruling`) | The Saga question the ruling answers. |
+| `--message <text>`, `-m` | (required for `wake`) | What happened; the DRA reads it when it wakes. |
 
 `list` prints each DRA's name, its session id (`-` until its first wake-up), its last wake-up (run id, result, how the session was obtained, time) and the first heading of its charter.
 
 `wake` starts a wake-up by hand: a container run in the DRA image that resumes the DRA's named Claude Code session, or starts a new one if there is none or resuming fails. It is refused while that DRA already has a wake-up running, and is never blocked by the daily budget cap (only warned). See [`docs/dras.md`](dras.md#wake-ups).
 
-`ruling` and `heartbeat` queue an event for the DRA instead of waking it directly; the daemon delivers queued events together in one wake-up (a heartbeat wakes the DRA only if its interval, default 4h, has passed). See [`docs/dras.md`](dras.md#triggers).
+`heartbeat` queues an event for the DRA instead of waking it directly; the daemon delivers queued events together in one wake-up (a heartbeat wakes the DRA only if its interval, default 4h, has passed). See [`docs/dras.md`](dras.md#triggers).
+
+`wait`, `waits` and `wait --cancel` are run by a DRA from inside its wake-up; the daemon takes the DRA's name from its wake-up credential (`CLOCHE_DRA_TOKEN`), so a DRA only ever sees and cancels its own waits, and `--project` does not apply. `wait <poll>` registers a wait on a poll the project owner wrote; the DRA names the poll and never supplies script text. It prints `Registered wait <id>`. `--arg k=v` (repeatable) reaches the poll as the environment variable `CLOCHE_WAIT_ARG_<K>`, `--interval` (default `5m`, minimum `1m`) is how often it runs, `--timeout` (default `72h`) is how long to wait, and `--note` (required) comes back with the wait event. `wait questions --ids Q14,Q15` waits on the built-in questions poll. An unknown poll is refused with `unknown poll <name>; this DRA has: a, b`, and a DRA may hold at most 20 pending waits. `waits` lists pending waits (id, poll, args, interval, timeout, note); `wait --cancel <id>` removes one. See [`docs/dras.md`](dras.md#waits). *Daemon side is a stand-in for now:* waits are held in memory (lost on daemon restart) and no poll is actually run, so only a timeout ends a wait.
 
 ### `cloche module`
 

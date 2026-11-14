@@ -164,6 +164,7 @@ func main() {
 	attentionCtx, attentionCancel := context.WithCancel(context.Background())
 	defer attentionCancel()
 	srv.StartAttentionCache(attentionCtx, attentionInterval, attentionParallel)
+	srv.ResumeDRAWaits()
 
 	// Run each configured HelpChannel's Socket/event loop for the daemon's
 	// lifetime. A channel that fails to connect (bad token, network down)
@@ -300,7 +301,7 @@ func main() {
 		}
 		if mcpSecret != nil {
 			webOpts = append(webOpts, web.WithHelpMCP(mcpSecret, srv.AskHelpForRun))
-			webOpts = append(webOpts, web.WithDRAAccess(mcpSecret))
+			webOpts = append(webOpts, web.WithDRAAccess(mcpSecret), web.WithDRAWaits(srv))
 		}
 		webHandler, err := web.NewHandler(store, store, webOpts...)
 		if err != nil {

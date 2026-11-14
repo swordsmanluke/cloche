@@ -84,26 +84,20 @@ func TestDRAListShowsSessionAndLastWake(t *testing.T) {
 	}
 }
 
-func TestDRARulingAndHeartbeat(t *testing.T) {
-	var kind, subject, message, name string
+func TestDRAHeartbeatAndNoRuling(t *testing.T) {
+	var kind, name string
 	old := notifyDRAFn
 	defer func() { notifyDRAFn = old }()
 	notifyDRAFn = func(project, n, k, sub, msg string) error {
-		name, kind, subject, message = n, k, sub, msg
+		name, kind = n, k
 		return nil
 	}
 	root := t.TempDir()
 	var buf bytes.Buffer
-	if err := draCommand([]string{"ruling", "auth", "--question", "Q7", "--message", "yes", "-p", root}, &buf); err != nil {
-		t.Fatal(err)
+	if err := draCommand([]string{"heartbeat", "auth", "-p", root}, &buf); err != nil || kind != dra.KindHeartbeat || name != "auth" {
+		t.Errorf("%v %q %q", err, kind, name)
 	}
-	if name != "auth" || kind != dra.KindRuling || subject != "Q7" || message != "yes" {
-		t.Errorf("%q %q %q %q", name, kind, subject, message)
-	}
-	if err := draCommand([]string{"heartbeat", "auth", "-p", root}, &buf); err != nil || kind != dra.KindHeartbeat {
-		t.Errorf("%v %q", err, kind)
-	}
-	for _, bad := range [][]string{{"ruling", "auth"}, {"ruling", "auth", "--question", "Q"}, {"heartbeat"}} {
+	for _, bad := range [][]string{{"heartbeat"}, {"ruling", "auth", "--question", "Q7", "--message", "yes"}} {
 		if draCommand(bad, &buf) == nil {
 			t.Errorf("expected an error for %v", bad)
 		}

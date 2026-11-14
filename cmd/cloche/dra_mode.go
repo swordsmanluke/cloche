@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,8 +16,9 @@ import (
 // DRA mode: inside a DRA wake-up container the daemon sets CLOCHE_DRA_URL and
 // CLOCHE_DRA_TOKEN. The CLI then reaches the daemon only through its DRA API,
 // authenticated by that per-wake-up credential, and only for what a DRA may
-// do: list tasks and runs, read run status and output, create a task, and
-// update or close a task of its domain. Every other command is refused here
+// do: list tasks and runs, read run status and output, create a task, update
+// or close a task of its domain, ask, await and read questions, and register,
+// list and cancel its own waits. Every other command is refused here
 // as a courtesy; the daemon enforces the same limits itself.
 
 type draClient struct {
@@ -109,8 +111,23 @@ func runDRACommand(c *draClient, args []string) (handled bool, err error) {
 		return true, err
 	case "logs":
 		return true, c.logs(args[1:])
+	case "dra":
+		if len(args) > 1 && (args[1] == "list" || args[1] == "wake" || args[1] == "heartbeat") {
+			return true, fmt.Errorf("`cloche dra %s` is not available to a DRA (allowed: dra wait, dra waits)", args[1])
+		}
+		return true, draCommand(args[1:], os.Stdout) // wait, waits; anything else prints the usage
+	case "questions":
+		if len(args) > 1 && (args[1] == "ask" || args[1] == "await" || args[1] == "read") {
+			err := questionsCommand(args[1:], os.Stdout)
+			var ee questionsExitError
+			if errors.As(err, &ee) {
+				os.Exit(ee.code) // "no answer yet": an exit code, not an error line
+			}
+			return true, err
+		}
+		return true, fmt.Errorf("`cloche questions` is limited to ask, await and read for a DRA")
 	}
-	return true, fmt.Errorf("`cloche %s` is not available to a DRA (allowed: tasks, list, status, logs)", args[0])
+	return true, fmt.Errorf("`cloche %s` is not available to a DRA (allowed: tasks, list, status, logs, questions, dra wait)", args[0])
 }
 
 func (c *draClient) tasks(args []string) error {

@@ -91,6 +91,10 @@ type questionsClient interface {
 
 // newQuestionsClient builds the daemon client for a project. Tests replace it.
 var newQuestionsClient = func(projectDir string) (questionsClient, error) {
+	// A DRA reaches the same routes through its own API, with its credential.
+	if c := draModeClient(); c != nil {
+		return &daemonQuestionsClient{base: c.base + "/api/dra/questions", token: c.token}, nil
+	}
 	httpAddr := resolveHTTPAddr()
 	if httpAddr == "" {
 		httpAddr = "localhost:8080"
@@ -309,8 +313,12 @@ func questionsCommand(args []string, w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if err := recordAskedIDs(dir, ids); err != nil {
-			return fmt.Errorf("recording asked question ids: %w", err)
+		// A DRA's project is read-only and it passes ids explicitly (to
+		// `await` or `dra wait questions`), so it has no use for the record.
+		if draModeClient() == nil {
+			if err := recordAskedIDs(dir, ids); err != nil {
+				return fmt.Errorf("recording asked question ids: %w", err)
+			}
 		}
 		for _, id := range ids {
 			fmt.Fprintln(w, id)
@@ -322,7 +330,7 @@ func questionsCommand(args []string, w io.Writer) error {
 			return err
 		}
 		ids := pos
-		if len(ids) == 0 {
+		if len(ids) == 0 && draModeClient() == nil {
 			if ids, err = loadAskedIDs(dir); err != nil {
 				return err
 			}

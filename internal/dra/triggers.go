@@ -17,7 +17,7 @@ import (
 //
 //   - a task in its domain finishes, fails or parks,
 //   - a signal arrives naming its domain,
-//   - a ruling arrives on a Saga question it asked,
+//   - a wait it registered ends (its poll is ready, failed or timed out),
 //   - a heartbeat (a poll-step timer calls `cloche dra heartbeat`).
 //
 // An event never starts a run by itself. It goes into the DRA's Inbox; the
@@ -31,13 +31,13 @@ const (
 	KindTaskFailed   = "task-failed"
 	KindTaskParked   = "task-parked"
 	KindSignal       = "signal"
-	KindRuling       = "ruling"
+	KindWait         = "wait"
 	KindHeartbeat    = "heartbeat"
 )
 
 // Wake request protocol for non-wake triggers over the RunWorkflow RPC:
 // WorkflowName is NotifyRequest, Env carries WakeEnvDRA, NotifyEnvKind
-// (KindRuling or KindHeartbeat), WakeEnvMessage and NotifyEnvSubject.
+// (KindHeartbeat), WakeEnvMessage and NotifyEnvSubject.
 const (
 	NotifyRequest    = "dra-notify"
 	NotifyEnvKind    = "kind"
@@ -52,7 +52,7 @@ type Event struct {
 	Kind string    `json:"kind"`
 	At   time.Time `json:"at"`
 	// Subject identifies what the event is about: a task id, a signal
-	// "source/key", a Saga question id. Empty for a heartbeat.
+	// "source/key", a wait id. Empty for a heartbeat.
 	Subject string `json:"subject,omitempty"`
 	// Text is the human-readable detail.
 	Text string `json:"text,omitempty"`
@@ -154,9 +154,9 @@ func EventsPath(projectDir string) string {
 	return filepath.Join(projectDir, ".cloche", "runs", "dra-events.json")
 }
 
-// Add queues an event. A ruling or heartbeat already pending for the same
-// subject (and, for rulings, identical text) is not queued twice (a poll step that reports the same ruling on
-// every tick must not repeat it). It reports whether the event was queued.
+// Add queues an event. A heartbeat already pending is not queued twice (a
+// poll step that fires on every tick must not repeat it). It reports whether
+// the event was queued.
 func (in *Inbox) Add(projectDir, name string, e Event) bool {
 	in.mu.Lock()
 	defer in.mu.Unlock()
@@ -164,9 +164,9 @@ func (in *Inbox) Add(projectDir, name string, e Event) bool {
 		e.At = in.now()
 	}
 	k := inboxKey(projectDir, name)
-	if e.Kind == KindRuling || e.Kind == KindHeartbeat {
+	if e.Kind == KindHeartbeat {
 		for _, p := range in.pending[k] {
-			if p.Kind == e.Kind && p.Subject == e.Subject && (e.Kind != KindRuling || p.Text == e.Text) {
+			if p.Kind == e.Kind && p.Subject == e.Subject {
 				return false
 			}
 		}

@@ -61,21 +61,17 @@ func TestInbox_BatchesInOrderAndRequeuesFirst(t *testing.T) {
 	}
 }
 
-func TestInbox_RepeatedRulingAndHeartbeatNotDoubled(t *testing.T) {
+func TestInbox_RepeatedHeartbeatNotDoubled(t *testing.T) {
 	root := t.TempDir()
 	in := NewInbox()
-	if !in.Add(root, "auth", Event{Kind: KindRuling, Subject: "Q1", Text: "yes"}) {
-		t.Fatal("first ruling queued")
-	}
-	if in.Add(root, "auth", Event{Kind: KindRuling, Subject: "Q1", Text: "yes"}) {
-		t.Fatal("same ruling again is not queued twice")
-	}
-	if !in.Add(root, "auth", Event{Kind: KindRuling, Subject: "Q2", Text: "no"}) {
-		t.Fatal("another question is a new event")
-	}
 	in.Add(root, "auth", Event{Kind: KindHeartbeat})
 	if in.Add(root, "auth", Event{Kind: KindHeartbeat}) {
 		t.Fatal("one pending heartbeat is enough")
+	}
+	// Wait events are never merged: each wait ends once and each is news.
+	in.Add(root, "auth", Event{Kind: KindWait, Subject: "w-1", Text: "a"})
+	if !in.Add(root, "auth", Event{Kind: KindWait, Subject: "w-1", Text: "a"}) {
+		t.Fatal("wait events are not deduplicated")
 	}
 	if in.Pending(root, "auth") != 3 {
 		t.Fatalf("pending %d", in.Pending(root, "auth"))

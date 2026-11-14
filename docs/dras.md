@@ -28,8 +28,9 @@ ignored (e.g. `.cloche/dras/*/notes.md` in `.gitignore`) is the project's choice
   obtained, time) and the charter's first heading.
 - `cloche dra wake <name> --message <text> [--project <dir>]` starts a wake-up by
   hand (see below).
-- `cloche dra ruling <name> --question <id> --message <text>` and
-  `cloche dra heartbeat <name>` send the triggers described under "Triggers".
+- `cloche dra heartbeat <name>` sends the trigger described under "Triggers".
+- `cloche dra wait`, `waits` and `wait --cancel` register, list and cancel waits on
+  owner-written polls (see "Waits" below and `docs/USAGE.md`).
 - `cloche validate` reports a DRA with no `charter.md` or an invalid name.
 
 ## The locked-down container
@@ -130,7 +131,11 @@ container runtime then injects the three variables above. Containers that do not
 set `dra` get none of them.
 
 A DRA may: list its project's tasks and runs, read a run's status and step
-output (runs of its own project only), create a task, and update or close a task.
+output (runs of its own project only), create a task, update or close a task,
+ask, await and read questions (`cloche questions ask|await|read`, routes
+`/api/dra/questions/...`, the same qa module slots the project routes use), and
+register, list and cancel **its own** waits (`/api/dra/waits...`). The DRA's name
+and project always come from the credential, never from the request body.
 
 - A created task **always carries the DRA's domain label** (the DRA's name).
 - Update and close are **refused for a task that lacks that label** (the daemon
@@ -141,8 +146,9 @@ output (runs of its own project only), create a task, and update or close a task
   project purge, signal tokens, another project.
 
 Inside the container `cloche tasks [create|update|find|close]`, `cloche list`,
-`cloche status <run>` and `cloche logs <run> --step <s>` use the credential;
-other commands are refused.
+`cloche status <run>`, `cloche logs <run> --step <s>`, `cloche questions
+ask|await|read` and `cloche dra wait|waits` use the credential; other commands
+are refused (`questions guide` and `dra list|wake|heartbeat` included).
 
 **Open question (needs a ruling; not guessed):** does a DRA-created task get the
 `ready` label by itself? `ready` hands a task to the loop, which spends budget.
@@ -208,8 +214,12 @@ used and the daemon logs the ones it ignored.
 |---|---|
 | Task result | a task in the DRA's domain finishes, fails or parks (a task stopped on request is not a result) |
 | Signal | a signal arrives with `domain` naming the DRA. The default `handle-notification` also puts the domain on the task as a label. The wake-up is sent after the handler ran, so the task it created already exists. Occurrences that join a running handler (same source and key) are not separate events |
-| Ruling | `cloche dra ruling <name> --question <id> --message <text>`: a ruling arrived on a Saga question the DRA asked. The same question reported twice while pending is queued once |
+| Wait | a wait the DRA registered ends: its poll reported a result, the poll failed, or the wait timed out (see "Waits") |
 | Heartbeat | `cloche dra heartbeat <name>`: wakes the DRA if it has not been woken, for any reason, for the heartbeat interval |
+
+The `ruling` event kind is gone: `cloche dra ruling` was removed and the daemon
+refuses `ruling` as a notification kind. A DRA that wants a ruling asks with
+`cloche questions ask` and waits on it with `cloche dra wait questions --ids ...`.
 
 ### Heartbeat
 
@@ -235,6 +245,54 @@ daemon delivers the whole inbox as **one** wake-up message, in order:
   they go out together once it opens,
 - nothing is dropped and no event starts a second run. If a wake-up itself fails its
   events are not replayed (a failing DRA would loop); the next heartbeat covers it.
+
+### Waits
+
+A DRA that has nothing to do until something happens ends its wake-up and registers
+a **wait**. It names a poll; it never supplies script text. Polls are written by the
+project's owner, run on the host, and live at
+`.cloche/dras/<name>/polls/<poll>.sh` (the file must be executable; it is run
+directly, so it needs a shebang). There is also one built-in poll, `questions`, which runs
+`cloche questions await <ids>` and is ready (`answered`) once none is open.
+
+```
+cloche dra wait build-done --arg branch=main --interval 5m --note "main build"
+cloche dra wait questions --ids Q14,Q15 --note "rulings"
+cloche dra waits
+cloche dra wait --cancel w-3
+```
+
+- **Resolution.** The name must match a script the owner wrote (a plain lowercase
+  name, never a path) or `questions`. Anything else is refused:
+  `unknown poll no-such-poll; this DRA has: build-done, deploy-ready`.
+- **Arguments** reach the script as `CLOCHE_WAIT_ARG_<KEY>` environment variables
+  (key upper-cased; names are letters, digits and `_`, values text under 4 KiB). The
+  script is executed as an argument vector, never through a shell, so a value like
+  `main; touch x` is just that text. For `questions` the ids become arguments of
+  `cloche questions await`; an id must be a plain word.
+- **Result.** The poll-step protocol applies: a `CLOCHE_RESULT:<name>` marker is the
+  result (ready), exit 0 without a marker is "not yet" (poll again after the
+  interval), non-zero without a marker is a failure. The first poll is immediate.
+- **Limits.** 20 pending waits per DRA, a 1 minute minimum interval (default 5m), a
+  72 hour default timeout. Over a limit, registration is refused with the reason.
+- **Own waits only.** A DRA lists and cancels only the waits it registered; another
+  DRA's wait looks like one that does not exist.
+- **Wait event.** Each wait ends with exactly one `wait` event in the DRA's inbox,
+  carrying the note, the outcome (`ready` with the result name, `failed`, or
+  `timeout`) and the poll's last output (truncated). It is batched under the rules
+  above, so it rides in the next wake-up with any other pending events. A cancelled
+  wait sends none.
+
+**Persistence and polling.** Pending waits are kept in `.cloche/runs/dra-waits.json`
+of the project (next to `dra-sessions.json`), so they survive a daemon restart: on
+start the daemon reads every known project's waits and resumes polling them. A wait
+that came due while the daemon was down is polled at the first pass after it starts.
+Each poll invocation is a recorded host run named `dra-wait-<name>` with one `poll`
+step; it shows in `cloche list` like any run. The step ends `ready` (the script printed
+a `CLOCHE_RESULT` marker, whose name goes into the wait event), `pending` (exit 0 with
+no marker: not yet) or `failed` (non-zero exit with no marker). `failed` aborts that
+run and ends the wait with a `failed` event. The daemon runs the script directly, never
+through a shell.
 
 ### No self-wake
 

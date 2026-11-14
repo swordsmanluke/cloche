@@ -78,6 +78,7 @@ type ClocheServer struct {
 	containerRun    map[string]string              // container_id -> run_id
 	hostCancels     map[string]context.CancelFunc  // run_id -> cancel fn (for host runs)
 	draTrig         draTriggers                    // DRA wake-up triggers (dra_triggers.go)
+	draWaits        draWaitState                   // DRA waits (dra_waits.go)
 	wakeActive      map[string]string              // project+DRA -> run id of its running wake-up (see WakeDRA)
 	attemptCancels  map[string]context.CancelFunc  // attempt_id -> cancel fn (loop-dispatched main runs)
 	loops           map[string]*host.Loop          // project_dir -> orchestration loop

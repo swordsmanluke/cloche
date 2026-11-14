@@ -17,7 +17,8 @@ import (
 // presents the credential minted for its wake-up (draauth), which names its
 // run, project and domain. With it a DRA may list its project's tasks and
 // runs, read a run's status and output, create a task (always labelled with
-// the DRA's domain), and update or close a task that carries that label.
+// the DRA's domain), update or close a task that carries that label, ask,
+// await and read questions, and register, list and cancel its own waits.
 // The rest of the dashboard has no auth yet (a later story), so this limits a
 // DRA that uses the CLI it is given, not one that calls other routes directly.
 //
@@ -37,6 +38,12 @@ var draRoutePatterns = []string{
 	"POST /api/dra/tasks/create",
 	"POST /api/dra/tasks/update",
 	"POST /api/dra/tasks/close",
+	"POST /api/dra/waits",
+	"GET /api/dra/waits",
+	"POST /api/dra/waits/cancel",
+	"POST /api/dra/questions/ask",
+	"POST /api/dra/questions/await",
+	"POST /api/dra/questions/read",
 }
 
 // WithDRAAccess enables the DRA API. secret is the daemon secret DRA
@@ -54,6 +61,12 @@ func (h *Handler) registerDRARoutes() {
 		"POST /api/dra/tasks/create":                 h.draCreateTask,
 		"POST /api/dra/tasks/update":                 h.draUpdateTask,
 		"POST /api/dra/tasks/close":                  h.draCloseTask,
+		"POST /api/dra/waits":                        h.draRegisterWait,
+		"GET /api/dra/waits":                         h.draListWaits,
+		"POST /api/dra/waits/cancel":                 h.draCancelWait,
+		"POST /api/dra/questions/ask":                h.draQuestions(h.questionsAsk),
+		"POST /api/dra/questions/await":              h.draQuestions(h.questionsAwait),
+		"POST /api/dra/questions/read":               h.draQuestions(h.questionsRead),
 	}
 	for _, p := range draRoutePatterns {
 		h.route(p, handlers[p])
