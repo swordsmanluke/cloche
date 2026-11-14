@@ -9,6 +9,7 @@
 
 ### Fixes
 
+- `e7500a55` Recovery turn for a missing `CLOCHE_RESULT` marker: `recoveryPrompt` lists the step's declared results as the only valid names, and `runRecoveryTurn` treats an undeclared answer as no marker (step resolves to `fail`) so the engine no longer aborts with `step returned undeclared result`. Steps with no declared results skip validation.
 - `fc029023` `/mcp` `tools/call` replies as SSE (keepalive comment or `notifications/progress` every 15s; final result as one `message` event) when the client accepts `text/event-stream`, so `ask_user` survives the client's ~60s silent-request limit and parks via `park_after`. Added `WithMCPKeepalive` for tests.
 
 ### Internal

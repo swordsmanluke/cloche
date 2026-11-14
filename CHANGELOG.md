@@ -9,6 +9,7 @@
 
 ### Notable fixes
 
+- The missing-marker recovery turn now lists the step's declared results as the only valid names, and a recovery answer with an undeclared name (e.g. `done`) is treated as a missing marker (step takes `fail`) instead of aborting the run with `undeclared result`.
 - `ask_user` no longer returns a timeout to Claude agents after ~60s, before `park_after` can park the run: blocking `tools/call` requests on `/mcp` now reply as an SSE stream with 15s keepalives when the client accepts `text/event-stream`.
 
 ## v3.27.0 — 2026-11-09

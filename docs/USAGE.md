@@ -335,7 +335,7 @@ agent_command = "claude,gemini,codex"
 ```
 
 - **Command not found / failed to start** — try next command
-- **Exit 0 with substantive output but no `CLOCHE_RESULT` marker** (and no `error_during_execution` report) — issue one recovery turn first: resume the same session (`--resume <session-id>` for `claude`, `-c` otherwise) and ask it to print only the marker. If the recovery turn produces one, use that result (no fallback); otherwise, try next command as below.
+- **Exit 0 with substantive output but no `CLOCHE_RESULT` marker** (and no `error_during_execution` report) — issue one recovery turn first: resume the same session (`--resume <session-id>` for `claude`, `-c` otherwise) and ask it to print only the marker; the prompt lists the step's declared results as the only valid names. If the recovery turn produces a declared result, use it (no fallback); if it answers with an undeclared name (e.g. `done`) it is treated like a missing marker (the step resolves to `fail` rather than aborting the run); otherwise, try next command as below.
 - **Exit 0 or non-zero, without a `CLOCHE_RESULT` marker** (including no output at all, or an `error_during_execution` report) — try next command
 - **Exit 0 or non-zero, with a `CLOCHE_RESULT` marker** — use that result (no fallback)
 - **All commands fail to start** — step returns an error
