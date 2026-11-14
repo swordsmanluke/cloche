@@ -9,32 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeClock is a manually advanced clock injected into PollCoordinator.now.
-type fakeClock struct {
-	mu  sync.Mutex
-	cur time.Time
-}
-
-func newFakeClock() *fakeClock {
-	return &fakeClock{cur: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
-}
-
-func (f *fakeClock) Now() time.Time {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.cur
-}
-
-func (f *fakeClock) Advance(d time.Duration) {
-	f.mu.Lock()
-	f.cur = f.cur.Add(d)
-	f.mu.Unlock()
-}
-
 // fakePollRunner is a stub poll script: it records the fake time of each run
 // and always reports "pending" (empty result).
 type fakePollRunner struct {
-	clock *fakeClock
+	clock *FakePollClock
 	mu    sync.Mutex
 	runs  []time.Time
 }
@@ -73,9 +51,10 @@ func waitIdle(t *testing.T, c *PollCoordinator) {
 // poll script ran at.
 func simulatePolls(t *testing.T, interval, loopTick, total time.Duration) []time.Time {
 	t.Helper()
-	clock := newFakeClock()
+	clock := NewFakePollClock()
 	coord := NewPollCoordinator()
-	coord.now = clock.Now
+	coord.SetClock(clock)
+	clock.Settle = func() { waitIdle(t, coord) }
 	runner := &fakePollRunner{clock: clock}
 	coord.Register("run1", "wait", runner.invoke, interval)
 
@@ -103,20 +82,17 @@ func maxGap(runs []time.Time) time.Duration {
 // poll-interval contract: interval=30s must poll about every 30s even when the
 // orchestration loop only ticks every 60s.
 //
-// Root cause (confirmed): DrivePolls is the only thing that fires coordinator
-// polls and it only runs when the loop calls it, so the effective cadence is
-// the interval rounded up to a multiple of the loop tick (60s here).
+// Before the fix DrivePolls was the only thing firing polls, so the effective
+// cadence was the interval rounded up to a multiple of the loop tick.
 //
-// xfail until L2 (coordinator drives polls from its own timer); it skips with
-// the observed gaps rather than failing, and starts passing once L2 lands.
+// The coordinator arms a per-session timer for the next due poll, so the
+// cadence no longer depends on the loop tick.
 func TestPollCadence_LoopTickSlowerThanInterval(t *testing.T) {
 	const interval, tolerance = 30 * time.Second, 2 * time.Second
 	runs := simulatePolls(t, interval, 60*time.Second, 5*time.Minute)
 	require.NotEmpty(t, runs)
-	if gap := maxGap(runs); gap > interval+tolerance {
-		t.Skipf("xfail until L2: interval %v but max gap between polls is %v (%d runs in 5m, want ~10)",
-			interval, gap, len(runs))
-	}
+	require.LessOrEqual(t, maxGap(runs), interval+tolerance, "runs=%d", len(runs))
+	require.GreaterOrEqual(t, len(runs), 10)
 }
 
 // TestPollCadence_LoopTickFasterThanInterval guards the other direction: a

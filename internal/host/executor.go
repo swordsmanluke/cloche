@@ -672,7 +672,7 @@ func (e *Executor) findPrevOutput(ctx context.Context, step *domain.Step) string
 
 // executePollStep handles a poll step. When a PollCoordinator is configured
 // (production/loop-driven mode), the executor registers a session and blocks
-// on a result channel — the loop drives all poll timing via DrivePolls.
+// on a result channel — each session arms its own timer after the first poll (see PollCoordinator).
 //
 // When no coordinator is set (standalone/test mode), a self-contained polling
 // loop is used for backward compatibility.
@@ -756,33 +756,37 @@ func (e *Executor) executePollStep(ctx context.Context, step *domain.Step) (stri
 }
 
 // executePollStepStandalone is the self-contained polling loop used when no
-// PollCoordinator is configured. It invokes the script at the configured
-// interval, handling overlapping invocations and 4× overage failure.
+// PollCoordinator is configured.
 func (e *Executor) executePollStepStandalone(
 	ctx context.Context,
 	step *domain.Step,
 	interval time.Duration,
 	invokeFn func(context.Context) (string, error),
 ) (string, error) {
+	return PollStandalone(ctx, step.Name, interval, invokeFn, nil)
+}
+
+// PollStandalone invokes invokeFn every interval until it returns a decision,
+// handling 4× overage failure and ctx cancellation (timeout). It sleeps until
+// the next poll is due rather than waking on a coarse check interval, so the
+// cadence is the configured interval. clk nil means the real clock.
+func PollStandalone(
+	ctx context.Context,
+	name string,
+	interval time.Duration,
+	invokeFn func(context.Context) (string, error),
+	clk PollClock,
+) (string, error) {
+	if clk == nil {
+		clk = realPollClock{}
+	}
 	// Maximum time allowed for a single invocation before the step is failed.
 	maxInvocationTime := 4 * interval
-
-	// checkInterval is how often the loop wakes to decide whether to poll.
-	const pollCheckInterval = 30 * time.Second
-	checkInterval := pollCheckInterval
-	if interval < checkInterval {
-		checkInterval = interval / 2
-		if checkInterval < time.Second {
-			checkInterval = time.Second
-		}
-	}
 
 	type pollResult struct {
 		result string
 		err    error
 	}
-
-	// pollCh carries the result of the current invocation goroutine.
 	// Buffered so the goroutine never blocks if we exit early.
 	pollCh := make(chan pollResult, 1)
 
@@ -790,48 +794,48 @@ func (e *Executor) executePollStepStandalone(
 	var invocationStart time.Time
 
 	// Set last poll to interval ago so the first poll fires immediately.
-	lastPoll := time.Now().Add(-interval)
+	lastPoll := clk.Now().Add(-interval)
 
 	for {
-		now := time.Now()
-
+		now := clk.Now()
+		var wait time.Duration
 		if invocationRunning {
-			// Check whether the current invocation has finished.
-			select {
-			case pr := <-pollCh:
-				invocationRunning = false
-				lastPoll = now
-				if pr.err != nil {
-					return "", pr.err
-				}
-				if pr.result != "" {
-					return pr.result, nil
-				}
-				// Empty result = pending; keep polling.
-			default:
-				// Still running — check for 4× overage.
-				elapsed := now.Sub(invocationStart)
-				if elapsed > maxInvocationTime {
-					log.Printf("poll step %q: invocation has been running for %v (>4× interval %v), failing step",
-						step.Name, elapsed.Round(time.Second), interval)
-					return "fail", nil
-				}
+			if now.Sub(invocationStart) > maxInvocationTime {
+				log.Printf("poll step %q: invocation has been running for %v (>4× interval %v), failing step",
+					name, now.Sub(invocationStart).Round(time.Second), interval)
+				return "fail", nil
 			}
+			wait = invocationStart.Add(maxInvocationTime).Sub(now) + time.Millisecond
 		} else if now.Sub(lastPoll) >= interval {
-			// Time to start a new poll invocation.
 			invocationRunning = true
 			invocationStart = now
-			log.Printf("poll step %q: polling (last=%s interval=%s)", step.Name, lastPoll.Format(time.RFC3339), interval)
+			log.Printf("poll step %q: polling (last=%s interval=%s)", name, lastPoll.Format(time.RFC3339), interval)
 			go func() {
 				result, pollErr := invokeFn(ctx)
 				pollCh <- pollResult{result: result, err: pollErr}
 			}()
+			wait = maxInvocationTime + time.Millisecond
+		} else {
+			wait = lastPoll.Add(interval).Sub(now)
 		}
 
+		tick := make(chan struct{}, 1)
+		stop := clk.AfterFunc(wait, func() { tick <- struct{}{} })
 		select {
 		case <-ctx.Done():
+			stop()
 			return "timeout", nil
-		case <-time.After(checkInterval):
+		case pr := <-pollCh:
+			stop()
+			invocationRunning = false
+			lastPoll = clk.Now()
+			if pr.err != nil {
+				return "", pr.err
+			}
+			if pr.result != "" {
+				return pr.result, nil
+			}
+		case <-tick:
 		}
 	}
 }

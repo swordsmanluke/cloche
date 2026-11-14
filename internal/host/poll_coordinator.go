@@ -9,13 +9,15 @@ import (
 	"github.com/swordsmanluke/cloche/internal/ports"
 )
 
-// PollCoordinator manages poll step poll sessions. The orchestration loop
-// drives all poll timing via DrivePolls; individual executors register
-// sessions and block on result channels.
+// PollCoordinator manages poll step poll sessions. Individual executors
+// register sessions and block on result channels. The first poll of a session
+// fires on the next DrivePolls call; after each pending result the session arms
+// its own timer for lastPollAt+interval, so the cadence does not depend on the
+// orchestration loop tick. DrivePolls remains as a catch-up and runs the 4×
+// overage check.
 //
-// Design: the executor goroutine blocks on a result channel. On each loop
-// tick, DrivePolls checks which sessions are due for a poll invocation and
-// runs the script in a background goroutine. When the script returns a
+// Design: the executor goroutine blocks on a result channel. Poll scripts run
+// in a background goroutine. When the script returns a
 // decision (non-empty, non-pending result), the result is sent on the
 // channel, unblocking the executor.
 type PollCoordinator struct {
@@ -35,9 +37,50 @@ type PollCoordinator struct {
 	slots  map[string]*slotState
 
 	// now is the coordinator's clock; nil means time.Now. Tests swap in a fake
-	// clock (see fakeClock in poll_cadence_test.go) to check poll cadence
+	// clock (see FakePollClock) to check poll cadence
 	// without sleeping.
 	now func() time.Time
+
+	// afterFunc schedules f to run after d and returns a stop function; nil
+	// means time.AfterFunc. Tests swap in the fake clock's timers.
+	afterFunc func(d time.Duration, f func()) (stop func())
+
+	// store is the PollStore last handed to DrivePolls; timer-driven polls
+	// use it to persist last_poll_at the same way loop-driven ones do.
+	store ports.PollStore
+}
+
+func (c *PollCoordinator) schedule(d time.Duration, f func()) func() {
+	if c.afterFunc != nil {
+		return c.afterFunc(d, f)
+	}
+	return realPollClock{}.AfterFunc(d, f)
+}
+
+// scheduleNext arms s's own timer to fire when its next poll is due
+// (lastPollAt+interval), independent of the orchestration loop tick.
+// Caller must hold c.mu.
+func (c *PollCoordinator) scheduleNext(s *pollSession) {
+	if s.stopTimer != nil {
+		s.stopTimer()
+	}
+	delay := s.lastPollAt.Add(s.interval).Sub(c.clock())
+	if delay < 0 {
+		delay = 0
+	}
+	s.stopTimer = c.schedule(delay, func() { c.timerFired(s) })
+}
+
+// timerFired runs when a session's own timer elapses.
+func (c *PollCoordinator) timerFired(s *pollSession) {
+	c.mu.Lock()
+	cur, ok := c.sessions[sessionKey(s.runID, s.stepName)]
+	due := ok && cur == s && !s.inFlight && c.clock().Sub(s.lastPollAt) >= s.interval
+	store := c.store
+	c.mu.Unlock()
+	if due {
+		c.triggerPoll(s, store)
+	}
 }
 
 func (c *PollCoordinator) clock() time.Time {
@@ -101,6 +144,7 @@ type pollSession struct {
 	inFlight   bool      // true while an invocation goroutine is running
 	invStart   time.Time // when the current in-flight invocation started
 	invCancel  context.CancelFunc
+	stopTimer  func() // cancels the session's next-due timer
 }
 
 // NewPollCoordinator creates a new PollCoordinator.
@@ -236,6 +280,9 @@ func (c *PollCoordinator) Unregister(runID, stepName string) {
 		if s.invCancel != nil {
 			s.invCancel()
 		}
+		if s.stopTimer != nil {
+			s.stopTimer()
+		}
 		delete(c.sessions, key)
 	}
 }
@@ -250,6 +297,9 @@ func (c *PollCoordinator) DrivePolls(ctx context.Context, store ports.PollStore)
 	c.mu.Lock()
 	var toTrigger []*pollSession
 	var toFail []*pollSession
+	if store != nil {
+		c.store = store
+	}
 	now := c.clock()
 	for key, s := range c.sessions {
 		if s.inFlight {
@@ -261,6 +311,9 @@ func (c *PollCoordinator) DrivePolls(ctx context.Context, store ports.PollStore)
 				}
 				s.inFlight = false
 				s.invCancel = nil
+				if s.stopTimer != nil {
+					s.stopTimer()
+				}
 				toFail = append(toFail, s)
 				delete(c.sessions, key)
 			}
@@ -346,6 +399,9 @@ func (c *PollCoordinator) triggerPoll(s *pollSession, store ports.PollStore) {
 
 		if deliver != "" {
 			// Decision (or error): deliver result and clean up.
+			if s2.stopTimer != nil {
+				s2.stopTimer()
+			}
 			s2.resultCh <- deliver
 			delete(c.sessions, sessionKey(runID, stepName))
 			c.mu.Unlock()
@@ -356,11 +412,13 @@ func (c *PollCoordinator) triggerPoll(s *pollSession, store ports.PollStore) {
 		} else {
 			// Pending: record the poll timestamp and continue.
 			s2.lastPollAt = c.clock()
+			c.scheduleNext(s2)
+			lastPollAt := s2.lastPollAt
 			c.mu.Unlock()
 			invCancel()
 			if store != nil {
 				if rec, getErr := store.GetPoll(context.Background(), runID, stepName); getErr == nil && rec != nil {
-					rec.LastPollAt = s2.lastPollAt
+					rec.LastPollAt = lastPollAt
 					rec.PollCount++
 					_ = store.UpsertPoll(context.Background(), rec)
 				}
