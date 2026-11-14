@@ -24,7 +24,7 @@ permission, a requirement nobody wrote down. Today cloche supports that through 
 - The judge's prompt is half policy and half literal `saga` commands, and the judge
   lives inside the Saga module.
 - The DRA image bakes in the `saga` binary, and the locked container's network
-  allowlist carries a Saga address (`CLOCHE_SAGA_ADDR`).
+  allowlist carries a Saga address (from a host env var).
 - Batches, the held mark, send-back and refuse-if-answered are in cloche's contract
   because Saga has them, not because cloche needs them.
 
@@ -328,7 +328,7 @@ is available.
 Once DRAs ask through `cloche questions`:
 
 - the `saga` binary comes out of the DRA image (`docker/cloche-dra/Dockerfile`),
-- `CLOCHE_SAGA_ADDR` comes out of the locked container's allowlist
+- the Saga address env var comes out of the locked container's allowlist
   (`internal/adapters/docker/locked.go`),
 - the "ruling" event text in `internal/dra/triggers.go`, the last mention of Saga in
   the DRA code, goes with `cloche dra ruling`.

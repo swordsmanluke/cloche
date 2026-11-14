@@ -251,13 +251,13 @@ contribution.
 A DRA (Domain Responsible Agent) is a long-lived agent, the riskiest kind, so its wake-up
 runs under tighter limits than a workflow run (see `docs/dras.md`):
 
-- **Its own image** (`cloche-dra`): `cloche-agent`, `cloche`, `clo`, `saga` and the model
-  CLI. No compilers, `make`, `git`, tracker CLI, push credentials or tracker data.
+- **Its own image** (`cloche-dra`): `cloche-agent`, `cloche`, `clo` and the model
+  CLI; questions go through `cloche questions ask|await|read`. No compilers, `make`, `git`, tracker CLI, push credentials or tracker data.
 - **Read-only project.** Everything under `/workspace` is root-owned and not writable by
   the agent user, except the DRA's own `notes.md` (copied in at start, back out at end).
 - **Enforced network allowlist.** The container joins a Docker `--internal` network with
   no route out. An egress sidecar relays only the model API (HTTPS CONNECT) and the
-  daemon and Saga ports on the host (TCP forwards). No `--privileged`, no extra
+  daemon port on the host (TCP forward). No `--privileged`, no extra
   capabilities, `no-new-privileges`.
 - `CLOCHE_EXTRA_MOUNTS` and `CLOCHE_EXTRA_ENV` are not applied to these containers.
 - **Fails closed.** If any root-side lock-down step fails, the container exits non-zero

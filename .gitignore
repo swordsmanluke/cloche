@@ -62,8 +62,6 @@ examples/*/.cloche/
 # tests) — not part of the Go build.
 node_modules/
 
-# Host saga binary copied in temporarily by `make docker-dra`.
-docker/cloche-dra/saga.bin
 
 # cloche questions: ids returned by ask, read by a bare await
 .cloche/questions.ids

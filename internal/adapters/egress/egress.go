@@ -8,7 +8,7 @@
 //   - an HTTP CONNECT proxy (HTTPS_PROXY) for the model API and any other
 //     allowlisted host:port;
 //   - fixed TCP forwards for endpoints that don't speak through a proxy
-//     (the daemon's gRPC port, Saga's port on the host).
+//     (the daemon's gRPC port on the host).
 package egress
 
 import (

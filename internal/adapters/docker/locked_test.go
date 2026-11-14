@@ -51,11 +51,8 @@ func TestApplyProfile_Rejects(t *testing.T) {
 
 func TestDRAProfile_Forwards(t *testing.T) {
 	t.Setenv("CLOCHE_ADDR", "127.0.0.1:50051")
-	t.Setenv("CLOCHE_SAGA_ADDR", "127.0.0.1:7777")
 	lc := DRAProfile(".cloche/dras/a/notes.md")
-	assert.Equal(t, []string{"host.docker.internal:50051", "host.docker.internal:7777"}, lc.ForwardAddrs)
-	t.Setenv("CLOCHE_SAGA_ADDR", "")
-	assert.Len(t, DRAProfile("n").ForwardAddrs, 1)
+	assert.Equal(t, []string{"host.docker.internal:50051"}, lc.ForwardAddrs)
 }
 
 func TestLockedWrapperCmd(t *testing.T) {
@@ -140,9 +137,10 @@ func TestDRADockerfile_NoBuildTools(t *testing.T) {
 	for _, banned := range []string{" golang", "gcc", "build-essential", " make", " git ", "/usr/local/go", " gh ", " bd ", "openssh", "id_ed25519", "gh_token"} {
 		assert.NotContains(t, final, banned, "final DRA image stage must not include %q", banned)
 	}
-	for _, want := range []string{"cloche-agent", "/cloche ", "saga", "claude-code"} {
+	for _, want := range []string{"cloche-agent", "/cloche ", "claude-code"} {
 		assert.Contains(t, final, want)
 	}
+	assert.NotContains(t, strings.ToLower(text), "saga", "the DRA image ships no saga binary")
 }
 
 func draImageOrSkip(t *testing.T) {
@@ -159,7 +157,9 @@ func TestDRAImage_HasNoBuildTools(t *testing.T) {
 		out, err := exec.Command("docker", "run", "--rm", "--entrypoint", "sh", DRAImage, "-c", "command -v "+tool).CombinedOutput()
 		assert.Error(t, err, "%s must not be in the DRA image (found: %s)", tool, out)
 	}
-	for _, tool := range []string{"cloche-agent", "cloche", "clo", "saga", "claude"} {
+	out, err := exec.Command("docker", "run", "--rm", "--entrypoint", "sh", DRAImage, "-c", "command -v saga").CombinedOutput()
+	assert.Error(t, err, "saga must not be in the DRA image (found: %s)", out)
+	for _, tool := range []string{"cloche-agent", "cloche", "clo", "claude"} {
 		out, err := exec.Command("docker", "run", "--rm", "--entrypoint", "sh", DRAImage, "-c", "command -v "+tool).CombinedOutput()
 		assert.NoError(t, err, "%s must be in the DRA image: %s", tool, out)
 	}

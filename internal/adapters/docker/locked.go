@@ -33,8 +33,8 @@ const (
 )
 
 // DRAProfile builds the locked profile for a DRA: writable notes.md, network
-// to the model API, the daemon, and Saga. Saga's address comes from
-// CLOCHE_SAGA_ADDR (host:port on the Docker host); unset means no Saga access.
+// to the model API and the daemon. DRAs ask questions through the daemon
+// (`cloche questions`), so there is no other egress route.
 func DRAProfile(notesPath string) *ports.LockedConfig {
 	lc := &ports.LockedConfig{
 		WritablePaths: []string{notesPath},
@@ -60,9 +60,6 @@ func DRAProfile(notesPath string) *ports.LockedConfig {
 		lc.ForwardAddrs = append(lc.ForwardAddrs, fwd)
 	}
 	add(daemon)
-	if saga := os.Getenv("CLOCHE_SAGA_ADDR"); saga != "" {
-		add(saga)
-	}
 	return lc
 }
 

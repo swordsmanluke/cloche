@@ -2,11 +2,10 @@ package docker
 
 import "testing"
 
-// Daemon and Saga on the same port (or Saga on the proxy port) must not yield
-// duplicate/conflicting sidecar listeners.
+// The daemon port must not yield duplicate/conflicting sidecar listeners, nor
+// one on the proxy's own CONNECT port.
 func TestDRAProfile_NoDuplicateForwardPorts(t *testing.T) {
 	t.Setenv("CLOCHE_ADDR", "127.0.0.1:50051")
-	t.Setenv("CLOCHE_SAGA_ADDR", "127.0.0.1:50051")
 	lc := DRAProfile(".cloche/dras/x/notes.md")
 	seen := map[string]bool{}
 	for _, f := range lc.ForwardAddrs {
@@ -15,7 +14,7 @@ func TestDRAProfile_NoDuplicateForwardPorts(t *testing.T) {
 		}
 		seen[f] = true
 	}
-	t.Setenv("CLOCHE_SAGA_ADDR", "127.0.0.1:3128")
+	t.Setenv("CLOCHE_ADDR", "127.0.0.1:3128")
 	lc = DRAProfile("n.md")
 	argv, _ := egressCmd(lc)
 	for _, f := range lc.ForwardAddrs {
