@@ -250,19 +250,11 @@ func initSagaQAScenarios(ctx *godog.ScenarioContext) {
 		return nil
 	})
 	ctx.Step(`^no\ file\ in\ the\ repo\ mentions\ saga_batch_id,\ saga_batch_file,\ saga_outcome\ or\ reframe$`, func() error {
-		// Skips .git, the scenarios that name the keys, and docs/plans (dated
-		// design records that describe the migration).
-		pat := `saga_batch_id|saga_batch_file|saga_outcome|\breframe\b`
-		cmd := exec.Command("grep", "-rIlE", pat, ".", "--exclude-dir=.git", "--exclude-dir=plans",
-			"--exclude=saga_qa_backend.feature", "--exclude=saga_qa_backend_test.go")
-		cmd.Dir = filepath.Join("..")
-		out, err := cmd.Output()
-		// grep exits 1 when nothing matches, which is the passing case.
-		var ee *exec.ExitError
-		if err != nil && !(errors.As(err, &ee) && ee.ExitCode() == 1) {
-			return fmt.Errorf("grep for stale references: %w", err)
+		out, err := staleReferenceScan(filepath.Join(".."))
+		if err != nil {
+			return err
 		}
-		if len(strings.TrimSpace(string(out))) > 0 {
+		if len(out) > 0 {
 			return fmt.Errorf("stale references in:\n%s", out)
 		}
 		return nil
@@ -402,4 +394,23 @@ func (w *sagaWorld) wantAnswer(want string) error {
 		return fmt.Errorf("answer = %q, want %q", w.answer, want)
 	}
 	return nil
+}
+
+// staleReferenceScan lists tracked files under dir (a git checkout) that
+// mention the retired saga keys. It scans tracked files only, so untracked
+// .gitworktrees/ checkouts (holding old copies of the module) are ignored.
+// docs/plans (dated design records of the migration) and the scenarios that
+// name the keys are excluded. git grep exits 1 when nothing matches, which is
+// the passing case.
+func staleReferenceScan(dir string) (string, error) {
+	pat := `saga_batch_id|saga_batch_file|saga_outcome|\breframe\b`
+	cmd := exec.Command("git", "grep", "-lIE", pat, "--", ".",
+		":!docs/plans", ":!**/saga_qa_backend.feature", ":!**/saga_qa_backend_test.go")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	var ee *exec.ExitError
+	if err != nil && !(errors.As(err, &ee) && ee.ExitCode() == 1) {
+		return "", fmt.Errorf("git grep for stale references: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
 }
