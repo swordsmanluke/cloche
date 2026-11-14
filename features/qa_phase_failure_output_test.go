@@ -2,33 +2,31 @@ package features_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/cucumber/godog"
+
+	"github.com/swordsmanluke/cloche/internal/adapters/sqlite"
+	"github.com/swordsmanluke/cloche/internal/adapters/web"
+	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/host"
+	"github.com/swordsmanluke/cloche/internal/signal"
 )
 
 func init() { registerScenarios(initQAPhaseFailureOutputScenarios) }
-
-// fakePhaseResult is the daemon's phase-failure payload, faked until L2
-// captures the real step output. TODO(L2): drop it once the real daemon
-// supplies failed_step / output_tail.
-type fakePhaseResult struct {
-	Error      string `json:"error"`
-	FailedStep string `json:"failed_step"`
-	OutputTail string `json:"output_tail"`
-}
 
 type qaPhaseFailure struct {
 	q       questionsCLI
 	msg     string
 	output  string // full output the failing script printed
-	fakeSrv *httptest.Server
+	succeed bool   // the phase scripts succeed instead of failing
+	srv     *httptest.Server
+	taskID  string // the calling run, when the CLI runs from a workflow run
+	attempt string
 }
 
 func initQAPhaseFailureOutputScenarios(ctx *godog.ScenarioContext) {
@@ -38,8 +36,8 @@ func initQAPhaseFailureOutputScenarios(ctx *godog.ScenarioContext) {
 		return c, nil
 	})
 	ctx.After(func(c context.Context, _ *godog.Scenario, _ error) (context.Context, error) {
-		if f.fakeSrv != nil {
-			f.fakeSrv.Close()
+		if f.srv != nil {
+			f.srv.Close()
 		}
 		f.q.teardown()
 		return c, nil
@@ -74,73 +72,127 @@ func initQAPhaseFailureOutputScenarios(ctx *godog.ScenarioContext) {
 		return nil
 	})
 
-	// Steps are pending until the named layer implements them. Do not return a
-	// plain error here: that would fail go test for every layer above.
 	ctx.Step(`^the qa module's phase scripts succeed$`, func() error {
-		return godog.ErrPending // pending: L2
+		f.succeed = true
+		return nil
 	})
-	ctx.Step(`^the qa phase failure output user runs "([^"]*)" against the real daemon$`, func(cmd string) error {
-		return godog.ErrPending // pending: L2
-	})
+	ctx.Step(`^the qa phase failure output user runs "([^"]*)" against the real daemon$`, f.run)
 	ctx.Step(`^the qa phase failure output user runs "([^"]*)" from a workflow run$`, func(cmd string) error {
-		return godog.ErrPending // pending: L2
+		f.taskID, f.attempt = "T1", "A1"
+		if err := os.MkdirAll(f.attemptDir(), 0o755); err != nil {
+			return err
+		}
+		return f.run(cmd)
 	})
 	ctx.Step(`^the qa phase failure output command exits 0$`, func() error {
-		return godog.ErrPending // pending: L2
+		if f.q.exitCode != 0 {
+			return fmt.Errorf("exit %d; stderr %q", f.q.exitCode, f.q.stderr)
+		}
+		return nil
 	})
 	ctx.Step(`^the qa phase failure output error does not contain "([^"]*)"$`, func(s string) error {
-		return godog.ErrPending // pending: L2
+		if strings.Contains(f.q.stderr, s) {
+			return fmt.Errorf("stderr %q contains %q", f.q.stderr, s)
+		}
+		return nil
 	})
 	ctx.Step(`^the calling run's step log file for the failing step contains "([^"]*)"$`, func(s string) error {
-		return godog.ErrPending // pending: L2
+		return fileHas(filepath.Join(f.attemptDir(), "ask.log"), s)
 	})
-	ctx.Step(`^"cloche (logs|poll)" for the calling run contains "([^"]*)"$`, func(cmd, s string) error {
-		return godog.ErrPending // pending: L2
+	// `cloche logs` and `cloche poll` for a host run both read the attempt's
+	// full.log (web fullLogPath).
+	ctx.Step(`^"cloche (logs|poll)" for the calling run contains "([^"]*)"$`, func(_, s string) error {
+		return fileHas(filepath.Join(f.attemptDir(), "full.log"), s)
 	})
 }
 
-// run drives the real cloche binary against a daemon that answers the route
-// with a failed phase carrying fakePhaseResult.
+func (f *qaPhaseFailure) attemptDir() string {
+	return filepath.Join(f.q.dir, ".cloche", "logs", f.taskID, f.attempt)
+}
+
+func fileHas(path, sub string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(string(data), sub) {
+		return fmt.Errorf("%s does not contain %q:\n%s", path, sub, data)
+	}
+	return nil
+}
+
+// qaPhaseProvider runs qa phases through the real host runner, as the daemon's
+// ClocheServer.RunTrackerPhase does.
+type qaPhaseProvider struct {
+	web.TaskProvider // unused methods; nil
+	store            *sqlite.Store
+}
+
+func (p *qaPhaseProvider) RunTrackerPhase(ctx context.Context, dir, slot string, in map[string]string) (map[string]string, error) {
+	return host.RunQuestionPhase(ctx, &host.Runner{Store: p.store}, dir, slot, in)
+}
+
+// writeWorkflows defines the three qa phases as project workflows whose steps
+// (named after the slot) print the script output and fail, or succeed.
+func (f *qaPhaseFailure) writeWorkflows() error {
+	outFile := filepath.Join(f.q.dir, "script-output.txt")
+	if err := os.WriteFile(outFile, []byte(f.output), 0o644); err != nil {
+		return err
+	}
+	var b strings.Builder
+	for _, w := range []struct{ slot, in string }{{"ask", "questions_file"}, {"await-answer", "question_ids"}, {"read-answer", "question_id"}} {
+		run := "cat " + outFile + "; exit 1"
+		if f.succeed {
+			run = "true"
+		}
+		fmt.Fprintf(&b, "workflow %s {\n  host {}\n  contract {\n    kv: %s\n  }\n  step %s {\n    run = %q\n    results = [success, fail]\n  }\n  %s:success -> done\n  %s:fail -> abort\n}\n",
+			w.slot, w.in, w.slot, run, w.slot, w.slot)
+	}
+	if err := os.MkdirAll(filepath.Join(f.q.dir, ".cloche"), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(f.q.dir, ".cloche", "qa.cloche"), []byte(b.String()), 0o644)
+}
+
+// run drives the real cloche binary against the real web handler and host
+// runner, with the project's phase scripts failing (or succeeding).
 func (f *qaPhaseFailure) run(cmdline string) error {
 	args := strings.Fields(strings.TrimPrefix(cmdline, "cloche questions "))
-	sub := args[0]
 	var rest []string
-	for _, a := range args[1:] {
-		if a != "--id" { // the CLI takes ids positionally
+	for _, a := range args[1:] { // the CLI takes ids positionally
+		if a != "--id" {
 			rest = append(rest, a)
 		}
 	}
-	step := map[string]string{"ask": "ask", "await": "await-answer", "read": "read-answer"}[sub]
-	if step == "" {
-		return fmt.Errorf("unsupported subcommand %q", sub)
-	}
-	if sub == "ask" {
+	if args[0] == "ask" {
 		if err := f.q.writeFile("title: T\ncontext: C\nquestions:\n  - prompt: one\n"); err != nil {
 			return err
 		}
 	}
-	token := f.q.daemon.token
-	f.q.srv.Close()
-	f.fakeSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer "+token {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound) // what the daemon answers for ErrPhaseFailed
-		// A failed write surfaces as a missing stderr assertion in the scenario;
-		// the handler has no other channel to report it.
-		_ = json.NewEncoder(w).Encode(fakePhaseResult{
-			Error:      fmt.Sprintf("%s: %s workflow finished with state failed: phase workflow failed", step, step),
-			FailedStep: step,
-			OutputTail: f.output,
-		})
-	}))
-	f.q.srv = f.fakeSrv
-	if sub != "ask" {
-		if err := os.MkdirAll(filepath.Join(f.q.dir, ".cloche"), 0o755); err != nil {
-			return err
-		}
+	if err := f.writeWorkflows(); err != nil {
+		return err
 	}
-	return f.q.run(append([]string{sub}, rest...)...)
+	store, err := sqlite.NewStore(":memory:")
+	if err != nil {
+		return err
+	}
+	if err := store.CreateRun(context.Background(), func() *domain.Run {
+		r := domain.NewRun("run-1", "develop")
+		r.ProjectDir = f.q.dir
+		return r
+	}()); err != nil {
+		return err
+	}
+	tokens := signal.NewTokenStore(filepath.Join(f.q.dir, "home", ".config", "cloche", "signal-tokens"))
+	h, err := web.NewHandler(store, store, web.WithSignalIntake(tokens, nil), web.WithTaskProvider(&qaPhaseProvider{store: store}))
+	if err != nil {
+		return err
+	}
+	f.q.srv.Close()
+	f.srv = httptest.NewServer(h)
+	f.q.srv = f.srv
+	if f.taskID != "" {
+		f.q.extraEnv = []string{"CLOCHE_TASK_ID=" + f.taskID, "CLOCHE_ATTEMPT_ID=" + f.attempt}
+	}
+	return f.q.run(append([]string{args[0]}, rest...)...)
 }

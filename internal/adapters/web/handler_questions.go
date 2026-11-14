@@ -58,8 +58,21 @@ func (h *Handler) questionsRoute(w http.ResponseWriter, r *http.Request, auth pr
 	if err != nil {
 		return fail(http.StatusBadRequest, err.Error())
 	}
-	out, err := runner.RunTrackerPhase(r.Context(), dir, slot, in)
+	ctx := r.Context()
+	if t, a := r.Header.Get("X-Cloche-Task-Id"), r.Header.Get("X-Cloche-Attempt-Id"); t != "" && a != "" {
+		ctx = host.WithCaller(ctx, host.Caller{TaskID: t, AttemptID: a})
+	}
+	out, err := runner.RunTrackerPhase(ctx, dir, slot, in)
+	var pf *host.PhaseFailure
 	switch {
+	case errors.As(err, &pf):
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{
+			"error":       fmt.Sprintf("%s: %v", slot, err),
+			"failed_step": pf.Step,
+			"output_tail": pf.OutputTail,
+			"log_path":    pf.LogPath,
+		})
+		return nil, false
 	case errors.Is(err, host.ErrNoQABind):
 		return fail(http.StatusConflict, err.Error())
 	case errors.Is(err, host.ErrPhaseFailed):

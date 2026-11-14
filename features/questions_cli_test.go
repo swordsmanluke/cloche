@@ -78,6 +78,7 @@ type questionsCLI struct {
 	stdout   string
 	stderr   string
 	exitCode int
+	extraEnv []string // extra env for the CLI process
 	// L2: the stub backend answered through its own tool.
 	stub       *qaconformance.StubBackend
 	stubID     string
@@ -232,6 +233,7 @@ func (q *questionsCLI) run(args ...string) error {
 	cmd := exec.Command(bin, append([]string{"questions"}, args...)...)
 	cmd.Dir = q.dir
 	cmd.Env = append(os.Environ(), "HOME="+filepath.Join(q.dir, "home"), "CLOCHE_HTTP="+q.srv.URL)
+	cmd.Env = append(cmd.Env, q.extraEnv...)
 	var o, e bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &o, &e
 	q.exitCode = 0

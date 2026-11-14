@@ -7,9 +7,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/swordsmanluke/cloche/internal/builtin"
 	"github.com/swordsmanluke/cloche/internal/domain"
+	"github.com/swordsmanluke/cloche/internal/logstream"
 	"github.com/swordsmanluke/cloche/internal/module"
 )
 
@@ -37,6 +39,96 @@ var ErrNoQABind = errors.New("no qa backend is bound for this project; add `bind
 // ErrPhaseFailed is wrapped by RunTrackerPhase when the phase's workflow ran
 // but ended in a failure state (e.g. read-answer with no answer yet).
 var ErrPhaseFailed = errors.New("phase workflow failed")
+
+// PhaseFailure is a phase workflow that ran and failed. It wraps
+// ErrPhaseFailed and carries the failing step's name, the tail of its output
+// and, when the phase was called from a run, the path of the step log written
+// into that run's log directory.
+type PhaseFailure struct {
+	msg        string
+	Step       string
+	OutputTail string
+	LogPath    string
+}
+
+func (e *PhaseFailure) Error() string { return e.msg }
+func (e *PhaseFailure) Unwrap() error { return ErrPhaseFailed }
+
+// maxPhaseTailBytes bounds the output a PhaseFailure carries.
+const maxPhaseTailBytes = 8 << 10
+
+// Caller identifies the run a phase was requested from, so a failed phase's
+// step output can be logged to it.
+type Caller struct{ TaskID, AttemptID string }
+
+type callerKey struct{}
+
+// WithCaller records the calling run on ctx for RunTrackerPhase.
+func WithCaller(ctx context.Context, c Caller) context.Context {
+	return context.WithValue(ctx, callerKey{}, c)
+}
+
+// newPhaseFailure reads the failing step's log from the phase run's output
+// directory and, if ctx names a calling run, writes it there as
+// .cloche/logs/<task>/<attempt>/<step>.log (and appends it to full.log, which
+// `cloche logs` and `cloche poll` read). Best effort: problems are logged.
+func newPhaseFailure(ctx context.Context, projectDir, slot string, result *RunResult) *PhaseFailure {
+	pf := &PhaseFailure{Step: result.FailedStep}
+	if pf.Step == "" {
+		return pf
+	}
+	data, err := os.ReadFile(filepath.Join(result.OutputDir, pf.Step+".log"))
+	if err != nil {
+		log.Printf("host: reading %s phase step log: %v", slot, err)
+		return pf
+	}
+	pf.OutputTail = string(tailBytes(data, maxPhaseTailBytes))
+	c, ok := ctx.Value(callerKey{}).(Caller)
+	if !ok || c.TaskID == "" || c.AttemptID == "" {
+		return pf
+	}
+	if err := validPathElem(c.TaskID, c.AttemptID, pf.Step); err != nil {
+		log.Printf("host: not logging %s failure to caller: %v", slot, err)
+		return pf
+	}
+	dir := filepath.Join(projectDir, ".cloche", "logs", c.TaskID, c.AttemptID)
+	if _, err := os.Stat(dir); err != nil {
+		return pf // the caller's attempt directory is gone; don't create one
+	}
+	path := filepath.Join(dir, pf.Step+".log")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		log.Printf("host: writing %s: %v", path, err)
+		return pf
+	}
+	pf.LogPath = path
+	w, err := logstream.NewAtDir(dir)
+	if err != nil {
+		log.Printf("host: opening full.log in %s: %v", dir, err)
+		return pf
+	}
+	w.Log(logstream.TypeStatus, fmt.Sprintf("step_failed: %s (%s phase)", pf.Step, slot))
+	w.Log(logstream.TypeScript, string(data))
+	if err := w.Close(); err != nil {
+		log.Printf("host: closing full.log in %s: %v", dir, err)
+	}
+	return pf
+}
+
+func tailBytes(b []byte, n int) []byte {
+	if len(b) <= n {
+		return b
+	}
+	return b[len(b)-n:]
+}
+
+func validPathElem(parts ...string) error {
+	for _, p := range parts {
+		if p == "" || p == "." || p == ".." || strings.ContainsAny(p, `/\\`) {
+			return fmt.Errorf("invalid path element %q", p)
+		}
+	}
+	return nil
+}
 
 // phaseHasEnv reports whether an env var is visible to a phase run: set by
 // the resolved bind or in the daemon's environment.
@@ -223,7 +315,9 @@ func RunTrackerPhase(ctx context.Context, runner *Runner, projectDir, slot strin
 		return nil, fmt.Errorf("%s: %w", slot, err)
 	}
 	if result.State != domain.RunStateSucceeded {
-		return nil, fmt.Errorf("%s workflow finished with state %s: %w", slot, result.State, ErrPhaseFailed)
+		pf := newPhaseFailure(ctx, projectDir, slot, result)
+		pf.msg = fmt.Sprintf("%s workflow finished with state %s: %s", slot, result.State, ErrPhaseFailed)
+		return nil, pf
 	}
 	get := func(k string) (string, bool) {
 		v, ok, _ := store.GetContextKey(ctx, kvTask, kvAttempt, result.RunID, k)

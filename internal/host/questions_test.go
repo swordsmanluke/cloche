@@ -115,3 +115,43 @@ func TestRunQuestionPhase_FailedPhaseIsErrPhaseFailed(t *testing.T) {
 	_, err := RunQuestionPhase(context.Background(), &Runner{Store: newSQLiteStore(t)}, dir, SlotReadAnswer, map[string]string{"question_id": "Q1"})
 	assert.ErrorIs(t, err, ErrPhaseFailed)
 }
+
+// A failed phase carries the failing step and its output, and logs it to the
+// calling run's attempt directory only when that directory exists.
+func TestRunQuestionPhase_FailureCarriesStepOutputAndLogsToCaller(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, ".cloche", "qa.cloche"), `workflow ask {
+  host {}
+  contract {
+    kv: questions_file
+  }
+  step ask {
+    run = "echo boom: no such feature; exit 1"
+    results = [success, fail]
+  }
+  ask:success -> done
+  ask:fail -> abort
+}
+`)
+	attempt := filepath.Join(dir, ".cloche", "logs", "T1", "A1")
+	require.NoError(t, os.MkdirAll(attempt, 0o755))
+	ctx := WithCaller(context.Background(), Caller{TaskID: "T1", AttemptID: "A1"})
+
+	_, err := RunQuestionPhase(ctx, &Runner{Store: newSQLiteStore(t)}, dir, SlotAsk, map[string]string{"questions_file": "/x"})
+	var pf *PhaseFailure
+	require.ErrorAs(t, err, &pf)
+	assert.ErrorIs(t, err, ErrPhaseFailed)
+	assert.Equal(t, "ask", pf.Step)
+	assert.Contains(t, pf.OutputTail, "boom: no such feature")
+	assert.Equal(t, filepath.Join(attempt, "ask.log"), pf.LogPath)
+	full, err := os.ReadFile(filepath.Join(attempt, "full.log"))
+	require.NoError(t, err)
+	assert.Contains(t, string(full), "boom: no such feature")
+
+	// A caller whose attempt directory is gone gets no log, and none is created.
+	ctx = WithCaller(context.Background(), Caller{TaskID: "T1", AttemptID: "missing"})
+	_, err = RunQuestionPhase(ctx, &Runner{Store: newSQLiteStore(t)}, dir, SlotAsk, map[string]string{"questions_file": "/x"})
+	require.ErrorAs(t, err, &pf)
+	assert.Empty(t, pf.LogPath)
+	assert.NoDirExists(t, filepath.Join(dir, ".cloche", "logs", "T1", "missing"))
+}

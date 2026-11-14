@@ -64,6 +64,7 @@ type RunResult struct {
 	RunID        string
 	State        domain.RunState
 	OutputDir    string // path to the step output directory
+	FailedStep   string // first step that returned fail/error, "" if none
 	tmpOutputDir string // non-empty if OutputDir is a temp dir that callers should clean up
 }
 
@@ -256,6 +257,7 @@ func (r *Runner) runWorkflow(ctx context.Context, projectDir string, wf *domain.
 	}
 	if run != nil {
 		result.State = run.State
+		result.FailedStep = run.FindFirstFailedStep()
 	}
 
 	// Clean up containers held by the executor (e.g. pool sessions from

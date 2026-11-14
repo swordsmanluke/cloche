@@ -129,6 +129,11 @@ func (c *daemonQuestionsClient) do(method, path string, body any) ([]byte, error
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.token)
+	// Name the calling run so the daemon can log a failed phase's output to it.
+	if t, a := os.Getenv("CLOCHE_TASK_ID"), os.Getenv("CLOCHE_ATTEMPT_ID"); t != "" && a != "" {
+		req.Header.Set("X-Cloche-Task-Id", t)
+		req.Header.Set("X-Cloche-Attempt-Id", a)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to daemon web API: %w\nhint: set CLOCHE_HTTP (or [daemon] http in ~/.config/cloche/config) and restart the daemon", err)
