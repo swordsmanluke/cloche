@@ -34,7 +34,7 @@ case "$1" in
   show)
     jq -c --arg id "$2" '{id:$id,status:{state:(if length>0 then "in-force" else "open" end)},answers:.}' "$s/$2.answers" ;;
   answer)
-    jq -c --arg k "$3" --arg t "$4" '. + [{author:{kind:$k},text:$t}]' "$s/$2.answers" > "$s/$2.tmp" && mv "$s/$2.tmp" "$s/$2.answers" ;;
+    jq -c --arg k "$3" --arg t "$4" '. + [{author:$k,select:[1],status:null,text:$t}]' "$s/$2.answers" > "$s/$2.tmp" && mv "$s/$2.tmp" "$s/$2.answers" ;;
   *) echo "stub saga: unsupported: $*" >&2; exit 2 ;;
 esac
 `

@@ -2,9 +2,11 @@ package features_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -32,7 +34,6 @@ func (w *realShapeWorld) fixture(showJSON string) error {
 }
 
 func initSagaRealShapeScenarios(ctx *godog.ScenarioContext) {
-	pending := func() error { return godog.ErrPending }
 	w := &realShapeWorld{}
 	ctx.Before(func(c context.Context, _ *godog.Scenario) (context.Context, error) {
 		*w = realShapeWorld{humanText: "the human ruling", agentText: "the agent guess", laterText: "the later agent ruling"}
@@ -119,11 +120,88 @@ func initSagaRealShapeScenarios(ctx *godog.ScenarioContext) {
 	})
 
 	// L2
-	ctx.Step(`^I inspect the stub saga used by the module and feature tests$`, pending)       // pending: L2
-	ctx.Step(`^every stubbed answer has a string author and a null status$`, pending)         // pending: L2
-	ctx.Step(`^I search tracked files for the object-shaped author "kind" fixture$`, pending) // pending: L2
-	ctx.Step(`^no tracked file contains it$`, pending)                                        // pending: L2
-	ctx.Step(`^real-shaped saga questions that have all been answered$`, pending)             // pending: L2
-	ctx.Step(`^the saga module awaits those questions$`, pending)                             // pending: L2
-	ctx.Step(`^the saga module reports no open questions$`, pending)                          // pending: L2
+	ctx.Step(`^I inspect the stub saga used by the module and feature tests$`, func() error {
+		if err := w.installStub(); err != nil {
+			return err
+		}
+		qf, err := w.writeQuestions("cloche/qa-backends")
+		if err != nil {
+			return err
+		}
+		if _, err := w.phase("ask.sh", map[string]string{"questions_file": qf}); err != nil {
+			return err
+		}
+		if w.rc != nil {
+			return fmt.Errorf("ask failed: %v: %s", w.rc, w.out)
+		}
+		for _, who := range []string{"human", "agent"} {
+			if err := w.answerAs("Q1", who, "text from "+who); err != nil {
+				return err
+			}
+		}
+		cmd := exec.Command(filepath.Join(w.dir, "bin", "saga"), "show", "Q1", "--json")
+		cmd.Env = w.env()
+		out, err := cmd.Output()
+		if err != nil {
+			return err
+		}
+		w.out = string(out)
+		return nil
+	})
+	ctx.Step(`^every stubbed answer has a string author and a null status$`, func() error {
+		var show struct {
+			Answers []map[string]any `json:"answers"`
+		}
+		if err := json.Unmarshal([]byte(w.out), &show); err != nil {
+			return err
+		}
+		if len(show.Answers) != 2 {
+			return fmt.Errorf("want 2 stubbed answers, got %s", w.out)
+		}
+		for _, a := range show.Answers {
+			if _, ok := a["author"].(string); !ok {
+				return fmt.Errorf("author is not a string: %v", a)
+			}
+			if v, ok := a["status"]; !ok || v != nil {
+				return fmt.Errorf("status is not null: %v", a)
+			}
+		}
+		return nil
+	})
+	var hits string
+	ctx.Step(`^I search tracked files for the object-shaped author "kind" fixture$`, func() error {
+		// Patterns are assembled so this file does not match itself.
+		jqStyle := "author:{" + "kind"
+		jsonStyle := `author":{"` + "kind"
+		out, err := exec.Command("git", "grep", "-n", "-F", "-e", jqStyle, "-e", jsonStyle).CombinedOutput()
+		if err != nil {
+			var ee *exec.ExitError
+			if !errors.As(err, &ee) || ee.ExitCode() != 1 {
+				return fmt.Errorf("git grep: %v: %s", err, out)
+			}
+			out = nil
+		}
+		hits = strings.TrimSpace(string(out))
+		return nil
+	})
+	ctx.Step(`^no tracked file contains it$`, func() error {
+		if hits != "" {
+			return fmt.Errorf("object-shaped author still present:\n%s", hits)
+		}
+		return nil
+	})
+	ctx.Step(`^real-shaped saga questions that have all been answered$`, func() error {
+		w.ids = []string{"Q1", "Q2"}
+		return w.fixture(`{"id":"Q1","status":{"state":"in-force"},"answers":[` +
+			`{"author":"human","select":[1],"status":null,"text":"ruling"}]}`)
+	})
+	ctx.Step(`^the saga module awaits those questions$`, func() error {
+		return w.runAwait()
+	})
+	ctx.Step(`^the saga module reports no open questions$`, func() error {
+		if len(w.open) != 0 {
+			return fmt.Errorf("open = %v, want none", w.open)
+		}
+		return nil
+	})
 }
