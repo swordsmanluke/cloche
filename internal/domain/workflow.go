@@ -401,6 +401,11 @@ func (w *Workflow) DeprecationWarnings() []string {
 		"workflow %q: `repos` is no longer supported and is ignored; a task's `repos` field or `cloche run --repos` chooses a run's repos", w.Name)}
 }
 
+// MinPollInterval is the smallest poll-step interval the validator accepts.
+// The standalone poll loop never wakes more often than once a second, so a
+// shorter interval cannot be honoured and would silently stretch.
+const MinPollInterval = time.Second
+
 // ValidateConfig checks step config keys against known keys and returns
 // warnings for any unrecognized keys (likely typos).
 func (w *Workflow) ValidateConfig() []string {
@@ -415,6 +420,13 @@ func (w *Workflow) ValidateConfig() []string {
 			}
 			warnings = append(warnings, fmt.Sprintf(
 				"workflow %q: step %q has unrecognized config key %q", w.Name, name, key))
+		}
+		if step.Type == StepTypePoll {
+			if d, err := time.ParseDuration(step.Config["interval"]); err == nil && d < MinPollInterval {
+				warnings = append(warnings, fmt.Sprintf(
+					"workflow %q: step %q poll interval %s is below the minimum poll interval %s",
+					w.Name, name, d, MinPollInterval))
+			}
 		}
 	}
 	return warnings

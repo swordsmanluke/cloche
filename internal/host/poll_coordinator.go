@@ -33,6 +33,18 @@ type PollCoordinator struct {
 	// loop's releases, leaving phantom in-flight slots that never complete.
 	slotMu sync.Mutex
 	slots  map[string]*slotState
+
+	// now is the coordinator's clock; nil means time.Now. Tests swap in a fake
+	// clock (see fakeClock in poll_cadence_test.go) to check poll cadence
+	// without sleeping.
+	now func() time.Time
+}
+
+func (c *PollCoordinator) clock() time.Time {
+	if c.now != nil {
+		return c.now()
+	}
+	return time.Now()
 }
 
 // slotState is the slot-handoff state for one scope (one project's loop).
@@ -208,7 +220,7 @@ func (c *PollCoordinator) Register(
 		resultCh:   ch,
 		invokeFn:   invokeFn,
 		interval:   interval,
-		lastPollAt: time.Now().Add(-interval), // eligible for immediate first poll
+		lastPollAt: c.clock().Add(-interval), // eligible for immediate first poll
 	}
 	return ch
 }
@@ -238,7 +250,7 @@ func (c *PollCoordinator) DrivePolls(ctx context.Context, store ports.PollStore)
 	c.mu.Lock()
 	var toTrigger []*pollSession
 	var toFail []*pollSession
-	now := time.Now()
+	now := c.clock()
 	for key, s := range c.sessions {
 		if s.inFlight {
 			if elapsed := now.Sub(s.invStart); elapsed > 4*s.interval {
@@ -286,7 +298,7 @@ func (c *PollCoordinator) triggerPoll(s *pollSession, store ports.PollStore) {
 
 	invCtx, invCancel := context.WithCancel(context.Background())
 	s.inFlight = true
-	s.invStart = time.Now()
+	s.invStart = c.clock()
 	s.invCancel = invCancel
 	runID := s.runID
 	stepName := s.stepName
@@ -343,7 +355,7 @@ func (c *PollCoordinator) triggerPoll(s *pollSession, store ports.PollStore) {
 			}
 		} else {
 			// Pending: record the poll timestamp and continue.
-			s2.lastPollAt = time.Now()
+			s2.lastPollAt = c.clock()
 			c.mu.Unlock()
 			invCancel()
 			if store != nil {
