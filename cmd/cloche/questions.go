@@ -142,16 +142,58 @@ func (c *daemonQuestionsClient) do(method, path string, body any) ([]byte, error
 		return data, nil
 	}
 	var e struct {
-		Error string `json:"error"`
+		Error      string `json:"error"`
+		FailedStep string `json:"failed_step"`
+		OutputTail string `json:"output_tail"`
+		LogPath    string `json:"log_path"`
 	}
 	msg := strings.TrimSpace(string(data))
 	if json.Unmarshal(data, &e) == nil && e.Error != "" {
 		msg = e.Error
 	}
+	// A phase failure that names its failing step is a real error, even on
+	// read, where a bare 404 means "no answer yet".
+	if e.FailedStep != "" {
+		return nil, &phaseFailureError{msg: msg, step: e.FailedStep, tail: e.OutputTail, logPath: e.LogPath}
+	}
 	if resp.StatusCode == http.StatusNotFound && path == "/read" {
 		return nil, errNoAnswer
 	}
 	return nil, errors.New(msg)
+}
+
+// phaseFailureTailLines caps how much of a failed step's output is printed.
+const phaseFailureTailLines = 20
+
+// phaseFailureError is a failed qa phase together with the failing step's
+// name and the tail of its output (or the path of its log).
+type phaseFailureError struct {
+	msg, step, tail, logPath string
+}
+
+func (e *phaseFailureError) Error() string {
+	var b strings.Builder
+	b.WriteString(e.msg)
+	fmt.Fprintf(&b, "\n  failing step: %s", e.step)
+	if tail := strings.TrimRight(lastLines(e.tail, phaseFailureTailLines), "\n"); tail != "" {
+		b.WriteString("\n  output (tail):")
+		for _, l := range strings.Split(tail, "\n") {
+			b.WriteString("\n    " + l)
+		}
+	}
+	if e.logPath != "" {
+		fmt.Fprintf(&b, "\n  log: %s", e.logPath)
+	}
+	return b.String()
+}
+
+// lastLines returns the final n lines of s.
+func lastLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) <= n {
+		return strings.Join(lines, "\n")
+	}
+	return "...\n" + strings.Join(lines[len(lines)-n:], "\n")
 }
 
 func (c *daemonQuestionsClient) Ask(qf *QuestionFile, noJudge bool) ([]string, error) {

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -266,5 +267,22 @@ func TestQuestionsCompletionListed(t *testing.T) {
 	}
 	if !strings.Contains(subcommandHelp["questions"], "cloche questions ask") {
 		t.Fatal("help missing")
+	}
+}
+
+func TestPhaseFailureErrorShowsStepAndTail(t *testing.T) {
+	var out strings.Builder
+	for i := 0; i < 100; i++ {
+		fmt.Fprintf(&out, "line %d\n", i)
+	}
+	err := (&phaseFailureError{msg: "ask failed", step: "ask", tail: out.String(), logPath: "/tmp/ask.log"})
+	s := err.Error()
+	for _, want := range []string{"ask failed", "failing step: ask", "line 99", "log: /tmp/ask.log"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q in %q", want, s)
+		}
+	}
+	if strings.Contains(s, "line 10\n") || strings.Contains(s, "line 0\n") {
+		t.Errorf("head of output not truncated: %q", s)
 	}
 }
