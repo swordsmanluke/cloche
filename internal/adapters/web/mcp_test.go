@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -164,4 +165,72 @@ func TestMCP_ToolsCall_MissingQuestion(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.True(t, resp.Result.IsError)
+}
+
+// fakeAskHelp returns an AskHelpFunc standing in for the help router. It
+// blocks until release is closed by the test (the scaled "park_after" instant) or ctx is cancelled — the same contract as help.Router.Ask — and then
+// reports parked=true.
+func fakeAskHelp(release <-chan struct{}) AskHelpFunc {
+	return func(ctx context.Context, runID, question, title, threadID string, options []string, askKey string) (string, string, bool, error) {
+		select {
+		case <-release:
+			return "", "thread-park", true, nil
+		case <-ctx.Done():
+			return "", "", false, ctx.Err()
+		}
+	}
+}
+
+// TestMCP_ToolsCall_AskUser_OutlastsClientWindow reproduces the bug in
+// wrapped_cloche-b79: an unanswered ask_user over /mcp that outlasts the
+// client's tool-call window (~60s in real life) is never answered with a
+// parked result inside that window. Times are scaled (window=100ms stands in
+// for 60s, park_after=400ms for 5 minutes) so no real 60s sleep occurs.
+//
+// It currently DOCUMENTS the broken behaviour: when the client gives up
+// (request ctx cancelled at the window) the handler returns a tool error
+// instead of a parked result. TODO(L2): flip these assertions — the handler
+// must emit the parked result (or keepalive/progress) before the window ends.
+func TestMCP_ToolsCall_AskUser_OutlastsClientWindow(t *testing.T) {
+	const clientWindow = 100 * time.Millisecond // scaled "60s"
+
+	release := make(chan struct{}) // closed when the fake clock reaches park_after
+	h, secret := setupMCPHandler(t, fakeAskHelp(release))
+	token := mcpauth.Token(secret, "run-1")
+
+	// park_after fires at 4x the client window (scaled "5 min").
+	go func() {
+		time.Sleep(4 * clientWindow)
+		close(release)
+	}()
+
+	data, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 9, "method": "tools/call",
+		"params": map[string]any{"name": "ask_user", "arguments": map[string]any{"question": "Q?"}},
+	})
+	// The client abandons the request at the window, as Claude's MCP client does.
+	ctx, cancel := context.WithTimeout(context.Background(), clientWindow)
+	defer cancel()
+	req := httptest.NewRequest("POST", "/mcp?run_id=run-1", bytes.NewReader(data)).WithContext(ctx)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	start := time.Now()
+	h.ServeHTTP(w, req)
+	elapsed := time.Since(start)
+
+	var resp struct {
+		Result struct {
+			IsError bool `json:"isError"`
+			Parked  bool `json:"parked"`
+		} `json:"result"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	// Desired (L2): assert.True(resp.Result.Parked) with elapsed < clientWindow.
+	// Current: the handler holds the request until the client's ctx dies and
+	// then reports an error; nothing parked is ever delivered in the window.
+	assert.GreaterOrEqual(t, elapsed, clientWindow, "handler blocks for the full client window")
+	assert.False(t, resp.Result.Parked, "BUG (b79): no parked result is delivered inside the client window")
+	assert.True(t, resp.Result.IsError, "BUG (b79): client sees an error when the window expires")
 }
