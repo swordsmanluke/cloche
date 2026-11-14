@@ -13,6 +13,18 @@ import (
 
 func init() { registerScenarios(initDRANoSagaScanScenarios) }
 
+// gitInitAndStage initialises a git repository in dir and stages everything in it.
+func gitInitAndStage(dir string) error {
+	for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}} {
+		c := exec.Command("git", args...)
+		c.Dir = dir
+		if out, err := c.CombinedOutput(); err != nil {
+			return fmt.Errorf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	return nil
+}
+
 func initDRANoSagaScanScenarios(ctx *godog.ScenarioContext) {
 	var repo string
 	var found []string
@@ -26,8 +38,24 @@ func initDRANoSagaScanScenarios(ctx *godog.ScenarioContext) {
 		return c, nil
 	})
 
-	ctx.Step(`^a checkout with an untracked \.gitworktrees/ directory whose files mention "([^"]*)"$`, func(string) error {
-		return godog.ErrPending // pending: L2
+	ctx.Step(`^a checkout with an untracked \.gitworktrees/ directory whose files mention "([^"]*)"$`, func(term string) error {
+		dir, err := os.MkdirTemp("", "scan-checkout-")
+		if err != nil {
+			return err
+		}
+		repo = dir
+		if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("clean\n"), 0o644); err != nil {
+			return err
+		}
+		if err := gitInitAndStage(dir); err != nil {
+			return err
+		}
+		// Created after staging so it stays untracked.
+		wt := filepath.Join(dir, ".gitworktrees", "x")
+		if err := os.MkdirAll(wt, 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(wt, "f.txt"), []byte("uses "+term+"\n"), 0o644)
 	})
 	ctx.Step(`^a checkout where the tracked file "([^"]*)" mentions "([^"]*)"$`, func(path, term string) error {
 		dir, err := os.MkdirTemp("", "scan-checkout-")
@@ -42,12 +70,8 @@ func initDRANoSagaScanScenarios(ctx *godog.ScenarioContext) {
 		if err := os.WriteFile(full, []byte("uses "+term+"\n"), 0o644); err != nil {
 			return err
 		}
-		for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}} {
-			c := exec.Command("git", args...)
-			c.Dir = dir
-			if out, err := c.CombinedOutput(); err != nil {
-				return fmt.Errorf("git %v: %v\n%s", args, err, out)
-			}
+		if err := gitInitAndStage(dir); err != nil {
+			return err
 		}
 		return nil
 	})
