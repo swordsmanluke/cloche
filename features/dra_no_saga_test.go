@@ -1,11 +1,10 @@
 package features_test
 
 import (
+	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"reflect"
 	"strings"
 
@@ -23,6 +22,27 @@ func dockerImageOrSkip() error {
 }
 
 func init() { registerScenarios(initDRANoSagaScenarios) }
+
+// trackedMentions lists tracked files under dir that mention term, via git grep so
+// untracked directories (e.g. .gitworktrees/) are never searched. features/, .cloche/
+// and node_modules are excluded; .git is implicit. Exit 1 (no matches) is not an error.
+func trackedMentions(dir, term string) ([]string, error) {
+	cmd := exec.Command("git", "grep", "-lI", term, "--", ".",
+		":!features", ":!.cloche", ":!node_modules")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	var ee *exec.ExitError
+	if err != nil && !(errors.As(err, &ee) && ee.ExitCode() == 1) {
+		return nil, fmt.Errorf("git grep for %s: %w", term, err)
+	}
+	var res []string
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if l != "" {
+			res = append(res, l)
+		}
+	}
+	return res, nil
+}
 
 // Step bindings for the DRA/no-Saga feature, grouped by the layer that added them.
 func initDRANoSagaScenarios(ctx *godog.ScenarioContext) {
@@ -143,24 +163,9 @@ func initDRANoSagaScenarios(ctx *godog.ScenarioContext) {
 	})
 	ctx.Step(`^the repository is searched for "CLOCHE_SAGA_ADDR"$`, func() error {
 		matches = nil
-		// features/ (this test plan), .cloche/ (run artefacts) and .git are excluded.
-		return filepath.WalkDir("..", func(p string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				switch d.Name() {
-				case ".git", ".cloche", "features", "node_modules":
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			b, err := os.ReadFile(p)
-			if err == nil && strings.Contains(string(b), "CLOCHE_SAGA_ADDR") {
-				matches = append(matches, p)
-			}
-			return nil
-		})
+		var err error
+		matches, err = trackedMentions("..", "CLOCHE_SAGA_ADDR")
+		return err
 	})
 	ctx.Step(`^there are no matches$`, func() error {
 		if len(matches) > 0 {
