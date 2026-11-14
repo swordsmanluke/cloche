@@ -1,0 +1,47 @@
+workflow ask {
+  contract {
+    kv:  questions_file
+    out: question_ids
+  }
+  host {}
+
+  step ask {
+    run     = "bash \"$CLOCHE_MODULE_DIR/scripts/ask.sh\""
+    results = [success, fail]
+  }
+
+  ask:success -> done
+  ask:fail    -> abort
+}
+
+workflow await-answer {
+  contract {
+    kv:  question_ids
+    out: questions_open
+  }
+  host {}
+
+  step await {
+    run     = "bash \"$CLOCHE_MODULE_DIR/scripts/await.sh\""
+    results = [success, fail]
+  }
+
+  await:success -> done
+  await:fail    -> abort
+}
+
+workflow read-answer {
+  contract {
+    kv:  question_id
+    out: answer_path
+  }
+  host {}
+
+  step read {
+    run     = "bash \"$CLOCHE_MODULE_DIR/scripts/read.sh\""
+    results = [success, fail]
+  }
+
+  read:success -> done
+  read:fail    -> abort
+}

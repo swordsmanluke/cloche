@@ -1,0 +1,5 @@
+name        = "saga"
+description = "qa backend over Saga: ask, check and read answers as Saga questions and rulings"
+exports     = ["ask", "await-answer", "read-answer"]
+requires    = ["saga", "jq"]
+credentials = []
