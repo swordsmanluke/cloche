@@ -217,7 +217,7 @@ bind qa = saga { env.SAGA_PROJECT = "cloche" }
 |---|---|---|---|
 | `ask` | `questions_file` | `question_ids` | One `saga ask -p $SAGA_PROJECT -f <feature> --file <file> --json` batch; the feature is the file's `backend.feature`. |
 | `await-answer` | `question_ids` | `questions_open` | One non-blocking `saga show <id> --json` per id; open means no answer yet. |
-| `read-answer` | `question_id` | `answer_path` | Writes the ruling in force to a file, a human's answer preferred over an agent's (the latest if none is human's). Fails when unanswered. |
+| `read-answer` | `question_id` | `answer_path` | Writes the ruling in force to a file, a human's answer preferred over an agent's (the latest if none is human's). The file has a `Selected: <labels>` line for chosen options, then the text; either alone when only one is present. Fails when unanswered. |
 
 Requires `saga` and `jq` on the host `PATH`. See the module README.
 
