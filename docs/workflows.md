@@ -731,7 +731,7 @@ use cases: waiting for a code review, an approval gate, a CI run, or a ticket
 transition.
 
 Poll steps work in both host and container workflows. In a host workflow, the daemon's
-orchestration loop drives the polling. In a container workflow, the in-container agent
+poll coordinator drives the polling. In a container workflow, the in-container agent
 runs a standalone polling loop.
 
 ### Declaration
@@ -743,7 +743,7 @@ makes it a poll step. A poll step must not include `prompt`, `run`, or `workflow
 | Field      | Required | Description |
 |------------|----------|-------------|
 | `poll`     | yes      | Shell command to invoke on each poll. Run via `sh -c`, so pipes, redirection, and shell builtins all work. Can be a path to a script (`scripts/check.sh`), an inline command (`gh pr view 123 --json state -q .state`), or anything sh accepts. |
-| `interval` | yes      | Poll frequency as a Go duration — any value accepted by [`time.ParseDuration`](https://pkg.go.dev/time#ParseDuration), e.g. `"30s"`, `"5m"`, `"1h"`. Invalid durations fail at parse time. |
+| `interval` | yes      | Poll frequency as a Go duration — any value accepted by [`time.ParseDuration`](https://pkg.go.dev/time#ParseDuration), e.g. `"30s"`, `"5m"`, `"1h"`. Invalid durations fail at parse time; values under `1s` draw a validation warning. |
 | `timeout`  | no       | Overall step timeout. Default `72h` (vs. `30m` for agent/script steps, or the target-workflow-derived default for `workflow_name` steps — see above). When the step exceeds its timeout it produces a `"timeout"` result. |
 | `results`  | no       | Declared wire names. Always implicitly includes `timeout` if omitted. Your declared list must cover every `CLOCHE_RESULT:<name>` value the script can emit, plus `fail` if your script can exit non-zero without a marker. |
 
@@ -781,14 +781,15 @@ signal that tells the orchestrator to keep polling.
 
 ### Polling cadence
 
-The first poll fires immediately when the step starts; subsequent polls fire no sooner
-than `interval` after the previous poll completes. The orchestration loop drives polls
-centrally — the executor goroutine is parked on a result channel and does not consume a
-process or thread between polls.
+The first poll fires immediately when the step starts (in a host workflow, on the next
+orchestration loop tick). After each pending result the next poll is scheduled on its own
+timer for `interval` after the previous poll completed, so the cadence is the configured
+`interval` regardless of the orchestration loop's tick rate. The executor goroutine is
+parked on a result channel and does not consume a process or thread between polls. In a
+container workflow the standalone loop sleeps until the next poll is due, likewise.
 
-`interval` is a **no-sooner-than** constraint, not a strict schedule. Actual poll times
-depend on the loop tick rate (and on how long the previous invocation took), so expect
-polls to land within ~30s of the ideal time.
+The shortest honoured `interval` is 1s; a shorter one produces a config warning from
+validation (`poll interval ... is below the minimum poll interval 1s`).
 
 **Overlapping invocations.** If a poll is still running when the next interval comes
 due, that interval is skipped. If a single invocation runs longer than 4× `interval`
